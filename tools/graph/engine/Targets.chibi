@@ -448,7 +448,7 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_authoring") {
         return [
             "src/authoring/native_bindings.c", "src/authoring/source_literal.c",
-            "src/authoring/source_references.c", "src/authoring/source_prepare.c",
+            "src/authoring/source_prepare.c",
             "src/authoring/source_link.c", "src/authoring/source_navigation.c",
             "src/authoring/source_prototype_flow.c"
         ];
@@ -472,7 +472,7 @@ Files :: (target: string) -> string[] {
         return [
             "src/authoring/language_catalog.c", "src/authoring/source_catalog.c",
             "src/authoring/source_asset.c",
-            "src/authoring/source_asset_completion.c", "src/authoring/source_catalog_snapshot.c",
+            "src/authoring/source_catalog_snapshot.c",
             "src/authoring/source_collection.c", "src/authoring/source_packages.c",
             "src/authoring/source_package_syntax.c", "src/authoring/source_package_paths.c",
             "src/authoring/source_package_routes.c", "src/authoring/source_package_snapshot.c",
@@ -528,7 +528,7 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_project_preparation") {
         return [
-            "src/authoring/source_apply.c", "src/authoring/studio_schema.c", "src/authoring/ui_loader.c",
+            "src/authoring/studio_schema.c", "src/authoring/ui_loader.c",
             "src/authoring/ui_check.c", "src/authoring/application_catalog.c"
         ];
     }
@@ -1106,7 +1106,7 @@ pub PublicHeaders :: (target: string) -> string[] {
             "authoring/native_bindings.h", "authoring/source_declaration.h",
             "authoring/source_link.h", "authoring/source_literal.h", "authoring/source_navigation.h",
             "authoring/source_prepare.h", "authoring/source_prototype_flow.h",
-            "authoring/source_references.h"
+
         ];
     }
     if (target == "chibi_asset_authoring") {
@@ -1126,7 +1126,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_source_catalog") {
         return [
             "authoring/language_catalog.h", "authoring/package_tests.h", "authoring/source_asset.h",
-            "authoring/source_catalog.h", "authoring/source_collection.h", "authoring/source_completion.h",
+            "authoring/source_catalog.h", "authoring/source_collection.h",
             "authoring/source_package_exports.h", "authoring/source_package_files.h", "authoring/source_package_io.h",
             "authoring/source_package_prepare.h", "authoring/source_package_snapshot.h",
             "authoring/source_packages.h"
@@ -1143,7 +1143,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_project_preparation") {
         return [
-            "authoring/application_catalog.h", "authoring/source_apply.h",
+            "authoring/application_catalog.h",
             "authoring/studio_project.h", "authoring/ui_check.h", "authoring/ui_loader.h"
         ];
     }

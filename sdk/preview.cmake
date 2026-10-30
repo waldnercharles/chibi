@@ -6,7 +6,7 @@ endforeach()
 add_library(Chibi::project_preparation ALIAS chibi_project_preparation)
 set_target_properties(chibi_project_preparation PROPERTIES EXPORT_NAME project_preparation)
 chibi_sdk_headers(chibi_project_preparation PUBLIC authoring/ui_loader.h authoring/ui_check.h
-    authoring/source_apply.h authoring/studio_project.h authoring/application_catalog.h)
+     authoring/studio_project.h authoring/application_catalog.h)
 target_link_libraries(chibi_project_preparation PUBLIC chibi_project_compilation
     chibi_engine chibi_ui_host chibi_renderer
     PRIVATE chibi_studio_catalog chibi_host_native_default

@@ -2654,10 +2654,13 @@ static void build_process(const char *worker, const char *host, build_process_ca
     worker_path = worker;
     host_path = host;
     char error[256] = { 0 };
+    /* The job's compiler cache, as the build host uses it: these cases time
+     * host behaviour, not recovering a compiler for a stale seed. */
+    const char *cache = getenv("CHIBI_COMPILER_CACHE");
     build_compiler = chibi_build_compiler_load(
         CHIBI_SOURCE_ROOT "/tools/compiler",
         CHIBI_SOURCE_ROOT "/packages/core",
-        NULL,
+        cache && *cache && strcmp(cache, "off") ? cache : NULL,
         error,
         sizeof error
     );

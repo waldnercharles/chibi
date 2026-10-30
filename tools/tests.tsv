@@ -83,20 +83,14 @@ tool	language-ranges	@build@/test/language/test_language	--ranges
 tool	language-integer-shift-counts	@build@/test/language/test_language	--integer-shift-counts
 tool	language-integer-shift-counts-authored	@build@/test/language/test_language	--integer-shift-counts-authored
 tool	language-integer-semantics	@build@/test/language/test_language	--integer-semantics
-tool	chibi-test-compiler-source-tokenizer	@release@/sdk/chibi	test	tools/compiler/source_tokenizer
+tool	chibi-test-compiler	@release@/sdk/chibi	test	tools/compiler
 tool	chibi-test-core	@release@/sdk/chibi	test	packages/core
 tool	chibi-test-integer-arithmetic	@release@/sdk/chibi	test	test/integer_arithmetic
 tool	language-package-graph	@build@/test/language/test_language	--package-graph
-tool	language-package-syntax	@build@/test/language/test_language	--package-syntax
 tool	language-asset-compiler-host	@build@/test/language/test_language	--asset-compiler-host
 tool	language-asset-packaging-chibi	@build@/test/language/test_language	--asset-packaging-chibi
 tool	language-shader-source-chibi	@build@/test/language/test_language	--shader-source-chibi
 tool	language-package-graph-chibi	@build@/test/language/test_language	--package-graph-chibi
-tool	language-syntax-chibi	@build@/test/language/test_language	--syntax-chibi
-tool	language-source-parser-chibi	@build@/test/language/test_language	--source-parser-chibi
-tool	language-package-syntax-chibi	@build@/test/language/test_language	--package-syntax-chibi
-tool	language-package-paths-chibi	@build@/test/language/test_language	--package-paths-chibi
-tool	language-package-routes-chibi	@build@/test/language/test_language	--package-routes-chibi
 tool	language-package-snapshot-chibi	@build@/test/language/test_language	--package-snapshot-chibi
 tool	language-compiler-fixture	@build@/test/language/test_language	--compiler-fixture
 tool	language-compositional-records	@build@/test/language/test_language	--compositional-records
@@ -197,6 +191,6 @@ group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-pac
 group	native	native-runtime	native-catalog	native-values	audio-analysis	build-graph-link-response	physics	physics3d	transforms	box3d	sky-files	tilemap	runtime-scene	scene-prepared	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	vector-nodes	asset-values	ui-document	text-files	fmt	particles	arena	shader-bake	shader-source-debug	terrain-seams	terrain-storage	material-surface-mesh
 group	projects	terrain-checkpoint	chibi-cli	native-build
 group	materials	material-destruction	material-fluids	material-mpm	material-simulation	material-ecs
-group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	language-package-math	chibi-test-compiler-source-tokenizer	chibi-test-core	chibi-test-integer-arithmetic	language-argument-effects-chibi	language-host-packages	language-host-packages-compiler	field-runtime	text-format	language-shader-source-chibi	language-compiler-fixture	language-compositional-records	language-package-compiler-chibi-scalar	language-package-compiler-chibi-fallible	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-behaviors-rest	language-integer-semantics	language-integer-shift-counts	language-integer-shift-counts-authored	language-asset-packaging-chibi	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
+group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	language-package-math	chibi-test-compiler	chibi-test-core	chibi-test-integer-arithmetic	language-argument-effects-chibi	language-host-packages	language-host-packages-compiler	field-runtime	text-format	language-shader-source-chibi	language-compiler-fixture	language-compositional-records	language-package-compiler-chibi-scalar	language-package-compiler-chibi-fallible	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-behaviors-rest	language-integer-semantics	language-integer-shift-counts	language-integer-shift-counts-authored	language-asset-packaging-chibi	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
 group	compiler	language-package-compiler-chibi	language-package-compiler-chibi-compiled	language-package-compiler-chibi-types	language-package-compiler-chibi-fallible	language-package-compiler-chibi-types-compiled	language-package-compiler-chibi-collections	language-package-compiler-chibi-collections-compiled	language-package-compiler-chibi-literals	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-actions	language-package-compiler-chibi-behaviors-rest	language-package-compiler-chibi-queries	language-package-compiler-chibi-libraries	language-package-compiler-chibi-sharing	language-package-compiler-chibi-debug-free	language-package-compiler-chibi-native-arguments	language-package-compiler-chibi-native-arguments-oracle	language-package-compiler-chibi-scalar	language-package-compiler-chibi-imports	language-package-compiler-chibi-imports-compiled	language-package-compiler-chibi-bootstrap
 group	benchmarks	ecs-query-benchmark	native-workload-benchmark	material-benchmark	script-benchmark	scheduler-benchmark	language-package-math-benchmark

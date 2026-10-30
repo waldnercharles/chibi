@@ -75,9 +75,9 @@ Prepare :: (stage: string, entries: string[]) -> bool {
     }
     compiler := Join([stage, "/share/chibi/compiler"]);
     if (os.Run([Join([stage, "/libexec/chibi/chibi-compiler-host"]),
-                   "--bootstrap", Join([compiler, "/bootstrap"]),
+                   "--validate", "--bootstrap", Join([compiler, "/bootstrap"]),
                    "--compiler", compiler, "--core", Join([stage, "/share/chibi/core"])]) != 0) {
-        os.Print("sdk: staged compiler resources failed recovery");
+        os.Print("sdk: staged compiler resources failed validation");
         return false;
     }
     if (os.Run([Join([stage, "/libexec/chibi/chibi-build-host"]),

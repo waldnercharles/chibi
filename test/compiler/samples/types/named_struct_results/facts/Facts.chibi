@@ -1,0 +1,23 @@
+package facts
+Point :: struct { x: int; y: int; }
+Collision :: struct { point: int; }
+MakeCollision :: () -> (point: Collision) { return {point: 7}; }
+ReadCollision :: () -> int { return MakeCollision().point.point; }
+Direct :: (n: int) -> (point: Point) { return {x: n, y: 2}; }
+Empty :: () -> (point: Point) { return; }
+Mutate :: (n: int) -> (point: Point) { point.x = n; point.y = 2; return; }
+Project :: () -> int { p := Direct(7); q := p; return q.point.x; }
+Other :: () -> (other: Point) { return {x: 9, y: 3}; }
+Reassigned :: () -> int { p := Direct(7); p = Other(); q := p; return q.point.x; }
+LaterShadow :: () -> int { p := Direct(7); q := p; if true { p: Point = {x: 99, y: 1}; return q.point.x + p.x; } return 0; }
+Bump :: (p: ^Point) { p.x += 1; }
+ByRef :: () -> int { p := Direct(7); Bump(&p); return p.point.x; }
+Counter :: () -> (value: int) { return 7; }
+Increment :: (n: ^int) { n^ += 1; }
+Boxed :: () -> int { n := Counter(); Increment(&n); return n.value; }
+Use :: (n: int) -> int {
+    p := Direct(n);
+    q := p;
+    q.x += 5;
+    return p.x * 100 + q.x * 10 + q.y + Empty().x;
+}

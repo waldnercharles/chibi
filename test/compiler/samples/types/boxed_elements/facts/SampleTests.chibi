@@ -1,0 +1,60 @@
+package facts
+
+// boxed elements
+@test
+Calls :: () {
+    a1_0: string[] = ["a", "b", "c"];
+    a1_1: int = 1;
+    r1: string = BoxedWord(a1_0, a1_1);
+    e1: string = "b";
+    assert(r1 == e1, "BoxedWord call 1");
+    a4_0: string[] = ["a", "b", "b"];
+    r4: int = BoxedWords(a4_0);
+    e4: int = 2;
+    assert(r4 == e4, "BoxedWords call 4");
+    a7_0: int = 2;
+    r7: int = BoxedShapes(a7_0);
+    e7: int = 517;
+    assert(r7 == e7, "BoxedShapes call 7");
+    a8_0: int = 1;
+    r8: int = BoxedShapes(a8_0);
+    e8: int = 17;
+    assert(r8 == e8, "BoxedShapes call 8");
+}
+
+@test
+Records :: () {
+    x: Note = {text: "x", count: 1};
+    y: Note = {text: "y", count: 2};
+    assert(BoxedNotes([x, y], 1) == 203, "BoxedNotes");
+    a: Point = {x: 1, y: 2};
+    b: Point = {x: 3, y: 4};
+    assert(PackedPoints([a, b], 1) == 306, "PackedPoints");
+}
+
+// fails: array index out of range
+@test
+BoxedWordPastTheEndFails :: () {
+    words: string[] = ["a"];
+    BoxedWord(words, 1);
+}
+
+// fails: array index out of range
+@test
+BoxedWordBeforeTheStartFails :: () {
+    words: string[] = ["a"];
+    BoxedWord(words, -1);
+}
+
+// fails: array index out of range
+@test
+BoxedNotesPastTheEndFails :: () {
+    note: Note = {text: "x", count: 1};
+    BoxedNotes([note], 1);
+}
+
+// fails: array index out of range
+@test
+BoxedShapesPastTheEndFails :: () {
+    BoxedShapes(3);
+}

@@ -14,13 +14,16 @@ Foreigns :: () -> native.Instruction[] {
             Code(native.Publish, 6, 0, 2, 0, 0, 0),
             Code(native.Return, 0, 0, 0, 0, 0, 0)];
 }
-ForeignModule :: (code: native.Instruction[], slots: int[], texts: string[]) -> native.Result {
+ForeignResultModule :: (result: int, code: native.Instruction[], slots: int[], texts: string[]) -> native.Result {
     empty: int[] = [];
     records: native.Record[] = [];
     names: string[] = [];
     source: native.Source = {file: "", directory: ""};
-    return native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 3, 0, 6, 0, 2)], empty, slots, empty, code, [0, 1],
+    return native.Emit(abi.LinuxX64(), [Function(result, 0, 0, 3, 0, 6, 0, 2)], empty, slots, empty, code, [0, 1],
                        records, empty, texts, source, names, empty, empty, false, 1);
+}
+ForeignModule :: (code: native.Instruction[], slots: int[], texts: string[]) -> native.Result {
+    return ForeignResultModule(6, code, slots, texts);
 }
 ForeignMismatch: string : "native foreign call differs from its operands";
 ChangedForeign :: (item: native.Instruction, slots: int[], texts: string[], message: string) {
@@ -44,7 +47,7 @@ ForeignBoolsAreZeroExtended :: () {
     code[2] = Code(native.Constant, 1, 1, 0, 0, 0, 1);
     code[3] = Code(native.ForeignCall, 1, 2, 0, 0, 2, 0);
     code[4] = Code(native.Publish, 1, 0, 2, 0, 0, 0);
-    text := Emitted(ForeignModule(code, [6, 1, 1], ["chibi_probe_pick"]));
+    text := Emitted(ForeignResultModule(1, code, [6, 1, 1], ["chibi_probe_pick"]));
     assert(strings.Contains(text, "declare zeroext i1 @chibi_probe_pick(i32, i1 zeroext)\n"));
     assert(strings.Contains(text, "%v3 = call zeroext i1 @chibi_probe_pick(i32 %c3_0, i1 zeroext %c3_1)\n"));
 }

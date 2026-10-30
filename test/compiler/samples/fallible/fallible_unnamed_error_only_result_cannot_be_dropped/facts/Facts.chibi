@@ -1,0 +1,6 @@
+package facts
+@error Failure :: struct { code: int; }
+Fail :: () -> Failure? { return {code: 3}; }
+Use :: () { Fail(); }
+
+// error: 4:13: Error result is ignored on a reachable path; check, report, store or return it

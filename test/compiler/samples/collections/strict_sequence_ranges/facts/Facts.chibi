@@ -1,0 +1,9 @@
+package facts
+Bracket :: () -> int { original: int[] = [1, 2, 3, 4]; selected := original[1..<3]; if selected { selected[0] = 9; return original[1] * 100 + selected[0] * 10 + selected.length(); } return -1; }
+Method :: () -> int { original: int[] = [1, 2, 3]; selected := original.slice(0..<2); if selected { selected[1] = 8; return original[1] * 10 + selected[1]; } return -1; }
+Empty :: () -> int { original: int[] = [1, 2]; selected := original[2..<2]; if selected { return selected.length() + 1; } return -1; }
+EmptySource :: () -> int { original: int[] = []; selected := original[0..<0]; if selected { return selected.length() + 1; } return -1; }
+Bounds :: (first: int, last: int) -> int { original: int[] = [1, 2]; selected := original.slice(first..<last); if selected { return selected.length() + 1; } return 0; }
+Text :: () -> string { original: string = "abcd"; selected := original[1..<3]; if selected { copied := selected.clone(); return format_text("{}|{}", selected, copied); } return "invalid"; }
+Bytes :: () -> int { original: string = "a\u03bbz"; selected := original[1..<2]; if selected { return selected.length(); } return -1; }
+EmptyText :: () -> int { original: string = "abc"; selected := original[3..<3]; if selected { return selected.length() + 1; } return -1; }

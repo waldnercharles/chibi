@@ -1,0 +1,28 @@
+package facts
+Point :: struct { x: int; y: int; }
+Bump :: (v: ^int) { v^ += 1; }
+Set :: (v: ^int, to: int) { v^ = to; }
+Twice :: (v: ^int) { Bump(v); Bump(v); }
+Rename :: (s: ^string) { s^ = format_text("{}!", s^); }
+Swap :: (p: ^Point) { p^ = {x: p.y, y: p.x}; }
+Grow :: (xs: ^(int[])) { item: int = 7; xs^ = append(xs^, item); }
+Inc :: (k: int) -> int { Bump(&k); return k; }
+Nudge :: (p: ^Point) { p.x = 9; p.y += 5; Bump(&p.x); }
+Count :: () -> int { c: int = 2; c += 3; Bump(&c); c = c * 2; return c; }
+Run :: () -> int {
+    n: int = 1;
+    Bump(&n);
+    Twice(&n);
+    Set(&n, n * 10);
+    name: string = "a";
+    Rename(&name);
+    p: Point = {x: 1, y: 2};
+    Swap(&p);
+    Bump(&p.x);
+    xs: int[] = [1];
+    Grow(&xs);
+    total := n + p.x * 100 + p.y * 1000 + length(xs) * 10000 + Inc(5) * 1000000;
+    if (name == "a!") { total += 100000; }
+    return total;
+}
+Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(&p); return p.x * 100 + p.y; }

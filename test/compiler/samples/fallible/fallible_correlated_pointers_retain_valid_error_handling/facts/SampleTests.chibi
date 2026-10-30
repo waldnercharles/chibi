@@ -1,0 +1,46 @@
+package facts
+
+// fallible correlated pointers retain valid error handling
+@test
+Calls :: () {
+    a1_0: bool = false;
+    r1: int = Use(a1_0);
+    e1: int = 8;
+    assert(r1 == e1, "Use call 1");
+    a2_0: bool = true;
+    r2: int = Use(a2_0);
+    e2: int = 8;
+    assert(r2 == e2, "Use call 2");
+    a3_0: bool = false;
+    r3: int = Mirrored(a3_0);
+    e3: int = 8;
+    assert(r3 == e3, "Mirrored call 3");
+    a4_0: bool = true;
+    r4: int = Mirrored(a4_0);
+    e4: int = 8;
+    assert(r4 == e4, "Mirrored call 4");
+    a5_0: bool = false;
+    r5: int = Unrelated(a5_0);
+    e5: int = 9;
+    assert(r5 == e5, "Unrelated call 5");
+    a6_0: bool = true;
+    r6: int = Unrelated(a6_0);
+    e6: int = 9;
+    assert(r6 == e6, "Unrelated call 6");
+    a7_0: bool = false;
+    r7: int = Survivor(a7_0);
+    e7: int = 10;
+    assert(r7 == e7, "Survivor call 7");
+    a8_0: bool = true;
+    r8: int = Survivor(a8_0);
+    e8: int = 10;
+    assert(r8 == e8, "Survivor call 8");
+    a9_0: bool = false;
+    r9: int = Rebound(a9_0);
+    e9: int = 11;
+    assert(r9 == e9, "Rebound call 9");
+    a10_0: bool = true;
+    r10: int = Rebound(a10_0);
+    e10: int = 11;
+    assert(r10 == e10, "Rebound call 10");
+}

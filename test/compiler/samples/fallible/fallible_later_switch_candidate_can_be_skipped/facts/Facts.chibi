@@ -1,0 +1,7 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }
+Choose :: (error: Failure?) -> int { if error { return error.code; } return 0; }
+Use :: (subject: int) -> int { result := Read(); switch subject { case 0: return result.value; case Choose(result.error): return 1; case: return 2; } }
+
+// error: 5:42: Error result is ignored on a reachable path; check, report, store or return it

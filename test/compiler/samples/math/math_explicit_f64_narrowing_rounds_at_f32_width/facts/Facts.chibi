@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { wide: f64 = 16777217.0; v := vec3(f32(wide), 2, 3); return v.x == 16777216.0 && v.y == 2.0 && v.z == 3.0; }

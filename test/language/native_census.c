@@ -881,7 +881,9 @@ static bool census_function(int function)
             );
         }
         REQUIRE(collected);
-        int missing = accepted || !starts(message, UNKNOWN)
+        /* An omitted callee is unknown, or its name is a native's and the
+         * call's arguments differ from the native's. */
+        int missing = accepted || starts(message, PRODUCER)
                         ? -1
                         : omitted_call(&build, functions, start, end);
         if (missing < 0) {

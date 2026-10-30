@@ -1,0 +1,4 @@
+package lib
+pub First :: (values: $T[]) -> T { return values[0]; }
+pub Identity :: (value: $T) -> T { return value; }
+pub OrElse :: (value: $T?, fallback: T) -> T { return value ?? fallback; }

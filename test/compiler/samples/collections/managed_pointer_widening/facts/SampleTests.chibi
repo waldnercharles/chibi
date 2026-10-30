@@ -1,0 +1,12 @@
+package facts
+
+// managed pointer widening
+@test
+Calls :: () {
+    r1: i64 = Widened();
+    e1: i64 = 2;
+    assert(r1 == e1, "Widened call 1");
+    r2: f64 = Floated();
+    e2: f64 = 1.5;
+    assert(r2 == e2, "Floated call 2");
+}

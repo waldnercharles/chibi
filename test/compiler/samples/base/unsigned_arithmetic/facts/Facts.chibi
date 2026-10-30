@@ -1,0 +1,7 @@
+package facts
+Diff :: (a: u64, b: u64) -> u64 { return a - b; }
+Less :: (a: u64, b: u64) -> bool { return a < b; }
+Div :: (a: u64, b: u64) -> u64 { return a / b + a % b; }
+Bytes :: (a: u8, b: u8) -> u8 { return a + b * 2 - 1; }
+Order :: (a: u8, b: u8) -> bool { return a > b && a >= 3; }
+Shift :: (a: u8) -> u8 { return (a << 1) >> 2; }

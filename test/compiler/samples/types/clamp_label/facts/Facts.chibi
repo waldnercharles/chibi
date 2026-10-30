@@ -1,0 +1,4 @@
+package facts
+Clamp :: (v: int) -> u8 { return u8(clamp: v); }
+
+// error: 2:37: A conversion argument may only be named wrap

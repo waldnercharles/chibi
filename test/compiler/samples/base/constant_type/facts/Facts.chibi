@@ -1,0 +1,4 @@
+package facts
+On: bool : true;
+
+// error: 2:5: constant type is not supported yet

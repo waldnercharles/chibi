@@ -1,9 +1,0 @@
-// Behavior state that survives between steps, written to a component.
-Counter :: behavior {
-    steps := 0
-
-    on Tick :: () {
-        steps += 1
-        self.Transform.x = steps
-    }
-}

@@ -82,6 +82,21 @@ unsigned char *asset_compiler_compile_closure(
     const asset_compiler_options *,
     asset_compiler_diagnostic *
 );
+/* asset_compiler_compile_closure with the closure kept on disk beside the asset
+ * cache, so a launcher that compiles the same application on every start (about
+ * 5 s on the VM-hosted compiler) starts from a hit. The key is the compiler
+ * artifact, the request and `salt`, which must name whatever else the compile
+ * reads, such as the files of the collections the request only names by root.
+ * A NULL salt, an unavailable cache or a cancelled call compiles without it.
+ * At most 16 closures stay; only successes are kept. */
+unsigned char *asset_compiler_compile_closure_cached(
+    const char *request,
+    size_t request_length,
+    const char *salt,
+    size_t *length,
+    const asset_compiler_options *,
+    asset_compiler_diagnostic *
+);
 /* Writes new static source through the packaged Chibi writer. Returns caller-
  * freed source (free), or NULL with a copied diagnostic. Uses compile_budget,
  * not evaluation_budget, with the same borrowed-option and restored-scope

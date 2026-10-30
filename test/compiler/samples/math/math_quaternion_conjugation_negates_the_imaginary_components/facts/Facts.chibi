@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { q := quat(1, 2, 3, 4); return quat_conjugate(q) == quat(-1, -2, -3, 4) && quat_conjugate(quat_conjugate(q)) == q; }

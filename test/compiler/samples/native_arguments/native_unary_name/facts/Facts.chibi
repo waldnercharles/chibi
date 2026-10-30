@@ -1,0 +1,2 @@
+package facts
+Run :: () -> int { return text_byte_length(Value: "abcd"); }

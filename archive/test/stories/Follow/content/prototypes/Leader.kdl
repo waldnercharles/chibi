@@ -1,6 +1,0 @@
-name "Leader"
-components {
-    GlobalBinding name="Leader"
-    (object)Transform
-}
-(array)behaviors "Lead"

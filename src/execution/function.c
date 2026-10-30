@@ -810,6 +810,21 @@ bool behavior_function_collection_holds(const behavior_function_context *context
     pin_value_collection_visit_owners(value, collection_find, &find);
     return find.held;
 }
+static void collection_check(const pin_value *value, void *user)
+{
+    collection_held *check = user;
+    bool found = false;
+    for (int i = 0; i < acount(check->context->collection_owners); i++) {
+        found |= collection_owner_same(check->context->collection_owners[i], *value);
+    }
+    check->held &= found;
+}
+bool behavior_function_collection_owns(const behavior_function_context *context, const pin_value *value)
+{
+    collection_held check = { .context = context, .held = true };
+    pin_value_collection_visit_owners(value, collection_check, &check);
+    return check.held;
+}
 void behavior_function_collection_empty(behavior_function_context *context)
 {
     for (int i = 0; i < acount(context->collection_owners); i++) {

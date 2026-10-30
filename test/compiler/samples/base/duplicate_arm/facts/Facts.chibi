@@ -1,0 +1,5 @@
+package facts
+U :: union { A | B }
+One :: (u: U) -> int { switch u { case .A: return 2; case .A: return 3; case .B: return 4; } return 1; }
+
+// error: 3:59: Unreachable duplicate union pattern

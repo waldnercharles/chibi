@@ -1,0 +1,4 @@
+package facts
+Bad: u8 : u8(300);
+
+// error: 2:11: Constant does not fit in u8; use u8(wrap: value)

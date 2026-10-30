@@ -1,0 +1,7 @@
+package facts
+import lib "project:compile_time_argument_cannot_use_shadowed_import_alias/lib"
+Options :: struct { Factor: int; }
+Scale :: (value: int, $N: int) -> int { return value * N; }
+Main :: (lib: Options) -> int { return Scale(2, lib.Factor); }
+
+// error: 5:49: constant value must be an integer expression

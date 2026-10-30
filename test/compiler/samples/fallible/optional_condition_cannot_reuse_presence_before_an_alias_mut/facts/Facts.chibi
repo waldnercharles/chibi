@@ -1,0 +1,6 @@
+package facts
+Failure :: struct { code: int; }
+Clear :: (p: ^(Failure?)) -> bool { p^ = nil; return true; }
+Use :: () -> int { e: Failure? = {code: 3}; p := &e; if e && Clear(p) { return e.code; } return 0; }
+
+// error: 4:82: Optional component requires a presence guard before member access

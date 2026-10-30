@@ -1,0 +1,4 @@
+package facts
+Bad :: () -> vec3 { return quat(0, 0, 0, 1) * vec3(1, 0, 0); }
+
+// error: 2:28: quaternion rotation requires the recoverable math result contract

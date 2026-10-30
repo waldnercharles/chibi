@@ -1,0 +1,15 @@
+package facts
+Note :: struct { text: string; count: int; open: bool; }
+Stamp :: (note: Note, count: int) -> Note { note.count = count; note.text = format_text("#{}", count); return note; }
+Fields :: (n: int) -> string {
+    note: Note = {text: "a", count: 1, open: false};
+    copy := note;
+    note.count += n;
+    note.count *= 2;
+    note.open = true;
+    stamped := Stamp(note, 7);
+    b: u8 = 3;
+    copy.count = b;
+    copy.count += int(b);
+    return format_text("{} {} {} {} {} {}", note.text, note.count, note.open, copy.count, stamped.text, stamped.count);
+}

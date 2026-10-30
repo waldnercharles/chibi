@@ -58,6 +58,11 @@ ArraysAllocateThroughTheContextAndCheckIndexes :: () {
     assert(!strings.Contains(text, "memcpy"));
     assert(strings.Contains(text, "%s0 = alloca { i32, i32, ptr }\n"));
 }
+// The bytes of a string only; an array in the left slot is no string.
+@test
+ArrayBytesRejectsArrayOperand :: () {
+    ChangedArray(3, Code(native.ArrayBytes, 1030, 2, 0, 0, 0, 0));
+}
 @test
 ArrayLengthRejectsIntOperand :: () {
     ChangedArray(7, Code(native.ArrayLength, 6, 6, 3, 0, 0, 0));
@@ -108,7 +113,7 @@ ArraySetValueMustBeDefined :: () {
 @test
 UnsupportedArrayInstructionIsRejected :: () {
     code := Arrays();
-    code[8] = Code(native.ArrayRemove + 1, 1030, 7, 4, 0, 0, 0);
+    code[8] = Code(native.ForeignCall + 1, 1030, 7, 4, 0, 0, 0);
     Rejects(ArrayModule(code), "unsupported native scalar instruction");
 }
 @test

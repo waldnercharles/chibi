@@ -1,0 +1,3 @@
+package facts
+Drop :: (m: [int: int]) -> int { delete m[1]; if 1 in m { return 1; } return 0; }
+Keep :: () -> int { m: [int: int] = [1: 2]; gone := Drop(m); return gone * 100 + m[1]; }

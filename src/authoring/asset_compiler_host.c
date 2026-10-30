@@ -1230,8 +1230,10 @@ char *asset_source_invoke_bytes(
     return text;
 }
 
-/* A package closure is larger than an asset and compiles in more instructions. */
-#define CLOSURE_COMPILE_BUDGET UINT64_C(2000000000)
+/* A package closure is larger than an asset and compiles in more instructions:
+ * as many as recovering the compiler from its sources, so a test closure may
+ * hold the whole compiler. */
+#define CLOSURE_COMPILE_BUDGET UINT64_C(4000000000)
 
 /* The first diagnostic of a rejected package compile. */
 static void closure_rejection(
@@ -1308,4 +1310,99 @@ unsigned char *asset_compiler_compile_closure(
     host_release(host);
     *length = result.length;
     return result.bytes;
+}
+
+#define CLOSURE_CACHE_ENTRIES 16
+static char *closure_directory(const asset_compiler_options *options)
+{
+    char *base = persistent_directory(options);
+    if (!base) {
+        return NULL;
+    }
+    size_t size = strlen(base) + sizeof "/closures";
+    char *directory = xmalloc(size);
+    snprintf(directory, size, "%s/closures", base);
+    free(base);
+    return directory;
+}
+static void closure_key(
+    const asset_compiler_options *options,
+    const char *request,
+    size_t request_length,
+    const char *salt,
+    char key[BINARY_CACHE_KEY_BYTES + 1]
+)
+{
+    /* The artifact is immutable and about 15 MB: hash it once per thread. */
+    static _Thread_local const void *hashed;
+    static _Thread_local size_t hashed_length;
+    static _Thread_local char compiler[65];
+    if (hashed != options->compiler || hashed_length != options->compiler_length) {
+        sha256_hex(options->compiler, options->compiler_length, compiler);
+        hashed = options->compiler;
+        hashed_length = options->compiler_length;
+    }
+    sha256 state;
+    sha256_begin(&state);
+    sha256_add(&state, compiler, 64);
+    sha256_add(&state, salt, strlen(salt) + 1);
+    sha256_add(&state, request, request_length);
+    char digest[65];
+    sha256_end(&state, digest);
+    snprintf(key, BINARY_CACHE_KEY_BYTES + 1, "closure-%s", digest);
+}
+static void closure_publish(const char *directory, const char *key, const unsigned char *bytes, size_t length)
+{
+    int lock = binary_cache_lock(directory);
+    if (lock < 0) {
+        return;
+    }
+    binary_cache_entry *entries = NULL;
+    int count = 0;
+    if (binary_cache_list(directory, &entries, &count)) {
+        while (count >= CLOSURE_CACHE_ENTRIES) {
+            int oldest = 0;
+            for (int i = 1; i < count; i++) {
+                oldest = entries[i].stamp < entries[oldest].stamp ? i : oldest;
+            }
+            if (!binary_cache_remove(directory, entries[oldest].key)) {
+                break;
+            }
+            entries[oldest] = entries[--count];
+        }
+        binary_cache_write(directory, key, bytes, length, COMPILER_HOST_MAX_OUTPUT_BYTES);
+    }
+    free(entries);
+    binary_cache_unlock(lock);
+}
+unsigned char *asset_compiler_compile_closure_cached(
+    const char *request,
+    size_t request_length,
+    const char *salt,
+    size_t *length,
+    const asset_compiler_options *options,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    const asset_compiler_options *effective = effective_options(options);
+    char *directory = salt && effective && effective->compiler
+                        ? closure_directory(effective)
+                        : NULL;
+    char key[BINARY_CACHE_KEY_BYTES + 1];
+    if (directory) {
+        closure_key(effective, request, request_length, salt, key);
+        unsigned char *stored = binary_cache_read(directory, key, COMPILER_HOST_MAX_OUTPUT_BYTES, length);
+        if (stored) {
+            *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+            free(directory);
+            return stored;
+        }
+    }
+    unsigned char *closure = asset_compiler_compile_closure(request, request_length, length, options, diagnostic);
+    if (directory && closure && *length &&
+        !(effective->cancelled && effective->cancelled(effective->user))) {
+        closure_publish(directory, key, closure, *length);
+    }
+    free(directory);
+    return closure;
 }

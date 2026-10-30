@@ -1,0 +1,20 @@
+package facts
+Point :: struct { x: int; y: int; }
+Shape :: union { Dot(at: Point) | Line(a: int, b: int) }
+Bag :: union { Items(xs: int[]) | Size(n: int) }
+Make :: (x: int) -> Point { return {x: x, y: x + 1}; }
+Sum :: (p: Point) -> int { return p.x + p.y; }
+Width :: (s: Shape) -> int {
+    switch s { case .Dot(at): return at.x; case .Line(a, b): return b - a; }
+}
+Count :: (b: Bag) -> int {
+    switch b { case .Items(xs): return length(xs); case .Size(n): return n; }
+}
+PlainPoint :: (x: int) -> int { return Sum(Make(x)); }
+PlainLine :: (x: int) -> int { return Width(Shape.Line(x, x * 3)); }
+PlainDot :: (x: int) -> int { return Width(Shape.Dot(Make(x))); }
+HeldBag :: (n: int) -> int { return Count(Bag.Items([n, n])); }
+HeldArray :: (n: int) -> int { return length(Counted(n)); }
+HeldExtend :: (n: int) -> int { xs: int[] = [1]; xs.extend(Counted(n)); xs.append(n); return xs[1] + xs[2]; }
+HeldPush :: (n: int) -> int { bags: Bag[] = []; bags.append(Bag.Items(Counted(n))); bags.append(Bag.Size(n)); return Count(bags[0]) + Count(bags[1]); }
+Counted :: (n: int) -> int[] { xs: int[] = []; xs.append(n); return xs; }

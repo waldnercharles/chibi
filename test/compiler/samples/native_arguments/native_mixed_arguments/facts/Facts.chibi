@@ -1,0 +1,2 @@
+package facts
+Run :: () -> string { return text_slice("abcd", Count: 2, Start: 1); }

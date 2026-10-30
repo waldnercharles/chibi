@@ -1,0 +1,58 @@
+package facts
+
+// array update debug order
+@test
+Calls :: () {
+    r1: int[] = AppendLocal();
+    e1: int[] = [1, 7];
+    assert(length(r1) == length(e1), "AppendLocal call 1 length");
+    for k in 0..<length(e1) {
+        assert(r1[k] == e1[k], "AppendLocal call 1 element");
+    }
+    a2_0: int[] = [1];
+    r2: int[] = AppendParameter(a2_0);
+    e2: int[] = [1, 7];
+    assert(length(r2) == length(e2), "AppendParameter call 2 length");
+    for k in 0..<length(e2) {
+        assert(r2[k] == e2[k], "AppendParameter call 2 element");
+    }
+    r3: int[] = AppendMethod();
+    e3: int[] = [1, 7];
+    assert(length(r3) == length(e3), "AppendMethod call 3 length");
+    for k in 0..<length(e3) {
+        assert(r3[k] == e3[k], "AppendMethod call 3 element");
+    }
+    a4_0: int[] = [1];
+    r4: int[] = AppendParameterMethod(a4_0);
+    e4: int[] = [1, 7];
+    assert(length(r4) == length(e4), "AppendParameterMethod call 4 length");
+    for k in 0..<length(e4) {
+        assert(r4[k] == e4[k], "AppendParameterMethod call 4 element");
+    }
+    r5: int[] = ExtendLocal();
+    e5: int[] = [1, 7, 8];
+    assert(length(r5) == length(e5), "ExtendLocal call 5 length");
+    for k in 0..<length(e5) {
+        assert(r5[k] == e5[k], "ExtendLocal call 5 element");
+    }
+    a6_0: int[] = [1];
+    r6: int[] = ExtendParameter(a6_0);
+    e6: int[] = [1, 7, 8];
+    assert(length(r6) == length(e6), "ExtendParameter call 6 length");
+    for k in 0..<length(e6) {
+        assert(r6[k] == e6[k], "ExtendParameter call 6 element");
+    }
+    r7: int[] = ExtendMethod();
+    e7: int[] = [1, 7, 8];
+    assert(length(r7) == length(e7), "ExtendMethod call 7 length");
+    for k in 0..<length(e7) {
+        assert(r7[k] == e7[k], "ExtendMethod call 7 element");
+    }
+    a8_0: int[] = [1];
+    r8: int[] = ExtendParameterMethod(a8_0);
+    e8: int[] = [1, 7, 8];
+    assert(length(r8) == length(e8), "ExtendParameterMethod call 8 length");
+    for k in 0..<length(e8) {
+        assert(r8[k] == e8[k], "ExtendParameterMethod call 8 element");
+    }
+}

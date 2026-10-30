@@ -1,0 +1,20 @@
+package facts
+
+// named result ownership
+@test
+Calls :: () {
+    r3: string = Use();
+    e3: string = "a\u0000b";
+    assert(r3 == e3, "Use call 3");
+    r4: string = Projected();
+    e4: string = "a\u0000b";
+    assert(r4 == e4, "Projected call 4");
+}
+
+@test
+Records :: () {
+    kept := Keep("a\u0000b");
+    assert(kept.text == "a\u0000b" && kept.count == 2, "Keep");
+    split := Split("kept");
+    assert(split.note.text == "kept" && split.note.count == 2 && split.count == 2, "Split");
+}

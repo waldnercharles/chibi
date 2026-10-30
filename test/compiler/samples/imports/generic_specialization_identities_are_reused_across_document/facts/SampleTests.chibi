@@ -1,0 +1,12 @@
+package facts
+
+// generic specialization identities are reused across documents
+@test
+Calls :: () {
+    r1: int = Flat();
+    e1: int = 9;
+    assert(r1 == e1, "Flat call 1");
+    r2: int = Nested();
+    e2: int = 44;
+    assert(r2 == e2, "Nested call 2");
+}

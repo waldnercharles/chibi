@@ -1,0 +1,4 @@
+package facts
+Rest :: (a: int) -> int { return a % (2 - 2); }
+
+// error: 2:34: Constant division by zero

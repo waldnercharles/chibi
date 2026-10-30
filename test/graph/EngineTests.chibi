@@ -1,0 +1,97 @@
+package graph_tests
+
+import engine "graph:engine"
+import strings "core:strings"
+
+// The profile options' compile flags and their validation, from
+// test/tools/build_graph.c's debug-optimization cases, which planned 18 graph
+// builds to read the same flags from compile_commands.json.
+Debug :: (sanitizers: string, frames: bool, optimization: string) -> engine.Profile {
+    profile: engine.Profile = {
+        compiler: "/unused/clang", cxx_compiler: "/unused/clang++", compiler_id: "Clang", build_type: "Debug",
+        debug_optimization: optimization, debug_frame_pointers: frames, architecture: "", sysroot: "",
+        warnings: false, sanitizers: sanitizers, debug_compilation_dir: "", libclang_include: "",
+        opengl_library: "", opengl_include: "", glx_library: "", libclang_library: "",
+        clang_resource_include: "", third_party: "", reflect: "", asset_generator_hosts: ""
+    };
+    return profile;
+}
+Has :: (flags: string[], flag: string) -> bool {
+    for (each in flags) {
+        if (each == flag) {
+            return true;
+        }
+    }
+    return false;
+}
+Count :: (flags: string[], prefix: string) -> int {
+    count := 0;
+    for (each in flags) {
+        if (strings.HasPrefix(each, prefix)) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+// A Debug profile keeps -g and its assertions, instruments only when asked,
+// keeps frame pointers for sanitizers or when asked, and adds -O only for an
+// explicit debug optimization level.
+DebugFlagsKeepInstrumentation :: () {
+    for (language in ["c", "cxx", "objc"]) {
+        for (sanitizers in ["", "address,undefined"]) {
+            for (frames in [false, true]) {
+                for (optimization in ["", "0", "1"]) {
+                    flags := engine.Flags(Debug(sanitizers, frames, optimization), "/build", "chibi_support", language);
+                    assert(Has(flags, "-g"), "debug info");
+                    assert(!Has(flags, "-fomit-frame-pointer") && Count(flags, "-DNDEBUG") == 0, "assertions and frames kept");
+                    assert(Has(flags, "-fsanitize=address,undefined") == (sanitizers != ""), "sanitizers");
+                    assert(Count(flags, "-fsanitize=") == Count(flags, "-fsanitize=address,undefined"), "only the chosen sanitizers");
+                    assert(Has(flags, "-fno-omit-frame-pointer") == (sanitizers != "" || frames), "frame pointers");
+                    if (optimization == "") {
+                        assert(Count(flags, "-O") == 0, "no optimization level");
+                    } else {
+                        assert(Count(flags, "-O") == 1 && Has(flags, format_text("-O{}", optimization)), "the chosen level");
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Tests compile with assertions even where the profile would drop them.
+TestsKeepAssertions :: () {
+    for (target in ["test_host", "policy_worker", "test_tools", "test_language"]) {
+        assert(Has(engine.Options(target), "-UNDEBUG"), "test target undefines NDEBUG");
+    }
+}
+
+// Debug-only options take one of their values and the Debug build type.
+DebugOptionsAreValidated :: () {
+    optimization := "graph: --debug-optimization requires 0 or 1 and build type Debug";
+    frames := "graph: --debug-frame-pointers requires on or off and build type Debug";
+    assert(engine.ProfileOptionError(["--debug-optimization", "1"], "Debug") == "", "valid level");
+    assert(engine.ProfileOptionError(["--debug-frame-pointers", "on"], "Debug") == "", "valid frames");
+    assert(engine.ProfileOptionError(["--debug-optimization", "2"], "Debug") == optimization, "level 2");
+    assert(engine.ProfileOptionError(["--debug-optimization", "1", "--debug-optimization", "2"], "Debug") == optimization, "repeated");
+    assert(engine.ProfileOptionError(["--debug-optimization", ""], "Debug") == optimization, "empty level");
+    assert(engine.ProfileOptionError(["--debug-optimization"], "Debug") == optimization, "missing level");
+    assert(engine.ProfileOptionError(["--debug-optimization", "--commands-only", "on"], "Debug") == optimization, "option as level");
+    assert(engine.ProfileOptionError(["--debug-optimization", "1"], "Release") == optimization, "Release");
+    assert(engine.ProfileOptionError(["--debug-optimization", "0"], "RelWithDebInfo") == optimization, "RelWithDebInfo");
+    assert(engine.ProfileOptionError(["--debug-frame-pointers", "bad"], "Debug") == frames, "bad frames");
+    assert(engine.ProfileOptionError(["--debug-frame-pointers", "on", "--debug-frame-pointers", "bad"], "Debug") == frames, "repeated frames");
+    assert(engine.ProfileOptionError(["--debug-frame-pointers", ""], "Debug") == frames, "empty frames");
+    assert(engine.ProfileOptionError(["--debug-frame-pointers"], "Debug") == frames, "missing frames");
+    assert(engine.ProfileOptionError(["--debug-frame-pointers", "--commands-only", "on"], "Debug") == frames, "option as frames");
+    assert(engine.ProfileOptionError(["--debug-frame-pointers", "on"], "Release") == frames, "Release frames");
+    assert(engine.ProfileOptionError(["--debug-frame-pointers", "off"], "RelWithDebInfo") == frames, "RelWithDebInfo frames");
+}
+
+// The build host runs this entry; each case stops it on a failed assert.
+pub Run :: () -> int {
+    DebugFlagsKeepInstrumentation();
+    TestsKeepAssertions();
+    DebugOptionsAreValidated();
+    return 0;
+}

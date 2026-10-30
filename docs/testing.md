@@ -684,27 +684,6 @@ assertions in 0.828 seconds with ASan/UBSan. Two of its cases check every field
 node's library host call against the field evaluator, sampled and baked, over
 2,000 operand sets each, and that a call's Seed Offset is its whole seed.
 Neither selector loads a renderer or runs engine frames.
-`prototype-document` selects one independently reviewed case with two small
-reflected types and fixed creation-default, detached-component, value snapshot,
-partial KDL and malformed-size operations. It has no files, worlds, processes or
-GPU work. The standalone consumer uses the public `Chibi::prototype_document`
-interface; it passes 21 assertions in 0.928 seconds under ASan/UBSan.
-`ui-authoring` selects two independently reviewed public SDK cases with fixed
-RML/RCSS snapshots, formatting and attribute-edit reparses, owned text after
-producer retirement, last-valid state after malformed RCSS, and exact event token
-ranges. It has no files, processes, worlds, or GPU work.
-Its independently reviewed fourth case adds typed catalog overrides, revision
-replacement invalidating an existing session, new default values and a rejected
-wrong parameter type on a fixed 3-by-3 bake. All four cases pass 267 assertions
-in 0.650 seconds with ASan/UBSan after the typed catalog extraction.
-
-`--source-presentation` is a native selector for seven small
-CPU cases: dedicated clone ownership after compiler retirement, explicit source
-edits, exact-source layout metadata, invalid drafts, native palette declarations,
-callable-local ownership and readable formulas. Formula coverage retains authored
-call origins and effectful operations and reparses expression replacements.
-These cases pass 7,971 assertions in 1.259 seconds.
-Later document/Studio integrations are unverified.
 It also runs two component presentation cases on two fixed in-memory documents:
 the engine's tabs, icons and reflected units and ranges, and a document
 overriding them key by key.
@@ -882,13 +861,6 @@ seconds with ASan/UBSan.
 declares the 32K zlib window it references and round-trips the pixels. No
 window or GPU; 3 assertions in 0.07 seconds with ASan/UBSan.
 
-`--project-document` runs four cases: manifests newer than this build are
-refused; a manifest older than `CHIBI_PROJECT_VERSION` fails with an error
-naming that version and how to upgrade it, and stays unchanged; a new project
-opens with an empty start scene and is never written over; and the language
-and material contract fixture projects resolve their own content. Temporary
-projects only.
-
 A fresh full compiler/native/desktop SDK from that same source passed independent
 package/relocation and current controller/Studio consumer-link verification.
 With Studio `d79bb24c`, its separate fail-fast case passed one case/50 assertions
@@ -899,14 +871,6 @@ Mesa configuration. No prohibited syntax/initialization/frame-failure markers
 appeared and all 21,668 immutable paths were unchanged. These results do not
 cover interaction, hardware-GPU behavior, sanitizers or leak detection. The SDK
 uses Clang 19 Release/NDEBUG; the focused pico assertions remain enabled.
-
-`--prototype-documents` runs eight cases on prototypes and scene documents in
-memory: a rebase keeps local values over evolving defaults, retained strings
-survive clones and renames, detached components spawn absent and reattach,
-includes and overrides save deterministically, spawned edits capture as
-overrides, and scene documents save reflected values readably, round-trip
-entities and physics, and refuse invalid physics names and versions. 192
-assertions in 0.08 seconds with ASan/UBSan; no files.
 
 `--reference-index` runs five cases on the authoring reference index: assets
 keep their identity by path and key, graphs index every kind of symbol against
@@ -2193,7 +2157,7 @@ activation. The existing array capability pack supplies the append operation.
 check that the compiler host's `--bootstrap` mode refuses bad input before any
 compile runs:
 - mixed or missing options;
-- a missing or invalid `bootstrap.txt`;
+- a missing or invalid `bootstrap.kdl`;
 - another manifest format, or a version older than the minimum;
 - a folder with no manifest, or a closure its manifest doesn't record;
 - a missing source, or a package that gained a file;

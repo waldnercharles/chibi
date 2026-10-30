@@ -139,7 +139,7 @@ Compiler inputs are separate from the build program's imports:
 
 | Option | Meaning |
 | --- | --- |
-| `--compiler DIR` | Compiler sources, including `bootstrap.txt`, `bootstrap/bootstrap.json` and `bootstrap/compiler.chibip`. |
+| `--compiler DIR` | Compiler sources, including `bootstrap.kdl`, `bootstrap/bootstrap.json` and `bootstrap/compiler.chibip`. |
 | `--compiler-core DIR` | The core collection used to recover that compiler. |
 | `--core DIR` | An optional core collection imported by the build program itself. |
 | `--collection NAME=DIR` | Another collection imported by the build program. |
@@ -468,11 +468,10 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
 `graph:engine`'s `Targets.chibi` lists the 104 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
-the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
-over ckdl) and the libraries over them, and three header-only libraries
+the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson) and the
+libraries over them, and three header-only libraries
 (`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
-`chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
-engine component KDL are generated sources, `chibi_save_runtime`, and
+`chibi_builtin_fonts`, whose fonts are generated sources, `chibi_save_runtime`, and
 `chibi_execution` over the third-party archive's prebuilt SLJIT and the
 header-only `chibi_math` from it, with the libraries that need only those (the
 behavior, scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
@@ -798,7 +797,7 @@ folder). It runs in two steps:
 `bootstrap.json` records these fields:
 
 - `format`: the manifest format this host reads, 1.
-- `version` and `minimum`: copied from `tools/compiler/bootstrap.txt`.
+- `version` and `minimum`: copied from `tools/compiler/bootstrap.kdl`.
 - `revision`: the tree's `git describe --dirty` revision.
 - `entry`: `CompileClosure`'s entry ID.
 - `closure`: its file, length and SHA-256.
@@ -815,7 +814,7 @@ folder). It runs in two steps:
   - the natives and their ports;
   - each native's identity and signature ABI.
 
-`tools/compiler/bootstrap.txt` is the sources' bootstrap contract. `version` is
+`tools/compiler/bootstrap.kdl` is the sources' bootstrap contract. `version` is
 the bootstrap version a compiler built from them has. `minimum` is the oldest
 version that can compile them. Update language dependencies in two steps:
 1. When the compiler gains a feature, raise `version` and produce an artifact.
@@ -948,7 +947,7 @@ compiler generates for itself need no new seed. A new file needs a line in
 A language feature takes two PRs, as in Zig, where a feature lands before
 `zig1.wasm` is rebuilt and only then do `stage2` sources use it:
 1. Add the feature to the compiler and raise `version` in
-   `tools/compiler/bootstrap.txt`. The compiler sources themselves must not use
+   `tools/compiler/bootstrap.kdl`. The compiler sources themselves must not use
    the feature yet, because the checked seed cannot compile it. Run
    `make bootstrap-artifact` and commit the seed with this change.
 2. Use the feature in the compiler sources and raise `minimum` to that

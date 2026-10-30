@@ -980,7 +980,7 @@ Step 5 is implemented for the package compiler on 2026-10-19:
 - `make bootstrap-artifact` writes stage two as a checksummed artifact, with a
   manifest recording:
   - its revision;
-  - its bootstrap version and minimum, from `tools/compiler/bootstrap.txt`;
+  - its bootstrap version and minimum, from `tools/compiler/bootstrap.kdl`;
   - each source's SHA-256;
   - the external inputs: the value layout, prepared ABI, instruction names and
     native identities.

@@ -23,7 +23,7 @@
 #define BOOTSTRAP_BUDGET 4000000000u
 #define CLOSURE_FILE "compiler.chibip"
 #define MANIFEST_FILE "bootstrap.json"
-#define CONTRACT_FILE "bootstrap.txt"
+#define CONTRACT_FILE "bootstrap.kdl"
 /* Below the compiler sources: the compiler's sources in Compile's order. */
 #define SOURCES_FILE "asset_compiler/CompilerSources.txt"
 /* Compile's arguments: the project, its collections' names and paths, the
@@ -134,7 +134,8 @@ typedef struct
     int version, minimum;
 } contract;
 
-/* Reads the "version N" and "minimum N" lines; other lines are comments. */
+/* Reads the "version N" and "minimum N" lines; other lines are comments. The
+ * file keeps its .kdl name because the pinned first build host reads it as KDL. */
 static bool read_contract(const char *compiler, contract *c, char *error, size_t size)
 {
     char *path = join(compiler, CONTRACT_FILE);

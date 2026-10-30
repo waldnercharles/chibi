@@ -29,4 +29,16 @@ package_collection *package_compile(
     package_compile_error *error
 );
 
+/* The path of the source a compiled closure names `label`: `project:REL` is
+ * REL below the project root, and `NAME:REL` below the root of the collection
+ * NAME. Any other label is copied as it is. `out` holds `size` bytes. */
+void package_compile_source_path(
+    const char *project_root,
+    const source_package_collection *collections,
+    int collection_count,
+    const char *label,
+    char *out,
+    size_t size
+);
+
 #endif

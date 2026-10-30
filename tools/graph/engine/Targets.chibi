@@ -524,18 +524,11 @@ Files :: (target: string) -> string[] {
         return files;
     }
     if (target == "chibi_project_compilation") {
-        return [
-            "src/authoring/component_declarations.c", "src/authoring/project_prepare.c",
-            "src/authoring/project_prepare_assets.c",
-            "src/authoring/project_compile.c", "src/authoring/source_costs.c", "src/authoring/renderer_catalog.c",
-            "src/authoring/prototype_prepare.c", "src/authoring/material_prepare.c", "src/authoring/scene_prepare.c",
-            "src/authoring/sound_prepare.c", "src/authoring/ui_prepare.c", "src/authoring/ui_prepare_assets.c"
-        ];
+        return ["src/authoring/renderer_catalog.c"];
     }
     if (target == "chibi_project_preparation") {
         return [
-            "src/authoring/material_attach.c",
-            "src/authoring/prototype_attach.c", "src/authoring/studio_schema.c", "src/authoring/ui_loader.c",
+            "src/authoring/studio_schema.c", "src/authoring/ui_loader.c",
             "src/authoring/ui_check.c", "src/authoring/application_catalog.c"
         ];
     }
@@ -565,7 +558,7 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_application") {
         return ["src/host/application.c", "src/host/application_tools.c", "src/host/application_io.c",
-                "src/host/export.c", "src/host/process.c", "src/host/serve.c"];
+                "src/host/process.c", "src/host/serve.c"];
     }
     if (target == "chibi_program_consumer") {
         return ["test/tools/program_consumer.c"];
@@ -593,8 +586,8 @@ Files :: (target: string) -> string[] {
     }
     if (target == "test_host") {
         return [
-            "test/host/main.c", "test/host/export.c", "test/host/process.c", "test/host/state_file.c",
-            "src/host/export.c", "src/host/process.c", "src/host/state_file.c", "src/support/xalloc.c",
+            "test/host/main.c", "test/host/process.c", "test/host/state_file.c",
+            "src/host/process.c", "src/host/state_file.c", "src/support/xalloc.c",
             "third_party/yyjson/yyjson.c"
         ];
     }
@@ -1146,12 +1139,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["platform/cute.h", "support/resources.h"];
     }
     if (target == "chibi_project_compilation") {
-        return [
-            "authoring/component_declarations.h", "authoring/material_prepare.h",
-            "authoring/project_compile.h", "authoring/project_prepare.h",
-            "authoring/prototype_prepare.h", "authoring/renderer_catalog.h", "authoring/scene_prepare.h",
-            "authoring/sound_prepare.h", "authoring/source_costs.h"
-        ];
+        return ["authoring/project_compile.h", "authoring/renderer_catalog.h"];
     }
     if (target == "chibi_project_preparation") {
         return [
@@ -1276,8 +1264,8 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_project_compilation") {
         return [
-            "authoring/project_prepare_internal.h", "authoring/ui_prepare.h", "toolchain/compiler_json.h",
-            "toolchain/compiler_syntax.h", "authoring/asset_compiler_host_internal.h"
+            "toolchain/compiler_json.h", "toolchain/compiler_syntax.h",
+            "authoring/asset_compiler_host_internal.h"
         ];
     }
     if (target == "chibi_project_preparation") {
@@ -1308,7 +1296,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_launcher") {
         return ["host/application.h", "host/application_tools.h", "host/application_io.h",
-                "host/export.h", "host/process.h", "host/serve.h",
+                "host/process.h", "host/serve.h",
                 "toolchain/compiler_syntax.h", "toolchain/compiler_json.h"];
     }
     if (target == "chibi_compiler-syntax") {
@@ -1323,7 +1311,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
     if (target == "chibi_host_tests") {
         // The headers the host tests include, as root CMakeLists.txt stages
         // them below its binary directory.
-        return ["host/export.h", "host/process.h", "host/state_file.h", "support/array.h", "support/xalloc.h"];
+        return ["host/process.h", "host/state_file.h", "support/array.h", "support/xalloc.h"];
     }
     return [];
 }

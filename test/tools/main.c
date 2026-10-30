@@ -755,12 +755,6 @@ int main(int argc, char **argv)
     if ((argc == 3 && !strcmp(argv[1], "--terrain-playable")) ||
         (argc == 6 && !strcmp(argv[1], "--terrain-playable-child"))) {
     }
-    if ((argc == 3 && !strcmp(argv[1], "--game-input")) ||
-        (argc == 5 && !strcmp(argv[1], "--game-equivalence")) ||
-        (argc == 5 && !strcmp(argv[1], "--game-equivalence-stage-one")) ||
-        (argc == 5 && !strcmp(argv[1], "--game-equivalence-empty")) ||
-        (argc >= 5 && argc % 2 && !strcmp(argv[1], "--game-observe"))) {
-    }
     if (argc == 2 && !strcmp(argv[1], "--terrain-seams")) {
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
         tool_init();

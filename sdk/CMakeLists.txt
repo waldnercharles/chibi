@@ -687,8 +687,8 @@ if(TARGET chibi-compile AND TARGET chibi-player)
     add_library(chibi_application OBJECT "${CHIBI_SDK_ROOT}/src/host/application.c"
         "${CHIBI_SDK_ROOT}/src/host/application_tools.c"
         "${CHIBI_SDK_ROOT}/src/host/application_io.c"
-        "${CHIBI_SDK_ROOT}/src/host/export.c" "${CHIBI_SDK_ROOT}/src/host/process.c")
-    foreach(header application application_tools application_io export process serve)
+        "${CHIBI_SDK_ROOT}/src/host/process.c")
+    foreach(header application application_tools application_io process serve)
         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/launcher/host/${header}.h" COPYONLY)
     endforeach()

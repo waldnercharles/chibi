@@ -69,6 +69,9 @@ ParseDeclaration :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (token == tk.Import) {
         return ParseImport(c, n);
     }
+    if (token == tk.Foreign) {
+        return ParseForeign(c, n);
+    }
     if (token == tk.At) {
         kind := AttributedTypeToken(c, n);
         if (kind == tk.Struct) {
@@ -333,8 +336,8 @@ ParseFunctionRest :: (c: ^Cursor, n: ^(Node[]), definition2: int) -> int {
     return definition2;
 }
 
-ParseSignature :: (c: ^Cursor, n: ^(Node[]), owner: int) {
-    Add(n, owner, ParseParameters(c, n), "parameters");
+// `-> Type` or `-> (name: Type, ...)` after the parameters, when present.
+ParseResults :: (c: ^Cursor, n: ^(Node[]), owner: int) {
     if (Accept(c, n, owner, tk.ArrowRight, "")) {
         if (c.token == tk.OpenParen && (Peek(c, n, 1) == tk.CloseParen ||
                                           (IsName(Peek(c, n, 1)) && Peek(c, n, 2) == tk.Colon))) {
@@ -343,6 +346,50 @@ ParseSignature :: (c: ^Cursor, n: ^(Node[]), owner: int) {
             Add(n, owner, ParseSignatureType(c, n), "results");
         }
     }
+}
+
+// `foreign import alias "path"` names a prebuilt library, and `foreign alias {
+// Name :: (parameters) -> result ... }` declares the C functions it provides,
+// each by signature alone, as Odin's foreign blocks do.
+ParseForeign :: (c: ^Cursor, n: ^(Node[])) -> int {
+    if (Peek(c, n, 1) == tk.Import) {
+        imported := New(n, "foreign_import_declaration");
+        Take(c, n, imported, "");
+        Take(c, n, imported, "");
+        TakeName(c, n, imported, "alias");
+        if (c.token != tk.String) {
+            Fail(c, n, Expected(c, n, "a library path string"));
+            return imported;
+        }
+        Take(c, n, imported, "path");
+        End(c, n, imported);
+        return imported;
+    }
+    block := New(n, "foreign_block");
+    Take(c, n, block, "");
+    TakeName(c, n, block, "library");
+    Expect(c, n, block, tk.OpenBrace, "");
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
+        Add(n, block, ParseForeignFunction(c, n), "");
+    }
+    Expect(c, n, block, tk.CloseBrace, "");
+    return block;
+}
+
+ParseForeignFunction :: (c: ^Cursor, n: ^(Node[])) -> int {
+    declaration := New(n, "foreign_function");
+    TakeAttributes(c, n, declaration);
+    TakeName(c, n, declaration, "name");
+    Expect(c, n, declaration, tk.ColonColon, "");
+    Add(n, declaration, ParseParameters(c, n), "parameters");
+    ParseResults(c, n, declaration);
+    Accept(c, n, declaration, tk.Semicolon, "");
+    return declaration;
+}
+
+ParseSignature :: (c: ^Cursor, n: ^(Node[]), owner: int) {
+    Add(n, owner, ParseParameters(c, n), "parameters");
+    ParseResults(c, n, owner);
     Accept(c, n, owner, tk.FatArrow, "");
     Add(n, owner, ParseCallableBody(c, n, "callable_body"), "body");
     Accept(c, n, owner, tk.Semicolon, "");

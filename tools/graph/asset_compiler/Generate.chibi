@@ -201,6 +201,12 @@ Prune :: (cache: string, keep: string[]) {
     }
 }
 
+// Whole seconds from the system clock, for the phase timings the log reports.
+Stamp :: () -> string {
+    clock := os.Capture(["date", "+%s"]);
+    return build.trim(clock.stdout);
+}
+
 // Explicit filesystem snapshots and atomic products; source compilation and
 // resource generation execute ordinary Chibi in the prepared compiler host.
 // Reports are buffered until normal return/unwinding, not live flushed traces;
@@ -272,11 +278,12 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target, true);
     facade_key := Key(seed, facade_request);
     kept := [facade_key];
-    os.Print("asset compiler: invoke facade compiler");
+    os.Print(format_text("asset compiler: invoke facade compiler at {} ({} sources, {} bytes)", Stamp(), length(paths),
+                         strings.ByteLength(facade_request)));
     if (!Product(host, seed, closure_entry, facade_request, facade_key, facade, cache, compiler_timeout, inputs)) {
         return false;
     }
-    os.Print("asset compiler: facade ready");
+    os.Print(format_text("asset compiler: facade ready at {}", Stamp()));
     if (target == native_target) {
         if (os.Copy(facade, artifact)) {
             return false;
@@ -330,12 +337,12 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     for (value in strings.Bytes("package-symbol:project:asset_compiler:1:Packaged:callable")) {
         id = (id ^ u64(value)) * u64(1099511628211);
     }
-    os.Print("asset compiler: invoke packaging");
+    os.Print(format_text("asset compiler: invoke packaging at {}", Stamp()));
     if (!Invoke(host, facade, format_text("0x{:016x}", id), inputs, Join([folder, "/asset_compiler_packaged.c.tmp"]), compiler_timeout) ||
         os.Rename(Join([folder, "/asset_compiler_packaged.c.tmp"]), Join([folder, "/asset_compiler_packaged.c"]))) {
         return false;
     }
-    os.Print("asset compiler: packaging ready");
+    os.Print(format_text("asset compiler: packaging ready at {}", Stamp()));
     index = 0;
     while (index < length(paths)) {
         path := paths[index];

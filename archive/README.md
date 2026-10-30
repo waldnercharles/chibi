@@ -86,7 +86,6 @@ With games archived, the compiler path includes nothing of the game runtime. The
 Each called authored compiler packages through `compiler_fixture` (stage-zero prepared) and compared them with stage-zero or Tree-sitter results. Re-author the ones worth keeping as `@test` in `tools/compiler/<package>/tests`:
 
 - `argument_effects_chibi.c` (argument-effect metadata and effect order), `bounded_compiler_chibi.c` (bounded Compile on the bounded corpus), `compiler_artifact_chibi.c` and `test/tools/compiler_artifact.c` (artifact write by `test_language` read back by `test_tools` with the compiler host), `asset_packaging_chibi.c`, `shader_source_chibi.c` (shader source packaging).
-- `package_snapshot_chibi.c` + `package_resolution.c` (snapshot Build, option validation, path-before-size and parse-before-route ordering, UTF-8 and budget validation).
 - Kept: `package_compiler_chibi.c` (its bootstrap, native, scalar and types selectors drive seed refresh and the native lanes), `native_census.c`, `host_packages.c`.
 
 ## Third-party archive builder (third_party/CMakeLists.txt, .github/workflows/third-party.yml, test/tools/third_party_publish.c)

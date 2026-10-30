@@ -9,15 +9,15 @@
 #define FALLIBLE_POINTER_READER                                                \
     "package facts\n@error Failure :: struct { code: int; }\nFail :: () -> "   \
     "Failure? { return {code: 3}; }\n"
-    { .name = "fallible correlated pointer cannot hide final erasure on true "
-              "edge",
-      .group = FALLIBLE_SAMPLES,
-      .source = FALLIBLE_POINTER_READER
-      "Use :: (flag: bool) { a := Fail(); b := a; p := &a; "
-      "if flag { b = nil; p = &a; } else { a = nil; p = &b; } "
-      "a = nil; if p^ {} }\n",
-      .message = FALLIBLE_IGNORED,
-      .same_rejection = true },
+{ .name = "fallible correlated pointer cannot hide final erasure on true "
+          "edge",
+  .group = FALLIBLE_SAMPLES,
+  .source = FALLIBLE_POINTER_READER
+  "Use :: (flag: bool) { a := Fail(); b := a; p := &a; "
+  "if flag { b = nil; p = &a; } else { a = nil; p = &b; } "
+  "a = nil; if p^ {} }\n",
+  .message = FALLIBLE_IGNORED,
+  .same_rejection = true },
     { .name = "fallible correlated pointer cannot hide final erasure on false "
               "edge",
       .group = FALLIBLE_SAMPLES,

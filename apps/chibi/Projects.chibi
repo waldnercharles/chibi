@@ -74,5 +74,9 @@ BuildNative :: (options: Options) -> int {
     if options.debug {
         debug = "lines"
     }
-    return process.run(NativeDriver(share, "Native", [root, tools, options.mode, debug, options.target]))
+    driver := [root, tools, options.mode, debug, options.target]
+    if options.static_link {
+        driver = append(driver, "static")
+    }
+    return process.run(NativeDriver(share, "Native", driver))
 }

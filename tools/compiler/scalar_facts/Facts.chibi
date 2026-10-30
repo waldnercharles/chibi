@@ -347,6 +347,8 @@ pub ArrayContains: int : 10;
 pub ArrayRemove: int : 11;
 pub ArrayWith: int : 12;
 pub ArrayJoin: int : 13;
+// An array of ints, the bytes of the string it consumes, from 0 to 255.
+pub ArrayBytes: int : 14;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range

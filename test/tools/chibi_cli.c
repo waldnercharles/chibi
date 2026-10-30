@@ -82,6 +82,17 @@ static bool copy_resource(const char *binary, const char *name, const char *dest
     return tool_run(args, root, log_path) == 0;
 }
 
+/* The launcher compiles its application on a first start, which takes longer
+ * than a case may run; start it once, with time to finish, so every case after
+ * it starts from the kept closure. Its status does not matter. */
+static void warm_launcher()
+{
+    const char *version[] = { launcher, "version", NULL };
+    char output[256];
+    path(output, "warm.log");
+    tool_run_within(version, root, output, 300);
+}
+
 static void setup(const char *binary)
 {
     strcpy(root, "/tmp/chibi-cli-XXXXXX");
@@ -137,6 +148,7 @@ static void setup(const char *binary)
     char program[256];
     path(program, "bin/chibi-compile");
     assert(!chmod(program, 0700));
+    warm_launcher();
 }
 
 /* The text of the file at `relative`, which must exist. */
@@ -205,6 +217,61 @@ TEST_CASE(version_of_the_built_launcher)
                     strstr(text, " execution ");
     free(text);
     REQUIRE(reported);
+    return true;
+}
+
+/* The number of closures kept under `cache`. */
+static int closures_kept(const char *cache)
+{
+    char folder[512];
+    snprintf(folder, sizeof folder, "%s/closures", cache);
+    DIR *open = opendir(folder);
+    int count = 0;
+    for (struct dirent *entry; open && (entry = readdir(open));) {
+        count += !strncmp(entry->d_name, "closure-", 8);
+    }
+    if (open) {
+        closedir(open);
+    }
+    return count;
+}
+
+static void append_comment(const char *relative)
+{
+    char file[256];
+    path(file, relative);
+    FILE *stream = fopen(file, "a");
+    assert(stream);
+    fputs("// edited\n", stream);
+    fclose(stream);
+}
+
+/* The launcher compiles its application once per set of sources: a second start
+ * reuses the kept closure, and an edit to the application or to a core package
+ * it imports compiles another. */
+TEST_CASE(launcher_keeps_its_compiled_application)
+{
+    char cache[256];
+    path(cache, "closure-cache");
+    const char *previous = getenv("CHIBI_ASSET_CACHE_DIR");
+    char *saved = previous ? xstrdup(previous) : NULL;
+    REQUIRE(!setenv("CHIBI_ASSET_CACHE_DIR", cache, 1));
+    const char *version[] = { launcher, "version", NULL };
+    bool compiled = tool_run(version, root, log_path) == 0 &&
+                    closures_kept(cache) == 1;
+    bool reused = tool_run(version, root, log_path) == 0 && closures_kept(cache) == 1;
+    append_comment("share/chibi/apps/chibi/Main.chibi");
+    bool application = tool_run(version, root, log_path) == 0 &&
+                       closures_kept(cache) == 2;
+    append_comment("share/chibi/core/strings/Strings.chibi");
+    bool core = tool_run(version, root, log_path) == 0 && closures_kept(cache) == 3;
+    if (saved) {
+        setenv("CHIBI_ASSET_CACHE_DIR", saved, 1);
+    } else {
+        unsetenv("CHIBI_ASSET_CACHE_DIR");
+    }
+    free(saved);
+    REQUIRE(compiled && reused && application && core);
     return true;
 }
 
@@ -1850,6 +1917,7 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(version_of_the_built_launcher);
     RUN_TEST_CASE(doctor_reports_each_capability);
     RUN_TEST_CASE(doctor_of_the_built_launcher);
+    RUN_TEST_CASE(launcher_keeps_its_compiled_application);
     RUN_TEST_CASE(test_runs_shared_package_tests);
     RUN_TEST_CASE(compiler_test_reports_each_test);
     RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
@@ -1921,6 +1989,7 @@ static void setup_installed(const char *binary)
     assert(length > 0 && length < (int)sizeof compiler);
     free(program);
     path(log_path, "output.log");
+    warm_launcher();
 }
 
 TEST_CASE(raw_sdk_build_finds_its_application_and_companions)

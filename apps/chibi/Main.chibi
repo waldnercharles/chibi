@@ -147,5 +147,28 @@ ParentPathsStopAtRoot :: () {
 }
 
 Usage :: (program: string) -> string {
-    return format_text("Usage: {} version\n       {} doctor\n       {} build --native [-O0|-O2] [-g] [--target TRIPLE]\n                [--llvm DIR] [ROOT]\n       {} test [ROOT]\n       {} run [--watch] [PATH] [--] [ARGUMENTS]\n       {} [--watch] PATH [--] [ARGUMENTS]\nPATH is a .chibi file or package directory. Its Main takes no arguments\nand returns nothing or an int exit status. chibi PATH is shorthand for run.\n--watch reruns Main after edits, keeping retained state.\nversion prints the SDK, build, compiler and artifact-format identity.\ndoctor reports the SDK, compiler, platform and native backend as supported,\nunavailable or broken, changing nothing; it fails only when a capability it\nchecks is broken.\nbuild --native compiles the one .chibi source in ROOT, the working\ndirectory without one, whose first function is Main :: () -> int,\nto ROOT/build/native/O2-HASH/program (-O0 for an unoptimized one)\nwith the opt, llc and ld.lld in DIR, or in CHIBI_LLVM_BIN without\n--llvm. --target builds for x86_64-unknown-linux-gnu, the default,\naarch64-apple-darwin or x86_64-pc-windows-msvc, whose program is\nprogram.exe. -g adds DWARF line tables, on Linux so far, so\ndebuggers and profilers place its code in the source. Native code\nsupports a subset of the language so far; a source outside it fails\nwith the first unsupported form.\ntest runs each @test function of the packages below ROOT, the\nworking directory without one, and fails when one fails. ROOT holds\nonly package files.\nrun calls Main for a program.\nProgram arguments after PATH or -- are available in application.arguments().\n", program, program, program, program, program, program)
+    commands := format_text("Usage: {} version\n       {} doctor\n       {} build --native [-O0|-O2] [-g] [--target TRIPLE]\n                [--llvm DIR] [ROOT]\n       {} test [ROOT]\n       {} run [--watch] [PATH] [--] [ARGUMENTS]\n       {} [--watch] PATH [--] [ARGUMENTS]\n", program, program, program, program, program, program)
+    return Join([commands,
+        "PATH is a .chibi file or package directory. Its Main takes no arguments\n",
+        "and returns nothing or an int exit status. chibi PATH is shorthand for run.\n",
+        "--watch reruns Main after edits, keeping retained state.\n",
+        "version prints the SDK, build, compiler and artifact-format identity.\n",
+        "doctor reports the SDK, compiler, platform and native backend as supported,\n",
+        "unavailable or broken, changing nothing; it fails only when a capability it\n",
+        "checks is broken.\n",
+        "build --native compiles the one .chibi source in ROOT, the working\n",
+        "directory without one, whose first function is Main :: () -> int,\n",
+        "to ROOT/build/native/O2-HASH/program (-O0 for an unoptimized one)\n",
+        "with the opt, llc and ld.lld in DIR, or in CHIBI_LLVM_BIN without\n",
+        "--llvm. --target builds for x86_64-unknown-linux-gnu, the default,\n",
+        "aarch64-apple-darwin or x86_64-pc-windows-msvc, whose program is\n",
+        "program.exe. -g adds DWARF line tables, on Linux so far, so\n",
+        "debuggers and profilers place its code in the source. Native code\n",
+        "supports a subset of the language so far; a source outside it fails\n",
+        "with the first unsupported form.\n",
+        "test runs each @test function of the packages below ROOT, the\n",
+        "working directory without one, and fails when one fails. ROOT holds\n",
+        "only package files.\n",
+        "run calls Main for a program.\n",
+        "Program arguments after PATH or -- are available in application.arguments().\n"])
 }

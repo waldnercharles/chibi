@@ -72,6 +72,9 @@ Construct :: (text: string, kinds: int[], starts: int[], ends: int[], rows: int[
     while (index < length(kinds)) {
         leaf := Leaf(LeafKind(names, kinds[index]), kinds[index], starts[index], ends[index],
                      rows[index], columns[index]);
+        if (kinds[index] == tk.Ident && ends[index] - starts[index] == 2 && Spells(text, starts[index], "fn")) {
+            leaf.kind = "fn";
+        }
         if (kinds[index] == tk.Comment) {
             leaf.named = true;
             leaf.extra = true;

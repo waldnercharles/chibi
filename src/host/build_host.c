@@ -632,7 +632,8 @@ static char *compile_input(const build_host *host, const native_capabilities *na
         texts[i + 1] = files[i].text;
         sizes[i + 1] = files[i].size;
     }
-    const char *names[CHIBI_BUILD_MAX_COLLECTIONS + 1], *roots[CHIBI_BUILD_MAX_COLLECTIONS + 1];
+    const char *names[CHIBI_BUILD_MAX_COLLECTIONS + 1],
+        *roots[CHIBI_BUILD_MAX_COLLECTIONS + 1];
     for (int i = 0; i < count; i++) {
         names[i] = collections[i].name;
         roots[i] = collections[i].root;

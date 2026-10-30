@@ -533,15 +533,17 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         // reads one.
         type = ScalarRecordType(types, ScalarRecordOf(forest, text, callables, params, names, types, members, callable.package, node));
     }
+    // A field of a record: whatever type it holds.
+    fielded := false;
     if (Is(forest, node, "member_expression") &&
         ScalarProjected(forest, text, callables, params, names, callable.package, node) < 0) {
-        // A field of a record: whatever type it holds.
         field := ScalarMember(forest, text, callables, params, names, types, members, callable.package, node);
         if (field >= 0) {
             type = ScalarMemberType(types, members, field);
+            fielded = true;
         }
     }
-    if (storage == UnionStorage && !arrayed && !Is(forest, node, "member_expression")) {
+    if (storage == UnionStorage && !arrayed && !fielded) {
         held := ScalarUnionOf(forest, text, callables, names, types, callable.package, node);
         type = ScalarRecordType(types, held);
         if (held >= 0 && ScalarVariantMade(forest, node)) {
@@ -1340,7 +1342,7 @@ ScalarAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
 ScalarPlan :: union {
     Failed(diagnostic: syntax.Diagnostic) | Converted(value: int, context: int, storage: int) | Compound(storage: int) |
     Range(first: int, last: int) | Record(value: int, record: int) | Member(record: int, field: int) |
-    Tagged(subject: int) | Array(value: int, shape: ValueType, copied: bool) | Element | Changed(object: int, operator: int) |
+    Tagged(subject: int) | Subject(value: int, held: int) | Array(value: int, shape: ValueType, copied: bool) | Element | Changed(object: int, operator: int) |
     Iterated(value: int, copied: bool) | Bare
 }
 // The plan of `statement`'s operands: a return's value, widened to the result
@@ -1394,11 +1396,15 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         storage := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, value,
                                         InferredNumberStorage(forest, text, value));
         if (storage == UnionStorage) {
-            // Each arm's bindings read the union again, so it must be a
-            // variable.
+            // Each arm's bindings read the union again, so it is a variable,
+            // or a hidden local that holds it.
             subject := Unparenthesized(forest, value);
             if (!Is(forest, subject, "identifier")) {
-                return ScalarPlan.Failed(Diagnose(forest, value, 0, "scalar proof switches only on union variables"));
+                held := ScalarUnionOf(forest, text, callables, names, types, callable.package, value);
+                if (held < 0) {
+                    return ScalarPlan.Failed(Diagnose(forest, value, 0, "scalar proof switches only on unions of the source"));
+                }
+                return ScalarPlan.Subject(value, held);
             }
             return ScalarPlan.Tagged(subject);
         }
@@ -1650,6 +1656,8 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         // and a switch's union variable, or -1.
         planned: int = 0;
         tagged: int = -1;
+        hidden: int = -1;
+        hidden_held: int = -1;
         appended: int = -1;
         iterated := false;
         switch ScalarPlanned(forest, text, callables, params, callable, names, types, members, constants, statement) {
@@ -1688,6 +1696,30 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 tagged := operands;
                 tagged.extend([read, ScalarAt(forest, subject, facts.TagRow, facts.IntType, 0, 1, "")]);
                 built = ScalarOperands.Built(tagged);
+            case .Subject(value, held):
+                // The union is evaluated once into a local of the switch's
+                // own, which the Switch row reads and its arms read again.
+                planned = IntStorage;
+                hidden = variables;
+                hidden_held = held;
+                variables += 1;
+                subject_type := ScalarRecordType(types, held);
+                subject_rows := ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                                              value, UnionStorage, []);
+                switch subject_rows {
+                    case .Failed(diagnostic):
+                        return ScalarOperands.Failed(diagnostic);
+                    case .Built(evaluated):
+                        subject_local := ScalarAt(forest, statement, facts.LocalRow, subject_type, hidden,
+                                                  length(evaluated), "switch value");
+                        subject_local.literal = i64(facts.SwitchSubject);
+                        rows.append(subject_local);
+                        rows.extend(evaluated);
+                }
+                tagged_rows := operands;
+                tagged_rows.extend([ScalarAt(forest, value, facts.ReadRow, subject_type, hidden, 0, ""),
+                                    ScalarAt(forest, value, facts.TagRow, facts.IntType, 0, 1, "")]);
+                built = ScalarOperands.Built(tagged_rows);
             case .Array(value, shape, copied):
                 built = ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants, value,
                                           shape, copied, operands);
@@ -1754,12 +1786,17 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             work.append(close);
             arms := ScalarArms(forest, statement);
             current: ScalarSwitch = {storage: planned, held: -1, subject: -1, fallback: -1};
-            if (tagged >= 0) {
+            if (tagged >= 0 || hidden >= 0) {
                 // The arms cover every variant, so with no default arm the
                 // last is one.
-                binding := ScalarVariable(names, Text(forest, text, tagged));
-                current.held = binding.record;
-                current.subject = binding.index;
+                if (hidden >= 0) {
+                    current.held = hidden_held;
+                    current.subject = hidden;
+                } else {
+                    binding := ScalarVariable(names, Text(forest, text, tagged));
+                    current.held = binding.record;
+                    current.subject = binding.index;
+                }
                 current.fallback = arms[length(arms) - 1];
                 for (arm in arms) {
                     if (Field(forest, arm, "value") < 0) {

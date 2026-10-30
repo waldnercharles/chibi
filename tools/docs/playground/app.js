@@ -1,5 +1,5 @@
 // The playground page: browse the repository's Chibi sources, edit or paste a source, and see the
-// formatter's output with the current settings. It talks to a host through four calls, defined at
+// formatter's output with the current settings. It talks to a host through three calls, defined at
 // the bottom, so the same page can later sit on a WebAssembly formatter instead of a local server.
 'use strict';
 
@@ -172,7 +172,7 @@ for (const input of [els.indent, els.tabs]) {
 els.copy.addEventListener('click', () => navigator.clipboard.writeText(state.lastFormatted));
 
 // The host: how the page reaches the repository and the formatter. This one speaks to the local
-// development server (serve.py); a WebAssembly build would replace these four functions.
+// development server (serve.py); a WebAssembly build would replace these three functions.
 const host = {
   async list() {
     const response = await fetch('/api/files');

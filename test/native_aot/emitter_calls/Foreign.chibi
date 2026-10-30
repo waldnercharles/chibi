@@ -85,13 +85,14 @@ IndirectModule :: (code: native.Instruction[], slots: int[], texts: string[]) ->
     return native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 4, 0, 7, 0, 3)], empty, slots, empty, code, [0, 1, 2],
                        records, empty, texts, source, names, empty, empty, false, 1);
 }
-// A call through an address declares nothing and calls the pointer its first
-// argument holds.
+// A call through an address declares nothing, traps on a null address and calls
+// the pointer its first argument holds.
 @test
 ForeignCallThroughAnAddress :: () {
     text := Emitted(IndirectModule(Indirects(), [9, 6, 6, 6], [""]));
     assert(strings.Contains(text, "%callee4 = inttoptr i64 %c4_0 to ptr\n"));
     assert(strings.Contains(text, "%v4 = call i32 %callee4(i32 %c4_1, i32 %c4_2)\n"));
+    assert(strings.Contains(text, "%null4 = icmp eq ptr %callee4, null\n  br i1 %null4, label %trap, label %call4\ncall4:\n"));
     assert(!strings.Contains(text, "declare i32 @"));
 }
 @test

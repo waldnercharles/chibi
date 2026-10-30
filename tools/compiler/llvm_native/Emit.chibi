@@ -1551,6 +1551,9 @@ ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], item: In
         if (item.left == 1 && index == 0) {
             callee = format_text("%callee{}", pc);
             out = format_text("{}  {} = inttoptr i64 %{} to ptr\n", out, callee, name);
+            // A missing symbol is a null address, which traps instead of jumping to 0.
+            out = format_text("{}  %null{} = icmp eq ptr {}, null\n  br i1 %null{}, label %trap, label %call{}\ncall{}:\n", out, pc,
+                              callee, pc, pc, pc);
             continue;
         }
         if (type == abi.TextStorage) {

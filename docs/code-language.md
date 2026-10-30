@@ -764,7 +764,7 @@ Main :: () -> int {
 }
 ```
 
-A foreign function may return a function type directly,
+A call through a null address traps. A foreign function may return a function type directly,
 `dlsym :: (handle: rawptr, name: cstring) -> fn(n: i32) -> i32`, so
 `absolute := dlsym(0, "abs")` takes its type from the result. A `rawptr` converts
 to a function type without a cast, which is how one `dlsym` declaration serves

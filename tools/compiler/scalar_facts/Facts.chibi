@@ -191,10 +191,14 @@ package scalar_facts
 // they consume, so each is the last operand of an Assign to a variable of the
 // array's type whose first operand reads that variable: `a[i] = x` is the
 // Assign of `a` with operands that read `a`, then `i`, then `x`, then
-// ArraySet, and `a.append(x)` reads `a`, then `x`, then ArrayPush. A For row with
+// ArraySet, and `a.append(x)` reads `a`, then `x`, then ArrayPush. ArrayWith
+// consumes an array and an element, and ArrayJoin two arrays of one type, to
+// give a new array of the first's elements and then the second's; neither
+// changes what it consumes, as `append(a, x)` and `extend(a, b)` do not. A For row with
 // RangeArray declares variable `value`, of its element `type` and `name`,
 // and its one operand is the array it iterates, whose elements the body
-// cannot change. It runs its body for each element in order. The array is
+// cannot change. With RangeKeyed the variable after it is the int index of the
+// element, which the body cannot change either. It runs its body for each element in order. The array is
 // read once, so a producer iterates a Copy of the variable when the body
 // assigns it.
 // A condition's last operand is its bool; a
@@ -260,6 +264,11 @@ pub PayloadRow: int : 34;
 pub TextRow: int : 35;
 pub AssertRow: int : 36;
 pub ArrayRow: int : 37;
+// A call of a C function the source declares in a foreign block, an operand
+// row that consumes its `count` argument operands, numbers or bools. `name`
+// is the C symbol, `type` the number or bool it returns, and `text` the path
+// of the library that provides it, which the native build links.
+pub ForeignRow: int : 38;
 
 // The value types: int and bool, then the other integer types, then the
 // floating ones, then string. The facts carry no compiler storage ordinal.
@@ -336,11 +345,20 @@ pub ArraySlice: int : 8;
 pub ArrayResize: int : 9;
 pub ArrayContains: int : 10;
 pub ArrayRemove: int : 11;
+pub ArrayWith: int : 12;
+pub ArrayJoin: int : 13;
+// A Local row whose `literal` is SwitchSubject holds the union a switch is on
+// when the switch is not on a variable, so each arm's bindings can read it
+// again. It has the switch statement's range, a Switch row of the same range
+// follows it, and that Switch reads it.
+pub SwitchSubject: int : 1;
 
-// A For row's range flags; RangeArray stands alone.
+// A For row's range flags; RangeArray stands alone or with RangeKeyed, which
+// declares the next variable, an int, as the index of the element.
 pub RangeExclusive: int : 1;
 pub RangeReverse: int : 2;
 pub RangeArray: int : 4;
+pub RangeKeyed: int : 8;
 
 // Conversions between integer types: `T(value)` clamps the value to T, and
 // `T(wrap: value)` keeps its low bits. A floating value converts to an

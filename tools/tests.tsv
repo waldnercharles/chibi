@@ -12,7 +12,6 @@ tool	ecs-query-benchmark	@build@/test/tools/test_tools	--ecs-query-benchmark
 tool	arena	@build@/test/tools/test_tools	--arena
 tool	source-systems	@build@/test/tools/test_tools	--source-systems
 tool	persistent-store	@build@/test/tools/test_tools	--persistent-store
-tool	package	@build@/test/tools/test_tools	--package
 tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
 tool	chibi-cli-build	@build@/test/tools/test_tools	--chibi-cli-build	@release@/sdk/chibi
 tool	chibi-cli-doctor	@build@/test/tools/test_tools	--chibi-cli-doctor	@release@/sdk/chibi
@@ -37,7 +36,6 @@ tool	build-graph-debug-optimization	@build@/test/tools/test_tools	--build-graph-
 tool	build-graph-programs	@build@/test/tools/test_tools	--build-graph-programs	@host@
 tool	build-sdk	@build@/test/tools/test_tools	--build-sdk	@host@	@release@	
 tool	runtime-sdk	@build@/test/tools/test_tools	--runtime-sdk	@host@
-tool	third-party-publish	@build@/test/tools/test_tools	--third-party-publish
 tool	collab	@build@/test/tools/test_tools	--collab
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
 tool	whole-conversion	@build@/test/tools/test_tools	--whole-conversion
@@ -46,7 +44,6 @@ tool	whole-math	@build@/test/tools/test_tools	--whole-math
 tool	native-values	@build@/test/tools/test_tools	--native-values
 tool	text-format	@build@/test/language/test_language	--text-format
 tool	box3d	@build@/test/tools/test_tools	--box3d
-tool	native-runtime	@build@/test/tools/test_tools	--native
 tool	runtime-scene	@build@/test/tools/test_tools	--scene
 tool	asset-values	@build@/test/tools/test_tools	--asset-values
 tool	ui-document	@build@/test/tools/test_tools	--ui-document
@@ -136,7 +133,7 @@ tool	wasm-package-compiler-chibi-literals	node	build-wasm-language/test_language
 tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math	wasm-package-compiler-chibi	wasm-package-compiler-chibi-compiled
-group	native	native-runtime	native-values	build-graph-link-response	box3d	runtime-scene	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	arena
+group	native	native-values	build-graph-link-response	box3d	runtime-scene	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	arena
 group	projects	chibi-cli	native-build
 group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	language-package-math	chibi-test-compiler	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages	language-host-packages-compiler	text-format	language-compiler-fixture	language-compositional-records	language-package-compiler-chibi-scalar	language-package-compiler-chibi-fallible	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-behaviors-rest	language-integer-semantics	language-integer-shift-counts	language-integer-shift-counts-authored	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
 group	compiler	language-package-compiler-chibi	language-package-compiler-chibi-compiled	language-package-compiler-chibi-types	language-package-compiler-chibi-fallible	language-package-compiler-chibi-types-compiled	language-package-compiler-chibi-collections	language-package-compiler-chibi-collections-compiled	language-package-compiler-chibi-literals	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-actions	language-package-compiler-chibi-behaviors-rest	language-package-compiler-chibi-queries	language-package-compiler-chibi-libraries	language-package-compiler-chibi-sharing	language-package-compiler-chibi-debug-free	language-package-compiler-chibi-native-arguments	language-package-compiler-chibi-native-arguments-oracle	language-package-compiler-chibi-scalar	language-package-compiler-chibi-imports	language-package-compiler-chibi-imports-compiled	language-package-compiler-chibi-bootstrap

@@ -1,6 +1,6 @@
 #!/bin/sh
 # CI's Debug profile, shared by every native job so their flags can't drift.
-# Sanitizer runs keep frame pointers off; developer Makefile defaults are unchanged.
+# Sanitizer runs keep frame pointers off; the build driver defaults are unchanged.
 set -eu
 debug='-g -O1 -fno-omit-frame-pointer' profile=debug pointers=on
 if [ "$CHIBI_CI_SANITIZERS" = ON ]; then debug='-g -O1' profile=sanitizer pointers=; fi

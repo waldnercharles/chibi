@@ -1,5 +1,0 @@
-version 1
-name "Main"
-(array)entities {
-    - name="Folder" prototype="Folder"
-}

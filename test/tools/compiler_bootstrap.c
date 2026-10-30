@@ -690,7 +690,7 @@ TEST_CASE(bootstrap_cache_miss_preserves_a_publishers_entry)
     count = snprintf(
         text,
         sizeof text,
-        "chibi-compiler-cache-2 prepared %d seed %s arguments %s",
+        "chibi-compiler-cache-3 prepared %d seed %s arguments %s",
         EXECUTION_PREPARED_VERSION,
         digest,
         arguments_digest
@@ -854,7 +854,8 @@ TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
     }
     REQUIRE(api_host);
     REQUIRE(strstr(api_error, "compiler sources changed since revision"));
-    REQUIRE(strstr(api_error, "that compiles them to itself"));
+    /* A load takes stage one; the check path proves the fixed point. */
+    REQUIRE(strstr(api_error, "from them"));
     const char *compiled = strstr(api_error, "compiled a compiler of ");
     size_t recovered = 0;
     REQUIRE(compiled && sscanf(compiled, "compiled a compiler of %zu bytes", &recovered) == 1);

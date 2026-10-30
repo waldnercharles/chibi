@@ -775,7 +775,7 @@ by View Direction shades the floor as the sun and a point light see it, though
 the camera sees it cut. It is a GPU
 check that runs the main build's
 `test/tools/test_tools` after the agent's device preflight, so build it first
-with `make build BUILD_TARGET=test_tools`.
+with `chibi build --target test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
 Vulkan llvmpipe passed 95 cases and 83503 assertions in 24.2 seconds on 2026-10-11,
@@ -828,7 +828,7 @@ preparation and refusals the same way, and
 import writes, its names, refusals, warnings, left-out vertices and tangent
 frames.
 
-For texture transforms, build `test_tools` with `make build BUILD_TARGET=test_tools`
+For texture transforms, build `test_tools` with `chibi build --target test_tools`
 and run `make agent-gpu-test AGENT_SELECTOR=--texture-transform`. Pass the same
 `BUILD_DIR` to both commands when using another build folder. This focused
 check draws 21 frames in one hidden 64 x 64 app. It compares each PBR texture

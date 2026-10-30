@@ -1139,9 +1139,25 @@ FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
         }
         return Decided.No;
     }
+    named := ConstantOf(forest, text, constants, aliases, package, value);
+    if (named >= 0 && constants[named].storage == BoolStorage) {
+        if (!constants[named].folded) {
+            return Decided.Waiting;
+        }
+        if (constants[named].bits != 0) {
+            return Decided.Yes;
+        }
+        return Decided.No;
+    }
     operator := Text(forest, text, Field(forest, value, "operator"));
-    if (Is(forest, value, "unary_expression") && (operator == "not" || operator == "!")) {
-        switch FoldCondition(forest, text, file, constants, aliases, package, Field(forest, value, "operand")) {
+    // `not (condition)` reads as a call of `not`, as the grammar keeps both.
+    negated := Is(forest, value, "call_expression") && Text(forest, text, Field(forest, value, "function")) == "not";
+    operand := Field(forest, value, "operand");
+    if (negated) {
+        operand = FirstMember(forest, Field(forest, value, "arguments"));
+    }
+    if (negated || (Is(forest, value, "unary_expression") && (operator == "not" || operator == "!"))) {
+        switch FoldCondition(forest, text, file, constants, aliases, package, operand) {
             case .Failed(diagnostic):
                 return Decided.Failed(diagnostic);
             case .Waiting:
@@ -1769,8 +1785,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
         while (at < length(constants)) {
             constant := constants[at];
             if (constant.package == package && !constant.folded) {
-                switch FoldConstant(forest, documents[constant.file].text, constant.file, constants,
-                                    Aliases(links, constant.file), package, constant.node, constant.storage) {
+                switch FoldCalling(forest, documents, links, callables, params, constants, package, constant.file,
+                                constant.node, constant.storage) {
                     case .Failed(diagnostic):
                         return Declarations.Failed(diagnostic);
                     case .Waiting:

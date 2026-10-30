@@ -22,7 +22,8 @@ typedef struct
     const char *output;   /* check: where to write the recovered compiler. */
     const char *arguments; /* check: where to write Compile's arguments. */
     const char *cache; /* load: directory keeping recovered compilers, or NULL. */
-    bool validate;     /* check: validate the artifact without recovering. */
+    char *identity; /* load: receives the loaded closure's SHA-256 (65 bytes), or NULL. */
+    bool validate; /* check: validate the artifact without recovering. */
 } compiler_bootstrap;
 
 /* Writes the artifact from a seed folder: compiler.chibip and compile.json,

@@ -219,6 +219,13 @@ Opens :: (kind: int) -> bool {
 Loop :: (kind: int) -> bool {
     return kind == facts.WhileRow || kind == facts.ForRow;
 }
+// Whether `row` is a loop over an array, and whether it also names the index.
+Arrayed :: (row: facts.Row) -> bool {
+    return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray) || Keyed(row));
+}
+Keyed :: (row: facts.Row) -> bool {
+    return row.kind == facts.ForRow && row.literal == i64(facts.RangeArray + facts.RangeKeyed);
+}
 // The row after the declaration at `at`: a Record row and its members, or a
 // Union row and its variants, each with its members; -1 when a count is
 // empty or negative, runs past `rows`, or a union's variant row is missing.
@@ -480,8 +487,8 @@ ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayNew) {
         return operand.count;
     }
-    consumed := [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2];
-    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayRemove) {
+    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2];
+    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayJoin) {
         return 0;
     }
     return consumed[operand.value];
@@ -551,11 +558,11 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         if (stack[base + 1] != facts.IntType || stack[base + 2] != element) {
             return mismatch;
         }
-    } else if (operator == facts.ArrayPush) {
+    } else if (operator == facts.ArrayPush || operator == facts.ArrayWith) {
         if (stack[base + 1] != element) {
             return mismatch;
         }
-    } else if (operator == facts.ArrayExtend) {
+    } else if (operator == facts.ArrayExtend || operator == facts.ArrayJoin) {
         if (stack[base + 1] != operand.type) {
             return mismatch;
         }
@@ -688,6 +695,18 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 }
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.ForeignRow) {
+            base := length(stack) - operand.count;
+            if (operand.name == "" || operand.text == "" || operand.value != 0 || !Scalar(operand.type) ||
+                operand.count < 0 || base < floor) {
+                return "scalar foreign call differs from its operands";
+            }
+            for (argument in 0..<operand.count) {
+                if (!Scalar(stack[base + argument])) {
+                    return "scalar foreign call takes numbers and bools";
+                }
+            }
+            stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ZeroRow) {
             if (operand.name != "" || operand.count != 0 || operand.value != 0 ||
                 MemberType(rows, records, operand.type, 0) == 0) {
@@ -776,7 +795,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
     }
     // A range's two bounds, or one value.
     wanted: int = 1;
-    if (rows[at].kind == facts.ForRow && rows[at].literal != i64(facts.RangeArray)) {
+    if (rows[at].kind == facts.ForRow && !Arrayed(rows[at])) {
         wanted = 2;
     }
     if (length(stack) != wanted || stack[0] != result || stack[wanted - 1] != result) {
@@ -868,10 +887,12 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             }
         }
         ranged := row.kind == facts.ForRow;
-        arrayed := ranged && row.literal == i64(facts.RangeArray);
+        arrayed := Arrayed(row);
+        // A local holding the union a switch is on, followed by that switch.
+        subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
-        if (row.text != "" || (row.literal != 0 && !ranged) || !Located(row, starts, size) ||
+        if (row.text != "" || (row.literal != 0 && !ranged && !subject) || !Located(row, starts, size) ||
             (row.kind != facts.EndRow && row.start < earliest) || (!declares && row.name != "") ||
             (!typed && row.type != 0) || (!declares && row.kind != facts.AssignRow && row.value != 0)) {
             return "invalid scalar statement row";
@@ -963,7 +984,10 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             if (row.name == "" || !Valued(records, row.type) || row.value != length(variables) ||
                 (ranged && !arrayed && (row.type != facts.IntType || row.literal < 0 ||
                                         row.literal > i64(facts.RangeExclusive + facts.RangeReverse))) ||
-                (arrayed && (row.type >= facts.ArrayType || !Valued(records, facts.ArrayType + row.type)))) {
+                (arrayed && (row.type >= facts.ArrayType || !Valued(records, facts.ArrayType + row.type))) ||
+                (subject && (UnionHead(rows, records, row.type) < 0 || at + row.count + 1 >= last ||
+                             rows[at + row.count + 1].kind != facts.SwitchRow ||
+                             rows[at + row.count + 1].start != row.start || rows[at + row.count + 1].end != row.end))) {
                 return "invalid scalar local row";
             }
             result = row.type;
@@ -982,6 +1006,9 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         }
         ends = row.kind == facts.ReturnRow;
         earliest = row.end;
+        if (subject) {
+            earliest = row.start;
+        }
         if (row.kind == facts.LocalRow) {
             variables.append(row.type);
             visible.append(row.value);
@@ -996,6 +1023,11 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
                 variables.append(row.type);
                 visible.append(row.value);
                 fixed.append(row.value);
+            }
+            if (Keyed(row)) {
+                variables.append(facts.IntType);
+                visible.append(row.value + 1);
+                fixed.append(row.value + 1);
             }
             earliest = Operated(rows, at);
         }
@@ -1499,6 +1531,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     }
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.ForeignRow) {
+                    item = Op(native.ForeignCall, type, slot, 0, shape.arguments, operand.count);
+                    item.literal = i64(length(texts));
+                    texts.append(operand.name);
+                    base := length(stack) - operand.count;
+                    for (argument in 0..<operand.count) {
+                        arguments.append(stack[base + argument]);
+                    }
+                    shape.arguments += operand.count;
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.FieldRow || operand.kind == facts.TagRow ||
                            operand.kind == facts.PayloadRow) {
                     // A union's tag is its field 0, and its payloads follow.
@@ -1544,6 +1586,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                             item = Op(native.ArrayPush, type, slot + 1, slot, stack[base + element], 0);
                             slot += 1;
                         }
+                    } else if (operand.value == facts.ArrayWith || operand.value == facts.ArrayJoin) {
+                        // A copy of the first array, then the elements after its own.
+                        body.append(Op(native.ArrayCopy, type, slot, stack[base], 0, 0));
+                        slots.append(type);
+                        change := native.ArrayPush;
+                        if (operand.value == facts.ArrayJoin) {
+                            change = native.ArrayExtend;
+                        }
+                        item = Op(change, type, slot + 1, slot, stack[base + 1], 0);
+                        slot += 1;
                     } else {
                         item = ArrayLowered(operand, type, slot, stack, base);
                         if (operand.value == facts.ArrayContains) {
@@ -1584,7 +1636,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             }
             value := stack[0];
             ends = false;
-            if (row.kind == facts.ForRow && row.literal == i64(facts.RangeArray)) {
+            if (Arrayed(row)) {
                 // The array and the index of the next element are locals of
                 // their own, before the element's variable.
                 array := NativeType(facts.ArrayType + row.type);
@@ -1594,6 +1646,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                                 exits: 0, armed: false, fallback: -1};
                 locals.extend([array, integer, element]);
                 places.append(local + 2);
+                if (Keyed(row)) {
+                    places.append(local + 1);
+                }
                 slots.append(integer);
                 body.extend([Op(native.Save, array, 0, stack[0], 0, local), Op(native.Constant, integer, slot, 0, 0, 0),
                              Op(native.Save, integer, 0, slot, 0, local + 1)]);
@@ -1744,8 +1799,24 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):
-            return Result.Emitted(text);
+            return Result.Emitted(Linked(text, rows));
     }
+}
+// The module's text with a comment naming each library a foreign call needs,
+// once, for the driver to link: `; chibi-library PATH`, the path as the source
+// spells it.
+Linked :: (text: string, rows: facts.Row[]) -> string {
+    paths: string[] = [];
+    for (row in rows) {
+        if (row.kind == facts.ForeignRow && !paths.contains(row.text)) {
+            paths.append(row.text);
+        }
+    }
+    out := text;
+    for (path in paths) {
+        out = format_text("{}; chibi-library {}\n", out, path);
+    }
+    return out;
 }
 
 // Emit and EmitBytes are the Linux x86-64 entries `chibi build` calls.

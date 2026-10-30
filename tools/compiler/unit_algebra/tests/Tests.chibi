@@ -1,0 +1,116 @@
+package unit_algebra_tests
+
+import text "core:strings"
+import units "project:unit_algebra"
+
+T :: (name: string, power: int) -> units.Term {
+    return {name: name, power: power};
+}
+Of :: (terms: units.Term[]) -> units.Unit {
+    return units.Unit.Value(units.Known, terms);
+}
+Dimensionless :: () -> units.Unit {
+    return units.Empty(units.Known);
+}
+
+Expect :: (actual: units.Unit, expected: units.Unit) {
+    switch actual {
+        case .Value(kind, terms):
+            switch expected {
+                case .Value(expected_kind, expected_terms):
+                    assert(kind == expected_kind, "unit kind");
+                    assert(length(terms) == length(expected_terms), "unit term count");
+                    index: int = 0;
+                    while (index < length(terms)) {
+                        assert(terms[index].name == expected_terms[index].name, "unit term name");
+                        assert(terms[index].power == expected_terms[index].power, "unit term power");
+                        index += 1;
+                    }
+            }
+    }
+}
+Parses :: (value: string, expected: units.Unit) {
+    Expect(units.Parse(true, value), expected);
+}
+Multiplies :: (left: units.Unit, right: units.Unit, sign: int, expected: units.Unit, overflow: bool) {
+    switch units.Product(left, right, sign) {
+        case .Product(value, overflowed):
+            assert(overflowed == overflow, "product overflow");
+            Expect(value, expected);
+    }
+}
+Eight :: () -> units.Term[] {
+    return [T("a", 1), T("b", 1), T("c", 1), T("d", 1), T("e", 1), T("f", 1), T("g", 1), T("h", 1)];
+}
+
+@test
+ParseReadsTermsAndPowers :: () {
+    Expect(units.Parse(false, ""), units.Empty(units.Unknown));
+    Parses("", units.Empty(units.Invalid));
+    Parses("1", Dimensionless());
+    Parses("m", Of([T("m", 1)]));
+    Parses("_m2", Of([T("_m2", 1)]));
+    Parses("m/s·kg", Of([T("m", 1), T("s", -1), T("kg", -1)]));
+    Parses("m²/s³", Of([T("m", 2), T("s", -3)]));
+    Parses("m^+2", Of([T("m", 2)]));
+    Parses("m^-2", Of([T("m", -2)]));
+    Parses("a·b·c·d·e·f·g·h", Of(Eight()));
+    Parses("m^2·m^-2·s", Of([T("s", 1)]));
+    Parses("m·s/m·kg", Of([T("s", 1), T("kg", -1)]));
+}
+
+@test
+ParseRefusesMalformedAndOverflowingUnits :: () {
+    Parses("m^0", units.Empty(units.Invalid));
+    Parses("m^ 2", units.Empty(units.Invalid));
+    Parses("m^2147483647", Of([T("m", 2147483647)]));
+    Parses("m^-2147483647", Of([T("m", -2147483647)]));
+    Parses("m^2147483648", units.Empty(units.Invalid));
+    Parses("m^-2147483648", units.Empty(units.Invalid));
+    Parses("m^2147483647·m", units.Empty(units.Invalid));
+    Parses("m^-2147483647/m", units.Empty(units.Invalid));
+    Parses("a·b·c·d·e·f·g·h·i/i", units.Empty(units.Invalid));
+    Parses("m/", units.Empty(units.Invalid));
+    Parses("1m", units.Empty(units.Invalid));
+    Parses("m^2x", units.Empty(units.Invalid));
+}
+
+@test
+SameIgnoresTermOrderButNotPowersOrCase :: () {
+    assert(units.Same(Of([T("m", 1), T("s", -1)]), Of([T("s", -1), T("m", 1)])));
+    assert(!units.Same(Of([T("m", 1)]), Of([T("m", 2)])));
+    assert(!units.Same(Of([T("m", 1)]), Of([T("m", 1), T("s", 1)])));
+    // Equality itself intentionally ignores kind.
+    assert(units.Same(units.Empty(units.Unknown), units.Empty(units.Invalid)));
+    assert(!units.Same(Of([T("m", 1)]), Of([T("M", 1)])));
+}
+
+@test
+ProductCombinesTermsWithinBounds :: () {
+    Multiplies(Of([T("m", 1)]), Of([T("s", -1)]), 1, Of([T("m", 1), T("s", -1)]), false);
+    Multiplies(Of([T("m", 1)]), Of([T("m", 1)]), -1, Dimensionless(), false);
+    Multiplies(Of([T("m", 1), T("s", 1)]), Of([T("m", -1), T("kg", 1)]), 1, Of([T("s", 1), T("kg", 1)]), false);
+    Multiplies(Of(Eight()), Of([T("i", 1)]), 1, units.Empty(units.Unknown), true);
+    Multiplies(Of(Eight()), Of([T("a", -1)]), 1,
+               Of([T("b", 1), T("c", 1), T("d", 1), T("e", 1), T("f", 1), T("g", 1), T("h", 1)]), false);
+    Multiplies(Of([T("m", 2147483647)]), Of([T("m", 1)]), 1, units.Empty(units.Unknown), true);
+    Multiplies(Of([T("m", -2147483647)]), Of([T("m", 1)]), -1, units.Empty(units.Unknown), true);
+    Multiplies(units.Empty(units.Literal), units.Empty(units.Literal), 1, units.Empty(units.Literal), false);
+    Multiplies(Of([T("m", 1)]), units.Empty(units.Literal), 1, units.Empty(units.Unknown), false);
+    Multiplies(units.Empty(units.Unknown), Of([T("m", 1)]), -1, units.Empty(units.Unknown), false);
+}
+
+@test
+FormatWritesWholeCharactersWithinSize :: () {
+    assert(units.Format(units.Empty(units.Unknown), 192) == "?");
+    assert(units.Format(Dimensionless(), 192) == "1");
+    assert(units.Format(Of([T("kg", 1), T("m", 1), T("s", -2)]), 192) == "kg·m/s²");
+    assert(units.Format(Of([T("m", -4)]), 192) == "1/m^4");
+    long190 := text.Repeat("n", 190);
+    long189 := text.Repeat("n", 189);
+    assert(units.Format(Of([T(long190, 2)]), 192) == long190);
+    assert(units.Format(Of([T(long189, 2)]), 192) == format_text("{}²", long189));
+    assert(units.Format(Of([T(long190, 1), T("x", 1)]), 192) == long190);
+    assert(units.Format(Of([T("m", 2)]), 3) == "m");
+    assert(units.Format(units.Empty(units.Unknown), 1) == "");
+}

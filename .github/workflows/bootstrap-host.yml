@@ -53,7 +53,7 @@ jobs:
           LIBCLANG_ROOT: ${{ env.LLVM }}
           NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=${{ env.CC }} -DCMAKE_CXX_COMPILER=${{ env.CXX }}
         run: |
-          make build-release BUILD_TARGET=chibi-build-host
+          sh tools/build.sh build --release --target chibi-build-host --libclang-root "$LIBCLANG_ROOT"
           test "$(build-release/sdk/chibi-build-host --protocol-version)" = 14
           mkdir out
           cp build-release/sdk/chibi-build-host "out/chibi-build-host-${{ matrix.platform }}"

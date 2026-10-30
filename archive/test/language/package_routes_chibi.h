@@ -1,4 +1,0 @@
-#ifndef CHIBI_TEST_PACKAGE_ROUTES_CHIBI_H
-#define CHIBI_TEST_PACKAGE_ROUTES_CHIBI_H
-void test_language_package_routes_chibi();
-#endif

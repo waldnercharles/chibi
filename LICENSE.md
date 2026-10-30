@@ -22,7 +22,7 @@ in the table take precedence over broader rows.
 | First-party files not covered by another row | GPL-3.0-only |
 | `src/`, except the tool files listed below | LGPL-3.0-only |
 | `include/`, `packages/core/`, `sdk/`, `cmake/` | LGPL-3.0-only |
-| `CMakeLists.txt`, `Makefile` | LGPL-3.0-only |
+| `CMakeLists.txt` | LGPL-3.0-only |
 | `tools/reflect/`, `tools/docs/`, `tools/collab/config.js.in` | LGPL-3.0-only |
 | First-party material in `docs/` and `test/`, except the three listed MIT snippets | LGPL-3.0-only |
 | The three explicitly marked snippets in `docs/code-language.md` listed below | MIT |

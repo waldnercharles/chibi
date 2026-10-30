@@ -14,16 +14,16 @@ Native builds need CMake, a C23 compiler and libclang for reflection.
 Run these commands from the engine checkout:
 
 ```sh
-make install
+chibi build install
 export PATH="$HOME/.local/bin:$PATH"
 chibi doctor
 ```
 
-The default install directory is `~/.local`. Use `make install PREFIX=/absolute/prefix`
+The default install directory is `~/.local`. Use `chibi build install --prefix /absolute/prefix`
 to select another directory. The SDK includes the `chibi` command, compiler,
 player, headers and libraries.
 
-For a development build, use `tools/build.sh build` (`make build` forwards to it; once a `chibi` exists, `chibi build` inside the checkout does the same). Run the command as `build/sdk/chibi`. From a cold tree it first builds the Release hosts in `build-release` (about three minutes) so the asset compiler is generated quickly, then the Debug build; the whole run takes about ten minutes on an Apple M-series machine.
+For a development build, use `tools/build.sh build` (once a `chibi` exists, `chibi build` inside the checkout does the same). Run the command as `build/sdk/chibi`. From a cold tree it first builds the Release hosts in `build-release` (about three minutes) so the asset compiler is generated quickly, then the Debug build; the whole run takes about ten minutes on an Apple M-series machine.
 
 ## Hello World
 

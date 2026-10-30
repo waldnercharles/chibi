@@ -982,7 +982,7 @@ spelling, as #558 decided for locals, so both compilers agree.
 
 ## A build host reads `Build.chibi` with the syntax it was built with
 
-Toolchain. `make build` runs an existing `build/sdk/chibi-build-host`, which
+Toolchain. `chibi build` runs an existing `build/sdk/chibi-build-host`, which
 parses `tools/toolchain/Build.chibi` with the compiler it was built from. When
 the map syntax changed (`[string: string] = [:]` for `Map<string, string> = {}`),
 a host built before the change failed the whole build with only "Unexpected

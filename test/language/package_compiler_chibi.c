@@ -3297,6 +3297,18 @@ static const sample samples[] = {
                  { .function = "First", .arguments = "[]", .expected = "[7]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
                  { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "constants run authored functions at compile time",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Factorial :: (n: int) -> int { if n <= 1 { return 1; } return n * Factorial(n - 1); }\n"
+                "Sum :: (limit: int) -> int { total := 0; i := 1; while i <= limit { "
+                "if i == 3 { i += 1; continue; } total += i; i += 1; if total > 1000 { break; } } return total; }\n"
+                "IsBig :: (n: int) -> bool { return n > 100; }\n"
+                "Pick :: (n: int) -> int { if IsBig(n) { return 1; } return 2; }\n"
+                "Size :: Factorial(5)\nTotal :: Sum(5)\nChosen :: Pick(Size) + Pick(3)\n"
+                "Wide: i64 : i64(Factorial(10))\n"
+                "Main :: () -> int { if Wide == 3628800 { return Size + Total + Chosen; } return 0; }\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[135]" } } },
     { .name = "when keeps the declarations a constant condition selects",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -3337,6 +3349,11 @@ static const sample samples[] = {
       .source = "package facts\n"
                 "Main :: () -> int { absent: int? = nil; present: int? = 4; r := 0; if absent { r += 100; } if present { r += present - 1; } return r; }" "\n",
       .calls = { { .function = "Main", .arguments = "[]", .expected = "[3]" } } },
+    { .name = "optional locals become absent and present again",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Main :: () -> int { x: int? = 4; r := 0; if x { r += x; } x = nil; if x { r += 100; } x = 5; if x { r += x * 10; } return r; }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[54]" } } },
     { .name = "optional results wrap values and return nil",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -5458,6 +5475,10 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
         if (game) {
             selected[count++] = CORE_DEFINITION_PACK;
             selected[count++] = NATIVE_MATH_DEFINITION_PACK;
+            /* With the arrays', its length overload makes a call of length
+             * ambiguous among natives; a collection argument still takes the
+             * collection's. */
+            selected[count++] = NATIVE_VECTOR_DEFINITION_PACK;
         }
         if (probe) {
             selected[count++] = CSTRING_PACK;
@@ -8276,7 +8297,7 @@ static bool write_seed_file(const char *folder, const char *name, const void *by
     return written;
 }
 /* With CHIBI_BOOTSTRAP_SEED naming a folder, leaves stage two and Compile's
- * arguments there, the seed make bootstrap-artifact writes the bootstrap
+ * arguments there, the seed tools/build.sh build bootstrap-artifact writes the bootstrap
  * artifact from. */
 static bool write_seed(const unsigned char *stage_two, size_t length, const char *json, size_t json_length)
 {
@@ -10779,7 +10800,7 @@ static const malformed_guard MALFORMED_LOOPS[] = {
      * flags or no name. */
     { { EDIT(LOOP_FOR, "value", 5) }, LOCAL },
     { { EDIT(LOOP_FOR, "type", SCALAR_BOOL) }, LOCAL },
-    { { EDIT(LOOP_FOR, "literal", 4) }, LOCAL },
+    { { EDIT(LOOP_FOR, "literal", 8) }, LOCAL },
     { { { .row = LOOP_FOR, .field = "name", .text = "", .from = -1 } }, LOCAL },
     /* An assignment to the index, and reads of the index in its own bound
      * and after its loop. */
@@ -10846,10 +10867,10 @@ static const malformed_guard MALFORMED_RECORDS[] = {
     { { { .row = RECORD_DECLARATION, .field = "name", .text = "", .from = -1 } },
       RECORD_ROW },
     { { EDIT(RECORD_DECLARATION, "type", SCALAR_INT) }, RECORD_ROW },
-    /* A member of a record type, out of order, named as another, or
-     * outside its record. */
-    { { EDIT(RECORD_Y, "type", SCALAR_RECORD) }, MEMBER_ROW },
-    { { EDIT(RECORD_Y, "type", SCALAR_STRING) }, MEMBER_ROW },
+    /* A member of its own record type, which holds itself, out of order,
+     * named as another, or outside its record. */
+    { { EDIT(RECORD_Y, "type", SCALAR_RECORD) }, RECORD_ROW },
+    { { EDIT(RECORD_Y, "type", SCALAR_STRING) }, FIELD_WRITE },
     { { EDIT(RECORD_X, "value", 1) }, MEMBER_ROW },
     { { { .row = RECORD_Y, .field = "name", .text = "x", .from = -1 } }, MEMBER_ROW },
     { { COPY(RECORD_Y, "end", RECORD_MAKE) }, MEMBER_ROW },
@@ -10901,11 +10922,12 @@ static const malformed_guard MALFORMED_UNIONS[] = {
     { { EDIT(UNION_DOT, "count", INT32_MAX) }, UNION_ROW },
     { { EDIT(UNION_BOX, "count", INT32_MAX) }, UNION_ROW },
     { { EDIT(UNION_DECLARATION, "count", INT32_MAX) }, UNION_ROW },
-    /* A payload numbered as another, of a record type, named as another in
-     * its variant, or outside its variant. */
+    /* A payload numbered as another, of a record type that holds the union
+     * (a cycle), of a string, which reads back as another type, named as
+     * another in its variant, or outside its variant. */
     { { EDIT(UNION_H, "value", 0) }, PAYLOAD_ROW },
-    { { EDIT(UNION_H, "type", SCALAR_RECORD) }, PAYLOAD_ROW },
-    { { EDIT(UNION_H, "type", SCALAR_STRING) }, PAYLOAD_ROW },
+    { { EDIT(UNION_H, "type", SCALAR_RECORD) }, UNION_ROW },
+    { { EDIT(UNION_H, "type", SCALAR_STRING) }, PAYLOAD },
     { { { .row = UNION_H, .field = "name", .text = "w", .from = -1 } }, PAYLOAD_ROW },
     { { COPY(UNION_H, "end", UNION_MAIN) }, PAYLOAD_ROW },
     /* A variant made with another's payloads, too few of them or as a
@@ -11145,11 +11167,11 @@ static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malform
         }
         write_row(rows, edit->row, edit->field, value);
     }
-    REQUIRE(validated(b, rows, malformed->message));
+    bool rejected = validated(b, rows, malformed->message);
     for (int i = count - 1; i >= 0; i--) {
         write_row(rows, malformed->edits[i].row, malformed->edits[i].field, saved[i]);
     }
-    return true;
+    return rejected;
 }
 /* scalar_llvm accepts the producer's rows, of the `kinds` it gives, rejects
  * each malformed variant of them when its layout, operators, operand types,
@@ -11168,9 +11190,14 @@ static bool rejects_malformed(
         REQUIRE(scalar_field(guard_row(rows, i), "kind").i == kinds[i]);
     }
     REQUIRE(validated(b, rows, ""));
+    bool rejected = true;
     for (int i = 0; i < variants; i++) {
-        REQUIRE(rejects_guard(b, rows, &malformed[i]));
+        if (!rejects_guard(b, rows, &malformed[i])) {
+            fprintf(stderr, "malformed variant %d\n", i);
+            rejected = false;
+        }
     }
+    REQUIRE(rejected);
     REQUIRE(validated(b, rows, ""));
     return true;
 }
@@ -11363,8 +11390,8 @@ static bool asserted_rows(int b, pin_value *rows)
                    strstr(ir, "  br i1 %a6, label %p8, label %p7\n") &&
                    strstr(
                        ir,
-                       "p7:\n  %fail7.at = getelementptr inbounds { ptr, ptr "
-                       "}, ptr %ctx, i32 0, i32 1\n"
+                       "p7:\n  %fail7.at = getelementptr inbounds { ptr, ptr, "
+                       "ptr, ptr }, ptr %ctx, i32 0, i32 1\n"
                        "  store ptr @chibi_scalar.failure.0.7, ptr "
                        "%fail7.at\n  br label %failed\n"
                    ) &&
@@ -12369,19 +12396,12 @@ static bool scalar_results_match(const int64_t values[4], int64_t expected)
            values[2] == expected && values[3] == expected;
 }
 /* Forms the scalar subset cannot express, each with its message and the
- * source its diagnostic covers: a switch on a union call, an `is` that
- * binds, string and record payloads, a text native given a named argument,
+ * source its diagnostic covers: an `is` that binds, map and pointer payloads, a text native given a named argument,
  * a record formatted and a call of another native. */
 static const struct
 {
     const char *source, *message, *excerpt;
 } UNSUPPORTED[] = {
-    { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
-      "Main :: () -> int { switch Make() { case .Dot: return 0; case .Box(w): "
-      "return w; } }\n"
-      "Make :: () -> Shape { return Shape.Dot; }\n",
-      "scalar proof switches only on union variables",
-      "Make()" },
     { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
       "Main :: () -> int { s := Shape.Box(1); if (s is .Box(w)) { return w; } "
       "return 0; }\n",
@@ -12608,7 +12628,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 69
+    SCALAR_ACCEPTED_CASES = 72
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -17372,7 +17392,8 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
         const char *named = pin_text(name).bytes;
         if (strncmp(named, "array_", strlen("array_")) &&
             strncmp(named, "union_array", strlen("union_array")) &&
-            strncmp(named, "record_", strlen("record_"))) {
+            strncmp(named, "record_", strlen("record_")) &&
+            strncmp(named, "switch_on", strlen("switch_on"))) {
             arena_free(&detached);
             continue;
         }
@@ -17408,7 +17429,7 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
         ran++;
         arena_free(&detached);
     }
-    REQUIRE(ran >= 16);
+    REQUIRE(ran >= 18);
     /* Index 3 is past the three elements, as is -1. */
     static const char *const OUTSIDE[] = {
         "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n  "

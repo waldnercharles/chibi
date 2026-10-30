@@ -1,4 +1,4 @@
 # The pinned first build host per platform: platform, release tag, asset, SHA-256.
 # `tools/bootstrap.sh` downloads and checks it. The bootstrap-host workflow publishes new ones.
-linux-x64	bootstrap-host-062d54e04b7fcaa45fb50f73031c49e015dc3873	chibi-build-host-linux-x64	0ef9e166c663487d175450140dfa87c99b8595a51b73a36f508bfbdc0694025a
-macos-arm64	bootstrap-host-062d54e04b7fcaa45fb50f73031c49e015dc3873	chibi-build-host-macos-arm64	63c2000c5561b04d3cd120998ce2cbba3ac755c0a01b512154a40f4662018b78
+linux-x64	bootstrap-host-908c5f37a6c767349f7adf3fdbc580728e252aa8	chibi-build-host-linux-x64	7f8b295e2328c5bc30f89be2d25b6d1ee70d304a5876776ea97da295dd2b6bf1
+macos-arm64	bootstrap-host-908c5f37a6c767349f7adf3fdbc580728e252aa8	chibi-build-host-macos-arm64	a68031be9f3a9a0d03251287b162a484898e75d08a5ad70f5812547ff06cd873

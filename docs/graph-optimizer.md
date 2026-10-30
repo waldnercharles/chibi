@@ -99,7 +99,7 @@ automatic optimizer does not use this API.
 Useful checks:
 
 ```text
-make build
+chibi build
 make test
 build/test_suite --graph-optimize
 build/test_suite --ui-optimizer

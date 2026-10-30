@@ -33,7 +33,6 @@ Entries :: (root: string, build_dir: string, third_party: string) -> string[] {
         Join(["share/chibi/tools/toolchain/Build.chibi=", root, "/tools/toolchain/Build.chibi"]),
         Join(["share/chibi/tools/toolchain/Graph.chibi=", root, "/tools/toolchain/Graph.chibi"]),
         Join(["share/chibi/tools/toolchain/SDK.chibi=", root, "/tools/toolchain/SDK.chibi"]),
-        Join(["share/chibi/tools/configure_inputs.py=", root, "/tools/configure_inputs.py"]),
         Join(["share/chibi/graph=", root, "/tools/graph"]),
         Join(["share/chibi/licenses/chibi/LICENSE.md=", root, "/LICENSE.md"]),
         Join(["share/chibi/licenses/chibi/COPYING=", root, "/COPYING"]),

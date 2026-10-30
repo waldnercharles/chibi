@@ -590,17 +590,21 @@ TEST_CASE(host_packages_compile_link_and_run_through_stage_one)
  * Program. Returns the diagnostic message, "" when the sources compile. */
 static const char *catalog_compile(const char *source, char *message, size_t capacity)
 {
-    const char *project = "/project", *path = "/project/app/App.chibi";
-    size_t size = strlen(source), length = 0;
+    const char *project = "/project";
+    const char *names[] = { "core" }, *roots[] = { "/sdk/core" };
+    const char *paths[] = { "/project/app/App.chibi", "/sdk/core/target/Target.chibi" };
+    /* The compiler replaces core:target's text with the platform's constants. */
+    const char *texts[] = { source, "package target\npub Os: int : 0\n" };
+    size_t sizes[] = { strlen(source), strlen(texts[1]) }, length = 0;
     char *input = compiler_package_catalog_request_json(
         project,
-        NULL,
-        NULL,
-        0,
-        &path,
-        &source,
-        &size,
+        names,
+        roots,
         1,
+        paths,
+        texts,
+        sizes,
+        2,
         native_capabilities_catalog(handle_native),
         NULL,
         &length
@@ -670,6 +674,17 @@ TEST_CASE(host_packages_catalog_handle_types_reach_package_signatures)
             "Close :: (handle: Program) { program.close(handle); }\n"
             "Has :: (handle: Program, name: string) -> bool { return "
             "program.has(handle, name); }\n",
+            message,
+            sizeof message
+        ) &&
+        !*message
+    );
+    /* core:target carries the compile's platform. */
+    REQUIRE(
+        catalog_compile(
+            "package app\nimport target \"core:target\"\n"
+            "Native :: () -> int { if target.Os == target.Windows { return 1; "
+            "} return target.PointerBits; }\n",
             message,
             sizeof message
         ) &&

@@ -1,5 +1,6 @@
 package driver
 
+import os "core:os"
 import strings "core:strings"
 
 // The engine's one build command, `chibi build` in an engine checkout. It
@@ -53,18 +54,18 @@ Absolute :: (path: string) -> string {
     if (strings.HasPrefix(path, "/")) {
         return path
     }
-    return Join([build.root(), "/", path])
+    return Join([os.Root(), "/", path])
 }
 
 // Prints or runs one step and reports a failure under its name.
 Step :: (name: string, command: string[], dry: bool) -> int {
     if (dry) {
-        build.report(Join([name, ": ", strings.Join(command, " ")]))
+        os.Print(Join([name, ": ", strings.Join(command, " ")]))
         return 0
     }
-    status := build.run(command)
+    status := os.Run(command)
     if (status != 0) {
-        build.report(format_text("{}: failed with status {}", name, status))
+        os.Print(format_text("{}: failed with status {}", name, status))
     }
     return status
 }
@@ -90,16 +91,17 @@ DefaultDirectory :: (profile: string) -> string {
 }
 
 HostUsable :: (host: string) -> bool {
-    if (!build.file_exists(host)) {
+    if (!os.Exists(host)) {
         return false
     }
-    return build.probe([host, "--protocol-version"]) == 0 && build.trim(build.last_stdout()) == "14"
+    probe := os.Capture([host, "--protocol-version"])
+    return probe.status == 0 && build.trim(probe.stdout) == "14"
 }
 
 // The command that runs an authored program under the private host.
 Program :: (host: string, source: string, function: string, collections: string[], timeout: string) -> string[] {
     command := [
-        host, "--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", build.root(),
+        host, "--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", os.Root(),
         "--source", source, "--core", "packages/core"
     ]
     for (collection in collections) {
@@ -178,7 +180,7 @@ Build :: (arguments: string[]) -> int {
         graph = build.concat(graph, ["--target", target])
     }
     command := build.concat(
-        ["env", Join(["CCACHE_BASEDIR=", build.root()])],
+        ["env", Join(["CCACHE_BASEDIR=", os.Root()])],
         build.concat(Program(host, "tools/toolchain/Graph.chibi", "Libraries", ["graph=tools/graph"], timeout), graph)
     )
     status = Step("graph", command, dry)
@@ -189,12 +191,12 @@ Build :: (arguments: string[]) -> int {
 }
 
 Usage :: () -> int {
-    build.report("usage: build [--release|--debug] [--build DIR] [--target NAME]... [--all] [--jobs N] [--dry-run]")
+    os.Print("usage: build [--release|--debug] [--build DIR] [--target NAME]... [--all] [--jobs N] [--dry-run]")
     return 2
 }
 
 Main :: () -> int {
-    arguments := build.arguments()
+    arguments := os.Arguments()
     if (length(arguments) == 0 || arguments[0] != "build") {
         return Usage()
     }

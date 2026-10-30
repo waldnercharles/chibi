@@ -2432,6 +2432,8 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PORTABLE_HASH_ADLER32_INPUTS=test-inputs:PORTABLE_HASH_ADLER32:hash/adler32:packages/core/hash/adler32",
             "CHIBI_PORTABLE_HASH_CRC32_SOURCES=test-sources:PORTABLE_HASH_CRC32:hash/crc32:packages/core/hash/crc32",
             "CHIBI_PORTABLE_HASH_CRC32_INPUTS=test-inputs:PORTABLE_HASH_CRC32:hash/crc32:packages/core/hash/crc32",
+            "CHIBI_PORTABLE_HASH_SHA256_SOURCES=test-sources:PORTABLE_HASH_SHA256:hash/sha256:packages/core/hash/sha256",
+            "CHIBI_PORTABLE_HASH_SHA256_INPUTS=test-inputs:PORTABLE_HASH_SHA256:hash/sha256:packages/core/hash/sha256",
             "CHIBI_INTEGER_ARITHMETIC_BYTES=bytes:test/integer_arithmetic/Arithmetic.chibi",
             "CHIBI_PORTABLE_ENCODING_HEX_SOURCES=test-sources:PORTABLE_ENCODING_HEX:encoding/hex:packages/core/encoding/hex",
             "CHIBI_PORTABLE_ENCODING_HEX_INPUTS=test-inputs:PORTABLE_ENCODING_HEX:encoding/hex:packages/core/encoding/hex",

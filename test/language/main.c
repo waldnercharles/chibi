@@ -189,21 +189,21 @@ int main(int argc, char **argv)
                                   !strcmp(argv[1], "--component-write-layout");
     bool build_workflow = argc == 2 && !strcmp(argv[1], "--build-workflow");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
-    if ((!compiler_artifact && !execution && !execution_scope &&
-         !record_values && !record_document && !record_compatibility &&
-         !compositional_records && !program && !program_session && !ranges &&
-         !integer_semantics && !integer_arithmetic && !integer_shift_counts &&
-         !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
-         !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
-         !syntax_chibi && !source_tokenizer_chibi && !source_parser_chibi &&
-         !package_syntax && !package_syntax_chibi && !package_routes_chibi &&
-         !package_snapshot_chibi && !compiler_fixture && !bounded_compiler_chibi &&
-         !package_compiler_chibi && !package_compiler_chibi_libraries &&
-         !package_compiler_chibi_types && !package_compiler_chibi_fallible &&
-         !package_compiler_chibi_imports && !package_compiler_chibi_math_native &&
-         !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
-         !package_compiler_chibi_compiled && !package_compiler_chibi_types_compiled &&
-         !package_compiler_chibi_collections && !package_compiler_chibi_collections_compiled &&
+    if ((!compiler_artifact && !execution && !execution_scope && !record_values &&
+         !record_document && !record_compatibility && !compositional_records &&
+         !program && !program_session && !ranges && !integer_semantics &&
+         !integer_arithmetic && !integer_shift_counts && !integer_shift_counts_authored &&
+         !package_graph && !package_graph_chibi && !asset_compiler_host &&
+         !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
+         !source_tokenizer_chibi && !source_parser_chibi && !package_syntax &&
+         !package_syntax_chibi && !package_routes_chibi && !package_snapshot_chibi &&
+         !compiler_fixture && !bounded_compiler_chibi && !package_compiler_chibi &&
+         !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
+         !package_compiler_chibi_fallible && !package_compiler_chibi_imports &&
+         !package_compiler_chibi_math_native && !package_compiler_chibi_imports &&
+         !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
+         !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
+         !package_compiler_chibi_collections_compiled &&
          !package_compiler_chibi_imports_compiled &&
          !package_compiler_chibi_literals && !package_compiler_chibi_behaviors &&
          !package_compiler_chibi_behaviors_rest && !package_compiler_chibi_queries &&
@@ -213,10 +213,10 @@ int main(int argc, char **argv)
          !native_census_flattening && !package_compiler_chibi_native_arguments &&
          !package_compiler_chibi_native_arguments_oracle && !type_relations_chibi &&
          !package_resolution && !package_imports && !host_packages &&
-         !host_packages_compiler && !package_files && !package_core && !package_math &&
-         !package_math_benchmark && !package_portable && !package_portable_compiler &&
-         !package_tests && !argument_effects_chibi && !component_write &&
-         !component_write_layout && !build_workflow &&
+         !host_packages_compiler && !package_files && !package_core &&
+         !package_math && !package_math_benchmark && !package_portable &&
+         !package_portable_compiler && !package_tests && !argument_effects_chibi &&
+         !component_write && !component_write_layout && !build_workflow &&
          !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,

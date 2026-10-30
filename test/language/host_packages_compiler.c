@@ -60,6 +60,30 @@ static const char APP
          "first.platform_error != 0 || second.platform_error != 0) { return 3; "
          "} "
          "return 0; }\n";
+/* The shipped host:clock package: Now and Between return an @error ClockError. */
+static const char
+    NOW_APP[] = "package app\nimport watch \"host:clock\"\nimport time \"core:time\"\n"
+                "Failure :: (error: watch.ClockError?, kind: int, code: int) -> int { "
+                "if (error) { if (error.kind != kind) { return 5; } "
+                "if (error.code != code) { return 6; } return 0; } return 4; }\n"
+                "Reading :: (nanoseconds: i64, domain: u64, kind: int, code: int) -> int { "
+                "r := watch.Now(); "
+                "if (kind != 0) { if (r.instant.nanoseconds != 0 || r.instant.domain != 0) { return 7; } "
+                "return Failure(r.error, kind, code); } "
+                "if (r.error) { return 1; } "
+                "if (r.instant.nanoseconds != nanoseconds) { return 2; } "
+                "if (r.instant.domain != domain) { return 3; } return 0; }\n"
+                "Elapsed :: (expected: i64) -> int { "
+                "a := watch.Now(); if (a.error) { return 1; } "
+                "b := watch.Now(); if (b.error) { return 2; } "
+                "d := watch.Between(a.instant, b.instant); if (d.error) { return 3; } "
+                "if (time.Nanoseconds(d.duration) != expected) { return 4; } return 0; }\n"
+                "Mismatch :: () -> int { "
+                "x: time.Instant = {nanoseconds: 5, domain: 1}; "
+                "y: time.Instant = {nanoseconds: 9, domain: 2}; "
+                "d := watch.Between(x, y); "
+                "if (time.Nanoseconds(d.duration) != 0) { return 7; } "
+                "return Failure(d.error, 4, 0); }\n";
 static const char MIXED_APP
     [] = "package app\nimport watch \"host:clock\"\nimport time \"core:time\"\n"
          "Private :: (expected: i64, domain: u64) -> int { s := watch.Read(); "
@@ -222,8 +246,8 @@ static char *compile_input(
     return json;
 }
 
-/* CompileWithEffects returns a tagged Rejected diagnostic. Require its source
- * coordinates as well as its message so a transport failure cannot pass. */
+/* CompileWithEffects returns the rejection diagnostic as its trailing optional
+ * result. Require its source coordinates as well as its message so a transport failure cannot pass. */
 static bool rejects(
     const char *name,
     const char *app,
@@ -247,7 +271,7 @@ static bool rejects(
     );
     free(input);
     yyjson_doc *doc = called ? yyjson_read(result.json, result.length, 0) : NULL;
-    yyjson_val *outcome = yyjson_arr_get(yyjson_doc_get_root(doc), 0);
+    yyjson_val *outcome = yyjson_arr_get(yyjson_doc_get_root(doc), 2);
     yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(outcome, "values"), 0);
     const char *message = yyjson_get_str(yyjson_obj_get(diagnostic, "message"));
     bool rejected = called && result.flow_status == FLOW_OK && message && *message &&
@@ -268,7 +292,7 @@ static bool rejects(
     return true;
 }
 
-static bool compile_clock(const char *app, const native_capabilities *target)
+static bool compile_package(const char *app, const char *clock, const native_capabilities *target)
 {
     finish_call();
     if (packages) {
@@ -279,7 +303,7 @@ static bool compile_clock(const char *app, const native_capabilities *target)
     free(closure.bytes);
     closure = (compiler_host_bytes){ 0 };
     size_t length = 0;
-    char *input = compile_input(app, CLOCK, "/host/clock/Clock.chibi", target, &length);
+    char *input = compile_input(app, clock, "/host/clock/Clock.chibi", target, &length);
     REQUIRE(input);
     bool called = compiler_host_invoke_bytes(
         compiler,
@@ -298,6 +322,11 @@ static bool compile_clock(const char *app, const native_capabilities *target)
     REQUIRE(closure.counts.sljit_entries && !closure.counts.bytecode_entries);
     REQUIRE(!closure.counts.overflow && !closure.counts.inspection_bytecode_fallbacks);
     return true;
+}
+
+static bool compile_clock(const char *app, const native_capabilities *target)
+{
+    return compile_package(app, CLOCK, target);
 }
 
 static bool load_closure(behavior_backend backend, const native_capabilities *target)
@@ -439,6 +468,49 @@ static bool samples(behavior_backend backend)
     return true;
 }
 
+static bool reading(
+    behavior_backend backend,
+    host_clock_grant *grant,
+    int64_t nanoseconds,
+    uint64_t domain,
+    int kind,
+    int code
+)
+{
+    const pin_value arguments[] = {
+        { .type = PIN_I64, .i64 = nanoseconds },
+        { .type = PIN_U64, .u64 = domain },
+        { .type = PIN_I32, .i = kind },
+        { .type = PIN_I32, .i = code },
+    };
+    return call("Reading", arguments, 4, grant, backend);
+}
+
+static bool now_samples(behavior_backend backend)
+{
+    clock_fixture fixture = { .status = HOST_CLOCK_OK,
+                              .nanoseconds = INT64_C(9007199254740993),
+                              .error = EIO };
+    host_clock_grant grant;
+    host_clock_grant_init(&grant, sample_fixture, &fixture);
+    REQUIRE(reading(backend, NULL, 0, 0, HOST_CLOCK_SAMPLE_DENIED, 0));
+    REQUIRE(!fixture.calls);
+    REQUIRE(reading(backend, &grant, fixture.nanoseconds, grant.domain, HOST_CLOCK_SAMPLE_OK, 0));
+    fixture.status = HOST_CLOCK_FAILED;
+    REQUIRE(reading(backend, &grant, 0, 0, HOST_CLOCK_SAMPLE_FAILED, EIO));
+    fixture.status = HOST_CLOCK_UNAVAILABLE;
+    REQUIRE(reading(backend, &grant, 0, 0, HOST_CLOCK_SAMPLE_UNAVAILABLE, 0));
+    fixture.status = HOST_CLOCK_OK;
+    fixture.nanoseconds = -1;
+    REQUIRE(reading(backend, &grant, 0, 0, HOST_CLOCK_SAMPLE_FAILED, ERANGE));
+    fixture.nanoseconds = INT64_C(9007199254740993);
+    fixture.increment = 7;
+    const pin_value expected[] = { { .type = PIN_I64, .i64 = 7 } };
+    REQUIRE(call("Elapsed", expected, 1, &grant, backend));
+    REQUIRE(call("Mismatch", NULL, 0, NULL, backend));
+    return true;
+}
+
 TEST_CASE(host_packages_compile_link_and_run_through_stage_one)
 {
     REQUIRE(load_compiler());
@@ -500,6 +572,11 @@ TEST_CASE(host_packages_compile_link_and_run_through_stage_one)
         REQUIRE(fixture.calls == 1 && !ambient_calls);
         REQUIRE(call("Ambient", NULL, 0, NULL, backends[b]));
         REQUIRE(fixture.calls == 1 && ambient_calls == 1);
+    }
+    REQUIRE(compile_package(NOW_APP, HOST_CLOCK_SOURCE, native));
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(load_closure(backends[b], native));
+        REQUIRE(now_samples(backends[b]));
     }
     return true;
 }

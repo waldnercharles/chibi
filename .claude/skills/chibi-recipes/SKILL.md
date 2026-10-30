@@ -32,7 +32,7 @@ reusable capability:
    still work.
 4. Use it in a `test/fixtures/feature-coverage` scene or prototype (KDL key
    `<Name>`) and cover its behavior with a pico_unit case.
-   `make test-projects` fails until the component is used there or listed in
+   `chibi build test projects` fails until the component is used there or listed in
    that fixture's `coverage-gaps.txt` with a reason.
 5. If saved projects change meaning, also follow "Change saved projects".
 
@@ -52,7 +52,7 @@ The smallest complete example is Play Sound:
    `apush(selected, ...)` in `src/host/native_default.c`.
 5. Test it from source in a tool selector (for example
    `test/runtime/source_features.c`, run with
-   `python3 tools/test_policy.py tool source-native-features`), on both the VM
+   `chibi build test source-native-features`), on both the VM
    and SLJIT backends, and call it from a behavior in the
    `test/fixtures/feature-coverage` scene for its area.
 
@@ -63,13 +63,13 @@ The smallest complete example is Play Sound:
    and a `content/` tree. Don't add game rules to engine fixtures; keep
    content minimal and independent of any one game. A scene that exercises
    an engine feature area belongs in `test/fixtures/feature-coverage`, where
-   `make test-projects` runs every scene for four frames.
+   `chibi build test projects` runs every scene for four frames.
 2. Add `content/scenes/<Name>.kdl` (`version 1`, `name`, `(array)entities`
    of `- name=... prototype=...`) and the prototypes it uses. A scenario in
    `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.
 3. Game projects are archived; there is no project compile to validate with yet.
 4. Run it bounded with the project's `@test` functions (`chibi test <root>`) or
-   a scenario through `make agent-test`. Choose enough frames to exercise the
+   a scenario through `chibi build test`. Choose enough frames to exercise the
    scenario.
 
 ## Change saved projects

@@ -226,8 +226,8 @@ both spring loops. Those counters cover the benchmark bodies and their runtime
 work.
 
 ```sh
-CHIBI_LANGUAGE_BUILD_DIR=<build> python3 tools/test_policy.py tool language-package-math
-CHIBI_LANGUAGE_BUILD_DIR=<build> python3 tools/test_policy.py tool language-package-math-benchmark
+CHIBI_LANGUAGE_BUILD_DIR=<build> chibi build test language-package-math
+CHIBI_LANGUAGE_BUILD_DIR=<build> chibi build test language-package-math-benchmark
 ```
 
 `CHIBI_CORE_MATH_ROOT` selects a math source directory, including the directory

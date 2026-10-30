@@ -94,7 +94,7 @@ for selector in language-package-compiler-chibi-scalar \
                 language-package-compiler-chibi-behaviors-rest \
                 language-asset-compiler-host compiler-bootstrap; do
   python3 tools/quiet.py --log-dir "$evidence" "$selector" -- \
-    python3 tools/test_policy.py tool "$selector" || exit "$?"
+    chibi build test "$selector" || exit "$?"
 done
 ```
 

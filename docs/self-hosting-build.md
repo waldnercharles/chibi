@@ -1014,7 +1014,7 @@ to its executable. For the installed graph, pass
 `--core PREFIX/share/chibi/core`, and
 `--collection graph=PREFIX/share/chibi/graph`.
 
-`python3 tools/test_policy.py tool build-sdk` runs the C packaging and relocation
+`chibi build test build-sdk` runs the C packaging and relocation
 cases against the Release graph tools. The separate SDK CI lane deliberately
 retains a CMake-built harness as a reference consumer; the full Graph validation
 lane builds the harness with Graph. To run the CMake reference harness:
@@ -1025,7 +1025,7 @@ make build GRAPH_BUILD= BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_
 CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
 CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
 CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
-  python3 tools/test_policy.py tool build-sdk
+  chibi build test build-sdk
 ```
 
 The CMake harness must leave both shipped Release hosts and their adjacent

@@ -224,10 +224,10 @@ The final current-source checks passed under the production test supervisor:
 Run from the worktree root:
 
 ```sh
-python3 tools/test_policy.py tool language-package-compiler-chibi-imports
-python3 tools/test_policy.py tool language-package-compiler-chibi-imports-compiled
-CHIBI_LANGUAGE_BUILD_DIR=build-release/test/language python3 tools/test_policy.py tool language-package-compiler-chibi-sharing
-python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
+chibi build test language-package-compiler-chibi-imports
+chibi build test language-package-compiler-chibi-imports-compiled
+CHIBI_LANGUAGE_BUILD_DIR=build-release/test/language chibi build test language-package-compiler-chibi-sharing
+chibi build test language-package-compiler-chibi-bootstrap
 ```
 
 Independent review found no remaining actionable issues. C formatting and

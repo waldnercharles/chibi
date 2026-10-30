@@ -172,7 +172,7 @@ The initial allowlist contains the heavy scalar, behavior, packaging, asset-host
 compiler-bootstrap and Linux scalar-native selectors. Other selectors remain
 exclusive barriers until their resources are audited; they are not omitted.
 `make -j1` still protects cross-target fixtures. `make test-language-all
-TEST_JOBS=1` or `python3 tools/test_policy.py --jobs 1 group language` preserves
+TEST_JOBS=1` or `chibi build test language` preserves
 the original fully serial group route. `--jobs N` / `TEST_JOBS=N` explicitly
 selects a worker limit; it does not make unaudited selectors parallel-safe.
 
@@ -182,8 +182,7 @@ work, cancels owned workers, prints their partial logs and reports queued select
 as not run. The optional group deadline still covers the whole group, including
 queueing; existing in-test child budgets are unchanged. Scratch is removed after
 worker cleanup, including on SIGINT/SIGTERM. Absolute source paths are not
-isolated by changing TMPDIR; the [resource audit](test-parallel-resources.md)
-records why each enabled selector is safe.
+isolated by changing TMPDIR; the retired resource audit recorded why each enabled selector was safe.
 
 The runner writes `Test policy: {...}` JSON diagnostics to stderr, separate from
 program stdout: selected automatic/explicit worker count and admission reason,
@@ -212,7 +211,7 @@ case; set `TEST_BINARY` to use another driver. The arguments are tokenized and
 passed directly to the program. For an arbitrary driver invocation, use
 `python3 tools/test_policy.py native /absolute/path/to/test_binary --selector`.
 An optional timeout precedes the action, for example
-`python3 tools/test_policy.py --timeout SECONDS tool language-program`.
+`chibi build test language-program`.
 
 `make test-projects` also builds an unsanitized Release `chibi_ctl` and `chibi`
 launcher, with its `chibi-compile` and `chibi-player`, in `build-release/`:
@@ -238,21 +237,21 @@ compiler and player, the launcher's own `version` and `doctor`, and the real
 package trees. Its `doc` case checks forwarding to the compiler; the real
 compiler's documentation cases run under `published-docs`.
 
-`python3 tools/test_policy.py tool language-docs-markdown` checks the authored
+`chibi build test language-docs-markdown` checks the authored
 renderer on both bytecode and the compiled backend, including grammar-derived
 highlighting, incomplete-fragment recovery, exact source slices, escaping,
 whitespace, UTF-8, and the GitHub Light/Dark Default token colors and contrast.
 Those presentation checks are separate from the original-snippet validation
 above, which cannot access the generator's private parser native.
 
-`python3 tools/test_policy.py tool <name>` runs one mapped selector against
+`chibi build test <name>` runs one mapped selector against
 the drivers `make test-build` produced and those Release tools, except
 `language-package-compiler-chibi-bootstrap`, which runs the Release
 `test_language` that `make test-bootstrap` builds; set
 `CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CTL`, `CHIBI_CLI` or
 `CHIBI_COMPILE` to use another build.
 
-`python3 tools/test_policy.py tool fixture-format` checks the fixed thirteen
+`chibi build test fixture-format` checks the fixed thirteen
 checked-in fixture projects with Release `chibi_ctl --format --check`.
 It refuses outdated manifests before launching any child, because opening an
 old project can migrate it. Some selectors run separately from the aggregate
@@ -269,7 +268,7 @@ group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 `sdf-quality`, `scene3d-post` and `scene3d-shapes` render through a hidden
 window, which needs a display and a GPU driver the CI job does not set up, so
 they stay out of the group; run them with
-`python3 tools/test_policy.py tool <name>`.
+`chibi build test <name>`.
 
 CI runs the build, the four groups and `make test-tools` on Linux and macOS.
 The general Windows engine and Studio jobs are paused pending desktop archives.
@@ -496,14 +495,14 @@ be included through semicolon-separated absolute roots in
 path per line. Save the generated `corpus.txt`
 with evidence so the exact checked file set remains identifiable.
 
-`python3 tools/test_policy.py tool language-semantic` selects seven independently
+`chibi build test language-semantic` selects seven independently
 reviewed C cases with tiny inline sources and a fixed catalog. They check lexical
 resolution, optional component guards, numeric limits, catalog operator dispatch,
 transitive effects, binding cycles and invalid-source recovery. There are no files,
 child processes, engine frames or GPU work. Debug Clang 23.1.1 with ASan/UBSan
 passed 7 cases and 36 assertions in 0.468 seconds on 2026-10-07.
 
-`python3 tools/test_policy.py tool language-execution` selects ten independently
+`chibi build test language-execution` selects ten independently
 reviewed C cases through public SDK headers. They check VM/native results and
 state changes, host calls, owned values, linked functions, malformed instruction
 rejection, a loop with a three-step budget, integer bitwise/shift behavior at
@@ -526,7 +525,7 @@ the optimizer's treatment of failing shifts. Twenty invocations, each capped at
 constant counts on both backends. An unused invalid shift must still fail and
 preserve a prior persistent write; a valid shift reaches the subsequent write.
 
-`python3 tools/test_policy.py tool language-program` selects 167 cases, including
+`chibi build test language-program` selects 167 cases, including
 the earlier twelve-case source/runtime workload on VM and SLJIT. Besides typed
 events, systems,
 bindings, imports, cancellation and failure records, it exercises eager tuple
@@ -547,7 +546,7 @@ locals and parameters, field projections, record/array value copies containing
 pointers, separate allocation identity, nullable/grouped types, numeric widening,
 whole-array replacement and a two-node cycle.
 
-`python3 tools/test_policy.py tool script-benchmark` measures default compiler
+`chibi build test script-benchmark` measures default compiler
 execution of equivalent inline arithmetic and authored scalar helper calls on
 VM and the platform's compiled backend (SLJIT natively, Wasm on the web).
 Four in-memory modules each run one correctness warmup and five
@@ -630,7 +629,7 @@ Samples, build provenance, artifact hashes and logs remain under
 `.chibi/wasm-jit/benchmark-final.json` and `.chibi/wasm-jit/baseline/`. Temporary
 baseline and sanitizer builds have been removed.
 
-`python3 tools/test_policy.py tool language-navigation` selects eleven reviewed
+`chibi build test language-navigation` selects eleven reviewed
 in-memory cases for shadowing, capture rejection, cross-file renames, escaped
 names, event aliases, reflected members, signatures, completion recovery and
 owned output lifetimes. It passed 99 assertions in 0.678 seconds with ASan/UBSan.
@@ -656,7 +655,7 @@ The 13-case program selector now passes 1,689 assertions in 0.884 seconds with
 ASan/UBSan on VM and SLJIT. Its new fixed case checks exact signed/unsigned 64-bit
 limits, values above 2^53, contextual nominal enums and five out-of-range rejects.
 
-`python3 tools/test_policy.py tool controller` runs five C command-response cases
+`chibi build test controller` runs five C command-response cases
 against `build-release/bin/chibi_ctl`, also included in `make test-projects`.
 Set `CHIBI_CTL` and `CHIBI_TOOLS_BUILD_DIR` to select isolated builds. The workload
 uses seven tiny generated files per case, two scene entities, thirteen owned
@@ -675,7 +674,7 @@ compared within one response; they are not cross-process identity guarantees.
 These CPU command checks do not exercise Studio, rendered graph gestures, GPU
 profiling, or performance thresholds.
 
-`python3 tools/test_policy.py tool runtime-scene` runs two public SDK consumer
+`chibi build test runtime-scene` runs two public SDK consumer
 cases with four entities/two scene instances, owned component payloads, deferred
 Begin, rollback and cancellation. The normal Debug runtime-only consumer passed
 59 assertions in 0.656 seconds. `field-runtime` originally ran three public cases for owned
@@ -930,7 +929,7 @@ and leaves both worlds on the generation they had; a preview scene launch that
 fails destroys its entities before releasing their component override strings.
 11 assertions in 0.23 seconds with ASan/UBSan; a temporary folder.
 
-`python3 tools/test_policy.py tool native-runtime` includes two fixed player
+`chibi build test native-runtime` includes two fixed player
 Panic-relationship cases: a refused scene change preserves its current instance,
 entities, links, globals, scene-flow name and unsaved values, while shutdown
 releases its entire owned world, including a disabled external Panic source.
@@ -977,7 +976,7 @@ All twenty passed 3,648 assertions in 2.4 seconds with ASan/UBSan on
 2026-10-16.
 
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
-`python3 tools/test_policy.py tool validate-project` runs its cases against
+`chibi build test validate-project` runs its cases against
 `build-release/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
@@ -1009,7 +1008,7 @@ no asset name or that a prototype already declares, and a model it cannot
 read, writing nothing.
 A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
 
-`python3 tools/test_policy.py tool prototype-expansion` runs, the same way, the
+`chibi build test prototype-expansion` runs, the same way, the
 two cases whose projects read past the prototype expansion budget that
 preparation shares: a project's prototypes, each under its own load's limit,
 and a scene's instances of one prototype tree. Each reads tens of thousands of
@@ -1041,7 +1040,7 @@ use no renderer, sleeps or child processes. Its exact dispatcher runs only regis
 validation and these cases. The migrated selector has been independently
 reviewed; no execution result is recorded here.
 
-`python3 tools/test_policy.py tool tilemap` selects eight reviewed C cases for
+`chibi build test tilemap` selects eight reviewed C cases for
 owned grid decoding and cache invalidation, half-open point lookup, exact rotated
 rectangle overlap, transformed bounds and native ECS binding lifetimes. Each
 grid has at most four cells and no rendering or engine frames run. A decorative
@@ -1049,7 +1048,7 @@ prototype also checks, without gameplay, that its atlas and its normal and heigh
 maps are prepared and that it owns its prepared data, and a map of another size
 must fail preparation.
 
-`python3 tools/test_policy.py tool webgpu-staging` runs a C-owned disposable
+`chibi build test webgpu-staging` runs a C-owned disposable
 Chrome process against the browser build of the same tooling dispatcher in
 `build-webgpu-test`. It draws one 64-by-64 quad for 120 animation frames, checks
 staging-buffer reuse and a 64 MiB peak ceiling, then checks that destroying a
@@ -1065,7 +1064,7 @@ build's `CHIBI_TEST_WEBGPU_BASELINE=ON` retains CF's ASYNCIFY initialization.
 Callback wall time excludes the first 30 frames and is diagnostic, not a timing
 assertion. This small workload does not establish whole-game performance.
 
-`python3 tools/test_policy.py tool source-native-numeric-queries` selects five
+`chibi build test source-native-numeric-queries` selects five
 finite C cases on VM and SLJIT. Besides numeric outputs and nested entity query
 membership, the rectangle case prepares one declared Boolean component and two
 contextually typed `EntityCondition` arrays. Ten fixed transform positions check
@@ -1079,7 +1078,7 @@ project-owned scenario coverage.
 The tilemap case executes both tilemap functions on VM and SLJIT using one
 two-cell map, then edits its cells and checks the next dispatch sees the change.
 
-`python3 tools/test_policy.py tool language-headless` selects two independently
+`chibi build test language-headless` selects two independently
 reviewed public SDK consumer cases on VM and SLJIT. Each owns one entity and
 scalar component, runs five explicit steps, and checks registration ownership,
 Begin, Tick, named payloads, bindings, destruction and removal. Preparation uses
@@ -1089,7 +1088,7 @@ execution. The consumer compiles with only `Chibi::behavior_runtime`. There are 
 files, processes or GPU work. Debug Clang 23.1.1 with ASan/UBSan passed two
 cases and 106 assertions in 0.635 seconds on 2026-10-07.
 
-`python3 tools/test_policy.py tool language-prepared` starts the existing C tooling
+`chibi build test language-prepared` starts the existing C tooling
 dispatcher with an exact compiler-test producer path. One producer process exports
 three small modules and checks repeatable bytes, then exits. A separate runtime-only
 process runs four independently reviewed cases: state/events/bindings/imports,
@@ -1139,7 +1138,7 @@ CI runs `make test-tools`; the planner's `--tools` also selects that complete gr
 Retired script suites have not been reproduced completely.
 
 The focused room-service check is
-`CHIBI_TOOLS_BUILD_DIR=build-tools python3 tools/test_policy.py --timeout 60 tool collab`
+`CHIBI_TOOLS_BUILD_DIR=build-tools chibi build test collab`
 after `make tools-build`. It runs the real Node server from the C dispatcher.
 Health readiness must succeed before the existing 401/201/403 authority checks.
 Unexpected responses report the method, path, expected and actual status, byte
@@ -1152,7 +1151,7 @@ use process signals and sockets rather than replacement server responses.
 These cases also remain in `make test-tools`; the focused command does not
 certify that complete group or the native/material/project/language groups.
 
-For reflection range metadata, `python3 tools/test_policy.py tool reflect-ranges`
+For reflection range metadata, `chibi build test reflect-ranges`
 selects two existing C cases with unchanged assertions: numeric units and range
 generation, malformed and nonnumeric annotations, unsafe endpoints, distinct
 hints/defaults, and failed generation preserving prior outputs. The fixed sources
@@ -1484,7 +1483,7 @@ instrumentation assertions, and passive test/build wall times remain enabled.
 The separately dispatched debug-optimization experiment remains manual.
 
 Use `make benchmark` for the mapped native C benchmarks or
-`python3 tools/test_policy.py tool <benchmark-name>` for one fixture. Each
+`chibi build test <benchmark-name>` for one fixture. Each
 fixture owns its fixed trial count and reports timings alongside correctness
 assertions. Retain the workload output and compare matching build configurations.
 Retired Python drivers' generated-C comparisons and report formats were not
@@ -1498,7 +1497,7 @@ remain binding.
 
 ## Package execution checks
 
-`python3 tools/test_policy.py tool language-package-execution` selects seven
+`chibi build test language-package-execution` selects seven
 fixed C cases in `test_language`: sibling calls and mutual recursion on bytecode
 and SLJIT, stable exported identities, document-local errors, duplicate exports,
 declaration discovery, source ownership and sibling records/unions/constants.
@@ -1509,7 +1508,7 @@ performs no filesystem, subprocess, world or GPU work. Build separately. The
 independent package graph
 and syntax routes remain unchanged; this focused route is not in the aggregate.
 
-`python3 tools/test_policy.py tool language-package-resolution` selects eight
+`chibi build test language-package-resolution` selects eight
 fixed C cases for explicit roots, equivalent paths, file-local aliases, blank
 imports, located invalid paths and strings, duplicates, cycles, stable keys and
 owned input lifetimes. There are 24 snapshot constructions, at most 56 parses and
@@ -1518,7 +1517,7 @@ three simultaneous owners. Each source is below 1 KiB. The route performs no
 filesystem, process, authored execution or GPU work. Build separately; this
 focused route is also outside the aggregate.
 
-`python3 tools/test_policy.py tool language-package-imports` selects thirteen
+`chibi build test language-package-imports` selects thirteen
 fixed C cases for dependency execution, alias isolation, self imports, `pub`
 visibility and its private-member diagnostics, owned exported
 records/unions/constants, stable identities, incremental invalidation, retained
@@ -1538,7 +1537,7 @@ route is outside the language aggregate.
 
 ## Disk package-source checks
 
-`python3 tools/test_policy.py tool language-package-files` selects eight fixed
+`chibi build test language-package-files` selects eight fixed
 C cases on native Linux and macOS. It reads disposable source forests through
 `source_package_snapshot_load`, then prepares siblings, relative dependencies
 and an explicit `core:` collection on bytecode and SLJIT. Cases check relocation
@@ -1562,7 +1561,7 @@ is outside the language aggregate. Windows retains the explicit unsupported
 filesystem adapter; buffer-based package APIs are unaffected. Source registration
 records no execution result.
 
-`python3 tools/test_policy.py tool language-package-core` selects seven fixed
+`chibi build test language-package-core` selects seven fixed
 C cases using the actual shipped `core:strings` source and pure text/array packs.
 It covers unsigned bytes, slice bounds and ownership, lexical ordering, ASCII
 identifiers, basename extraction, the byte procedures ported from Odin's
@@ -1578,7 +1577,7 @@ the caller buffers are poisoned and freed. There is no filesystem, process, serv
 embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately.
 This focused route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-docs-markdown` selects fourteen fixed C
+`chibi build test language-docs-markdown` selects fourteen fixed C
 cases for `chibi doc`'s authored generator: one preparation of the shipped
 `markdown`, `site`, `reference`, `grammar`, `compiler_syntax` and
 `syntax_diagnostics` packages with `core:strings` per case. The fixture opts into
@@ -1591,7 +1590,7 @@ reaches the rendered text. Each call stays under a 2,000,000-instruction budget.
 There is no filesystem, process, service or GPU work. This focused route is
 outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-package-tests` selects four portable C
+`chibi build test language-package-tests` selects four portable C
 cases (plus a worker-pool case when that SDK target is available) for the
 shared runner behind `chibi test`. One preparation per backend has
 five files: the shipped `core:strings` source, a collection package with a test
@@ -1617,7 +1616,7 @@ the existing bounded runtime thread pool, independently of repository selector
 processes and C case scheduling. `CHIBI_TEST_WORKERS=1` keeps it serial; see the
 [package testing guide](guide/testing.md#parallel-execution).
 
-`python3 tools/test_policy.py tool language-package-graph-chibi` reuses the
+`chibi build test language-package-graph-chibi` reuses the
 existing 23 C graph cases for differential comparison with the authored compiler
 component. Two package owners prepare the actual graph/core sources once for
 bytecode and SLJIT (four source parses). The corpus makes 28 graph constructions,
@@ -1641,7 +1640,7 @@ lexical/nominal binding, snapshot-reader and compiler-artifact fixtures. Their
 non-core source bounds, aggregate bounds, invocation budgets and process limits
 remain unchanged. These checks add no preparations or authored invocations.
 
-`python3 tools/test_policy.py tool language-syntax-chibi` compares authored
+`chibi build test language-syntax-chibi` compares authored
 diagnostic traversal with the C parser using fourteen shared source texts and
 two independent edits. Each edit compares the original, incremental and fresh
 tree: twenty raw Tree-sitter trees and twenty C oracle snapshots produce
@@ -1655,7 +1654,7 @@ is compared after producer storage retires. This route uses no filesystem,
 process, service or GPU work. Build separately.
 It remains outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-source-parser-chibi` compares the
+`chibi build test language-source-parser-chibi` compares the
 authored parser (`docs/source-parser.md`) with Tree-sitter. It parses every
 `.chibi` file below `packages/`, `test/` and `tools/`, and the `*.chibi.txt`
 sources in `test/language/syntax_corpus`, once on each backend, and
@@ -1663,7 +1662,7 @@ sources in `test/language/syntax_corpus`, once on each backend, and
 kind, range, links, field, named and extra flags. Text Tree-sitter rejects must
 be rejected as well.
 
-`python3 tools/test_policy.py tool language-source-tokenizer-chibi` compares
+`chibi build test language-source-tokenizer-chibi` compares
 the authored tokenizer (`docs/source-tokenizer.md`) with Tree-sitter. It reads
 every `.chibi` file below `packages/`, `test/` and `tools/` at run time, about
 145 files under 1 MiB in all, and tokenizes each once on SLJIT; every token's
@@ -1687,7 +1686,7 @@ does not require a witness: the current parser selects visible missing tokens
 for these inputs. The authored hidden-error rule matches the retained C code;
 this corpus does not establish execution coverage for that branch.
 
-`python3 tools/test_policy.py tool language-package-syntax-chibi` uses
+`chibi build test language-package-syntax-chibi` uses
 the existing eleven extraction cases and all 32 extraction attempts. It adds
 32 independent raw parses and 64 authored `Extract` invocations across both
 backends, each capped at one million instructions including its diagnostic
@@ -1699,7 +1698,7 @@ ranges, alias presence, names, source order and diagnostics after producer and
 input storage retire. This standalone route has no runtime files, children,
 services or GPU work. Build separately.
 
-`python3 tools/test_policy.py tool language-package-paths-chibi` selects three
+`chibi build test language-package-paths-chibi` selects three
 cases with 26 fixed lexical requests: twelve existing resolver inputs and
 fourteen boundary cases. The unchanged C helper supplies 26 oracle results;
 52 authored calls across bytecode and SLJIT allow one million instructions each.
@@ -1715,7 +1714,7 @@ performance at the maximum segment count. The route has no runtime files,
 children, services or GPU work. Build separately; this route is outside the
 aggregate.
 
-`python3 tools/test_policy.py tool language-package-routes-chibi` compares
+`chibi build test language-package-routes-chibi` compares
 thirteen collection-root requests, eleven file routes and sixteen import routes.
 Each file/import request also builds its roots independently in Chibi. The
 workload totals 67 C oracle calls and 134 authored calls across bytecode and
@@ -1732,7 +1731,7 @@ and retained root/file/import outputs also survive owner teardown. There are
 no runtime files, children, services or GPU operations. Build separately. This
 route remains outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-package-snapshot-chibi` reuses the
+`chibi build test language-package-snapshot-chibi` reuses the
 eight resolver cases and adds eight validation cases: 46 snapshots and
 92 authored calls across bytecode and SLJIT, capped at three million instructions
 per call. Two retained owners prepare eight actual sources each (sixteen source parses);
@@ -1777,7 +1776,7 @@ No packages, imports, node limits or instruction budgets are added. The missing
 token case uses `return (1; }`, which the pinned grammar repairs with a MISSING
 `)`, followed by an unterminated declaration it recovers as ERROR.
 
-`python3 tools/test_policy.py tool language-constant-proof-chibi` compares active
+`chibi build test language-constant-proof-chibi` compares active
 constant admissibility using 36 fixed IR requests and two requests copied from
 real analyzer output. Three pico cases run 38 C proofs and 76 authored calls
 across bytecode and SLJIT, with two million instructions per call. Two retained
@@ -1797,7 +1796,7 @@ exercise the production 65,536-visit limit at full size. There are no runtime
 files, services, children or GPU operations. Build separately; this route is
 outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-constant-scalar-chibi` compares active
+`chibi build test language-constant-scalar-chibi` compares active
 scalar folding using 91 fixed requests and 182 authored calls across bytecode and
 SLJIT. Three pico cases prepare the four actual compiler packages once per
 backend (eight source parses, each below 64 KiB). Each call permits two million
@@ -1824,7 +1823,7 @@ not establish these type invariants. The corpus also checks result-width changes
 within a family; malformed cross-family C union reinterpretation is outside this
 private interface's contract.
 
-`python3 tools/test_policy.py tool language-scalar-lowering-chibi` selects one
+`chibi build test language-scalar-lowering-chibi` selects one
 C/pico_unit case in the existing `test_language --scalar-lowering-chibi`
 dispatcher. It compares an authored Bool/I32 value-evaluator lowering component
 with the production native emitter before optimization. It passes 1 case /
@@ -1881,7 +1880,7 @@ The shared emitter's managed binding and dependency callers pass the five-case
 Wasm builds. This evaluator component is not a completed source compiler,
 stage-one/stage-two self-build or compiler-free normal build/link path.
 
-`python3 tools/test_policy.py tool language-lexical-binding-chibi` compares
+`chibi build test language-lexical-binding-chibi` compares
 lexical lookup, declaration admission and stable identity construction. Three
 pico cases run 40 requests (24 fixed tables and 16 requests from four real
 analyses) through C and both authored backends: 80 authored calls, each capped at
@@ -1899,7 +1898,7 @@ before comparison; retained declaration results survive both owner teardowns.
 There are no runtime files, services, children or GPU operations. Build
 separately; this route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-nominal-binding-chibi` compares
+`chibi build test language-nominal-binding-chibi` compares
 record and union header admission and nominal metadata publication. Three pico
 cases run twelve raw requests and four requests from real analyzed headers:
 32 authored calls across bytecode and SLJIT, each capped at 100,000 instructions.
@@ -1916,7 +1915,7 @@ before comparison. Retained published metadata and three diagnostics survive
 both owner teardowns. There are no runtime files, children, services or GPU
 operations. Build separately; this route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-named-binding-chibi` compares ordinary
+`chibi build test language-named-binding-chibi` compares ordinary
 named annotation binding and catalog/import type lookup. Three pico cases run
 28 fixed requests plus eight requests from four analyzed annotations: 72 authored
 calls across bytecode and SLJIT, each capped at two million instructions. Two
@@ -1937,7 +1936,7 @@ generic/diagnostic results survive input and owner retirement. There are no
 runtime files, children, services or GPU operations. Build separately; this route
 is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-type-constructors-chibi` compares
+`chibi build test language-type-constructors-chibi` compares
 structural union, task, await and pointer construction. Four pico cases run
 twenty raw requests and four requests from actual analyzer facts, with
 forty-eight authored calls across bytecode and SLJIT capped at 200,000
@@ -1962,7 +1961,7 @@ retirement. Sorting uses at most six comparisons of 64 scalar bit steps each.
 There are no runtime files, children, services or GPU work.
 Build separately; this route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-type-relations-chibi` selects four
+`chibi build test language-type-relations-chibi` selects four
 C/pico_unit cases for the five pure catalog type relations. The finite tables
 contain 18 equality, 15 numeric, 37 assignment, 33 catalog-assignment and nine
 canonicalization requests: 112 requests, each once on bytecode and SLJIT, for
@@ -1985,7 +1984,7 @@ before publication. Build separately. This route stays outside aggregates.
 Source registration records no measured pass, authored compiler dispatch or
 stage-one bootstrap.
 
-`python3 tools/test_policy.py tool language-unit-algebra-chibi` compares unit
+`chibi build test language-unit-algebra-chibi` compares unit
 parsing, dimension equality, multiplication/division and formatting. Four pico
 cases run 24 Parse, five Same, ten Product and nine Format requests, totaling
 96 authored calls across bytecode and SLJIT at two million instructions each.
@@ -2001,7 +2000,7 @@ Detached results and a retained unit/string survive input and owner retirement.
 There are no runtime files, children, services or GPU work. Build separately;
 this route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-signature-reader-chibi` compares raw
+`chibi build test language-signature-reader-chibi` compares raw
 annotation and signature reading. Four pico cases run sixteen Type and thirteen
 Signature requests, plus one deep Type request: 60 authored calls across
 bytecode and SLJIT at 500,000 instructions each. Seven compiler sources per
@@ -2025,7 +2024,7 @@ below 128 KiB, checking ownership after producer retirement. No runtime files,
 children, services or GPU work occur. Build separately; this route is outside
 the aggregate.
 
-`python3 tools/test_policy.py tool language-callable-headers-chibi` compares
+`chibi build test language-callable-headers-chibi` compares
 callable header registration from raw syntax and analyzer tables. Two pico cases
 run fifteen requests on both backends: 30 Register calls at two million
 instructions each. Eight sources per backend (Headers below 64 KiB, dependencies
@@ -2041,7 +2040,7 @@ references and both refreshed reader views. A complete measured header survives
 input, syntax and module retirement. No runtime files, children, services or GPU
 work occur. Build separately; this route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-union-members-chibi` selects three
+`chibi build test language-union-members-chibi` selects three
 C/pico_unit cases: sixteen source requests and eight raw cycle-validation
 requests, each on bytecode and SLJIT, for 48 authored calls and 32 parses.
 Source calls supply 2,000,000 instructions; raw validation supplies 16,000,000.
@@ -2062,7 +2061,7 @@ all import/native/multi-document combinations or arbitrary state continuation.
 The validator remains recursive; source review is not evidence that the runtime
 executes its depth-boundary workload. The normal union analyzer is unchanged.
 
-`python3 tools/test_policy.py tool language-effect-analysis-chibi` selects four
+`chibi build test language-effect-analysis-chibi` selects four
 C/pico_unit cases: 24 raw Analyze graphs, six Order graphs and seventeen analyzed
 source replays, for 47 requests and 94 authored calls across bytecode and SLJIT.
 The supplied 500,000 instruction budget is inherited/reset per activation,
@@ -2097,7 +2096,7 @@ separate. Registration alone is not a measured
 pass, active authored compiler dispatch or complete compiler bootstrap; the
 landed-tree evidence and new integrated-tree requirements are recorded below.
 
-`python3 tools/test_policy.py tool language-record-members-chibi` is a standalone
+`chibi build test language-record-members-chibi` is a standalone
 source-only differential route for record declaration selection and one-member
 name/type discovery. Five fixed C/pico_unit cases make 26 requests and 52 authored
 calls across bytecode and SLJIT, with 32 parses and four runtime JSON decodes.
@@ -2134,7 +2133,7 @@ products, the private link/ownership/symbol audit, both full transport selectors
 and all five full semantic selectors. Configuration/build/audit timing is
 separate. The prior semantic pass does not establish integrated-tree evidence.
 
-`python3 tools/test_policy.py tool language-unit-analysis-chibi` selects three
+`chibi build test language-unit-analysis-chibi` selects three
 C/pico_unit cases for unit analysis. Twenty-five fixed raw typed-IR/catalog
 requests and four actual analyzed sources make 58 authored call attempts across
 bytecode and SLJIT, with 500,000 instructions per call. Five compiler sources
@@ -2190,7 +2189,7 @@ activation. The existing array capability pack supplies the append operation.
 
 ## Compiler bootstrap checks
 
-`python3 tools/test_policy.py tool compiler-bootstrap` includes seven CLI admission cases. They
+`chibi build test compiler-bootstrap` includes seven CLI admission cases. They
 check that the compiler host's `--bootstrap` mode refuses bad input before any
 compile runs:
 - mixed or missing options;
@@ -2213,7 +2212,7 @@ accepted reads still fail the unchanged checksum check, then the original
 valid artifact loads again. Ordinary byte-output and asset-source bounds remain 16 MiB;
 only bootstrap closures and existing CLI file outputs use the artifact bound.
 
-`python3 tools/test_policy.py tool bootstrap-recovery` (`make test-recovery`)
+`chibi build test bootstrap-recovery` (`make test-recovery`)
 selects two cases. It exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and has the unsanitized Release host recover the compiler from
 the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
@@ -2226,7 +2225,7 @@ artifact bound. The instruction budgets and child deadlines are unchanged.
 
 ## Game equivalence
 
-`python3 tools/test_policy.py tool game-equivalence` rebuilds the stories in
+`chibi build test game-equivalence` rebuilds the stories in
 `test/stories` with a reference and a
 candidate compiler, and compares what the two artifacts of each story declare
 and how they play. It is a standalone selector, not part of any group, and
@@ -2302,7 +2301,7 @@ takes about 19 s when it recovers stage one and 2 s once it is kept.
 
 ## Compiler artifact runtime checks
 
-`python3 tools/test_policy.py tool compiler-artifact` selects seventeen tooling
+`chibi build test compiler-artifact` selects seventeen tooling
 cases and three cases in one child producer. One checks that `--output-bytes`
 writes bytes that are no compiler and refuses an empty result. Build `test_language`, `test_tools`
 and `chibi-compiler-host` separately. The original producer prepares the actual
@@ -2462,7 +2461,7 @@ inspection are separate from test execution.
 
 ## Private build-host process checks
 
-`python3 tools/test_policy.py tool build-process` selects 23 C cases in the
+`chibi build test build-process` selects 23 C cases in the
 existing tooling dispatcher. Build `chibi-build-host`, `test_tools` and its
 `policy_worker` dependency separately. The route uses one disposable directory,
 fixed authored sources and at most 58 controlled process launches or failed
@@ -2488,7 +2487,7 @@ vectors, and environment names. Their fixed file workload is about 10 MiB and 8,
 files. The original eight `language-build-workflow` recording cases remain an
 independent route.
 
-`python3 tools/test_policy.py tool build-toolchain` selects eight C cases for the
+`chibi build test build-toolchain` selects eight C cases for the
 installed authored build program, and a ninth on macOS. Six cases make 44 API
 invocations across bytecode and SLJIT, and the macOS case seven more that
 alternate them; one runs the host CLI with exact tail arguments. Fourteen tiny Git
@@ -2508,7 +2507,7 @@ transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
-`python3 tools/test_policy.py tool build-graph` runs one C case for the Chibi
+`chibi build test build-graph` runs one C case for the Chibi
 build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against a
 configured CMake build: on macOS, where `make build` uses the graph, the one
 `make graph-reference` configures in `build-cmake`, elsewhere `build`;
@@ -2530,7 +2529,7 @@ that always fails: the headers its libraries staged stay in place, since an
 executable stages none. Only `reflect` is linked by a test; the other links
 are compared, and a manual full build links and runs them. About 25 s.
 
-`python3 tools/test_policy.py tool build-graph-debug-optimization` is the narrow
+`chibi build test build-graph-debug-optimization` is the narrow
 Linux CI route after the existing sanitized products and Release helper builds.
 It uses sanitized `build/test/tools/test_tools` and the Debug CMake reference,
 not the standalone runtime-only `build-tools` driver. CI explicitly selects
@@ -2550,7 +2549,7 @@ It preserves CMake's exact compiler paths; compiler discovery remains covered
 only by the separate `build-graph` route. Normal macOS CI does not execute the
 new O1 cases; macOS O1 runtime validation remains unrun pending a later experiment.
 
-`python3 tools/test_policy.py tool build-graph-programs` runs the graph with
+`chibi build test build-graph-programs` runs the graph with
 `--commands-only on --target test_tools --target chibi`: its link commands
 name them and the programs they run (`policy_worker`, `chibi_ctl`,
 `chibi-compile`, `chibi-player`, the build and compiler hosts), where CMake
@@ -2566,7 +2565,7 @@ LF and CRLF continuations, two empty or targetless texts, and one fixed
 children, frames or GPU work. At most eight host subprocesses retain the existing
 50-second child limit.
 
-`python3 tools/test_policy.py tool build-graph-resources` runs the graph for
+`chibi build test build-graph-resources` runs the graph for
 the launcher and `chibi_ctl` with a compiler that always fails: before any
 compile it writes `share/chibi` and `controller_resources`, all 213 files equal
 to CMake's (the build identity `engine.json` and the core and documentation
@@ -2575,7 +2574,7 @@ only when it configures, to `src/render/shaders`; an unchanged run leaves
 the identity's stamps. A second case runs it for `test_language`, whose
 `corpus.txt` must equal CMake's. macOS only. About 32 s.
 
-`python3 tools/test_policy.py tool build-graph-support` runs three cases in a
+`chibi build test build-graph-support` runs three cases in a
 copy of the sources: about ten runs that build only `chibi_support` check
 that an unchanged build compiles nothing, that changing a source, a header or
 the flags or deleting an object recompiles exactly what depends on it, that a
@@ -2584,7 +2583,7 @@ compile keeps no record and is retried alone. The archive must link a program
 that runs. It compiles about thirty C files with the profile's sanitizers,
 about 36 s at a load average of 9.
 
-`python3 tools/test_policy.py tool build-graph-reflect` builds and links
+`chibi build test build-graph-reflect` builds and links
 `reflect` from the graph (27 C files with the profile's sanitizers), requires
 its link command to equal CMake's `build.ninja` statement apart from where
 objects, the output and archives sit, and runs it as CMake does, over the Cute
@@ -2593,7 +2592,7 @@ math headers the graph staged from the third-party archive: its
 About 42 s at a load average of 11; with other builds running, its first graph
 run can exceed its 50 s share.
 
-`python3 tools/test_policy.py tool build-graph-archive` builds
+`chibi build test build-graph-archive` builds
 `chibi_vector_capabilities` over the Cute math headers of the third-party
 archive CMake configured with, which the graph stages, and the task pool over
 the archive's prebuilt enkiTS: three C files with the profile's sanitizers. A
@@ -2602,7 +2601,7 @@ second run compiles nothing, and the staged `cute_math.h` and the shared
 unpacked, or one naming the UI host's C++ sources with no C++ compiler, fails
 before compiling and says so. About 12 s.
 
-`python3 tools/test_policy.py tool build-graph-generated` covers sources and
+`chibi build test build-graph-generated` covers sources and
 headers the graph writes. One case builds `chibi_native_types` with the
 configured build's `reflect` (`--reflect`): the graph stages the math headers,
 runs reflect as CMake does and compiles the one source; both written sources
@@ -2626,7 +2625,7 @@ average of 4.
 two-page site with the installed generator. It takes about three seconds and starts no
 player.
 
-`python3 tools/test_policy.py tool runtime-sdk` takes the private build host and selects the
+`chibi build test runtime-sdk` takes the private build host and selects the
 authored runtime SDK checks: canonical JSON against the Python manifest encoder, and on
 macOS the installer's verify, replace and rollback paths plus graph record, tool and
 configuration evidence over synthetic records. No engine library, SDK or package is built.
@@ -2809,7 +2808,7 @@ cmake -S test/language -B build-language -G Ninja \
 cmake --build build-language --target test_language -j 2
 MallocNanoZone=0 UBSAN_OPTIONS=halt_on_error=1 \
   CHIBI_LANGUAGE_BUILD_DIR=build-language \
-  python3 tools/test_policy.py tool language-package-compiler-chibi-types
+  chibi build test language-package-compiler-chibi-types
 ```
 
 The explicit sanitizer flags are necessary for this standalone driver build.
@@ -3178,7 +3177,7 @@ called function is refused while the field keeps its revision, value and draft. 
 
 ## Terrain Lab save and restart
 
-`python3 tools/test_policy.py tool terrain-playable`, also part of `make
+`chibi build test terrain-playable`, also part of `make
 test-projects`, drives the authored controls of `test/fixtures/terrain-lab` on
 the VM and SLJIT. For each backend a writer process digs across a 128-cell chunk
 seam and saves; a fresh reader process checks pristine terrain, then loads and
@@ -3348,7 +3347,7 @@ or Studio/browser acceptance.
 
 ### Authored record project publication
 
-`python3 tools/test_policy.py tool language-record-publication` is a standalone
+`chibi build test language-record-publication` is a standalone
 seven-case CPU route. It prepares a two-source project catalog with a declaring
 record library and an importing behavior, then stages and commits both sources.
 The BYTECODE and SLJIT variants cover preparation/code generation and canonical
@@ -3442,7 +3441,7 @@ provider locations, unowned paths and foreign-platform role rewriting. The compl
 passes 8 cases in 6.8s on macOS.
 ### Snapshot-to-reader composition
 
-The `python3 tools/test_policy.py tool language-snapshot-reader-chibi`
+The `chibi build test language-snapshot-reader-chibi`
 selector uses the existing signature-reader pico_unit owner and language
 dispatcher. It does not add an executable or expand the old signature/snapshot
 selectors. `analysis_state.TreeForDocument` converts the actual retained snapshot
@@ -3499,7 +3498,7 @@ unimplemented here.
 ## Third-party publication recovery
 
 Seventeen C/pico_unit cases use the production tools dispatcher selector
-`python3 tools/test_policy.py tool third-party-publish`. Twenty-six disposable local
+`chibi build test third-party-publish`. Twenty-six disposable local
 Git repositories and a shell `gh` transport fixture exercise the production
 publication helper: invalid inputs, new publication, original-artifact retry,
 partial uploads, completed-release/main-pin no-ops, existing-branch/PR ownership,

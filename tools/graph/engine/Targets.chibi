@@ -723,7 +723,7 @@ Files :: (target: string) -> string[] {
             "test/tools/chibi_cli.c", "test/tools/native_build.c", "test/tools/native_workloads.c",
             "test/tools/third_party_publish.c",
             "test/tools/collab.c",
-            "test/tools/test_policy.c", "test/tools/validation_plan.c", "test/tools/web_storage.c",
+            "test/tools/web_storage.c",
             "test/tools/player_url.c", "test/tools/webgpu_staging.c", "test/tools/browser.c",
             "test/tools/wasm_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",

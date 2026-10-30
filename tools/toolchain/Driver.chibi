@@ -254,7 +254,8 @@ Positionals :: (arguments: string[]) -> string[] {
         argument := arguments[i]
         if (skip) {
             skip = false
-        } else if (argument == "--build" || argument == "--release-build" || argument == "--jobs") {
+        } else if (argument == "--build" || argument == "--release-build" || argument == "--jobs" ||
+            argument == "--build-host") {
             skip = true
         } else if (!strings.HasPrefix(argument, "--")) {
             names = build.concat(names, [argument])
@@ -276,13 +277,13 @@ Count :: (text: string) -> int {
 
 // The command one selector runs: its row's words with the build directories
 // filled in, under the environment the test drivers read.
-TestCommand :: (row: string, directory: string, releases: string) -> string[] {
+TestCommand :: (row: string, directory: string, releases: string, host: string) -> string[] {
     fields := Fields(row)
     command := [
         "env",
         Join(["CHIBI_TOOLS_BUILD_DIR=", Absolute(directory), "/test/tools"]),
         Join(["CHIBI_LANGUAGE_BUILD_DIR=", Absolute(directory), "/test/language"]),
-        Join(["CHIBI_BUILD_HOST=", Absolute(directory), "/sdk/chibi-build-host"]),
+        Join(["CHIBI_BUILD_HOST=", Absolute(host)]),
         Join(["CHIBI_CLI=", Absolute(releases), "/sdk/chibi"]),
         Join(["CHIBI_COMPILE=", Absolute(releases), "/sdk/chibi-compile"]),
         Join(["CHIBI_CTL=", Absolute(releases), "/bin/chibi_ctl"]),
@@ -298,7 +299,7 @@ TestCommand :: (row: string, directory: string, releases: string) -> string[] {
 
 // Runs the named selectors or groups of tools/tests.tsv against the built test
 // drivers, up to --jobs at a time, and fails when any fails.
-//   build test [--build DIR] [--release-build DIR] [--jobs N] [--list] [--dry-run] NAME...
+//   build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--list] [--dry-run] NAME...
 Test :: (arguments: string[]) -> int {
     rows := Rows()
     if (Flag(arguments, "--list")) {
@@ -310,7 +311,8 @@ Test :: (arguments: string[]) -> int {
     }
     directory := Option(arguments, "--build", "build")
     releases := Option(arguments, "--release-build", "build-release")
-    jobs := Count(Option(arguments, "--jobs", "4"))
+    host := Option(arguments, "--build-host", Join([directory, "/sdk/chibi-build-host"]))
+    jobs := Count(Option(arguments, "--jobs", "1"))
     requested := Positionals(arguments)
     if (jobs < 1 || length(requested) == 0) {
         build.report("usage: build test [--build DIR] [--release-build DIR] [--jobs N] [--list] [--dry-run] NAME...")
@@ -322,7 +324,7 @@ Test :: (arguments: string[]) -> int {
     }
     if (Flag(arguments, "--dry-run")) {
         for (name in selected) {
-            command := TestCommand(Row(rows, "tool", name), directory, releases)
+            command := TestCommand(Row(rows, "tool", name), directory, releases, host)
             build.report(Join([name, ": ", strings.Join(command, " ")]))
         }
         return 0
@@ -333,7 +335,7 @@ Test :: (arguments: string[]) -> int {
     failed := 0
     while (waited < length(selected)) {
         while (started < length(selected) && started - waited < jobs) {
-            handles.append(build.start(TestCommand(Row(rows, "tool", selected[started]), directory, releases)))
+            handles.append(build.start(TestCommand(Row(rows, "tool", selected[started]), directory, releases, host)))
             started += 1
         }
         status := build.wait(handles[waited])
@@ -354,7 +356,7 @@ Test :: (arguments: string[]) -> int {
 
 Usage :: () -> int {
     build.report("usage: build [--release|--debug] [--build DIR] [--target NAME]... [--all] [--jobs N] [--dry-run]")
-    build.report("       build test [--build DIR] [--release-build DIR] [--jobs N] [--list] [--dry-run] NAME...")
+    build.report("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--list] [--dry-run] NAME...")
     return 2
 }
 

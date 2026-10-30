@@ -10,17 +10,7 @@ tool	audio-browser	@build@/test/tools/test_tools	--audio-browser
 tool	audio-analysis	@build@/test/tools/test_tools	--audio-analysis
 tool	shader-webgpu	@build@/test/tools/test_tools	--shader-webgpu
 tool	studio-panel-idle	build-studio/bin/studio-acceptance	--panel-idle	--project-root	
-tool	studio-scene-collider3d	python3	tools/agent.py	gpu-test	--	--studio-scene-collider3d
-tool	studio-scene-gizmo3d	python3	tools/agent.py	gpu-test	--	--studio-scene-gizmo3d
-tool	studio-scene-camera	python3	tools/agent.py	gpu-test	--	--studio-scene-camera
-tool	studio-scene-move	python3	tools/agent.py	gpu-test	--	--studio-scene-move
-tool	studio-outliner-move	python3	tools/agent.py	gpu-test	--	--studio-outliner-move
 tool	tilemap	@build@/test/tools/test_tools	--tilemap
-tool	studio-graph-visibility	python3	tools/agent.py	gpu-test	--	--studio-graph-visibility
-tool	studio-graph-pointer	python3	tools/agent.py	gpu-test	--	--studio-graph-pointer
-tool	studio-asset-pointer	python3	tools/agent.py	gpu-test	--	--studio-asset-pointer
-tool	studio-debugger-source-history	python3	tools/agent.py	gpu-test	--	--studio-debugger-source-history
-tool	studio-source-edit	python3	tools/agent.py	gpu-test	--	--studio-source-edit
 tool	shader-parameters-prepared	@build@/test/tools/test_tools	--shader-parameters-prepared
 tool	shader-source-debug	@build@/test/tools/test_tools	--shader-source-debug
 tool	ecs-query	@build@/test/tools/test_tools	--ecs-query
@@ -70,24 +60,6 @@ tool	material-benchmark	@build@/test/tools/test_tools	--material-benchmark
 tool	material-render	@build@/test/tools/test_tools	--material-render
 tool	render-resources	@build@/test/tools/test_tools	--render-resources
 tool	render-geometry	@build@/test/tools/test_tools	--render-geometry
-tool	interior-border	python3	tools/agent.py	gpu-test	--	--interior-border
-tool	viewport-resize	python3	tools/agent.py	gpu-test	--	--viewport-resize
-tool	sdf-visibility	python3	tools/agent.py	gpu-test	--	--sdf-visibility
-tool	radiance	python3	tools/agent.py	gpu-test	--	--radiance
-tool	radiance-depth	python3	tools/agent.py	gpu-test	--	--radiance-depth
-tool	material-sampling	python3	tools/agent.py	gpu-test	--	--material-sampling
-tool	scene2d	python3	tools/agent.py	gpu-test	--	--scene2d
-tool	material-terrain-seams	python3	tools/agent.py	gpu-test	--	--material-terrain-seams
-tool	scene3d-gles	python3	tools/agent.py	gpu-test	--	--scene3d-gles
-tool	scene3d-gi	python3	tools/agent.py	gpu-test	--	--scene3d-gi
-tool	scene3d-gi-gles	python3	tools/agent.py	gpu-test	--	--scene3d-gi-gles
-tool	material-ramps	python3	tools/agent.py	gpu-test	--	--material-ramps
-tool	scene3d-post	python3	tools/agent.py	gpu-test	--	--scene3d-post
-tool	scene3d-shapes	python3	tools/agent.py	gpu-test	--	--scene3d-shapes
-tool	radiance-surface	python3	tools/agent.py	gpu-test	--	--radiance-surface
-tool	radiance-horizons4	python3	tools/agent.py	gpu-test	--	--radiance-horizons4
-tool	radiance-horizons8	python3	tools/agent.py	gpu-test	--	--radiance-horizons8
-tool	texture-transform	python3	tools/agent.py	gpu-test	--	--texture-transform
 tool	scene-prepared	@build@/test/tools/test_tools	--scene-prepared
 tool	scene-hierarchy	@build@/test/tools/test_tools	--scene-hierarchy
 tool	native-catalog	@build@/test/tools/test_tools	--native-catalog
@@ -101,9 +73,6 @@ tool	material-surface-mesh	@build@/test/tools/test_tools	--material-surface-mesh
 tool	scene3d-camera	@build@/test/tools/test_tools	--scene3d-camera
 tool	scene3d-volume	@build@/test/tools/test_tools	--scene3d-volume
 tool	scene3d-terrain	@build@/test/tools/test_tools	--scene3d-terrain
-tool	scene3d-terrain-gpu	python3	tools/agent.py	gpu-test	--	--scene3d-terrain-gpu
-tool	scene3d-volume-gpu	python3	tools/agent.py	gpu-test	--	--scene3d-volume-gpu
-tool	hrc-spot	python3	tools/agent.py	gpu-test	--	--hrc-spot
 tool	terrain-checkpoint	@build@/test/tools/test_tools	--terrain-checkpoint
 tool	terrain-storage	@build@/test/tools/test_tools	--terrain-storage
 tool	terrain-playable-render	@build@/test/tools/test_tools	--terrain-playable-render	dist/sdk/bin/chibi-player			dist/sdk/share/chibi/shaders	.chibi/environment-authoring/terrain-playable-render
@@ -249,11 +218,12 @@ tool	wasm-package-compiler-chibi-debug-free	node	build-wasm-language/test_langua
 tool	wasm-package-compiler-chibi-literals	node	build-wasm-language/test_language.js	--package-compiler-chibi-literals
 tool	wasm-package-portable	node	build-wasm-language/test_language.js	--package-portable
 tool	wasm-package-portable-compiler	node	build-wasm-language/test_language.js	--package-portable-compiler
+tool	unit	@build@/test/tools/test_tools	--unit
+tool	short	@build@/test/tools/test_tools
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-integer-arithmetic	wasm-package-math	wasm-package-compiler-chibi	wasm-package-compiler-chibi-compiled	wasm-package-portable	wasm-package-portable-compiler
 group	native	native-runtime	native-catalog	native-values	audio-analysis	shader-webgpu	player-url	player-clock	build-graph-link-response	physics	physics3d	transforms	box3d	sky-files	tilemap	runtime-scene	scene-prepared	scene-hierarchy	render-resources	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	vector-nodes	asset-values	ui-document	text-files	fmt	particles	png-encoding	project-document	prototype-documents	render-geometry	arena	shader-bake	shader-source-debug	terrain-seams	terrain-storage	material-surface-mesh	scene3d-camera	scene3d-volume	scene3d-terrain
 group	projects	terrain-checkpoint	chibi-cli	native-build
 group	materials	material-destruction	material-fluids	material-mpm	material-simulation	material-ecs	material-render
 group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	language-package-math	language-package-tests	language-argument-effects-chibi	language-package-core	language-package-portable	language-package-portable-compiler	language-host-packages	language-host-packages-compiler	field-runtime	prototype-document	ui-authoring	text-format	language-shader-source-chibi	language-compiler-fixture	language-compositional-records	language-package-compiler-chibi-scalar	language-package-compiler-chibi-fallible	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-behaviors-rest	language-integer-semantics	language-integer-arithmetic	language-integer-shift-counts	language-integer-shift-counts-authored	language-asset-packaging-chibi	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
-group	render	interior-border	viewport-resize	sdf-visibility	radiance	radiance-depth	material-sampling	scene2d	material-terrain-seams	scene3d-terrain-gpu	scene3d-volume-gpu	hrc-spot	scene3d-gi	material-ramps	radiance-surface	radiance-horizons4	radiance-horizons8	scene3d-post	scene3d-shapes	texture-transform
 group	compiler	language-package-compiler-chibi	language-package-compiler-chibi-compiled	language-package-compiler-chibi-types	language-package-compiler-chibi-fallible	language-package-compiler-chibi-types-compiled	language-package-compiler-chibi-collections	language-package-compiler-chibi-collections-compiled	language-package-compiler-chibi-literals	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-actions	language-package-compiler-chibi-behaviors-rest	language-package-compiler-chibi-queries	language-package-compiler-chibi-libraries	language-package-compiler-chibi-sharing	language-package-compiler-chibi-debug-free	language-package-compiler-chibi-native-arguments	language-package-compiler-chibi-native-arguments-oracle	language-package-compiler-chibi-scalar	language-package-compiler-chibi-imports	language-package-compiler-chibi-imports-compiled	language-package-compiler-chibi-bootstrap
 group	benchmarks	ecs-query-benchmark	native-workload-benchmark	material-benchmark	script-benchmark	scheduler-benchmark	language-package-math-benchmark

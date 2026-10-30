@@ -103,8 +103,6 @@ void test_runtime_sdk(const char *host);
 #endif
 void test_tool_third_party_publish();
 void test_tool_collab();
-void test_tool_test_policy();
-void test_tool_validation_plan();
 void test_tool_web_storage();
 void test_tool_player_url();
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
@@ -782,8 +780,6 @@ int main(int argc, char **argv)
     bool third_party_publish = argc == 2 && !strcmp(argv[1], "--third-party-publish");
     bool collab = argc == 2 && !strcmp(argv[1], "--collab");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
-    bool test_runner = argc == 2 && !strcmp(argv[1], "--test-runner");
-    bool validation_plan = argc == 2 && !strcmp(argv[1], "--validation-plan");
     bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
@@ -879,19 +875,18 @@ int main(int argc, char **argv)
 #endif
     if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
         !tilemap && !package && !third_party_publish && !collab && !unit &&
-        !test_runner && !validation_plan && !web_storage && !webgpu_staging &&
-        !wasm_browser && !query_benchmark && !scene && !scene_prepared &&
-        !scene_hierarchy && !native && !native_values && !native_catalog &&
-        !physics && !physics3d && !transforms && !render_resources &&
-        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
-        !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
-        !texture_transform && !arena && !types && !render_geometry &&
-        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
-        !sky_files && !mesh_files && !model_import && !model_graphs &&
-        !model_catalog && !shader_graphs && !shader_parity && !shader_programs &&
-        !material_cameras && !mesh_materials && !sdf_quality && !scene3d_post &&
-        !scene3d_shapes && !persistent_store && !whole_math && !whole_integer &&
-        !whole_conversion && !whole_select && !source_presentation &&
+        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
+        !scene && !scene_prepared && !scene_hierarchy && !native &&
+        !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !render_resources && !interior_border && !viewport_resize &&
+        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
+        !scene2d && !terrain_seams && !texture_transform && !arena && !types &&
+        !render_geometry && !radiance_surface && !radiance_horizons &&
+        !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
+        !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
+        !shader_programs && !material_cameras && !mesh_materials && !sdf_quality &&
+        !scene3d_post && !scene3d_shapes && !persistent_store && !whole_math &&
+        !whole_integer && !whole_conversion && !whole_select && !source_presentation &&
         !system_schedule && !scheduler_benchmark && !source_systems &&
         !source_query_rows && !graph_document && !graph_presentation &&
         !graph_functions && !vector_nodes && !material_render && !material) {
@@ -900,7 +895,6 @@ int main(int argc, char **argv)
             "Usage: %s [--tilemap | --package | "
             "--third-party-publish | --collab | "
             "--unit | "
-            "--test-runner | --validation-plan | "
             "--reflect-ranges | "
             "--ecs-query | --ecs-strings | "
             "--shader-bake | --terrain-seams | "
@@ -1126,10 +1120,6 @@ int main(int argc, char **argv)
         test_tool_scene();
     } else if (unit) {
         test_tool_execution_policy();
-    } else if (test_runner) {
-        test_tool_test_policy();
-    } else if (validation_plan) {
-        test_tool_validation_plan();
     } else if (web_storage) {
         test_tool_web_storage();
     } else if (query_benchmark) {
@@ -1151,8 +1141,6 @@ int main(int argc, char **argv)
         test_tool_package();
         test_tool_third_party_publish();
         test_tool_collab();
-        test_tool_test_policy();
-        test_tool_validation_plan();
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
         test_tool_audio_analysis();
 #ifdef CHIBI_TEST_RENDER_RUNTIME

@@ -3376,10 +3376,3 @@ With matching compiler input it took 2.6 seconds on the Mac validation host. Wit
 changed compiler source and retained older input it took 71 seconds including supported
 in-process recovery. It retains the existing process budget. No second workflow
 invocation or broader suite is added.
-
-## Debug optimization experiment
-
-See [the opt-in O0/O1 sanitizer comparison](debug-optimization-experiment.md) for
-matched build flags, correctness gates and wall-time measurements. CI defaults
-and sanitizer coverage remain unchanged.
-

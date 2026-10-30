@@ -6,8 +6,7 @@ import sdk "graph:sdk"
 import os "core:os"
 import strings "core:strings"
 
-// Builds the engine libraries the Chibi graph owns (PLAN.md M6), beside the
-// CMake build. Run through the build host with `--collection graph=tools/graph`:
+// Builds the engine libraries the Chibi graph owns. Run through the build host with `--collection graph=tools/graph`:
 //   Libraries -- --build DIR [--profile sanitizer|debug|release|explicit] [--jobs N]
 //     [--target NAME]... [--commands-only on] [--all-commands on]
 // The profile, the sanitizer profile unless named, is found on

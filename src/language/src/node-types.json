@@ -2214,6 +2214,61 @@
     "fields": {}
   },
   {
+    "type": "declaration_block",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "behavior",
+          "named": true
+        },
+        {
+          "type": "component",
+          "named": true
+        },
+        {
+          "type": "constant_declaration",
+          "named": true
+        },
+        {
+          "type": "function_declaration",
+          "named": true
+        },
+        {
+          "type": "import_declaration",
+          "named": true
+        },
+        {
+          "type": "macro_declaration",
+          "named": true
+        },
+        {
+          "type": "record_declaration",
+          "named": true
+        },
+        {
+          "type": "state_declaration",
+          "named": true
+        },
+        {
+          "type": "system",
+          "named": true
+        },
+        {
+          "type": "union_declaration",
+          "named": true
+        },
+        {
+          "type": "when_declaration",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "declaration_body",
     "named": true,
     "fields": {},
@@ -6362,6 +6417,10 @@
         {
           "type": "union_declaration",
           "named": true
+        },
+        {
+          "type": "when_declaration",
+          "named": true
         }
       ]
     }
@@ -7675,6 +7734,134 @@
     }
   },
   {
+    "type": "when_declaration",
+    "named": true,
+    "fields": {
+      "alternative": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "declaration_block",
+            "named": true
+          },
+          {
+            "type": "when_declaration",
+            "named": true
+          }
+        ]
+      },
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "address_expression",
+            "named": true
+          },
+          {
+            "type": "array_expression",
+            "named": true
+          },
+          {
+            "type": "as_expression",
+            "named": true
+          },
+          {
+            "type": "await_expression",
+            "named": true
+          },
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin_reference",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "character",
+            "named": true
+          },
+          {
+            "type": "dereference_expression",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "index_expression",
+            "named": true
+          },
+          {
+            "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
+            "named": true
+          },
+          {
+            "type": "member_expression",
+            "named": true
+          },
+          {
+            "type": "nil",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "query_expression",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "struct_expression",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      },
+      "consequence": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "declaration_block",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "while_statement",
     "named": true,
     "fields": {
@@ -8223,6 +8410,10 @@
   },
   {
     "type": "view",
+    "named": false
+  },
+  {
+    "type": "when",
     "named": false
   },
   {

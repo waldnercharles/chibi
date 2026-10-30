@@ -151,18 +151,26 @@ module.exports = grammar({
       choice(
         $.behavior, $.library, $.system, $.component,
         $.prototype_declaration, $.relationship_declaration,
-        seq(field("package", $.package_header), repeat(choice(
-          $.import_declaration,
-          $.behavior, $.system, $.component,
-          $.function_declaration, $.constant_declaration,
-          $.state_declaration, $.record_declaration, $.union_declaration,
-          $.macro_declaration,
-          alias($._public_function, $.function_declaration),
-          alias($._public_constant, $.constant_declaration),
-          alias($._public_record, $.record_declaration),
-          alias($._public_union, $.union_declaration),
-        ))),
+        seq(field("package", $.package_header), repeat($._package_item)),
       ),
+    _package_item: ($) =>
+      choice(
+        $.import_declaration,
+        $.behavior, $.system, $.component,
+        $.function_declaration, $.constant_declaration,
+        $.state_declaration, $.record_declaration, $.union_declaration,
+        $.macro_declaration,
+        $.when_declaration,
+        alias($._public_function, $.function_declaration),
+        alias($._public_constant, $.constant_declaration),
+        alias($._public_record, $.record_declaration),
+        alias($._public_union, $.union_declaration),
+      ),
+    // Package-scope declarations a constant selects: `when Os == Darwin { ... }`.
+    when_declaration: ($) =>
+      seq("when", field("condition", $._expression), field("consequence", $.declaration_block),
+        optional(seq(K.else, field("alternative", choice($.when_declaration, $.declaration_block))))),
+    declaration_block: ($) => seq("{", repeat($._package_item), "}"),
     package_header: ($) => seq(K.package, field("name", $.identifier), $._end),
     import_declaration: ($) => seq(
       K.import,

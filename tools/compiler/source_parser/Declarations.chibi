@@ -64,8 +64,62 @@ AttributedTypeToken :: (c: ^Cursor, n: ^(Node[])) -> int {
 }
 
 // One declaration of a package, a behavior, a library or a body.
+// `when condition { declarations } [else when ... | else { declarations }]`:
+// package-scope declarations that a constant selects. The word `when` starts
+// one unless it names a declaration, `when :: ...`.
+ParseWhen :: (c: ^Cursor, n: ^(Node[])) -> int {
+    first := New(n, "when_declaration");
+    current := first;
+    while (!c.failed) {
+        keyword := Take(c, n, current, "");
+        n^[keyword].kind = "when";
+        n^[keyword].named = false;
+        Add(n, current, ParseBinary(c, n, OrPower), "condition");
+        Add(n, current, ParseDeclarationBlock(c, n), "consequence");
+        if (c.failed || c.token != tk.Else) {
+            break;
+        }
+        Take(c, n, current, "");
+        if (!IsWord(c, n, "when")) {
+            Add(n, current, ParseDeclarationBlock(c, n), "alternative");
+            break;
+        }
+        chained := New(n, "when_declaration");
+        Add(n, current, chained, "alternative");
+        current = chained;
+    }
+    // The chain grew downward, so each link's range still ends where its own
+    // last child did before the next link was added.
+    chain: int[] = [first];
+    link := first;
+    while (n^[link].last >= 0 && n^[n^[link].last].kind == "when_declaration" &&
+           n^[n^[link].last].field == "alternative") {
+        link = n^[link].last;
+        chain.append(link);
+    }
+    at := length(chain) - 2;
+    while (at >= 0) {
+        n^[chain[at]].end = n^[n^[chain[at]].last].end;
+        at -= 1;
+    }
+    return first;
+}
+
+ParseDeclarationBlock :: (c: ^Cursor, n: ^(Node[])) -> int {
+    block := New(n, "declaration_block");
+    Expect(c, n, block, tk.OpenBrace, "");
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
+        Add(n, block, ParseDeclaration(c, n), "");
+    }
+    Expect(c, n, block, tk.CloseBrace, "");
+    return block;
+}
+
 ParseDeclaration :: (c: ^Cursor, n: ^(Node[])) -> int {
     token := c.token;
+    if (IsWord(c, n, "when") && Peek(c, n, 1) != tk.ColonColon) {
+        return ParseWhen(c, n);
+    }
     if (token == tk.Import) {
         return ParseImport(c, n);
     }

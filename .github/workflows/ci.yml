@@ -407,6 +407,21 @@ jobs:
             echo 'An operator above has no operand; delete the whole condition with the path.'
             exit 1
           fi
+      # Archiving a selector's code must also drop its tools/tests.tsv row.
+      - name: Check test selectors name existing driver flags
+        run: |
+          status=0
+          while IFS="$(printf '\t')" read -r kind name driver flag rest; do
+            [ "$kind" = tool ] || continue
+            case "$driver" in
+              */test_tools) source=test/tools/main.c ;;
+              */test_language) source=test/language/main.c ;;
+              *) continue ;;
+            esac
+            case "$flag" in --*) ;; *) continue ;; esac
+            grep -qF -- "\"$flag\"" "$source" || { echo "tools/tests.tsv: $name runs $flag, which $source does not accept"; status=1; }
+          done < tools/tests.tsv
+          exit $status
 
   graph-sdk-linux:
     name: Graph SDK packaging and relocation (Linux)

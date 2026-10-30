@@ -992,6 +992,178 @@ DeclareSeeded :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
     }
     return Declarations.Collected(callables, params, types, members, constants);
 }
+// Package-scope `when`. A package's declarations are its file's members with
+// each `when condition { ... } else { ... }` replaced by the members of the
+// branch its constant condition selects, so `when target.Os == target.Darwin`
+// can choose a constant or a function per platform. The condition reads
+// literals and the constants of imported packages, which are folded before
+// this package is declared.
+Decided :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Waiting
+    | Yes
+    | No
+}
+Expanded :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Done
+}
+Selected :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Chosen(nodes: int[])
+}
+ComparisonOperator :: (operator: string) -> bool {
+    return operator == "==" || operator == "!=" || operator == "<" || operator == "<=" || operator == ">" ||
+           operator == ">=";
+}
+FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
+                  package: int, node: int) -> Decided {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, "boolean")) {
+        if (Text(forest, text, value) == "true") {
+            return Decided.Yes;
+        }
+        return Decided.No;
+    }
+    operator := Text(forest, text, Field(forest, value, "operator"));
+    if (Is(forest, value, "unary_expression") && (operator == "not" || operator == "!")) {
+        switch FoldCondition(forest, text, file, constants, aliases, package, Field(forest, value, "operand")) {
+            case .Failed(diagnostic):
+                return Decided.Failed(diagnostic);
+            case .Waiting:
+                return Decided.Waiting;
+            case .Yes:
+                return Decided.No;
+            case .No:
+                return Decided.Yes;
+        }
+    }
+    if (!Is(forest, value, "binary_expression")) {
+        return Decided.Failed(Diagnose(forest, node, file, "a when condition must be constant"));
+    }
+    if (operator == "and" || operator == "&&" || operator == "or" || operator == "||") {
+        conjunction := operator == "and" || operator == "&&";
+        switch FoldCondition(forest, text, file, constants, aliases, package, Field(forest, value, "left")) {
+            case .Failed(diagnostic):
+                return Decided.Failed(diagnostic);
+            case .Waiting:
+                return Decided.Waiting;
+            case .Yes:
+                if (!conjunction) {
+                    return Decided.Yes;
+                }
+            case .No:
+                if (conjunction) {
+                    return Decided.No;
+                }
+        }
+        return FoldCondition(forest, text, file, constants, aliases, package, Field(forest, value, "right"));
+    }
+    if (!ComparisonOperator(operator)) {
+        return Decided.Failed(Diagnose(forest, node, file, "a when condition must be constant"));
+    }
+    left: u64 = 0;
+    switch FoldConstant(forest, text, file, constants, aliases, package, Field(forest, value, "left"), IntStorage) {
+        case .Failed(diagnostic):
+            return Decided.Failed(diagnostic);
+        case .Waiting:
+            return Decided.Waiting;
+        case .Folded(bits):
+            left = bits;
+    }
+    right: u64 = 0;
+    switch FoldConstant(forest, text, file, constants, aliases, package, Field(forest, value, "right"), IntStorage) {
+        case .Failed(diagnostic):
+            return Decided.Failed(diagnostic);
+        case .Waiting:
+            return Decided.Waiting;
+        case .Folded(bits):
+            right = bits;
+    }
+    same := left == right;
+    ordered := i64(wrap: left) < i64(wrap: right);
+    taken := false;
+    if (operator == "==") {
+        taken = same;
+    } else if (operator == "!=") {
+        taken = !same;
+    } else if (operator == "<") {
+        taken = ordered;
+    } else if (operator == "<=") {
+        taken = ordered || same;
+    } else if (operator == ">") {
+        taken = !ordered && !same;
+    } else {
+        taken = !ordered;
+    }
+    if (taken) {
+        return Decided.Yes;
+    }
+    return Decided.No;
+}
+// Appends `members` to `out`, a `when` replaced by the branch it selects.
+ExpandMembers :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], links: graph.Binding[],
+                  constants: ConstDecl[], package: int, file: int, members: int[], out: ^(int[])) -> Expanded {
+    for (member in members) {
+        if (!Is(forest, member, "when_declaration")) {
+            out.append(member);
+            continue;
+        }
+        selected: int[] = [];
+        switch FoldCondition(forest, documents[file].text, file, constants, Aliases(links, file), package,
+                             Field(forest, member, "condition")) {
+            case .Failed(diagnostic):
+                return Expanded.Failed(diagnostic);
+            case .Waiting:
+                return Expanded.Failed(Diagnose(forest, Field(forest, member, "condition"), file,
+                                                "a when condition may name only literals and imported constants"));
+            case .Yes:
+                selected = Members(forest, Field(forest, member, "consequence"));
+            case .No:
+                alternative := Field(forest, member, "alternative");
+                if (Is(forest, alternative, "when_declaration")) {
+                    selected = [alternative];
+                } else if (alternative >= 0) {
+                    selected = Members(forest, alternative);
+                }
+        }
+        switch ExpandMembers(forest, documents, links, constants, package, file, selected, out) {
+            case .Failed(diagnostic):
+                return Expanded.Failed(diagnostic);
+            case .Done:
+                continue;
+        }
+    }
+    return Expanded.Done;
+}
+SelectMembers :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], links: graph.Binding[],
+                  constants: ConstDecl[], package: int, file: int) -> Selected {
+    nodes: int[] = [];
+    switch ExpandMembers(forest, documents, links, constants, package, file,
+                         Members(forest, documents[file].syntax_root), &nodes) {
+        case .Failed(diagnostic):
+            return Selected.Failed(diagnostic);
+        case .Done:
+            return Selected.Chosen(nodes);
+    }
+}
+// The members of `file` that SelectMembers chose, from the lists of all files.
+ChosenMembers :: (nodes: int[], starts: int[], counts: int[], files: int[], file: int) -> int[] {
+    index: int = 0;
+    while (index < length(files)) {
+        if (files[index] == file) {
+            return slice(nodes, starts[index], counts[index]);
+        }
+        index += 1;
+    }
+    return [];
+}
+ChosenAt :: (chosen: int[], at: int) -> int {
+    if (at < length(chosen)) {
+        return chosen[at];
+    }
+    return -1;
+}
 // Adds package `package`'s records, unions, functions and constants, in file
 // and source order. Types come first, so any signature or payload may name any
 // type.
@@ -1000,9 +1172,24 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                        callables: Callable[], params: Param[], types: TypeDecl[],
                        members: TypeMember[], constants: ConstDecl[]) -> Declarations {
     types = CharTypes(types);
+    selected: int[] = [];
+    selected_starts: int[] = [];
+    selected_counts: int[] = [];
+    for (file in files) {
+        switch SelectMembers(forest, documents, links, constants, package, file) {
+            case .Failed(diagnostic):
+                return Declarations.Failed(diagnostic);
+            case .Chosen(nodes):
+                selected_starts.append(length(selected));
+                selected_counts.append(length(nodes));
+                selected.extend(nodes);
+        }
+    }
     for (file in files) {
         text := documents[file].text;
-        member := FirstMember(forest, documents[file].syntax_root);
+        chosen := ChosenMembers(selected, selected_starts, selected_counts, files, file);
+        chosen_at: int = 0;
+        member := ChosenAt(chosen, chosen_at);
         while (member >= 0) {
             record := Is(forest, member, "record_declaration");
             if (record || Is(forest, member, "union_declaration")) {
@@ -1027,7 +1214,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                           layout: 0, component: 0, key: 0, value_storage: 0, value_container: 0,
                                           value_record: -1, error: false};
                     types.append(template);
-                    member = NextMember(forest, member);
+                    chosen_at += 1;
+            member = ChosenAt(chosen, chosen_at);
                     continue;
                 }
                 declared: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), package: package,
@@ -1103,7 +1291,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     types.append(declared);
                 }
             }
-            member = NextMember(forest, member);
+            chosen_at += 1;
+            member = ChosenAt(chosen, chosen_at);
         }
     }
     instance_records: int[] = [];
@@ -1170,7 +1359,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
     // Resolve every field after names and type constructors exist. Pointer
     // links carry identity but do not participate in inline layout cycles.
     for (file in files) {
-        for (declaration in Members(forest, documents[file].syntax_root)) {
+        for (declaration in ChosenMembers(selected, selected_starts, selected_counts, files, file)) {
             if (!Is(forest, declaration, "record_declaration") || Field(forest, declaration, "parameters") >= 0) {
                 continue;
             }
@@ -1317,7 +1506,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
         }
         if (unresolved && !progress) {
             for (file in files) {
-                for (declaration in Members(forest, documents[file].syntax_root)) {
+                for (declaration in ChosenMembers(selected, selected_starts, selected_counts, files, file)) {
                     if (Is(forest, declaration, "record_declaration") && Field(forest, declaration, "parameters") < 0) {
                         holder := FindType(types, package, Text(forest, documents[file].text,
                                                                 Field(forest, declaration, "name")));
@@ -1336,7 +1525,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
     for (file in files) {
         text := documents[file].text;
         aliases := Aliases(links, file);
-        member := FirstMember(forest, documents[file].syntax_root);
+        chosen := ChosenMembers(selected, selected_starts, selected_counts, files, file);
+        chosen_at: int = 0;
+        member := ChosenAt(chosen, chosen_at);
         while (member >= 0) {
             if (Is(forest, member, "union_declaration")) {
                 holder := FindType(types, package, Text(forest, text, Field(forest, member, "name")));
@@ -1372,14 +1563,17 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     variant = NextMember(forest, variant);
                 }
             }
-            member = NextMember(forest, member);
+            chosen_at += 1;
+            member = ChosenAt(chosen, chosen_at);
         }
     }
     for (file in files) {
         text := documents[file].text;
         solid := SolidOffsets(text);
         aliases := Aliases(links, file);
-        member := FirstMember(forest, documents[file].syntax_root);
+        chosen := ChosenMembers(selected, selected_starts, selected_counts, files, file);
+        chosen_at: int = 0;
+        member := ChosenAt(chosen, chosen_at);
         while (member >= 0) {
             if (Is(forest, member, "function_declaration")) {
                 name := Text(forest, text, Field(forest, member, "name"));
@@ -1397,7 +1591,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                           waits: false, identity: 0, owner_package: package};
                     callables.append(template);
                     params.extend(GenericParameters(forest, text, member));
-                    member = NextMember(forest, member);
+                    chosen_at += 1;
+            member = ChosenAt(chosen, chosen_at);
                     continue;
                 }
                 switch FunctionSignature(forest, text, documents[file].key, solid, &types, aliases, package, file,
@@ -1444,7 +1639,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                        !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration")) {
                 return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
             }
-            member = NextMember(forest, member);
+            chosen_at += 1;
+            member = ChosenAt(chosen, chosen_at);
         }
     }
     // Constants may name one another in any order: fold every one whose

@@ -44,88 +44,175 @@
             {
               "type": "REPEAT",
               "content": {
-                "type": "CHOICE",
-                "members": [
-                  {
-                    "type": "SYMBOL",
-                    "name": "import_declaration"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "behavior"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "system"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "component"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "function_declaration"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "constant_declaration"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "state_declaration"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "record_declaration"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "union_declaration"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "macro_declaration"
-                  },
-                  {
-                    "type": "ALIAS",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "_public_function"
-                    },
-                    "named": true,
-                    "value": "function_declaration"
-                  },
-                  {
-                    "type": "ALIAS",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "_public_constant"
-                    },
-                    "named": true,
-                    "value": "constant_declaration"
-                  },
-                  {
-                    "type": "ALIAS",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "_public_record"
-                    },
-                    "named": true,
-                    "value": "record_declaration"
-                  },
-                  {
-                    "type": "ALIAS",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "_public_union"
-                    },
-                    "named": true,
-                    "value": "union_declaration"
-                  }
-                ]
+                "type": "SYMBOL",
+                "name": "_package_item"
               }
             }
           ]
+        }
+      ]
+    },
+    "_package_item": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "import_declaration"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "behavior"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "system"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "component"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "function_declaration"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "constant_declaration"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "state_declaration"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "record_declaration"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "union_declaration"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "macro_declaration"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "when_declaration"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_public_function"
+          },
+          "named": true,
+          "value": "function_declaration"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_public_constant"
+          },
+          "named": true,
+          "value": "constant_declaration"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_public_record"
+          },
+          "named": true,
+          "value": "record_declaration"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_public_union"
+          },
+          "named": true,
+          "value": "union_declaration"
+        }
+      ]
+    },
+    "when_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "when"
+        },
+        {
+          "type": "FIELD",
+          "name": "condition",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "consequence",
+          "content": {
+            "type": "SYMBOL",
+            "name": "declaration_block"
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "else"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "alternative",
+                  "content": {
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "SYMBOL",
+                        "name": "when_declaration"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "declaration_block"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
+    },
+    "declaration_block": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_package_item"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
         }
       ]
     },

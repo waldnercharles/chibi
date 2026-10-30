@@ -814,7 +814,7 @@ TEST_CASE(driver_lists_and_plans_test_selectors)
                                  "--release-build", "rel",     "chibi-cli",
                                  "projects",        NULL };
     REQUIRE(driver_verb("test", plan, &log));
-    bool planned = strstr(log, "chibi-cli: sh tools/with-timeout.sh 900 env ") &&
+    bool planned = strstr(log, "chibi-cli: sh tools/with-timeout.sh 600 env ") &&
                    strstr(log, "/out/test/tools/test_tools --chibi-cli /") &&
                    strstr(log, "CHIBI_CLI=") && strstr(log, "/rel/sdk/chibi ");
     if (!planned) {
@@ -827,6 +827,13 @@ TEST_CASE(driver_lists_and_plans_test_selectors)
     bool deadline = strstr(log, "chibi-cli: sh tools/with-timeout.sh 30 env ");
     free(log);
     REQUIRE(deadline);
+    const char *const heavy[] = { "--dry-run",
+                                  "language-package-compiler-chibi-bootstrap",
+                                  NULL };
+    REQUIRE(driver_verb("test", heavy, &log));
+    bool own_deadline = strstr(log, "language-package-compiler-chibi-bootstrap: sh tools/with-timeout.sh 1200 env ");
+    free(log);
+    REQUIRE(own_deadline);
     const char *const unknown[] = { "no-such-selector", NULL };
     REQUIRE(!driver_verb("test", unknown, &log));
     bool rejected = log && strstr(log, "unknown selector 'no-such-selector'");

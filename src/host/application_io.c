@@ -5,7 +5,6 @@
 
 #include "execution/module.h"
 #include "host/application_tools.h"
-#include "host/export.h"
 #include "host/process.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -14,6 +13,7 @@
 #include "types/text.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -37,6 +37,34 @@
 #include <sys/utsname.h>
 extern char **environ;
 #endif
+
+/* Removes a file or a folder and everything below it; true when nothing is
+ * left at path. */
+static bool remove_tree(const char *path)
+{
+    struct stat info;
+    if (lstat(path, &info) != 0) {
+        return errno == ENOENT;
+    }
+    if (!S_ISDIR(info.st_mode)) {
+        return unlink(path) == 0;
+    }
+    DIR *dir = opendir(path);
+    bool removed = dir != NULL;
+    for (struct dirent *entry; dir && (entry = readdir(dir));) {
+        if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..")) {
+            size_t size = strlen(path) + strlen(entry->d_name) + 2;
+            char *child = xmalloc(size);
+            snprintf(child, size, "%s/%s", path, entry->d_name);
+            removed = remove_tree(child) && removed;
+            free(child);
+        }
+    }
+    if (dir) {
+        closedir(dir);
+    }
+    return rmdir(path) == 0 && removed;
+}
 
 #define APPLICATION_TEXT_LIMIT (16 * 1024 * 1024)
 #define APPLICATION_ARGUMENT_LIMIT 1023
@@ -142,7 +170,7 @@ void application_io_free(application_io *io)
     signal_owner = NULL;
     for (int i = 0; i < acount(io->temporary); i++) {
         if (io->temporary[i]) {
-            chibi_remove_tree(io->temporary[i]);
+            remove_tree(io->temporary[i]);
             free(io->temporary[i]);
         }
     }
@@ -478,7 +506,7 @@ static const char *file_remove(void *service, const pin_value *arguments, pin_va
 {
     IO();
     STRING(0, path);
-    results[0].b = chibi_remove_tree(path);
+    results[0].b = remove_tree(path);
     if (results[0].b) {
         for (int i = 0; i < acount(io->temporary); i++) {
             if (io->temporary[i] && !strcmp(io->temporary[i], path)) {

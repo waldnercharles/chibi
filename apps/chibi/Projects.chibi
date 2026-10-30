@@ -2,89 +2,11 @@ package chibi_cli
 
 import strings "core:strings"
 
-Project :: struct {
-    valid: bool
-    root: string
-    content: string
-    name: string
-    title: string
-    icon: string
-    scene: string
-}
-
-ReadProject :: (requested: string) -> Project {
-    path := requested
-    if path == "" {
-        path = NearestProject()
-    }
-    if path == "" {
-        Error("No project.kdl in this directory or any parent")
-        return {valid: false, root: "", content: "", name: "", title: "", icon: "", scene: ""}
-    }
-    found := project.inspect(path)
-    if found.status != 0 {
-        Error(found.error)
-    }
-    return {valid: found.status == 0, root: found.root, content: found.content,
-            name: found.name, title: found.title, icon: found.icon, scene: found.scene}
-}
-
-CompilerIdentity :: () -> string {
-    compiler := files.resolve(Compiler())
-    if compiler == "" {
-        return ""
-    }
-    return format_text("{} {}\n", compiler, files.modified(compiler))
-}
-
-Prepare :: (game: Project, artifact: string) -> int {
-    stamp := Join([game.root, "/.chibi/build/compiler"])
-    identity := CompilerIdentity()
-    prepared := files.modified(artifact)
-    if prepared >= 0 && identity != "" && files.kind(stamp) == 1 && files.read(stamp) == identity &&
-       !project.sources_changed(game.root, prepared) {
-        return 0
-    }
-    files.mkdir(Join([game.root, "/.chibi"]))
-    files.mkdir(Join([game.root, "/.chibi/build"]))
-    started := application.now()
-    if application.platform() == "Windows" {
-        started -= 1000000000
-    }
-    status := process.run([Compiler(), "--project-root", game.root, "--output", artifact])
-    if status == 0 {
-        files.touch(artifact, started)
-        files.write(stamp, identity)
-    }
-    return status
-}
-
-Game :: (requested: string, arguments: string[], play: bool) -> int {
-    game := ReadProject(requested)
-    if !game.valid {
-        return 2
-    }
-    artifact := Join([game.root, "/.chibi/build/game.chibip"])
-    status := Prepare(game, artifact)
-    if status != 0 || !play {
-        return status
-    }
-    return process.run(Concat([Player(), artifact, "--resource-root", game.root], arguments))
-}
-
-Check :: (options: Options) -> int {
-    game := ReadProject(options.path)
-    if !game.valid {
-        return 2
-    }
-    arguments := [Compiler(), "--project-root", game.root, "--check"]
-    if options.explain {
-        arguments = append(arguments, "--explain-costs")
-    }
-    if options.json {
-        arguments = append(arguments, "--json")
-    }
-    return process.run(arguments)
+// Game projects are archived while the compiler moves to Chibi: building,
+// checking, running and exporting one fail.
+GameProjectsArchived :: (command: string) -> int {
+    Error(format_text("chibi {}: game projects are archived", command))
+    return 2
 }
 
 Test :: (options: Options) -> int {

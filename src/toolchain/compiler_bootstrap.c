@@ -736,7 +736,7 @@ static char *disk_arguments(
  * the target) and the prepared format. The host that ran the recovery is
  * not part of it: recovery is deterministic and proves its fixed point, so
  * every host build (Debug, Release, sanitized, relocated) shares an entry. */
-#define CACHE_VERSION "chibi-compiler-cache-2"
+#define CACHE_VERSION "chibi-compiler-cache-3"
 
 static void cache_key(const artifact *a, const char *json, size_t length, char key[BINARY_CACHE_KEY_BYTES + 1])
 {
@@ -790,7 +790,7 @@ static bool written(const char *output, const unsigned char *bytes, size_t lengt
  * stage two, and stage two, or stage one when it already is stage two's bytes,
  * must compile the sources to itself, so the artifact's code generation need
  * not match the sources'. Writes that fixed point to `output` when there is
- * one and hands its host to `current`. */
+ * one. This is the self-hosting proof; builds load stage one (stage_one). */
 static bool recover(
     compiler_host *host,
     const artifact *a,
@@ -798,9 +798,6 @@ static bool recover(
     size_t length,
     int changed,
     const char *output,
-    compiler_host **current,
-    const char *cache,
-    const char *key,
     char *report,
     size_t size
 )
@@ -872,11 +869,6 @@ static bool recover(
         );
     }
     valid = valid && written(output, fixed, fixed_length, report, size);
-    if (valid && current) {
-        cache_publish(cache, key, fixed, fixed_length);
-        *current = fixed_host;
-        fixed_host = NULL;
-    }
     compiler_host_free(fixed_host);
     free(third);
     free(second);
@@ -953,6 +945,51 @@ bool compiler_bootstrap_validate(const compiler_bootstrap *b, char *report, size
     return host != NULL;
 }
 
+/* A build needs a compiler with the sources' logic, and stage one has it: the
+ * seed compiled it from them. Proving that the sources compile to themselves
+ * (recover) costs two or three more whole-compiler compiles on the VM, about
+ * 230 of the 350 seconds a cold Linux CI host start spent; the check path
+ * does that, and CI's compiler self-build runs it on every push. Frees seed;
+ * returns stage one's host, kept in the cache, or NULL with why. */
+static compiler_host *stage_one(
+    compiler_host *seed,
+    const artifact *a,
+    const char *json,
+    size_t length,
+    int changed,
+    const char *cache,
+    const char *key,
+    char *report,
+    size_t size
+)
+{
+    size_t bytes_length = 0;
+    unsigned char *bytes = compile(seed, json, length, &bytes_length, report, size);
+    compiler_host_free(seed);
+    if (!bytes) {
+        return NULL;
+    }
+    compiler_host *host = loaded(bytes, bytes_length, a, report, size);
+    if (host) {
+        const char *revision = yyjson_get_str(yyjson_obj_get(a->root, "revision"));
+        char digest[65];
+        sha256_hex(bytes, bytes_length, digest);
+        snprintf(
+            report,
+            size,
+            "%d compiler sources changed since revision %s; the artifact "
+            "compiled a compiler of %zu bytes, sha256 %s, from them",
+            changed,
+            revision && *revision ? revision : "unrecorded",
+            bytes_length,
+            digest
+        );
+        cache_publish(cache, key, bytes, bytes_length);
+    }
+    free(bytes);
+    return host;
+}
+
 bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t size)
 {
     artifact a = { 0 };
@@ -961,7 +998,7 @@ bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t 
     int changed = 0;
     compiler_host *host = validated(b, &a, &json, &length, &changed, report, size);
     bool valid = host &&
-                 recover(host, &a, json, length, changed, b->output, NULL, NULL, NULL, report, size);
+                 recover(host, &a, json, length, changed, b->output, report, size);
     if (valid && b->arguments && !write_path(b->arguments, json, length)) {
         snprintf(report, size, "cannot write Compile's arguments to %s", b->arguments);
         valid = false;
@@ -998,9 +1035,7 @@ compiler_host *compiler_bootstrap_load(const compiler_bootstrap *b, char *error,
         if (!host) {
             host = loaded(a.closure, a.closure_length, &a, error, size);
             if (host && changed) {
-                compiler_host *current = NULL;
-                recover(host, &a, json, length, changed, NULL, &current, cache, cache ? key : NULL, error, size);
-                host = current;
+                host = stage_one(host, &a, json, length, changed, cache, cache ? key : NULL, error, size);
             }
         }
     }

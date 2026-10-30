@@ -679,7 +679,8 @@ TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
     }
     REQUIRE(api_host);
     REQUIRE(strstr(api_error, "compiler sources changed since revision"));
-    REQUIRE(strstr(api_error, "that compiles them to itself"));
+    /* A load takes stage one; the check path proves the fixed point. */
+    REQUIRE(strstr(api_error, "from them"));
     const char *compiled = strstr(api_error, "compiled a compiler of ");
     size_t recovered = 0;
     REQUIRE(compiled && sscanf(compiled, "compiled a compiler of %zu bytes", &recovered) == 1);

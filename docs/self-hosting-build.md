@@ -157,9 +157,12 @@ are visible.
 `chibi_build_compiler_load` validates the closure checksum, bootstrap version
 contract, full prepared target/native ABI and source completeness. Matching
 source hashes load the recorded closure directly. Changed existing source bytes
-use the self-hosted recovery path: the seed compiles the current compiler, and
-that compiler must reproduce itself in a second compile, which takes minutes.
-Both paths return an owned generation and write no artifact into the SDK.
+load stage one: the seed compiles the current compiler, which has the sources'
+logic. That costs one whole-compiler compile on the VM instead of the two or
+three the recovery proof needs (stage one, stage two, and stage three when stage
+two differs). The proof stays in `chibi build bootstrap-recover` and the
+compiler self-build workflow, which run it on every push. Both paths return an
+owned generation and write no artifact into the SDK.
 
 The recovered compiler is kept in a cache so that only the first start after a
 compiler-source change pays for the recovery, as Zig keeps its global cache. The

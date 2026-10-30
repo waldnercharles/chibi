@@ -312,3 +312,18 @@ MaximumFileCountChainsInReverseOrder :: () {
         i += 1;
     }
 }
+
+// Returns the graph it was lent through a helper and drops the copy.
+Lent :: (built: graph.Graph) -> int {
+    kept := Accepted(built);
+    return graph.Count(kept);
+}
+
+@test
+ReturningALentGraphLeavesItsOwnersPayload :: () {
+    imports: graph.Import[] = [];
+    built := Accepted(graph.Build(Files(), imports));
+    assert(Lent(built) == 3);
+    assert(Lent(built) == 3, "the first call must not free the caller's graph");
+    assert(graph.FilePackage(built, 3) == graph.FilePackage(built, 3));
+}

@@ -307,14 +307,42 @@ ParseReturn :: (c: ^Cursor, n: ^(Node[])) -> int {
     return statement;
 }
 
-// A parenthesized start is an argument list unless an operator follows the
-// closing parenthesis, which makes it the start of an expression.
+// After `return`, a parenthesized start is an argument list when it is empty,
+// holds a comma or starts an element with `name:`, and a parenthesized
+// expression otherwise, as Tree-sitter reads it.
 ParseArgumentsOrGroup :: (c: ^Cursor, n: ^(Node[])) -> int {
-    following := SkipBrackets(n, c.pos, c.final);
-    if (following >= 0 && n^[following].token == tk.Semicolon) {
+    if (HoldsArguments(c, n)) {
         return ParseArguments(c, n);
     }
     return ParseBinary(c, n, OrPower);
+}
+
+HoldsArguments :: (c: ^Cursor, n: ^(Node[])) -> bool {
+    at := c.pos + 1;
+    if (n^[at].token == tk.CloseParen) {
+        return true;
+    }
+    depth: int = 1;
+    start := true;
+    while (at < c.final && depth > 0) {
+        token := n^[at].token;
+        if (depth == 1 && start && IsMember(token)) {
+            following := SkipArgumentName(n, at, c.final);
+            if (following > 0 && n^[following].token == tk.Colon) {
+                return true;
+            }
+        }
+        start = false;
+        if (token == tk.OpenParen || token == tk.OpenBracket || token == tk.OpenBrace) {
+            depth += 1;
+        } else if (token == tk.CloseParen || token == tk.CloseBracket || token == tk.CloseBrace) {
+            depth -= 1;
+        } else if (depth == 1 && token == tk.Comma) {
+            return true;
+        }
+        at += 1;
+    }
+    return false;
 }
 
 ParseSequence :: (c: ^Cursor, n: ^(Node[])) -> int {

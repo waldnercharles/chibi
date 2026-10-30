@@ -809,7 +809,7 @@ Reflect :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: st
         command.extend(["--sysroot", profile.sysroot]);
     }
     inputs := [program, bindings];
-    for (input in ["src/runtime/component_ids.tsv", "src/runtime/native_nodes.c", "src/runtime/interface.h",
+    for (input in ["src/runtime/component_ids.tsv", "src/runtime/native_nodes.c",
                    "src/runtime/components.h", "src/types/annotate.h"]) {
         inputs.append(Join([source_root, "/", input]));
     }

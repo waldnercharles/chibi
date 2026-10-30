@@ -50,8 +50,7 @@ jobs:
       # provisioning repair first. No HTTP fallback or duplicated source rewrite.
       - name: Install the existing Linux native dependencies
         run: |
-          test -f .github/install-ubuntu-dependencies.py
-          python3 .github/install-ubuntu-dependencies.py clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
+          sudo apt-get update -q && sudo apt-get install -y -q clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev

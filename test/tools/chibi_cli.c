@@ -10,7 +10,6 @@
 #include "third_party/pico_headers/pico_unit.h"
 
 #ifdef CHIBI_TEST_IMAGE_PREPARATION
-#include "authoring/image_prepare.h"
 #endif
 
 #include <arpa/inet.h>

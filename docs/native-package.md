@@ -22,7 +22,7 @@ graph authoring or Studio dependencies. There is no MCP product or setup step.
 
 ```sh
 make package-sdk SDK_PREFIX=dist/sdk
-make package-runtime-sdk RUNTIME_SDK_PREFIX=dist/runtime-sdk
+chibi build package-runtime-sdk RUNTIME_SDK_PREFIX=dist/runtime-sdk
 make package-studio STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk
 ```
 

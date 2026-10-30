@@ -13,7 +13,7 @@ The Make convenience profiles are complete native products:
 
 ```sh
 make package-sdk SDK_PREFIX=/absolute/path/to/chibi-sdk
-make package-runtime-sdk RUNTIME_SDK_PREFIX=/absolute/path/to/runtime-sdk
+chibi build package-runtime-sdk RUNTIME_SDK_PREFIX=/absolute/path/to/runtime-sdk
 make package-player PLAYER_OUTPUT=/absolute/path/to/player
 ```
 
@@ -172,7 +172,7 @@ Run it through `python3 tools/test_policy.py tool language-headless`, setting
 `CHIBI_LANGUAGE_BUILD_DIR` to the configured consumer directory.
 
 `make package-sdk` builds and packages the complete SDK into `SDK_PREFIX`.
-`make package-runtime-sdk` packages the compiler-free runtime into
+`chibi build package-runtime-sdk` packages the compiler-free runtime into
 `RUNTIME_SDK_PREFIX` (default `dist/runtime-sdk`) using `RUNTIME_SDK_BUILD_DIR`
 (default `build-runtime-sdk`). Use
 `SDK_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF"`

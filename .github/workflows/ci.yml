@@ -56,16 +56,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Select CI native profile
-        run: python3 .github/native-profile.py
-      - name: Verify CI APT source fixtures
-        run: |
-          python3 .github/test-ubuntu-dependencies.py
-          python3 .github/test-native-ccache.py
-          python3 .github/test-native-profile.py
-          python3 .github/test-verify-native-profile.py
+        run: sh .github/native-profile.sh
       - name: Install build dependencies
         run: |
-          python3 .github/install-ubuntu-dependencies.py ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
+          sudo apt-get update -q && sudo apt-get install -y -q ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
@@ -75,7 +69,7 @@ jobs:
           mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
       - name: Configure compiler cache
         id: ccache-config
-        run: python3 .github/native-ccache.py
+        run: sh .github/native-ccache.sh
       - name: Restore compiler objects
         id: ccache
         uses: actions/cache/restore@v4
@@ -109,7 +103,7 @@ jobs:
         id: release-build
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
-        run: make build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
+        run: sh tools/build.sh build --release --target chibi --target chibi-build-host --target chibi-compiler-host --libclang-root /usr/lib/llvm-18
       - name: Build products and test drivers (selected Debug profile)
         env:
           VERBOSE: '1'
@@ -117,28 +111,26 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
-      - name: Verify native profile evidence
-        run: python3 .github/verify-native-profile.py
+          sh tools/build.sh build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root /usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       # Run authored command generation on the Release helper; test_tools and
       # the reference profile remain the selected Debug profile.
       - name: Graph Debug optimization (commands only)
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: python3 tools/test_policy.py tool build-graph-debug-optimization
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-graph-debug-optimization
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Build timing host regressions (ready drivers)
         env:
           CHIBI_TOOLS_BUILD_DIR: build/test/tools
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: python3 tools/test_policy.py --timeout 180 tool build-timings
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-timings
       - name: Tooling and process integrations
         env:
           CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
         run: |
           mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
-          make test-tools TOOLS_C_COMPILER=clang-18
-          ./build-tools/test_tools --case-timings
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host short
+          build/test/tools/test_tools --case-timings
       # Products, test drivers and Release helpers are already built and
       # profile-verified. Do not re-enter their planner for the test groups.
       # Keep groups sequential: they share fixtures and build outputs.
@@ -153,10 +145,8 @@ jobs:
           set -e
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-          python3 tools/test_policy.py group native
-          python3 tools/test_policy.py group materials
-          CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group projects
-          CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group language
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native
+          CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin sh tools/build.sh test --build-host build-release/sdk/chibi-build-host projects language
       - name: Keep the macOS and Windows native modules
         uses: actions/upload-artifact@v4
         with:
@@ -164,13 +154,12 @@ jobs:
           path: ${{ runner.temp }}/native-bundle
           if-no-files-found: error
           retention-days: 1
-      - name: Preserve native profile evidence
+      - name: Preserve build logs and timings
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: native-profile-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/native-profile.json
             ${{ runner.temp }}/native-build.log
             ${{ runner.temp }}/build-timings/
             ${{ runner.temp }}/case-timings/
@@ -216,7 +205,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Select CI native profile
-        run: python3 .github/native-profile.py
+        run: sh .github/native-profile.sh
       - name: Install build dependencies
         run: |
           brew install llvm ccache
@@ -230,7 +219,7 @@ jobs:
           mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
       - name: Configure compiler cache
         id: ccache-config
-        run: python3 .github/native-ccache.py
+        run: sh .github/native-ccache.sh
       - name: Restore compiler objects
         id: ccache
         uses: actions/cache/restore@v4
@@ -265,26 +254,7 @@ jobs:
         id: release-build
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
-        run: make build-release BUILD_TARGET='chibi chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
-      # Keep transient files retained by a failure. Success removes them; its
-      # capture still preserves the hosts and their build/source records.
-      - name: Capture macOS facade identities
-        if: always() && (steps.release-build.outcome == 'success' || steps.release-build.outcome == 'failure')
-        continue-on-error: true
-        run: >-
-          python3 .github/capture-facade.py --source-root "$GITHUB_WORKSPACE"
-          --build "$GITHUB_WORKSPACE/build-release"
-          --output "$RUNNER_TEMP/facade-capture"
-          --expected-revision "$GITHUB_SHA"
-      - name: Preserve macOS facade identities
-        if: always() && (steps.release-build.outcome == 'success' || steps.release-build.outcome == 'failure')
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-facade-identities-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/facade-capture/
-          if-no-files-found: warn
-          retention-days: 7
+        run: sh tools/build.sh build --release --target chibi --target chibi-compiler-host --libclang-root "$LLVM"
       # The Release build host runs the outer Build and Graph programs, which
       # plan the selected Debug build. Release hosts also generate the asset
       # compiler resource; products and test drivers retain the selected profile.
@@ -295,9 +265,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
-      - name: Verify native profile evidence
-        run: python3 .github/verify-native-profile.py
+          sh tools/build.sh build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root "$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Preserve failed macOS Graph stage log
         if: failure()
         uses: actions/upload-artifact@v4
@@ -312,14 +280,14 @@ jobs:
         env:
           CHIBI_TOOLS_BUILD_DIR: build/test/tools
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: python3 tools/test_policy.py --timeout 180 tool build-timings
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-timings
       - name: Tooling and process integrations
         env:
           CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
         run: |
           mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
-          make test-tools TOOLS_C_COMPILER="$CC"
-          ./build-tools/test_tools --case-timings
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host short
+          build/test/tools/test_tools --case-timings
       # The selected-profile build and Release helpers above already produced
       # these drivers. Run the same groups without re-entering either planner.
       # Keep groups sequential: they share fixtures and build outputs.
@@ -329,17 +297,14 @@ jobs:
           set -e
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-          python3 tools/test_policy.py group native
-          python3 tools/test_policy.py group materials
-          CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN= python3 tools/test_policy.py group projects
-          CHIBI_LLVM_BIN= python3 tools/test_policy.py group language
-      - name: Preserve native profile evidence
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native
+          CHIBI_LLVM_BIN= sh tools/build.sh test --build-host build-release/sdk/chibi-build-host projects language
+      - name: Preserve build logs and timings
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: native-profile-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/native-profile.json
             ${{ runner.temp }}/native-build.log
             ${{ runner.temp }}/build-timings/
             ${{ runner.temp }}/case-timings/
@@ -456,14 +421,14 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Select CI native profile
-        run: python3 .github/native-profile.py
+        run: sh .github/native-profile.sh
       - name: Verify clean source candidate
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain --untracked-files=normal)"
       - name: Install graph build dependencies
         run: |
-          python3 .github/install-ubuntu-dependencies.py --no-install-recommends \
+          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends \
             clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev ccache python3-venv \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
@@ -486,7 +451,7 @@ jobs:
           key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: compiler-cache-${{ runner.os }}-
       - name: Build Release graph compiler and build hosts
-        run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
+        run: sh tools/build.sh build --jobs "$JOBS" --libclang-root "$LIBCLANG_ROOT" --release --target chibi-build-host --target chibi-compiler-host
       - name: Record Release graph tool identities
         run: |
           sha256sum \
@@ -497,7 +462,7 @@ jobs:
             > "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
           cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Build the SDK test harness with the Release graph host
-        run: make build BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk
+        run: sh tools/build.sh build --jobs "$JOBS" --libclang-root "$LIBCLANG_ROOT" --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --build build-sdk-tests --target test_tools --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk
       - name: Verify Release graph tools survived the harness build unchanged
         run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Verify graph SDK packaging and relocation
@@ -505,7 +470,7 @@ jobs:
           CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
           CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
           CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
-            python3 tools/test_policy.py tool build-sdk
+            sh tools/build.sh test --build build-sdk-tests --build-host "$PWD/build-release/sdk/chibi-build-host" build-sdk
       - name: Verify sources remain unchanged
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"

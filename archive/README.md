@@ -128,6 +128,7 @@ Each differential that called an authored compiler package's exports from C is r
 - `package_routes_chibi.c` → `tools/compiler/package_routes/tests`: 37 @tests (11 root-set rejections and accepted roots, 11 file routes, 17 import routes, with the results the C router gave). Lost: the raw UTF-8 and surrogate-pair import literals, the 134-call reuse of one preparation per backend, and the detached-results lifetime case.
 - `package_syntax_chibi.c` → `tools/compiler/package_syntax/tests`: 5 @tests (header only, imports with and without alias with exact ranges, blank name, missing header, syntax error first). Lost: the 32 raw-parse transports of every child and incoming field name against Tree-sitter and the edited-snapshot case.
 - `syntax_chibi.c` → `tools/compiler/syntax_diagnostics/tests`: 5 @tests (valid source, four rejected sources with their diagnostic line and column). Lost: the shared-corpus comparison of raw trees against Tree-sitter snapshots and the incremental UTF-8 and recovery edits.
+- `packages.c` and `package_graph_chibi.c` → `tools/compiler/package_graph/tests`: the 23 graph cases (membership and filename order, header, name and file conflicts, aliases, default and blank imports, missing members, self imports, cycle witnesses, dependency-first order, the 256-file chain) with the C graph's results. Lost: the differential's full per-case comparison of every edge, binding and member against the C graph.
 - `unit_algebra_chibi.c` → `tools/compiler/unit_algebra/tests`: 5 @tests over its 24 Parse, five Same, ten Product and nine Format requests with the recorded results. Lost: the detached-results lifetime case.
 - `type_relations_chibi.c` → `tools/compiler/type_relations/tests`: its 111 relation, catalog and canonical cases and the floating matrix, generated from the C tables. Lost: the detached-results lifetime case.
 
@@ -136,7 +137,7 @@ Each differential that called an authored compiler package's exports from C is r
 Each called authored compiler packages through `compiler_fixture` (stage-zero prepared) and compared them with stage-zero or Tree-sitter results. Re-author the ones worth keeping as `@test` in `tools/compiler/<package>/tests`:
 
 - `argument_effects_chibi.c` (argument-effect metadata and effect order), `bounded_compiler_chibi.c` (bounded Compile on the bounded corpus), `compiler_artifact_chibi.c` and `test/tools/compiler_artifact.c` (artifact write by `test_language` read back by `test_tools` with the compiler host), `asset_packaging_chibi.c`, `shader_source_chibi.c` (shader source packaging).
-- `package_snapshot_chibi.c` + `package_resolution.c` (snapshot Build, option validation, path-before-size and parse-before-route ordering, UTF-8 and budget validation), `package_graph_chibi.c` + `packages.c` (package graph).
+- `package_snapshot_chibi.c` + `package_resolution.c` (snapshot Build, option validation, path-before-size and parse-before-route ordering, UTF-8 and budget validation).
 - Kept: `package_compiler_chibi.c` (its bootstrap, native, scalar and types selectors drive seed refresh and the native lanes), `native_census.c`, `host_packages.c`.
 
 ## Third-party archive builder (third_party/CMakeLists.txt, .github/workflows/third-party.yml, test/tools/third_party_publish.c)

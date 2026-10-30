@@ -1,0 +1,33 @@
+package facts
+
+// value sequence copies
+@test
+Calls :: () {
+    r1: int = Assignment();
+    e1: int = 1273;
+    assert(r1 == e1, "Assignment call 1");
+    r2: int = Parameter();
+    e2: int = 158;
+    assert(r2 == e2, "Parameter call 2");
+    r3: int = Returned();
+    e3: int = 29;
+    assert(r3 == e3, "Returned call 3");
+    r4: int = Nested();
+    e4: int = 2338;
+    assert(r4 == e4, "Nested call 4");
+    r5: int = Maps();
+    e5: int = 229;
+    assert(r5 == e5, "Maps call 5");
+    r6: int = Records();
+    e6: int = 293;
+    assert(r6 == e6, "Records call 6");
+    r7: int = Pointers();
+    e7: int = 595;
+    assert(r7 == e7, "Pointers call 7");
+    r8: int = Cloned();
+    e8: int = 48;
+    assert(r8 == e8, "Cloned call 8");
+    r9: int = Empty();
+    e9: int = 17;
+    assert(r9 == e9, "Empty call 9");
+}

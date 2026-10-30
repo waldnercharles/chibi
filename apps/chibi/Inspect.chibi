@@ -44,22 +44,6 @@ Executable :: (name: string, path: string) -> bool {
     return Report(name, "supported", path)
 }
 
-Browser :: (player: string) -> bool {
-    if player == "" {
-        return Report("browser export", "unavailable", "pass --web PLAYER; make package-web-player builds one")
-    }
-    for name in ["index.html", "chibi-player.js", "chibi-player.wasm", "compiler/chibi-compile.js", "compiler/chibi-compile.wasm"] {
-        if !files.readable(Join([player, "/", name])) {
-            return Report("browser export", "broken", format_text("{} lacks {}", player, name))
-        }
-    }
-    node := files.find_executable(Join(["node", sdk.executable_suffix()]))
-    if node == "" {
-        return Report("browser export", "broken", format_text("node, which runs {}'s compiler, is not on PATH", player))
-    }
-    return Report("browser export", "supported", format_text("{} with {}", player, node))
-}
-
 Doctor :: (options: Options) -> int {
     identity := sdk.identity()
     broken := false
@@ -70,8 +54,7 @@ Doctor :: (options: Options) -> int {
         broken = Report("sdk", "broken", "no valid build identity")
     }
     compiler_broken := Executable("compiler", Compiler())
-    player_broken := Executable("player", Player())
-    broken = broken || compiler_broken || player_broken
+    broken = broken || compiler_broken
     if identity.valid {
         host := sdk.platform()
         if identity.system == "" || length(identity.processors) == 0 {
@@ -105,8 +88,7 @@ Doctor :: (options: Options) -> int {
             }
         }
     }
-    browser_broken := Browser(options.web)
-    if broken || browser_broken {
+    if broken {
         return 1
     }
     return 0

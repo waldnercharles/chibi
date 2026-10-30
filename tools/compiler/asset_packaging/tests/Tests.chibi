@@ -1,0 +1,71 @@
+package asset_packaging_tests
+
+import bytes "core:bytes"
+import packaging "project:asset_packaging"
+import strings "core:strings"
+
+// The packaging cases of the former C differential (asset_packaging_chibi.c):
+// one game source of 0, 1, 3, 512 and 1024 bytes cycling through NUL, quote,
+// backslash, a two-byte UTF-8 letter, newline and 'x' is emitted byte for
+// byte into the generated C resource.
+Source :: (count: int) -> string {
+    pattern: int[] = [0, 34, 92, 195, 169, 10, 120];
+    data: u8[] = [];
+    index: int = 0;
+    while (index < count) {
+        data.append(u8(pattern[index % length(pattern)]));
+        index += 1;
+    }
+    return bytes.ToString(data);
+}
+
+// The resource the C test expected, written independently of Packaged.
+Expected :: (source: string) -> string {
+    parts := ["#include \"authoring/asset_compiler_host.h\"\n#include \"asset_compiler_blob.inc\"\n",
+              "static const unsigned char asset_library_0[] = {"];
+    for (value in strings.Bytes(source)) {
+        parts.append(format_text("{},", value));
+    }
+    parts.append("0};\nstatic const asset_source_library asset_libraries[] = {\n");
+    parts.append("{\"/sdk/game/Test.chibi\", (const char *)asset_library_0},\n");
+    parts.append("};\nstatic const asset_source_collection asset_collections[] = {\n");
+    parts.append("{\"core\", \"/sdk/core\"}, {\"game\", \"/sdk/game\"}};\n");
+    parts.append("const asset_compiler_options *asset_compiler_packaged_options() {\n");
+    parts.append("static const asset_compiler_options options = {\n");
+    parts.append(".compiler = asset_compiler_blob, .compiler_length = sizeof asset_compiler_blob,\n");
+    parts.append(".libraries = asset_libraries, .library_count = sizeof asset_libraries / sizeof asset_libraries[0],\n");
+    parts.append(".collections = asset_collections, .collection_count = 2\n};\nreturn &options;\n}\n");
+    return strings.Join(parts, "");
+}
+
+Packages :: (count: int) {
+    source := Source(count);
+    assert(strings.ByteLength(source) == count, "source keeps every byte");
+    out := packaging.Packaged(["/sdk/game/Test.chibi"], [source]);
+    assert(bytes.Equal(out, bytes.FromString(Expected(source))), "packaged resource");
+}
+
+@test
+EmptySourceIsPackaged :: () {
+    Packages(0);
+}
+
+@test
+OneByteSourceIsPackaged :: () {
+    Packages(1);
+}
+
+@test
+QuoteAndBackslashArePackagedAsBytes :: () {
+    Packages(3);
+}
+
+@test
+HalfKilobyteSourceIsPackaged :: () {
+    Packages(512);
+}
+
+@test
+KilobyteSourceIsPackaged :: () {
+    Packages(1024);
+}

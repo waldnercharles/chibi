@@ -21,7 +21,7 @@ jobs:
   recover:
     name: Compiler recovery (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -69,6 +69,16 @@ jobs:
             if ($LASTEXITCODE) { throw 'Installing LLVM for the native runtime failed' }
             $llvm = & brew --prefix llvm
             "$llvm/bin" >> $env:GITHUB_PATH
+            "LLVM=$llvm" >> $env:GITHUB_ENV
+          } else {
+            sudo apt-get update -q
+            sudo apt-get install -y -q ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 `
+              libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev `
+              libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+            if ($LASTEXITCODE) { throw 'Installing the native build dependencies failed' }
+            'LLVM=/usr/lib/llvm-18' >> $env:GITHUB_ENV
+            'CC=clang-18' >> $env:GITHUB_ENV
+            'CXX=clang++-18' >> $env:GITHUB_ENV
           }
           $python = if ($IsWindows) { 'python' } else { 'python3' }
           $venv = Join-Path $env:RUNNER_TEMP 'compiler-recovery-build-tools'
@@ -78,18 +88,17 @@ jobs:
           & (Join-Path $bin 'pip') install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           if ($LASTEXITCODE) { throw 'Installing the pinned native build tools failed' }
           $bin >> $env:GITHUB_PATH
-      - name: Configure the native runtime
-        id: configure
-        run: |
-          $timer = [Diagnostics.Stopwatch]::StartNew()
-          cmake -S sdk -B runtime-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCMAKE_C_COMPILER=clang
-          if ($LASTEXITCODE) { throw 'Configuring the native runtime failed' }
-          "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
+      # Windows has no graph build host yet, so its seed cannot be refreshed.
       - name: Build the native runtime
         id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LIBCLANG_ROOT: ${{ env.LLVM }}
         run: |
+          if ($IsWindows) { throw 'The graph does not run on Windows yet; the Windows runtime seed cannot be refreshed' }
           $timer = [Diagnostics.Stopwatch]::StartNew()
-          cmake --build runtime-build --target chibi-compiler-host --parallel 4
+          if ($env:CC) { $env:NATIVE_TOOLCHAIN_FLAGS = "-DCMAKE_C_COMPILER=$env:CC -DCMAKE_CXX_COMPILER=$env:CXX" }
+          sh tools/build.sh build --release --target chibi-compiler-host
           if ($LASTEXITCODE) { throw 'Building the native runtime failed' }
           "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
       - name: Copy the recovery inputs into an isolated directory
@@ -98,14 +107,13 @@ jobs:
           $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
           New-Item -ItemType Directory -Path "$proof/tools", "$proof/packages" | Out-Null
           $hostName = 'chibi-compiler-host' + $(if ($IsWindows) { '.exe' } else { '' })
-          Copy-Item "runtime-build/$hostName" $proof
+          Copy-Item "build-release/sdk/$hostName" $proof
           Copy-Item tools/compiler "$proof/tools/compiler" -Recurse
           Copy-Item packages/core "$proof/packages/core" -Recurse
           $nativeSources = Get-ChildItem $proof -Recurse -File | Where-Object { $_.Extension -in '.c', '.h', '.cc', '.cpp', '.cxx', '.m', '.mm' }
           if ($nativeSources) { throw 'The recovery input directory contains native sources' }
       - name: Recover the compiler without a native toolchain
         env:
-          CONFIGURE_SECONDS: ${{ steps.configure.outputs.seconds }}
           BUILD_SECONDS: ${{ steps.build.outputs.seconds }}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -149,7 +157,6 @@ jobs:
             runner_os = $env:RUNNER_OS
             runner_arch = $env:RUNNER_ARCH
             runtime_sha256 = (Get-FileHash "$proof/$hostName" -Algorithm SHA256).Hash.ToLowerInvariant()
-            native_configure_seconds = $env:CONFIGURE_SECONDS
             native_build_seconds = $env:BUILD_SECONDS
             proof_seconds = $timer.Elapsed.TotalSeconds
             proof_exit_code = $process.ExitCode
@@ -283,7 +290,7 @@ jobs:
           # the build fetches them, and the notices the binaries carry.
           short=${GITHUB_SHA:0:12}
           git archive --format=tar.gz --prefix="chibi-$short/" -o "$out/chibi-source-$short.tar.gz" HEAD
-          pin() { awk -v name="$1" '$1 == "chibi_third_party(" name { getline; sub(/\)$/, "", $1); print $1 }' third_party/CMakeLists.txt; }
+          pin() { awk -v name="$1" '$1 == "chibi_third_party(" name { getline; sub(/\)$/, "", $1); print $1 }' archive/third_party/CMakeLists.txt; }
           sljit=$(pin sljit)
           tree_sitter=$(pin tree_sitter)
           [[ $sljit =~ ^[0-9a-f]{40}$ && $tree_sitter =~ ^[0-9a-f]{40}$ ]]

@@ -775,7 +775,7 @@ by View Direction shades the floor as the sun and a point light see it, though
 the camera sees it cut. It is a GPU
 check that runs the main build's
 `test/tools/test_tools` after the agent's device preflight, so build it first
-with `make build BUILD_TARGET=test_tools`.
+with `chibi build --target test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
 Vulkan llvmpipe passed 95 cases and 83503 assertions in 24.2 seconds on 2026-10-11,
@@ -813,22 +813,22 @@ the shadow maps, ambient occlusion and global illumination to passes of their
 own. Debug ASan+UBSan on Vulkan llvmpipe passed its 13 cases and 67 assertions
 in 9.3 seconds on 2026-10-11, and in 5.4 seconds on GLES.
 
-`python3 tools/test_policy.py tool render-resources` checks on the CPU that the
+`chibi build test render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half
 floats; that the irradiance terms give the exact cosine integral of an even
 sky, an octant sky and skies quadratic along three axes; that the split-sum
 table matches a fine numerical integral of the GGX lobe; and that skies
 publish, and are charged, with a prepared generation, and
-`python3 tools/test_policy.py tool sky-files` decodes flat and run-length
+`chibi build test sky-files` decodes flat and run-length
 files, rejects malformed ones, prepares skies from mounted content and imports
 them without replacing a file. Both need the in-tree build above.
-`python3 tools/test_policy.py tool mesh-files` checks `.mesh` tangents,
+`chibi build test mesh-files` checks `.mesh` tangents,
 preparation and refusals the same way, and
-`python3 tools/test_policy.py tool model-import` checks the files a glTF
+`chibi build test model-import` checks the files a glTF
 import writes, its names, refusals, warnings, left-out vertices and tangent
 frames.
 
-For texture transforms, build `test_tools` with `make build BUILD_TARGET=test_tools`
+For texture transforms, build `test_tools` with `chibi build --target test_tools`
 and run `make agent-gpu-test AGENT_SELECTOR=--texture-transform`. Pass the same
 `BUILD_DIR` to both commands when using another build folder. This focused
 check draws 21 frames in one hidden 64 x 64 app. It compares each PBR texture

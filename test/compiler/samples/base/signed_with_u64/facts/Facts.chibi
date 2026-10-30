@@ -1,0 +1,4 @@
+package facts
+One :: (a: int, b: u64) -> u64 { return a + b; }
+
+// error: 2:41: Mismatched integer types int and u64; convert one operand

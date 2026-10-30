@@ -1,6 +1,7 @@
 #include "host/build_host.h"
 #include "host/build_timing.h"
 #include "host/build_values.h"
+#include "support/binary_cache.h"
 #include "support/sha256.h"
 #include "types/text.h"
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
@@ -1248,6 +1249,49 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)
         diagnostic_is(result.diagnostic, "Unknown import collection") &&
         !result.counts.bytecode_entries
     );
+    return true;
+}
+
+static int kept_programs(const char *cache)
+{
+    binary_cache_entry *entries = NULL;
+    int count = 0, kept = 0;
+    if (!binary_cache_list(cache, &entries, &count)) {
+        return -1;
+    }
+    for (int i = 0; i < count; i++) {
+        kept += !strncmp(entries[i].key, "program-", 8);
+    }
+    free(entries);
+    return kept;
+}
+
+/* A build host keeps the program it compiles beside the recovered compilers and
+ * reuses it: the second start of the same program adds no entry. The program
+ * is new to this process, so an entry a restored cache holds cannot count. */
+TEST_CASE(private_compiled_programs_are_kept_and_reused)
+{
+    const char *cache = getenv("CHIBI_COMPILER_CACHE");
+    if (!cache || !*cache || !strcmp(cache, "off")) {
+        return true;
+    }
+    char source[160];
+    snprintf(
+        source,
+        sizeof source,
+        "package kept_program\nBuild :: () -> int { return %ld - %ld + 42; }",
+        (long)getpid(),
+        (long)getpid()
+    );
+    int before = kept_programs(cache);
+    REQUIRE(before >= 0);
+    for (int i = 0; i < 2; i++) {
+        chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result));
+        REQUIRE(result.value == 42);
+        REQUIRE(kept_programs(cache) == before + 1);
+    }
     return true;
 }
 
@@ -2699,6 +2743,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     if (cases == BUILD_PROCESS_FILES) {
         RUN_TEST_CASE(private_core_bytes_survive_native_result_bank_reuse);
         RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
+        RUN_TEST_CASE(private_compiled_programs_are_kept_and_reused);
         RUN_TEST_CASE(private_value_storage_reuses_results_and_preserves_live_values);
         RUN_TEST_CASE(private_directory_publication_refuses_existing_paths);
         goto teardown;

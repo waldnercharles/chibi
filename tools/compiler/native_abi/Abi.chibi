@@ -125,7 +125,7 @@ pub TextType :: () -> string {
 // The version of the export manifest a library object holds, which the
 // runtime checks before binding it: EXECUTION_NATIVE_ABI in
 // src/execution/native.h.
-pub ExportAbi: int : 3;
+pub ExportAbi: int : 4;
 // The most parameters an entry of that ABI takes:
 // EXECUTION_NATIVE_MAX_PARAMETERS. A function with more stays callable only
 // inside its library.
@@ -165,9 +165,16 @@ pub ValueTag :: (storage: int) -> int {
 // The LLVM type of execution_native_context, the hidden first parameter of
 // every function of a module that calls the runtime: a pointer to each
 // operation, `format_text(context, values, count, result)` first, then the
-// failure native code ends the call with, or null.
+// failure native code ends the call with, or null, then
+// `allocate(context, size)` and `index_failed(context, index, length)`.
 pub ContextType :: () -> string {
-    return "{ ptr, ptr }";
+    return "{ ptr, ptr, ptr, ptr }";
+}
+// The LLVM type of an array: its length, its capacity and its elements, by
+// value. An array of no elements, with a length and capacity of 0 and no
+// elements, is its zero.
+pub ArrayType :: () -> string {
+    return "{ i32, i32, ptr }";
 }
 // The LLVM type of execution_native_failure: the stable ID of the function
 // whose assert failed, and the assert's source range.

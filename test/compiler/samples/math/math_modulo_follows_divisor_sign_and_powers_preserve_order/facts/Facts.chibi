@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { return mod(vec2(-3, 3), 2) == vec2(1, 1) && mod(vec2(-3, 3), -2) == vec2(-1, -1) && pow(vec3(2, 3, 4), 2) == vec3(4, 9, 16) && sqrt(vec3(4, 9, 16)) == vec3(2, 3, 4); }

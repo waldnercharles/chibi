@@ -1,0 +1,401 @@
+package source_snapshot_tests
+
+import bytes "core:bytes"
+import graph "project:package_graph"
+import routes "project:package_routes"
+import snap "project:source_snapshot"
+import strings "core:strings"
+
+// The resolver and snapshot cases of the former C snapshot and its
+// differential (package_resolution.c, package_snapshot_chibi.c), with the
+// results the C snapshot gave.
+In :: (path: string, text: string) -> snap.Input {
+    return {path: path, text: text, has_path: true, has_text: true};
+}
+Root :: (name: string, path: string) -> routes.Collection {
+    return {name: name, path: path, has_name: true, has_path: true};
+}
+Corpus :: () -> snap.Input[] {
+    return [In("/workspace/project/app/a.chibi", "package app\nimport first \"../math\"\nimport second \"project:math/.\"\n"),
+            In("/workspace/project/app/z.chibi", "package app\nimport _ \"core:scalar\"\n"),
+            In("/workspace/project/math/a.chibi", "package numbers\n"),
+            In("/workspace/project/other/a.chibi", "package other\n"),
+            In("/sdk/core/scalar/a.chibi", "package scalar\n")];
+}
+Core :: () -> routes.Collection[] {
+    return [Root("core", "/sdk/core")];
+}
+None :: () -> routes.Collection[] {
+    collections: routes.Collection[] = [];
+    return collections;
+}
+Sizes :: (inputs: snap.Input[]) -> u64[] {
+    sizes: u64[] = [];
+    for (input in inputs) {
+        sizes.append(u64(strings.ByteLength(input.text)));
+    }
+    return sizes;
+}
+Options :: (project: string, files: int, collections: int) -> snap.Options {
+    return {project: project, has_project: true, has_options: true, has_files: true,
+            has_collections: collections > 0, file_count: files, collection_count: collections};
+}
+// Builds a snapshot of whole inputs, each sized by its text.
+Build :: (inputs: snap.Input[], project: string, collections: routes.Collection[]) -> snap.Result {
+    return snap.Build(Options(project, length(inputs), length(collections)), collections, inputs, Sizes(inputs));
+}
+
+// The prefix followed by raw bytes, which may be NUL or malformed UTF-8.
+Raw :: (prefix: string, tail: int[]) -> string {
+    data := bytes.FromString(prefix);
+    for (byte in tail) {
+        data.append(u8(byte));
+    }
+    return bytes.ToString(data);
+}
+
+// A rejection's diagnostic and related range, and its graph error.
+Rejection :: struct {
+    message: string;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+    related_start: int;
+    related_end: int;
+    related_line: int;
+    related_column: int;
+    related_document: int;
+    code: int;
+    cycle_count: int;
+}
+
+Graph :: (result: snap.Result) -> graph.Graph {
+    switch result {
+        case .Accepted(roots, documents, nodes, imports, built):
+            return built;
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            assert(false, "the snapshot is valid");
+            files: graph.File[] = [];
+            edges: graph.Import[] = [];
+            return graph.Build(files, edges);
+    }
+}
+Documents :: (result: snap.Result) -> snap.Document[] {
+    switch result {
+        case .Accepted(roots, documents, nodes, imports, built):
+            return documents;
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            return documents;
+    }
+}
+Imports :: (result: snap.Result) -> snap.ResolvedImport[] {
+    switch result {
+        case .Accepted(roots, documents, nodes, imports, built):
+            return imports;
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            return imports;
+    }
+}
+// The package of the first document with the identity, or -1.
+Package :: (documents: snap.Document[], built: graph.Graph, identity: string) -> int {
+    i: int = 0;
+    while (i < length(documents)) {
+        if (documents[i].identity == identity) {
+            return graph.FilePackage(built, i);
+        }
+        i += 1;
+    }
+    return -1;
+}
+Failure :: (result: snap.Result) -> Rejection {
+    switch result {
+        case .Accepted(roots, documents, nodes, imports, built):
+            assert(false, "the snapshot is invalid");
+            return {message: "", start: 0, end: 0, line: 0, column: 0, document: -2, related_start: 0, related_end: 0,
+                    related_line: 0, related_column: 0, related_document: -2, code: 0, cycle_count: 0};
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            return {message: diagnostic.message, start: diagnostic.start, end: diagnostic.end, line: diagnostic.line,
+                    column: diagnostic.column, document: diagnostic.document, related_start: related.start,
+                    related_end: related.end, related_line: related.line, related_column: related.column,
+                    related_document: related.document, code: graph_error.code, cycle_count: graph_error.cycle_count};
+    }
+}
+// Whether start, end, line and column cover the first `token` in `text`.
+Covers :: (start: int, end: int, line: int, column: int, text: string, token: string) -> bool {
+    at := strings.Index(text, token);
+    if (at < 0) {
+        return false;
+    }
+    row: int = 1;
+    col: int = 1;
+    i: int = 0;
+    while (i < at) {
+        if (strings.ByteAt(text, i) == 10) {
+            row += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+        i += 1;
+    }
+    return start == at && end == at + strings.ByteLength(token) && line == row && column == col;
+}
+Located :: (failure: Rejection, document: int, text: string, token: string) {
+    assert(failure.message != "", "a rejection has a message");
+    assert(failure.document == document, "diagnostic document");
+    assert(Covers(failure.start, failure.end, failure.line, failure.column, text, token), "diagnostic range");
+}
+
+@test
+RelativeAndCollectionPathsShareIdentity :: () {
+    corpus := Corpus();
+    result := Build(corpus, "/workspace/./project", Core());
+    built := Graph(result);
+    assert(graph.Count(built) == 4);
+    app := Package(Documents(result), Graph(result), "project:app");
+    math := Package(Documents(result), Graph(result), "project:math");
+    scalar := Package(Documents(result), Graph(result), "core:scalar");
+    assert(app >= 0 && math >= 0 && scalar >= 0);
+    assert(graph.FilePackage(built, 0) == app && graph.FilePackage(built, 1) == app);
+    assert(graph.Lookup(built, 0, "first") == math && graph.Lookup(built, 0, "second") == math);
+    assert(graph.Dependency(built, app, math) >= 0 && graph.Dependency(built, app, scalar) >= 0);
+    documents := Documents(result);
+    assert(length(documents) == 5);
+    assert(documents[0].key == "project:app/a.chibi" && documents[4].key == "core:scalar/a.chibi");
+    assert(documents[0].path == corpus[0].path);
+    imports := Imports(result);
+    assert(length(imports) == 3);
+    assert(imports[0].directory == imports[1].directory);
+    second := imports[1];
+    assert(second.range_document == 0);
+    assert(Covers(second.range_start, second.range_end, second.range_line, second.range_column, corpus[0].text,
+                  "import second \"project:math/.\""));
+}
+
+@test
+AliasesAreFileLocalAndBlankImportsKeepEdges :: () {
+    corpus := Corpus();
+    inputs := [In("app/a.chibi", "package app\nimport lib \"../math\"\nimport _ \"../other\"\n"),
+               In("app/b.chibi", "package app\nimport lib \"../other\"\nimport _ \"../math\"\n"), corpus[2], corpus[3]];
+    result := Build(inputs, "/workspace/project", None());
+    built := Graph(result);
+    app := Package(Documents(result), Graph(result), "project:app");
+    math := Package(Documents(result), Graph(result), "project:math");
+    other := Package(Documents(result), Graph(result), "project:other");
+    assert(graph.Lookup(built, 0, "lib") == math && graph.Lookup(built, 1, "lib") == other);
+    assert(graph.Lookup(built, 0, "_") == -1 && graph.Lookup(built, 1, "_") == -1);
+    assert(graph.Lookup(built, 2, "lib") == -1);
+    assert(graph.Dependency(built, app, math) >= 0 && graph.Dependency(built, app, other) >= 0);
+}
+
+@test
+PathFailuresKeepTheQuotedTokenRange :: () {
+    texts := ["package app\nimport lib \"../../outside\"\n", "package app\nimport lib \"unknown:math\"\n",
+              "package app\nimport lib \"../missing\"\n", "package app\nimport lib \"/sdk/core/scalar\"\n"];
+    tokens := ["\"../../outside\"", "\"unknown:math\"", "\"../missing\"", "\"/sdk/core/scalar\""];
+    math := Corpus()[2];
+    i: int = 0;
+    while (i < 4) {
+        Located(Failure(Build([In("app/a.chibi", texts[i]), math], "/workspace/project", Core())), 0, texts[i], tokens[i]);
+        i += 1;
+    }
+    // A nested collection owns this source even though the project root also
+    // contains it. Relative paths cannot escape that longest matching root.
+    text := "package app\nimport lib \"../math\"\n";
+    Located(Failure(Build([In("app/a.chibi", text), math], "/workspace/project", [Root("nested", "/workspace/project/app")])),
+            0, text, "\"../math\"");
+}
+
+@test
+MalformedStringsAndHeadersHaveLocalRanges :: () {
+    nul := "package app\nimport lib \"bad\\u0000path\"\n";
+    Located(Failure(Build([In("app/a.chibi", nul)], "/workspace/project", None())), 0, nul, "\"bad\\u0000path\"");
+    empty := "package app\nimport lib \"\"\n";
+    Located(Failure(Build([In("app/a.chibi", empty)], "/workspace/project", None())), 0, empty, "\"\"");
+    escape := "package app\nimport lib \"bad\\q\"\n";
+    assert(Failure(Build([In("app/a.chibi", escape)], "/workspace/project", None())).document == 0);
+    blank := "package _\n";
+    Located(Failure(Build([In("app/a.chibi", blank)], "/workspace/project", None())), 0, blank, "_");
+    mismatch := Failure(Build([In("app/a.chibi", "package app\n"), In("app/b.chibi", "package other\n")],
+                              "/workspace/project", None()));
+    Located(mismatch, 1, "package other\n", "other");
+    assert(mismatch.related_document == 0, "related document");
+    assert(Covers(mismatch.related_start, mismatch.related_end, mismatch.related_line, mismatch.related_column,
+                  "package app\n", "app"), "related range");
+}
+
+@test
+TextShorterThanItsSizeIsRejected :: () {
+    // The C input held a NUL and trailing bytes; the text stops at the NUL.
+    inputs := [In("app/a.chibi", "package app\n")];
+    sizes: u64[] = [27];
+    result := snap.Build(Options("/workspace/project", 1, 0), None(), inputs, sizes);
+    assert(Failure(result).document == 0);
+}
+
+@test
+DuplicateFilesAndCollectionRootsAreRejected :: () {
+    corpus := Corpus();
+    duplicate := [corpus[0], In("/workspace/project/app/./a.chibi", "package app\n"), corpus[2]];
+    assert(Failure(Build(duplicate, "/workspace/project", None())).document == 1);
+    file := [In("app/a.chibi", "package app\n")];
+    assert(Failure(Build(file, "/workspace/project", [Root("core", "/sdk/core"), Root("core", "/sdk/other")])).document == -1);
+    assert(Failure(Build(file, "/workspace/project", [Root("core", "/sdk/core"), Root("vendor", "/sdk/./core")])).document == -1);
+    assert(Failure(Build(file, "/workspace/project", [Root("project", "/sdk/core"), Root("vendor", "/sdk/vendor")])).document == -1);
+}
+
+@test
+UnusedCyclesAreRejectedAndSelfEdgesStayValid :: () {
+    alpha := In("a/a.chibi", "package alpha\nimport _ \"../b\"\n");
+    pair := Failure(Build([alpha, In("b/b.chibi", "package beta\nimport _ \"../a\"\n")], "/workspace/project", None()));
+    assert(pair.code == graph.Cycle && pair.cycle_count == 2);
+    assert(pair.document >= 0 && pair.document < 2);
+    triple := Failure(Build([alpha, In("b/b.chibi", "package beta\nimport _ \"../c\"\n"),
+                             In("c/c.chibi", "package gamma\nimport _ \"../a\"\n")], "/workspace/project", None()));
+    assert(triple.code == graph.Cycle && triple.cycle_count == 3);
+    self := Build([In("a/a.chibi", "package alpha\nimport _ \".\"\nimport _ \"../b\"\n"), In("b/b.chibi", "package beta\n")],
+                  "/workspace/project", None());
+    built := Graph(self);
+    a := Package(Documents(self), Graph(self), "project:a");
+    b := Package(Documents(self), Graph(self), "project:b");
+    assert(graph.Dependency(built, a, a) >= 0);
+    assert(graph.Order(built, 0) == b && graph.Order(built, 1) == a);
+}
+
+@test
+PermutedAndRelocatedInputsKeepLogicalKeys :: () {
+    corpus := Corpus();
+    first := Build(corpus, "/workspace/project", Core());
+    second := Build([corpus[4], corpus[3], corpus[2], corpus[1], corpus[0]], "/workspace/project", Core());
+    moved := Build([In("/moved/project/app/a.chibi", corpus[0].text), In("/moved/project/app/z.chibi", corpus[1].text),
+                    In("/moved/project/math/a.chibi", corpus[2].text), In("/moved/project/other/a.chibi", corpus[3].text),
+                    In("/moved/core/scalar/a.chibi", corpus[4].text)], "/moved/project", [Root("core", "/moved/core")]);
+    a := Graph(first);
+    b := Graph(second);
+    assert(graph.Count(a) == graph.Count(b));
+    ordinal: int = 0;
+    while (ordinal < graph.Count(a)) {
+        assert(graph.PackageAt(a, graph.Order(a, ordinal)).name == graph.PackageAt(b, graph.Order(b, ordinal)).name,
+               "same package at each ordinal");
+        ordinal += 1;
+    }
+    original := Documents(first);
+    replacement := Documents(moved);
+    assert(length(replacement) == 5);
+    i: int = 0;
+    while (i < 5) {
+        assert(original[i].key == replacement[i].key, "relocated keys");
+        i += 1;
+    }
+    assert(Package(Documents(moved), Graph(moved), "project:app") >= 0 && Package(Documents(moved), Graph(moved), "core:scalar") >= 0);
+}
+
+@test
+CollectionImportsResolveToTheirRoot :: () {
+    corpus := Corpus();
+    result := Build([corpus[1], corpus[4]], "/workspace/project", Core());
+    built := Graph(result);
+    documents := Documents(result);
+    assert(length(documents) == 2);
+    assert(documents[0].path == corpus[1].path && documents[0].key == "project:app/z.chibi");
+    assert(documents[0].text == corpus[1].text);
+    imports := Imports(result);
+    assert(length(imports) == 1 && imports[0].directory == "/sdk/core/scalar");
+    assert(graph.Dependency(built, Package(Documents(result), Graph(result), "project:app"), Package(Documents(result), Graph(result), "core:scalar")) >= 0);
+}
+
+@test
+PathIsCheckedBeforeSize :: () {
+    missing: snap.Input = {path: "", text: "x", has_path: false, has_text: true};
+    inputs := [missing];
+    sizes: u64[] = [18446744073709551615];
+    failure := Failure(snap.Build(Options("/workspace/project", 1, 0), None(), inputs, sizes));
+    assert(failure.message == "Invalid package file path" && failure.document == 0);
+}
+
+@test
+EarlyParseFailureComesBeforeALaterRoute :: () {
+    failure := Failure(Build([In("app/a.chibi", "package app\nbroken ::\n"), In("/outside/b.chibi", "package other\n")],
+                             "/workspace/project", None()));
+    assert(failure.document == 0);
+}
+
+@test
+EveryParseComesBeforeImports :: () {
+    failure := Failure(Build([In("app/a.chibi", "package app\nimport lib \"unknown:math\"\n"),
+                              In("other/b.chibi", "package other\nbroken ::\n")], "/workspace/project", None()));
+    assert(failure.document == 1);
+}
+
+@test
+RecoveredSyntaxErrorsReachTheSnapshot :: () {
+    failure := Failure(Build([In("app/a.chibi",
+                                 "package app\nValue :: () -> int { return (1; }\nOther :: () -> int { return 1; } }\n")],
+                             "/workspace/project", None()));
+    assert(failure.document == 0);
+}
+
+@test
+RouteIsCheckedBeforeBytes :: () {
+    failure := Failure(Build([In("/outside/a.chibi", Raw("", [0, 255]))], "/workspace/project", None()));
+    assert(failure.message == "Package file is outside the configured roots" && failure.document == 0);
+}
+
+@test
+SourcesMustBeValidUtf8 :: () {
+    valid := Build([In("app/a.chibi", "package app\n// é € 😀\n")], "/workspace/project", None());
+    Graph(valid);
+    texts := [Raw("package app\n// ", [128]), Raw("package app\n// ", [192, 175]),
+              Raw("package app\n// ", [237, 160, 128]), Raw("package app\n// ", [244, 144, 128, 128]),
+              Raw("package app\n// ", [226, 130])];
+    for (text in texts) {
+        failure := Failure(Build([In("app/a.chibi", text)], "/workspace/project", None()));
+        assert(failure.message == "Package source is not valid UTF-8" && failure.document == 0, "invalid UTF-8");
+    }
+}
+
+@test
+SourcesMustFitTheByteLimit :: () {
+    textless: snap.Input = {path: "app/a.chibi", text: "", has_path: true, has_text: false};
+    absent := [textless];
+    zero: u64[] = [0];
+    sizes: u64[] = [524289, 18446744073709551615];
+    failure := Failure(snap.Build(Options("/workspace/project", 1, 0), None(), absent, zero));
+    assert(failure.message == "Package source byte limit exceeded" && failure.document == 0);
+    for (size in sizes) {
+        failure = Failure(snap.Build(Options("/workspace/project", 1, 0), None(), [In("app/a.chibi", "x")], [size]));
+        assert(failure.message == "Package source byte limit exceeded" && failure.document == 0, "oversized source");
+    }
+}
+
+@test
+OptionsAreValidated :: () {
+    file := [In("app/a.chibi", "package app\n")];
+    files: snap.Input[] = [];
+    sizes: u64[] = [];
+    absent := Options("/workspace/project", 0, 0);
+    absent.has_options = false;
+    negative := Options("/workspace/project", -1, 0);
+    many := Options("/workspace/project", 257, 0);
+    missing := Options("/workspace/project", 1, 0);
+    missing.has_files = false;
+    negative_roots := Options("/workspace/project", 0, -1);
+    negative_roots.has_files = false;
+    many_roots := Options("/workspace/project", 0, 256);
+    many_roots.has_files = false;
+    many_roots.has_collections = true;
+    missing_roots := Options("/workspace/project", 0, 1);
+    missing_roots.has_files = false;
+    missing_roots.has_collections = false;
+    invalid := [absent, negative, many, missing, negative_roots, many_roots, missing_roots];
+    for (options in invalid) {
+        failure := Failure(snap.Build(options, Core(), files, sizes));
+        assert(failure.message == "Invalid package snapshot options", "invalid options");
+    }
+    empty := Options("/workspace/project", 0, 0);
+    empty.has_files = false;
+    Graph(snap.Build(empty, None(), files, sizes));
+    Graph(snap.Build(Options("/workspace/project", 1, 0), None(), file, Sizes(file)));
+}

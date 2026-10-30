@@ -1,0 +1,4 @@
+package facts
+import lib "project:public_char_calls_and_utf8_encode/lib"
+Encode :: (n: int) -> u8[] { return lib.Encode(char(n)); }
+NamedRead :: (n: int) -> int { return int(lib.Result(char(n)).scalar); }

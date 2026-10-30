@@ -1,0 +1,2 @@
+package lib
+Hidden :: union { Some(value: int) | None }

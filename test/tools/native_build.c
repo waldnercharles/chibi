@@ -12,17 +12,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#ifdef CHIBI_TEST_NATIVE_RUNTIME
-#include "ecs/ecs.h"
-#include "execution/backend.h"
-#include "host/native_default.h"
-#include "host/native_libraries.h"
-#include "runtime/component_catalog.h"
-#include "runtime/engine.h"
-#include "runtime/native_prepared.h"
-#include "runtime/player_prepared.h"
-#include "runtime/text_format.h"
-#endif
 
 #if defined(__linux__) && defined(__x86_64__)
 /* `chibi build --native` through a relocated SDK and the build tree's own
@@ -658,165 +647,66 @@ TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
     return true;
 }
 
-/* The relocated SDK's compiler and engine files, which export
- * copies, beside what the native driver needs. */
-static void exportable()
-{
-    char from[1024], to[1024];
-    const char *programs[] = { "chibi-compile" };
-    for (int i = 0; i < 1; i++) {
-        snprintf(from, sizeof from, "%s/sdk/%s", built, programs[i]);
-        snprintf(to, sizeof to, "%s/bin/%s", sdk, programs[i]);
-        copy(from, to);
-    }
-    const char *engine[] = { "engine.json" };
-    for (int i = 0; i < 1; i++) {
-        snprintf(from, sizeof from, "%s/share/chibi/%s", built, engine[i]);
-        snprintf(to, sizeof to, "%s/share/chibi/%s", sdk, engine[i]);
-        copy(from, to);
-    }
-    directory(sdk, "share/chibi/licenses");
-    write_at(sdk, "share/chibi/licenses/LICENSE.txt", "license\n");
-}
+static const char *const FOREIGN_SOURCE =
+    "package scalar\n"
+    "foreign import probe \"libprobe.a\"\n"
+    "foreign probe {\n"
+    "    chibi_probe_add :: (a: i32, b: i32) -> i32\n"
+    "    chibi_probe_pick :: (n: i32, flag: bool) -> bool\n"
+    "    chibi_probe_scale :: (value: f64, by: f64) -> f64\n"
+    "}\n"
+    "Main :: () -> int {\n"
+    "    total := chibi_probe_add(40, 2);\n"
+    "    if (chibi_probe_pick(5, true)) { total = total + 1; }\n"
+    "    if (chibi_probe_pick(2, true)) { total = total + 100; }\n"
+    "    return total + int(chibi_probe_scale(0.5, 2.0));\n"
+    "}\n";
 
-/* A game whose Probe calls Mix, which native code holds, and Effects, whose
- * function returns nothing and so stays in the VM. */
-static void native_game(const char *root)
+/* A program links the prebuilt archive its source imports: the driver finds it
+ * beside the source, adds it to the link line and records its hash. The
+ * archive is vendored: nothing here compiles its C. A missing archive fails
+ * the build and names it. */
+TEST_CASE(native_build_links_a_vendored_archive)
 {
-    char manifest[256];
-    snprintf(
-        manifest,
-        sizeof manifest,
-        "version %d\nname \"Native Game\"\ncontent \"content\"\n"
-        "start_scene \"scenes/Start.kdl\"\n",
-        CHIBI_PROJECT_VERSION
-    );
-    const char *folders[] = { "",
-                              "content",
-                              "content/scenes",
-                              "content/prototypes",
-                              "content/behaviors",
-                              "content/libraries",
-                              "content/libraries/.backup",
-                              "content/examples" };
-    for (int i = 0; i < 8; i++) {
-        directory(root, folders[i]);
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
     }
-    write_at(root, "project.kdl", manifest);
-    write_at(
-        root,
-        "content/scenes/Start.kdl",
-        "version 1\nname \"Start\"\n(array)entities {\n    - {\n"
-        "        name \"Probe\"\n        prototype \"Probe\"\n"
-        "        (array)behaviors \"Probe\"\n    }\n}\n"
+    char in_place[1024], vendored[1024], copied[1024];
+    path(in_place, built, "sdk/chibi");
+    path(vendored, CHIBI_SOURCE_ROOT, "test/native_aot/foreign/libprobe.a");
+    const char *options[] = { "-O0", NULL };
+    reset("foreign-missing", FOREIGN_SOURCE);
+    real_tools(bin);
+    REQUIRE(build_with(in_place, options, tools) != 0 && strstr(errors, "libprobe.a is not a file"));
+    reset("foreign", FOREIGN_SOURCE);
+    real_tools(bin);
+    path(copied, game, "libprobe.a");
+    copy(vendored, copied);
+    REQUIRE(build_with(in_place, options, tools) == 0);
+    char program[1024], receipt[1024];
+    REQUIRE(printed(program));
+    snprintf(receipt, sizeof receipt, "%.*s/receipt.txt", (int)(strrchr(program, '/') - program), program);
+    char *recorded = tool_read(receipt);
+    REQUIRE(recorded && strstr(recorded, "\nlibrary-sha256 "));
+    free(recorded);
+    const char *argv[] = { program, NULL };
+    const char *envp[] = { NULL };
+    chibi_process_output out = { 0 }, err = { 0 };
+    chibi_process_capture_result ran = chibi_process_capture(
+        program,
+        argv,
+        game,
+        envp,
+        chibi_process_now() + 10,
+        NULL,
+        &out,
+        &err
     );
-    write_at(root, "content/prototypes/Probe.kdl", "name \"Probe\"\ncomponents {\n    (object)Transform\n}\n");
-    write_at(
-        root,
-        "content/behaviors/Probe.chibi",
-        "Probe :: behavior {\n    x: number = 0\n    on Tick :: () {\n"
-        "        x = Mix.Step(x, 3)\n        Effects.Mark(x)\n"
-        "        self.Transform = vec2(x, 0)\n    }\n}\n"
-    );
-    write_at(
-        root,
-        "content/libraries/Mix.chibi",
-        "Mix :: library {\n    Step :: (value: number, count: int) -> number "
-        "{\n"
-        "        return value * 2 + count\n    }\n}\n"
-    );
-    /* Neither compiles into the game: the export must not ship them. */
-    write_at(root, "content/examples/Demo.chibi", "Demo :: library {\n    One :: () -> int {\n        return 1\n    }\n}\n");
-    write_at(root, "content/libraries/.backup/Old.chibi", "Old :: library {\n    One :: () -> int {\n        return 1\n    }\n}\n");
-    write_at(root, "content/libraries/Effects.chibi", "Effects :: library {\n    Mark :: (value: number) {\n        return\n    }\n}\n");
-}
-
-#ifdef CHIBI_TEST_NATIVE_RUNTIME
-/* The CPU host keeps no graphics handles. */
-static void *stage_cpu(void *, const player_asset *, int, size_t *, char *, size_t)
-{
-    static int resources;
-    return &resources;
-}
-static bool cpu_scene(void *, void *, const scene *, char *, size_t)
-{
+    REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 44);
     return true;
 }
-static void commit_cpu(void *, void *, world *) {}
-static void release_cpu(void *, void *) {}
-
-static unsigned char *read_bytes(const char *name, size_t *length)
-{
-    FILE *file = fopen(name, "rb");
-    assert(file && !fseek(file, 0, SEEK_END));
-    long size = ftell(file);
-    assert(size > 0 && !fseek(file, 0, SEEK_SET));
-    unsigned char *bytes = xmalloc((size_t)size);
-    *length = fread(bytes, 1, (size_t)size, file);
-    assert(*length == (size_t)size && !fclose(file));
-    return bytes;
-}
-
-void test_native_catalog_enable();
-
-/* The ECS hash of the exported game in `data` after a few frames, with the
- * libraries in its natives folder bound when `native`, or 0 when it does not
- * play. Bound, it needs exactly one library. */
-static uint64_t played(const char *data, bool native)
-{
-    char artifact[1024], natives[1024], error[512] = "";
-    path(artifact, data, "game.chibip");
-    path(natives, data, "natives");
-    size_t length;
-    unsigned char *bytes = read_bytes(artifact, &length);
-    native_libraries *libraries = native
-                                    ? native_libraries_open(natives, error, sizeof error)
-                                    : NULL;
-    int count = 0;
-    const execution_native_manifest *const
-        *manifests = libraries ? native_libraries_manifests(libraries, &count) : NULL;
-    native_capabilities *catalog = host_native_default_catalog_new(NULL, 0, NULL, 0, error, sizeof error);
-    assert(catalog);
-    native_prepared_context context = { .native = catalog };
-    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
-    player_host host = { .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
-                         .linker = &linker,
-                         .natives = manifests,
-                         .native_count = count,
-                         .native_runtime = { NATIVE_FORMAT_TEXT_HOST.value },
-                         .resources = { .stage = stage_cpu,
-                                        .scene = cpu_scene,
-                                        .commit = commit_cpu,
-                                        .discard = release_cpu,
-                                        .retire = release_cpu } };
-    player *runtime = native && count != 1 ? NULL
-                                           : player_prepared_read(
-                                                 bytes,
-                                                 length,
-                                                 &host,
-                                                 behavior_default_backend(),
-                                                 error,
-                                                 sizeof error
-                                             );
-    engine *engine = runtime ? world_engine(player_world(runtime)) : NULL;
-    bool ran = engine && engine_set_focus(engine, ENGINE_FOCUS_VIEWPORT) == 0 &&
-               engine_set_playing(engine, true) == 0;
-    for (int frame = 0; ran && frame < 4; frame++) {
-        ran = engine_frame(engine, (frame + .5) * ENGINE_FIXED_SECONDS) == 0;
-    }
-    if (!ran) {
-        fprintf(stderr, "exported game: %s\n", engine && engine_error(engine) ? engine_error(engine) : error);
-    }
-    uint64_t hash = ran ? ecs_world_hash(world_ecs(player_world(runtime))) : 0;
-    if (runtime) {
-        player_free(runtime);
-    }
-    native_capabilities_free(catalog);
-    native_libraries_close(libraries);
-    free(bytes);
-    return hash;
-}
-#endif
 
 /* The other targets' bundle directories and program names, in the
  * driver's target order after Linux. */
@@ -1028,6 +918,7 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_refuses_what_an_interrupted_build_left);
     RUN_TEST_CASE(native_build_refuses_an_incomplete_output);
     RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
+    RUN_TEST_CASE(native_build_links_a_vendored_archive);
     RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
     free(stage_tool);
     tool_remove_tree(suite);

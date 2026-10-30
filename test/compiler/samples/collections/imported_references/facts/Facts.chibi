@@ -1,0 +1,4 @@
+package facts
+import lib "project:imported_references/lib"
+Forward :: (value: ^int) { lib.Bump(value); }
+Run :: () -> int { value: int = 4; Forward(&value); lib.Bump(&value); return value; }

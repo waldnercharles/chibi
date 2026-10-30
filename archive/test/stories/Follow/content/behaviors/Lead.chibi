@@ -1,9 +1,0 @@
-// Moves in a circle so the follower has something to chase.
-Lead :: behavior {
-    angle: number = 0
-
-    on Tick :: (dt: number s) {
-        angle += dt * 2
-        self.Transform = vec2(cos(angle), sin(angle)) * 40
-    }
-}

@@ -20,6 +20,7 @@
  * environment-controlled size or timing loop is exercised by this foundation. */
 static arena source, owned, other, reads;
 bool record_prepared_guard(const pin_value *);
+bool record_prepared_type_table();
 static av_doc *document;
 static bool project_set;
 static pin_value borrowed;
@@ -871,6 +872,13 @@ TEST_CASE(retired_native_header_writes_without_its_payload)
     arena_free(&storage);
     return true;
 }
+/* A module with thousands of requirements loads within the default
+ * layout-work bound. */
+TEST_CASE(prepared_type_table_scales_with_its_size)
+{
+    REQUIRE(record_prepared_type_table());
+    return true;
+}
 void test_language_record_values()
 {
     pu_setup(NULL, cleanup);
@@ -889,5 +897,6 @@ void test_language_record_values()
     RUN_TEST_CASE(record_native_nested_resolution_is_call_owned);
     RUN_TEST_CASE(native_alias_snapshots_its_own_fields);
     RUN_TEST_CASE(retired_native_header_writes_without_its_payload);
+    RUN_TEST_CASE(prepared_type_table_scales_with_its_size);
     pu_clear_setup();
 }

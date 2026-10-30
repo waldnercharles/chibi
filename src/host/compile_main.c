@@ -21,10 +21,10 @@ type_catalog_pack type_catalog_pack_at(int index)
     (void)index;
     return TYPE_PACK;
 }
-static int usage(const char *program)
+static int usage(const char *program, FILE *stream)
 {
-    fprintf(stderr, "Usage: %s --project-root PATH --test\nGame projects are archived.\n", program);
-    return 2;
+    fprintf(stream, "Usage: %s --project-root PATH --test\nGame projects are archived.\n", program);
+    return stream == stdout ? 0 : 2;
 }
 #ifdef __EMSCRIPTEN__
 /* The browser-target compiler only prepares projects for export. */
@@ -73,8 +73,11 @@ static int test(const char *project)
  * is archived. */
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--help")) {
+        return usage(argv[0], stdout);
+    }
     if (argc != 4 || strcmp(argv[1], "--project-root") || strcmp(argv[3], "--test")) {
-        return usage(argv[0]);
+        return usage(argv[0], stderr);
     }
     return test(argv[2]);
 }

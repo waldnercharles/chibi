@@ -1,0 +1,68 @@
+package facts
+Point :: struct { x: int; y: int; }
+Ages :: () -> int {
+    ages: [string: int] = ["Ada": 36, "Bea": 41];
+    return ages["Ada"] + ages["Cid"] * 1000 + ages["Bea"] * 100;
+}
+Name :: (key: int) -> string {
+    names: [int: string] = [1: "one", 2: "two"];
+    return names[key];
+}
+Y :: (key: string) -> int {
+    ps: [string: Point] = ["a": {x: 1, y: 2}];
+    return ps[key].y;
+}
+Flag :: () -> bool { flags: [int: bool] = [:]; return flags[3]; }
+Count :: (n: int) -> int {
+    squares: [int: int] = [:];
+    i: int = 0;
+    while (i < n) { squares[i] = i * i; i += 1; }
+    delete squares[1];
+    squares.delete(2);
+    squares.delete(99);
+    found: int = 0;
+    if (0 in squares) { found += 1; }
+    if (1 not in squares) { found += 10; }
+    if (squares.has(3)) { found += 100; }
+    if (!squares.has(2)) { found += 1000; }
+    return found * 100000 + squares[3] * 1000 + squares[1];
+}
+Points :: () -> int {
+    ps: [string: Point] = [:];
+    ps["a"] = {x: 3, y: 4};
+    p: Point = {x: 5, y: 6};
+    ps["b"] = p;
+    p.x = 7;
+    return ps["a"].y * 100 + ps["b"].x;
+}
+Walk :: () -> string {
+    ages: [string: int] = ["Ada": 3, "Bea": 1, "Cid": 2];
+    ages["Ada"] = 4;
+    delete ages["Bea"];
+    ages["Bea"] = 5;
+    out: string = "";
+    total: int = 0;
+    for (name, age in ages) { out = format_text("{}{}{}", out, name, age); total += age; }
+    for (age in ages) { if (age == 2) { continue; } total += age * 100; }
+    ps: [int: Point] = [1: {x: 2, y: 3}, 4: {x: 5, y: 6}];
+    for (key, p in ps) { total += key * 1000 + p.y * 10000; }
+    return format_text("{} {}", out, total);
+}
+Make :: (n: int) -> [int: string] {
+    made: [int: string] = [:];
+    i: int = 0;
+    while (i < n) { made[i] = format_text("v{}", i); i += 1; }
+    return made;
+}
+Join :: (m: [int: string]) -> string {
+    out: string = "";
+    for (k, v in m) { out = format_text("{}{}={};", out, k, v); }
+    return out;
+}
+Copies :: () -> string {
+    a := Make(3);
+    b := a;
+    b[0] = "changed";
+    delete b[2];
+    return format_text("{}|{}", Join(a), Join(b));
+}

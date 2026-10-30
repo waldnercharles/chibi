@@ -1230,8 +1230,10 @@ char *asset_source_invoke_bytes(
     return text;
 }
 
-/* A package closure is larger than an asset and compiles in more instructions. */
-#define CLOSURE_COMPILE_BUDGET UINT64_C(2000000000)
+/* A package closure is larger than an asset and compiles in more instructions:
+ * as many as recovering the compiler from its sources, so a test closure may
+ * hold the whole compiler. */
+#define CLOSURE_COMPILE_BUDGET UINT64_C(4000000000)
 
 /* The first diagnostic of a rejected package compile. */
 static void closure_rejection(

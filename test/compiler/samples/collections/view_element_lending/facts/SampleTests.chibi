@@ -1,0 +1,12 @@
+package facts
+
+// view element lending
+@test
+Calls :: () {
+    r1: int = Viewed();
+    e1: int = 12;
+    assert(r1 == e1, "Viewed call 1");
+    r2: int = ViewedPair();
+    e2: int = 2;
+    assert(r2 == e2, "ViewedPair call 2");
+}

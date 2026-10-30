@@ -45,14 +45,49 @@ Scalar :: (type: int) -> bool {
 }
 // Whether a record field or union payload may have `type`: a scalar or a
 // string.
-Stored :: (type: int) -> bool {
-    return Scalar(type) || type == facts.StringType;
+Stored :: (records: int[], type: int) -> bool {
+    return Valued(records, type);
+}
+// Whether the record or union of type RecordType + `from` holds the one of
+// type RecordType + `wanted` by value, directly or through others it holds by
+// value. An array holds its elements apart, so it breaks a cycle. `depth`
+// bounds the walk for cycles that do not reach `wanted`.
+Nests :: (rows: facts.Row[], records: int[], from: int, wanted: int, depth: int) -> bool {
+    head := records[from];
+    end := After(rows, head);
+    if (depth > length(records) || end < 0) {
+        return true;
+    }
+    for (row in head + 1..<end) {
+        member := rows[row];
+        if (member.kind != facts.MemberRow || member.type < facts.RecordType || member.type >= facts.ArrayType) {
+            continue;
+        }
+        held := member.type - facts.RecordType;
+        if (held == wanted || Nests(rows, records, held, wanted, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
 }
 // Whether `type` is a scalar, a string or one of the module's records and
-// unions, whose Record and Union rows are at `records`.
+// unions, or an array of one of them, whose Record and Union rows are at
+// `records`.
 Valued :: (records: int[], type: int) -> bool {
+    if (type >= facts.ArrayType) {
+        return Element(records, type) != 0;
+    }
     return Scalar(type) || type == facts.StringType ||
            (type >= facts.RecordType && type - facts.RecordType < length(records));
+}
+// The element type of array type `type`, or 0 when it is no array of a
+// scalar, a string, or a record or union of the module.
+Element :: (records: int[], type: int) -> int {
+    element := type - facts.ArrayType;
+    if (element < facts.IntType || element >= facts.ArrayType || !Valued(records, element)) {
+        return 0;
+    }
+    return element;
 }
 // The type of field `field` of record type `type`, or 0 when `type` is no
 // record of the module or has no such field.
@@ -137,6 +172,9 @@ Converts :: (from: int, to: int) -> bool {
 // i8, u8, i16, u16, u32, i64, u64, number, f64 and string in facts type
 // order. Record r is the backend's record r.
 NativeType :: (type: int) -> int {
+    if (type >= facts.ArrayType) {
+        return native.ArrayType + NativeType(type - facts.ArrayType);
+    }
     if (type >= facts.RecordType) {
         return native.RecordType + type - facts.RecordType;
     }
@@ -180,6 +218,13 @@ Opens :: (kind: int) -> bool {
 // Whether `kind` is a loop's row.
 Loop :: (kind: int) -> bool {
     return kind == facts.WhileRow || kind == facts.ForRow;
+}
+// Whether `row` is a loop over an array, and whether it also names the index.
+Arrayed :: (row: facts.Row) -> bool {
+    return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray) || Keyed(row));
+}
+Keyed :: (row: facts.Row) -> bool {
+    return row.kind == facts.ForRow && row.literal == i64(facts.RangeArray + facts.RangeKeyed);
 }
 // The row after the declaration at `at`: a Record row and its members, or a
 // Union row and its variants, each with its members; -1 when a count is
@@ -238,9 +283,12 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
             }
         }
         if (record.kind == facts.UnionRow) {
-            error := ValidUnion(rows, head, starts, size);
+            error := ValidUnion(rows, records, head, starts, size);
             if (error != "") {
                 return error;
+            }
+            if (Nests(rows, records, index, index, 0)) {
+                return "invalid scalar union row";
             }
             continue;
         }
@@ -251,7 +299,7 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
         }
         for (field in 0..<record.count) {
             member := rows[head + 1 + field];
-            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(member.type) ||
+            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(records, member.type) ||
                 member.value != field || member.count != 0 || member.literal != 0 || !Located(member, starts, size) ||
                 !Within(member, record)) {
                 return "invalid scalar record member row";
@@ -262,6 +310,9 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
                 }
             }
         }
+        if (Nests(rows, records, index, index, 0)) {
+            return "invalid scalar record row";
+        }
     }
     return "";
 }
@@ -269,7 +320,7 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
 // a Variant row within its declaration with its uniquely named scalar
 // payloads, each a Member row within its variant numbered across the union,
 // and a function follows it.
-ValidUnion :: (rows: facts.Row[], head: int, starts: int[], size: int) -> string {
+ValidUnion :: (rows: facts.Row[], records: int[], head: int, starts: int[], size: int) -> string {
     declared := rows[head];
     beyond := After(rows, head);
     if (beyond < 0 || beyond >= length(rows) || declared.name == "" || declared.text != "" || declared.type != 0 ||
@@ -293,7 +344,7 @@ ValidUnion :: (rows: facts.Row[], head: int, starts: int[], size: int) -> string
         variants.append(at);
         for (field in at + 1..<at + variant.count + 1) {
             member := rows[field];
-            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(member.type) ||
+            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(records, member.type) ||
                 member.value != payloads || member.count != 0 || member.literal != 0 ||
                 !Located(member, starts, size) || !Within(member, variant)) {
                 return "invalid scalar union member row";
@@ -429,6 +480,113 @@ Holds :: (values: int[], wanted: int) -> bool {
     }
     return false;
 }
+// The operands an Array row's operator consumes: ArrayNew's elements, one
+// array, an array and an index, an element or another array, or an array and
+// two ints or an index and an element; 0 for no operator.
+ArrayOperands :: (operand: facts.Row) -> int {
+    if (operand.value == facts.ArrayNew) {
+        return operand.count;
+    }
+    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1];
+    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayBytes) {
+        return 0;
+    }
+    return consumed[operand.value];
+}
+// Whether the operator changes the elements of the array it consumes.
+ArrayChanges :: (operator: int) -> bool {
+    return operator == facts.ArraySet || operator == facts.ArrayPush || operator == facts.ArrayExtend ||
+           operator == facts.ArrayRemove;
+}
+// Whether the Array row at `row` of the operands of the statement at `at`,
+// which end before `last`, reads operands of its types from `stack`, none
+// below `floor`. A change of an array is the last operand of an Assign to the
+// variable its first operand reads.
+ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, operand: facts.Row, stack: int[],
+               floor: int) -> string {
+    consumed := ArrayOperands(operand);
+    base := length(stack) - consumed;
+    mismatch := "scalar array operation differs from its operands";
+    if (operand.name != "" || (consumed == 0 && operand.value != facts.ArrayNew) || operand.count != consumed ||
+        base < floor) {
+        return mismatch;
+    }
+    operator := operand.value;
+    if (operator == facts.ArrayLength) {
+        if (operand.type != facts.IntType || Element(records, stack[base]) == 0) {
+            return mismatch;
+        }
+        return "";
+    }
+    if (operator == facts.ArrayGet) {
+        if (operand.type >= facts.ArrayType || Element(records, stack[base]) != operand.type ||
+            stack[base + 1] != facts.IntType) {
+            return mismatch;
+        }
+        return "";
+    }
+    if (operator == facts.ArrayContains) {
+        searched := Element(records, stack[base]);
+        if (operand.type != facts.BoolType || searched == 0 || searched >= facts.RecordType ||
+            stack[base + 1] != searched) {
+            return mismatch;
+        }
+        return "";
+    }
+    element := Element(records, operand.type);
+    if (element == 0) {
+        return mismatch;
+    }
+    if (operator == facts.ArrayBytes) {
+        if (element != facts.IntType || stack[base] != facts.StringType) {
+            return mismatch;
+        }
+        return "";
+    }
+    if (operator == facts.ArrayNew) {
+        for (index in 0..<consumed) {
+            if (stack[base + index] != element) {
+                return mismatch;
+            }
+        }
+        return "";
+    }
+    if (stack[base] != operand.type) {
+        return mismatch;
+    }
+    // What follows the array: nothing, an int, an element, another array, or
+    // two ints.
+    if (operator == facts.ArraySlice) {
+        if (stack[base + 1] != facts.IntType || stack[base + 2] != facts.IntType) {
+            return mismatch;
+        }
+    } else if (operator == facts.ArraySet) {
+        if (stack[base + 1] != facts.IntType || stack[base + 2] != element) {
+            return mismatch;
+        }
+    } else if (operator == facts.ArrayPush || operator == facts.ArrayWith) {
+        if (stack[base + 1] != element) {
+            return mismatch;
+        }
+    } else if (operator == facts.ArrayExtend || operator == facts.ArrayJoin) {
+        if (stack[base + 1] != operand.type) {
+            return mismatch;
+        }
+    } else if (operator == facts.ArrayResize || operator == facts.ArrayRemove) {
+        if (stack[base + 1] != facts.IntType) {
+            return mismatch;
+        }
+    }
+    if (!ArrayChanges(operator)) {
+        return "";
+    }
+    first := rows[at + 1];
+    if (rows[at].kind != facts.AssignRow || base != 0 || row != last - 1 || first.kind != facts.ReadRow ||
+        first.value != rows[at].value) {
+        return "scalar array change is not the assignment of its array";
+    }
+    return "";
+}
 // The operands after the statement row at `at`, as a typed evaluation stack:
 // each operand pushes one value; a comparison or binary arithmetic pops two
 // values of one type, unary arithmetic and a conversion one, and a call its
@@ -543,6 +701,18 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 }
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.ForeignRow) {
+            base := length(stack) - operand.count;
+            if (operand.name == "" || operand.text == "" || operand.value != 0 || !Scalar(operand.type) ||
+                operand.count < 0 || base < floor) {
+                return "scalar foreign call differs from its operands";
+            }
+            for (argument in 0..<operand.count) {
+                if (!Scalar(stack[base + argument])) {
+                    return "scalar foreign call takes numbers and bools";
+                }
+            }
+            stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ZeroRow) {
             if (operand.name != "" || operand.count != 0 || operand.value != 0 ||
                 MemberType(rows, records, operand.type, 0) == 0) {
@@ -593,6 +763,12 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar payload read differs from its union";
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.ArrayRow) {
+            error := ValidArray(rows, records, at, row, last, operand, stack, floor);
+            if (error != "") {
+                return error;
+            }
+            stack = slice(stack, 0, length(stack) - ArrayOperands(operand));
         } else if (operand.kind == facts.TextRow) {
             formats := operand.value == facts.TextFormat;
             consumed := TextOperands(operand.value);
@@ -625,7 +801,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
     }
     // A range's two bounds, or one value.
     wanted: int = 1;
-    if (rows[at].kind == facts.ForRow) {
+    if (rows[at].kind == facts.ForRow && !Arrayed(rows[at])) {
         wanted = 2;
     }
     if (length(stack) != wanted || stack[0] != result || stack[wanted - 1] != result) {
@@ -717,9 +893,12 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             }
         }
         ranged := row.kind == facts.ForRow;
+        arrayed := Arrayed(row);
+        // A local holding the union a switch is on, followed by that switch.
+        subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
-        if (row.text != "" || (row.literal != 0 && !ranged) || !Located(row, starts, size) ||
+        if (row.text != "" || (row.literal != 0 && !ranged && !subject) || !Located(row, starts, size) ||
             (row.kind != facts.EndRow && row.start < earliest) || (!declares && row.name != "") ||
             (!typed && row.type != 0) || (!declares && row.kind != facts.AssignRow && row.value != 0)) {
             return "invalid scalar statement row";
@@ -809,11 +988,18 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             result = row.type;
         } else if (declares) {
             if (row.name == "" || !Valued(records, row.type) || row.value != length(variables) ||
-                (ranged && (row.type != facts.IntType || row.literal < 0 ||
-                            row.literal > i64(facts.RangeExclusive + facts.RangeReverse)))) {
+                (ranged && !arrayed && (row.type != facts.IntType || row.literal < 0 ||
+                                        row.literal > i64(facts.RangeExclusive + facts.RangeReverse))) ||
+                (arrayed && (row.type >= facts.ArrayType || !Valued(records, facts.ArrayType + row.type))) ||
+                (subject && (UnionHead(rows, records, row.type) < 0 || at + row.count + 1 >= last ||
+                             rows[at + row.count + 1].kind != facts.SwitchRow ||
+                             rows[at + row.count + 1].start != row.start || rows[at + row.count + 1].end != row.end))) {
                 return "invalid scalar local row";
             }
             result = row.type;
+            if (arrayed) {
+                result = facts.ArrayType + row.type;
+            }
         } else if (row.kind == facts.AssignRow) {
             if (!Holds(visible, row.value) || Holds(fixed, row.value) || variables[row.value] != row.type) {
                 return "scalar assignment differs from its variable";
@@ -826,6 +1012,9 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         }
         ends = row.kind == facts.ReturnRow;
         earliest = row.end;
+        if (subject) {
+            earliest = row.start;
+        }
         if (row.kind == facts.LocalRow) {
             variables.append(row.type);
             visible.append(row.value);
@@ -840,6 +1029,11 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
                 variables.append(row.type);
                 visible.append(row.value);
                 fixed.append(row.value);
+            }
+            if (Keyed(row)) {
+                variables.append(facts.IntType);
+                visible.append(row.value + 1);
+                fixed.append(row.value + 1);
             }
             earliest = Operated(rows, at);
         }
@@ -938,6 +1132,41 @@ Frame :: struct {
     armed: bool;
     fallback: int;
 }
+// The native array instruction of `operand`, an Array row other than
+// ArrayNew, over the operand slots stack[base...].
+ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int) -> native.Instruction {
+    if (operand.value == facts.ArrayLength) {
+        return Op(native.ArrayLength, type, slot, stack[base], 0, 0);
+    }
+    if (operand.value == facts.ArrayGet) {
+        return Op(native.ArrayGet, type, slot, stack[base], stack[base + 1], 0);
+    }
+    if (operand.value == facts.ArraySet) {
+        return Op(native.ArraySet, type, slot, stack[base], stack[base + 1], stack[base + 2]);
+    }
+    if (operand.value == facts.ArrayPush) {
+        return Op(native.ArrayPush, type, slot, stack[base], stack[base + 1], 0);
+    }
+    if (operand.value == facts.ArrayExtend) {
+        return Op(native.ArrayExtend, type, slot, stack[base], stack[base + 1], 0);
+    }
+    if (operand.value == facts.ArraySlice) {
+        return Op(native.ArraySlice, type, slot, stack[base], stack[base + 1], stack[base + 2]);
+    }
+    if (operand.value == facts.ArrayResize) {
+        return Op(native.ArrayResize, type, slot, stack[base], stack[base + 1], 0);
+    }
+    if (operand.value == facts.ArrayContains) {
+        return Op(native.ArrayContains, type, slot, stack[base], stack[base + 1], 0);
+    }
+    if (operand.value == facts.ArrayRemove) {
+        return Op(native.ArrayRemove, type, slot, stack[base], stack[base + 1], 0);
+    }
+    if (operand.value == facts.ArrayBytes) {
+        return Op(native.ArrayBytes, type, slot, stack[base], 0, 0);
+    }
+    return Op(native.ArrayCopy, type, slot, stack[base], 0, 0);
+}
 // One native instruction without a literal.
 Op :: (op: int, type: int, output: int, left: int, right: int, target: int) -> native.Instruction {
     return {op: op, type: type, output: output, left: left, right: right, target: target, literal: 0};
@@ -1009,6 +1238,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
     arguments: int[] = [];
     records: native.Record[] = [];
     fields: int[] = [];
+    field_names: string[] = [];
     texts: string[] = [];
     names: string[] = [];
     ids: i64[] = [];
@@ -1019,11 +1249,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         record: native.Record = {first: length(fields), count: 0};
         if (rows[head].kind == facts.UnionRow) {
             fields.append(NativeType(facts.IntType));
+            field_names.append("tag");
         }
         // A record's fields, or each of a union's variants and its payloads.
         for (field in head + 1..<After(rows, head)) {
             if (rows[field].kind == facts.MemberRow) {
                 fields.append(NativeType(rows[field].type));
+                field_names.append(rows[field].name);
             }
         }
         record.count = length(fields) - record.first;
@@ -1311,6 +1543,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     }
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.ForeignRow) {
+                    item = Op(native.ForeignCall, type, slot, 0, shape.arguments, operand.count);
+                    item.literal = i64(length(texts));
+                    texts.append(operand.name);
+                    base := length(stack) - operand.count;
+                    for (argument in 0..<operand.count) {
+                        arguments.append(stack[base + argument]);
+                    }
+                    shape.arguments += operand.count;
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.FieldRow || operand.kind == facts.TagRow ||
                            operand.kind == facts.PayloadRow) {
                     // A union's tag is its field 0, and its payloads follow.
@@ -1345,6 +1587,35 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     item = Op(native.Insert, type, slot, stack[base], stack[base + 1], 0);
                     item.literal = i64(operand.value);
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.ArrayRow) {
+                    base := length(stack) - ArrayOperands(operand);
+                    if (operand.value == facts.ArrayNew) {
+                        // The empty array, then each element appended.
+                        item = Op(native.Constant, type, slot, 0, 0, 0);
+                        for (element in 0..<operand.count) {
+                            body.append(item);
+                            slots.append(type);
+                            item = Op(native.ArrayPush, type, slot + 1, slot, stack[base + element], 0);
+                            slot += 1;
+                        }
+                    } else if (operand.value == facts.ArrayWith || operand.value == facts.ArrayJoin) {
+                        // A copy of the first array, then the elements after its own.
+                        body.append(Op(native.ArrayCopy, type, slot, stack[base], 0, 0));
+                        slots.append(type);
+                        change := native.ArrayPush;
+                        if (operand.value == facts.ArrayJoin) {
+                            change = native.ArrayExtend;
+                        }
+                        item = Op(change, type, slot + 1, slot, stack[base + 1], 0);
+                        slot += 1;
+                    } else {
+                        item = ArrayLowered(operand, type, slot, stack, base);
+                        if (operand.value == facts.ArrayContains) {
+                            // The element type its array holds.
+                            item.literal = i64(slots[shape.first_slot + stack[base]] - native.ArrayType);
+                        }
+                    }
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.TextRow && operand.value == facts.TextFormat) {
                     // The format and its arguments are argument slots, as a
                     // call's are.
@@ -1377,7 +1648,41 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             }
             value := stack[0];
             ends = false;
-            if (row.kind == facts.ForRow) {
+            if (Arrayed(row)) {
+                // The array and the index of the next element are locals of
+                // their own, before the element's variable.
+                array := NativeType(facts.ArrayType + row.type);
+                element := NativeType(row.type);
+                frame: Frame = {kind: row.kind, skip: -1, leave: -1, ends: false, head: 0, index: local + 1,
+                                bound: local, counted: false, reverse: false, escape: length(jumps), empty: -1,
+                                exits: 0, armed: false, fallback: -1};
+                locals.extend([array, integer, element]);
+                places.append(local + 2);
+                if (Keyed(row)) {
+                    places.append(local + 1);
+                }
+                slots.append(integer);
+                body.extend([Op(native.Save, array, 0, stack[0], 0, local), Op(native.Constant, integer, slot, 0, 0, 0),
+                             Op(native.Save, integer, 0, slot, 0, local + 1)]);
+                slot += 1;
+                frame.head = length(body);
+                slots.extend([integer, array, integer, abi.BoolStorage]);
+                body.extend([Op(native.Local, integer, slot, local + 1, 0, 0),
+                             Op(native.Local, array, slot + 1, local, 0, 0),
+                             Op(native.ArrayLength, integer, slot + 2, slot + 1, 0, 0),
+                             Op(native.Lt, integer, slot + 3, slot, slot + 2, 0),
+                             Op(native.Branch, 0, 0, slot + 3, 0, length(body) + 6)]);
+                frame.skip = length(body);
+                body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                slot += 4;
+                slots.extend([array, integer, element]);
+                body.extend([Op(native.Local, array, slot, local, 0, 0), Op(native.Local, integer, slot + 1, local + 1, 0, 0),
+                             Op(native.ArrayGet, element, slot + 2, slot, slot + 1, 0),
+                             Op(native.Save, element, 0, slot + 2, 0, local + 2)]);
+                slot += 3;
+                local += 3;
+                frames.append(frame);
+            } else if (row.kind == facts.ForRow) {
                 exclusive := row.literal == i64(facts.RangeExclusive) ||
                              row.literal == i64(facts.RangeExclusive + facts.RangeReverse);
                 reverse := row.literal >= i64(facts.RangeReverse);
@@ -1500,14 +1805,30 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                               source, names, lines, columns, false, 1);
     } else {
         emitted = native.EmitLibrary(target, rows[1].text, names, ids, functions, parameters, slots, locals,
-                                     code, arguments, records, fields, texts, 1);
+                                     code, arguments, records, fields, texts, 1, field_names);
     }
     switch emitted {
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):
-            return Result.Emitted(text);
+            return Result.Emitted(Linked(text, rows));
     }
+}
+// The module's text with a comment naming each library a foreign call needs,
+// once, for the driver to link: `; chibi-library PATH`, the path as the source
+// spells it.
+Linked :: (text: string, rows: facts.Row[]) -> string {
+    paths: string[] = [];
+    for (row in rows) {
+        if (row.kind == facts.ForeignRow && !paths.contains(row.text)) {
+            paths.append(row.text);
+        }
+    }
+    out := text;
+    for (path in paths) {
+        out = format_text("{}; chibi-library {}\n", out, path);
+    }
+    return out;
 }
 
 // Emit and EmitBytes are the Linux x86-64 entries `chibi build` calls.

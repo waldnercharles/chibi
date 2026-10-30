@@ -1,0 +1,11 @@
+package facts
+Item :: () -> int { return 7; }
+Items :: () -> int[] { return [7, 8]; }
+AppendLocal :: () -> int[] { xs: int[] = [1]; xs = append(xs, Item()); return xs; }
+AppendParameter :: (xs: int[]) -> int[] { xs = append(xs, Item()); return xs; }
+AppendMethod :: () -> int[] { xs: int[] = [1]; xs.append(Item()); return xs; }
+AppendParameterMethod :: (xs: int[]) -> int[] { xs.append(Item()); return xs; }
+ExtendLocal :: () -> int[] { xs: int[] = [1]; xs = extend(xs, Items()); return xs; }
+ExtendParameter :: (xs: int[]) -> int[] { xs = extend(xs, Items()); return xs; }
+ExtendMethod :: () -> int[] { xs: int[] = [1]; xs.extend(Items()); return xs; }
+ExtendParameterMethod :: (xs: int[]) -> int[] { xs.extend(Items()); return xs; }

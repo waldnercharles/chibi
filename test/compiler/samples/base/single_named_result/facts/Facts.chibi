@@ -1,0 +1,8 @@
+package facts
+One :: (n: int) -> (value: int) { return n + 1; }
+Flag :: () -> (value: bool = false) { value = true; return; }
+Sequential :: () -> (a: int, b: int) { a = 1; b = 2; return (b, a); }
+Use :: (n: int) -> int {
+    if Flag() { return One(n) * 10 + One(n).value; }
+    return 0;
+}

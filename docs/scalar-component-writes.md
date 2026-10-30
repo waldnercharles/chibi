@@ -74,4 +74,4 @@ changes, so no project migration/version bump is needed.
 `language-component-write` and `wasm-component-write` cover scalar bits and
 ranges, versions and deferred observers, managed siblings, ordinary and compound
 fallbacks, managed publication, and callback/storage failures. Run them through
-`python3 tools/test_policy.py tool <route>`.
+`chibi build test <route>`.

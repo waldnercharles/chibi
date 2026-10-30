@@ -2,6 +2,7 @@ package_compiler/Compile.chibi
 package_compiler/Body.chibi
 package_compiler/Fallible.chibi
 package_compiler/Generics.chibi
+package_compiler/Comptime.chibi
 package_compiler/Steps.chibi
 package_compiler/Maps.chibi
 package_compiler/References.chibi
@@ -16,6 +17,7 @@ package_compiler/Queries.chibi
 package_compiler/QueryLoops.chibi
 package_compiler/Behavior.chibi
 package_compiler/Scalar.chibi
+package_compiler/ScalarArrays.chibi
 package_compiler/Math.chibi
 syntax_diagnostics/Diagnostics.chibi
 /sdk/core/strings/Strings.chibi

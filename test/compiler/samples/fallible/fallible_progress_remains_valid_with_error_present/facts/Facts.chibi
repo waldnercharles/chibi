@@ -1,0 +1,4 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }
+Use :: () -> int { result := Read(); progress := result.value; if result.error {} return progress; }

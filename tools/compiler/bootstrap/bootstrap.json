@@ -2,25 +2,25 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "8cd2f5a526f1cfc6cb649a256056cf6860d4c2da",
+  "revision": "87b3721bae2c51444a40c35502ad6773d38b7dbd",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 27995291,
-    "sha256": "7f28ae3628a7cdddd16b8224d73ba430e287d045435ff8d48993d6d55df57196"
+    "bytes": 29100734,
+    "sha256": "3efd86938934d0d92436f851b75b64d33be97c069ae0529d68a7d5a32d08ffde"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 189181,
-      "sha256": "dc3d32fcb53df7ff27d689f7ff809ce7ed3097507d7ac7a7799e4f071b9dd91b"
+      "bytes": 197010,
+      "sha256": "390ad01bea0a6934795670fe9f16bc2d7a141b55992fb0ef9c8d16ccb3dcb541"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 197175,
-      "sha256": "2943771d585238853dc5a04996cabffd358611912d0d7842fc76b8fec6d29ed7"
+      "bytes": 197376,
+      "sha256": "2cf7666afcc02488866481e87afc23ea8d0a6e4eff37f651d698782e539e6371"
     },
     {
       "path": "package_compiler/Fallible.chibi",
@@ -33,9 +33,14 @@
       "sha256": "3092ebe9b0d0315bfae5765148fe11851768314b540ef10002f621c40bfabdd8"
     },
     {
+      "path": "package_compiler/Comptime.chibi",
+      "bytes": 24975,
+      "sha256": "bed36bad297d324f773eaff2c0280ff4ceb4578468b15f91dd071dcb9d94461d"
+    },
+    {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 342735,
-      "sha256": "135160e2ad869fc285e41543d2a7bb3eec689629e8a0b793d6967b7a1fffe0bc"
+      "bytes": 343366,
+      "sha256": "ab540c3f7f93eb3b2a1a40215c70ed96de46cc790e73e748c01cae7c70e2cd2a"
     },
     {
       "path": "package_compiler/Maps.chibi",
@@ -99,13 +104,18 @@
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 125654,
-      "sha256": "654f8ed8e219ad71fe1bcdbffad875329f5f05298cfb5948275d4040c276fa62"
+      "bytes": 143992,
+      "sha256": "81d44f31b2b752b99580838bdd77666aeb22ace7e89ca266f99d3d942d96aca4"
+    },
+    {
+      "path": "package_compiler/ScalarArrays.chibi",
+      "bytes": 31294,
+      "sha256": "9699386ea328fb7a59e7c5289c815466d7dc0b32f9bb57de0517ac96ae4ef512"
     },
     {
       "path": "package_compiler/Math.chibi",
-      "bytes": 75512,
-      "sha256": "4cfd20d91b8282d3c08f3dc4b69a695041f4574491d92514a0cb5aaf8a0dfbe4"
+      "bytes": 76853,
+      "sha256": "cdc39b1ae6af757144d2040093f1813e875440a8947de9be27e4478671f9075f"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
@@ -124,8 +134,8 @@
     },
     {
       "path": "source_tokenizer/Tokenizer.chibi",
-      "bytes": 28758,
-      "sha256": "07d20c91dd003c0ae9d6497ad9e4a6bb7702460b0376cd4f7c12a29274cd01ec"
+      "bytes": 29401,
+      "sha256": "7c592461d3d02a56569f0b580786a248f7f375a1ed07136eca886a85017e6d88"
     },
     {
       "path": "source_parser/Tree.chibi",
@@ -149,8 +159,8 @@
     },
     {
       "path": "source_parser/Declarations.chibi",
-      "bytes": 25052,
-      "sha256": "39bd81eeb7f36e66d80fd44a1806cb96fe043b08d6190e0fb5556653ddce6137"
+      "bytes": 25095,
+      "sha256": "14da6557fadf57be0cb55ed39914368f06ca05c0d0b6f12391aee8d4ee55e10b"
     },
     {
       "path": "source_parser/Parser.chibi",
@@ -199,13 +209,13 @@
     },
     {
       "path": "math_types/Functions.chibi",
-      "bytes": 4634,
-      "sha256": "745e16490fa4c2fed8980a347a65a5a2debcac0699b8b3aad31bcccf54865d64"
+      "bytes": 5229,
+      "sha256": "b7ecff14bffd8dcf00c44b9e28daa5fd22a3b05f14981be9b9ff4b92b50fb9cf"
     },
     {
       "path": "scalar_facts/Facts.chibi",
-      "bytes": 16941,
-      "sha256": "78ff5b02dbab8b4128a078fa9ccf34fcd4c2061d3a82be2a0dc319985ae1d549"
+      "bytes": 21226,
+      "sha256": "73cfb6f7df014316144af7e9ae2e8679f33a13b49846227fbdbf160f40b5330f"
     }
   ],
   "target": [
@@ -215,8 +225,8 @@
       "value_size": 48,
       "payload_offset": 8,
       "arguments_offset": 168,
-      "results_offset": 208,
       "delta_seconds_offset": 344,
+      "results_offset": 208,
       "error_status_offset": 496,
       "type_offset": 0,
       "container_offset": 16,

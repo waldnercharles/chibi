@@ -1,0 +1,11 @@
+package facts
+LentLength :: (xs: int[]) -> int { return length(xs) + xs.length(); }
+LentSlice :: (xs: int[]) -> int {
+    part := slice(xs, 1, 2);
+    part.append(5);
+    rest := xs.slice(0, 1);
+    rest = append(rest, 7);
+    return length(part) * 10 + rest[1] + xs.length() * 100;
+}
+LentReturn :: (xs: int[]) -> int[] { return slice(xs, 1, 1); }
+CopiedElement :: () -> int { xss: int[][] = [[1, 2], [3]]; return length(xss[0]); }

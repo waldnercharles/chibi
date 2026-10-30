@@ -23,8 +23,61 @@ int authoring_project_test(const char *, const char *)
     return 1;
 }
 #else
-/* Runs each test and prints its outcome; the number that failed. */
-static int run_tests(const package_collection *packages, behavior_backend backend, int workers)
+/* Runs each test, prints its outcome and adds to the totals. */
+/* The run-time failure the test `name` of the directory named by the first
+ * `prefix` bytes of `path` expects, like Rust's should_panic: the message of a
+ * `// fails: ` line directly above its `@test`, or NULL. */
+static const char *expected_failure(
+    const source_package_snapshot_options *inputs,
+    const char *path,
+    size_t prefix,
+    const char *name,
+    size_t *length
+)
+{
+    static const char marker[] = "// fails: ", attribute[] = "@test\n";
+    size_t name_length = strlen(name);
+    for (int i = 0; i < inputs->file_count; i++) {
+        const source_package_input *file = &inputs->files[i];
+        if (strncmp(file->path, path, prefix) || file->path[prefix] != '/' ||
+            strchr(file->path + prefix + 1, '/')) {
+            continue;
+        }
+        /* The comment, the attribute and the declaration on consecutive lines. */
+        for (size_t at = 0; at + sizeof marker - 1 <= file->size; at++) {
+            if ((at && file->text[at - 1] != '\n') ||
+                memcmp(file->text + at, marker, sizeof marker - 1)) {
+                continue;
+            }
+            const char *message = file->text + at + sizeof marker - 1;
+            const char *end = memchr(message, '\n', file->size - (size_t)(message - file->text));
+            if (!end) {
+                break;
+            }
+            const char *declaration = end + 1 + sizeof attribute - 1;
+            size_t rest = file->size - (size_t)(end + 1 - file->text);
+            if (rest > sizeof attribute - 1 + name_length + 3 &&
+                !memcmp(end + 1, attribute, sizeof attribute - 1) &&
+                !memcmp(declaration, name, name_length) &&
+                !memcmp(declaration + name_length, " ::", 3)) {
+                *length = (size_t)(end - message);
+                return message;
+            }
+        }
+    }
+    return NULL;
+}
+
+static void run_tests(
+    const source_package_snapshot_options *inputs,
+    const char *path,
+    size_t prefix,
+    const package_collection *packages,
+    behavior_backend backend,
+    int workers,
+    int *total,
+    int *failed
+)
 {
     package_test *tests = package_tests_find_compiled(packages);
     int count = acount(tests);
@@ -34,10 +87,15 @@ static int run_tests(const package_collection *packages, behavior_backend backen
     package_tests_run(tests, count, backend, PACKAGE_TEST_BUDGET, task_pool_tasks(pool), results);
     task_pool_end(pool);
     task_pool_release(pool);
-    int failed = 0;
+    *total += count;
     for (int i = 0; i < count; i++) {
         package_test_failure failure = results[i].failure;
-        bool passed = results[i].passed;
+        size_t length = 0;
+        const char *expected = expected_failure(inputs, path, prefix, tests[i].name, &length);
+        bool passed = expected ? !results[i].passed &&
+                                     strlen(failure.message) == length &&
+                                     !memcmp(failure.message, expected, length)
+                               : results[i].passed;
         printf(
             "%s %s.%s\n",
             passed ? "PASS" : "FAIL",
@@ -47,7 +105,14 @@ static int run_tests(const package_collection *packages, behavior_backend backen
         if (passed) {
             continue;
         }
-        failed++;
+        (*failed)++;
+        if (expected && results[i].passed) {
+            printf("  expected it to fail with %.*s, but it returned\n", (int)length, expected);
+            continue;
+        }
+        if (expected) {
+            printf("  expected it to fail with %.*s\n", (int)length, expected);
+        }
         if (failure.path) {
             printf(
                 "  %s:%d:%d: %s\n",
@@ -60,14 +125,13 @@ static int run_tests(const package_collection *packages, behavior_backend backen
             printf("  %s\n", failure.message);
         }
     }
-    printf("%d tests, %d failed\n", count, failed);
     free(results);
     afree(tests);
-    return failed;
 }
-/* Where the tests' packages compile: a package of its own that imports every
- * package below the project root that declares a test, so one closure reaches
- * them and what they import. */
+/* Where each tested package compiles: a package of its own that imports it, so
+ * its closure holds only it and what it imports. One closure per package keeps
+ * each compile within its budget however many packages declare tests, as Go
+ * builds one test binary per package. */
 #define TESTS_PACKAGE "__tests__"
 
 /* An `@test` attribute alone on a line, as a test function is declared. */
@@ -86,8 +150,49 @@ static bool has_test_marker(const source_package_input *file)
     return false;
 }
 
+/* A failing file's expected first diagnostic, as Zig's test cases end with:
+ * the text after "// error: " on its last line, `LINE:COL: message`, or NULL. */
+static const char *expected_error(const source_package_input *file, size_t *length)
+{
+    static const char marker[] = "// error: ";
+    size_t end = file->size;
+    while (end && (file->text[end - 1] == '\n' || file->text[end - 1] == '\r')) {
+        end--;
+    }
+    size_t start = end;
+    while (start && file->text[start - 1] != '\n') {
+        start--;
+    }
+    if (end - start <= sizeof marker - 1 ||
+        memcmp(file->text + start, marker, sizeof marker - 1)) {
+        return NULL;
+    }
+    *length = end - start - (sizeof marker - 1);
+    return file->text + start + sizeof marker - 1;
+}
+
+/* The file directly in the directory named by the first `prefix` bytes of
+ * `path` that expects a compile error, or NULL. */
+static const source_package_input *rejected_file(
+    const source_package_snapshot_options *inputs,
+    const char *path,
+    size_t prefix
+)
+{
+    for (int i = 0; i < inputs->file_count; i++) {
+        const char *candidate = inputs->files[i].path;
+        size_t length;
+        if (!strncmp(candidate, path, prefix) && candidate[prefix] == '/' &&
+            !strchr(candidate + prefix + 1, '/') &&
+            expected_error(&inputs->files[i], &length)) {
+            return &inputs->files[i];
+        }
+    }
+    return NULL;
+}
+
 /* Whether a file of the directory named by the first `prefix` bytes of `path`
- * declares a test. What that directory imports joins the closure anyway. */
+ * declares a test or expects a compile error. */
 static bool directory_has_tests(const source_package_snapshot_options *inputs, const char *path, size_t prefix)
 {
     for (int i = 0; i < inputs->file_count; i++) {
@@ -98,18 +203,19 @@ static bool directory_has_tests(const source_package_snapshot_options *inputs, c
             return true;
         }
     }
-    return false;
+    return rejected_file(inputs, path, prefix) != NULL;
 }
 
-/* The text of that package, which imports the directory of each project file
- * outside the collections that declares a test. */
-static char *tests_package(const source_package_snapshot_options *inputs)
+/* The import path, below `project:`, of each project package outside the
+ * collections that declares a test: "." for files directly in the root. The
+ * caller owns the array and its strings. */
+static char **tested_packages(const source_package_snapshot_options *inputs)
 {
     size_t root = strlen(inputs->project_root);
-    char *text = xstrdup("package tests\n");
+    char **packages = NULL;
     const char *previous = NULL;
     size_t previous_length = 0;
-    int imports = 0;
+    bool root_seen = false;
     for (int i = 0; i < inputs->file_count; i++) {
         const char *path = inputs->files[i].path;
         bool collected = false;
@@ -123,6 +229,11 @@ static char *tests_package(const source_package_snapshot_options *inputs)
         }
         const char *slash = strrchr(path + root + 1, '/');
         if (!slash) {
+            /* The project root is itself a package when files sit directly in it. */
+            if (!root_seen && directory_has_tests(inputs, path, root)) {
+                root_seen = true;
+                apush(packages, xstrdup("."));
+            }
             continue;
         }
         size_t length = (size_t)(slash - (path + root + 1));
@@ -132,54 +243,69 @@ static char *tests_package(const source_package_snapshot_options *inputs)
         }
         previous = path + root + 1;
         previous_length = length;
-        if (!directory_has_tests(inputs, path, root + 1 + length)) {
-            continue;
+        if (directory_has_tests(inputs, path, root + 1 + length)) {
+            char *package = xmalloc(length + 1);
+            memcpy(package, previous, length);
+            package[length] = 0;
+            apush(packages, package);
         }
-        size_t used = strlen(text);
-        text = xrealloc(text, used + length + 48);
-        snprintf(text + used, length + 48, "import p%d \"project:%.*s\"\n", imports++, (int)length, previous);
     }
-    return text;
+    return packages;
 }
 
+/* The closure of one tested package, or NULL with why it failed. */
 static package_collection *compile_tests(
-    const char *root,
-    const char *core,
+    const source_package_snapshot_options *inputs,
+    const char *tested,
     const native_capabilities *native,
-    behavior_backend backend
+    behavior_backend backend,
+    package_compile_error *error
 )
 {
-    source_package_collection collections[] = { { "core", core } };
-    source_package_disk_options options = { root, collections, 1 };
-    source_package_snapshot_options inputs = { 0 };
-    source_package_load_error load = { 0 };
-    if (!source_package_files_load(&options, &inputs, &load)) {
-        fprintf(stderr, "%s: %s\n", load.path, load.message);
-        return NULL;
-    }
-    char *package = tests_package(&inputs);
-    size_t path_size = strlen(inputs.project_root) + sizeof "/" TESTS_PACKAGE
-                                                            "/Tests.chibi";
+    size_t text_size = strlen(tested) + 48;
+    char *package = xmalloc(text_size);
+    snprintf(package, text_size, "package tests\nimport tested \"project:%s\"\n", tested);
+    size_t path_size = strlen(inputs->project_root) + sizeof "/" TESTS_PACKAGE
+                                                             "/Tests.chibi";
     char *path = xmalloc(path_size);
-    snprintf(path, path_size, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs.project_root);
-    package_compile_error error;
-    package_collection *packages = package_compile(&inputs, path, package, native, backend, &error);
-    if (!packages && *error.path) {
-        fprintf(
-            stderr,
-            "%s:%d:%d: %s\n",
-            error.path,
-            error.line,
-            error.column,
-            error.message
-        );
-    } else if (!packages) {
-        fprintf(stderr, "%s\n", error.message);
-    }
+    snprintf(path, path_size, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs->project_root);
+    package_collection *packages = package_compile(inputs, path, package, native, backend, error);
     free(path);
     free(package);
-    source_package_files_release(&inputs);
     return packages;
+}
+/* Whether `tested`, whose `file` expects a compile error, failed with exactly
+ * that first diagnostic; prints the outcome as a test's. */
+static bool rejected_as_expected(
+    const char *tested,
+    const source_package_input *file,
+    const package_collection *packages,
+    const package_compile_error *error
+)
+{
+    size_t length;
+    const char *expected = expected_error(file, &length);
+    char actual[sizeof error->message + 32];
+    snprintf(
+        actual,
+        sizeof actual,
+        "%d:%d: %s",
+        error->line,
+        error->column,
+        error->message
+    );
+    bool passed = !packages && !strcmp(error->path, file->path) &&
+                  strlen(actual) == length && !memcmp(actual, expected, length);
+    printf("%s %s.compile_error\n", passed ? "PASS" : "FAIL", tested);
+    if (!passed) {
+        printf("  %s: expected %.*s, ", file->path, (int)length, expected);
+        if (packages) {
+            printf("but it compiled\n");
+        } else {
+            printf("got %s:%s\n", error->path, actual);
+        }
+    }
+    return passed;
 }
 /* Tests run without a game, so they get the natives that need none of it, and
  * the compiler's raw-syntax and JSON bridges, so the compiler's own packages
@@ -209,15 +335,59 @@ int authoring_project_test(const char *root, const char *core)
         fprintf(stderr, "Test preparation failed: %s\n", error);
         return 1;
     }
-    behavior_backend backend = behavior_default_backend();
-    package_collection *packages = compile_tests(root, core, native, backend);
-    int status = 1;
-    if (packages) {
-        status = run_tests(packages, backend, workers) ? 1 : 0;
-        package_collection_free(packages);
+    source_package_collection collections[] = { { "core", core } };
+    source_package_disk_options options = { root, collections, 1 };
+    source_package_snapshot_options inputs = { 0 };
+    source_package_load_error load = { 0 };
+    if (!source_package_files_load(&options, &inputs, &load)) {
+        fprintf(stderr, "%s: %s\n", load.path, load.message);
+        native_capabilities_free(native);
+        return 1;
     }
+    behavior_backend backend = behavior_default_backend();
+    char **tested = tested_packages(&inputs);
+    int total = 0, failed = 0;
+    bool compiled = true;
+    for (int i = 0; i < acount(tested); i++) {
+        size_t root = strlen(inputs.project_root), directory = strlen(tested[i]);
+        char *path = xmalloc(root + directory + 2);
+        snprintf(path, root + directory + 2, "%s/%s", inputs.project_root, tested[i]);
+        size_t prefix = strcmp(tested[i], ".") ? root + 1 + directory : root;
+        const source_package_input *rejected = rejected_file(&inputs, path, prefix);
+        package_compile_error error;
+        package_collection *packages = compile_tests(&inputs, tested[i], native, backend, &error);
+        if (rejected) {
+            total++;
+            failed += !rejected_as_expected(tested[i], rejected, packages, &error);
+        } else if (!packages && *error.path) {
+            fprintf(
+                stderr,
+                "%s:%d:%d: %s\n",
+                error.path,
+                error.line,
+                error.column,
+                error.message
+            );
+        } else if (!packages) {
+            fprintf(stderr, "%s\n", error.message);
+        } else {
+            run_tests(&inputs, path, prefix, packages, backend, workers, &total, &failed);
+        }
+        free(path);
+        compiled &= packages != NULL || rejected;
+        if (packages) {
+            package_collection_free(packages);
+        }
+        free(tested[i]);
+    }
+    afree(tested);
+    source_package_files_release(&inputs);
     native_capabilities_free(native);
-    return status;
+    if (!compiled) {
+        return 1;
+    }
+    printf("%d tests, %d failed\n", total, failed);
+    return failed ? 1 : 0;
 }
 
 #endif

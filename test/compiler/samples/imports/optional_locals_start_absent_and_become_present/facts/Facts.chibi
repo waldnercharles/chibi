@@ -1,0 +1,2 @@
+package facts
+Main :: () -> int { absent: int? = nil; present: int? = 4; r := 0; if absent { r += 100; } if present { r += present - 1; } return r; }

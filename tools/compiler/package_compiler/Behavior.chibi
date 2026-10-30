@@ -375,6 +375,114 @@ StateNumberStorage :: (forest: snapshot.SnapshotNode[], source: string, node: in
     }
     return WordStorage;
 }
+StateRead :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Read(kept: StateDecl)
+}
+// The state declaration `member` of the document `document`, whose identity
+// is `identity` and `qualifier` (a function's name and a dot, for a retained
+// local) before the state's own name.
+DeclaredState :: (forest: snapshot.SnapshotNode[], source: string, table: ^(TypeDecl[]), entity: u64, member: int,
+                  document: int, identity: string, qualifier: string, ops: Ops) -> StateRead {
+    name := Text(forest, source, Field(forest, member, "name"));
+    declared := StateType(forest, source, table, entity, member);
+    if ((!Numeric(declared.storage) && declared.storage != BoolStorage && declared.storage != TextStorage &&
+         declared.storage != HandleStorage) || declared.container != 0 ||
+        CharType(table^, declared.storage, declared.container, declared.record) ||
+        (declared.storage == HandleStorage && declared.record < 0)) {
+        return StateRead.Failed(Diagnose(forest, member, document, "state type is not supported yet"));
+    }
+    bits: u64 = 0;
+    initial := "";
+    switch StateDefault(forest, source, name, declared.storage, Field(forest, member, "value"), ops) {
+        case .Failed(diagnostic):
+            return StateRead.Failed(snapshot.Stamp(diagnostic, document));
+        case .Read(default_bits, default_text):
+            bits = default_bits;
+            initial = default_text;
+    }
+    kept: StateDecl = {name: name, id: binding.ID("symbol", format_text("{}:1:{}{}", identity, qualifier, name)),
+                       storage: declared.storage, record: declared.record, bits: bits, text: initial,
+                       node: Field(forest, member, "name")};
+    return StateRead.Read(kept);
+}
+// A function's retained locals are states of its package's module, which
+// carries every state as a variable of every function, as a behavior's
+// functions do. `owners[i]` is the callable that declares `states[i]`, and a
+// state's identity is its function's and its own name, so an edit that keeps
+// both keeps the state.
+Retained :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Read(states: StateDecl[], owners: int[])
+}
+RetainedLocals :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[],
+                   package_names: string[], table: ^(TypeDecl[]), ops: Ops) -> Retained {
+    states: StateDecl[] = [];
+    owners: int[] = [];
+    for (at in 0..<length(documents)) {
+        document := documents[at];
+        for (offset in 0..<document.node_count) {
+            member := document.node_start + offset;
+            if (!Is(forest, member, "state_declaration")) {
+                continue;
+            }
+            function := forest[member].parent;
+            while (function >= 0 && !Is(forest, function, "function_declaration")) {
+                function = forest[function].parent;
+            }
+            for (index in 0..<length(callables)) {
+                if (function < 0 || callables[index].node != function) {
+                    continue;
+                }
+                name := Text(forest, document.text, Field(forest, member, "name"));
+                for (position in 0..<length(states)) {
+                    if (states[position].name == name && owners[position] == index) {
+                        return Retained.Failed(Diagnose(forest, member, at, format_text("Duplicate declaration '{}'", name)));
+                    }
+                }
+                qualifier := format_text("{}.", callables[index].name);
+                switch DeclaredState(forest, document.text, table, 0, member, at, package_names[callables[index].owner_package],
+                                     qualifier, ops) {
+                    case .Failed(diagnostic):
+                        return Retained.Failed(diagnostic);
+                    case .Read(kept):
+                        states.append(kept);
+                        owners.append(index);
+                }
+            }
+        }
+    }
+    return Retained.Read(states, owners);
+}
+// The retained locals of package `package`'s functions, in module order.
+PackageStates :: (states: StateDecl[], owners: int[], callables: Callable[], package: int) -> StateDecl[] {
+    kept: StateDecl[] = [];
+    for (position in 0..<length(states)) {
+        if (callables[owners[position]].owner_package == package) {
+            kept.append(states[position]);
+        }
+    }
+    return kept;
+}
+// The names callable `callable` of package `package` reads its own retained
+// locals by, each the variable at its position among the package's states.
+RetainedNames :: (states: StateDecl[], owners: int[], callables: Callable[], package: int, callable: int) -> Name[] {
+    names: Name[] = [];
+    index: int = 0;
+    for (position in 0..<length(states)) {
+        if (callables[owners[position]].owner_package != package) {
+            continue;
+        }
+        if (owners[position] == callable) {
+            kept: Name = {owned: false, name: states[position].name, place: StatePlace, index: index,
+                          storage: states[position].storage, container: 0, record: states[position].record,
+                          writable: true, node: states[position].node};
+            names.append(kept);
+        }
+        index += 1;
+    }
+    return names;
+}
 // The written scalar type, or a literal initializer's natural type.
 StateType :: (forest: snapshot.SnapshotNode[], source: string, types: ^(TypeDecl[]), entity: u64,
               member: int) -> ValueType {
@@ -599,31 +707,17 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
     while (member >= 0) {
         if (!is_library && Is(forest, member, "state_declaration")) {
             name := Text(forest, source, Field(forest, member, "name"));
-            declared := StateType(forest, source, table, entity, member);
-            if ((!Numeric(declared.storage) && declared.storage != BoolStorage && declared.storage != TextStorage &&
-                 declared.storage != HandleStorage) || declared.container != 0 ||
-                CharType(table^, declared.storage, declared.container, declared.record) ||
-                (declared.storage == HandleStorage && declared.record < 0)) {
-                return SourceMembers.Failed(Diagnose(forest, member, package, "state type is not supported yet"));
-            }
-            bits: u64 = 0;
-            initial := "";
-            switch StateDefault(forest, source, name, declared.storage, Field(forest, member, "value"), ops) {
-                case .Failed(diagnostic):
-                    return SourceMembers.Failed(snapshot.Stamp(diagnostic, package));
-                case .Read(default_bits, default_text):
-                    bits = default_bits;
-                    initial = default_text;
-            }
             for (kept in kept_states) {
                 if (kept.name == name) {
                     return SourceMembers.Failed(Diagnose(forest, member, package, format_text("Duplicate declaration '{}'", name)));
                 }
             }
-            kept: StateDecl = {name: name, id: binding.ID("symbol", format_text("{}:1:{}", identity, name)),
-                               storage: declared.storage, record: declared.record, bits: bits, text: initial,
-                               node: Field(forest, member, "name")};
-            kept_states.append(kept);
+            switch DeclaredState(forest, source, table, entity, member, package, identity, "", ops) {
+                case .Failed(diagnostic):
+                    return SourceMembers.Failed(diagnostic);
+                case .Read(kept):
+                    kept_states.append(kept);
+            }
         } else if (!is_library && Is(forest, member, "handler")) {
             if (Text(forest, source, Field(forest, member, "kind")) != "on" || Field(forest, member, "alias") >= 0 ||
                 !Is(forest, Field(forest, member, "name"), "identifier")) {
@@ -1001,7 +1095,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 switch Assemble(forest, documents, index, index, identities, module_ids, fingerprints,
                                 resize([true], length(documents)), namespaces, callables, params, declared_types,
                                 members, constants, natives, ports, native_ids, native_effects, effects, ops,
-                                target, abi, games[index], bodies, SourceQueries(query_specs, callables, index)) {
+                                target, abi, games[index], bodies, SourceQueries(query_specs, callables, index), []) {
                     case .Rejected(diagnostic):
                         return Result.Rejected(diagnostic);
                     case .Compiled(module, bytes, summaries):

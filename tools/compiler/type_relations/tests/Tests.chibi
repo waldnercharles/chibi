@@ -1,0 +1,299 @@
+package type_relations_tests
+
+import named "project:named_binding"
+import relations "project:type_relations"
+
+// Storage ordinals and flag bits, as in capabilities/catalog.h.
+Bool: int : 1;
+I8: int : 2;
+U8: int : 3;
+I16: int : 4;
+I32: int : 6;
+U32: int : 7;
+U64: int : 9;
+F32: int : 10;
+F64: int : 11;
+Name: int : 12;
+Str: int : 13;
+Handle: int : 14;
+TaskStorage: int : 17;
+UnionStorage: int : 18;
+ErrorFlag: int : 1;
+OptionalFlag: int : 2;
+ReferenceFlag: int : 4;
+ResultsFlag: int : 8;
+UntypedFlag: int : 16;
+GenericFlag: int : 32;
+TaskFlag: int : 64;
+UnionFlag: int : 256;
+LiteralFlag: int : 1024;
+BoxedFlag: int : 2048;
+
+// Full-width type IDs.
+High: u64 : 18364758544493064720;
+Next: u64 : 18364758544493064721;
+Last: u64 : 9223372036854775809;
+Missing: u64 : 18446744073709551615;
+
+V :: (storage: int, container: int, flags: int, nominal: u64, parameter: u64) -> named.Value {
+    return named.Value.Typed(storage, container, flags, nominal, parameter);
+}
+Same :: (actual: named.Value, expected: named.Value) {
+    switch actual {
+        case .Typed(storage, container, flags, nominal, parameter):
+            switch expected {
+                case .Typed(expected_storage, expected_container, expected_flags, expected_nominal, expected_parameter):
+                    assert(storage == expected_storage, "canonical storage");
+                    assert(container == expected_container, "canonical container");
+                    assert(flags == expected_flags, "canonical flags");
+                    assert(nominal == expected_nominal, "canonical nominal");
+                    assert(parameter == expected_parameter, "canonical parameter");
+            }
+    }
+}
+
+CatalogEmpty :: () -> relations.Environment {
+    types: named.Type[] = [];
+    ids: u64[] = [];
+    definitions: relations.Definition[] = [];
+    variants: relations.Variant[] = [];
+    return relations.Environment.Tables(types, ids, definitions, variants);
+}
+CatalogAliases :: () -> relations.Environment {
+    types: named.Type[] = [];
+    ids: u64[] = [High, Next, Last];
+    definitions: relations.Definition[] = [
+        {id_slot: 0, underlying_slot: 1, variant_start: 0, variant_count: 0},
+        {id_slot: 1, underlying_slot: 2, variant_start: 0, variant_count: 0},
+        {id_slot: 2, underlying_slot: -1, variant_start: 0, variant_count: 0}
+    ];
+    variants: relations.Variant[] = [];
+    return relations.Environment.Tables(types, ids, definitions, variants);
+}
+CatalogMissingEnd :: () -> relations.Environment {
+    types: named.Type[] = [];
+    ids: u64[] = [High, Next, Last, Missing];
+    definitions: relations.Definition[] = [
+        {id_slot: 0, underlying_slot: 1, variant_start: 0, variant_count: 0},
+        {id_slot: 1, underlying_slot: 2, variant_start: 0, variant_count: 0},
+        {id_slot: 2, underlying_slot: 3, variant_start: 0, variant_count: 0}
+    ];
+    variants: relations.Variant[] = [];
+    return relations.Environment.Tables(types, ids, definitions, variants);
+}
+CatalogCycle :: () -> relations.Environment {
+    types: named.Type[] = [];
+    ids: u64[] = [High, Next, Last];
+    definitions: relations.Definition[] = [
+        {id_slot: 0, underlying_slot: 1, variant_start: 0, variant_count: 0},
+        {id_slot: 1, underlying_slot: 2, variant_start: 0, variant_count: 0},
+        {id_slot: 2, underlying_slot: 1, variant_start: 0, variant_count: 0}
+    ];
+    variants: relations.Variant[] = [];
+    return relations.Environment.Tables(types, ids, definitions, variants);
+}
+CatalogSelfCycle :: () -> relations.Environment {
+    types: named.Type[] = [];
+    ids: u64[] = [High];
+    definitions: relations.Definition[] = [{id_slot: 0, underlying_slot: 0, variant_start: 0, variant_count: 0}];
+    variants: relations.Variant[] = [];
+    return relations.Environment.Tables(types, ids, definitions, variants);
+}
+CatalogDuplicates :: () -> relations.Environment {
+    types: named.Type[] = [];
+    ids: u64[] = [High, Next, Last];
+    definitions: relations.Definition[] = [
+        {id_slot: 0, underlying_slot: 1, variant_start: 0, variant_count: 0},
+        {id_slot: 0, underlying_slot: 2, variant_start: 0, variant_count: 0},
+        {id_slot: 1, underlying_slot: -1, variant_start: 0, variant_count: 0}
+    ];
+    variants: relations.Variant[] = [];
+    return relations.Environment.Tables(types, ids, definitions, variants);
+}
+CatalogZeroAlias :: () -> relations.Environment {
+    types: named.Type[] = [];
+    ids: u64[] = [High];
+    definitions: relations.Definition[] = [{id_slot: -1, underlying_slot: 0, variant_start: 0, variant_count: 0}];
+    variants: relations.Variant[] = [];
+    return relations.Environment.Tables(types, ids, definitions, variants);
+}
+CatalogUnions :: () -> relations.Environment {
+    types: named.Type[] = [
+        {storage: I32, container: 0, flags: 0, nominal_slot: -1, parameter_slot: -1, collection: 0},
+        {storage: Str, container: 0, flags: LiteralFlag, nominal_slot: -1, parameter_slot: 1, collection: 0},
+        {storage: Bool, container: 0, flags: 0, nominal_slot: -1, parameter_slot: -1, collection: 0},
+        {storage: Name, container: 0, flags: 0, nominal_slot: -1, parameter_slot: 0, collection: 0},
+        {storage: Handle, container: 1, flags: OptionalFlag, nominal_slot: 2, parameter_slot: -1, collection: 0},
+        {storage: F64, container: 0, flags: 0, nominal_slot: -1, parameter_slot: -1, collection: 0},
+        {storage: I32, container: 0, flags: 0, nominal_slot: -1, parameter_slot: -1, collection: 0},
+        {storage: Bool, container: 0, flags: 0, nominal_slot: -1, parameter_slot: -1, collection: 0}
+    ];
+    ids: u64[] = [High, Next, Last, Missing];
+    definitions: relations.Definition[] = [
+        {id_slot: 0, underlying_slot: -1, variant_start: 0, variant_count: 4},
+        {id_slot: 1, underlying_slot: -1, variant_start: 4, variant_count: 2},
+        {id_slot: 2, underlying_slot: -1, variant_start: 6, variant_count: 0},
+        {id_slot: 3, underlying_slot: -1, variant_start: 6, variant_count: 1},
+        {id_slot: -1, underlying_slot: -1, variant_start: 7, variant_count: 1}
+    ];
+    variants: relations.Variant[] = [
+        {tag_slot: 0, type: 0, tagged: false, is_literal: false},
+        {tag_slot: 1, type: 1, tagged: false, is_literal: true},
+        {tag_slot: 2, type: 2, tagged: true, is_literal: false},
+        {tag_slot: -1, type: 3, tagged: false, is_literal: true},
+        {tag_slot: 1, type: 4, tagged: true, is_literal: false},
+        {tag_slot: 0, type: 5, tagged: false, is_literal: false},
+        {tag_slot: 3, type: 6, tagged: false, is_literal: false},
+        {tag_slot: -1, type: 7, tagged: false, is_literal: false}
+    ];
+    return relations.Environment.Tables(types, ids, definitions, variants);
+}
+
+@test
+EqualCompareEveryField :: () {
+    assert(relations.Equal(V(I32, 0, 0, 0, 0), V(I32, 0, 0, 0, 0)), "same scalar");
+    assert(!relations.Equal(V(I32, 0, 0, 0, 0), V(F64, 0, 0, 0, 0)), "different storage");
+    assert(!relations.Equal(V(I32, 1, 0, 0, 0), V(I32, 0, 0, 0, 0)), "different container");
+    assert(!relations.Equal(V(Handle, 0, 0, High, 0), V(Handle, 0, 0, Next, 0)), "full width nominal");
+    assert(relations.Equal(V(Str, 0, 0, 0, High), V(Str, 0, 0, 0, Next)), "ordinary parameters ignored");
+    assert(relations.Equal(V(Str, 0, LiteralFlag, 0, High), V(Str, 0, 0, 0, Next)), "one literal parameter ignored");
+    assert(relations.Equal(V(Str, 0, LiteralFlag, 0, High), V(Str, 0, LiteralFlag, 0, High)), "same literal");
+    assert(!relations.Equal(V(Str, 0, LiteralFlag, 0, High), V(Str, 0, LiteralFlag, 0, Next)), "distinct full width literals");
+    assert(!relations.Equal(V(I32, 0, OptionalFlag, 0, 0), V(I32, 0, 0, 0, 0)), "optional differs");
+    assert(!relations.Equal(V(I32, 0, ResultsFlag, 0, 0), V(I32, 0, 0, 0, 0)), "results differs");
+    assert(relations.Equal(V(I32, 0, ErrorFlag | ReferenceFlag | UntypedFlag | GenericFlag | UnionFlag | BoxedFlag | 640, 0, 0), V(I32, 0, 0, 0, 0)), "other flags ignored");
+    assert(relations.Equal(V(TaskStorage, 0, ResultsFlag | TaskFlag, High, High), V(Handle, 0, TaskFlag, Next, High)), "task ignores storage nominal results");
+    assert(!relations.Equal(V(TaskStorage, 0, TaskFlag, 0, 0), V(TaskStorage, 0, 0, 0, 0)), "one task flag");
+    assert(!relations.Equal(V(TaskStorage, 1, TaskFlag, 0, 0), V(TaskStorage, 0, TaskFlag, 0, 0)), "task container differs");
+    assert(relations.Equal(V(TaskStorage, 0, TaskFlag, 0, 0), V(TaskStorage, 0, TaskFlag, 0, High)), "task left wildcard");
+    assert(relations.Equal(V(TaskStorage, 0, TaskFlag, 0, High), V(TaskStorage, 0, TaskFlag, 0, 0)), "task right wildcard");
+    assert(!relations.Equal(V(TaskStorage, 0, TaskFlag, 0, High), V(TaskStorage, 0, TaskFlag, 0, Next)), "task parameter differs");
+    assert(!relations.Equal(V(TaskStorage, 0, OptionalFlag | TaskFlag, 0, 0), V(TaskStorage, 0, TaskFlag, 0, 0)), "task optional differs");
+}
+
+@test
+NumericAcceptsScalarNumbers :: () {
+    assert(relations.Numeric(V(I8, 0, 0, 0, 0)), "numeric lower bound");
+    assert(relations.Numeric(V(F64, 0, 0, 0, 0)), "numeric upper bound");
+    assert(!relations.Numeric(V(Bool, 0, 0, 0, 0)), "below numeric range");
+    assert(!relations.Numeric(V(Name, 0, 0, 0, 0)), "above numeric range");
+    assert(!relations.Numeric(V(I32, 1, 0, 0, 0)), "numeric array excluded");
+    assert(!relations.Numeric(V(I32, 0, 0, High, 0)), "nominal numeric excluded");
+    assert(relations.Numeric(V(I32, 0, GenericFlag, High, 0)), "generic nominal numeric");
+    assert(!relations.Numeric(V(I32, 0, ErrorFlag, 0, 0)), "numeric error excluded");
+    assert(!relations.Numeric(V(I32, 0, OptionalFlag | GenericFlag, High, 0)), "numeric optional excluded");
+    assert(!relations.Numeric(V(I32, 0, ResultsFlag, 0, 0)), "numeric results excluded");
+    assert(!relations.Numeric(V(I32, 0, TaskFlag, 0, 0)), "numeric task excluded");
+    assert(relations.Numeric(V(I32, 0, ReferenceFlag, 0, 0)), "numeric reference allowed");
+    assert(relations.Numeric(V(I32, 0, UntypedFlag, 0, 0)), "numeric untyped allowed");
+    assert(relations.Numeric(V(I32, 0, BoxedFlag, 0, 0)), "numeric boxed bit alone allowed");
+    assert(relations.Numeric(V(I32, 0, LiteralFlag, 0, High)), "numeric literal allowed");
+}
+
+@test
+AssignableWidensOnlyPlainScalars :: () {
+    assert(relations.Assignable(V(I32, 0, 0, 0, 0), V(U8, 0, 0, 0, 0)), "integer widening");
+    assert(!relations.Assignable(V(I8, 0, 0, 0, 0), V(I32, 0, 0, 0, 0)), "integer narrowing");
+    assert(!relations.Assignable(V(U64, 0, 0, 0, 0), V(I32, 0, 0, 0, 0)), "signed to unsigned");
+    assert(!relations.Assignable(V(I32, 0, 0, 0, 0), V(U32, 0, 0, 0, 0)), "unsigned to equal signed");
+    assert(relations.Assignable(V(F64, 0, 0, 0, 0), V(U64, 0, 0, 0, 0)), "integer to f64");
+    assert(!relations.Assignable(V(I16, 0, 0, 0, 0), V(F64, 0, 0, 0, 0)), "f64 to integer");
+    assert(relations.Assignable(V(F64, 0, 0, 0, 0), V(I16, 0, 0, 0, 0)), "integer to f64");
+    assert(relations.Assignable(V(Str, 0, ErrorFlag | BoxedFlag, 0, 0), V(I32, 1, 0, 0, 0)), "expected error before boxed");
+    assert(relations.Assignable(V(Str, 0, 0, 0, 0), V(I32, 1, ErrorFlag, 0, 0)), "actual error");
+    assert(relations.Assignable(V(I32, 0, OptionalFlag | BoxedFlag, 0, 0), V(I32, 0, OptionalFlag | BoxedFlag, 0, 0)), "boxed strips both optional flags");
+    assert(!relations.Assignable(V(I32, 0, OptionalFlag | BoxedFlag, 0, 0), V(F64, 0, 0, 0, 0)), "boxed blocks numeric widening");
+    assert(!relations.Assignable(V(Str, 0, UntypedFlag | BoxedFlag, 0, 0), V(I32, 0, UntypedFlag, 0, 0)), "boxed precedes untyped");
+    assert(!relations.Assignable(V(Name, 0, OptionalFlag | BoxedFlag, 0, 0), V(Str, 0, 0, 0, 0)), "boxed blocks name string conversion");
+    assert(relations.Assignable(V(TaskStorage, 0, OptionalFlag | TaskFlag | BoxedFlag, 0, High), V(TaskStorage, 0, TaskFlag, 0, 0)), "boxed task uses symmetric equality wildcard");
+    assert(relations.Assignable(V(Str, 0, UntypedFlag, 0, 0), V(I32, 1, OptionalFlag, 0, 0)), "expected untyped");
+    assert(relations.Assignable(V(Str, 0, 0, 0, 0), V(I32, 1, UntypedFlag, 0, 0)), "actual untyped");
+    assert(!relations.Assignable(V(I32, 0, GenericFlag, High, 0), V(F64, 0, GenericFlag, High, 0)), "generic cleared before numeric");
+    assert(!relations.Assignable(V(I8, 0, 0, 0, 0), V(F64, 0, 0, 0, 0)), "numeric width conversion");
+    assert(!relations.Assignable(V(I32, 0, 0, 0, 0), V(I32, 0, OptionalFlag, 0, 0)), "actual optional rejected");
+    assert(relations.Assignable(V(I32, 0, OptionalFlag, 0, 0), V(I32, 0, 0, 0, 0)), "expected optional permits value");
+    assert(relations.Assignable(V(F64, 0, OptionalFlag, 0, 0), V(I32, 0, OptionalFlag | BoxedFlag, 0, 0)), "optional strips actual boxed before numeric");
+    assert(relations.Assignable(V(Name, 0, 0, 0, 0), V(Str, 0, 0, 0, 0)), "name accepts string");
+    assert(relations.Assignable(V(Str, 0, 0, 0, 0), V(Name, 0, 0, 0, 0)), "string accepts name");
+    assert(!relations.Assignable(V(Name, 0, 0, High, 0), V(Str, 0, 0, Next, 0)), "name string preserves nominal");
+    assert(relations.Assignable(V(Handle, 0, ReferenceFlag, High, 0), V(Handle, 0, 0, High, 0)), "reference ignored");
+    assert(relations.Assignable(V(TaskStorage, 0, TaskFlag, High, 0), V(TaskStorage, 0, TaskFlag, Next, High)), "task expected wildcard");
+    assert(!relations.Assignable(V(TaskStorage, 0, TaskFlag, High, High), V(TaskStorage, 0, TaskFlag, Next, 0)), "task actual wildcard rejected");
+    assert(relations.Assignable(V(TaskStorage, 0, ResultsFlag | TaskFlag, High, High), V(Handle, 0, TaskFlag, Next, High)), "task ignores storage and nominal");
+    assert(!relations.Assignable(V(TaskStorage, 0, TaskFlag, 0, 0), V(TaskStorage, 0, OptionalFlag | TaskFlag, 0, High)), "task actual optional rejected");
+    assert(relations.Assignable(V(TaskStorage, 0, OptionalFlag | TaskFlag, 0, High), V(TaskStorage, 0, TaskFlag, 0, High)), "task expected optional permits value");
+    assert(!relations.Assignable(V(TaskStorage, 1, TaskFlag, 0, 0), V(TaskStorage, 0, TaskFlag, 0, 0)), "task container differs");
+    assert(!relations.Assignable(V(TaskStorage, 0, TaskFlag, 0, 0), V(TaskStorage, 0, 0, 0, 0)), "task bit required on both");
+    assert(!relations.Assignable(V(Str, 0, LiteralFlag, 0, High), V(Str, 0, LiteralFlag, 0, Next)), "different string literals rejected");
+    assert(relations.Assignable(V(I32, 0, LiteralFlag, 0, High), V(I32, 0, LiteralFlag, 0, Next)), "numeric shortcut precedes literal equality");
+    assert(relations.Assignable(V(Str, 0, LiteralFlag, 0, High), V(Str, 0, 0, 0, 0)), "plain scalar may satisfy raw literal");
+    assert(!relations.Assignable(V(I32, 1, 0, 0, 0), V(F64, 1, 0, 0, 0)), "array has no numeric widening");
+    assert(!relations.Assignable(V(I32, 0, ResultsFlag, 0, 0), V(F64, 0, ResultsFlag, 0, 0)), "results prevent numeric widening");
+}
+
+@test
+CatalogAssignableResolvesAliasesAndUnions :: () {
+    assert(!relations.CatalogAssignable(CatalogEmpty(), V(Str, 0, LiteralFlag, 0, High), V(Str, 0, ErrorFlag, 0, High)), "catalog literal requires literal before error recovery");
+    assert(relations.CatalogAssignable(CatalogEmpty(), V(Str, 0, ErrorFlag | LiteralFlag, High, High), V(I32, 1, ErrorFlag | OptionalFlag | LiteralFlag, Next, High)), "catalog literal compares only full width parameter");
+    assert(!relations.CatalogAssignable(CatalogEmpty(), V(Str, 0, ErrorFlag | LiteralFlag, 0, High), V(Str, 0, ErrorFlag | LiteralFlag, 0, Next)), "catalog literal parameter differs despite errors");
+    assert(relations.CatalogAssignable(CatalogEmpty(), V(UnionStorage, 0, UnionFlag, High, 0), V(UnionStorage, 0, UnionFlag, High, 0)), "same union bypasses missing metadata");
+    assert(relations.CatalogAssignable(CatalogEmpty(), V(UnionStorage, 0, UnionFlag, High, 0), V(Handle, 0, UnionFlag | BoxedFlag, High, Next)), "same union fast path ignores boxed payload");
+    assert(relations.CatalogAssignable(CatalogEmpty(), V(UnionStorage, 0, OptionalFlag | UnionFlag, High, 0), V(UnionStorage, 0, OptionalFlag | UnionFlag, High, 0)), "same optional union fast path");
+    assert(relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(UnionStorage, 0, OptionalFlag | UnionFlag, High, 0)), "optional source falls through to tag subset");
+    assert(!relations.CatalogAssignable(CatalogEmpty(), V(UnionStorage, 0, UnionFlag, High, 0), V(UnionStorage, 0, OptionalFlag | UnionFlag, High, 0)), "optional source without metadata fails");
+    assert(relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(UnionStorage, 0, UnionFlag, Next, 0)), "source tags included despite unrelated payloads");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(UnionStorage, 0, UnionFlag, Missing, 0)), "source tag absent");
+    assert(relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, 123, 0), V(UnionStorage, 0, OptionalFlag | UnionFlag, Last, 0)), "empty source succeeds with missing target");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, 123, 0), V(UnionStorage, 0, UnionFlag, Next, 0)), "nonempty source fails with missing target");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(UnionStorage, 0, UnionFlag, 123, 0)), "missing source uses plain alternative path");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(UnionStorage, 0, UnionFlag | BoxedFlag, Next, 0)), "boxed source excluded from subset");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(UnionStorage, 1, UnionFlag, Next, 0)), "array source excluded from subset");
+    assert(relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(I32, 0, 0, 0, 0)), "plain member exact match");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(F64, 0, 0, 0, 0)), "plain member has no numeric widening");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(Bool, 0, 0, 0, 0)), "tagged member cannot match plain scalar");
+    assert(relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(I32, 0, LiteralFlag, 0, High)), "plain member permits literal scalar");
+    assert(relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(Str, 0, LiteralFlag, 0, Next)), "literal member matches exact literal");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(Str, 0, LiteralFlag, 0, High)), "literal member rejects different literal");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(Str, 0, 0, 0, Next)), "literal member rejects plain string");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(Name, 0, 0, 0, High)), "literal metadata independently requires literal");
+    assert(relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(Name, 0, LiteralFlag, 0, High)), "literal metadata independently matches parameter");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(Name, 0, LiteralFlag, 0, Next)), "literal metadata independently rejects parameter");
+    assert(relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, High, 0), V(Bool, 0, ErrorFlag, 0, 0)), "actual error bypasses union branch");
+    assert(!relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, ErrorFlag | UnionFlag, High, 0), V(F64, 0, 0, 0, 0)), "expected error does not bypass union branch");
+    assert(relations.CatalogAssignable(CatalogEmpty(), V(I32, 1, UnionFlag, 0, 0), V(I32, 1, 0, 0, 0)), "array expected uses ordinary relation");
+    assert(relations.CatalogAssignable(CatalogAliases(), V(Handle, 0, 0, High, 0), V(Handle, 0, 0, Last, 0)), "expected alias canonicalized");
+    assert(relations.CatalogAssignable(CatalogAliases(), V(Handle, 0, 0, Last, 0), V(Handle, 0, 0, High, 0)), "actual alias canonicalized");
+    assert(!relations.CatalogAssignable(CatalogAliases(), V(Handle, 0, 0, High, 0), V(Str, 0, 0, Last, 0)), "canonicalization preserves storage");
+    assert(relations.CatalogAssignable(CatalogCycle(), V(Handle, 0, 0, High, 0), V(Bool, 1, 0, 0, 0)), "alias cycle error enables recovery");
+    assert(relations.CatalogAssignable(CatalogUnions(), V(UnionStorage, 0, UnionFlag, 0, 0), V(Bool, 0, 0, 0, 0)), "zero nominal still selects catalog union");
+}
+
+@test
+CanonicalFollowsAliasChains :: () {
+    // zero nominal returns before zero-id alias lookup
+    Same(relations.Canonical(CatalogZeroAlias(), V(Str, 1, OptionalFlag, 0, High)), V(Str, 1, OptionalFlag, 0, High));
+    // unknown nominal unchanged
+    Same(relations.Canonical(CatalogEmpty(), V(Handle, 0, ReferenceFlag, High, Next)), V(Handle, 0, ReferenceFlag, High, Next));
+    // terminal definition unchanged
+    Same(relations.Canonical(CatalogAliases(), V(Handle, 0, GenericFlag, Last, High)), V(Handle, 0, GenericFlag, Last, High));
+    // alias chain preserves all other fields
+    Same(relations.Canonical(CatalogAliases(), V(Handle, 1, OptionalFlag | GenericFlag, High, Next)), V(Handle, 1, OptionalFlag | GenericFlag, Last, Next));
+    // missing destination at exact count is not cycle
+    Same(relations.Canonical(CatalogMissingEnd(), V(Handle, 1, ResultsFlag, High, Next)), V(Handle, 1, ResultsFlag, Missing, Next));
+    // cycle retains count-th nominal and adds error
+    Same(relations.Canonical(CatalogCycle(), V(Handle, 0, ReferenceFlag, High, Missing)), V(Handle, 0, ErrorFlag | ReferenceFlag, Next, Missing));
+    // self cycle
+    Same(relations.Canonical(CatalogSelfCycle(), V(Handle, 0, 0, High, Next)), V(Handle, 0, ErrorFlag, High, Next));
+    // first duplicate ID wins
+    Same(relations.Canonical(CatalogDuplicates(), V(Handle, 0, 0, High, Last)), V(Handle, 0, 0, Next, Last));
+    // existing error bit survives successful chain
+    Same(relations.Canonical(CatalogAliases(), V(Handle, 1, ErrorFlag | ResultsFlag | BoxedFlag, High, Missing)), V(Handle, 1, ErrorFlag | ResultsFlag | BoxedFlag, Last, Missing));
+}
+
+@test
+FloatsWidenOnlyToF64 :: () {
+    assert(relations.Assignable(V(F64, 0, 0, 0, 0), V(F32, 0, 0, 0, 0)));
+    assert(!relations.Assignable(V(F32, 0, 0, 0, 0), V(F64, 0, 0, 0, 0)));
+    assert(relations.Assignable(V(F32, 0, 0, 0, 0), V(F32, 0, 0, 0, 0)));
+    assert(relations.Assignable(V(F64, 0, 0, 0, 0), V(F64, 0, 0, 0, 0)));
+}

@@ -1,0 +1,5 @@
+package facts
+Wide: f64 : 1.5;
+Bad: u64 : u64(Wide);
+
+// error: 3:16: floating-to-integer constant conversion is not supported yet

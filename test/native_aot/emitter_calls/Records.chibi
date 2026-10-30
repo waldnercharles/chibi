@@ -100,8 +100,18 @@ RecordFieldsCannotOverrunTable :: () {
     Rejects(RecordModule(RecordCode(), [{first: 0, count: 3}], [6, 10]), RecordLayout);
 }
 @test
-NestedRecordFieldsAreRejected :: () {
+RecordCannotHoldItself :: () {
     Rejects(RecordModule(RecordCode(), [{first: 0, count: 2}], [6, 32]), RecordLayout);
+}
+@test
+RecordsCannotHoldEachOther :: () {
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2}, {first: 2, count: 1}], [6, 33, 32]), RecordLayout);
+}
+// A record holds another by value, and an array and a string beside it.
+@test
+RecordsNestRecordsArraysAndStrings :: () {
+    text := Emitted(RecordModule(RecordCode(), [{first: 0, count: 2}, {first: 2, count: 3}], [6, 10, 32, 1030, 13]));
+    assert(strings.Contains(text, "%record1 = type { %record0, { i32, i32, ptr }, { ptr, i32, ptr } }\n"));
 }
 @test
 WrappedRecordFieldCountsAreRejected :: () {

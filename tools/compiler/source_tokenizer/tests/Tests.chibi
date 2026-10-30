@@ -51,6 +51,12 @@ BlockEndsTheStatementBeforeItsBrace :: () {
 }
 
 @test
+ForeignImportIsKeywords :: () {
+    Check("foreign import probe \"x\"", ["foreign", "import", "Ident", "String", ";", "EOF"],
+          [0, 8, 15, 21, 24, 24], [7, 14, 20, 24, 24, 24], [], []);
+}
+
+@test
 PackageDeclarationEndsAtTheText :: () {
     Check("package p", ["package", "Ident", ";", "EOF"], [0, 8, 9, 9], [7, 9, 9, 9], [], []);
 }

@@ -1,0 +1,5 @@
+package facts
+import lib "project:alias_conflict/lib"
+lib :: () -> int { return 1; }
+
+// error: 2:1: Package import alias conflicts with a package declaration

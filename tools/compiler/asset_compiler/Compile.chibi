@@ -133,14 +133,14 @@ pub RejectPackages :: (project: string, collection_names: string[], collection_p
                        sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],
                        natives: compiler.Native[], ports: compiler.Port[], identities: u64[],
                        native_effects: int[]) -> Result {
-    switch compiler.CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
-                                       names, natives, ports, identities, native_effects) {
-        case .Rejected(diagnostic):
-            return Result.Completed(false, 0, [], diagnostic.document, diagnostic.start, diagnostic.end,
-                                    diagnostic.line, diagnostic.column, diagnostic.message);
-        case .Compiled(module, bytes):
-            return Result.Completed(true, 0, [], -1, 0, 0, 0, 0, "");
+    compiled := compiler.CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target,
+                                            abi, names, natives, ports, identities, native_effects);
+    diagnostic := compiled.error;
+    if (diagnostic) {
+        return Result.Completed(false, 0, [], diagnostic.document, diagnostic.start, diagnostic.end,
+                                diagnostic.line, diagnostic.column, diagnostic.message);
     }
+    return Result.Completed(true, 0, [], -1, 0, 0, 0, 0, "");
 }
 
 // Native transport envelope: status byte, entry uint64 LE, five int32 LE

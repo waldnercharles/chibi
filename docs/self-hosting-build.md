@@ -139,7 +139,7 @@ Compiler inputs are separate from the build program's imports:
 
 | Option | Meaning |
 | --- | --- |
-| `--compiler DIR` | Compiler sources, including `bootstrap.kdl`, `bootstrap/bootstrap.json` and `bootstrap/compiler.chibip`. |
+| `--compiler DIR` | Compiler sources, including `bootstrap.kdl`, `bootstrap/bootstrap.json` and `bootstrap/compiler.chibip`, the seed `tools/bootstrap/seed.sh` fetches from the release `tools/bootstrap/seed.tsv` names. |
 | `--compiler-core DIR` | The core collection used to recover that compiler. |
 | `--core DIR` | An optional core collection imported by the build program itself. |
 | `--collection NAME=DIR` | Another collection imported by the build program. |

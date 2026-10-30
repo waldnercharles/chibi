@@ -128,8 +128,9 @@ static package_collection *compile_tests(
         return NULL;
     }
     char *package = tests_package(&inputs);
-    char *tests_path = xmalloc(strlen(inputs.project_root) + sizeof "/" TESTS_PACKAGE "/Tests.chibi");
-    sprintf(tests_path, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs.project_root);
+    size_t tests_size = strlen(inputs.project_root) + sizeof "/" TESTS_PACKAGE "/Tests.chibi";
+    char *tests_path = xmalloc(tests_size);
+    snprintf(tests_path, tests_size, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs.project_root);
     int count = inputs.file_count + 1;
     const char **paths = xmalloc((size_t)count * sizeof *paths);
     const char **texts = xmalloc((size_t)count * sizeof *texts);

@@ -738,6 +738,37 @@ Compile-time execution supports scalar and type values, authored calls, locals,
 assignment, `if` and `while`. It does not support arrays, `for`, closures or
 native calls. Each evaluation has a 65,536-step budget and a 128-call limit.
 
+### Generic records
+
+A record declares type parameters after `struct`. `$T: Type` takes a type and
+`$N: int` takes an integer written in the application. Each distinct
+application, such as `Box(int, 4)`, is its own record whose fields read with
+the parameters bound to the arguments:
+
+```chibi
+package boxes
+
+Box :: struct($T: Type, $N: int) {
+    item: T
+}
+
+Pair :: struct($A: Type, $B: Type) {
+    first: A
+    second: B
+}
+
+Boxed :: struct {
+    ints: Box(int, 4)
+    nested: Box(Pair(int, f64), 2)
+}
+```
+
+Equal applications are one type; applications with different arguments are
+different types. The template alone, `Box`, names no type. A template and its
+applications belong to one package for now: exporting generic records,
+generic unions, and parameters used inside fields beyond type names remain
+separate work.
+
 ### Exported package functions
 
 The staged package-generics and callable work is a local implementation under

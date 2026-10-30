@@ -21,8 +21,6 @@ reusable capability:
    `NODE_RANGE(0, 1)`. Owning writes clamp the range; use `NODE_RANGE_HINT`
    only for a slider whose endpoints are not semantic limits. Native writes
    through row pointers must call `ecs_component_modified` before publication.
-   Give it a Properties tab or icon
-   in `src/authoring/engine_components.kdl`.
 2. Build (`make build`). The reflect step regenerates the native type tables
    and adds the component's row to `src/runtime/component_ids.tsv`. Commit
    that row with the header change; never edit the ID by hand. Resolve a

@@ -1,8 +1,9 @@
 #include "toolchain/compiler_bootstrap.h"
 
+#include "execution/prepared.h"
 #include "execution/status.h"
-#include "support/asset_text.h"
-#include "support/asset_value.h"
+#include "support/binary_cache.h"
+#include "support/file_io.h"
 #include "support/sha256.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_host.h"
@@ -136,21 +137,23 @@ typedef struct
     int version, minimum;
 } contract;
 
+/* Reads the "version N" and "minimum N" lines; other lines are comments. The
+ * file keeps its .kdl name because the pinned first build host reads it as KDL. */
 static bool read_contract(const char *compiler, contract *c, char *error, size_t size)
 {
     char *path = join(compiler, CONTRACT_FILE);
     size_t length;
     char *text = (char *)read_bytes(path, 4096, &length);
-    char reason[256] = "it cannot be read";
-    av_doc *doc = text ? av_doc_read(text, reason, sizeof reason) : NULL;
-    av_value *root = doc ? av_doc_root(doc) : NULL;
-    *c = (contract){ .version = root ? av_get_int(av_obj_get(root, "version")) : 0,
-                     .minimum = root ? av_get_int(av_obj_get(root, "minimum")) : 0 };
+    *c = (contract){ 0 };
+    for (char *line = text; line; line = strchr(line, '\n')) {
+        line += *line == '\n';
+        sscanf(line, "version %d", &c->version);
+        sscanf(line, "minimum %d", &c->minimum);
+    }
     bool valid = c->minimum >= 1 && c->minimum <= c->version;
     if (!valid) {
-        snprintf(error, size, "%s: %s", path, doc ? "needs a version and a minimum from 1 to it" : reason);
+        snprintf(error, size, "%s: %s", path, text ? "needs a version and a minimum from 1 to it" : "it cannot be read");
     }
-    av_doc_free(doc);
     free(text);
     free(path);
     return valid;
@@ -726,6 +729,68 @@ static char *disk_arguments(
     return json;
 }
 
+/* The cache holds recovered compilers, each under the digest of everything
+ * that decides its bytes: the seed, Compile's arguments (the sources and
+ * the target), the prepared format and the host binary that ran the
+ * recovery. */
+#define CACHE_VERSION "chibi-compiler-cache-1"
+
+/* The digest of this host's own executable. */
+static bool host_identity(char digest[65])
+{
+    char *path = file_executable_path();
+    size_t length = 0;
+    unsigned char *bytes = read_bytes(path, COMPILER_HOST_MAX_CLOSURE_BYTES, &length);
+    free(path);
+    if (!bytes) {
+        return false;
+    }
+    sha256_hex(bytes, length, digest);
+    free(bytes);
+    return true;
+}
+
+static bool cache_key(const artifact *a, const char *json, size_t length, char key[BINARY_CACHE_KEY_BYTES + 1])
+{
+    char host[65], seed[65], arguments[65], digest[65];
+    if (!host_identity(host)) {
+        return false;
+    }
+    sha256_hex(a->closure, a->closure_length, seed);
+    sha256_hex(json, length, arguments);
+    sha256 hash;
+    sha256_begin(&hash);
+    char text[256];
+    int used = snprintf(
+        text,
+        sizeof text,
+        CACHE_VERSION " prepared %d seed %s arguments %s host %s",
+        EXECUTION_PREPARED_VERSION,
+        seed,
+        arguments,
+        host
+    );
+    sha256_add(&hash, text, (size_t)used);
+    sha256_end(&hash, digest);
+    snprintf(key, BINARY_CACHE_KEY_BYTES + 1, "compiler-%s", digest);
+    return true;
+}
+
+/* Keeps the recovered compiler for the next start. Losing the lock or the
+ * write costs only that start's time. */
+static void cache_publish(const char *directory, const char *key, const unsigned char *bytes, size_t length)
+{
+    if (!directory || !key) {
+        return;
+    }
+    int lock = binary_cache_lock(directory);
+    if (lock < 0) {
+        return;
+    }
+    binary_cache_write(directory, key, bytes, length, COMPILER_HOST_MAX_CLOSURE_BYTES);
+    binary_cache_unlock(lock);
+}
+
 /* Writes the recovered compiler to output when there is one. */
 static bool written(const char *output, const unsigned char *bytes, size_t length, char *report, size_t size)
 {
@@ -751,6 +816,8 @@ static bool recover(
     int changed,
     const char *output,
     compiler_host **current,
+    const char *cache,
+    const char *key,
     char *report,
     size_t size
 )
@@ -823,6 +890,7 @@ static bool recover(
     }
     valid = valid && written(output, fixed, fixed_length, report, size);
     if (valid && current) {
+        cache_publish(cache, key, fixed, fixed_length);
         *current = fixed_host;
         fixed_host = NULL;
     }
@@ -833,7 +901,9 @@ static bool recover(
     return valid;
 }
 
-static compiler_host *validated(
+/* Reads the contract, the artifact and Compile's arguments for the sources on
+ * disk, rejecting what this host cannot admit. */
+static bool inputs(
     const compiler_bootstrap *b,
     artifact *a,
     char **json,
@@ -847,20 +917,41 @@ static compiler_host *validated(
     bool valid = read_contract(b->compiler, &c, report, size) &&
                  read_artifact(b, c.minimum, a, report, size);
     *json = valid ? disk_arguments(b, a->root, length, changed, report, size) : NULL;
-    compiler_host *host = *json ? compiler_host_load(
-                                      a->closure,
-                                      a->closure_length,
-                                      behavior_default_backend(),
-                                      report,
-                                      size
-                                  )
-                                : NULL;
+    return *json != NULL;
+}
+
+/* Loads closure as a compiler of this host's target, or frees and returns
+ * NULL with why. */
+static compiler_host *loaded(
+    const unsigned char *closure,
+    size_t closure_length,
+    const artifact *a,
+    char *report,
+    size_t size
+)
+{
+    compiler_host *host = compiler_host_load(closure, closure_length, behavior_default_backend(), report, size);
     if (host &&
         !target_matches(host, yyjson_obj_get(a->root, "target"), 0, report, size)) {
         compiler_host_free(host);
         host = NULL;
     }
     return host;
+}
+
+static compiler_host *validated(
+    const compiler_bootstrap *b,
+    artifact *a,
+    char **json,
+    size_t *length,
+    int *changed,
+    char *report,
+    size_t size
+)
+{
+    return inputs(b, a, json, length, changed, report, size)
+             ? loaded(a->closure, a->closure_length, a, report, size)
+             : NULL;
 }
 
 bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t size)
@@ -871,7 +962,7 @@ bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t 
     int changed = 0;
     compiler_host *host = validated(b, &a, &json, &length, &changed, report, size);
     bool valid = host &&
-                 recover(host, &a, json, length, changed, b->output, NULL, report, size);
+                 recover(host, &a, json, length, changed, b->output, NULL, NULL, NULL, report, size);
     free(json);
     free_artifact(&a);
     return valid;
@@ -883,11 +974,31 @@ compiler_host *compiler_bootstrap_load(const compiler_bootstrap *b, char *error,
     char *json = NULL;
     size_t length = 0;
     int changed = 0;
-    compiler_host *host = validated(b, &a, &json, &length, &changed, error, size);
-    if (host && changed) {
-        compiler_host *current = NULL;
-        recover(host, &a, json, length, changed, NULL, &current, error, size);
-        host = current;
+    compiler_host *host = NULL;
+    if (inputs(b, &a, &json, &length, &changed, error, size)) {
+        char key[BINARY_CACHE_KEY_BYTES + 1];
+        const char *cache = changed && b->cache && cache_key(&a, json, length, key)
+                              ? b->cache
+                              : NULL;
+        size_t kept_length = 0;
+        unsigned char *kept = cache
+                                ? binary_cache_read(cache, key, COMPILER_HOST_MAX_CLOSURE_BYTES, &kept_length)
+                                : NULL;
+        /* A recovered compiler the cache holds is the one recovery would
+         * produce again, if this host still loads it. */
+        host = kept ? loaded(kept, kept_length, &a, error, size) : NULL;
+        free(kept);
+        if (!host && cache) {
+            binary_cache_remove(cache, key);
+        }
+        if (!host) {
+            host = loaded(a.closure, a.closure_length, &a, error, size);
+            if (host && changed) {
+                compiler_host *current = NULL;
+                recover(host, &a, json, length, changed, NULL, &current, cache, cache ? key : NULL, error, size);
+                host = current;
+            }
+        }
     }
     free(json);
     free_artifact(&a);

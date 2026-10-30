@@ -39,7 +39,7 @@ char *file_read_text(const char *path)
 }
 
 #ifndef __EMSCRIPTEN__
-char *file_executable_dir()
+char *file_executable_path()
 {
     char executable[4096];
 #if defined(__APPLE__)
@@ -71,12 +71,17 @@ char *file_executable_dir()
     }
     executable[length] = '\0';
 #endif
+    return xstrdup(executable);
+}
+char *file_executable_dir()
+{
+    char *executable = file_executable_path();
     char *slash = strrchr(executable, '/');
     if (!slash) {
         fprintf(stderr, "Engine executable has no directory\n");
         abort();
     }
     *slash = '\0';
-    return xstrdup(executable);
+    return executable;
 }
 #endif

@@ -938,10 +938,19 @@ AssemblyFailure :: (document: int, message: string) -> Assembly {
 pub Declare :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
                 files_of: int[], order: int[], imports: snapshot.ResolvedImport[], links: graph.Binding[],
                 target: Target) -> Declarations {
+    no_types: TypeDecl[] = [];
+    no_members: TypeMember[] = [];
+    return DeclareSeeded(forest, documents, packages, files_of, order, imports, links, target, no_types, no_members);
+}
+// Declare for packages that share the native types `seed_types` and their
+// fields `seed_members`, which come first in the tables.
+DeclareSeeded :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+                  files_of: int[], order: int[], imports: snapshot.ResolvedImport[], links: graph.Binding[],
+                  target: Target, seed_types: TypeDecl[], seed_members: TypeMember[]) -> Declarations {
     callables: Callable[] = [];
     params: Param[] = [];
-    types: TypeDecl[] = [];
-    members: TypeMember[] = [];
+    types: TypeDecl[] = seed_types;
+    members: TypeMember[] = seed_members;
     constants: ConstDecl[] = [];
     switch DeclareMath(forest, documents, types, members, target) {
         case .Failed(message):
@@ -3482,9 +3491,19 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
 CompileInput :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                  sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
                  ports: Port[], identities: u64[], native_effects: int[]) -> Result {
+    no_types: TypeDecl[] = [];
+    no_members: TypeMember[] = [];
+    return CompileResolved(project, collection_names, collection_paths, paths, sources, debug, target, abi, names,
+                           LegacyNatives(natives, names), LegacyPorts(ports), identities, native_effects, no_types,
+                           no_members);
+}
+// The same compile for a resolved native catalog. `seed_types` and
+// `seed_members` are the catalog's native types, which every package shares.
+CompileResolved :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                    sources: string[], debug: bool, target: Target, abi: u64, names: string[],
+                    resolved_natives: ResolvedNative[], resolved_ports: ResolvedPort[], identities: u64[],
+                    native_effects: int[], seed_types: TypeDecl[], seed_members: TypeMember[]) -> Result {
     ops := ResolveOps(names, debug);
-    resolved_ports := LegacyPorts(ports);
-    resolved_natives := LegacyNatives(natives, names);
     complete := NativeInputValid(resolved_natives, resolved_ports, identities, native_effects);
     if (abi == 0 || !Complete(ops) || !complete || length(paths) == 0 || length(paths) != length(sources) ||
         length(collection_names) != length(collection_paths)) {
@@ -3519,7 +3538,8 @@ CompileInput :: (project: string, collection_names: string[], collection_paths: 
                     return InputFailure(-1, "package graph is invalid");
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
                     active_order := ActivePackageOrder(documents, packages, files_of, order, edges, file_packages[0]);
-                    switch Declare(nodes, documents, packages, files_of, active_order, imports, links, target) {
+                    switch DeclareSeeded(nodes, documents, packages, files_of, active_order, imports, links, target,
+                                         seed_types, seed_members) {
                         case .Failed(diagnostic):
                             return Result.Rejected(diagnostic);
                         case .Collected(callables, params, types, members, constants):
@@ -3529,6 +3549,36 @@ CompileInput :: (project: string, collection_names: string[], collection_paths: 
                     }
             }
     }
+}
+// A compile against the target's reflected catalog: its native types, with
+// their fields, and the native ports that name them. `entity` is the entity
+// type's identity.
+pub CompileWithCatalog :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                           sources: string[], debug: bool, target: Target, abi: u64, names: string[],
+                           natives: CatalogNative[], ports: CatalogPort[], identities: u64[], types: GameType[],
+                           type_fields: GameField[], entity: u64, native_effects: int[])
+-> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
+    native_types := NativeTypes(types);
+    switch CompileResolved(project, collection_names, collection_paths, paths, sources, debug, target, abi, names,
+                           CatalogNatives(natives), CatalogPorts(ports, native_types, entity), identities,
+                           native_effects, native_types, NativeFields(type_fields)) {
+        case .Rejected(diagnostic):
+            return (0, [], diagnostic);
+        case .Compiled(compiled_module, prepared):
+            return (compiled_module, prepared, nil);
+    }
+}
+pub CompileClosureWithCatalog :: (project: string, collection_names: string[], collection_paths: string[],
+                                  paths: string[], sources: string[], debug: bool, target: Target, abi: u64,
+                                  names: string[], natives: CatalogNative[], ports: CatalogPort[], identities: u64[],
+                                  types: GameType[], type_fields: GameField[], entity: u64,
+                                  native_effects: int[]) -> u8[] {
+    compiled := CompileWithCatalog(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                                   names, natives, ports, identities, types, type_fields, entity, native_effects);
+    if (compiled.error) {
+        return [];
+    }
+    return compiled.bytes;
 }
 // Compile's closure, for a host that takes one byte[] result; empty when
 // Compile rejects the input, whose diagnostic Compile returns.

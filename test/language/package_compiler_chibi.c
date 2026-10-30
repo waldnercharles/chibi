@@ -1148,6 +1148,13 @@ static const sample samples[] = {
                 "    while (length(parts) < 4 - 1) { parts.append(\"c\"); n += 1; }\n"
                 "    return n + length(parts);\n}",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[4]" } } },
+    { .name = "foreign declarations parse and wait for the compiler",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nforeign import c \"libc.a\"\n"
+                "Run :: () -> int { return 1; }",
+      .message = "unsupported declaration",
+      .line = 2,
+      .column = 1 },
     { .name = "core-math-imported-values",
       .group = IMPORT_SAMPLES,
       .math = true,

@@ -2613,11 +2613,11 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
                   callables: Callable[], constants: ConstDecl[], package: int, first_own: int,
                   reachable: bool[]) -> ConstDecl[] {
     // Only a package this one imports declares a constant it can use.
-    foreign := false;
+    outside := false;
     for (constant in constants) {
-        foreign = foreign || (constant.package != package && reachable[constant.package]);
+        outside = outside || (constant.package != package && reachable[constant.package]);
     }
-    if (!foreign) {
+    if (!outside) {
         return constants;
     }
     seen := resize([false], length(constants));
@@ -3432,8 +3432,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                             called_id = binding.ID("symbol", format_text("{}:1:{}:callable", package_names[callee.package], callee.name));
                         }
                         wide.append(called_id);
-                        foreign: writer.Reference = {imported: row, own: 0, function: length(wide) - 1, role: 0};
-                        references.append(foreign);
+                        imported_reference: writer.Reference = {imported: row, own: 0, function: length(wide) - 1, role: 0};
+                        references.append(imported_reference);
                     }
                     call: writer.Call = {owned_arguments: invocation.owned_arguments, function: length(references) - 1, first: invocation.first,
                                          count: invocation.count, result_first: invocation.result_first,

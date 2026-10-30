@@ -685,9 +685,9 @@ int main(int argc, char **argv)
     if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
         !tilemap && !package && !third_party_publish && !collab && !unit &&
         !test_runner && !validation_plan && !web_storage && !wasm_browser &&
-        !query_benchmark && !scene && !scene_prepared && !native && !native_values &&
-        !native_catalog && !physics && !physics3d && !transforms && !arena &&
-        !types && !box3d && !sky_files && !mesh_files &&
+        !query_benchmark && !scene && !scene_prepared && !native &&
+        !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !arena && !types && !box3d && !sky_files && !mesh_files &&
         !model_import && !model_graphs && !model_catalog && !shader_graphs &&
         !persistent_store && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !system_schedule && !scheduler_benchmark &&

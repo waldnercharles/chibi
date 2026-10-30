@@ -622,7 +622,7 @@ TEST_CASE(failed_staged_compiler_validation_removes_owned_staging)
     REQUIRE(install(clone, output) == 1);
     char *log = tool_read(log_path);
     bool validated = log &&
-                     strstr(log, "sdk: staged compiler resources failed recovery");
+                     strstr(log, "sdk: staged compiler resources failed validation");
     free(log);
     REQUIRE(validated && !exists(output) && !exists(stage));
     return true;

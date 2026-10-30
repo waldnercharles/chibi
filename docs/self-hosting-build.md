@@ -181,7 +181,11 @@ loads it as a compiler for this target; any failure removes it and recovers
 again. This is safe where a snapshot of the sources would not be: the key
 covers every input, nothing is trusted unread, and a stale entry is never
 named. It has no eviction, because a key changes only with a compiler edit;
-delete the directory to reclaim it. Windows does not cache. The recovery proofs
+delete the directory to reclaim it. Build hosts keep the build programs they
+compile in the same directory, as `program-` entries named by the SHA-256 of
+the compiling closure and the compile input, so a host start reuses its
+program instead of recompiling it (about 13 s for the graph program on Linux
+CI). Windows does not cache. The recovery proofs
 never use it: `chibi-compiler-host --bootstrap ... [--recover FILE]`, `chibi build
 test bootstrap-recovery` and the compiler-recovery workflow call the check path, which
 neither reads nor writes the cache, so they always recover from the seed.

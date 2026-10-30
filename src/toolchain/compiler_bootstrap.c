@@ -950,7 +950,8 @@ bool compiler_bootstrap_validate(const compiler_bootstrap *b, char *report, size
  * (recover) costs two or three more whole-compiler compiles on the VM, about
  * 230 of the 350 seconds a cold Linux CI host start spent; the check path
  * does that, and CI's compiler self-build runs it on every push. Frees seed;
- * returns stage one's host, kept in the cache, or NULL with why. */
+ * returns stage one's host, kept in the cache, or NULL with why, and writes
+ * its closure's SHA-256 to identity when given. */
 static compiler_host *stage_one(
     compiler_host *seed,
     const artifact *a,
@@ -959,6 +960,7 @@ static compiler_host *stage_one(
     int changed,
     const char *cache,
     const char *key,
+    char *identity,
     char *report,
     size_t size
 )
@@ -985,6 +987,9 @@ static compiler_host *stage_one(
             digest
         );
         cache_publish(cache, key, bytes, bytes_length);
+        if (identity) {
+            memcpy(identity, digest, sizeof digest);
+        }
     }
     free(bytes);
     return host;
@@ -1028,14 +1033,20 @@ compiler_host *compiler_bootstrap_load(const compiler_bootstrap *b, char *error,
         /* A recovered compiler the cache holds is the one recovery would
          * produce again, if this host still loads it. */
         host = kept ? loaded(kept, kept_length, &a, error, size) : NULL;
+        if (host && b->identity) {
+            sha256_hex(kept, kept_length, b->identity);
+        }
         free(kept);
         if (!host && cache) {
             binary_cache_remove(cache, key);
         }
         if (!host) {
             host = loaded(a.closure, a.closure_length, &a, error, size);
+            if (host && !changed && b->identity) {
+                sha256_hex(a.closure, a.closure_length, b->identity);
+            }
             if (host && changed) {
-                host = stage_one(host, &a, json, length, changed, cache, cache ? key : NULL, error, size);
+                host = stage_one(host, &a, json, length, changed, cache, cache ? key : NULL, b->identity, error, size);
             }
         }
     }

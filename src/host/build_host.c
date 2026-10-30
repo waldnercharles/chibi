@@ -14,6 +14,8 @@
 #include "runtime/text_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/binary_cache.h"
+#include "support/sha256.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_bootstrap.h"
@@ -35,6 +37,8 @@
 struct chibi_build_compiler
 {
     compiler_host *host;
+    char identity[65]; /* The closure's SHA-256; empty when unknown. */
+    char *cache; /* Owned; where compiled build programs are kept, or NULL. */
 };
 
 #define BUILD_MAX_ARGUMENTS 256
@@ -577,17 +581,21 @@ chibi_build_compiler *chibi_build_compiler_load(
         return NULL;
     }
     char *folder = join(sources, "bootstrap");
+    char identity[65] = { 0 };
     compiler_bootstrap input = { .folder = folder,
                                  .compiler = sources,
                                  .core = core,
-                                 .cache = cache };
+                                 .cache = cache,
+                                 .identity = identity };
     compiler_host *host = compiler_bootstrap_load(&input, error, size);
     free(folder);
     if (!host) {
         return NULL;
     }
-    chibi_build_compiler *compiler = xmalloc(sizeof *compiler);
+    chibi_build_compiler *compiler = xcalloc(1, sizeof *compiler);
     compiler->host = host;
+    memcpy(compiler->identity, identity, sizeof identity);
+    compiler->cache = cache ? xstrdup(cache) : NULL;
     return compiler;
 }
 
@@ -595,6 +603,7 @@ void chibi_build_compiler_free(chibi_build_compiler *compiler)
 {
     if (compiler) {
         compiler_host_free(compiler->host);
+        free(compiler->cache);
         free(compiler);
     }
 }
@@ -732,6 +741,45 @@ static void compile_rejection(build_host *host, const char *json, size_t length,
     free(result.json);
 }
 
+/* Compiled build programs are kept beside the recovered compilers, named by the
+ * SHA-256 of the compiling closure and the compile input (every source's path
+ * and text, the natives and the target), so an entry is that compile's own
+ * result. Starting a build host otherwise recompiles its program on the VM:
+ * about 13 s for the graph program and 3 s for the driver on Linux CI, on
+ * every start. Returns the cache directory, or NULL when there is none. */
+static const char *program_key(
+    const chibi_build_compiler *compiler,
+    const char *json,
+    size_t length,
+    char key[BINARY_CACHE_KEY_BYTES + 1]
+)
+{
+    if (!compiler->cache || !compiler->identity[0]) {
+        return NULL;
+    }
+    static const char VERSION[] = "chibi-build-program-1 ";
+    sha256 hash;
+    sha256_begin(&hash);
+    sha256_add(&hash, VERSION, sizeof VERSION - 1);
+    sha256_add(&hash, compiler->identity, 64);
+    sha256_add(&hash, json, length);
+    char digest[65];
+    sha256_end(&hash, digest);
+    snprintf(key, BINARY_CACHE_KEY_BYTES + 1, "program-%s", digest);
+    return compiler->cache;
+}
+
+/* Losing the lock or the write costs only the next start's compile. */
+static void program_publish(const char *cache, const char *key, const unsigned char *bytes, size_t length)
+{
+    int lock = binary_cache_lock(cache);
+    if (lock < 0) {
+        return;
+    }
+    binary_cache_write(cache, key, bytes, length, COMPILER_HOST_MAX_OUTPUT_BYTES);
+    binary_cache_unlock(lock);
+}
+
 static package_collection *prepare(build_host *host, const native_capabilities *native, uint64_t *root)
 {
     size_t length = 0;
@@ -744,16 +792,27 @@ static package_collection *prepare(build_host *host, const native_capabilities *
         afree(paths);
         return NULL;
     }
+    char key[BINARY_CACHE_KEY_BYTES + 1];
+    const char *cache = program_key(host->options->compiler, json, length, key);
     compiler_host_bytes compiled = { 0 };
-    bool called = compiler_host_invoke_bytes(
-        host->options->compiler->host,
-        compiler_host_entry("project:package_compiler:1:CompileClosureWithEffects:callable"),
-        json,
-        length,
-        BUILD_COMPILE_BUDGET,
-        COMPILER_HOST_MAX_OUTPUT_BYTES,
-        &compiled
-    );
+    compiled.bytes = cache ? binary_cache_read(
+                                 cache,
+                                 key,
+                                 COMPILER_HOST_MAX_OUTPUT_BYTES,
+                                 &compiled.length
+                             )
+                           : NULL;
+    bool kept = compiled.bytes != NULL;
+    bool called = kept ||
+                  compiler_host_invoke_bytes(
+                      host->options->compiler->host,
+                      compiler_host_entry("project:package_compiler:1:CompileClosureWithEffects:callable"),
+                      json,
+                      length,
+                      BUILD_COMPILE_BUDGET,
+                      COMPILER_HOST_MAX_OUTPUT_BYTES,
+                      &compiled
+                  );
     const char *failure = build_host_ready(host);
     if (!called || failure) {
         diagnose(host->result, failure ? failure : compiled.diagnostic);
@@ -786,6 +845,11 @@ static package_collection *prepare(build_host *host, const native_capabilities *
         );
         if (!packages) {
             diagnose(host->result, error);
+            if (kept) {
+                binary_cache_remove(cache, key);
+            }
+        } else if (cache && !kept) {
+            program_publish(cache, key, compiled.bytes, compiled.length);
         }
     }
     free(compiled.bytes);

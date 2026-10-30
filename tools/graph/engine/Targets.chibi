@@ -513,7 +513,7 @@ Files :: (target: string) -> string[] {
             "test/language/argument_effects_chibi.c", "test/language/program_session.c",
             "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
             "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
-            "test/language/source_tokenizer_chibi.c",
+            "test/language/package_paths_chibi.c", "test/language/source_tokenizer_chibi.c",
             "test/language/source_parser_chibi.c",
             "test/language/package_routes_chibi.c", "test/language/package_snapshot_chibi.c",
             "test/language/compiler_artifact_chibi.c", "test/language/bounded_compiler_chibi.c",
@@ -523,7 +523,7 @@ Files :: (target: string) -> string[] {
             "test/language/native_census.c",
             "test/language/execution_scope.c", "test/language/integer_semantics.c",
             "test/language/integer_arithmetic.c",
-            "test/language/type_relations_chibi.c",
+            "test/language/type_relations_chibi.c", "test/language/unit_algebra_chibi.c",
 
 
             "test/parallel.c", "test/language/parallel.c",
@@ -2254,7 +2254,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/native_census.c",
 
         "test/language/package_compiler_chibi.c",
-        "test/language/package_routes_chibi.c",
+        "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
         "test/language/package_portable.c", "test/language/package_portable_compiler.c",
         "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
         "test/language/package_syntax_chibi.c", "test/language/package_tests.c",
@@ -2264,7 +2264,8 @@ LanguageTestsOverSource :: () -> string[] {
 
         "test/language/source_tokenizer_chibi.c",
         "test/language/source_parser_chibi.c",
-        "test/language/type_relations_chibi.c"
+        "test/language/type_relations_chibi.c",
+        "test/language/unit_algebra_chibi.c"
 
     ];
 }

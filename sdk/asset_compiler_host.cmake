@@ -42,20 +42,23 @@ add_custom_command(
     VERBATIM)
 add_library(chibi_asset_compiler_host STATIC
     "${CHIBI_SDK_ROOT}/src/authoring/asset_compiler_host.c"
+    "${CHIBI_SDK_ROOT}/src/authoring/package_compile.c"
     "${CHIBI_SDK_ROOT}/src/support/binary_cache.c"
     "${asset_output}/asset_compiler_packaged.c")
 add_library(Chibi::asset_compiler_host ALIAS chibi_asset_compiler_host)
 set_target_properties(chibi_asset_compiler_host PROPERTIES EXPORT_NAME asset_compiler_host)
-chibi_sdk_headers(chibi_asset_compiler_host PUBLIC authoring/asset_compiler_host.h)
-foreach(header authoring/asset_compiler_host_internal.h support/binary_cache.h support/sha256.h)
+chibi_sdk_headers(chibi_asset_compiler_host PUBLIC authoring/asset_compiler_host.h authoring/package_compile.h)
+foreach(header authoring/asset_compiler_host_internal.h support/binary_cache.h support/sha256.h
+    toolchain/compiler_artifact.h toolchain/compiler_target.h)
     configure_file("${CHIBI_SDK_ROOT}/src/${header}"
         "${CMAKE_CURRENT_BINARY_DIR}/private/asset_compiler_host/${header}" COPYONLY)
 endforeach()
 target_include_directories(chibi_asset_compiler_host PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/private/asset_compiler_host" "${asset_output}"
     "${CHIBI_SDK_ROOT}/third_party/yyjson")
-target_link_libraries(chibi_asset_compiler_host PUBLIC chibi_asset_values
-    PRIVATE chibi_compiler_host chibi_asset_json chibi_json)
+target_link_libraries(chibi_asset_compiler_host PUBLIC chibi_asset_values chibi_source_catalog chibi_native_capabilities
+    chibi_behavior_runtime
+    PRIVATE chibi_compiler_host chibi_native_prepared chibi_asset_json chibi_json)
 list(APPEND CHIBI_SDK_TARGETS chibi_asset_compiler_host)
 # Reject installing a resource compiled from a stale authored source snapshot.
 install(CODE "set(ROOT \"${CHIBI_SDK_ROOT}\")\nset(RESOURCE \"${asset_output}\")\ninclude(\"${CHIBI_SDK_ROOT}/cmake/verify_source_snapshot.cmake\")")

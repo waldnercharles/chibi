@@ -1,19 +1,15 @@
-#include "authoring/asset_compiler_host.h"
+#include "authoring/package_compile.h"
 #include "authoring/package_tests.h"
 #include "authoring/project_compile.h"
 #include "authoring/source_package_io.h"
 #include "execution/backend.h"
 #include "execution/function.h"
 #include "host/native_default.h"
-#include "runtime/native_prepared.h"
 #include "runtime/task_pool.h"
 #include "support/array.h"
 #include "support/xalloc.h"
-#include "toolchain/compiler_artifact.h"
-#include "toolchain/compiler_host.h"
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
-#include "toolchain/compiler_target.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -72,7 +68,6 @@ static int run_tests(const package_collection *packages, behavior_backend backen
 /* Where the tests' packages compile: a package of its own that imports every
  * package below the project root, so one closure reaches them all. */
 #define TESTS_PACKAGE "__tests__"
-#define COMPILE_STORAGE_LIMIT COMPILER_HOST_MAX_CLOSURE_BYTES
 
 /* The text of that package, which imports the directory of each project file
  * outside the collections. */
@@ -128,96 +123,23 @@ static package_collection *compile_tests(
         return NULL;
     }
     char *package = tests_package(&inputs);
-    char *tests_path = xmalloc(
-        strlen(inputs.project_root) + sizeof "/" TESTS_PACKAGE "/Tests.chibi"
-    );
-    sprintf(tests_path, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs.project_root);
-    int count = inputs.file_count + 1;
-    const char **paths = xmalloc((size_t)count * sizeof *paths);
-    const char **texts = xmalloc((size_t)count * sizeof *texts);
-    size_t *sizes = xmalloc((size_t)count * sizeof *sizes);
-    const char *names[1], *roots[1];
-    paths[0] = tests_path;
-    texts[0] = package;
-    sizes[0] = strlen(package);
-    for (int i = 0; i < inputs.file_count; i++) {
-        paths[i + 1] = inputs.files[i].path;
-        texts[i + 1] = inputs.files[i].text;
-        sizes[i + 1] = inputs.files[i].size;
-    }
-    for (int i = 0; i < inputs.collection_count; i++) {
-        names[i] = inputs.collections[i].name;
-        roots[i] = inputs.collections[i].root;
-    }
-    size_t request_length = 0;
-    char *request = compiler_package_request_json(
-        inputs.project_root,
-        names,
-        roots,
-        inputs.collection_count,
-        paths,
-        texts,
-        sizes,
-        count,
-        native_capabilities_catalog(native),
-        &request_length
-    );
-    package_collection *packages = NULL;
-    asset_compiler_diagnostic diagnostic;
-    size_t closure_length = 0;
-    unsigned char *closure = request ? asset_compiler_compile_closure(
-                                           request,
-                                           request_length,
-                                           &closure_length,
-                                           NULL,
-                                           &diagnostic
-                                       )
-                                     : NULL;
-    if (!closure) {
-        const char *path = request && diagnostic.document >= 0 &&
-                                   diagnostic.document < count
-                             ? paths[diagnostic.document]
-                             : NULL;
-        if (path) {
-            fprintf(
-                stderr,
-                "%s:%d:%d: %s\n",
-                path,
-                diagnostic.line,
-                diagnostic.column,
-                diagnostic.message
-            );
-        } else {
-            fprintf(stderr, "%s\n", request ? diagnostic.message : "The target cannot be described");
-        }
-    } else {
-        native_prepared_context context = { .native = native };
-        execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
-        linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
-        linker.decoded_records = COMPILER_HOST_MAX_CLOSURE_RECORDS;
-        linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
-        size_t remaining = COMPILE_STORAGE_LIMIT;
-        char error[256] = { 0 };
-        packages = compiler_artifact_read(
-            closure,
-            closure_length,
-            &linker,
-            backend,
-            &remaining,
-            &(uint64_t){ 0 },
-            error,
-            sizeof error
+    char *path = xmalloc(strlen(inputs.project_root) + sizeof "/" TESTS_PACKAGE "/Tests.chibi");
+    sprintf(path, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs.project_root);
+    package_compile_error error;
+    package_collection *packages = package_compile(&inputs, path, package, native, backend, &error);
+    if (!packages && *error.path) {
+        fprintf(
+            stderr,
+            "%s:%d:%d: %s\n",
+            error.path,
+            error.line,
+            error.column,
+            error.message
         );
-        if (!packages) {
-            fprintf(stderr, "%s\n", error);
-        }
+    } else if (!packages) {
+        fprintf(stderr, "%s\n", error.message);
     }
-    free(closure);
-    free(request);
-    free(sizes);
-    free(texts);
-    free(paths);
-    free(tests_path);
+    free(path);
     free(package);
     source_package_files_release(&inputs);
     return packages;

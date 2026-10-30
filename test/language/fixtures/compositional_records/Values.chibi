@@ -335,3 +335,41 @@ CompoundMapAssignmentCountsFromZero :: () {
     totals["x"]["y"] *= 2.0;
     assert(totals["x"]["y"] == 3.0);
 }
+
+Graph :: union {
+    Accepted(packages: int[], members: int[], files: int[]) | Rejected(code: int, cycle: int[])
+}
+
+Snapshot2 :: union {
+    Accepted(roots: int[], documents: int[], graph: Graph) | Rejected(code: int, documents: int[])
+}
+
+GraphOf :: (result: Snapshot2) -> Graph {
+    switch result {
+        case .Accepted(roots, documents, graph):
+            return graph;
+        case .Rejected(code, documents):
+            return Graph.Rejected(code, []);
+    }
+}
+
+FilePackage :: (graph: Graph, file: int) -> int {
+    switch graph {
+        case .Accepted(packages, members, files):
+            return files[file];
+        case .Rejected(code, cycle):
+            return -1;
+    }
+}
+
+PackageOf :: (result: Snapshot2) -> int {
+    built := GraphOf(result);
+    return FilePackage(built, 1);
+}
+
+@test
+BorrowedUnionPayloadSurvivesHelperCalls :: () {
+    result: Snapshot2 = Snapshot2.Accepted([1], [2], Graph.Accepted([3], [4], [5, 6]));
+    assert(PackageOf(result) == 6, "a helper reading a borrowed payload must see it");
+    assert(PackageOf(result) == 6, "the first helper call must not empty the caller's payload");
+}

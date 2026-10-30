@@ -1748,12 +1748,20 @@ static int run_group(const char *group)
     char policy_path[PATH_MAX];
     int length = snprintf(policy_path, sizeof policy_path, "%s/tools/test_policy.py", tool_root());
     assert(length > 0 && length < (int)sizeof policy_path);
-    const char *names[] = { "CHIBI_TOOLS_BUILD_DIR", "CHIBI_LANGUAGE_BUILD_DIR" };
-    char *saved[2];
-    for (int i = 0; i < 2; i++) {
+    /* Groups also run `chibi test` selectors through CHIBI_CLI; a no-op
+     * stands in for it, as the recorders stand in for the drivers. */
+    char cli[PATH_MAX];
+    length = snprintf(cli, sizeof cli, "%s/chibi", directory);
+    assert(length > 0 && length < (int)sizeof cli);
+    tool_write(cli, "#!/bin/sh\nexit 0\n");
+    assert(!chmod(cli, 0700));
+    const char *names[] = { "CHIBI_TOOLS_BUILD_DIR", "CHIBI_LANGUAGE_BUILD_DIR", "CHIBI_CLI" };
+    const char *values[] = { directory, directory, cli };
+    char *saved[3];
+    for (int i = 0; i < 3; i++) {
         const char *value = getenv(names[i]);
         saved[i] = value ? xstrdup(value) : NULL;
-        assert(!setenv(names[i], directory, 1));
+        assert(!setenv(names[i], values[i], 1));
     }
     /* This case records group membership; parallel scheduler behavior has
      * separate fixtures. Use the real serial CLI route so recorder capacity
@@ -1761,7 +1769,7 @@ static int run_group(const char *group)
     const char *args[] = { "python3", policy_path, "--jobs", "1",
                            "group",   group,       NULL };
     int status = tool_run(args, tool_root(), logpath);
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
         if (saved[i]) {
             assert(!setenv(names[i], saved[i], 1));
         } else {

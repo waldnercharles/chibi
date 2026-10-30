@@ -105,8 +105,11 @@ For builtin-math, from the table above:
 
 Each step lands on its own and leaves the build working.
 
-1. Port the programs from the text natives to `core:strings` and arrays (no behavior change).
-   Records, now.
+1. Port the programs from the text natives to `core:strings` and arrays. The semantics differ in
+   places (`build.after` is empty when the delimiter is absent, `build.lines` drops a final empty
+   line and strips `\r`), and `core:strings` runs as bytecode where the natives run as C, so this
+   step states the graph's VM run time before and after. It pays off once the programs run
+   natively; records ports them together with step 3, not before.
 2. Run the native census over the build programs, as W21 does for the compiler, so the work above
    is counted in functions: which of the 307 pass the producer, and the first blocker of the rest.
 3. Define `core:os` as a package with the surface above, implemented on the VM over the existing

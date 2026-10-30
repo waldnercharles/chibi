@@ -247,8 +247,7 @@ int program_service_update(program_service *service, uint64_t handle)
     }
     source_package_files_release(&entry->observed);
     entry->observed = inputs;
-    source_package_snapshot *snapshot = source_package_snapshot_new(&entry->observed);
-    if (!authoring_program_compile(entry->program, snapshot) ||
+    if (!authoring_program_compile(entry->program, &entry->observed) ||
         !authoring_program_prepare(entry->program, entry->entry, false) ||
         !authoring_program_commit(entry->program)) {
         session_error(entry);

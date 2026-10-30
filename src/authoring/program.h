@@ -1,7 +1,7 @@
 #ifndef CHIBI_AUTHORING_PROGRAM_H
 #define CHIBI_AUTHORING_PROGRAM_H
 
-#include "authoring/source_package_prepare.h"
+#include "authoring/source_package_io.h"
 #include "execution/module.h"
 #include "runtime/native_capabilities.h"
 #include "runtime/tasks.h"
@@ -10,7 +10,6 @@ typedef struct authoring_program authoring_program;
 typedef struct
 {
     native_capabilities *native; /* Retained by the session. */
-    script_lower_bindings bindings;
     behavior_backend backend;
     /* Rows and names are copied; service values outlive the session. */
     const service_binding *services;
@@ -41,9 +40,10 @@ typedef struct
  * Binding callbacks and borrowed service/cancellation values outlive the
  * session. Diagnostic text is borrowed until its next mutating operation. */
 authoring_program *authoring_program_new(const authoring_program_options *);
-/* Takes ownership of the snapshot on success and failure, including busy
- * rejection. Replaces any prior unpublished candidate. */
-bool authoring_program_compile(authoring_program *, source_package_snapshot *);
+/* Compiles the root package, that of the first source file directly in the
+ * project root, with the packages it imports on the authored compiler. The
+ * inputs are borrowed for the call. Replaces any prior unpublished candidate. */
+bool authoring_program_compile(authoring_program *, const source_package_snapshot_options *inputs);
 /* A non-empty entry must name a runnable root-package function; an empty one
  * requires none, for programs that start from `Main` or run a `Frame` hook. */
 bool authoring_program_prepare(authoring_program *, const char *entry, bool restart);

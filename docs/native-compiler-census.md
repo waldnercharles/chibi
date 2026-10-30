@@ -16,32 +16,38 @@ once that package lands.
 
 ## Summary
 
-Of 1065 functions, 272 pass the producer, 140 of them without flattened imports or constants.
+Of 1076 functions, 666 pass the producer, 149 of them without flattened imports or constants.
 
 | Package | First blocker | Functions |
 | --- | --- | ---: |
-| W7 | array parameters, results and natives | 700 |
-| none | passes the producer | 272 |
-| W9 | strings and arrays in records and unions | 60 |
-| W10 | pointer and reference parameters and results | 20 |
-| W4 | text natives | 8 |
-| none yet | other forms; see each message | 5 |
+| none | passes the producer | 666 |
+| none yet | other forms; see each message | 321 |
+| W10 | pointer and reference parameters and results | 70 |
+| W4 | text natives | 12 |
+| W14 | other native catalog calls | 6 |
+| W7 | array parameters, results and natives | 1 |
 
 Each first blocker by the producer's message:
 
 | Package | Rejection | Functions |
 | --- | --- | ---: |
-| W7 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 671 |
-| W7 | Unknown function 'resize' | 7 |
-| W7 | Unknown function 'extend' | 16 |
-| W7 | Unknown function 'slice' | 6 |
-| W9 | scalar proof requires number, bool and string union payloads | 60 |
-| W10 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 20 |
-| W4 | Unknown function 'text_bytes' | 8 |
-| none yet | mutation requires a local value | 1 |
-| none yet | call needs a function name | 4 |
+| none yet | argument differs from its parameter type | 33 |
+| none yet | mutation requires a local value | 11 |
+| none yet | scalar proof takes arrays only from literals, variables and calls | 112 |
+| none yet | scalar proof supports only number, bool and string values | 50 |
+| none yet | scalar proof switches only on union variables | 91 |
+| none yet | scalar proof iterates only int ranges and arrays of numbers, bool and strings | 10 |
+| none yet | scalar proof requires number and bool results where a function has several | 7 |
+| none yet | assignment needs a local name | 2 |
+| none yet | scalar proof supports only arrays of numbers, bool, strings, records and unions with a value | 5 |
+| W10 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 70 |
+| W4 | Unknown function 'text_bytes' | 12 |
+| W14 | Unknown function 'compiler_syntax_parse' | 1 |
+| W14 | Unknown function 'compiler_json_string' | 1 |
+| W14 | Unknown function 'compiler_json_value_string' | 4 |
+| W7 | Unknown function 'insert' | 1 |
 
-The census flattens two features, so neither is ever a first blocker: 635 functions name another package (W13), and 519 name a package constant (W12).
+The census flattens two features, so neither is ever a first blocker: 702 functions name another package (W13), and 643 name a package constant (W12).
 
 ## Functions
 
@@ -49,67 +55,67 @@ The census flattens two features, so neither is ever a first blocker: 635 functi
 
 | Source | Function | Package | Through | Also | Rejected |
 | --- | --- | --- | --- | --- | --- |
-| `syntax_diagnostics/Diagnostics.chibi` | `Diagnose` | W7 |  | W13 | `Diagnostic[]` |
+| `syntax_diagnostics/Diagnostics.chibi` | `Diagnose` | none |  | W13 |  |
 | `/sdk/core/strings/Strings.chibi` | `ByteLength` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `ByteAt` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `Bytes` | W4 |  |  | `text_bytes` |
 | `/sdk/core/strings/Strings.chibi` | `Slice` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `Compare` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `IsIdentifier` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `BaseName` | none |  |  |  |
+| `/sdk/core/strings/Strings.chibi` | `BaseName` | none yet |  |  | `Slice(path, start, size - start)` |
 | `/sdk/core/strings/Strings.chibi` | `Contains` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `ContainsAny` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `HasPrefix` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `HasSuffix` | none |  |  |  |
+| `/sdk/core/strings/Strings.chibi` | `HasPrefix` | none yet |  |  | `Slice(s, 0, size)` |
+| `/sdk/core/strings/Strings.chibi` | `HasSuffix` | none yet |  |  | `Slice(s, size - count, count)` |
 | `/sdk/core/strings/Strings.chibi` | `IndexByte` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `LastIndexByte` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `MatchesAt` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `IndexFrom` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `Index` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `LastIndex` | none |  |  |  |
+| `/sdk/core/strings/Strings.chibi` | `LastIndex` | none yet |  |  | `Slice(s, i, n)` |
 | `/sdk/core/strings/Strings.chibi` | `IndexAny` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `LastIndexAny` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `Count` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `TruncateToByte` | none |  |  |  |
+| `/sdk/core/strings/Strings.chibi` | `TruncateToByte` | none yet |  |  | `Slice(s, 0, n)` |
 | `/sdk/core/strings/Strings.chibi` | `EqualFold` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `ToLower` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `ToUpper` | none |  |  |  |
+| `/sdk/core/strings/Strings.chibi` | `ToLower` | none yet |  |  | `Slice("abcdefghijklmnopqrstuvwxyz", c - 65, 1)` |
+| `/sdk/core/strings/Strings.chibi` | `ToUpper` | none yet |  |  | `Slice("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c - 97, 1)` |
 | `/sdk/core/strings/Strings.chibi` | `IsAsciiSpace` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `TrimLeft` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `TrimRight` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `Trim` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `TrimLeftSpace` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `TrimRightSpace` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `TrimSpace` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `TrimPrefix` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `TrimSuffix` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `Cut` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `SplitKeeping` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `Split` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `SplitN` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `SplitAfter` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `SplitAfterN` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `SplitLinesKeeping` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `SplitLines` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `SplitLinesN` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `SplitLinesAfter` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `SplitLinesAfterN` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `Fields` | none |  |  |  |
+| `/sdk/core/strings/Strings.chibi` | `TrimLeft` | none yet |  |  | `Slice(s, i, size - i)` |
+| `/sdk/core/strings/Strings.chibi` | `TrimRight` | none yet |  |  | `Slice(s, 0, i)` |
+| `/sdk/core/strings/Strings.chibi` | `Trim` | none yet | `TrimRight` |  | `Slice(s, 0, i)` |
+| `/sdk/core/strings/Strings.chibi` | `TrimLeftSpace` | none yet |  |  | `Slice(s, i, size - i)` |
+| `/sdk/core/strings/Strings.chibi` | `TrimRightSpace` | none yet |  |  | `Slice(s, 0, i)` |
+| `/sdk/core/strings/Strings.chibi` | `TrimSpace` | none yet | `TrimRightSpace` |  | `Slice(s, 0, i)` |
+| `/sdk/core/strings/Strings.chibi` | `TrimPrefix` | none yet |  |  | `Slice(s, ByteLength(prefix), ByteLength(s))` |
+| `/sdk/core/strings/Strings.chibi` | `TrimSuffix` | none yet |  |  | `Slice(s, 0, ByteLength(s) - ByteLength(suffix))` |
+| `/sdk/core/strings/Strings.chibi` | `Cut` | none yet |  |  | `Slice(s, offset, size - offset)` |
+| `/sdk/core/strings/Strings.chibi` | `SplitKeeping` | none yet |  |  | `Slice(s, length(parts), 1)` |
+| `/sdk/core/strings/Strings.chibi` | `Split` | none yet | `SplitKeeping` |  | `Slice(s, length(parts), 1)` |
+| `/sdk/core/strings/Strings.chibi` | `SplitN` | none yet | `SplitKeeping` |  | `Slice(s, length(parts), 1)` |
+| `/sdk/core/strings/Strings.chibi` | `SplitAfter` | none yet | `SplitKeeping` |  | `Slice(s, length(parts), 1)` |
+| `/sdk/core/strings/Strings.chibi` | `SplitAfterN` | none yet | `SplitKeeping` |  | `Slice(s, length(parts), 1)` |
+| `/sdk/core/strings/Strings.chibi` | `SplitLinesKeeping` | none yet | `SplitKeeping` |  | `Slice(s, length(parts), 1)` |
+| `/sdk/core/strings/Strings.chibi` | `SplitLines` | none yet | `SplitKeeping` |  | `Slice(s, length(parts), 1)` |
+| `/sdk/core/strings/Strings.chibi` | `SplitLinesN` | none yet | `SplitKeeping` |  | `Slice(s, length(parts), 1)` |
+| `/sdk/core/strings/Strings.chibi` | `SplitLinesAfter` | none yet | `SplitKeeping` |  | `Slice(s, length(parts), 1)` |
+| `/sdk/core/strings/Strings.chibi` | `SplitLinesAfterN` | none yet | `SplitKeeping` |  | `Slice(s, length(parts), 1)` |
+| `/sdk/core/strings/Strings.chibi` | `Fields` | none yet |  |  | `Slice(s, start, i - start)` |
 | `/sdk/core/strings/Strings.chibi` | `Join` | none |  |  |  |
 | `/sdk/core/strings/Strings.chibi` | `Concatenate` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `Repeat` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `Replace` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `ReplaceAll` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `Remove` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `RemoveAll` | none |  |  |  |
-| `/sdk/core/strings/Strings.chibi` | `Partition` | none |  |  |  |
+| `/sdk/core/strings/Strings.chibi` | `Repeat` | none yet |  |  | `Slice(result, 0, int(rest))` |
+| `/sdk/core/strings/Strings.chibi` | `Replace` | none yet |  |  | `Slice(s, start, size - start)` |
+| `/sdk/core/strings/Strings.chibi` | `ReplaceAll` | none yet | `Replace` |  | `Slice(s, start, size - start)` |
+| `/sdk/core/strings/Strings.chibi` | `Remove` | none yet | `Replace` |  | `Slice(s, start, size - start)` |
+| `/sdk/core/strings/Strings.chibi` | `RemoveAll` | none yet | `Replace` |  | `Slice(s, start, size - start)` |
+| `/sdk/core/strings/Strings.chibi` | `Partition` | none yet |  |  | `Slice(str, 0, i)` |
 | `source_snapshot/Snapshot.chibi` | `FileRange` | none |  |  |  |
 | `source_snapshot/Snapshot.chibi` | `HeaderRange` | none |  |  |  |
 | `source_snapshot/Snapshot.chibi` | `ImportRange` | none |  |  |  |
 | `source_snapshot/Snapshot.chibi` | `PathRange` | none |  |  |  |
 | `source_snapshot/Snapshot.chibi` | `Diagnostic` | none |  | W13 |  |
 | `source_snapshot/Snapshot.chibi` | `Stamp` | none yet |  | W13 | `diagnostic` |
-| `source_snapshot/Snapshot.chibi` | `Reject` | W7 |  | W13 | `documents: Document[]` |
+| `source_snapshot/Snapshot.chibi` | `Reject` | none yet |  | W13 | `resize([int(0)], 256)` |
 | `source_snapshot/Snapshot.chibi` | `FileSize` | none |  |  |  |
 | `source_snapshot/Snapshot.chibi` | `TotalSize` | none |  |  |  |
 | `source_snapshot/Snapshot.chibi` | `ValidUTF8` | W4 | `Bytes` | W13 | `text_bytes` |
@@ -117,42 +123,42 @@ The census flattens two features, so neither is ever a first blocker: 635 functi
 | `source_snapshot/Snapshot.chibi` | `Rebase` | none |  |  |  |
 | `source_snapshot/Snapshot.chibi` | `Node` | none |  | W13 |  |
 | `source_snapshot/Snapshot.chibi` | `Resolved` | none |  | W13 |  |
-| `source_snapshot/Snapshot.chibi` | `GraphFailure` | W7 |  | W12, W13 | `documents: Document[]` |
-| `source_snapshot/Snapshot.chibi` | `Build` | W7 |  | W13 | `collections: package_routes__Collection[]` |
-| `compiler_syntax/Syntax.chibi` | `Assemble` | W7 |  | W13 | `syntax_diagnostics__Node[]` |
-| `compiler_syntax/Syntax.chibi` | `Parse` | W9 |  | W13 | `nodes: syntax_diagnostics__Node[]` |
+| `source_snapshot/Snapshot.chibi` | `GraphFailure` | none |  | W12, W13 |  |
+| `source_snapshot/Snapshot.chibi` | `Build` | none yet | `Reject` | W12, W13 | `resize([int(0)], 256)` |
+| `compiler_syntax/Syntax.chibi` | `Assemble` | none |  | W13 |  |
+| `compiler_syntax/Syntax.chibi` | `Parse` | W14 |  | W13 | `compiler_syntax_parse` |
 | `package_routes/Routes.chibi` | `FileError` | none |  | W13 |  |
-| `package_routes/Routes.chibi` | `ImportError` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_routes/Routes.chibi` | `AddRoot` | W7 |  | W13 | `roots: Root[]` |
-| `package_routes/Routes.chibi` | `RootSet` | W7 |  | W13 | `collections: Collection[]` |
-| `package_routes/Routes.chibi` | `OwningRoot` | W7 |  | W13 | `roots: Root[]` |
+| `package_routes/Routes.chibi` | `ImportError` | none |  | W13 |  |
+| `package_routes/Routes.chibi` | `AddRoot` | none yet |  | W13 | `append(roots, root)` |
+| `package_routes/Routes.chibi` | `RootSet` | none yet | `AddRoot` | W13 | `append(roots, root)` |
+| `package_routes/Routes.chibi` | `OwningRoot` | none |  | W13 |  |
 | `package_routes/Routes.chibi` | `Relative` | none |  | W13 |  |
 | `package_routes/Routes.chibi` | `Key` | none |  | W13 |  |
-| `package_routes/Routes.chibi` | `FileRoute` | W7 |  | W13 | `roots: Root[]` |
-| `package_routes/Routes.chibi` | `ImportRoute` | W7 |  | W13 | `roots: Root[]` |
-| `package_syntax/Extract.chibi` | `FindField` | W7 |  | W13 | `nodes: syntax_diagnostics__Node[]` |
-| `package_syntax/Extract.chibi` | `Extract` | W7 |  | W13 | `nodes: syntax_diagnostics__Node[]` |
-| `package_graph/Graph.chibi` | `Failure` | W9 |  |  | `packages: Package[]` |
+| `package_routes/Routes.chibi` | `FileRoute` | none yet | `Normalize` | W13 | `package_paths__Path.Invalid` |
+| `package_routes/Routes.chibi` | `ImportRoute` | W14 |  | W13 | `compiler_json_string` |
+| `package_syntax/Extract.chibi` | `FindField` | none |  | W13 |  |
+| `package_syntax/Extract.chibi` | `Extract` | none |  | W13 |  |
+| `package_graph/Graph.chibi` | `Failure` | none |  |  |  |
 | `package_graph/Graph.chibi` | `BindingCompare` | none |  | W13 |  |
-| `package_graph/Graph.chibi` | `SortBindings` | W7 |  |  | `Binding[]` |
-| `package_graph/Graph.chibi` | `Build` | W7 |  | W12, W13 | `files: File[]` |
-| `package_graph/Graph.chibi` | `Count` | W9 |  |  | `packages: Package[]` |
-| `package_graph/Graph.chibi` | `PackageAt` | W9 |  |  | `packages: Package[]` |
-| `package_graph/Graph.chibi` | `FilePackage` | W9 |  |  | `packages: Package[]` |
-| `package_graph/Graph.chibi` | `Order` | W9 |  |  | `packages: Package[]` |
-| `package_graph/Graph.chibi` | `Dependency` | W9 |  |  | `packages: Package[]` |
-| `package_graph/Graph.chibi` | `Lookup` | W9 |  | W13 | `packages: Package[]` |
+| `package_graph/Graph.chibi` | `SortBindings` | none |  | W13 |  |
+| `package_graph/Graph.chibi` | `Build` | none yet |  | W12, W13 | `filePackages := resize([int(0)], fileCount);` |
+| `package_graph/Graph.chibi` | `Count` | none |  |  |  |
+| `package_graph/Graph.chibi` | `PackageAt` | none |  |  |  |
+| `package_graph/Graph.chibi` | `FilePackage` | none |  |  |  |
+| `package_graph/Graph.chibi` | `Order` | none |  |  |  |
+| `package_graph/Graph.chibi` | `Dependency` | none |  |  |  |
+| `package_graph/Graph.chibi` | `Lookup` | none |  | W13 |  |
 | `package_paths/Paths.chibi` | `Bounded` | none |  | W13 |  |
 | `package_paths/Paths.chibi` | `Within` | none |  | W13 |  |
-| `package_paths/Paths.chibi` | `Normalize` | W7 |  | W13 | `resize` |
-| `lexical_binding/Binding.chibi` | `FindName` | W9 |  | W12 | `scopes: Scope[]` |
-| `lexical_binding/Binding.chibi` | `FindStorage` | W9 |  | W12 | `scopes: Scope[]` |
-| `lexical_binding/Binding.chibi` | `FindCallable` | W9 |  | W12 | `scopes: Scope[]` |
+| `package_paths/Paths.chibi` | `Normalize` | none yet |  | W13 | `Path.Invalid` |
+| `lexical_binding/Binding.chibi` | `FindName` | none |  | W12 |  |
+| `lexical_binding/Binding.chibi` | `FindStorage` | none |  | W12 |  |
+| `lexical_binding/Binding.chibi` | `FindCallable` | none |  | W12 |  |
 | `lexical_binding/Binding.chibi` | `Diagnostic` | none |  | W13 |  |
 | `lexical_binding/Binding.chibi` | `Previous` | none |  | W13 |  |
 | `lexical_binding/Binding.chibi` | `ID` | none |  | W13 |  |
-| `lexical_binding/Binding.chibi` | `SymbolID` | W9 |  | W12 | `scopes: Scope[]` |
-| `lexical_binding/Binding.chibi` | `Declare` | W9 |  | W12, W13 | `scopes: Scope[]` |
+| `lexical_binding/Binding.chibi` | `SymbolID` | none |  | W12, W13 |  |
+| `lexical_binding/Binding.chibi` | `Declare` | none |  | W12, W13 |  |
 | `prepared_writer/Writer.chibi` | `Words` | none |  |  |  |
 | `prepared_writer/Writer.chibi` | `Ints` | none |  |  |  |
 | `prepared_writer/Writer.chibi` | `Zig` | none |  |  |  |
@@ -160,119 +166,119 @@ The census flattens two features, so neither is ever a first blocker: 635 functi
 | `prepared_writer/Writer.chibi` | `Raw` | W4 | `Bytes` | W13 | `text_bytes` |
 | `prepared_writer/Writer.chibi` | `Slot` | W4 | `Bytes` | W13 | `text_bytes` |
 | `prepared_writer/Writer.chibi` | `SlotCount` | none |  |  |  |
-| `prepared_writer/Writer.chibi` | `Table` | W7 |  |  | `resize` |
-| `prepared_writer/Writer.chibi` | `TableSlots` | W7 |  |  | `resize` |
-| `prepared_writer/Writer.chibi` | `TableBytes` | none yet |  | W13 | `bytes.extend` |
+| `prepared_writer/Writer.chibi` | `Table` | none yet |  | W13 | `slots := resize([int(0)], mask + 1);` |
+| `prepared_writer/Writer.chibi` | `TableSlots` | none yet |  | W13 | `slots := resize([int(0)], mask + 1);` |
+| `prepared_writer/Writer.chibi` | `TableBytes` | W4 | `Bytes` | W13 | `text_bytes` |
 | `prepared_writer/Writer.chibi` | `Text` | W4 | `Bytes` | W13 | `text_bytes` |
-| `prepared_writer/Writer.chibi` | `Zeros` | W7 |  |  | `resize` |
-| `prepared_writer/Writer.chibi` | `ValueHead` | W7 |  | W12 | `extend` |
-| `prepared_writer/Writer.chibi` | `ValueBytes` | none yet |  | W12 | `bytes.extend` |
+| `prepared_writer/Writer.chibi` | `Zeros` | none yet |  |  | `resize([u8(0)], count)` |
+| `prepared_writer/Writer.chibi` | `ValueHead` | none yet |  | W12, W13 | `bytes := extend(Ints([v.tag, v.container]), Text(v.type_name` |
+| `prepared_writer/Writer.chibi` | `ValueBytes` | none yet | `ValueHead` | W12, W13 | `bytes := extend(Ints([v.tag, v.container]), Text(v.type_name` |
 | `prepared_writer/Writer.chibi` | `FlowValue` | none |  | W12 |  |
-| `prepared_writer/Writer.chibi` | `SourceBytes` | W7 |  |  | `extend` |
+| `prepared_writer/Writer.chibi` | `SourceBytes` | none yet |  |  | `extend(bytes, Ints([v.start, v.end, v.line, v.column]))` |
 | `prepared_writer/Writer.chibi` | `ReferenceBytes` | none |  |  |  |
 | `prepared_writer/Writer.chibi` | `PointBytes` | none |  |  |  |
-| `prepared_writer/Writer.chibi` | `InstructionBytes` | none yet |  |  | `bytes.extend` |
-| `prepared_writer/Writer.chibi` | `LocalBytes` | W7 |  |  | `extend` |
-| `prepared_writer/Writer.chibi` | `HostBytes` | W7 |  |  | `extend` |
-| `prepared_writer/Writer.chibi` | `CallBytes` | W7 |  |  | `extend` |
+| `prepared_writer/Writer.chibi` | `InstructionBytes` | none yet |  |  | `extend(bytes, Words([wide[v.layout], 0]))` |
+| `prepared_writer/Writer.chibi` | `LocalBytes` | none yet |  |  | `bytes := extend(Ints([v.kind]), slice(pool, starts[v.initial` |
+| `prepared_writer/Writer.chibi` | `HostBytes` | none yet |  |  | `extend(bytes, Words(slice(wide, v.outcome_first, v.outcome_c` |
+| `prepared_writer/Writer.chibi` | `CallBytes` | none yet |  |  | `extend(bytes, Words([Zig(v.first), Zig(v.count), Zig(v.resul` |
 | `prepared_writer/Writer.chibi` | `FunctionHead` | none |  |  |  |
-| `prepared_writer/Writer.chibi` | `EntryHead` | W7 |  |  | `extend` |
-| `prepared_writer/Writer.chibi` | `EventBytes` | W7 |  |  | `fields: EventField[]` |
-| `prepared_writer/Writer.chibi` | `Gather` | W9 |  | W12 | `wide: u64[]` |
-| `prepared_writer/Writer.chibi` | `Write` | W9 |  |  | `wide: u64[]` |
-| `prepared_writer/Writer.chibi` | `WriteTables` | W9 |  | W12 | `wide: u64[]` |
+| `prepared_writer/Writer.chibi` | `EntryHead` | none yet |  | W12 | `bytes := extend(Words([wide[v.id], wide[v.event_id], wide[v.` |
+| `prepared_writer/Writer.chibi` | `EventBytes` | none yet |  |  | `bytes := extend(Words([wide[v.id], wide[v.abi]]), Text(v.nam` |
+| `prepared_writer/Writer.chibi` | `Gather` | none yet |  | W12 | `used := resize([false], length(values));` |
+| `prepared_writer/Writer.chibi` | `Write` | none yet |  | W12 | `Gather(module)` |
+| `prepared_writer/Writer.chibi` | `WriteTables` | none yet |  | W12 | `starts := resize([int(0)], length(values));` |
 | `prepared_writer/Writer.chibi` | `Fingerprint` | none |  |  |  |
 | `prepared_writer/Writer.chibi` | `Word` | none |  |  |  |
-| `prepared_writer/Writer.chibi` | `Closure` | none yet |  | W13 | `bytes.extend` |
-| `package_compiler/Compile.chibi` | `LegacyNatives` | W7 |  | W12 | `ResolvedNative[]` |
-| `package_compiler/Compile.chibi` | `CatalogNatives` | W7 |  |  | `ResolvedNative[]` |
-| `package_compiler/Compile.chibi` | `HostPackageAvailable` | W7 |  | W13 | `natives: ResolvedNative[]` |
-| `package_compiler/Compile.chibi` | `PackageNatives` | W7 |  | W13 | `ResolvedNative[]` |
-| `package_compiler/Compile.chibi` | `LegacyPorts` | W7 |  |  | `ResolvedPort[]` |
-| `package_compiler/Compile.chibi` | `ForeignStorage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `ForeignNatives` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `NativeInputValid` | W7 |  | W12 | `natives: ResolvedNative[]` |
+| `prepared_writer/Writer.chibi` | `Closure` | W4 | `Bytes` | W13 | `text_bytes` |
+| `package_compiler/Compile.chibi` | `LegacyNatives` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `CatalogNatives` | none |  |  |  |
+| `package_compiler/Compile.chibi` | `HostPackageAvailable` | none |  | W13 |  |
+| `package_compiler/Compile.chibi` | `PackageNatives` | none |  | W13 |  |
+| `package_compiler/Compile.chibi` | `LegacyPorts` | none |  |  |  |
+| `package_compiler/Compile.chibi` | `ForeignStorage` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `ForeignNatives` | none yet |  | W12, W13 | `ports` |
+| `package_compiler/Compile.chibi` | `NativeInputValid` | none |  | W12 |  |
 | `package_compiler/Compile.chibi` | `Ordinal` | none |  |  |  |
 | `package_compiler/Compile.chibi` | `Position` | none |  |  |  |
 | `package_compiler/Compile.chibi` | `ResolveOps` | none |  |  |  |
 | `package_compiler/Compile.chibi` | `Complete` | none |  |  |  |
 | `package_compiler/Compile.chibi` | `ScalarStorage` | none |  | W12 |  |
-| `package_compiler/Compile.chibi` | `CharIndex` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `CharTypes` | W7 |  | W12, W13 | `TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `CharType` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `FindType` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `FindConstant` | W7 |  |  | `constants: ConstDecl[]` |
-| `package_compiler/Compile.chibi` | `Aliases` | W7 |  | W12, W13 | `Name[]` |
-| `package_compiler/Compile.chibi` | `TypeWithId` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `FindVariant` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `ReadType` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `HasTypeTrait` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `ViewTraits` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `ReadTypeSuffixes` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Compile.chibi` | `CharIndex` | none yet |  | W12, W13 | `for declared, index in types {         if (declared.kind == ` |
+| `package_compiler/Compile.chibi` | `CharTypes` | none yet |  | W12, W13 | `append(input, declared)` |
+| `package_compiler/Compile.chibi` | `CharType` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `FindType` | none |  | W12 |  |
+| `package_compiler/Compile.chibi` | `FindConstant` | none |  |  |  |
+| `package_compiler/Compile.chibi` | `Aliases` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `TypeWithId` | none |  |  |  |
+| `package_compiler/Compile.chibi` | `FindVariant` | none |  |  |  |
+| `package_compiler/Compile.chibi` | `ReadType` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Compile.chibi` | `HasTypeTrait` | none |  | W13 |  |
+| `package_compiler/Compile.chibi` | `ViewTraits` | none |  | W13 |  |
+| `package_compiler/Compile.chibi` | `ReadTypeSuffixes` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
 | `package_compiler/Compile.chibi` | `ReadViewType` | W10 |  | W12 | `table: ^(TypeDecl[])` |
-| `package_compiler/Compile.chibi` | `FindMap` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `TypeTag` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `DeclareMaps` | W7 |  | W12, W13 | `TypeDecl[]` |
+| `package_compiler/Compile.chibi` | `FindMap` | none |  | W12 |  |
+| `package_compiler/Compile.chibi` | `TypeTag` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `DeclareMaps` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` |
 | `package_compiler/Compile.chibi` | `FieldSize` | none |  | W12 |  |
-| `package_compiler/Compile.chibi` | `RecordFieldType` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `RecordFieldSize` | W7 |  | W12 | `types: TypeDecl[]` |
+| `package_compiler/Compile.chibi` | `RecordFieldType` | none |  | W12 |  |
+| `package_compiler/Compile.chibi` | `RecordFieldSize` | none |  | W12 |  |
 | `package_compiler/Compile.chibi` | `AlignTo` | none |  |  |  |
-| `package_compiler/Compile.chibi` | `InputFailure` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Compile.chibi` | `AssemblyFailure` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Compile.chibi` | `Declare` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `DeclareSeeded` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Compile.chibi` | `InputFailure` | none |  | W13 |  |
+| `package_compiler/Compile.chibi` | `AssemblyFailure` | none |  | W13 |  |
+| `package_compiler/Compile.chibi` | `Declare` | none yet | `DeclareSeeded` | W12, W13 | `DeclareMath(forest, documents, types, members, target)` |
+| `package_compiler/Compile.chibi` | `DeclareSeeded` | none yet |  | W12, W13 | `DeclareMath(forest, documents, types, members, target)` |
 | `package_compiler/Compile.chibi` | `ComparisonOperator` | none |  |  |  |
-| `package_compiler/Compile.chibi` | `FoldCondition` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `ExpandMembers` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `SelectMembers` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `ChosenMembers` | W7 |  |  | `slice` |
+| `package_compiler/Compile.chibi` | `FoldCondition` | none yet |  | W12, W13 | `Decided.Yes` |
+| `package_compiler/Compile.chibi` | `ExpandMembers` | W10 |  | W13 | `out: ^(int[])` |
+| `package_compiler/Compile.chibi` | `SelectMembers` | W10 | `ExpandMembers` | W13 | `out: ^(int[])` |
+| `package_compiler/Compile.chibi` | `ChosenMembers` | none |  |  |  |
 | `package_compiler/Compile.chibi` | `ChosenAt` | none |  |  |  |
-| `package_compiler/Compile.chibi` | `DeclarePackage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `NumberConversionType` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `ConversionType` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Compile.chibi` | `DeclarePackage` | none yet |  | W12, W13 | `members` |
+| `package_compiler/Compile.chibi` | `NumberConversionType` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `ConversionType` | none |  | W12, W13 |  |
 | `package_compiler/Compile.chibi` | `Arithmetic` | none |  |  |  |
 | `package_compiler/Compile.chibi` | `Shift` | none |  |  |  |
-| `package_compiler/Compile.chibi` | `ConstantExpression` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `ConstantType` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `UntypedStorage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `FoldConstant` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `Evaluate` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `OutsideRange` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `EvaluateShift` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `EvaluateConversion` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `LiteralDefault` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `FunctionSignature` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Compile.chibi` | `ConstantExpression` | none yet | `InferredNumberStorage` | W12, W13 | `ParseNumber(forest, text, literal)` |
+| `package_compiler/Compile.chibi` | `ConstantType` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `UntypedStorage` | none yet |  | W12, W13 | `ParseNumber(forest, text, Unparenthesized(forest, node))` |
+| `package_compiler/Compile.chibi` | `FoldConstant` | none yet |  | W12, W13 | `FoldConstant(forest, text, file, constants, aliases, package` |
+| `package_compiler/Compile.chibi` | `Evaluate` | none yet |  | W12, W13 | `ParseNumber(forest, text, node)` |
+| `package_compiler/Compile.chibi` | `OutsideRange` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `EvaluateShift` | none yet |  | W12, W13 | `Evaluate(forest, text, file, constants, aliases, package, op` |
+| `package_compiler/Compile.chibi` | `EvaluateConversion` | none yet |  | W12, W13 | `FoldConstant(forest, text, file, constants, aliases, package` |
+| `package_compiler/Compile.chibi` | `LiteralDefault` | W14 |  | W12, W13 | `compiler_json_value_string` |
+| `package_compiler/Compile.chibi` | `FunctionSignature` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
 | `package_compiler/Compile.chibi` | `ScalarValue` | none |  | W13 |  |
-| `package_compiler/Compile.chibi` | `Header` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `ParamHeader` | W7 |  | W13 | `types: TypeDecl[]` |
+| `package_compiler/Compile.chibi` | `Header` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `ParamHeader` | none |  | W12, W13 |  |
 | `package_compiler/Compile.chibi` | `NoSource` | none |  | W13 |  |
 | `package_compiler/Compile.chibi` | `Range` | none |  | W13 |  |
 | `package_compiler/Compile.chibi` | `Own` | none |  | W13 |  |
 | `package_compiler/Compile.chibi` | `HashBytes` | none |  |  |  |
 | `package_compiler/Compile.chibi` | `HashText` | W4 | `Bytes` | W13 | `text_bytes` |
-| `package_compiler/Compile.chibi` | `LayoutHash` | W7 |  | W12 | `fields: TypeMember[]` |
-| `package_compiler/Compile.chibi` | `Reachable` | W7 |  | W13 | `edges: package_graph__Edge[]` |
-| `package_compiler/Compile.chibi` | `ActivePackageOrder` | W7 |  | W13 | `documents: source_snapshot__Document[]` |
-| `package_compiler/Compile.chibi` | `Link` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `UsedConstants` | W7 |  | W12, W13 | `ConstDecl[]` |
-| `package_compiler/Compile.chibi` | `WriteSummaries` | W7 |  | W12, W13 | `bodies: Body[]` |
-| `package_compiler/Compile.chibi` | `ItemWrite` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `GenericUpdates` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `StablePreparation` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `PreparePackages` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `FunctionBody` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `Assemble` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `ReadAttributes` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `Compile` | W7 |  | W13 | `natives: Native[]` |
-| `package_compiler/Compile.chibi` | `CompileWithEffects` | W7 |  | W13 | `natives: Native[]` |
+| `package_compiler/Compile.chibi` | `LayoutHash` | W4 | `Bytes` | W12, W13 | `text_bytes` |
+| `package_compiler/Compile.chibi` | `Reachable` | none yet |  | W13 | `seen := resize([false], count);` |
+| `package_compiler/Compile.chibi` | `ActivePackageOrder` | none yet |  | W13 | `active := resize([false], length(packages));` |
+| `package_compiler/Compile.chibi` | `Link` | W10 | `SpecializePackages` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Compile.chibi` | `UsedConstants` | none yet |  | W12, W13 | `seen := resize([false], length(constants));` |
+| `package_compiler/Compile.chibi` | `WriteSummaries` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `ItemWrite` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `GenericUpdates` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `StablePreparation` | none |  | W12, W13 |  |
+| `package_compiler/Compile.chibi` | `PreparePackages` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Compile.chibi` | `FunctionBody` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Compile.chibi` | `Assemble` | none yet |  | W12, W13 | `for declared, at in types {         kept := declared.kind !=` |
+| `package_compiler/Compile.chibi` | `ReadAttributes` | none |  | W13 |  |
+| `package_compiler/Compile.chibi` | `Compile` | none yet |  | W13 | `bytes: u8[]` |
+| `package_compiler/Compile.chibi` | `CompileWithEffects` | none yet |  | W13 | `bytes: u8[]` |
 | `package_compiler/Compile.chibi` | `TargetPackagePath` | none |  |  |  |
 | `package_compiler/Compile.chibi` | `TargetPackageText` | none |  |  |  |
-| `package_compiler/Compile.chibi` | `CompileInput` | W7 |  | W13 | `natives: Native[]` |
-| `package_compiler/Compile.chibi` | `CompileResolved` | W7 |  | W13 | `resolved_natives: ResolvedNative[]` |
-| `package_compiler/Compile.chibi` | `CompileWithCatalog` | W7 |  | W13 | `natives: CatalogNative[]` |
-| `package_compiler/Compile.chibi` | `CompileClosureWithCatalog` | W7 |  |  | `natives: CatalogNative[]` |
-| `package_compiler/Compile.chibi` | `CompileClosure` | W7 |  |  | `natives: Native[]` |
-| `package_compiler/Compile.chibi` | `CompileClosureWithEffects` | W7 |  |  | `natives: Native[]` |
+| `package_compiler/Compile.chibi` | `CompileInput` | none yet | `CompileResolved` | W12, W13 | `resolved_natives` |
+| `package_compiler/Compile.chibi` | `CompileResolved` | none yet |  | W12, W13 | `resolved_natives` |
+| `package_compiler/Compile.chibi` | `CompileWithCatalog` | none yet |  | W13 | `bytes: u8[]` |
+| `package_compiler/Compile.chibi` | `CompileClosureWithCatalog` | none yet | `CompileWithCatalog` | W13 | `bytes: u8[]` |
+| `package_compiler/Compile.chibi` | `CompileClosure` | none yet | `Compile` | W13 | `bytes: u8[]` |
+| `package_compiler/Compile.chibi` | `CompileClosureWithEffects` | none yet | `CompileWithEffects` | W13 | `bytes: u8[]` |
 | `package_compiler/Body.chibi` | `ValueLocal` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `Alias` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `RecordOwnerArgument` | none |  | W12 |  |
@@ -287,30 +293,30 @@ The census flattens two features, so neither is ever a first blocker: 635 functi
 | `package_compiler/Body.chibi` | `ExpressionCode` | none |  | W12, W13 |  |
 | `package_compiler/Body.chibi` | `SymbolCode` | none |  | W12, W13 |  |
 | `package_compiler/Body.chibi` | `OccurrenceCode` | none |  | W12, W13 |  |
-| `package_compiler/Body.chibi` | `Parameter` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `LiteralNode` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `NumberLiteral` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `OverloadArgument` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `OverloadArguments` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `Retargeted` | W7 |  |  | `Code[]` |
-| `package_compiler/Body.chibi` | `Resumed` | W7 |  |  | `next: Work[]` |
+| `package_compiler/Body.chibi` | `Parameter` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `LiteralNode` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `NumberLiteral` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `OverloadArgument` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `OverloadArguments` | none yet |  | W12, W13 | `BindNative(forest, text, item.node, sources, natives[chosen]` |
+| `package_compiler/Body.chibi` | `Retargeted` | none |  |  |  |
+| `package_compiler/Body.chibi` | `Resumed` | none |  |  |  |
 | `package_compiler/Body.chibi` | `LastIndexOf` | none |  |  |  |
-| `package_compiler/Body.chibi` | `ConstantElement` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `FoldedIntegerArray` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `InConstantArray` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `NamePoints` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Body.chibi` | `TargetPoints` | W7 |  | W13 | `Code[]` |
+| `package_compiler/Body.chibi` | `ConstantElement` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `FoldedIntegerArray` | none yet | `InferredNumberStorage` | W12, W13 | `ParseNumber(forest, text, literal)` |
+| `package_compiler/Body.chibi` | `InConstantArray` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `NamePoints` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `TargetPoints` | none |  | W12, W13 |  |
 | `package_compiler/Body.chibi` | `Expression` | none |  |  |  |
-| `package_compiler/Body.chibi` | `SymbolOccurrence` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `SymbolOccurrence` | none |  | W12, W13 |  |
 | `package_compiler/Body.chibi` | `WatchCode` | none |  | W12, W13 |  |
 | `package_compiler/Body.chibi` | `ScalarWatch` | none |  | W12, W13 |  |
 | `package_compiler/Body.chibi` | `DefaultWatch` | none |  | W12, W13 |  |
-| `package_compiler/Body.chibi` | `LiteralWatch` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Body.chibi` | `OwnerWatch` | W7 |  | W12, W13 | `Code[]` |
-| `package_compiler/Body.chibi` | `TargetRoot` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `LiteralWatch` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `OwnerWatch` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `TargetRoot` | none |  | W13 |  |
 | `package_compiler/Body.chibi` | `SlotsPast` | none |  |  |  |
 | `package_compiler/Body.chibi` | `Located` | none |  | W13 |  |
-| `package_compiler/Body.chibi` | `WithoutDebug` | W7 |  |  | `Code[]` |
+| `package_compiler/Body.chibi` | `WithoutDebug` | none |  |  |  |
 | `package_compiler/Body.chibi` | `PointCode` | none |  | W13 |  |
 | `package_compiler/Body.chibi` | `Statement` | none |  |  |  |
 | `package_compiler/Body.chibi` | `Instruction` | none |  | W13 |  |
@@ -318,41 +324,41 @@ The census flattens two features, so neither is ever a first blocker: 635 functi
 | `package_compiler/Body.chibi` | `RecordEffects` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `RecordSemantic` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `JoinWrite` | none |  | W12 |  |
-| `package_compiler/Body.chibi` | `NativeWrite` | W9 |  | W12 | `masks: int[]` |
-| `package_compiler/Body.chibi` | `InSubtree` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `InUpdateItem` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `HasSemanticFact` | W7 |  |  | `facts: SemanticFact[]` |
-| `package_compiler/Body.chibi` | `DirectiveFacts` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `StepFacts` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `NativeWrite` | none |  | W12 |  |
+| `package_compiler/Body.chibi` | `InSubtree` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `InUpdateItem` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `HasSemanticFact` | none |  |  |  |
+| `package_compiler/Body.chibi` | `DirectiveFacts` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `StepFacts` | none |  | W12, W13 |  |
 | `package_compiler/Body.chibi` | `RecordNativeCall` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `Expect` | none |  |  |  |
 | `package_compiler/Body.chibi` | `Resume` | none |  |  |  |
 | `package_compiler/Body.chibi` | `NoBases` | none |  |  |  |
 | `package_compiler/Body.chibi` | `NoValue` | none |  |  |  |
 | `package_compiler/Body.chibi` | `Typed` | none |  |  |  |
-| `package_compiler/Body.chibi` | `Fail` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `Fresh` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `Returned` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `RootOf` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `MutatedNames` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `Fail` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `Fresh` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `Returned` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `RootOf` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `MutatedNames` | none |  | W13 |  |
 | `package_compiler/Body.chibi` | `ChangingMethod` | none |  | W13 |  |
-| `package_compiler/Body.chibi` | `Unchanging` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `FixedArray` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `BuiltName` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `BuiltLiteral` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `Unchanging` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `FixedArray` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `BuiltName` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `BuiltLiteral` | none |  | W13 |  |
 | `package_compiler/Body.chibi` | `NamePosition` | none |  |  |  |
-| `package_compiler/Body.chibi` | `Declares` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `ReturnedNames` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `BuiltLocals` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `Declares` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `ReturnedNames` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `BuiltLocals` | none yet |  | W13 | `returned := resize([false], length(spellings));` |
 | `package_compiler/Body.chibi` | `Pointer` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `SlotStorage` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `SlotKind` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `SameType` | none |  |  |  |
-| `package_compiler/Body.chibi` | `CharValue` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Body.chibi` | `CharWidens` | W7 |  | W12 | `types: TypeDecl[]` |
+| `package_compiler/Body.chibi` | `CharValue` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `CharWidens` | none |  | W12, W13 |  |
 | `package_compiler/Body.chibi` | `Single` | none |  |  |  |
 | `package_compiler/Body.chibi` | `HexDigit` | none |  |  |  |
-| `package_compiler/Body.chibi` | `ParseNumber` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `ParseNumber` | none yet |  | W13 | `Literal.Invalid` |
 | `package_compiler/Body.chibi` | `Integer` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `Signed` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `Width` | none |  | W12 |  |
@@ -369,697 +375,708 @@ The census flattens two features, so neither is ever a first blocker: 635 functi
 | `package_compiler/Body.chibi` | `BinaryOp` | none |  |  |  |
 | `package_compiler/Body.chibi` | `Comparison` | none |  |  |  |
 | `package_compiler/Body.chibi` | `CompoundOperator` | none |  | W13 |  |
-| `package_compiler/Body.chibi` | `FindCallable` | W7 |  |  | `callables: Callable[]` |
-| `package_compiler/Body.chibi` | `CatalogCallable` | W7 |  | W12 | `callables: Callable[]` |
+| `package_compiler/Body.chibi` | `FindCallable` | none |  |  |  |
+| `package_compiler/Body.chibi` | `CatalogCallable` | none |  | W12, W13 |  |
 | `package_compiler/Body.chibi` | `NumericConversionName` | none |  | W12 |  |
-| `package_compiler/Body.chibi` | `SourceCallable` | W7 |  |  | `callables: Callable[]` |
-| `package_compiler/Body.chibi` | `QualifiedCallable` | W7 |  | W12 | `callables: Callable[]` |
-| `package_compiler/Body.chibi` | `FindField` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Body.chibi` | `Lookup` | W7 |  |  | `names: Name[]` |
+| `package_compiler/Body.chibi` | `SourceCallable` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `QualifiedCallable` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `FindField` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `Lookup` | none |  |  |  |
 | `package_compiler/Body.chibi` | `Separator` | none |  |  |  |
 | `package_compiler/Body.chibi` | `Lower` | none |  |  |  |
 | `package_compiler/Body.chibi` | `NameMatches` | none |  | W13 |  |
 | `package_compiler/Body.chibi` | `NativeNameMatches` | none |  | W13 |  |
-| `package_compiler/Body.chibi` | `ExactNativeKind` | W7 |  | W13 | `natives: ResolvedNative[]` |
-| `package_compiler/Body.chibi` | `ExactNativeName` | W7 |  |  | `natives: ResolvedNative[]` |
+| `package_compiler/Body.chibi` | `ExactNativeKind` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `ExactNativeName` | none |  | W13 |  |
 | `package_compiler/Body.chibi` | `NativeCandidate` | none |  | W13 |  |
-| `package_compiler/Body.chibi` | `FindNativeKind` | W7 |  |  | `natives: ResolvedNative[]` |
-| `package_compiler/Body.chibi` | `FirstNativeKind` | W7 |  |  | `natives: ResolvedNative[]` |
-| `package_compiler/Body.chibi` | `FindNative` | W7 |  | W12 | `natives: ResolvedNative[]` |
-| `package_compiler/Body.chibi` | `NativeCallName` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `QualifierOf` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `PrivateDeclaration` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `FindNativeKind` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `FirstNativeKind` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `FindNative` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `NativeCallName` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `QualifierOf` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `PrivateDeclaration` | none |  | W13 |  |
 | `package_compiler/Body.chibi` | `PrivateMessage` | none |  |  |  |
-| `package_compiler/Body.chibi` | `PrivateType` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `PrivateAccess` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `ConstantOf` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `UnionOf` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `PrivateType` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `PrivateAccess` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `ConstantOf` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `UnionOf` | none |  | W12, W13 |  |
 | `package_compiler/Body.chibi` | `Covers` | none |  |  |  |
-| `package_compiler/Body.chibi` | `Declared` | W7 |  |  | `names: Name[]` |
-| `package_compiler/Body.chibi` | `BindingCondition` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `Descends` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `ItemField` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `NextArm` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `FindResult` | W7 |  |  | `ports: ResolvedPort[]` |
+| `package_compiler/Body.chibi` | `Declared` | none |  |  |  |
+| `package_compiler/Body.chibi` | `BindingCondition` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `Descends` | none yet |  | W12, W13 | `for (end in [Field(forest, node, "first"), Field(forest, nod` |
+| `package_compiler/Body.chibi` | `ItemField` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `NextArm` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `FindResult` | none |  | W13 |  |
 | `package_compiler/Body.chibi` | `NativePort` | none |  |  |  |
-| `package_compiler/Body.chibi` | `InPlaceUpdate` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `ArrayMethod` | W7 |  | W12 | `natives: ResolvedNative[]` |
-| `package_compiler/Body.chibi` | `ArrayChanger` | W7 |  |  | `natives: ResolvedNative[]` |
-| `package_compiler/Body.chibi` | `ChangedArray` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `StatementTarget` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `StatementValue` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `Prologue` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `FinishFor` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `StartRange` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `QueryGuardCall` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `OwnerArgumentCodes` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `DebugPoints` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `DebugWatches` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `EmitBody` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `FinishBody` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `ReachesBodyEnd` | W7 |  |  | `code: Code[]` |
-| `package_compiler/Body.chibi` | `NumberPoints` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `ErrorMarked` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `DeclarationAttributes` | W7 |  | W13 | `syntax_diagnostics__Diagnostic[]` |
-| `package_compiler/Fallible.chibi` | `ErrorBearing` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Fallible.chibi` | `ErrorResult` | W7 |  |  | `types: TypeDecl[]` |
+| `package_compiler/Body.chibi` | `InPlaceUpdate` | none yet |  | W12, W13 | `ArrayUpdate.NotApplicable` |
+| `package_compiler/Body.chibi` | `ArrayMethod` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `ArrayChanger` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `ChangedArray` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `StatementTarget` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `StatementValue` | none |  | W13 |  |
+| `package_compiler/Body.chibi` | `Prologue` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `FinishFor` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `StartRange` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `QueryGuardCall` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `OwnerArgumentCodes` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `DebugPoints` | none |  | W12, W13 |  |
+| `package_compiler/Body.chibi` | `DebugWatches` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
+| `package_compiler/Body.chibi` | `EmitBody` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Body.chibi` | `FinishBody` | none yet |  | W12, W13 | `DropNamesStep(names, 0, natives, ports, ops, target, cleanup` |
+| `package_compiler/Body.chibi` | `ReachesBodyEnd` | none yet |  |  | `visited := resize([false], length(code));` |
+| `package_compiler/Body.chibi` | `NumberPoints` | none |  | W12, W13 |  |
+| `package_compiler/Fallible.chibi` | `ErrorMarked` | none |  | W13 |  |
+| `package_compiler/Fallible.chibi` | `DeclarationAttributes` | none |  | W13 |  |
+| `package_compiler/Fallible.chibi` | `ErrorBearing` | none |  | W12 |  |
+| `package_compiler/Fallible.chibi` | `ErrorResult` | none |  | W12 |  |
 | `package_compiler/Fallible.chibi` | `FallibleBind` | none |  |  |  |
-| `package_compiler/Fallible.chibi` | `FallibleWithin` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `FallibleBindings` | W7 |  | W13 | `FallibleBinding[]` |
-| `package_compiler/Fallible.chibi` | `FallibleFindBinding` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `FallibleDeclarationBinding` | W7 |  |  | `bindings: FallibleBinding[]` |
+| `package_compiler/Fallible.chibi` | `FallibleWithin` | none |  | W13 |  |
+| `package_compiler/Fallible.chibi` | `FallibleBindings` | none yet |  | W13 | `for (field in ["parameters", "results"]) {         list := F` |
+| `package_compiler/Fallible.chibi` | `FallibleFindBinding` | none yet |  | W13 | `for (binding, index in bindings) {             if (binding.s` |
+| `package_compiler/Fallible.chibi` | `FallibleDeclarationBinding` | none yet |  |  | `for (binding, index in bindings) {         if (binding.node ` |
 | `package_compiler/Fallible.chibi` | `FallibleNodeFor` | none |  |  |  |
-| `package_compiler/Fallible.chibi` | `FallibleLink` | W7 |  |  | `FallibleNode[]` |
-| `package_compiler/Fallible.chibi` | `FallibleTruth` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `FallibleBuildGraph` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `FallibleJoin` | W9 |  |  | `aliases: int[]` |
+| `package_compiler/Fallible.chibi` | `FallibleLink` | none |  |  |  |
+| `package_compiler/Fallible.chibi` | `FallibleTruth` | none |  | W13 |  |
+| `package_compiler/Fallible.chibi` | `FallibleBuildGraph` | none yet |  | W13 | `FallibleBuildGraph(forest, text, members[index], start, leav` |
+| `package_compiler/Fallible.chibi` | `FallibleJoin` | none |  |  |  |
 | `package_compiler/Fallible.chibi` | `FallibleAlias` | none |  |  |  |
 | `package_compiler/Fallible.chibi` | `FallibleWriteAliases` | none |  |  |  |
-| `package_compiler/Fallible.chibi` | `FallibleTarget` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `FalliblePointer` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `FallibleExpression` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `FallibleAddress` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `FallibleTransfer` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `FallibleOutcome` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Fallible.chibi` | `FallibleBody` | W7 |  | W12, W13 | `syntax_diagnostics__Diagnostic[]` |
-| `package_compiler/Generics.chibi` | `GenericBinder` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericTemplate` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericCallableType` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericOmitted` | W7 |  | W12 | `names: Name[]` |
-| `package_compiler/Generics.chibi` | `GenericParameters` | W7 |  | W12, W13 | `Param[]` |
-| `package_compiler/Generics.chibi` | `GenericArgumentValue` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericSourceParameter` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericResolvedCall` | W7 |  | W12 | `names: Name[]` |
-| `package_compiler/Generics.chibi` | `GenericCallParameter` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericFunctionTarget` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericCallbackSignature` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericCallbackParameter` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericPatternName` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericLambdaOwnName` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericLambdaCapture` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Fallible.chibi` | `FallibleTarget` | none yet | `FallibleFindBinding` | W13 | `for (binding, index in bindings) {             if (binding.s` |
+| `package_compiler/Fallible.chibi` | `FalliblePointer` | none yet | `FallibleFindBinding` | W13 | `for (binding, index in bindings) {             if (binding.s` |
+| `package_compiler/Fallible.chibi` | `FallibleExpression` | none yet |  | W13 | `FallibleExpression(forest, text, bindings, source, error_nam` |
+| `package_compiler/Fallible.chibi` | `FallibleAddress` | none yet |  | W13 | `FallibleExpression(forest, text, bindings, source, error_nam` |
+| `package_compiler/Fallible.chibi` | `FallibleTransfer` | none yet |  | W13 | `FallibleAddress(forest, text, bindings, source, error_name, ` |
+| `package_compiler/Fallible.chibi` | `FallibleOutcome` | none yet |  | W13 | `aliases := resize([int(0)], length(nodes) * width);` |
+| `package_compiler/Fallible.chibi` | `FallibleBody` | none yet |  | W12, W13 | `FallibleBuildGraph(forest, text, Field(forest, callable.node` |
+| `package_compiler/Generics.chibi` | `GenericBinder` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `GenericTemplate` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `GenericCallableType` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `GenericOmitted` | none |  | W12 |  |
+| `package_compiler/Generics.chibi` | `GenericParameters` | none |  | W12, W13 |  |
+| `package_compiler/Generics.chibi` | `GenericArgumentValue` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `GenericSourceParameter` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `GenericResolvedCall` | none |  | W12 |  |
+| `package_compiler/Generics.chibi` | `GenericCallParameter` | none |  | W12, W13 |  |
+| `package_compiler/Generics.chibi` | `GenericFunctionTarget` | none |  | W12, W13 |  |
+| `package_compiler/Generics.chibi` | `GenericCallbackSignature` | none |  | W12, W13 |  |
+| `package_compiler/Generics.chibi` | `GenericCallbackParameter` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `GenericPatternName` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `GenericLambdaOwnName` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `GenericLambdaCapture` | none |  | W12, W13 |  |
 | `package_compiler/Generics.chibi` | `CallableIdentity` | none |  | W12, W13 |  |
 | `package_compiler/Generics.chibi` | `GenericCallable` | none |  |  |  |
-| `package_compiler/Generics.chibi` | `GenericAliases` | W7 |  | W12 | `Name[]` |
-| `package_compiler/Generics.chibi` | `GenericConstants` | W7 |  | W12, W13 | `ConstDecl[]` |
-| `package_compiler/Generics.chibi` | `GenericElement` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericNames` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericIdentity` | W7 |  | W12, W13 | `names: Name[]` |
-| `package_compiler/Generics.chibi` | `GenericForeignType` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Generics.chibi` | `GenericConstantValue` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericSingleResult` | W7 |  |  | `params: Param[]` |
+| `package_compiler/Generics.chibi` | `GenericAliases` | none |  | W12 |  |
+| `package_compiler/Generics.chibi` | `GenericConstants` | W4 | `Bytes` | W12, W13 | `text_bytes` |
+| `package_compiler/Generics.chibi` | `GenericElement` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Generics.chibi` | `GenericNames` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Generics.chibi` | `GenericIdentity` | none |  | W12, W13 |  |
+| `package_compiler/Generics.chibi` | `GenericForeignType` | none |  | W12 |  |
+| `package_compiler/Generics.chibi` | `GenericConstantValue` | none yet | `FoldConstant` | W12, W13 | `FoldConstant(forest, text, file, constants, aliases, package` |
+| `package_compiler/Generics.chibi` | `GenericSingleResult` | none |  |  |  |
 | `package_compiler/Generics.chibi` | `GenericParameterType` | W10 |  | W12 | `table: ^(TypeDecl[])` |
-| `package_compiler/Generics.chibi` | `GenericFunctionArguments` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `SpecializePackages` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericCallableResults` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `GenericSynchronous` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `DocumentOf` | W7 |  | W13 | `documents: source_snapshot__Document[]` |
-| `package_compiler/Generics.chibi` | `ArgumentType` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `TypeParameter` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `ApplicationNode` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `ApplicationFits` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `ApplicationName` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `ApplicationBindings` | W7 |  | W12, W13 | `Name[]` |
-| `package_compiler/Generics.chibi` | `InstantiateRecords` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Generics.chibi` | `ResolveInstances` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `Packable` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `ElementSlots` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `ElementRead` | W7 |  | W12, W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `LoadSlots` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `ElementLoad` | W7 |  | W12, W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `ElementLocals` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `RetainStep` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
+| `package_compiler/Generics.chibi` | `GenericFunctionArguments` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Generics.chibi` | `SpecializePackages` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Generics.chibi` | `GenericCallableResults` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Generics.chibi` | `GenericSynchronous` | none yet |  | W12, W13 | `GenericCheck.Valid` |
+| `package_compiler/Generics.chibi` | `DocumentOf` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `ArgumentType` | none |  | W12, W13 |  |
+| `package_compiler/Generics.chibi` | `TypeParameter` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `ApplicationNode` | none |  | W13 |  |
+| `package_compiler/Generics.chibi` | `ApplicationFits` | none |  | W12, W13 |  |
+| `package_compiler/Generics.chibi` | `ApplicationName` | none |  | W12, W13 |  |
+| `package_compiler/Generics.chibi` | `ApplicationBindings` | none |  | W12, W13 |  |
+| `package_compiler/Generics.chibi` | `InstantiateRecords` | none |  | W12, W13 |  |
+| `package_compiler/Generics.chibi` | `ResolveInstances` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Steps.chibi` | `Packable` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `ElementSlots` | none yet |  | W12 | `extend(checks, LoadSlots(storage, packable, target))` |
+| `package_compiler/Steps.chibi` | `ElementRead` | none yet |  | W12, W13 | `extend(code, ElementLoad(array, position, storage, packable,` |
+| `package_compiler/Steps.chibi` | `LoadSlots` | none yet |  | W12 | `extend(slots, [address, element])` |
+| `package_compiler/Steps.chibi` | `ElementLoad` | none yet |  | W12, W13 | `append(code, element)` |
+| `package_compiler/Steps.chibi` | `ElementLocals` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `RetainStep` | none yet | `SequenceCallStep` | W12, W13 | `result` |
 | `package_compiler/Steps.chibi` | `MovedCell` | none |  | W12 |  |
 | `package_compiler/Steps.chibi` | `AddressSlot` | none |  | W12 |  |
-| `package_compiler/Steps.chibi` | `MoveCode` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `SchemaWriteCode` | W7 |  | W12, W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `ValueWriteCode` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `CellSchemaStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Steps.chibi` | `ArgumentSchemaStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Steps.chibi` | `InferredNumberStorage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ConstantExpressionStorage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `StatementStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `LocalPush` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ReadIntegerLiteral` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ValueStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ArrayLengthStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
+| `package_compiler/Steps.chibi` | `MoveCode` | none yet |  | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, item)` |
+| `package_compiler/Steps.chibi` | `SchemaWriteCode` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `ValueWriteCode` | none yet |  | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
+| `package_compiler/Steps.chibi` | `CellSchemaStep` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `ArgumentSchemaStep` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `InferredNumberStorage` | none yet |  | W12, W13 | `ParseNumber(forest, text, literal)` |
+| `package_compiler/Steps.chibi` | `ConstantExpressionStorage` | none yet | `InferredNumberStorage` | W12, W13 | `ParseNumber(forest, text, literal)` |
+| `package_compiler/Steps.chibi` | `StatementStep` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Steps.chibi` | `LocalPush` | none yet |  | W12, W13 | `InPlaceUpdate(forest, text, callables, natives, ports, ident` |
+| `package_compiler/Steps.chibi` | `ReadIntegerLiteral` | none yet |  | W12, W13 | `IntegralOf(Text(forest, text, digits))` |
+| `package_compiler/Steps.chibi` | `ValueStep` | none yet |  | W12, W13 | `item` |
+| `package_compiler/Steps.chibi` | `ArrayLengthStep` | none |  | W12, W13 |  |
 | `package_compiler/Steps.chibi` | `ReadsInPlace` | none |  | W12 |  |
-| `package_compiler/Steps.chibi` | `BorrowsElement` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `LendsElement` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ChangingElement` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `BorrowsElement` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `LendsElement` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `ChangingElement` | none |  | W12, W13 |  |
 | `package_compiler/Steps.chibi` | `Fixed` | none |  |  |  |
-| `package_compiler/Steps.chibi` | `LiteralStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `Unparenthesized` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `CStringMessage` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `LiteralStep` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Steps.chibi` | `Unparenthesized` | none |  | W13 |  |
+| `package_compiler/Steps.chibi` | `CStringMessage` | W14 |  | W13 | `compiler_json_value_string` |
 | `package_compiler/Steps.chibi` | `CStringTextMessage` | none |  | W13 |  |
-| `package_compiler/Steps.chibi` | `NativeSources` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NativeParameter` | W7 |  | W13 | `ports: ResolvedPort[]` |
-| `package_compiler/Steps.chibi` | `NativeProvided` | W7 |  |  | `arguments: NativeArgument[]` |
-| `package_compiler/Steps.chibi` | `BindNative` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NativeExpectation` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NativeOwnerZero` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NativeOwner` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `NativeBoundValues` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NativeCallPrefix` | W7 |  | W13 | `code: Code[]` |
-| `package_compiler/Steps.chibi` | `ArgumentReadEffects` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `CallStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `NativeSources` | none |  | W13 |  |
+| `package_compiler/Steps.chibi` | `NativeParameter` | none |  | W13 |  |
+| `package_compiler/Steps.chibi` | `NativeProvided` | none |  |  |  |
+| `package_compiler/Steps.chibi` | `BindNative` | none |  | W13 |  |
+| `package_compiler/Steps.chibi` | `NativeExpectation` | none yet |  | W12, W13 | `BindNative(forest, text, call, sources, candidate, ports)` |
+| `package_compiler/Steps.chibi` | `NativeOwnerZero` | none yet |  | W12, W13 | `NumberBits(forest, text, at)` |
+| `package_compiler/Steps.chibi` | `NativeOwner` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `NativeBoundValues` | none yet |  | W12, W13 | `NumberLiteralStep(forest, text, document, constants, names, ` |
+| `package_compiler/Steps.chibi` | `NativeCallPrefix` | none yet |  | W13 | `extend(code, added_code)` |
+| `package_compiler/Steps.chibi` | `ArgumentReadEffects` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `CallStep` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
 | `package_compiler/Steps.chibi` | `UnicodeScalar` | none |  |  |  |
-| `package_compiler/Steps.chibi` | `CharConversionStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `OperatorStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `CharConversionStep` | none yet | `CharIndex` | W12, W13 | `for declared, index in types {         if (declared.kind == ` |
+| `package_compiler/Steps.chibi` | `OperatorStep` | none yet |  | W12, W13 | `NumberBits(forest, text, literal.record)` |
 | `package_compiler/Steps.chibi` | `MixedCompoundIntegers` | none |  | W12 |  |
-| `package_compiler/Steps.chibi` | `ConstantStep` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `SignedConstant` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NumberLiteralStep` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `SignCode` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `SignSlots` | W7 |  | W13 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `ParsedLiteral` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `SignedLiteral` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `Signs` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NegationSlots` | W7 |  |  | `Slot[]` |
-| `package_compiler/Steps.chibi` | `NegationCode` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `Folds` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `GroupedDecimal` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ShadowedConversion` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ConversionArgument` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ZeroDivisor` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ZeroCompoundDivisor` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `FoldStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ShiftStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ForStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `FunctionResultAssignStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `FieldStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `CellRead` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `CellWrite` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `SelfComponent` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `OwnerHandle` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `EntityComponent` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `KeyedMember` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `Component` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `ConstantMember` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `FindNativeType` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `MakeCells` | W7 |  | W12 | `Cell[]` |
+| `package_compiler/Steps.chibi` | `ConstantStep` | none yet |  | W12, W13 | `FoldConstant(forest, text, document, constants, names, packa` |
+| `package_compiler/Steps.chibi` | `SignedConstant` | none yet |  | W12, W13 | `ReadIntegerLiteral(forest, text, document, SignedLiteral(for` |
+| `package_compiler/Steps.chibi` | `NumberLiteralStep` | none yet | `FloatConstantStep` | W12, W13 | `NumberBits(forest, text, spelled)` |
+| `package_compiler/Steps.chibi` | `SignCode` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `SignSlots` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `ParsedLiteral` | none |  | W13 |  |
+| `package_compiler/Steps.chibi` | `SignedLiteral` | none |  | W13 |  |
+| `package_compiler/Steps.chibi` | `Signs` | none |  | W13 |  |
+| `package_compiler/Steps.chibi` | `NegationSlots` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `NegationCode` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `Folds` | none yet | `InferredNumberStorage` | W12, W13 | `ParseNumber(forest, text, literal)` |
+| `package_compiler/Steps.chibi` | `GroupedDecimal` | none yet | `InferredNumberStorage` | W12, W13 | `ParseNumber(forest, text, literal)` |
+| `package_compiler/Steps.chibi` | `ShadowedConversion` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `ConversionArgument` | none |  | W13 |  |
+| `package_compiler/Steps.chibi` | `ZeroDivisor` | none yet |  | W12, W13 | `Evaluate(forest, text, document, constants, names, package, ` |
+| `package_compiler/Steps.chibi` | `ZeroCompoundDivisor` | none yet | `ZeroDivisor` | W12, W13 | `Evaluate(forest, text, document, constants, names, package, ` |
+| `package_compiler/Steps.chibi` | `FoldStep` | none yet |  | W12, W13 | `SignedConstant(forest, text, document, item.node, storage)` |
+| `package_compiler/Steps.chibi` | `ShiftStep` | none yet |  | W12, W13 | `ConstantStep(forest, text, document, constants, names, packa` |
+| `package_compiler/Steps.chibi` | `ForStep` | none yet |  | W12, W13 | `SequenceCallStep([Typed(b + 1, array.storage, array.containe` |
+| `package_compiler/Steps.chibi` | `FunctionResultAssignStep` | none yet |  | W12, W13 | `NamePlaceStep(forest, document, types, view, destination, op` |
+| `package_compiler/Steps.chibi` | `FieldStep` | none yet | `ReferenceFieldStep` | W12, W13 | `code := extend(before, [DescriptorCode(ops, target, binding.` |
+| `package_compiler/Steps.chibi` | `CellRead` | none yet |  | W13 | `append(code, read)` |
+| `package_compiler/Steps.chibi` | `CellWrite` | none yet |  | W13 | `append(code, write)` |
+| `package_compiler/Steps.chibi` | `SelfComponent` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `OwnerHandle` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `EntityComponent` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `KeyedMember` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `Component` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `ConstantMember` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `FindNativeType` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `MakeCells` | none yet |  | W12 | `append(cells, ReferenceCell(target))` |
 | `package_compiler/Steps.chibi` | `ReferenceCell` | none |  | W12 |  |
 | `package_compiler/Steps.chibi` | `ComponentFacts` | none |  | W12 |  |
-| `package_compiler/Steps.chibi` | `ReferenceCells` | W7 |  | W12 | `Cell[]` |
-| `package_compiler/Steps.chibi` | `FieldReferenceHosts` | W7 |  | W12 | `Host[]` |
+| `package_compiler/Steps.chibi` | `ReferenceCells` | none yet |  | W12 | `extend(MakeCells(target, record, facts), [made, typed, offse` |
+| `package_compiler/Steps.chibi` | `FieldReferenceHosts` | none |  | W12 |  |
 | `package_compiler/Steps.chibi` | `WriteHost` | none |  | W12 |  |
-| `package_compiler/Steps.chibi` | `ReferenceCode` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `FieldReferenceSlots` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `ReferenceWriteCode` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `OwnerCode` | W7 |  | W12, W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `OwnerSlots` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `ComponentReferenceStep` | W7 |  | W12, W13 | `before: Code[]` |
-| `package_compiler/Steps.chibi` | `ComponentReadStep` | W7 |  | W12, W13 | `before: Code[]` |
-| `package_compiler/Steps.chibi` | `ComponentMakeStep` | W7 |  | W12, W13 | `before: Code[]` |
-| `package_compiler/Steps.chibi` | `EntityComponentStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `Canonical` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `ComponentAssignStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ComponentWriteStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NumberBits` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `FloatConstantStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `FoldedPoints` | W7 |  | W13 | `Code[]` |
+| `package_compiler/Steps.chibi` | `ReferenceCode` | none yet |  | W13 | `extend(code, CellRead(target.pointer_storage, result, ops, t` |
+| `package_compiler/Steps.chibi` | `FieldReferenceSlots` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `ReferenceWriteCode` | none yet |  | W13 | `append(code, Instruction(ops.host_call, 0, 0, target.data_fa` |
+| `package_compiler/Steps.chibi` | `OwnerCode` | none yet |  | W12, W13 | `extend(code, CellWrite(int(14), owner, first + 5, ops, targe` |
+| `package_compiler/Steps.chibi` | `OwnerSlots` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `ComponentReferenceStep` | none yet |  | W12, W13 | `slots := extend(OwnerSlots(target), FieldReferenceSlots(targ` |
+| `package_compiler/Steps.chibi` | `ComponentReadStep` | none yet |  | W12, W13 | `cells := extend(MakeCells(target, component, ComponentFacts(` |
+| `package_compiler/Steps.chibi` | `ComponentMakeStep` | none yet |  | W12, W13 | `slots := extend(OwnerSlots(target), [address, reference]);` |
+| `package_compiler/Steps.chibi` | `EntityComponentStep` | none yet | `ComponentReferenceStep` | W12, W13 | `slots := extend(OwnerSlots(target), FieldReferenceSlots(targ` |
+| `package_compiler/Steps.chibi` | `Canonical` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `ComponentAssignStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Steps.chibi` | `ComponentWriteStep` | none yet |  | W12, W13 | `FloatConstantStep(forest, text, document, value, field.stora` |
+| `package_compiler/Steps.chibi` | `NumberBits` | none yet | `LiteralBits` | W12, W13 | `Decimal.Malformed` |
+| `package_compiler/Steps.chibi` | `FloatConstantStep` | none yet |  | W12, W13 | `NumberBits(forest, text, spelled)` |
+| `package_compiler/Steps.chibi` | `FoldedPoints` | none |  | W12, W13 |  |
 | `package_compiler/Steps.chibi` | `FloatWidens` | none |  | W12 |  |
 | `package_compiler/Steps.chibi` | `Converts` | none |  | W12 |  |
-| `package_compiler/Steps.chibi` | `NumberCode` | W7 |  | W12, W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `NumberSlots` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `NamedResult` | W7 |  |  | `params: Param[]` |
-| `package_compiler/Steps.chibi` | `ResultSourceCall` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ResultSourceCallable` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `FindNativeCall` | W7 |  |  | `facts: NativeCallFact[]` |
-| `package_compiler/Steps.chibi` | `MemberEffects` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `EffectsStep` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Steps.chibi` | `WriteStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Steps.chibi` | `NamedResultsStep` | W7 |  | W12, W13 | `before: Code[]` |
-| `package_compiler/Steps.chibi` | `NamedReturnValues` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NamedReturnStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ResultsStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `PrefixSlots` | W7 |  | W13 | `prefix: Slot[]` |
+| `package_compiler/Steps.chibi` | `NumberCode` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `NumberSlots` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `NamedResult` | none |  |  |  |
+| `package_compiler/Steps.chibi` | `ResultSourceCall` | none |  | W13 |  |
+| `package_compiler/Steps.chibi` | `ResultSourceCallable` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `FindNativeCall` | none |  |  |  |
+| `package_compiler/Steps.chibi` | `MemberEffects` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `EffectsStep` | none yet |  | W12, W13 | `scheduled := extend([RecordEffects(effects)], next);` |
+| `package_compiler/Steps.chibi` | `WriteStep` | none yet |  | W12, W13 | `extend([RecordSemantic(node, int(3), 0), RecordEffects(int(2` |
+| `package_compiler/Steps.chibi` | `NamedResultsStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Steps.chibi` | `NamedReturnValues` | none |  | W13 |  |
+| `package_compiler/Steps.chibi` | `NamedReturnStep` | none yet |  | W12, W13 | `extend(before, [CompletionCode(ops, node)])` |
+| `package_compiler/Steps.chibi` | `ResultsStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Steps.chibi` | `PrefixSlots` | none yet |  | W13 | `extend(prefix, slots)` |
 | `package_compiler/Steps.chibi` | `Numeric` | none |  | W12 |  |
-| `package_compiler/Steps.chibi` | `NumericAggregate` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `SameFields` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `FindAggregate` | W7 |  |  | `operators: NumericOperator[]` |
-| `package_compiler/Steps.chibi` | `AggregateStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NativeTextReadStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Steps.chibi` | `NativeReadStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `NumericAggregate` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `SameFields` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `FindAggregate` | none |  |  |  |
+| `package_compiler/Steps.chibi` | `AggregateStep` | none yet |  | W12, W13 | `FloatConstantStep(forest, text, document, value, int(11), op` |
+| `package_compiler/Steps.chibi` | `NativeTextReadStep` | none yet | `ReferenceCells` | W12, W13 | `extend(MakeCells(target, record, facts), [made, typed, offse` |
+| `package_compiler/Steps.chibi` | `NativeReadStep` | none yet | `CallCode` | W12, W13 | `extend(code, CellRead(storage, first + index, ops, target, s` |
 | `package_compiler/Steps.chibi` | `NativePortType` | none |  |  |  |
-| `package_compiler/Steps.chibi` | `NativeTakes` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `Returns` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `Supported` | W7 |  | W12 | `ports: ResolvedPort[]` |
-| `package_compiler/Steps.chibi` | `Overloaded` | W7 |  | W12 | `natives: ResolvedNative[]` |
-| `package_compiler/Steps.chibi` | `Overload` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `Converted` | W7 |  |  | `types: TypeDecl[]` |
+| `package_compiler/Steps.chibi` | `NativeTakes` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `Returns` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `Supported` | none |  | W12 |  |
+| `package_compiler/Steps.chibi` | `Overloaded` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `Overload` | none yet |  | W12, W13 | `BindNative(forest, text, call, sources, candidate, ports)` |
+| `package_compiler/Steps.chibi` | `Converted` | none |  | W12, W13 |  |
 | `package_compiler/Steps.chibi` | `TypedCost` | none |  | W12 |  |
-| `package_compiler/Steps.chibi` | `LiteralCost` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `FindMake` | W7 |  |  | `makes: NativeMake[]` |
-| `package_compiler/Steps.chibi` | `MakeStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `CallCells` | W7 |  | W12 | `Cell[]` |
-| `package_compiler/Steps.chibi` | `CallCode` | W7 |  | W13 | `Code[]` |
-| `package_compiler/Steps.chibi` | `LentArgument` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NativeArgumentWork` | W7 |  | W12, W13 | `Work[]` |
-| `package_compiler/Steps.chibi` | `CallSlots` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `ParameterStep` | W7 |  | W12, W13 | `params: Param[]` |
-| `package_compiler/Steps.chibi` | `MatchStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `IsStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `LiteralCost` | none yet | `InferredNumberStorage` | W12, W13 | `ParseNumber(forest, text, literal)` |
+| `package_compiler/Steps.chibi` | `FindMake` | none |  |  |  |
+| `package_compiler/Steps.chibi` | `MakeStep` | none yet | `ValueWriteCode` | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
+| `package_compiler/Steps.chibi` | `CallCells` | none yet |  | W12 | `append(cells, result)` |
+| `package_compiler/Steps.chibi` | `CallCode` | none yet |  | W13 | `extend(code, CellRead(storage, first + index, ops, target, s` |
+| `package_compiler/Steps.chibi` | `LentArgument` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `NativeArgumentWork` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `CallSlots` | none yet |  | W12 | `append(slots, result)` |
+| `package_compiler/Steps.chibi` | `ParameterStep` | none yet | `SequenceJoined` | W12, W13 | `extend(code, tail_code)` |
+| `package_compiler/Steps.chibi` | `MatchStep` | none |  | W12, W13 |  |
+| `package_compiler/Steps.chibi` | `IsStep` | none |  | W12, W13 |  |
 | `package_compiler/Maps.chibi` | `MapCell` | none |  | W12 |  |
-| `package_compiler/Maps.chibi` | `KeyCell` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Maps.chibi` | `ItemCell` | W7 |  | W12 | `types: TypeDecl[]` |
+| `package_compiler/Maps.chibi` | `KeyCell` | none |  | W12 |  |
+| `package_compiler/Maps.chibi` | `ItemCell` | none |  | W12 |  |
 | `package_compiler/Maps.chibi` | `PartCell` | none |  | W12 |  |
 | `package_compiler/Maps.chibi` | `IsMap` | none |  | W12 |  |
-| `package_compiler/Maps.chibi` | `MapLiteralStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `HasZero` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Maps.chibi` | `MapReadStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `NotIn` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `MapMethod` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `LocalMap` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `MapStoreStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `MapDeleteStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `MapPlaceDeleteStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `MapUpdateStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `MapHasStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `MapItemCode` | W7 |  | W12, W13 | `Code[]` |
-| `package_compiler/Maps.chibi` | `MapItemCells` | W7 |  | W12 | `Cell[]` |
-| `package_compiler/Maps.chibi` | `MapForStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `AnyReference` | W7 |  |  | `params: Param[]` |
-| `package_compiler/References.chibi` | `CalledFunction` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `RootName` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `ReferencesName` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `ScopedArguments` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `ReferencedNames` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `ScopedTargets` | W7 |  | W12, W13 | `source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `KeptTarget` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `CallArgument` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `PointerAnnotation` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `CallableDeclaration` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `SiblingCallable` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `ScopedForward` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `SpellsName` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `BindingForm` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `ScopedUses` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `ScopedPointer` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Maps.chibi` | `MapLiteralStep` | none yet |  | W12, W13 | `for (part in [key, value]) {             cells.append(PartCe` |
+| `package_compiler/Maps.chibi` | `HasZero` | none |  | W12 |  |
+| `package_compiler/Maps.chibi` | `MapReadStep` | none yet |  | W12, W13 | `code := extend(CellWrite(target.pointer_storage, map.slot, a` |
+| `package_compiler/Maps.chibi` | `NotIn` | none |  | W13 |  |
+| `package_compiler/Maps.chibi` | `MapMethod` | none |  | W12, W13 |  |
+| `package_compiler/Maps.chibi` | `LocalMap` | none |  | W12, W13 |  |
+| `package_compiler/Maps.chibi` | `MapStoreStep` | none |  | W12, W13 |  |
+| `package_compiler/Maps.chibi` | `MapDeleteStep` | none |  | W12, W13 |  |
+| `package_compiler/Maps.chibi` | `MapPlaceDeleteStep` | none yet | `PointerContinue` | W12, W13 | `append(next, continuation)` |
+| `package_compiler/Maps.chibi` | `MapUpdateStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Maps.chibi` | `MapHasStep` | none yet |  | W12, W13 | `code := extend(CellWrite(target.pointer_storage, held.slot, ` |
+| `package_compiler/Maps.chibi` | `MapItemCode` | none yet |  | W12, W13 | `code := extend(CellWrite(target.pointer_storage, held, cell,` |
+| `package_compiler/Maps.chibi` | `MapItemCells` | none |  | W12 |  |
+| `package_compiler/Maps.chibi` | `MapForStep` | none yet | `MapItemCode` | W12, W13 | `code := extend(CellWrite(target.pointer_storage, held, cell,` |
+| `package_compiler/References.chibi` | `AnyReference` | none |  |  |  |
+| `package_compiler/References.chibi` | `CalledFunction` | none |  | W12, W13 |  |
+| `package_compiler/References.chibi` | `RootName` | none |  | W13 |  |
+| `package_compiler/References.chibi` | `ReferencesName` | none |  | W13 |  |
+| `package_compiler/References.chibi` | `ScopedArguments` | none |  | W12, W13 |  |
+| `package_compiler/References.chibi` | `ReferencedNames` | none |  | W12, W13 |  |
+| `package_compiler/References.chibi` | `ScopedTargets` | none |  | W12, W13 |  |
+| `package_compiler/References.chibi` | `KeptTarget` | none |  | W13 |  |
+| `package_compiler/References.chibi` | `CallArgument` | none |  | W13 |  |
+| `package_compiler/References.chibi` | `PointerAnnotation` | none |  | W13 |  |
+| `package_compiler/References.chibi` | `CallableDeclaration` | none |  | W13 |  |
+| `package_compiler/References.chibi` | `SiblingCallable` | none |  | W13 |  |
+| `package_compiler/References.chibi` | `ScopedForward` | none yet | `ScopedPointer` | W12, W13 | `append(visiting, parameter)` |
+| `package_compiler/References.chibi` | `SpellsName` | none |  | W13 |  |
+| `package_compiler/References.chibi` | `BindingForm` | none |  | W13 |  |
+| `package_compiler/References.chibi` | `ScopedUses` | none yet | `ScopedPointer` | W12, W13 | `append(visiting, parameter)` |
+| `package_compiler/References.chibi` | `ScopedPointer` | none yet |  | W12, W13 | `append(visiting, parameter)` |
 | `package_compiler/References.chibi` | `Holds` | none |  |  |  |
 | `package_compiler/References.chibi` | `DescriptorCode` | none |  | W13 |  |
 | `package_compiler/References.chibi` | `DescriptorSlot` | none |  | W12 |  |
 | `package_compiler/References.chibi` | `TypedCell` | none |  | W12 |  |
-| `package_compiler/References.chibi` | `ReadThroughCode` | W7 |  | W13 | `Code[]` |
-| `package_compiler/References.chibi` | `ReadThroughSlots` | W7 |  | W12 | `Slot[]` |
+| `package_compiler/References.chibi` | `ReadThroughCode` | none yet |  | W13 | `extend(code, CellRead(SlotStorage(storage, container, target` |
+| `package_compiler/References.chibi` | `ReadThroughSlots` | none |  | W12 |  |
 | `package_compiler/References.chibi` | `ReadThroughHost` | none |  | W12 |  |
-| `package_compiler/References.chibi` | `WriteThroughCode` | W7 |  | W13 | `Code[]` |
-| `package_compiler/References.chibi` | `WriteThroughCells` | W7 |  | W12 | `Cell[]` |
+| `package_compiler/References.chibi` | `WriteThroughCode` | none yet |  | W13 | `append(code, Instruction(ops.host_call, 0, 0, target.data_fa` |
+| `package_compiler/References.chibi` | `WriteThroughCells` | none |  | W12 |  |
 | `package_compiler/References.chibi` | `WriteThroughHost` | none |  | W12 |  |
-| `package_compiler/References.chibi` | `PlaceReadStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/References.chibi` | `BoxStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `BoxParameterStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/References.chibi` | `PlaceAssignStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/References.chibi` | `PlaceSlots` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/References.chibi` | `MakeValueCells` | W7 |  |  | `Cell[]` |
-| `package_compiler/References.chibi` | `MakeValueCode` | W7 |  | W13 | `Code[]` |
-| `package_compiler/References.chibi` | `MakeValueSlots` | W7 |  | W12 | `Slot[]` |
+| `package_compiler/References.chibi` | `PlaceReadStep` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
+| `package_compiler/References.chibi` | `BoxStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/References.chibi` | `BoxParameterStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/References.chibi` | `PlaceAssignStep` | none yet | `ReadThroughCode` | W12, W13 | `extend(code, CellRead(SlotStorage(storage, container, target` |
+| `package_compiler/References.chibi` | `PlaceSlots` | none |  | W12 |  |
+| `package_compiler/References.chibi` | `MakeValueCells` | none yet | `MakeCells` | W12 | `append(cells, ReferenceCell(target))` |
+| `package_compiler/References.chibi` | `MakeValueCode` | none yet |  | W13 | `extend(code, CellRead(target.pointer_storage, first + 9, ops` |
+| `package_compiler/References.chibi` | `MakeValueSlots` | none |  | W12 |  |
 | `package_compiler/References.chibi` | `MakeValueHost` | none |  | W12 |  |
-| `package_compiler/References.chibi` | `ReferenceArgumentStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/References.chibi` | `ReferenceArgumentStep` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
 | `package_compiler/References.chibi` | `ReferenceWatch` | none |  | W12, W13 |  |
-| `package_compiler/References.chibi` | `ReferenceFieldStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `SemanticTag` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `FindPointer` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `PointerElement` | W7 |  | W12 | `types: TypeDecl[]` |
+| `package_compiler/References.chibi` | `ReferenceFieldStep` | none yet |  | W12, W13 | `code := extend(before, [DescriptorCode(ops, target, binding.` |
+| `package_compiler/Pointers.chibi` | `SemanticTag` | none |  | W12, W13 |  |
+| `package_compiler/Pointers.chibi` | `FindPointer` | none |  | W12 |  |
+| `package_compiler/Pointers.chibi` | `PointerElement` | none |  | W12 |  |
 | `package_compiler/Pointers.chibi` | `EnsurePointer` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
-| `package_compiler/Pointers.chibi` | `TypePointerNode` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `TypeGroupNode` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `DeclarePointers` | W7 |  | W12, W13 | `TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `AddressedNames` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `TypePointerNode` | none |  | W13 |  |
+| `package_compiler/Pointers.chibi` | `TypeGroupNode` | none |  | W13 |  |
+| `package_compiler/Pointers.chibi` | `DeclarePointers` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Pointers.chibi` | `AddressedNames` | none |  | W13 |  |
 | `package_compiler/Pointers.chibi` | `PointerCell` | none |  | W12 |  |
-| `package_compiler/Pointers.chibi` | `PointerReadStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `DeclareAddressPointers` | W7 |  | W12, W13 | `TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `PointerPrefix` | W7 |  | W13 | `code: Code[]` |
-| `package_compiler/Pointers.chibi` | `ManagedLayoutError` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `ManagedBoxStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `ManagedReadStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `PointerWriteStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `ManagedAssignStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `PointerReferenceStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Pointers.chibi` | `PointerFieldStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerExpressionStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `Accepts` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `PointerPopped` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Pointers.chibi` | `PointerContinue` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Pointers.chibi` | `ManagedCompoundStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerCompoundStep` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerAssignmentStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerNilComparisonStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `NeedsPointerValue` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `PointerDestination` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `HandleComponent` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerAssignmentStart` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerProofChanged` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerGuard` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerNilOperand` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerPresent` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerNarrow` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
+| `package_compiler/Pointers.chibi` | `PointerReadStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Pointers.chibi` | `DeclareAddressPointers` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Pointers.chibi` | `PointerPrefix` | none yet |  | W13 | `extend(code, body)` |
+| `package_compiler/Pointers.chibi` | `ManagedLayoutError` | none |  | W12, W13 |  |
+| `package_compiler/Pointers.chibi` | `ManagedBoxStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Pointers.chibi` | `ManagedReadStep` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
+| `package_compiler/Pointers.chibi` | `PointerWriteStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Pointers.chibi` | `ManagedAssignStep` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
+| `package_compiler/Pointers.chibi` | `PointerReferenceStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Pointers.chibi` | `PointerFieldStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Pointers.chibi` | `PointerExpressionStep` | none yet |  | W12, W13 | `extend([Visit(source)], scheduled)` |
+| `package_compiler/Pointers.chibi` | `Accepts` | none |  | W12, W13 |  |
+| `package_compiler/Pointers.chibi` | `PointerPopped` | none |  | W13 |  |
+| `package_compiler/Pointers.chibi` | `PointerContinue` | none yet |  | W13 | `append(next, continuation)` |
+| `package_compiler/Pointers.chibi` | `ManagedCompoundStep` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
+| `package_compiler/Pointers.chibi` | `PointerCompoundStep` | none yet | `PointerPrefix` | W12, W13 | `extend(code, body)` |
+| `package_compiler/Pointers.chibi` | `PointerAssignmentStep` | none yet | `PointerPrefix` | W12, W13 | `extend(code, body)` |
+| `package_compiler/Pointers.chibi` | `PointerNilComparisonStep` | none |  | W12, W13 |  |
+| `package_compiler/Pointers.chibi` | `NeedsPointerValue` | none |  | W12 |  |
+| `package_compiler/Pointers.chibi` | `PointerDestination` | none |  | W12, W13 |  |
+| `package_compiler/Pointers.chibi` | `HandleComponent` | none |  | W12, W13 |  |
+| `package_compiler/Pointers.chibi` | `PointerAssignmentStart` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
+| `package_compiler/Pointers.chibi` | `PointerProofChanged` | none |  | W13 |  |
+| `package_compiler/Pointers.chibi` | `PointerGuard` | none |  | W13 |  |
+| `package_compiler/Pointers.chibi` | `PointerNilOperand` | none |  | W13 |  |
+| `package_compiler/Pointers.chibi` | `PointerPresent` | none |  | W12, W13 |  |
+| `package_compiler/Pointers.chibi` | `PointerNarrow` | none |  | W13 |  |
 | `package_compiler/Pointers.chibi` | `PointerWork` | none |  | W12 |  |
-| `package_compiler/Pointers.chibi` | `PointerParameterStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Pointers.chibi` | `ElidedTarget` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Pointers.chibi` | `PointerStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `PointerParameterStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Pointers.chibi` | `ElidedTarget` | none |  | W12, W13 |  |
+| `package_compiler/Pointers.chibi` | `PointerStep` | none yet | `PointerContinue` | W12, W13 | `append(next, continuation)` |
 | `package_compiler/Tasks.chibi` | `TaskCommandNode` | none |  | W13 |  |
-| `package_compiler/Tasks.chibi` | `WaitingBody` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Tasks.chibi` | `WaitingCallables` | W7 |  | W13 | `Callable[]` |
-| `package_compiler/Tasks.chibi` | `ImmediatelyAwaited` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Tasks.chibi` | `WaitingBody` | none |  | W13 |  |
+| `package_compiler/Tasks.chibi` | `WaitingCallables` | none |  | W13 |  |
+| `package_compiler/Tasks.chibi` | `ImmediatelyAwaited` | none |  | W13 |  |
 | `package_compiler/Tasks.chibi` | `CommandCode` | none |  | W13 |  |
-| `package_compiler/Tasks.chibi` | `TaskCommandStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Tasks.chibi` | `TaskStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/TaskResults.chibi` | `TaskSuccessValue` | W7 |  |  | `params: Param[]` |
-| `package_compiler/TaskResults.chibi` | `TaskResultSupport` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/TaskResults.chibi` | `TaskSuccessTag` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/TaskResults.chibi` | `TaskResultRecord` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/TaskResults.chibi` | `TaskResultSuccess` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/TaskResults.chibi` | `TaskResultDeclarations` | W7 |  | W12 | `callables: Callable[]` |
-| `package_compiler/TaskResults.chibi` | `TaskResultPattern` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/TaskResults.chibi` | `TaskResultIsStep` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/TaskResults.chibi` | `TaskResultPresent` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/TaskResults.chibi` | `TaskResultReadStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Tree.chibi` | `Member` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Tree.chibi` | `Members` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Tree.chibi` | `FirstMember` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Tree.chibi` | `NextMember` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Tree.chibi` | `Field` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Tree.chibi` | `Is` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Tree.chibi` | `HasToken` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Tree.chibi` | `Text` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Tree.chibi` | `Diagnose` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Number.chibi` | `Trimmed` | W9 |  |  | `digits: int[]` |
-| `package_compiler/Number.chibi` | `DecimalOf` | W9 |  | W12, W13 | `digits: int[]` |
-| `package_compiler/Number.chibi` | `Added` | W9 |  |  | `digits: int[]` |
-| `package_compiler/Number.chibi` | `HexDecimalOf` | W9 |  | W13 | `digits: int[]` |
-| `package_compiler/Number.chibi` | `ShiftLeft` | W9 |  | W12 | `digits: int[]` |
-| `package_compiler/Number.chibi` | `ShiftRight` | W9 |  | W12 | `digits: int[]` |
-| `package_compiler/Number.chibi` | `Shifted` | W9 |  | W12 | `digits: int[]` |
+| `package_compiler/Tasks.chibi` | `TaskCommandStep` | none |  | W12, W13 |  |
+| `package_compiler/Tasks.chibi` | `TaskStep` | none |  | W12, W13 |  |
+| `package_compiler/TaskResults.chibi` | `TaskSuccessValue` | none |  |  |  |
+| `package_compiler/TaskResults.chibi` | `TaskResultSupport` | none |  | W12 |  |
+| `package_compiler/TaskResults.chibi` | `TaskSuccessTag` | none |  | W12, W13 |  |
+| `package_compiler/TaskResults.chibi` | `TaskResultRecord` | none |  | W12 |  |
+| `package_compiler/TaskResults.chibi` | `TaskResultSuccess` | none |  |  |  |
+| `package_compiler/TaskResults.chibi` | `TaskResultDeclarations` | none |  | W12, W13 |  |
+| `package_compiler/TaskResults.chibi` | `TaskResultPattern` | none |  | W13 |  |
+| `package_compiler/TaskResults.chibi` | `TaskResultIsStep` | none |  | W12, W13 |  |
+| `package_compiler/TaskResults.chibi` | `TaskResultPresent` | none |  | W12, W13 |  |
+| `package_compiler/TaskResults.chibi` | `TaskResultReadStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Tree.chibi` | `Member` | none |  | W13 |  |
+| `package_compiler/Tree.chibi` | `Members` | none |  | W13 |  |
+| `package_compiler/Tree.chibi` | `FirstMember` | none |  | W13 |  |
+| `package_compiler/Tree.chibi` | `NextMember` | none |  | W13 |  |
+| `package_compiler/Tree.chibi` | `Field` | none |  | W13 |  |
+| `package_compiler/Tree.chibi` | `Is` | none |  | W13 |  |
+| `package_compiler/Tree.chibi` | `HasToken` | none |  | W13 |  |
+| `package_compiler/Tree.chibi` | `Text` | none |  | W13 |  |
+| `package_compiler/Tree.chibi` | `Diagnose` | none |  | W13 |  |
+| `package_compiler/Number.chibi` | `Trimmed` | none |  |  |  |
+| `package_compiler/Number.chibi` | `DecimalOf` | none yet |  | W12, W13 | `Decimal.Malformed` |
+| `package_compiler/Number.chibi` | `Added` | none yet |  |  | `extend(lead, full)` |
+| `package_compiler/Number.chibi` | `HexDecimalOf` | none yet |  | W12, W13 | `Decimal.Malformed` |
+| `package_compiler/Number.chibi` | `ShiftLeft` | none |  | W12 |  |
+| `package_compiler/Number.chibi` | `ShiftRight` | none |  | W12 |  |
+| `package_compiler/Number.chibi` | `Shifted` | none |  | W12 |  |
 | `package_compiler/Number.chibi` | `RoundsUp` | none |  |  |  |
 | `package_compiler/Number.chibi` | `RoundedInteger` | none |  |  |  |
 | `package_compiler/Number.chibi` | `PowerStep` | none |  |  |  |
 | `package_compiler/Number.chibi` | `FloatFromDouble` | none |  |  |  |
 | `package_compiler/Number.chibi` | `FloatingBits` | none |  | W12 |  |
-| `package_compiler/Number.chibi` | `DecimalBits` | W9 |  | W12 | `digits: int[]` |
-| `package_compiler/Number.chibi` | `LiteralBits` | W9 |  | W13 | `digits: int[]` |
+| `package_compiler/Number.chibi` | `DecimalBits` | none yet |  | W12 | `FloatBits.OutOfRange` |
+| `package_compiler/Number.chibi` | `LiteralBits` | none yet |  | W12, W13 | `Decimal.Malformed` |
 | `package_compiler/Number.chibi` | `LargestWholeDigit` | none |  | W13 |  |
-| `package_compiler/Number.chibi` | `IntegralOf` | W9 |  | W12, W13 | `digits: int[]` |
-| `package_compiler/Number.chibi` | `Exact` | W7 |  |  | `extend` |
-| `package_compiler/Number.chibi` | `ExactOf` | W7 | `Exact` | W12 | `extend` |
-| `package_compiler/Number.chibi` | `ExactStored` | W7 | `Exact` | W12 | `extend` |
-| `package_compiler/Number.chibi` | `ExactMax` | W7 | `Exact` | W12 | `extend` |
+| `package_compiler/Number.chibi` | `IntegralOf` | none yet |  | W12, W13 | `DecimalOf(spelling)` |
+| `package_compiler/Number.chibi` | `Exact` | none yet |  |  | `extend([sign], slice(limbs, 0, count))` |
+| `package_compiler/Number.chibi` | `ExactOf` | none yet | `Exact` | W12 | `extend([sign], slice(limbs, 0, count))` |
+| `package_compiler/Number.chibi` | `ExactStored` | none yet | `Exact` | W12 | `extend([sign], slice(limbs, 0, count))` |
+| `package_compiler/Number.chibi` | `ExactMax` | none yet | `Exact` | W12 | `extend([sign], slice(limbs, 0, count))` |
 | `package_compiler/Number.chibi` | `ExactNegative` | none |  |  |  |
 | `package_compiler/Number.chibi` | `ExactZero` | none |  |  |  |
-| `package_compiler/Number.chibi` | `Magnitude` | W7 |  |  | `slice` |
+| `package_compiler/Number.chibi` | `Magnitude` | none |  |  |  |
 | `package_compiler/Number.chibi` | `LowBits` | none |  |  |  |
 | `package_compiler/Number.chibi` | `MagnitudeBits` | none |  |  |  |
-| `package_compiler/Number.chibi` | `ExactFits` | W7 | `Magnitude` | W12 | `slice` |
-| `package_compiler/Number.chibi` | `ExactWrapped` | W7 | `Magnitude` | W12 | `slice` |
+| `package_compiler/Number.chibi` | `ExactFits` | none |  | W12 |  |
+| `package_compiler/Number.chibi` | `ExactWrapped` | none |  | W12 |  |
 | `package_compiler/Number.chibi` | `MagnitudeCompare` | none |  |  |  |
 | `package_compiler/Number.chibi` | `MagnitudeAdd` | none |  | W12 |  |
 | `package_compiler/Number.chibi` | `MagnitudeSubtract` | none |  | W12 |  |
-| `package_compiler/Number.chibi` | `MagnitudeMultiply` | W7 |  | W12 | `resize` |
-| `package_compiler/Number.chibi` | `MagnitudeShiftLeft` | W7 |  | W12 | `resize` |
+| `package_compiler/Number.chibi` | `MagnitudeMultiply` | none yet |  | W12 | `product := resize([u64(0)], length(a) + length(b) + 1);` |
+| `package_compiler/Number.chibi` | `MagnitudeShiftLeft` | none yet |  | W12 | `shifted := resize([u64(0)], count / 32);` |
 | `package_compiler/Number.chibi` | `MagnitudeShiftRight` | none |  | W12 |  |
-| `package_compiler/Number.chibi` | `MagnitudeDrops` | W7 | `MagnitudeShiftLeft` | W12 | `resize` |
-| `package_compiler/Number.chibi` | `MagnitudeDivide` | W9 |  |  | `quotient: u64[]` |
-| `package_compiler/Number.chibi` | `ExactNegate` | W7 | `Exact` |  | `extend` |
-| `package_compiler/Number.chibi` | `ExactAdd` | W7 | `Exact` | W12 | `extend` |
-| `package_compiler/Number.chibi` | `ExactSubtract` | W7 | `Exact` | W12 | `extend` |
-| `package_compiler/Number.chibi` | `ExactMultiply` | W7 | `Exact` | W12 | `extend` |
-| `package_compiler/Number.chibi` | `ExactDivide` | W9 |  |  | `quotient: u64[]` |
-| `package_compiler/Number.chibi` | `ExactShiftLeft` | W7 | `Exact` | W12 | `extend` |
-| `package_compiler/Number.chibi` | `ExactShiftRight` | W7 | `Magnitude` | W12 | `slice` |
-| `package_compiler/Number.chibi` | `Twos` | W7 | `Magnitude` | W12 | `slice` |
-| `package_compiler/Number.chibi` | `ExactBitwise` | W7 | `Exact` | W12 | `extend` |
-| `package_compiler/Optional.chibi` | `IsBoxedOptional` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `OptionalConditionPosition` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Optional.chibi` | `OptionalStepProduced` | W7 |  | W13 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `OptionalWrapStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Optional.chibi` | `SequenceNominal` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `SequenceFlags` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `SequenceElement` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `FindSequenceCollection` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `SequenceArrayType` | W7 |  |  | `types: TypeDecl[]` |
+| `package_compiler/Number.chibi` | `MagnitudeDrops` | none yet | `MagnitudeShiftLeft` | W12 | `shifted := resize([u64(0)], count / 32);` |
+| `package_compiler/Number.chibi` | `MagnitudeDivide` | none yet |  | W12 | `quotient := resize([u64(0)], length(a));` |
+| `package_compiler/Number.chibi` | `ExactNegate` | none yet | `Exact` |  | `extend([sign], slice(limbs, 0, count))` |
+| `package_compiler/Number.chibi` | `ExactAdd` | none yet | `Exact` | W12 | `extend([sign], slice(limbs, 0, count))` |
+| `package_compiler/Number.chibi` | `ExactSubtract` | none yet | `Exact` | W12 | `extend([sign], slice(limbs, 0, count))` |
+| `package_compiler/Number.chibi` | `ExactMultiply` | none yet | `Exact` | W12 | `extend([sign], slice(limbs, 0, count))` |
+| `package_compiler/Number.chibi` | `ExactDivide` | none yet |  |  | `MagnitudeDivide(Magnitude(a), Magnitude(b))` |
+| `package_compiler/Number.chibi` | `ExactShiftLeft` | none yet | `Exact` | W12 | `extend([sign], slice(limbs, 0, count))` |
+| `package_compiler/Number.chibi` | `ExactShiftRight` | none yet | `Exact` | W12 | `extend([sign], slice(limbs, 0, count))` |
+| `package_compiler/Number.chibi` | `Twos` | none |  | W12 |  |
+| `package_compiler/Number.chibi` | `ExactBitwise` | none yet | `Exact` | W12 | `extend([sign], slice(limbs, 0, count))` |
+| `package_compiler/Optional.chibi` | `IsBoxedOptional` | none |  | W12 |  |
+| `package_compiler/Optional.chibi` | `OptionalConditionPosition` | none |  | W13 |  |
+| `package_compiler/Optional.chibi` | `OptionalStepProduced` | none |  | W12, W13 |  |
+| `package_compiler/Optional.chibi` | `OptionalWrapStep` | none yet | `ValueWriteCode` | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
+| `package_compiler/Optional.chibi` | `SequenceNominal` | none |  | W12 |  |
+| `package_compiler/Optional.chibi` | `SequenceFlags` | none |  | W12 |  |
+| `package_compiler/Optional.chibi` | `SequenceElement` | none |  | W12 |  |
+| `package_compiler/Optional.chibi` | `FindSequenceCollection` | none |  | W12 |  |
+| `package_compiler/Optional.chibi` | `SequenceArrayType` | none |  | W12 |  |
 | `package_compiler/Optional.chibi` | `EnsureSequenceCollection` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
-| `package_compiler/Optional.chibi` | `SequenceSuffixType` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `SequenceHeader` | W7 |  | W13 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `DeclareSequenceCollections` | W7 |  | W12 | `TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `OptionalElement` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `FindOptional` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `OptionalType` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `OptionalTag` | W7 |  | W12, W13 | `types: TypeDecl[]` |
+| `package_compiler/Optional.chibi` | `SequenceSuffixType` | none |  | W12 |  |
+| `package_compiler/Optional.chibi` | `SequenceHeader` | none |  | W13 |  |
+| `package_compiler/Optional.chibi` | `DeclareSequenceCollections` | W10 | `EnsureSequenceCollection` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Optional.chibi` | `OptionalElement` | none |  | W12 |  |
+| `package_compiler/Optional.chibi` | `FindOptional` | none |  | W12 |  |
+| `package_compiler/Optional.chibi` | `OptionalType` | none |  | W12 |  |
+| `package_compiler/Optional.chibi` | `OptionalTag` | none |  | W12, W13 |  |
 | `package_compiler/Optional.chibi` | `EnsureOptional` | W10 |  |  | `table: ^(TypeDecl[])` |
 | `package_compiler/Optional.chibi` | `AddOptional` | W10 |  | W12 | `table: ^(TypeDecl[])` |
-| `package_compiler/Optional.chibi` | `SequenceOptionals` | W7 |  | W12 | `types: TypeDecl[]` |
+| `package_compiler/Optional.chibi` | `SequenceOptionals` | none |  | W12 |  |
 | `package_compiler/Optional.chibi` | `SequenceOptionalSlot` | none |  |  |  |
-| `package_compiler/Optional.chibi` | `DeclareSequenceOptionals` | W7 |  | W12 | `TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `OptionalFor` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `OptionalWrapCode` | W7 |  | W12, W13 | `Code[]` |
-| `package_compiler/Optional.chibi` | `OptionalWrapSlots` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Optional.chibi` | `OptionalWrapCells` | W7 |  | W12 | `Cell[]` |
+| `package_compiler/Optional.chibi` | `DeclareSequenceOptionals` | W10 | `EnsureOptional` | W12 | `table: ^(TypeDecl[])` |
+| `package_compiler/Optional.chibi` | `OptionalFor` | none |  | W12, W13 |  |
+| `package_compiler/Optional.chibi` | `OptionalWrapCode` | none |  | W12, W13 |  |
+| `package_compiler/Optional.chibi` | `OptionalWrapSlots` | none |  | W12 |  |
+| `package_compiler/Optional.chibi` | `OptionalWrapCells` | none |  | W12, W13 |  |
 | `package_compiler/Optional.chibi` | `OptionalWrapHost` | none |  | W12 |  |
 | `package_compiler/Optional.chibi` | `OptionalWrapValue` | none |  | W12 |  |
-| `package_compiler/Optional.chibi` | `OptionalPresentStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Optional.chibi` | `OptionalUnwrapStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `PayloadPlaceStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `PayloadPlaceAfter` | W7 |  | W13 | `types: TypeDecl[]` |
-| `package_compiler/Optional.chibi` | `OptionalConditionNames` | W7 |  | W12, W13 | `Name[]` |
-| `package_compiler/Optional.chibi` | `OptionalProofChanged` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Optional.chibi` | `OptionalBranchExits` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Optional.chibi` | `OptionalGuardEnd` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Optional.chibi` | `OptionalPresent` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Optional.chibi` | `OptionalNarrowStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Sequences.chibi` | `SequenceOperation` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Sequences.chibi` | `SequenceCallStep` | W7 |  | W12, W13 | `arguments: Value[]` |
-| `package_compiler/Sequences.chibi` | `SequenceStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Sequences.chibi` | `ArrayMutation` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Sequences.chibi` | `MutationStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Sequences.chibi` | `ArrayElementAssignment` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Sequences.chibi` | `ElementAssignStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Sequences.chibi` | `IgnoreSequenceValue` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Sequences.chibi` | `CopyValueStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
+| `package_compiler/Optional.chibi` | `OptionalPresentStep` | none |  | W12, W13 |  |
+| `package_compiler/Optional.chibi` | `OptionalUnwrapStep` | none |  | W12, W13 |  |
+| `package_compiler/Optional.chibi` | `PayloadPlaceStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/Optional.chibi` | `PayloadPlaceAfter` | none yet | `SequenceJoined` | W12, W13 | `extend(code, tail_code)` |
+| `package_compiler/Optional.chibi` | `OptionalConditionNames` | none |  | W12, W13 |  |
+| `package_compiler/Optional.chibi` | `OptionalProofChanged` | none |  | W13 |  |
+| `package_compiler/Optional.chibi` | `OptionalBranchExits` | none |  | W13 |  |
+| `package_compiler/Optional.chibi` | `OptionalGuardEnd` | none |  | W13 |  |
+| `package_compiler/Optional.chibi` | `OptionalPresent` | none |  | W12, W13 |  |
+| `package_compiler/Optional.chibi` | `OptionalNarrowStep` | none yet |  | W12, W13 | `OptionalUnwrapStep(types, value, 0, ops, target, continued, ` |
+| `package_compiler/Sequences.chibi` | `SequenceOperation` | none |  | W12, W13 |  |
+| `package_compiler/Sequences.chibi` | `SequenceCallStep` | none yet |  | W12, W13 | `result` |
+| `package_compiler/Sequences.chibi` | `SequenceStep` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Sequences.chibi` | `ArrayMutation` | none |  | W12, W13 |  |
+| `package_compiler/Sequences.chibi` | `MutationStep` | W7 |  | W12, W13 | `insert` |
+| `package_compiler/Sequences.chibi` | `ArrayElementAssignment` | none |  | W12, W13 |  |
+| `package_compiler/Sequences.chibi` | `ElementAssignStep` | none yet |  | W12, W13 | `SequenceCallStep([place, zero], int(5),                     ` |
+| `package_compiler/Sequences.chibi` | `IgnoreSequenceValue` | none |  | W13 |  |
+| `package_compiler/Sequences.chibi` | `CopyValueStep` | none yet | `SequenceCallStep` | W12, W13 | `result` |
 | `package_compiler/Sequences.chibi` | `PlaceVisit` | none |  | W12 |  |
 | `package_compiler/Sequences.chibi` | `DestinationVisit` | none |  | W12 |  |
-| `package_compiler/Sequences.chibi` | `PlaceResult` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Sequences.chibi` | `ReadSequencePlace` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Sequences.chibi` | `SequencePlaceStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Sequences.chibi` | `StoresLocalElement` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Sequences.chibi` | `NamePlaceStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Sequences.chibi` | `SequenceJoined` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Sequences.chibi` | `HoldsCollection` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Sequences.chibi` | `Held` | W7 |  | W12 | `Value[]` |
-| `package_compiler/Sequences.chibi` | `DropSequenceValues` | W7 |  | W12, W13 | `values: Value[]` |
-| `package_compiler/Sequences.chibi` | `CleanupSequenceValues` | W7 |  | W13 | `values: Value[]` |
-| `package_compiler/Sequences.chibi` | `DropNamesStep` | W7 |  | W12, W13 | `names: Name[]` |
-| `package_compiler/Sequences.chibi` | `DropBeforeFinish` | W7 |  | W13 | `names: Name[]` |
-| `package_compiler/Sequences.chibi` | `DropNativeResultsStep` | W7 |  | W13 | `natives: ResolvedNative[]` |
-| `package_compiler/Sequences.chibi` | `SequenceComponentPlace` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Sequences.chibi` | `SequenceKept` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Sequences.chibi` | `CleanupProjectionStep` | W7 |  | W12, W13 | `natives: ResolvedNative[]` |
-| `package_compiler/Sequences.chibi` | `CopyResultCellsStep` | W7 |  | W13 | `result_types: Value[]` |
-| `package_compiler/Sequences.chibi` | `CopyNativeResultsStep` | W7 |  | W13 | `natives: ResolvedNative[]` |
-| `package_compiler/Sequences.chibi` | `CopyFunctionResultsStep` | W7 |  | W13 | `callables: Callable[]` |
+| `package_compiler/Sequences.chibi` | `PlaceResult` | none |  | W13 |  |
+| `package_compiler/Sequences.chibi` | `ReadSequencePlace` | none yet | `SequenceCallStep` | W12, W13 | `result` |
+| `package_compiler/Sequences.chibi` | `SequencePlaceStep` | none yet | `SequenceComponentPlace` | W12, W13 | `slots := extend(OwnerSlots(target), [AddressSlot(target), De` |
+| `package_compiler/Sequences.chibi` | `StoresLocalElement` | none |  | W12, W13 |  |
+| `package_compiler/Sequences.chibi` | `NamePlaceStep` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
+| `package_compiler/Sequences.chibi` | `SequenceJoined` | none yet |  | W13 | `extend(code, tail_code)` |
+| `package_compiler/Sequences.chibi` | `HoldsCollection` | none yet |  | W12, W13 | `within := extend(visiting, [record]);` |
+| `package_compiler/Sequences.chibi` | `Held` | none yet | `HoldsCollection` | W12, W13 | `within := extend(visiting, [record]);` |
+| `package_compiler/Sequences.chibi` | `DropSequenceValues` | none yet | `SequenceCallStep` | W12, W13 | `result` |
+| `package_compiler/Sequences.chibi` | `CleanupSequenceValues` | none yet | `SequenceJoined` | W12, W13 | `extend(code, tail_code)` |
+| `package_compiler/Sequences.chibi` | `DropNamesStep` | none yet | `SequenceJoined` | W12, W13 | `extend(code, tail_code)` |
+| `package_compiler/Sequences.chibi` | `DropBeforeFinish` | none yet | `SequenceJoined` | W12, W13 | `extend(code, tail_code)` |
+| `package_compiler/Sequences.chibi` | `DropNativeResultsStep` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
+| `package_compiler/Sequences.chibi` | `SequenceComponentPlace` | none yet |  | W12, W13 | `slots := extend(OwnerSlots(target), [AddressSlot(target), De` |
+| `package_compiler/Sequences.chibi` | `SequenceKept` | none yet | `SequenceJoined` | W13 | `extend(code, tail_code)` |
+| `package_compiler/Sequences.chibi` | `CleanupProjectionStep` | none yet | `SequenceJoined` | W12, W13 | `extend(code, tail_code)` |
+| `package_compiler/Sequences.chibi` | `CopyResultCellsStep` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
+| `package_compiler/Sequences.chibi` | `CopyNativeResultsStep` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
+| `package_compiler/Sequences.chibi` | `CopyFunctionResultsStep` | none yet | `CellRead` | W12, W13 | `append(code, read)` |
 | `package_compiler/Queries.chibi` | `QueryProviderOf` | none |  |  |  |
-| `package_compiler/Queries.chibi` | `QuerySource` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryFields` | W7 |  | W12, W13 | `QueryField[]` |
+| `package_compiler/Queries.chibi` | `QuerySource` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QueryStep` | none yet |  | W12, W13 | `QueryDispatch.Ordinary` |
+| `package_compiler/Queries.chibi` | `QueryFields` | none |  | W12, W13 |  |
 | `package_compiler/Queries.chibi` | `QueryLeaf` | none |  |  |  |
-| `package_compiler/Queries.chibi` | `QueryGuardTerms` | W7 |  | W13 | `QueryTerm[]` |
-| `package_compiler/Queries.chibi` | `QueryTerms` | W7 |  | W13 | `QueryTerm[]` |
-| `package_compiler/Queries.chibi` | `QueryPointers` | W7 |  | W12 | `TypeDecl[]` |
-| `package_compiler/Queries.chibi` | `QueryRowName` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Queries.chibi` | `FindQuery` | W7 |  |  | `queries: QuerySpec[]` |
-| `package_compiler/Queries.chibi` | `QueryFieldIndex` | W7 |  |  | `fields: QueryField[]` |
-| `package_compiler/Queries.chibi` | `Relationship` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Queries.chibi` | `Ancestor` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryType` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryValueType` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryScopeName` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryPatternScope` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryPatternNames` | W7 |  | W12, W13 | `Name[]` |
-| `package_compiler/Queries.chibi` | `QuerySourceRoot` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryScope` | W7 |  | W12, W13 | `Name[]` |
-| `package_compiler/Queries.chibi` | `QueryHelperLocal` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryImpure` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryExcludes` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `CollectQuery` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `CollectQueries` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryCallStep` | W7 |  | W12, W13 | `arguments: Value[]` |
+| `package_compiler/Queries.chibi` | `QueryGuardTerms` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QueryTerms` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QueryPointers` | W10 | `EnsurePointer` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Queries.chibi` | `QueryRowName` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `FindQuery` | none |  |  |  |
+| `package_compiler/Queries.chibi` | `QueryFieldIndex` | none |  |  |  |
+| `package_compiler/Queries.chibi` | `Relationship` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `Ancestor` | none |  | W13 |  |
+| `package_compiler/Queries.chibi` | `QueryType` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Queries.chibi` | `QueryValueType` | W10 | `EmitBody` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Queries.chibi` | `QueryScopeName` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QueryPatternScope` | none |  | W13 |  |
+| `package_compiler/Queries.chibi` | `QueryPatternNames` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QuerySourceRoot` | none |  | W13 |  |
+| `package_compiler/Queries.chibi` | `QueryScope` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Queries.chibi` | `QueryHelperLocal` | none |  | W13 |  |
+| `package_compiler/Queries.chibi` | `QueryImpure` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QueryExcludes` | none |  | W13 |  |
+| `package_compiler/Queries.chibi` | `CollectQuery` | none yet |  | W12, W13 | `CollectQuery(forest, text, identity, document, types, member` |
+| `package_compiler/Queries.chibi` | `CollectQueries` | none yet |  | W12, W13 | `CollectQuery(forest, text, identity, document, types, member` |
+| `package_compiler/Queries.chibi` | `QueryCallStep` | none yet | `ValueWriteCode` | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
 | `package_compiler/Queries.chibi` | `QueryCell` | none |  | W12 |  |
-| `package_compiler/Queries.chibi` | `QueryCurrentStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Queries.chibi` | `QueryChangedStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryGetStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Queries.chibi` | `QuerySnapshotHeader` | W7 |  | W12 | `names: Name[]` |
-| `package_compiler/Queries.chibi` | `QuerySnapshotReadStep` | W7 |  | W13 | `names: Name[]` |
-| `package_compiler/Queries.chibi` | `QueryReadonlyDestination` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryAccessPresent` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryEvaluator` | W7 |  |  | `queries: QuerySpec[]` |
-| `package_compiler/Queries.chibi` | `QueryNames` | W7 |  | W12, W13 | `Name[]` |
-| `package_compiler/Queries.chibi` | `QueryFieldRow` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Queries.chibi` | `QueryGuardContext` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryGuardFunction` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryMembership` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryMembershipStep` | W7 |  | W12, W13 | `values: Value[]` |
-| `package_compiler/Queries.chibi` | `QueryBooleanPosition` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryBooleanStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Queries.chibi` | `QueryPresence` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryPresenceStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryFieldReadStep` | W7 |  | W12, W13 | `values: Value[]` |
-| `package_compiler/Queries.chibi` | `QueryExpressionStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryOwnedComponentStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Queries.chibi` | `QueryComponentStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Queries.chibi` | `QueryEvaluateStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Queries.chibi` | `QueryCurrentStep` | none yet | `ValueWriteCode` | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
+| `package_compiler/Queries.chibi` | `QueryChangedStep` | none yet | `ValueWriteCode` | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
+| `package_compiler/Queries.chibi` | `QueryGetStep` | none yet | `ValueWriteCode` | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
+| `package_compiler/Queries.chibi` | `QuerySnapshotHeader` | none |  | W12 |  |
+| `package_compiler/Queries.chibi` | `QuerySnapshotReadStep` | none yet |  | W12, W13 | `code := [Instruction(ops.local, target.pointer_storage, at.s` |
+| `package_compiler/Queries.chibi` | `QueryReadonlyDestination` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QueryAccessPresent` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QueryEvaluator` | none |  |  |  |
+| `package_compiler/Queries.chibi` | `QueryNames` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QueryFieldRow` | none |  | W12 |  |
+| `package_compiler/Queries.chibi` | `QueryGuardContext` | none |  | W13 |  |
+| `package_compiler/Queries.chibi` | `QueryGuardFunction` | none |  | W13 |  |
+| `package_compiler/Queries.chibi` | `QueryMembership` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QueryMembershipStep` | none yet | `PointerContinue` | W12, W13 | `append(next, continuation)` |
+| `package_compiler/Queries.chibi` | `QueryBooleanPosition` | none |  | W13 |  |
+| `package_compiler/Queries.chibi` | `QueryBooleanStep` | none yet |  | W12, W13 | `added := append(slots, null_type);` |
+| `package_compiler/Queries.chibi` | `QueryPresence` | none |  | W12, W13 |  |
+| `package_compiler/Queries.chibi` | `QueryPresenceStep` | none yet | `ValueWriteCode` | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
+| `package_compiler/Queries.chibi` | `QueryFieldReadStep` | none yet | `PointerContinue` | W12, W13 | `append(next, continuation)` |
+| `package_compiler/Queries.chibi` | `QueryExpressionStep` | none yet | `ValueWriteCode` | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
+| `package_compiler/Queries.chibi` | `QueryOwnedComponentStep` | none yet | `ValueWriteCode` | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
+| `package_compiler/Queries.chibi` | `QueryComponentStep` | none yet | `PointerPrefix` | W12, W13 | `extend(code, body)` |
+| `package_compiler/Queries.chibi` | `QueryEvaluateStep` | none yet | `PointerContinue` | W12, W13 | `append(next, continuation)` |
 | `package_compiler/QueryLoops.chibi` | `QueryCursorSlot` | none |  | W12 |  |
-| `package_compiler/QueryLoops.chibi` | `QueryIteratorStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/QueryLoops.chibi` | `QueryIteratorEndStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/QueryLoops.chibi` | `QueryIteratorCleanupStep` | W7 |  | W13 | `loops: Loop[]` |
-| `package_compiler/QueryLoops.chibi` | `QueryFinishLoop` | W7 |  | W13 | `input_code: Code[]` |
-| `package_compiler/QueryLoops.chibi` | `QueryCleanReturn` | W7 |  | W13 | `loops: Loop[]` |
-| `package_compiler/Behavior.chibi` | `StateValue` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Behavior.chibi` | `BehaviorNames` | W7 |  | W12 | `Name[]` |
-| `package_compiler/Behavior.chibi` | `ComponentsOf` | W7 |  | W12 | `cells: Cell[]` |
+| `package_compiler/QueryLoops.chibi` | `QueryIteratorStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/QueryLoops.chibi` | `QueryIteratorEndStep` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/QueryLoops.chibi` | `QueryIteratorCleanupStep` | none yet |  | W12, W13 | `QueryIteratorEndStep(loop.bound, ops, target, start, node)` |
+| `package_compiler/QueryLoops.chibi` | `QueryFinishLoop` | none yet | `CellWrite` | W12, W13 | `append(code, write)` |
+| `package_compiler/QueryLoops.chibi` | `QueryCleanReturn` | none yet |  | W13 | `QueryIteratorCleanupStep(loops, ops, target, cleanup_at, nod` |
+| `package_compiler/Behavior.chibi` | `StateValue` | none |  | W12, W13 |  |
+| `package_compiler/Behavior.chibi` | `BehaviorNames` | none yet |  | W12 | `append(names, owner)` |
+| `package_compiler/Behavior.chibi` | `ComponentsOf` | none |  | W12 |  |
 | `package_compiler/Behavior.chibi` | `Distinct` | none |  |  |  |
-| `package_compiler/Behavior.chibi` | `Effects` | W7 |  | W12 | `code: Code[]` |
-| `package_compiler/Behavior.chibi` | `NativeTypes` | W7 |  | W12 | `TypeDecl[]` |
-| `package_compiler/Behavior.chibi` | `NativeFields` | W7 |  |  | `TypeMember[]` |
-| `package_compiler/Behavior.chibi` | `FindEvent` | W7 |  |  | `game_events: GameEvent[]` |
-| `package_compiler/Behavior.chibi` | `ScalarPayload` | W7 |  | W12 | `event_fields: GameEventField[]` |
-| `package_compiler/Behavior.chibi` | `PayloadParams` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Behavior.chibi` | `StateNumberNode` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Behavior.chibi` | `StateNumberStorage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Behavior.chibi` | `StateType` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Behavior.chibi` | `StateDefault` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Behavior.chibi` | `Effects` | none |  | W12 |  |
+| `package_compiler/Behavior.chibi` | `NativeTypes` | none |  | W12 |  |
+| `package_compiler/Behavior.chibi` | `NativeFields` | none |  |  |  |
+| `package_compiler/Behavior.chibi` | `FindEvent` | none |  | W13 |  |
+| `package_compiler/Behavior.chibi` | `ScalarPayload` | none |  | W12 |  |
+| `package_compiler/Behavior.chibi` | `PayloadParams` | none |  | W13 |  |
+| `package_compiler/Behavior.chibi` | `StateNumberNode` | none |  | W13 |  |
+| `package_compiler/Behavior.chibi` | `StateNumberStorage` | none yet |  | W12, W13 | `ParseNumber(forest, source, node)` |
+| `package_compiler/Behavior.chibi` | `StateType` | W10 |  | W12, W13 | `types: ^(TypeDecl[])` |
+| `package_compiler/Behavior.chibi` | `StateDefault` | W14 |  | W12, W13 | `compiler_json_value_string` |
 | `package_compiler/Behavior.chibi` | `SystemStepName` | none |  | W12 |  |
-| `package_compiler/Behavior.chibi` | `CompileBehavior` | W7 |  | W13 | `natives: Native[]` |
-| `package_compiler/Behavior.chibi` | `CompileBehaviorResolved` | W7 |  | W13 | `natives: ResolvedNative[]` |
-| `package_compiler/Behavior.chibi` | `PromoteRecords` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Behavior.chibi` | `DeclareSource` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Behavior.chibi` | `SourceNames` | W7 |  | W13 | `Name[]` |
-| `package_compiler/Behavior.chibi` | `SystemNames` | W7 |  | W13 | `Name[]` |
-| `package_compiler/Behavior.chibi` | `SourceQueries` | W7 |  |  | `QuerySpec[]` |
-| `package_compiler/Behavior.chibi` | `SourceNatives` | W7 |  | W13 | `ResolvedNative[]` |
-| `package_compiler/Behavior.chibi` | `CompileSources` | W7 |  | W12, W13 | `natives: ResolvedNative[]` |
-| `package_compiler/Behavior.chibi` | `CompileBehaviorsResolved` | W7 |  |  | `natives: ResolvedNative[]` |
-| `package_compiler/Behavior.chibi` | `BehaviorRejectionResolved` | W7 |  |  | `natives: ResolvedNative[]` |
-| `package_compiler/Behavior.chibi` | `CatalogRecordValid` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Behavior.chibi` | `CatalogPorts` | W7 |  | W12 | `ResolvedPort[]` |
-| `package_compiler/Behavior.chibi` | `CatalogMakes` | W7 |  |  | `NativeMake[]` |
-| `package_compiler/Behavior.chibi` | `CompileBehaviorsWithCatalog` | W7 |  |  | `natives: CatalogNative[]` |
-| `package_compiler/Behavior.chibi` | `BehaviorRejectionWithCatalog` | W7 |  |  | `natives: CatalogNative[]` |
+| `package_compiler/Behavior.chibi` | `CompileBehavior` | none yet |  | W13 | `bytes: u8[]` |
+| `package_compiler/Behavior.chibi` | `CompileBehaviorResolved` | W10 | `DeclareSource` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Behavior.chibi` | `PromoteRecords` | none yet |  | W12, W13 | `types` |
+| `package_compiler/Behavior.chibi` | `DeclareSource` | W10 |  | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Behavior.chibi` | `SourceNames` | none yet | `BehaviorNames` | W12, W13 | `append(names, owner)` |
+| `package_compiler/Behavior.chibi` | `SystemNames` | none |  | W12, W13 |  |
+| `package_compiler/Behavior.chibi` | `SourceQueries` | none |  |  |  |
+| `package_compiler/Behavior.chibi` | `SourceNatives` | none |  | W13 |  |
+| `package_compiler/Behavior.chibi` | `CompileSources` | W10 | `DeclareSource` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Behavior.chibi` | `CompileBehaviorsResolved` | none yet |  | W12, W13 | `CompileSources(identities, sources, target, abi, names, nati` |
+| `package_compiler/Behavior.chibi` | `BehaviorRejectionResolved` | none yet |  | W12, W13 | `CompileSources(identities, sources, target, abi, names, nati` |
+| `package_compiler/Behavior.chibi` | `CatalogRecordValid` | none |  | W12 |  |
+| `package_compiler/Behavior.chibi` | `CatalogPorts` | none |  | W12 |  |
+| `package_compiler/Behavior.chibi` | `CatalogMakes` | none |  | W12 |  |
+| `package_compiler/Behavior.chibi` | `CompileBehaviorsWithCatalog` | none yet | `CompileBehaviorsResolved` | W12, W13 | `CompileSources(identities, sources, target, abi, names, nati` |
+| `package_compiler/Behavior.chibi` | `BehaviorRejectionWithCatalog` | none yet | `BehaviorRejectionResolved` | W12, W13 | `CompileSources(identities, sources, target, abi, names, nati` |
 | `package_compiler/Scalar.chibi` | `ScalarSource` | none |  | W12, W13 |  |
-| `package_compiler/Scalar.chibi` | `ScalarFailure` | W7 |  | W12, W13 | `scalar_facts__Row[]` |
-| `package_compiler/Scalar.chibi` | `ScalarAt` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarLiteral` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarFailure` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarAt` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarLiteral` | none |  | W12, W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarTypeOf` | none |  | W12, W13 |  |
-| `package_compiler/Scalar.chibi` | `ScalarStorageOf` | none |  | W12, W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarDeclares` | none |  | W12 |  |
-| `package_compiler/Scalar.chibi` | `ScalarRecordType` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Scalar.chibi` | `ScalarValueType` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Scalar.chibi` | `ScalarParam` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Scalar.chibi` | `ScalarResults` | W7 |  | W12 | `callables: Callable[]` |
-| `package_compiler/Scalar.chibi` | `ScalarSignature` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarReturned` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarResultsReturn` | W7 |  | W12, W13 | `scalar_facts__Row[]` |
-| `package_compiler/Scalar.chibi` | `ScalarProjected` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarVariable` | W7 |  |  | `names: Name[]` |
-| `package_compiler/Scalar.chibi` | `ScalarRecordOf` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarUnionOf` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarVariantMade` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarMember` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarRecordType` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarValueType` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarParam` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarResults` | none |  | W12 |  |
+| `package_compiler/Scalar.chibi` | `ScalarSignature` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarReturned` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarResultsReturn` | none yet |  | W12, W13 | `operands := [ScalarAt(forest, node, int(7), type, callable.c` |
+| `package_compiler/Scalar.chibi` | `ScalarProjected` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarVariable` | none |  |  |  |
+| `package_compiler/Scalar.chibi` | `ScalarRecordOf` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarUnionOf` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarVariantMade` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarMember` | none |  | W12, W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarComparison` | none |  | W12, W13 |  |
-| `package_compiler/Scalar.chibi` | `ScalarCompares` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarCompares` | none |  | W12, W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarArithmetic` | none |  | W12, W13 |  |
-| `package_compiler/Scalar.chibi` | `ScalarComputes` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarShifts` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarComputes` | none yet | `InferredNumberStorage` | W12, W13 | `ParseNumber(forest, text, literal)` |
+| `package_compiler/Scalar.chibi` | `ScalarShifts` | none |  | W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarCommon` | none |  | W12 |  |
 | `package_compiler/Scalar.chibi` | `ScalarSpelled` | none |  | W12 |  |
-| `package_compiler/Scalar.chibi` | `ScalarOperandStorage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarOperand` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarTextOperator` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarText` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarTextArgument` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarVariant` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarIs` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarRecordValue` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarConvert` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarConversion` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarConverted` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarShifted` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarComputed` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarOperandStorage` | none yet | `InferredNumberStorage` | W12, W13 | `ParseNumber(forest, text, literal)` |
+| `package_compiler/Scalar.chibi` | `ScalarOperand` | W14 |  | W12, W13 | `compiler_json_value_string` |
+| `package_compiler/Scalar.chibi` | `ScalarTextOperator` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarText` | none yet |  | W12, W13 | `ScalarConvert(forest, text, callables, params, callable, nam` |
+| `package_compiler/Scalar.chibi` | `ScalarTextArgument` | none yet | `InferredNumberStorage` | W12, W13 | `ParseNumber(forest, text, literal)` |
+| `package_compiler/Scalar.chibi` | `ScalarVariant` | none yet |  | W12, W13 | `ScalarElementValue(forest, text, callables, params, callable` |
+| `package_compiler/Scalar.chibi` | `ScalarIs` | none yet |  | W12, W13 | `ScalarOperand(forest, text, callables, params, callable, nam` |
+| `package_compiler/Scalar.chibi` | `ScalarRecordValue` | none yet |  | W12, W13 | `ScalarElementValue(forest, text, callables, params, callable` |
+| `package_compiler/Scalar.chibi` | `ScalarConvert` | none yet |  | W12, W13 | `ScalarOperand(forest, text, callables, params, callable, nam` |
+| `package_compiler/Scalar.chibi` | `ScalarConversion` | none yet |  | W12, W13 | `converts := [ScalarAt(forest, node, int(13), ScalarTypeOf(st` |
+| `package_compiler/Scalar.chibi` | `ScalarConverted` | none yet | `ScalarConvert` | W12, W13 | `ScalarOperand(forest, text, callables, params, callable, nam` |
+| `package_compiler/Scalar.chibi` | `ScalarShifted` | none yet |  | W12, W13 | `ScalarOperand(forest, text, callables, params, callable, nam` |
+| `package_compiler/Scalar.chibi` | `ScalarComputed` | none yet | `ScalarSides` | W12, W13 | `ScalarConvert(forest, text, callables, params, callable, nam` |
 | `package_compiler/Scalar.chibi` | `ScalarLogic` | none |  | W12, W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarNegated` | none |  |  |  |
-| `package_compiler/Scalar.chibi` | `ScalarLogical` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarSides` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarArms` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarBlock` | W7 |  | W12, W13 | `ScalarWork[]` |
-| `package_compiler/Scalar.chibi` | `ScalarBreaks` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarEnds` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarDeclared` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarDeclaredRecord` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarFieldAssigned` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarAssigned` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarPlanned` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarAsserted` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarFunction` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarNamedReturn` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarClosing` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarCells` | W7 |  | W12 | `cells: Cell[]` |
+| `package_compiler/Scalar.chibi` | `ScalarLogical` | none yet |  | W12, W13 | `ScalarOperand(forest, text, callables, params, callable, nam` |
+| `package_compiler/Scalar.chibi` | `ScalarSides` | none yet |  | W12, W13 | `ScalarConvert(forest, text, callables, params, callable, nam` |
+| `package_compiler/Scalar.chibi` | `ScalarArms` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarBlock` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarBreaks` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarEnds` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarDeclared` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Scalar.chibi` | `ScalarDeclaredRecord` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Scalar.chibi` | `ScalarFieldAssigned` | none yet |  | W12, W13 | `read := [ScalarAt(forest, object, int(7), type, ordinal, 0, ` |
+| `package_compiler/Scalar.chibi` | `ScalarAssigned` | none yet |  | W12, W13 | `ScalarConvert(forest, text, callables, params, callable, nam` |
+| `package_compiler/Scalar.chibi` | `ScalarPlanned` | none yet |  | W12, W13 | `ScalarPlan.Bare` |
+| `package_compiler/Scalar.chibi` | `ScalarAsserted` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarFunction` | none yet |  | W12, W13 | `Prologue(forest, text, params, callable, aliases, key, solid` |
+| `package_compiler/Scalar.chibi` | `ScalarNamedReturn` | none yet | `ScalarResultsReturn` | W12, W13 | `operands := [ScalarAt(forest, node, int(7), type, callable.c` |
+| `package_compiler/Scalar.chibi` | `ScalarClosing` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarCells` | none |  | W12, W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarTextNative` | none |  | W13 |  |
-| `package_compiler/Scalar.chibi` | `ScalarTextNatives` | W7 |  |  | `ResolvedNative[]` |
-| `package_compiler/Scalar.chibi` | `ScalarTextPorts` | W7 |  |  | `ResolvedPort[]` |
-| `package_compiler/Scalar.chibi` | `ScalarTextIdentities` | W7 |  |  | `natives: ResolvedNative[]` |
-| `package_compiler/Scalar.chibi` | `ScalarHosts` | W7 |  | W12 | `hosts: Host[]` |
-| `package_compiler/Scalar.chibi` | `ScalarEmits` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarModule` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarRecords` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarUnion` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarTextNatives` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarTextPorts` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarTextIdentities` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarHosts` | none |  | W12, W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarEmits` | W10 | `EmitBody` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Scalar.chibi` | `ScalarModule` | none yet |  | W12, W13 | `ScalarResults(callables, params, types, members)` |
+| `package_compiler/Scalar.chibi` | `ScalarRecords` | none yet |  | W12, W13 | `ScalarUnion(forest, types, members, declared)` |
+| `package_compiler/Scalar.chibi` | `ScalarUnion` | none |  | W12, W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarStart` | none |  | W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarPassed` | none |  | W13 |  |
-| `package_compiler/Scalar.chibi` | `ScalarMembers` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarMembers` | none |  | W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarNul` | W4 | `Bytes` | W13 | `text_bytes` |
-| `package_compiler/Scalar.chibi` | `ScalarLibrary` | W7 |  | W12, W13 | `scalar_facts__Row[]` |
-| `package_compiler/Scalar.chibi` | `ScalarJoined` | W7 |  | W13 | `documents: source_snapshot__Document[]` |
-| `package_compiler/Scalar.chibi` | `ScalarJoinedNodes` | W7 |  | W13 | `source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarEntryFirst` | W7 |  |  | `Callable[]` |
-| `package_compiler/Scalar.chibi` | `CollectScalar` | W7 |  | W13 | `scalar_facts__Row[]` |
-| `package_compiler/Scalar.chibi` | `CollectScalarPackages` | W7 |  | W13 | `scalar_facts__Row[]` |
-| `package_compiler/Scalar.chibi` | `ScalarCollect` | W7 |  | W12, W13 | `scalar_facts__Row[]` |
+| `package_compiler/Scalar.chibi` | `ScalarLibrary` | W10 | `FunctionSignature` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Scalar.chibi` | `ScalarJoined` | none |  | W13 |  |
+| `package_compiler/Scalar.chibi` | `ScalarJoinedNodes` | none yet |  | W13 | `offsets := resize([int(0)], length(forest));` |
+| `package_compiler/Scalar.chibi` | `ScalarEntryFirst` | none |  |  |  |
+| `package_compiler/Scalar.chibi` | `CollectScalar` | W10 | `SpecializePackages` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Scalar.chibi` | `CollectScalarPackages` | W10 | `SpecializePackages` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Scalar.chibi` | `ScalarCollect` | W10 | `SpecializePackages` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarElementType` | none |  | W12, W13 |  |
 | `package_compiler/ScalarArrays.chibi` | `ScalarArrayType` | none |  | W12, W13 |  |
-| `package_compiler/ScalarArrays.chibi` | `ScalarArrayShape` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarLengthOf` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarAppendOf` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarParameterRead` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarIterationCopies` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarArrayHeld` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarArrayValue` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarArrayStored` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarIndexed` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarLength` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarElementAssigned` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarAppended` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/ScalarArrays.chibi` | `ScalarLocalArray` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathFailure` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarArrayElement` | none |  | W12, W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarArrayShape` | none |  | W12, W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarArrayCall` | none |  | W12, W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarLengthOf` | none |  | W12, W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarChangeOf` | none |  | W12, W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarChangeKind` | none |  | W12, W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarBorrowed` | none |  | W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarKeptRead` | none |  | W12, W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarIterationCopies` | none |  | W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarArrayHeld` | none |  | W12, W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarMemberType` | none |  | W12, W13 |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarMemberShape` | none |  |  |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarElementShape` | none |  |  |  |
+| `package_compiler/ScalarArrays.chibi` | `ScalarElementValue` | none yet | `ScalarArrayStored` | W12, W13 | `ScalarArrayValue(forest, text, callables, params, callable, ` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarArrayValue` | none yet |  | W12, W13 | `ScalarElementValue(forest, text, callables, params, callable` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarArrayStored` | none yet |  | W12, W13 | `ScalarArrayValue(forest, text, callables, params, callable, ` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarIndexed` | none yet |  | W12, W13 | `ScalarArrayValue(forest, text, callables, params, callable, ` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarLength` | none yet |  | W12, W13 | `ScalarArrayValue(forest, text, callables, params, callable, ` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarElementPlace` | none yet |  | W12, W13 | `ScalarArrayValue(forest, text, callables, params, callable, ` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarElementAssigned` | none yet |  | W12, W13 | `ScalarElementPlace(forest, text, callables, params, callable` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarChanged` | none yet |  | W12, W13 | `ScalarArrayArgument(forest, text, callables, params, callabl` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarArrayArgument` | none yet | `ScalarArrayValue` | W12, W13 | `ScalarElementValue(forest, text, callables, params, callable` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarNativeRows` | none yet |  | W12, W13 | `ScalarArrayValue(forest, text, callables, params, callable, ` |
+| `package_compiler/ScalarArrays.chibi` | `ScalarLocalArray` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` |
+| `package_compiler/Math.chibi` | `MathFailure` | none |  | W13 |  |
 | `package_compiler/Math.chibi` | `MathName` | none |  | W12, W13 |  |
 | `package_compiler/Math.chibi` | `MathFunctionName` | none |  |  |  |
-| `package_compiler/Math.chibi` | `MathKind` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Math.chibi` | `MathValueKind` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Math.chibi` | `MathAggregate` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Math.chibi` | `MathRecord` | W7 |  | W12, W13 | `types: TypeDecl[]` |
+| `package_compiler/Math.chibi` | `MathKind` | none |  | W12, W13 |  |
+| `package_compiler/Math.chibi` | `MathValueKind` | none |  | W12, W13 |  |
+| `package_compiler/Math.chibi` | `MathAggregate` | none |  | W12, W13 |  |
+| `package_compiler/Math.chibi` | `MathRecord` | none |  | W12, W13 |  |
 | `package_compiler/Math.chibi` | `MathFieldName` | none |  | W12, W13 |  |
-| `package_compiler/Math.chibi` | `MathRequested` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `DeclareMath` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathReferences` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Math.chibi` | `MathRequired` | W7 |  | W13 | `types: TypeDecl[]` |
-| `package_compiler/Math.chibi` | `MathStateRequired` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Math.chibi` | `MathPast` | W7 |  |  | `code: Code[]` |
-| `package_compiler/Math.chibi` | `MathLoad` | W7 |  | W12, W13 | `types: TypeDecl[]` |
+| `package_compiler/Math.chibi` | `MathRequested` | none |  | W12, W13 |  |
+| `package_compiler/Math.chibi` | `DeclareMath` | none yet |  | W12, W13 | `members` |
+| `package_compiler/Math.chibi` | `MathReferences` | none |  | W12 |  |
+| `package_compiler/Math.chibi` | `MathRequired` | none yet |  | W12, W13 | `prepared[index]` |
+| `package_compiler/Math.chibi` | `MathStateRequired` | none |  | W12 |  |
+| `package_compiler/Math.chibi` | `MathPast` | none |  |  |  |
+| `package_compiler/Math.chibi` | `MathLoad` | W10 |  | W12, W13 | `code: ^(Code[])` |
 | `package_compiler/Math.chibi` | `MathOperation` | W10 |  | W12, W13 | `code: ^(Code[])` |
-| `package_compiler/Math.chibi` | `MathScalarValue` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathBuild` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Math.chibi` | `MathConstructStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathProjection` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathMemberStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathComponents` | W7 |  | W13 | `types: TypeDecl[]` |
+| `package_compiler/Math.chibi` | `MathScalarValue` | W10 |  | W12, W13 | `code: ^(Code[])` |
+| `package_compiler/Math.chibi` | `MathBuild` | none yet | `ValueWriteCode` | W12, W13 | `extend(code, SchemaWriteCode(value, slot, ops, target, node)` |
+| `package_compiler/Math.chibi` | `MathConstructStep` | W10 | `MathScalarValue` | W12, W13 | `code: ^(Code[])` |
+| `package_compiler/Math.chibi` | `MathProjection` | W10 | `MathLoad` | W12, W13 | `code: ^(Code[])` |
+| `package_compiler/Math.chibi` | `MathMemberStep` | none yet |  | W12, W13 | `math_types__Swizzle(kind, member, false)` |
+| `package_compiler/Math.chibi` | `MathComponents` | W10 |  | W13 | `code: ^(Code[])` |
 | `package_compiler/Math.chibi` | `MathHamilton` | W10 |  | W13 | `code: ^(Code[])` |
-| `package_compiler/Math.chibi` | `MathBinaryStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathNegateStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Math.chibi` | `MathCaptureStep` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Math.chibi` | `MathBinaryStep` | W10 | `MathScalarValue` | W12, W13 | `code: ^(Code[])` |
+| `package_compiler/Math.chibi` | `MathNegateStep` | W10 | `MathComponents` | W12, W13 | `code: ^(Code[])` |
+| `package_compiler/Math.chibi` | `MathCaptureStep` | W10 | `MathLoad` | W12, W13 | `code: ^(Code[])` |
 | `package_compiler/Math.chibi` | `MathFloatConstant` | W10 |  | W12, W13 | `code: ^(Code[])` |
 | `package_compiler/Math.chibi` | `MathCompare` | W10 |  | W12, W13 | `code: ^(Code[])` |
 | `package_compiler/Math.chibi` | `MathSelect` | W10 |  | W13 | `code: ^(Code[])` |
@@ -1075,21 +1092,21 @@ The census flattens two features, so neither is ever a first blocker: 635 functi
 | `package_compiler/Math.chibi` | `MathNormalizeOrZero` | W10 |  | W12, W13 | `code: ^(Code[])` |
 | `package_compiler/Math.chibi` | `MathRefract` | W10 |  | W12, W13 | `code: ^(Code[])` |
 | `package_compiler/Math.chibi` | `MathGeometricFunction` | W10 |  | W13 | `code: ^(Code[])` |
-| `package_compiler/Math.chibi` | `MathFunctionStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathNativeType` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathPlaceType` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathStaticKind` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Math.chibi` | `MathStaticType` | W7 |  | W12, W13 | `types: TypeDecl[]` |
-| `package_compiler/Math.chibi` | `MathArguments` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathBinaryCapture` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathBinaryStart` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathLocationEffects` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathAssignment` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathSelection` | W9 |  | W12, W13 | `components: int[]` |
-| `package_compiler/Math.chibi` | `MathDestinationPlan` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Math.chibi` | `MathFunctionStep` | W10 | `MathScalarValue` | W12, W13 | `code: ^(Code[])` |
+| `package_compiler/Math.chibi` | `MathNativeType` | none |  | W12, W13 |  |
+| `package_compiler/Math.chibi` | `MathPlaceType` | none yet |  | W12, W13 | `math_types__Binary(Text(forest, text, Field(forest, at, "ope` |
+| `package_compiler/Math.chibi` | `MathStaticKind` | none |  | W12, W13 |  |
+| `package_compiler/Math.chibi` | `MathStaticType` | none |  | W12, W13 |  |
+| `package_compiler/Math.chibi` | `MathArguments` | none yet | `MathPlaceType` | W12, W13 | `math_types__Binary(Text(forest, text, Field(forest, at, "ope` |
+| `package_compiler/Math.chibi` | `MathBinaryCapture` | none yet | `MathPlaceType` | W12, W13 | `math_types__Binary(Text(forest, text, Field(forest, at, "ope` |
+| `package_compiler/Math.chibi` | `MathBinaryStart` | none |  | W12, W13 |  |
+| `package_compiler/Math.chibi` | `MathLocationEffects` | none yet | `MathPlaceType` | W12, W13 | `math_types__Binary(Text(forest, text, Field(forest, at, "ope` |
+| `package_compiler/Math.chibi` | `MathAssignment` | none yet | `MathPlaceType` | W12, W13 | `math_types__Binary(Text(forest, text, Field(forest, at, "ope` |
+| `package_compiler/Math.chibi` | `MathSelection` | none |  | W12, W13 |  |
+| `package_compiler/Math.chibi` | `MathDestinationPlan` | none yet |  | W12, W13 | `MathSelection(kind, member, false)` |
 | `package_compiler/Math.chibi` | `MathDistinctDestinations` | none |  |  |  |
-| `package_compiler/Math.chibi` | `MathAssignmentStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Math.chibi` | `MathAssignmentWrite` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Math.chibi` | `MathAssignmentStep` | none yet |  | W12, W13 | `MathDestinationPlan(forest, text, types, members, callables,` |
+| `package_compiler/Math.chibi` | `MathAssignmentWrite` | W10 | `MathComponents` | W12, W13 | `code: ^(Code[])` |
 | `math_types/Types.chibi` | `Kind` | none |  | W12 |  |
 | `math_types/Types.chibi` | `Name` | none |  | W12 |  |
 | `math_types/Types.chibi` | `IsVector` | none |  | W12 |  |
@@ -1103,7 +1120,7 @@ The census flattens two features, so neither is ever a first blocker: 635 functi
 | `math_types/Types.chibi` | `Negate` | none |  | W12 |  |
 | `math_types/Types.chibi` | `Component` | none |  |  |  |
 | `math_types/Types.chibi` | `PositionAlphabet` | none |  |  |  |
-| `math_types/Types.chibi` | `Swizzle` | W9 |  | W12, W13 | `components: int[]` |
+| `math_types/Types.chibi` | `Swizzle` | none |  | W12, W13 |  |
 | `math_types/Functions.chibi` | `Recoverable` | none |  |  |  |
 | `math_types/Functions.chibi` | `UnaryMemberwise` | none |  |  |  |
 | `math_types/Functions.chibi` | `BinaryMemberwise` | none |  |  |  |

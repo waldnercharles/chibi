@@ -142,9 +142,9 @@ class ProfileTests(unittest.TestCase):
             self.assertTrue(block.startswith(f'    name: {name}\n'))
             block = block.split('\n  native-targets:', 1)[0] if job == 'native-macos' else block.split('\n  native-macos:', 1)[0]
             self.assertIn('timeout-minutes: 45', block)
-            self.assertIn('make test-tools', block)
-            groups = ['python3 tools/test_policy.py group ' + name
-                      for name in ('native', 'projects', 'language')]
+            self.assertIn('sh tools/build.sh test --build-host build-release/sdk/chibi-build-host short', block)
+            groups = ['sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native',
+                      'sh tools/build.sh test --build-host build-release/sdk/chibi-build-host projects language']
             positions = [block.index(command) for command in groups]
             self.assertEqual(positions, sorted(positions))
             self.assertTrue(all(block.count(command) == 1 for command in groups))
@@ -164,7 +164,7 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(block.count('ASSET_GENERATOR_HOSTS=build-release/sdk'), 1)
             self.assertIn('BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"', block[build:verify])
             if job == 'native':
-                parity = block.index('python3 tools/test_policy.py tool build-graph-debug-optimization')
+                parity = block.index('build-host "$CHIBI_BUILD_HOST" build-graph-debug-optimization')
                 self.assertLess(verify, parity)
         diagnostics = ['Capture macOS facade identities', 'Preserve macOS facade identities']
         optional = []

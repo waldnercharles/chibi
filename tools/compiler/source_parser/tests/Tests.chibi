@@ -29,6 +29,16 @@ AcceptsErrorUnion :: () {
 }
 
 @test
+AcceptsForeignImport :: () {
+    Accepts("package p\nforeign import libc \"system:c\"\n");
+}
+
+@test
+AcceptsForeignBlock :: () {
+    Accepts("package p\nforeign import probe \"libprobe.a\"\nforeign probe {\n    chibi_probe_add :: (a: i32, b: i32) -> i32\n    chibi_probe_reset :: ()\n    chibi_probe_open :: (flags: u32) -> rawptr\n}\n");
+}
+
+@test
 AcceptsTestFunction :: () {
     Accepts("package p\n\n@test\npub T :: () {\n}\n");
 }

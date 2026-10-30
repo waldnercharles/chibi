@@ -949,6 +949,64 @@ TEST_CASE(driver_plans_the_engine_build_steps)
     return true;
 }
 
+/* `chibi build test` runs the selectors of tools/tests.tsv; --list names them
+ * and --dry-run prints the command each selector would run. */
+static bool driver_test(const char *const *options, char **log)
+{
+    const char *argv[24] = { host_path,
+                             "--root",
+                             CHIBI_SOURCE_ROOT,
+                             "--source",
+                             "tools/toolchain/Driver.chibi",
+                             "--core",
+                             "packages/core",
+                             "--entry",
+                             "Main",
+                             "--timeout-ms",
+                             "50000",
+                             "--",
+                             "build",
+                             "test" };
+    int count = 14;
+    for (int i = 0; options[i]; i++) {
+        assert(count < 23);
+        argv[count++] = options[i];
+    }
+    argv[count] = NULL;
+    int status = tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS);
+    *log = tool_read(log_path);
+    return *log && status == 0;
+}
+
+TEST_CASE(driver_lists_and_plans_test_selectors)
+{
+    char *log = NULL;
+    const char *const list[] = { "--list", NULL };
+    REQUIRE(driver_test(list, &log));
+    bool listed = strstr(log, "tool chibi-cli") &&
+                  strstr(log, "group native") && strstr(log, "group language");
+    free(log);
+    REQUIRE(listed);
+    const char *const plan[] = { "--dry-run",       "--build", "out",
+                                 "--release-build", "rel",     "chibi-cli",
+                                 "projects",        NULL };
+    REQUIRE(driver_test(plan, &log));
+    bool planned = strstr(log, "chibi-cli: env ") &&
+                   strstr(log, "/out/test/tools/test_tools --chibi-cli /") &&
+                   strstr(log, "CHIBI_CLI=") && strstr(log, "/rel/sdk/chibi ");
+    if (!planned) {
+        fprintf(stderr, "unexpected test plan: %s\n", log);
+    }
+    free(log);
+    REQUIRE(planned);
+    const char *const unknown[] = { "no-such-selector", NULL };
+    REQUIRE(!driver_test(unknown, &log));
+    bool rejected = log && strstr(log, "unknown selector 'no-such-selector'");
+    free(log);
+    REQUIRE(rejected);
+    return true;
+}
+
 /* A separate route: another commands-only run of the whole graph takes
  * seconds. */
 void test_build_graph_programs(const char *host)
@@ -956,6 +1014,7 @@ void test_build_graph_programs(const char *host)
     set_up(host);
     RUN_TEST_CASE(named_programs_build_what_they_run);
     RUN_TEST_CASE(driver_plans_the_engine_build_steps);
+    RUN_TEST_CASE(driver_lists_and_plans_test_selectors);
     RUN_TEST_CASE(invalid_arguments_fail_before_writing_commands);
     RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
     RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);

@@ -74,7 +74,6 @@ void test_runtime_sdk(const char *host);
 #endif
 void test_tool_third_party_publish();
 void test_tool_collab();
-void test_tool_validation_plan();
 void test_tool_web_storage();
 void test_tool_wasm_browser();
 void test_tool_types();
@@ -447,7 +446,6 @@ int main(int argc, char **argv)
     bool third_party_publish = argc == 2 && !strcmp(argv[1], "--third-party-publish");
     bool collab = argc == 2 && !strcmp(argv[1], "--collab");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
-    bool validation_plan = argc == 2 && !strcmp(argv[1], "--validation-plan");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
@@ -490,14 +488,13 @@ int main(int argc, char **argv)
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
 #endif
     if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
-        !package && !third_party_publish && !collab && !unit &&
-        !validation_plan && !web_storage && !wasm_browser && !query_benchmark &&
-        !scene && !native_values && !arena && !types && !box3d && !mesh_files &&
-        !model_import && !model_graphs && !model_catalog && !shader_graphs &&
-        !persistent_store && !whole_math && !whole_integer && !whole_conversion &&
-        !whole_select && !system_schedule && !scheduler_benchmark &&
-        !source_systems && !source_query_rows && !graph_document &&
-        !graph_presentation && !graph_functions && !vector_nodes) {
+        !package && !third_party_publish && !collab && !unit && !web_storage &&
+        !wasm_browser && !query_benchmark && !scene && !native_values && !arena &&
+        !types && !box3d && !mesh_files && !model_import && !model_graphs &&
+        !model_catalog && !shader_graphs && !persistent_store && !whole_math &&
+        !whole_integer && !whole_conversion && !whole_select && !system_schedule &&
+        !scheduler_benchmark && !source_systems && !source_query_rows &&
+        !graph_document && !graph_presentation && !graph_functions && !vector_nodes) {
         fprintf(
             stderr,
             "Usage: %s [--package | "
@@ -622,8 +619,6 @@ int main(int argc, char **argv)
         test_tool_scene();
     } else if (unit) {
         test_tool_execution_policy();
-    } else if (validation_plan) {
-        test_tool_validation_plan();
     } else if (web_storage) {
         test_tool_web_storage();
     } else if (query_benchmark) {
@@ -645,7 +640,6 @@ int main(int argc, char **argv)
         test_tool_package();
         test_tool_third_party_publish();
         test_tool_collab();
-        test_tool_validation_plan();
 #ifdef CHIBI_TEST_REFLECT
         test_tool_reflect();
 #endif

@@ -46,7 +46,7 @@ The smallest complete example is Play Sound:
    `apush(selected, ...)` in `src/host/native_default.c`.
 5. Test it from source in a tool selector (for example
    `test/runtime/source_features.c`, run with
-   `python3 tools/test_policy.py tool source-native-features`), on both the VM
+   `chibi build test source-native-features`), on both the VM
    and SLJIT backends.
 
 ## Change saved projects

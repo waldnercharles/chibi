@@ -268,26 +268,14 @@ TEST_CASE(reflection_build_outputs_preserve_sdk_source_identity)
     assert(!mkdir(filename, 0700));
     path(filename, source, "tools/bootstrap/seed.sh");
     tool_write(filename, "#!/bin/sh\nexit 0\n");
-    path(filename, source, "tools/configure.sh");
+    path(filename, source, "tools/bootstrap.sh");
     tool_write(
         filename,
         "#!/bin/sh\nset -eu\n"
-        "test \"$1\" = sdk-native\n"
-        "mkdir -p \"$2\"\n"
-        "printf 'generated configuration\\n' > \"$2/CMakeCache.txt\"\n"
+        "mkdir -p \"$(dirname \"$1\")\"\n"
+        "cp host-template \"$1\"\n"
+        "chmod 700 \"$1\"\n"
     );
-    path(filename, source, "bin");
-    assert(!mkdir(filename, 0700));
-    path(filename, source, "bin/cmake");
-    tool_write(
-        filename,
-        "#!/bin/sh\nset -eu\n"
-        "test \"$1\" = --build\n"
-        "mkdir -p \"$2/bin\"\n"
-        "cp host-template \"$2/bin/chibi-build-host\"\n"
-        "chmod 700 \"$2/bin/chibi-build-host\"\n"
-    );
-    assert(!chmod(filename, 0700));
     path(filename, source, "host-template");
     tool_write(
         filename,
@@ -391,28 +379,18 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     path(filename, source, "fixture-host");
     tool_write(filename, host);
     assert(!chmod(filename, 0700));
-    path(filename, source, "tools/configure.sh");
+    path(filename, source, "tools/bootstrap.sh");
     tool_write(
         filename,
         "#!/bin/sh\nset -eu\n"
-        "printf 'configure\\n' >> calls\n"
-        "printf '%s\\n' \"$@\" > configure-arguments\n"
-        "if [ -f configure-fails ]; then exit 34; fi\n"
+        "printf 'bootstrap\\n' >> calls\n"
+        "printf '%s\\n' \"$@\" > bootstrap-arguments\n"
+        "if [ -f bootstrap-fails ]; then exit 35; fi\n"
+        "mkdir -p \"$(dirname \"$1\")\"\n"
+        "cp host-template \"$1\"\n"
+        "chmod 700 \"$1\"\n"
+        "rm -f \"$1.old\"\n"
     );
-    path(filename, bin, "cmake");
-    tool_write(
-        filename,
-        "#!/bin/sh\nset -eu\n"
-        "printf 'build\\n' >> calls\n"
-        "printf '%s\\n' \"$@\" > build-arguments\n"
-        "if [ -f build-fails ]; then exit 35; fi\n"
-        "test \"$1\" = --build\n"
-        "mkdir -p \"$2/bin\"\n"
-        "cp host-template \"$2/bin/chibi-build-host\"\n"
-        "chmod 700 \"$2/bin/chibi-build-host\"\n"
-        "rm -f \"$2/bin/chibi-build-host.old\"\n"
-    );
-    assert(!chmod(filename, 0700));
     snprintf(search, sizeof search, "PATH=%s:%s", bin, getenv("PATH"));
     const char *args[] = { "env",
                            search,
@@ -430,9 +408,7 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     REQUIRE(tool_run(args, source, log_path) == 0);
     REQUIRE(tool_run(args, source, log_path) == 0);
     REQUIRE(file_equals(calls, "graph\ngraph\n"));
-    path(filename, source, "configure-arguments");
-    REQUIRE(access(filename, F_OK) != 0);
-    path(filename, source, "build-arguments");
+    path(filename, source, "bootstrap-arguments");
     REQUIRE(access(filename, F_OK) != 0);
     path(filename, source, "graph-program");
     REQUIRE(file_equals(filename, "./fixture-host\n"));
@@ -467,32 +443,16 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     path(filename, source, "fixture-host");
     assert(!unlink(filename));
     tool_write(calls, "");
-    path(filename, source, "configure-fails");
+    path(filename, source, "bootstrap-fails");
     tool_write(filename, "");
     REQUIRE(tool_run(args, source, log_path) != 0);
-    REQUIRE(file_equals(calls, "configure\n"));
-    assert(!unlink(filename));
-    tool_write(calls, "");
-    path(filename, source, "build-fails");
-    tool_write(filename, "");
-    REQUIRE(tool_run(args, source, log_path) != 0);
-    REQUIRE(file_equals(calls, "configure\nbuild\n"));
+    REQUIRE(file_equals(calls, "bootstrap\n"));
     assert(!unlink(filename));
     tool_write(calls, "");
     REQUIRE(tool_run(args, source, log_path) == 0);
-    REQUIRE(file_equals(calls, "configure\nbuild\ngraph\n"));
-    path(filename, source, "configure-arguments");
-    REQUIRE(file_equals(
-        filename,
-        "sdk-native\nreflection build/host\n-DCMAKE_C_COMPILER=/fixture/cc\n"
-        "-DCMAKE_CXX_COMPILER=/fixture/c++\n-DCMAKE_BUILD_TYPE=Release\n"
-        "-DCHIBI_SDK_BUILD_COMPILER=ON\n-DCHIBI_SDK_BUILD_NATIVE=OFF\n"
-        "-DCHIBI_SDK_BUILD_DESKTOP=OFF\n"
-    ));
-    path(filename, source, "build-arguments");
-    REQUIRE(
-        file_equals(filename, "--build\nreflection build/host\n--target\nchibi-build-host\n--parallel\n3\n")
-    );
+    REQUIRE(file_equals(calls, "bootstrap\ngraph\n"));
+    path(filename, source, "bootstrap-arguments");
+    REQUIRE(file_equals(filename, "reflection build/host/bin/chibi-build-host\n"));
     path(filename, source, "graph-arguments");
     REQUIRE(file_equals(filename, expected));
     path(filename, source, "graph-program");
@@ -516,7 +476,7 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     tool_write(filename, "");
     tool_write(calls, "");
     REQUIRE(tool_run(args, source, log_path) == 0);
-    REQUIRE(file_equals(calls, "configure\nbuild\ngraph\n"));
+    REQUIRE(file_equals(calls, "bootstrap\ngraph\n"));
     return true;
 }
 

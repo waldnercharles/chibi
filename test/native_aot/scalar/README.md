@@ -75,7 +75,8 @@ truncates toward zero, saturates at the type's bounds and gives 0 for NaN, in
 either mode. A floating literal is the binary64 nearest it, and a `number` one
 the binary32 nearest that, as stage zero reads it.
 
-Arrays of numbers, `bool`, strings, and the records the source declares
+Records and unions hold numbers, `bool`, strings, arrays, and other records and unions
+by value, none holding itself. Arrays of numbers, `bool`, strings, and the records the source declares
 (`int[]`, `string[]`, `Point[]`, one level) are native values: `{ length, capacity, elements }`, whose elements the call's
 context allocates and the call's heap frees. A function takes and returns
 them, declares them with `a: T[] = [...]` or `a := f(...)`, reads `a[i]`,

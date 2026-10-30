@@ -2705,6 +2705,9 @@ ArgumentReadEffects :: (types: TypeDecl[], members: TypeMember[], arguments: Val
     return 0;
 }
 
+// Finish marker of a call whose arguments are labeled or reordered; the
+// char conversion's is 8, and the math markers are in Math.chibi.
+LabeledCall: int : 5;
 // Calls of the package's functions and of natives. Arguments go to fresh data
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
@@ -3178,7 +3181,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
         finish := Resume(item.node, 1, found, count);
         if (labeled) {
-            finish.c = 8;
+            finish.c = LabeledCall;
         }
         next.append(finish);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
@@ -3392,7 +3395,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     // The given arguments, then the defaults of those the call omits.
     arguments: Value[] = slice(values, first, count);
-    if (item.c == 8) {
+    if (item.c == LabeledCall) {
         source_arguments := Members(forest, Field(forest, item.node, "arguments"));
         ordered := arguments;
         ordinal: int = 0;

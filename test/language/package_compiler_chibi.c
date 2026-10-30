@@ -147,7 +147,7 @@ typedef struct
     sample_group group;
     bool core, math, updates, boxed, game, moves, aliases, variants, built,
         lends, drops, same_rejection, c_string_probe, host_effects,
-        update_order, debug_metadata, traced, char_checks, foreign;
+        update_order, debug_metadata, traced, char_checks;
     /* Its calls run with the probe natives linked, take no arguments and
      * return one int. */
     bool probe_calls;
@@ -1148,36 +1148,6 @@ static const sample samples[] = {
                 "    while (length(parts) < 4 - 1) { parts.append(\"c\"); n += 1; }\n"
                 "    return n + length(parts);\n}",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[4]" } } },
-    /* Foreign functions are natives the sources declare. Stage zero has no
-     * foreign blocks, so these samples have no oracle; the closure is not run
-     * because no target links the library. */
-    { .name = "foreign functions are natives the target must link",
-      .group = TYPE_SAMPLES,
-      .foreign = true,
-      .source = "package facts\nforeign import probe \"libprobe.a\"\n"
-                "foreign probe {\n"
-                "    chibi_probe_add :: (a: i32, b: i32) -> i32\n"
-                "    chibi_probe_scale :: (value: f64, by: f64) -> f64\n"
-                "    chibi_probe_open :: (flags: u32) -> rawptr\n"
-                "}\n"
-                "Run :: () -> int { return chibi_probe_add(1, 2); }" },
-    { .name = "foreign block names an import",
-      .group = TYPE_SAMPLES,
-      .source = "package facts\nforeign missing {\n"
-                "    chibi_probe_add :: (a: i32, b: i32) -> i32\n}\n"
-                "Run :: () -> int { return 1; }",
-      .message = "No foreign import named 'missing'",
-      .line = 2,
-      .column = 9 },
-    { .name = "foreign parameters are plain scalars",
-      .group = TYPE_SAMPLES,
-      .source = "package facts\nforeign import probe \"libprobe.a\"\n"
-                "foreign probe {\n"
-                "    chibi_probe_name :: (text: string) -> i32\n}\n"
-                "Run :: () -> int { return 1; }",
-      .message = "A foreign parameter is an integer, float, bool or rawptr",
-      .line = 4,
-      .column = 26 },
     { .name = "core-math-imported-values",
       .group = IMPORT_SAMPLES,
       .math = true,
@@ -7815,7 +7785,7 @@ static bool run_sample_table(sample_group group, int b, const sample *table, int
                    (!s->built || builds_results(bytes, length)) &&
                    (!s->lends || lends_native_values(bytes, length)) &&
                    (!s->drops || drops_only_collections(bytes, length)) &&
-                   (s->foreign || (b && !s->host_effects && !s->debug_metadata) ||
+                   ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      (s->math || points_like_oracle(bytes, length, s->host_effects))));
         bool hosted = !s->traced || !s->c_string_probe;
@@ -12417,15 +12387,14 @@ static const struct
       "return 0; }\n",
       "scalar proof binds payloads only in switch arms",
       ".Box(w)" },
-    { "package scalar\nNamed :: union { Tag(items: int[]) }\nMain :: () -> int "
+    { "package scalar\nNamed :: union { Tag(items: [int: int]) }\nMain :: () -> int "
       "{ return 1; }\n",
-      "scalar proof requires number, bool and string union payloads",
-      "items: int[]" },
-    { "package scalar\nPoint :: struct { x: int; }\nWrapped :: union { Of(p: "
-      "Point) }\n"
+      "scalar proof requires number, bool, string, array, record and union payloads",
+      "items: [int: int]" },
+    { "package scalar\nWrapped :: union { Of(p: ^int) }\n"
       "Main :: () -> int { return 1; }\n",
-      "scalar proof requires number, bool and string union payloads",
-      "p: Point" },
+      "scalar proof requires number, bool, string, array, record and union payloads",
+      "p: ^int" },
     { "package scalar\nMain :: () -> int { return text_byte_length(Value: "
       "\"ab\"); }\n",
       "scalar proof passes a text native's arguments in order",
@@ -12636,7 +12605,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 66
+    SCALAR_ACCEPTED_CASES = 69
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -17397,7 +17366,9 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
         REQUIRE(
             compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
         );
-        if (strncmp(pin_text(name).bytes, "array_", strlen("array_"))) {
+        const char *named = pin_text(name).bytes;
+        if (strncmp(named, "array_", strlen("array_")) && strncmp(named, "union_array", strlen("union_array")) &&
+            strncmp(named, "record_", strlen("record_"))) {
             arena_free(&detached);
             continue;
         }
@@ -17433,7 +17404,7 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
         ran++;
         arena_free(&detached);
     }
-    REQUIRE(ran >= 13);
+    REQUIRE(ran >= 16);
     /* Index 3 is past the three elements, as is -1. */
     static const char *const OUTSIDE[] = {
         "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n  "

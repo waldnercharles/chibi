@@ -15,7 +15,7 @@ enum
 };
 struct prepared_record_cache
 {
-    size_t name_bytes, validation_work, hash_work;
+    size_t name_bytes, validation_work;
     union
     {
         arena *owner;
@@ -26,6 +26,8 @@ struct prepared_record_cache
     /* The type at this position in name order, and in id order. */
     int by_name, by_id;
     bool authored;
+    /* Some field is a struct, so the layout owns or follows child layouts. */
+    bool nested;
     type_field *fields;
     int *children;
     int count;
@@ -332,12 +334,8 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         return;
     }
     if (!w->reading) {
-        cache->hash_work = 8 * (names + (size_t)count + 1);
         for (int i = 0; i < count; i++) {
-            if (v->record->type.fields[i].type == PIN_STRUCT) {
-                cache->hash_work = cache->validation_work;
-                break;
-            }
+            cache->nested = cache->nested || v->record->type.fields[i].type == PIN_STRUCT;
         }
         if (work(c, sizeof cache->validated_alias)) {
             cache->validated_alias = v->record;
@@ -348,16 +346,8 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
     if (w->error) {
         return;
     }
-    /* Flat headers hash only fixed field metadata and names. Duplicate-name
-     * validation is quadratic, but only construction/copy and the final
-     * verifier perform it. Nested native layouts retain the existing charge:
-     * their hash follows catalog descriptors beyond these owned field names. */
-    cache->hash_work = 8 * (names + (size_t)count + 1);
     for (int i = 0; i < count; i++) {
-        if (fields[i].type == PIN_STRUCT) {
-            cache->hash_work = cache->validation_work;
-            break;
-        }
+        cache->nested = cache->nested || fields[i].type == PIN_STRUCT;
     }
     cache->fields = fields;
     cache->children = children;
@@ -460,20 +450,6 @@ static void materialize_records(prepared_context *c)
                 return;
             }
             v->name = v->record->type.name;
-            /* Hashing flat metadata does not visit descriptor allocation
-             * padding. Nested authored layouts add their actual hash walk. */
-            for (int j = 0; j < cache->count; j++) {
-                int child = cache->children[j];
-                if (child < 0) {
-                    continue;
-                }
-                size_t child_work = c->records[child].hash_work;
-                if (child_work > SIZE_MAX - cache->hash_work) {
-                    c->wire.error = "prepared authored hash work overflow";
-                    return;
-                }
-                cache->hash_work += child_work;
-            }
             remaining--;
         }
         if (before == remaining && !c->wire.error) {
@@ -501,22 +477,8 @@ static int name_position(prepared_context *c, const char *name, size_t bytes, in
     }
     return low;
 }
-/* The first of the `count` id-ordered types whose id is not below `id`,
- * found in log2(count) comparisons, each charged as eight bytes. */
-static int id_position(prepared_context *c, uint64_t id, int count)
-{
-    int low = 0, high = count;
-    while (low < high && work(c, sizeof id)) {
-        int middle = low + (high - low) / 2;
-        if (c->plan->types[c->records[middle].by_id].id < id) {
-            low = middle + 1;
-        } else {
-            high = middle;
-        }
-    }
-    return low;
-}
-static bool index_type(prepared_context *c, int i)
+/* Checks one requirement and starts its two orders as the identity. */
+static bool check_type(prepared_context *c, int i)
 {
     execution_type_requirement *v = &c->plan->types[i];
     c->records[i].name_bytes = name_bytes(c, v->name);
@@ -525,27 +487,77 @@ static bool index_type(prepared_context *c, int i)
         c->wire.error = "invalid prepared type requirement";
         return false;
     }
-    /* Insertion moves are charged as well as comparisons, including reverse
-     * order. Writers build the complete index before encoding child links. */
-    bool found;
-    int at = name_position(c, v->name, c->records[i].name_bytes, i, &found);
-    int id_at = id_position(c, v->id, i);
-    if (!work(c, (size_t)(i - at + i - id_at) * sizeof c->records->by_name)) {
-        return false;
-    }
-    if (found || (id_at < i && c->plan->types[c->records[id_at].by_id].id == v->id)) {
-        c->wire.error = "duplicate prepared type requirement";
-        return false;
-    }
-    for (int k = i; k > at; k--) {
-        c->records[k].by_name = c->records[k - 1].by_name;
-    }
-    c->records[at].by_name = i;
-    for (int k = i; k > id_at; k--) {
-        c->records[k].by_id = c->records[k - 1].by_id;
-    }
-    c->records[id_at].by_id = i;
+    c->records[i].by_name = c->records[i].by_id = i;
     return true;
+}
+static int *order_slot(prepared_context *c, bool by_name, int k)
+{
+    return by_name ? &c->records[k].by_name : &c->records[k].by_id;
+}
+/* Whether requirement `a` sorts before `b`. A name comparison reads at most
+ * the shorter name and an id comparison eight bytes; both are charged. */
+static bool sorts_before(prepared_context *c, bool by_name, int a, int b)
+{
+    const execution_type_requirement *x = &c->plan->types[a],
+                                     *y = &c->plan->types[b];
+    if (!by_name) {
+        return work(c, sizeof x->id) && x->id < y->id;
+    }
+    size_t shorter = c->records[a].name_bytes < c->records[b].name_bytes
+                       ? c->records[a].name_bytes
+                       : c->records[b].name_bytes;
+    return work(c, shorter) && strcmp(x->name, y->name) < 0;
+}
+static void sift_down(prepared_context *c, bool by_name, int count, int at)
+{
+    while (!c->wire.error && 2 * at + 1 < count) {
+        int child = 2 * at + 1;
+        if (child + 1 < count &&
+            sorts_before(c, by_name, *order_slot(c, by_name, child), *order_slot(c, by_name, child + 1))) {
+            child++;
+        }
+        if (!sorts_before(c, by_name, *order_slot(c, by_name, at), *order_slot(c, by_name, child))) {
+            return;
+        }
+        int swap = *order_slot(c, by_name, at);
+        *order_slot(c, by_name, at) = *order_slot(c, by_name, child);
+        *order_slot(c, by_name, child) = swap;
+        at = child;
+    }
+}
+/* Heap sorts one order in n log n comparisons, then rejects a repeat. */
+static void sort_types(prepared_context *c, bool by_name, int count)
+{
+    for (int at = count / 2; at-- > 0;) {
+        sift_down(c, by_name, count, at);
+    }
+    for (int end = count; end > 1 && !c->wire.error;) {
+        int swap = *order_slot(c, by_name, 0);
+        *order_slot(c, by_name, 0) = *order_slot(c, by_name, --end);
+        *order_slot(c, by_name, end) = swap;
+        sift_down(c, by_name, end, 0);
+    }
+    for (int k = 1; k < count && !c->wire.error; k++) {
+        int a = *order_slot(c, by_name, k - 1), b = *order_slot(c, by_name, k);
+        if (!work(
+                c,
+                by_name ? c->records[a].name_bytes : sizeof c->plan->types[a].id
+            )) {
+            return;
+        }
+        bool same = by_name ? !strcmp(c->plan->types[a].name, c->plan->types[b].name)
+                            : c->plan->types[a].id == c->plan->types[b].id;
+        if (same) {
+            c->wire.error = "duplicate prepared type requirement";
+        }
+    }
+}
+/* Orders the checked requirements by name and by id once the table is whole,
+ * so lookups bisect and no insertion moves entries: n log n, not n squared. */
+static void index_types(prepared_context *c, int count)
+{
+    sort_types(c, true, count);
+    sort_types(c, false, count);
 }
 void prepared_types(prepared_context *c)
 {
@@ -571,7 +583,10 @@ void prepared_types(prepared_context *c)
         return;
     }
     for (int i = 0; !w->reading && i < count && !w->error; i++) {
-        index_type(c, i);
+        check_type(c, i);
+    }
+    if (!w->reading && !w->error) {
+        index_types(c, count);
     }
     for (int i = 0; i < count && !w->error; i++) {
         execution_type_requirement *v = &p->types[i];
@@ -587,10 +602,13 @@ void prepared_types(prepared_context *c)
         if (w->error) {
             break;
         }
-        if (w->reading && !index_type(c, i)) {
+        if (w->reading && !check_type(c, i)) {
             break;
         }
         record_type(c, v, i);
+    }
+    if (w->reading && !w->error) {
+        index_types(c, count);
     }
     if (w->reading && !w->error) {
         materialize_records(c);
@@ -614,7 +632,7 @@ static int requirement(prepared_context *c, const pin_value *v)
 }
 /* Descriptors and the source module remain immutable for a write. Decoded
  * functions own aliases of their module's layout, so validate each new alias
- * before retaining its proof. Repeated headers still pay a nonzero charge. */
+ * before retaining its proof. A repeated header has paid for its type lookup. */
 static bool matches_record(
     prepared_context *c,
     int index,
@@ -624,14 +642,16 @@ static bool matches_record(
 )
 {
     struct prepared_record_cache *cache = &c->records[index];
-    if (!work(c, cache->hash_work)) {
-        return false;
-    }
     if (record == cache->validated_alias) {
         /* Native children can retire between headers even when the authored
          * descriptor is immutable. Their full check retains its full charge. */
-        if (current && cache->hash_work == cache->validation_work &&
-            !pin_record_fields_current(record)) {
+        if (!current || !cache->nested) {
+            return true;
+        }
+        if (!work(c, cache->validation_work)) {
+            return false;
+        }
+        if (!pin_record_fields_current(record)) {
             c->wire.error = "prepared authored nested layout is retired or "
                             "incompatible";
             return false;
@@ -719,9 +739,6 @@ static const pin_record *resolve(execution_wire *w, void *user, const pin_value 
         return NULL;
     }
     struct prepared_record_cache *cache = &c->records[index];
-    if (!work(c, cache->hash_work)) {
-        return NULL;
-    }
     if (w->storage == &c->plan->storage) {
         return type->record;
     }

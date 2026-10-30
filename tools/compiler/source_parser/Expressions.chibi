@@ -239,6 +239,9 @@ ParseIndexValue :: (c: ^Cursor, n: ^(Node[])) -> int {
 
 ParsePrimary :: (c: ^Cursor, n: ^(Node[])) -> int {
     token := c.token;
+    if (StartsLambda(c, n)) {
+        return ParseLambda(c, n);
+    }
     if (IsName(token)) {
         name := Take(c, n, -1, "");
         n^[name].kind = "identifier";
@@ -287,6 +290,54 @@ ParsePrimary :: (c: ^Cursor, n: ^(Node[])) -> int {
     }
     Fail(c, n, "Expected an expression");
     return New(n, "ERROR");
+}
+
+// Whether an inline function starts here: an optional `fn`, a parameter list,
+// and then `=>`, `->`, or a block after typed (or no) parameters, as in
+// `(value: int) { ... }`. A parenthesized expression before a block is not one.
+StartsLambda :: (c: ^Cursor, n: ^(Node[])) -> bool {
+    open := c.pos;
+    if (n^[open].kind == "fn") {
+        open += 1;
+    }
+    if (n^[open].token != tk.OpenParen) {
+        return false;
+    }
+    end := SkipBrackets(n, open, c.final);
+    if (end < 0) {
+        return false;
+    }
+    after := n^[end].token;
+    if (after == tk.FatArrow || after == tk.ArrowRight) {
+        return true;
+    }
+    if (after != tk.OpenBrace) {
+        return false;
+    }
+    return n^[open + 1].token == tk.CloseParen || (IsName(n^[open + 1].token) && n^[open + 2].token == tk.Colon);
+}
+
+// `[fn] (parameters) [-> result] { body }` or `[fn] (parameters) => value`.
+ParseLambda :: (c: ^Cursor, n: ^(Node[])) -> int {
+    lambda := New(n, "lambda_expression");
+    if (c.token != tk.OpenParen) {
+        word := Take(c, n, lambda, "");
+        n^[word].kind = "fn";
+        n^[word].named = false;
+    }
+    Add(n, lambda, ParseParameters(c, n), "parameters");
+    ParseResults(c, n, lambda);
+    if (c.token != tk.FatArrow) {
+        Add(n, lambda, ParseCallableBody(c, n, "callable_body"), "body");
+        return lambda;
+    }
+    body := New(n, "callable_body");
+    result := New(n, "return_statement");
+    Take(c, n, result, "");
+    Add(n, result, ParseBinary(c, n, OrPower), "value");
+    Add(n, body, result, "");
+    Add(n, lambda, body, "body");
+    return lambda;
 }
 
 // `emit target.Event(payload)` and `emit Event(target, payload)`.

@@ -160,7 +160,30 @@ package scalar_facts
 // field's value in source order and its Update, with the field's range. An
 // assignment to a field, `v.f = x`, is an Assign of `v` whose operands read
 // `v`, then `x`, then update `f` with the target's range, and a compound one
-// reads `v` and its field `f` before `x` and their combination. A condition's last operand is its bool; a
+// reads `v` and its field `f` before `x` and their combination. An array of
+// `T` is type ArrayType + T, for a scalar, a string, or a record or union, and
+// no array holds an array. An array is a value: storing one in a variable, or
+// returning a parameter's, gives a Copy of it, so an array's elements are
+// never shared. An Array row's `value` is its operator.
+// ArrayNew consumes its `count` most recent unconsumed operands, elements of
+// its array `type`'s element type, to give the array of them in order, the
+// empty array for none; ArrayLength consumes an array to give its element
+// count, an int; ArrayGet consumes an array and an int index to give the
+// element there, of its `type`; ArraySet consumes an array, an int index and
+// an element to give the array with that element replaced; ArrayPush consumes
+// an array and an element to give the array with the element after its last;
+// and ArrayCopy consumes an array to give an independent array of its
+// elements. An index outside the array ends the program (D9). ArraySet and
+// ArrayPush change the elements of the array they consume, so each is the last operand of an Assign to a variable of the array's type
+// whose first operand reads that variable: `a[i] = x` is the Assign of `a`
+// with operands that read `a`, then `i`, then `x`, then ArraySet, and
+// `a.append(x)` reads `a`, then `x`, then ArrayPush. A For row with
+// RangeArray declares variable `value`, of its element `type` and `name`,
+// and its one operand is the array it iterates, whose elements the body
+// cannot change. It runs its body for each element in order. The array is
+// read once, so a producer iterates a Copy of the variable when the body
+// assigns it.
+// A condition's last operand is its bool; a
 // return's last operand is the function's returned value, and a Local's or an
 // Assign's is its variable's. A shift's count is converted to the shifted
 // type before the shift consumes it, and an integer operand of floating
@@ -222,6 +245,7 @@ pub TagRow: int : 33;
 pub PayloadRow: int : 34;
 pub TextRow: int : 35;
 pub AssertRow: int : 36;
+pub ArrayRow: int : 37;
 
 // The value types: int and bool, then the other integer types, then the
 // floating ones, then string. The facts carry no compiler storage ordinal.
@@ -240,6 +264,8 @@ pub DoubleType: int : 11;
 pub StringType: int : 12;
 // The d-th record or union of the module is type RecordType + d.
 pub RecordType: int : 32;
+// An array of type T is ArrayType + T.
+pub ArrayType: int : 1024;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
 // unsigned as their operands' type is. On floats, each is false when an
@@ -284,9 +310,18 @@ pub TextByte: int : 2;
 pub TextSlice: int : 3;
 pub TextFormat: int : 4;
 
-// A For row's range flags.
+// Array operators.
+pub ArrayNew: int : 1;
+pub ArrayLength: int : 2;
+pub ArrayGet: int : 3;
+pub ArraySet: int : 4;
+pub ArrayPush: int : 5;
+pub ArrayCopy: int : 6;
+
+// A For row's range flags; RangeArray stands alone.
 pub RangeExclusive: int : 1;
 pub RangeReverse: int : 2;
+pub RangeArray: int : 4;
 
 // Conversions between integer types: `T(value)` clamps the value to T, and
 // `T(wrap: value)` keeps its low bits. A floating value converts to an

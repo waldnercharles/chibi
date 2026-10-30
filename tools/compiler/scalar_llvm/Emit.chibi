@@ -44,10 +44,23 @@ Scalar :: (type: int) -> bool {
     return type >= facts.IntType && type <= facts.DoubleType;
 }
 // Whether `type` is a scalar, a string or one of the module's records and
-// unions, whose Record and Union rows are at `records`.
+// unions, or an array of one of them, whose Record and Union rows are at
+// `records`.
 Valued :: (records: int[], type: int) -> bool {
+    if (type >= facts.ArrayType) {
+        return Element(records, type) != 0;
+    }
     return Scalar(type) || type == facts.StringType ||
            (type >= facts.RecordType && type - facts.RecordType < length(records));
+}
+// The element type of array type `type`, or 0 when it is no array of a
+// scalar, a string, or a record or union of the module.
+Element :: (records: int[], type: int) -> int {
+    element := type - facts.ArrayType;
+    if (element < facts.IntType || element >= facts.ArrayType || !Valued(records, element)) {
+        return 0;
+    }
+    return element;
 }
 // The type of field `field` of record type `type`, or 0 when `type` is no
 // record of the module or has no such field.
@@ -132,6 +145,9 @@ Converts :: (from: int, to: int) -> bool {
 // i8, u8, i16, u16, u32, i64, u64, number, f64 and string in facts type
 // order. Record r is the backend's record r.
 NativeType :: (type: int) -> int {
+    if (type >= facts.ArrayType) {
+        return native.ArrayType + NativeType(type - facts.ArrayType);
+    }
     if (type >= facts.RecordType) {
         return native.RecordType + type - facts.RecordType;
     }
@@ -424,6 +440,75 @@ Holds :: (values: int[], wanted: int) -> bool {
     }
     return false;
 }
+// The operands an Array row's operator consumes: ArrayNew's elements, one
+// array, an array and an index or an element, or an array, an index and an
+// element; 0 for no operator.
+ArrayOperands :: (operand: facts.Row) -> int {
+    if (operand.value == facts.ArrayNew) {
+        return operand.count;
+    }
+    consumed := [0, 1, 1, 2, 3, 2, 1];
+    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayCopy) {
+        return 0;
+    }
+    return consumed[operand.value];
+}
+// Whether the Array row at `row` of the operands of the statement at `at`,
+// which end before `last`, reads operands of its types from `stack`, none
+// below `floor`. ArraySet and ArrayPush are the last operand of an Assign to
+// the variable its first operand reads.
+ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, operand: facts.Row, stack: int[],
+               floor: int) -> string {
+    consumed := ArrayOperands(operand);
+    base := length(stack) - consumed;
+    mismatch := "scalar array operation differs from its operands";
+    if (operand.name != "" || (consumed == 0 && operand.value != facts.ArrayNew) || operand.count != consumed ||
+        base < floor) {
+        return mismatch;
+    }
+    operator := operand.value;
+    if (operator == facts.ArrayLength) {
+        if (operand.type != facts.IntType || Element(records, stack[base]) == 0) {
+            return mismatch;
+        }
+        return "";
+    }
+    if (operator == facts.ArrayGet) {
+        if (operand.type >= facts.ArrayType || Element(records, stack[base]) != operand.type ||
+            stack[base + 1] != facts.IntType) {
+            return mismatch;
+        }
+        return "";
+    }
+    element := Element(records, operand.type);
+    if (element == 0) {
+        return mismatch;
+    }
+    if (operator == facts.ArrayNew) {
+        for (index in 0..<consumed) {
+            if (stack[base + index] != element) {
+                return mismatch;
+            }
+        }
+        return "";
+    }
+    if (stack[base] != operand.type) {
+        return mismatch;
+    }
+    if (operator == facts.ArrayCopy) {
+        return "";
+    }
+    value := stack[base + consumed - 1];
+    if (value != element || (operator == facts.ArraySet && stack[base + 1] != facts.IntType)) {
+        return mismatch;
+    }
+    first := rows[at + 1];
+    if (rows[at].kind != facts.AssignRow || base != 0 || row != last - 1 || first.kind != facts.ReadRow ||
+        first.value != rows[at].value) {
+        return "scalar array change is not the assignment of its array";
+    }
+    return "";
+}
 // The operands after the statement row at `at`, as a typed evaluation stack:
 // each operand pushes one value; a comparison or binary arithmetic pops two
 // values of one type, unary arithmetic and a conversion one, and a call its
@@ -588,6 +673,12 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar payload read differs from its union";
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.ArrayRow) {
+            error := ValidArray(rows, records, at, row, last, operand, stack, floor);
+            if (error != "") {
+                return error;
+            }
+            stack = slice(stack, 0, length(stack) - ArrayOperands(operand));
         } else if (operand.kind == facts.TextRow) {
             formats := operand.value == facts.TextFormat;
             consumed := TextOperands(operand.value);
@@ -620,7 +711,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
     }
     // A range's two bounds, or one value.
     wanted: int = 1;
-    if (rows[at].kind == facts.ForRow) {
+    if (rows[at].kind == facts.ForRow && rows[at].literal != i64(facts.RangeArray)) {
         wanted = 2;
     }
     if (length(stack) != wanted || stack[0] != result || stack[wanted - 1] != result) {
@@ -712,6 +803,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             }
         }
         ranged := row.kind == facts.ForRow;
+        arrayed := ranged && row.literal == i64(facts.RangeArray);
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
         if (row.text != "" || (row.literal != 0 && !ranged) || !Located(row, starts, size) ||
@@ -804,11 +896,15 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             result = row.type;
         } else if (declares) {
             if (row.name == "" || !Valued(records, row.type) || row.value != length(variables) ||
-                (ranged && (row.type != facts.IntType || row.literal < 0 ||
-                            row.literal > i64(facts.RangeExclusive + facts.RangeReverse)))) {
+                (ranged && !arrayed && (row.type != facts.IntType || row.literal < 0 ||
+                                        row.literal > i64(facts.RangeExclusive + facts.RangeReverse))) ||
+                (arrayed && (row.type >= facts.ArrayType || !Valued(records, facts.ArrayType + row.type)))) {
                 return "invalid scalar local row";
             }
             result = row.type;
+            if (arrayed) {
+                result = facts.ArrayType + row.type;
+            }
         } else if (row.kind == facts.AssignRow) {
             if (!Holds(visible, row.value) || Holds(fixed, row.value) || variables[row.value] != row.type) {
                 return "scalar assignment differs from its variable";
@@ -932,6 +1028,23 @@ Frame :: struct {
     exits: int;
     armed: bool;
     fallback: int;
+}
+// The native array instruction of `operand`, an Array row other than
+// ArrayNew, over the operand slots stack[base...].
+ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int) -> native.Instruction {
+    if (operand.value == facts.ArrayLength) {
+        return Op(native.ArrayLength, type, slot, stack[base], 0, 0);
+    }
+    if (operand.value == facts.ArrayGet) {
+        return Op(native.ArrayGet, type, slot, stack[base], stack[base + 1], 0);
+    }
+    if (operand.value == facts.ArraySet) {
+        return Op(native.ArraySet, type, slot, stack[base], stack[base + 1], stack[base + 2]);
+    }
+    if (operand.value == facts.ArrayPush) {
+        return Op(native.ArrayPush, type, slot, stack[base], stack[base + 1], 0);
+    }
+    return Op(native.ArrayCopy, type, slot, stack[base], 0, 0);
 }
 // One native instruction without a literal.
 Op :: (op: int, type: int, output: int, left: int, right: int, target: int) -> native.Instruction {
@@ -1340,6 +1453,20 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     item = Op(native.Insert, type, slot, stack[base], stack[base + 1], 0);
                     item.literal = i64(operand.value);
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.ArrayRow) {
+                    base := length(stack) - ArrayOperands(operand);
+                    item = ArrayLowered(operand, type, slot, stack, base);
+                    if (operand.value == facts.ArrayNew) {
+                        // The empty array, then each element appended.
+                        item = Op(native.Constant, type, slot, 0, 0, 0);
+                        for (element in 0..<operand.count) {
+                            body.append(item);
+                            slots.append(type);
+                            item = Op(native.ArrayPush, type, slot + 1, slot, stack[base + element], 0);
+                            slot += 1;
+                        }
+                    }
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.TextRow && operand.value == facts.TextFormat) {
                     // The format and its arguments are argument slots, as a
                     // call's are.
@@ -1372,7 +1499,38 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             }
             value := stack[0];
             ends = false;
-            if (row.kind == facts.ForRow) {
+            if (row.kind == facts.ForRow && row.literal == i64(facts.RangeArray)) {
+                // The array and the index of the next element are locals of
+                // their own, before the element's variable.
+                array := NativeType(facts.ArrayType + row.type);
+                element := NativeType(row.type);
+                frame: Frame = {kind: row.kind, skip: -1, leave: -1, ends: false, head: 0, index: local + 1,
+                                bound: local, counted: false, reverse: false, escape: length(jumps), empty: -1,
+                                exits: 0, armed: false, fallback: -1};
+                locals.extend([array, integer, element]);
+                places.append(local + 2);
+                slots.append(integer);
+                body.extend([Op(native.Save, array, 0, stack[0], 0, local), Op(native.Constant, integer, slot, 0, 0, 0),
+                             Op(native.Save, integer, 0, slot, 0, local + 1)]);
+                slot += 1;
+                frame.head = length(body);
+                slots.extend([integer, array, integer, abi.BoolStorage]);
+                body.extend([Op(native.Local, integer, slot, local + 1, 0, 0),
+                             Op(native.Local, array, slot + 1, local, 0, 0),
+                             Op(native.ArrayLength, integer, slot + 2, slot + 1, 0, 0),
+                             Op(native.Lt, integer, slot + 3, slot, slot + 2, 0),
+                             Op(native.Branch, 0, 0, slot + 3, 0, length(body) + 6)]);
+                frame.skip = length(body);
+                body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                slot += 4;
+                slots.extend([array, integer, element]);
+                body.extend([Op(native.Local, array, slot, local, 0, 0), Op(native.Local, integer, slot + 1, local + 1, 0, 0),
+                             Op(native.ArrayGet, element, slot + 2, slot, slot + 1, 0),
+                             Op(native.Save, element, 0, slot + 2, 0, local + 2)]);
+                slot += 3;
+                local += 3;
+                frames.append(frame);
+            } else if (row.kind == facts.ForRow) {
                 exclusive := row.literal == i64(facts.RangeExclusive) ||
                              row.literal == i64(facts.RangeExclusive + facts.RangeReverse);
                 reverse := row.literal >= i64(facts.RangeReverse);

@@ -118,6 +118,32 @@ pub Format: int : 36;
 // failure names it, a native_abi.FailureType() constant, and this function,
 // and each call it is in, returns its result's zero.
 pub Fail: int : 37;
+// An array type is ArrayType plus its element's type, a scalar, a string or a
+// record, and an array holds no array: an LLVM { i32, i32, ptr }, its length,
+// its capacity and its elements, by value. Its zero, the Constant of literal
+// 0, is the empty array, which owns no memory. The runtime context allocates
+// an array's elements and ends the program on an index outside the array
+// (D9). An array is a value, so two variables never share elements: a
+// producer copies with ArrayCopy where it would otherwise share them, and a
+// callee that changes a parameter copies it first. ArraySet and ArrayPush
+// change their array's elements in place.
+pub ArrayType: int : 1024;
+// output = the length of the left slot's array, an int.
+pub ArrayLength: int : 38;
+// output = the left slot's array element at the right slot's int index, of
+// type; an index outside the array ends the program.
+pub ArrayGet: int : 39;
+// output = the left slot's array with its element at the right slot's int
+// index replaced by the value in slot `target`; type is the array type. An
+// index outside the array ends the program.
+pub ArraySet: int : 40;
+// output = the left slot's array with the right slot's value appended; type
+// is the array type. The elements move to a larger allocation when they are
+// full.
+pub ArrayPush: int : 41;
+// output = an array of its own elements equal to the left slot's; type is
+// the array type.
+pub ArrayCopy: int : 42;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -126,7 +152,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format);
+    return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayCopy);
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
@@ -135,7 +161,8 @@ Unary :: (op: int) -> bool {
     return op == Neg || op == BitNot;
 }
 ReadsLeft :: (op: int) -> bool {
-    return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake);
+    return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
+           (op >= ArrayLength && op <= ArrayCopy);
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -164,18 +191,40 @@ Fits :: (literal: i64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
-    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || (op >= TextByte && op <= TextTake);
+    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || (op >= TextByte && op <= TextTake) ||
+           (op >= ArrayGet && op <= ArrayPush);
+}
+// Whether an instruction reads the slot its target names: an array store's
+// value.
+ReadsTarget :: (op: int) -> bool {
+    return op == ArraySet;
 }
 // Whether an instruction reads argument slots: a call's or a format's.
 ReadsArguments :: (op: int) -> bool {
     return op == Call || op == Format;
 }
-// Whether `type` is a scalar, a string or one of the module's records.
+// The element type of array type `type`, or 0 when it is no array of a
+// scalar, a string or one of the module's records.
+ElementType :: (records: Record[], type: int) -> int {
+    element := type - ArrayType;
+    if (element <= 0 || element >= ArrayType || !Valued(records, element)) {
+        return 0;
+    }
+    return element;
+}
+// Whether `type` is a scalar, a string, one of the module's records or an
+// array of one of them.
 Valued :: (records: Record[], type: int) -> bool {
+    if (type >= ArrayType) {
+        return ElementType(records, type) != 0;
+    }
     return abi.ScalarType(type) != "" || type == abi.TextStorage || Index(type - RecordType, length(records));
 }
-// The LLVM type of a scalar, string or record type the module holds.
+// The LLVM type of a scalar, string, record or array type the module holds.
 TypeName :: (type: int) -> string {
+    if (type >= ArrayType) {
+        return abi.ArrayType();
+    }
     if (type >= RecordType) {
         return format_text("%record{}", type - RecordType);
     }
@@ -455,6 +504,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native field read differs from its record");
             }
         }
+        if (item.op >= ArrayLength && item.op <= ArrayCopy && !ArrayValid(records, slots, item)) {
+            return Result.Rejected(base + pc, "native array operation differs from its operands");
+        }
         if (item.op >= TextLength && item.op <= TextTake && !TextValid(slots, item)) {
             return Result.Rejected(base + pc, "native text read differs from its operands");
         }
@@ -487,6 +539,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (ReadsRight(item.op) && !Dominates(code, definitions[item.right], pc)) {
             return Result.Rejected(base + pc, "native scalar right operand is not defined on every path");
         }
+        if (ReadsTarget(item.op) && !Dominates(code, definitions[item.target], pc)) {
+            return Result.Rejected(base + pc, "native scalar operand is not defined on every path");
+        }
         if (ReadsArguments(item.op)) {
             for (index in 0..<item.target) {
                 if (!Dominates(code, definitions[arguments[item.right + index]], pc)) {
@@ -497,6 +552,35 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         pc += 1;
     }
     return Result.Emitted("");
+}
+// Whether an array instruction reads the slots of its operands' types. The
+// array is the left slot's: ArrayLength reads any array and gives an int,
+// ArrayGet one of type's elements, and the others give the array type itself,
+// ArraySet reading an int index right and a value in slot `target`, ArrayPush
+// a value right.
+ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
+    if (!Index(item.left, length(slots))) {
+        return false;
+    }
+    held := slots[item.left];
+    if (item.op == ArrayLength) {
+        return item.type == abi.IntStorage && ElementType(records, held) != 0;
+    }
+    if (item.op == ArrayGet) {
+        return item.type < ArrayType && item.type > 0 && held == ArrayType + item.type &&
+               ElementType(records, held) != 0 && Typed(slots, item.right, abi.IntStorage);
+    }
+    element := ElementType(records, item.type);
+    if (element == 0 || held != item.type) {
+        return false;
+    }
+    if (item.op == ArraySet) {
+        return Typed(slots, item.right, abi.IntStorage) && Typed(slots, item.target, element);
+    }
+    if (item.op == ArrayPush) {
+        return Typed(slots, item.right, element);
+    }
+    return true;
 }
 // Whether a text instruction reads a string and an int, or only a string for
 // TextLength, to give its type: an int, or for a slice a string.
@@ -769,6 +853,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}  %v{} = extractvalue {} %a{}, {}\n", out, pc, TypeName(item.right), pc, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op >= ArrayLength && item.op <= ArrayCopy) {
+        out = format_text("{}{}", out, ArrayRead(item, pc));
     } else if (item.op >= TextLength && item.op <= TextTake) {
         out = format_text("{}{}", out, TextRead(item, pc));
     } else if (item.type == abi.TextStorage) {
@@ -808,6 +894,116 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), output, "s", item.output));
     }
     return format_text("{}{}", out, format_text("  br label %p{}\n", pc + 1));
+}
+
+// The operation of the context at field `field`, loaded as `name`.
+ContextCall :: (name: string, field: int) -> string {
+    out := format_text("  %{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 {}\n", name, abi.ContextType(), field);
+    return format_text("{}  %{} = load ptr, ptr %{}.at\n", out, name, name);
+}
+// The context's allocate of `bytes`, an i64 value, as `name`.
+Allocated :: (name: string, bytes: string) -> string {
+    out := ContextCall(format_text("{}.allocate", name), 2);
+    return format_text("{}  %{} = call ptr %{}.allocate(ptr %ctx, i64 {})\n", out, name, name, bytes);
+}
+// The byte size of one `type`, an i64 named `name`.
+Sized :: (name: string, type: int) -> string {
+    out := format_text("  %{}.at = getelementptr {}, ptr null, i32 1\n", name, TypeName(type));
+    return format_text("{}  %{} = ptrtoint ptr %{}.at to i64\n", out, name, name);
+}
+// An array's length, an element, an element's replacement or an append, or a
+// copy of its elements. A read or write is only inside the array, so none
+// passes the elements, and an append that fills the array moves its elements
+// to an allocation twice the size, or four elements.
+ArrayRead :: (item: Instruction, pc: int) -> string {
+    array := abi.ArrayType();
+    // Every array type is the same LLVM type.
+    out := Load(format_text("a{}", pc), ArrayType + abi.IntStorage, "s", item.left);
+    out = format_text("{}  %length{} = extractvalue {} %a{}, 0\n", out, pc, array, pc);
+    if (item.op == ArrayLength) {
+        return format_text("{}{}", out, Store(format_text("%length{}", pc), item.type, "s", item.output));
+    }
+    if (item.op == ArrayCopy) {
+        return format_text("{}{}", out, ArrayCopied(item, pc));
+    }
+    if (item.op == ArrayPush) {
+        return format_text("{}{}", out, ArrayPushed(item, pc));
+    }
+    element := item.type;
+    if (item.op == ArraySet) {
+        element = item.type - ArrayType;
+    }
+    type := TypeName(element);
+    out = format_text("{}{}", out, Load(format_text("b{}", pc), abi.IntStorage, "s", item.right));
+    out = format_text("{}  %in{} = icmp ult i32 %b{}, %length{}\n", out, pc, pc, pc);
+    out = format_text("{}  br i1 %in{}, label %inside{}, label %outside{}\noutside{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}{}", out, ContextCall(format_text("index{}", pc), 3));
+    out = format_text("{}  call void %index{}(ptr %ctx, i32 %b{}, i32 %length{})\n  unreachable\ninside{}:\n", out, pc, pc,
+                      pc, pc);
+    out = format_text("{}  %data{} = extractvalue {} %a{}, 2\n  %offset{} = zext i32 %b{} to i64\n", out, pc, array, pc,
+                      pc, pc);
+    out = format_text("{}  %at{} = getelementptr inbounds {}, ptr %data{}, i64 %offset{}\n", out, pc, type, pc, pc);
+    if (item.op == ArrayGet) {
+        out = format_text("{}  %v{} = load {}, ptr %at{}\n", out, pc, type, pc);
+        return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    }
+    out = format_text("{}{}", out, Load(format_text("c{}", pc), element, "s", item.target));
+    out = format_text("{}  store {} %c{}, ptr %at{}\n", out, type, pc, pc);
+    return format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "s", item.output));
+}
+// The array of the elements of the array loaded as %a<pc> with the value in
+// the right slot after them, in the allocation the elements already have
+// when it has room.
+ArrayPushed :: (item: Instruction, pc: int) -> string {
+    array := abi.ArrayType();
+    element := item.type - ArrayType;
+    type := TypeName(element);
+    out := Load(format_text("c{}", pc), element, "s", item.right);
+    out = format_text("{}  %capacity{} = extractvalue {} %a{}, 1\n  %data{} = extractvalue {} %a{}, 2\n", out, pc, array,
+                      pc, pc, array, pc);
+    out = format_text("{}  %full{} = icmp eq i32 %length{}, %capacity{}\n", out, pc, pc, pc);
+    out = format_text("{}  br i1 %full{}, label %grow{}, label %room{}\ngrow{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %none{} = icmp eq i32 %capacity{}, 0\n  %double{} = shl i32 %capacity{}, 1\n", out, pc, pc, pc,
+                      pc);
+    out = format_text("{}  %grown{} = select i1 %none{}, i32 4, i32 %double{}\n", out, pc, pc, pc);
+    out = format_text("{}{}", out, Sized(format_text("width{}", pc), element));
+    out = format_text("{}  %count{} = zext i32 %grown{} to i64\n  %bytes{} = mul i64 %count{}, %width{}\n", out, pc, pc,
+                      pc, pc, pc);
+    out = format_text("{}{}", out, Allocated(format_text("fresh{}", pc), format_text("%bytes{}", pc)));
+    out = format_text("{}  %used{} = zext i32 %length{} to i64\n  %moved{} = mul i64 %used{}, %width{}\n", out, pc, pc,
+                      pc, pc, pc);
+    out = format_text("{}  call void @llvm.memcpy.p0.p0.i64(ptr %fresh{}, ptr %data{}, i64 %moved{}, i1 false)\n", out,
+                      pc, pc, pc);
+    out = format_text("{}  br label %room{}\nroom{}:\n", out, pc, pc);
+    out = format_text("{}  %buffer{} = phi ptr [ %data{}, %p{} ], [ %fresh{}, %grow{} ]\n", out, pc, pc, pc, pc, pc);
+    out = format_text("{}  %space{} = phi i32 [ %capacity{}, %p{} ], [ %grown{}, %grow{} ]\n", out, pc, pc, pc, pc, pc);
+    out = format_text("{}  %offset{} = zext i32 %length{} to i64\n", out, pc, pc);
+    out = format_text("{}  %at{} = getelementptr inbounds {}, ptr %buffer{}, i64 %offset{}\n", out, pc, type, pc, pc);
+    out = format_text("{}  store {} %c{}, ptr %at{}\n  %next{} = add i32 %length{}, 1\n", out, type, pc, pc, pc, pc);
+    out = format_text("{}  %longer{} = insertvalue {} %a{}, i32 %next{}, 0\n", out, pc, array, pc, pc);
+    out = format_text("{}  %roomy{} = insertvalue {} %longer{}, i32 %space{}, 1\n", out, pc, array, pc, pc);
+    out = format_text("{}  %v{} = insertvalue {} %roomy{}, ptr %buffer{}, 2\n", out, pc, array, pc, pc);
+    return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+}
+// An array of its own allocation holding the elements of the array loaded as
+// %a<pc>, or the empty array for an empty one.
+ArrayCopied :: (item: Instruction, pc: int) -> string {
+    array := abi.ArrayType();
+    element := item.type - ArrayType;
+    out := format_text("  %data{} = extractvalue {} %a{}, 2\n", pc, array, pc);
+    out = format_text("{}{}", out, Sized(format_text("width{}", pc), element));
+    out = format_text("{}  %used{} = zext i32 %length{} to i64\n  %bytes{} = mul i64 %used{}, %width{}\n", out, pc, pc,
+                      pc, pc, pc);
+    out = format_text("{}  %none{} = icmp eq i32 %length{}, 0\n", out, pc, pc);
+    out = format_text("{}  br i1 %none{}, label %done{}, label %clone{}\nclone{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}{}", out, Allocated(format_text("fresh{}", pc), format_text("%bytes{}", pc)));
+    out = format_text("{}  call void @llvm.memcpy.p0.p0.i64(ptr %fresh{}, ptr %data{}, i64 %bytes{}, i1 false)\n", out,
+                      pc, pc, pc);
+    out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
+    out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %clone{} ]\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %sized{} = insertvalue {} %a{}, i32 %length{}, 1\n", out, pc, array, pc, pc);
+    out = format_text("{}  %v{} = insertvalue {} %sized{}, ptr %buffer{}, 2\n", out, pc, array, pc, pc);
+    return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
 }
 
 // A string's byte count, a byte or a slice. A byte is read only inside the
@@ -1003,7 +1199,7 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
 // Whether `code` calls the runtime.
 Runtime :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == Format || item.op == Fail) {
+        if (item.op == Format || item.op == Fail || (item.op >= ArrayGet && item.op <= ArrayCopy)) {
             return true;
         }
     }
@@ -1098,10 +1294,17 @@ TextEqual :: () -> string {
     out = format_text("{}  br i1 %matches, label %head, label %differ\nequal:\n  ret i1 true\n", out);
     return format_text("{}differ:\n  ret i1 false\n}\n", out);
 }
-// The saturating conversion intrinsics `code` calls, each declared once.
+// The intrinsics `code` calls, each declared once: array copies and the
+// saturating conversions.
 Declarations :: (code: Instruction[]) -> string {
     out := "";
     for (item in code) {
+        if (item.op == ArrayPush || item.op == ArrayCopy) {
+            declaration := "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
+            if (!strings.Contains(out, declaration)) {
+                out = format_text("{}{}", out, declaration);
+            }
+        }
         if (item.op != Convert || !abi.Floating(item.right) || !Integer(item.type)) {
             continue;
         }

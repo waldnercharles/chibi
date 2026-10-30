@@ -1,0 +1,113 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Main appends 7 to an empty int array, stores 7 at index 0, then adds that
+// element to the length of a copy: 7 + 1.
+Arrays :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 1030, 0, 0, 0, 0, 0),
+            Code(native.Constant, 6, 1, 0, 0, 0, 7),
+            Code(native.ArrayPush, 1030, 2, 0, 1, 0, 0),
+            Code(native.Constant, 6, 3, 0, 0, 0, 0),
+            Code(native.ArraySet, 1030, 4, 2, 3, 1, 0),
+            Code(native.ArrayGet, 6, 5, 4, 3, 0, 0),
+            Code(native.ArrayLength, 6, 6, 4, 0, 0, 0),
+            Code(native.ArrayCopy, 1030, 7, 4, 0, 0, 0),
+            Code(native.ArrayLength, 6, 8, 7, 0, 0, 0),
+            Code(native.Add, 6, 9, 5, 8, 0, 0),
+            Code(native.Publish, 6, 0, 9, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+ArrayModule :: (code: native.Instruction[]) -> native.Result {
+    return Emit([Function(6, 0, 0, 10, 0, 13, 0, 0)], [], [1030, 6, 1030, 6, 1030, 6, 6, 1030, 6, 6], code, []);
+}
+ArrayOperands: string : "native array operation differs from its operands";
+ChangedArray :: (row: int, item: native.Instruction) {
+    code := Arrays();
+    code[row] = item;
+    Rejects(ArrayModule(code), ArrayOperands);
+}
+// The elements move to an allocation from the context when they are full, and
+// an index outside the array calls the context's failure.
+@test
+ArraysAllocateThroughTheContextAndCheckIndexes :: () {
+    text := Emitted(ArrayModule(Arrays()));
+    assert(strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
+    assert(strings.Contains(text, "%full3 = icmp eq i32 %length3, %capacity3\n  br i1 %full3, label %grow3, label %room3\ngrow3:\n"));
+    assert(strings.Contains(text, "%grown3 = select i1 %none3, i32 4, i32 %double3\n"));
+    assert(strings.Contains(text, "%fresh3.allocate.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2\n"));
+    assert(strings.Contains(text, "%fresh3 = call ptr %fresh3.allocate(ptr %ctx, i64 %bytes3)\n"));
+    assert(strings.Contains(text, "call void @llvm.memcpy.p0.p0.i64(ptr %fresh3, ptr %data3, i64 %moved3, i1 false)\n"));
+    assert(strings.Contains(text, "%buffer3 = phi ptr [ %data3, %p3 ], [ %fresh3, %grow3 ]\n"));
+    assert(strings.Contains(text, "%in5 = icmp ult i32 %b5, %length5\n  br i1 %in5, label %inside5, label %outside5\noutside5:\n"));
+    assert(strings.Contains(text, "%index5.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 3\n"));
+    assert(strings.Contains(text, "call void %index5(ptr %ctx, i32 %b5, i32 %length5)\n  unreachable\ninside5:\n"));
+    assert(strings.Contains(text, "%at5 = getelementptr inbounds i32, ptr %data5, i64 %offset5\n  store i32 %c5, ptr %at5\n"));
+    assert(strings.Contains(text, "%v6 = load i32, ptr %at6\n"));
+    assert(strings.Contains(text, "%v7 = extractvalue"));
+    assert(strings.Contains(text, "%none8 = icmp eq i32 %length8, 0\n  br i1 %none8, label %done8, label %clone8\nclone8:\n"));
+    assert(strings.Contains(text, "%buffer8 = phi ptr [ null, %p8 ], [ %fresh8, %clone8 ]\n"));
+    assert(strings.Contains(text, "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n"));
+    assert(strings.Contains(text, "%s0 = alloca { i32, i32, ptr }\n"));
+}
+@test
+ArrayLengthRejectsIntOperand :: () {
+    ChangedArray(7, Code(native.ArrayLength, 6, 6, 3, 0, 0, 0));
+}
+@test
+ArrayGetRejectsWrongElementType :: () {
+    ChangedArray(6, Code(native.ArrayGet, 2, 5, 4, 3, 0, 0));
+}
+@test
+ArrayGetRejectsArrayIndex :: () {
+    ChangedArray(6, Code(native.ArrayGet, 6, 5, 4, 4, 0, 0));
+}
+@test
+ArraySetRejectsWrongValueType :: () {
+    ChangedArray(5, Code(native.ArraySet, 1030, 4, 2, 3, 3, 0));
+}
+@test
+ArraySetRejectsOtherArrayType :: () {
+    ChangedArray(5, Code(native.ArraySet, 1031, 4, 2, 3, 1, 0));
+}
+@test
+ArrayPushRejectsArrayValue :: () {
+    ChangedArray(3, Code(native.ArrayPush, 1030, 2, 0, 0, 0, 0));
+}
+@test
+ArrayCopyRejectsIntOperand :: () {
+    ChangedArray(8, Code(native.ArrayCopy, 1030, 7, 3, 0, 0, 0));
+}
+@test
+ArrayOfArraysIsRejected :: () {
+    Rejects(Emit([Function(6, 0, 0, 1, 0, 3, 0, 0)], [], [2054],
+                 [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Constant, 6, 0, 0, 0, 0, 0),
+                  Code(native.Return, 0, 0, 0, 0, 0, 0)], []),
+            "native scalar slot cannot hold a managed value or pointer");
+}
+@test
+ArraySetValueMustBeDefined :: () {
+    code := Arrays();
+    code[5] = Code(native.ArraySet, 1030, 4, 2, 3, 5, 0);
+    Rejects(ArrayModule(code), "native scalar operand is not defined on every path");
+}
+@test
+UnsupportedArrayInstructionIsRejected :: () {
+    code := Arrays();
+    code[8] = Code(native.ArrayCopy + 1, 1030, 7, 4, 0, 0, 0);
+    Rejects(ArrayModule(code), "unsupported native scalar instruction");
+}
+@test
+ArraysNeedTheRuntimeContext :: () {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    Rejects(native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 10, 0, 13, 0, 0)], empty,
+                        [1030, 6, 1030, 6, 1030, 6, 6, 1030, 6, 6], empty, Arrays(), empty, records, empty, texts,
+                        source, texts, empty, empty, true, 1),
+            "a native program cannot call the runtime yet");
+}

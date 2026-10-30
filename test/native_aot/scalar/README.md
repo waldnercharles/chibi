@@ -75,6 +75,20 @@ truncates toward zero, saturates at the type's bounds and gives 0 for NaN, in
 either mode. A floating literal is the binary64 nearest it, and a `number` one
 the binary32 nearest that, as stage zero reads it.
 
+Arrays of numbers, `bool` and strings (`int[]`, `string[]`, one level) are
+native values: `{ length, capacity, elements }`, whose elements the call's
+context allocates and the call's heap frees. A function takes and returns
+them, declares them with `a: T[] = [...]` or `a := f(...)`, reads `a[i]`,
+`length(a)` and `a.length()`, writes `a[i] = x` and `a[i] += x`, appends with
+`a.append(x)` and visits the elements with `for x in a`. An array is a value:
+`b := a`, `b = a`, and returning a parameter copy it, a call lends its
+argument, and a function that changes a parameter copies it first, so no two
+variables share elements. An append that fills the array moves its elements
+to an allocation of twice the size, or four elements, and an index outside
+the array ends the program through the context's `index_failed`. A standalone
+program has no context, so it cannot use arrays yet; a library or a scalar
+entry takes the VM's.
+
 A consequence runs only when its condition holds and its alternative only
 when it does not, and `&&` and `||` evaluate their right side only when the
 left does not decide them. A local is visible from the end of its

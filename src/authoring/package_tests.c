@@ -108,7 +108,12 @@ static void add_compiled_tests(package_test **tests, const char *package, const 
             continue;
         }
         assert(info.body);
-        package_test test = { package, info.entry + strlen(TEST_PREFIX), "", 0, 0, info.body,
+        package_test test = { package,
+                              info.entry + strlen(TEST_PREFIX),
+                              "",
+                              0,
+                              0,
+                              info.body,
                               !info.effects && behavior_function_hosts_pure(info.body) };
         if (behavior_function_source_count(info.body)) {
             const behavior_function_source *at = behavior_function_source_at(info.body, 0);
@@ -127,7 +132,11 @@ package_test *package_tests_find_compiled(const package_collection *packages)
         const char *name = package_collection_name(packages, i);
         if (!strncmp(name, "project:", strlen("project:"))) {
             const char *directory = name + strlen("project:");
-            add_compiled_tests(&tests, *directory ? directory : "project", package_collection_module(packages, i));
+            add_compiled_tests(
+                &tests,
+                *directory ? directory : "project",
+                package_collection_module(packages, i)
+            );
         }
     }
     if (tests) {
@@ -203,8 +212,8 @@ bool package_test_run(
     bool bound = behavior_function_bind(test->body, &context, NULL, 0);
     assert(bound);
     (void)bound;
-    /* A function the authored compiler prepared draws its calls' instructions from
-     * the enclosing scope's quota, so a test without one owns a scope. */
+    /* A function the authored compiler prepared draws its calls' instructions
+     * from the enclosing scope's quota, so a test without one owns a scope. */
     behavior_execution_scope scope = { .remaining = budget };
     bool owned_scope = !behavior_execution_scope_active();
     if (owned_scope) {

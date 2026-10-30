@@ -1,0 +1,30 @@
+package facts
+
+// arrays
+@test
+Calls :: () {
+    a1_0: int = 4;
+    r1: int[] = Squares(a1_0);
+    e1: int[] = [0, 1, 4, 9];
+    assert(length(r1) == length(e1), "Squares call 1 length");
+    for k in 0..<length(e1) {
+        assert(r1[k] == e1[k], "Squares call 1 element");
+    }
+    a2_0: int[] = [0, 1, 4, 9];
+    r2: int = Total(a2_0);
+    e2: int = 10;
+    assert(r2 == e2, "Total call 2");
+    r3: int = Edit();
+    e3: int = 3528;
+    assert(r3 == e3, "Edit call 3");
+    r6: string[] = Words();
+    e6: string[] = ["b", "c"];
+    assert(length(r6) == length(e6), "Words call 6 length");
+    for k in 0..<length(e6) {
+        assert(r6[k] == e6[k], "Words call 6 element");
+    }
+    a7_0: int = 3;
+    r7: int = Counts(a7_0);
+    e7: int = 4;
+    assert(r7 == e7, "Counts call 7");
+}

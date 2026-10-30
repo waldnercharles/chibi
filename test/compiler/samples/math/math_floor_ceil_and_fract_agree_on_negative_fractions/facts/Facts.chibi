@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { v := vec3(-1.25, 1.75, 2); return floor(v) == vec3(-2, 1, 2) && ceil(v) == vec3(-1, 2, 2) && fract(v) == vec3(0.75, 0.75, 0); }

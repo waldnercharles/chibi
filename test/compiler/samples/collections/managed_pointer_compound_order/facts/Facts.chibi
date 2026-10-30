@@ -1,0 +1,10 @@
+package facts
+Point :: struct { x: int; y: int; }
+Set :: (q: ^int, calls: ^int) -> int { calls^ += 10; q^ = 10; return 2; }
+SetX :: (q: ^Point, calls: ^int) -> int { calls^ += 10; q.x = 10; return 2; }
+Pick :: (p: ^int, calls: ^int) -> ^int { calls^ += 1; return p; }
+PickPoint :: (p: ^Point, calls: ^int) -> ^Point { calls^ += 1; return p; }
+Through :: () -> int { value: int = 1; calls: int = 0; p := &value; Pick(p, &calls)^ += Set(p, &calls); return value * 100 + calls; }
+Local :: () -> int { value: int = 1; calls: int = 0; p := &value; value += Set(p, &calls); return value * 100 + calls; }
+Member :: () -> int { value: Point = {x: 1, y: 0}; calls: int = 0; p := &value; PickPoint(p, &calls).x += SetX(p, &calls); return value.x * 100 + calls; }
+Owned :: () -> int { value: Point = {x: 1, y: 0}; calls: int = 0; p := &value; value.x += SetX(p, &calls); return value.x * 100 + calls; }

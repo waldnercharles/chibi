@@ -1,0 +1,9 @@
+package facts
+Guard :: () -> int {
+    if (7 < 3) { return 1; }
+    return 2;
+}
+Wide :: () -> bool { return 3000000000 > 2; }
+Mixed :: () -> bool { return 2.5 > 2; }
+Negative :: () -> bool { return -1 < 0; }
+Same :: () -> bool { return 7 == 7; }

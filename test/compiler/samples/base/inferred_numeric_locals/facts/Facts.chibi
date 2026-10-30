@@ -1,0 +1,10 @@
+package facts
+Bump :: (x: ^int) { x^ += 1; }
+ByReference :: () -> int { x := 0; Bump(&x); return x; }
+One :: () -> int { x := 5; return x; }
+Index :: () -> int { x := 0; xs: int[] = [4, 7]; x += 1; xs[x] = 9; return xs[x] + x; }
+Negative :: () -> int { x := -1; x += 2; return x; }
+Wide :: () -> i64 { x := 2147483648; x += 1; return x; }
+Maximum :: () -> u64 { x := 18446744073709551615; return x; }
+Decimal :: () -> number { x := 0.5; x += 0.25; return x; }
+Exponent :: () -> number { x := 1e3; return x; }

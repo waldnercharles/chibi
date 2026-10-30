@@ -1,0 +1,4 @@
+package facts
+Bump :: (v: ^int = 1) { v^ += 1; }
+
+// error: 2:10: a scoped pointer parameter takes no default

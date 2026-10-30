@@ -1,0 +1,4 @@
+package facts
+One :: (xs: int[]) -> int { for x, x in xs { } return 0; }
+
+// error: 2:36: Duplicate declaration 'x'

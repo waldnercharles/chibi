@@ -1,0 +1,28 @@
+package facts
+
+// named struct results
+@test
+Calls :: () {
+    r4: int = Project();
+    e4: int = 7;
+    assert(r4 == e4, "Project call 4");
+    r5: int = Reassigned();
+    e5: int = 9;
+    assert(r5 == e5, "Reassigned call 5");
+    r6: int = LaterShadow();
+    e6: int = 106;
+    assert(r6 == e6, "LaterShadow call 6");
+    r7: int = ByRef();
+    e7: int = 8;
+    assert(r7 == e7, "ByRef call 7");
+    r8: int = Boxed();
+    e8: int = 8;
+    assert(r8 == e8, "Boxed call 8");
+    r9: int = ReadCollision();
+    e9: int = 7;
+    assert(r9 == e9, "ReadCollision call 9");
+    a10_0: int = 7;
+    r10: int = Use(a10_0);
+    e10: int = 822;
+    assert(r10 == e10, "Use call 10");
+}

@@ -1,0 +1,8 @@
+package facts
+Decode :: (literal: string) -> string {
+    decoded := compiler_json_string(literal);
+    if (!decoded.valid) { return "?"; }
+    return format_text("{}/{}", decoded.value, decoded.byte_length);
+}
+Valid :: (literal: string) -> bool { return compiler_json_string(literal).Valid; }
+Length :: (literal: string) -> int { return compiler_json_string(literal).ByteLength; }

@@ -1,0 +1,4 @@
+package facts
+A: int : 65536 * 65536;
+
+// error: 2:10: Constant value is outside the range of int

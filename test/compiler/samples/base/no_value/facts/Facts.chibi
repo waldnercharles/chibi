@@ -1,0 +1,5 @@
+package facts
+Nothing :: () { }
+One :: () -> int { x := Nothing(); return 0; }
+
+// error: 3:20: call has no value

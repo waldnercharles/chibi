@@ -1,0 +1,5 @@
+package facts
+Work :: () -> int? { yield; return nil; }
+Use :: () { task := Work(); cancel task; }
+
+// error: 3:21: task handles with a union result are not supported yet

@@ -1,0 +1,10 @@
+package facts
+Build :: (count: int) -> int {
+    xs: int[] = [count, count];
+    ys := xs;
+    xs = append(xs, count);
+    ys = append(ys, count + 1);
+    zs := xs;
+    xs = extend(xs, ys);
+    return xs[2] * 100 + ys[2] * 10 + length(zs);
+}

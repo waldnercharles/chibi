@@ -1,0 +1,15 @@
+package facts
+Point :: struct { x: int; y: int; }
+Sizes :: (n: int) -> int {
+    flags := resize([false], n);
+    zero: int = 0;
+    counts := resize([zero], n);
+    counts[0] = 7;
+    total: int = 0;
+    for (count in counts) { total += count; }
+    if (flags[1]) { return -1; }
+    return total * 10 + length(flags);
+}
+Words :: () -> int { first := "x"; words := [first, "yy", "zzz"]; return length(words); }
+Points :: () -> int { p: Point = {x: 1, y: 2}; points := [p, p]; return points[1].y + length(points); }
+Wide :: () -> u64 { one: u64 = 1; bits := [one, 2, 0xFF]; return bits[1] + bits[2]; }

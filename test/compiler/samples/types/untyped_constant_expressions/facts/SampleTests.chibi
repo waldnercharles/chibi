@@ -1,0 +1,14 @@
+package facts
+
+// untyped constant expressions
+@test
+Calls :: () {
+    a1_0: i64 = 8;
+    r1: bool = Eight(a1_0);
+    e1: bool = true;
+    assert(r1 == e1, "Eight call 1");
+    a2_0: f64 = 1;
+    r2: bool = Huge(a2_0);
+    e2: bool = true;
+    assert(r2 == e2, "Huge call 2");
+}

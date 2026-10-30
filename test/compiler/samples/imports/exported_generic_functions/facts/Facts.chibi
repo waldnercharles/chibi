@@ -1,0 +1,8 @@
+package facts
+import lib "project:exported_generic_functions/lib"
+Identity :: (value: int) -> int { return value + 100; }
+Main :: (value: int) -> int { return lib.Repeated(value) + lib.Identity(value); }
+Wide :: (value: i64) -> i64 { return lib.Identity(value); }
+First :: () -> int { values: int[] = [7, 2]; return lib.First(values); }
+Scaled :: () -> int { return lib.Scale(5, 1 + 2) + lib.Scale(2, 4); }
+Enabled :: () -> int { return lib.Maybe(7, true) + lib.Maybe(7, false); }

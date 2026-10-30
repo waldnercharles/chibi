@@ -1,0 +1,3 @@
+package facts
+Scale :: (x: f64) -> f64 { return x * -(1.5) + x * (-(-2.5)); }
+Half :: (x: number) -> number { return x * -(+(-(-(0.5)))); }

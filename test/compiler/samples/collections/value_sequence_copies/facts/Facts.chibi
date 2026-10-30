@@ -1,0 +1,13 @@
+package facts
+Point :: struct { x: int; y: int; }
+Change :: (values: int[]) -> int { values[0] = 8; values.append(9); return values.length() * 10 + values[0]; }
+Identity :: (values: int[]) -> int[] { return values; }
+Assignment :: () -> int { original: int[] = [1, 2]; copied := original; copied[0] = 7; copied.append(3); return original[0] * 1000 + original.length() * 100 + copied[0] * 10 + copied.length(); }
+Parameter :: () -> int { original: int[] = [1, 2]; changed := Change(original); return original[0] * 100 + original.length() * 10 + changed; }
+Returned :: () -> int { original: int[] = [1, 2]; copied := Identity(original); copied[1] = 9; return original[1] * 10 + copied[1]; }
+Nested :: () -> int { original: int[][] = [[1, 2], [3]]; copied := original; copied[0].append(7); copied[1][0] = 8; return original[0].length() * 1000 + original[1][0] * 100 + copied[0].length() * 10 + copied[1][0]; }
+Maps :: () -> int { original: [int: int[]] = [1: [2, 3]]; copied := original; copied[1].append(4); copied[2] = [9]; delete copied[1]; return original[1].length() * 100 + original[1][0] * 10 + copied[2][0]; }
+Records :: () -> int { original: Point[] = [{x: 2, y: 3}]; copied := original; copied[0].x = 9; return original[0].x * 100 + copied[0].x * 10 + copied[0].y; }
+Pointers :: () -> int { value: int = 1; other: int = 9; original: ^int[] = [&value]; copied := original; copied[0]^ = 5; copied[0] = &other; return original[0]^ * 100 + copied[0]^ * 10 + value; }
+Cloned :: () -> int { original: int[] = [4, 5]; copied := original.clone(); copied[0] = 8; return original[0] * 10 + copied[0]; }
+Empty :: () -> int { original: int[] = []; copied := original; copied.append(7); return original.length() * 100 + copied.length() * 10 + copied[0]; }

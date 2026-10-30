@@ -1,0 +1,11 @@
+package facts
+P :: struct { a: i8; b: u16; }
+Narrow :: (a: i8, b: u16, c: u32, d: i16) -> i64 {
+    x: i8 = a - 1;
+    y: u32 = c / 2;
+    return i64(x) + i64(b) * 2 + i64(y) - i64(d);
+}
+Mixed :: (a: i8, b: u8) -> int { return int(a) + int(b); }
+Big :: (a: u32, b: int) -> i64 { return i64(a) + i64(b); }
+Store :: () -> u16 { v: u16 = 65535; return v; }
+Make :: (a: i8) -> int { p: P = {a: a, b: 7}; return int(p.a) + int(p.b); }

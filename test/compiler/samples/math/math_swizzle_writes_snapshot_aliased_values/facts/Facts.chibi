@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { v := vec4(1, 2, 3, 4); v.xy = v.yx; a := v.xxy; v.ba = v.rb; return v == vec4(2, 1, 2, 3) && a == vec3(2, 2, 1); }

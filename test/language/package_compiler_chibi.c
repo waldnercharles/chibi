@@ -11133,7 +11133,8 @@ static bool validated(int b, pin_value *rows, const char *message)
         for (int i = 0; i < dump->count && i < 40; i++) {
             fprintf(
                 stderr,
-                "row %d kind %d type %d value %d count %d literal %lld start %d end %d line %d col %d\n",
+                "row %d kind %d type %d value %d count %d literal %lld start "
+                "%d end %d line %d col %d\n",
                 i,
                 (int)scalar_field(&dump->items[i], "kind").i,
                 (int)scalar_field(&dump->items[i], "type").i,
@@ -17385,11 +17386,14 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
     char directory[PATH_MAX];
     REQUIRE(native_directory(directory));
     pin_value count;
-    REQUIRE(compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count));
+    REQUIRE(
+        compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count)
+    );
     int ran = 0;
     for (int index = 0; index < count.i; index++) {
         int b = index % 2;
-        pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows, expected;
+        pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows,
+                  expected;
         REQUIRE(
             compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
         );
@@ -17416,7 +17420,8 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
         if (entry.values[2] != expected.i || entry.values[3] != expected.i) {
             fprintf(
                 stderr,
-                "native %s gave %" PRId64 " at O0 and %" PRId64 " at O2, expected %d\n",
+                "native %s gave %" PRId64 " at O0 and %" PRId64
+                " at O2, expected %d\n",
                 pin_text(name).bytes,
                 entry.values[2],
                 entry.values[3],
@@ -17431,13 +17436,17 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
     REQUIRE(ran >= 7);
     /* Index 3 is past the three elements, as is -1. */
     static const char *const OUTSIDE[] = {
-        "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n    return items[Where()];\n}\n"
+        "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n  "
+        "  return items[Where()];\n}\n"
         "Where :: () -> int { return 3; }\n",
-        "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n    items[Where()] = 4;\n    return 0;\n}\n"
+        "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n  "
+        "  items[Where()] = 4;\n    return 0;\n}\n"
         "Where :: () -> int { return -1; }\n",
     };
-    static const char *const MESSAGES[] = { "native array index 3 is out of range for length 3",
-                                            "native array index -1 is out of range for length 3" };
+    static const char *const MESSAGES[] = {
+        "native array index 3 is out of range for length 3",
+        "native array index -1 is out of range for length 3"
+    };
     for (int i = 0; i < 2; i++) {
         pin_value rows;
         REQUIRE(collected_rows(i, "outside", text(OUTSIDE[i]), &rows));
@@ -17448,8 +17457,8 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
             char library[PATH_MAX];
             REQUIRE(native_library(directory, "outside", ir, "", level * 2, library));
             scalar_call entry = { .symbol = "chibi_scalar", .context = true };
-            chibi_process_capture_result ended =
-                library_calls(directory, library, &entry, 1, 2, CALLS_SECONDS);
+            chibi_process_capture_result
+                ended = library_calls(directory, library, &entry, 1, 2, CALLS_SECONDS);
             REQUIRE(ended.error == CHIBI_PROCESS_OK && ended.status == -SIGABRT);
             REQUIRE(strstr(native_errors, MESSAGES[i]));
         }
@@ -17473,7 +17482,9 @@ TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit)
         compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
     );
     pin_value count;
-    REQUIRE(compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count));
+    REQUIRE(
+        compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count)
+    );
     for (int index = 0; index < count.i; index++) {
         int b = index % 2;
         pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows, checked;
@@ -17491,7 +17502,15 @@ TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit)
         pin_value args[SCALAR_ARGUMENTS];
         REQUIRE(scalar_arguments(b, "Scalar.chibi", source, args));
         REQUIRE(compiler_fixture_call(
-            &fixture, b, PACKAGE, "CollectScalar", args, SCALAR_ARGUMENTS, COMPILE_BUDGET, &detached, &rows
+            &fixture,
+            b,
+            PACKAGE,
+            "CollectScalar",
+            args,
+            SCALAR_ARGUMENTS,
+            COMPILE_BUDGET,
+            &detached,
+            &rows
         ));
         REQUIRE(
             compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
@@ -17514,7 +17533,11 @@ TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit)
         // Run.ps1 check it.
         REQUIRE(checked.i == 1 || rejected);
         if (!rejected && !validated(b, &rows, "")) {
-            fprintf(stderr, "scalar case %s: its rows do not validate and emit\n", pin_text(name).bytes);
+            fprintf(
+                stderr,
+                "scalar case %s: its rows do not validate and emit\n",
+                pin_text(name).bytes
+            );
             return false;
         }
         arena_free(&detached);

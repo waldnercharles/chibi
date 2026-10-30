@@ -12272,7 +12272,12 @@ static bool native_strings_emit(int b)
 }
 /* CollectScalarPackages' arguments for the project files `inputs`: no
  * collection, the paths and sources, this host's target and the natives. */
-static bool scalar_package_arguments(int b, const source_package_input *inputs, int count, pin_value args[10])
+static bool scalar_package_arguments(
+    int b,
+    const source_package_input *inputs,
+    int count,
+    pin_value args[10]
+)
 {
     args[0] = text("/project");
     args[1] = strings(NULL, 0);
@@ -12294,9 +12299,11 @@ TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
     static const source_package_input packages[] = {
         { .path = "Main.chibi",
           .text = "package main\nimport lib \"project:lib\"\n"
-                  "Main :: () -> int { return lib.Add(3, lib.Twice(2)) * 2; }\n" },
+                  "Main :: () -> int { return lib.Add(3, lib.Twice(2)) * 2; "
+                  "}\n" },
         { .path = "lib/Lib.chibi",
-          .text = "package lib\npub Twice :: (n: int) -> int { return n * 2; }\n"
+          .text = "package lib\npub Twice :: (n: int) -> int { return n * 2; "
+                  "}\n"
                   "pub Add :: (a: int, b: int) -> int { return a + b; }\n" },
     };
     pin_value produced[2];
@@ -12334,7 +12341,8 @@ TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
         }
         ir[bytes->count] = 0;
         bool spans = strstr(ir, "define internal i32 @chibi_scalar.1(") &&
-                     strstr(ir, "define internal i32 @chibi_scalar.2(") && strstr(ir, "call i32 @chibi_scalar.");
+                     strstr(ir, "define internal i32 @chibi_scalar.2(") &&
+                     strstr(ir, "call i32 @chibi_scalar.");
         if (!spans) {
             fprintf(stderr, "%s\n", ir);
         }

@@ -9,3 +9,17 @@ Calls :: () {
     e1: int = 2;
     assert(r1 == e1, "Pick call 1");
 }
+
+// fails: array index out of range
+@test
+PickBeforeTheStartFails :: () {
+    xs: int[] = [1, 2];
+    Pick(xs, -1);
+}
+
+// fails: array index out of range
+@test
+PickFromEmptyFails :: () {
+    xs: int[] = [];
+    Pick(xs, 0);
+}

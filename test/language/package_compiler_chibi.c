@@ -1041,13 +1041,6 @@ static const sample samples[] = {
       .message = "Error result is ignored on a reachable path; check, report, store or return it",
       .oracle_package = "core:host_dependency",
       .same_rejection = true },
-    { .name = "independent project package checks error obligations",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\npub Value :: () -> int { return 7; }\n",
-      .library = UNCHECKED_PROJECT_ERROR_SOURCE,
-      .message = "Error result is ignored on a reachable path; check, report, store or return it",
-      .oracle_package = "project:lib",
-      .same_rejection = true },
     { .name = "active collection executes checked error results",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nimport host \"core:host_only\"\n"
@@ -1138,99 +1131,6 @@ static const sample samples[] = {
       .same_rejection = true,
       .line = 3,
       .column = 20 },
-    { .name = "private imported function",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "One :: () -> int { return lib.Hidden(); }",
-      .library = "package lib\nHidden :: () -> int { return 7; }",
-      .message = "'lib.Hidden' is private: declare it pub to use it from "
-                 "another package",
-      .same_rejection = true },
-    { .name = "private imported constant",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "One :: () -> int { return lib.Hidden; }",
-      .library = "package lib\nHidden :: 7;",
-      .message = "'lib.Hidden' is private: declare it pub to use it from "
-                 "another package",
-      .same_rejection = true },
-    { .name = "private imported constant expression",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\nValue :: "
-                "lib.Hidden + 1;",
-      .library = "package lib\nHidden :: 7;",
-      .message = "'lib.Hidden' is private: declare it pub to use it from "
-                 "another package",
-      .same_rejection = true },
-    { .name = "private imported record local",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "One :: () -> int { value: lib.Hidden = lib.Make(); return "
-                "value.x; }",
-      .library = "package lib\nHidden :: struct { x: int; }\n"
-                 "pub Make :: () -> Hidden { return {x: 7}; }",
-      .message = "'lib.Hidden' is private: declare it pub to use it from "
-                 "another package",
-      .same_rejection = true },
-    { .name = "private imported record parameter",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "One :: (value: lib.Hidden) -> int { return value.x; }",
-      .library = "package lib\nHidden :: struct { x: int; }",
-      .message = "'lib.Hidden' is private: declare it pub to use it from "
-                 "another package",
-      .same_rejection = true },
-    { .name = "private imported record result",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "One :: () -> lib.Hidden { return lib.Make(); }",
-      .library = "package lib\nHidden :: struct { x: int; }\n"
-                 "pub Make :: () -> Hidden { return {x: 7}; }",
-      .message = "'lib.Hidden' is private: declare it pub to use it from "
-                 "another package",
-      .same_rejection = true },
-    { .name = "private imported union payload type",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Wrapper :: union { Some(value: lib.Hidden) }",
-      .library = "package lib\nHidden :: struct { x: int; }",
-      .message = "'lib.Hidden' is private: declare it pub to use it from "
-                 "another package",
-      .same_rejection = true },
-    { .name = "private imported map value type",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "One :: () -> int { values: [int: lib.Hidden] = [:]; return 0; "
-                "}",
-      .library = "package lib\nHidden :: struct { x: int; }",
-      .message = "'lib.Hidden' is private: declare it pub to use it from "
-                 "another package",
-      .same_rejection = true },
-    { .name = "private imported union constructor",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "One :: () -> int { value := lib.Hidden.Some(7); return 0; }",
-      .library = "package lib\nHidden :: union { Some(value: int) | None }",
-      .message = "'lib.Hidden' is private: declare it pub to use it from "
-                 "another package",
-      .oracle_message = "Unknown callable 'lib.Hidden.Some'",
-      .same_rejection = true },
-    { .name = "private imported union value",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "One :: () -> int { value := lib.Hidden.None; return 0; }",
-      .library = "package lib\nHidden :: union { Some(value: int) | None }",
-      .message = "'lib.Hidden' is private: declare it pub to use it from "
-                 "another package",
-      .same_rejection = true },
-    { .name = "optional error payload requires a presence guard",
-      .group = TYPE_SAMPLES,
-      .same_rejection = true,
-      .source = "package facts\n"
-                "Failure :: struct { code: int; }\n"
-                "Use :: (error: Failure?) -> int { return error.code; }\n",
-      .message = "Optional component requires a presence guard before member "
-                 "access" },
     { .name = "read in place",
       .group = IMPORT_SAMPLES,
       .aliases = true,
@@ -1674,61 +1574,6 @@ static const sample samples[] = {
                  "int { return function(); }\n",
       .calls = { { .function = "Main", .arguments = "[]", .expected = "[711]" },
                  { .function = "Inline", .arguments = "[]", .expected = "[120]" } } },
-    { .name = "compile-time argument cannot use shadowing parameter",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nFactor :: 3;\n"
-                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
-                "Main :: (Factor: int) -> int { return Scale(2, Factor); }\n",
-      .message = "constant value must be an integer expression",
-      .oracle_message = "Compile-time evaluation: only constant values and "
-                        "types are available",
-      .same_rejection = true },
-    { .name = "compile-time argument cannot use shadowing local",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nFactor :: 3;\n"
-                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
-                "Main :: () -> int { Factor := 5; return Scale(2, Factor); }\n",
-      .message = "constant value must be an integer expression",
-      .oracle_message = "Compile-time evaluation: only constant values and "
-                        "types are available",
-      .same_rejection = true },
-    { .name = "compile-time argument cannot use shadowed import alias",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Options :: struct { Factor: int; }\n"
-                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
-                "Main :: (lib: Options) -> int { return Scale(2, lib.Factor); "
-                "}\n",
-      .library = "package lib\npub Factor :: 3;\n",
-      .message = "constant value must be an integer expression",
-      .oracle_message = "Compile-time evaluation: only constant values and "
-                        "types are available",
-      .same_rejection = true },
-    { .name = "boolean compile-time argument cannot use shadowing parameter",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\n"
-                "Maybe :: (value: int, $Flag: bool) -> int { if Flag { return "
-                "value; } return 0; }\n"
-                "Main :: (Enabled: bool) -> int { return Maybe(2, Enabled); "
-                "}\n",
-      .message = "A boolean compile-time argument requires a constant boolean "
-                 "value",
-      .oracle_message = "Compile-time evaluation: only constant values and "
-                        "types are available",
-      .same_rejection = true },
-    { .name = "boolean compile-time argument cannot use shadowing local",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\n"
-                "Maybe :: (value: int, $Flag: bool) -> int { if Flag { return "
-                "value; } return 0; }\n"
-                "Forward :: ($Enabled: bool) -> int { if true { Enabled := "
-                "false; return Maybe(2, Enabled); } return 0; }\n"
-                "Main :: () -> int { return Forward(true); }\n",
-      .message = "A boolean compile-time argument requires a constant boolean "
-                 "value",
-      .oracle_message = "Compile-time evaluation: only constant values and "
-                        "types are available",
-      .same_rejection = true },
     { .name = "callable pattern binding cannot escape consequence",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"
@@ -1837,13 +1682,6 @@ static const sample samples[] = {
                  { .function = "Mixed",
                    .arguments = "[true]",
                    .expected = "[\"true 18446744073709551615 -3\"]" } } },
-    { .name = "compound map assignment",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\nAdd :: () -> int { m: [int: int] = [:]; m[1] "
-                "+= 2; return m[1]; }",
-      .message = "compound map assignment is not supported yet",
-      .line = 2,
-      .column = 41 },
     /* A map parameter is the function's own value: removing a key leaves
      * the caller's map as it was. */
     { .name = "assert message",
@@ -2068,16 +1906,6 @@ static const sample samples[] = {
                  { .function = "Negative", .arguments = "[]", .expected = "[0]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[0]" },
                  { .function = "Places", .arguments = "[]", .expected = "[0]" } } },
-    { .name = "decimal past the least integer",
-      .source = "package facts\nRun :: () -> i64 { return "
-                "-9223372036854775809.0; }",
-      .message = "Numeric literal is outside the range of i64",
-      .same_rejection = true },
-    { .name = "decimal past the largest integer",
-      .source = "package facts\nRun :: () -> u64 { return "
-                "18446744073709551616.0; }",
-      .message = "Numeric literal is outside the range of u64",
-      .same_rejection = true },
     { .name = "small fraction overload argument",
       .c_string_probe = true,
       .source = "package facts\nRun :: () -> int { return "
@@ -2089,11 +1917,6 @@ static const sample samples[] = {
       .source = "package facts\nRun :: () -> int { return "
                 "native.overload(2.0000000000000000001); }",
       .message = "Numeric literal has a fraction, which int cannot hold",
-      .same_rejection = true },
-    { .name = "small fraction integer",
-      .source = "package facts\nRun :: () -> i64 { x: i64 = 0; return x + "
-                "9007199254740992.5; }",
-      .message = "Numeric literal has a fraction, which i64 cannot hold",
       .same_rejection = true },
     { .name = "ambiguous literal overload",
       .c_string_probe = true,
@@ -8750,7 +8573,7 @@ static bool native_emit_library(
     const pin_union **out
 )
 {
-    pin_value tables[10], args[14];
+    pin_value tables[10], args[15];
     REQUIRE(native_tables(b, function, m, tables));
     args[0] = tables[0];
     args[1] = text(name);
@@ -8758,7 +8581,8 @@ static bool native_emit_library(
     args[3] = native_ids(ids, count);
     memcpy(&args[4], &tables[1], sizeof tables - sizeof *tables);
     args[13] = (pin_value){ .type = PIN_I32, .i = 1 };
-    return native_result(b, "EmitLibrary", args, 14, out);
+    args[14] = strings(NULL, 0);
+    return native_result(b, "EmitLibrary", args, 15, out);
 }
 /* Emits m for Linux x86-64. */
 static bool native_emit(int b, const native_module *m, const pin_union **out)
@@ -9429,7 +9253,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 75
+    SCALAR_ACCEPTED_CASES = 76
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on

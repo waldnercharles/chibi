@@ -1,0 +1,5 @@
+package facts
+Maybe :: (value: int, $Flag: bool) -> int { if Flag { return value; } return 0; }
+Main :: (Enabled: bool) -> int { return Maybe(2, Enabled); }
+
+// error: 3:50: A boolean compile-time argument requires a constant boolean value

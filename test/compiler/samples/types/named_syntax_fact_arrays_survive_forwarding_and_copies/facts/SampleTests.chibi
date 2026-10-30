@@ -10,3 +10,13 @@ Calls :: () {
     e3: int = 0;
     assert(r3 == e3, "DefaultSize call 3");
 }
+
+@test
+Records :: () {
+    syntax := ReadSyntax();
+    assert(length(syntax.nodes) == 1 && syntax.nodes[0].kind == "word", "node kind");
+    assert(syntax.nodes[0].start == 3 && syntax.nodes[0].end == 7, "node range");
+    assert(length(syntax.fields) == 1 && syntax.fields[0] == "body", "fields");
+    assert(length(syntax.named) == 1 && syntax.named[0], "named");
+    assert(syntax.clean, "clean");
+}

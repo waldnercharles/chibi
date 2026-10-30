@@ -529,7 +529,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
             return BoolStorage;
         }
         if (native.operator != 0) {
-            return ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, native.array).storage;
+            return ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, node).storage;
         }
         operator := ScalarTextOperator(forest, text, node);
         if (operator == facts.TextSlice || operator == facts.TextFormat) {
@@ -2105,7 +2105,8 @@ ScalarTextNative :: (native: ResolvedNative) -> bool {
            NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||
            NativeNameMatches(native, "extend") || NativeNameMatches(native, "slice") ||
            NativeNameMatches(native, "resize") || NativeNameMatches(native, "contains") ||
-           NativeNameMatches(native, "remove_index");
+           NativeNameMatches(native, "remove_index") ||
+           NativeNameMatches(native, "text_bytes");
 }
 // The text natives of `natives`, each with its ports at their place among
 // ScalarTextPorts's.

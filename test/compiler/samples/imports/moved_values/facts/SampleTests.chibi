@@ -11,3 +11,11 @@ Calls :: () {
     e3: int = 5;
     assert(r3 == e3, "MovedSecond call 3");
 }
+
+@test
+Records :: () {
+    note := MovedNote(3);
+    assert(note.text == "a" && note.count == 3, "MovedNote");
+    first: Note = {text: "x", count: 1};
+    assert(Copied([first]) == 7, "Copied");
+}

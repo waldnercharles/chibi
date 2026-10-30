@@ -8,3 +8,10 @@ Calls :: () {
     e3: int = 44;
     assert(r3 == e3, "Use call 3");
 }
+
+@test
+Records :: () {
+    assert(One(3).value == 4, "One");
+    pair := Sequential();
+    assert(pair.a == 2 && pair.b == 2, "Sequential");
+}

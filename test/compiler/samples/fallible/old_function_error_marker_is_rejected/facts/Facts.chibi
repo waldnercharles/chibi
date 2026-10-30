@@ -1,0 +1,4 @@
+package facts
+@fallible Fail :: () -> int? { return nil; }
+
+// error: 2:1: Unknown attribute '@fallible'

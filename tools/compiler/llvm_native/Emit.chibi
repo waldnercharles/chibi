@@ -163,13 +163,16 @@ pub ArrayContains: int : 46;
 // index, or as it is for an index outside it; type is the array type. The
 // elements after the removed move down in place.
 pub ArrayRemove: int : 47;
+// output = an int array of the bytes of the left slot's string, each from 0 to
+// 255; type is the int array type. It allocates through the context.
+pub ArrayBytes: int : 48;
 // output = symbol(arguments...) for a C function the module declares and the
 // linker resolves, as an Odin foreign procedure is: `symbol` is
 // texts[literal], and the argument slots are this function's
 // arguments[right, right + target), each a number or a bool, as is the result,
 // the instruction's type. It passes no context and never fails. A small
 // integer or bool carries the extension the C ABI asks of its caller.
-pub ForeignCall: int : 48;
+pub ForeignCall: int : 49;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -178,7 +181,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayRemove) ||
+    return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) ||
            op == ForeignCall;
 }
 Comparison :: (op: int) -> bool {
@@ -189,7 +192,7 @@ Unary :: (op: int) -> bool {
 }
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
-           (op >= ArrayLength && op <= ArrayRemove);
+           (op >= ArrayLength && op <= ArrayBytes);
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -235,7 +238,7 @@ ReadsTarget :: (op: int) -> bool {
 // an allocation.
 ArrayCalls :: (op: int) -> bool {
     return op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
-           op == ArraySlice || op == ArrayResize;
+           op == ArraySlice || op == ArrayResize || op == ArrayBytes;
 }
 // Whether an instruction reads argument slots: a call's or a format's.
 ReadsArguments :: (op: int) -> bool {
@@ -566,7 +569,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native field read differs from its record");
             }
         }
-        if (item.op >= ArrayLength && item.op <= ArrayRemove && !ArrayValid(records, slots, item)) {
+        if (item.op >= ArrayLength && item.op <= ArrayBytes && !ArrayValid(records, slots, item)) {
             return Result.Rejected(base + pc, "native array operation differs from its operands");
         }
         if (item.op >= TextLength && item.op <= TextTake && !TextValid(slots, item)) {
@@ -631,6 +634,9 @@ ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
         return false;
     }
     held := slots[item.left];
+    if (item.op == ArrayBytes) {
+        return item.type == ArrayType + abi.IntStorage && held == abi.TextStorage;
+    }
     if (item.op == ArrayLength) {
         return item.type == abi.IntStorage && ElementType(records, held) != 0;
     }
@@ -935,6 +941,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}  %v{} = extractvalue {} %a{}, {}\n", out, pc, TypeName(item.right), pc, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == ArrayBytes) {
+        out = format_text("{}{}", out, ArrayBytesRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
         out = format_text("{}{}", out, ArrayRead(item, pc));
     } else if (item.op >= TextLength && item.op <= TextTake) {
@@ -1182,6 +1190,34 @@ ArrayResized :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  call void @chibi_scalar.zero(ptr %rest{}, i64 %fill{})\n", out, pc, pc);
     out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
     out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %make{} ]\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %sized{} = insertvalue {} zeroinitializer, i32 %n{}, 0\n", out, pc, array, pc);
+    out = format_text("{}  %capped{} = insertvalue {} %sized{}, i32 %n{}, 1\n", out, pc, array, pc, pc);
+    out = format_text("{}  %v{} = insertvalue {} %capped{}, ptr %buffer{}, 2\n", out, pc, array, pc, pc);
+    return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+}
+// A new int array of the bytes of the left slot's string, none when it is
+// empty: each byte widens to an int in turn.
+ArrayBytesRead :: (item: Instruction, pc: int) -> string {
+    array := abi.ArrayType();
+    text := abi.TextType();
+    out := Load(format_text("t{}", pc), abi.TextStorage, "s", item.left);
+    out = format_text("{}  %data{} = extractvalue {} %t{}, 0\n  %n{} = extractvalue {} %t{}, 1\n", out, pc, text, pc, pc, text,
+                      pc);
+    out = format_text("{}  %none{} = icmp eq i32 %n{}, 0\n", out, pc, pc);
+    out = format_text("{}  br i1 %none{}, label %done{}, label %make{}\nmake{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %count{} = zext i32 %n{} to i64\n  %bytes{} = shl i64 %count{}, 2\n", out, pc, pc, pc, pc);
+    out = format_text("{}{}", out, Allocated(format_text("fresh{}", pc), format_text("%bytes{}", pc)));
+    out = format_text("{}  br label %scan{}\nscan{}:\n", out, pc, pc);
+    out = format_text("{}  %at{} = phi i32 [ 0, %make{} ], [ %next{}, %body{} ]\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %end{} = icmp eq i32 %at{}, %n{}\n", out, pc, pc, pc);
+    out = format_text("{}  br i1 %end{}, label %done{}, label %body{}\nbody{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %offset{} = zext i32 %at{} to i64\n", out, pc, pc);
+    out = format_text("{}  %from{} = getelementptr inbounds i8, ptr %data{}, i64 %offset{}\n", out, pc, pc, pc);
+    out = format_text("{}  %byte{} = load i8, ptr %from{}\n  %wide{} = zext i8 %byte{} to i32\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %to{} = getelementptr inbounds i32, ptr %fresh{}, i64 %offset{}\n  store i32 %wide{}, ptr %to{}\n",
+                      out, pc, pc, pc, pc, pc);
+    out = format_text("{}  %next{} = add i32 %at{}, 1\n  br label %scan{}\ndone{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %scan{} ]\n", out, pc, pc, pc, pc);
     out = format_text("{}  %sized{} = insertvalue {} zeroinitializer, i32 %n{}, 0\n", out, pc, array, pc);
     out = format_text("{}  %capped{} = insertvalue {} %sized{}, i32 %n{}, 1\n", out, pc, array, pc, pc);
     out = format_text("{}  %v{} = insertvalue {} %capped{}, ptr %buffer{}, 2\n", out, pc, array, pc, pc);
@@ -1979,13 +2015,204 @@ ExportEntry :: (functions: Function[], function: int, parameters: int[], runtime
     out = format_text("{}{}", out, ToWord("word", "%r", shape.result));
     return format_text("{}  store i64 %word, ptr %out\n  ret void\n}\n", out);
 }
+// The most words a state function takes or gives: its record's scalar fields.
+StateWords: int : 64;
+// A scalar field of a state record, reached through the record fields whose
+// indices are `path` (`0, 2`), and named by their dotted names; or a scalar
+// parameter or result, named `#<index>`, with no path.
+Leaf :: struct {
+    path: string;
+    name: string;
+    type: int;
+}
+NewLeaf :: (path: string, name: string, type: int) -> Leaf {
+    leaf: Leaf = {path: path, name: name, type: type};
+    return leaf;
+}
+// The scalar leaves of a value of `type`, in field order, appended to
+// `leaves`; a field that is a string or an array is a leaf whose type has no
+// word. `path` and `name` reach `type` from the value.
+Leaves :: (records: Record[], fields: int[], field_names: string[], type: int, path: string, name: string,
+           leaves: Leaf[]) -> Leaf[] {
+    if (type < RecordType || type >= ArrayType) {
+        leaves.append(NewLeaf(path, name, type));
+        return leaves;
+    }
+    record := records[type - RecordType];
+    for (index in 0..<record.count) {
+        step := format_text("{}", index);
+        field_name := field_names[record.first + index];
+        if (path != "") {
+            step = format_text("{}, {}", path, index);
+        }
+        if (name != "") {
+            field_name = format_text("{}.{}", name, field_name);
+        }
+        leaves = Leaves(records, fields, field_names, fields[record.first + index], step, field_name, leaves);
+    }
+    return leaves;
+}
+// The leaves of a function's parameter `index` of `type`.
+ParameterLeaves :: (records: Record[], fields: int[], field_names: string[], type: int, index: int) -> Leaf[] {
+    leaves: Leaf[] = [];
+    name := "";
+    if (type < RecordType || type >= ArrayType) {
+        name = format_text("#{}", index);
+    }
+    return Leaves(records, fields, field_names, type, "", name, leaves);
+}
+// Whether every leaf is a scalar a word carries, and there are not too many.
+Carried :: (leaves: Leaf[]) -> bool {
+    if (length(leaves) > StateWords) {
+        return false;
+    }
+    for (leaf in leaves) {
+        if (abi.ExportType(leaf.type) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+// The leaves of all of a function's parameters, in order.
+InputLeaves :: (shape: Function, parameters: int[], records: Record[], fields: int[], field_names: string[]) -> Leaf[] {
+    leaves: Leaf[] = [];
+    for (index in 0..<shape.parameters) {
+        leaves.extend(ParameterLeaves(records, fields, field_names, parameters[shape.first_parameter + index], index));
+    }
+    return leaves;
+}
+// The leaves of a function's result.
+OutputLeaves :: (shape: Function, records: Record[], fields: int[], field_names: string[]) -> Leaf[] {
+    return ParameterLeaves(records, fields, field_names, shape.result, 0);
+}
+// Whether a function is a state function: a record is among its parameters
+// or is its result, and it is made only of scalars a word carries, so a host
+// can pass a record of them through words that it names. The Frame of a game
+// loop is one: it takes its state and gives the next.
+Stateful :: (shape: Function, parameters: int[], records: Record[], fields: int[], field_names: string[]) -> bool {
+    if (length(field_names) != length(fields)) {
+        return false;
+    }
+    held := shape.result >= RecordType && shape.result < ArrayType;
+    for (index in 0..<shape.parameters) {
+        type := parameters[shape.first_parameter + index];
+        held = held || (type >= RecordType && type < ArrayType);
+    }
+    return held && Carried(InputLeaves(shape, parameters, records, fields, field_names)) &&
+           Carried(OutputLeaves(shape, records, fields, field_names));
+}
+// Function `function`'s state entry: like ExportEntry, but a record parameter
+// is built from the words of its leaves, in field order, and a record result
+// is written as the words of its leaves.
+StateEntry :: (functions: Function[], function: int, parameters: int[], records: Record[], fields: int[],
+               field_names: string[], runtime: bool) -> string {
+    shape := functions[function];
+    out := format_text("define internal void @chibi_scalar.state.{}(ptr %ctx, ptr %in, ptr %out) #0 {\nentry:\n",
+                       function);
+    listed: string[] = [];
+    if (runtime) {
+        listed.append("ptr %ctx");
+    }
+    word: int = 0;
+    for (index in 0..<shape.parameters) {
+        type := parameters[shape.first_parameter + index];
+        value := "zeroinitializer";
+        for (leaf in ParameterLeaves(records, fields, field_names, type, index)) {
+            out = format_text("{}  %w{}.at = getelementptr inbounds i64, ptr %in, i64 {}\n", out, word, word);
+            out = format_text("{}  %w{} = load i64, ptr %w{}.at\n", out, word, word);
+            out = format_text("{}{}", out, FromWord(format_text("l{}", word), format_text("%w{}", word), leaf.type));
+            if (leaf.path == "" && type < RecordType) {
+                value = format_text("%l{}", word);
+            } else {
+                out = format_text("{}  %s{} = insertvalue {} {}, {} %l{}, {}\n", out, word, TypeName(type), value,
+                                  TypeName(leaf.type), word, leaf.path);
+                value = format_text("%s{}", word);
+            }
+            word += 1;
+        }
+        listed.append(format_text("{} {}", TypeName(type), value));
+    }
+    out = format_text("{}  %r = call {} @{}({})\n", out, TypeName(shape.result), Symbol(function, NoEntry),
+                      strings.Join(listed, ", "));
+    result := 0;
+    for (leaf in OutputLeaves(shape, records, fields, field_names)) {
+        value := "%r";
+        if (leaf.path != "") {
+            value = format_text("%f{}", result);
+            out = format_text("{}  {} = extractvalue {} %r, {}\n", out, value, TypeName(shape.result), leaf.path);
+        }
+        out = format_text("{}{}", out, ToWord(format_text("o{}", result), value, leaf.type));
+        out = format_text("{}  %o{}.at = getelementptr inbounds i64, ptr %out, i64 {}\n", out, result, result);
+        out = format_text("{}  store i64 %o{}, ptr %o{}.at\n", out, result, result);
+        result += 1;
+    }
+    return format_text("{}  ret void\n}\n", out);
+}
+// The globals of function `function`'s state schema: the manifest types of
+// its input leaves then its output leaves, and the NUL-ended names of each in
+// the same order.
+StateSchema :: (function: int, inputs: Leaf[], outputs: Leaf[]) -> string {
+    types: string[] = [];
+    names := "";
+    bytes: int = 0;
+    for (leaf in inputs) {
+        types.append(format_text("i8 {}", abi.ExportType(leaf.type)));
+        names = format_text("{}{}\\00", names, Escaped(leaf.name));
+        bytes += strings.ByteLength(leaf.name) + 1;
+    }
+    for (leaf in outputs) {
+        types.append(format_text("i8 {}", abi.ExportType(leaf.type)));
+        names = format_text("{}{}\\00", names, Escaped(leaf.name));
+        bytes += strings.ByteLength(leaf.name) + 1;
+    }
+    out := format_text("@chibi_scalar.state.types.{} = private unnamed_addr constant [{} x i8] [{}]\n", function,
+                       length(types), strings.Join(types, ", "));
+    return format_text("{}@chibi_scalar.state.names.{} = private unnamed_addr constant [{} x i8] c\"{}\"\n", out,
+                       function, bytes, names);
+}
+// The state functions of a library, in a manifest of their own,
+// `chibi_state_<library>`, so the player's binding of its exports never sees
+// them: { i32 abi, i32 count, ptr states }, each state { ptr name, i64 id,
+// ptr types, ptr names, i32 inputs, i32 outputs, ptr entry }. The types are
+// the manifest types of the input leaves then the output leaves, and the names
+// are their NUL-ended names in the same order. A library with none has no
+// such manifest.
+StateManifest :: (text: string, name: string, names: string[], ids: i64[], functions: Function[], parameters: int[],
+                  records: Record[], fields: int[], field_names: string[], runtime: bool) -> string {
+    out := text;
+    states: string[] = [];
+    for (function in 0..<length(functions)) {
+        shape := functions[function];
+        if (!Stateful(shape, parameters, records, fields, field_names)) {
+            continue;
+        }
+        inputs := InputLeaves(shape, parameters, records, fields, field_names);
+        outputs := OutputLeaves(shape, records, fields, field_names);
+        out = format_text("{}@chibi_scalar.state.name.{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n", out,
+                          function, strings.ByteLength(names[function]) + 1, Escaped(names[function]));
+        out = format_text("{}{}", out, StateSchema(function, inputs, outputs));
+        out = format_text("{}\n{}", out, StateEntry(functions, function, parameters, records, fields, field_names,
+                                                       runtime));
+        states.append(format_text("%chibi.state { ptr @chibi_scalar.state.name.{}, i64 {}, ptr @chibi_scalar.state.types.{}, ptr @chibi_scalar.state.names.{}, i32 {}, i32 {}, ptr @chibi_scalar.state.{} }",
+                                  function, ids[function], function, function, length(inputs), length(outputs),
+                                  function));
+    }
+    if (length(states) == 0) {
+        return out;
+    }
+    out = format_text("{}\n%chibi.state = type { ptr, i64, ptr, ptr, i32, i32, ptr }\n", out);
+    out = format_text("{}@chibi_scalar.states = private constant [{} x %chibi.state] [{}]\n", out, length(states),
+                      strings.Join(states, ", "));
+    return format_text("{}@chibi_state_{} = constant %chibi.manifest { i32 1, i32 {}, ptr @chibi_scalar.states }\n", out,
+                       name, length(states));
+}
 // A library module: each function is internal, and the one symbol it exports
 // is its manifest, `chibi_natives_<library>`, a constant execution_native_manifest
 // (src/execution/native.h) listing an entry for each function whose
 // parameters and result words carry, under its name and stable ID.
 pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                     parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
-                    records: Record[], fields: int[], texts: string[], step_budget: int) -> Result {
+                    records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[]) -> Result {
     // The export ABI is checked only on Linux x86-64 so far.
     if (!abi.Same(target, abi.LinuxX64())) {
         return Result.Rejected(-1, "native libraries are Linux x86-64 only");
@@ -2034,6 +2261,8 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     }
     out = format_text("{}\n@chibi_scalar.exports = private constant [{} x %chibi.export] [{}]\n", out,
                       length(exports), strings.Join(exports, ", "));
-    return Result.Emitted(format_text("{}@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",
-                                      out, name, abi.ExportAbi, length(exports)));
+    out = format_text("{}@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",
+                      out, name, abi.ExportAbi, length(exports));
+    return Result.Emitted(StateManifest(out, name, names, ids, functions, parameters, records, fields, field_names,
+                                        runtime));
 }

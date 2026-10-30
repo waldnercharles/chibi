@@ -487,8 +487,8 @@ ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayNew) {
         return operand.count;
     }
-    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2];
-    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayJoin) {
+    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1];
+    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayBytes) {
         return 0;
     }
     return consumed[operand.value];
@@ -536,6 +536,12 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
     element := Element(records, operand.type);
     if (element == 0) {
         return mismatch;
+    }
+    if (operator == facts.ArrayBytes) {
+        if (element != facts.IntType || stack[base] != facts.StringType) {
+            return mismatch;
+        }
+        return "";
     }
     if (operator == facts.ArrayNew) {
         for (index in 0..<consumed) {
@@ -1156,6 +1162,9 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     if (operand.value == facts.ArrayRemove) {
         return Op(native.ArrayRemove, type, slot, stack[base], stack[base + 1], 0);
     }
+    if (operand.value == facts.ArrayBytes) {
+        return Op(native.ArrayBytes, type, slot, stack[base], 0, 0);
+    }
     return Op(native.ArrayCopy, type, slot, stack[base], 0, 0);
 }
 // One native instruction without a literal.
@@ -1229,6 +1238,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
     arguments: int[] = [];
     records: native.Record[] = [];
     fields: int[] = [];
+    field_names: string[] = [];
     texts: string[] = [];
     names: string[] = [];
     ids: i64[] = [];
@@ -1239,11 +1249,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         record: native.Record = {first: length(fields), count: 0};
         if (rows[head].kind == facts.UnionRow) {
             fields.append(NativeType(facts.IntType));
+            field_names.append("tag");
         }
         // A record's fields, or each of a union's variants and its payloads.
         for (field in head + 1..<After(rows, head)) {
             if (rows[field].kind == facts.MemberRow) {
                 fields.append(NativeType(rows[field].type));
+                field_names.append(rows[field].name);
             }
         }
         record.count = length(fields) - record.first;
@@ -1793,7 +1805,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                               source, names, lines, columns, false, 1);
     } else {
         emitted = native.EmitLibrary(target, rows[1].text, names, ids, functions, parameters, slots, locals,
-                                     code, arguments, records, fields, texts, 1);
+                                     code, arguments, records, fields, texts, 1, field_names);
     }
     switch emitted {
         case .Rejected(instruction, message):

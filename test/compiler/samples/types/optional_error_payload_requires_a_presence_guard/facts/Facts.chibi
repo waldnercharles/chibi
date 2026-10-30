@@ -1,0 +1,5 @@
+package facts
+Failure :: struct { code: int; }
+Use :: (error: Failure?) -> int { return error.code; }
+
+// error: 3:48: Optional component requires a presence guard before member access

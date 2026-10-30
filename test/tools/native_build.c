@@ -210,6 +210,7 @@ TEST_CASE(native_build_links_a_program_and_reuses_it)
     path(receipt, program, "receipt.txt");
     char *before = tool_read(receipt);
     REQUIRE(before && strstr(before, "output-kind executable\n"));
+    REQUIRE(strstr(before, "\nlinkage dynamic "));
     snprintf(trace, sizeof trace, "\nlinker %s/ld.lld\n", tools);
     REQUIRE(strstr(before, trace));
     strcat(program, "/program");
@@ -224,6 +225,22 @@ TEST_CASE(native_build_links_a_program_and_reuses_it)
     free(before);
     REQUIRE(build(launcher, "-O2", tools) == 0 && count("O2-") == 1 && count("O0-") == 1);
     REQUIRE(count("emitter-") == 1);
+    return true;
+}
+
+/* A program links libc dynamically by default, as Odin's does, and --static
+ * keeps the no-CRT static link as an explicit option; the receipt says which. */
+TEST_CASE(native_build_links_statically_on_request)
+{
+    reset("static", SOURCE);
+    const char *options[] = { "-O0", "--static", NULL };
+    REQUIRE(build_with(launcher, options, tools) == 0);
+    char program[1024], receipt[1024];
+    REQUIRE(only("O0-", "", program));
+    path(receipt, program, "receipt.txt");
+    char *text = tool_read(receipt);
+    REQUIRE(text && strstr(text, "\nlinkage static\n"));
+    free(text);
     return true;
 }
 
@@ -911,6 +928,7 @@ void test_native_build(const char *binary)
     assert(stage_tool);
     relocate(binary);
     RUN_TEST_CASE(native_build_links_a_program_and_reuses_it);
+    RUN_TEST_CASE(native_build_links_statically_on_request);
     RUN_TEST_CASE(native_build_adds_line_tables_with_g);
     RUN_TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back);
     RUN_TEST_CASE(native_build_rejects_missing_and_failing_tools);

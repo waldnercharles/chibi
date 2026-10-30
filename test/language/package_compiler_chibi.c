@@ -12635,7 +12635,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 63
+    SCALAR_ACCEPTED_CASES = 66
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -17428,7 +17428,7 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
         ran++;
         arena_free(&detached);
     }
-    REQUIRE(ran >= 10);
+    REQUIRE(ran >= 13);
     /* Index 3 is past the three elements, as is -1. */
     static const char *const OUTSIDE[] = {
         "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n    return items[Where()];\n}\n"
@@ -17500,13 +17500,17 @@ TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit)
         pin_value *second = &produced->items[1];
         bool rejected = scalar_field(second, "kind").i == SCALAR_REJECTION_ROW;
         if (checked.i != 1) {
+            int from = rejected ? (int)scalar_field(second, "start").i : 0,
+                to = rejected ? (int)scalar_field(second, "end").i : 0;
             fprintf(
                 stderr,
-                "scalar case %s: Check gave %d%s%s\n",
+                "scalar case %s: Check gave %d%s%s at `%.*s`\n",
                 pin_text(name).bytes,
                 checked.i,
                 rejected ? ", rejected: " : "",
-                rejected ? pin_text(scalar_field(second, "text")).bytes : ""
+                rejected ? pin_text(scalar_field(second, "text")).bytes : "",
+                to > from ? to - from : 0,
+                to > from ? pin_text(source).bytes + from : ""
             );
         }
         // A rejection's message is the parser's, which this fixture's differs

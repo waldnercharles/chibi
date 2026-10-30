@@ -53,7 +53,7 @@ ArraysAllocateThroughTheContextAndCheckIndexes :: () {
     assert(strings.Contains(text, "%length7 = extractvalue { i32, i32, ptr } %a7, 0\n  store i32 %length7, ptr %s6\n"));
     assert(strings.Contains(text, "%none8 = icmp eq i32 %length8, 0\n  br i1 %none8, label %done8, label %clone8\nclone8:\n"));
     assert(strings.Contains(text, "%buffer8 = phi ptr [ null, %p8 ], [ %fresh8, %clone8 ]\n"));
-    assert(strings.Contains(text, "define internal void @chibi_scalar.copy(ptr noalias %to, ptr noalias %from, i64 %bytes) #1 {\n"));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.copy(ptr %to, ptr %from, i64 %bytes) #1 {\n"));
     assert(strings.Contains(text, "attributes #1 = { noinline nounwind \"no-builtins\" }\n"));
     assert(!strings.Contains(text, "memcpy"));
     assert(strings.Contains(text, "%s0 = alloca { i32, i32, ptr }\n"));
@@ -108,7 +108,7 @@ ArraySetValueMustBeDefined :: () {
 @test
 UnsupportedArrayInstructionIsRejected :: () {
     code := Arrays();
-    code[8] = Code(native.ArrayCopy + 1, 1030, 7, 4, 0, 0, 0);
+    code[8] = Code(native.ArrayRemove + 1, 1030, 7, 4, 0, 0, 0);
     Rejects(ArrayModule(code), "unsupported native scalar instruction");
 }
 @test
@@ -121,4 +121,83 @@ ArraysNeedTheRuntimeContext :: () {
                         [1030, 6, 1030, 6, 1030, 6, 6, 1030, 6, 6], empty, Arrays(), empty, records, empty, texts,
                         source, texts, empty, empty, true, 1),
             "a native program cannot call the runtime yet");
+}
+// Main builds [5, 7], extends it with itself, takes two elements from index 1,
+// grows that to four with zeros, removes index 0 and asks whether 5 is in the
+// result, then returns its length.
+ArrayNatives :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 1030, 0, 0, 0, 0, 0),
+            Code(native.Constant, 6, 1, 0, 0, 0, 5),
+            Code(native.ArrayPush, 1030, 2, 0, 1, 0, 0),
+            Code(native.Constant, 6, 3, 0, 0, 0, 7),
+            Code(native.ArrayPush, 1030, 4, 2, 3, 0, 0),
+            Code(native.ArrayExtend, 1030, 5, 4, 4, 0, 0),
+            Code(native.Constant, 6, 6, 0, 0, 0, 1),
+            Code(native.Constant, 6, 7, 0, 0, 0, 2),
+            Code(native.ArraySlice, 1030, 8, 5, 6, 7, 0),
+            Code(native.Constant, 6, 9, 0, 0, 0, 4),
+            Code(native.ArrayResize, 1030, 10, 8, 9, 0, 0),
+            Code(native.Constant, 6, 11, 0, 0, 0, 0),
+            Code(native.ArrayRemove, 1030, 12, 10, 11, 0, 0),
+            Code(native.ArrayContains, 1, 13, 12, 1, 0, 6),
+            Code(native.ArrayLength, 6, 14, 12, 0, 0, 0),
+            Code(native.Publish, 6, 0, 14, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+NativesModule :: (code: native.Instruction[]) -> native.Result {
+    return Emit([Function(6, 0, 0, 15, 0, 18, 0, 0)], [], [1030, 6, 1030, 6, 1030, 1030, 6, 6, 1030, 6, 1030, 6, 1030, 1, 6],
+                code, []);
+}
+// Elements move through the module's own copy, and a longer array's new
+// elements are zeroed by its own fill, so the object calls no C function.
+@test
+ArrayNativesCopyAndZeroWithoutLibraryCalls :: () {
+    text := Emitted(NativesModule(ArrayNatives()));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.copy(ptr %to, ptr %from, i64 %bytes) #1 {\n"));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.zero(ptr %at, i64 %bytes) #1 {\n"));
+    assert(!strings.Contains(text, "memcpy") && !strings.Contains(text, "memset"));
+}
+@test
+ArrayExtendGrowsToItsTotal :: () {
+    text := Emitted(NativesModule(ArrayNatives()));
+    assert(strings.Contains(text, "%total6 = add i32 %length6, %extra6\n  %full6 = icmp ugt i32 %total6, %capacity6\n"));
+}
+@test
+ArraySliceClampsAndResizeZeroes :: () {
+    text := Emitted(NativesModule(ArrayNatives()));
+    assert(strings.Contains(text, "%n9 = select i1 %more9, i32 %room9, i32 %want9\n"));
+    assert(strings.Contains(text, "call void @chibi_scalar.zero(ptr %rest11, i64 %fill11)\n"));
+}
+@test
+ArrayRemoveMovesDownAndContainsScans :: () {
+    text := Emitted(NativesModule(ArrayNatives()));
+    assert(strings.Contains(text, "%size13 = phi i32 [ %length13, %p13 ], [ %shorter13, %cut13 ]\n"));
+    assert(strings.Contains(text, "%v14 = phi i1 [ false, %missing14 ], [ true, %found14 ]\n"));
+    assert(strings.Contains(text, "%same14 = icmp eq i32 %item14, %w14\n"));
+}
+@test
+ArrayExtendRejectsIntOperand :: () {
+    Rejects(NativesModule(Changed(ArrayNatives(), 6, Code(native.ArrayExtend, 1030, 5, 4, 1, 0, 0))), ArrayOperands);
+}
+@test
+ArraySliceRejectsArrayCount :: () {
+    Rejects(NativesModule(Changed(ArrayNatives(), 9, Code(native.ArraySlice, 1030, 8, 5, 6, 5, 0))), ArrayOperands);
+}
+@test
+ArrayResizeRejectsArrayLength :: () {
+    Rejects(NativesModule(Changed(ArrayNatives(), 11, Code(native.ArrayResize, 1030, 10, 8, 8, 0, 0))), ArrayOperands);
+}
+@test
+ArrayContainsNamesItsElementType :: () {
+    Rejects(NativesModule(Changed(ArrayNatives(), 14, Code(native.ArrayContains, 1, 13, 12, 1, 0, 13))), ArrayOperands);
+}
+@test
+ArrayRemoveRejectsArrayIndex :: () {
+    Rejects(NativesModule(Changed(ArrayNatives(), 13, Code(native.ArrayRemove, 1030, 12, 10, 10, 0, 0))), ArrayOperands);
+}
+@test
+ArraySliceCountMustBeDefined :: () {
+    Rejects(NativesModule(Changed(ArrayNatives(), 9, Code(native.ArraySlice, 1030, 8, 5, 6, 9, 0))),
+            "native scalar operand is not defined on every path");
 }

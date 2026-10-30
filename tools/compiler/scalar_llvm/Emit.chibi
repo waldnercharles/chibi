@@ -480,7 +480,7 @@ ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayNew) {
         return operand.count;
     }
-    consumed := [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2];
+    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2];
     if (operand.value < facts.ArrayNew || operand.value > facts.ArrayJoin) {
         return 0;
     }

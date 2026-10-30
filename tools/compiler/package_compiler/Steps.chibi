@@ -848,13 +848,6 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                             format_text("Mismatched integer types {} and {}; convert one operand",
                                         TypeName(binding.storage), TypeName(result.storage)));
             }
-            // Storing an absent or plain value into an optional local needs the
-            // cell write to copy a union that has no cell, which is not supported yet.
-            if (Is(forest, StatementValue(forest, item.node), "nil") && binding.storage == UnionStorage &&
-                binding.container == 0 && binding.record >= 0 && binding.record < length(types) &&
-                types[binding.record].kind == OptionalDecl) {
-                return Fail(forest, item.node, document, "assigning nil to an optional local is not supported yet");
-            }
             if (binding.place == NarrowedPlace) {
                 if (operator != "") {
                     return Fail(forest, destination, document, "compound narrowed-value assignment is not supported yet");

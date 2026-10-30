@@ -1,0 +1,183 @@
+package native_abi
+
+// Internal contract for the runtime-free LLVM slice, not a public core
+// package or a foreign ABI. These facts describe the destination, never
+// the host running the compiler. Extend them only with a tested consumer.
+pub Target :: struct {
+    triple: string;
+    pointer_bits: int;
+}
+
+pub LinuxX64 :: () -> Target {
+    return {triple: "x86_64-unknown-linux-gnu", pointer_bits: 64};
+}
+// The OS version makes llc write the object's LC_BUILD_VERSION.
+pub MacOSArm64 :: () -> Target {
+    return {triple: "arm64-apple-macosx11.0.0", pointer_bits: 64};
+}
+pub WindowsX64 :: () -> Target {
+    return {triple: "x86_64-pc-windows-msvc", pointer_bits: 64};
+}
+
+pub Same :: (target: Target, supported: Target) -> bool {
+    return target.triple == supported.triple && target.pointer_bits == supported.pointer_bits;
+}
+// The module flag that selects the target's debug information format: DWARF
+// 4 on Linux, as rustc emits there. Line tables are Linux-only so far, so
+// other targets have no format. Line tables also need LLVM's own
+// "Debug Info Version" flag, which no target changes.
+pub DebugFormat :: (target: Target) -> string {
+    if (!Same(target, LinuxX64())) {
+        return "";
+    }
+    return "!{i32 7, !\"Dwarf Version\", i32 4}";
+}
+
+// The attribute that makes each function probe every page of its frame.
+// LLVM probes inline on Linux and macOS. On Windows the attribute names a
+// probe function instead, so code calls __chkstk there, as MSVC's and
+// rustc's do, and the program that links it defines __chkstk.
+pub StackProbe :: (target: Target) -> string {
+    if (Same(target, WindowsX64())) {
+        return "\"probe-stack\"=\"__chkstk\"";
+    }
+    return "\"probe-stack\"=\"inline-asm\"";
+}
+
+// Reject other targets rather than silently applying another target's ABI.
+// The backend supplies its data layout; no unverified layout is embedded here.
+pub Supported :: (target: Target) -> bool {
+    return Same(target, LinuxX64()) || Same(target, MacOSArm64()) || Same(target, WindowsX64());
+}
+
+// Current compiler storage ordinals, not byte widths or foreign type IDs.
+pub BoolStorage: int : 1;
+Int8Storage: int : 2;
+ByteStorage: int : 3;
+Int16Storage: int : 4;
+Uint16Storage: int : 5;
+pub IntStorage: int : 6;
+pub UintStorage: int : 7;
+Int64Storage: int : 8;
+WordStorage: int : 9;
+pub FloatStorage: int : 10;
+pub DoubleStorage: int : 11;
+pub TextStorage: int : 13;
+
+// The bits of an integer storage, or 0 for any other.
+pub IntegerBits :: (storage: int) -> int {
+    if (storage == Int8Storage || storage == ByteStorage) {
+        return 8;
+    }
+    if (storage == Int16Storage || storage == Uint16Storage) {
+        return 16;
+    }
+    if (storage == IntStorage || storage == UintStorage) {
+        return 32;
+    }
+    if (storage == Int64Storage || storage == WordStorage) {
+        return 64;
+    }
+    return 0;
+}
+// Whether an integer storage is unsigned.
+pub Unsigned :: (storage: int) -> bool {
+    return storage == ByteStorage || storage == Uint16Storage || storage == UintStorage || storage == WordStorage;
+}
+// Whether a storage is float or double.
+pub Floating :: (storage: int) -> bool {
+    return storage == FloatStorage || storage == DoubleStorage;
+}
+// The internal LLVM value type for this scalar subset. An empty result is an
+// unsupported type, not void: callers must reject it before emitting IR.
+// A caller must first reject containers, nominal types and references; the
+// storage ordinal alone does not describe those properties. In particular,
+// i1 is not a promise about a platform's foreign bool representation, and an
+// integer's LLVM type does not say whether it is signed.
+pub ScalarType :: (storage: int) -> string {
+    if (storage == BoolStorage) {
+        return "i1";
+    }
+    if (storage == FloatStorage) {
+        return "float";
+    }
+    if (storage == DoubleStorage) {
+        return "double";
+    }
+    bits := IntegerBits(storage);
+    if (bits == 0) {
+        return "";
+    }
+    return format_text("i{}", bits);
+}
+// The LLVM type of a string: the runtime's text descriptor, `pin_string` in
+// src/types/value.h, its bytes, its unsigned length and the owner of shared
+// runtime bytes, by value. Odin's and Rust's strings are a pointer and a
+// pointer-sized length; this one matches the runtime's, so native code and
+// the VMs share strings. Native code only borrows: its constants have no
+// owner, and what the runtime gives a call lives until the call returns. Its
+// zero, a null pointer and length 0, is empty text, as a null descriptor is,
+// and nothing reads its bytes. A string is immutable, so a copy shares its
+// bytes.
+pub TextType :: () -> string {
+    return "{ ptr, i32, ptr }";
+}
+// The version of the export manifest a library object holds, which the
+// runtime checks before binding it: EXECUTION_NATIVE_ABI in
+// src/execution/native.h.
+pub ExportAbi: int : 4;
+// The most parameters an entry of that ABI takes:
+// EXECUTION_NATIVE_MAX_PARAMETERS. A function with more stays callable only
+// inside its library.
+pub ExportParameters: int : 8;
+// The type a manifest records for a parameter or result of this storage,
+// execution_native_type in src/execution/native.h, or 0 when no word carries
+// it. A word holds an integer sign- or zero-extended from its width, a bool as
+// 0 or 1, and a float or double as its encoding's bits, a float's
+// zero-extended.
+pub ExportType :: (storage: int) -> int {
+    order: int[] = [IntStorage, BoolStorage, Int8Storage, ByteStorage, Int16Storage, Uint16Storage, UintStorage,
+                    Int64Storage, WordStorage, FloatStorage, DoubleStorage];
+    for (index in 0..<length(order)) {
+        if (order[index] == storage) {
+            return index + 1;
+        }
+    }
+    return 0;
+}
+// The LLVM type of a value native code passes the runtime,
+// execution_native_value: its type, a text's length, a scalar's word, then a
+// text's bytes.
+pub ValueType :: () -> string {
+    return "{ i32, i32, i64, ptr }";
+}
+// EXECUTION_NATIVE_TEXT, the type of a string the runtime is passed, after
+// ExportType's.
+TextTag: int : 12;
+// The type a runtime value of this storage records: ExportType's, or a
+// string's, or 0 when none carries it.
+pub ValueTag :: (storage: int) -> int {
+    if (storage == TextStorage) {
+        return TextTag;
+    }
+    return ExportType(storage);
+}
+// The LLVM type of execution_native_context, the hidden first parameter of
+// every function of a module that calls the runtime: a pointer to each
+// operation, `format_text(context, values, count, result)` first, then the
+// failure native code ends the call with, or null, then
+// `allocate(context, size)` and `index_failed(context, index, length)`.
+pub ContextType :: () -> string {
+    return "{ ptr, ptr, ptr, ptr }";
+}
+// The LLVM type of an array: its length, its capacity and its elements, by
+// value. An array of no elements, with a length and capacity of 0 and no
+// elements, is its zero.
+pub ArrayType :: () -> string {
+    return "{ i32, i32, ptr }";
+}
+// The LLVM type of execution_native_failure: the stable ID of the function
+// whose assert failed, and the assert's source range.
+pub FailureType :: () -> string {
+    return "{ i64, i32, i32 }";
+}

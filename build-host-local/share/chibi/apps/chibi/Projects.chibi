@@ -1,0 +1,78 @@
+package chibi_cli
+
+import strings "core:strings"
+
+// Game projects are archived while the compiler moves to Chibi: building,
+// checking, running and exporting one fail.
+GameProjectsArchived :: (command: string) -> int {
+    Error(format_text("chibi {}: game projects are archived", command))
+    return 2
+}
+
+Test :: (options: Options) -> int {
+    root := files.resolve(Default(options.path, "."))
+    if root == "" {
+        Error(format_text("test: cannot find {}", Default(options.path, ".")))
+        return 1
+    }
+    status := process.run([Compiler(), "--project-root", root, "--test"])
+    if application.stopped() {
+        return application.interrupt_status()
+    }
+    return status
+}
+
+PrivateProgram :: (name: string) -> string {
+    local := Join([application.bin(), "/", name, sdk.executable_suffix()])
+    if files.find_executable(local) != "" {
+        return local
+    }
+    return Join([application.bin(), "/../libexec/chibi/", name, sdk.executable_suffix()])
+}
+
+NativeDriver :: (share: string, callable: string, arguments: string[]) -> string[] {
+    driver := Join([share, "/tools/native_aot"])
+    compiler := Join([share, "/compiler"])
+    core := Join([share, "/core"])
+    return Concat([PrivateProgram("chibi-build-host"), "--root", driver,
+                   "--source", Join([driver, "/Driver.chibi"]), "--core", core,
+                   "--compiler", compiler, "--compiler-core", core,
+                   "--entry", callable, "--timeout-ms", "900000", "--",
+                   PrivateProgram("chibi-compiler-host"), compiler, core], arguments)
+}
+
+LLVM :: (requested: string) -> string {
+    return Default(requested, application.environment("CHIBI_LLVM_BIN"))
+}
+
+NeedsLLVM :: () -> string {
+    return "pass --llvm DIR, the folder of opt, llc and ld.lld, or set CHIBI_LLVM_BIN"
+}
+
+BuildNative :: (options: Options) -> int {
+    llvm := LLVM(options.llvm)
+    if llvm == "" {
+        Error(Join(["build --native needs LLVM: ", NeedsLLVM()]))
+        return 2
+    }
+    root := files.resolve(Default(options.path, "."))
+    if root == "" {
+        Error(format_text("build --native: cannot find {}", Default(options.path, ".")))
+        return 2
+    }
+    share := files.resolve(Join([application.bin(), "/../share/chibi"]))
+    tools := files.resolve(llvm)
+    if share == "" {
+        Error("native: cannot find the SDK's share/chibi")
+        return 2
+    }
+    if tools == "" {
+        Error(format_text("native: cannot find {}", llvm))
+        return 2
+    }
+    debug := "none"
+    if options.debug {
+        debug = "lines"
+    }
+    return process.run(NativeDriver(share, "Native", [root, tools, options.mode, debug, options.target]))
+}

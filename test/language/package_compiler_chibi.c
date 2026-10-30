@@ -3349,6 +3349,11 @@ static const sample samples[] = {
       .source = "package facts\n"
                 "Main :: () -> int { absent: int? = nil; present: int? = 4; r := 0; if absent { r += 100; } if present { r += present - 1; } return r; }" "\n",
       .calls = { { .function = "Main", .arguments = "[]", .expected = "[3]" } } },
+    { .name = "optional locals become absent and present again",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Main :: () -> int { x: int? = 4; r := 0; if x { r += x; } x = nil; if x { r += 100; } x = 5; if x { r += x * 10; } return r; }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[54]" } } },
     { .name = "optional results wrap values and return nil",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"

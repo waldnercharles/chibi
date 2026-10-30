@@ -1,0 +1,200 @@
+package source_parser
+
+import tk "project:source_tokenizer"
+import syntax "project:syntax_diagnostics"
+
+// A parse that did not reach a tree: why, and where.
+Outcome :: union {
+    Built(nodes: Node[], root: int) |
+    Rejected(message: string, start: int, end: int, row: int, column: int)
+}
+
+// Parses a whole source text into the raw facts compiler_syntax.Parse returns:
+// every token as a leaf, with the node, field and extra flags of the grammar
+// in src/language/grammar.js. Text the grammar does not read gives the file
+// with one error node where the parse stopped, named by what was expected.
+pub Parse :: (text: string) -> Tree {
+    outcome := Build(text);
+    switch outcome {
+        case .Built(nodes, root):
+            return Emit(nodes, root);
+        case .Rejected(message, start, end, row, column):
+            return Failure(text, message, start, end, row, column);
+    }
+}
+
+// What is wrong with `text`: one diagnostic at the first token the grammar
+// cannot read, saying what it expected; none when the text parses.
+pub Diagnose :: (text: string) -> syntax.Diagnostic[] {
+    outcome := Build(text);
+    diagnostics: syntax.Diagnostic[] = [];
+    switch outcome {
+        case .Built(nodes, root):
+            return diagnostics;
+        case .Rejected(message, start, end, row, column):
+            diagnostics.append({start: start, end: end, line: row + 1, column: column + 1,
+                                document: 0, message: message});
+            return diagnostics;
+    }
+}
+
+// A tree for text the grammar does not read: the file with one error node
+// where the parse stopped. The node's kind carries the message, which
+// syntax_diagnostics.Diagnose reports.
+Failure :: (text: string, message: string, start: int, end: int, row: int, column: int) -> Tree {
+    nodes: syntax.Node[] = [];
+    nodes.append({kind: "source_file", start: 0, end: text_byte_length(text), row: 0, column: 0,
+                  parent: -1, first_child: 1, next_sibling: -1, error: false, missing: false,
+                  has_error: true});
+    nodes.append({kind: message, start: start, end: end, row: row, column: column,
+                  parent: 0, first_child: -1, next_sibling: -1, error: true, missing: false,
+                  has_error: true});
+    return Tree.Parsed(nodes, ["", ""], [true, true], [false, false], 0);
+}
+
+Build :: (text: string) -> Outcome {
+    scanned := tk.Tokenize(text);
+    switch scanned {
+        case .Scanned(kinds, starts, ends, rows, columns, errors, error_offsets, error_rows, error_columns):
+            if (length(errors) > 0) {
+                return Outcome.Rejected(errors[0], error_offsets[0], error_offsets[0] + 1,
+                                        error_rows[0], error_columns[0]);
+            }
+            return Construct(text, kinds, starts, ends, rows, columns);
+    }
+}
+
+Construct :: (text: string, kinds: int[], starts: int[], ends: int[], rows: int[], columns: int[]) -> Outcome {
+    names := tk.KindNames();
+    nodes: Node[] = [];
+    comments: Node[] = [];
+    index: int = 0;
+    while (index < length(kinds)) {
+        leaf := Leaf(LeafKind(names, kinds[index]), kinds[index], starts[index], ends[index],
+                     rows[index], columns[index]);
+        if (kinds[index] == tk.Comment) {
+            leaf.named = true;
+            leaf.extra = true;
+            comments.append(leaf);
+        } else {
+            nodes.append(leaf);
+        }
+        index += 1;
+    }
+    cursor: Cursor = {text: text, pos: 0, token: nodes[0].token, final: length(nodes) - 1, failed: false, message: "",
+                      at: 0, stop: 0, row: 0, column: 0};
+    root := ParseSourceFile(&cursor, &nodes);
+    if (cursor.failed) {
+        return Outcome.Rejected(cursor.message, cursor.at, cursor.stop, cursor.row, cursor.column);
+    }
+    if (cursor.pos != cursor.final) {
+        return Outcome.Rejected("Expected a declaration", nodes[cursor.pos].start,
+                                nodes[cursor.pos].end, nodes[cursor.pos].row, nodes[cursor.pos].column);
+    }
+    Attach(&nodes, root, comments, text_byte_length(text));
+    return Outcome.Built(nodes, root);
+}
+
+// Comments are extras: Tree-sitter keeps each in the innermost node that has a
+// child after it, and a trailing one in the node that ends before it.
+Attach :: (n: ^(Node[]), root: int, comments: Node[], size: int) {
+    index: int = 0;
+    while (index < length(comments)) {
+        comment := comments[index];
+        at := length(n^);
+        n.append(comment);
+        owner := root;
+        descending := true;
+        while (descending) {
+            descending = false;
+            child := n^[owner].first;
+            while (child >= 0) {
+                if (n^[child].first >= 0 && n^[child].start < comment.start && comment.end <= n^[child].end) {
+                    owner = child;
+                    descending = true;
+                    break;
+                }
+                child = n^[child].next;
+            }
+        }
+        Insert(n, owner, at);
+        index += 1;
+    }
+    n^[root].end = size;
+}
+
+// Places `comment` among the children of `owner`, before the first that
+// starts after it.
+Insert :: (n: ^(Node[]), owner: int, comment: int) {
+    n^[comment].parent = owner;
+    previous: int = -1;
+    child := n^[owner].first;
+    while (child >= 0 && n^[child].start < n^[comment].end) {
+        previous = child;
+        child = n^[child].next;
+    }
+    n^[comment].next = child;
+    if (previous < 0) {
+        n^[owner].first = comment;
+    } else {
+        n^[previous].next = comment;
+    }
+    if (child < 0) {
+        n^[owner].last = comment;
+    }
+    if (n^[owner].start < 0 || n^[comment].start < n^[owner].start) {
+        n^[owner].start = n^[comment].start;
+        n^[owner].row = n^[comment].row;
+        n^[owner].column = n^[comment].column;
+    }
+}
+
+// Rows in pre-order, as Tree-sitter's cursor walk lists them, without the
+// hidden terminators. One walk fills the rows; a node's next sibling is
+// patched in when the walk reaches it.
+Emit :: (nodes: Node[], root: int) -> Tree {
+    rows: syntax.Node[] = [];
+    fields: string[] = [];
+    named: bool[] = [];
+    extras: bool[] = [];
+    place := resize([int(0)], length(nodes));
+    current := root;
+    while (current >= 0) {
+        index := length(rows);
+        place[current] = index;
+        parent: int = -1;
+        if (nodes[current].parent >= 0) {
+            parent = place[nodes[current].parent];
+        }
+        first := nodes[current].first;
+        while (first >= 0 && nodes[first].hidden) {
+            first = nodes[first].next;
+        }
+        first_child: int = -1;
+        if (first >= 0) {
+            first_child = index + 1;
+        }
+        rows.append({kind: nodes[current].kind, start: nodes[current].start, end: nodes[current].end,
+                     row: nodes[current].row, column: nodes[current].column, parent: parent,
+                     first_child: first_child, next_sibling: -1, error: false, missing: false,
+                     has_error: false});
+        fields.append(nodes[current].field);
+        named.append(nodes[current].named);
+        extras.append(nodes[current].extra);
+        next := first;
+        climbing := current;
+        while (next < 0 && climbing != root) {
+            next = nodes[climbing].next;
+            while (next >= 0 && nodes[next].hidden) {
+                next = nodes[next].next;
+            }
+            if (next >= 0) {
+                rows[place[climbing]].next_sibling = index + 1;
+            } else {
+                climbing = nodes[climbing].parent;
+            }
+        }
+        current = next;
+    }
+    return Tree.Parsed(rows, fields, named, extras, 0);
+}

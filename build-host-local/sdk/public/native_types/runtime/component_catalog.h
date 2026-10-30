@@ -1,0 +1,392 @@
+#ifndef CHIBI_COMPONENT_CATALOG_H
+#define CHIBI_COMPONENT_CATALOG_H
+
+#include "ecs/ecs.h"
+#include "runtime/components.h"
+#include "types/catalog.h"
+
+/* External reflected types are emitted alongside component descriptors. */
+extern const type_desc T_CF_V2;
+extern const ecs_component_desc COMPONENT_EngineSystem;
+extern const EngineSystem *EngineSystem_get_const(const ecs_world *, ecs_entity);
+
+extern const ecs_component_desc COMPONENT_Combustion;
+extern const Combustion *Combustion_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_MaterialThermal;
+extern MaterialThermal *MaterialThermal_get(ecs_world *, ecs_entity);
+extern const MaterialThermal *MaterialThermal_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_MaterialConstitutive;
+extern const MaterialConstitutive *MaterialConstitutive_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_Fuel;
+extern const Fuel *Fuel_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_Igniter;
+extern const Igniter *Igniter_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_Substance;
+extern const Substance *Substance_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_MaterialCavity;
+extern const MaterialCavity *MaterialCavity_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_Reflection;
+extern const Reflection *Reflection_get_const(const ecs_world *, ecs_entity);
+
+extern const ecs_component_desc COMPONENT_Drive;
+extern Drive *Drive_get(ecs_world *, ecs_entity);
+extern const Drive *Drive_get_const(const ecs_world *, ecs_entity);
+extern int Drive_add(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Joint;
+extern Joint *Joint_get(ecs_world *, ecs_entity);
+extern const Joint *Joint_get_const(const ecs_world *, ecs_entity);
+extern int Joint_add(ecs_world *, ecs_entity, uint64_t);
+extern int Joint_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_MaterialFluidWorld;
+extern MaterialFluidWorld *MaterialFluidWorld_get(ecs_world *, ecs_entity);
+extern const MaterialFluidWorld *MaterialFluidWorld_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_MaterialDestructionWorld;
+extern const MaterialDestructionWorld *MaterialDestructionWorld_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_MaterialBreakProfile;
+extern const MaterialBreakProfile *MaterialBreakProfile_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_Destructible;
+extern const ecs_component_desc COMPONENT_MaterialTerrain;
+extern MaterialTerrain *MaterialTerrain_get(ecs_world *, ecs_entity);
+extern const MaterialTerrain *MaterialTerrain_get_const(const ecs_world *, ecs_entity);
+extern const Destructible *Destructible_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_FragmentGlow;
+extern const FragmentGlow *FragmentGlow_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_MaterialFrame;
+extern const MaterialFrame *MaterialFrame_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_MaterialSurface3D;
+extern const ecs_component_desc COMPONENT_IndirectOccluder;
+extern const IndirectOccluder *IndirectOccluder_get_const(const ecs_world *, ecs_entity);
+extern const MaterialSurface3D *MaterialSurface3D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_TerrainVolume;
+extern const TerrainVolume *TerrainVolume_get_const(const ecs_world *, ecs_entity);
+extern int Destructible_has(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_FluidVolume;
+extern const FluidVolume *FluidVolume_get_const(const ecs_world *, ecs_entity);
+
+extern const ecs_component_desc COMPONENT_Body;
+extern Body *Body_get(ecs_world *, ecs_entity);
+extern const Body *Body_get_const(const ecs_world *, ecs_entity);
+extern int Body_has(const ecs_world *, ecs_entity);
+extern int Body_add(ecs_world *, ecs_entity, uint64_t);
+extern int Body_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Gravity;
+extern Gravity *Gravity_get(ecs_world *, ecs_entity);
+extern const Gravity *Gravity_get_const(const ecs_world *, ecs_entity);
+extern int Gravity_add(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Velocity;
+extern Velocity *Velocity_get(ecs_world *, ecs_entity);
+extern const Velocity *Velocity_get_const(const ecs_world *, ecs_entity);
+extern int Velocity_has(const ecs_world *, ecs_entity);
+extern int Velocity_add(ecs_world *, ecs_entity, uint64_t);
+extern int Velocity_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_GlobalBinding;
+extern GlobalBinding *GlobalBinding_get(ecs_world *, ecs_entity);
+extern const GlobalBinding *GlobalBinding_get_const(const ecs_world *, ecs_entity);
+extern int GlobalBinding_has(const ecs_world *, ecs_entity);
+extern int GlobalBinding_add(ecs_world *, ecs_entity, uint64_t);
+extern int GlobalBinding_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Transform;
+extern const ecs_component_desc COMPONENT_Environment;
+extern const ecs_component_desc COMPONENT_PointLight;
+extern const ecs_component_desc COMPONENT_DirectionalLight;
+extern const ecs_component_desc COMPONENT_SpotLight;
+extern const ecs_component_desc COMPONENT_SurfaceInfluence;
+extern SurfaceInfluence *SurfaceInfluence_get(ecs_world *, ecs_entity);
+extern const SurfaceInfluence *SurfaceInfluence_get_const(const ecs_world *, ecs_entity);
+extern int SurfaceInfluence_has(const ecs_world *, ecs_entity);
+extern int SurfaceInfluence_add(ecs_world *, ecs_entity, uint64_t);
+extern int SurfaceInfluence_remove(ecs_world *, ecs_entity, uint64_t);
+extern PointLight *PointLight_get(ecs_world *, ecs_entity);
+extern const PointLight *PointLight_get_const(const ecs_world *, ecs_entity);
+extern int PointLight_has(const ecs_world *, ecs_entity);
+extern int PointLight_add(ecs_world *, ecs_entity, uint64_t);
+extern int PointLight_remove(ecs_world *, ecs_entity, uint64_t);
+extern DirectionalLight *DirectionalLight_get(ecs_world *, ecs_entity);
+extern const DirectionalLight *DirectionalLight_get_const(const ecs_world *, ecs_entity);
+extern int DirectionalLight_has(const ecs_world *, ecs_entity);
+extern int DirectionalLight_add(ecs_world *, ecs_entity, uint64_t);
+extern int DirectionalLight_remove(ecs_world *, ecs_entity, uint64_t);
+extern SpotLight *SpotLight_get(ecs_world *, ecs_entity);
+extern const SpotLight *SpotLight_get_const(const ecs_world *, ecs_entity);
+extern int SpotLight_has(const ecs_world *, ecs_entity);
+extern int SpotLight_add(ecs_world *, ecs_entity, uint64_t);
+extern int SpotLight_remove(ecs_world *, ecs_entity, uint64_t);
+extern Environment *Environment_get(ecs_world *, ecs_entity);
+extern const Environment *Environment_get_const(const ecs_world *, ecs_entity);
+extern int Environment_has(const ecs_world *, ecs_entity);
+extern int Environment_add(ecs_world *, ecs_entity, uint64_t);
+extern int Environment_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Geometry3D;
+extern Geometry3D *Geometry3D_get(ecs_world *, ecs_entity);
+extern const Geometry3D *Geometry3D_get_const(const ecs_world *, ecs_entity);
+extern int Geometry3D_has(const ecs_world *, ecs_entity);
+extern int Geometry3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int Geometry3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Aim;
+extern Aim *Aim_get(ecs_world *, ecs_entity);
+extern const Aim *Aim_get_const(const ecs_world *, ecs_entity);
+extern int Aim_has(const ecs_world *, ecs_entity);
+extern int Aim_add(ecs_world *, ecs_entity, uint64_t);
+extern int Aim_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Orientation;
+extern Orientation *Orientation_get(ecs_world *, ecs_entity);
+extern const Orientation *Orientation_get_const(const ecs_world *, ecs_entity);
+extern int Orientation_has(const ecs_world *, ecs_entity);
+extern int Orientation_add(ecs_world *, ecs_entity, uint64_t);
+extern int Orientation_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Collider;
+extern const ecs_component_desc COMPONENT_Health;
+extern const ecs_component_desc COMPONENT_Movement;
+extern const ecs_component_desc COMPONENT_Input;
+extern const ecs_component_desc COMPONENT_Weapon;
+extern const ecs_component_desc COMPONENT_Projectile;
+extern const ecs_component_desc COMPONENT_Appearance;
+extern const ecs_component_desc *const REGISTRY_COMPONENTS[];
+extern const int REGISTRY_COMPONENT_COUNT;
+extern const type_catalog_pack TYPE_PACK;
+
+extern Transform *Transform_get(ecs_world *, ecs_entity);
+extern const Transform *Transform_get_const(const ecs_world *, ecs_entity);
+extern int Transform_has(const ecs_world *, ecs_entity);
+extern int Transform_add(ecs_world *, ecs_entity, uint64_t);
+extern int Transform_remove(ecs_world *, ecs_entity, uint64_t);
+extern Health *Health_get(ecs_world *, ecs_entity);
+extern const Health *Health_get_const(const ecs_world *, ecs_entity);
+extern int Health_has(const ecs_world *, ecs_entity);
+extern int Health_add(ecs_world *, ecs_entity, uint64_t);
+extern int Health_remove(ecs_world *, ecs_entity, uint64_t);
+extern Movement *Movement_get(ecs_world *, ecs_entity);
+extern const Movement *Movement_get_const(const ecs_world *, ecs_entity);
+extern int Movement_has(const ecs_world *, ecs_entity);
+extern int Movement_add(ecs_world *, ecs_entity, uint64_t);
+extern int Movement_remove(ecs_world *, ecs_entity, uint64_t);
+extern Input *Input_get(ecs_world *, ecs_entity);
+extern const Input *Input_get_const(const ecs_world *, ecs_entity);
+extern int Input_has(const ecs_world *, ecs_entity);
+extern int Input_add(ecs_world *, ecs_entity, uint64_t);
+extern int Input_remove(ecs_world *, ecs_entity, uint64_t);
+extern Weapon *Weapon_get(ecs_world *, ecs_entity);
+extern const Weapon *Weapon_get_const(const ecs_world *, ecs_entity);
+extern int Weapon_has(const ecs_world *, ecs_entity);
+extern int Weapon_add(ecs_world *, ecs_entity, uint64_t);
+extern int Weapon_remove(ecs_world *, ecs_entity, uint64_t);
+extern Projectile *Projectile_get(ecs_world *, ecs_entity);
+extern const Projectile *Projectile_get_const(const ecs_world *, ecs_entity);
+extern int Projectile_has(const ecs_world *, ecs_entity);
+extern int Projectile_add(ecs_world *, ecs_entity, uint64_t);
+extern int Projectile_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern Appearance *Appearance_get(ecs_world *, ecs_entity);
+extern const Appearance *Appearance_get_const(const ecs_world *, ecs_entity);
+extern int Appearance_has(const ecs_world *, ecs_entity);
+extern int Appearance_add(ecs_world *, ecs_entity, uint64_t);
+extern int Appearance_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Sprite;
+extern const Sprite *Sprite_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_Tilemap;
+extern Tilemap *Tilemap_get(ecs_world *, ecs_entity);
+extern int Tilemap_add(ecs_world *, ecs_entity, uint64_t);
+extern const Tilemap *Tilemap_get_const(const ecs_world *, ecs_entity);
+
+extern Collider *Collider_get(ecs_world *, ecs_entity);
+extern const Collider *Collider_get_const(const ecs_world *, ecs_entity);
+extern int Collider_has(const ecs_world *, ecs_entity);
+extern int Collider_add(ecs_world *, ecs_entity, uint64_t);
+extern int Collider_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Material;
+extern Material *Material_get(ecs_world *, ecs_entity);
+extern const Material *Material_get_const(const ecs_world *, ecs_entity);
+extern int Material_has(const ecs_world *, ecs_entity);
+extern int Material_add(ecs_world *, ecs_entity, uint64_t);
+extern int Material_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Shader;
+extern Shader *Shader_get(ecs_world *, ecs_entity);
+extern const Shader *Shader_get_const(const ecs_world *, ecs_entity);
+extern int Shader_has(const ecs_world *, ecs_entity);
+extern int Shader_add(ecs_world *, ecs_entity, uint64_t);
+extern int Shader_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Dash;
+extern Dash *Dash_get(ecs_world *, ecs_entity);
+extern const Dash *Dash_get_const(const ecs_world *, ecs_entity);
+extern int Dash_has(const ecs_world *, ecs_entity);
+extern int Dash_add(ecs_world *, ecs_entity, uint64_t);
+extern int Dash_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Encounter;
+extern Encounter *Encounter_get(ecs_world *, ecs_entity);
+extern const Encounter *Encounter_get_const(const ecs_world *, ecs_entity);
+extern int Encounter_has(const ecs_world *, ecs_entity);
+extern int Encounter_add(ecs_world *, ecs_entity, uint64_t);
+extern int Encounter_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_EncounterMember;
+extern EncounterMember *EncounterMember_get(ecs_world *, ecs_entity);
+extern const EncounterMember *EncounterMember_get_const(const ecs_world *, ecs_entity);
+extern int EncounterMember_has(const ecs_world *, ecs_entity);
+extern int EncounterMember_add(ecs_world *, ecs_entity, uint64_t);
+extern int EncounterMember_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_VisualTransform;
+extern VisualTransform *VisualTransform_get(ecs_world *, ecs_entity);
+extern const VisualTransform *VisualTransform_get_const(const ecs_world *, ecs_entity);
+extern int VisualTransform_has(const ecs_world *, ecs_entity);
+extern int VisualTransform_add(ecs_world *, ecs_entity, uint64_t);
+extern int VisualTransform_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_MeshAsset;
+extern MeshAsset *MeshAsset_get(ecs_world *, ecs_entity);
+extern const MeshAsset *MeshAsset_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_MeshParts;
+extern const ecs_component_desc COMPONENT_SdfSurface3D;
+extern SdfSurface3D *SdfSurface3D_get(ecs_world *, ecs_entity);
+extern const SdfSurface3D *SdfSurface3D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_SurfaceQuality;
+extern const SurfaceQuality *SurfaceQuality_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_MeshSurface2D;
+extern const MeshSurface2D *MeshSurface2D_get_const(const ecs_world *, ecs_entity);
+extern MeshParts *MeshParts_get(ecs_world *, ecs_entity);
+extern const MeshParts *MeshParts_get_const(const ecs_world *, ecs_entity);
+extern int MeshParts_has(const ecs_world *, ecs_entity);
+extern int MeshParts_add(ecs_world *, ecs_entity, uint64_t);
+extern int MeshParts_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_ParticleEmitter;
+extern ParticleEmitter *ParticleEmitter_get(ecs_world *, ecs_entity);
+extern const ParticleEmitter *ParticleEmitter_get_const(const ecs_world *, ecs_entity);
+extern int ParticleEmitter_has(const ecs_world *, ecs_entity);
+extern int ParticleEmitter_add(ecs_world *, ecs_entity, uint64_t);
+extern int ParticleEmitter_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_ParticleField3D;
+extern ParticleField3D *ParticleField3D_get(ecs_world *, ecs_entity);
+extern const ParticleField3D *ParticleField3D_get_const(const ecs_world *, ecs_entity);
+extern int ParticleField3D_has(const ecs_world *, ecs_entity);
+extern int ParticleField3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int ParticleField3D_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_SpawnRequest;
+extern SpawnRequest *SpawnRequest_get(ecs_world *, ecs_entity);
+extern const SpawnRequest *SpawnRequest_get_const(const ecs_world *, ecs_entity);
+extern int SpawnRequest_has(const ecs_world *, ecs_entity);
+extern int SpawnRequest_add(ecs_world *, ecs_entity, uint64_t);
+extern int SpawnRequest_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Trail;
+extern Trail *Trail_get(ecs_world *, ecs_entity);
+extern const Trail *Trail_get_const(const ecs_world *, ecs_entity);
+extern int Trail_has(const ecs_world *, ecs_entity);
+extern int Trail_add(ecs_world *, ecs_entity, uint64_t);
+extern int Trail_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Experience;
+extern Experience *Experience_get(ecs_world *, ecs_entity);
+extern const Experience *Experience_get_const(const ecs_world *, ecs_entity);
+extern int Experience_has(const ecs_world *, ecs_entity);
+extern int Experience_add(ecs_world *, ecs_entity, uint64_t);
+extern int Experience_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Pickup;
+extern Pickup *Pickup_get(ecs_world *, ecs_entity);
+extern const Pickup *Pickup_get_const(const ecs_world *, ecs_entity);
+extern int Pickup_has(const ecs_world *, ecs_entity);
+extern int Pickup_add(ecs_world *, ecs_entity, uint64_t);
+extern int Pickup_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Camera;
+extern Camera *Camera_get(ecs_world *, ecs_entity);
+extern const Camera *Camera_get_const(const ecs_world *, ecs_entity);
+extern int Camera_has(const ecs_world *, ecs_entity);
+extern int Camera_add(ecs_world *, ecs_entity, uint64_t);
+extern int Camera_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Ui;
+extern Ui *Ui_get(ecs_world *, ecs_entity);
+extern const Ui *Ui_get_const(const ecs_world *, ecs_entity);
+extern int Ui_has(const ecs_world *, ecs_entity);
+extern int Ui_add(ecs_world *, ecs_entity, uint64_t);
+extern int Ui_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Fog;
+extern Fog *Fog_get(ecs_world *, ecs_entity);
+extern const Fog *Fog_get_const(const ecs_world *, ecs_entity);
+extern int Fog_has(const ecs_world *, ecs_entity);
+extern int Fog_add(ecs_world *, ecs_entity, uint64_t);
+extern int Fog_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Vision;
+extern Vision *Vision_get(ecs_world *, ecs_entity);
+extern const Vision *Vision_get_const(const ecs_world *, ecs_entity);
+extern int Vision_has(const ecs_world *, ecs_entity);
+extern int Vision_add(ecs_world *, ecs_entity, uint64_t);
+extern int Vision_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_SensorContact;
+extern SensorContact *SensorContact_get(ecs_world *, ecs_entity);
+extern const SensorContact *SensorContact_get_const(const ecs_world *, ecs_entity);
+extern int SensorContact_has(const ecs_world *, ecs_entity);
+extern int SensorContact_add(ecs_world *, ecs_entity, uint64_t);
+extern int SensorContact_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_RenderState;
+extern RenderState *RenderState_get(ecs_world *, ecs_entity);
+extern const RenderState *RenderState_get_const(const ecs_world *, ecs_entity);
+extern int RenderState_has(const ecs_world *, ecs_entity);
+extern int RenderState_add(ecs_world *, ecs_entity, uint64_t);
+extern int RenderState_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Starfield2D;
+extern const Starfield2D *Starfield2D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_HRC2D;
+extern HRC2D *HRC2D_get(ecs_world *, ecs_entity);
+extern const HRC2D *HRC2D_get_const(const ecs_world *, ecs_entity);
+extern int HRC2D_has(const ecs_world *, ecs_entity);
+extern int HRC2D_add(ecs_world *, ecs_entity, uint64_t);
+extern int HRC2D_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc COMPONENT_Transform3D;
+extern Transform3D *Transform3D_get(ecs_world *, ecs_entity);
+extern const Transform3D *Transform3D_get_const(const ecs_world *, ecs_entity);
+extern int Transform3D_has(const ecs_world *, ecs_entity);
+extern int Transform3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int Transform3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_GlobalTransform3D;
+extern GlobalTransform3D *GlobalTransform3D_get(ecs_world *, ecs_entity);
+extern const GlobalTransform3D *GlobalTransform3D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc COMPONENT_GlobalTransform2D;
+extern GlobalTransform2D *GlobalTransform2D_get(ecs_world *, ecs_entity);
+extern const GlobalTransform2D *GlobalTransform2D_get_const(const ecs_world *, ecs_entity);
+
+extern const ecs_component_desc COMPONENT_Collider3D;
+extern Collider3D *Collider3D_get(ecs_world *, ecs_entity);
+extern const Collider3D *Collider3D_get_const(const ecs_world *, ecs_entity);
+extern int Collider3D_has(const ecs_world *, ecs_entity);
+extern int Collider3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int Collider3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Body3D;
+extern Body3D *Body3D_get(ecs_world *, ecs_entity);
+extern const Body3D *Body3D_get_const(const ecs_world *, ecs_entity);
+extern int Body3D_has(const ecs_world *, ecs_entity);
+extern int Body3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int Body3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Gravity3D;
+extern Gravity3D *Gravity3D_get(ecs_world *, ecs_entity);
+extern const Gravity3D *Gravity3D_get_const(const ecs_world *, ecs_entity);
+extern int Gravity3D_has(const ecs_world *, ecs_entity);
+extern int Gravity3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int Gravity3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Character3D;
+extern Character3D *Character3D_get(ecs_world *, ecs_entity);
+extern const Character3D *Character3D_get_const(const ecs_world *, ecs_entity);
+extern int Character3D_has(const ecs_world *, ecs_entity);
+extern int Character3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int Character3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc COMPONENT_Joint3D;
+extern Joint3D *Joint3D_get(ecs_world *, ecs_entity);
+extern const Joint3D *Joint3D_get_const(const ecs_world *, ecs_entity);
+extern int Joint3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int Joint3D_remove(ecs_world *, ecs_entity, uint64_t);
+
+#endif

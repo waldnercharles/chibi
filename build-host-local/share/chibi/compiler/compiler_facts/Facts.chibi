@@ -1,0 +1,187 @@
+package compiler_facts
+
+import syntax "project:syntax_diagnostics"
+
+// Owned analysis output for domain compilers. These are semantic facts, not
+// prepared instructions or the package compiler's temporary work records.
+// All table references are result-local indices; -1 means absent. Origin.node
+// is instead an opaque source-tree anchor scoped by its document. A span is
+// [first, first + count). Source offsets and positions count bytes, with
+// half-open ranges and one-based line/column. Semantic IDs remain full width.
+
+pub Document :: struct {
+    key: string;
+    identity: string;
+    path: string;
+    text: string;
+}
+
+pub Origin :: struct {
+    document: int;
+    // Provenance only: no node table is exported or needed to consume facts.
+    // Never dereference this anchor or compare it across documents/generations.
+    node: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    occurrence: u64;
+}
+
+// Storage/container come from the matching compiler target. Qualifiers are
+// the semantic categories below, not raw prepared value or catalog flags.
+pub ReferenceQualifier: int : 1;
+pub OptionalQualifier: int : 2;
+pub ResultQualifier: int : 4;
+pub GenericQualifier: int : 8;
+pub TaskQualifier: int : 16;
+pub NamespaceQualifier: int : 32;
+
+pub Type :: struct {
+    storage: int;
+    container: int;
+    nominal: u64;
+    qualifiers: int;
+    first_field: int;
+    field_count: int;
+}
+
+// A field's identity is (owner nominal identity, semantic). Its type is the
+// declared type, including nested record identity; ordinal is source order.
+pub Field :: struct {
+    owner_type: int;
+    type: int;
+    origin: int;
+    semantic: u64;
+    name: string;
+    ordinal: int;
+}
+
+pub SourceFunction: int : 0;
+pub NativeFunction: int : 1;
+
+// Source and native calls both name rows here. Native metadata preserves the
+// shared catalog's kind, actual linked intrinsic and direct-call admission;
+// direct does not imply purity or eligibility for a domain compiler.
+// Source functions use native_kind/intrinsic = -1 and direct = false. All
+// reachable imported source helpers retain their bodies in this table; a
+// source helper is not replaced by a native catalog summary. effects is the
+// final transitive effect mask after ordinary call-graph analysis.
+// A single ordinary result has result_type; -1 means no result. A callable
+// shape this schema cannot represent is retained with unsupported and origin.
+pub Function :: struct {
+    semantic: u64;
+    name: string;
+    origin: int;
+    kind: int;
+    first_parameter: int;
+    parameter_count: int;
+    result_type: int;
+    first_statement: int;
+    statement_count: int;
+    effects: int;
+    native_kind: int;
+    intrinsic: int;
+    direct: bool;
+    unsupported: string;
+}
+
+pub ParameterBinding: int : 0;
+pub LocalBinding: int : 1;
+pub ResultBinding: int : 2;
+
+// Parameter spans index this table, not types or arguments. Reads refer to
+// the resolved binding row, including through lexical aliases. write_origin
+// and ref_origin retain the first later write and first escaping reference;
+// a local's initialization alone is not a later write.
+pub Binding :: struct {
+    function: int;
+    type: int;
+    origin: int;
+    name: string;
+    role: int;
+    ordinal: int;
+    initializer: int;
+    write_origin: int;
+    ref_origin: int;
+}
+
+pub UnsupportedStatement: int : 0;
+pub InitializeStatement: int : 1;
+pub ReturnStatement: int : 2;
+
+// Unsupported ordinary-valid statements keep their source instead of being
+// silently omitted. Domain rejection can then report the originating range.
+pub Statement :: struct {
+    kind: int;
+    origin: int;
+    binding: int;
+    expression: int;
+    unsupported: string;
+}
+
+pub UnsupportedExpression: int : 0;
+pub ConstantExpression: int : 1;
+pub ReadExpression: int : 2;
+pub BinaryExpression: int : 3;
+pub ConvertExpression: int : 4;
+pub ConstructExpression: int : 5;
+pub ProjectExpression: int : 6;
+pub CallExpression: int : 7;
+
+// The initial export contract names these resolved scalar operators.
+// Other operators retain an UnsupportedExpression and their original range.
+// These classifications are independent of native shader/prepared opcodes.
+pub AddOperation: int : 1;
+pub MultiplyOperation: int : 2;
+
+pub ExactConversion: int : 0;
+pub WrapConversion: int : 1;
+pub ClampConversion: int : 2;
+
+// Each expression's arguments index Argument in source evaluation order.
+// A binary has two arguments; conversion/projection has one. A read uses
+// binding; a call uses callee; projection uses field. operand_type records the
+// resolved scalar operation/conversion input type, separate from result type.
+// Constants retain exact typed bits, with float32 in the low 32 bits and bool
+// as 0/1. Inactive references use -1; inactive scalar classifications use 0.
+pub Expression :: struct {
+    kind: int;
+    origin: int;
+    type: int;
+    operand_type: int;
+    binding: int;
+    callee: int;
+    field: int;
+    operation: int;
+    conversion: int;
+    bits: u64;
+    first_argument: int;
+    argument_count: int;
+    unsupported: string;
+}
+
+// parameter indexes the destination Binding row; field indexes the
+// destination Field row. Neither changes source evaluation order. Supplied
+// arguments precede omitted defaults, which follow declaration order and
+// reference typed constant expressions. A default's expression origin is its
+// declaration; origin is its call site. Non-call/construct operands use -1
+// for both destinations and defaulted = false.
+pub Argument :: struct {
+    expression: int;
+    parameter: int;
+    field: int;
+    origin: int;
+    defaulted: bool;
+}
+
+// Accepted means ordinary source validation succeeded. A domain compiler must
+// still inspect all reachable unsupported rows, types, effects and bindings.
+// Returned strings/arrays keep their values after the input snapshot retires.
+// This schema declares no Analyze implementation or prepared transport API.
+pub Result :: union {
+    Accepted(entry_function: int, documents: Document[], origins: Origin[], types: Type[],
+             fields: Field[], functions: Function[], bindings: Binding[],
+             statements: Statement[], expressions: Expression[], arguments: Argument[])
+    | Rejected(documents: Document[], diagnostic: syntax.Diagnostic)
+}

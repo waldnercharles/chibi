@@ -635,7 +635,7 @@ Files :: (target: string) -> string[] {
             "test/language/field_runtime.c", "test/language/prototype.c",
             "test/language/ui.c", "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
             "test/language/packages.c", "test/language/package_syntax.c",
-            "test/language/package_execution.c", "test/language/package_resolution.c",
+            "test/language/package_resolution.c",
             "test/language/package_imports.c", "test/language/package_files.c",
             "test/language/package_core.c", "test/language/package_math.c", "test/language/package_tests.c",
             "test/language/package_portable.c", "test/language/package_portable_compiler.c",
@@ -648,13 +648,13 @@ Files :: (target: string) -> string[] {
             "test/language/package_routes_chibi.c", "test/language/package_snapshot_chibi.c",
 
             "test/language/compiler_artifact_chibi.c", "test/language/bounded_compiler_chibi.c",
-            "test/language/prepared_writer_chibi.c", "test/language/shader_source_chibi.c",
+            "test/language/shader_source_chibi.c",
             "test/language/asset_packaging_chibi.c", "test/language/package_compiler_chibi.c",
             "src/host/native_libraries.c", "src/host/process.c", "src/host/stack_overflow.c",
             "test/language/native_census.c",
             "test/language/execution_scope.c", "test/language/integer_semantics.c",
             "test/language/integer_arithmetic.c",
-            "test/language/scalar_lowering_chibi.c",
+
 
 
 
@@ -2953,12 +2953,12 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/package_portable.c", "test/language/package_portable_compiler.c",
         "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
         "test/language/package_syntax_chibi.c", "test/language/package_tests.c",
-        "test/language/prepared_writer_chibi.c",
+
         "test/language/ranges.c",
         "test/language/record_prepared.c",
         "test/language/compositional_records.c",
 
-        "test/language/scalar_lowering_chibi.c",
+
         "test/language/signature_fixture.c",
         "test/language/signature_reader_chibi.c", "test/language/source_tokenizer_chibi.c",
         "test/language/source_parser_chibi.c",

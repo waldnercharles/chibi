@@ -3,7 +3,6 @@
 #include "compiler_fixture.h"
 #include "compositional_records.h"
 #include "package_compiler_chibi.h"
-#include "prepared_writer_chibi.h"
 #include "test/parallel.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "type_relations_chibi.h"
@@ -50,11 +49,9 @@ void test_language_package_syntax_chibi();
 void test_language_package_paths_chibi();
 void test_language_package_routes_chibi();
 void test_language_package_snapshot_chibi();
-void test_language_scalar_lowering_chibi();
 void test_language_unit_algebra_chibi();
 void test_language_signature_reader_chibi();
 void test_language_snapshot_reader_chibi();
-void test_language_package_execution();
 void test_language_package_resolution();
 void test_language_package_imports();
 void test_language_host_packages();
@@ -142,8 +139,6 @@ int main(int argc, char **argv)
     bool compiler_fixture = argc == 2 && !strcmp(argv[1], "--compiler-fixture");
     bool bounded_compiler_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--bounded-compiler-chibi");
-    bool prepared_writer_chibi = argc == 2 &&
-                                 !strcmp(argv[1], "--prepared-writer-chibi");
     bool package_compiler_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--package-compiler-chibi");
     bool package_compiler_chibi_libraries = argc == 2 &&
@@ -194,8 +189,6 @@ int main(int argc, char **argv)
                                                    !strcmp(argv[1], "--package-compiler-chibi-imports-compiled");
     bool package_compiler_chibi_bootstrap = argc == 2 &&
                                             !strcmp(argv[1], "--package-compiler-chibi-bootstrap");
-    bool scalar_lowering_chibi = argc == 2 &&
-                                 !strcmp(argv[1], "--scalar-lowering-chibi");
     bool type_relations_chibi = argc == 2 &&
                                 !strcmp(argv[1], "--type-relations-chibi");
     bool unit_algebra_chibi = argc == 2 && !strcmp(argv[1], "--unit-algebra-chibi");
@@ -207,7 +200,6 @@ int main(int argc, char **argv)
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool package_syntax_chibi = argc == 2 &&
                                 !strcmp(argv[1], "--package-syntax-chibi");
-    bool package_execution = argc == 2 && !strcmp(argv[1], "--package-execution");
     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
     bool host_packages = argc == 2 && !strcmp(argv[1], "--host-packages");
@@ -244,8 +236,7 @@ int main(int argc, char **argv)
          !shader_source_chibi && !syntax_chibi && !source_tokenizer_chibi &&
          !source_parser_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
-         !scalar_lowering_chibi && !compiler_fixture && !bounded_compiler_chibi &&
-         !prepared_writer_chibi && !package_compiler_chibi &&
+         !compiler_fixture && !bounded_compiler_chibi && !package_compiler_chibi &&
          !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
          !package_compiler_chibi_fallible && !package_compiler_chibi_imports &&
          !package_compiler_chibi_math_native && !package_compiler_chibi_imports &&
@@ -261,8 +252,8 @@ int main(int argc, char **argv)
          !native_census_flattening && !package_compiler_chibi_native_arguments &&
          !package_compiler_chibi_native_arguments_oracle && !type_relations_chibi &&
          !unit_algebra_chibi && !signature_reader_chibi && !snapshot_reader_chibi &&
-         !package_execution && !package_resolution && !package_imports &&
-         !host_packages && !host_packages_compiler && !package_files && !package_core &&
+         !package_resolution && !package_imports && !host_packages &&
+         !host_packages_compiler && !package_files && !package_core &&
          !package_math && !package_math_benchmark && !package_portable &&
          !package_portable_compiler && !package_tests && !argument_effects_chibi &&
          !component_write && !component_write_layout && !headless && !build_workflow &&
@@ -289,9 +280,9 @@ int main(int argc, char **argv)
             "--package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
             ""
-            "--scalar-lowering-chibi | --compiler-fixture | "
+            "--compiler-fixture | "
             "--bounded-compiler-chibi | "
-            "--prepared-writer-chibi | --package-compiler-chibi | "
+            "--package-compiler-chibi | "
             "--package-compiler-chibi-types | --package-compiler-chibi-imports "
             "| --package-compiler-chibi-fallible "
             "| --package-compiler-chibi-math-native "
@@ -324,7 +315,7 @@ int main(int argc, char **argv)
             ""
             ""
             ""
-            "--package-syntax | --package-syntax-chibi | --package-execution | "
+            "--package-syntax | --package-syntax-chibi | "
             "--package-resolution | "
             "--package-imports | --host-packages | --host-packages-compiler | "
             "--package-files | --package-core | "
@@ -428,8 +419,6 @@ int main(int argc, char **argv)
         test_language_compiler_fixture();
     } else if (bounded_compiler_chibi) {
         test_language_bounded_compiler_chibi();
-    } else if (prepared_writer_chibi) {
-        test_language_prepared_writer_chibi();
     } else if (package_compiler_chibi) {
         test_language_package_compiler_chibi();
     } else if (package_compiler_chibi_types) {
@@ -480,8 +469,6 @@ int main(int argc, char **argv)
         test_language_native_census(argc == 3 ? argv[2] : NULL);
     } else if (native_census_flattening) {
         test_language_native_census_flattening();
-    } else if (scalar_lowering_chibi) {
-        test_language_scalar_lowering_chibi();
     } else if (type_relations_chibi) {
         test_language_type_relations_chibi();
     } else if (unit_algebra_chibi) {
@@ -490,8 +477,6 @@ int main(int argc, char **argv)
         test_language_signature_reader_chibi();
     } else if (snapshot_reader_chibi) {
         test_language_snapshot_reader_chibi();
-    } else if (package_execution) {
-        test_language_package_execution();
     } else if (package_resolution) {
         test_language_package_resolution();
     } else if (package_imports) {

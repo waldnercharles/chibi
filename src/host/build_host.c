@@ -60,6 +60,8 @@ static const char *const environment_names[] = {
     "CHIBI_BUILD_TIMINGS",
     /* Nested build hosts reuse the recovered compilers the caller keeps. */
     "CHIBI_COMPILER_CACHE",
+    /* bootstrap-artifact's check leaves stage two and its arguments here. */
+    "CHIBI_BOOTSTRAP_SEED",
     "CC",
     "CXX",
     "CFLAGS",

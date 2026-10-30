@@ -1,0 +1,200 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+
+// A task join returns the native structural union T | Cancelled. These
+// declarations carry semantic tags, rather than source union variant names.
+TaskResultDecl: int : 11;
+CancelledTag: u64 : 0x63616e63656c6c65;
+TaskDeclarations :: union {
+    Collected(types: TypeDecl[], members: TypeMember[])
+}
+TaskSuccessValue :: (callable: Callable, params: Param[]) -> ValueType {
+    if (callable.results == 1) {
+        result := params[callable.first + callable.count];
+        return {storage: result.storage, container: result.container, record: result.record};
+    }
+    return {storage: callable.result, container: callable.result_container, record: callable.result_record};
+}
+TaskResultSupport :: (callable: Callable, types: TypeDecl[], params: Param[]) -> string {
+    if (callable.results > 1) {
+        return "task handles with multiple results are not supported yet";
+    }
+    value := TaskSuccessValue(callable, params);
+    if (value.storage == UnionStorage && value.container == 0) {
+        return "task handles with a union result are not supported yet";
+    }
+    return "";
+}
+TaskSuccessTag :: (callable: Callable, types: TypeDecl[], params: Param[]) -> u64 {
+    return SemanticTag(types, TaskSuccessValue(callable, params));
+}
+TaskResultRecord :: (types: TypeDecl[], callable: int) -> int {
+    index: int = 0;
+    while (index < length(types)) {
+        if (types[index].kind == TaskResultDecl && types[index].parent == callable) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+TaskResultSuccess :: (types: TypeDecl[], record: int) -> ValueType {
+    declared := types[record];
+    return {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+}
+TaskResultDeclarations :: (callables: Callable[], params: Param[], input_types: TypeDecl[],
+                           input_members: TypeMember[]) -> TaskDeclarations {
+    types := input_types;
+    members := input_members;
+    index: int = 0;
+    while (index < length(callables)) {
+        callable := callables[index];
+        if (!callable.waits || TaskResultRecord(types, index) >= 0 ||
+            TaskResultSupport(callable, types, params) != "") {
+            index += 1;
+            continue;
+        }
+        value := TaskSuccessValue(callable, params);
+        success := TaskSuccessTag(callable, types, params);
+        first_tag := success;
+        second_tag := CancelledTag;
+        if (first_tag > second_tag) {
+            first_tag = CancelledTag;
+            second_tag = success;
+        }
+        id := ((u64(14695981039346656037) ^ first_tag) * u64(1099511628211) ^ second_tag) * u64(1099511628211);
+        parent := length(types);
+        declared: TypeDecl = {name: "", type_name: "", package: callable.package, node: -1,
+                              kind: TaskResultDecl, first: parent + 1, count: 2, size: 0, parent: index,
+                              storage: UnionStorage, id: id, layout: 0, component: 0, key: 0,
+                              value_storage: value.storage, value_container: value.container,
+                              value_record: value.record, error: false};
+        types.append(declared);
+        tags: u64[] = [first_tag, second_tag];
+        for (tag in tags) {
+            name := "";
+            count: int = 0;
+            first := length(members);
+            if (tag == CancelledTag) {
+                name = "Cancelled";
+            } else if (value.storage != 0) {
+                member: TypeMember = {name: "", storage: value.storage, container: value.container,
+                                      record: value.record, offset: 0, writable: false, c_string: false,
+                                      constant: false, read: -1, read_key: ""};
+                members.append(member);
+                count = 1;
+            }
+            variant: TypeDecl = {name: name, type_name: "", package: callable.package, node: -1,
+                                 kind: VariantDecl, first: first, count: count, size: 0, parent: parent,
+                                 storage: UnionStorage, id: tag, layout: 0, component: 0, key: 0,
+                                 value_storage: 0, value_container: 0, value_record: -1, error: false};
+            types.append(variant);
+        }
+        index += 1;
+    }
+    return TaskDeclarations.Collected(types, members);
+}
+TaskResultPattern :: (forest: snapshot.SnapshotNode[], text: string, condition: int) -> bool {
+    pattern := Field(forest, condition, "type");
+    return Text(forest, text, pattern) == "Cancelled" && Field(forest, condition, "binding") < 0;
+}
+TaskResultIsStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                     members: TypeMember[], names: Name[], scope: int, values: Value[], top: int,
+                     item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    value := values[top - 1];
+    if (!TaskResultPattern(forest, text, item.node)) {
+        return Fail(forest, item.node, document, "a task result pattern must be Cancelled");
+    }
+    variant := FindVariant(types, value.record, "Cancelled");
+    return MatchStep(forest, text, document, types, members, names, scope, -1, value.slot, variant, -1,
+                     false, Field(forest, item.node, "negated") >= 0, -1, -1, ops, target, at, forest[item.node]);
+}
+// A proof applies only within the tested branch and until a write or call
+// could change the binding. Loop back edges do not preserve an outer proof.
+TaskResultPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name, node: int) -> bool {
+    // An is-test always observes the original union, including when an
+    // enclosing branch has already proved the success case.
+    subject := node;
+    test := forest[subject].parent;
+    while (Is(forest, test, "parenthesized_expression")) {
+        subject = test;
+        test = forest[subject].parent;
+    }
+    if (Is(forest, test, "is_expression") && Field(forest, test, "value") == subject) {
+        return false;
+    }
+    function := node;
+    while (function >= 0 && !Is(forest, function, "function_declaration") && !Is(forest, function, "handler")) {
+        function = forest[function].parent;
+    }
+    if (function < 0) {
+        return false;
+    }
+    body := Field(forest, function, "body");
+    aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body, []), binding.name);
+    child := node;
+    parent := forest[node].parent;
+    while (parent >= 0 && parent != function) {
+        if (Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) {
+            condition := Unparenthesized(forest, Field(forest, parent, "condition"));
+            consequence := Field(forest, parent, "consequence");
+            if (Is(forest, parent, "while_statement")) {
+                consequence = Field(forest, parent, "body");
+            }
+            truth := consequence >= 0 && forest[child].start >= forest[consequence].start && forest[child].end <= forest[consequence].end;
+            alternative := Field(forest, parent, "alternative");
+            false_branch := alternative >= 0 && forest[child].start >= forest[alternative].start &&
+                            forest[child].end <= forest[alternative].end;
+            subject := Unparenthesized(forest, Field(forest, condition, "value"));
+            negated := Field(forest, condition, "negated") >= 0;
+            if (Is(forest, condition, "is_expression") && TaskResultPattern(forest, text, condition) &&
+                Is(forest, subject, "identifier") && Text(forest, text, subject) == binding.name &&
+                (truth || false_branch) && truth == negated && (binding.node < 0 || forest[binding.node].start < forest[condition].start)) {
+                return !PointerProofChanged(forest, text, parent, forest[condition].end, forest[node].start,
+                                            binding.name, aliased);
+            }
+            if (Is(forest, parent, "while_statement")) {
+                return false;
+            }
+        }
+        child = parent;
+        parent = forest[parent].parent;
+    }
+    return false;
+}
+// The structural success payload has no invented Success case: scalar and
+// record results are the original value in payload position zero.
+TaskResultReadStep :: (types: TypeDecl[], binding: Name, ops: Ops, target: Target, at: Bases,
+                       node: snapshot.SnapshotNode) -> Step {
+    value := TaskResultSuccess(types, binding.record);
+    if (value.storage == 0) {
+        return Step.Failed({start: node.start, end: node.end, line: node.row + 1, column: node.column + 1,
+                            document: -1, message: "a completed void task has no result value"});
+    }
+    first := types[binding.record].first;
+    if (types[first].id == CancelledTag) {
+        first += 1;
+    }
+    address := AddressSlot(target);
+    storage := SlotStorage(value.storage, value.container, target);
+    slots: Slot[] = [{storage: UnionStorage, kind: ValueKind}, address, address,
+                     {storage: storage, kind: SlotKind(value.storage, value.container)}];
+    code: Code[] = [Instruction(ops.local, UnionStorage, at.slot, binding.index, 0, 0, node)];
+    code.extend(CellWrite(UnionStorage, at.slot, at.cell, ops, target, at.slot + 1, node));
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(storage, at.cell + 4, ops, target, at.slot + 2, node));
+    tag := TypedCell(WordStorage, 0, -1);
+    tag.variant = first;
+    cells: Cell[] = [TypedCell(UnionStorage, 0, binding.record), tag, TypedCell(IntStorage, 0, -1),
+                     TypedCell(BoolStorage, 0, -1), TypedCell(value.storage, value.container, value.record)];
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: UnionGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 4,
+                  result_count: 1, written: false};
+    roots: Root[] = [];
+    if (Pointer(value.storage, value.container)) {
+        root: Root = {slot: at.slot + 3, storage: value.storage, container: value.container, record: value.record};
+        roots.append(root);
+    }
+    return Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], 0,
+                        Typed(at.slot + 3, value.storage, value.container, value.record), NoValue(), []);
+}

@@ -1,0 +1,81 @@
+package syntax_diagnostics
+
+import strings "core:strings"
+
+// Raw Tree-sitter facts form one complete rooted tree, including unnamed
+// children. Links use -1 for absence; offsets and positions count source bytes.
+pub Node :: struct {
+    kind: string;
+    start: int;
+    end: int;
+    row: int;
+    column: int;
+    parent: int;
+    first_child: int;
+    next_sibling: int;
+    error: bool;
+    missing: bool;
+    has_error: bool;
+}
+
+@error
+pub Diagnostic :: struct {
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+    message: string;
+}
+
+pub Diagnose :: (nodes: Node[], root: int) -> Diagnostic[] {
+    diagnostics: Diagnostic[] = [];
+    current := root;
+    while (true) {
+        node := nodes[current];
+        hidden := !node.error && !node.missing && node.has_error;
+        child := node.first_child;
+        while (hidden && child >= 0) {
+            if (nodes[child].has_error) {
+                hidden = false;
+            }
+            child = nodes[child].next_sibling;
+        }
+
+        if (node.error || node.missing || hidden) {
+            message := "Unexpected syntax";
+            if (node.missing) {
+                message = format_text("Expected {}", node.kind);
+            } else if (!node.error) {
+                // Recovery can hide a missing terminator beneath this node.
+                message = format_text("Missing syntax inside {}", node.kind);
+            } else if (node.kind != "ERROR") {
+                // The authored parser names what it expected in the node's kind.
+                message = node.kind;
+            }
+            diagnostic: Diagnostic = {
+                start: node.start,
+                end: node.end,
+                line: node.row + 1,
+                column: node.column + 1,
+                document: 0,
+                message: strings.Slice(message, 0, 191)
+            };
+            diagnostics.append(diagnostic);
+        }
+
+        // An ERROR already describes its descendants. Otherwise walk children
+        // before siblings, climbing through parent links when a branch ends.
+        if (!node.error && node.first_child >= 0) {
+            current = node.first_child;
+            continue;
+        }
+        while (nodes[current].next_sibling < 0) {
+            current = nodes[current].parent;
+            if (current < 0) {
+                return diagnostics;
+            }
+        }
+        current = nodes[current].next_sibling;
+    }
+}

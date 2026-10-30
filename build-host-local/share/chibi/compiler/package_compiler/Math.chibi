@@ -1,0 +1,1708 @@
+package package_compiler
+
+import math "project:math_types"
+import snapshot "project:source_snapshot"
+import binding "project:lexical_binding"
+import syntax "project:syntax_diagnostics"
+import strings "core:strings"
+
+// Compiler-private kind, separate from char14 and collection/optional12..13.
+MathDecl: int : 15;
+MathCall: int : 90;
+MathFunctionCall: int : 91;
+MathCapturePhase: int : 77;
+MathAssignBegin: int : 72;
+MathAssignSnapshot: int : 73;
+MathAssignValue: int : 74;
+MathAssignRead: int : 75;
+MathAssignWrite: int : 76;
+
+MathTables :: union {
+    Read(types: TypeDecl[], members: TypeMember[]) | Failed(message: string)
+}
+MathScalar :: union {
+    Read(value: Value) | Failed(diagnostic: syntax.Diagnostic)
+}
+MathFailure :: (document: int, node: snapshot.SnapshotNode, message: string) -> Step {
+    return Step.Failed({start: node.start, end: node.end, line: node.row + 1,
+                        column: node.column + 1, document: document, message: message});
+}
+
+MathName :: (name: string) -> int {
+    kind := math.Kind(name);
+    if (math.IsVector(kind) || math.IsMatrix(kind) || kind == math.Quat) {
+        return kind;
+    }
+    return 0;
+}
+MathFunctionName :: (name: string) -> bool {
+    if (MathMemberwiseName(name)) {
+        return true;
+    }
+    if (name == "length") {
+        return true;
+    }
+    if (name == "distance") {
+        return true;
+    }
+    if (name == "dot") {
+        return true;
+    }
+    if (name == "cross") {
+        return true;
+    }
+    if (name == "reflect") {
+        return true;
+    }
+    if (name == "refract") {
+        return true;
+    }
+    if (name == "transpose") {
+        return true;
+    }
+    if (name == "determinant") {
+        return true;
+    }
+    if (name == "matrix_comp_mult") {
+        return true;
+    }
+    if (name == "quat_conjugate") {
+        return true;
+    }
+    if (name == "normalize") {
+        return true;
+    }
+    if (name == "normalize_or") {
+        return true;
+    }
+    if (name == "normalize_or_zero") {
+        return true;
+    }
+    if (name == "inverse") {
+        return true;
+    }
+    if (name == "quat_normalize") {
+        return true;
+    }
+    return false;
+}
+MathKind :: (types: TypeDecl[], record: int) -> int {
+    if (record < 0 || record >= length(types)) {
+        return 0;
+    }
+    base := Canonical(types, record);
+    if (base < 0 || (types[base].kind != MathDecl && types[base].kind != NativeDecl)) {
+        return 0;
+    }
+    kind := MathName(types[base].type_name);
+    if (kind == 0 || types[base].id != binding.ID("type", math.Name(kind))) {
+        return 0;
+    }
+    return kind;
+}
+MathValueKind :: (types: TypeDecl[], value: Value) -> int {
+    if (value.container != 0) {
+        return math.Unknown;
+    }
+    if (value.storage == StructStorage) {
+        return MathKind(types, value.record);
+    }
+    if (value.storage == FloatStorage && value.record < 0) {
+        return math.Scalar;
+    }
+    if (value.storage == DoubleStorage && value.record < 0) {
+        return math.Double;
+    }
+    if (Integer(value.storage) && value.record < 0) {
+        return math.Integer;
+    }
+    return math.Unknown;
+}
+MathAggregate :: (types: TypeDecl[], value: Value) -> bool {
+    return value.storage == StructStorage && value.container == 0 && MathKind(types, value.record) != 0;
+}
+MathRecord :: (types: TypeDecl[], kind: int) -> int {
+    if (kind < math.Vec2 || kind > math.Mat4) {
+        return -1;
+    }
+    index: int = 0;
+    while (index < length(types)) {
+        if (types[index].parent < 0 && MathKind(types, index) == kind) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+MathFieldName :: (kind: int, component: int) -> string {
+    if (math.IsMatrix(kind)) {
+        width := math.Width(kind);
+        return format_text("c{}r{}", component / width, component % width);
+    }
+    return strings.Slice("xyzw", component, 1);
+}
+MathRequested :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], types: TypeDecl[]) -> bool {
+    for (declared in types) {
+        if (declared.package == -1 && MathName(declared.name) != 0) {
+            return true;
+        }
+    }
+    for (document in documents) {
+        index := document.node_start;
+        while (index < document.node_start + document.node_count) {
+            if ((forest[index].kind == "identifier" || forest[index].kind == "type") &&
+                MathName(Text(forest, document.text, index)) != 0) {
+                return true;
+            }
+            index += 1;
+        }
+    }
+    return false;
+}
+// Existing reflected rows keep their indices so aliases and native ports
+// stay valid. Their compact scalar shape and hash must match before reuse.
+DeclareMath :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], types: TypeDecl[],
+                members: TypeMember[], target: Target) -> MathTables {
+    if (!MathRequested(forest, documents, types)) {
+        return MathTables.Read(types, members);
+    }
+    kind := math.Vec2;
+    while (kind <= math.Mat4) {
+        name := math.Name(kind);
+        id := binding.ID("type", name);
+        found := FindType(types, -1, name);
+        if (found >= 0) {
+            declared := types[found];
+            if ((declared.kind != NativeDecl && declared.kind != MathDecl) || declared.parent >= 0 ||
+                declared.storage != StructStorage || declared.id != id || declared.type_name != name || declared.component != 0 ||
+                declared.count != math.Components(kind) || declared.size != math.Components(kind) * 4 ||
+                declared.first < 0 || declared.count > length(members) - declared.first) {
+                return MathTables.Failed(format_text("built-in {} differs from its reflected layout", name));
+            }
+            component: int = 0;
+            while (component < declared.count) {
+                field := members[declared.first + component];
+                if (field.name != MathFieldName(kind, component) || field.storage != FloatStorage ||
+                    field.container != 0 || field.record >= 0 || field.offset != component * 4 ||
+                    !field.writable || field.c_string || field.constant || field.read >= 0 || field.read_key != "") {
+                    return MathTables.Failed(format_text("built-in {} differs from its reflected fields", name));
+                }
+                component += 1;
+            }
+            if (declared.layout != LayoutHash(declared, members, types, target)) {
+                return MathTables.Failed(format_text("built-in {} differs from its reflected layout hash", name));
+            }
+        } else {
+            first := length(members);
+            component: int = 0;
+            while (component < math.Components(kind)) {
+                members.append({name: MathFieldName(kind, component), storage: FloatStorage, container: 0,
+                                record: -1, offset: component * 4, writable: true, c_string: false,
+                                constant: false, read: -1, read_key: ""});
+                component += 1;
+            }
+            declared: TypeDecl = {name: name, type_name: name, package: -1, node: -1, kind: MathDecl,
+                                  first: first, count: math.Components(kind), size: math.Components(kind) * 4,
+                                  parent: -1, storage: StructStorage, id: id, layout: 0, component: 0,
+                                  key: 0, value_storage: 0, value_container: 0, value_record: -1, error: false};
+            declared.layout = LayoutHash(declared, members, types, target);
+            types.append(declared);
+        }
+        kind += 1;
+    }
+    return MathTables.Read(types, members);
+}
+MathReferences :: (types: TypeDecl[], record: int, wanted: int) -> bool {
+    depth: int = 0;
+    at := record;
+    while (at >= 0 && at < length(types) && depth < length(types)) {
+        if (at == wanted) {
+            return true;
+        }
+        declared := types[at];
+        if (declared.kind == PointerDecl || declared.kind == OptionalDecl || declared.kind == CollectionDecl ||
+            declared.kind == MapDecl) {
+            at = declared.value_record;
+        } else if (declared.kind == NativeDecl || declared.kind == OptionalComponentDecl) {
+            at = declared.parent;
+        } else {
+            return false;
+        }
+        depth += 1;
+    }
+    return false;
+}
+// Math-free modules keep their exact requirement set. A used vector does
+// not bring unrelated matrices into every prepared module.
+MathRequired :: (record: int, types: TypeDecl[], callables: Callable[], params: Param[], prepared: Body[],
+                 package: int) -> bool {
+    index: int = 0;
+    while (index < length(callables)) {
+        callable := callables[index];
+        if (callable.package == package) {
+            if (MathReferences(types, callable.result_record, record)) {
+                return true;
+            }
+            parameter := callable.first;
+            while (parameter < callable.first + callable.count + callable.results) {
+                if (MathReferences(types, params[parameter].record, record)) {
+                    return true;
+                }
+                parameter += 1;
+            }
+            switch prepared[index] {
+                case .Failed(diagnostic):
+                    return false;
+                case .Specialize(template, call, arguments, caller_names):
+                    return false;
+                case .Inferred(value):
+                    if (MathReferences(types, value.record, record)) {
+                        return true;
+                    }
+                case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, write, facts):
+                    for (cell in cells) {
+                        if (MathReferences(types, cell.record, record)) {
+                            return true;
+                        }
+                    }
+                    for (instruction in code) {
+                        if (instruction.value_storage > 0 && MathReferences(types, instruction.value_record, record)) {
+                            return true;
+                        }
+                    }
+                    for (root in roots) {
+                        if (MathReferences(types, root.record, record)) {
+                            return true;
+                        }
+                    }
+                    for (watch in watches) {
+                        if (MathReferences(types, watch.record, record)) {
+                            return true;
+                        }
+                    }
+            }
+        }
+        index += 1;
+    }
+    return false;
+}
+MathStateRequired :: (record: int, types: TypeDecl[], states: StateDecl[]) -> bool {
+    for (kept in states) {
+        if (MathReferences(types, kept.record, record)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+MathPast :: (at: Bases, code: Code[], slots: Slot[], cells: int, hosts: int) -> Bases {
+    return {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local,
+            cell: at.cell + cells, host: at.host + hosts, call: at.call};
+}
+MathLoad :: (value: Value, component: int, types: TypeDecl[], members: TypeMember[], code: ^(Code[]),
+             slots: ^(Slot[]), ops: Ops, at: Bases, node: snapshot.SnapshotNode) -> int {
+    if (value.storage == FloatStorage) {
+        return value.slot;
+    }
+    record := Canonical(types, value.record);
+    output := at.slot + length(slots^);
+    slots.append(ValueLocal(FloatStorage));
+    load := Instruction(ops.load, FloatStorage, output, value.slot, 0, 0, node);
+    load.offset = members[types[record].first + component].offset;
+    code.append(load);
+    return output;
+}
+MathOperation :: (op: int, left: int, right: int, code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+                  at: Bases, node: snapshot.SnapshotNode) -> int {
+    output := at.slot + length(slots^);
+    slots.append(ValueLocal(FloatStorage));
+    operation := Instruction(op, FloatStorage, output, left, right, -1, node);
+    if (op == ops.math_abs) {
+        operation.target = 0;
+    }
+    code.append(operation);
+    return output;
+}
+MathScalarValue :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[],
+                    names: Name[], package: int, value: Value, code: ^(Code[]), slots: ^(Slot[]),
+                    ops: Ops, at: Bases, node: snapshot.SnapshotNode) -> MathScalar {
+    if (value.storage == NumberStorage) {
+        switch NumberLiteralStep(forest, text, document, constants, names, package, value, FloatStorage, ops,
+                                 MathPast(at, code^, slots^, 0, 0), node) {
+            case .Failed(diagnostic):
+                return MathScalar.Failed(diagnostic);
+            case .Emitted(added, taken, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
+                code.extend(added);
+                slots.extend(taken);
+                return MathScalar.Read(produced);
+        }
+    }
+    if (value.container == 0 && value.record < 0 && Integer(value.storage)) {
+        output := at.slot + length(slots^);
+        code.extend(NumberCode(ops, value.storage, FloatStorage, value.slot, output, node));
+        slots.extend(NumberSlots(value.storage, FloatStorage));
+        return MathScalar.Read(Typed(at.slot + length(slots^) - 1, FloatStorage, 0, -1));
+    }
+    return MathScalar.Read(value);
+}
+// Component values are already in scalar slots. Construct once, retaining
+// the typed owned header used by the existing collector and prepared writer.
+MathBuild :: (record: int, components: int[], popped: int, ops: Ops, target: Target, at: Bases,
+              node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    header := TypedCell(StructStorage, 0, record);
+    cells: Cell[] = [header];
+    index: int = 0;
+    for (component in components) {
+        offset := TypedCell(WordStorage, 0, -1);
+        offset.constant = u64(index * 4);
+        cells.extend([offset, TypedCell(FloatStorage, 0, -1)]);
+        slots.append(AddressSlot(target));
+        code.extend(ValueWriteCode(Typed(component, FloatStorage, 0, -1), at.cell + length(cells) - 1,
+                                   ops, target, at.slot + length(slots) - 1, node));
+        index += 1;
+    }
+    output := at.cell + length(cells);
+    cells.append(header);
+    hosts: Host[] = [{owned_arguments: false, intrinsic: ConstructIntrinsic, command: 0, syntax_node: 0, linked: -1,
+                      first: at.cell, result_first: output, result_count: 1, written: false}];
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(target.pointer_storage, output, ops, target, at.slot + length(slots), node));
+    slots.extend([AddressSlot(target), AddressSlot(target)]);
+    result := Typed(at.slot + length(slots) - 1, StructStorage, 0, record);
+    result.cell = output;
+    result.owned = true;
+    roots: Root[] = [{slot: result.slot, storage: StructStorage, container: 0, record: record}];
+    return CellSchemaStep(Step.Emitted(code, slots, [], cells, hosts, roots, [], [], [], popped, result,
+                                       NoValue(), []), output, ops, target, at, node);
+}
+MathConstructStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                      members: TypeMember[], constants: ConstDecl[], names: Name[], package: int,
+                      arguments: Value[], record: int, count: int, ops: Ops, target: Target,
+                      at: Bases, node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    values: Value[] = [];
+    kinds: int[] = [];
+    for (argument in arguments) {
+        switch MathScalarValue(forest, text, document, constants, names, package, argument, &code, &slots,
+                               ops, at, node) {
+            case .Failed(diagnostic):
+                return Step.Failed(diagnostic);
+            case .Read(value):
+                values.append(value);
+                kinds.append(MathValueKind(types, value));
+        }
+    }
+    kind := MathKind(types, record);
+    problem := math.Constructor(kind, kinds, true);
+    if (problem != "") {
+        return MathFailure(document, node, problem);
+    }
+    components: int[] = [];
+    if (length(values) == 1 && kinds[0] == math.Scalar && kind != math.Quat) {
+        zero: int = -1;
+        if (math.IsMatrix(kind)) {
+            zero = at.slot + length(slots);
+            slots.append(ValueLocal(FloatStorage));
+            code.append(ConstantCode(ops, FloatStorage, 0, zero, node));
+        }
+        index: int = 0;
+        while (index < math.Components(kind)) {
+            component := values[0].slot;
+            if (math.IsMatrix(kind) && index / math.Width(kind) != index % math.Width(kind)) {
+                component = zero;
+            }
+            components.append(component);
+            index += 1;
+        }
+    } else {
+        for (value in values) {
+            width := math.Components(MathValueKind(types, value));
+            component: int = 0;
+            while (component < width) {
+                components.append(MathLoad(value, component, types, members, &code, &slots, ops, at, node));
+                component += 1;
+            }
+        }
+    }
+    made := PointerPrefix(code, slots, MathBuild(record, components, count, ops, target,
+                                                 MathPast(at, code, slots, 0, 0), node));
+    return CleanupSequenceValues(made, Held(types, members, values), ops, target, at, node);
+}
+
+MathProjection :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], members: TypeMember[],
+                   object: Value, selection: int[], result_kind: int, popped: int, ops: Ops, target: Target,
+                   at: Bases, node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    components: int[] = [];
+    for (component in selection) {
+        components.append(MathLoad(object, component, types, members, &code, &slots, ops, at, node));
+    }
+    if (result_kind == math.Scalar) {
+        return EffectsStep(Step.Emitted(code, slots, [], [], [], [], [], [], [], popped,
+                                        Typed(components[0], FloatStorage, 0, -1), NoValue(), []),
+                           MemberEffects(types, object.record));
+    }
+    made := PointerPrefix(code, slots, MathBuild(MathRecord(types, result_kind), components, popped,
+                                                 ops, target, MathPast(at, code, slots, 0, 0), node));
+    return EffectsStep(CleanupSequenceValues(made, Held(types, members, [object]), ops, target, at, node),
+                       MemberEffects(types, object.record));
+}
+MathMemberStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], members: TypeMember[],
+                   object: Value, member: string, ops: Ops, target: Target, at: Bases,
+                   node: snapshot.SnapshotNode) -> Step {
+    kind := MathKind(types, object.record);
+    if (kind == math.Quat) {
+        if (strings.ByteLength(member) == 1) {
+            index := strings.IndexByte("xyzw", strings.ByteAt(member, 0));
+            if (index >= 0) {
+                return MathProjection(forest, document, types, members, object, [index], math.Scalar, 1,
+                                      ops, target, at, node);
+            }
+        }
+        return MathFailure(document, node, "quat fields are x, y, z and w");
+    }
+    if (math.IsMatrix(kind)) {
+        return MathFailure(document, node, "matrix storage fields are internal; use matrix operations");
+    }
+    switch math.Swizzle(kind, member, false) {
+        case .Rejected(message):
+            return MathFailure(document, node, message);
+        case .Accepted(result_kind, selection):
+            return MathProjection(forest, document, types, members, object, selection, result_kind, 1,
+                                  ops, target, at, node);
+    }
+}
+
+MathComponents :: (value: Value, types: TypeDecl[], members: TypeMember[], code: ^(Code[]),
+                   slots: ^(Slot[]), ops: Ops, at: Bases, node: snapshot.SnapshotNode) -> int[] {
+    components: int[] = [];
+    count := math.Components(MathValueKind(types, value));
+    index: int = 0;
+    while (index < count) {
+        components.append(MathLoad(value, index, types, members, code, slots, ops, at, node));
+        index += 1;
+    }
+    return components;
+}
+MathHamilton :: (left: int[], right: int[], component: int, code: ^(Code[]), slots: ^(Slot[]),
+                 ops: Ops, at: Bases, node: snapshot.SnapshotNode) -> int {
+    a: int[] = [3, 0, 1, 2];
+    b: int[] = [0, 3, 2, 1];
+    signs: int[] = [1, 1, 1, -1];
+    if (component == 1) {
+        a = [3, 0, 1, 2];
+        b = [1, 2, 3, 0];
+        signs = [1, -1, 1, 1];
+    } else if (component == 2) {
+        a = [3, 0, 1, 2];
+        b = [2, 1, 0, 3];
+        signs = [1, 1, -1, 1];
+    } else if (component == 3) {
+        a = [3, 0, 1, 2];
+        b = [3, 0, 1, 2];
+        signs = [1, -1, -1, -1];
+    }
+    result := MathOperation(ops.mul, left[a[0]], right[b[0]], code, slots, ops, at, node);
+    index: int = 1;
+    while (index < 4) {
+        product := MathOperation(ops.mul, left[a[index]], right[b[index]], code, slots, ops, at, node);
+        op := ops.add;
+        if (signs[index] < 0) {
+            op = ops.sub;
+        }
+        result = MathOperation(op, result, product, code, slots, ops, at, node);
+        index += 1;
+    }
+    return result;
+}
+MathBinaryStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                   members: TypeMember[], constants: ConstDecl[], names: Name[], package: int,
+                   left: Value, right: Value, operator: string, popped: int, ops: Ops, target: Target,
+                   at: Bases, node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    values: Value[] = [];
+    for (operand in [left, right]) {
+        switch MathScalarValue(forest, text, document, constants, names, package, operand, &code, &slots,
+                               ops, at, node) {
+            case .Failed(diagnostic):
+                return Step.Failed(diagnostic);
+            case .Read(value):
+                values.append(value);
+        }
+    }
+    a_kind := MathValueKind(types, values[0]);
+    b_kind := MathValueKind(types, values[1]);
+    result_kind: int = 0;
+    switch math.Binary(operator, a_kind, b_kind) {
+        case .Rejected(message):
+            return MathFailure(document, node, message);
+        case .Accepted(accepted):
+            result_kind = accepted;
+    }
+    if (math.BinaryRecoverable(operator, a_kind, b_kind)) {
+        return MathFailure(document, node, "quaternion rotation requires the recoverable math result contract");
+    }
+    a := MathComponents(values[0], types, members, &code, &slots, ops, at, node);
+    b := MathComponents(values[1], types, members, &code, &slots, ops, at, node);
+    components: int[] = [];
+    if (result_kind == math.Boolean) {
+        current := at.slot + length(slots);
+        slots.append(ValueLocal(BoolStorage));
+        code.append(ConstantCode(ops, BoolStorage, 1, current, node));
+        zero := at.slot + length(slots);
+        slots.append(ValueLocal(BoolStorage));
+        code.append(ConstantCode(ops, BoolStorage, 0, zero, node));
+        index: int = 0;
+        while (index < length(a)) {
+            equal := at.slot + length(slots);
+            slots.append(ValueLocal(BoolStorage));
+            code.append(Instruction(ops.eq, FloatStorage, equal, a[index], b[index], -1, node));
+            combined := at.slot + length(slots);
+            slots.append(ValueLocal(BoolStorage));
+            code.append(Instruction(ops.select, BoolStorage, combined, equal, current, zero, node));
+            current = combined;
+            index += 1;
+        }
+        if (operator == "!=") {
+            opposite := at.slot + length(slots);
+            slots.append(ValueLocal(BoolStorage));
+            code.append(Instruction(ops.eq, BoolStorage, opposite, current, zero, -1, node));
+            current = opposite;
+        }
+        return CleanupSequenceValues(Step.Emitted(code, slots, [], [], [], [], [], [], [], popped,
+                                                  Typed(current, BoolStorage, 0, -1), NoValue(), []),
+                                     Held(types, members, values), ops, target, at, node);
+    }
+    index: int = 0;
+    while (index < math.Components(result_kind)) {
+        result: int = -1;
+        if (a_kind == math.Quat) {
+            result = MathHamilton(a, b, index, &code, &slots, ops, at, node);
+        } else if (operator == "*" && math.IsMatrix(a_kind) && b_kind != math.Scalar) {
+            width := math.Width(a_kind);
+            row := index % width;
+            column := index / width;
+            result = MathOperation(ops.mul, a[row], b[column * width], &code, &slots, ops, at, node);
+            inner: int = 1;
+            while (inner < width) {
+                product := MathOperation(ops.mul, a[inner * width + row], b[column * width + inner],
+                                         &code, &slots, ops, at, node);
+                result = MathOperation(ops.add, result, product, &code, &slots, ops, at, node);
+                inner += 1;
+            }
+        } else {
+            a_component := index;
+            b_component := index;
+            if (a_kind == math.Scalar) {
+                a_component = 0;
+            }
+            if (b_kind == math.Scalar) {
+                b_component = 0;
+            }
+            result = MathOperation(BinaryOp(ops, operator), a[a_component], b[b_component], &code, &slots,
+                                   ops, at, node);
+        }
+        components.append(result);
+        index += 1;
+    }
+    emitted := PointerPrefix(code, slots, MathBuild(MathRecord(types, result_kind), components, popped,
+                                                    ops, target, MathPast(at, code, slots, 0, 0), node));
+    return CleanupSequenceValues(emitted, Held(types, members, values), ops, target, at, node);
+}
+MathNegateStep :: (document: int, types: TypeDecl[], members: TypeMember[], value: Value, operator: string,
+                   ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    if (operator != "-") {
+        return MathFailure(document, node, "unary math operations support negation");
+    }
+    kind := MathKind(types, value.record);
+    switch math.Negate(kind) {
+        case .Rejected(message):
+            return MathFailure(document, node, message);
+        case .Accepted(accepted):
+            kind = accepted;
+    }
+    code: Code[] = [];
+    slots: Slot[] = [];
+    components := MathComponents(value, types, members, &code, &slots, ops, at, node);
+    index: int = 0;
+    while (index < length(components)) {
+        output := at.slot + length(slots);
+        code.extend(NegationCode(ops, FloatStorage, components[index], output, node));
+        slots.extend(NegationSlots(FloatStorage, ops));
+        components[index] = at.slot + length(slots) - 1;
+        index += 1;
+    }
+    made := PointerPrefix(code, slots, MathBuild(MathRecord(types, kind), components, 1, ops, target,
+                                                 MathPast(at, code, slots, 0, 0), node));
+    return CleanupSequenceValues(made, Held(types, members, [value]), ops, target, at, node);
+}
+
+// Freeze borrowed aggregate operands before the next source operand can
+// mutate their storage. Fresh owned values already have independent bytes.
+MathCaptureStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], members: TypeMember[],
+                    value: Value, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    if (!MathAggregate(types, value) || value.owned) {
+        return Step.Emitted([], [], [], [], [], [], [], [], [], 1, value, NoValue(), []);
+    }
+    selection: int[] = [];
+    index: int = 0;
+    kind := MathKind(types, value.record);
+    while (index < math.Components(kind)) {
+        selection.append(index);
+        index += 1;
+    }
+    return MathProjection(forest, document, types, members, value, selection, kind, 1, ops, target, at, node);
+}
+
+MathFloatConstant :: (bits: u64, code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+                      at: Bases, node: snapshot.SnapshotNode) -> int {
+    output := at.slot + length(slots^);
+    slots.append(ValueLocal(FloatStorage));
+    code.append(ConstantCode(ops, FloatStorage, bits, output, node));
+    return output;
+}
+MathCompare :: (op: int, left: int, right: int, code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+                at: Bases, node: snapshot.SnapshotNode) -> int {
+    output := at.slot + length(slots^);
+    slots.append(ValueLocal(BoolStorage));
+    code.append(Instruction(op, FloatStorage, output, left, right, -1, node));
+    return output;
+}
+MathSelect :: (storage: int, condition: int, yes: int, no: int, code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+               at: Bases, node: snapshot.SnapshotNode) -> int {
+    output := at.slot + length(slots^);
+    slots.append(ValueLocal(storage));
+    code.append(Instruction(ops.select, storage, output, condition, yes, no, node));
+    return output;
+}
+MathNegated :: (input: int, code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+                at: Bases, node: snapshot.SnapshotNode) -> int {
+    output := at.slot + length(slots^);
+    code.extend(NegationCode(ops, FloatStorage, input, output, node));
+    slots.extend(NegationSlots(FloatStorage, ops));
+    return at.slot + length(slots^) - 1;
+}
+MathLibOpcode :: (name: string, ops: Ops) -> int {
+    if (name == "floor" || name == "fract" || name == "mod") {
+        return ops.math_floor;
+    }
+    if (name == "ceil") {
+        return ops.math_ceil;
+    }
+    if (name == "round") {
+        return ops.math_round;
+    }
+    if (name == "sqrt") {
+        return ops.math_sqrt;
+    }
+    if (name == "exp") {
+        return ops.math_exp;
+    }
+    if (name == "log" || name == "log2") {
+        return ops.math_log;
+    }
+    if (name == "pow" || name == "exp2") {
+        return ops.math_pow;
+    }
+    if (name == "sin") {
+        return ops.math_sin;
+    }
+    if (name == "cos") {
+        return ops.math_cos;
+    }
+    if (name == "tan") {
+        return ops.math_tan;
+    }
+    if (name == "asin") {
+        return ops.math_asin;
+    }
+    if (name == "acos") {
+        return ops.math_acos;
+    }
+    if (name == "atan") {
+        return ops.math_atan;
+    }
+    if (name == "atan2") {
+        return ops.math_atan2;
+    }
+    return -1;
+}
+MathFunctionReady :: (name: string, ops: Ops) -> bool {
+    if (name == "abs" && ops.math_abs < 0) {
+        return false;
+    }
+    if ((name == "min" || name == "clamp" || name == "saturate" || name == "smoothstep") && ops.math_min < 0) {
+        return false;
+    }
+    if ((name == "max" || name == "clamp" || name == "saturate" || name == "smoothstep" || name == "normalize_or_zero") && ops.math_max < 0) {
+        return false;
+    }
+    if (name == "normalize_or_zero" && ops.math_abs < 0) {
+        return false;
+    }
+    if ((name == "length" || name == "distance" || name == "refract" || name == "normalize_or_zero") && ops.math_sqrt < 0) {
+        return false;
+    }
+    names: string[] = ["floor", "ceil", "round", "fract", "mod", "sqrt", "exp", "exp2", "log", "log2",
+                       "pow", "sin", "cos", "tan", "asin", "acos", "atan", "atan2"];
+    for (candidate in names) {
+        if (name == candidate && MathLibOpcode(name, ops) < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+// The existing libm instructions consume f64. Each f32 operand widens
+// exactly, and the result rounds back once as stage zero lowers it.
+MathLib :: (op: int, left: int, right: int, code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+            at: Bases, node: snapshot.SnapshotNode) -> int {
+    a := at.slot + length(slots^);
+    slots.append(ValueLocal(DoubleStorage));
+    code.append(Instruction(ops.convert, DoubleStorage, a, left, 0, 0, node));
+    b: int = 0;
+    if (right >= 0) {
+        b = at.slot + length(slots^);
+        slots.append(ValueLocal(DoubleStorage));
+        code.append(Instruction(ops.convert, DoubleStorage, b, right, 0, 0, node));
+    }
+    wide := at.slot + length(slots^);
+    slots.append(ValueLocal(DoubleStorage));
+    code.append(Instruction(op, DoubleStorage, wide, a, b, 0, node));
+    output := at.slot + length(slots^);
+    slots.append(ValueLocal(FloatStorage));
+    code.append(Instruction(ops.convert, FloatStorage, output, wide, 0, 0, node));
+    return output;
+}
+MathDot :: (left: int[], right: int[], code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+            at: Bases, node: snapshot.SnapshotNode) -> int {
+    sum := MathOperation(ops.mul, left[0], right[0], code, slots, ops, at, node);
+    index: int = 1;
+    while (index < length(left)) {
+        product := MathOperation(ops.mul, left[index], right[index], code, slots, ops, at, node);
+        sum = MathOperation(ops.add, sum, product, code, slots, ops, at, node);
+        index += 1;
+    }
+    return sum;
+}
+MathLength :: (components: int[], code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+               at: Bases, node: snapshot.SnapshotNode) -> int {
+    sum := MathDot(components, components, code, slots, ops, at, node);
+    return MathLib(ops.math_sqrt, sum, -1, code, slots, ops, at, node);
+}
+MathDeterminant :: (components: int[], width: int, code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+                    at: Bases, node: snapshot.SnapshotNode) -> int {
+    if (width == 1) {
+        return components[0];
+    }
+    sum: int = -1;
+    column: int = 0;
+    while (column < width) {
+        minor: int[] = [];
+        for (c in 0..<width) {
+            if (c == column) {
+                continue;
+            }
+            for (r in 1..<width) {
+                minor.append(components[c * width + r]);
+            }
+        }
+        cofactor := MathDeterminant(minor, width - 1, code, slots, ops, at, node);
+        term := MathOperation(ops.mul, components[column * width], cofactor, code, slots, ops, at, node);
+        if (sum < 0) {
+            sum = term;
+        } else {
+            op := ops.add;
+            if (column % 2 != 0) {
+                op = ops.sub;
+            }
+            sum = MathOperation(op, sum, term, code, slots, ops, at, node);
+        }
+        column += 1;
+    }
+    return sum;
+}
+MathMemberwiseName :: (name: string) -> bool {
+    if (name == "abs") {
+        return true;
+    }
+    if (name == "sign") {
+        return true;
+    }
+    if (name == "floor") {
+        return true;
+    }
+    if (name == "ceil") {
+        return true;
+    }
+    if (name == "round") {
+        return true;
+    }
+    if (name == "fract") {
+        return true;
+    }
+    if (name == "sqrt") {
+        return true;
+    }
+    if (name == "exp") {
+        return true;
+    }
+    if (name == "exp2") {
+        return true;
+    }
+    if (name == "log") {
+        return true;
+    }
+    if (name == "log2") {
+        return true;
+    }
+    if (name == "sin") {
+        return true;
+    }
+    if (name == "cos") {
+        return true;
+    }
+    if (name == "tan") {
+        return true;
+    }
+    if (name == "asin") {
+        return true;
+    }
+    if (name == "acos") {
+        return true;
+    }
+    if (name == "atan") {
+        return true;
+    }
+    if (name == "saturate") {
+        return true;
+    }
+    if (name == "mod") {
+        return true;
+    }
+    if (name == "min") {
+        return true;
+    }
+    if (name == "max") {
+        return true;
+    }
+    if (name == "pow") {
+        return true;
+    }
+    if (name == "atan2") {
+        return true;
+    }
+    if (name == "step") {
+        return true;
+    }
+    if (name == "clamp") {
+        return true;
+    }
+    if (name == "mix") {
+        return true;
+    }
+    if (name == "smoothstep") {
+        return true;
+    }
+    return false;
+}
+MathComponentFunction :: (name: string, values: int[], code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+                          at: Bases, node: snapshot.SnapshotNode) -> int {
+    a := values[0];
+    if (name == "abs") {
+        return MathOperation(ops.math_abs, a, 0, code, slots, ops, at, node);
+    }
+    if (name == "min") {
+        return MathOperation(ops.math_min, a, values[1], code, slots, ops, at, node);
+    }
+    if (name == "max") {
+        return MathOperation(ops.math_max, a, values[1], code, slots, ops, at, node);
+    }
+    if (name == "sign") {
+        zero := MathFloatConstant(u64(0), code, slots, ops, at, node);
+        one := MathFloatConstant(u64(1065353216), code, slots, ops, at, node);
+        negative_one := MathFloatConstant(u64(3212836864), code, slots, ops, at, node);
+        negative := MathCompare(ops.lt, a, zero, code, slots, ops, at, node);
+        positive := MathCompare(ops.gt, a, zero, code, slots, ops, at, node);
+        below := MathSelect(FloatStorage, negative, negative_one, zero, code, slots, ops, at, node);
+        return MathSelect(FloatStorage, positive, one, below, code, slots, ops, at, node);
+    }
+    if (name == "fract") {
+        whole := MathLib(ops.math_floor, a, -1, code, slots, ops, at, node);
+        return MathOperation(ops.sub, a, whole, code, slots, ops, at, node);
+    }
+    if (name == "mod") {
+        quotient := MathOperation(ops.div, a, values[1], code, slots, ops, at, node);
+        whole := MathLib(ops.math_floor, quotient, -1, code, slots, ops, at, node);
+        multiple := MathOperation(ops.mul, values[1], whole, code, slots, ops, at, node);
+        return MathOperation(ops.sub, a, multiple, code, slots, ops, at, node);
+    }
+    if (name == "exp2") {
+        two := MathFloatConstant(u64(1073741824), code, slots, ops, at, node);
+        return MathLib(ops.math_pow, two, a, code, slots, ops, at, node);
+    }
+    if (name == "log2") {
+        logarithm := MathLib(ops.math_log, a, -1, code, slots, ops, at, node);
+        ln2 := MathFloatConstant(u64(1060205080), code, slots, ops, at, node);
+        return MathOperation(ops.div, logarithm, ln2, code, slots, ops, at, node);
+    }
+    if (name == "step") {
+        zero := MathFloatConstant(u64(0), code, slots, ops, at, node);
+        one := MathFloatConstant(u64(1065353216), code, slots, ops, at, node);
+        below := MathCompare(ops.lt, values[1], a, code, slots, ops, at, node);
+        return MathSelect(FloatStorage, below, zero, one, code, slots, ops, at, node);
+    }
+    if (name == "saturate") {
+        zero := MathFloatConstant(u64(0), code, slots, ops, at, node);
+        one := MathFloatConstant(u64(1065353216), code, slots, ops, at, node);
+        lower := MathOperation(ops.math_max, a, zero, code, slots, ops, at, node);
+        return MathOperation(ops.math_min, lower, one, code, slots, ops, at, node);
+    }
+    if (name == "clamp") {
+        lower := MathOperation(ops.math_max, a, values[1], code, slots, ops, at, node);
+        return MathOperation(ops.math_min, lower, values[2], code, slots, ops, at, node);
+    }
+    if (name == "mix") {
+        span := MathOperation(ops.sub, values[1], a, code, slots, ops, at, node);
+        offset := MathOperation(ops.mul, span, values[2], code, slots, ops, at, node);
+        return MathOperation(ops.add, a, offset, code, slots, ops, at, node);
+    }
+    if (name == "smoothstep") {
+        zero := MathFloatConstant(u64(0), code, slots, ops, at, node);
+        one := MathFloatConstant(u64(1065353216), code, slots, ops, at, node);
+        two := MathFloatConstant(u64(1073741824), code, slots, ops, at, node);
+        three := MathFloatConstant(u64(1077936128), code, slots, ops, at, node);
+        offset := MathOperation(ops.sub, values[2], a, code, slots, ops, at, node);
+        span := MathOperation(ops.sub, values[1], a, code, slots, ops, at, node);
+        fraction := MathOperation(ops.div, offset, span, code, slots, ops, at, node);
+        lower := MathOperation(ops.math_max, fraction, zero, code, slots, ops, at, node);
+        t := MathOperation(ops.math_min, lower, one, code, slots, ops, at, node);
+        rise := MathOperation(ops.mul, two, t, code, slots, ops, at, node);
+        fall := MathOperation(ops.sub, three, rise, code, slots, ops, at, node);
+        square := MathOperation(ops.mul, t, t, code, slots, ops, at, node);
+        return MathOperation(ops.mul, square, fall, code, slots, ops, at, node);
+    }
+    right: int = -1;
+    if (length(values) == 2) {
+        right = values[1];
+    }
+    return MathLib(MathLibOpcode(name, ops), a, right, code, slots, ops, at, node);
+}
+MathNormalizeOrZero :: (value: int[], code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+                        at: Bases, node: snapshot.SnapshotNode) -> int[] {
+    zero := MathFloatConstant(u64(0), code, slots, ops, at, node);
+    one := MathFloatConstant(u64(1065353216), code, slots, ops, at, node);
+    limit := MathFloatConstant(u64(2139095039), code, slots, ops, at, node);
+    valid := at.slot + length(slots^);
+    slots.append(ValueLocal(BoolStorage));
+    code.append(ConstantCode(ops, BoolStorage, 1, valid, node));
+    no := at.slot + length(slots^);
+    slots.append(ValueLocal(BoolStorage));
+    code.append(ConstantCode(ops, BoolStorage, 0, no, node));
+    maximum := zero;
+    for (component in value) {
+        magnitude := MathOperation(ops.math_abs, component, 0, code, slots, ops, at, node);
+        maximum = MathOperation(ops.math_max, maximum, magnitude, code, slots, ops, at, node);
+        finite := MathCompare(ops.le, magnitude, limit, code, slots, ops, at, node);
+        valid = MathSelect(BoolStorage, valid, finite, no, code, slots, ops, at, node);
+    }
+    nonzero := MathCompare(ops.gt, maximum, zero, code, slots, ops, at, node);
+    valid = MathSelect(BoolStorage, valid, nonzero, no, code, slots, ops, at, node);
+    scale := MathSelect(FloatStorage, valid, maximum, one, code, slots, ops, at, node);
+    scaled: int[] = [];
+    for (component in value) {
+        selected := MathSelect(FloatStorage, valid, component, zero, code, slots, ops, at, node);
+        scaled.append(MathOperation(ops.div, selected, scale, code, slots, ops, at, node));
+    }
+    norm := MathLength(scaled, code, slots, ops, at, node);
+    norm = MathSelect(FloatStorage, valid, norm, one, code, slots, ops, at, node);
+    components: int[] = [];
+    for (component in scaled) {
+        components.append(MathOperation(ops.div, component, norm, code, slots, ops, at, node));
+    }
+    return components;
+}
+MathRefract :: (incident: int[], normal: int[], eta: int, code: ^(Code[]), slots: ^(Slot[]), ops: Ops,
+                at: Bases, node: snapshot.SnapshotNode) -> int[] {
+    zero := MathFloatConstant(u64(0), code, slots, ops, at, node);
+    one := MathFloatConstant(u64(1065353216), code, slots, ops, at, node);
+    dot := MathDot(normal, incident, code, slots, ops, at, node);
+    eta2 := MathOperation(ops.mul, eta, eta, code, slots, ops, at, node);
+    dot2 := MathOperation(ops.mul, dot, dot, code, slots, ops, at, node);
+    remaining := MathOperation(ops.sub, one, dot2, code, slots, ops, at, node);
+    scaled := MathOperation(ops.mul, eta2, remaining, code, slots, ops, at, node);
+    k := MathOperation(ops.sub, one, scaled, code, slots, ops, at, node);
+    negative := MathCompare(ops.lt, k, zero, code, slots, ops, at, node);
+    safe := MathSelect(FloatStorage, negative, zero, k, code, slots, ops, at, node);
+    root := MathLib(ops.math_sqrt, safe, -1, code, slots, ops, at, node);
+    projected := MathOperation(ops.mul, eta, dot, code, slots, ops, at, node);
+    along := MathOperation(ops.add, projected, root, code, slots, ops, at, node);
+    components: int[] = [];
+    index: int = 0;
+    while (index < length(incident)) {
+        first := MathOperation(ops.mul, eta, incident[index], code, slots, ops, at, node);
+        second := MathOperation(ops.mul, along, normal[index], code, slots, ops, at, node);
+        value := MathOperation(ops.sub, first, second, code, slots, ops, at, node);
+        components.append(MathSelect(FloatStorage, negative, zero, value, code, slots, ops, at, node));
+        index += 1;
+    }
+    return components;
+}
+MathGeometricFunction :: (name: string, kind: int, left: int[], right: int[], extra: int[], code: ^(Code[]),
+                          slots: ^(Slot[]), ops: Ops, at: Bases, node: snapshot.SnapshotNode) -> int[] {
+    if (name == "length") {
+        return [MathLength(left, code, slots, ops, at, node)];
+    }
+    if (name == "dot") {
+        return [MathDot(left, right, code, slots, ops, at, node)];
+    }
+    if (name == "determinant") {
+        return [MathDeterminant(left, math.Width(kind), code, slots, ops, at, node)];
+    }
+    if (name == "normalize_or_zero") {
+        return MathNormalizeOrZero(left, code, slots, ops, at, node);
+    }
+    if (name == "refract") {
+        return MathRefract(left, right, extra[0], code, slots, ops, at, node);
+    }
+    components: int[] = [];
+    if (name == "distance") {
+        index: int = 0;
+        while (index < length(left)) {
+            components.append(MathOperation(ops.sub, left[index], right[index], code, slots, ops, at, node));
+            index += 1;
+        }
+        return [MathLength(components, code, slots, ops, at, node)];
+    }
+    if (name == "cross") {
+        for (index in 0..<3) {
+            a := (index + 1) % 3;
+            b := (index + 2) % 3;
+            first := MathOperation(ops.mul, left[a], right[b], code, slots, ops, at, node);
+            second := MathOperation(ops.mul, left[b], right[a], code, slots, ops, at, node);
+            components.append(MathOperation(ops.sub, first, second, code, slots, ops, at, node));
+        }
+        return components;
+    }
+    if (name == "reflect") {
+        dot := MathDot(right, left, code, slots, ops, at, node);
+        two := MathFloatConstant(u64(1073741824), code, slots, ops, at, node);
+        along := MathOperation(ops.mul, two, dot, code, slots, ops, at, node);
+        index: int = 0;
+        while (index < length(left)) {
+            offset := MathOperation(ops.mul, along, right[index], code, slots, ops, at, node);
+            components.append(MathOperation(ops.sub, left[index], offset, code, slots, ops, at, node));
+            index += 1;
+        }
+        return components;
+    }
+    if (name == "transpose") {
+        width := math.Width(kind);
+        for (column in 0..<width) {
+            for (row in 0..<width) {
+                components.append(left[row * width + column]);
+            }
+        }
+        return components;
+    }
+    if (name == "matrix_comp_mult") {
+        index: int = 0;
+        while (index < length(left)) {
+            components.append(MathOperation(ops.mul, left[index], right[index], code, slots, ops, at, node));
+            index += 1;
+        }
+        return components;
+    }
+    if (name == "quat_conjugate") {
+        for (index in 0..<3) {
+            components.append(MathNegated(left[index], code, slots, ops, at, node));
+        }
+        components.append(left[3]);
+    }
+    return components;
+}
+MathFunctionStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                     members: TypeMember[], constants: ConstDecl[], names: Name[], package: int,
+                     name: string, arguments: Value[], popped: int, ops: Ops, target: Target,
+                     at: Bases, node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    values: Value[] = [];
+    kinds: int[] = [];
+    for (argument in arguments) {
+        switch MathScalarValue(forest, text, document, constants, names, package, argument, &code, &slots,
+                               ops, at, node) {
+            case .Failed(diagnostic):
+                return Step.Failed(diagnostic);
+            case .Read(value):
+                values.append(value);
+                kinds.append(MathValueKind(types, value));
+        }
+    }
+    result_kind: int = 0;
+    switch math.Function(name, kinds) {
+        case .Rejected(message):
+            return MathFailure(document, node, message);
+        case .Accepted(kind):
+            result_kind = kind;
+    }
+    if (math.Recoverable(name)) {
+        return MathFailure(document, node, format_text("{} requires the recoverable math result adapter", name));
+    }
+    if (!MathFunctionReady(name, ops)) {
+        return MathFailure(document, node, format_text("target does not support built-in math function '{}'", name));
+    }
+    parts: int[] = [];
+    starts: int[] = [];
+    counts: int[] = [];
+    for (value in values) {
+        components := MathComponents(value, types, members, &code, &slots, ops, at, node);
+        starts.append(length(parts));
+        counts.append(length(components));
+        parts.extend(components);
+    }
+    components: int[] = [];
+    if (MathMemberwiseName(name)) {
+        index: int = 0;
+        while (index < math.Components(result_kind)) {
+            operands: int[] = [];
+            for (argument in 0..<length(values)) {
+                component := index;
+                if (counts[argument] == 1) {
+                    component = 0;
+                }
+                operands.append(parts[starts[argument] + component]);
+            }
+            components.append(MathComponentFunction(name, operands, &code, &slots, ops, at, node));
+            index += 1;
+        }
+    } else {
+        left := slice(parts, starts[0], counts[0]);
+        right: int[] = [];
+        extra: int[] = [];
+        if (length(values) > 1) {
+            right = slice(parts, starts[1], counts[1]);
+        }
+        if (length(values) > 2) {
+            extra = slice(parts, starts[2], counts[2]);
+        }
+        components = MathGeometricFunction(name, kinds[0], left, right, extra, &code, &slots, ops, at, node);
+    }
+    if (length(components) != math.Components(result_kind)) {
+        return MathFailure(document, node, "internal math lowering component count mismatch");
+    }
+    if (result_kind == math.Scalar) {
+        return CleanupSequenceValues(Step.Emitted(code, slots, [], [], [], [], [], [], [], popped,
+                                                  Typed(components[0], FloatStorage, 0, -1), NoValue(), []),
+                                     Held(types, members, values), ops, target, at, node);
+    }
+    built := PointerPrefix(code, slots, MathBuild(MathRecord(types, result_kind), components, popped, ops, target,
+                                                  MathPast(at, code, slots, 0, 0), node));
+    return CleanupSequenceValues(built, Held(types, members, values), ops, target, at, node);
+}
+
+// Predict a fixed native result without evaluating its arguments. Ambiguous
+// overloads and inferred ports wait for CallStep's ordinary type resolution.
+MathNativeType :: (forest: snapshot.SnapshotNode[], text: string, natives: ResolvedNative[],
+                   ports: ResolvedPort[], names: Name[], package: int, node: int) -> ValueType {
+    none: ValueType = {storage: 0, container: 0, record: -1};
+    callee := Field(forest, node, "function");
+    if (Is(forest, callee, "member_expression")) {
+        prefix := Field(forest, callee, "object");
+        if (!Is(forest, prefix, "identifier") || Lookup(names, Text(forest, text, prefix)) >= 0 ||
+            QualifierOf(forest, text, names, package, prefix) >= 0) {
+            return none;
+        }
+    } else if (!Is(forest, callee, "identifier") || Lookup(names, Text(forest, text, callee)) >= 0) {
+        return none;
+    }
+    found := FindNativeKind(natives, NativeCallName(forest, text, node), NativeFunctionKind);
+    if (found < 0 || !natives[found].direct || natives[found].results != 1) {
+        return none;
+    }
+    port := ports[natives[found].first + natives[found].parameters];
+    if (port.storage <= 0) {
+        return none;
+    }
+    return {storage: port.storage, container: port.container, record: port.record};
+}
+// Resolve an expression's type without evaluating its receiver or indices.
+// Runtime location checks remain with PlaceVisit.
+MathPlaceType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                  callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[], names: Name[],
+                  package: int, node: int) -> ValueType {
+    none: ValueType = {storage: 0, container: 0, record: -1};
+    at := Unparenthesized(forest, node);
+    if (Is(forest, at, "identifier")) {
+        found := Lookup(names, Text(forest, text, at));
+        if (found >= 0) {
+            return {storage: names[found].storage, container: names[found].container, record: names[found].record};
+        }
+        return none;
+    }
+    if (Is(forest, at, "number")) {
+        return {storage: InferredNumberStorage(forest, text, at), container: 0, record: -1};
+    }
+    if (Is(forest, at, "binary_expression")) {
+        left := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package,
+                              Field(forest, at, "left"));
+        right := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package,
+                               Field(forest, at, "right"));
+        if ((left.storage == StructStorage && MathKind(types, left.record) != 0) ||
+            (right.storage == StructStorage && MathKind(types, right.record) != 0)) {
+            switch math.Binary(Text(forest, text, Field(forest, at, "operator")),
+                               MathStaticKind(types, left), MathStaticKind(types, right)) {
+                case .Rejected(message):
+                    return none;
+                case .Accepted(kind):
+                    return MathStaticType(types, kind);
+            }
+        }
+        return none;
+    }
+    if (Is(forest, at, "unary_expression")) {
+        return MathPlaceType(forest, text, types, members, callables, natives, ports, names, package,
+                             Field(forest, at, "operand"));
+    }
+    if (Is(forest, at, "call_expression")) {
+        called := CalledFunction(forest, text, callables, natives, names, package, at);
+        if (called >= 0) {
+            if (callables[called].results != 0) {
+                return none;
+            }
+            return {storage: callables[called].result, container: callables[called].result_container,
+                    record: callables[called].result_record};
+        }
+        callee := Field(forest, at, "function");
+        if (Is(forest, callee, "identifier")) {
+            name := Text(forest, text, callee);
+            kind := MathName(name);
+            if (kind != 0) {
+                return MathStaticType(types, kind);
+            }
+            if (MathFunctionName(name)) {
+                arguments: int[] = [];
+                for (argument in Members(forest, Field(forest, at, "arguments"))) {
+                    arguments.append(MathStaticKind(types,
+                                                    MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, argument)));
+                }
+                switch math.Function(name, arguments) {
+                    case .Rejected(message):
+                        return MathNativeType(forest, text, natives, ports, names, package, at);
+                    case .Accepted(result_kind):
+                        return MathStaticType(types, result_kind);
+                }
+            }
+        }
+        return MathNativeType(forest, text, natives, ports, names, package, at);
+    }
+    object := Field(forest, at, "object");
+    if (Is(forest, at, "dereference_expression")) {
+        object = Field(forest, at, "operand");
+    }
+    if (object < 0) {
+        return none;
+    }
+    base := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, object);
+    if (Is(forest, at, "dereference_expression")) {
+        if (Is(forest, object, "identifier")) {
+            found := Lookup(names, Text(forest, text, object));
+            if (found >= 0 && names[found].place == ReferencePlace) {
+                return base;
+            }
+        }
+        return PointerElement(types, Typed(-1, base.storage, base.container, base.record));
+    }
+    if (Is(forest, at, "index_expression")) {
+        if (base.container == ArrayContainer || base.container == ViewContainer) {
+            return SequenceElement(types, base);
+        }
+        if (base.container == MapContainer && base.record >= 0) {
+            declared := types[base.record];
+            return {storage: declared.value_storage, container: declared.value_container,
+                    record: declared.value_record};
+        }
+        return none;
+    }
+    if (!Is(forest, at, "member_expression")) {
+        return none;
+    }
+    member := Text(forest, text, Field(forest, at, "member"));
+    if (base.storage == HandleStorage && base.container == 0) {
+        component := Component(types, member);
+        if (component >= 0) {
+            return {storage: StructStorage, container: 0, record: component};
+        }
+    }
+    if (base.storage == PointerStorage && base.container == 0) {
+        base = PointerElement(types, Typed(-1, base.storage, base.container, base.record));
+    }
+    if (base.storage != StructStorage || base.container != 0 || base.record < 0) {
+        return none;
+    }
+    kind := MathKind(types, base.record);
+    if (math.IsVector(kind)) {
+        switch math.Swizzle(kind, member, false) {
+            case .Rejected(message):
+                return none;
+            case .Accepted(result_kind, selection):
+                return MathStaticType(types, result_kind);
+        }
+    }
+    field := FindField(types, members, base.record, member);
+    if (field >= 0) {
+        return {storage: members[field].storage, container: members[field].container, record: members[field].record};
+    }
+    return none;
+}
+MathStaticKind :: (types: TypeDecl[], value: ValueType) -> int {
+    if (value.container == 0 && value.record < 0 && Integer(value.storage)) {
+        return math.Scalar;
+    }
+    return MathValueKind(types, Typed(-1, value.storage, value.container, value.record));
+}
+MathStaticType :: (types: TypeDecl[], kind: int) -> ValueType {
+    if (kind == math.Scalar) {
+        return {storage: FloatStorage, container: 0, record: -1};
+    }
+    if (kind == math.Boolean) {
+        return {storage: BoolStorage, container: 0, record: -1};
+    }
+    return {storage: StructStorage, container: 0, record: MathRecord(types, kind)};
+}
+MathArguments :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                  callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[], names: Name[],
+                  package: int, call: int) -> bool {
+    for (argument in Members(forest, Field(forest, call, "arguments"))) {
+        type := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, argument);
+        if (type.storage == StructStorage && type.container == 0 && MathKind(types, type.record) != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+MathBinaryCapture :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                      callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[], names: Name[],
+                      package: int, node: int) -> bool {
+    left := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package,
+                          Field(forest, node, "left"));
+    return left.storage == StructStorage && left.container == 0 && MathKind(types, left.record) != 0;
+}
+MathBinaryStart :: (forest: snapshot.SnapshotNode[], item: Work) -> Step {
+    left := Field(forest, item.node, "left");
+    finish := Expect(item.node, item.storage, item.container, item.record);
+    finish.phase = 1;
+    return Step.Emitted([], [], [], [], [], [], [], [],
+                        [Visit(left), Resume(left, MathCapturePhase, 0, 0),
+                         Visit(Field(forest, item.node, "right")), finish],
+                        0, NoValue(), NoValue(), []);
+}
+// Source effects follow the logical location, before swizzles become one
+// replacement. A local value stays local even when a hidden box stores it.
+MathLocationEffects :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                        callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[], names: Name[],
+                        package: int, node: int) -> int {
+    at := Unparenthesized(forest, node);
+    while (at >= 0) {
+        type := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, at);
+        if ((type.storage == PointerStorage && type.container == 0) || type.container == ViewContainer) {
+            return ReadEffect | WriteEffect;
+        }
+        if (Is(forest, at, "dereference_expression")) {
+            operand := Unparenthesized(forest, Field(forest, at, "operand"));
+            found := Lookup(names, Text(forest, text, operand));
+            if (Is(forest, operand, "identifier") && found >= 0 && names[found].place == ReferencePlace) {
+                return WriteEffect;
+            }
+            return ReadEffect | WriteEffect;
+        }
+        if (SelfComponent(forest, text, types, names, at) >= 0 ||
+            EntityComponent(forest, text, types, members, names, at) >= 0) {
+            return ReadEffect | WriteEffect;
+        }
+        if (Is(forest, at, "identifier")) {
+            found := Lookup(names, Text(forest, text, at));
+            if (found >= 0 && names[found].place == ReferencePlace) {
+                return WriteEffect;
+            }
+            if (found >= 0 && names[found].place == StatePlace) {
+                return ReadEffect | WriteEffect;
+            }
+            return 0;
+        }
+        if (!Is(forest, at, "member_expression") && !Is(forest, at, "index_expression")) {
+            return 0;
+        }
+        at = Unparenthesized(forest, Field(forest, at, "object"));
+    }
+    return 0;
+}
+MathAssignment :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                   callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[], names: Name[],
+                   package: int, node: int) -> bool {
+    if (!Is(forest, node, "assignment")) {
+        return false;
+    }
+    destination := StatementTarget(forest, node);
+    receiver := destination;
+    if (Is(forest, destination, "member_expression")) {
+        receiver = Field(forest, destination, "object");
+    } else if (CompoundOperator(Text(forest, text, Field(forest, node, "operator"))) == "") {
+        return false;
+    }
+    type := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, receiver);
+    if (type.storage == PointerStorage && type.container == 0) {
+        type = PointerElement(types, Typed(-1, type.storage, type.container, type.record));
+    }
+    return type.storage == StructStorage && type.container == 0 && MathKind(types, type.record) != 0;
+}
+MathSelection :: (kind: int, member: string, writable: bool) -> math.SwizzleResult {
+    if (member == "") {
+        indices: int[] = [];
+        index: int = 0;
+        while (index < math.Components(kind)) {
+            indices.append(index);
+            index += 1;
+        }
+        return math.SwizzleResult.Accepted(kind, indices);
+    }
+    if (kind == math.Quat && strings.ByteLength(member) == 1) {
+        index := strings.IndexByte("xyzw", strings.ByteAt(member, 0));
+        if (index >= 0) {
+            return math.SwizzleResult.Accepted(math.Scalar, [index]);
+        }
+    }
+    if (math.IsMatrix(kind)) {
+        return math.SwizzleResult.Rejected("matrix storage fields are internal; use matrix operations");
+    }
+    return math.Swizzle(kind, member, writable);
+}
+MathDestination :: union {
+    Selected(receiver: int, kind: int, selection: int[]) | Rejected(node: int, message: string)
+}
+// Keep ordinary fields as real locations. Only a member whose receiver is
+// a math value contributes a projection, so a record's vector field named
+// x or xy is not mistaken for a swizzle of the record itself.
+MathDestinationPlan :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                        callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[], names: Name[],
+                        package: int, destination: int) -> MathDestination {
+    at := Unparenthesized(forest, destination);
+    if (Is(forest, at, "member_expression")) {
+        receiver := Field(forest, at, "object");
+        base := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, receiver);
+        if (base.storage == PointerStorage && base.container == 0) {
+            base = PointerElement(types, Typed(-1, base.storage, base.container, base.record));
+        }
+        kind: int = 0;
+        if (base.storage == StructStorage && base.container == 0) {
+            kind = MathKind(types, base.record);
+        }
+        if (kind != 0) {
+            member := Text(forest, text, Field(forest, at, "member"));
+            // Intermediate projections are reads. Repeated intermediate
+            // components are valid if the final destinations are distinct.
+            switch MathSelection(kind, member, false) {
+                case .Rejected(message):
+                    return MathDestination.Rejected(Field(forest, at, "member"), message);
+                case .Accepted(selected, indices):
+                    switch MathDestinationPlan(forest, text, types, members, callables, natives, ports,
+                                               names, package, receiver) {
+                        case .Rejected(node, message):
+                            return MathDestination.Rejected(node, message);
+                        case .Selected(root, parent_kind, parent_selection):
+                            composed: int[] = [];
+                            for (index in indices) {
+                                composed.append(parent_selection[index]);
+                            }
+                            return MathDestination.Selected(root, selected, composed);
+                    }
+            }
+        }
+    }
+    type := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, at);
+    if (type.storage == PointerStorage && type.container == 0) {
+        type = PointerElement(types, Typed(-1, type.storage, type.container, type.record));
+    }
+    kind: int = 0;
+    if (type.storage == StructStorage && type.container == 0) {
+        kind = MathKind(types, type.record);
+    }
+    if (kind == 0) {
+        return MathDestination.Rejected(at, "math assignment needs a writable math value");
+    }
+    switch MathSelection(kind, "", false) {
+        case .Rejected(message):
+            return MathDestination.Rejected(at, message);
+        case .Accepted(selected, indices):
+            return MathDestination.Selected(at, selected, indices);
+    }
+}
+MathDistinctDestinations :: (selection: int[]) -> bool {
+    seen: int = 0;
+    for (component in selection) {
+        bit := 1 << u32(component);
+        if ((seen & bit) != 0) {
+            return false;
+        }
+        seen |= bit;
+    }
+    return true;
+}
+MathAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                       members: TypeMember[], constants: ConstDecl[], names: Name[], package: int,
+                       callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[],
+                       values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    destination := StatementTarget(forest, item.node);
+    receiver := destination;
+    selected_kind: int = 0;
+    selection: int[] = [];
+    switch MathDestinationPlan(forest, text, types, members, callables, natives, ports, names, package, destination) {
+        case .Rejected(failed, message):
+            return Fail(forest, failed, document, message);
+        case .Selected(root, kind, indices):
+            receiver = root;
+            selected_kind = kind;
+            selection = indices;
+    }
+    if (!MathDistinctDestinations(selection)) {
+        return Fail(forest, destination, document, "a writable swizzle cannot repeat a destination component");
+    }
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    if (item.phase == 0) {
+        if (QueryReadonlyDestination(forest, text, types, members, names, destination)) {
+            return Fail(forest, destination, document, "Query value bindings are read-only; use a component pointer to modify storage");
+        }
+        receiver_type := MathPlaceType(forest, text, types, members, callables, natives, ports, names,
+                                       package, receiver);
+        effects := MathLocationEffects(forest, text, types, members, callables, natives, ports, names, package, receiver);
+        code: Code[] = [Instruction(ops.check, 0, 0, 0, 0, 0, node)];
+        next: Work[] = [];
+        if (receiver_type.storage == PointerStorage && receiver_type.container == 0) {
+            // A pointer-producing expression is a value, not a writable slot.
+            // Follow its result once to retain the same logical destination.
+            // Stage zero marks following the implicit dereference separately
+            // from evaluating the expression that produced the pointer.
+            code.append(ExpressionCode(ops, forest[receiver]));
+            next = [Visit(receiver), Resume(item.node, PlacePointerPhase, MathAssignBegin, 0)];
+        } else {
+            visit := DestinationVisit(receiver);
+            if (receiver != Unparenthesized(forest, destination)) {
+                visit = PlaceVisit(receiver);
+            }
+            next = [visit, Resume(item.node, MathAssignBegin, 0, 0)];
+        }
+        return EffectsStep(WriteStep(Step.Emitted(code, [], [], [], [], [], [], [], next,
+                                                  0, NoValue(), NoValue(), []), item.node,
+                                     (effects & WriteEffect) != 0), effects);
+    }
+    if (item.phase == MathAssignBegin) {
+        place := values[top - 1];
+        if (place.place && place.storage == PointerStorage && place.container == 0) {
+            return PointerContinue(ReadSequencePlace(place, 1, ops, target, at, node),
+                                   Resume(item.node, PlacePointerPhase, MathAssignBegin, 0));
+        }
+        if (!place.place || !MathAggregate(types, place)) {
+            return Fail(forest, receiver, document, "math assignment needs a writable math value");
+        }
+        // Validate the original logical path before the RHS can change it.
+        return PointerContinue(ReadSequencePlace(place, 0, ops, target, at, node),
+                               Resume(item.node, MathAssignSnapshot, selected_kind, 0));
+    }
+    if (item.phase == MathAssignSnapshot) {
+        current := values[top - 1];
+        next: Work[] = [];
+        expected := Visit(Field(forest, item.node, "value"));
+        if (item.a == math.Scalar) {
+            expected = Expect(Field(forest, item.node, "value"), FloatStorage, 0, -1);
+        }
+        next.extend([expected, Resume(item.node, MathAssignValue, 0, 0)]);
+        if (operator == "") {
+            return Step.Emitted([], [], [], [], [], [], [], [], next, 1, NoValue(), NoValue(), []);
+        }
+        switch MathProjection(forest, document, types, members, current, selection, selected_kind, 1,
+                              ops, target, at, node) {
+            case .Failed(diagnostic):
+                return Step.Failed(diagnostic);
+            case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, scheduled, popped,
+                          snapshot_value, retained, marks):
+                return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                                    popped, snapshot_value, retained, marks);
+        }
+    }
+    if (item.phase == MathAssignValue) {
+        if (operator == "") {
+            return Step.Emitted([], [], [], [], [], [], [], [], [Resume(item.node, MathAssignRead, 0, 0)],
+                                0, NoValue(), NoValue(), []);
+        }
+        left := values[top - 2];
+        right := values[top - 1];
+        if (MathAggregate(types, left) || MathAggregate(types, right)) {
+            return PointerContinue(MathBinaryStep(forest, text, document, types, members, constants, names,
+                                                  package, left, right, operator, 2, ops, target, at, node),
+                                   Resume(item.node, MathAssignRead, 0, 0));
+        }
+        // A single selected component uses the existing scalar conversion
+        // and arithmetic rules, then rejoins the same replacement path.
+        scalar_item := item;
+        scalar_item.phase = CombinePhase;
+        return PointerContinue(OperatorStep(forest, text, document, types, constants, names, package,
+                                            values, top, scalar_item, ops, at),
+                               Resume(item.node, MathAssignRead, 0, 0));
+    }
+    if (item.phase == MathAssignRead) {
+        return PointerContinue(ReadSequencePlace(values[top - 2], 0, ops, target, at, node),
+                               Resume(item.node, MathAssignWrite, 0, 0));
+    }
+    return MathAssignmentWrite(forest, document, types, members, values[top - 3], values[top - 2],
+                               values[top - 1], selected_kind, selection, ops, target, at, node);
+}
+MathAssignmentWrite :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], members: TypeMember[],
+                        place: Value, replacement: Value, current: Value, desired: int, selection: int[],
+                        ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    kind := MathKind(types, place.record);
+    value := replacement;
+    if (value.container == 0 && value.record < 0 && value.storage == DoubleStorage) {
+        return MathFailure(document, node, "math components require explicit f32(value) narrowing from f64");
+    }
+    if (desired == math.Scalar && value.container == 0 && value.record < 0 && Integer(value.storage)) {
+        output := at.slot + length(slots);
+        code.extend(NumberCode(ops, value.storage, FloatStorage, value.slot, output, node));
+        slots.extend(NumberSlots(value.storage, FloatStorage));
+        value = Typed(at.slot + length(slots) - 1, FloatStorage, 0, -1);
+    }
+    if (MathValueKind(types, value) != desired) {
+        return MathFailure(document, node, "swizzle assignment value differs from its selected components");
+    }
+    // Read every RHS component before any replacement, including aliases
+    // such as v.xy = v.yx. Untouched components follow RHS side effects.
+    supplied := MathComponents(value, types, members, &code, &slots, ops, at, node);
+    components := MathComponents(current, types, members, &code, &slots, ops, at, node);
+    index: int = 0;
+    while (index < length(selection)) {
+        components[selection[index]] = supplied[index];
+        index += 1;
+    }
+    built := PointerPrefix(code, slots, MathBuild(MathRecord(types, kind), components, 3, ops, target,
+                                                  MathPast(at, code, slots, 0, 0), node));
+    switch built {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(built_code, built_slots, locals, cells, hosts, roots, calls, bound, next, popped,
+                      result, retained, marks):
+            before := Step.Emitted(built_code, built_slots, locals, cells, hosts, roots, calls, bound, next,
+                                   popped, NoValue(), retained, marks);
+            write := IgnoreSequenceValue(SequenceCallStep([place, result], ReferenceWriteIntrinsic,
+                                                          Typed(-1, BoolStorage, 0, -1), u64(0), false, 0,
+                                                          ops, target,
+                                                          MathPast(at, built_code, built_slots, length(cells), length(hosts)), node));
+            return CleanupSequenceValues(SequenceJoined(before, write), Held(types, members, [replacement, result]),
+                                         ops, target, at, node);
+    }
+}

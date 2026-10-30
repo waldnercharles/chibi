@@ -1,0 +1,120 @@
+package source_parser_tests
+
+import parser "project:source_parser"
+
+// Constructs the repository does not use, from the former Tree-sitter differential
+// corpus (test/language/syntax_corpus), one short source each: the valid ones parse
+// cleanly and the invalid ones are rejected with one diagnostic at the first token
+// the grammar cannot read. Sources stay short because a test has a fixed instruction budget.
+Accepts :: (text: string) {
+    assert(length(parser.Diagnose(text)) == 0, "the parser reads this source");
+}
+
+Rejects :: (text: string, line: int, column: int) {
+    d := parser.Diagnose(text);
+    assert(length(d) == 1, "one diagnostic");
+    assert(d[0].line == line, "diagnostic line");
+    assert(d[0].column == column, "diagnostic column");
+    assert(d[0].message != "", "diagnostic message");
+}
+
+@test
+AcceptsAttributes :: () {
+    Accepts("package p\n\n@a\n@b\nR :: struct {\n}\n");
+}
+
+@test
+AcceptsErrorUnion :: () {
+    Accepts("package p\n\n@error\npub Problem :: union {\n    A | B\n}\n");
+}
+
+@test
+AcceptsForeignImport :: () {
+    Accepts("package p\nforeign import libc \"system:c\"\n");
+}
+
+@test
+AcceptsForeignBlock :: () {
+    Accepts("package p\nforeign import probe \"libprobe.a\"\nforeign probe {\n    chibi_probe_add :: (a: i32, b: i32) -> i32\n    chibi_probe_reset :: ()\n    chibi_probe_open :: (flags: u32) -> rawptr\n}\n");
+}
+
+@test
+AcceptsTestFunction :: () {
+    Accepts("package p\n\n@test\npub T :: () {\n}\n");
+}
+
+@test
+AcceptsBehavior :: () {
+    Accepts("Thing :: behavior {\n    Speed: number = 3.0\n    Count := 0\n    on Tick :: (dt: number s) {\n        Step = dt\n    }\n}\n");
+}
+
+@test
+AcceptsComponent :: () {
+    Accepts("Charge :: component {\n    level: number\n    rate: 0..10 charge/s\n    speed: m/s\n}\n");
+}
+
+@test
+AcceptsLibrary :: () {
+    Accepts("Lib :: library {\n    Rec :: struct {\n        a: int\n    }\n}\n");
+}
+
+@test
+AcceptsPrototype :: () {
+    Accepts("Hero :: prototype (Base) {\n    Health {\n        current: 10\n    }\n}\n");
+}
+
+@test
+AcceptsRelationship :: () {
+    Accepts("Pair :: relationship {\n    a: 1\n}\n");
+}
+
+@test
+AcceptsSystem :: () {
+    Accepts("Mover :: system (e: Position from world, c := 1) {\n    e.x += 1\n}\n");
+}
+
+@test
+AcceptsReturnTuple :: () {
+    Accepts("package r\n\nF :: () {\n    return (a, b);\n}\n");
+}
+
+@test
+AcceptsWhenElse :: () {
+    Accepts("package app\nimport target \"core:target\"\n\nwhen target.Os == target.Darwin {\n    pub Offset: int : 96\n} else {\n    pub Offset: int : 48\n}\n");
+}
+
+@test
+AcceptsOperators :: () {
+    Accepts("package c\n\nF :: () {\n    r := a + b * 2\n    t := a < b and b <= a or not (a == b)\n}\n");
+}
+
+@test
+AcceptsCollections :: () {
+    Accepts("package c\n\nF :: () {\n    arr := [1, 2, 3,]\n    mp := [\"a\": 1]\n}\n");
+}
+
+@test
+AcceptsForRange :: () {
+    Accepts("package c\n\nF :: () {\n    for i in 0 .. 10 {\n        continue\n    }\n}\n");
+}
+
+@test
+RejectsImportWithoutPath :: () {
+    Rejects("package demo\n\nimport project:greet\n\nMain :: () {\n}\n", 3, 8);
+}
+
+@test
+RejectsUnclosedParen :: () {
+    Rejects("package demo\n\nMain :: () -> int {\n    x := (1 + 2\n    return x\n}\n", 5, 5);
+}
+
+@test
+RejectsMissingSeparator :: () {
+    Rejects("package demo\n\nMain :: () {\n    a := 1 b := 2\n}\n", 4, 12);
+}
+
+@test
+RejectsUnterminatedString :: () {
+    Rejects("package demo\n\nMain :: () {\n    s := \"open\n}\n", 4, 10);
+}
+

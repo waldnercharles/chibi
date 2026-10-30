@@ -1,0 +1,105 @@
+package source_tokenizer_tests
+
+import tk "project:source_tokenizer"
+
+// Hand-written expectations from the tokenizer's differential: terminators
+// with no gap before them, which a Tree-sitter comparison cannot see, and
+// Odin's errors. Tokens are kind, start, end; errors are message and offset.
+Check :: (text: string, kinds: string[], starts: int[], ends: int[], messages: string[], offsets: int[]) {
+    names := tk.KindNames();
+    switch tk.Tokenize(text) {
+        case .Scanned(got_kinds, got_starts, got_ends, rows, columns, errors, error_offsets, error_rows, error_columns):
+            assert(length(got_kinds) == length(kinds), "token count");
+            assert(length(rows) == length(kinds) && length(columns) == length(kinds), "token rows and columns align");
+            i: int = 0;
+            while (i < length(kinds)) {
+                assert(names[got_kinds[i]] == kinds[i], "token kind");
+                assert(got_starts[i] == starts[i], "token start");
+                assert(got_ends[i] == ends[i], "token end");
+                i += 1;
+            }
+            assert(length(errors) == length(messages), "error count");
+            assert(length(error_rows) == length(messages) && length(error_columns) == length(messages), "error rows and columns align");
+            j: int = 0;
+            while (j < length(messages)) {
+                assert(errors[j] == messages[j], "error message");
+                assert(error_offsets[j] == offsets[j], "error offset");
+                j += 1;
+            }
+    }
+}
+
+@test
+HalfOpenRangeIsOneToken :: () {
+    Check("0..<9", ["Integer", "..<", "Integer", ";", "EOF"], [0, 1, 4, 5, 5], [1, 4, 5, 5, 5], [], []);
+}
+
+@test
+ClosedRangeIsOneToken :: () {
+    Check("0..9", ["Integer", "..", "Integer", ";", "EOF"], [0, 1, 3, 4, 4], [1, 3, 4, 4, 4], [], []);
+}
+
+@test
+SpaceSplitsRangeFromLessThan :: () {
+    Check("0.. <9", ["Integer", "..", "<", "Integer", ";", "EOF"], [0, 1, 4, 5, 6, 6], [1, 3, 5, 6, 6, 6], [], []);
+}
+
+@test
+BlockEndsTheStatementBeforeItsBrace :: () {
+    Check("on X { y := 1}", ["on", "Ident", "{", "Ident", ":=", "Integer", ";", "}", "EOF"],
+          [0, 3, 5, 7, 9, 12, 13, 13, 14], [2, 4, 6, 8, 11, 13, 13, 14, 14], [], []);
+}
+
+@test
+ForeignImportIsKeywords :: () {
+    Check("foreign import probe \"x\"", ["foreign", "import", "Ident", "String", ";", "EOF"],
+          [0, 8, 15, 21, 24, 24], [7, 14, 20, 24, 24, 24], [], []);
+}
+
+@test
+PackageDeclarationEndsAtTheText :: () {
+    Check("package p", ["package", "Ident", ";", "EOF"], [0, 8, 9, 9], [7, 9, 9, 9], [], []);
+}
+
+@test
+IllegalCharacterIsInvalidAndReported :: () {
+    Check("x #\ny", ["Ident", "Invalid", ";", "Ident", ";", "EOF"], [0, 2, 4, 4, 5, 5], [1, 3, 4, 5, 5, 5],
+          ["illegal character '#': 35"], [2]);
+}
+
+@test
+UnterminatedStringIsReported :: () {
+    Check("s := 1\nt := \"abc\ny",
+          ["Ident", ":=", "Integer", ";", "Ident", ":=", "String", ";", "Ident", ";", "EOF"],
+          [0, 2, 5, 7, 7, 9, 12, 17, 17, 18, 18], [1, 4, 6, 7, 8, 11, 16, 17, 18, 18, 18],
+          ["String literal not terminated"], [12]);
+}
+
+@test
+UnterminatedCommentIsReported :: () {
+    Check("a /* open", ["Ident", ";", "Comment", "EOF"], [0, 2, 2, 9], [1, 2, 9, 9],
+          ["comment not terminated"], [2]);
+}
+
+@test
+BadEscapesAreReportedInOrder :: () {
+    Check("\"\\q\\u12\"", ["String", ";", "EOF"], [0, 8, 8], [8, 8, 8],
+          ["unknown escape sequence", "illegal character 34 in escape sequence"], [2, 7]);
+}
+
+@test
+UnterminatedEscapeReportsTheEscapeThenTheString :: () {
+    Check("\"\\", ["String", ";", "EOF"], [0, 2, 2], [2, 2, 2],
+          ["escape sequence was not terminated", "String literal not terminated"], [2, 0]);
+}
+
+@test
+BadNumbersAreReported :: () {
+    Check("0x 1e+ 2", ["Invalid", "Float", "Integer", ";", "EOF"], [0, 3, 7, 8, 8], [2, 6, 8, 8, 8],
+          ["illegal hexadecimal integer", "illegal floating-point exponent"], [2, 6]);
+}
+
+@test
+NonAsciiLetterIsAnIllegalCharacter :: () {
+    Check("é", ["Invalid", "EOF"], [0, 2], [2, 2], ["illegal character 'é': 233"], [0]);
+}

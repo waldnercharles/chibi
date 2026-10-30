@@ -1,0 +1,293 @@
+package package_routes_tests
+
+import routes "project:package_routes"
+
+// Package roots, file routes and import routes, from the former C differential
+// (package_routes_chibi.c): its requests with the results the C router gave.
+
+Baseline :: () -> routes.Root[] {
+    collections: routes.Collection[] = [
+        {name: "core", path: "/sdk/./core", has_name: true, has_path: true},
+        {name: "vendor", path: "/workspace/project/vendor", has_name: true, has_path: true}];
+    switch routes.RootSet("/workspace/./project", true, collections) {
+        case .Accepted(roots):
+            return roots;
+        case .Rejected(diagnostic):
+            assert(false, "the baseline roots are valid");
+    }
+    empty: routes.Root[] = [];
+    return empty;
+}
+
+// RootSet with one collection, expecting its rejection message.
+Rejects :: (project: string, has_project: bool, name: string, has_name: bool, path: string, has_path: bool, message: string) {
+    collections: routes.Collection[] = [{name: name, path: path, has_name: has_name, has_path: has_path}];
+    switch routes.RootSet(project, has_project, collections) {
+        case .Accepted(roots):
+            assert(false, "the roots are invalid");
+        case .Rejected(diagnostic):
+            assert(diagnostic.message == message, "root rejection message");
+            assert(diagnostic.document == -1, "root rejections have no document");
+    }
+}
+
+@test
+BaselineRootsAreCanonical :: () {
+    roots := Baseline();
+    assert(length(roots) == 3, "project, core and vendor");
+    assert(roots[0].name == "project" && roots[0].path == "/workspace/project", "project root");
+    assert(roots[1].name == "core" && roots[1].path == "/sdk/core", "core root");
+    assert(roots[2].name == "vendor" && roots[2].path == "/workspace/project/vendor", "vendor root");
+}
+
+@test
+RelocatedProjectWithOneCollection :: () {
+    collections: routes.Collection[] = [{name: "core", path: "/sdk/core", has_name: true, has_path: true}];
+    switch routes.RootSet("/moved/project", true, collections) {
+        case .Accepted(roots):
+            assert(length(roots) == 2 && roots[0].path == "/moved/project", "relocated roots");
+        case .Rejected(diagnostic):
+            assert(false, "valid");
+    }
+}
+
+@test
+MissingProjectIsRejected :: () {
+    Rejects("", false, "core", true, "/sdk/core", true, "Invalid absolute collection root");
+}
+
+@test
+RelativeProjectIsRejected :: () {
+    Rejects("project", true, "core", true, "/sdk/core", true, "Invalid absolute collection root");
+}
+
+@test
+BackslashProjectIsRejected :: () {
+    Rejects("/workspace\\project", true, "core", true, "/sdk/core", true, "Invalid absolute collection root");
+}
+
+@test
+ReservedProjectNameIsADuplicate :: () {
+    Rejects("/workspace/project", true, "project", true, "/other/project", true, "Duplicate collection name");
+}
+
+@test
+InvalidCollectionNameIsRejected :: () {
+    Rejects("/workspace/project", true, "bad-name", true, "/sdk/core", true, "Invalid collection name");
+}
+
+@test
+MissingCollectionNameIsRejected :: () {
+    Rejects("/workspace/project", true, "", false, "/sdk/core", true, "Invalid collection name");
+}
+
+@test
+EmptyCollectionNameIsRejected :: () {
+    Rejects("/workspace/project", true, "", true, "/sdk/core", true, "Invalid collection name");
+}
+
+@test
+MissingCollectionPathIsRejected :: () {
+    Rejects("/workspace/project", true, "core", true, "", false, "Invalid absolute collection root");
+}
+
+@test
+RelativeCollectionPathIsRejected :: () {
+    Rejects("/workspace/project", true, "core", true, "core", true, "Invalid absolute collection root");
+}
+
+@test
+DuplicateCollectionNameIsRejected :: () {
+    collections: routes.Collection[] = [
+        {name: "core", path: "/sdk/core", has_name: true, has_path: true},
+        {name: "core", path: "/other/core", has_name: true, has_path: true}];
+    switch routes.RootSet("/workspace/project", true, collections) {
+        case .Accepted(roots):
+            assert(false, "invalid");
+        case .Rejected(diagnostic):
+            assert(diagnostic.message == "Duplicate collection name", "duplicate name");
+    }
+}
+
+@test
+DuplicateCanonicalRootIsRejected :: () {
+    collections: routes.Collection[] = [
+        {name: "core", path: "/sdk/core", has_name: true, has_path: true},
+        {name: "other", path: "/sdk/./core", has_name: true, has_path: true}];
+    switch routes.RootSet("/workspace/project", true, collections) {
+        case .Accepted(roots):
+            assert(false, "invalid");
+        case .Rejected(diagnostic):
+            assert(diagnostic.message == "Duplicate collection root", "duplicate root");
+    }
+}
+
+// FileRoute accepted: canonical path, directory, key, identity and owning root.
+Routed :: (path: string, canonical: string, directory: string, key: string, identity: string, root: int) {
+    switch routes.FileRoute(Baseline(), path, true, 4) {
+        case .Accepted(file):
+            assert(file.path == canonical, "canonical path");
+            assert(file.directory == directory, "directory");
+            assert(file.key == key, "key");
+            assert(file.identity == identity, "identity");
+            assert(file.root == root, "owning root");
+        case .Rejected(diagnostic):
+            assert(false, "the file routes");
+    }
+}
+
+FileRejected :: (path: string, has_path: bool, message: string) {
+    switch routes.FileRoute(Baseline(), path, has_path, 4) {
+        case .Accepted(file):
+            assert(false, "the file is rejected");
+        case .Rejected(diagnostic):
+            assert(diagnostic.message == message, "file rejection message");
+            assert(diagnostic.document == 4, "file rejections name their document");
+    }
+}
+
+@test
+ProjectFile :: () {
+    Routed("app/a.chibi", "/workspace/project/app/a.chibi", "/workspace/project/app", "project:app/a.chibi", "project:app", 0);
+}
+
+@test
+CoreFile :: () {
+    Routed("/sdk/core/scalar/a.chibi", "/sdk/core/scalar/a.chibi", "/sdk/core/scalar", "core:scalar/a.chibi", "core:scalar", 1);
+}
+
+@test
+LongestRootOwnsAFile :: () {
+    Routed("/workspace/project/vendor/math/a.chibi", "/workspace/project/vendor/math/a.chibi",
+           "/workspace/project/vendor/math", "vendor:math/a.chibi", "vendor:math", 2);
+}
+
+@test
+FilePathIsNormalized :: () {
+    Routed("app/../math/./a.chibi", "/workspace/project/math/a.chibi", "/workspace/project/math", "project:math/a.chibi", "project:math", 0);
+}
+
+@test
+MissingFilePathIsRejected :: () {
+    FileRejected("", false, "Invalid package file path");
+}
+
+@test
+EmptyFilePathIsRejected :: () {
+    FileRejected("", true, "Invalid package file path");
+}
+
+@test
+RootIsNotAFile :: () {
+    FileRejected("/", true, "Invalid package file path or root escape");
+}
+
+@test
+FileOutsideTheRootsIsRejected :: () {
+    FileRejected("/outside/a.chibi", true, "Package file is outside the configured roots");
+}
+
+@test
+SixteenDirectoriesAreSupported :: () {
+    Routed("a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/f.chibi", "/workspace/project/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/f.chibi",
+           "/workspace/project/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a", "project:a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/f.chibi",
+           "project:a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a", 0);
+}
+
+@test
+SeventeenDirectoriesAreRejected :: () {
+    FileRejected("a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/f.chibi", true, "Package path nesting exceeds the supported depth");
+}
+
+ImportAccepted :: (directory: string, literal: string, root: int, expected: string) {
+    request: routes.ImportInput = {directory: directory, literal: literal, root: root, start: 3, end: 9, line: 2, column: 5, document: 6};
+    switch routes.ImportRoute(Baseline(), request) {
+        case .Accepted(got):
+            assert(got == expected, "import directory");
+        case .Rejected(diagnostic):
+            assert(false, "the import routes");
+    }
+}
+
+ImportRejected :: (directory: string, literal: string, root: int, message: string) {
+    request: routes.ImportInput = {directory: directory, literal: literal, root: root, start: 3, end: 9, line: 2, column: 5, document: 6};
+    switch routes.ImportRoute(Baseline(), request) {
+        case .Accepted(got):
+            assert(false, "the import is rejected");
+        case .Rejected(diagnostic):
+            assert(diagnostic.message == message, "import rejection message");
+            assert(diagnostic.start == 3 && diagnostic.end == 9, "import rejection range");
+            assert(diagnostic.line == 2 && diagnostic.column == 5 && diagnostic.document == 6, "import rejection position");
+    }
+}
+
+@test
+RelativeImport :: () {
+    ImportAccepted("/workspace/project/app", "\"../math\"", 0, "/workspace/project/math");
+}
+
+@test
+CollectionImport :: () {
+    ImportAccepted("/workspace/project/app", "\"core:scalar\"", 0, "/sdk/core/scalar");
+}
+
+@test
+ProjectImport :: () {
+    ImportAccepted("/workspace/project/app", "\"project:math/.\"", 0, "/workspace/project/math");
+}
+
+@test
+EscapedUnicodeImport :: () {
+    ImportAccepted("/workspace/project/app", "\"../m\\u0061th\"", 0, "/workspace/project/math");
+}
+
+@test
+EmptyCollectionTailImport :: () {
+    ImportAccepted("/workspace/project/app", "\"core:\"", 0, "/sdk/core");
+}
+
+@test
+EmptyRelativeImportIsRejected :: () {
+    ImportRejected("/workspace/project/app", "\"\"", 0, "Invalid import path");
+}
+
+@test
+LongestRootEscapeIsRejected :: () {
+    ImportRejected("/workspace/project/vendor/math", "\"../../outside\"", 2,
+                   "Import path escapes its collection root or exceeds the path limit");
+}
+
+@test
+UnknownCollectionIsRejected :: () {
+    ImportRejected("/workspace/project/app", "\"missing:math\"", 0, "Unknown import collection");
+}
+
+@test
+EmbeddedNulIsRejected :: () {
+    ImportRejected("/workspace/project/app", "\"../ma\\u0000th\"", 0, "Invalid import string or embedded NUL");
+}
+
+@test
+LeadingNulIsRejected :: () {
+    ImportRejected("/workspace/project/app", "\"\\u0000../math\"", 0, "Invalid import string or embedded NUL");
+}
+
+@test
+BackslashImportIsRejected :: () {
+    ImportRejected("/workspace/project/app", "\"..\\\\math\"", 0, "Invalid import path");
+}
+
+@test
+InvalidSurrogateIsRejected :: () {
+    ImportRejected("/workspace/project/app", "\"core:\\ud800\"", 0, "Invalid import string or embedded NUL");
+}
+
+@test
+MalformedJsonIsRejected :: () {
+    ImportRejected("/workspace/project/app", "\"unterminated", 0, "Invalid import string or embedded NUL");
+}
+
+@test
+NonStringJsonIsRejected :: () {
+    ImportRejected("/workspace/project/app", "[]", 0, "Invalid import string or embedded NUL");
+}

@@ -1,0 +1,9 @@
+package chibi_cli
+
+Export :: (options: Options) -> int {
+    return GameProjectsArchived("export")
+}
+
+Web :: (options: Options) -> int {
+    return GameProjectsArchived("web")
+}

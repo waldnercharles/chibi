@@ -1,0 +1,400 @@
+package scalar_facts
+
+// Internal opt-in owned result for one source document holding a set of
+// ordinary pure functions over numbers, bool, strings, and records and
+// unions of numbers and bool, which may recurse. A function's body is
+// locals, assignments, asserts, if statements, switches over integers or a
+// union's variants, while loops, loops over int ranges, breaks, continues and
+// returns. Values and conditions are literals, variables, arithmetic,
+// shifts, conversions, comparisons, logic, record literals, field reads,
+// union variants, their tests and payloads, a string's byte count, bytes and
+// slices, and direct calls of functions of the set, whose operands are such
+// expressions.
+// This is not a general IR, and no compiler-private identity crosses this
+// boundary.
+//
+// The compiler host passes arrays of flat records, so a module is one array
+// of rows. Row 0 is its Source: `name` is the path and `text` the document.
+// A rejected module has exactly one more row, its Rejection: `text` is the
+// diagnostic's message and the range is its source. Nothing else survives
+// a rejection, and it must never be emitted.
+//
+// An accepted module's row 1 is its Document: `name` is the shared source
+// snapshot's document key, and `text` is empty for a package and the library's
+// name for a native library source. Then each record and union the source declares
+// follows in declaration order:
+// - a record is a Record row, its `name`, `count` fields and declaration
+//   range, then `count` Member rows: `name`, `type`, ordinal `value`
+//   and name range. A member's `type` is a scalar, a string, an array, or
+//   a record or union of the module, though not one that holds itself by
+//   value, as an array holds its elements apart;
+// - a union is a Union row, its `name`, `count` variants and declaration
+//   range, then each variant in order: a Variant row, its `name`, ordinal
+//   `value`, `count` payload fields and range, then `count` Member rows:
+//   `name`, `type` as a record's field has, name range and `value`, the payload's ordinal
+//   among all the union's payloads in declaration order.
+// Then, for each function with several named results in declaration order,
+// a record of them: a Record row named for the function with `.results`, its
+// declaration's range, then a Member row for each result as for a field.
+// The d-th of them is type RecordType + d, which a function's result, a
+// parameter, a variable and an operand may have. Then each function follows
+// in declaration order; a package's first is the module's entry and takes no
+// parameters and returns int, and a library has no entry:
+// - a Function row: its `name`, result `type`, `count` parameters and
+//   declaration range, and in a library its stable symbol ID as `literal`,
+//   the ID the runtime binds it by;
+// - `count` Parameter rows: `name`, `type`, ordinal `value`, name range;
+// - a Local row for each named result, with its name's range, whose operand
+//   is its zero: a Literal, or a Zero for a record. A function with one
+//   named result returns its value, and one with several the record of
+//   them. A return of one named result's value returns it. A return of
+//   several values is an Assign row for each, with the value's range, in
+//   order, then a Return of the record of them all with the range of the
+//   values' closing parenthesis. A bare return returns the results' values,
+//   and a body that does not end in a terminating statement does so at its
+//   closing brace;
+// - its body's statement rows in source order, each with its statement's
+//   range. The body ends in a terminating statement: a return, an if
+//   statement with an else whose two branches end in terminating statements,
+//   a switch with a default arm whose arms all end in terminating
+//   statements, or a while loop whose condition is the literal true and whose
+//   own body has no break. Statements after a terminating one are still recorded,
+//   though they never run.
+// The statements:
+// - a Local row declares variable `value` of `type`, its `name`, and its
+//   `count` operand rows follow, its initial value. The variables are the
+//   parameters, then the locals in declaration order;
+// - an Assign row stores its `count` operands' value in variable `value` of
+//   `type`. A compound assignment's operands read the variable first, then
+//   the value, then combine them, since no operand can change a variable;
+// - an If row is followed by its `count` condition operands, then the
+//   statements of its consequence, then optionally an Else row, the range of
+//   its alternative, and the alternative's statements, then an End row with
+//   the If row's range. An else-if is an Else row whose one statement is an
+//   If;
+// - a While row is followed by its `count` condition operands, then the
+//   statements of its body, then an End row with the While row's range. The
+//   condition runs before each pass;
+// - a For row declares variable `value`, an int named `name`, and its
+//   `count` operands follow: its first bound's, then its last bound's, each
+//   an int, run once before the loop. Its `literal` is the sum of
+//   RangeExclusive for `..<` and RangeReverse for `for <`. The statements of
+//   its body follow, then an End row with the For row's range. The variable
+//   takes each value from the first bound up to the last, the last itself
+//   only for `..`, or the same values from the last down, and the body cannot
+//   assign it. A bound evaluated once cannot change, so neither end wraps;
+// - a Switch row is followed by its `count` operands, its value, of its
+//   integer `type`, run once. Then each arm in source order: a Case row with
+//   the arm's range and the Switch row's `type`, its `count` operands, the
+//   arm's value of that type, or none for the default arm, then the arm's
+//   statements. An End row with the Switch row's range follows the last arm.
+//   The value arms are tried in order, each value evaluated only when the
+//   arms before it missed, and the first arm whose value equals the switch's
+//   runs; the default arm, wherever it is, runs when none does. An arm does
+//   not fall through into the next. A switch on a union variable is one on
+//   its Tag: its operands read the variable, then take its Tag, and each
+//   variant arm's value is a Literal of the variant's ordinal, with the range
+//   of the pattern's name. Its last arm is its default arm when it has none,
+//   since the variable holds one of the variants the arms cover. Each of an
+//   arm's bindings, in order, is a Local row with the binding's range whose
+//   operands read the variable and take that Payload, with the same range,
+//   before the arm's statements;
+// - a Break or Continue row leaves, or ends the pass of, the innermost loop
+//   it is in, through any switch around it. It has no operands;
+// - a Return row is followed by its `count` operands, the returned value;
+// - an Assert row, with the range of its assert's call, is followed by its
+//   `count` condition operands. When the condition is false, the call from
+//   the VM ends with the failure the VM's assert at that range gives, and
+//   every call it is in ends with it.
+// A variable is visible from the end of its declaration to the end of the
+// statements it is declared among; locals of a consequence, an alternative,
+// an arm or a loop body are not visible after it, and a For row's variable is
+// visible only in its body.
+//
+// Operand rows are in evaluation order, each after the operands it consumes:
+// a Literal's `literal` is its value, or 0 and 1 for false and true, and a
+// word's is its bits, as a float's and a double's are their IEEE encodings; a
+// string Literal's `text` is its decoded bytes and its `literal` 0;
+// a Read's `value` is its variable's ordinal; a Compare's `value` is its
+// operator and it consumes the two most recent unconsumed operands, numbers
+// of one type, or two bools or two strings for == and !=, left first, to
+// give a bool, two strings being equal when their bytes are; an
+// Arithmetic's `value` is its operator and it consumes the two most recent
+// unconsumed operands, both of its number `type`, left first, to give one of
+// that type; a Unary's `value` is its operator and it consumes the most
+// recent unconsumed operand of its `type`; a Convert's `value` is Clamp or
+// Wrap and it consumes the most recent unconsumed operand, a number its
+// `type` converts from, to give one of its `type`; a Logical's `value` is
+// LogicalAnd or LogicalOr and it consumes the most recent unconsumed operand,
+// its left bool, then its `count` right operand rows follow it, which run
+// only when the left does not decide the value, and give a bool, its value;
+// a Call's `value` is its callee's function ordinal, `name` its callee's name
+// and `count` its arguments, the `count` most recent unconsumed operands in
+// argument order; an argument the call omits is a Literal of its parameter's
+// default with the call's range. A Zero row is the record of its `type` whose
+// fields are all zero; an Update's `value` is a field ordinal of its record
+// `type`, and it consumes the two most recent unconsumed operands, a record of
+// that type then a value of the field's type, to give the record with that
+// field replaced; a Field's `value` is a field ordinal and it consumes the
+// most recent unconsumed operand, a record, to give that field, of its
+// `type`. A Make's `value` is a variant ordinal of its union `type` and
+// `count` that variant's payloads, and it consumes the `count` most recent
+// unconsumed operands, the payloads in order, to give the union holding that
+// variant; a Tag consumes the most recent unconsumed operand, a union, to give
+// its variant's ordinal, an int; a Payload's `value` is a payload ordinal of a
+// union and it consumes the most recent unconsumed operand, that union, to
+// give the payload, of its `type`. Payloads are read only where their variant
+// is held; the backend cannot check this, and another variant's payload reads
+// its zero. `v is .V` is the Tag of `v`, a Literal of V's ordinal with the
+// pattern's range, then an Equal Compare, or NotEqual for `is not`. A Text
+// row reads a string's bytes as the runtime's text natives do, and its
+// `value` is its operator: TextLength consumes the most recent unconsumed
+// operand, a string, to give its byte count; TextByte consumes the two most
+// recent, a string then an index, to give the byte there, 0 to 255, or -1
+// outside the string; TextSlice consumes the three most recent, a string,
+// then a start and a count, to give the string of those bytes, its start
+// clamped to the string and its count to the bytes after the start; and
+// TextFormat consumes the `count` most recent, at least one, a string format
+// then each argument, a number, bool or string of its own type, to give the
+// string format_text makes of them, which the runtime allocates. The
+// indexes, starts, counts and byte counts are ints. A record
+// literal is a Zero row with the literal's range, then each
+// field's value in source order and its Update, with the field's range. An
+// assignment to a field, `v.f = x`, is an Assign of `v` whose operands read
+// `v`, then `x`, then update `f` with the target's range, and a compound one
+// reads `v` and its field `f` before `x` and their combination. An array of
+// `T` is type ArrayType + T, for a scalar, a string, or a record or union, and
+// no array holds an array. An array is a value: storing one in a variable, or
+// returning a parameter's, gives a Copy of it, so an array's elements are
+// never shared. An Array row's `value` is its operator.
+// ArrayNew consumes its `count` most recent unconsumed operands, elements of
+// its array `type`'s element type, to give the array of them in order, the
+// empty array for none; ArrayLength consumes an array to give its element
+// count, an int; ArrayGet consumes an array and an int index to give the
+// element there, of its `type`; ArraySet consumes an array, an int index and
+// an element to give the array with that element replaced; ArrayPush consumes
+// an array and an element to give the array with the element after its last;
+// and ArrayCopy consumes an array to give an independent array of its
+// elements. ArrayExtend consumes two arrays of one type to give the first
+// followed by the second's elements; ArraySlice consumes an array and an int
+// start and count to give a new array of the count elements from the start,
+// each clamped to the array; ArrayResize consumes an array and an int length,
+// 0 for a negative one, to give a new array of its first elements, or all of
+// them, and then as many zeros (false, 0, the empty string, a record of
+// zeros) as that length needs; ArrayContains consumes an array of numbers,
+// bools or strings and an element of its type to give a bool, whether an
+// element equals it, a string by its bytes and a float as IEEE does; and
+// ArrayRemove consumes an array and an int index to give the array without
+// that element, or the same array for an index outside it. An index of
+// ArrayGet or ArraySet outside the array ends the program (D9). ArraySet,
+// ArrayPush, ArrayExtend and ArrayRemove change the elements of the array
+// they consume, so each is the last operand of an Assign to a variable of the
+// array's type whose first operand reads that variable: `a[i] = x` is the
+// Assign of `a` with operands that read `a`, then `i`, then `x`, then
+// ArraySet, and `a.append(x)` reads `a`, then `x`, then ArrayPush. A For row with
+// RangeArray declares variable `value`, of its element `type` and `name`,
+// and its one operand is the array it iterates, whose elements the body
+// cannot change. It runs its body for each element in order. The array is
+// read once, so a producer iterates a Copy of the variable when the body
+// assigns it.
+// A condition's last operand is its bool; a
+// return's last operand is the function's returned value, and a Local's or an
+// Assign's is its variable's. A shift's count is converted to the shifted
+// type before the shift consumes it, and an integer operand of floating
+// arithmetic, a comparison or a float to double widening has its own Convert
+// rows, as the ordinary compiler converts them.
+//
+// Ranges are half-open source-byte offsets into the source text; lines and
+// columns are one-based source-byte positions. Fields a row does not use are
+// zero or empty. The rows own their strings: a host snapshot of the array is
+// the retained result, not a view into the producer's invocation.
+pub Row :: struct {
+    kind: int;
+    type: int;
+    value: int;
+    count: int;
+    literal: i64;
+    name: string;
+    text: string;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+}
+
+pub SourceRow: int : 0;
+pub RejectionRow: int : 1;
+pub DocumentRow: int : 2;
+pub FunctionRow: int : 3;
+pub ParameterRow: int : 4;
+pub ReturnRow: int : 5;
+pub LiteralRow: int : 6;
+pub ReadRow: int : 7;
+pub CallRow: int : 8;
+pub IfRow: int : 9;
+pub CompareRow: int : 10;
+pub ArithmeticRow: int : 11;
+pub UnaryRow: int : 12;
+pub ConvertRow: int : 13;
+pub LocalRow: int : 14;
+pub AssignRow: int : 15;
+pub ElseRow: int : 16;
+pub EndRow: int : 17;
+pub LogicalRow: int : 18;
+pub WhileRow: int : 19;
+pub ForRow: int : 20;
+pub BreakRow: int : 21;
+pub ContinueRow: int : 22;
+pub SwitchRow: int : 23;
+pub CaseRow: int : 24;
+pub RecordRow: int : 25;
+pub MemberRow: int : 26;
+pub ZeroRow: int : 27;
+pub UpdateRow: int : 28;
+pub FieldRow: int : 29;
+pub UnionRow: int : 30;
+pub VariantRow: int : 31;
+pub MakeRow: int : 32;
+pub TagRow: int : 33;
+pub PayloadRow: int : 34;
+pub TextRow: int : 35;
+pub AssertRow: int : 36;
+pub ArrayRow: int : 37;
+
+// The value types: int and bool, then the other integer types, then the
+// floating ones, then string. The facts carry no compiler storage ordinal.
+pub IntType: int : 1;
+pub BoolType: int : 2;
+pub Int8Type: int : 3;
+pub ByteType: int : 4;
+pub Int16Type: int : 5;
+pub Uint16Type: int : 6;
+pub UintType: int : 7;
+pub Int64Type: int : 8;
+pub WordType: int : 9;
+pub FloatType: int : 10;
+pub DoubleType: int : 11;
+// An immutable string of bytes.
+pub StringType: int : 12;
+// The d-th record or union of the module is type RecordType + d.
+pub RecordType: int : 32;
+// An array of type T is ArrayType + T.
+pub ArrayType: int : 1024;
+
+// Compare operators: the source's <, <=, >, >=, == and !=, signed or
+// unsigned as their operands' type is. On floats, each is false when an
+// operand is NaN, except != which is true.
+pub Less: int : 1;
+pub LessEqual: int : 2;
+pub Greater: int : 3;
+pub GreaterEqual: int : 4;
+pub Equal: int : 5;
+pub NotEqual: int : 6;
+
+// Arithmetic operators: the source's +, -, *, /, %, &, |, ^, << and >> on
+// integers. None fails: they wrap, x / 0 is 0, x % 0 is x, MIN / -1 is MIN
+// and MIN % -1 is 0, and a shift count at or past the width, read unsigned,
+// gives 0, or the sign fill for a signed >>. Floats have +, -, * and /,
+// IEEE at their own width, rounding to nearest.
+pub Add: int : 1;
+pub Subtract: int : 2;
+pub Multiply: int : 3;
+pub Divide: int : 4;
+pub Remainder: int : 5;
+pub And: int : 6;
+pub Or: int : 7;
+pub Xor: int : 8;
+pub ShiftLeft: int : 9;
+pub ShiftRight: int : 10;
+
+// Unary operators: the source's - and ~ on integers, and ! on bool;
+// negation wraps.
+pub Negate: int : 1;
+pub Complement: int : 2;
+pub Not: int : 3;
+
+// Logical operators: the source's && and ||.
+pub LogicalAnd: int : 1;
+pub LogicalOr: int : 2;
+
+// Text operators: the runtime's text_byte_length, text_byte_at, text_slice
+// and format_text.
+pub TextLength: int : 1;
+pub TextByte: int : 2;
+pub TextSlice: int : 3;
+pub TextFormat: int : 4;
+
+// Array operators.
+pub ArrayNew: int : 1;
+pub ArrayLength: int : 2;
+pub ArrayGet: int : 3;
+pub ArraySet: int : 4;
+pub ArrayPush: int : 5;
+pub ArrayCopy: int : 6;
+pub ArrayExtend: int : 7;
+pub ArraySlice: int : 8;
+pub ArrayResize: int : 9;
+pub ArrayContains: int : 10;
+pub ArrayRemove: int : 11;
+
+// A For row's range flags; RangeArray stands alone.
+pub RangeExclusive: int : 1;
+pub RangeReverse: int : 2;
+pub RangeArray: int : 4;
+
+// Conversions between integer types: `T(value)` clamps the value to T, and
+// `T(wrap: value)` keeps its low bits. A floating value converts to an
+// integer type in either mode by truncating toward zero, clamping to the
+// type, with NaN as 0. An integer converts to double exactly or to nearest,
+// a float to double exactly and a double to float to nearest. An integer
+// becomes a float only through double, so it has two Convert rows.
+pub Clamp: int : 0;
+pub Wrap: int : 1;
+
+// The bits of an integer type, 0 for bool or any other.
+pub Bits :: (type: int) -> int {
+    if (type == Int8Type || type == ByteType) {
+        return 8;
+    }
+    if (type == Int16Type || type == Uint16Type) {
+        return 16;
+    }
+    if (type == IntType || type == UintType) {
+        return 32;
+    }
+    if (type == Int64Type || type == WordType) {
+        return 64;
+    }
+    return 0;
+}
+// Whether an integer type is unsigned.
+pub Unsigned :: (type: int) -> bool {
+    return type == ByteType || type == Uint16Type || type == UintType || type == WordType;
+}
+// Whether a type is float or double.
+pub Floating :: (type: int) -> bool {
+    return type == FloatType || type == DoubleType;
+}
+// Whether `literal` is a value of `type`: 0 or 1 for bool, its range for an
+// integer type, any bits for a word or double, 32 bits for a float and 0 for
+// a string, whose value is its text.
+pub Fits :: (literal: i64, type: int) -> bool {
+    if (type == StringType) {
+        return literal == 0;
+    }
+    if (type == FloatType) {
+        return literal >= 0 && literal < i64(1) << u32(32);
+    }
+    bits := Bits(type);
+    if (bits == 0) {
+        return type == DoubleType || (type == BoolType && (literal == 0 || literal == 1));
+    }
+    if (bits == 64) {
+        return true;
+    }
+    if (Unsigned(type)) {
+        return literal >= 0 && literal < i64(1) << u32(bits);
+    }
+    half := i64(1) << u32(bits - 1);
+    return literal >= 0 - half && literal < half;
+}

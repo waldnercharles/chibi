@@ -1,0 +1,290 @@
+package source_parser
+
+import tk "project:source_tokenizer"
+import syntax "project:syntax_diagnostics"
+
+// A node of the tree under construction. The first rows are the tokens, in
+// order, and the parser appends interior rows after them. Links use -1 for
+// absence; `last` is the newest child, so adding a child is constant time.
+// Offsets count bytes, as Tree-sitter's do.
+Node :: struct {
+    kind: string;
+    field: string;
+    token: int;
+    start: int;
+    end: int;
+    row: int;
+    column: int;
+    parent: int;
+    first: int;
+    last: int;
+    next: int;
+    named: bool;
+    hidden: bool;
+    extra: bool;
+}
+
+// The parse position. A failure keeps the first message and moves the
+// position to the end of the tokens, so every loop that reads tokens stops.
+Cursor :: struct {
+    text: string;
+    pos: int;
+    token: int;
+    final: int;
+    failed: bool;
+    message: string;
+    at: int;
+    stop: int;
+    row: int;
+    column: int;
+}
+
+// The parts of a tree Parse returns: Tree-sitter's raw facts, as
+// compiler_syntax.Parse returns them.
+pub Tree :: union {
+    Parsed(nodes: syntax.Node[], fields: string[], is_named: bool[], is_extra: bool[], root: int)
+}
+
+NewNode :: (kind: string, named: bool) -> Node {
+    return {kind: kind, field: "", token: -1, start: -1, end: -1, row: 0, column: 0,
+            parent: -1, first: -1, last: -1, next: -1, named: named, hidden: false,
+            extra: false};
+}
+
+// An interior node of `kind`, empty until children are added.
+New :: (n: ^(Node[]), kind: string) -> int {
+    n.append(NewNode(kind, true));
+    return length(n^) - 1;
+}
+
+// `child` becomes the newest child of `parent`, under `field` ("" for none).
+// The parent's range covers its children, zero-width terminators included.
+Add :: (n: ^(Node[]), parent: int, child: int, field: string) {
+    n^[child].parent = parent;
+    n^[child].field = field;
+    if (n^[parent].last < 0) {
+        n^[parent].first = child;
+        n^[parent].start = n^[child].start;
+        n^[parent].row = n^[child].row;
+        n^[parent].column = n^[child].column;
+    } else {
+        n^[n^[parent].last].next = child;
+    }
+    n^[parent].last = child;
+    n^[parent].end = n^[child].end;
+}
+
+// The kind of the token `ahead` places after the current one; EOF past the end.
+Peek :: (c: ^Cursor, n: ^(Node[]), ahead: int) -> int {
+    at := c.pos + ahead;
+    if (at > c.final) {
+        at = c.final;
+    }
+    return n^[at].token;
+}
+
+Fail :: (c: ^Cursor, n: ^(Node[]), message: string) {
+    if (!c.failed) {
+        c.failed = true;
+        c.message = message;
+        c.at = n^[c.pos].start;
+        c.stop = n^[c.pos].end;
+        c.row = n^[c.pos].row;
+        c.column = n^[c.pos].column;
+    }
+    c.pos = c.final;
+    c.token = n^[c.final].token;
+}
+
+// Moves the current token under `parent`, keeping its own kind.
+Take :: (c: ^Cursor, n: ^(Node[]), parent: int, field: string) -> int {
+    at := c.pos;
+    if (at < c.final) {
+        c.pos += 1;
+        c.token = n^[c.pos].token;
+    }
+    if (parent >= 0) {
+        Add(n, parent, at, field);
+    }
+    return at;
+}
+
+// Takes the current token if it has `token` kind, else fails.
+Expect :: (c: ^Cursor, n: ^(Node[]), parent: int, token: int, field: string) -> int {
+    if (c.token != token) {
+        Fail(c, n, format_text("{}{}", Expected(c, n, Describe(token)), Opener(c, n, token)));
+        return -1;
+    }
+    return Take(c, n, parent, field);
+}
+
+// Takes the current token if it has `token` kind and says whether it did.
+Accept :: (c: ^Cursor, n: ^(Node[]), parent: int, token: int, field: string) -> bool {
+    if (c.token != token) {
+        return false;
+    }
+    Take(c, n, parent, field);
+    return true;
+}
+
+// Takes the current token as an identifier, which a contextual word may be.
+TakeName :: (c: ^Cursor, n: ^(Node[]), parent: int, field: string) -> int {
+    if (!IsName(c.token)) {
+        Fail(c, n, Expected(c, n, "a name"));
+        return -1;
+    }
+    at := Take(c, n, parent, field);
+    n^[at].kind = "identifier";
+    n^[at].named = true;
+    return at;
+}
+
+// Takes the current token as an identifier after a dot: any word will do.
+TakeMember :: (c: ^Cursor, n: ^(Node[]), parent: int, field: string) -> int {
+    if (!IsMember(c.token)) {
+        Fail(c, n, Expected(c, n, "a member name"));
+        return -1;
+    }
+    at := Take(c, n, parent, field);
+    n^[at].kind = "identifier";
+    n^[at].named = true;
+    return at;
+}
+
+// The words that can still name things: Tree-sitter's contextual keywords.
+IsName :: (token: int) -> bool {
+    return token == tk.Ident || token == tk.Package || token == tk.Import || token == tk.Struct ||
+           token == tk.From || token == tk.Split || token == tk.Component ||
+           token == tk.NotKeyword || token == tk.Unordered;
+}
+
+IsMember :: (token: int) -> bool {
+    return token == tk.Ident || (token >= tk.Package && token <= tk.Emit);
+}
+
+// Whether the current token is the word `word`, as `view` or `self` are.
+IsWord :: (c: ^Cursor, n: ^(Node[]), word: string) -> bool {
+    return IsWordAt(c, n, c.pos, word);
+}
+
+IsWordAt :: (c: ^Cursor, n: ^(Node[]), at: int, word: string) -> bool {
+    return n^[at].token == tk.Ident && n^[at].end - n^[at].start == text_byte_length(word) &&
+           Spells(c.text, n^[at].start, word);
+}
+
+Spells :: (text: string, start: int, word: string) -> bool {
+    index: int = 0;
+    while (index < text_byte_length(word)) {
+        if (text_byte_at(text, start + index) != text_byte_at(word, index)) {
+            return false;
+        }
+        index += 1;
+    }
+    return true;
+}
+
+// The automatic or written terminator that ends a declaration or statement.
+End :: (c: ^Cursor, n: ^(Node[]), parent: int) {
+    if (c.token != tk.Semicolon) {
+        Fail(c, n, Expected(c, n, "the end of the statement"));
+        return;
+    }
+    Take(c, n, parent, "");
+}
+
+// The tokens' leaf rows. Comments are not leaves of the tree under
+// construction; the tree takes them afterwards.
+Leaf :: (kind: string, token: int, start: int, end: int, row: int, column: int) -> Node {
+    return {kind: kind, field: "", token: token, start: start, end: end, row: row, column: column,
+            parent: -1, first: -1, last: -1, next: -1,
+            named: token == tk.Ident || token == tk.Integer || token == tk.Float ||
+                   token == tk.String || token == tk.Char,
+            hidden: token == tk.Semicolon && start == end, extra: false};
+}
+
+LeafKind :: (names: string[], token: int) -> string {
+    if (token == tk.Ident) {
+        return "identifier";
+    }
+    if (token == tk.Integer || token == tk.Float) {
+        return "number";
+    }
+    if (token == tk.String) {
+        return "string";
+    }
+    if (token == tk.Char) {
+        return "character";
+    }
+    if (token == tk.Comment) {
+        return "comment";
+    }
+    return names[token];
+}
+
+// "Expected X, found Y": what the grammar needed, and the text it met instead.
+Expected :: (c: ^Cursor, n: ^(Node[]), wanted: string) -> string {
+    return format_text("Expected {}, found {}", wanted, Found(c, n));
+}
+
+Found :: (c: ^Cursor, n: ^(Node[])) -> string {
+    at := c.pos;
+    if (n^[at].token == tk.EOF) {
+        return "the end of the file";
+    }
+    if (n^[at].hidden) {
+        return "a new statement";
+    }
+    return format_text("`{}`", Slice(c.text, n^[at].start, n^[at].end));
+}
+
+Slice :: (text: string, start: int, end: int) -> string {
+    return text_slice(text, start, end - start);
+}
+
+// A token kind as the grammar names it.
+Describe :: (token: int) -> string {
+    if (token == tk.Ident) {
+        return "a name";
+    }
+    if (token == tk.Integer || token == tk.Float) {
+        return "a number";
+    }
+    if (token == tk.String) {
+        return "a string";
+    }
+    if (token == tk.Semicolon) {
+        return "the end of the statement";
+    }
+    return format_text("`{}`", tk.KindNames()[token]);
+}
+
+// For a missing closing bracket, where its opening bracket is: " (to close the
+// `(` at 4:10)"; nothing for any other token.
+Opener :: (c: ^Cursor, n: ^(Node[]), closing: int) -> string {
+    opening: int = -1;
+    if (closing == tk.CloseParen) {
+        opening = tk.OpenParen;
+    } else if (closing == tk.CloseBracket) {
+        opening = tk.OpenBracket;
+    } else if (closing == tk.CloseBrace) {
+        opening = tk.OpenBrace;
+    }
+    if (opening < 0) {
+        return "";
+    }
+    depth: int = 0;
+    at := c.pos - 1;
+    while (at >= 0) {
+        if (n^[at].token == closing) {
+            depth += 1;
+        } else if (n^[at].token == opening) {
+            if (depth == 0) {
+                return format_text(" (to close the `{}` at {}:{})", tk.KindNames()[opening],
+                                   n^[at].row + 1, n^[at].column + 1);
+            }
+            depth -= 1;
+        }
+        at -= 1;
+    }
+    return "";
+}

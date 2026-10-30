@@ -6,12 +6,12 @@ import tk "project:source_tokenizer"
 // `union_type`, whose members are `type` nodes.
 ParseType :: (c: ^Cursor, n: ^(Node[])) -> int {
     first := ParseSingleType(c, n);
-    if (Cur(c, n) != tk.Or) {
+    if (c.token != tk.Or) {
         return first;
     }
     joined := New(n, "union_type");
     Add(n, joined, first, "member");
-    while (!c.failed && Cur(c, n) == tk.Or) {
+    while (!c.failed && c.token == tk.Or) {
         Take(c, n, joined, "");
         Add(n, joined, ParseSingleType(c, n), "member");
     }
@@ -24,7 +24,7 @@ ParseType :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseSingleType :: (c: ^Cursor, n: ^(Node[])) -> int {
     t := New(n, "type");
     while (!c.failed && IsTrait(c, n)) {
-        if (Cur(c, n) == tk.Wildcard) {
+        if (c.token == tk.Wildcard) {
             Take(c, n, t, "trait");
             Expect(c, n, t, tk.OpenParen, "trait");
             Expect(c, n, t, tk.Integer, "trait");
@@ -37,10 +37,10 @@ ParseSingleType :: (c: ^Cursor, n: ^(Node[])) -> int {
     }
     ParseTypePrimary(c, n, t);
     while (!c.failed) {
-        if (Cur(c, n) == tk.OpenBracket && Peek(c, n, 1) == tk.CloseBracket) {
+        if (c.token == tk.OpenBracket && Peek(c, n, 1) == tk.CloseBracket) {
             Take(c, n, t, "");
             Take(c, n, t, "");
-        } else if (Cur(c, n) == tk.Question) {
+        } else if (c.token == tk.Question) {
             Take(c, n, t, "");
         } else {
             break;
@@ -52,7 +52,7 @@ ParseSingleType :: (c: ^Cursor, n: ^(Node[])) -> int {
 // A trait word comes before a type: `plain`, `service`, `setting`,
 // `wildcard(N)`, `view` and `self` when something that starts a type follows.
 IsTrait :: (c: ^Cursor, n: ^(Node[])) -> bool {
-    token := Cur(c, n);
+    token := c.token;
     if (token == tk.Plain || token == tk.Service || token == tk.Setting || token == tk.Wildcard) {
         return true;
     }
@@ -71,7 +71,7 @@ StartsType :: (token: int) -> bool {
 // The primary of a type, added to `t`: a name, a binder, an application, a
 // map, a pointer or a parenthesized type.
 ParseTypePrimary :: (c: ^Cursor, n: ^(Node[]), t: int) {
-    token := Cur(c, n);
+    token := c.token;
     if (token == tk.Dollar) {
         binder := New(n, "type_binder");
         Take(c, n, binder, "");
@@ -110,7 +110,7 @@ ParseTypePrimary :: (c: ^Cursor, n: ^(Node[]), t: int) {
     if (c.failed) {
         return;
     }
-    if (Cur(c, n) == tk.OpenParen) {
+    if (c.token == tk.OpenParen) {
         application := New(n, "type_application");
         Add(n, application, name, "function");
         Add(n, application, ParseArguments(c, n), "arguments");
@@ -124,7 +124,7 @@ ParseTypePrimary :: (c: ^Cursor, n: ^(Node[]), t: int) {
 ParseTypeName :: (c: ^Cursor, n: ^(Node[])) -> int {
     name := New(n, "type_name");
     TakeName(c, n, name, "");
-    while (!c.failed && Cur(c, n) == tk.Period && IsName(Peek(c, n, 1))) {
+    while (!c.failed && c.token == tk.Period && IsName(Peek(c, n, 1))) {
         Take(c, n, name, "");
         TakeName(c, n, name, "");
     }
@@ -238,7 +238,7 @@ SkipBrackets :: (n: ^(Node[]), at: int, final: int) -> int {
 ParseUnit :: (c: ^Cursor, n: ^(Node[])) -> int {
     unit := New(n, "unit");
     ParseUnitTerm(c, n, unit);
-    while (!c.failed && Cur(c, n) == tk.Quo) {
+    while (!c.failed && c.token == tk.Quo) {
         Take(c, n, unit, "");
         ParseUnitTerm(c, n, unit);
     }
@@ -254,7 +254,7 @@ ParseUnitTerm :: (c: ^Cursor, n: ^(Node[]), unit: int) {
 
 // Whether a unit alone starts here: `m/s` or `m^2`.
 StartsUnit :: (c: ^Cursor, n: ^(Node[])) -> bool {
-    return Cur(c, n) == tk.Ident && (Peek(c, n, 1) == tk.Xor || Peek(c, n, 1) == tk.Quo);
+    return c.token == tk.Ident && (Peek(c, n, 1) == tk.Xor || Peek(c, n, 1) == tk.Quo);
 }
 
 // A type, a type measured in a unit, or a unit alone.
@@ -263,7 +263,7 @@ ParseSignatureType :: (c: ^Cursor, n: ^(Node[])) -> int {
         return ParseUnit(c, n);
     }
     base := ParseType(c, n);
-    if (c.failed || Cur(c, n) != tk.Ident) {
+    if (c.failed || c.token != tk.Ident) {
         return base;
     }
     measured := New(n, "measured_type");
@@ -275,7 +275,7 @@ ParseSignatureType :: (c: ^Cursor, n: ^(Node[])) -> int {
 // A component field's type: a type, a measured type, or a measure, which is
 // a range with an optional unit or a compound unit alone.
 ParseFieldType :: (c: ^Cursor, n: ^(Node[])) -> int {
-    token := Cur(c, n);
+    token := c.token;
     if (token == tk.Integer || token == tk.Float || token == tk.Sub) {
         measure := New(n, "measure");
         span := New(n, "range_type");
@@ -283,7 +283,7 @@ ParseFieldType :: (c: ^Cursor, n: ^(Node[])) -> int {
         Expect(c, n, span, tk.Ellipsis, "");
         Add(n, span, ParseBound(c, n), "max");
         Add(n, measure, span, "range");
-        if (Cur(c, n) == tk.Ident) {
+        if (c.token == tk.Ident) {
             Add(n, measure, ParseUnit(c, n), "unit");
         }
         return measure;
@@ -298,7 +298,7 @@ ParseFieldType :: (c: ^Cursor, n: ^(Node[])) -> int {
 
 // A number, or a number with a minus sign.
 ParseBound :: (c: ^Cursor, n: ^(Node[])) -> int {
-    if (Cur(c, n) == tk.Sub) {
+    if (c.token == tk.Sub) {
         negative := New(n, "unary_expression");
         Take(c, n, negative, "operator");
         Take(c, n, negative, "operand");

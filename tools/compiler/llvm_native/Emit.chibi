@@ -245,8 +245,8 @@ FieldType :: (records: Record[], fields: int[], type: int, field: i64) -> int {
     }
     return fields[record.first + int(field)];
 }
-// Records partition the field table in order, each with at least one scalar
-// field.
+// Records partition the field table in order, each with at least one scalar or
+// string field.
 RecordLayout :: (records: Record[], fields: int[]) -> bool {
     first: int = 0;
     for (record in records) {
@@ -259,7 +259,7 @@ RecordLayout :: (records: Record[], fields: int[]) -> bool {
         return false;
     }
     for (type in fields) {
-        if (abi.ScalarType(type) == "") {
+        if (abi.ScalarType(type) == "" && type != abi.TextStorage) {
             return false;
         }
     }
@@ -1361,7 +1361,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             if (field > 0) {
                 types = format_text("{}, ", types);
             }
-            types = format_text("{}{}", types, abi.ScalarType(fields[record.first + field]));
+            types = format_text("{}{}", types, TypeName(fields[record.first + field]));
         }
         out = format_text("{}%record{} = type { {} }\n", out, index, types);
     }

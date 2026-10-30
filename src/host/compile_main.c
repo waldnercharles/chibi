@@ -1,12 +1,7 @@
-#include "assets/project.h"
 #include "authoring/project_compile.h"
-#include "authoring/project_prepare.h"
-#include "authoring/source_catalog.h"
 #include "runtime/component_catalog.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
-#include "toolchain/compiler_artifact.h"
-#include "toolchain/compiler_target.h"
 #include "types/catalog.h"
 
 #include <assert.h>
@@ -28,14 +23,7 @@ type_catalog_pack type_catalog_pack_at(int index)
 }
 static int usage(const char *program)
 {
-    fprintf(
-        stderr,
-        "Usage: %s --project-root PATH (--output FILE [--modules FILE | "
-        "--resources-only] | "
-        "--check [--explain-costs [--json]] | --test | --stage-one-input "
-        "FILE) [--scene PATH]\n",
-        program
-    );
+    fprintf(stderr, "Usage: %s --project-root PATH --test\nGame projects are archived.\n", program);
     return 2;
 }
 #ifdef __EMSCRIPTEN__
@@ -81,184 +69,12 @@ static int test(const char *project)
     return status;
 }
 #endif
-static bool write_text(const char *path, const char *text)
-{
-    FILE *file = fopen(path, "wb");
-    bool written = file && fputs(text, file) >= 0;
-    return file && !fclose(file) && written;
-}
-/* Writes stage one's CompileBehaviorsWithCatalog input: the project sources
- * and what their modules link against in the catalog they compile
- * against. Reports the executable source count on stdout only after the
- * complete input has been written. */
-static int stage_one_input(const char *project, const char *output)
-{
-    char error[512] = { 0 };
-    authoring_application application;
-    if (!authoring_application_begin(&application, error, sizeof error)) {
-        fprintf(stderr, "stage-one input: %s\n", error);
-        return 1;
-    }
-    authoring_project_options options = { .project = project,
-                                          .native = application.native };
-    authoring_project_catalog *catalog = authoring_project_catalog_open(&options, error, sizeof error);
-    size_t length = 0;
-    char *json = NULL;
-    int count = 0;
-    if (catalog) {
-        const source_catalog *sources = authoring_project_catalog_sources(catalog);
-        count = source_catalog_source_count(sources);
-        const char **identities = xcalloc((size_t)count + 1, sizeof *identities);
-        const char **texts = xcalloc((size_t)count + 1, sizeof *texts);
-        for (int i = 0; i < count; i++) {
-            identities[i] = source_catalog_source_at(sources, i)->identity;
-            texts[i] = source_catalog_source_at(sources, i)->text;
-        }
-        json = compiler_behavior_catalog_input_json(
-            source_catalog_view(sources),
-            application.native,
-            identities,
-            texts,
-            count,
-            &length
-        );
-        free(identities);
-        free(texts);
-    }
-    authoring_project_catalog_free(catalog);
-    authoring_application_end(&application);
-    bool written = json && write_text(output, json);
-    free(json);
-    if (written) {
-        written = printf("%d\n", count) >= 0 && !fflush(stdout);
-    }
-    if (!written) {
-        fprintf(stderr, "stage-one input: %s\n", error[0] ? error : "could not write the input");
-    }
-    return written ? 0 : 1;
-}
-/* The bytes of a file, or NULL. */
-static unsigned char *read_bytes(const char *path, size_t *length)
-{
-    FILE *file = fopen(path, "rb");
-    if (!file) {
-        return NULL;
-    }
-    unsigned char *bytes = NULL;
-    long size = fseek(file, 0, SEEK_END) ? -1 : ftell(file);
-    if (size > 0 && (size_t)size <= PACKAGE_MAX_BYTES && !fseek(file, 0, SEEK_SET)) {
-        bytes = xmalloc((size_t)size);
-        if (fread(bytes, 1, (size_t)size, file) != (size_t)size) {
-            free(bytes);
-            bytes = NULL;
-        }
-    }
-    fclose(file);
-    *length = bytes ? (size_t)size : 0;
-    return bytes;
-}
-/* --output with --modules writes the artifact assembled from a closure of the
- * project's prepared modules, as the stage-one compiler writes it. */
-static int assemble(const char *project, const char *closure, const char *output)
-{
-    char error[512] = { 0 };
-    size_t length = 0;
-    unsigned char *bytes = read_bytes(closure, &length);
-    int count = 0;
-    uint64_t root = 0;
-    package_module *modules = bytes
-                                ? compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error)
-                                : NULL;
-    int status = modules
-                   ? authoring_project_compile_modules(project, modules, count, output)
-                   : 1;
-    if (!modules) {
-        fprintf(stderr, "modules: %s\n", bytes ? error : "the closure cannot be read");
-    }
-    compiler_artifact_rows_free(modules, count);
-    free(bytes);
-    return status;
-}
-/* --check prepares the project without writing anything; --test runs its
- * package tests. */
+/* chibi-compile runs a folder's package tests; the game-project compile path
+ * is archived. */
 int main(int argc, char **argv)
 {
-    const char *project = NULL, *scene = NULL, *output = NULL, *target = NULL,
-               *modules = NULL;
-    bool check = false, tests = false, resources = false;
-    bool explain = false, json = false;
-    for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--help")) {
-            usage(argv[0]);
-            return 0;
-        }
-        if (!strcmp(argv[i], "--check") && !check) {
-            check = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--explain-costs") && !explain) {
-            explain = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--json") && !json) {
-            json = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--test") && !tests) {
-            tests = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--resources-only") && !resources) {
-            resources = true;
-            continue;
-        }
-        if (i + 1 == argc) {
-            return usage(argv[0]);
-        }
-        if (!strcmp(argv[i], "--project-root") && !project) {
-            project = argv[++i];
-            continue;
-        }
-        if (!strcmp(argv[i], "--scene") && !scene) {
-            scene = argv[++i];
-            continue;
-        }
-        if (!strcmp(argv[i], "--output") && !output) {
-            output = argv[++i];
-            continue;
-        }
-        if (!strcmp(argv[i], "--stage-one-input") && !target) {
-            target = argv[++i];
-            continue;
-        }
-        if (!strcmp(argv[i], "--modules") && !modules) {
-            modules = argv[++i];
-            continue;
-        }
+    if (argc != 4 || strcmp(argv[1], "--project-root") || strcmp(argv[3], "--test")) {
         return usage(argv[0]);
     }
-    int modes = check + tests + (output != NULL) + (target != NULL);
-    if (!project || !*project || modes != 1 || (output && !*output) ||
-        (target && !*target) || ((tests || target) && scene) ||
-        (modules && (!output || !*modules || scene)) ||
-        (resources && (!output || modules || scene)) || (explain && !check) ||
-        (json && !explain)) {
-        return usage(argv[0]);
-    }
-    if (resources) {
-        return authoring_project_compile_modules(project, NULL, 0, output);
-    }
-    if (modules) {
-        return assemble(project, modules, output);
-    }
-    if (target) {
-        return stage_one_input(project, target);
-    }
-    if (tests) {
-        return test(project);
-    }
-    if (explain) {
-        return authoring_project_explain_costs(project, scene, json);
-    }
-    return authoring_project_compile(project, scene, output);
+    return test(argv[2]);
 }

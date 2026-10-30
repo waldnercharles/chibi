@@ -142,82 +142,6 @@ static void setup(const char *binary)
     assert(!chmod(program, 0700));
 }
 
-TEST_CASE(build_and_run_use_the_prepared_project)
-{
-    const char *build[] = { launcher, "build", "game with spaces", NULL };
-    REQUIRE(tool_run(build, root, log_path) == 0);
-    REQUIRE(file_is("game with spaces/.chibi/build/game.chibip", "artifact"));
-    REQUIRE(file_is("compiles", "compile\n"));
-    REQUIRE(!exists("player.args"));
-
-    REQUIRE(tool_run(build, root, log_path) == 0);
-    REQUIRE(file_is("compiles", "compile\n"));
-    REQUIRE(!exists("player.args"));
-
-    char game[256];
-    path(game, "game with spaces");
-    const char *implicit[] = { launcher, "build", NULL };
-    REQUIRE(tool_run(implicit, game, log_path) == 0);
-    REQUIRE(file_is("compiles", "compile\n"));
-
-    const char *run[] = { launcher,   "run", "game with spaces",          "--",
-                          "--frames", "2",   "space \"quote\";$literal*", "",
-                          NULL };
-    REQUIRE(tool_run(run, root, log_path) == 0);
-    char expected[1024];
-    snprintf(expected, sizeof expected, "%s/.chibi/build/game.chibip\n--resource-root\n%s\n--frames\n2\nspace \"quote\";$literal*\n\n", game, game);
-    REQUIRE(file_is("player.args", expected));
-    REQUIRE(file_is("compiles", "compile\n"));
-
-    /* A project path is shorthand for run, including player options. */
-    const char *unnamed[] = { launcher, "game with spaces", "--frames", "3", NULL };
-    REQUIRE(tool_run(unnamed, root, log_path) == 0);
-    snprintf(
-        expected,
-        sizeof expected,
-        "%s/.chibi/build/game.chibip\n--resource-root\n%s\n--frames\n3\n",
-        game,
-        game
-    );
-    REQUIRE(file_is("player.args", expected));
-    const char *bare[] = { launcher, NULL };
-    REQUIRE(tool_run(bare, root, log_path) == 2);
-    REQUIRE(file_is("player.args", expected));
-    REQUIRE(file_is("compiles", "compile\n"));
-
-    write_file("fail", "");
-    char file[256];
-    path(file, "game with spaces/.chibi/build/game.chibip");
-    REQUIRE(!unlink(file));
-    path(file, "player.args");
-    REQUIRE(!unlink(file));
-    REQUIRE(tool_run(build, root, log_path) == 37);
-    REQUIRE(tool_run(run, root, log_path) == 37);
-    REQUIRE(file_is("compiles", "compile\ncompile\ncompile\n"));
-    REQUIRE(!exists("player.args"));
-    REQUIRE(!exists("game with spaces/.chibi/build/game.chibip"));
-    path(file, "fail");
-    REQUIRE(!unlink(file));
-    return true;
-}
-
-/* A project at `relative` whose manifest has format `version`. */
-static void project(const char *relative, int version)
-{
-    char file[256];
-    const char *directories[] = { "", "/content", "/content/scenes" };
-    for (int i = 0; i < 3; i++) {
-        snprintf(file, sizeof file, "%s/%s%s", root, relative, directories[i]);
-        assert(!mkdir(file, 0700));
-    }
-    char manifest[256];
-    snprintf(manifest, sizeof manifest, "version %d\nname \"Checked\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", version);
-    snprintf(file, sizeof file, "%s/project.kdl", relative);
-    write_file(file, manifest);
-    snprintf(file, sizeof file, "%s/content/scenes/Start.kdl", relative);
-    write_file(file, "version 1\nname \"Start\"\n(array)entities\n");
-}
-
 /* The text of the file at `relative`, which must exist. */
 static char *contents(const char *relative)
 {
@@ -226,254 +150,6 @@ static char *contents(const char *relative)
     char *text = tool_read(file);
     assert(text);
     return text;
-}
-
-/* check hands the project to the compiler's --check and writes nothing; an
- * older project is refused. */
-TEST_CASE(check_prepares_without_writing)
-{
-    char file[256];
-    path(file, "fail");
-    unlink(file);
-    project("checked", CHIBI_PROJECT_VERSION);
-    const char *check[] = { launcher, "check", "checked", NULL };
-    REQUIRE(tool_run(check, root, log_path) == 0);
-    char expected[512];
-    snprintf(expected, sizeof expected, "--project-root\n%s/checked\n--check\n", root);
-    REQUIRE(file_is("compile.args", expected));
-    REQUIRE(!exists("checked/.chibi"));
-
-    /* Without PROJECT, the project at or above the working directory. */
-    char game[256];
-    path(game, "checked/content");
-    const char *found[] = { launcher, "check", NULL };
-    REQUIRE(tool_run(found, game, log_path) == 0);
-    REQUIRE(file_is("compile.args", expected));
-
-    write_file("fail", "");
-    REQUIRE(tool_run(check, root, log_path) == 37);
-    REQUIRE(!unlink(file));
-    REQUIRE(!exists("checked/.chibi"));
-
-    project("old", CHIBI_PROJECT_VERSION - 1);
-    char *manifest = contents("old/project.kdl");
-    const char *old[] = { launcher, "check", "old", NULL };
-    REQUIRE(tool_run(old, root, log_path) == 2);
-    bool kept = file_is("old/project.kdl", manifest);
-    free(manifest);
-    REQUIRE(kept);
-    REQUIRE(!exists("old/.chibi"));
-
-    char *compiles = contents("compiles");
-    const char *help[] = { launcher, "check", "--help", NULL };
-    REQUIRE(tool_run(help, root, log_path) == 0);
-    const char *extra[] = { launcher, "check", "checked", "more", NULL };
-    REQUIRE(tool_run(extra, root, log_path) == 2);
-    bool unrun = file_is("compiles", compiles);
-    free(compiles);
-    REQUIRE(unrun);
-    return true;
-}
-
-TEST_CASE(check_forwards_cost_explanations)
-{
-    const char *explain[] = { launcher, "check", "checked", "--explain-costs", NULL };
-    REQUIRE(tool_run(explain, root, log_path) == 0);
-    char expected[512];
-    snprintf(expected, sizeof expected, "--project-root\n%s/checked\n--check\n--explain-costs\n", root);
-    REQUIRE(file_is("compile.args", expected));
-
-    char game[256];
-    path(game, "checked/content");
-    const char *implicit[] = { launcher, "check", "--json", "--explain-costs", NULL };
-    REQUIRE(tool_run(implicit, game, log_path) == 0);
-    snprintf(expected, sizeof expected, "--project-root\n%s/checked\n--check\n--explain-costs\n--json\n", root);
-    REQUIRE(file_is("compile.args", expected));
-    const char *json[] = { launcher,  "check",  "--explain-costs",
-                           "checked", "--json", NULL };
-    REQUIRE(tool_run(json, root, log_path) == 0);
-    REQUIRE(file_is("compile.args", expected));
-    REQUIRE(!exists("checked/.chibi"));
-
-    char *compiles = contents("compiles");
-    const char *help[] = { launcher, "check", "--help", NULL };
-    REQUIRE(tool_run(help, root, log_path) == 0);
-    char *text = contents("output.log");
-    bool documented = strstr(text, "--explain-costs [--json]") != NULL;
-    free(text);
-    REQUIRE(documented);
-    const char *invalid[][8] = {
-        { launcher, "check", "checked", "--json", NULL },
-        { launcher, "check", "checked", "--explain-costs", "--explain-costs", NULL },
-        { launcher, "check", "checked", "--explain-costs", "--json", "--json", NULL },
-        { launcher, "check", "checked", "--explain-costs", "--test", NULL },
-        { launcher, "check", "checked", "more", "--explain-costs", NULL },
-        { launcher, "build", "checked", "--explain-costs", NULL },
-        { launcher, "test", "checked", "--explain-costs", NULL }
-    };
-    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
-        REQUIRE(tool_run(invalid[i], root, log_path) == 2);
-    }
-    bool unrun = file_is("compiles", compiles);
-    free(compiles);
-    REQUIRE(unrun);
-    return true;
-}
-
-/* The real compiler's --check prepares a project, fails an invalid one and
- * leaves both, and an older one, exactly as they were. */
-TEST_CASE(compiler_check_writes_nothing)
-{
-    project("real", CHIBI_PROJECT_VERSION);
-    char game[256];
-    path(game, "real");
-    const char *valid[] = { compiler, "--project-root", game, "--check", NULL };
-    REQUIRE(tool_run(valid, root, log_path) == 0);
-    REQUIRE(!exists("real/.chibi"));
-
-    char output[256];
-    path(output, "out/game.chibip");
-    const char *both[] = { compiler,   "--project-root", game, "--check",
-                           "--output", output,           NULL };
-    REQUIRE(tool_run(both, root, log_path) == 2);
-    REQUIRE(!exists("out"));
-
-    const char *invalid = "version 1\nname \"Start\"\n(array)entities {\n";
-    write_file("real/content/scenes/Start.kdl", invalid);
-    REQUIRE(tool_run(valid, root, log_path) == 1);
-    REQUIRE(file_is("real/content/scenes/Start.kdl", invalid));
-    REQUIRE(!exists("real/.chibi"));
-
-    project("real-old", CHIBI_PROJECT_VERSION - 1);
-    char *manifest = contents("real-old/project.kdl");
-    char old[256];
-    path(old, "real-old");
-    const char *older[] = { compiler, "--project-root", old, "--check", NULL };
-    REQUIRE(tool_run(older, root, log_path) == 1);
-    bool kept = file_is("real-old/project.kdl", manifest);
-    free(manifest);
-    REQUIRE(kept);
-    return true;
-}
-
-TEST_CASE(compiler_explains_costs_without_writing)
-{
-    project("costs", CHIBI_PROJECT_VERSION);
-    char game[256], folder[256];
-    path(game, "costs");
-    path(folder, "costs/content/behaviors");
-    REQUIRE(!mkdir(folder, 0700));
-    path(folder, "costs/content/libraries");
-    REQUIRE(!mkdir(folder, 0700));
-    const char *source = "Costs :: behavior {\n"
-                         "    seen: int = 0;\n"
-                         "    on Begin :: () {\n"
-                         "        values: int[] = [1, 2];\n"
-                         "        seen = values[0];\n"
-                         "    }\n"
-                         "    on Tick :: () { seen = Shared.Value(); }\n"
-                         "}\n";
-    write_file("costs/content/behaviors/Costs.chibi", source);
-    const char *library = "Shared :: library {\n"
-                          "    Value :: () -> int {\n"
-                          "        values: int[] = [3, 4];\n"
-                          "        return values[0];\n"
-                          "    }\n"
-                          "}\n";
-    write_file("costs/content/libraries/Shared.chibi", library);
-    char *manifest = contents("costs/project.kdl");
-    char *scene = contents("costs/content/scenes/Start.kdl");
-    const char *explain[] = { compiler,  "--project-root",  game,
-                              "--check", "--explain-costs", NULL };
-    REQUIRE(tool_run(explain, root, log_path) == 0);
-    char *text = contents("output.log");
-    bool named = strstr(text, "Costs.chibi") && strstr(text, "allocation");
-    free(text);
-    REQUIRE(named);
-
-    const char *json[] = { compiler,          "--project-root", game, "--check",
-                           "--explain-costs", "--json",         NULL };
-    REQUIRE(tool_run(json, root, log_path) == 0);
-    yyjson_doc *document = yyjson_read_file(log_path, 0, NULL, NULL);
-    REQUIRE(document);
-    yyjson_val *report = yyjson_doc_get_root(document);
-    bool valid = yyjson_get_int(yyjson_obj_get(report, "version")) == 1 &&
-                 yyjson_equals_str(yyjson_obj_get(report, "mode"), "static");
-    yyjson_val *functions = yyjson_obj_get(report, "functions");
-    valid &= yyjson_is_arr(functions) && yyjson_arr_size(functions) > 0;
-    bool found = false, linked = false;
-    size_t index, count;
-    yyjson_val *function;
-    yyjson_arr_foreach(functions, index, count, function)
-    {
-        valid &= yyjson_is_bool(yyjson_obj_get(function, "traversal_complete"));
-        bool tick = yyjson_equals_str(yyjson_obj_get(function, "name"), "Tick");
-        yyjson_val *costs = yyjson_obj_get(function, "costs");
-        size_t cost_index, cost_count;
-        yyjson_val *cost;
-        yyjson_arr_foreach(costs, cost_index, cost_count, cost)
-        {
-            yyjson_val *origin = yyjson_obj_get(cost, "origin");
-            yyjson_val *location = yyjson_obj_get(origin, "source");
-            const char *file = yyjson_get_str(yyjson_obj_get(location, "path"));
-            found |= yyjson_equals_str(yyjson_obj_get(cost, "kind"), "allocation") &&
-                     yyjson_equals_str(yyjson_obj_get(cost, "status"), "possible") &&
-                     yyjson_is_str(yyjson_obj_get(cost, "reason")) && file &&
-                     strstr(file, "Costs.chibi") &&
-                     yyjson_get_int(yyjson_obj_get(location, "line")) > 0;
-            linked |= tick && file && strstr(file, "Shared.chibi") &&
-                      yyjson_equals_str(yyjson_obj_get(cost, "kind"), "allocation") &&
-                      yyjson_equals_str(yyjson_obj_get(cost, "status"), "possible") &&
-                      yyjson_get_int(yyjson_obj_get(location, "line")) == 3;
-        }
-    }
-    yyjson_doc_free(document);
-    REQUIRE(valid && found && linked);
-
-    const char *help[] = { compiler, "--help", NULL };
-    REQUIRE(tool_run(help, root, log_path) == 0);
-    text = contents("output.log");
-    bool documented = strstr(text, "--explain-costs [--json]") != NULL;
-    free(text);
-    REQUIRE(documented);
-    const char *invalid[][10] = {
-        { compiler, "--project-root", game, "--explain-costs", NULL },
-        { compiler, "--project-root", game, "--check", "--json", NULL },
-        { compiler, "--project-root", game, "--check", "--explain-costs", "--explain-costs", NULL },
-        { compiler, "--project-root", game, "--check", "--explain-costs", "--json", "--json", NULL },
-        { compiler, "--project-root", game, "--check", "--explain-costs", "--format", NULL },
-        { compiler, "--project-root", game, "--explain-costs", "--test", NULL },
-        { compiler, "--project-root", game, "--explain-costs", "--docs", NULL },
-        { compiler, "--project-root", game, "--check", "--explain-costs", "--output", "out/game.chibip", NULL }
-    };
-    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
-        REQUIRE(tool_run(invalid[i], root, log_path) == 2);
-    }
-    REQUIRE(file_is("costs/project.kdl", manifest));
-    REQUIRE(file_is("costs/content/scenes/Start.kdl", scene));
-    REQUIRE(file_is("costs/content/behaviors/Costs.chibi", source));
-    REQUIRE(file_is("costs/content/libraries/Shared.chibi", library));
-    free(manifest);
-    free(scene);
-    REQUIRE(!exists("costs/.chibi") && !exists("out"));
-
-    const char
-        *invalid_scene = "version 1\nname \"Start\"\n(array)entities {\n";
-    write_file("costs/content/scenes/Start.kdl", invalid_scene);
-    REQUIRE(tool_run(json, root, log_path) == 1);
-    REQUIRE(file_is("costs/content/scenes/Start.kdl", invalid_scene));
-    REQUIRE(!exists("costs/.chibi"));
-
-    char older[256];
-    path(older, "real-old");
-    char *old_manifest = contents("real-old/project.kdl");
-    const char *old[] = { compiler,  "--project-root",  older,
-                          "--check", "--explain-costs", NULL };
-    REQUIRE(tool_run(old, root, log_path) == 1);
-    bool kept = file_is("real-old/project.kdl", old_manifest);
-    free(old_manifest);
-    REQUIRE(kept && !exists("real-old/.chibi"));
-    return true;
 }
 
 /* version prints the build identity document beside the shaders, with the
@@ -1374,12 +1050,6 @@ TEST_CASE(public_cli_is_a_relocatable_ordinary_application)
     REQUIRE(file_is("output.log", "Hello, world!\n"));
     REQUIRE(!exists("program-sdk/.chibi"));
     REQUIRE(!exists("unrelated-program-cwd/.chibi"));
-
-    /* A valued option must not select run mode because its value is --run. */
-    project("--run", CHIBI_PROJECT_VERSION);
-    const char *check[] = { compiler, "--project-root", "--run", "--check", NULL };
-    REQUIRE(tool_run(check, root, log_path) == 0);
-    REQUIRE(!exists("--run/.chibi"));
     return true;
 }
 
@@ -2333,204 +2003,6 @@ static void web_fixture()
     write_file("share/chibi/licenses/LICENSE.txt", "license");
 }
 
-static bool loopback_available(int port)
-{
-    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    assert(socket_fd >= 0);
-    int enabled = 1;
-    assert(!setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof enabled));
-    struct sockaddr_in address = { .sin_family = AF_INET,
-                                   .sin_port = htons((uint16_t)port),
-                                   .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
-    bool available = !bind(socket_fd, (struct sockaddr *)&address, sizeof address);
-    close(socket_fd);
-    return available;
-}
-
-static int unused_loopback_port()
-{
-    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    assert(socket_fd >= 0);
-    struct sockaddr_in address = { .sin_family = AF_INET,
-                                   .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
-    assert(!bind(socket_fd, (struct sockaddr *)&address, sizeof address));
-    socklen_t size = sizeof address;
-    assert(!getsockname(socket_fd, (struct sockaddr *)&address, &size));
-    close(socket_fd);
-    return ntohs(address.sin_port);
-}
-
-TEST_CASE(export_interruption_reaps_children_and_removes_owned_resources)
-{
-    const char *directories[] = { "cancel-sdk",
-                                  "cancel-sdk/bin",
-                                  "cancel-sdk/share",
-                                  "cancel-sdk/share/chibi",
-                                  "cancel-sdk/share/chibi/shaders",
-                                  "cancel-sdk/share/chibi/licenses",
-                                  "cancel-player",
-                                  "cancel-player/compiler",
-                                  "cancel-output",
-                                  "cancel-temporary" };
-    for (size_t i = 0; i < sizeof directories / sizeof *directories; i++) {
-        directory(directories[i]);
-    }
-    REQUIRE(clone_program_file(built, "cancel-sdk/bin/chibi"));
-    char share[256], cli[256], bin[256], temporary[256], player[256], game[256],
-        output[256];
-    path(share, "cancel-sdk/share/chibi");
-    REQUIRE(copy_resource(built, "apps", share));
-    REQUIRE(copy_resource(built, "core", share));
-    path(cli, "cancel-sdk/bin/chibi");
-    path(bin, "cancel-sdk/bin");
-    path(temporary, "cancel-temporary");
-    path(player, "cancel-player");
-    path(output, "cancel-output/Game.app");
-    project("cancel-export-game", CHIBI_PROJECT_VERSION);
-    path(game, "cancel-export-game");
-    const char *sleeping = "#!/bin/sh\ntrap '' INT TERM\n"
-                           "/bin/sh -c 'trap \"\" INT TERM; while :; do "
-                           "/bin/sleep 1; done' &\n"
-                           "descendant=$!\nprintf 'EXPORT_READY %s %s "
-                           "READY_END\\n' \"$$\" \"$descendant\"\nwait\n";
-    write_file("cancel-sdk/bin/chibi-compile", sleeping);
-    write_file("cancel-player/compiler/chibi-compile.js", sleeping);
-    write_file("cancel-sdk/bin/chibi-player", "#!/bin/sh\nexit 0\n");
-    write_file("cancel-sdk/bin/node", "#!/bin/sh\nscript=$1\nshift\nexec /bin/sh \"$script\" \"$@\"\n");
-    write_file("cancel-sdk/share/chibi/engine.json", "{}\n");
-    write_file("cancel-sdk/share/chibi/shaders/fixture.glsl", "shader\n");
-    write_file("cancel-sdk/share/chibi/licenses/fixture.txt", "license\n");
-    write_file("cancel-player/index.html", "<title>cancel</title>\n");
-    write_file("cancel-player/chibi-player.js", "script\n");
-    write_file("cancel-player/chibi-player.wasm", "module\n");
-    const char *executables[] = { "cancel-sdk/bin/chibi-compile",
-                                  "cancel-sdk/bin/chibi-player",
-                                  "cancel-sdk/bin/node" };
-    for (size_t i = 0; i < sizeof executables / sizeof *executables; i++) {
-        char executable[256];
-        path(executable, executables[i]);
-        REQUIRE(!chmod(executable, 0700));
-    }
-    for (int i = 0; i < 4; i++) {
-        bool web_export = i >= 2;
-        int port = web_export ? unused_loopback_port() : 0;
-        char port_text[16];
-        snprintf(port_text, sizeof port_text, "%d", port);
-        const char *export_args[] = { cli,        "export", game,
-                                      "--output", output,   NULL };
-        const char *web_args[] = { cli,    "web",    game,      "--player",
-                                   player, "--port", port_text, NULL };
-        const char *old_path = getenv("PATH"), *old_tmp = getenv("TMPDIR");
-        char *saved_path = old_path ? xstrdup(old_path) : NULL;
-        char *saved_tmp = old_tmp ? xstrdup(old_tmp) : NULL;
-        assert(!setenv("PATH", bin, 1) && !setenv("TMPDIR", temporary, 1));
-        chibi_process process;
-        bool started = chibi_process_start(&process, web_export ? web_args : export_args, root, log_path);
-        if (saved_path) {
-            assert(!setenv("PATH", saved_path, 1));
-        } else {
-            assert(!unsetenv("PATH"));
-        }
-        if (saved_tmp) {
-            assert(!setenv("TMPDIR", saved_tmp, 1));
-        } else {
-            assert(!unsetenv("TMPDIR"));
-        }
-        free(saved_path);
-        free(saved_tmp);
-        REQUIRE(started);
-        tool_own_process(process.pid);
-        bool ready = watch_output(&process, 0, "READY_END\n");
-        int child = 0, descendant = 0;
-        char *text = tool_read(log_path);
-        const char *marker = text ? strstr(text, "EXPORT_READY ") : NULL;
-        bool known = ready && marker &&
-                     sscanf(marker, "EXPORT_READY %d %d", &child, &descendant) == 2 &&
-                     child > 0 && descendant > 0;
-        free(text);
-        int group = known ? getpgid(child) : 0;
-        known = known && (group == child || group == process.pid) &&
-                getpgid(descendant) == group;
-        bool prepared = known && (web_export ? entries("cancel-temporary") == 1 &&
-                                                   !loopback_available(port)
-                                             : entries("cancel-output") == 1);
-        int interrupt = i % 2 ? SIGTERM : SIGINT;
-        bool signalled = prepared && !kill(process.pid, interrupt);
-        double deadline = chibi_process_now() + 5;
-        while (signalled && !chibi_process_poll(&process) &&
-               chibi_process_now() < deadline) {
-            usleep(10000);
-        }
-        bool exited = process.finished && process.status == 128 + interrupt;
-        deadline = chibi_process_now() + 2;
-        bool child_retired = false, descendant_retired = false;
-        bool group_retired = false, root_retired = false, gone = false;
-        do {
-            child_retired |= known && pid_gone(child);
-            descendant_retired |= known && pid_gone(descendant);
-            group_retired |= known && group_gone(group);
-            root_retired |= group_gone(process.pid);
-            gone = known && child_retired && descendant_retired &&
-                   (group != child || group_retired);
-            if (gone) {
-                break;
-            }
-            usleep(10000);
-        } while (chibi_process_now() < deadline);
-        bool resources = (web_export ? entries("cancel-temporary") == 0 && loopback_available(port) : entries("cancel-output") == 0);
-        if (known && !gone && !group_retired) {
-            kill(-group, SIGKILL);
-        }
-        if (!process.finished && !root_retired) {
-            kill(-process.pid, SIGKILL);
-        }
-        deadline = chibi_process_now() + 3;
-        while (!chibi_process_poll(&process) && chibi_process_now() < deadline) {
-            usleep(10000);
-        }
-        deadline = chibi_process_now() + 2;
-        do {
-            root_retired |= group_gone(process.pid);
-            child_retired |= known && pid_gone(child);
-            descendant_retired |= known && pid_gone(descendant);
-            group_retired |= known && group_gone(group);
-            if (root_retired && (!known || (child_retired && descendant_retired &&
-                                            (group != child || group_retired)))) {
-                break;
-            }
-            usleep(10000);
-        } while (chibi_process_now() < deadline);
-        bool cleanup = process.finished && root_retired &&
-                       (!known || (child_retired && descendant_retired &&
-                                   (group != child || group_retired)));
-        tool_release_process(process.pid);
-        bool passed = prepared && signalled && exited && gone && resources && cleanup;
-        if (!passed) {
-            fprintf(
-                stderr,
-                "export web=%d signal=%d ready=%d child=%d descendant=%d "
-                "group=%d prepared=%d status=%d exited=%d gone=%d resources=%d "
-                "cleanup=%d\n",
-                web_export,
-                interrupt,
-                ready,
-                child,
-                descendant,
-                group,
-                prepared,
-                process.status,
-                exited,
-                gone,
-                resources,
-                cleanup
-            );
-        }
-        watch_failure_log(passed);
-        REQUIRE(passed);
-    }
-    return true;
-}
-
 /* chibi web for the CLI project on port, with the fake node first on PATH and
  * TMPDIR in the fixture, either started into *process or run to its status. */
 static int web(const char *port, chibi_process *process)
@@ -2602,46 +2074,6 @@ TEST_CASE(web_serves_the_export_until_stopped)
     return true;
 }
 
-/* web fails, leaving nothing behind, when its port is taken or the export
- * fails; it needs --player and a valid port. */
-TEST_CASE(web_fails_without_leaving_a_folder)
-{
-    web_fixture();
-    int bound = 0, taken = socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in address = { .sin_family = AF_INET,
-                                   .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
-    socklen_t size = sizeof address;
-    REQUIRE(taken >= 0 && !bind(taken, (struct sockaddr *)&address, sizeof address));
-    REQUIRE(!listen(taken, 1) && !getsockname(taken, (struct sockaddr *)&address, &size));
-    bound = ntohs(address.sin_port);
-    char port[16];
-    snprintf(port, sizeof port, "%d", bound);
-    int status = web(port, NULL);
-    close(taken);
-    REQUIRE(status == 1 && entries("tmp") == 0);
-
-    write_file("game with spaces/fail", "");
-    status = web("0", NULL);
-    char file[256];
-    path(file, "game with spaces/fail");
-    REQUIRE(!unlink(file));
-    REQUIRE(status == 1 && entries("tmp") == 0);
-
-    char player[256];
-    path(player, "player");
-    const char *missing[] = { launcher, "web", "game with spaces", NULL };
-    REQUIRE(tool_run(missing, root, log_path) == 2);
-    const char *range[] = { launcher, "web",   "--player", player,
-                            "--port", "70000", NULL };
-    REQUIRE(tool_run(range, root, log_path) == 2);
-    const char *twice[] = { launcher, "web",    "--player", player, "--port",
-                            "1",      "--port", "2",        NULL };
-    REQUIRE(tool_run(twice, root, log_path) == 2);
-    const char *help[] = { launcher, "web", "--help", NULL };
-    REQUIRE(tool_run(help, root, log_path) == 0);
-    return true;
-}
-
 /* Without its compiler, each command that needs one says so and fails
  * rather than pretending the project is fine. */
 TEST_CASE(commands_fail_without_the_compiler)
@@ -2651,20 +2083,11 @@ TEST_CASE(commands_fail_without_the_compiler)
     path(aside, "bin/chibi-compile.aside");
     path(output, "missing.log");
     REQUIRE(!rename(program, aside));
-    const char *commands[][4] = {
-        { launcher, "check", "game with spaces", NULL },
-        { launcher, "build", "game with spaces", NULL },
-    };
-    bool failed = true;
-    for (size_t i = 0; i < sizeof commands / sizeof *commands; i++) {
-        failed = failed && tool_run(commands[i], root, output) != 0 &&
-                 file_has("missing.log", "chibi-compile");
-    }
     const char *tests[] = { launcher, "test", "package-tests", NULL };
     bool shared = tool_run(tests, root, output) == 0 &&
                   file_has("missing.log", "PASS facts.Passes");
     REQUIRE(!rename(aside, program));
-    REQUIRE(failed && shared);
+    REQUIRE(shared);
     return true;
 }
 
@@ -2681,11 +2104,6 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     length = snprintf(built, sizeof built, "%s/chibi", directory);
     assert(length > 0 && length < (int)sizeof built);
     free(directory);
-    RUN_TEST_CASE(build_and_run_use_the_prepared_project);
-    RUN_TEST_CASE(check_prepares_without_writing);
-    RUN_TEST_CASE(check_forwards_cost_explanations);
-    RUN_TEST_CASE(compiler_check_writes_nothing);
-    RUN_TEST_CASE(compiler_explains_costs_without_writing);
     RUN_TEST_CASE(version_reads_the_build_identity);
     RUN_TEST_CASE(version_of_the_built_launcher);
     RUN_TEST_CASE(doctor_reports_each_capability);
@@ -2707,9 +2125,7 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(program_cancellation_stops_busy_main_and_tests);
     RUN_TEST_CASE(program_process_run_stops_children_when_only_parent_is_signalled);
     RUN_TEST_CASE(program_process_run_hands_the_terminal_to_its_child);
-    RUN_TEST_CASE(export_interruption_reaps_children_and_removes_owned_resources);
     RUN_TEST_CASE(web_serves_the_export_until_stopped);
-    RUN_TEST_CASE(web_fails_without_leaving_a_folder);
     RUN_TEST_CASE(commands_fail_without_the_compiler);
     tool_remove_tree(root);
 }
@@ -2728,75 +2144,6 @@ TEST_CASE(installed_identity_and_doctor)
     REQUIRE(tool_run(doctor, root, output) == 0);
     REQUIRE(file_has("installed.log", "\ncompiler: supported ("));
     REQUIRE(file_has("installed.log", "\nplayer: supported ("));
-    return true;
-}
-
-/* Copy the guide's complete project, rather than repairing its version or
- * filling in missing assets in the test. */
-static bool documented_project(const char *relative)
-{
-    char *guide = tool_read(CHIBI_SOURCE_ROOT "/docs/guide/toolchain.md");
-    if (!guide) {
-        return false;
-    }
-    project(relative, CHIBI_PROJECT_VERSION);
-    char folder[256];
-    snprintf(folder, sizeof folder, "%s/content/prototypes", relative);
-    directory(folder);
-    snprintf(folder, sizeof folder, "%s/content/behaviors", relative);
-    directory(folder);
-    static const char *const files[] = { "project.kdl",
-                                         "content/scenes/Start.kdl",
-                                         "content/prototypes/Player.kdl",
-                                         "content/prototypes/View.kdl",
-                                         "content/input.kdl",
-                                         "content/behaviors/Move.chibi" };
-    bool copied = true;
-    for (size_t i = 0; copied && i < sizeof files / sizeof *files; i++) {
-        char heading[256];
-        snprintf(heading, sizeof heading, "\n### %s\n", files[i]);
-        const char *section = strstr(guide, heading);
-        const char *fence = section ? strstr(section, "\n```") : NULL;
-        const char *begin = fence ? strchr(fence + 4, '\n') : NULL;
-        const char *end = begin ? strstr(++begin, "\n```") : NULL;
-        copied = end != NULL;
-        if (!copied) {
-            fprintf(stderr, "toolchain guide lacks a complete %s example\n", files[i]);
-            break;
-        }
-        size_t size = (size_t)(end - begin) + 1;
-        char *text = xmalloc(size + 1);
-        memcpy(text, begin, size);
-        text[size] = 0;
-        char file[256];
-        snprintf(file, sizeof file, "%s/%s", relative, files[i]);
-        write_file(file, text);
-        free(text);
-    }
-    free(guide);
-    return copied;
-}
-
-TEST_CASE(installed_project_commands)
-{
-    REQUIRE(documented_project("installed"));
-    char game[256], output[256], site[256];
-    path(game, "installed");
-    path(output, "installed.log");
-    const char *check[] = { launcher, "check", game, NULL };
-    REQUIRE(tool_run(check, root, output) == 0);
-    REQUIRE(!exists("installed/.chibi"));
-    const char *build[] = { launcher, "build", game, NULL };
-    REQUIRE(tool_run(build, root, output) == 0);
-    REQUIRE(exists("installed/.chibi/build/game.chibip"));
-    path(site, "exported");
-    const char *export[] = { launcher, "export", game, "--output", site, NULL };
-    REQUIRE(tool_run_within(export, root, output, 30) == 0);
-#ifdef __APPLE__
-    REQUIRE(exists("exported.app/Contents/Resources/game.chibip"));
-#else
-    REQUIRE(exists("exported/data/game.chibip"));
-#endif
     return true;
 }
 
@@ -2900,132 +2247,13 @@ void test_tool_chibi_cli_process(const char *binary, const char *self)
     setup_installed(binary);
     RUN_TEST_CASE(program_process_run_stops_children_when_only_parent_is_signalled);
     RUN_TEST_CASE(program_process_run_hands_the_terminal_to_its_child);
-    RUN_TEST_CASE(export_interruption_reaps_children_and_removes_owned_resources);
     tool_remove_tree(root);
-}
-
-/* The guide's idle game draws one centered 24x24 blue square. Decode the
- * pixels independently of the player, so a blank or wrong scene cannot pass. */
-static bool documented_frame(const char *relative)
-{
-#ifdef CHIBI_TEST_IMAGE_PREPARATION
-    char key[256], error[256];
-    snprintf(key, sizeof key, "content/%s", relative);
-    if (!render_image_mount_content(root, error, sizeof error)) {
-        return false;
-    }
-    render_image_loader loader = render_images_loader();
-    shader_image_view image = { 0 };
-    bool loaded = loader.read(loader.context, key, &image, error, sizeof error);
-    bool matches = loaded && image.width == 320 && image.height == 180;
-    for (int y = 0; matches && y < image.height; y++) {
-        for (int x = 0; matches && x < image.width; x++) {
-            bool square = x >= 148 && x < 172 && y >= 78 && y < 102;
-            const unsigned char *pixel = image.pixels + (y * image.width + x) * 4;
-            matches = abs(pixel[0] - (square ? 91 : 0)) <= 1 &&
-                      abs(pixel[1] - (square ? 110 : 0)) <= 1 &&
-                      abs(pixel[2] - (square ? 225 : 0)) <= 1 && pixel[3] == 255;
-        }
-    }
-    free((void *)image.pixels);
-    loader.clear(loader.context);
-    render_images_set_loader((render_image_loader){ 0 });
-    return matches;
-#else
-    (void)relative;
-    fprintf(stderr, "Export pixel assertions require an image-preparation tooling driver\n");
-    return false;
-#endif
-}
-
-/* A separate selector because these launches need a native graphics context.
- * Only prerequisites below this test's mkdtemp root are removed. The caller's
- * installation, source checkout and SDK build tree are never modified. */
-TEST_CASE(installed_export_runs_without_the_project)
-{
-    directory("prerequisites");
-    char prefix[256], sdk[256], cli[256], prerequisites[256];
-    strcpy(prefix, launcher);
-    *strrchr(prefix, '/') = 0;
-    *strrchr(prefix, '/') = 0;
-    path(prerequisites, "prerequisites");
-    path(sdk, "prerequisites/sdk");
-#ifdef __APPLE__
-    const char *clone[] = { "/bin/cp", "-cR", prefix, sdk, NULL };
-#else
-    const char *clone[] = { "/bin/cp", "-R", "--reflink=auto", prefix, sdk, NULL };
-#endif
-    REQUIRE(tool_run_within(clone, root, log_path, 30) == 0);
-    path(cli, "prerequisites/sdk/bin/chibi");
-    REQUIRE(documented_project("prerequisites/documented game"));
-    char game[256], output[256], destination[256], capture[256];
-    path(game, "prerequisites/documented game");
-    path(output, "export.log");
-    const char *check[] = { cli, "check", game, NULL };
-    REQUIRE(tool_run(check, root, output) == 0);
-    REQUIRE(!exists("prerequisites/documented game/.chibi"));
-    path(capture, "before.png");
-    const char *run[] = { cli,           "run",      game,      "--",
-                          "--hidden",    "--frames", "2",       "--fixed-dt",
-                          "0.016666667", "--size",   "320x180", "--capture",
-                          capture,       NULL };
-    REQUIRE(tool_run_within(run, root, output, 30) == 0);
-    REQUIRE(exists("prerequisites/documented game/.chibi/build/game.chibip"));
-    REQUIRE(file_has("export.log", "frames=2 steps=1\n"));
-    REQUIRE(documented_frame("before.png"));
-    path(destination, "exported game");
-    const char *export[] = { cli,         "export",    game, "--output",
-                             destination, "--archive", NULL };
-    REQUIRE(tool_run_within(export, root, output, 30) == 0);
-    directory("relocated");
-    char archive[256], original[256], extracted[256], relocated[256],
-        executable[256], cwd[256];
-#ifdef __APPLE__
-    path(archive, "exported game.app.tar.gz");
-    path(original, "exported game.app");
-    path(extracted, "relocated/exported game.app");
-    path(relocated, "relocated/Renamed.app");
-    path(executable, "relocated/Renamed.app/Contents/MacOS/My Game");
-#else
-    path(archive, "exported game.tar.gz");
-    path(original, "exported game");
-    path(extracted, "relocated/exported game");
-    path(relocated, "relocated/Renamed");
-    path(executable, "relocated/Renamed/My Game");
-#endif
-    path(cwd, "relocated");
-    const char *extract[] = { "tar", "-xzf", archive, "-C", cwd, NULL };
-    REQUIRE(tool_run_within(extract, root, output, 30) == 0);
-    REQUIRE(!rename(extracted, relocated));
-    tool_remove_tree(original);
-    REQUIRE(access(original, F_OK) != 0);
-#ifdef __APPLE__
-    const char *verify[] = { "codesign", "--verify", "--deep",
-                             "--strict", relocated,  NULL };
-    REQUIRE(tool_run(verify, root, output) == 0);
-#endif
-    tool_remove_tree(prerequisites);
-    REQUIRE(!exists("prerequisites"));
-    REQUIRE(access(cli, F_OK) != 0 && access(game, F_OK) != 0);
-    REQUIRE(!exists("prerequisites/documented game/.chibi/build"));
-    directory("unrelated");
-    path(cwd, "unrelated");
-    path(capture, "export.png");
-    const char *play[] = { executable,   "--hidden",    "--frames", "2",
-                           "--fixed-dt", "0.016666667", "--size",   "320x180",
-                           "--capture",  capture,       NULL };
-    REQUIRE(tool_run_within(play, cwd, output, 30) == 0);
-    REQUIRE(file_has("export.log", "frames=2 steps=1\n"));
-    REQUIRE(file_has("export.log", "size=320x180 hidden=true"));
-    REQUIRE(documented_frame("export.png"));
-    return true;
 }
 
 void test_tool_chibi_cli_export(const char *binary)
 {
     setup_installed(binary);
     RUN_TEST_CASE(installed_identity_and_doctor);
-    RUN_TEST_CASE(installed_export_runs_without_the_project);
     tool_remove_tree(root);
 }
 
@@ -3034,7 +2262,6 @@ void test_tool_chibi_cli_installed(const char *binary, const char *self)
     locate_driver(self);
     setup_installed(binary);
     RUN_TEST_CASE(installed_identity_and_doctor);
-    RUN_TEST_CASE(installed_project_commands);
     RUN_TEST_CASE(test_runs_shared_package_tests);
     RUN_TEST_CASE(program_main_runs_from_files_and_directories);
     RUN_TEST_CASE(authored_applications_use_independent_program_sessions);
@@ -3046,7 +2273,6 @@ void test_tool_chibi_cli_installed(const char *binary, const char *self)
     RUN_TEST_CASE(program_cancellation_stops_busy_main_and_tests);
     RUN_TEST_CASE(program_process_run_stops_children_when_only_parent_is_signalled);
     RUN_TEST_CASE(program_process_run_hands_the_terminal_to_its_child);
-    RUN_TEST_CASE(export_interruption_reaps_children_and_removes_owned_resources);
     RUN_TEST_CASE(installed_package_commands);
     tool_remove_tree(root);
 }

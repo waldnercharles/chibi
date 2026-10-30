@@ -1,6 +1,7 @@
 package package_paths_tests
 
 import paths "project:package_paths"
+import strings "core:strings"
 
 // Path normalization for package routes, from the former C resolver differential
 // (package_paths_chibi.c): the same requests, each with the result the C resolver gave.
@@ -133,4 +134,26 @@ AbsoluteIgnoresUnusedBase :: () {
 @test
 MissingPathIsInvalid :: () {
     Invalid("/workspace/project", true, "", false, "", false);
+}
+
+@test
+SegmentOver255Bytes :: () {
+    segment := strings.Repeat("a", 300);
+    Normalized("/workspace/project", true, segment, "/workspace/project", true, format_text("/workspace/project/{}", segment));
+}
+
+@test
+AbsolutePathAtTheLimit :: () {
+    longest := format_text("/{}", strings.Repeat("a", 4094));
+    Normalized("", false, longest, "", false, longest);
+}
+
+@test
+AbsolutePathOverTheLimit :: () {
+    Invalid("", false, format_text("/{}", strings.Repeat("a", 4095)), true, "", false);
+}
+
+@test
+JoinedLimitBeforeCollapse :: () {
+    Invalid("/", true, format_text(".{}", strings.Repeat("/", 4093)), true, "", false);
 }

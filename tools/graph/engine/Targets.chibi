@@ -616,15 +616,15 @@ Files :: (target: string) -> string[] {
             "test/language/syntax.c", "test/language/execution.c",
             "test/language/capture.c",
 
-            "test/language/incremental.c",
-            "test/language/modules.c", "test/language/native_calls.c",
+
+
             "test/language/ranges.c",
             "test/language/component_write_ir.c",
 
 
 
-            "test/language/incremental_benchmark.c", "test/language/headless.c",
-            "test/language/navigation.c",
+
+
             "test/language/field_runtime.c", "test/language/prototype.c",
             "test/language/ui.c", "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
             "test/language/packages.c", "test/language/package_syntax.c",
@@ -658,7 +658,7 @@ Files :: (target: string) -> string[] {
             "test/language/numeric.c",
             "test/parallel.c", "test/language/parallel.c",
 
-            "test/language/source_assets.c", "test/language/record_services.c"
+            "test/language/record_services.c"
         ];
     }
     if (target == "chibi_sdk_contracts") {
@@ -676,9 +676,6 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_scene_authoring_consumer") {
         return ["test/authoring/scene_hierarchy.c"];
-    }
-    if (target == "chibi_scene_snapshot_read_consumer") {
-        return ["test/authoring/scene_snapshot_read.c"];
     }
     if (target == "chibi_native_consumer") {
         return [
@@ -726,15 +723,13 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_source_runtime_consumer") {
         return [
             "test/runtime/whole_math.c", "test/runtime/whole_integer.c",
-            "test/runtime/whole_conversion.c", "test/runtime/owned_tick.c",
-            "test/runtime/parallel_tick.c", "test/runtime/whole_alias.c",
+            "test/runtime/whole_conversion.c",
             "test/runtime/persistent_store.c", "test/support/reflected_types.c"
         ];
     }
     if (target == "chibi_source_features_consumer") {
         return [
-            "test/runtime/source_features.c", "test/runtime/source_input_save.c",
-            "test/runtime/source_reductions.c", "test/tools/scheduler_benchmark.c",
+            "test/tools/scheduler_benchmark.c",
             "test/authoring/component_presentation.c"
         ];
     }
@@ -1353,7 +1348,7 @@ ToolConsumers :: () -> string[] {
     return [
         "chibi_sdk_contracts",
         "chibi_scene_consumer", "chibi_shader_bake_consumer", "chibi_scene_authoring_consumer",
-        "chibi_scene_snapshot_read_consumer", "chibi_native_consumer", "chibi_asset_values_consumer",
+        "chibi_native_consumer", "chibi_asset_values_consumer",
         "chibi_ui_document_consumer", "chibi_particle_consumer", "chibi_png_consumer",
         "chibi_project_document_consumer", "chibi_render_consumer", "chibi_image_preparation_consumer", "chibi_source_runtime_consumer",
         "chibi_source_features_consumer", "chibi_program_consumer"
@@ -2226,18 +2221,6 @@ pub Includes :: (target: string) -> string[] {
             "public/behavior_runtime", "public/execution", "public/tasks", "public/events"
         ];
     }
-    if (target == "chibi_scene_snapshot_read_consumer") {
-        return [
-            "build/test/tools/testing/include", "public/scene_authoring", "public/native_types",
-            "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
-            "public/source_catalog", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax",
-            "public/execution", "public/tasks", "public/native_capabilities", "public/reference_index",
-            "public/input_map", "public/input_action", "public/prototype_document",
-            "public/asset_values", "public/scene_document", "public/scene_runtime",
-            "public/behavior_runtime", "public/events"
-        ];
-    }
     if (target == "chibi_native_consumer") {
         return [
             "build/test/tools/testing/include", "public/player", "public/engine",
@@ -2579,9 +2562,6 @@ CommonSystemIncludes :: (target: string) -> string[] {
     if (target == "chibi_scene_authoring_consumer") {
         return ["public/math"];
     }
-    if (target == "chibi_scene_snapshot_read_consumer") {
-        return ["public/math", "third-party/include/chibi/vendor/tree_sitter/1"];
-    }
     if (target == "chibi_native_consumer") {
         return ["public/math", "third-party/include/chibi/vendor/tree_sitter/1"];
     }
@@ -2853,9 +2833,6 @@ pub Options :: (target: string) -> string[] {
         return ["-UNDEBUG"];
     }
     if (target == "chibi_scene_authoring_consumer") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "chibi_scene_snapshot_read_consumer") {
         return ["-UNDEBUG"];
     }
     if (target == "chibi_native_consumer") {
@@ -3387,7 +3364,7 @@ pub LinkedObjects :: (target: string) -> string[] {
         return [
             "chibi_scene_consumer",
             "chibi_sdk_contracts", "chibi_program_consumer", "chibi_shader_bake_consumer", "chibi_scene_authoring_consumer",
-            "chibi_scene_snapshot_read_consumer", "chibi_native_consumer",
+            "chibi_native_consumer",
             "chibi_asset_values_consumer", "chibi_ui_document_consumer", "chibi_particle_consumer",
             "chibi_png_consumer", "chibi_project_document_consumer", "chibi_render_consumer",
             "chibi_image_preparation_consumer", "chibi_source_runtime_consumer",

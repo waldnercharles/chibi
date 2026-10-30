@@ -766,6 +766,29 @@ Compile-time execution supports scalar and type values, authored calls, locals,
 assignment, `if` and `while`. It does not support arrays, `for`, closures or
 native calls. Each evaluation has a 65,536-step budget and a 128-call limit.
 
+### Choosing declarations per platform
+
+`when` at package scope keeps the declarations of the branch whose constant
+condition holds, so one source can pick a value or a function per target. The
+condition reads literals and the constants of imported packages; `core:target`
+supplies `Os`, `Arch` and `PointerBits` beside `Linux`, `Darwin`, `Windows`,
+`X86_64` and `Arm64`. Conditions combine `==`, `!=`, `<`, `<=`, `>`, `>=`,
+`and`, `or` and `not`. A branch that is not kept is parsed but never
+compiled.
+
+```chibi
+package files
+import target "core:target"
+
+when target.Os == target.Darwin {
+    StatSizeOffset: int : 96
+} else when target.Os == target.Windows {
+    StatSizeOffset: int : 72
+} else {
+    StatSizeOffset: int : 48
+}
+```
+
 ### Generic records
 
 A record declares type parameters after `struct`. `$T: Type` takes a type and

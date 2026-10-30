@@ -38,7 +38,8 @@ char *compiler_package_request_json(
 /* The arguments of CompileWithCatalog and CompileClosureWithCatalog: what
  * compiler_package_request_json lists, then the rich target (native
  * capabilities with their nominal ports), the catalog's native types and their
- * fields, the entity type's ID and each native's effect mask. `bindings` may
+ * fields, the entity type's ID, the platform (os, then arch, as core:target
+ * numbers them) and each native's effect mask. `bindings` may
  * be NULL when no action has to be linked. Malloc-owned; NULL on failure. */
 char *compiler_package_catalog_request_json(
     const char *project,

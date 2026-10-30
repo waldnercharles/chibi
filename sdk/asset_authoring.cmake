@@ -12,16 +12,10 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(chibi_scene_authoring PRIVATE -ffp-contract=off)
 endif()
 
-add_library(chibi_asset_authoring STATIC
-    "${CHIBI_SDK_ROOT}/src/assets/call_hierarchy.c"
-    "${CHIBI_SDK_ROOT}/src/authoring/native_prototype.c"
-    "${CHIBI_SDK_ROOT}/src/assets/prototype_instance.c"
-    "${CHIBI_SDK_ROOT}/src/assets/field_parameters.c")
+add_library(chibi_asset_authoring STATIC "${CHIBI_SDK_ROOT}/src/authoring/native_prototype.c")
 add_library(Chibi::asset_authoring ALIAS chibi_asset_authoring)
 set_target_properties(chibi_asset_authoring PROPERTIES EXPORT_NAME asset_authoring)
-chibi_sdk_headers(chibi_asset_authoring PUBLIC
-    assets/call_hierarchy.h
-    authoring/native_prototype.h assets/prototype_instance.h assets/field_parameters.h)
+chibi_sdk_headers(chibi_asset_authoring PUBLIC authoring/native_prototype.h)
 target_link_libraries(chibi_asset_authoring PUBLIC
     chibi_prototype_document chibi_reference_index chibi_field_catalog
     PRIVATE chibi_authoring chibi_asset_text chibi_scene_document chibi_ui_document

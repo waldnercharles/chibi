@@ -1074,7 +1074,8 @@ static void write_report(FILE *out)
         out,
         "\n## Functions\n\n*Rejected* is the text the producer's rejection "
         "covers; *Message* is what the producer said.\n\n"
-        "| Source | Function | Package | Through | Also | Rejected | Message |\n"
+        "| Source | Function | Package | Through | Also | Rejected | Message "
+        "|\n"
         "| --- | --- | --- | --- | --- | --- | --- |\n"
     );
     for (int i = 0; i < acount(rows); i++) {

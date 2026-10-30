@@ -58,7 +58,7 @@ struct compiler_host;
  * recovered compiler is kept there under a digest of the seed, the sources and
  * target, the prepared format and this host binary, and read back, framed and
  * checksummed, by a later load of the same inputs; a closure that fails any
- * check is dropped and recovered again. The check path never reads or writes
+ * check is ignored and recovered again. The check path never reads or writes
  * the cache, so recovery proofs always recover. Writes no other file.
  * Release the result with compiler_host_free. */
 struct compiler_host *compiler_bootstrap_load(const compiler_bootstrap *, char *error, size_t size);

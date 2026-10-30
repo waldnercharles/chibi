@@ -174,8 +174,9 @@ compiler version rather than by the binary.
 Each entry is framed with the SHA-256 of its payload, written to a temporary
 file and renamed into place under a publication lock, so a reader sees a whole
 entry or none. A load that finds an entry reads it back, checks its frame and
-loads it as a compiler for this target; any failure removes it and recovers
-again. This is safe where a snapshot of the sources would not be: the key
+loads it as a compiler for this target. An unusable entry is ignored; successful
+recovery atomically replaces it when publication succeeds. This is safe where
+a snapshot of the sources would not be: the key
 covers every input, nothing is trusted unread, and a stale entry is never
 named. It has no eviction, because a key changes only with a compiler edit;
 delete the directory to reclaim it. Windows does not cache. The recovery proofs

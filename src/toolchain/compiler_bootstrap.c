@@ -992,9 +992,8 @@ compiler_host *compiler_bootstrap_load(const compiler_bootstrap *b, char *error,
          * produce again, if this host still loads it. */
         host = kept ? loaded(kept, kept_length, &a, error, size) : NULL;
         free(kept);
-        if (!host && cache) {
-            binary_cache_remove(cache, key);
-        }
+        /* A publisher may have replaced the entry since our failed read.
+         * Successful recovery replaces it atomically under the write lock. */
         if (!host) {
             host = loaded(a.closure, a.closure_length, &a, error, size);
             if (host && changed) {

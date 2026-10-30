@@ -1,0 +1,9 @@
+package facts
+
+// math step takes edge before value and includes the edge
+@test
+Calls :: () {
+    r1: bool = Check();
+    e1: bool = true;
+    assert(r1 == e1, "Check call 1");
+}

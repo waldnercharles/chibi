@@ -1,0 +1,4 @@
+package facts
+One :: () -> int { for < i in 10..0 { } return 0; }
+
+// error: 2:20: Range bounds descend; for < takes the low bound first, as in for < i in 0..10

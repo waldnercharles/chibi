@@ -1,0 +1,61 @@
+package facts
+Point :: struct { x: int; y: int; }
+Shape :: union { Circle(radius: int) | Box(width: int, height: int) | Spot(at: Point)
+    | Named(name: string, sides: int[]) | Empty }
+Make :: (kind: int) -> Shape {
+    if (kind == 0) { return Shape.Circle(3); }
+    if (kind == 1) { return Shape.Box(2, 5); }
+    if (kind == 2) { p: Point = {x: 4, y: 6}; return Shape.Spot(p); }
+    if (kind == 3) { sides: int[] = [1, 2, 3]; return Shape.Named("tri", sides); }
+    return Shape.Empty;
+}
+Sum :: (p: Point) -> int { return p.x + p.y; }
+Area :: (shape: Shape) -> int {
+    switch shape {
+        case .Circle(radius): return radius * radius * 3;
+        case .Box(width, height): return width * height;
+        case .Spot(at): total := Sum(at); return total + at.x;
+        case .Named(name, sides):
+            total: int = 0;
+            for (side in sides) { total += side; }
+            if (name == "tri") { total += 100; }
+            return total;
+        case .Empty: return -1;
+    }
+    return -2;
+}
+Score :: (n: int) -> int {
+    total: int = 0;
+    i: int = 0;
+    while (i < n) { total += Area(Make(i)); i += 1; }
+    return total;
+}
+Kinds :: () -> int {
+    shapes: Shape[] = [Shape.Circle(1), Shape.Empty, Shape.Box(1, 1)];
+    count: int = 0;
+    for (shape in shapes) {
+        switch shape {
+            case .Empty: count += 10;
+            case .Box: count += 100;
+            case: count += 1;
+        }
+    }
+    return count;
+}
+Pair :: (a: Shape, b: Shape) -> int {
+    switch a {
+        case .Empty:
+            switch b {
+                case .Empty: return 2;
+                case: return 1;
+            }
+        case .Circle(radius): return radius;
+        case .Box(width, height): return width;
+        case .Spot(at): return at.x;
+        case .Named(name, sides): return length(sides);
+    }
+    return -1;
+}
+Nested :: () -> int {
+    return Pair(Shape.Empty, Shape.Empty) * 10 + Pair(Shape.Empty, Shape.Circle(1)) * 100 + Pair(Shape.Box(3, 4), Shape.Empty);
+}

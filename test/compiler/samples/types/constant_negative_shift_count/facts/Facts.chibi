@@ -1,0 +1,4 @@
+package facts
+Bad: int : 1 << -1;
+
+// error: 2:17: Shift count must not be negative

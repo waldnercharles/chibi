@@ -1,0 +1,22 @@
+package facts
+
+// integer switch
+@test
+Calls :: () {
+    a1_0: int = 61;
+    r1: int = Kind(a1_0);
+    e1: int = 1;
+    assert(r1 == e1, "Kind call 1");
+    a2_0: int = -62;
+    r2: int = Kind(a2_0);
+    e2: int = 2;
+    assert(r2 == e2, "Kind call 2");
+    a3_0: int = 7;
+    r3: int = Kind(a3_0);
+    e3: int = 0;
+    assert(r3 == e3, "Kind call 3");
+    a4_0: int[] = [32, 10, 32, 5];
+    r4: int = Spaces(a4_0);
+    e4: int = 102;
+    assert(r4 == e4, "Spaces call 4");
+}

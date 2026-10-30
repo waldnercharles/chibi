@@ -1,0 +1,11 @@
+package facts
+
+// bounds
+@test
+Calls :: () {
+    a1_0: int[] = [1, 2];
+    a1_1: int = 1;
+    r1: int = Pick(a1_0, a1_1);
+    e1: int = 2;
+    assert(r1 == e1, "Pick call 1");
+}

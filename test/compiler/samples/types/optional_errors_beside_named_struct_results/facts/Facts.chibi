@@ -1,0 +1,16 @@
+package facts
+Instant :: struct { ticks: i64; domain: u64; }
+Failure :: union { Denied | Platform(code: int) }
+Now :: (fail: bool) -> (instant: Instant, error: Failure?) {
+    if fail { return({ticks: 3, domain: 8}, Failure.Platform(17)); }
+    return({ticks: 12, domain: 8}, nil);
+}
+Use :: (fail: bool) -> int {
+    result := Now(fail);
+    error := result.error;
+    if error {
+        switch error { case .Denied: return -1; case .Platform(code): return int(result.instant.ticks) + code; }
+    }
+    return int(result.instant.ticks);
+}
+Empty :: () -> int { error: Failure? = nil; if error == nil { return 1; } return 0; }

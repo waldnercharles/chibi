@@ -1,0 +1,9 @@
+package facts
+
+// math smoothstep clamps values outside its edges
+@test
+Calls :: () {
+    r1: bool = Check();
+    e1: bool = true;
+    assert(r1 == e1, "Check call 1");
+}

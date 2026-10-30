@@ -1,0 +1,10 @@
+package facts
+
+// records
+@test
+Calls :: () {
+    a3_0: int = 5;
+    r3: int = Total(a3_0);
+    e3: int = 123;
+    assert(r3 == e3, "Total call 3");
+}

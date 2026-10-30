@@ -1,0 +1,7 @@
+package facts
+Inner :: struct { values: int[]; }
+Box :: struct($T: Type, $N: int) { item: T; }
+Pair :: struct($A: Type, $B: Type) { first: A; second: B; }
+Outer :: struct { box: Box(Inner, 2); pair: Pair(int, f64); }
+Second :: (o: Outer) -> int { return o.box.item.values[1]; }
+Main :: () -> int { o: Outer = {box: {item: {values: [7, 9]}}, pair: {first: 5, second: 2.5}}; nested: Box(Box(int, 1), 3) = {item: {item: 11}}; again: Box(int, 5) = {item: 1}; other: Box(int, 6) = {item: 2}; return Second(o) * 1000 + o.pair.first * 100 + nested.item.item * 10 + again.item + other.item; }

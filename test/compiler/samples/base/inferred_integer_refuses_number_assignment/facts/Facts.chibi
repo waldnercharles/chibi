@@ -1,0 +1,4 @@
+package facts
+One :: () -> int { x := 0; fraction := 0.5; x = fraction; return x; }
+
+// error: 2:45: assigned value differs from its local

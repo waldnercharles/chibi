@@ -1,0 +1,12 @@
+package facts
+V :: struct { x: number; y: f64; n: int; }
+Shape :: union { Circle(radius: f64) | Dot }
+Make :: (x: number, n: int) -> f64 {
+    v: V = {x: x, y: 2.5, n: n};
+    v.y += v.x;
+    v.x = n;
+    return v.y + v.x;
+}
+Area :: (r: f64) -> f64 {
+    switch Shape.Circle(r) { case .Circle(radius): return radius * radius; case .Dot: return 0.0; }
+}

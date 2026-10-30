@@ -1,0 +1,36 @@
+package facts
+
+// widened named projection
+@test
+Calls :: () {
+    r1: int = Use();
+    e1: int = 7;
+    assert(r1 == e1, "Use call 1");
+    r2: int = Alias();
+    e2: int = 7;
+    assert(r2 == e2, "Alias call 2");
+    a3_0: int = 127;
+    r3: int = Assigned(a3_0);
+    e3: int = 127;
+    assert(r3 == e3, "Assigned call 3");
+    a4_0: int = -128;
+    r4: int = Assigned(a4_0);
+    e4: int = -128;
+    assert(r4 == e4, "Assigned call 4");
+    a5_0: int = 300;
+    r5: int = Assigned(a5_0);
+    e5: int = 127;
+    assert(r5 == e5, "Assigned call 5");
+    a6_0: int = -129;
+    r6: int = Assigned(a6_0);
+    e6: int = -128;
+    assert(r6 == e6, "Assigned call 6");
+    a7_0: int = 300;
+    r7: int = Converted(a7_0);
+    e7: int = 127;
+    assert(r7 == e7, "Converted call 7");
+    a8_0: int = -129;
+    r8: int = Converted(a8_0);
+    e8: int = -128;
+    assert(r8 == e8, "Converted call 8");
+}

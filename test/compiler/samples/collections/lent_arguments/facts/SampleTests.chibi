@@ -1,0 +1,21 @@
+package facts
+
+// lent arguments
+@test
+Calls :: () {
+    r1: int = Writes();
+    e1: int = 2911;
+    assert(r1 == e1, "Writes call 1");
+    r2: int = Returns();
+    e2: int = 123;
+    assert(r2 == e2, "Returns call 2");
+    r3: int = Temporaries();
+    e3: int = 32;
+    assert(r3 == e3, "Temporaries call 3");
+    r4: int = Referenced();
+    e4: int = 15;
+    assert(r4 == e4, "Referenced call 4");
+    r5: int = ReferencedEarlier();
+    e5: int = 15;
+    assert(r5 == e5, "ReferencedEarlier call 5");
+}

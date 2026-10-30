@@ -1,0 +1,35 @@
+package facts
+Pair :: union { Row(xs: int[]) | None }
+Hold :: (window: view int[][], owner: ^(int[][])) -> int {
+    row := window[0];
+    owner^[0] = [9];
+    return row[0] * 10 + length(row);
+}
+Viewed :: () -> int {
+    values: int[][] = [[1, 2], [3]];
+    pointer := &values;
+    selected := pointer.view(0..<2);
+    if selected {
+        return Hold(selected, pointer);
+    }
+    return -1;
+}
+HoldPair :: (window: view Pair[], owner: ^(Pair[])) -> int {
+    pair := window[0];
+    owner^[0] = Pair.None;
+    switch pair {
+        case .Row(xs):
+            return length(xs);
+        case:
+            return -2;
+    }
+}
+ViewedPair :: () -> int {
+    values: Pair[] = [Pair.Row([1, 2]), Pair.None];
+    pointer := &values;
+    selected := pointer.view(0..<2);
+    if selected {
+        return HoldPair(selected, pointer);
+    }
+    return -1;
+}

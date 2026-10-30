@@ -1,0 +1,9 @@
+package facts
+
+// built results
+@test
+Calls :: () {
+    r1: int = Total();
+    e1: int = 1442391;
+    assert(r1 == e1, "Total call 1");
+}

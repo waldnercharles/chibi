@@ -1,0 +1,4 @@
+package facts
+One :: () -> string { return format_text("{}", 1); }
+
+// error: 2:48: a number needs an integer type here

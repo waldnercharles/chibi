@@ -1,0 +1,2 @@
+package facts
+Add :: (a: int, b: int) -> int { return a + b * 2 - (a - b) % 3; }

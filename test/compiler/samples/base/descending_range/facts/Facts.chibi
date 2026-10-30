@@ -1,0 +1,5 @@
+package facts
+Top :: 3;
+One :: () -> int { for i in Top..1 { } return 0; }
+
+// error: 3:20: Range bounds descend; count down with for <

@@ -1,0 +1,4 @@
+package facts
+Bad: u8 : -u8(1);
+
+// error: 2:11: Cannot negate an unsigned constant

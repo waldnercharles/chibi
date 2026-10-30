@@ -968,3 +968,267 @@ GenericSynchronous :: (forest: snapshot.SnapshotNode[], callables: Callable[], b
     }
     return GenericCheck.Valid;
 }
+
+// Parametric records. `Box :: struct($T: Type, $N: int) { item: T }` declares
+// a template, a type of kind TemplateDecl that no value has. Each distinct
+// application a package spells, `Box(int, 4)`, becomes one record of the
+// package: named by the application, with the template's fields read while
+// the type parameters name the arguments, as a `$T` function's body does.
+TemplateDecl: int : 16;
+
+// The document that holds syntax node `node`.
+DocumentOf :: (documents: snapshot.Document[], node: int) -> int {
+    index: int = 0;
+    while (index < length(documents)) {
+        if (node >= documents[index].node_start && node < documents[index].node_start + documents[index].node_count) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// The type an argument of a template names: a scalar, a record or union of
+// the package, or another application. Storage 0 when it names none.
+ArgumentType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], package: int,
+                 argument: int) -> ValueType {
+    none: ValueType = {storage: 0, container: 0, record: -1};
+    if (Is(forest, argument, "identifier") || Is(forest, argument, "type_name")) {
+        name := Text(forest, text, argument);
+        scalar := ScalarStorage(name);
+        if (scalar != 0) {
+            return {storage: scalar, container: 0, record: -1};
+        }
+        found := FindType(types, package, name);
+        if (found < 0) {
+            return none;
+        }
+        if (types[found].kind == RecordDecl) {
+            return {storage: StructStorage, container: 0, record: found};
+        }
+        if (types[found].kind == UnionDecl) {
+            return {storage: UnionStorage, container: 0, record: found};
+        }
+        if (types[found].kind == NativeDecl || types[found].kind == NamespaceDecl) {
+            return {storage: types[found].storage, container: 0, record: found};
+        }
+        return none;
+    }
+    if (Is(forest, argument, "call_expression") || Is(forest, argument, "type_application")) {
+        found := FindType(types, package, ApplicationName(forest, text, types, package, argument));
+        if (found < 0) {
+            return none;
+        }
+        return {storage: StructStorage, container: 0, record: found};
+    }
+    return none;
+}
+// Whether the parameter node of a template takes a type rather than a value.
+TypeParameter :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], parameter: int) -> bool {
+    document := DocumentOf(documents, parameter);
+    return document >= 0 && Text(forest, documents[document].text, Field(forest, parameter, "type")) == "Type";
+}
+// The child of type node `node` that applies a template, -1 for none.
+ApplicationNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    if (Is(forest, node, "type_application")) {
+        return node;
+    }
+    for (child in Members(forest, node)) {
+        if (Is(forest, child, "type_application")) {
+            return child;
+        }
+    }
+    return -1;
+}
+// Whether each argument of `application` has the shape of its parameter: a
+// type for a `Type` parameter, a number for any other.
+ApplicationFits :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], types: TypeDecl[],
+                    package: int, text: string, application: int) -> bool {
+    template := FindType(types, package, Text(forest, text, Field(forest, application, "function")));
+    parameters := Members(forest, Field(forest, types[template].node, "parameters"));
+    arguments := Members(forest, Field(forest, application, "arguments"));
+    index: int = 0;
+    while (index < length(arguments)) {
+        if (Is(forest, arguments[index], "number") == TypeParameter(forest, documents, parameters[index])) {
+            return false;
+        }
+        index += 1;
+    }
+    return true;
+}
+// The canonical name of an application of a template, `Box(int, 4)`, from
+// its arguments as they resolve. Empty when `application` applies no template
+// or an argument does not fit its parameter.
+ApplicationName :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], package: int,
+                    application: int) -> string {
+    function := Field(forest, application, "function");
+    if (function < 0) {
+        return "";
+    }
+    name := Text(forest, text, function);
+    template := FindType(types, package, name);
+    if (template < 0 || types[template].kind != TemplateDecl) {
+        return "";
+    }
+    parameters := Members(forest, Field(forest, types[template].node, "parameters"));
+    arguments := Members(forest, Field(forest, application, "arguments"));
+    if (length(parameters) != length(arguments)) {
+        return "";
+    }
+    spelled := "";
+    index: int = 0;
+    while (index < length(arguments)) {
+        argument := arguments[index];
+        piece := "";
+        if (Is(forest, argument, "number")) {
+            piece = Text(forest, text, argument);
+        } else {
+            resolved := ArgumentType(forest, text, types, package, argument);
+            if (resolved.storage == 0) {
+                return "";
+            }
+            piece = Text(forest, text, argument);
+            if (resolved.record >= 0) {
+                piece = types[resolved.record].type_name;
+            }
+        }
+        if (index > 0) {
+            spelled = format_text("{}, {}", spelled, piece);
+        } else {
+            spelled = piece;
+        }
+        index += 1;
+    }
+    return format_text("{}({})", name, spelled);
+}
+// The names that bind the type parameters of the template applied by
+// `application` to its arguments.
+ApplicationBindings :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], text: string,
+                        types: TypeDecl[], package: int, application: int) -> Name[] {
+    bound: Name[] = [];
+    template := FindType(types, package, Text(forest, text, Field(forest, application, "function")));
+    parameters := Members(forest, Field(forest, types[template].node, "parameters"));
+    arguments := Members(forest, Field(forest, application, "arguments"));
+    index: int = 0;
+    while (index < length(parameters)) {
+        if (TypeParameter(forest, documents, parameters[index])) {
+            resolved := ArgumentType(forest, text, types, package, arguments[index]);
+            document := DocumentOf(documents, parameters[index]);
+            type_name: Name = {owned: false, name: Text(forest, documents[document].text, Field(forest, parameters[index], "name")),
+                               place: GenericTypePlace, index: 0, storage: resolved.storage,
+                               container: resolved.container, record: resolved.record, writable: false, node: -1};
+            bound.append(type_name);
+        }
+        index += 1;
+    }
+    return bound;
+}
+Resolved :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Read(types: TypeDecl[], members: TypeMember[])
+}
+Instantiated :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Collected(types: TypeDecl[], members: TypeMember[], records: int[], files: int[], starts: int[],
+                counts: int[], bound: Name[])
+}
+// Adds a record for every application of a template that `files` spell, whose
+// arguments name types and values that exist. The instances' fields get
+// their placeholders now and their types in ResolveInstances, once every type
+// exists. An application inside another's arguments is found on a later pass.
+InstantiateRecords :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[], package: int,
+                       package_name: string, identity: string, input_types: TypeDecl[],
+                       input_members: TypeMember[]) -> Instantiated {
+    types := input_types;
+    members := input_members;
+    records: int[] = [];
+    record_files: int[] = [];
+    templates: bool = false;
+    for (declared in types) {
+        templates = templates || declared.kind == TemplateDecl;
+    }
+    starts: int[] = [];
+    counts: int[] = [];
+    all_bound: Name[] = [];
+    changed := templates;
+    passes: int = 0;
+    while (changed && passes < 64) {
+        changed = false;
+        passes += 1;
+        for (file in files) {
+            text := documents[file].text;
+            node := documents[file].node_start;
+            end := node + documents[file].node_count;
+            while (node < end) {
+                if (Is(forest, node, "type_application") || Is(forest, node, "call_expression")) {
+                    canonical := ApplicationName(forest, text, types, package, node);
+                    if (canonical != "" && FindType(types, package, canonical) < 0) {
+                        if (!ApplicationFits(forest, documents, types, package, text, node)) {
+                            return Instantiated.Failed(Diagnose(forest, node, file, "generic argument does not fit its parameter"));
+                        }
+                        template := FindType(types, package, Text(forest, text, Field(forest, node, "function")));
+                        bound := ApplicationBindings(forest, documents, text, types, package, node);
+                        declared: TypeDecl = {name: canonical, type_name: format_text("{}.{}", package_name, canonical),
+                                              package: package, node: types[template].node, kind: RecordDecl,
+                                              first: length(members), count: 0, size: 0, parent: -1, storage: 0,
+                                              id: binding.ID("package-symbol", format_text("{}:{}:{}", identity, TypeKind, canonical)),
+                                              layout: 0, component: 0, key: 0, value_storage: 0, value_container: 0,
+                                              value_record: -1, error: false};
+                        body := Field(forest, types[template].node, "body");
+                        template_document := DocumentOf(documents, types[template].node);
+                        for (item in Members(forest, body)) {
+                            field: TypeMember = {name: Text(forest, documents[template_document].text, Field(forest, item, "name")),
+                                                 storage: 0, container: 0, record: -1, offset: 0, writable: true,
+                                                 c_string: false, constant: false, read: -1, read_key: ""};
+                            members.append(field);
+                        }
+                        declared.count = length(members) - declared.first;
+                        if (declared.count == 0) {
+                            return Instantiated.Failed(Diagnose(forest, node, file, "record needs a field"));
+                        }
+                        types.append(declared);
+                        records.append(length(types) - 1);
+                        record_files.append(template_document);
+                        starts.append(length(all_bound));
+                        counts.append(length(bound));
+                        all_bound.extend(bound);
+                        changed = true;
+                    }
+                }
+                node += 1;
+            }
+        }
+    }
+    return Instantiated.Collected(types, members, records, record_files, starts, counts, all_bound);
+}
+// Reads the field types of the instances InstantiateRecords added, with the
+// type parameters bound to the arguments. A field that fails to read is
+// reported at the template's field.
+ResolveInstances :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], links: graph.Binding[],
+                     package: int, input_types: TypeDecl[], input_members: TypeMember[], records: int[],
+                     files: int[], starts: int[], counts: int[], bound: Name[]) -> Resolved {
+    types := input_types;
+    members := input_members;
+    at: int = 0;
+    while (at < length(records)) {
+        record := records[at];
+        file := files[at];
+        names := Aliases(links, file);
+        names.extend(slice(bound, starts[at], counts[at]));
+        index := types[record].first;
+        for (field_node in Members(forest, Field(forest, types[record].node, "body"))) {
+            resolved := ReadType(forest, documents[file].text, &types, names, package, Field(forest, field_node, "type"));
+            if (!RecordFieldType(types, resolved)) {
+                return Resolved.Failed(Diagnose(forest, field_node, file,
+                                                "record fields require a scalar, pointer, record, union or array of those types"));
+            }
+            field := members[index];
+            field.storage = resolved.storage;
+            field.container = resolved.container;
+            field.record = resolved.record;
+            members[index] = field;
+            index += 1;
+        }
+        at += 1;
+    }
+    return Resolved.Read(types, members);
+}

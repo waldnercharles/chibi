@@ -3,11 +3,13 @@
 #include "authoring/asset_compiler_host.h"
 #include "runtime/native_prepared.h"
 #include "support/array.h"
+#include "support/sha256.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_host.h"
 #include "toolchain/compiler_target.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -200,6 +202,80 @@ static bool *reachable_files(
     return keep;
 }
 
+#ifdef _WIN32
+static char *collections_salt(const source_package_snapshot_options *)
+{
+    return NULL;
+}
+#else
+#include <sys/stat.h>
+/* Adds the path, size and modification time of every file below `directory`
+ * with an inode number, in sorted order: the compile reads collection files the
+ * request only names by root, so the key must change when one of them does. */
+static int by_name(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+static void add_tree(sha256 *state, const char *directory)
+{
+    DIR *open = opendir(directory);
+    if (!open) {
+        return;
+    }
+    char **names = NULL;
+    for (struct dirent *entry; (entry = readdir(open));) {
+        if (entry->d_name[0] != '.') {
+            apush(names, xstrdup(entry->d_name));
+        }
+    }
+    closedir(open);
+    qsort(names, (size_t)acount(names), sizeof *names, by_name);
+    for (int i = 0; i < acount(names); i++) {
+        size_t size = strlen(directory) + strlen(names[i]) + 2;
+        char *path = xmalloc(size);
+        snprintf(path, size, "%s/%s", directory, names[i]);
+        struct stat info;
+        if (!stat(path, &info)) {
+            if (S_ISDIR(info.st_mode)) {
+                sha256_add(state, path, strlen(path) + 1);
+                add_tree(state, path);
+            } else {
+                char line[96];
+                int length = snprintf(
+                    line,
+                    sizeof line,
+                    " %lld %lld %llu\n",
+                    (long long)info.st_size,
+                    (long long)info.st_mtime,
+                    (unsigned long long)info.st_ino
+                );
+                sha256_add(state, path, strlen(path) + 1);
+                sha256_add(state, line, (size_t)length);
+            }
+        }
+        free(path);
+        free(names[i]);
+    }
+    afree(names);
+}
+static char *collections_salt(const source_package_snapshot_options *inputs)
+{
+    sha256 state;
+    sha256_begin(&state);
+    for (int i = 0; i < inputs->collection_count; i++) {
+        sha256_add(
+            &state,
+            inputs->collections[i].name,
+            strlen(inputs->collections[i].name) + 1
+        );
+        add_tree(&state, inputs->collections[i].root);
+    }
+    char *digest = xmalloc(65);
+    sha256_end(&state, digest);
+    return digest;
+}
+#endif
+
 package_collection *package_compile(
     const source_package_snapshot_options *inputs,
     const char *first_path,
@@ -269,13 +345,16 @@ package_collection *package_compile(
     } else {
         asset_compiler_diagnostic diagnostic;
         size_t length = 0;
-        unsigned char *closure = asset_compiler_compile_closure(
+        char *salt = collections_salt(inputs);
+        unsigned char *closure = asset_compiler_compile_closure_cached(
             request,
             request_length,
+            salt,
             &length,
             NULL,
             &diagnostic
         );
+        free(salt);
         if (closure) {
             packages = read_closure(closure, length, native, backend, error);
         } else {

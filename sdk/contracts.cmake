@@ -157,7 +157,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_text_source "${CHIBI_SDK_ROOT}/src/support" chibi_support chibi_text_search)
     chibi_sdk_contract(chibi_ui_document "${CHIBI_SDK_ROOT}/src" chibi_text_source chibi_ui_document_values)
     chibi_sdk_contract(chibi_ui_authoring "${CHIBI_SDK_ROOT}/src/assets"
-        chibi_text_source chibi_ui_document chibi_ui_syntax chibi_syntax_runtime)
+        chibi_text_source chibi_ui_document)
     chibi_sdk_contract(chibi_scene_document "${CHIBI_SDK_ROOT}/src/assets"
         chibi_ecs chibi_asset_values chibi_scene_runtime chibi_asset_text chibi_support)
     chibi_sdk_contract(chibi_prototype_document "${CHIBI_SDK_ROOT}/src/assets"

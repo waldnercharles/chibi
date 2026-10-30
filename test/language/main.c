@@ -65,7 +65,6 @@ void test_language_component_write_layout();
 void test_language_build_workflow();
 void test_field_runtime();
 void test_prototype_document();
-void test_ui_authoring();
 void test_language_text_format();
 void test_language_compiler_artifact_write(const char *directory);
 void test_language_native_census(const char *report);
@@ -211,7 +210,6 @@ int main(int argc, char **argv)
     bool field_runtime = argc == 2 && !strcmp(argv[1], "--field-runtime");
     bool prototype = argc == 2 && !strcmp(argv[1], "--prototype-document");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
-    bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((!compiler_artifact && !execution && !execution_scope && !record_values &&
          !record_document && !record_services && !record_compatibility &&
          !compositional_records && !program && !program_session && !ranges &&
@@ -242,8 +240,8 @@ int main(int argc, char **argv)
          !package_core && !package_math && !package_math_benchmark &&
          !package_portable && !package_portable_compiler && !package_tests &&
          !argument_effects_chibi && !component_write && !component_write_layout &&
-         !build_workflow && !field_runtime && !prototype && !ui_authoring &&
-         !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !build_workflow && !field_runtime && !prototype && !text_format &&
+         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
@@ -319,7 +317,7 @@ int main(int argc, char **argv)
             ""
             ""
             "--field-runtime | --prototype-document "
-            "| --ui-authoring | "
+            "| "
             "--text-format | "
             ""
             "--record-values | "
@@ -355,8 +353,6 @@ int main(int argc, char **argv)
         test_language_record_values();
     } else if (text_format) {
         test_language_text_format();
-    } else if (ui_authoring) {
-        test_ui_authoring();
     } else if (prototype) {
         test_prototype_document();
     } else if (field_runtime) {

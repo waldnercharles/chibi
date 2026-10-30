@@ -737,7 +737,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND
     endforeach()
 endif()
 foreach(target IN LISTS CHIBI_SDK_TARGETS)
-    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
+    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             target_compile_options(${target} PRIVATE -Wno-experimental)

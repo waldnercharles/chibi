@@ -690,15 +690,6 @@ reflected types and fixed creation-default, detached-component, value snapshot,
 partial KDL and malformed-size operations. It has no files, worlds, processes or
 GPU work. The standalone consumer uses the public `Chibi::prototype_document`
 interface; it passes 21 assertions in 0.928 seconds under ASan/UBSan.
-`ui-authoring` selects two independently reviewed public SDK cases with fixed
-RML/RCSS snapshots, formatting and attribute-edit reparses, owned text after
-producer retirement, last-valid state after malformed RCSS, and exact event token
-ranges. It has no files, processes, worlds, or GPU work.
-Its independently reviewed fourth case adds typed catalog overrides, revision
-replacement invalidating an existing session, new default values and a rejected
-wrong parameter type on a fixed 3-by-3 bake. All four cases pass 267 assertions
-in 0.650 seconds with ASan/UBSan after the typed catalog extraction.
-
 `--source-presentation` is a native selector for seven small
 CPU cases: dedicated clone ownership after compiler retirement, explicit source
 edits, exact-source layout metadata, invalid drafts, native palette declarations,

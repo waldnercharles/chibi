@@ -79,3 +79,11 @@ Game projects are archived, so nothing in the toolchain reads project content an
 - `src/assets/project.c` (the manifest reader; `src/assets/project.h` keeps only `CHIBI_PROJECT_VERSION`), `input_map.c`, `physics_settings.c`, `prototype.c`, `scene_document.c`, `scenario_document.c`.
 - `src/authoring/native_prototype.c`, `scene_hierarchy.c`, `scene_snapshot.c`, `component_presentation.c` and `engine_components.kdl`, the Properties tabs of the engine's components.
 - `docs/scene-authoring.md`; tests `test/authoring/{prototype_documents,scene_hierarchy,project_document,component_presentation}.c`, `test/language/prototype.c`, two scenario cases of `test/tools/native.c` and four scene and prototype reader cases of `test/language/asset_compiler_host.c`.
+
+## KDL text and ckdl (src/support, third_party)
+
+With the project content readers archived and the bootstrap contract read as plain lines, nothing linked the KDL value layer:
+
+- `src/support/asset_text.c`: KDL documents to and from asset values; tests `test/support/asset_text.c`, `test/asset_fixture.h`.
+- `third_party/ckdl`: the vendored KDL parser, its license notices in the SDK and compiler runtime seed.
+- `src/authoring/parts_prepare.c`, `mesh_prepare.c` (the `shader_preparation` target): KDL mesh-part preparation; three render cases that prepared parts.

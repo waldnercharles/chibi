@@ -40,9 +40,9 @@ The GPL host-tool files are:
 - `src/host/build_main.c`
 - `src/host/build_values.c`, `src/host/build_values.h`
 - `src/host/chibi_main.c`, `src/host/compile_main.c`
-- `src/host/export.c`, `src/host/export.h`
+- `archive/src/host/export.c`, `archive/src/host/export.h`
 - `src/host/process.c`, `src/host/process.h`
-- `src/host/serve.c`, `src/host/serve.h`
+- `archive/src/host/serve.c`, `archive/src/host/serve.h`
 
 The LGPL library scope deliberately extends beyond `src/runtime/`. It
 includes execution backends, reusable language and authoring libraries,

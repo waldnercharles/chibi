@@ -43,6 +43,7 @@ void test_language_package_syntax();
 void test_language_package_syntax_chibi();
 void test_language_package_routes_chibi();
 void test_language_package_snapshot_chibi();
+void test_language_unit_algebra_chibi();
 void test_language_package_resolution();
 void test_language_package_imports();
 void test_language_host_packages();
@@ -170,6 +171,7 @@ int main(int argc, char **argv)
                                             !strcmp(argv[1], "--package-compiler-chibi-bootstrap");
     bool type_relations_chibi = argc == 2 &&
                                 !strcmp(argv[1], "--type-relations-chibi");
+    bool unit_algebra_chibi = argc == 2 && !strcmp(argv[1], "--unit-algebra-chibi");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool package_syntax_chibi = argc == 2 &&
@@ -219,12 +221,13 @@ int main(int argc, char **argv)
          !package_compiler_chibi_native && !native_census &&
          !native_census_flattening && !package_compiler_chibi_native_arguments &&
          !package_compiler_chibi_native_arguments_oracle && !type_relations_chibi &&
-         !package_resolution && !package_imports && !host_packages &&
-         !host_packages_compiler && !package_files && !package_core && !package_math &&
-         !package_math_benchmark && !package_portable && !package_portable_compiler &&
-         !package_tests && !argument_effects_chibi && !component_write &&
-         !component_write_layout && !build_workflow && !field_runtime &&
-         !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !unit_algebra_chibi && !package_resolution && !package_imports &&
+         !host_packages && !host_packages_compiler && !package_files &&
+         !package_core && !package_math && !package_math_benchmark &&
+         !package_portable && !package_portable_compiler && !package_tests &&
+         !argument_effects_chibi && !component_write && !component_write_layout &&
+         !build_workflow && !field_runtime && !text_format &&
+         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
@@ -274,6 +277,7 @@ int main(int argc, char **argv)
             ""
             ""
             "--type-relations-chibi | "
+            "--unit-algebra-chibi | "
             ""
             ""
             ""
@@ -412,6 +416,8 @@ int main(int argc, char **argv)
         test_language_native_census_flattening();
     } else if (type_relations_chibi) {
         test_language_type_relations_chibi();
+    } else if (unit_algebra_chibi) {
+        test_language_unit_algebra_chibi();
     } else if (package_resolution) {
         test_language_package_resolution();
     } else if (package_imports) {

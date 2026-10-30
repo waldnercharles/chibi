@@ -12,6 +12,7 @@ pub Parts :: struct {
     file: string;
 }
 
+@error
 pub Error :: struct {
     kind: int;
     offset: int;

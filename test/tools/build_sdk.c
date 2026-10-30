@@ -743,7 +743,8 @@ static bool receipts_match(const char *prefix)
         if (!in_core) {
             join(original, original, name);
         }
-        same = file_digest(path, digest) && file_digest(original, expected) && !strcmp(digest, expected);
+        same = file_digest(path, digest) && file_digest(original, expected) &&
+               !strcmp(digest, expected);
         if (!same) {
             fprintf(stderr, "installed compiler source differs from the checked-out source: %s\n", path);
         }

@@ -2,20 +2,20 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "36bfe1cc491fa7124d287aa35190e69897a17717",
+  "revision": "0ed330d7fd627177017e72fa03b8f9183847296f",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 25444770,
-    "sha256": "cd9989557bd5f6f33eca29a99ba8a919d458169cf33216f62afab149cb396cd7"
+    "bytes": 25658351,
+    "sha256": "ea946c0589001b3d687fa5d83bcbf69b38969b4bcf0664c14775d3c0f0c224bd"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 171433,
-      "sha256": "0fc10fb8c9c860f82e39ff031a7f5c1ff30513938fe3eacda3d09c123a25ff32"
+      "bytes": 173886,
+      "sha256": "e8e7091148e45ad56b0cf869961cc193a4f18ebf3dd9084489becd929c7b3549"
     },
     {
       "path": "package_compiler/Body.chibi",
@@ -34,8 +34,8 @@
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 338099,
-      "sha256": "f58e18b322a1a904c35db100286b78f408145ca3abb1891982c4f905dc27c870"
+      "bytes": 341016,
+      "sha256": "8ee7f38ce9d4a6b4c9c772af0266fb5ffacc290e285cd01a828fd7685943fa3b"
     },
     {
       "path": "package_compiler/Maps.chibi",
@@ -74,13 +74,13 @@
     },
     {
       "path": "package_compiler/Optional.chibi",
-      "bytes": 38601,
-      "sha256": "d2c9a2543fac494734d6cf4edd0f1915cf470daab1a7e9ce0b396c44ce53f02d"
+      "bytes": 41733,
+      "sha256": "b985a713b92e77022dcbb6009d9df7a7a232f45750a27bb93b9fbd35ae57412b"
     },
     {
       "path": "package_compiler/Sequences.chibi",
-      "bytes": 61787,
-      "sha256": "795df1b2fe83e5832635cfd1b93de62ffe403d77bfceda695935647244af93c8"
+      "bytes": 63086,
+      "sha256": "002c17e7e9d3b5f2d897309b31c18d240e4042bab0f7a220e6ef40125b1f8ef8"
     },
     {
       "path": "package_compiler/Queries.chibi",
@@ -104,8 +104,8 @@
     },
     {
       "path": "package_compiler/Math.chibi",
-      "bytes": 75510,
-      "sha256": "9be746659bf520ae57bb0eb0ec80edd5c0dbe88e3bf20d1723a9cdfd5da9f358"
+      "bytes": 75512,
+      "sha256": "4cfd20d91b8282d3c08f3dc4b69a695041f4574491d92514a0cb5aaf8a0dfbe4"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",

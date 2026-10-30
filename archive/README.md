@@ -61,3 +61,13 @@ No linked product (`chibi`, `chibi-compile`, `chibi-player`, the build and compi
 - `src/execution/inputs.c`: frame-argument reconstruction for debuggers.
 - `src/authoring/visual_prepare.c`: scene visual preparation for the archived project pipeline.
 - `src/support/code_lex.c`: the graph-expression lexer.
+
+## Studio-only SDK authoring (dead-code sweep)
+
+Only Studio called these; no engine product or test linked them. Studio, which is parked, loses its application catalog, UI loader and checker, palette ranking, call hierarchy, prototype instances, field parameter lists and model baking with them:
+
+- `src/authoring/application_catalog.c`, `studio_catalog.c` (the `studio_catalog` SDK target): Studio's native catalog.
+- `src/authoring/ui_loader.c`, `ui_check.c`: UI asset loading and RmlUi checking for the designer.
+- `src/assets/call_hierarchy.c`, `prototype_instance.c`, `field_parameters.c`: asset authoring services.
+- `src/support/text_rank.c`: command palette ranking.
+- `src/runtime/models/model_bake.c` (the `model_bake` SDK target): model preview baking.

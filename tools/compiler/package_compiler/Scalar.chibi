@@ -2194,6 +2194,30 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
     }
     return true;
 }
+// The names the ordinary compiler reads a function's retained locals by: each
+// a state of the module, at its position among them.
+ScalarRetainedNames :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], callable: Callable) -> Name[] {
+    names: Name[] = [];
+    table := types;
+    pending: int[] = [Field(forest, callable.node, "body")];
+    while (length(pending) > 0) {
+        node := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (Is(forest, node, "state_declaration")) {
+            declared := StateType(forest, text, &table, 0, node);
+            kept: Name = {owned: false, name: Text(forest, text, Field(forest, node, "name")), place: StatePlace,
+                          index: length(names), storage: declared.storage, container: 0, record: declared.record,
+                          writable: true, node: Field(forest, node, "name")};
+            names.append(kept);
+        }
+        child := forest[node].first_child;
+        while (child >= 0) {
+            pending.append(child);
+            child = forest[child].next_sibling;
+        }
+    }
+    return names;
+}
 // The ordinary compiler must emit the body with no semantic effects and none
 // of the storage or host machinery this subset cannot carry: no host calls
 // but a record's construction, copies and field writes and a union's
@@ -2203,7 +2227,7 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
 ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[], params: Param[],
                 types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
-                identities: u64[], aliases: Name[]) -> syntax.Diagnostic {
+                identities: u64[], aliases: Name[], retained: Name[]) -> syntax.Diagnostic {
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
@@ -2214,7 +2238,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
     // A written record or array parameter is a copy of its argument.
     mutated := MutatedNames(forest, text, Field(forest, callables[function].node, "body"), []);
     switch EmitBody(forest, text, callables[function].document, callables, params, &table, members, constants, natives, ports, identities,
-                    operators, makes, indices, aliases, key, solid, 0, 0, function, empty_names,
+                    operators, makes, indices, extend(aliases, retained), key, solid, 0, 0, function, empty_names,
                     mutated, indices, BodyContext.Known(writes), indices, ops, target, []) {
         case .Failed(diagnostic):
             return diagnostic;
@@ -2225,7 +2249,8 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                             "scalar proof requires a callable body");
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
-            if (effects != 0 || direct_write != 0 || !ScalarHosts(hosts, roots) ||
+            // A retained local reads and writes its state, which the facts carry.
+            if ((length(retained) == 0 && (effects != 0 || direct_write != 0)) || !ScalarHosts(hosts, roots) ||
                 !ScalarCells(cells, calls, hosts)) {
                 return Diagnose(forest, Field(forest, callables[function].node, "body"), 0,
                                 "scalar proof requires known effect-free scalar execution");
@@ -2289,7 +2314,8 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
             used = GenericConstants(forest, constants, generic_bindings, function, callables[function], documents);
         }
         emitted := ScalarEmits(forest, text, key, callables, params, types, members, used, solid, function,
-                               ops, target, natives, ports, identities, aliases);
+                               ops, target, natives, ports, identities, aliases,
+                               ScalarRetainedNames(forest, text, types, callables[function]));
         if (emitted.message != "") {
             return ScalarOperands.Failed(emitted);
         }

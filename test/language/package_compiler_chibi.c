@@ -9211,6 +9211,14 @@ static bool scalar_retains_library_states()
         pin_value rows, emitted;
         REQUIRE(library_rows(b, source, &rows));
         const pin_array *array = rows.ptr;
+        if (array->count > 1 &&
+            scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_REJECTION_ROW) {
+            fprintf(
+                stderr,
+                "retained library rejected: %s\n",
+                pin_text(scalar_field(guard_row(&rows, 1), "text")).bytes
+            );
+        }
         REQUIRE(array->count > 2 && scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_DOCUMENT_ROW);
         REQUIRE(emit_bytes(b, "LinuxX64", &rows, &emitted));
         const pin_array *bytes = emitted.ptr;

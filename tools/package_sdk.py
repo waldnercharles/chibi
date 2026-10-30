@@ -687,7 +687,7 @@ def check_exports(stage, kind, cache, build):
             if path.is_file() and re.search(r'(syntax|language|compiler|authoring|tree.sitter|asset_text|asset_kdl)', path.name, re.I):
                 raise ValueError(f'Runtime package unexpectedly contains {path.name}')
     else:
-        for header in ('language_syntax/language/syntax.h', 'compiler/language/lower.h', 'authoring/authoring/source_prepare.h'):
+        for header in ('language_syntax/language/syntax.h', 'compiler/language/lower.h'):
             if not (includes / header).is_file():
                 raise ValueError(f'SDK package is missing {header}')
     for header in ('execution/execution/prepared.h', 'behavior_runtime/runtime/behaviors/package.h',

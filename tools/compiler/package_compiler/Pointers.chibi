@@ -58,7 +58,7 @@ EnsurePointer :: (table: ^(TypeDecl[]), value: ValueType, nullable: bool, packag
                           node: -1, kind: PointerDecl, first: 0, count: 0, size: 0, parent: -1,
                           storage: PointerStorage, id: id, layout: 0, component: 0, key: key,
                           value_storage: value.storage, value_container: value.container,
-                          value_record: value.record};
+                          value_record: value.record, error: false};
     table.append(declared);
     return length(table^) - 1;
 }

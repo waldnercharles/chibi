@@ -34,6 +34,35 @@ TakeNameAlone :: (c: ^Cursor, n: ^(Node[])) -> int {
     return at;
 }
 
+// The attributes in front of a declaration become its leading children.
+TakeAttributes :: (c: ^Cursor, n: ^(Node[]), owner: int) {
+    while (!c.failed && Cur(c, n) == tk.At) {
+        attribute := New(n, "attribute");
+        Take(c, n, attribute, "");
+        Add(n, attribute, TakeNameAlone(c, n), "name");
+        Add(n, owner, attribute, "attribute");
+    }
+}
+
+// After a run of attributes, `[pub] Name :: struct` or `union` names a type
+// declaration; any other continuation is a function.
+AttributedTypeToken :: (c: ^Cursor, n: ^(Node[])) -> int {
+    at: int = 0;
+    while (Peek(c, n, at) == tk.At && IsName(Peek(c, n, at + 1))) {
+        at += 2;
+    }
+    if (Peek(c, n, at) == tk.Pub) {
+        at += 1;
+    }
+    if (IsName(Peek(c, n, at)) && Peek(c, n, at + 1) == tk.ColonColon) {
+        following := Peek(c, n, at + 2);
+        if (following == tk.Struct || following == tk.Union) {
+            return following;
+        }
+    }
+    return tk.At;
+}
+
 // One declaration of a package, a behavior, a library or a body.
 ParseDeclaration :: (c: ^Cursor, n: ^(Node[])) -> int {
     token := Cur(c, n);
@@ -41,13 +70,15 @@ ParseDeclaration :: (c: ^Cursor, n: ^(Node[])) -> int {
         return ParseImport(c, n);
     }
     if (token == tk.At) {
-        definition2 := New(n, "function_declaration");
-        while (!c.failed && Cur(c, n) == tk.At) {
-            attribute := New(n, "attribute");
-            Take(c, n, attribute, "");
-            Add(n, attribute, TakeNameAlone(c, n), "name");
-            Add(n, definition2, attribute, "attribute");
+        kind := AttributedTypeToken(c, n);
+        if (kind == tk.Struct) {
+            return ParseRecord(c, n, false);
         }
+        if (kind == tk.Union) {
+            return ParseUnion(c, n, false);
+        }
+        definition2 := New(n, "function_declaration");
+        TakeAttributes(c, n, definition2);
         Accept(c, n, definition2, tk.Pub, "visibility");
         return ParseFunctionRest(c, n, definition2);
     }
@@ -351,6 +382,7 @@ ParseParameter :: (c: ^Cursor, n: ^(Node[])) -> int {
 // `Name :: struct [(parameters)] { fields } [;]`.
 ParseRecord :: (c: ^Cursor, n: ^(Node[]), public: bool) -> int {
     record := New(n, "record_declaration");
+    TakeAttributes(c, n, record);
     Accept(c, n, record, tk.Pub, "visibility");
     TakeName(c, n, record, "name");
     Expect(c, n, record, tk.ColonColon, "");
@@ -380,6 +412,7 @@ ParseRecord :: (c: ^Cursor, n: ^(Node[]), public: bool) -> int {
 // `Name :: union { Variant(fields) | "literal" | ... } [;]`.
 ParseUnion :: (c: ^Cursor, n: ^(Node[]), public: bool) -> int {
     declaration := New(n, "union_declaration");
+    TakeAttributes(c, n, declaration);
     Accept(c, n, declaration, tk.Pub, "visibility");
     TakeName(c, n, declaration, "name");
     Expect(c, n, declaration, tk.ColonColon, "");

@@ -441,6 +441,7 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const target_in
         yyjson_mut_obj_add_uint(doc, type, "component", t->component ? t->component_id : 0);
         yyjson_mut_obj_add_bool(doc, type, "relationship", false);
         yyjson_mut_obj_add_uint(doc, type, "traits", 0);
+        yyjson_mut_obj_add_bool(doc, type, "error", script_catalog_type_contains_error(catalog, t->type));
         yyjson_mut_obj_add_uint(doc, type, "first", first);
         yyjson_mut_obj_add_int(doc, type, "count", t->field_count);
         first += (size_t)t->field_count;
@@ -482,6 +483,7 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const target_in
             (relationship->exclusive ? ECS_REL_EXCLUSIVE : 0) |
                 (relationship->traversable ? ECS_REL_TRAVERSABLE : 0)
         );
+        yyjson_mut_obj_add_bool(doc, type, "error", false);
         yyjson_mut_obj_add_uint(doc, type, "first", first);
         yyjson_mut_obj_add_int(doc, type, "count", 0);
     }

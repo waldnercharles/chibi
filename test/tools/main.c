@@ -484,13 +484,13 @@ int main(int argc, char **argv)
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
 #endif
     if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
-        !collab && !unit && !web_storage &&
-        !wasm_browser && !query_benchmark && !scene && !native_values && !arena &&
-        !types && !box3d && !mesh_files && !model_import && !model_graphs &&
-        !model_catalog && !shader_graphs && !persistent_store && !whole_math &&
-        !whole_integer && !whole_conversion && !whole_select && !system_schedule &&
-        !scheduler_benchmark && !source_systems && !source_query_rows &&
-        !graph_document && !graph_presentation && !graph_functions && !vector_nodes) {
+        !collab && !unit && !web_storage && !wasm_browser && !query_benchmark &&
+        !scene && !native_values && !arena && !types && !box3d && !mesh_files &&
+        !model_import && !model_graphs && !model_catalog && !shader_graphs &&
+        !persistent_store && !whole_math && !whole_integer && !whole_conversion &&
+        !whole_select && !system_schedule && !scheduler_benchmark &&
+        !source_systems && !source_query_rows && !graph_document &&
+        !graph_presentation && !graph_functions && !vector_nodes) {
         fprintf(
             stderr,
             "Usage: %s [--collab | "

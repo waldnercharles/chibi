@@ -110,6 +110,7 @@ static char *tests_package(const source_package_snapshot_options *inputs)
     const char *previous = NULL;
     size_t previous_length = 0;
     int imports = 0;
+    bool root_imported = false;
     for (int i = 0; i < inputs->file_count; i++) {
         const char *path = inputs->files[i].path;
         bool collected = false;
@@ -123,6 +124,13 @@ static char *tests_package(const source_package_snapshot_options *inputs)
         }
         const char *slash = strrchr(path + root + 1, '/');
         if (!slash) {
+            /* The project root is itself a package when files sit directly in it. */
+            if (!root_imported && directory_has_tests(inputs, path, root)) {
+                root_imported = true;
+                size_t used = strlen(text);
+                text = xrealloc(text, used + 48);
+                snprintf(text + used, 48, "import p%d \"project:.\"\n", imports++);
+            }
             continue;
         }
         size_t length = (size_t)(slash - (path + root + 1));

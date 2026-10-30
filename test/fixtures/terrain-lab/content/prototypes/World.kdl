@@ -1,9 +1,0 @@
-name "World"
-components {
-    Gravity {
-        acceleration y=360.0
-    }
-    HRC2D ambient=1.0 intensity=1.0 resolution=0.5
-    MaterialDestructionWorld fragment_limit=16
-    Ui document="QuarryHud"
-}

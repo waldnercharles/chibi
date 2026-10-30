@@ -1,5 +1,0 @@
-name "MaterialStudyWorld"
-components {
-    HRC2D ambient=0.3 bounce_hysteresis=0.8 falloff=1.0 intensity=1.0 radiance_hysteresis=0.8 resolution=0.5 shadow_floor=0.0005 specular=1.0 surface_bevel=1.0 surface_radius=24.0 surface_relief=1.5 target_fps=60.0
-    MaterialDestructionWorld fragment_limit=64
-}

@@ -1,5 +1,0 @@
-name "Yard"
-components {
-    Appearance color=0x24382aff height=180.0 width=320.0
-    (object)Transform
-}

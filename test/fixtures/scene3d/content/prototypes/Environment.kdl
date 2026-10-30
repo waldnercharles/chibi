@@ -1,4 +1,0 @@
-name "Environment"
-components {
-    Environment adaptation_speed=2.0 ambient_ground=0x0f121aff ambient_intensity=1.0 ambient_sky=0x2b3345ff auto_exposure=#true bloom_radius=0.012 bloom_strength=0.18 bloom_threshold=1.0 fog_resolution=0.25 fog_steps=4 occlusion="Medium" occlusion_radius=120.0 sky="content/skies/field.hdr"
-}

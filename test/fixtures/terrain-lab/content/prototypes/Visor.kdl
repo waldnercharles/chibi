@@ -1,6 +1,0 @@
-name "Visor"
-components {
-    Appearance color=0x122f3dff height=4.0 layer=6 width=7.0
-    GlobalBinding name="Visor"
-    Transform x=-19.0 y=-16.0
-}

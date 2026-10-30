@@ -540,20 +540,16 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     set_target_properties(chibi_compiler PROPERTIES EXPORT_NAME compiler)
     chibi_sdk_headers(chibi_compiler PUBLIC language/lower.h)
     target_link_libraries(chibi_compiler PUBLIC chibi_language chibi_execution)
-    configure_file("${CHIBI_SDK_ROOT}/src/authoring/source_prepare_internal.h"
-        "${CMAKE_CURRENT_BINARY_DIR}/private/authoring/authoring/source_prepare_internal.h" COPYONLY)
     add_library(chibi_authoring STATIC
         "${CHIBI_SDK_ROOT}/src/authoring/native_bindings.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_literal.c"
-                "${CHIBI_SDK_ROOT}/src/authoring/source_prepare.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_link.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_navigation.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_prototype_flow.c")
+                        "${CHIBI_SDK_ROOT}/src/authoring/source_link.c"
+                )
     add_library(Chibi::authoring ALIAS chibi_authoring)
     set_target_properties(chibi_authoring PROPERTIES EXPORT_NAME authoring)
-    chibi_sdk_headers(chibi_authoring PUBLIC authoring/source_prepare.h authoring/source_link.h
-        authoring/source_navigation.h authoring/source_prototype_flow.h
-        authoring/source_declaration.h
+    chibi_sdk_headers(chibi_authoring PUBLIC  authoring/source_link.h
+
+
         authoring/native_bindings.h authoring/source_literal.h )
     target_include_directories(chibi_authoring PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/authoring"
         "${CHIBI_SDK_ROOT}/third_party/yyjson")

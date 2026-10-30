@@ -43,3 +43,10 @@ Records :: () {
     e: Point = {x: 3, y: 0};
     assert(Nested([c, d, e]) == 57, "Nested");
 }
+
+// fails: array index out of range
+@test
+PickPastTheEndFails :: () {
+    xs: int[] = [1, 2];
+    Pick(xs, 2);
+}

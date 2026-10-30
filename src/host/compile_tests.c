@@ -24,7 +24,54 @@ int authoring_project_test(const char *, const char *)
 }
 #else
 /* Runs each test, prints its outcome and adds to the totals. */
+/* The run-time failure the test `name` of the directory named by the first
+ * `prefix` bytes of `path` expects, like Rust's should_panic: the message of a
+ * `// fails: ` line directly above its `@test`, or NULL. */
+static const char *expected_failure(
+    const source_package_snapshot_options *inputs,
+    const char *path,
+    size_t prefix,
+    const char *name,
+    size_t *length
+)
+{
+    static const char marker[] = "// fails: ", attribute[] = "@test\n";
+    size_t name_length = strlen(name);
+    for (int i = 0; i < inputs->file_count; i++) {
+        const source_package_input *file = &inputs->files[i];
+        if (strncmp(file->path, path, prefix) || file->path[prefix] != '/' ||
+            strchr(file->path + prefix + 1, '/')) {
+            continue;
+        }
+        /* The comment, the attribute and the declaration on consecutive lines. */
+        for (size_t at = 0; at + sizeof marker - 1 <= file->size; at++) {
+            if ((at && file->text[at - 1] != '\n') ||
+                memcmp(file->text + at, marker, sizeof marker - 1)) {
+                continue;
+            }
+            const char *message = file->text + at + sizeof marker - 1;
+            const char *end = memchr(message, '\n', file->size - (size_t)(message - file->text));
+            if (!end) {
+                break;
+            }
+            const char *declaration = end + 1 + sizeof attribute - 1;
+            size_t rest = file->size - (size_t)(end + 1 - file->text);
+            if (rest > sizeof attribute - 1 + name_length + 3 &&
+                !memcmp(end + 1, attribute, sizeof attribute - 1) &&
+                !memcmp(declaration, name, name_length) &&
+                !memcmp(declaration + name_length, " ::", 3)) {
+                *length = (size_t)(end - message);
+                return message;
+            }
+        }
+    }
+    return NULL;
+}
+
 static void run_tests(
+    const source_package_snapshot_options *inputs,
+    const char *path,
+    size_t prefix,
     const package_collection *packages,
     behavior_backend backend,
     int workers,
@@ -43,7 +90,12 @@ static void run_tests(
     *total += count;
     for (int i = 0; i < count; i++) {
         package_test_failure failure = results[i].failure;
-        bool passed = results[i].passed;
+        size_t length = 0;
+        const char *expected = expected_failure(inputs, path, prefix, tests[i].name, &length);
+        bool passed = expected ? !results[i].passed &&
+                                     strlen(failure.message) == length &&
+                                     !memcmp(failure.message, expected, length)
+                               : results[i].passed;
         printf(
             "%s %s.%s\n",
             passed ? "PASS" : "FAIL",
@@ -54,6 +106,13 @@ static void run_tests(
             continue;
         }
         (*failed)++;
+        if (expected && results[i].passed) {
+            printf("  expected it to fail with %.*s, but it returned\n", (int)length, expected);
+            continue;
+        }
+        if (expected) {
+            printf("  expected it to fail with %.*s\n", (int)length, expected);
+        }
         if (failure.path) {
             printf(
                 "  %s:%d:%d: %s\n",
@@ -293,12 +352,8 @@ int authoring_project_test(const char *root, const char *core)
         size_t root = strlen(inputs.project_root), directory = strlen(tested[i]);
         char *path = xmalloc(root + directory + 2);
         snprintf(path, root + directory + 2, "%s/%s", inputs.project_root, tested[i]);
-        const source_package_input *rejected = rejected_file(
-            &inputs,
-            path,
-            strcmp(tested[i], ".") ? root + 1 + directory : root
-        );
-        free(path);
+        size_t prefix = strcmp(tested[i], ".") ? root + 1 + directory : root;
+        const source_package_input *rejected = rejected_file(&inputs, path, prefix);
         package_compile_error error;
         package_collection *packages = compile_tests(&inputs, tested[i], native, backend, &error);
         if (rejected) {
@@ -316,8 +371,9 @@ int authoring_project_test(const char *root, const char *core)
         } else if (!packages) {
             fprintf(stderr, "%s\n", error.message);
         } else {
-            run_tests(packages, backend, workers, &total, &failed);
+            run_tests(&inputs, path, prefix, packages, backend, workers, &total, &failed);
         }
+        free(path);
         compiled &= packages != NULL || rejected;
         if (packages) {
             package_collection_free(packages);

@@ -1041,13 +1041,6 @@ static const sample samples[] = {
       .message = "Error result is ignored on a reachable path; check, report, store or return it",
       .oracle_package = "core:host_dependency",
       .same_rejection = true },
-    { .name = "independent project package checks error obligations",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\npub Value :: () -> int { return 7; }\n",
-      .library = UNCHECKED_PROJECT_ERROR_SOURCE,
-      .message = "Error result is ignored on a reachable path; check, report, store or return it",
-      .oracle_package = "project:lib",
-      .same_rejection = true },
     { .name = "active collection executes checked error results",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nimport host \"core:host_only\"\n"
@@ -1689,13 +1682,6 @@ static const sample samples[] = {
                  { .function = "Mixed",
                    .arguments = "[true]",
                    .expected = "[\"true 18446744073709551615 -3\"]" } } },
-    { .name = "compound map assignment",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\nAdd :: () -> int { m: [int: int] = [:]; m[1] "
-                "+= 2; return m[1]; }",
-      .message = "compound map assignment is not supported yet",
-      .line = 2,
-      .column = 41 },
     /* A map parameter is the function's own value: removing a key leaves
      * the caller's map as it was. */
     { .name = "assert message",

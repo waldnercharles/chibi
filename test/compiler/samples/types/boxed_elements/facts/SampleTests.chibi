@@ -31,3 +31,30 @@ Records :: () {
     b: Point = {x: 3, y: 4};
     assert(PackedPoints([a, b], 1) == 306, "PackedPoints");
 }
+
+// fails: array index out of range
+@test
+BoxedWordPastTheEndFails :: () {
+    words: string[] = ["a"];
+    BoxedWord(words, 1);
+}
+
+// fails: array index out of range
+@test
+BoxedWordBeforeTheStartFails :: () {
+    words: string[] = ["a"];
+    BoxedWord(words, -1);
+}
+
+// fails: array index out of range
+@test
+BoxedNotesPastTheEndFails :: () {
+    note: Note = {text: "x", count: 1};
+    BoxedNotes([note], 1);
+}
+
+// fails: array index out of range
+@test
+BoxedShapesPastTheEndFails :: () {
+    BoxedShapes(3);
+}

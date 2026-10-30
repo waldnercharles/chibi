@@ -24,7 +24,7 @@ CORE_TARGETS = {'ui_document_values', 'text_search', 'image_catalog', 'support',
                 'asset_values', 'value_document', 'capabilities', 'native_capabilities', 'native_prepared', 'core_capabilities', 'array_capabilities', 'field_capabilities', 'state_capabilities', 'selection_capabilities', 'set_capabilities', 'comparison_capabilities', 'conversion_capabilities', 'text_capabilities', 'fmt', 'host_native_catalog', 'host_clock', 'scene_runtime', 'scheduling', 'fields', 'field_catalog', 'tasks', 'shader_runtime', 'model_runtime', 'ui_documents', 'input_action'}
 COMPILER_TARGETS = {'program', 'image_preparation', 'builtin_fonts', 'asset_json', 'source_catalog', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring'}
 NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'declared_components', 'native_bindings', 'tilemap_runtime', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'url_runtime', 'particle_runtime', 'save_runtime', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'material_runtime', 'physics_runtime', 'physics3d_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
-VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime', 'model_bake'}
+VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime'}
 DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render'}
 NATIVE_AUTHORING_TARGETS = {'compiler_syntax', 'compiler_json', 'shader_preparation', 'project_compilation', 'scene_authoring', 'asset_authoring', 'scenario_document'}
 DESKTOP_AUTHORING_TARGETS = {'project_preparation'}
@@ -643,7 +643,7 @@ def check_exports(stage, kind, cache, build):
         if system != 'Emscripten' or cache.get('CHIBI_WEB_THREADS') == 'ON':
             expected |= {'task_scheduler'}
         if kind == 'sdk':
-            expected |= {'studio_catalog'} | NATIVE_AUTHORING_TARGETS
+            expected |= NATIVE_AUTHORING_TARGETS
     if cache.get('CHIBI_SDK_BUILD_DESKTOP') == 'ON':
         expected |= DESKTOP_TARGETS
         if kind == 'sdk':
@@ -665,7 +665,7 @@ def check_exports(stage, kind, cache, build):
     if cache.get('CHIBI_SDK_BUILD_NATIVE') == 'ON':
         header_owners |= NATIVE_TARGETS
         if kind == 'sdk':
-            header_owners |= {'studio_catalog'} | NATIVE_AUTHORING_TARGETS
+            header_owners |= NATIVE_AUTHORING_TARGETS
     if cache.get('CHIBI_SDK_BUILD_DESKTOP') == 'ON':
         header_owners |= DESKTOP_TARGETS
         if kind == 'sdk':

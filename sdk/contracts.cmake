@@ -83,7 +83,6 @@ chibi_sdk_contract(chibi_shader_runtime "${CHIBI_SDK_ROOT}/src/runtime/shaders" 
 chibi_sdk_contract(chibi_model_runtime "${CHIBI_SDK_ROOT}/src/runtime/models" chibi_shader_runtime chibi_types chibi_support m)
 if(TARGET chibi_mesh_runtime)
     chibi_sdk_contract(chibi_mesh_runtime "${CHIBI_SDK_ROOT}/src/runtime/geometry" chibi_math chibi_support chibi_types)
-    chibi_sdk_contract(chibi_model_bake "${CHIBI_SDK_ROOT}/src/runtime/models" chibi_model_runtime chibi_mesh_runtime chibi_support)
 endif()
 if(CHIBI_SDK_BUILD_COMPILER OR CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_vector_capabilities "${CHIBI_SDK_ROOT}/src/runtime"
@@ -132,10 +131,6 @@ if(CHIBI_SDK_BUILD_NATIVE)
         chibi_arithmetic_capabilities chibi_particle_runtime chibi_save_runtime chibi_ui_runtime
         chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime
         chibi_visibility_runtime chibi_input_runtime)
-    if(CHIBI_SDK_BUILD_COMPILER)
-        chibi_sdk_contract(chibi_studio_catalog "${CHIBI_SDK_ROOT}/src/authoring"
-            chibi_native_capabilities chibi_studio_capabilities chibi_host_native_default)
-    endif()
     chibi_sdk_contract(chibi_tilemap_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_math chibi_support)
     chibi_sdk_contract(chibi_spatial_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_types)
     get_filename_component(native_generated "${CHIBI_NATIVE_TYPES_SOURCE}" DIRECTORY)
@@ -223,7 +218,7 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
     if(CHIBI_SDK_BUILD_DESKTOP)
         chibi_sdk_contract(chibi_project_preparation "${CHIBI_SDK_ROOT}/src/authoring"
             chibi_project_compilation chibi_engine chibi_ui_host chibi_renderer
- chibi_studio_catalog chibi_host_native_default
+ chibi_host_native_default
  chibi_asset_authoring chibi_asset_text chibi_project_document chibi_ui_authoring chibi_image_preparation
             chibi_declared_components)
     endif()

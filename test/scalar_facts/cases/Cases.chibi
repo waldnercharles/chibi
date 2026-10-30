@@ -174,7 +174,7 @@ Cases :: () -> Case[] {
         Accepted("shift", "package scalar\nMain :: () -> int { return Shl(1); }\nShl :: (a: int) -> int { return a << 2; }", 4, "Main,Shl", "return 1 ; Shl(1) | return a ; 2 ; a << 2"),
         Accepted("logical_and", "package scalar\nMain :: () -> int { return Mid(1, 2, 3); }\nMid :: (a: int, b: int, c: int) -> int {\n    if (a < b && b < c) { return b; }\n    return a;\n}\n", 2, "Main,Mid", "return 1 ; 2 ; 3 ; Mid(1, 2, 3) | if a ; b ; a < b ; a < b && b < c ; b ; c ; b < c return b end return a"),
         Accepted("recursive_guard", "package scalar\nMain :: () -> int { return Down(3); }\nDown :: (x: int) -> int {\n    if (x > 0) { return Down(0); }\n    return x;\n}\n", 0, "Main,Down", "return 3 ; Down(3) | if x ; 0 ; x > 0 return 0 ; Down(0) end return x"),
-        Accepted("literal_comparison", "package scalar\nMain :: () -> int {\n    if (7 < 3) { return 1; }\n    return 2;\n}\n", 2, "Main", "if 7 ; 3 ; 7 < 3 return 1 end return 2")],
+        Accepted("literal_comparison", "package scalar\nMain :: () -> int {\n    if (7 < 3) { return 1; }\n    return 2;\n}\n", 2, "Main", "if 7 ; 3 ; 7 < 3 return 1 end return 2"),
         // Arrays are native values: a literal, a growing append, an element
         // read and write, a loop over the elements, and a length. The sums
         // are the squares up to 81 and 1 + 2 + 3 + 4.
@@ -183,8 +183,8 @@ Cases :: () -> Case[] {
         // as [1, 2, 3, 4] and b as [10, 2, 3].
         Accepted("array_copy_independence", "package scalar\nMain :: () -> int {\n    a: int[] = [1, 2, 3];\n    b := a;\n    b[0] = 10;\n    a.append(4);\n    return a[0] * 100 + b[0] + length(a) * 1000 + length(b) * 10000;\n}\n", 34110, "Main", ""),
         // A callee changes its own copy of a parameter, and returns a copy of
-        // it, so the caller's array is as it was.
-        Accepted("array_parameter_copy", "package scalar\nMain :: () -> int {\n    a: int[] = [5, 6];\n    c := Bump(a);\n    return a[0] * 1000 + a[1] * 100 + c[0] * 10 + length(c);\n}\nBump :: (values: int[]) -> int[] {\n    values[0] += 1;\n    values.append(9);\n    return values;\n}\n", 5663, "Main,Bump", ""),
+        // a parameter, so the caller's array is as it was.
+        Accepted("array_parameter_copy", "package scalar\nMain :: () -> int {\n    a: int[] = [5, 6];\n    c := Bump(a);\n    d := Same(a);\n    d[1] = 0;\n    return a[0] * 1000 + a[1] * 100 + c[0] * 10 + length(c) + d[1];\n}\nBump :: (values: int[]) -> int[] {\n    out := values;\n    out[0] += 1;\n    out.append(9);\n    return out;\n}\nSame :: (values: int[]) -> int[] { return values; }\n", 5663, "Main,Bump,Same", ""),
         Accepted("array_growth", "package scalar\nMain :: () -> int {\n    items: int[] = [];\n    i: int = 0;\n    while (i < 100) {\n        items.append(i);\n        i += 1;\n    }\n    total: int = 0;\n    for (value in items) { total += value; }\n    return total + length(items);\n}\n", 5050, "Main", ""),
         Accepted("array_strings", "package scalar\nMain :: () -> int {\n    words: string[] = [\"a\", \"bb\", \"ccc\"];\n    words.append(\"dddd\");\n    n: int = 0;\n    for (word in words) { n += text_byte_length(word); }\n    return n + length(words) + text_byte_length(words[1]);\n}\n", 16, "Main", ""),
         Accepted("array_floats_and_bools", "package scalar\nMain :: () -> int {\n    xs: f64[] = [1.5, 2.5];\n    flags: bool[] = [true, false];\n    xs[1] = xs[0] + 3.0;\n    if (flags[0] && !flags[1]) { return int(xs[1]); }\n    return 0;\n}\n", 4, "Main", ""),

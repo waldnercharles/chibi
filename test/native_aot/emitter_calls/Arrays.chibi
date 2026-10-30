@@ -25,10 +25,13 @@ ArrayModule :: (code: native.Instruction[]) -> native.Result {
     return Emit([Function(6, 0, 0, 10, 0, 13, 0, 0)], [], [1030, 6, 1030, 6, 1030, 6, 6, 1030, 6, 6], code, []);
 }
 ArrayOperands: string : "native array operation differs from its operands";
+Changed :: (code: native.Instruction[], row: int, item: native.Instruction) -> native.Instruction[] {
+    changed := code;
+    changed[row] = item;
+    return changed;
+}
 ChangedArray :: (row: int, item: native.Instruction) {
-    code := Arrays();
-    code[row] = item;
-    Rejects(ArrayModule(code), ArrayOperands);
+    Rejects(ArrayModule(Changed(Arrays(), row, item)), ArrayOperands);
 }
 // The elements move to an allocation from the context when they are full, and
 // an index outside the array calls the context's failure.
@@ -40,26 +43,33 @@ ArraysAllocateThroughTheContextAndCheckIndexes :: () {
     assert(strings.Contains(text, "%grown3 = select i1 %none3, i32 4, i32 %double3\n"));
     assert(strings.Contains(text, "%fresh3.allocate.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2\n"));
     assert(strings.Contains(text, "%fresh3 = call ptr %fresh3.allocate(ptr %ctx, i64 %bytes3)\n"));
-    assert(strings.Contains(text, "call void @llvm.memcpy.p0.p0.i64(ptr %fresh3, ptr %data3, i64 %moved3, i1 false)\n"));
+    assert(strings.Contains(text, "call void @chibi_scalar.copy(ptr %fresh3, ptr %data3, i64 %moved3)\n"));
     assert(strings.Contains(text, "%buffer3 = phi ptr [ %data3, %p3 ], [ %fresh3, %grow3 ]\n"));
     assert(strings.Contains(text, "%in5 = icmp ult i32 %b5, %length5\n  br i1 %in5, label %inside5, label %outside5\noutside5:\n"));
     assert(strings.Contains(text, "%index5.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 3\n"));
     assert(strings.Contains(text, "call void %index5(ptr %ctx, i32 %b5, i32 %length5)\n  unreachable\ninside5:\n"));
-    assert(strings.Contains(text, "%at5 = getelementptr inbounds i32, ptr %data5, i64 %offset5\n  store i32 %c5, ptr %at5\n"));
+    assert(strings.Contains(text, "%at5 = getelementptr inbounds i32, ptr %data5, i64 %offset5\n  %c5 = load i32, ptr %s1\n  store i32 %c5, ptr %at5\n"));
     assert(strings.Contains(text, "%v6 = load i32, ptr %at6\n"));
-    assert(strings.Contains(text, "%v7 = extractvalue"));
+    assert(strings.Contains(text, "%length7 = extractvalue { i32, i32, ptr } %a7, 0\n  store i32 %length7, ptr %s6\n"));
     assert(strings.Contains(text, "%none8 = icmp eq i32 %length8, 0\n  br i1 %none8, label %done8, label %clone8\nclone8:\n"));
     assert(strings.Contains(text, "%buffer8 = phi ptr [ null, %p8 ], [ %fresh8, %clone8 ]\n"));
-    assert(strings.Contains(text, "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n"));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.copy(ptr noalias %to, ptr noalias %from, i64 %bytes) #1 {\n"));
+    assert(strings.Contains(text, "attributes #1 = { noinline nounwind \"no-builtins\" }\n"));
+    assert(!strings.Contains(text, "memcpy"));
     assert(strings.Contains(text, "%s0 = alloca { i32, i32, ptr }\n"));
 }
 @test
 ArrayLengthRejectsIntOperand :: () {
     ChangedArray(7, Code(native.ArrayLength, 6, 6, 3, 0, 0, 0));
 }
+// Main reads an int at index 0 of an empty array of bool, which holds none.
 @test
 ArrayGetRejectsWrongElementType :: () {
-    ChangedArray(6, Code(native.ArrayGet, 2, 5, 4, 3, 0, 0));
+    Rejects(Emit([Function(6, 0, 0, 3, 0, 5, 0, 0)], [], [1025, 6, 6],
+                 [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Constant, 1025, 0, 0, 0, 0, 0),
+                  Code(native.Constant, 6, 1, 0, 0, 0, 0), Code(native.ArrayGet, 6, 2, 0, 1, 0, 0),
+                  Code(native.Return, 0, 0, 0, 0, 0, 0)], []),
+            ArrayOperands);
 }
 @test
 ArrayGetRejectsArrayIndex :: () {
@@ -67,11 +77,12 @@ ArrayGetRejectsArrayIndex :: () {
 }
 @test
 ArraySetRejectsWrongValueType :: () {
-    ChangedArray(5, Code(native.ArraySet, 1030, 4, 2, 3, 3, 0));
+    ChangedArray(5, Code(native.ArraySet, 1030, 4, 2, 3, 0, 0));
 }
 @test
 ArraySetRejectsOtherArrayType :: () {
-    ChangedArray(5, Code(native.ArraySet, 1031, 4, 2, 3, 1, 0));
+    Rejects(ArrayModule(Changed(Arrays(), 5, Code(native.ArraySet, 1031, 4, 2, 3, 1, 0))),
+            "native scalar output has an invalid type or multiple definitions");
 }
 @test
 ArrayPushRejectsArrayValue :: () {

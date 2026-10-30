@@ -10,8 +10,7 @@ import snapshot "project:source_snapshot"
 // type them; these rows say which array a statement changes, and where a
 // value that would otherwise be shared is copied. An array that is read from a
 // variable and stored in another, or returned from a parameter, is copied; a
-// call's argument is lent, and a parameter the callee changes is copied when
-// it enters.
+// call's argument is lent, since a function cannot change its parameters.
 
 // The facts type of an array whose elements are of `storage` and `record`, or
 // 0 when they are not numbers, bool or strings.
@@ -298,18 +297,6 @@ ScalarAppended :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     }
     output.append(ScalarAt(forest, call, facts.ArrayRow, array, facts.ArrayPush, 2, ""));
     return ScalarOperands.Built(output);
-}
-// A copy of array parameter `ordinal`, of facts type `array`, assigned to it
-// at the start of `body`, so the function changes its own array and not its
-// caller's.
-ScalarArrayEntry :: (forest: snapshot.SnapshotNode[], body: int, array: int, ordinal: int) -> facts.Row[] {
-    at := ScalarAt(forest, body, facts.AssignRow, array, ordinal, 2, "");
-    at.end = at.start + 1;
-    read := ScalarAt(forest, body, facts.ReadRow, array, ordinal, 0, "");
-    read.end = read.start + 1;
-    copied := ScalarAt(forest, body, facts.ArrayRow, array, facts.ArrayCopy, 1, "");
-    copied.end = copied.start + 1;
-    return [at, read, copied];
 }
 // The array that the local declaration `node` declares, as the storage of its
 // elements, or storage 0 for a declaration of another type: its declared

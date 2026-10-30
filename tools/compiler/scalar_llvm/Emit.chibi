@@ -1460,7 +1460,6 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ArrayRow) {
                     base := length(stack) - ArrayOperands(operand);
-                    item = ArrayLowered(operand, type, slot, stack, base);
                     if (operand.value == facts.ArrayNew) {
                         // The empty array, then each element appended.
                         item = Op(native.Constant, type, slot, 0, 0, 0);
@@ -1470,6 +1469,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                             item = Op(native.ArrayPush, type, slot + 1, slot, stack[base + element], 0);
                             slot += 1;
                         }
+                    } else {
+                        item = ArrayLowered(operand, type, slot, stack, base);
                     }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.TextRow && operand.value == facts.TextFormat) {

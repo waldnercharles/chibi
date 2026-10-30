@@ -1133,14 +1133,15 @@ static const char APP_SOURCE
          "import lib \"project:lib\"\n"
          "Twice :: (x: int) -> int { return lib.Sum({a: x, b: x}); }\n"
          "Wrap :: (x: int) -> int {\n"
-         "    return Many(x, x, x, x, x, x, x, x, [x]);\n"
+         "    return Many(x, x, x, x, x, x, x, x, [{x: x}]);\n"
          "}\n"
+         "Item :: struct { x: int; }\n"
          "Alias :: (v: lib.Value) -> int {\n"
          "    if v is .Yes(lib) { return lib; }\n"
          "    return lib.Sum({a: 1, b: 2});\n"
          "}\n"
          "Many :: (a: int, b: int, c: int, d: int, e: int,\n"
-         "         f: int, g: int, h: int, i: int[]) -> int {\n"
+         "         f: int, g: int, h: int, i: Item[]) -> int {\n"
          "    return a;\n"
          "}\n";
 static const source_package_input SAMPLE[] = {
@@ -1240,7 +1241,7 @@ TEST_CASE(native_census_follows_calls_into_their_blockers)
     REQUIRE(rows[0].category == CENSUS_NATIVE && rows[0].imports && rows[0].constants);
     REQUIRE(
         rows[1].category == CENSUS_ARRAYS && rows[1].callee &&
-        !strcmp(rows[1].callee, "Many") && !strcmp(rows[1].excerpt, "i: int[]")
+        !strcmp(rows[1].callee, "Many") && !strcmp(rows[1].excerpt, "i: Item[]")
     );
     REQUIRE(rows[2].category == CENSUS_ARRAYS && !rows[2].callee && !rows[2].imports);
     forget_rows();

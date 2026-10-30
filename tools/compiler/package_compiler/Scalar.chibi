@@ -1513,16 +1513,6 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
     }
     variables := callable.count + callable.results;
     body := Field(forest, callable.node, "body");
-    // A parameter's array is the caller's, so a body that changes it starts
-    // with a copy.
-    mutated := MutatedNames(forest, text, body, []);
-    for (index in 0..<callable.count) {
-        param := params[callable.first + index];
-        if (param.container == ArrayContainer && NamePosition(mutated, param.name) >= 0) {
-            rows.extend(ScalarArrayEntry(forest, body,
-                                         ScalarValueType(types, param.storage, param.container, param.record), index));
-        }
-    }
     work := ScalarBlock(forest, body, length(names));
     operands: facts.Row[] = [];
     switches: ScalarSwitch[] = [];
@@ -1892,11 +1882,13 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[]) -> bool {
     }
     return true;
 }
-// Whether `native` is the runtime's text_byte_length, text_byte_at,
-// text_slice or format_text.
+// Whether `native` is one a scalar module may call: the runtime's
+// text_byte_length, text_byte_at, text_slice or format_text, or an array's
+// length or append.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
     return NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
-           NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text");
+           NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text") ||
+           NativeNameMatches(native, "length") || NativeNameMatches(native, "append");
 }
 // The text natives of `natives`, each with its ports at their place among
 // ScalarTextPorts's.
@@ -2044,7 +2036,7 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, "parameters"), 0,
                                               "scalar proof requires its first function to take no parameters"));
     }
-    if (!is_library && first.result != IntStorage) {
+    if (!is_library && (first.result != IntStorage || first.result_container != 0)) {
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, "results"), 0,
                                               "scalar proof requires its first function to return int"));
     }

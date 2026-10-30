@@ -76,6 +76,6 @@ TextDropRejectsIntResult :: () {
 @test
 UnsupportedTextReadInstructionIsRejected :: () {
     code := TextReads();
-    code[7] = Code(native.Fail + 1, 6, 6, 4, 1, 0, 0);
+    code[7] = Code(native.ArrayCopy + 1, 6, 6, 4, 1, 0, 0);
     Rejects(TextReadModule(code), "unsupported native scalar instruction");
 }

@@ -447,7 +447,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > Fail) {
+        if (item.op < Constant || item.op > ArrayCopy) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -972,7 +972,7 @@ ArrayPushed :: (item: Instruction, pc: int) -> string {
     out = format_text("{}{}", out, Allocated(format_text("fresh{}", pc), format_text("%bytes{}", pc)));
     out = format_text("{}  %used{} = zext i32 %length{} to i64\n  %moved{} = mul i64 %used{}, %width{}\n", out, pc, pc,
                       pc, pc, pc);
-    out = format_text("{}  call void @llvm.memcpy.p0.p0.i64(ptr %fresh{}, ptr %data{}, i64 %moved{}, i1 false)\n", out,
+    out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %moved{})\n", out,
                       pc, pc, pc);
     out = format_text("{}  br label %room{}\nroom{}:\n", out, pc, pc);
     out = format_text("{}  %buffer{} = phi ptr [ %data{}, %p{} ], [ %fresh{}, %grow{} ]\n", out, pc, pc, pc, pc, pc);
@@ -997,7 +997,7 @@ ArrayCopied :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %none{} = icmp eq i32 %length{}, 0\n", out, pc, pc);
     out = format_text("{}  br i1 %none{}, label %done{}, label %clone{}\nclone{}:\n", out, pc, pc, pc, pc);
     out = format_text("{}{}", out, Allocated(format_text("fresh{}", pc), format_text("%bytes{}", pc)));
-    out = format_text("{}  call void @llvm.memcpy.p0.p0.i64(ptr %fresh{}, ptr %data{}, i64 %bytes{}, i1 false)\n", out,
+    out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %bytes{})\n", out,
                       pc, pc, pc);
     out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
     out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %clone{} ]\n", out, pc, pc, pc, pc);
@@ -1243,6 +1243,28 @@ Failures :: (functions: Function[], code: Instruction[]) -> string {
     return out;
 }
 
+// Whether `code` moves array elements, with ArrayPush or ArrayCopy.
+Copies :: (code: Instruction[]) -> bool {
+    for (item in code) {
+        if (item.op == ArrayPush || item.op == ArrayCopy) {
+            return true;
+        }
+    }
+    return false;
+}
+// Copies `bytes` bytes from one allocation to another, a byte at a time. It is
+// a loop of its own, in a function that disables the library calls
+// (attribute #1), so the optimizer does not turn it into a call of memcpy,
+// which a program with no C library and an object with no undefined symbols
+// lack.
+ArrayCopyHelper :: () -> string {
+    out := "define internal void @chibi_scalar.copy(ptr noalias %to, ptr noalias %from, i64 %bytes) #1 {\nentry:\n  br label %head\n";
+    out = format_text("{}head:\n  %at = phi i64 [ 0, %entry ], [ %next, %body ]\n  %done = icmp eq i64 %at, %bytes\n", out);
+    out = format_text("{}  br i1 %done, label %exit, label %body\nbody:\n", out);
+    out = format_text("{}  %source = getelementptr inbounds i8, ptr %from, i64 %at\n  %byte = load i8, ptr %source\n", out);
+    out = format_text("{}  %target = getelementptr inbounds i8, ptr %to, i64 %at\n  store i8 %byte, ptr %target\n", out);
+    return format_text("{}  %next = add i64 %at, 1\n  br label %head\nexit:\n  ret void\n}\n", out);
+}
 // The symbol of text `index` of the module's table.
 TextSymbol :: (index: int) -> string {
     return format_text("chibi_scalar.text.{}", index);
@@ -1294,17 +1316,10 @@ TextEqual :: () -> string {
     out = format_text("{}  br i1 %matches, label %head, label %differ\nequal:\n  ret i1 true\n", out);
     return format_text("{}differ:\n  ret i1 false\n}\n", out);
 }
-// The intrinsics `code` calls, each declared once: array copies and the
-// saturating conversions.
+// The saturating conversion intrinsics `code` calls, each declared once.
 Declarations :: (code: Instruction[]) -> string {
     out := "";
     for (item in code) {
-        if (item.op == ArrayPush || item.op == ArrayCopy) {
-            declaration := "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
-            if (!strings.Contains(out, declaration)) {
-                out = format_text("{}{}", out, declaration);
-            }
-        }
         if (item.op != Convert || !abi.Floating(item.right) || !Integer(item.type)) {
             continue;
         }
@@ -1389,10 +1404,16 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         }
         out = format_text("{}\n{}", out, text);
     }
+    if (Copies(code)) {
+        out = format_text("{}\n{}", out, ArrayCopyHelper());
+    }
     // Recursion is unchecked, as Rust's is: each function probes every page
     // of its frame, so running out of stack faults in the guard page below
     // it, which the host reports as a stack overflow.
     out = strings.Join([out, "\nattributes #0 = { ", abi.StackProbe(target), " }\n"], "");
+    if (Copies(code)) {
+        out = strings.Join([out, "attributes #1 = { noinline nounwind \"no-builtins\" }\n"], "");
+    }
     if (debug) {
         out = format_text("{}\n{}", out, Metadata(target, functions, source, names, lines, columns, mode, compares));
     }

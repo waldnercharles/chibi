@@ -32,8 +32,6 @@
 #include <sys/utime.h>
 #include <windows.h>
 #else
-#include "host/serve.h"
-
 #include <sys/utsname.h>
 extern char **environ;
 #endif
@@ -72,11 +70,6 @@ static bool remove_tree(const char *path)
 #define APPLICATION_OUTPUT_LIMIT (64 * 1024)
 #define IO_ID(N) (UINT64_C(21000) + (N))
 
-typedef struct
-{
-    int id, socket, port;
-} listener;
-
 struct application_io
 {
     char *bin;
@@ -85,9 +78,7 @@ struct application_io
     /* Native result payloads are copied into the caller's runtime before its
      * next host call, so this arena may be reused at each callback. */
     arena scratch;
-    listener *listeners;
     char **temporary;
-    int next_listener;
 #ifdef _WIN32
     void (*interrupt)(int), (*terminate)(int);
 #else
@@ -122,7 +113,6 @@ application_io *application_io_new(const char *bin, application_arguments_fn arg
     io->bin = xstrdup(bin);
     io->arguments = arguments;
     io->user = user;
-    io->next_listener = 1;
     atomic_store_explicit(&stop_signal, 0, memory_order_relaxed);
     capture_stop = 0;
     signal_owner = io;
@@ -161,11 +151,6 @@ void application_io_free(application_io *io)
     for (int i = 0; i < 4; i++) {
         sigaction(signal_numbers[i], &io->previous[i], NULL);
     }
-    for (int i = 0; i < acount(io->listeners); i++) {
-        if (io->listeners[i].socket >= 0) {
-            close(io->listeners[i].socket);
-        }
-    }
 #endif
     signal_owner = NULL;
     for (int i = 0; i < acount(io->temporary); i++) {
@@ -175,7 +160,6 @@ void application_io_free(application_io *io)
         }
     }
     afree(io->temporary);
-    afree(io->listeners);
     arena_free(&io->scratch);
     free(io->bin);
     free(io);
@@ -713,97 +697,6 @@ static const char *process_capture(void *service, const pin_value *arguments, pi
 #endif
 }
 
-static listener *find_listener(application_io *io, int id)
-{
-    for (int i = 0; i < acount(io->listeners); i++) {
-        if (io->listeners[i].id == id && io->listeners[i].socket >= 0) {
-            return &io->listeners[i];
-        }
-    }
-    return NULL;
-}
-
-static const char *network_listen(void *service, const pin_value *arguments, pin_value *results)
-{
-    IO();
-    int port = arguments[0].i;
-    results[0].i = -1;
-    if (port < 0 || port > 65535) {
-        return "A listener port must be between 0 and 65535";
-    }
-#ifndef _WIN32
-    int bound = 0, socket = chibi_serve_listen(port, &bound);
-    if (socket < 0) {
-        fprintf(stderr, "Cannot listen on 127.0.0.1:%d: %s\n", port, strerror(errno));
-        return NULL;
-    }
-    if (io->next_listener == INT_MAX) {
-        close(socket);
-        return "Application listener handles exhausted";
-    }
-    int id = io->next_listener++;
-    for (int i = 0; i < acount(io->listeners); i++) {
-        if (io->listeners[i].socket < 0) {
-            io->listeners[i] = (listener){ id, socket, bound };
-            results[0].i = id;
-            return NULL;
-        }
-    }
-    apush(io->listeners, ((listener){ id, socket, bound }));
-    results[0].i = id;
-#endif
-    return NULL;
-}
-
-static const char *network_port(void *service, const pin_value *arguments, pin_value *results)
-{
-    IO();
-    listener *server = find_listener(io, arguments[0].i);
-    if (!server) {
-        return "Unknown application listener";
-    }
-    results[0].i = server->port;
-    return NULL;
-}
-
-static const char *network_serve(void *service, const pin_value *arguments, pin_value *results)
-{
-    IO();
-    STRING(1, root);
-    listener *server = find_listener(io, arguments[0].i);
-    if (!server) {
-        return "Unknown application listener";
-    }
-#ifdef _WIN32
-    (void)root;
-    results[0].i = 1;
-#else
-    int socket = dup(server->socket);
-    if (socket < 0) {
-        results[0].i = 1;
-        return NULL;
-    }
-    fcntl(socket, F_SETFD, FD_CLOEXEC);
-    chibi_serve(socket, root, &capture_stop);
-    results[0].i = 0;
-#endif
-    return NULL;
-}
-
-static const char *network_close(void *service, const pin_value *arguments, pin_value *)
-{
-    IO();
-    listener *server = find_listener(io, arguments[0].i);
-    if (!server) {
-        return "Unknown application listener";
-    }
-#ifndef _WIN32
-    close(server->socket);
-#endif
-    server->socket = -1;
-    return NULL;
-}
-
 #define PARAM(NAME, TYPE)                                                      \
     {                                                                          \
         .name = NAME, .type = {.storage = TYPE }                               \
@@ -815,8 +708,6 @@ static const script_catalog_parameter path_time_input[] = { PARAM("path", PIN_ST
                                                             PARAM("stamp", PIN_I64) };
 static const script_catalog_parameter path_text_input[] = { PARAM("path", PIN_STR),
                                                             PARAM("text", PIN_STR) };
-static const script_catalog_parameter server_path_input[] = { PARAM("server", PIN_I32),
-                                                              PARAM("path", PIN_STR) };
 static const script_catalog_parameter argv_input[] = {
     { .name = "arguments", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } }
 };
@@ -859,10 +750,6 @@ static const script_catalog_parameter capture_result[] = {
     X(21, "files.changed_since", path_time_input, 2, bool_result, 1, invoke, file_changed_since)    \
     X(22, "process.run", argv_input, 1, integer_result, 1, invoke, process_run)                     \
     X(23, "process.capture", argv_input, 1, capture_result, 4, invoke, process_capture)             \
-    X(24, "network.listen", integer_input, 1, integer_result, 1, invoke, network_listen)            \
-    X(25, "network.port", integer_input, 1, integer_result, 1, invoke, network_port)                \
-    X(26, "network.serve", server_path_input, 2, integer_result, 1, invoke, network_serve)          \
-    X(27, "network.close", integer_input, 1, NULL, 0, invoke, network_close)                        \
     X(28, "application.interrupt_status", NULL, 0, integer_result, 1, invoke, app_interrupt_status) \
     X(29, "files.readable", path_input, 1, bool_result, 1, invoke, file_readable)
 

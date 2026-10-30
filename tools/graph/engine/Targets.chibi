@@ -697,7 +697,7 @@ pub PublicHeaders :: (target: string) -> string[] {
             "authoring/language_catalog.h", "authoring/package_tests.h",
             "authoring/source_package_exports.h", "authoring/source_package_files.h", "authoring/source_package_io.h",
             "authoring/source_package_prepare.h", "authoring/source_package_snapshot.h",
-            "authoring/source_packages.h"
+            "authoring/source_packages.h", "authoring/project_compile.h"
         ];
     }
     if (target == "chibi_program") {

@@ -8,3 +8,12 @@ Calls :: () {
     e3: int = 123;
     assert(r3 == e3, "Total call 3");
 }
+
+@test
+Records :: () {
+    made := Make(1, 2);
+    assert(made.x == 1 && made.y == 2 && made.title == "p" && made.open, "Make");
+    start: Point = {x: 1, y: 2, title: "q", open: false};
+    moved := Moved(start, 5);
+    assert(moved.x == 6 && moved.y == 2 && moved.title == "q" && !moved.open, "Moved");
+}

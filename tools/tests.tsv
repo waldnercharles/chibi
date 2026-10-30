@@ -25,6 +25,7 @@ tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/to
 tool	build-timings	@build@/test/tools/test_tools	--build-timings	@build@/test/tools/policy_worker	@host@
 tool	build-process-files	@build@/test/tools/test_tools	--build-process-files	@build@/test/tools/policy_worker	@host@
 tool	compiler-bootstrap	@build@/test/tools/test_tools	--compiler-bootstrap	@build@/test/language/test_language	@build@/sdk/chibi-compiler-host
+tool	compiler-cache	@build@/test/tools/test_tools	--compiler-cache
 tool	bootstrap-recovery	@build@/test/tools/test_tools	--bootstrap-recovery	@release@/sdk/chibi-compiler-host	tools/compiler/bootstrap
 tool	build-graph	@build@/test/tools/test_tools	--build-graph	@host@
 tool	build-graph-link-response	@build@/test/tools/test_tools	--build-graph-link-response	@host@

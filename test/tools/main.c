@@ -52,6 +52,7 @@ void test_native_workload_benchmark(const char *binary);
 void test_tool_chibi_cli_export(const char *binary);
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
 void test_tool_compiler_bootstrap(const char *producer, const char *host);
+void test_tool_compiler_cache();
 void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 #endif
 #ifdef CHIBI_TEST_BUILD_PROCESS
@@ -295,6 +296,18 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
+    if (argc == 2 && !strcmp(argv[1], "--compiler-cache")) {
+#if defined(CHIBI_TEST_COMPILER_ARTIFACT) && !defined(_WIN32)
+        tool_init();
+        pu_display_time(true);
+        test_tool_compiler_cache();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private compiler artifact host and POSIX cache storage\n", argv[1]);
+        return 2;
+#endif
+    }
     if (argc == 4 && !strcmp(argv[1], "--compiler-bootstrap")) {
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
         tool_init();
@@ -495,6 +508,7 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s [--collab | "
             "--unit | "
+            "--compiler-cache | "
             "--validation-plan | "
             "--reflect-ranges | "
             "--ecs-query | --ecs-strings | "

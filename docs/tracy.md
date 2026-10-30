@@ -56,12 +56,8 @@ and must not be reported as the duration of a particular shader.
 Use Xcode's Metal debugger and Instruments Metal System Trace on Apple GPUs.
 The former profiles passes, shaders and counters; the latter correlates CPU and
 GPU scheduling. See [Apple's profiling guide](https://developer.apple.com/documentation/xcode/optimizing-gpu-performance).
-Full Xcode is required for those tools. The September 19 local environment has
-Command Line Tools selected and no Xcode installation was found in the usual
-application directories.
-The Metal runtime can still write `.gputrace` files programmatically here. The
-[NeonSwarm capture workflow](neon-gpu-benchmarks.md) records one warmed frame,
-preserves its fixture and request, and checks deterministic replay.
+Full Xcode is required for those tools. For a `.gputrace` comparison, capture
+one warmed frame, preserve its fixture and request, and check deterministic replay.
 
 On Steam Deck, use Radeon GPU Profiler with RADV's capture mechanism, and
 RenderDoc for inspecting Vulkan resources and dispatches. RADV capture does not
@@ -76,8 +72,6 @@ The CPU Tracy scope `Gas flow` includes sparse grid construction, velocity
 advection, collider boundaries, vorticity and pressure projection.
 
 For timing comparisons keep adaptation disabled, pin scale and trace levels,
-and benchmark outside the capture tool as well. The deterministic helper accepts
-`--scale .5 --trace-levels 1`; each report records both settings.
-Use `--mode live` to retain the original moving scenario, or `--mode frozen` for
-a stable endpoint. The default `both` mode compares both workloads. Capture only
-one case at a time and keep instrumented timings separate from benchmarks.
+and benchmark outside the capture tool as well. Compare live and frozen scenarios
+separately. Capture one case at a time and keep instrumented timings separate
+from benchmarks.

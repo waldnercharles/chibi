@@ -154,23 +154,16 @@ static const char *project_inspect(void *service, const pin_value *arguments, pi
     if (failure) {
         return failure;
     }
-    chibi_project project = { 0 }, current = { 0 };
-    char error[512] = { 0 }, migration[512];
-    int status = arguments[1].b
-                   ? chibi_project_inspect(&project, path, error, sizeof error)
-                   : chibi_project_read(&project, path, error, sizeof error);
-    results[0].i = status;
+    chibi_project project = { 0 };
+    char error[512] = { 0 };
+    results[0].i = chibi_project_open(&project, path, error, sizeof error);
     text(tools, &results[1], project.root);
     text(tools, &results[2], project.content);
     text(tools, &results[3], project.name);
     text(tools, &results[4], project.application.title);
     text(tools, &results[5], project.application.icon);
     text(tools, &results[6], project.start_scene);
-    results[7].b = !status &&
-                   chibi_project_read(&current, project.root, migration, sizeof migration) !=
-                       0;
-    text(tools, &results[8], error);
-    chibi_project_free(&current);
+    text(tools, &results[7], error);
     chibi_project_free(&project);
     return NULL;
 }
@@ -185,7 +178,7 @@ static const char *project_sources_changed(void *service, const pin_value *argum
     }
     chibi_project project = { 0 };
     char error[512];
-    if (chibi_project_inspect(&project, root, error, sizeof error)) {
+    if (chibi_project_open(&project, root, error, sizeof error)) {
         results[0].b = true;
         chibi_project_free(&project);
         return NULL;
@@ -232,7 +225,7 @@ static const char *project_export(void *service, const pin_value *arguments, pin
     natives[commands->count] = NULL;
     chibi_project project = { 0 };
     char error[512];
-    if (chibi_project_inspect(&project, root, error, sizeof error)) {
+    if (chibi_project_open(&project, root, error, sizeof error)) {
         fprintf(stderr, "%s\n", error);
         results[0].b = false;
         chibi_project_free(&project);
@@ -407,19 +400,15 @@ static const char *sdk_executable_suffix(void *service, const pin_value *, pin_v
             .container = PIN_CONTAINER_ARRAY                                   \
         }                                                                      \
     }
-static const script_catalog_parameter inspect_parameters[] = { TEXT("path"),
-                                                               VALUE("migrate", PIN_BOOL) };
-static const script_catalog_parameter inspect_results[] = {
-    VALUE("status", PIN_I32),
-    TEXT("root"),
-    TEXT("content"),
-    TEXT("name"),
-    TEXT("title"),
-    TEXT("icon"),
-    TEXT("scene"),
-    VALUE("needs_migration", PIN_BOOL),
-    TEXT("error")
-};
+static const script_catalog_parameter inspect_parameters[] = { TEXT("path") };
+static const script_catalog_parameter inspect_results[] = { VALUE("status", PIN_I32),
+                                                            TEXT("root"),
+                                                            TEXT("content"),
+                                                            TEXT("name"),
+                                                            TEXT("title"),
+                                                            TEXT("icon"),
+                                                            TEXT("scene"),
+                                                            TEXT("error") };
 static const script_catalog_parameter changed_parameters[] = { TEXT("root"),
                                                                VALUE("since", PIN_I64) };
 static const script_catalog_parameter export_parameters[] = { TEXT("root"),
@@ -449,7 +438,7 @@ static const script_catalog_parameter text_result[] = { TEXT("value") };
 #undef ARRAY
 
 #define TOOLS(X)                                                                                        \
-    X(20001, "project.inspect", inspect_parameters, 2, inspect_results, 9, project_inspect)             \
+    X(20001, "project.inspect", inspect_parameters, 1, inspect_results, 8, project_inspect)             \
     X(20002, "project.sources_changed", changed_parameters, 2, bool_result, 1, project_sources_changed) \
     X(20003, "project.export", export_parameters, 5, bool_result, 1, project_export)                    \
     X(20004, "sdk.identity", NULL, 0, identity_results, 11, sdk_identity)                               \

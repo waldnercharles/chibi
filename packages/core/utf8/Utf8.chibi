@@ -1,0 +1,355 @@
+package utf8
+
+import strings "core:strings"
+
+// Strict UTF-8 follows Unicode 17.0, section 3.9.3, table 3-7.
+// https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-3/
+// Strings and buffers retain arbitrary bytes; these operations never replace them.
+
+pub Success: int : 0;
+pub End: int : 1;
+pub Malformed: int : 2;
+pub Truncated: int : 3;
+pub InvalidOffset: int : 4;
+
+// kind is Malformed, Truncated or InvalidOffset. offset is the start of the
+// ill-formed sequence, or the caller's invalid offset.
+pub Error :: struct {
+    kind: int;
+    offset: int;
+}
+
+// value is a Unicode scalar number on Success. Scalar fields keep the internal
+// result compatible with both compiler stages; a public wrapper can return char.
+DecodeResult :: struct {
+    value: int;
+    width: int;
+    status: int;
+    error_offset: int;
+}
+
+ValidationResult :: struct {
+    valid: bool;
+    error_offset: int;
+}
+
+CountResult :: struct {
+    count: int;
+    status: int;
+    error_offset: int;
+}
+
+Failure :: (status: int, offset: int) -> DecodeResult {
+    return {value: 0, width: 0, status: status, error_offset: offset};
+}
+
+// A missing byte is -1. Examine available bytes before declaring truncation:
+// E2 28 is malformed, while E2 82 is a valid prefix that is truncated.
+// Return a width from 1 to 4, or the negative Malformed/Truncated status.
+// Scans use this scalar result instead of constructing a record per character.
+PrefixWidth :: (first: int, second: int, third: int, fourth: int) -> int {
+    if (first < 128) {
+        return 1;
+    }
+    width: int = 0;
+    minimum: int = 128;
+    maximum: int = 191;
+    if (first >= 194 && first <= 223) {
+        width = 2;
+    }
+    if (first >= 224 && first <= 239) {
+        width = 3;
+        if (first == 224) {
+            minimum = 160;
+        }
+        if (first == 237) {
+            maximum = 159;
+        }
+    }
+    if (first >= 240 && first <= 244) {
+        width = 4;
+        if (first == 240) {
+            minimum = 144;
+        }
+        if (first == 244) {
+            maximum = 143;
+        }
+    }
+    if (width == 0) {
+        return -Malformed;
+    }
+    if (second < 0) {
+        return -Truncated;
+    }
+    if (second < minimum || second > maximum) {
+        return -Malformed;
+    }
+    if (width == 2) {
+        return 2;
+    }
+    if (third < 0) {
+        return -Truncated;
+    }
+    if (third < 128 || third > 191) {
+        return -Malformed;
+    }
+    if (width == 3) {
+        return 3;
+    }
+    if (fourth < 0) {
+        return -Truncated;
+    }
+    if (fourth < 128 || fourth > 191) {
+        return -Malformed;
+    }
+    return 4;
+}
+
+DecodePrefix :: (first: int, second: int, third: int, fourth: int) -> DecodeResult {
+    width := PrefixWidth(first, second, third, fourth);
+    if (width < 0) {
+        return Failure(-width, -1);
+    }
+    value := first;
+    if (width == 2) {
+        value = ((first & 31) << 6) | (second & 63);
+    }
+    if (width == 3) {
+        value = ((first & 15) << 12) | ((second & 63) << 6) | (third & 63);
+    }
+    if (width == 4) {
+        value = ((first & 7) << 18) | ((second & 63) << 12) |
+                ((third & 63) << 6) | (fourth & 63);
+    }
+    return {value: value, width: width, status: Success, error_offset: -1};
+}
+
+ArrayWidth :: (data: u8[], offset: int, size: int, first: int) -> int {
+    second: int = -1;
+    third: int = -1;
+    fourth: int = -1;
+    remaining := size - offset;
+    if (remaining > 1) {
+        second = int(data[offset + 1]);
+    }
+    if (remaining > 2) {
+        third = int(data[offset + 2]);
+    }
+    if (remaining > 3) {
+        fourth = int(data[offset + 3]);
+    }
+    return PrefixWidth(first, second, third, fourth);
+}
+
+StringWidth :: (text: string, offset: int, size: int, first: int) -> int {
+    second: int = -1;
+    third: int = -1;
+    fourth: int = -1;
+    remaining := size - offset;
+    if (remaining > 1) {
+        second = strings.ByteAt(text, offset + 1);
+    }
+    if (remaining > 2) {
+        third = strings.ByteAt(text, offset + 2);
+    }
+    if (remaining > 3) {
+        fourth = strings.ByteAt(text, offset + 3);
+    }
+    return PrefixWidth(first, second, third, fourth);
+}
+
+// Read at most four bytes in O(1), without allocation or mutation.
+// End and every failure have width zero and consume nothing. On malformed or
+// truncated input, error_offset is the start of the ill-formed sequence.
+// value is meaningful only when status is Success, including U+0000.
+DecodeInternal :: (data: u8[], offset: int) -> DecodeResult {
+    size := length(data);
+    if (offset < 0 || offset > size) {
+        return Failure(InvalidOffset, offset);
+    }
+    if (offset == size) {
+        return Failure(End, -1);
+    }
+    // Use remaining length so offset + 3 cannot overflow at the index limit.
+    second: int = -1;
+    third: int = -1;
+    fourth: int = -1;
+    remaining := size - offset;
+    if (remaining > 1) {
+        second = int(data[offset + 1]);
+    }
+    if (remaining > 2) {
+        third = int(data[offset + 2]);
+    }
+    if (remaining > 3) {
+        fourth = int(data[offset + 3]);
+    }
+    result := DecodePrefix(int(data[offset]), second, third, fourth);
+    if (result.status != Success) {
+        result.error_offset = offset;
+    }
+    return result;
+}
+
+// String counterpart of DecodeInternal. ByteAt reads stored lengths and preserves NUL.
+// This avoids allocating an array or copying a string prefix.
+DecodeStringInternal :: (text: string, offset: int) -> DecodeResult {
+    size := strings.ByteLength(text);
+    if (offset < 0 || offset > size) {
+        return Failure(InvalidOffset, offset);
+    }
+    if (offset == size) {
+        return Failure(End, -1);
+    }
+    second: int = -1;
+    third: int = -1;
+    fourth: int = -1;
+    remaining := size - offset;
+    if (remaining > 1) {
+        second = strings.ByteAt(text, offset + 1);
+    }
+    if (remaining > 2) {
+        third = strings.ByteAt(text, offset + 2);
+    }
+    if (remaining > 3) {
+        fourth = strings.ByteAt(text, offset + 3);
+    }
+    result := DecodePrefix(strings.ByteAt(text, offset), second, third, fourth);
+    if (result.status != Success) {
+        result.error_offset = offset;
+    }
+    return result;
+}
+
+// O(n), no allocation. Empty input is valid. The offset is -1 on success.
+ValidateInternal :: (data: u8[]) -> ValidationResult {
+    size := length(data);
+    offset: int = 0;
+    while (offset < size) {
+        first := int(data[offset]);
+        width: int = 1;
+        if (first >= 128) {
+            width = ArrayWidth(data, offset, size, first);
+            if (width < 0) {
+                return {valid: false, error_offset: offset};
+            }
+        }
+        offset += width;
+    }
+    return {valid: true, error_offset: -1};
+}
+
+// O(n), no allocation. Validation does not normalize or remove a BOM.
+ValidateStringInternal :: (text: string) -> ValidationResult {
+    size := strings.ByteLength(text);
+    offset: int = 0;
+    while (offset < size) {
+        first := strings.ByteAt(text, offset);
+        width: int = 1;
+        if (first >= 128) {
+            width = StringWidth(text, offset, size, first);
+            if (width < 0) {
+                return {valid: false, error_offset: offset};
+            }
+        }
+        offset += width;
+    }
+    return {valid: true, error_offset: -1};
+}
+
+// Count Unicode scalars in O(n), without allocation. This is not a grapheme
+// count. On failure count is zero, and error_offset starts the bad sequence.
+CountInternal :: (text: string) -> CountResult {
+    size := strings.ByteLength(text);
+    offset: int = 0;
+    count: int = 0;
+    while (offset < size) {
+        first := strings.ByteAt(text, offset);
+        width: int = 1;
+        if (first >= 128) {
+            width = StringWidth(text, offset, size, first);
+            if (width < 0) {
+                return {count: 0, status: -width, error_offset: offset};
+            }
+        }
+        offset += width;
+        count += 1;
+    }
+    return {count: count, status: Success, error_offset: -1};
+}
+
+// Decode one scalar without consuming input. Success returns a scalar and its
+// byte width. End returns width zero and nil error. Every error returns width
+// zero and identifies the invalid offset or start of the ill-formed sequence.
+// value is meaningful only on Success. No replacement characters are inserted.
+pub Decode :: (data: u8[], offset: int) -> (value: char, width: int, status: int, error: Error?) {
+    result := DecodeInternal(data, offset);
+    if (result.status == Success || result.status == End) {
+        return (char(result.value), result.width, result.status, nil);
+    }
+    failed: Error = {kind: result.status, offset: result.error_offset};
+    return (char(0), 0, result.status, failed);
+}
+
+// String counterpart of Decode, without converting or copying the input.
+pub DecodeString :: (text: string, offset: int) -> (value: char, width: int, status: int, error: Error?) {
+    result := DecodeStringInternal(text, offset);
+    if (result.status == Success || result.status == End) {
+        return (char(result.value), result.width, result.status, nil);
+    }
+    failed: Error = {kind: result.status, offset: result.error_offset};
+    return (char(0), 0, result.status, failed);
+}
+
+// Validate the complete buffer in O(n). Empty input succeeds with nil.
+// The error reports the first ill-formed sequence, preserving every input byte.
+pub Validate :: (data: u8[]) -> Error? {
+    result := ValidateInternal(data);
+    if (result.valid) {
+        return nil;
+    }
+    decoded := DecodeInternal(data, result.error_offset);
+    failed: Error = {kind: decoded.status, offset: result.error_offset};
+    return failed;
+}
+
+// String counterpart of Validate. This neither normalizes text nor removes BOMs.
+pub ValidateString :: (text: string) -> Error? {
+    result := ValidateStringInternal(text);
+    if (result.valid) {
+        return nil;
+    }
+    decoded := DecodeStringInternal(text, result.error_offset);
+    failed: Error = {kind: decoded.status, offset: result.error_offset};
+    return failed;
+}
+
+// Count Unicode scalars in O(n), without normalizing or counting graphemes.
+// Success returns nil error. On failure count is zero and must be ignored;
+// error identifies the first ill-formed sequence.
+pub Count :: (text: string) -> (count: int, error: Error?) {
+    result := CountInternal(text);
+    if (result.status == Success) {
+        return (result.count, nil);
+    }
+    failed: Error = {kind: result.status, offset: result.error_offset};
+    return (0, failed);
+}
+
+// Every char is a Unicode scalar. Return its one-to-four-byte encoding as an
+// independent array value in O(1). U+0000 encodes as one zero byte.
+pub Encode :: (value: char) -> u8[] {
+    scalar := int(value);
+    if (scalar <= 127) {
+        return [u8(scalar)];
+    }
+    if (scalar <= 2047) {
+        return [u8(192 | (scalar >> 6)), u8(128 | (scalar & 63))];
+    }
+    if (scalar <= 65535) {
+        return [u8(224 | (scalar >> 12)), u8(128 | ((scalar >> 6) & 63)),
+                u8(128 | (scalar & 63))];
+    }
+    return [u8(240 | (scalar >> 18)), u8(128 | ((scalar >> 12) & 63)),
+            u8(128 | ((scalar >> 6) & 63)), u8(128 | (scalar & 63))];
+}

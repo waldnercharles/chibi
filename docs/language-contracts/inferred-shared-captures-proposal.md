@@ -2,9 +2,7 @@
 
 Status: **proposal, not implementation or final language approval**. Prepared
 15 October 2026 against engine main
-`dd0b2048116dc8f1ecc17603b19ac8a3c4bd84ce`. The documentation candidate integrates
-eligible main `3c65bb60b6f3443aef6ccf4ab15acbe09b04b191`; the source-audit baseline
-and its immutable fingerprints remain explicitly pinned above.
+`dd0b2048116dc8f1ecc17603b19ac8a3c4bd84ce`.
 
 ## Recommendation and decision boundary
 
@@ -14,20 +12,12 @@ Returning a closure preserves that binding automatically. Ordinary value
 assignment still copies values under the existing ownership rules. Authors do
 not select allocators, allocate environments, or free captures.
 
-The owner selected inferred captures and explicitly approved shared mutable
-binding behavior on 15 October 2026: “Sounds good. Mutable it is.” See the
-[decision record](../studio-migration-roadmap/decisions.md#selected-inferred-shared-mutable-captures)
-for the exact exchange and its scope. This proposal does not reopen immutable
-snapshots as the default. The owner subsequently required proper capture-cycle
-reclamation, allowing it in a separate implementation PR. A particular collector
-or reclamation algorithm is not selected. The owner also requested optional `fn`, an optional arrow form and inferred
-results. The exact grammar/canonicalization, escape admission, concurrency and
+The owner approved inferred shared mutable bindings on 15 October 2026 and
+required proper capture-cycle reclamation, allowing it in a separate
+implementation PR. No collector or reclamation algorithm was selected.
+The owner also requested optional `fn`, an optional arrow form and inferred
+results. The exact grammar, canonicalization, escape admission, concurrency and
 owner/reload behavior remain proposals requiring scoped decisions.
-The prior
-[capture-lifetime proposal](capture-lifetime-proposal.md) recommended immutable
-snapshots; it is a historical, unapproved alternative, not authority for these
-new semantics. [Version 1](v1.md) is an older source snapshot and must not be
-read as evidence that lexical lambdas now exist.
 
 Two design boundaries remain to settle; cycle completion is a required
 separate work item:
@@ -77,11 +67,6 @@ payloads. These are valuable existing ownership mechanisms, not proof of a
 lexical closure type, escape analysis, cycle handling or callable ABI. Neither
 creating a separate snapshot per lambda nor merely adding a function pointer
 would implement this proposal.
-
-The preserved [language comparison](research/closure-capture-comparison-2026-10-15.md)
-contains primary-source links and its original evidence limits. It supports
-separating binding semantics from representation. No current Jai capture
-contract was verified. No runtime or performance claim is made here.
 
 ## 1. Optional `fn`, arrow bodies and inferred results
 
@@ -753,38 +738,6 @@ Existing capture-compaction cases in `test/language/capture.c`, reached from
 `--program`, remain required regression evidence, not substitutes for these new
 lexical cases. Independent exact-head review and applicable builds/checks still
 apply before integration.
-
-## 9. Roadmap disposition and provenance
-
-L10 can first implement the verified synchronous nonescaping route, but it must
-use shared-binding semantics from its first passing case. A nonescape-only slice
-must explicitly reject return/storage/suspension; it is not completion of the
-recommended after-return contract. An owned-local/result slice follows before
-claiming that contract complete. L11 owns consistent authoring/debug/prepared
-identity. L12 stays conditional on a concrete retained-callback consumer; L13
-keeps task-producing closures/reentry out of this first contract. L14 retains
-broader ownership measurement. No new record syntax or L01 implementation is
-needed merely to express the examples in this document.
-
-Proper capture-cycle reclamation is a required separate implementation PR. Its
-staged entry must remain open even if an initial closure PR rejects cycles;
-reference-counted acyclic behavior is not completion of the user's requirement.
-The collector/mechanism design and actual test cases remain unselected.
-
-The roadmap README and L10 decision/scope/acceptance text now record the selected
-shared-binding direction, requested optional syntax/inferred results and required
-separate cycle work. Its curated source
-plan retains the historical planning snapshot; L12's detailed owned-callable scope still needs
-reconciliation before that conditional consumer is implemented. No package is
-marked complete by this document update. No source format version bump is
-justified by a proposal or unused additive syntax. Actual prepared payload changes need their own
-version/compatibility decision.
-
-[provenance.json](research/inferred-shared-captures-provenance.json) records the
-exact engine base, inspected source fingerprints, prior document snapshots,
-the exact selected-direction exchange and byte-for-byte research-copy provenance.
-Only source/document checks are recorded. No remote writes, publication, runtime
-implementation or test execution accompany these files.
 
 [grammar]: https://github.com/waldnercharles/chibi/blob/dd0b2048116dc8f1ecc17603b19ac8a3c4bd84ce/src/language/grammar.js#L279-L312
 [names]: https://github.com/waldnercharles/chibi/blob/dd0b2048116dc8f1ecc17603b19ac8a3c4bd84ce/src/language/semantic_expression.c#L540-L565

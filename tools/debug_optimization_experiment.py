@@ -111,7 +111,7 @@ def verify(build, evidence, level, sanitizers=True, label=None):
 def build_command(build):
     # This experiment fixes the generator to Unix Makefiles. Buffer each recipe's
     # verbose output so concurrent >PIPE_BUF compiler commands remain intact.
-    return ['cmake', '--build', str(build), '--target', 'chibi_ctl', 'test_tools',
+    return ['cmake', '--build', str(build), '--target', 'test_tools',
             'test_language', '--parallel', '4', '--verbose', '--', '--output-sync=target']
 
 
@@ -230,10 +230,9 @@ def main():
         env = dict(environment, CHIBI_TOOLS_BUILD_DIR=str(build / 'test/tools'),
                    CHIBI_LANGUAGE_BUILD_DIR=str(build / 'test/language'),
                    CHIBI_BUILD_HOST=str(build / 'sdk/chibi-build-host'),
-                   CHIBI_COMPILER_HOST=str(build / 'sdk/chibi-compiler-host'),
-                   CHIBI_CTL=str(build / 'bin/chibi_ctl'), CHIBI_GRAPH_REFERENCE=str(build))
+                   CHIBI_COMPILER_HOST=str(build / 'sdk/chibi-compiler-host'))
         for executable in ('test/tools/test_tools', 'test/language/test_language',
-                           'sdk/chibi-build-host', 'sdk/chibi-compiler-host', 'bin/chibi_ctl'):
+                           'sdk/chibi-build-host', 'sdk/chibi-compiler-host'):
             require(os.access(build / executable, os.X_OK), f'missing helper: {executable}')
         totals[label] = build_seconds[label] = total
         environments[label] = env

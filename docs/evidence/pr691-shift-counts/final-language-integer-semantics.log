@@ -1,4 +1,0 @@
-Running: integer_semantics_pin_every_width (OK) (0.364267 secs)
-===============================================================
-Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 325
-Test command wall time: 1.270s; includes in-test fixture setup; external configuration/build excluded.

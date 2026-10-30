@@ -1,6 +1,4 @@
-// The public documentation site. chibi doc publishes exactly the pages listed
-// here, in this order, and never scans the rest of docs/, which keeps research,
-// evidence and internal records out of the site.
+// chibi doc publishes these pages in order.
 title "Chibi"
 (array)sections {
     - {

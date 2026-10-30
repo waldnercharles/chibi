@@ -258,6 +258,21 @@ static void add_dependency(package_generation *generation, package_generation *d
     generation->dependencies[position] = dependency;
 }
 
+static bool host_package_available(const script_catalog *native, const char *identity)
+{
+    if (strncmp(identity, "host:", 5)) {
+        return true;
+    }
+    size_t length = strlen(identity);
+    for (int i = 0; i < native->capability_count; i++) {
+        const char *name = native->capabilities[i].name;
+        if (!strncmp(name, identity, length) && name[length] == '.') {
+            return true;
+        }
+    }
+    return false;
+}
+
 static package_generation *generation_new(
     authoring_packages *owner,
     int index,
@@ -344,6 +359,13 @@ static package_generation *generation_new(
         &generation->native,
         &generation->defaults
     );
+    if (!host_package_available(native, generation->view.identity)) {
+        diagnostic(
+            generation,
+            (script_range){ .line = 1, .column = 1, .document = 0 },
+            "Host package is unavailable for this target"
+        );
+    }
     return generation;
 }
 

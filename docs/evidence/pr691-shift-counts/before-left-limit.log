@@ -1,6 +1,0 @@
-integer semantics left-limit, stage zero: compiles (expected Constant shift count is too large)
-(FAILED: $CHECKOUT/test/language/integer_semantics.c (1081): agrees)
-Running: left-limit
-===============================================================
-Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 6
-Test command wall time: 0.087s; includes in-test fixture setup; external configuration/build excluded.

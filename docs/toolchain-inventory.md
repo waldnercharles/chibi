@@ -1,9 +1,8 @@
 # Chibi toolchain migration inventory
 
 Read this before changing or deleting project-owned Python, shell, Make, CMake,
-packaging, reflection, test-supervision, browser, or release code. This file is a
-deletion contract and current ownership map. `PLAN.md` owns the implementation
-order and checkpoint.
+packaging, reflection, test-supervision, browser, or release code. This file
+lists current owners and the requirements for replacing them.
 
 The goal is not to translate scripts line for line. Move policy and orchestration
 into shared `.chibi` modules, keep native host capabilities narrow, then delete a
@@ -37,7 +36,7 @@ Before removing or bypassing an implementation:
    behavior, and supported platforms where applicable.
 6. Remove the old caller, implementation, tests that only test the old mechanism,
    and stale documentation together. Preserve replacement coverage.
-7. Record the evidence and remaining recovery path in `PLAN.md`.
+7. Describe the checks run and any remaining recovery path in the change.
 
 Passing a happy-path replacement is not enough. A repository-local `.chibi` file
 does not replace a capability installed into the SDK. Invoking CMake from Chibi
@@ -68,7 +67,7 @@ make the compiler self-hosted.
 | C source formatting | `tools/clang-format.sh`, `.githooks/pre-commit`, CI | Keep external clang-format 22 while maintained C exists. `chibi fmt` replaces authored-source and asset formatting, not C formatting during migration. | Existing C format check and a separate canonical authored-format corpus. |
 | Stage-zero compiler | `src/language/` (including the generated Tree-sitter parser), the compiler parts of `src/authoring/`, `src/types/` and `src/execution/` | Build-program semantic preparation has moved to Chibi. Public project/catalog preparation and differential/recovery callers remain. Remove the C frontend only after those callers move and the installed compiler/build/link and checked-game gates pass. Raw native syntax facts remain a separate capability. | `make test-bootstrap`, `make test-recovery`, the semantic fixture set on both stages, and an installed clean-checkout compiler/build/link and checked-game proof with `cmake`, `clang` and `gcc` unavailable. |
 | Native executables and runtime | `src/host/`, `src/toolchain/`, `src/execution/`, `src/types/`, `tools/chibi_ctl/` | Executables stay C until Chibi has a native backend that emits them (LLVM AOT, backend milestone 4 in `docs/self-hosting-build.md`). Their orchestration and policy (command dispatch, export assembly, migration, validation) move to installed `.chibi` modules first. | `test/tools/chibi_cli.c`, installed-SDK and relocated-SDK command runs, and matching bytecode/SLJIT/native semantics. |
-| First-party engine modules | `src/runtime/`, `src/render/`, `src/ui/`, `src/graph/`, `src/ecs/`, `src/assets/`, `src/authoring/`, `src/automation/`, `src/capabilities/`, `src/diagnostics/`, `src/platform/`, `src/support/`, `include/chibi/` | M9: Chibi packages over narrow bindings to SDL, Cute, Box2D, Box3D, RmlUi, codecs and platform APIs. `src/ui/rml.cpp` and `test/draw_backend.cpp` stay as pass-through shims while their C++ libraries do. | Each module's existing deterministic fixtures, desktop and browser parity, and ownership tests at every binding. |
+| First-party engine modules | `src/runtime/`, `src/render/`, `src/ui/`, `src/ecs/`, `src/assets/`, `src/authoring/`, `src/automation/`, `src/capabilities/`, `src/diagnostics/`, `src/platform/`, `src/support/`, `include/chibi/` | M9: Chibi packages over narrow bindings to SDL, Cute, Box2D, Box3D, RmlUi, codecs and platform APIs. `src/ui/rml.cpp` and `test/draw_backend.cpp` stay as pass-through shims while their C++ libraries do. | Each module's existing deterministic fixtures, desktop and browser parity, and ownership tests at every binding. |
 | C regression and differential tests | `test/` pico_unit drivers and their `CMakeLists.txt` files, `tools/benchmark.c` | A test leaves with the C it tests. When a Chibi component replaces its C reference, its cases move to `@test` under `chibi test`. | The replacement's `chibi test` cases and the aggregate that ran the C cases. |
 | Collaboration room service | `tools/collab/server/` (Node) | Needs a Chibi network service with HTTP and WebSocket bindings, or a move to `chibi-studio`, whose browser client is its only consumer. | `test/tools/collab.c` room, protocol and storage cases, and Studio collaboration against the service. |
 
@@ -165,8 +164,6 @@ staging directories, or limit a child's resources. Its instruction budget,
 | `tools/configure_inputs.py` | Native configuration probe. `tools/toolchain/Build.chibi`, SDK install. | `signature`: **Replace now**: prebuilt archives removed the dependency inputs it tracked, and the host primitives cover the rest. `Build.chibi` owns the former `compiler-sdk` probe; `package-enabled` went with the dependency packages. |
 | `tools/package_sdk.py`, `tools/package_player.py`, `tools/package_studio.py` | SDK, player and Studio packaging. Makefile `package-*`, `test/tools/package.c` and `package_ownership.c`, SDK install. | **Blocked**: M6 and the host file primitives. |
 | `tools/quiet.py` | Build logs for every Makefile recipe (`QUIET`). | **Blocked**: it wraps configuration before any build host exists. Needs a prebuilt host or Make's retirement (M6). |
-| `docs/studio-migration-roadmap/build_ledger.py` | Studio migration ledger generator. Its README and provenance JSON. | **Blocked**: the Studio migration is paused; this moves or retires with it. |
-| `docs/prototypes/studio/serve.py` and the prototype's JavaScript | Static server and code for the Studio design prototype. Its README; the prototype is cited by `docs/editor-ui-references.md` and `docs/studio-ui-authoring.md`. | **Blocked**: Studio-owned design reference; Studio migration is paused. |
 
 ### Shell
 
@@ -184,7 +181,6 @@ staging directories, or limit a child's resources. Its instruction budget,
 | `Makefile` | Build, test, package and agent entry points. CI, `AGENTS.md`, documentation. | **Blocked**: M6 build graph and the test-policy replacement. Public targets give way to `chibi` commands. |
 | Root `CMakeLists.txt`, `cmake/*.cmake`, `sdk/`, component and test `CMakeLists.txt` | Internal build graph. Makefile, `Build.chibi`, `configure.sh`, CI. | **Blocked**: M6's SDK, remaining native-platform, Wasm, Studio and parity/recovery responsibilities. Build-program compiler replacement alone does not remove them. |
 | Installed `ChibiConfig.cmake` and `ChibiTargets.cmake` | CMake consumer interface. `chibi-studio`. | **Blocked**: kept while Studio builds through CMake. |
-| `cmake/tests/` | Fixtures for desktop dependencies, package ownership and generation. `test/tools/desktop_dependencies.c`, `package_ownership.c`, root `CMakeLists.txt`. | **Blocked**: leave with the CMake mechanism they test. |
 
 ### C and C++
 
@@ -192,7 +188,7 @@ staging directories, or limit a child's resources. Its instruction budget,
 | --- | --- | --- |
 | `src/language/` | Stage-zero compiler and remaining public project/catalog preparation. | **Blocked**: move remaining callers and pass the installed compiler/build/link and checked-game proof. Build programs use the Chibi compiler; public compilation and differential/recovery paths still need the C implementation. |
 | `src/host/`, `src/toolchain/`, `src/execution/`, `src/types/`, `tools/chibi_ctl/` | Executables, bytecode/SLJIT execution and the value ABI. | **Blocked**: Chibi emits no native executables yet (LLVM AOT). Their policy moves to installed `.chibi` modules first. |
-| `src/runtime/`, `src/render/`, `src/ui/`, `src/graph/`, `src/ecs/`, `src/assets/`, `src/authoring/`, `src/automation/`, `src/capabilities/`, `src/diagnostics/`, `src/platform/`, `src/support/`, `include/chibi/` | First-party engine modules and the public header. | **Blocked**: M9, which depends on M5 and M6. |
+| `src/runtime/`, `src/render/`, `src/ui/`, `src/ecs/`, `src/assets/`, `src/authoring/`, `src/automation/`, `src/capabilities/`, `src/diagnostics/`, `src/platform/`, `src/support/`, `include/chibi/` | First-party engine modules and the public header. | **Blocked**: M9, which depends on M5 and M6. |
 | `src/ui/rml.cpp`, `test/draw_backend.cpp` | Pass-through shims to RmlUi and Cute's C++ API. | **Keep** while those libraries are used. |
 | `tools/reflect/` | Native reflection generator. `sdk/native.cmake`, Makefile reflect builds. | **Blocked**: its ledger gate. |
 | `test/`, `tools/benchmark.c` | C regression, differential and benchmark drivers. `make test-*`, CI. | **Blocked**: each leaves with the C it tests. |

@@ -1,0 +1,249 @@
+package endian
+
+SameBytes :: (left: u8[], right: u8[]) -> bool {
+    if length(left) != length(right) {
+        return false;
+    }
+    for index in 0..<length(left) {
+        if left[index] != right[index] {
+            return false;
+        }
+    }
+    return true;
+}
+
+NoError :: (error: Error?) {
+    if error {
+        assert(false, "valid endian operation must succeed");
+    }
+}
+
+HasError :: (error: Error?, kind: int, offset: int) {
+    if error {
+        assert(error.kind == kind);
+        assert(error.offset == offset);
+    } else {
+        assert(false, "invalid endian range needs a typed error");
+    }
+}
+
+@test
+ExplicitWireBytesDecodeInBothOrders :: () {
+    data: u8[] = [165, 18, 52, 86, 120, 154, 188, 222, 240, 165];
+    a := ReadU16BE(data, 1);
+    b := ReadU16LE(data, 1);
+    c := ReadU32BE(data, 1);
+    d := ReadU32LE(data, 1);
+    e := ReadU64BE(data, 1);
+    f := ReadU64LE(data, 1);
+    assert(a.value == 0x1234);
+    NoError(a.error);
+    assert(b.value == 0x3412);
+    NoError(b.error);
+    assert(c.value == 0x12345678);
+    NoError(c.error);
+    assert(d.value == 0x78563412);
+    NoError(d.error);
+    assert(e.value == 0x123456789ABCDEF0);
+    NoError(e.error);
+    assert(f.value == 0xF0DEBC9A78563412);
+    NoError(f.error);
+    assert(data[0] == 165 && data[9] == 165);
+    return;
+}
+
+@test
+FullWidthValuesAndZeroRemainUnsigned :: () {
+    full: u8[] = [255, 255, 255, 255, 255, 255, 255, 255];
+    a := ReadU16BE(full, 0);
+    b := ReadU16LE(full, 6);
+    c := ReadU32BE(full, 0);
+    d := ReadU32LE(full, 4);
+    e := ReadU64BE(full, 0);
+    f := ReadU64LE(full, 0);
+    assert(a.value == 65535);
+    NoError(a.error);
+    assert(b.value == 65535);
+    NoError(b.error);
+    assert(c.value == 4294967295);
+    NoError(c.error);
+    assert(d.value == 4294967295);
+    NoError(d.error);
+    assert(e.value == 18446744073709551615);
+    NoError(e.error);
+    assert(f.value == 18446744073709551615);
+    NoError(f.error);
+    zero: u8[] = [0, 0, 0, 0, 0, 0, 0, 0];
+    z16 := ReadU16LE(zero, 0);
+    z32 := ReadU32BE(zero, 0);
+    z64 := ReadU64LE(zero, 0);
+    assert(z16.value == 0);
+    NoError(z16.error);
+    assert(z32.value == 0);
+    NoError(z32.error);
+    assert(z64.value == 0);
+    NoError(z64.error);
+    return;
+}
+
+@test
+EveryTruncatedReadReturnsZeroAndTypedError :: () {
+    data: u8[] = [];
+    for size in 0..<8 {
+        a := ReadU64LE(data, 0);
+        b := ReadU64BE(data, 0);
+        assert(a.value == 0);
+        HasError(a.error, ShortBuffer, 0);
+        assert(b.value == 0);
+        HasError(b.error, ShortBuffer, 0);
+        if size < 4 {
+            c := ReadU32LE(data, 0);
+            d := ReadU32BE(data, 0);
+            assert(c.value == 0);
+            HasError(c.error, ShortBuffer, 0);
+            assert(d.value == 0);
+            HasError(d.error, ShortBuffer, 0);
+        }
+        if size < 2 {
+            e := ReadU16LE(data, 0);
+            f := ReadU16BE(data, 0);
+            assert(e.value == 0);
+            HasError(e.error, ShortBuffer, 0);
+            assert(f.value == 0);
+            HasError(f.error, ShortBuffer, 0);
+        }
+        data.append(u8(255));
+    }
+    return;
+}
+
+RejectedReads :: (data: u8[], offset: int, kind: int) {
+    a := ReadU16LE(data, offset);
+    b := ReadU16BE(data, offset);
+    c := ReadU32LE(data, offset);
+    d := ReadU32BE(data, offset);
+    e := ReadU64LE(data, offset);
+    f := ReadU64BE(data, offset);
+    assert(a.value == 0);
+    assert(b.value == 0);
+    assert(c.value == 0);
+    assert(d.value == 0);
+    assert(e.value == 0);
+    assert(f.value == 0);
+    HasError(a.error, kind, offset);
+    HasError(b.error, kind, offset);
+    HasError(c.error, kind, offset);
+    HasError(d.error, kind, offset);
+    HasError(e.error, kind, offset);
+    HasError(f.error, kind, offset);
+}
+
+@test
+InvalidOffsetsDoNotOverflowRangeChecks :: () {
+    data: u8[] = [1, 2, 3, 4, 5, 6, 7, 8];
+    RejectedReads(data, -1, InvalidOffset);
+    RejectedReads(data, 8, ShortBuffer);
+    RejectedReads(data, 9, InvalidOffset);
+    RejectedReads(data, 2147483647, InvalidOffset);
+    RejectedReads(data, -2147483648, InvalidOffset);
+    RejectedReads(data, 7, ShortBuffer);
+    RejectedReads([], 0, ShortBuffer);
+    RejectedReads([], 1, InvalidOffset);
+    short: u8[] = [1, 2, 3];
+    a := ReadU32BE(short, 0);
+    HasError(a.error, ShortBuffer, 0);
+    assert(a.value == 0);
+    b := ReadU64LE(short, 0);
+    HasError(b.error, ShortBuffer, 0);
+    assert(b.value == 0);
+    return;
+}
+
+@test
+WritesHaveExplicitWireBytesAndPreserveNeighbors :: () {
+    data: u8[] = [165, 165, 165, 165, 165, 165, 165, 165, 165, 165];
+    NoError(WriteU16LE(&data, 1, 0x1234));
+    assert(SameBytes(data, [165, 52, 18, 165, 165, 165, 165, 165, 165, 165]));
+    NoError(WriteU16BE(&data, 1, 0x1234));
+    assert(SameBytes(data, [165, 18, 52, 165, 165, 165, 165, 165, 165, 165]));
+    NoError(WriteU32LE(&data, 1, 0x12345678));
+    assert(SameBytes(data, [165, 120, 86, 52, 18, 165, 165, 165, 165, 165]));
+    NoError(WriteU32BE(&data, 1, 0x12345678));
+    assert(SameBytes(data, [165, 18, 52, 86, 120, 165, 165, 165, 165, 165]));
+    NoError(WriteU64LE(&data, 1, 0x123456789ABCDEF0));
+    assert(SameBytes(data, [165, 240, 222, 188, 154, 120, 86, 52, 18, 165]));
+    NoError(WriteU64BE(&data, 1, 0x123456789ABCDEF0));
+    assert(SameBytes(data, [165, 18, 52, 86, 120, 154, 188, 222, 240, 165]));
+    return;
+}
+
+@test
+MaximumWritesKeepLowBytesRatherThanClamp :: () {
+    data: u8[] = [0, 0, 0, 0, 0, 0, 0, 0];
+    NoError(WriteU16LE(&data, 0, 65535));
+    NoError(WriteU16BE(&data, 2, 65535));
+    assert(SameBytes(data, [255, 255, 255, 255, 0, 0, 0, 0]));
+    NoError(WriteU32LE(&data, 0, 4294967295));
+    NoError(WriteU32BE(&data, 4, 4294967295));
+    assert(SameBytes(data, [255, 255, 255, 255, 255, 255, 255, 255]));
+    NoError(WriteU64LE(&data, 0, 18446744073709551615));
+    assert(SameBytes(data, [255, 255, 255, 255, 255, 255, 255, 255]));
+    NoError(WriteU64BE(&data, 0, 0));
+    assert(SameBytes(data, [0, 0, 0, 0, 0, 0, 0, 0]));
+    NoError(WriteU64BE(&data, 0, 18446744073709551615));
+    assert(SameBytes(data, [255, 255, 255, 255, 255, 255, 255, 255]));
+    NoError(WriteU64LE(&data, 0, 0));
+    assert(SameBytes(data, [0, 0, 0, 0, 0, 0, 0, 0]));
+    return;
+}
+
+RejectedWrites :: (data: ^(u8[]), offset: int, kind: int) {
+    before := data^;
+    HasError(WriteU16LE(data, offset, 0x1234), kind, offset);
+    assert(SameBytes(data^, before));
+    HasError(WriteU16BE(data, offset, 0x1234), kind, offset);
+    assert(SameBytes(data^, before));
+    HasError(WriteU32LE(data, offset, 0x12345678), kind, offset);
+    assert(SameBytes(data^, before));
+    HasError(WriteU32BE(data, offset, 0x12345678), kind, offset);
+    assert(SameBytes(data^, before));
+    HasError(WriteU64LE(data, offset, 0x123456789ABCDEF0), kind, offset);
+    assert(SameBytes(data^, before));
+    HasError(WriteU64BE(data, offset, 0x123456789ABCDEF0), kind, offset);
+    assert(SameBytes(data^, before));
+}
+
+@test
+RejectedWritesLeaveEveryByteUnchanged :: () {
+    data: u8[] = [1, 2, 3, 4, 5, 6, 7, 8];
+    RejectedWrites(&data, -1, InvalidOffset);
+    RejectedWrites(&data, 9, InvalidOffset);
+    RejectedWrites(&data, 7, ShortBuffer);
+    RejectedWrites(&data, 8, ShortBuffer);
+    RejectedWrites(&data, 2147483647, InvalidOffset);
+    RejectedWrites(&data, -2147483648, InvalidOffset);
+    empty: u8[] = [];
+    RejectedWrites(&empty, 0, ShortBuffer);
+    RejectedWrites(&empty, 1, InvalidOffset);
+    short: u8[] = [1, 2, 3];
+    before := short;
+    HasError(WriteU32LE(&short, 0, 0), ShortBuffer, 0);
+    HasError(WriteU32BE(&short, 0, 0), ShortBuffer, 0);
+    assert(SameBytes(short, before));
+    partial: u8[] = [1, 2, 3, 4, 5, 6, 7];
+    original := partial;
+    HasError(WriteU64LE(&partial, 0, 0), ShortBuffer, 0);
+    HasError(WriteU64BE(&partial, 0, 0), ShortBuffer, 0);
+    assert(SameBytes(partial, original));
+    return;
+}
+
+@test
+WritesPreserveArrayValueCopies :: () {
+    original: u8[] = [1, 2, 3, 4, 5, 6, 7, 8];
+    edited := original;
+    NoError(WriteU64BE(&edited, 0, 0x123456789ABCDEF0));
+    assert(SameBytes(original, [1, 2, 3, 4, 5, 6, 7, 8]));
+    assert(SameBytes(edited, [18, 52, 86, 120, 154, 188, 222, 240]));
+    return;
+}

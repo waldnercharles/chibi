@@ -1,0 +1,113 @@
+package math_types
+
+// Accepted describes the success payload only. Recoverable operations still
+// need the language's agreed error-result adapter at the compiler boundary.
+// This package does not choose a public optional, union or multi-result ABI.
+pub Recoverable :: (name: string) -> bool {
+    return name == "normalize" || name == "normalize_or" || name == "inverse" || name == "quat_normalize";
+}
+
+UnaryMemberwise :: (name: string) -> bool {
+    return name == "abs" || name == "sign" || name == "floor" || name == "ceil" ||
+           name == "round" || name == "fract" || name == "sqrt" || name == "exp" ||
+           name == "exp2" || name == "log" || name == "log2" || name == "sin" ||
+           name == "cos" || name == "tan" || name == "asin" || name == "acos" ||
+           name == "atan" || name == "saturate";
+}
+BinaryMemberwise :: (name: string) -> bool {
+    return name == "mod" || name == "min" || name == "max" || name == "pow" ||
+           name == "atan2" || name == "step";
+}
+TernaryMemberwise :: (name: string) -> bool {
+    return name == "clamp" || name == "mix" || name == "smoothstep";
+}
+
+Memberwise :: (arguments: int[]) -> Result {
+    kind := Scalar;
+    for (argument in arguments) {
+        problem := ScalarError(argument);
+        if (problem != "") {
+            return Result.Rejected(problem);
+        }
+        if (argument != Scalar && !IsVector(argument)) {
+            return Result.Rejected("memberwise math functions take f32 scalars and vectors");
+        }
+        if (IsVector(argument)) {
+            if (kind != Scalar && kind != argument) {
+                return Result.Rejected("memberwise math operands differ in vector width");
+            }
+            kind = argument;
+        }
+    }
+    return Result.Accepted(kind);
+}
+
+pub Function :: (name: string, arguments: int[]) -> Result {
+    arity: int = 0;
+    if (UnaryMemberwise(name)) {
+        arity = 1;
+    } else if (BinaryMemberwise(name)) {
+        arity = 2;
+    } else if (TernaryMemberwise(name)) {
+        arity = 3;
+    }
+    if (arity != 0) {
+        if (length(arguments) != arity) {
+            return Result.Rejected(format_text("{} needs {} arguments", name, arity));
+        }
+        return Memberwise(arguments);
+    }
+    if (name == "length" || name == "normalize" || name == "normalize_or_zero") {
+        if (length(arguments) != 1 || !IsVector(arguments[0])) {
+            return Result.Rejected(format_text("{} takes one vector", name));
+        }
+        if (name == "length") {
+            return Result.Accepted(Scalar);
+        }
+        return Result.Accepted(arguments[0]);
+    }
+    if (name == "distance" || name == "dot" || name == "reflect" || name == "normalize_or") {
+        if (length(arguments) != 2 || !IsVector(arguments[0]) || arguments[0] != arguments[1]) {
+            return Result.Rejected(format_text("{} takes two vectors of one width", name));
+        }
+        if (name == "distance" || name == "dot") {
+            return Result.Accepted(Scalar);
+        }
+        return Result.Accepted(arguments[0]);
+    }
+    if (name == "cross") {
+        if (length(arguments) != 2 || arguments[0] != Vec3 || arguments[1] != Vec3) {
+            return Result.Rejected("cross takes two vec3 operands");
+        }
+        return Result.Accepted(Vec3);
+    }
+    if (name == "refract") {
+        if (length(arguments) != 3 || !IsVector(arguments[0]) || arguments[0] != arguments[1] ||
+            arguments[2] != Scalar) {
+            return Result.Rejected("refract takes two vectors of one width and an f32 ratio");
+        }
+        return Result.Accepted(arguments[0]);
+    }
+    if (name == "transpose" || name == "determinant" || name == "inverse") {
+        if (length(arguments) != 1 || !IsMatrix(arguments[0])) {
+            return Result.Rejected(format_text("{} takes one matrix", name));
+        }
+        if (name == "determinant") {
+            return Result.Accepted(Scalar);
+        }
+        return Result.Accepted(arguments[0]);
+    }
+    if (name == "matrix_comp_mult") {
+        if (length(arguments) != 2 || !IsMatrix(arguments[0]) || arguments[0] != arguments[1]) {
+            return Result.Rejected("matrix_comp_mult takes two matrices of one width");
+        }
+        return Result.Accepted(arguments[0]);
+    }
+    if (name == "quat_conjugate" || name == "quat_normalize") {
+        if (length(arguments) != 1 || arguments[0] != Quat) {
+            return Result.Rejected(format_text("{} takes one quaternion", name));
+        }
+        return Result.Accepted(Quat);
+    }
+    return Result.Rejected(format_text("unknown built-in math function '{}'", name));
+}

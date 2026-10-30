@@ -619,7 +619,8 @@ Example :: library {
 ```
 
 A switch over a finite union must cover every alternative or include `case:`.
-Union values need an initializer. ECS component fields cannot contain unions.
+Union values need an initializer. A record field can hold a union; a record
+literal must give it a value. ECS component fields cannot contain unions.
 
 `is` tests and narrows a union value. `as T` extracts an optional `T`.
 A failed extraction gives `nil`. A successful extraction preserves zero,

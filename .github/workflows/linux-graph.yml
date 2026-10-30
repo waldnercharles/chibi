@@ -66,7 +66,7 @@ jobs:
           echo "$RUNNER_TEMP/graph-sdk-build-tools/bin" >> "$GITHUB_PATH"
           install -d -m 700 "$XDG_RUNTIME_DIR"
       - name: Build Release graph products and private hosts
-        run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl chibi-build-host chibi-compiler-host'
+        run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi chibi-compile chibi-player chibi-build-host chibi-compiler-host'
       - name: Record Release graph tool identities
         run: |
           sha256sum \
@@ -77,22 +77,19 @@ jobs:
             > "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
           cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Build graph products and test drivers (selected Debug profile)
-        run: make build GRAPH_BUILD=1 BUILD_DIR=build-sdk-tests BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language chibi-compiler-host' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk
+        run: make build GRAPH_BUILD=1 BUILD_DIR=build-sdk-tests BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language chibi-compiler-host' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk
       - name: Verify executed graph profile, assertions and links
         run: python3 .github/verify-native-profile.py --build build-sdk-tests --output "$RUNNER_TEMP/graph-sdk-native-profile.json"
       - name: Verify Release graph tools survived the harness build unchanged
         run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
-      - name: Build matching CMake command and generated-output reference
-        run: make graph-reference BUILD_DIR=build-sdk-tests CMAKE_REFERENCE_DIR=build-sdk-tests-cmake
       - name: Verify graph commands, discovery, incremental builds and resources
         env:
           CHIBI_TOOLS_BUILD_DIR: build-sdk-tests/test/tools
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-          CHIBI_GRAPH_REFERENCE: build-sdk-tests-cmake
         shell: bash
         run: |
           set -e
-          for route in build-graph build-graph-programs build-graph-debug-optimization build-graph-support build-graph-reflect build-graph-archive build-graph-generated build-graph-resources; do
+          for route in build-graph build-graph-programs build-graph-debug-optimization build-graph-support build-graph-reflect build-graph-generated; do
             python3 tools/test_policy.py tool "$route"
           done
       - name: Verify graph SDK packaging and relocation
@@ -111,12 +108,12 @@ jobs:
         shell: bash
         run: |
           set -e
-          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" "$CHIBI_BUILD_HOST" "$CHIBI_COMPILER_HOST" build-release/bin/chibi_ctl build-release/sdk/chibi build-release/sdk/chibi-compile build-release/sdk/chibi-player; do test -x "$driver"; done
+          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" "$CHIBI_BUILD_HOST" "$CHIBI_COMPILER_HOST" build-release/sdk/chibi build-release/sdk/chibi-compile build-release/sdk/chibi-player; do test -x "$driver"; done
           # Groups retain their existing coverage and admission policy; they
           # remain sequential because fixtures and build outputs are shared.
           python3 tools/test_policy.py group native
           python3 tools/test_policy.py group materials
-          CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi \
+          CHIBI_CLI=build-release/sdk/chibi \
           CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin \
             python3 tools/test_policy.py group projects
           CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group language

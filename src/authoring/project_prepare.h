@@ -12,8 +12,6 @@ typedef struct
     native_capabilities *native;
     ecs_component_catalog components;
     unsigned modules;
-    /* Read the project as it is: an older project fails instead of migrating. */
-    bool read_only;
     /* Optional reporting of the finalized source facts; no game code runs. */
     authoring_cost_report_mode cost_report;
 } authoring_project_options;

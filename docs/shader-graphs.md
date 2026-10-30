@@ -108,9 +108,7 @@ Influence** component. Its Color, Strength, Radius and Linger can be edited on
 prototypes or animated by behaviors. `ArenaFloor` samples at each triangular
 cell center, so a whole panel receives the same response. It combines the signal
 with a grid mask to make edges brighter than the fill. This signal is independent
-of Point Light, and isolated material previews have no activity sources. See the
-[reactive arena notes](arena-development.md#reactive-visual-iteration-september-9-2026)
-for history limits and an authored hit/death pulse example.
+of Point Light, and isolated material previews have no activity sources.
 
 Mapping transforms coordinates, so increasing Scale makes a sampled pattern
 smaller. It implements the straightforward point transform described in
@@ -222,9 +220,9 @@ shadows across it. On web, a fragment shader draws the 2D material and shape gra
 across native and WebGL. Invalid graph edits preserve valid rendering and expose
 diagnostics.
 
-This is a growing material system. Mesh vertex deformation and the full
-expression catalog of other engines remain open work in [the arena roadmap](arena-roadmap.md). Supplied materials have been
-migrated directly to Surface Output; the old lighting-buffer output is removed.
+Mesh vertex deformation and the full expression catalog of other engines remain
+open work. Supplied materials use Surface Output; the old lighting-buffer output
+is removed.
 
 ## Arena development
 

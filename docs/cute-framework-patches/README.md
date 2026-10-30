@@ -45,7 +45,3 @@ The October 6 audit published each patch it kept as an unlisted gist, and `gists
 - Strokes of closed shapes (boxes, circles, triangles) run inward from the edge instead of straddling it, and `chubbiness` became `rounding`, a corner radius that keeps the shape's extent ([976ac895](https://github.com/RandyGaul/cute_framework/commit/976ac895)). Chibi's runtime draws its entities through its own raster and passes zero rounding to Cute, so only Studio's overlays and gizmos move by half a stroke.
 - Draw lists replay the live render state unless a recording pushed its own ([4e2662b6](https://github.com/RandyGaul/cute_framework/commit/4e2662b6)).
 - 2D shapes can test and write depth with `cf_draw_push_z` ([3a66cb58](https://github.com/RandyGaul/cute_framework/commit/3a66cb58)). Nothing changes until a caller pushes a Z.
-
-## Verification
-
-`verification.json` records the commands, results and remaining coverage.

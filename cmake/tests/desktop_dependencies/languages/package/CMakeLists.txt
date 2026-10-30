@@ -1,7 +1,0 @@
-enable_language(CXX)
-add_library(fixture_package STATIC "${CHIBI_ROOT}/test/draw_backend.cpp")
-if(CASE STREQUAL "scheduler")
-    add_library(Chibi::task_scheduler ALIAS fixture_package)
-else()
-    add_library(Chibi::render ALIAS fixture_package)
-endif()

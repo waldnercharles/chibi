@@ -590,6 +590,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
             declared := StateType(forest, source, table, entity, member);
             if ((!Numeric(declared.storage) && declared.storage != BoolStorage && declared.storage != TextStorage &&
                  declared.storage != HandleStorage) || declared.container != 0 ||
+                CharType(table^, declared.storage, declared.container, declared.record) ||
                 (declared.storage == HandleStorage && declared.record < 0)) {
                 return SourceMembers.Failed(Diagnose(forest, member, package, "state type is not supported yet"));
             }
@@ -799,8 +800,15 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
         }
         index += 1;
     }
-    declared_types := NativeTypes(types);
+    declared_types := CharTypes(NativeTypes(types));
     members := NativeFields(type_fields);
+    switch DeclareMath(forest, documents, declared_types, members, target) {
+        case .Failed(message):
+            return InputFailure(0, message);
+        case .Read(math_types, math_members):
+            declared_types = math_types;
+            members = math_members;
+    }
     switch PromoteRecords(forest, documents, roots, declared_types, members, target) {
         case .Failed(diagnostic):
             return Result.Rejected(diagnostic);
@@ -1053,7 +1061,7 @@ CatalogRecordValid :: (types: TypeDecl[], record: int) -> bool {
             return false;
         }
         declared := types[at];
-        if (declared.kind != NativeDecl || declared.storage != first.storage || declared.size <= 0 ||
+        if ((declared.kind != NativeDecl && declared.kind != MathDecl) || declared.storage != first.storage || declared.size <= 0 ||
             declared.size != first.size || declared.layout != first.layout ||
             (declared.storage == StructStorage && declared.layout == 0)) {
             return false;

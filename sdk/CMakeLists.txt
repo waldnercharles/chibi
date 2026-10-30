@@ -310,15 +310,6 @@ target_link_libraries(chibi_text_capabilities PUBLIC chibi_native_capabilities)
 # Authored core collection sources are explicit snapshot inputs for SDK users.
 install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
     FILES_MATCHING PATTERN "*.chibi")
-# chibi doc's site generator is authored package source the SDK compiles.
-install(FILES "${CHIBI_SDK_ROOT}/tools/docs/markdown/Markdown.chibi" DESTINATION share/chibi/docs/markdown)
-install(FILES "${CHIBI_SDK_ROOT}/tools/docs/site/Site.chibi" DESTINATION share/chibi/docs/site)
-install(FILES "${CHIBI_SDK_ROOT}/tools/docs/reference/Reference.chibi" DESTINATION share/chibi/docs/reference)
-install(FILES "${CHIBI_SDK_ROOT}/tools/docs/grammar/Grammar.chibi" DESTINATION share/chibi/docs/grammar)
-install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/compiler_syntax/Syntax.chibi"
-    DESTINATION share/chibi/docs/compiler_syntax)
-install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/syntax_diagnostics/Diagnostics.chibi"
-    DESTINATION share/chibi/docs/syntax_diagnostics)
 add_library(chibi_fmt STATIC "${CHIBI_SDK_ROOT}/third_party/fmt/fmt.c")
 set_target_properties(chibi_fmt PROPERTIES EXPORT_NAME fmt)
 target_include_directories(chibi_fmt PRIVATE "${CHIBI_SDK_ROOT}/third_party/fmt")
@@ -330,6 +321,14 @@ add_library(Chibi::host_native_catalog ALIAS chibi_host_native_catalog)
 set_target_properties(chibi_host_native_catalog PROPERTIES EXPORT_NAME host_native_catalog)
 chibi_sdk_headers(chibi_host_native_catalog PUBLIC host/native_catalog.h)
 target_link_libraries(chibi_host_native_catalog PUBLIC chibi_native_capabilities PRIVATE chibi_events)
+
+# Explicit host clock registration, independent of game/world services.
+add_library(chibi_host_clock STATIC "${CHIBI_SDK_ROOT}/src/host/clock.c"
+    "${CHIBI_SDK_ROOT}/src/host/clock_package.c")
+add_library(Chibi::host_clock ALIAS chibi_host_clock)
+set_target_properties(chibi_host_clock PROPERTIES EXPORT_NAME host_clock)
+chibi_sdk_headers(chibi_host_clock PUBLIC host/clock.h host/clock_package.h)
+target_link_libraries(chibi_host_clock PUBLIC chibi_native_capabilities)
 add_library(chibi_behavior_runtime STATIC
     "${CHIBI_SDK_ROOT}/src/runtime/event_catalog.c"
     "${CHIBI_SDK_ROOT}/src/runtime/behaviors/source.c"
@@ -377,7 +376,7 @@ chibi_sdk_headers(chibi_field_catalog PUBLIC runtime/material_field.h runtime/ma
 target_link_libraries(chibi_field_catalog PUBLIC chibi_fields)
 set(CHIBI_SDK_TARGETS chibi_support chibi_types chibi_execution_contract chibi_ecs
     chibi_execution chibi_core_capabilities chibi_array_capabilities chibi_field_capabilities chibi_state_capabilities chibi_selection_capabilities chibi_behavior_runtime chibi_events chibi_asset_values chibi_value_document chibi_capabilities chibi_native_capabilities chibi_scene_runtime chibi_scheduling chibi_fields chibi_field_catalog chibi_tasks chibi_input_action)
-list(APPEND CHIBI_SDK_TARGETS chibi_set_capabilities chibi_host_native_catalog chibi_native_prepared
+list(APPEND CHIBI_SDK_TARGETS chibi_set_capabilities chibi_host_native_catalog chibi_host_clock chibi_native_prepared
     chibi_comparison_capabilities chibi_conversion_capabilities chibi_text_capabilities chibi_fmt)
 add_library(chibi_ui_documents STATIC "${CHIBI_SDK_ROOT}/src/runtime/ui/documents.c"
     "${CHIBI_SDK_ROOT}/src/runtime/ui/font.c")
@@ -469,7 +468,6 @@ endif()
 if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     install(PROGRAMS "${CHIBI_SDK_ROOT}/tools/package_sdk.py" "${CHIBI_SDK_ROOT}/tools/package_player.py"
         "${CHIBI_SDK_ROOT}/tools/package_studio.py" DESTINATION share/chibi/tools)
-    include(graph.cmake)
     add_library(chibi_studio_capabilities STATIC "${CHIBI_SDK_ROOT}/src/authoring/studio_native.c"
         "${CHIBI_SDK_ROOT}/src/authoring/studio_definition.c")
     add_library(Chibi::studio_capabilities ALIAS chibi_studio_capabilities)
@@ -477,15 +475,6 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     chibi_sdk_headers(chibi_studio_capabilities PUBLIC authoring/studio_schema.h authoring/studio_definition.h)
     target_link_libraries(chibi_studio_capabilities PUBLIC chibi_native_capabilities PRIVATE chibi_execution)
     list(APPEND CHIBI_SDK_TARGETS chibi_studio_capabilities)
-    add_library(chibi_studio_graph STATIC "${CHIBI_SDK_ROOT}/src/graph/nodes/studio_nodes.c")
-    add_library(Chibi::studio_graph ALIAS chibi_studio_graph)
-    set_target_properties(chibi_studio_graph PROPERTIES EXPORT_NAME studio_graph)
-    chibi_sdk_headers(chibi_studio_graph PUBLIC graph/nodes/studio_nodes.h)
-    configure_file("${CHIBI_SDK_ROOT}/src/graph/model/native_definition.h"
-        "${CMAKE_CURRENT_BINARY_DIR}/private/studio_graph/graph/model/native_definition.h" COPYONLY)
-    target_include_directories(chibi_studio_graph PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/studio_graph")
-    target_link_libraries(chibi_studio_graph PUBLIC chibi_graph_compilation chibi_studio_capabilities)
-    list(APPEND CHIBI_SDK_TARGETS chibi_studio_graph)
     if(CHIBI_SDK_BUILD_NATIVE)
         add_library(chibi_studio_catalog STATIC "${CHIBI_SDK_ROOT}/src/authoring/studio_catalog.c")
         add_library(Chibi::studio_catalog ALIAS chibi_studio_catalog)
@@ -517,11 +506,10 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     target_link_libraries(chibi_input_map PUBLIC chibi_input_action
         PRIVATE chibi_types chibi_asset_values chibi_asset_text chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_input_map)
-    add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c")
+    add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
-    chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)
+    chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h)
     target_link_libraries(chibi_project_document PRIVATE chibi_input_action chibi_asset_text
         chibi_language_syntax chibi_json chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_project_document)
@@ -560,17 +548,13 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         "${CHIBI_SDK_ROOT}/src/authoring/source_references.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_prepare.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_link.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_format.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_navigation.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_prototype_flow.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_rename.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_intelligence.c")
+        "${CHIBI_SDK_ROOT}/src/authoring/source_prototype_flow.c")
     add_library(Chibi::authoring ALIAS chibi_authoring)
     set_target_properties(chibi_authoring PROPERTIES EXPORT_NAME authoring)
     chibi_sdk_headers(chibi_authoring PUBLIC authoring/source_prepare.h authoring/source_link.h
-        authoring/source_format.h authoring/source_navigation.h
-        authoring/source_prototype_flow.h
-        authoring/source_rename.h authoring/source_intelligence.h authoring/source_declaration.h
+        authoring/source_navigation.h authoring/source_prototype_flow.h
+        authoring/source_declaration.h
         authoring/native_bindings.h authoring/source_literal.h authoring/source_references.h)
     target_include_directories(chibi_authoring PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/authoring"
         "${CHIBI_SDK_ROOT}/third_party/yyjson")

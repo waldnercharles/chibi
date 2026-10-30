@@ -458,8 +458,8 @@ groups name runs of whole triangles in the index list and cover all of it.
 
 The file is the engine's prepared mesh payload
 (`src/runtime/geometry/mesh_prepared.c`, version 3), so one reader validates
-authored files and player artifacts. Changing that format therefore needs a
-project migration step that rewrites projects' `.mesh` files. A file is at
+authored files and player artifacts. Changing that format therefore means
+rewriting projects' `.mesh` files and bumping the project version. A file is at
 most 64 MiB, with at most 1,000,000 vertices, indices and groups together. The
 reader refuses non-finite or out-of-bounds values, zero normals or tangents,
 indices outside the vertex list, triangles below

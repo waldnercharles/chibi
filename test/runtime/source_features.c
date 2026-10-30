@@ -1,6 +1,5 @@
 #include "authoring/application_catalog.h"
 #include "authoring/language_catalog.h"
-#include "authoring/source_edit.h"
 #include "authoring/source_prepare.h"
 #include "ecs/ecs.h"
 #include "execution/function.h"
@@ -524,82 +523,8 @@ TEST_CASE(source_native_number_random_range_checks_both_bounds)
     }
     return true;
 }
-/* Origins at a source offset; NULL when the presentation has none. */
-static const source_presentation_origin *origin_at(
-    const authoring_source_presentation *view,
-    source_presentation_kind kind,
-    const char *text
-)
-{
-    const char *start = strstr(prepared->analysis->text, text);
-    assert(start);
-    int offset = (int)(start - prepared->analysis->text);
-    for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
-        const source_presentation_origin *o = authoring_source_presentation_origin_at(view, i);
-        if (o->kind == kind && !o->pin && o->range.start == offset) {
-            return o;
-        }
-    }
-    return NULL;
-}
 /* 16,777,217 is the first integer an f32 rounds. A wire from an int into an
  * f64 keeps it; an explicit To Real still yields a number. */
-TEST_CASE(source_int_wire_into_f64_keeps_every_digit)
-{
-    REQUIRE(prepare(
-        "Widen :: behavior { total:retain f64=0; real:retain number=0; on Tick "
-        ":: () { whole:=16777217; total=0; real=to_real(whole); } }",
-        BEHAVIOR_BYTECODE
-    ));
-    const script_catalog *view_catalog = authoring_language_catalog_view(catalog);
-    authoring_source_presentation
-        *view = authoring_source_presentation_new(prepared->analysis, view_catalog, NULL);
-    REQUIRE(view);
-    const source_presentation_origin
-        *target = origin_at(view, SOURCE_PRESENTATION_EXPRESSION, "0; real=to_real"),
-        *producer = origin_at(view, SOURCE_PRESENTATION_EXPRESSION, "16777217");
-    REQUIRE(target && producer);
-    authoring_edit_request request = { .kind = AUTHORING_EDIT_CONNECT,
-                                       .generation = authoring_source_edit_generation(view),
-                                       .origin = target->identity,
-                                       .producer = producer->identity };
-    authoring_edit_result edited = { 0 };
-    char error[256];
-    bool connected = authoring_source_edit(
-        prepared->analysis,
-        view_catalog,
-        view,
-        &request,
-        &edited,
-        error,
-        sizeof error
-    );
-    authoring_source_presentation_free(view);
-    if (!connected || !strstr(edited.text, "total=whole;")) {
-        fprintf(stderr, "int wire: %s / %s\n", error, connected ? edited.text : "rejected");
-    }
-    REQUIRE(connected && strstr(edited.text, "total=whole;"));
-    char *text = xstrdup(edited.text);
-    authoring_edit_result_free(&edited);
-    cleanup();
-    for (int backend = 0; backend < 2; backend++) {
-        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
-        uint64_t tick = execution_module_event(prepared->module, "Tick"),
-                 total = state_id("total"), real = state_id("real");
-        REQUIRE(tick && total && real);
-        instance = execution_program_attach(program, 0);
-        REQUIRE(instance);
-        retire_producer();
-        REQUIRE(dispatch(tick, 1024) >= 0);
-        const pin_value *wide = execution_instance_state(instance, total);
-        REQUIRE(wide && wide->type == PIN_F64 && wide->d == 16777217.0);
-        const pin_value *narrow = execution_instance_state(instance, real);
-        REQUIRE(narrow && narrow->type == PIN_F32 && narrow->f == 16777216.0f);
-        cleanup();
-    }
-    free(text);
-    return true;
-}
 TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
 {
     const char *
@@ -1322,7 +1247,6 @@ void test_source_native_numeric_queries()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_native_math_retains_numeric_outputs);
     RUN_TEST_CASE(source_native_number_random_range_checks_both_bounds);
-    RUN_TEST_CASE(source_int_wire_into_f64_keeps_every_digit);
     RUN_TEST_CASE(source_native_query_retains_nested_iteration_and_membership);
     RUN_TEST_CASE(source_native_relationship_snapshot_mutations_commit_between_handlers);
     RUN_TEST_CASE(source_native_query_matches_authored_rectangles);

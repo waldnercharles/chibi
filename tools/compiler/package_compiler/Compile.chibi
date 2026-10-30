@@ -86,6 +86,23 @@ Ops :: struct {
     ne: int;
     cast: int;
     select: int;
+    math_abs: int;
+    math_min: int;
+    math_max: int;
+    math_sqrt: int;
+    math_floor: int;
+    math_ceil: int;
+    math_round: int;
+    math_exp: int;
+    math_log: int;
+    math_pow: int;
+    math_sin: int;
+    math_cos: int;
+    math_tan: int;
+    math_asin: int;
+    math_acos: int;
+    math_atan: int;
+    math_atan2: int;
     variable: int;
     store: int;
     store_value: int;
@@ -217,6 +234,38 @@ CatalogNatives :: (natives: CatalogNative[]) -> ResolvedNative[] {
         resolved.append(row);
     }
     return resolved;
+}
+// Host kernels have canonical names such as host:clock.Sample. Only the owning
+// authored package sees the exact private member. Keep every row's index so its
+// ports, effects and identity/ABI pair remain those supplied by the host.
+HostPackageAvailable :: (natives: ResolvedNative[], identity: string) -> bool {
+    if (!strings.HasPrefix(identity, "host:")) {
+        return true;
+    }
+    prefix := format_text("{}.", identity);
+    for (native in natives) {
+        if (!native.source && strings.HasPrefix(native.name, prefix)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+PackageNatives :: (natives: ResolvedNative[], identity: string) -> ResolvedNative[] {
+    if (!strings.HasPrefix(identity, "host:")) {
+        return natives;
+    }
+    prefix := format_text("{}.", identity);
+    prefix_length := strings.ByteLength(prefix);
+    scoped: ResolvedNative[] = [];
+    for (item in natives) {
+        native := item;
+        if (!native.source && strings.HasPrefix(native.name, prefix)) {
+            native.name = strings.Slice(native.name, prefix_length, strings.ByteLength(native.name) - prefix_length);
+        }
+        scoped.append(native);
+    }
+    return scoped;
 }
 // A native port. Storage 0 is a type the call infers, one type for every such
 // port of the native; AnyPort takes each argument's own type, and
@@ -380,6 +429,9 @@ NativeDecl: int : 3;
 // A game namespace, such as SceneGlobals: a native type no module requires.
 NamespaceDecl: int : 4;
 MapDecl: int : 5;
+// Compile-time identity for builtin scalars. Runtime values keep their existing
+// storage; this kind contributes no external type or prepared layout.
+BuiltinScalarDecl: int : 14;
 // Symbol kinds in package-symbol IDs.
 FunctionKind: int : 1;
 TypeKind: int : 13;
@@ -426,6 +478,23 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
             shr: Ordinal(names, "SHR"), lt: Ordinal(names, "LT"), le: Ordinal(names, "LE"),
             gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
             cast: Ordinal(names, "CAST"), select: Ordinal(names, "SELECT"), variable: Ordinal(names, "VARIABLE"),
+            math_abs: Ordinal(names, "ABS"),
+            math_min: Ordinal(names, "MIN"),
+            math_max: Ordinal(names, "MAX"),
+            math_sqrt: Ordinal(names, "SQRT"),
+            math_floor: Ordinal(names, "FLOOR"),
+            math_ceil: Ordinal(names, "CEIL"),
+            math_round: Ordinal(names, "ROUND"),
+            math_exp: Ordinal(names, "EXP"),
+            math_log: Ordinal(names, "LOG"),
+            math_pow: Ordinal(names, "POW"),
+            math_sin: Ordinal(names, "SIN"),
+            math_cos: Ordinal(names, "COS"),
+            math_tan: Ordinal(names, "TAN"),
+            math_asin: Ordinal(names, "ASIN"),
+            math_acos: Ordinal(names, "ACOS"),
+            math_atan: Ordinal(names, "ATAN"),
+            math_atan2: Ordinal(names, "ATAN2"),
             store: Ordinal(names, "STORE"), store_value: Ordinal(names, "STORE_VALUE"),
             owner: Ordinal(names, "OWNER"), query_variable: Ordinal(names, "QUERY_VARIABLE"), convert: Ordinal(names, "CONVERT"),
             source_point: Ordinal(names, "SOURCE_POINT"), source_watch: Ordinal(names, "SOURCE_WATCH"),
@@ -475,12 +544,33 @@ ScalarStorage :: (text: string) -> int {
     }
     return 0;
 }
+CharIndex :: (types: TypeDecl[]) -> int {
+    for declared, index in types {
+        if (declared.kind == BuiltinScalarDecl && declared.id == binding.ID("type", "char")) {
+            return index;
+        }
+    }
+    return -1;
+}
+CharTypes :: (input: TypeDecl[]) -> TypeDecl[] {
+    if (CharIndex(input) >= 0) { return input; }
+    declared: TypeDecl = {name: "char", type_name: "char", package: -1, node: -1,
+                          kind: BuiltinScalarDecl, first: 0, count: 0, size: 4, parent: -1,
+                          storage: IntStorage, id: binding.ID("type", "char"), layout: 0,
+                          component: 0, key: 0, value_storage: 0, value_container: 0, value_record: -1};
+    return append(input, declared);
+}
+CharType :: (types: TypeDecl[], storage: int, container: int, record: int) -> bool {
+    return storage == IntStorage && container == 0 && record >= 0 &&
+           types[record].kind == BuiltinScalarDecl && types[record].id == binding.ID("type", "char");
+}
 // The record or union of `package` named `name`, -1 when none.
 FindType :: (types: TypeDecl[], package: int, name: string) -> int {
     index: int = 0;
     while (index < length(types)) {
         declared := types[index];
-        if (declared.package == package && declared.kind != VariantDecl && declared.name == name) {
+        if (declared.package == package && declared.kind != VariantDecl &&
+            declared.kind != BuiltinScalarDecl && declared.name == name) {
             return index;
         }
         index += 1;
@@ -488,7 +578,7 @@ FindType :: (types: TypeDecl[], package: int, name: string) -> int {
     // Game-native types are shared by every executable source.
     index = 0;
     while (index < length(types)) {
-        if (types[index].package == -1 && types[index].name == name) {
+        if (types[index].package == -1 && types[index].kind != BuiltinScalarDecl && types[index].name == name) {
             return index;
         }
         index += 1;
@@ -557,6 +647,7 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
     pointer := TypePointerNode(forest, node);
     if (pointer >= 0) {
         element := ReadType(forest, text, table, names, package, Field(forest, pointer, "target"));
+        if (CharType(table^, element.storage, element.container, element.record)) { return none; }
         declared := FindPointer(table^, element, false);
         if (declared < 0) {
             return none;
@@ -573,6 +664,8 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
     if (map >= 0) {
         key := ReadType(forest, text, table, names, package, Field(forest, map, "key"));
         value := ReadType(forest, text, table, names, package, Field(forest, map, "value"));
+        if (CharType(table^, key.storage, key.container, key.record) ||
+            CharType(table^, value.storage, value.container, value.record)) { return none; }
         declared := FindMap(table^, key, value);
         if (declared < 0) {
             return none;
@@ -590,6 +683,10 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
         if (home < 0 || NextMember(forest, part) >= 0) {
             return none;
         }
+    } else if (name == "char") {
+        declared := CharIndex(table^);
+        if (declared < 0) { return none; }
+        return ReadTypeSuffixes(forest, node, table, {storage: IntStorage, container: 0, record: declared}, package, view);
     } else if (ScalarStorage(name) != 0) {
         return ReadTypeSuffixes(forest, node, table, {storage: ScalarStorage(name), container: 0, record: -1},
                                 package, view);
@@ -655,6 +752,10 @@ ReadTypeSuffixes :: (forest: snapshot.SnapshotNode[], node: int, table: ^(TypeDe
     child := forest[node].first_child;
     while (child >= 0) {
         token := forest[child].kind;
+        if (CharType(table^, value.storage, value.container, value.record) && !forest[child].is_extra &&
+            (token == "[" || token == "?")) {
+            return {storage: 0, container: 0, record: -1};
+        }
         if (!forest[child].is_extra && token == "[") {
             if (value.container != 0 || SequenceFlags(table^, value) != 0) {
                 EnsureSequenceCollection(table, value, package);
@@ -670,6 +771,9 @@ ReadTypeSuffixes :: (forest: snapshot.SnapshotNode[], node: int, table: ^(TypeDe
             }
         }
         child = forest[child].next_sibling;
+    }
+    if (view && CharType(table^, value.storage, value.container, value.record)) {
+        return {storage: 0, container: 0, record: -1};
     }
     if (view) {
         return ReadViewType(table, value, package);
@@ -788,11 +892,17 @@ RecordFieldType :: (types: TypeDecl[], value: ValueType) -> bool {
         return value.record >= 0 &&
                (types[value.record].kind == RecordDecl || types[value.record].kind == NativeDecl);
     }
+    if (value.storage == UnionStorage) {
+        return value.container == 0 && value.record >= 0 && types[value.record].kind == UnionDecl;
+    }
     return value.record < 0 && (Integer(value.storage) || Floating(value.storage) ||
                                 value.storage == BoolStorage || value.storage == TextStorage);
 }
 RecordFieldSize :: (field: TypeMember, types: TypeDecl[], target: Target) -> int {
     if (field.container == ArrayContainer) {
+        return target.pointer_size;
+    }
+    if (field.storage == UnionStorage) {
         return target.pointer_size;
     }
     if (field.storage == StructStorage) {
@@ -829,6 +939,13 @@ pub Declare :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
     types: TypeDecl[] = [];
     members: TypeMember[] = [];
     constants: ConstDecl[] = [];
+    switch DeclareMath(forest, documents, types, members, target) {
+        case .Failed(message):
+            return Declarations.Failed({start: 0, end: 0, line: 1, column: 1, document: 0, message: message});
+        case .Read(math_types, math_members):
+            types = math_types;
+            members = math_members;
+    }
     for (package in order) {
         files := slice(files_of, packages[package].member_start, packages[package].member_count);
         switch DeclarePackage(forest, documents, files, package, packages[package].name, links, target, callables,
@@ -861,6 +978,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                        package: int, package_name: string, links: graph.Binding[], target: Target,
                        callables: Callable[], params: Param[], types: TypeDecl[],
                        members: TypeMember[], constants: ConstDecl[]) -> Declarations {
+    types = CharTypes(types);
     for (file in files) {
         text := documents[file].text;
         member := FirstMember(forest, documents[file].syntax_root);
@@ -1014,7 +1132,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                      Field(forest, field_node, "type"));
                 if (!RecordFieldType(types, resolved)) {
                     return Declarations.Failed(Diagnose(forest, field_node, file,
-                                                        "record fields require a scalar, pointer, record or array of those types"));
+                                                        "record fields require a scalar, pointer, record, union or array of those types"));
                 }
                 field := members[index];
                 field.storage = resolved.storage;
@@ -1109,7 +1227,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             for (field_index in declared.first..<declared.first + declared.count) {
                 field := members[field_index];
                 step := FieldSize(field.storage, target);
-                if (field.container == ArrayContainer) {
+                if (field.container == ArrayContainer || field.storage == UnionStorage) {
                     step = target.pointer_size;
                 } else if (field.storage == StructStorage) {
                     step = record_alignments[field.record];
@@ -1173,6 +1291,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                                                     PrivateMessage(Text(forest, text, hidden))));
                             }
                             payload := ReadType(forest, text, &types, aliases, package, Field(forest, parameter, "type"));
+                            if (CharType(types, payload.storage, payload.container, payload.record)) {
+                                return Declarations.Failed(Diagnose(forest, parameter, file, "char union payloads are not supported yet"));
+                            }
                             if (payload.storage == 0) {
                                 return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
                             }
@@ -1245,7 +1366,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     }
                     constant_type := ReadType(forest, text, &types, aliases, package, declared);
                     storage = constant_type.storage;
-                    if ((!Integer(storage) && !Floating(storage)) || constant_type.container != 0) {
+                    if ((!Integer(storage) && !Floating(storage)) || constant_type.container != 0 ||
+                        CharType(types, storage, constant_type.container, constant_type.record)) {
                         return Declarations.Failed(Diagnose(forest, declared, file, "constant type is not supported yet"));
                     }
                 }
@@ -1859,6 +1981,9 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             type_node = Field(forest, pointer, "target");
         }
         declared := ReadType(forest, text, table, aliases, package, type_node);
+        if (reference && CharType(table^, declared.storage, declared.container, declared.record)) {
+            return Signature.Failed(Diagnose(forest, parameter, file, "char pointers are not supported yet"));
+        }
         if (declared.storage == 0) {
             return Signature.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
         }
@@ -1871,6 +1996,9 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                                              "Invalid string or embedded NUL"));
         }
         default_value := Field(forest, parameter, "value");
+        if (default_value >= 0 && CharType(table^, declared.storage, declared.container, declared.record)) {
+            return Signature.Failed(Diagnose(forest, default_value, file, "char parameter defaults are not supported yet"));
+        }
         default_occurrence: u64 = 0;
         if (default_value >= 0) {
             default_occurrence = Occurrence(key, ExpressionRecord, solid[forest[default_value].start],
@@ -2051,7 +2179,8 @@ LayoutHash :: (record: TypeDecl, fields: TypeMember[], types: TypeDecl[], target
         if (field.storage == TextStorage && field.container == 0) {
             hash = HashBytes(hash, 1, 1);
         }
-        if (field.storage == PointerStorage || field.storage == StructStorage) {
+        if (field.storage == PointerStorage || field.storage == StructStorage ||
+            (field.storage == UnionStorage && field.record >= 0)) {
             hash = HashText(hash, types[field.record].type_name);
         } else {
             hash = HashText(hash, "");
@@ -2437,6 +2566,11 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     pass: int = 0;
     while (pass < 2) {
         for (package in order) {
+            if (!HostPackageAvailable(natives, package_names[package])) {
+                document := files_of[packages[package].member_start];
+                return Preparation.Failed(Diagnose(forest, documents[document].root, document,
+                                                   "Host package is unavailable for this target"));
+            }
             first: int = 0;
             while (first < length(callables) && callables[first].owner_package != package) {
                 first += 1;
@@ -2530,6 +2664,12 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     if (callable.results == 0) {
         built = BuiltLocals(forest, document.text, table^, aliases, callable.package, analysis_body, referenced);
     }
+    if (strings.HasPrefix(document.identity, "host:")) {
+        return EmitBody(forest, document.text, callable.document, callables, params, table, members, constants,
+                        PackageNatives(natives, document.identity), ports, identities, operators, makes, make_fields,
+                        aliases, document.key, solid, undeclared, meaning, index, referenced, mutated, built, context,
+                        generic_updates, ops, target, query_specs);
+    }
     return EmitBody(forest, document.text, callable.document, callables, params, table, members, constants,
                     natives, ports, identities, operators, makes, make_fields, aliases, document.key, solid,
                     undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target,
@@ -2593,13 +2733,21 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     fields: writer.Field[] = [];
     // Each record's layout and each variant's tag, as indices into `wide`, for
     // the types of this package and those it reaches; no others can occur.
+    // Shared types, such as char, the math types and game natives, belong to
+    // no package; a math type is written only where this module uses it. A
+    // requirement's index counts the requirements the loop below writes first.
+    assembled: bool[] = [];
     requirement_indices: int[] = [];
     requirement_count: int = 0;
-    for (declared in types) {
+    for declared, at in types {
+        kept := declared.kind != BuiltinScalarDecl &&
+                (source_mode || declared.package < 0 || reachable[declared.package]) &&
+                (declared.kind != MathDecl || MathRequired(at, types, callables, params, prepared, package) ||
+                 MathStateRequired(at, types, kept_states));
+        assembled.append(kept);
         index: int = -1;
-        if ((source_mode || reachable[declared.package]) &&
-            (declared.kind == RecordDecl || declared.kind == NativeDecl || declared.kind == QueryDecl ||
-             (declared.kind == PointerDecl && declared.key == 0))) {
+        if (kept && (declared.kind == RecordDecl || declared.kind == MathDecl || declared.kind == NativeDecl ||
+                     declared.kind == QueryDecl || (declared.kind == PointerDecl && declared.key == 0))) {
             index = requirement_count;
             requirement_count += 1;
         }
@@ -2614,7 +2762,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             layouts[length(layouts) - 1] = layouts[declared.parent];
             continue;
         }
-        if (!source_mode && !reachable[declared.package]) {
+        if (!assembled[length(layouts) - 1]) {
             continue;
         }
         if (declared.kind == VariantDecl) {
@@ -2627,9 +2775,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             }
             wide.append(tag);
             tags[length(tags) - 1] = length(wide) - 1;
-        } else if (declared.kind == RecordDecl) {
+        } else if (declared.kind == RecordDecl || declared.kind == MathDecl) {
             id := declared.id;
-            if (!source_mode) {
+            if (!source_mode && declared.kind != MathDecl) {
                 id = binding.ID("package-symbol",
                                 format_text("{}:{}:{}", package_names[declared.package], TypeKind, declared.name));
             }
@@ -2648,7 +2796,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 if (members[at].storage == StructStorage) {
                     field.record = requirement_indices[members[at].record];
                 }
-                if (members[at].storage == PointerStorage || members[at].storage == StructStorage) {
+                if (members[at].storage == PointerStorage || members[at].storage == StructStorage ||
+                    (members[at].storage == UnionStorage && members[at].record >= 0)) {
                     field.type_name = types[members[at].record].type_name;
                     field.has_type_name = true;
                 }

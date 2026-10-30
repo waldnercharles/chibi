@@ -47,7 +47,6 @@ void test_language_maps();
 void test_language_iteration();
 void test_language_generic();
 void test_language_source_assets();
-void test_language_source_prototype_edits();
 void test_language_symbol_references();
 void test_language_program();
 void test_language_program_session();
@@ -97,6 +96,8 @@ void test_language_unit_analysis_chibi(int regression);
 void test_language_package_execution();
 void test_language_package_resolution();
 void test_language_package_imports();
+void test_language_host_packages();
+void test_language_host_packages_compiler();
 void test_language_package_files();
 void test_language_package_core();
 void test_language_package_math();
@@ -105,7 +106,6 @@ void test_language_package_portable();
 void test_language_package_portable_compiler();
 void test_language_package_tests();
 void test_language_argument_effects_chibi();
-void test_language_docs_markdown();
 void test_language_scalarize();
 void test_language_component_write();
 void test_language_component_write_source();
@@ -122,18 +122,12 @@ void test_language_binding_schedule();
 void test_language_activation_cache();
 void test_language_headless();
 void test_language_build_workflow();
-void test_language_format();
-void test_language_root_state();
 void test_language_navigation();
 void test_language_publication();
 void test_field_runtime();
 void test_prototype_document();
 void test_ui_authoring();
 void test_language_text_format();
-void test_graph_model();
-void test_graph_authoring();
-void test_model_runtime();
-void test_language_format_corpus(const char *manifest);
 void test_language_prepared_write(const char *directory);
 void test_language_compiler_artifact_write(const char *directory);
 void test_language_record_producer(const char *directory);
@@ -157,7 +151,6 @@ int main(int argc, char **argv)
     if (argc == 3 && !strcmp(argv[1], "--stack-overflow-child")) {
         return test_language_stack_overflow_child(argv[2]);
     }
-    bool format = (argc == 2 || argc == 4) && !strcmp(argv[1], "--format");
     bool record_producer = argc == 3 && !strcmp(argv[1], "--record-produce");
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");
     bool compiler_artifact = argc == 3 &&
@@ -167,7 +160,6 @@ int main(int argc, char **argv)
     bool inferred_arrays = argc == 2 && !strcmp(argv[1], "--inferred-string-arrays");
     bool inferred_array_repro = argc == 2 &&
                                 !strcmp(argv[1], "--inferred-string-array-repro");
-    bool root_state = argc == 2 && !strcmp(argv[1], "--root-state");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
     bool execution_scope = argc == 2 && !strcmp(argv[1], "--execution-scope");
     bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
@@ -248,6 +240,8 @@ int main(int argc, char **argv)
                                             !strcmp(argv[1], "--package-compiler-chibi-libraries");
     bool package_compiler_chibi_types = argc == 2 &&
                                         !strcmp(argv[1], "--package-compiler-chibi-types");
+    bool package_compiler_chibi_math_native = argc == 2 &&
+                                              !strcmp(argv[1], "--package-compiler-chibi-math-native");
     bool package_compiler_chibi_literals = argc == 2 &&
                                            !strcmp(argv[1], "--package-compiler-chibi-literals");
     bool package_compiler_chibi_behaviors = argc == 2 &&
@@ -322,6 +316,9 @@ int main(int argc, char **argv)
     bool package_execution = argc == 2 && !strcmp(argv[1], "--package-execution");
     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
+    bool host_packages = argc == 2 && !strcmp(argv[1], "--host-packages");
+    bool host_packages_compiler = argc == 2 &&
+                                  !strcmp(argv[1], "--host-packages-compiler");
     bool package_core = argc == 2 && !strcmp(argv[1], "--package-core");
     bool package_math = argc == 2 && !strcmp(argv[1], "--package-math");
     bool package_math_benchmark = argc == 2 &&
@@ -332,7 +329,6 @@ int main(int argc, char **argv)
     bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
     bool argument_effects_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--argument-effects-chibi");
-    bool docs_markdown = argc == 2 && !strcmp(argv[1], "--docs-markdown");
     bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
     bool component_write_layout = argc == 2 &&
@@ -348,37 +344,31 @@ int main(int argc, char **argv)
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
     bool field_runtime = argc == 2 && !strcmp(argv[1], "--field-runtime");
     bool prototype = argc == 2 && !strcmp(argv[1], "--prototype-document");
-    bool source_prototype_edits = argc == 2 &&
-                                  !strcmp(argv[1], "--source-prototype-edits");
-    bool model_runtime = argc == 2 && !strcmp(argv[1], "--model-runtime");
-    bool graph_authoring = argc == 2 && !strcmp(argv[1], "--graph-authoring");
-    bool graph_model = argc == 2 && !strcmp(argv[1], "--graph-model");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
-    if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !compiler_artifact && !record_producer &&
-         !execution && !execution_scope && !semantic && !inferred_arrays &&
-         !inferred_array_repro && !root_state && !benchmark &&
-         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
-         !incremental_benchmark && !record_publication && !record_publication_repro &&
-         !record_values && !record_document && !record_state &&
-         !record_services && !record_compatibility && !record_semantic &&
-         !record_prepared_runtime && !outliner_projection && !row_array &&
-         !record_runtime && !compositional_records && !runtime_attribution &&
-         !runtime_attribution_benchmark && !query_binding_benchmark &&
-         !scalar_read_benchmark && !packed_benchmark && !wasm && !native_char_results &&
-         !program && !program_session && !query_program && !query_values &&
-         !incremental && !operations && !modules && !native_calls && !ranges &&
-         !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
-         !integer_shift_counts && !integer_shift_counts_authored && !package_graph &&
-         !package_graph_chibi && !asset_compiler_host && !asset_packaging_chibi &&
-         !shader_source_chibi && !syntax_chibi && !source_tokenizer_chibi &&
-         !source_parser_chibi && !package_syntax && !package_syntax_chibi &&
-         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
-         !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
-         !compiler_fixture && !bounded_compiler_chibi && !prepared_writer_chibi &&
-         !package_compiler_chibi && !package_compiler_chibi_libraries &&
-         !package_compiler_chibi_types && !package_compiler_chibi_imports &&
+    if ((!prepared && !compiler_artifact && !record_producer && !execution &&
+         !execution_scope && !semantic && !inferred_arrays && !inferred_array_repro &&
+         !benchmark && !activation_benchmark && !binding_benchmark &&
+         !borrow_benchmark && !incremental_benchmark && !record_publication &&
+         !record_publication_repro && !record_values && !record_document &&
+         !record_state && !record_services && !record_compatibility &&
+         !record_semantic && !record_prepared_runtime && !outliner_projection &&
+         !row_array && !record_runtime && !compositional_records &&
+         !runtime_attribution && !runtime_attribution_benchmark &&
+         !query_binding_benchmark && !scalar_read_benchmark && !packed_benchmark &&
+         !wasm && !native_char_results && !program && !program_session &&
+         !query_program && !query_values && !incremental && !operations &&
+         !modules && !native_calls && !ranges && !numeric_exact_core &&
+         !integer_semantics && !integer_arithmetic && !integer_shift_counts &&
+         !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
+         !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
+         !syntax_chibi && !source_tokenizer_chibi && !source_parser_chibi &&
+         !package_syntax && !package_syntax_chibi && !package_paths_chibi &&
+         !package_routes_chibi && !package_snapshot_chibi && !constant_proof_chibi &&
+         !constant_scalar_chibi && !scalar_lowering_chibi && !compiler_fixture &&
+         !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
+         !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
+         !package_compiler_chibi_math_native && !package_compiler_chibi_imports &&
          !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
          !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
          !package_compiler_chibi_collections_compiled &&
@@ -395,14 +385,14 @@ int main(int argc, char **argv)
          !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
          !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
          !effect_analysis_chibi && !record_members_chibi && !package_execution &&
-         !package_resolution && !package_imports && !package_files && !package_core &&
+         !package_resolution && !package_imports && !host_packages &&
+         !host_packages_compiler && !package_files && !package_core &&
          !package_math && !package_math_benchmark && !package_portable &&
          !package_portable_compiler && !package_tests && !argument_effects_chibi &&
-         !docs_markdown && !component_write && !component_write_layout && !scalarize &&
-         !borrow && !reductions && !binding_schedule && !activation_cache &&
-         !headless && !build_workflow && !navigation && !publication &&
-         !field_runtime && !prototype && !source_prototype_edits && !ui_authoring &&
-         !text_format && !graph_model && !graph_authoring && !model_runtime &&
+         !component_write && !component_write_layout && !scalarize && !borrow &&
+         !reductions && !binding_schedule && !activation_cache && !headless &&
+         !build_workflow && !navigation && !publication && !field_runtime &&
+         !prototype && !ui_authoring && !text_format &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
@@ -410,7 +400,7 @@ int main(int argc, char **argv)
             "--execution | "
             "--execution-scope | --semantic | --compositional-records "
             "| --inferred-string-arrays | --inferred-string-array-repro "
-            "| --root-state | --program | --program-session | "
+            "| --program | --program-session | "
             "--native-char-results | "
             "--query-program | --query-values | "
             "--incremental | "
@@ -429,6 +419,7 @@ int main(int argc, char **argv)
             "--bounded-compiler-chibi | "
             "--prepared-writer-chibi | --package-compiler-chibi | "
             "--package-compiler-chibi-types | --package-compiler-chibi-imports "
+            "| --package-compiler-chibi-math-native "
             "| "
             "--package-compiler-chibi-bootstrap | "
             "--package-compiler-chibi-compiled | "
@@ -460,10 +451,11 @@ int main(int argc, char **argv)
             "--record-members-chibi | "
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
-            "--package-imports | --package-files | --package-core | "
+            "--package-imports | --host-packages | --host-packages-compiler | "
+            "--package-files | --package-core | "
             "--package-math | --package-math-benchmark | --package-portable | "
             "--package-portable-compiler | "
-            "--package-tests | --argument-effects-chibi | --docs-markdown | "
+            "--package-tests | --argument-effects-chibi | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -475,17 +467,16 @@ int main(int argc, char **argv)
             "--headless | --build-workflow | "
             "--navigation | "
             "--publication | "
-            "--field-runtime | --prototype-document | --source-prototype-edits "
+            "--field-runtime | --prototype-document "
             "| --ui-authoring | "
-            "--text-format | --graph-model | --graph-authoring | "
-            "--model-runtime | --runtime-attribution | "
+            "--text-format | --runtime-attribution | "
             "--runtime-attribution-benchmark | --query-binding-benchmark | "
             "--scalar-read-benchmark | --packed-benchmark | --record-values | "
             "--record-semantic | --record-document | --record-services | "
             "--record-compatibility | --row-array | "
             "--outliner-projection | --record-publication | "
             "--record-publication-repro | "
-            "--format [--corpus manifest] | --compiler-artifact-write "
+            "--compiler-artifact-write "
             "directory | --prepared-write "
             "directory\n",
             argv[0]
@@ -560,23 +551,10 @@ int main(int argc, char **argv)
         test_language_binding_schedule();
     } else if (activation_cache) {
         test_language_activation_cache();
-    } else if (model_runtime) {
-        test_model_runtime();
-    } else if (graph_authoring) {
-        test_graph_authoring();
-    } else if (graph_model) {
-        test_graph_model();
     } else if (text_format) {
         test_language_text_format();
     } else if (ui_authoring) {
         test_ui_authoring();
-    } else if (source_prototype_edits) {
-#ifdef CHIBI_TEST_SOURCE_ASSETS
-        test_language_source_prototype_edits();
-#else
-        fprintf(stderr, "source-prototype-edits requires CHIBI_TEST_SOURCE_ASSETS\n");
-        return 1;
-#endif
     } else if (prototype) {
         test_prototype_document();
 #ifdef CHIBI_TEST_SOURCE_ASSETS
@@ -588,13 +566,6 @@ int main(int argc, char **argv)
         test_language_navigation();
     } else if (publication) {
         test_language_publication();
-    } else if (root_state) {
-        test_language_root_state();
-    } else if (format) {
-        test_language_format();
-        if (corpus) {
-            test_language_format_corpus(argv[3]);
-        }
     } else if (prepared) {
         test_language_prepared_write(argv[2]);
     } else if (compiler_artifact) {
@@ -654,6 +625,8 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi();
     } else if (package_compiler_chibi_types) {
         test_language_package_compiler_chibi_types();
+    } else if (package_compiler_chibi_math_native) {
+        test_language_package_compiler_chibi_math_native();
     } else if (package_compiler_chibi_imports) {
         test_language_package_compiler_chibi_imports();
     } else if (package_compiler_chibi_compiled) {
@@ -734,6 +707,10 @@ int main(int argc, char **argv)
         test_language_package_resolution();
     } else if (package_imports) {
         test_language_package_imports();
+    } else if (host_packages) {
+        test_language_host_packages();
+    } else if (host_packages_compiler) {
+        test_language_host_packages_compiler();
     } else if (package_core) {
         test_language_package_core();
     } else if (package_math) {
@@ -748,8 +725,6 @@ int main(int argc, char **argv)
         test_language_package_tests();
     } else if (argument_effects_chibi) {
         test_language_argument_effects_chibi();
-    } else if (docs_markdown) {
-        test_language_docs_markdown();
     } else if (package_files) {
         test_language_package_files();
     } else if (package_graph_chibi) {

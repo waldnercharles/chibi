@@ -1,5 +1,0 @@
-name "SurfaceActivitySource"
-components {
-    SurfaceInfluence color=0x20c080ff inner_radius=8.0 linger=0.2 radius=48.0 strength=2.0
-    (object)Transform
-}

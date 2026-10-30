@@ -1,6 +1,0 @@
-name "Gravity"
-components {
-    Gravity {
-        acceleration y=-320.0
-    }
-}

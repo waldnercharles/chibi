@@ -1,7 +1,0 @@
-name "RenderPedestal"
-components {
-    Geometry3D depth=1.0 height=1.0 width=1.0
-    Material scene=0xc078d0ff
-    MeshParts parts="(array)- {\n    - primitive=0 {\n        (array)size 50.0 12.0 50.0\n        (array)position 0.0 6.0 0.0\n    }\n    - primitive=1 {\n        (array)size 30.0 30.0 30.0\n        (array)position 0.0 27.0 0.0\n    }\n}\n"
-    (object)Transform
-}

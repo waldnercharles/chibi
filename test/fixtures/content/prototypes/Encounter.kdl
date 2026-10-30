@@ -1,5 +1,0 @@
-name "Encounter"
-components {
-    Transform x=320.0 y=-180.0
-}
-(array)behaviors "WaveBehavior"

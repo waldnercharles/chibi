@@ -1,4 +1,0 @@
-name "RainEnvironment"
-components {
-    Environment ambient_ground=0x304050ff ambient_intensity=1.0 ambient_sky=0x8090a0ff fog_resolution=0.25 fog_steps=4
-}

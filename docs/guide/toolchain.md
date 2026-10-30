@@ -502,20 +502,6 @@ chibi doctor --web /path/to/dist/web-player
 `doctor` reports each checked capability as supported, unavailable or broken.
 It changes nothing. It fails only when a checked capability is broken.
 
-## Generate documentation
-
-```sh
-chibi doc /path/to/repository
-chibi doc /path/to/repository --serve
-```
-
-`doc` publishes the pages listed in `docs/site.kdl` to `build/docs`. The manifest
-can select Markdown, package references and grammar rules. Other files stay private.
-`--serve` previews the result locally. It accepts the same `--port` option as `web`.
-
-Each `chibi` code block must parse. A complete package must also pass analysis.
-A link to an unpublished file becomes plain text and produces a warning.
-
 ## Exit status
 
 Each command accepts `--help`.

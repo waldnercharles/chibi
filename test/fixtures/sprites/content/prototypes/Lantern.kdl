@@ -1,6 +1,0 @@
-name "Lantern"
-components {
-    Material albedo=0xffffffff emission_color=0xffc860ff emission_intensity=0.4 emission_multiplier=1.0 scene=0xffffffff
-    Sprite frame_height=16 frame_width=16 image="content/images/props.png" layer=1
-    (object)Transform
-}

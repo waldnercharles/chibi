@@ -216,7 +216,8 @@ bool package_test_run(
     }
     /* Refused waits and tasks leave nothing to suspend. */
     assert(status <= 0);
-    bool passed = status == FLOW_OK && context.returned;
+    /* A function the authored compiler prepared ends without a return. */
+    bool passed = status == FLOW_OK;
     if (!passed && !failure->message[0]) {
         snprintf(
             failure->message,

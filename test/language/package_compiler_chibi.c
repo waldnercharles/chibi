@@ -5475,6 +5475,10 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
         if (game) {
             selected[count++] = CORE_DEFINITION_PACK;
             selected[count++] = NATIVE_MATH_DEFINITION_PACK;
+            /* With the arrays', its length overload makes a call of length
+             * ambiguous among natives; a collection argument still takes the
+             * collection's. */
+            selected[count++] = NATIVE_VECTOR_DEFINITION_PACK;
         }
         if (probe) {
             selected[count++] = CSTRING_PACK;

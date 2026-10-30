@@ -1,0 +1,135 @@
+package sha256
+
+// SHA-256 as FIPS 180-4 defines it. The digest is a cryptographic hash of raw
+// bytes: use it to identify content, never as a lookup hash (use fnv for that).
+// Results do not depend on the host's byte order.
+// https://csrc.nist.gov/pubs/fips/180-4/upd1/final
+
+pub DigestBytes: int : 32;
+BlockBytes: int : 64;
+
+// The 64 round constants: the first 32 bits of the fractional parts of the
+// cube roots of the first 64 primes.
+RoundConstants :: () -> u32[] {
+    k: u32[] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ];
+    return k;
+}
+
+// The initial hash value: the first 32 bits of the fractional parts of the
+// square roots of the first eight primes.
+InitialHash :: () -> u32[] {
+    chain: u32[] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+    ];
+    return chain;
+}
+
+RotateRight :: (value: u32, count: u32) -> u32 {
+    return (value >> count) | (value << (u32(32) - count));
+}
+
+// Mixes the 64-byte block at data[offset...] into chain and returns the new
+// chain. The message schedule is built once per block; wrapping u32 addition
+// is the algorithm's arithmetic.
+Compress :: (chain: u32[], k: u32[], data: u8[], offset: int) -> u32[] {
+    w: u32[] = [];
+    i := 0;
+    while i < 16 {
+        at := offset + i * 4;
+        w.append((u32(data[at]) << u32(24)) | (u32(data[at + 1]) << u32(16)) |
+                 (u32(data[at + 2]) << u32(8)) | u32(data[at + 3]));
+        i += 1;
+    }
+    while i < 64 {
+        w15 := w[i - 15];
+        w2 := w[i - 2];
+        s0 := RotateRight(w15, u32(7)) ^ RotateRight(w15, u32(18)) ^ (w15 >> u32(3));
+        s1 := RotateRight(w2, u32(17)) ^ RotateRight(w2, u32(19)) ^ (w2 >> u32(10));
+        w.append(w[i - 16] + s0 + w[i - 7] + s1);
+        i += 1;
+    }
+    a := chain[0];
+    b := chain[1];
+    c := chain[2];
+    d := chain[3];
+    e := chain[4];
+    f := chain[5];
+    g := chain[6];
+    h := chain[7];
+    i = 0;
+    while i < 64 {
+        big1 := RotateRight(e, u32(6)) ^ RotateRight(e, u32(11)) ^ RotateRight(e, u32(25));
+        choose := (e & f) ^ (~e & g);
+        first := h + big1 + choose + k[i] + w[i];
+        big0 := RotateRight(a, u32(2)) ^ RotateRight(a, u32(13)) ^ RotateRight(a, u32(22));
+        majority := (a & b) ^ (a & c) ^ (b & c);
+        second := big0 + majority;
+        h = g;
+        g = f;
+        f = e;
+        e = d + first;
+        d = c;
+        c = b;
+        b = a;
+        a = first + second;
+        i += 1;
+    }
+    next: u32[] = [chain[0] + a, chain[1] + b, chain[2] + c, chain[3] + d,
+                   chain[4] + e, chain[5] + f, chain[6] + g, chain[7] + h];
+    return next;
+}
+
+// The 32-byte digest of data, most significant byte first. Whole blocks are
+// read from data in place; only the final one or two padded blocks are copied.
+// O(n) work, one message schedule of 64 words per block.
+pub Sum :: (data: u8[]) -> u8[] {
+    k := RoundConstants();
+    chain := InitialHash();
+    total := length(data);
+    whole := total - total % BlockBytes;
+    offset := 0;
+    while offset < whole {
+        chain = Compress(chain, k, data, offset);
+        offset += BlockBytes;
+    }
+    // The tail, a 0x80 marker, zeros, and the message length in bits as a
+    // big-endian u64, padded to a multiple of 64 bytes.
+    tail: u8[] = [];
+    index := whole;
+    while index < total {
+        tail.append(data[index]);
+        index += 1;
+    }
+    tail.append(u8(0x80));
+    while length(tail) % BlockBytes != 56 {
+        tail.append(u8(0));
+    }
+    bits := u64(total) * u64(8);
+    shift := 56;
+    while shift >= 0 {
+        tail.append(u8((bits >> u64(shift)) & u64(0xff)));
+        shift -= 8;
+    }
+    offset = 0;
+    while offset < length(tail) {
+        chain = Compress(chain, k, tail, offset);
+        offset += BlockBytes;
+    }
+    digest: u8[] = [];
+    for word in chain {
+        digest.append(u8(word >> u32(24)));
+        digest.append(u8((word >> u32(16)) & u32(0xff)));
+        digest.append(u8((word >> u32(8)) & u32(0xff)));
+        digest.append(u8(word & u32(0xff)));
+    }
+    return digest;
+}

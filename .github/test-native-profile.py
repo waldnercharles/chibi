@@ -32,19 +32,7 @@ class ProfileTests(unittest.TestCase):
                 debug = '-g -O1' + (' -fno-omit-frame-pointer' if enabled == 'OFF' else '')
                 for language in ('C', 'CXX', 'OBJC'):
                     self.assertIn(f'-DCMAKE_{language}_FLAGS_DEBUG={debug}', flags)
-                self.assertNotIn('LOCAL_CMAKE_FLAGS', env)  # Release recursive make retains its own flags.
-
-    def test_release_does_not_inherit_debug_optimization(self):
-        result = subprocess.check_output(
-            ['make', '-n', 'build-release', 'GRAPH_BUILD=1', 'BUILD_HOST=/nonexistent',
-             'BUILD_TARGET=chibi-build-host'], cwd=ROOT, text=True,
-            env=dict(os.environ, BUILD_DEBUG_OPTIMIZATION='1', BUILD_DEBUG_FRAME_POINTERS='on',
-                     ASSET_GENERATOR_HOSTS='/tmp/borrowed-generator-hosts'))
-        self.assertIn('BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION=', result)
-        self.assertIn('--release --build "build-release"', result)
-        self.assertNotIn('--debug-optimization "1"', result)
-        self.assertNotIn('--debug-frame-pointers "on"', result)
-        self.assertNotIn('--asset-generator-hosts', result)
+                self.assertNotIn('LOCAL_CMAKE_FLAGS', env)  # The Release build retains its own flags.
 
     def test_linux_graph_proof_is_bounded_and_explicit(self):
         text = (ROOT / '.github/workflows/linux-graph.yml').read_text()
@@ -154,15 +142,15 @@ class ProfileTests(unittest.TestCase):
             self.assertNotIn('if:', selectors)  # Default success gate must not be weakened.
             self.assertNotIn('make test-build', block)
             self.assertIn('run: python3 .github/verify-native-profile.py', block)
-            release = block.index('run: make build-release')
-            build = block.index('make build BUILD_TARGET=')
+            release = block.index('run: sh tools/build.sh build --release')
+            build = block.index('sh tools/build.sh build --profile')
             verify = block.index('run: python3 .github/verify-native-profile.py')
             self.assertLess(release, build)
             self.assertLess(build, verify)
             self.assertLess(verify, positions[0])
             self.assertIn('chibi-compiler-host', block[release:build])
-            self.assertEqual(block.count('ASSET_GENERATOR_HOSTS=build-release/sdk'), 1)
-            self.assertIn('BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"', block[build:verify])
+            self.assertEqual(block.count('--asset-generator-hosts build-release/sdk'), 1)
+            self.assertIn('--host "$PWD/build-release/sdk/chibi-build-host"', block[build:verify])
             if job == 'native':
                 parity = block.index('build-host "$CHIBI_BUILD_HOST" build-graph-debug-optimization')
                 self.assertLess(verify, parity)

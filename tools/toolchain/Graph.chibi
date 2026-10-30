@@ -494,7 +494,7 @@ BuildLibrariesWithArguments :: (arguments: string[], runtime_sdk: bool) -> int {
     }
     if (engine.NeedsThirdParty(selected) &&
         !os.Exists(strings.Join([profile.third_party, "/third-party.cmake"], ""))) {
-        os.Print("graph: the third-party archive is not unpacked; configure with make build first, or name it with --third-party");
+        os.Print("graph: the third-party archive is not unpacked; configure with tools/build.sh build first, or name it with --third-party");
         return 2;
     }
     if (os.Platform() == "Linux") {

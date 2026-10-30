@@ -8276,7 +8276,7 @@ static bool write_seed_file(const char *folder, const char *name, const void *by
     return written;
 }
 /* With CHIBI_BOOTSTRAP_SEED naming a folder, leaves stage two and Compile's
- * arguments there, the seed make bootstrap-artifact writes the bootstrap
+ * arguments there, the seed tools/build.sh build bootstrap-artifact writes the bootstrap
  * artifact from. */
 static bool write_seed(const unsigned char *stage_two, size_t length, const char *json, size_t json_length)
 {
@@ -12387,13 +12387,16 @@ static const struct
       "return 0; }\n",
       "scalar proof binds payloads only in switch arms",
       ".Box(w)" },
-    { "package scalar\nNamed :: union { Tag(items: [int: int]) }\nMain :: () -> int "
+    { "package scalar\nNamed :: union { Tag(items: [int: int]) }\nMain :: () "
+      "-> int "
       "{ return 1; }\n",
-      "scalar proof requires number, bool, string, array, record and union payloads",
+      "scalar proof requires number, bool, string, array, record and union "
+      "payloads",
       "items: [int: int]" },
     { "package scalar\nWrapped :: union { Of(p: ^int) }\n"
       "Main :: () -> int { return 1; }\n",
-      "scalar proof requires number, bool, string, array, record and union payloads",
+      "scalar proof requires number, bool, string, array, record and union "
+      "payloads",
       "p: ^int" },
     { "package scalar\nMain :: () -> int { return text_byte_length(Value: "
       "\"ab\"); }\n",
@@ -17367,7 +17370,8 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
             compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
         );
         const char *named = pin_text(name).bytes;
-        if (strncmp(named, "array_", strlen("array_")) && strncmp(named, "union_array", strlen("union_array")) &&
+        if (strncmp(named, "array_", strlen("array_")) &&
+            strncmp(named, "union_array", strlen("union_array")) &&
             strncmp(named, "record_", strlen("record_"))) {
             arena_free(&detached);
             continue;

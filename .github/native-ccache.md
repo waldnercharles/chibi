@@ -24,7 +24,7 @@ LLVM shared-library companions), and macOS SDK path/version/build. Linux queries
 the installed clang/libclang/libllvm/llvm package families; macOS queries LLVM
 and its installed Homebrew dependencies. A missing or
 unreadable compiler, or failed SDK/package identity command, fails before restore.
-The recipe hash additionally includes the existing profile policy, Makefile,
+The recipe hash additionally includes the existing profile policy,
 CMakeLists.txt, CMake modules, Graph toolchain sources, pinned build-tool and
 third-party archive manifests, and this setup script.
 

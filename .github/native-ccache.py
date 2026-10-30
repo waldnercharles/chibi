@@ -51,7 +51,7 @@ def identity(root, env, run=output, fingerprint=compiler_digest):
                          run('xcrun', '--show-sdk-build-version')]
     compatible = f"ccache-v2-{env['RUNNER_OS']}-{env['RUNNER_ARCH']}-{digest(values)}"
     values['profile'] = 'native-debug-address-undefined-release-v1'
-    paths = [root / 'Makefile', root / 'CMakeLists.txt',
+    paths = [root / 'CMakeLists.txt',
              root / 'third_party/archives.tsv', root / '.github/build-tools.txt',
              root / '.github/native-ccache.py']
     paths += sorted((root / 'cmake').rglob('*.cmake'))

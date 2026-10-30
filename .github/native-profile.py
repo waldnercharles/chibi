@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select CI-only Debug profiles; developer Makefile defaults are unchanged."""
+"""Select CI-only Debug profiles; the build driver defaults are unchanged."""
 import os
 
 

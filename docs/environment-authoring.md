@@ -62,7 +62,7 @@ Validation on the candidate:
 | `make agent-test AGENT_SELECTOR=--material-bake` | Passed the controller integration case, including local-function overrides, changed-image provenance, invalid requests, missing images and image-key admission; final selected execution 2.794s. |
 | `make agent-test AGENT_SELECTOR=--environment-authoring` | Passed two cases and 31 assertions: prepared CPU runtime behavior and project validation; final selected execution 0.492s. |
 | Installed SDK | SDK packaging and a standalone controller build passed. The same material-bake selector passed against that controller in 1.406s. The bake consumer object also compiled using only exported SDK headers. |
-| Native build and formatting | `make build` and the controller/test-tools targets passed; changed C/header files pass clang-format 22 and `git diff --check`. |
+| Native build and formatting | `chibi build` and the controller/test-tools targets passed; changed C/header files pass clang-format 22 and `git diff --check`. |
 
 Tests ran under the production supervisor. Native source tests used
 ASan/UBSan; the packaged SDK used its separate Debug configuration. Build time

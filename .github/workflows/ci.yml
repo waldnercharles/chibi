@@ -109,7 +109,7 @@ jobs:
         id: release-build
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
-        run: make build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
+        run: sh tools/build.sh build --release --target chibi --target chibi-build-host --target chibi-compiler-host --libclang-root /usr/lib/llvm-18
       - name: Build products and test drivers (selected Debug profile)
         env:
           VERBOSE: '1'
@@ -117,7 +117,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          sh tools/build.sh build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root /usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
       # Run authored command generation on the Release helper; test_tools and
@@ -263,7 +263,7 @@ jobs:
         id: release-build
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
-        run: make build-release BUILD_TARGET='chibi chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
+        run: sh tools/build.sh build --release --target chibi --target chibi-compiler-host --libclang-root "$LLVM"
       # Keep transient files retained by a failure. Success removes them; its
       # capture still preserves the hosts and their build/source records.
       - name: Capture macOS facade identities
@@ -293,7 +293,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          sh tools/build.sh build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root "$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
       - name: Preserve failed macOS Graph stage log
@@ -482,7 +482,7 @@ jobs:
           key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: compiler-cache-${{ runner.os }}-
       - name: Build Release graph compiler and build hosts
-        run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
+        run: sh tools/build.sh build --jobs "$JOBS" --libclang-root "$LIBCLANG_ROOT" --release --target chibi-build-host --target chibi-compiler-host
       - name: Record Release graph tool identities
         run: |
           sha256sum \
@@ -493,7 +493,7 @@ jobs:
             > "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
           cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Build the SDK test harness with the Release graph host
-        run: make build BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk
+        run: sh tools/build.sh build --jobs "$JOBS" --libclang-root "$LIBCLANG_ROOT" --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --build build-sdk-tests --target test_tools --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk
       - name: Verify Release graph tools survived the harness build unchanged
         run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Verify graph SDK packaging and relocation

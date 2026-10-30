@@ -5,10 +5,11 @@ import strings "core:strings"
 
 // The engine's one build command, `chibi build` in an engine checkout. It
 // runs under the private build host: `chibi-build-host --source
-// tools/toolchain/Driver.chibi --entry Main -- build [OPTIONS]`.
+// tools/toolchain/Driver.chibi --entry Main -- build [VERB] [OPTIONS]`
+// (tools/build.sh before a chibi exists).
 //
-//   build [--release|--debug] [--build DIR] [--release-build DIR] [--target NAME]... [--all]
-//         [--jobs N]
+//   build [--release|--debug|--profile NAME] [--build DIR] [--release-build DIR]
+//         [--target NAME]... [--all] [--jobs N]
 //         [--host PATH] [--libclang-root DIR] [--reflect PATH]
 //         [--asset-generator-hosts DIR] [--debug-optimization 0|1]
 //         [--debug-frame-pointers on|off] [--dry-run]
@@ -16,7 +17,10 @@ import strings "core:strings"
 // A sanitized build in `build` is the default; --release builds `build-release`
 // and --debug `build-debug`. Without --target it builds chibi, chibi-compile,
 // and chibi_ctl; --all builds every target. --dry-run prints the
-// commands instead of running them.
+// commands instead of running them. The other verbs are `test`, `install`,
+// `format`, `clean`, `sdk-reflect`, `runtime-sdk`, `package-runtime-sdk`,
+// `bootstrap-artifact`, `bootstrap-refresh`, `bootstrap-recover`,
+// `publish-seed` and `native-census`; Usage lists them.
 
 Join :: (parts: string[]) -> string {
     return build.join(parts, "")
@@ -71,6 +75,10 @@ Step :: (name: string, command: string[], dry: bool) -> int {
 }
 
 Profile :: (arguments: string[]) -> string {
+    named := Option(arguments, "--profile", "")
+    if (named != "") {
+        return named
+    }
     if (Flag(arguments, "--release")) {
         return "release"
     }
@@ -362,9 +370,248 @@ Test :: (arguments: string[]) -> int {
     return 0
 }
 
+// The arguments after a bare `--`, which a verb passes on to the program it runs.
+Rest :: (arguments: string[]) -> string[] {
+    rest: string[] = []
+    seen := false
+    for (argument in arguments) {
+        if (seen) {
+            rest = build.concat(rest, [argument])
+        } else if (argument == "--") {
+            seen = true
+        }
+    }
+    return rest
+}
+
+// The private host that runs the authored SDK programs: --host when it speaks
+// the current protocol, else the pinned first host fetched beside the
+// reflection build. "" after a failed fetch.
+PrivateHost :: (arguments: string[], dry: bool) -> string {
+    host := Absolute(Option(arguments, "--host", "build/sdk/chibi-build-host"))
+    if (HostUsable(host)) {
+        return host
+    }
+    fetched := Absolute(Join([Option(arguments, "--reflect-build", "build-sdk-reflect"), "/host/bin/chibi-build-host"]))
+    if (!HostUsable(fetched) && Step("bootstrap", ["sh", "tools/bootstrap.sh", fetched], dry) != 0) {
+        return ""
+    }
+    return fetched
+}
+
+// Runs an authored graph program under the private host, with CCACHE_BASEDIR set
+// to the checkout so worktrees share compiler-cache objects.
+GraphStep :: (name: string, host: string, source: string, function: string, tail: string[], dry: bool) -> int {
+    command := build.concat(
+        ["env", Join(["CCACHE_BASEDIR=", os.Root()])],
+        build.concat(Program(host, source, function, ["graph=tools/graph"], "3600000"), tail)
+    )
+    return Step(name, command, dry)
+}
+
+// The Release hosts and tools an install or a release-only verb needs.
+ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
+    nested := ["--release", "--release-build", Option(arguments, "--release-build", "build-release"),
+               "--jobs", Option(arguments, "--jobs", "8")]
+    for (name in ["--host", "--libclang-root", "--reflect"]) {
+        value := Option(arguments, name, "")
+        if (value != "") {
+            nested = build.concat(nested, [name, value])
+        }
+    }
+    for (target in targets) {
+        nested = build.concat(nested, ["--target", target])
+    }
+    if (dry) {
+        nested = build.concat(nested, ["--dry-run"])
+    }
+    return Build(nested)
+}
+
+// Installs the Release products into --prefix (default ~/.local):
+// bin/chibi, bin/chibi-compile, the private hosts in libexec/chibi and share/chibi.
+Install :: (arguments: string[]) -> int {
+    dry := Flag(arguments, "--dry-run")
+    releases := Absolute(Option(arguments, "--release-build", "build-release"))
+    status := ReleaseBuild(arguments, ["chibi", "chibi-compile", "chibi-build-host", "chibi-compiler-host"], dry)
+    if (status != 0) {
+        return status
+    }
+    prefix := Absolute(Option(arguments, "--prefix", Join([os.Getenv("HOME"), "/.local"])))
+    return GraphStep(
+        "install", Join([releases, "/sdk/chibi-build-host"]), "tools/toolchain/SDK.chibi", "Install",
+        ["--build", releases, "--prefix", prefix], dry
+    )
+}
+
+// The reflection tool the SDK builds against, built by the authored graph.
+// Arguments after `--` go to the native toolchain (CMake compiler flags).
+SdkReflect :: (arguments: string[]) -> int {
+    dry := Flag(arguments, "--dry-run")
+    host := PrivateHost(arguments, dry)
+    if (host == "") {
+        return 1
+    }
+    tail := ["--build", Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "--jobs", Option(arguments, "--jobs", "8")]
+    libclang := Option(arguments, "--libclang-root", "")
+    if (libclang != "") {
+        tail = build.concat(tail, ["--libclang-root", Absolute(libclang)])
+    }
+    return GraphStep("sdk-reflect", host, "tools/toolchain/Graph.chibi", "SDKReflect", build.concat(tail, build.concat(["--"], Rest(arguments))), dry)
+}
+
+// The macOS runtime SDK, constructed by the authored graph from the reflection
+// tool, and with --package installed under --output.
+RuntimeSdk :: (arguments: string[], package: bool) -> int {
+    dry := Flag(arguments, "--dry-run")
+    status := SdkReflect(arguments)
+    if (status != 0) {
+        return status
+    }
+    host := PrivateHost(arguments, dry)
+    constructed := Absolute(Option(arguments, "--runtime-build", "build-runtime-sdk"))
+    status = Step(
+        "third-party", build.concat(Program(host, "tools/toolchain/Build.chibi", "Build", [], "1800000"), ["third-party", constructed]), dry
+    )
+    if (status != 0) {
+        return status
+    }
+    tail := [
+        "--build", constructed, "--reflect",
+        Join([Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "/reflect"]), "--jobs",
+        Option(arguments, "--jobs", "8")
+    ]
+    libclang := Option(arguments, "--libclang-root", "")
+    if (libclang != "") {
+        tail = build.concat(tail, ["--libclang-root", Absolute(libclang)])
+    }
+    flags := Rest(arguments)
+    if (length(flags) == 0) {
+        flags = ["-DCMAKE_BUILD_TYPE=Debug", "-DCHIBI_ENABLE_SANITIZERS=OFF"]
+    }
+    status = GraphStep("runtime-sdk", host, "tools/toolchain/Graph.chibi", "RuntimeSDK", build.concat(tail, build.concat(["--"], flags)), dry)
+    if (status != 0 || !package) {
+        return status
+    }
+    output := Absolute(Option(arguments, "--output", "dist/runtime-sdk"))
+    return GraphStep(
+        "package-runtime-sdk", host, "tools/toolchain/RuntimeSDK.chibi", "RuntimePackage", ["--build", constructed, "--output", output], dry
+    )
+}
+
+// The Release compiler host, which writes and recovers the bootstrap artifact.
+CompilerHost :: (arguments: string[]) -> string {
+    return Join([Absolute(Option(arguments, "--release-build", "build-release")), "/sdk/chibi-compiler-host"])
+}
+
+Revision :: () -> string {
+    described := os.Capture(["git", "describe", "--always", "--dirty", "--abbrev=40"])
+    return build.trim(described.stdout)
+}
+
+// Rewrites tools/compiler/bootstrap: the bootstrap check leaves stage two and
+// its arguments in a seed folder, and the host writes the artifact once stage
+// two compiles the sources to themselves. With `refresh` the seed folder is
+// recovery's fixed point instead, without the check's sample runs.
+Bootstrap :: (arguments: string[], mode: string) -> int {
+    dry := Flag(arguments, "--dry-run")
+    releases := Option(arguments, "--release-build", "build-release")
+    host := CompilerHost(arguments)
+    artifact := Option(arguments, "--artifact", "tools/compiler/bootstrap")
+    base := ["--bootstrap", artifact, "--compiler", "tools/compiler", "--core", "packages/core"]
+    targets := ["chibi-compiler-host"]
+    if (mode == "artifact") {
+        targets = build.concat(targets, ["test_language"])
+    }
+    status := ReleaseBuild(arguments, targets, dry)
+    if (status != 0) {
+        return status
+    }
+    if (mode == "recover") {
+        return Step("recover", build.concat([host], base), dry)
+    }
+    seed := Absolute(Join([releases, "/bootstrap.", mode]))
+    status = Step("seed-folder", ["sh", "-c", Join(["rm -rf '", seed, "' && mkdir -p '", seed, "'"])], dry)
+    if (status != 0) {
+        return status
+    }
+    if (mode == "artifact") {
+        status = Step(
+            "bootstrap-check",
+            ["env", Join(["CHIBI_BOOTSTRAP_SEED=", seed]), "sh", "tools/build.sh", "test", "--release-build", releases,
+             "language-package-compiler-chibi-bootstrap"],
+            dry
+        )
+    } else {
+        status = Step(
+            "recover",
+            build.concat(build.concat([host], base), ["--recover", Join([seed, "/compiler.chibip"]), "--arguments", Join([seed, "/compile.json"])]),
+            dry
+        )
+    }
+    if (status != 0) {
+        return status
+    }
+    status = Step(
+        "write-artifact", build.concat(build.concat([host], base), ["--seed", seed, "--revision", Revision()]), dry
+    )
+    if (status != 0) {
+        return status
+    }
+    return Step("seed-folder", ["rm", "-rf", seed], dry)
+}
+
+// Rewrites docs/native-compiler-census.md: the first native blocker of each
+// self-hosted compiler function.
+NativeCensus :: (arguments: string[]) -> int {
+    dry := Flag(arguments, "--dry-run")
+    directory := Option(arguments, "--build", "build")
+    options := ["--target", "test_language", "--build", directory]
+    if (dry) {
+        options = build.concat(options, ["--dry-run"])
+    }
+    status := Build(options)
+    if (status != 0) {
+        return status
+    }
+    return Step(
+        "native-census",
+        [Join([Absolute(directory), "/test/language/test_language"]), "--native-census", "docs/native-compiler-census.md"],
+        dry
+    )
+}
+
+// Whether a registered worktree lives under `directory`.
+HoldsWorktree :: (directory: string) -> bool {
+    listed := os.Capture(["git", "worktree", "list", "--porcelain"])
+    for (line in build.lines(listed.stdout)) {
+        if (strings.HasPrefix(line, "worktree ") && strings.HasPrefix(build.after(line, "worktree "), Join([directory, "/"]))) {
+            return true
+        }
+    }
+    return false
+}
+
+// Removes the build outputs, except a build directory that holds a worktree.
+Clean :: (arguments: string[]) -> int {
+    for (name in [Option(arguments, "--build", "build"), "build-debug", Option(arguments, "--release-build", "build-release")]) {
+        directory := Absolute(name)
+        if (HoldsWorktree(directory)) {
+            os.Print(Join(["Skipping ", directory, ": it contains a registered worktree"]))
+        } else {
+            Step("clean", ["rm", "-rf", "--", directory], Flag(arguments, "--dry-run"))
+        }
+    }
+    return 0
+}
+
 Usage :: () -> int {
-    os.Print("usage: build [--release|--debug] [--build DIR] [--target NAME]... [--all] [--jobs N] [--dry-run]")
+    os.Print("usage: build [--release|--debug|--profile NAME] [--build DIR] [--target NAME]... [--all] [--jobs N] [--dry-run]")
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--list] [--dry-run] NAME...")
+    os.Print("       build install [--prefix DIR] [--release-build DIR]")
+    os.Print("       build format [--check] | clean | publish-seed | native-census")
+    os.Print("       build bootstrap-artifact | bootstrap-refresh | bootstrap-recover [--release-build DIR]")
+    os.Print("       build sdk-reflect | runtime-sdk | package-runtime-sdk [--reflect-build DIR] [--runtime-build DIR] [--output DIR] [-- NATIVE ARGUMENTS]")
     return 2
 }
 
@@ -373,8 +620,50 @@ Main :: () -> int {
     if (length(arguments) == 0 || arguments[0] != "build") {
         return Usage()
     }
-    if (length(arguments) > 1 && arguments[1] == "test") {
+    verb := ""
+    if (length(arguments) > 1 && !strings.HasPrefix(arguments[1], "--")) {
+        verb = arguments[1]
+    }
+    dry := Flag(arguments, "--dry-run")
+    if (verb == "test") {
         return Test(arguments)
+    }
+    if (verb == "install") {
+        return Install(arguments)
+    }
+    if (verb == "format") {
+        check: string[] = []
+        if (Flag(arguments, "--check")) {
+            check = ["--check"]
+        }
+        return Step("format", build.concat(["sh", "tools/clang-format.sh"], check), dry)
+    }
+    if (verb == "clean") {
+        return Clean(arguments)
+    }
+    if (verb == "sdk-reflect") {
+        return SdkReflect(arguments)
+    }
+    if (verb == "runtime-sdk" || verb == "package-runtime-sdk") {
+        return RuntimeSdk(arguments, verb == "package-runtime-sdk")
+    }
+    if (verb == "bootstrap-artifact") {
+        return Bootstrap(arguments, "artifact")
+    }
+    if (verb == "bootstrap-refresh") {
+        return Bootstrap(arguments, "refresh")
+    }
+    if (verb == "bootstrap-recover") {
+        return Bootstrap(arguments, "recover")
+    }
+    if (verb == "publish-seed") {
+        return Step("publish-seed", ["sh", "tools/bootstrap/publish-seed.sh"], dry)
+    }
+    if (verb == "native-census") {
+        return NativeCensus(arguments)
+    }
+    if (verb != "") {
+        return Usage()
     }
     return Build(arguments)
 }

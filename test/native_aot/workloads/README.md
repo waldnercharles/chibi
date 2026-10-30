@@ -22,7 +22,7 @@ kernel with the launcher it is given and the LLVM tools in `CHIBI_LLVM_BIN`,
 checks the status and prints one line per kernel and mode:
 
 ```sh
-make build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host test_tools'
+chibi build --release --target chibi --target chibi-build-host --target chibi-compiler-host --target test_tools
 CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin CHIBI_TOOLS_BUILD_DIR=build-release/test/tools \
   python3 tools/test_policy.py tool native-workload-benchmark
 ```

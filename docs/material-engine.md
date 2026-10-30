@@ -295,6 +295,6 @@ calls, and provides seed/cell-size controls and a field preview in Details.
 The fixture start scene is `scenes/MaterialStudy.kdl`; `scenes/SeamStudy.kdl`
 is its separate collision specimen.
 
-Build with `make build`. Select affected-contract checks using `make agent-list` and
+Build with `chibi build`. Select affected-contract checks using `make agent-list` and
 `make agent-test AGENT_SELECTOR=--<selector>`; see the
 [testing instructions](testing.md).

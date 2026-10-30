@@ -10,7 +10,7 @@ import strings "core:strings"
 // CMake build. Run through the build host with `--collection graph=tools/graph`:
 //   Libraries -- --build DIR [--profile sanitizer|debug|release|explicit] [--jobs N]
 //     [--target NAME]... [--commands-only on] [--all-commands on]
-// The profile, the Makefile's sanitizer profile unless named, is found on
+// The profile, the sanitizer profile unless named, is found on
 // this machine (engine.Discover); these options override what they name:
 //   --compiler PATH --cxx-compiler PATH --compiler-id ID --build-type TYPE
 //   --architecture ARCH --sysroot DIR --warnings on|off --sanitizers LIST
@@ -494,7 +494,7 @@ BuildLibrariesWithArguments :: (arguments: string[], runtime_sdk: bool) -> int {
     }
     if (engine.NeedsThirdParty(selected) &&
         !os.Exists(strings.Join([profile.third_party, "/third-party.cmake"], ""))) {
-        os.Print("graph: the third-party archive is not unpacked; configure with make build first, or name it with --third-party");
+        os.Print("graph: the third-party archive is not unpacked; configure with tools/build.sh build first, or name it with --third-party");
         return 2;
     }
     if (os.Platform() == "Linux") {

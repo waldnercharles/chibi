@@ -3,7 +3,7 @@
 # sources, as Zig ships zig1.wasm: it is a release asset, not committed.
 # bootstrap.json pins its SHA-256 and seed.tsv names the release that holds it.
 # A seed that already matches bootstrap.json is kept, so one that
-# `make bootstrap-artifact` just wrote stays until it is published.
+# `tools/build.sh build bootstrap-artifact` just wrote stays until it is published.
 # Usage: tools/bootstrap/seed.sh [DIRECTORY], default tools/compiler/bootstrap
 set -eu
 root=$(cd "$(dirname "$0")/../.." && pwd -P)

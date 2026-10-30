@@ -8276,7 +8276,7 @@ static bool write_seed_file(const char *folder, const char *name, const void *by
     return written;
 }
 /* With CHIBI_BOOTSTRAP_SEED naming a folder, leaves stage two and Compile's
- * arguments there, the seed make bootstrap-artifact writes the bootstrap
+ * arguments there, the seed tools/build.sh build bootstrap-artifact writes the bootstrap
  * artifact from. */
 static bool write_seed(const unsigned char *stage_two, size_t length, const char *json, size_t json_length)
 {

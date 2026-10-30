@@ -160,7 +160,7 @@ Build :: (arguments: string[]) -> int {
     }
     for (name in ["--debug-optimization", "--debug-frame-pointers"]) {
         value := Option(arguments, name, "")
-        if (value != "" && profile == "debug") {
+        if (value != "" && profile != "release") {
             graph = build.concat(graph, [name, value])
         }
     }

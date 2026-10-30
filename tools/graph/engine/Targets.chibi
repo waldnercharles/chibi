@@ -458,7 +458,6 @@ Files :: (target: string) -> string[] {
             "test/tools/graph_dispatch.c",
             "test/tools/fixture.c", "test/tools/execution_policy.c", "test/tools/package.c",
             "test/tools/chibi_cli.c", "test/tools/native_build.c", "test/tools/native_workloads.c",
-            "test/tools/third_party_publish.c",
             "test/tools/collab.c",
             "test/tools/web_storage.c", "test/tools/browser.c",
             "test/tools/wasm_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",

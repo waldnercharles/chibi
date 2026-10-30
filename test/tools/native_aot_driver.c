@@ -601,6 +601,7 @@ void test_native_aot_driver(const char *source)
     compiler = chibi_build_compiler_load(
         CHIBI_SOURCE_ROOT "/tools/compiler",
         CHIBI_SOURCE_ROOT "/packages/core",
+        NULL,
         error,
         sizeof error
     );

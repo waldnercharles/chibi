@@ -916,11 +916,19 @@ static bool driver_plan(const char *const *options, char **log)
 TEST_CASE(driver_plans_the_engine_build_steps)
 {
     char *log = NULL;
-    const char *const sanitizer[] = { "--target", "chibi", NULL };
+    const char *const sanitizer[] = { "--target",
+                                      "chibi",
+                                      "--debug-optimization",
+                                      "1",
+                                      "--debug-frame-pointers",
+                                      "on",
+                                      NULL };
     REQUIRE(driver_plan(sanitizer, &log));
     const char *release = strstr(log, "--profile release");
     const char *sanitized = strstr(log, "--profile sanitizer");
     bool planned = release && sanitized && release < sanitized &&
+                   strstr(sanitized, "--debug-optimization 1") &&
+                   strstr(sanitized, "--debug-frame-pointers on") &&
                    strstr(log, "--target chibi-compiler-host") &&
                    strstr(log, "--target chibi --target chibi-build-host") &&
                    strstr(log, "--asset-generator-hosts") &&
@@ -930,10 +938,15 @@ TEST_CASE(driver_plans_the_engine_build_steps)
     }
     free(log);
     REQUIRE(planned);
-    const char *const optimized[] = { "--release", "--target", "chibi", NULL };
+    const char *const optimized[] = { "--release", "--target",
+                                      "chibi",     "--debug-optimization",
+                                      "1",         "--debug-frame-pointers",
+                                      "on",        NULL };
     REQUIRE(driver_plan(optimized, &log));
     planned = strstr(log, "--profile release") &&
               !strstr(log, "--profile sanitizer") &&
+              !strstr(log, "--debug-optimization") &&
+              !strstr(log, "--debug-frame-pointers") &&
               !strstr(log, "--asset-generator-hosts") &&
               strstr(log, "build-release/compile_commands.json");
     if (!planned) {
@@ -941,9 +954,17 @@ TEST_CASE(driver_plans_the_engine_build_steps)
     }
     free(log);
     REQUIRE(planned);
-    const char *const everything[] = { "--debug", "--all", NULL };
+    const char *const everything[] = { "--debug",
+                                       "--all",
+                                       "--debug-optimization",
+                                       "1",
+                                       "--debug-frame-pointers",
+                                       "on",
+                                       NULL };
     REQUIRE(driver_plan(everything, &log));
-    planned = strstr(log, "--profile debug") && !strstr(log, "--target chibi ");
+    planned = strstr(log, "--profile debug") && !strstr(log, "--target chibi ") &&
+              strstr(log, "--debug-optimization 1") &&
+              strstr(log, "--debug-frame-pointers on");
     free(log);
     REQUIRE(planned);
     return true;

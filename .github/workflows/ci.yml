@@ -67,6 +67,8 @@ jobs:
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
+      - name: Test native profile evidence checks
+        run: python3 .github/test-capture-native-profile.py
       - name: Configure compiler cache
         id: ccache-config
         run: sh .github/native-ccache.sh
@@ -105,6 +107,7 @@ jobs:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
         run: sh tools/build.sh build --release --target chibi --target chibi-build-host --target chibi-compiler-host --libclang-root /usr/lib/llvm-18
       - name: Build products and test drivers (selected Debug profile)
+        id: native-build
         env:
           VERBOSE: '1'
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
@@ -112,6 +115,11 @@ jobs:
         run: |
           set -o pipefail
           sh tools/build.sh build --build build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root /usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+      - name: Verify and preserve native profile evidence
+        if: always() && steps.native-build.outcome != 'skipped'
+        env:
+          CHIBI_NATIVE_BUILD_OUTCOME: ${{ steps.native-build.outcome }}
+        run: python3 .github/capture-native-profile.py --build build --output "$RUNNER_TEMP/native-profile" --nm /usr/lib/llvm-18/bin/llvm-nm
       # Run authored command generation on the Release helper; test_tools and
       # the reference profile remain the selected Debug profile.
       - name: Graph Debug optimization (commands only)
@@ -161,6 +169,7 @@ jobs:
           name: native-profile-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/native-build.log
+            ${{ runner.temp }}/native-profile/
             ${{ runner.temp }}/build-timings/
             ${{ runner.temp }}/case-timings/
           if-no-files-found: warn
@@ -217,6 +226,8 @@ jobs:
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
+      - name: Test native profile evidence checks
+        run: python3 .github/test-capture-native-profile.py
       - name: Configure compiler cache
         id: ccache-config
         run: sh .github/native-ccache.sh
@@ -259,6 +270,7 @@ jobs:
       # plan the selected Debug build. Release hosts also generate the asset
       # compiler resource; products and test drivers retain the selected profile.
       - name: Build products and test drivers (selected Debug profile)
+        id: native-build
         env:
           VERBOSE: '1'
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
@@ -266,6 +278,11 @@ jobs:
         run: |
           set -o pipefail
           sh tools/build.sh build --build build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root "$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+      - name: Verify and preserve native profile evidence
+        if: always() && steps.native-build.outcome != 'skipped'
+        env:
+          CHIBI_NATIVE_BUILD_OUTCOME: ${{ steps.native-build.outcome }}
+        run: python3 .github/capture-native-profile.py --build build --output "$RUNNER_TEMP/native-profile" --nm "$LLVM/bin/llvm-nm"
       - name: Preserve failed macOS Graph stage log
         if: failure()
         uses: actions/upload-artifact@v4
@@ -306,6 +323,7 @@ jobs:
           name: native-profile-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/native-build.log
+            ${{ runner.temp }}/native-profile/
             ${{ runner.temp }}/build-timings/
             ${{ runner.temp }}/case-timings/
           if-no-files-found: warn

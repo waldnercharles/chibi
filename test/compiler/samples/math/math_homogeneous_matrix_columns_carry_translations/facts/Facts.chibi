@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { translate := mat3(1, 0, 0, 0, 1, 0, 5, 7, 1); scale := mat3(2, 0, 0, 0, 3, 0, 0, 0, 1); v := vec3(2, 3, 1); return (translate * scale) * v == vec3(9, 16, 1) && (scale * translate) * v == vec3(14, 30, 1) && mat4(1) * vec4(v, 1) == vec4(2, 3, 1, 1); }

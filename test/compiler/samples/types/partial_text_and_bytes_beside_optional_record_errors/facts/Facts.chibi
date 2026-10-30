@@ -1,0 +1,25 @@
+package facts
+Failure :: struct { code: int; message: string; }
+Read :: (fail: bool) -> (text: string, bytes: u8[], error: Failure?) {
+    if fail { return("partial", [u8(3), u8(4)], {code: 7, message: "bad input"}); }
+    return("done", [u8(8)], nil);
+}
+Use :: (fail: bool) -> int {
+    result := Read(fail);
+    bytes := result.bytes;
+    copy := bytes;
+    copy[0] = 9;
+    error := result.error;
+    if error {
+        if error.message != "bad input" { return -1; }
+        if result.text != "partial" { return -2; }
+        return int(bytes[0]) * 100 + int(bytes[1]) * 10 + error.code;
+    }
+    if result.text != "done" { return -3; }
+    return int(bytes[0]);
+}
+Defaults :: () -> (text: string, bytes: u8[], error: Failure?) { return; }
+UseDefaults :: () -> int { result := Defaults(); if result.error { return -1; }
+    if result.text != "" { return -2; } return length(result.bytes); }
+Code :: (error: Failure?) -> int { if error == nil { return 0; } return error.code; }
+Guarded :: (fail: bool) -> int { result := Read(fail); return Code(result.error); }

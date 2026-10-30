@@ -1,0 +1,37 @@
+package facts
+Holder :: union { Some(items: int[], name: string) }
+Counted :: (n: int) -> int[] {
+    xs: int[] = [];
+    i: int = 0;
+    while (i < n) { xs.append(i); i += 1; }
+    return xs;
+}
+Paired :: (n: int, ys: int[]) -> Holder {
+    xs: int[] = [7];
+    xs.extend(Counted(n));
+    xs[0] = 9;
+    if (n == 0) { return Holder.Some(ys, "none"); }
+    return Holder.Some(xs, "pair");
+}
+BuiltPair :: (n: int) -> Holder { return Holder.Some([n, n + 1], "pair"); }
+BuiltOne :: () -> Holder { return Holder.Some([1], "one"); }
+CopiedCount :: (n: int) -> int[] {
+    xs: int[] = [];
+    xs = Counted(n);
+    return xs;
+}
+Total :: () -> int {
+    a := Counted(3);
+    ys: int[] = [4, 5];
+    b := Paired(2, ys);
+    c := Paired(0, ys);
+    ys[0] = 6;
+    d := BuiltPair(3);
+    e := BuiltOne();
+    total: int = a[2] * 1000 + CopiedCount(4)[3] * 100;
+    switch b { case .Some(items, name): total += items[0] * 10 + items[2]; }
+    switch c { case .Some(items, name): total += items[0] * 10000; }
+    switch d { case .Some(items, name): total += items[1] * 100000; }
+    switch e { case .Some(items, name): total += items[0] * 1000000; }
+    return total;
+}

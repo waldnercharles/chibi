@@ -1,0 +1,4 @@
+package facts
+Answer :: () { m: [int: int] = [:]; for (x, x in m) {} }
+
+// error: 2:45: Duplicate declaration 'x'

@@ -1,0 +1,4 @@
+package facts
+Bad: u64 : u64(f64(1.5));
+
+// error: 2:16: floating-to-integer constant conversion is not supported yet

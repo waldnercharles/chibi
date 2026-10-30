@@ -1,0 +1,37 @@
+package facts
+
+// maps
+@test
+Calls :: () {
+    r1: int = Ages();
+    e1: int = 4136;
+    assert(r1 == e1, "Ages call 1");
+    a2_0: int = 2;
+    r2: string = Name(a2_0);
+    e2: string = "two";
+    assert(r2 == e2, "Name call 2");
+    a3_0: int = 3;
+    r3: string = Name(a3_0);
+    e3: string = "";
+    assert(r3 == e3, "Name call 3");
+    a4_0: string = "a";
+    r4: int = Y(a4_0);
+    e4: int = 2;
+    assert(r4 == e4, "Y call 4");
+    r6: bool = Flag();
+    e6: bool = false;
+    assert(r6 == e6, "Flag call 6");
+    a7_0: int = 5;
+    r7: int = Count(a7_0);
+    e7: int = 111109000;
+    assert(r7 == e7, "Count call 7");
+    r8: int = Points();
+    e8: int = 405;
+    assert(r8 == e8, "Points call 8");
+    r9: string = Walk();
+    e9: string = "Ada4Cid2Bea5 95911";
+    assert(r9 == e9, "Walk call 9");
+    r10: string = Copies();
+    e10: string = "0=v0;1=v1;2=v2;|0=changed;1=v1;";
+    assert(r10 == e10, "Copies call 10");
+}

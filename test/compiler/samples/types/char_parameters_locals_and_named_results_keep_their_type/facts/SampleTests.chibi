@@ -1,0 +1,40 @@
+package facts
+
+// char parameters locals and named results keep their type
+@test
+Calls :: () {
+    a1_0: int = 0;
+    r1: int = RoundTrip(a1_0);
+    e1: int = 0;
+    assert(r1 == e1, "RoundTrip call 1");
+    a2_0: int = 55295;
+    r2: int = RoundTrip(a2_0);
+    e2: int = 55295;
+    assert(r2 == e2, "RoundTrip call 2");
+    a3_0: int = 57344;
+    r3: int = RoundTrip(a3_0);
+    e3: int = 57344;
+    assert(r3 == e3, "RoundTrip call 3");
+    a4_0: int = 1114111;
+    r4: int = RoundTrip(a4_0);
+    e4: int = 1114111;
+    assert(r4 == e4, "RoundTrip call 4");
+    a5_0: int = 128008;
+    r5: i64 = NamedRead(a5_0);
+    e5: i64 = 128008;
+    assert(r5 == e5, "NamedRead call 5");
+    a6_0: int = 1114111;
+    r6: u32 = ImplicitWide(a6_0);
+    e6: u32 = 1114111;
+    assert(r6 == e6, "ImplicitWide call 6");
+    r7: int = ExactDecimal();
+    e7: int = 65;
+    assert(r7 == e7, "ExactDecimal call 7");
+    r8: int = ExactInteger();
+    e8: int = 65;
+    assert(r8 == e8, "ExactInteger call 8");
+    a9_0: int = -1;
+    r9: int = PlainInt(a9_0);
+    e9: int = -1;
+    assert(r9 == e9, "PlainInt call 9");
+}

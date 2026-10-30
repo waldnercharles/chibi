@@ -1,0 +1,2 @@
+package facts
+Main :: () -> int { x: int? = 4; r := 0; if x { r += x; } x = nil; if x { r += 100; } x = 5; if x { r += x * 10; } return r; }

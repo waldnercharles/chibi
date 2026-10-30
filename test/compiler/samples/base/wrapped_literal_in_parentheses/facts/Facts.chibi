@@ -1,0 +1,2 @@
+package facts
+One :: () -> int { return int(wrap: (0xFFFFFFFFFFFFFFFF)); }

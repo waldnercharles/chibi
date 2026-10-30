@@ -1,0 +1,5 @@
+package facts
+U :: union { A | B }
+One :: (u: U) -> bool { return u is .C; }
+
+// error: 3:37: Unknown union variant 'C'

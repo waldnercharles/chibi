@@ -1,0 +1,7 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }
+Forward :: (error: Failure?) { if error {} }
+Use :: () -> int { r := Read(); r.value = 5; if r.error {} return r.value; }
+Alias :: () -> int { r := Read(); copy := r; copy.value = 5; Forward(copy.error); return copy.value; }
+Original :: () -> int { r := Read(); copy := r; copy.value = 5; if r.error {} return copy.value; }

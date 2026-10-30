@@ -1,0 +1,5 @@
+package facts
+Count: int : 3;
+Bad: int : 1 << Count;
+
+// error: 3:17: Shift count must be unsigned; convert it with u32(value)

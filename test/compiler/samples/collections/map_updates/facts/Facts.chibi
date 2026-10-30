@@ -1,0 +1,11 @@
+package facts
+Build :: (count: int) -> int {
+    squares: [int: int] = [:];
+    index: int = 0;
+    while (index < count) { squares[index] = index; index += 1; }
+    index = 0;
+    while (index < count) { delete squares[index]; index += 2; }
+    total: int = 0;
+    for (value in squares) { total += 1; }
+    return total;
+}

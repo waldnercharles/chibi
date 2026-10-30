@@ -1,0 +1,9 @@
+package facts
+
+// generic records specialize per application
+@test
+Calls :: () {
+    r1: int = Main();
+    e1: int = 9613;
+    assert(r1 == e1, "Main call 1");
+}

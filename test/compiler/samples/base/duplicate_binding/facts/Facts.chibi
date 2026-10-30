@@ -1,0 +1,5 @@
+package facts
+U :: union { A(x: int, y: int) | B }
+One :: (u: U) -> int { if (u is .A(n, n)) { return n; } return 0; }
+
+// error: 3:39: Duplicate declaration 'n'

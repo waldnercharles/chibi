@@ -1,0 +1,4 @@
+package facts
+Grow :: (b: u8) -> int { a: int = 1; a &= b; return a; }
+
+// error: 2:38: Mismatched integer types int and u8; convert one operand

@@ -1,0 +1,14 @@
+package facts
+Pair :: (x: int) -> (kind: int, end: int) {
+    end = x + 1;
+    return (x, end);
+}
+Rest :: (x: int) -> (low: int, high: int) {
+    low = x - 1;
+    return;
+}
+Use :: (x: int) -> int {
+    p := Pair(x);
+    q := Rest(x);
+    return p.kind * 10 + p.end + Pair(x).end * 100 + q.low * 1000 + q.high;
+}

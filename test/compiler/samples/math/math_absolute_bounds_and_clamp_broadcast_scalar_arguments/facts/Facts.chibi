@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { v := vec3(-2, 0.5, 3); return abs(v) == vec3(2, 0.5, 3) && min(v, 1) == vec3(-2, 0.5, 1) && max(0, v) == vec3(0, 0.5, 3) && clamp(v, 0, 1) == vec3(0, 0.5, 1); }

@@ -1,0 +1,2 @@
+package facts
+Answer :: () -> int { return 42; }

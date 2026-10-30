@@ -1,0 +1,51 @@
+package facts
+Point :: struct { x: int; y: int; }
+Squares :: (n: int) -> int[] {
+    out: int[] = [];
+    i: int = 0;
+    while (i < n) { out = append(out, i * i); i += 1; }
+    return out;
+}
+Total :: (xs: int[]) -> int {
+    sum: int = 0;
+    for (x in xs) { if (x == 4) { continue; } sum += x; }
+    return sum;
+}
+Edit :: () -> int {
+    xs: int[] = [1, 2, 3];
+    xs[1] = 20;
+    xs[2] += 5;
+    copy := xs;
+    more: int[] = [7, 8];
+    xs = extend(xs, more);
+    return xs[1] + xs[2] + length(xs) * 100 + length(copy) * 1000;
+}
+Points :: (n: int) -> Point[] {
+    ps: Point[] = [];
+    i: int = 0;
+    while (i < n) { p: Point = {x: i, y: i * 2}; ps = append(ps, p); i += 1; }
+    return ps;
+}
+SumY :: (ps: Point[]) -> int {
+    total: int = 0;
+    for (p in ps) { total += p.y; if (total > 100) { break; } }
+    return total + ps[0].x;
+}
+Words :: () -> string[] {
+    ws: string[] = ["a", "b", "c"];
+    return slice(ws, 1, 2);
+}
+Counts :: (n: int) -> int { return length(Squares(n)) + Total(Squares(n)); }
+Pick :: (xs: int[], i: int) -> int { return xs[i]; }
+Index :: (i: int) -> int { return i; }
+Nested :: (ps: Point[]) -> int {
+    total: int = 0;
+    ws: string[] = ["a", "bb"];
+    for (p in ps) {
+        if (p.x == 0) { continue; }
+        for (w in ws) { if (w == "a") { continue; } total += p.x * 10; }
+    }
+    counts: int[] = [0, 0, 0];
+    counts[Index(2)] += 7;
+    return total + counts[2];
+}

@@ -1,0 +1,24 @@
+package facts
+
+// imports
+@test
+Calls :: () {
+    a1_0: int = 4;
+    r1: int = Total(a1_0);
+    e1: int = 17;
+    assert(r1 == e1, "Total call 1");
+    r2: int = Local();
+    e2: int = 9;
+    assert(r2 == e2, "Local call 2");
+    r3: int = Shapes();
+    e3: int = 73;
+    assert(r3 == e3, "Shapes call 3");
+    a4_0: int = 6;
+    r4: int = Match(a4_0);
+    e4: int = 6;
+    assert(r4 == e4, "Match call 4");
+    a5_0: string = "zebra";
+    r5: int = Measure(a5_0);
+    e5: int = 551;
+    assert(r5 == e5, "Measure call 5");
+}

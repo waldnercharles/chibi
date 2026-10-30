@@ -1,0 +1,3 @@
+package facts
+import lib "project:fallible_imported_source_error_is_checked/lib"
+Use :: () -> int { result := lib.Read(); if result.error {} return result.value; }

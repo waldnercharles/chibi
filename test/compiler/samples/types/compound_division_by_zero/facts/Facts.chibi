@@ -1,0 +1,4 @@
+package facts
+Halve :: (a: int) -> int { b := a; b /= 0; return b; }
+
+// error: 2:36: Constant division by zero

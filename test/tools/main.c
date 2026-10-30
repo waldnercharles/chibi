@@ -687,7 +687,7 @@ int main(int argc, char **argv)
         !test_runner && !validation_plan && !web_storage && !wasm_browser &&
         !query_benchmark && !scene && !scene_prepared && !native && !native_values &&
         !native_catalog && !physics && !physics3d && !transforms && !arena &&
-        !types && !radiance_horizons && !box3d && !sky_files && !mesh_files &&
+        !types && !box3d && !sky_files && !mesh_files &&
         !model_import && !model_graphs && !model_catalog && !shader_graphs &&
         !persistent_store && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !system_schedule && !scheduler_benchmark &&

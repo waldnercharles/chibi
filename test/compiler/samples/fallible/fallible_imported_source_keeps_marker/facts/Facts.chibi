@@ -1,0 +1,5 @@
+package facts
+import lib "project:fallible_imported_source_keeps_marker/lib"
+Use :: () -> int { result := lib.Read(); return result.value; }
+
+// error: 3:30: Error result is ignored on a reachable path; check, report, store or return it

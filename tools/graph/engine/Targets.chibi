@@ -485,7 +485,8 @@ Files :: (target: string) -> string[] {
         return [
             "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
             "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
-            "src/toolchain/compiler_target.c", "src/toolchain/compiler_bootstrap.c", "src/support/sha256.c"
+            "src/toolchain/compiler_target.c", "src/toolchain/compiler_bootstrap.c", "src/support/sha256.c",
+            "src/support/binary_cache.c"
         ];
     }
     if (target == "chibi-compiler-host") {
@@ -557,7 +558,7 @@ Files :: (target: string) -> string[] {
             "test/language/ranges.c",
             "test/language/component_write_ir.c",
             "test/language/field_runtime.c",
-            "test/language/ui.c", "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
+            "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
             "test/language/packages.c", "test/language/package_syntax.c",
             "test/language/package_resolution.c",
             "test/language/package_imports.c", "test/language/package_files.c",
@@ -1147,7 +1148,8 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_compiler-host") {
         return [
-            "support/sha256.h", "toolchain/compiler_artifact.h", "toolchain/compiler_bootstrap.h",
+            "support/binary_cache.h", "support/file_io.h", "support/sha256.h", "toolchain/compiler_artifact.h",
+            "toolchain/compiler_bootstrap.h",
             "toolchain/compiler_host.h", "toolchain/compiler_json.h", "toolchain/compiler_syntax.h",
             "toolchain/compiler_target.h"
         ];

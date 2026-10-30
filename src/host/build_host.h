@@ -23,11 +23,15 @@ typedef struct
 typedef struct chibi_build_compiler chibi_build_compiler;
 /* Owns a validated current compiler generation, independent of a build
  * program's core collection. Matching recorded source hashes load the checked
- * closure directly; changed sources recover a fixed point. No files are
- * written. Reuse sequentially; reload after changing compiler sources. */
+ * closure directly; changed sources recover a fixed point, which takes
+ * minutes. A non-NULL cache directory keeps that compiler for the next load
+ * of the same seed, sources, target and host binary (see compiler_bootstrap.h);
+ * NULL writes no files. Reuse sequentially; reload after changing compiler
+ * sources. */
 chibi_build_compiler *chibi_build_compiler_load(
     const char *sources,
     const char *core,
+    const char *cache,
     char *error,
     size_t size
 );

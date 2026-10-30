@@ -232,7 +232,6 @@ TOOLS = {
     'scheduler-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scheduler-benchmark'],
     'language-query-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-program'],
     'language-query-values': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-values'],
-    'language-operations': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--operations'],
     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
     'language-modules': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--modules'],
     'language-native-calls': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--native-calls'],
@@ -377,7 +376,6 @@ TOOLS = {
     'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
     'language-outliner-projection': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--outliner-projection'],
     'language-row-array': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-array'],
-    'language-scalarize': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--scalarize'],
     'language-native-char-results': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--native-char-results'],
     'language-program-session': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--program-session'],
@@ -401,14 +399,14 @@ TOOLS = {
     'c-export-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--c-export-alias'],
 
 }
-for selector in ('activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark'):
+for selector in ('activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'packed-benchmark'):
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
-for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions'):
+for selector in ('binding-schedule', 'activation-cache', 'reductions'):
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'integer-arithmetic', 'outliner-projection', 'package-math'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'packed-benchmark', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'integer-arithmetic', 'outliner-projection', 'package-math'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
                  '-imports', '-imports-compiled', '-behaviors',
@@ -471,8 +469,8 @@ ASSET_COMPILER_HOST_PLATFORMS = ('linux', 'darwin')
 # Keep performance workloads opt-in through the benchmarks group or tool.
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
-             'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
-             'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-integer-arithmetic', 'wasm-outliner-projection',
+             'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-ranges', 'wasm-component-write',
+             'wasm-binding-schedule', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-integer-arithmetic', 'wasm-outliner-projection',
              'wasm-package-math', 'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled',
              'wasm-package-portable', 'wasm-package-portable-compiler'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
@@ -499,8 +497,8 @@ GROUPS = {
     # two192-particle3000-stepMPM pools, four workers, no windows/children/network.
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 
                   'material-simulation', 'material-ecs', 'material-render'],
-    'language': ['language-test-parallel', 'execution-scope', 'language', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-query-values', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write',
-                 'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
+    'language': ['language-test-parallel', 'execution-scope', 'language', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-query-values', 'language-incremental', 'language-ranges', 'language-component-write',
+                 'language-binding-schedule', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-package-math', 'language-package-tests', 'language-argument-effects-chibi', 'language-package-core', 'language-package-portable', 'language-package-portable-compiler', 'language-host-packages', 'language-host-packages-compiler', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 
                  'language-row-array', 'language-outliner-projection',

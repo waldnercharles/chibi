@@ -28,7 +28,7 @@ def ensure_worker():
         print('starting formatter (about 25 s)...', flush=True)
         worker = subprocess.Popen([chibi, 'run', fmt_dir, '--', '--serve', mailbox])
 
-def format_source(source, indent, tabs):
+def format_source(source, indent, tabs, blanks, crlf):
     global serial
     with lock:
         ensure_worker()
@@ -36,7 +36,7 @@ def format_source(source, indent, tabs):
         ident = str(serial)
         tmp = os.path.join(mailbox, 'request.tmp')
         with open(tmp, 'w', encoding='utf-8', newline='') as f:
-            f.write(f'{ident} {indent} {1 if tabs else 0}\n{source}')
+            f.write(f'{ident} {indent} {1 if tabs else 0} {blanks} {1 if crlf else 0}\n{source}')
         os.replace(tmp, os.path.join(mailbox, 'request'))
         response = os.path.join(mailbox, 'response')
         deadline = time.time() + 180
@@ -78,7 +78,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with open(os.path.join(repo, path), encoding='utf-8', newline='') as f:
                 return self.send(200, f.read(), 'text/plain; charset=utf-8')
         name = {'/': 'index.html'}.get(url.path, url.path.lstrip('/'))
-        if name in ('index.html', 'app.js', 'app.css', 'diff.js'):
+        if name in ('index.html', 'app.js', 'app.css', 'diff.js', 'highlight.js', 'options.js', 'tree.js'):
             kind = {'html': 'text/html', 'js': 'text/javascript', 'css': 'text/css'}[name.rsplit('.', 1)[1]]
             with open(os.path.join(page, name), 'rb') as f:
                 return self.send(200, f.read(), kind + '; charset=utf-8')
@@ -89,9 +89,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(404, 'not found', 'text/plain')
         body = json.loads(self.rfile.read(int(self.headers['content-length'])))
         indent = int(body.get('indent_width', 4))
-        if not 1 <= indent <= 16 or len(body['source']) > 400000:
+        blanks = int(body.get('max_blank_lines', 1))
+        if not 1 <= indent <= 16 or not 0 <= blanks <= 3 or len(body['source']) > 400000:
             return self.send(400, json.dumps({'ok': False, 'error': 'Invalid request'}), 'application/json')
-        self.send(200, json.dumps(format_source(body['source'], indent, bool(body.get('use_tabs')))), 'application/json')
+        self.send(200, json.dumps(format_source(body['source'], indent, bool(body.get('use_tabs')), blanks, bool(body.get('crlf')))), 'application/json')
 
     def log_message(self, *args): pass
 

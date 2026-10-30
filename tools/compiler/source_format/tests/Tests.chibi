@@ -71,9 +71,9 @@ HangsAnArgumentListThatEndsItsLine :: () {
 @test
 UsesTheIndentWidthOrTabs :: () {
     source := "package p\nA :: () {\nx := 1\n}\n";
-    two: format.Options = {indent_width: 2, use_tabs: false};
+    two: format.Options = {indent_width: 2, use_tabs: false, max_blank_lines: 1, crlf: false};
     assert(Run(source, two) == "package p\nA :: () {\n  x := 1\n}\n", "two spaces per level");
-    tabs: format.Options = {indent_width: 4, use_tabs: true};
+    tabs: format.Options = {indent_width: 4, use_tabs: true, max_blank_lines: 1, crlf: false};
     assert(Run(source, tabs) == "package p\nA :: () {\n\tx := 1\n}\n", "one tab per level");
 }
 
@@ -90,8 +90,8 @@ RejectsSourceTheGrammarCannotRead :: () {
 
 @test
 RejectsInvalidOptions :: () {
-    zero: format.Options = {indent_width: 0, use_tabs: false};
-    wide: format.Options = {indent_width: 17, use_tabs: false};
+    zero: format.Options = {indent_width: 0, use_tabs: false, max_blank_lines: 1, crlf: false};
+    wide: format.Options = {indent_width: 17, use_tabs: false, max_blank_lines: 1, crlf: false};
     message := "Invalid formatter options: indent_width must be 1..16";
     assert(Run("package p\n", zero) == message, "zero width");
     assert(Run("package p\n", wide) == message, "width past sixteen");
@@ -119,4 +119,33 @@ AlignsAContinuedBinaryExpression :: () {
 BreaksStatementsAfterABraceOnOneLine :: () {
     Case("package p\n\nA :: (flag: bool) -> int { if flag {} return 8; }\n",
          "package p\n\nA :: (flag: bool) -> int {\n    if flag {}\n    return 8;\n}\n");
+}
+
+@test
+LimitsBlankLinesByTheOption :: () {
+    source := "package p\n\n\n\nA :: () {\n}\n\n\n\nB :: () {\n}\n";
+    none: format.Options = {indent_width: 4, use_tabs: false, max_blank_lines: 0, crlf: false};
+    assert(Run(source, none) == "package p\nA :: () {\n}\nB :: () {\n}\n", "no blank lines");
+    two: format.Options = {indent_width: 4, use_tabs: false, max_blank_lines: 2, crlf: false};
+    assert(Run(source, two) == "package p\n\n\nA :: () {\n}\n\n\nB :: () {\n}\n", "two blank lines");
+    assert(Run("package p\n\nA :: () {\n}\n", two) == "package p\n\nA :: () {\n}\n", "a shorter run stays");
+}
+
+@test
+WritesTheRequestedLineEnding :: () {
+    crlf: format.Options = {indent_width: 4, use_tabs: false, max_blank_lines: 1, crlf: true};
+    assert(Run("package p\n\nA :: () {\nx := 1\n}\n", crlf) == "package p\r\n\r\nA :: () {\r\n    x := 1\r\n}\r\n", "CRLF");
+    assert(Run("package p\r\n\r\nA :: () {\r\n    x := 1\r\n}\r\n", crlf) == "package p\r\n\r\nA :: () {\r\n    x := 1\r\n}\r\n", "CRLF is a fixed point");
+}
+
+@test
+RejectsTooManyBlankLines :: () {
+    many: format.Options = {indent_width: 4, use_tabs: false, max_blank_lines: 4, crlf: false};
+    assert(Run("package p\n", many) == "Invalid formatter options: max_blank_lines must be 0..3", "four blank lines");
+}
+
+@test
+ClosesASwitchArmWhenNoSemicolonEndsIt :: () {
+    Case("package p\n\nA :: (outcome: Outcome) -> int {\n    switch outcome {\n        case .Built(nodes):\n            return 1\n        case .Rejected(message):\n            return 2\n    }\n}\n\nB :: () {\n    x := 1\n}\n",
+         "package p\n\nA :: (outcome: Outcome) -> int {\n    switch outcome {\n        case .Built(nodes):\n            return 1\n        case .Rejected(message):\n            return 2\n    }\n}\n\nB :: () {\n    x := 1\n}\n");
 }

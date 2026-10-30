@@ -1,13 +1,14 @@
-// Line diff for highlighting: Myers' O(ND) shortest edit script. Returns, for each side, the set of
-// line indexes that have no counterpart on the other side, or null when the texts differ too much.
+// Line diff by Myers' O(ND) shortest edit script. diffLines returns the line indexes that have no
+// counterpart on the other side, or null when the texts differ too much; diffOps lists the edit
+// script in order, for a unified view.
 function diffLines(a, b) {
   const n = a.length, m = b.length, max = n + m;
   if (max === 0) return { a: new Set(), b: new Set() };
   const offset = max, trace = [];
-  let v = new Int32Array(2 * max + 2);
+  const v = new Int32Array(2 * max + 2);
   let found = -1;
   for (let d = 0; d <= max && found < 0; d++) {
-    // Each round keeps a copy of the frontier, so a rewrite of the whole file would cost O(D^2) memory.
+    // Each round keeps a copy of the frontier, so a rewrite of the whole file costs O(D^2) memory.
     if (d > 3000) return null;
     trace.push(v.slice());
     for (let k = -d; k <= d; k += 2) {
@@ -30,4 +31,16 @@ function diffLines(a, b) {
     x = px; y = py;
   }
   return { a: onlyA, b: onlyB };
+}
+
+// The edit script as rows {kind: '=' | '-' | '+', a, b}: a and b are line indexes on each side (-1 for none).
+function diffOps(a, b, diff) {
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && diff.a.has(i)) ops.push({ kind: '-', a: i++, b: -1 });
+    else if (j < b.length && diff.b.has(j)) ops.push({ kind: '+', a: -1, b: j++ });
+    else ops.push({ kind: '=', a: i++, b: j++ });
+  }
+  return ops;
 }

@@ -1,11 +1,24 @@
 # Formatter playground
 
-A page for browsing the repository's Chibi sources and seeing what
-`chibi fmt` would do to them with the current settings: the original on the left
-(editable, or paste a source), the formatted text on the right, changed lines
-marked on both sides. Indent width and tabs persist in the browser.
+A page for browsing the repository's Chibi sources and seeing what `chibi fmt`
+would do to them with the options you choose.
 
-The page reaches its host through four calls at the bottom of `app.js`
+- **Code pane.** One pane, three views: Formatted (changed lines marked in the
+  margin), Changes (a unified diff with unchanged runs folded) and Original.
+  Prev and Next, or the `p` and `n` keys, step through the changes. Edit turns
+  the pane into a text box for the original, and Scratch in the file tree starts
+  from a pasted source. Show whitespace marks leading spaces and tabs.
+- **Options pane.** Every option of `source_format.Options`, with what it does, a
+  mark when it differs from its default, a Reset, and the current options as
+  JSON. Preferred width is listed but disabled: the formatter does not wrap yet.
+  The options live in `options.js`; keep them in step with
+  `tools/compiler/source_format/Format.chibi`.
+- **File tree.** Folders open and close; the filter opens every folder with a
+  match; arrows, Home, End and Enter work as in a native tree.
+- **Theme.** System, Light or Dark, remembered in the browser. Narrow windows
+  slide the file tree and the options over the code.
+
+The page reaches its host through three calls at the bottom of `app.js`
 (`list`, `read`, `format`). There is no Chibi runtime in the browser yet, so
 `serve.py` is the interim host: it serves the page, lists and reads the tracked
 `.chibi` files, and keeps one `chibi run apps/fmt -- --serve DIR` process

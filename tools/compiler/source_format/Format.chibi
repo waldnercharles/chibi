@@ -31,10 +31,15 @@ pub Options :: struct {
     indent_width: int;
     // One tab per level; continued-line alignment still uses spaces.
     use_tabs: bool;
+    // The most blank lines kept between two lines, 0 to 3; longer runs shrink to it.
+    max_blank_lines: int;
+    // Line breaks between lines are CRLF instead of LF. Comment and string bytes
+    // are copied exactly, so a break inside one keeps its own bytes.
+    crlf: bool;
 }
 
 pub Defaults :: () -> Options {
-    return {indent_width: 4, use_tabs: false};
+    return {indent_width: 4, use_tabs: false, max_blank_lines: 1, crlf: false};
 }
 
 pub Result :: union {
@@ -42,11 +47,14 @@ pub Result :: union {
     Rejected(message: string)
 }
 
-// Formats `text`: LF line ends, no trailing spaces and one final newline.
+// Formats `text`: one line end style, no trailing spaces and one final line end.
 // Empty or all-whitespace source has no tokens and is returned unchanged.
 pub Format :: (text: string, options: Options) -> Result {
     if (options.indent_width < 1 || options.indent_width > 16) {
         return Result.Rejected("Invalid formatter options: indent_width must be 1..16");
+    }
+    if (options.max_blank_lines < 0 || options.max_blank_lines > 3) {
+        return Result.Rejected("Invalid formatter options: max_blank_lines must be 0..3");
     }
     if (text_byte_length(text) > MaxBytes) {
         return Result.Rejected("Source exceeds the formatter's byte limit");
@@ -208,22 +216,42 @@ IsBareArm :: (rows: diag.Node[], node: int) -> bool {
            KindOf(rows, FirstChild(rows, node)) != "{";
 }
 
+// The end of the last leaf with width at or below each row, or -1 for none. A
+// row's own end can lie past it: a terminator that a line break adds has no
+// width and sits where the next token starts, after the line's spacing.
+VisibleEnds :: (rows: diag.Node[]) -> int[] {
+    ends := resize([int(-1)], length(rows));
+    i: int = length(rows) - 1;
+    while (i >= 0) {
+        if (rows[i].first_child < 0 && rows[i].start >= 0 && rows[i].end > rows[i].start) {
+            ends[i] = rows[i].end;
+        }
+        parent := rows[i].parent;
+        if (parent >= 0 && ends[i] > ends[parent]) {
+            ends[parent] = ends[i];
+        }
+        i -= 1;
+    }
+    return ends;
+}
+
 // The leaves with width, in source order. Zero-width terminators never
 // print, so they have no row here.
 Tokens :: (rows: diag.Node[], fields: string[]) -> Token[] {
     tokens: Token[] = [];
+    ends := VisibleEnds(rows);
     i: int = 0;
     while (i < length(rows)) {
         row := rows[i];
         if (row.first_child < 0 && row.start >= 0 && row.end > row.start) {
-            tokens.append(MakeToken(rows, fields, i));
+            tokens.append(MakeToken(rows, fields, ends, i));
         }
         i += 1;
     }
     return tokens;
 }
 
-MakeToken :: (rows: diag.Node[], fields: string[], node: int) -> Token {
+MakeToken :: (rows: diag.Node[], fields: string[], ends: int[], node: int) -> Token {
     kind := rows[node].kind;
     parent := rows[node].parent;
     start := rows[node].start;
@@ -249,7 +277,7 @@ MakeToken :: (rows: diag.Node[], fields: string[], node: int) -> Token {
         ancestor = rows[ancestor].parent;
     }
     ancestor = parent;
-    while (ancestor >= 0 && rows[ancestor].end == end) {
+    while (ancestor >= 0 && ends[ancestor] == end) {
         if (EndsLine(rows, ancestor)) {
             token.end_line = true;
         }
@@ -396,12 +424,12 @@ Breaks :: (bytes: int[], packaged: bool, start: int, end: int) -> int {
     return count;
 }
 
-// Appends a line break and `margin` to the output pieces.
-Break :: (out: ^(string[]), blank: bool, margin: Margin, unit: string) {
-    if (blank) {
-        out.append("\n\n");
+// Appends a line break, `blanks` empty lines after it, and `margin` to the output pieces.
+Break :: (out: ^(string[]), blanks: int, eol: string, margin: Margin, unit: string) {
+    if (blanks > 0) {
+        out.append(strings.Repeat(eol, blanks + 1));
     } else {
-        out.append("\n");
+        out.append(eol);
     }
     if (margin.levels > 0) {
         out.append(strings.Repeat(unit, margin.levels));
@@ -418,6 +446,10 @@ Layout :: (text: string, rows: diag.Node[], fields: string[], root: int, tokens:
     unit := strings.Repeat(" ", width);
     if (options.use_tabs) {
         unit = "\t";
+    }
+    eol := "\n";
+    if (options.crlf) {
+        eol = "\r\n";
     }
     packaged := ChildByField(rows, fields, root, "package") >= 0;
     frames: Frame[] = [];
@@ -446,7 +478,11 @@ Layout :: (text: string, rows: diag.Node[], fields: string[], root: int, tokens:
                         (previous.open || previous.close || previous.end_line ||
                          previous.case_open || current.close));
             if (newline) {
-                Break(&out, lines > 1, at, unit);
+                blanks := lines - 1;
+                if (blanks > options.max_blank_lines) {
+                    blanks = options.max_blank_lines;
+                }
+                Break(&out, blanks, eol, at, unit);
                 line = at;
                 column = at.levels * width + at.spaces;
             } else if (SpaceBetween(rows, previous, current)) {
@@ -494,7 +530,7 @@ Layout :: (text: string, rows: diag.Node[], fields: string[], root: int, tokens:
         }
         i += 1;
     }
-    out.append("\n");
+    out.append(eol);
     return Concatenate(out);
 }
 

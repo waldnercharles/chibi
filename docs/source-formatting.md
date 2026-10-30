@@ -20,12 +20,12 @@ a line break followed by a margin.
 
 - Line breaks the author wrote stay, apart from the ones the grammar forces
   after `{`, a statement or declaration, and before a closing brace.
-- A run of blank lines becomes one blank line.
+- A run of blank lines shrinks to `max_blank_lines`.
 - Indentation follows the nesting of blocks and brackets. A bracket that ends
   its line indents the next lines one level past that line; a bracket followed by
   an item aligns later lines with that item. A continued binary expression aligns
   with its first operand. With `use_tabs`, levels are tabs and alignment is spaces.
-- Output has LF line ends, no trailing whitespace and one final newline.
+- Output has one line-end style, no trailing whitespace and one final line end.
 - Comment and literal bytes are copied exactly.
 
 ## Options
@@ -34,8 +34,10 @@ a line break followed by a margin.
 | --- | --- | --- |
 | `indent_width` | 4 | Spaces per level, 1 to 16. Also the width a tab counts for when aligning. |
 | `use_tabs` | false | One tab per level. |
+| `max_blank_lines` | 1 | The most blank lines kept between two lines, 0 to 3. |
+| `crlf` | false | CRLF between lines instead of LF. Bytes inside comments and strings are copied exactly. |
 
-An invalid width is rejected, never clamped. Wrapping to a preferred line width
+An invalid width or blank-line count is rejected, never clamped. Wrapping to a preferred line width
 is not implemented yet; the archived formatter's `preferred_width` returns in a
 later change.
 

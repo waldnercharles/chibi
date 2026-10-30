@@ -182,7 +182,7 @@ static int usage()
         "--output-artifact FILE | --output-bytes FILE]\n"
         "       chibi-compiler-host --target-json [OUTPUT]\n"
         "       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR "
-        "[--seed DIR [--revision TEXT] | --recover FILE]\n"
+        "[--seed DIR [--revision TEXT] | --recover FILE [--arguments FILE]]\n"
     );
     return 1;
 }
@@ -249,7 +249,8 @@ int main(int argc, char **argv)
                                      : !strcmp(key, "--seed") ? &boot.seed
                                      : !strcmp(key, "--revision") ? &boot.revision
                                      : !strcmp(key, "--recover") ? &boot.output
-                                                                 : NULL;
+                                     : !strcmp(key, "--arguments") ? &boot.arguments
+                                                                   : NULL;
         if (bootstrap_value && !*bootstrap_value && *value) {
             *bootstrap_value = value;
         } else if (bootstrap_value) {
@@ -286,11 +287,12 @@ int main(int argc, char **argv)
         }
     }
     if (boot.folder || boot.compiler || boot.core || boot.seed ||
-        boot.revision || boot.output) {
+        boot.revision || boot.output || boot.arguments) {
         bool alone = !artifact && !input && !output_artifact && !entry && !budget &&
                      !timeout && backend == BEHAVIOR_UNAVAILABLE && !batch;
         bool complete = boot.folder && boot.compiler && boot.core &&
-                        (boot.seed || !boot.revision) && !(boot.seed && boot.output);
+                        (boot.seed || !boot.revision) &&
+                        !(boot.seed && (boot.output || boot.arguments));
         return alone && complete ? bootstrap(&boot) : usage();
     }
     if (!artifact || !input || !entry || !budget || !timeout ||

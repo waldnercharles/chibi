@@ -183,13 +183,37 @@ check-format:
 # docs/self-hosting-build.md.
 BOOTSTRAP_ARTIFACT ?= tools/compiler/bootstrap
 BOOTSTRAP_SEED = $(RELEASE_BUILD_DIR)/bootstrap.seed
-.PHONY: bootstrap-artifact publish-seed bootstrap-recover native-census
+.PHONY: bootstrap-artifact bootstrap-refresh publish-seed bootstrap-recover native-census
 bootstrap-artifact:
 	@$(MAKE) build-release BUILD_TARGET='test_language chibi-compiler-host'
 	@rm -rf "$(BOOTSTRAP_SEED)" && mkdir -p "$(BOOTSTRAP_SEED)"
 	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" sh tools/build.sh test --release-build "$(RELEASE_BUILD_DIR)" language-package-compiler-chibi-bootstrap
 	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_SEED)"
+
+# bootstrap-refresh writes a seed for the sources on disk without the
+# bootstrap check's sample runs: recovery's fixed point and the arguments it
+# compiled the sources with make the seed folder, and writing it proves again
+# that the seed compiles the sources to itself.
+BOOTSTRAP_REFRESH = $(RELEASE_BUILD_DIR)/bootstrap.refresh
+bootstrap-refresh:
+	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
+	@rm -rf "$(BOOTSTRAP_REFRESH)" && mkdir -p "$(BOOTSTRAP_REFRESH)"
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --recover "$(BOOTSTRAP_REFRESH)/compiler.chibip" --arguments "$(BOOTSTRAP_REFRESH)/compile.json"
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_REFRESH)" --revision "$$(git describe --always --dirty --abbrev=40)"
+	@rm -rf "$(BOOTSTRAP_REFRESH)"
+
+# bootstrap-refresh writes a seed for the sources on disk without the
+# bootstrap check's sample runs: recovery's fixed point and the arguments it
+# compiled the sources with make the seed folder, and writing it proves again
+# that the seed compiles the sources to itself.
+BOOTSTRAP_REFRESH = $(RELEASE_BUILD_DIR)/bootstrap.refresh
+bootstrap-refresh:
+	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
+	@rm -rf "$(BOOTSTRAP_REFRESH)" && mkdir -p "$(BOOTSTRAP_REFRESH)"
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --recover "$(BOOTSTRAP_REFRESH)/compiler.chibip" --arguments "$(BOOTSTRAP_REFRESH)/compile.json"
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_REFRESH)" --revision "$$(git describe --always --dirty --abbrev=40)"
+	@rm -rf "$(BOOTSTRAP_REFRESH)"
 
 publish-seed:
 	@sh tools/bootstrap/publish-seed.sh

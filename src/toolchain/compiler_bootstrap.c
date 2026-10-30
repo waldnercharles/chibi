@@ -946,6 +946,10 @@ bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t 
     compiler_host *host = validated(b, &a, &json, &length, &changed, report, size);
     bool valid = host &&
                  recover(host, &a, json, length, changed, b->output, NULL, NULL, NULL, report, size);
+    if (valid && b->arguments && !write_path(b->arguments, json, length)) {
+        snprintf(report, size, "cannot write Compile's arguments to %s", b->arguments);
+        valid = false;
+    }
     free(json);
     free_artifact(&a);
     return valid;

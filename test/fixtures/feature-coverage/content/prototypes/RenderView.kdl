@@ -1,5 +1,0 @@
-name "RenderView"
-components {
-    Camera height=280.0 width=400.0
-    (object)Transform
-}

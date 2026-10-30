@@ -1,5 +1,0 @@
-name "Battery"
-components {
-    Charge capacity=3.0 rate=2.0
-    (object)Transform
-}

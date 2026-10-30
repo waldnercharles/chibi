@@ -1,9 +1,0 @@
-name "Spawner"
-components {
-    GlobalBinding name="Spawner"
-    Health current=3 maximum=3
-    (object)Transform
-}
-(array)children {
-    - name="Antenna" prototype="Antenna"
-}

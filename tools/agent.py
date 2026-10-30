@@ -52,7 +52,6 @@ CPU_SELECTORS = {
     '--asset-packaging-chibi': 'language-asset-packaging-chibi',
     '--shader-source-chibi': 'language-shader-source-chibi',
     '--material-bake': 'material-bake',
-    '--environment-authoring': 'environment-authoring',
     '--terrain-seams': 'terrain-seams',
     '--material-surface-mesh': 'material-surface-mesh',
     '--terrain-checkpoint': 'terrain-checkpoint',

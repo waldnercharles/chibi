@@ -1,9 +1,0 @@
-name "NativeRain"
-components {
-    Geometry3D depth=0.6 height=4.0 primitive=5 width=0.6
-    ParticleField3D additive=#true count=128 seed=7 time=1.0
-    Shader material="RainParticles.Fall" parameters="Spacing 7\nDropSize 1.25\n"
-    Transform3D {
-        scale x=1.0 y=1.0 z=1.0
-    }
-}

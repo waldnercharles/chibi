@@ -111,7 +111,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          sh tools/build.sh build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root /usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          sh tools/build.sh build --build build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root /usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       # Run authored command generation on the Release helper; test_tools and
       # the reference profile remain the selected Debug profile.
       - name: Graph Debug optimization (commands only)
@@ -265,7 +265,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          sh tools/build.sh build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root "$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          sh tools/build.sh build --build build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root "$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Preserve failed macOS Graph stage log
         if: failure()
         uses: actions/upload-artifact@v4

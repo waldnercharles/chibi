@@ -1,9 +1,0 @@
-version 1
-name "Audio"
-(array)entities {
-    - {
-        name "Speaker"
-        prototype "Speaker"
-        (array)behaviors "ToneProbe"
-    }
-}

@@ -43,6 +43,10 @@ env:
   # Native builds and players need a runtime directory and a silent audio device.
   XDG_RUNTIME_DIR: /tmp/chibi-runtime
   SDL_AUDIODRIVER: dummy
+  # Every build host in a job, including those the SDK tests start under other
+  # roots, shares the cached recovered compilers; an entry's key covers all
+  # its inputs, so sharing is safe (docs/self-hosting-build.md).
+  CHIBI_COMPILER_CACHE: ${{ github.workspace }}/.chibi/compiler-cache
 
 jobs:
   native:
@@ -69,8 +73,6 @@ jobs:
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
-      - name: Verify installed and archived license notices
-        run: python3 test/tools/package_licenses.py
       - name: Configure compiler cache
         id: ccache-config
         run: python3 .github/native-ccache.py
@@ -102,7 +104,7 @@ jobs:
           key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: compiler-cache-${{ runner.os }}-
       # chibi-cli runs chibi-compile too slowly under sanitizers. The
-      # chibi launcher target also builds chibi-compile and chibi-player.
+      # chibi launcher target also builds chibi-compile.
       - name: Build an unsanitized chibi launcher (Release)
         id: release-build
         env:
@@ -115,7 +117,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          make build BUILD_TARGET='chibi chibi-compile test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
       # Run authored command generation on the Release helper; test_tools and
@@ -257,7 +259,7 @@ jobs:
           key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: compiler-cache-${{ runner.os }}-
       # chibi-cli runs chibi-compile too slowly under sanitizers. The
-      # chibi launcher target also builds chibi-compile and chibi-player, and
+      # chibi launcher target also builds chibi-compile, and
       # the Graph build adds the Release build host the Debug builds use.
       - name: Build an unsanitized chibi launcher (Release)
         id: release-build
@@ -293,7 +295,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          make build BUILD_TARGET='chibi chibi-compile test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
       - name: Preserve failed macOS Graph stage log

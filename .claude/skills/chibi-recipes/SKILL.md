@@ -1,6 +1,6 @@
 ---
 name: chibi-recipes
-description: Step-by-step recipes for the Chibi engine repo. Use when adding a reflected component, a native script function, a test scene or scenario, or a project format change.
+description: Step-by-step recipes for the Chibi engine repo. Use when adding a reflected component, a native script function, or a project format change.
 ---
 
 Each recipe ends with the checklist in `AGENTS.md` ("Before every commit").
@@ -28,11 +28,7 @@ reusable capability:
 3. Read the component where it acts: a system in `src/runtime`, or script
    through the generated get/set. Keep it optional, so scenes without it
    still work.
-4. Use it in a `test/fixtures/feature-coverage` scene or prototype (KDL key
-   `<Name>`) and cover its behavior with a pico_unit case.
-   `make test-projects` fails until the component is used there or listed in
-   that fixture's `coverage-gaps.txt` with a reason.
-5. If saved projects change meaning, also follow "Change saved projects".
+4. Cover its behavior with a pico_unit case.
 
 ## Add a native script function
 
@@ -51,24 +47,7 @@ The smallest complete example is Play Sound:
 5. Test it from source in a tool selector (for example
    `test/runtime/source_features.c`, run with
    `python3 tools/test_policy.py tool source-native-features`), on both the VM
-   and SLJIT backends, and call it from a behavior in the
-   `test/fixtures/feature-coverage` scene for its area.
-
-## Add a test scene or scenario
-
-1. Pick the fixture project under `test/fixtures` that matches the area, or
-   add one with `project.kdl` (`version`, `name`, `content`, `start_scene`)
-   and a `content/` tree. Don't add game rules to engine fixtures; keep
-   content minimal and independent of any one game. A scene that exercises
-   an engine feature area belongs in `test/fixtures/feature-coverage`, where
-   `make test-projects` runs every scene for four frames.
-2. Add `content/scenes/<Name>.kdl` (`version 1`, `name`, `(array)entities`
-   of `- name=... prototype=...`) and the prototypes it uses. A scenario in
-   `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.
-3. Game projects are archived; there is no project compile to validate with yet.
-4. Run it bounded with the project's `@test` functions (`chibi test <root>`) or
-   a scenario through `make agent-test`. Choose enough frames to exercise the
-   scenario.
+   and SLJIT backends.
 
 ## Change saved projects
 
@@ -84,13 +63,10 @@ already handles. The PR then says how to fix a hand-made project.
 When you do bump it:
 
 1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h`.
-2. Edit every project in this repository (every `project.kdl` under
-   `test/fixtures`) to the new format and version directly, with a one-off
-   script if it helps; don't commit the script.
-3. Edit Studio's projects (`projects/starter`, `projects/studio`,
+2. Edit Studio's projects (`projects/starter`, `projects/studio`,
    `tests/acceptance/project`) the same way in a Studio PR that pins the
    engine PR in `.github/engine-ref`, and merge the two together.
-4. Game projects are archived, so nothing compiles them yet.
+3. Game projects are archived, so nothing compiles them yet.
 
 Prepared artifact versions (`PLAYER_PREPARED_VERSION` and the other
 `*_PREPARED_VERSION`s in `sdk/artifact_formats.cmake`) change in the PR that

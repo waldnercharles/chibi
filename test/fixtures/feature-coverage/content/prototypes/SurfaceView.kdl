@@ -1,6 +1,0 @@
-name "SurfaceView"
-components {
-    Camera height=84.0 width=112.0
-    SurfaceQuality resolution="Full" sdf_normal_mode="Tetrahedral" sdf_pixel_error=0.25
-    Transform y=4.0
-}

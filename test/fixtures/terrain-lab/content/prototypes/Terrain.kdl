@@ -1,9 +1,0 @@
-name "Terrain"
-components {
-    Appearance border_color=0xf2c08aff border_width=1.0 color=0xba9367ff
-    GlobalBinding name="Terrain"
-    Material albedo=0xba9367ff border_albedo=0xf2c08aff border_scene=0xf2c08aff scene=0xba9367ff
-    MaterialTerrain category=8 cell_size=1.0 field="QuarryField" height=192.0 mask=1 min_fragment_cells=4 seed=13 width=768.0
-    Substance hardness=1.0
-    Transform y=64.0
-}

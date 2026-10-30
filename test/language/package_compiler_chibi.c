@@ -1148,6 +1148,13 @@ static const sample samples[] = {
                 "    while (length(parts) < 4 - 1) { parts.append(\"c\"); n += 1; }\n"
                 "    return n + length(parts);\n}",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[4]" } } },
+    { .name = "foreign declarations parse and wait for the compiler",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nforeign import c \"libc.a\"\n"
+                "Run :: () -> int { return 1; }",
+      .message = "unsupported declaration",
+      .line = 2,
+      .column = 1 },
     { .name = "core-math-imported-values",
       .group = IMPORT_SAMPLES,
       .math = true,
@@ -3297,6 +3304,16 @@ static const sample samples[] = {
                  { .function = "First", .arguments = "[]", .expected = "[7]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
                  { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "when keeps the declarations a constant condition selects",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "when 2 > 1 and not (3 == 4) { Chosen :: () -> int { return 11; } } "
+                "else { Chosen :: () -> int { return 22; } }\n"
+                "when 1 > 2 { Other :: () -> int { return 1; } } "
+                "else when 3 == 3 { Other :: () -> int { return 5; } } "
+                "else { Other :: () -> int { return 6; } }\n"
+                "Main :: () -> int { return Chosen() * 10 + Other(); }\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[115]" } } },
     { .name = "generic records specialize per application",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -8327,7 +8344,10 @@ static bool stage_two_sample(const sample *s)
     args[ARGUMENTS] = linked_effects[s->game][s->c_string_probe][1];
     int argument_count = ARGUMENTS + s->host_effects;
     const char *entry_name = s->host_effects ? "CompileWithEffects" : "Compile";
-    REQUIRE(compiler_call(1, entry_name, args, argument_count, COMPILE_BUDGET, &out));
+    if (!compiler_call(1, entry_name, args, argument_count, COMPILE_BUDGET, &out)) {
+        fprintf(stderr, "stage two failed on sample %s\n", s->name);
+        return false;
+    }
     size_t length, expected_length;
     char *json = document_json(args, argument_count, &length);
     bool compiled = compiler_succeeded(&out);
@@ -8417,6 +8437,8 @@ static int copying_functions(const execution_module_plan *p)
                                  "CompileBehaviorsWithCatalog",
                                  "BehaviorRejectionWithCatalog",
                                  "CollectScalar",
+                                 "CollectScalarPackages",
+                                 "ScalarCollect",
                                  "Declare",
                                  "DeclarePackage" };
     int copying = 0;

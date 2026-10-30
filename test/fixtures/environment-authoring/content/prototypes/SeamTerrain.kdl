@@ -1,8 +1,0 @@
-name "SeamTerrain"
-components {
-    Appearance color=0x4bafbdff
-    Material albedo=0x4bafbdff scene=0x4bafbdff
-    MaterialTerrain category=8 cell_size=1.0 field="SeamSlab" height=16.0 mask=1 min_fragment_cells=2 seed=7 width=256.0
-    Substance hardness=1.0
-    (object)Transform
-}

@@ -119,11 +119,12 @@ pub Prototype: int : 108;
 pub Relationship: int : 109;
 pub Pub: int : 110;
 pub Delete: int : 111;
-pub Emit: int : 112;
-pub HalfOpenRange: int : 113;
-pub Coalesce: int : 114;
-pub Char: int : 115;
-pub KindCount: int : 116;
+pub Foreign: int : 112;
+pub Emit: int : 113;
+pub HalfOpenRange: int : 114;
+pub Coalesce: int : 115;
+pub Char: int : 116;
+pub KindCount: int : 117;
 
 // Byte classes.
 SpaceClass: int : 1;
@@ -181,7 +182,7 @@ pub KindNames :: () -> string[] {
             "branch", "return", "reduce", "unordered", "goto", "break", "continue",
             "await", "yield", "cancel", "true", "false", "nil", "null", "plain",
             "service", "setting", "wildcard", "from", "split", "component",
-            "prototype", "relationship", "pub", "delete", "emit", "..<", "??", "Char"];
+            "prototype", "relationship", "pub", "delete", "foreign", "emit", "..<", "??", "Char"];
 }
 
 pub Tokenize :: (text: string) -> Tokens {

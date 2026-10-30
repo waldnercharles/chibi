@@ -658,19 +658,19 @@ TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
     return true;
 }
 
-/* The relocated SDK's player, compiler and engine files, which export
+/* The relocated SDK's compiler and engine files, which export
  * copies, beside what the native driver needs. */
 static void exportable()
 {
     char from[1024], to[1024];
-    const char *programs[] = { "chibi-compile", "chibi-player" };
-    for (int i = 0; i < 2; i++) {
+    const char *programs[] = { "chibi-compile" };
+    for (int i = 0; i < 1; i++) {
         snprintf(from, sizeof from, "%s/sdk/%s", built, programs[i]);
         snprintf(to, sizeof to, "%s/bin/%s", sdk, programs[i]);
         copy(from, to);
     }
-    const char *engine[] = { "shaders", "engine.json" };
-    for (int i = 0; i < 2; i++) {
+    const char *engine[] = { "engine.json" };
+    for (int i = 0; i < 1; i++) {
         snprintf(from, sizeof from, "%s/share/chibi/%s", built, engine[i]);
         snprintf(to, sizeof to, "%s/share/chibi/%s", sdk, engine[i]);
         copy(from, to);

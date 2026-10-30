@@ -2281,8 +2281,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
         return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
     }
     if (target == "test_language" &&
-        (file == || file == ||
-         file == "test/language/integer_semantics.c" || file == "test/language/host_packages_compiler.c")) {
+        (file == "test/language/integer_semantics.c" || file == "test/language/host_packages_compiler.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     return [];

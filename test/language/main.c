@@ -31,14 +31,12 @@ void test_language_record_compatibility();
 void test_language_record_services();
 void test_language_record_global_compatibility();
 #endif
-void test_language_record_semantic();
 void test_language_record_runtime();
 void test_language_record_prepared_runtime();
 void test_language_corpus(const char *manifest);
 void test_language_execution();
 void test_language_execution_scope();
 void test_language_wasm();
-void test_language_semantic();
 void test_language_effects();
 void test_language_maps();
 void test_language_iteration();
@@ -145,7 +143,6 @@ int main(int argc, char **argv)
     bool compiler_artifact = argc == 3 &&
                              !strcmp(argv[1], "--compiler-artifact-write");
     bool corpus = argc == 4 && !strcmp(argv[2], "--corpus");
-    bool semantic = argc == 2 && !strcmp(argv[1], "--semantic");
     bool inferred_arrays = argc == 2 && !strcmp(argv[1], "--inferred-string-arrays");
     bool inferred_array_repro = argc == 2 &&
                                 !strcmp(argv[1], "--inferred-string-array-repro");
@@ -164,7 +161,6 @@ int main(int argc, char **argv)
     bool record_runtime = argc == 2 && !strcmp(argv[1], "--record-runtime");
     bool compositional_records = argc == 2 &&
                                  !strcmp(argv[1], "--compositional-records");
-    bool record_semantic = argc == 2 && !strcmp(argv[1], "--record-semantic");
     bool record_compatibility = argc == 2 &&
                                 !strcmp(argv[1], "--record-compatibility");
     bool record_state = argc == 2 && !strcmp(argv[1], "--record-state");
@@ -316,31 +312,31 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((!prepared && !compiler_artifact && !record_producer && !execution &&
-         !execution_scope && !semantic && !inferred_arrays && !inferred_array_repro &&
+         !execution_scope && !inferred_arrays && !inferred_array_repro &&
          !benchmark && !activation_benchmark && !binding_benchmark &&
          !borrow_benchmark && !incremental_benchmark && !record_publication &&
          !record_publication_repro && !record_values && !record_document &&
          !record_state && !record_services && !record_compatibility &&
-         !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_array && !record_runtime && !compositional_records &&
-         !runtime_attribution && !runtime_attribution_benchmark &&
-         !query_binding_benchmark && !scalar_read_benchmark && !packed_benchmark &&
-         !wasm && !native_char_results && !program && !program_session &&
-         !query_program && !query_values && !incremental && !operations &&
-         !modules && !native_calls && !ranges && !numeric_exact_core &&
-         !integer_semantics && !integer_arithmetic && !integer_shift_counts &&
-         !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
-         !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
-         !syntax_chibi && !source_tokenizer_chibi && !source_parser_chibi &&
-         !package_syntax && !package_syntax_chibi && !package_paths_chibi &&
-         !package_routes_chibi && !package_snapshot_chibi && !scalar_lowering_chibi &&
-         !compiler_fixture && !bounded_compiler_chibi && !prepared_writer_chibi &&
-         !package_compiler_chibi && !package_compiler_chibi_libraries &&
-         !package_compiler_chibi_types && !package_compiler_chibi_fallible &&
-         !package_compiler_chibi_imports && !package_compiler_chibi_math_native &&
-         !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
-         !package_compiler_chibi_compiled && !package_compiler_chibi_types_compiled &&
-         !package_compiler_chibi_collections && !package_compiler_chibi_collections_compiled &&
+         !record_prepared_runtime && !outliner_projection && !row_array &&
+         !record_runtime && !compositional_records && !runtime_attribution &&
+         !runtime_attribution_benchmark && !query_binding_benchmark &&
+         !scalar_read_benchmark && !packed_benchmark && !wasm && !native_char_results &&
+         !program && !program_session && !query_program && !query_values &&
+         !incremental && !operations && !modules && !native_calls && !ranges &&
+         !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
+         !integer_shift_counts && !integer_shift_counts_authored && !package_graph &&
+         !package_graph_chibi && !asset_compiler_host && !asset_packaging_chibi &&
+         !shader_source_chibi && !syntax_chibi && !source_tokenizer_chibi &&
+         !source_parser_chibi && !package_syntax && !package_syntax_chibi &&
+         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
+         !scalar_lowering_chibi && !compiler_fixture && !bounded_compiler_chibi &&
+         !prepared_writer_chibi && !package_compiler_chibi &&
+         !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
+         !package_compiler_chibi_fallible && !package_compiler_chibi_imports &&
+         !package_compiler_chibi_math_native && !package_compiler_chibi_imports &&
+         !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
+         !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
+         !package_compiler_chibi_collections_compiled &&
          !package_compiler_chibi_imports_compiled &&
          !package_compiler_chibi_literals && !package_compiler_chibi_behaviors &&
          !package_compiler_chibi_behaviors_rest && !package_compiler_chibi_queries &&
@@ -363,7 +359,7 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
             "--execution | "
-            "--execution-scope | --semantic | --compositional-records "
+            "--execution-scope | --compositional-records "
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --program | --program-session | "
             "--native-char-results | "
@@ -438,7 +434,7 @@ int main(int argc, char **argv)
             "--text-format | --runtime-attribution | "
             "--runtime-attribution-benchmark | --query-binding-benchmark | "
             "--scalar-read-benchmark | --packed-benchmark | --record-values | "
-            "--record-semantic | --record-document | --record-services | "
+            "--record-document | --record-services | "
             "--record-compatibility | --row-array | "
             "--outliner-projection | --record-publication | "
             "--record-publication-repro | "
@@ -479,8 +475,6 @@ int main(int argc, char **argv)
         test_language_record_runtime();
     } else if (compositional_records) {
         test_language_compositional_records();
-    } else if (record_semantic) {
-        test_language_record_semantic();
     } else if (record_state) {
         test_language_record_state();
     } else if (record_document) {
@@ -709,8 +703,6 @@ int main(int argc, char **argv)
         test_language_query_boundary();
     } else if (program_session) {
         test_language_program_session();
-    } else if (semantic) {
-        test_language_semantic();
         test_language_effects();
         test_language_symbol_references();
     } else if (execution_scope) {

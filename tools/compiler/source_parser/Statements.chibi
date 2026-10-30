@@ -6,7 +6,7 @@ import tk "project:source_tokenizer"
 ParseBlock :: (c: ^Cursor, n: ^(Node[])) -> int {
     block := New(n, "block");
     Expect(c, n, block, tk.OpenBrace, "");
-    while (!c.failed && c.token != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         Add(n, block, ParseStatement(c, n, false), "");
     }
     Expect(c, n, block, tk.CloseBrace, "");
@@ -17,7 +17,7 @@ ParseBlock :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseCallableBody :: (c: ^Cursor, n: ^(Node[]), kind: string) -> int {
     body := New(n, kind);
     Expect(c, n, body, tk.OpenBrace, "");
-    while (!c.failed && c.token != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         Add(n, body, ParseStatement(c, n, true), "");
     }
     Expect(c, n, body, tk.CloseBrace, "");
@@ -277,7 +277,7 @@ ParseSwitch :: (c: ^Cursor, n: ^(Node[])) -> int {
             Add(n, arm, ParseBlock(c, n), "body");
         } else {
             statements := New(n, "block");
-            while (!c.failed && c.token != tk.Case && c.token != tk.CloseBrace) {
+            while (!c.failed && c.token != tk.Case && c.token != tk.CloseBrace && c.token != tk.EOF) {
                 Add(n, statements, ParseStatement(c, n, false), "");
             }
             Add(n, arm, statements, "body");

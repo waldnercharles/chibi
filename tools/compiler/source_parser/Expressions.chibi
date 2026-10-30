@@ -144,7 +144,7 @@ ParseVariantPattern :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (!c.failed && c.token == tk.OpenParen) {
         bindings := New(n, "pattern_bindings");
         Take(c, n, bindings, "");
-        while (!c.failed && c.token != tk.CloseParen) {
+        while (!c.failed && c.token != tk.CloseParen && c.token != tk.EOF) {
             TakeName(c, n, bindings, "");
             if (!Accept(c, n, bindings, tk.Comma, "")) {
                 break;
@@ -364,7 +364,7 @@ ParseCollection :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseStructLiteral :: (c: ^Cursor, n: ^(Node[])) -> int {
     literal := New(n, "struct_expression");
     Take(c, n, literal, "");
-    while (!c.failed && c.token != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         field := New(n, "struct_field");
         TakeMember(c, n, field, "name");
         Expect(c, n, field, tk.Colon, "");
@@ -382,7 +382,7 @@ ParseStructLiteral :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseArguments :: (c: ^Cursor, n: ^(Node[])) -> int {
     list := New(n, "argument_list");
     Expect(c, n, list, tk.OpenParen, "");
-    while (!c.failed && c.token != tk.CloseParen) {
+    while (!c.failed && c.token != tk.CloseParen && c.token != tk.EOF) {
         named := -1;
         if (IsMember(c.token)) {
             following := SkipArgumentName(n, c.pos, c.final);

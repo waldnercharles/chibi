@@ -320,7 +320,7 @@ ParseSignature :: (c: ^Cursor, n: ^(Node[]), owner: int) {
 ParseParameters :: (c: ^Cursor, n: ^(Node[])) -> int {
     list := New(n, "parameter_list");
     Expect(c, n, list, tk.OpenParen, "");
-    while (!c.failed && c.token != tk.CloseParen) {
+    while (!c.failed && c.token != tk.CloseParen && c.token != tk.EOF) {
         Add(n, list, ParseParameter(c, n), "");
         if (!Accept(c, n, list, tk.Comma, "")) {
             break;
@@ -360,7 +360,7 @@ ParseRecord :: (c: ^Cursor, n: ^(Node[]), public: bool) -> int {
     }
     body := New(n, "record_body");
     Expect(c, n, body, tk.OpenBrace, "");
-    while (!c.failed && c.token != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         field := New(n, "record_field");
         TakeMember(c, n, field, "name");
         Expect(c, n, field, tk.Colon, "");
@@ -385,7 +385,7 @@ ParseUnion :: (c: ^Cursor, n: ^(Node[]), public: bool) -> int {
     Expect(c, n, declaration, tk.ColonColon, "");
     Expect(c, n, declaration, tk.Union, "");
     Expect(c, n, declaration, tk.OpenBrace, "");
-    while (!c.failed && c.token != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         variant := New(n, "union_variant");
         if (c.token == tk.String) {
             Take(c, n, variant, "literal");
@@ -418,7 +418,7 @@ ParseBehaviorLike :: (c: ^Cursor, n: ^(Node[]), kind: string, shared: bool) -> i
 ParseDeclarationBody :: (c: ^Cursor, n: ^(Node[]), shared: bool) -> int {
     body := New(n, "declaration_body");
     Expect(c, n, body, tk.OpenBrace, "");
-    while (!c.failed && c.token != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         Add(n, body, ParseDeclaration(c, n), "");
     }
     Expect(c, n, body, tk.CloseBrace, "");
@@ -440,7 +440,7 @@ ParseSystem :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseQueryList :: (c: ^Cursor, n: ^(Node[])) -> int {
     list := New(n, "query_list");
     Expect(c, n, list, tk.OpenParen, "");
-    while (!c.failed && c.token != tk.CloseParen) {
+    while (!c.failed && c.token != tk.CloseParen && c.token != tk.EOF) {
         Add(n, list, ParseQueryItem(c, n), "");
         if (!Accept(c, n, list, tk.Comma, "")) {
             break;
@@ -510,7 +510,7 @@ ParseComponent :: (c: ^Cursor, n: ^(Node[])) -> int {
     Take(c, n, holder, "");
     body := New(n, "component_body");
     Expect(c, n, body, tk.OpenBrace, "");
-    while (!c.failed && c.token != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         field := New(n, "component_field");
         TakeMember(c, n, field, "name");
         Expect(c, n, field, tk.Colon, "");
@@ -532,7 +532,7 @@ ParsePrototype :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (c.token == tk.OpenParen) {
         bases := New(n, "prototype_bases");
         Take(c, n, bases, "");
-        while (!c.failed && c.token != tk.CloseParen) {
+        while (!c.failed && c.token != tk.CloseParen && c.token != tk.EOF) {
             TakeName(c, n, bases, "");
             if (!Accept(c, n, bases, tk.Comma, "")) {
                 break;
@@ -543,7 +543,7 @@ ParsePrototype :: (c: ^Cursor, n: ^(Node[])) -> int {
     }
     body := New(n, "prototype_body");
     Expect(c, n, body, tk.OpenBrace, "");
-    while (!c.failed && c.token != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         if (Peek(c, n, 1) == tk.OpenBrace) {
             part := New(n, "prototype_component");
             TakeName(c, n, part, "name");

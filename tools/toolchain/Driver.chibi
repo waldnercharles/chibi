@@ -290,6 +290,15 @@ Count :: (text: string) -> int {
     return value
 }
 
+// The deadline of one selector: its `timeout NAME SECONDS` row, else `fallback`.
+Deadline :: (rows: string[], name: string, fallback: string) -> string {
+    row := Row(rows, "timeout", name)
+    if (row == "") {
+        return fallback
+    }
+    return Fields(row)[2]
+}
+
 // The command one selector runs: its row's words with the build directories
 // filled in, under the environment the test drivers read.
 TestCommand :: (row: string, directory: string, releases: string, host: string, seconds: string) -> string[] {
@@ -317,7 +326,7 @@ TestCommand :: (row: string, directory: string, releases: string, host: string, 
 // Runs the named selectors or groups of tools/tests.tsv against the built test
 // drivers, up to --jobs at a time, and fails when any fails.
 //   build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...
-// Each selector gets --timeout seconds (900 by default); a hung one fails alone
+// Each selector gets --timeout seconds (600 by default; a `timeout NAME SECONDS` row of tools/tests.tsv sets one selector's); a hung one fails alone
 // with status 124 and the rest still run.
 Test :: (arguments: string[]) -> int {
     rows := Rows()
@@ -332,7 +341,7 @@ Test :: (arguments: string[]) -> int {
     releases := Option(arguments, "--release-build", "build-release")
     host := Option(arguments, "--build-host", Join([directory, "/sdk/chibi-build-host"]))
     jobs := Count(Option(arguments, "--jobs", "1"))
-    seconds := Option(arguments, "--timeout", "900")
+    seconds := Option(arguments, "--timeout", "600")
     if (Count(seconds) < 1) {
         os.Print("test: --timeout takes a whole number of seconds")
         return 2
@@ -348,7 +357,7 @@ Test :: (arguments: string[]) -> int {
     }
     if (Flag(arguments, "--dry-run")) {
         for (name in selected) {
-            command := TestCommand(Row(rows, "tool", name), directory, releases, host, seconds)
+            command := TestCommand(Row(rows, "tool", name), directory, releases, host, Deadline(rows, name, seconds))
             os.Print(Join([name, ": ", strings.Join(command, " ")]))
         }
         return 0
@@ -359,7 +368,8 @@ Test :: (arguments: string[]) -> int {
     failed := 0
     while (waited < length(selected)) {
         while (started < length(selected) && started - waited < jobs) {
-            handles.append(os.Spawn(TestCommand(Row(rows, "tool", selected[started]), directory, releases, host, seconds)))
+            os.Print(format_text("RUN {}", selected[started]))
+            handles.append(os.Spawn(TestCommand(Row(rows, "tool", selected[started]), directory, releases, host, Deadline(rows, selected[started], seconds))))
             started += 1
         }
         status := os.Wait(handles[waited])
@@ -368,7 +378,7 @@ Test :: (arguments: string[]) -> int {
         } else {
             reason := ""
             if (status == 124) {
-                reason = Join([", timed out after ", seconds, "s"])
+                reason = Join([", timed out after ", Deadline(rows, selected[waited], seconds), "s"])
             }
             os.Print(format_text("FAIL {} (status {}{})", selected[waited], status, reason))
             failed += 1

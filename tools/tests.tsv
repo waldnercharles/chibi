@@ -94,7 +94,7 @@ tool	language-syntax-chibi	@build@/test/language/test_language	--syntax-chibi
 tool	language-source-tokenizer-chibi	@build@/test/language/test_language	--source-tokenizer-chibi
 tool	language-source-parser-chibi	@build@/test/language/test_language	--source-parser-chibi
 tool	language-package-syntax-chibi	@build@/test/language/test_language	--package-syntax-chibi
-tool	compiler-tests-package_paths	@release@/sdk/chibi	test	tools/compiler/package_paths
+tool	language-package-paths-chibi	@build@/test/language/test_language	--package-paths-chibi
 tool	language-package-routes-chibi	@build@/test/language/test_language	--package-routes-chibi
 tool	language-package-snapshot-chibi	@build@/test/language/test_language	--package-snapshot-chibi
 tool	language-compiler-fixture	@build@/test/language/test_language	--compiler-fixture
@@ -125,7 +125,7 @@ tool	language-package-compiler-chibi-imports	@release@/test/language/test_langua
 tool	language-package-compiler-chibi-imports-compiled	@release@/test/language/test_language	--package-compiler-chibi-imports-compiled
 tool	language-package-compiler-chibi-bootstrap	@release@/test/language/test_language	--package-compiler-chibi-bootstrap
 tool	language-type-relations-chibi	@build@/test/language/test_language	--type-relations-chibi
-tool	compiler-tests-unit_algebra	@release@/sdk/chibi	test	tools/compiler/unit_algebra
+tool	language-unit-algebra-chibi	@build@/test/language/test_language	--unit-algebra-chibi
 tool	language-package-resolution	@build@/test/language/test_language	--package-resolution
 tool	language-package-imports	@build@/test/language/test_language	--package-imports
 tool	language-host-packages	@build@/test/language/test_language	--host-packages
@@ -201,7 +201,7 @@ tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-integer-arithmetic	wasm-package-math	wasm-package-compiler-chibi	wasm-package-compiler-chibi-compiled	wasm-package-portable	wasm-package-portable-compiler
 group	native	native-runtime	native-catalog	native-values	audio-analysis	build-graph-link-response	physics	physics3d	transforms	box3d	sky-files	tilemap	runtime-scene	scene-prepared	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	vector-nodes	asset-values	ui-document	text-files	fmt	particles	arena	shader-bake	shader-source-debug	terrain-seams	terrain-storage	material-surface-mesh
-group	projects	terrain-checkpoint	chibi-cli	native-build	compiler-tests-package_paths	compiler-tests-unit_algebra
+group	projects	terrain-checkpoint	chibi-cli	native-build
 group	materials	material-destruction	material-fluids	material-mpm	material-simulation	material-ecs
 group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	language-package-math	language-package-tests	language-argument-effects-chibi	language-package-core	language-package-portable	language-package-portable-compiler	language-host-packages	language-host-packages-compiler	field-runtime	text-format	language-shader-source-chibi	language-compiler-fixture	language-compositional-records	language-package-compiler-chibi-scalar	language-package-compiler-chibi-fallible	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-behaviors-rest	language-integer-semantics	language-integer-arithmetic	language-integer-shift-counts	language-integer-shift-counts-authored	language-asset-packaging-chibi	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
 group	compiler	language-package-compiler-chibi	language-package-compiler-chibi-compiled	language-package-compiler-chibi-types	language-package-compiler-chibi-fallible	language-package-compiler-chibi-types-compiled	language-package-compiler-chibi-collections	language-package-compiler-chibi-collections-compiled	language-package-compiler-chibi-literals	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-actions	language-package-compiler-chibi-behaviors-rest	language-package-compiler-chibi-queries	language-package-compiler-chibi-libraries	language-package-compiler-chibi-sharing	language-package-compiler-chibi-debug-free	language-package-compiler-chibi-native-arguments	language-package-compiler-chibi-native-arguments-oracle	language-package-compiler-chibi-scalar	language-package-compiler-chibi-imports	language-package-compiler-chibi-imports-compiled	language-package-compiler-chibi-bootstrap

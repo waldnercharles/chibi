@@ -49,8 +49,6 @@ CPU_SELECTORS = {
     '--shader-bake': 'shader-bake',
     '--shader-source-debug': 'shader-source-debug',
     '--asset-compiler-host': 'language-asset-compiler-host',
-    '--asset-packaging-chibi': 'language-asset-packaging-chibi',
-    '--shader-source-chibi': 'language-shader-source-chibi',
     '--material-bake': 'material-bake',
     '--terrain-seams': 'terrain-seams',
     '--material-surface-mesh': 'material-surface-mesh',

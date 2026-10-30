@@ -15,7 +15,6 @@ tool	ecs-query-benchmark	@build@/test/tools/test_tools	--ecs-query-benchmark
 tool	arena	@build@/test/tools/test_tools	--arena
 tool	source-systems	@build@/test/tools/test_tools	--source-systems
 tool	persistent-store	@build@/test/tools/test_tools	--persistent-store
-tool	vector-nodes	@build@/test/tools/test_tools	--vector-nodes
 tool	package	@build@/test/tools/test_tools	--package
 tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
 tool	chibi-cli-build	@build@/test/tools/test_tools	--chibi-cli-build	@release@/sdk/chibi
@@ -76,7 +75,6 @@ tool	fmt	@build@/test/tools/test_tools	--fmt
 tool	particles	@build@/test/tools/test_tools	--particles
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
 tool	language-build-workflow	@build@/test/language/test_language	--build-workflow
-tool	script-benchmark	@build@/test/language/test_language	--script-benchmark
 tool	scheduler-benchmark	@build@/test/tools/test_tools	--scheduler-benchmark
 tool	language-ranges	@build@/test/language/test_language	--ranges
 tool	language-integer-shift-counts	@build@/test/language/test_language	--integer-shift-counts
@@ -132,23 +130,6 @@ tool	wasm-browser	@build@/test/tools/test_tools	--wasm-browser
 tool	web-storage	@build@/test/tools/test_tools	--web-storage
 tool	native-tools	@build@/test/tools/test_tools
 tool	reflect-ranges	@build@/test/tools/test_tools	--reflect-ranges
-tool	language-i	@build@/test/language/test_language	--i
-tool	language-n	@build@/test/language/test_language	--n
-tool	language-c	@build@/test/language/test_language	--c
-tool	language-r	@build@/test/language/test_language	--r
-tool	language-e	@build@/test/language/test_language	--e
-tool	language-m	@build@/test/language/test_language	--m
-tool	language-t	@build@/test/language/test_language	--t
-tool	language-a	@build@/test/language/test_language	--a
-tool	language-l	@build@/test/language/test_language	--l
-tool	language--	@build@/test/language/test_language	---
-tool	language-b	@build@/test/language/test_language	--b
-tool	language-h	@build@/test/language/test_language	--h
-tool	language-k	@build@/test/language/test_language	--k
-tool	language-d	@build@/test/language/test_language	--d
-tool	language-g	@build@/test/language/test_language	--g
-tool	language-s	@build@/test/language/test_language	--s
-tool	language-u	@build@/test/language/test_language	--u
 tool	wasm-execution	node	build-wasm-language/test_language.js	--execution
 tool	wasm-program	node	build-wasm-language/test_language.js	--program
 tool	wasm-format	node	build-wasm-language/test_language.js	--format
@@ -177,9 +158,9 @@ tool	wasm-package-compiler-chibi-literals	node	build-wasm-language/test_language
 tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math	wasm-package-compiler-chibi	wasm-package-compiler-chibi-compiled
-group	native	native-runtime	native-catalog	native-values	audio-analysis	build-graph-link-response	physics	physics3d	transforms	box3d	sky-files	tilemap	runtime-scene	scene-prepared	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	vector-nodes	asset-values	ui-document	text-files	fmt	particles	arena	shader-bake	shader-source-debug	terrain-seams	terrain-storage	material-surface-mesh
+group	native	native-runtime	native-catalog	native-values	audio-analysis	build-graph-link-response	physics	physics3d	transforms	box3d	sky-files	tilemap	runtime-scene	scene-prepared	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	particles	arena	shader-bake	shader-source-debug	terrain-seams	terrain-storage	material-surface-mesh
 group	projects	terrain-checkpoint	chibi-cli	native-build
 group	materials	material-destruction	material-fluids	material-mpm	material-simulation	material-ecs
 group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	language-package-math	chibi-test-compiler	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages	language-host-packages-compiler	field-runtime	text-format	language-compiler-fixture	language-compositional-records	language-package-compiler-chibi-scalar	language-package-compiler-chibi-fallible	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-behaviors-rest	language-integer-semantics	language-integer-shift-counts	language-integer-shift-counts-authored	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
 group	compiler	language-package-compiler-chibi	language-package-compiler-chibi-compiled	language-package-compiler-chibi-types	language-package-compiler-chibi-fallible	language-package-compiler-chibi-types-compiled	language-package-compiler-chibi-collections	language-package-compiler-chibi-collections-compiled	language-package-compiler-chibi-literals	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-actions	language-package-compiler-chibi-behaviors-rest	language-package-compiler-chibi-queries	language-package-compiler-chibi-libraries	language-package-compiler-chibi-sharing	language-package-compiler-chibi-debug-free	language-package-compiler-chibi-native-arguments	language-package-compiler-chibi-native-arguments-oracle	language-package-compiler-chibi-scalar	language-package-compiler-chibi-imports	language-package-compiler-chibi-imports-compiled	language-package-compiler-chibi-bootstrap
-group	benchmarks	ecs-query-benchmark	native-workload-benchmark	material-benchmark	script-benchmark	scheduler-benchmark	language-package-math-benchmark
+group	benchmarks	ecs-query-benchmark	native-workload-benchmark	material-benchmark	scheduler-benchmark	language-package-math-benchmark

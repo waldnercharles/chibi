@@ -42,6 +42,96 @@ ScalarOperands :: union {
     Failed(diagnostic: syntax.Diagnostic) | Built(rows: facts.Row[])
 }
 
+// The foreign function the call `node` names, declared in a foreign block of
+// its own file, or -1.
+ScalarForeignDeclaration :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    callee := Field(forest, node, "function");
+    if (!Is(forest, callee, "identifier")) {
+        return -1;
+    }
+    name := Text(forest, text, callee);
+    root := node;
+    while (forest[root].parent >= 0) {
+        root = forest[root].parent;
+    }
+    for (block in Members(forest, root)) {
+        if (!Is(forest, block, "foreign_block")) {
+            continue;
+        }
+        for (declaration in Members(forest, block)) {
+            if (Is(forest, declaration, "foreign_function") &&
+                Text(forest, text, Field(forest, declaration, "name")) == name) {
+                return declaration;
+            }
+        }
+    }
+    return -1;
+}
+// The storage a foreign function returns, 0 when it returns nothing a number
+// or bool can hold.
+ScalarForeignResult :: (forest: snapshot.SnapshotNode[], text: string, declaration: int) -> int {
+    result := Field(forest, declaration, "results");
+    if (result < 0) {
+        return 0;
+    }
+    return ForeignStorage(forest, text, result);
+}
+// The path of the library a foreign function's block imports, "" when its
+// file has no such import.
+ScalarForeignLibrary :: (forest: snapshot.SnapshotNode[], text: string, declaration: int) -> string {
+    block := forest[declaration].parent;
+    alias := Text(forest, text, Field(forest, block, "library"));
+    root := block;
+    while (forest[root].parent >= 0) {
+        root = forest[root].parent;
+    }
+    for (member in Members(forest, root)) {
+        if (Is(forest, member, "foreign_import_declaration") &&
+            Text(forest, text, Field(forest, member, "alias")) == alias) {
+            spelled := Text(forest, text, Field(forest, member, "path"));
+            return strings.Slice(spelled, 1, strings.ByteLength(spelled) - 2);
+        }
+    }
+    return "";
+}
+// The rows of a call of a foreign function: each argument converted to its
+// parameter, then one Foreign row naming the symbol and the library.
+ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                      callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                      constants: ConstDecl[], node: int, declaration: int, rows: facts.Row[]) -> ScalarOperands {
+    parameters := Members(forest, Field(forest, declaration, "parameters"));
+    arguments := Members(forest, Field(forest, node, "arguments"));
+    if (length(arguments) != length(parameters)) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "call has the wrong number of arguments"));
+    }
+    result := ScalarForeignResult(forest, text, declaration);
+    archive := ScalarForeignLibrary(forest, text, declaration);
+    if (result == 0 || archive == "") {
+        return ScalarOperands.Failed(Diagnose(forest, declaration, 0,
+                                              "scalar proof requires a foreign function with a number or bool result and an import"));
+    }
+    output := rows;
+    for (index in 0..<length(arguments)) {
+        storage := ForeignStorage(forest, text, Field(forest, parameters[index], "type"));
+        if (storage == 0 || Is(forest, arguments[index], "named_argument") ||
+            Is(forest, arguments[index], "typed_argument")) {
+            return ScalarOperands.Failed(Diagnose(forest, arguments[index], 0,
+                                                  "scalar proof passes numbers and bools to a foreign function by position"));
+        }
+        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                             arguments[index], arguments[index], storage, storage, facts.Clamp, output) {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Built(built):
+                output = built;
+        }
+    }
+    row := ScalarAt(forest, node, facts.ForeignRow, ScalarTypeOf(result), 0, length(arguments),
+                    Text(forest, text, Field(forest, declaration, "name")));
+    row.text = archive;
+    output.append(row);
+    return ScalarOperands.Built(output);
+}
 ScalarSource :: (path: string, text: string) -> facts.Row {
     return {kind: facts.SourceRow, type: 0, value: 0, count: 0, literal: 0, name: path, text: text,
             start: 0, end: 0, line: 0, column: 0};
@@ -426,6 +516,10 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (callee >= 0) {
             return callables[callee].result;
         }
+        callee_foreign := ScalarForeignDeclaration(forest, text, node);
+        if (callee_foreign >= 0) {
+            return ScalarForeignResult(forest, text, callee_foreign);
+        }
         if (ScalarLengthOf(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
             return IntStorage;
         }
@@ -515,6 +609,14 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (measured >= 0) {
         return ScalarLength(forest, text, callables, params, callable, names, types, members, constants, node, measured,
                             rows);
+    }
+    if (Is(forest, node, "call_expression") &&
+        CalledFunction(forest, text, callables, [], names, callable.package, node) < 0) {
+        callee_foreign := ScalarForeignDeclaration(forest, text, node);
+        if (callee_foreign >= 0) {
+            return ScalarForeignRows(forest, text, callables, params, callable, names, types, members, constants, node,
+                                     callee_foreign, rows);
+        }
     }
     native := ScalarArrayCall(forest, text, callables, params, names, types, members, callable.package, node);
     if (native.operator != 0) {
@@ -1380,7 +1482,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         first := Field(forest, statement, "first");
         if (first < 0) {
             visited := Field(forest, statement, "value");
-            if (visited >= 0 && Field(forest, statement, "key") < 0 && Field(forest, statement, "reference") < 0 &&
+            if (visited >= 0 && Field(forest, statement, "reference") < 0 &&
                 ScalarArrayHeld(forest, text, callables, params, names, types, members, callable.package, visited) != 0) {
                 return ScalarPlan.Iterated(visited, ScalarIterationCopies(forest, text, Field(forest, statement, "body"),
                                                                            visited));
@@ -1753,7 +1855,12 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             if (Is(forest, statement, "while_statement")) {
                 row.kind = facts.WhileRow;
             } else {
+                // `for x, i in xs` names the item, then the index.
                 declared := Field(forest, statement, "name");
+                keyed := Field(forest, statement, "key") >= 0;
+                if (keyed) {
+                    declared = Field(forest, statement, "key");
+                }
                 name := Text(forest, text, declared);
                 element := IntStorage;
                 element_record := -1;
@@ -1765,6 +1872,9 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                     element_record = visited.record;
                     row.type = ScalarElementType(types, visited);
                     row.literal = i64(facts.RangeArray);
+                    if (keyed) {
+                        row.literal += i64(facts.RangeKeyed);
+                    }
                 }
                 if (!iterated && Text(forest, text, Field(forest, statement, "bound")) == "..<") {
                     row.literal += i64(facts.RangeExclusive);
@@ -1777,6 +1887,13 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                                  record: element_record, writable: false, node: declared};
                 names.append(binding);
                 variables += 1;
+                if (keyed) {
+                    index: Name = {owned: false, name: Text(forest, text, Field(forest, statement, "name")), place: LocalPlace,
+                                   index: variables, storage: IntStorage, container: 0, record: -1, writable: false,
+                                   node: Field(forest, statement, "name")};
+                    names.append(index);
+                    variables += 1;
+                }
             }
             work.extend(ScalarBlock(forest, Field(forest, statement, "body"), mark));
         } else if (Is(forest, statement, "switch_statement")) {

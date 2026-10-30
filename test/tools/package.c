@@ -17,18 +17,6 @@ static void path(char *destination, const char *base, const char *relative)
     assert(size > 0 && size < 1024);
 }
 
-/* The Makefile's graph host recipe runs tools/bootstrap/seed.sh before it looks
- * for a host; fixtures that copy the Makefile stand in a seed step that does
- * nothing. */
-static void seed_step(const char *source)
-{
-    char filename[1024];
-    path(filename, source, "tools/bootstrap");
-    assert(!mkdir(filename, 0700));
-    path(filename, source, "tools/bootstrap/seed.sh");
-    tool_write(filename, "#!/bin/sh\nexit 0\n");
-}
-
 static bool file_equals(const char *filename, const char *expected)
 {
     char *actual = tool_read(filename);
@@ -276,7 +264,10 @@ TEST_CASE(reflection_build_outputs_preserve_sdk_source_identity)
     assert(!mkdir(filename, 0700));
     path(filename, source, "tools/quiet.sh");
     tool_write(filename, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
-    seed_step(source);
+    path(filename, source, "tools/bootstrap");
+    assert(!mkdir(filename, 0700));
+    path(filename, source, "tools/bootstrap/seed.sh");
+    tool_write(filename, "#!/bin/sh\nexit 0\n");
     path(filename, source, "tools/configure.sh");
     tool_write(
         filename,
@@ -381,7 +372,10 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     REQUIRE(tool_run(copy, source, log_path) == 0);
     path(filename, source, "tools/quiet.sh");
     tool_write(filename, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
-    seed_step(source);
+    path(filename, source, "tools/bootstrap");
+    assert(!mkdir(filename, 0700));
+    path(filename, source, "tools/bootstrap/seed.sh");
+    tool_write(filename, "#!/bin/sh\nexit 0\n");
     const char
         *host = "#!/bin/sh\nset -eu\n"
                 "if [ \"$1\" = --protocol-version ]; then\n"
@@ -542,7 +536,10 @@ TEST_CASE(runtime_sdk_recipes_use_graph_programs_on_macos)
     REQUIRE(tool_run(copy, source, log_path) == 0);
     path(filename, source, "tools/quiet.sh");
     tool_write(filename, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
-    seed_step(source);
+    path(filename, source, "tools/bootstrap");
+    assert(!mkdir(filename, 0700));
+    path(filename, source, "tools/bootstrap/seed.sh");
+    tool_write(filename, "#!/bin/sh\nexit 0\n");
     path(filename, source, "fixture-host");
     tool_write(
         filename,

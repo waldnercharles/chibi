@@ -2028,16 +2028,7 @@ pub SourceLists :: (target: string) -> string[] {
 pub ArtifactFormats :: () -> string[] {
     return [
         "execution execution/prepared.c execution/prepared.h EXECUTION_PREPARED_VERSION VALUE_WIRE EXECUTION_CODECS",
-        "player runtime/player_prepared.c runtime/player_prepared.h PLAYER_PREPARED_VERSION VALUE_WIRE",
         "events runtime/event_catalog.c runtime/event_catalog.h EVENT_CATALOG_VERSION VALUE_WIRE",
-        "field runtime/fields/prepared.c runtime/fields/prepared.h FIELD_PREPARED_VERSION",
-        "material_fields runtime/material_field_prepared.c runtime/material_field_prepared.h MATERIAL_FIELDS_PREPARED_VERSION",
-        "scene runtime/scenes/prepared.c runtime/scenes/prepared.h SCENE_PREPARED_VERSION VALUE_WIRE",
-        "ui runtime/ui/documents.c runtime/ui/documents.h UI_DOCUMENT_VERSION VALUE_WIRE",
-        "font runtime/ui/font.c runtime/ui/font.h UI_FONT_PREPARED_VERSION VALUE_WIRE",
-        "shader runtime/shaders/prepared.c runtime/shaders/prepared.h SHADER_PREPARED_VERSION VALUE_WIRE",
-        "model runtime/models/prepared.c runtime/models/prepared.h MODEL_PREPARED_VERSION VALUE_WIRE",
-        "mesh runtime/geometry/mesh_prepared.c runtime/geometry/mesh_prepared.h RENDER_MESH_PREPARED_VERSION VALUE_WIRE",
         "image runtime/images/catalog.c runtime/images/catalog.h RENDER_IMAGE_PREPARED_VERSION VALUE_WIRE",
         "sky runtime/images/sky.c runtime/images/sky.h RENDER_SKY_PREPARED_VERSION VALUE_WIRE",
         "parts render/scene3d_parts.c render/scene3d_parts.h RENDER_PARTS_PREPARED_VERSION VALUE_WIRE",

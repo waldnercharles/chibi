@@ -98,7 +98,8 @@ build-debug:
 # The private build host that runs the authored SDK programs: the build's own, or
 # the one cold recovery constructs beside the reflection build.
 define SDK_GRAPH_HOST
-host="$(BUILD_HOST)"; \
+sh tools/bootstrap/seed.sh || exit $$?; \
+	host="$(BUILD_HOST)"; \
 	if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
 		host="$(SDK_REFLECT_BUILD_DIR)/host/bin/chibi-build-host"; \
 		if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
@@ -182,21 +183,28 @@ check-format:
 
 # Tests run with `chibi build test` (tools/build.sh test before a chibi exists):
 # the selectors and groups are listed in tools/tests.tsv, and --list names them.
-# The bootstrap artifact is checked in at tools/compiler/bootstrap, as Zig
-# checks in zig1.wasm. bootstrap-artifact rewrites it: the bootstrap check
+# The bootstrap artifact lives at tools/compiler/bootstrap: bootstrap.json is
+# checked in and pins the seed, compiler.chibip, which tools/bootstrap/seed.sh
+# fetches from a release, as Zig ships zig1.wasm. bootstrap-artifact rewrites
+# both, and publish-seed releases the new seed and pins it in
+# tools/bootstrap/seed.tsv. The bootstrap check
 # leaves stage two and its arguments in a seed folder, and the Release compiler
 # host writes the artifact once stage two compiles the sources to itself.
-# bootstrap-recover recovers the compiler from it with the sources on disk.
-# See docs/self-hosting-build.md.
+# bootstrap-recover recovers the compiler from it with the sources on disk, and
+# the bootstrap-recovery selector with sources exported from HEAD. See
+# docs/self-hosting-build.md.
 BOOTSTRAP_ARTIFACT ?= tools/compiler/bootstrap
 BOOTSTRAP_SEED = $(RELEASE_BUILD_DIR)/bootstrap.seed
-.PHONY: bootstrap-artifact bootstrap-recover native-census
+.PHONY: bootstrap-artifact publish-seed bootstrap-recover native-census
 bootstrap-artifact:
 	@$(MAKE) build-release BUILD_TARGET='test_language chibi-compiler-host'
 	@rm -rf "$(BOOTSTRAP_SEED)" && mkdir -p "$(BOOTSTRAP_SEED)"
 	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" sh tools/build.sh test --release-build "$(RELEASE_BUILD_DIR)" language-package-compiler-chibi-bootstrap
 	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_SEED)"
+
+publish-seed:
+	@sh tools/bootstrap/publish-seed.sh
 
 bootstrap-recover:
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host

@@ -1148,6 +1148,13 @@ static const sample samples[] = {
                 "    while (length(parts) < 4 - 1) { parts.append(\"c\"); n += 1; }\n"
                 "    return n + length(parts);\n}",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[4]" } } },
+    { .name = "foreign declarations parse and wait for the compiler",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nforeign import c \"libc.a\"\n"
+                "Run :: () -> int { return 1; }",
+      .message = "unsupported declaration",
+      .line = 2,
+      .column = 1 },
     { .name = "core-math-imported-values",
       .group = IMPORT_SAMPLES,
       .math = true,
@@ -3297,6 +3304,16 @@ static const sample samples[] = {
                  { .function = "First", .arguments = "[]", .expected = "[7]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
                  { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "when keeps the declarations a constant condition selects",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "when 2 > 1 and not (3 == 4) { Chosen :: () -> int { return 11; } } "
+                "else { Chosen :: () -> int { return 22; } }\n"
+                "when 1 > 2 { Other :: () -> int { return 1; } } "
+                "else when 3 == 3 { Other :: () -> int { return 5; } } "
+                "else { Other :: () -> int { return 6; } }\n"
+                "Main :: () -> int { return Chosen() * 10 + Other(); }\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[115]" } } },
     { .name = "generic records specialize per application",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"

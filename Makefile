@@ -54,12 +54,7 @@ endif
 endif
 # Use installed upstream LLVM for native sanitizer checks when available.
 NATIVE_TOOLCHAIN_FLAGS ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++)
-DEBUG_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
-RELEASE_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 SANITIZERS ?= address,undefined
-SANITIZER_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=ON -DCHIBI_SANITIZERS=$(SANITIZERS) -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
-LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
-FAST_CMAKE_FLAGS ?= $(LOCAL_CMAKE_FLAGS)
 # AddressSanitizer reserves a large shadow-memory range on macOS. Disable
 # Apple's nano allocator before starting instrumented native binaries so the
 # allocator does not report a failed nano-zone reservation.
@@ -116,11 +111,9 @@ sdk-reflect-build:
 sdk-reflect-bootstrap:
 	@$(QUIET) bootstrap -- sh tools/bootstrap.sh "$(SDK_REFLECT_BUILD_DIR)/host/bin/chibi-build-host"
 else
-# Windows retains native construction until its build host can run processes.
-# Keep its restricted C-only SDK profile until that replacement is verified.
+# Windows has no graph build host that runs processes yet.
 sdk-reflect-build:
-	@$(QUIET) configure-sdk-reflect -- cmake -S tools/reflect -B "$(SDK_REFLECT_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	@$(QUIET) build-sdk-reflect -- cmake --build "$(SDK_REFLECT_BUILD_DIR)" --target reflect --parallel $(JOBS)
+	@printf '%s\n' 'The graph does not run on Windows yet.' >&2; exit 2
 endif
 
 ifeq ($(shell uname -s),Darwin)

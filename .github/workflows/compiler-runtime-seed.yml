@@ -88,30 +88,17 @@ jobs:
           & (Join-Path $bin 'pip') install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           if ($LASTEXITCODE) { throw 'Installing the pinned native build tools failed' }
           $bin >> $env:GITHUB_PATH
-      # Linux and macOS build the host with the graph and the pinned build host.
-      # Windows has no graph build host yet and keeps CMake.
-      - name: Configure the native runtime
-        id: configure
-        run: |
-          $timer = [Diagnostics.Stopwatch]::StartNew()
-          if ($IsWindows) {
-            cmake -S sdk -B runtime-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCMAKE_C_COMPILER=clang
-            if ($LASTEXITCODE) { throw 'Configuring the native runtime failed' }
-          }
-          "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
+      # Windows has no graph build host yet, so its seed cannot be refreshed.
       - name: Build the native runtime
         id: build
         env:
           GH_TOKEN: ${{ github.token }}
           LIBCLANG_ROOT: ${{ env.LLVM }}
         run: |
+          if ($IsWindows) { throw 'The graph does not run on Windows yet; the Windows runtime seed cannot be refreshed' }
           $timer = [Diagnostics.Stopwatch]::StartNew()
-          if ($IsWindows) {
-            cmake --build runtime-build --target chibi-compiler-host --parallel 4
-          } else {
-            if ($env:CC) { $env:NATIVE_TOOLCHAIN_FLAGS = "-DCMAKE_C_COMPILER=$env:CC -DCMAKE_CXX_COMPILER=$env:CXX" }
-            make build-release BUILD_TARGET=chibi-compiler-host
-          }
+          if ($env:CC) { $env:NATIVE_TOOLCHAIN_FLAGS = "-DCMAKE_C_COMPILER=$env:CC -DCMAKE_CXX_COMPILER=$env:CXX" }
+          make build-release BUILD_TARGET=chibi-compiler-host
           if ($LASTEXITCODE) { throw 'Building the native runtime failed' }
           "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
       - name: Copy the recovery inputs into an isolated directory
@@ -120,15 +107,13 @@ jobs:
           $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
           New-Item -ItemType Directory -Path "$proof/tools", "$proof/packages" | Out-Null
           $hostName = 'chibi-compiler-host' + $(if ($IsWindows) { '.exe' } else { '' })
-          $built = if ($IsWindows) { "runtime-build/$hostName" } else { "build-release/sdk/$hostName" }
-          Copy-Item $built $proof
+          Copy-Item "build-release/sdk/$hostName" $proof
           Copy-Item tools/compiler "$proof/tools/compiler" -Recurse
           Copy-Item packages/core "$proof/packages/core" -Recurse
           $nativeSources = Get-ChildItem $proof -Recurse -File | Where-Object { $_.Extension -in '.c', '.h', '.cc', '.cpp', '.cxx', '.m', '.mm' }
           if ($nativeSources) { throw 'The recovery input directory contains native sources' }
       - name: Recover the compiler without a native toolchain
         env:
-          CONFIGURE_SECONDS: ${{ steps.configure.outputs.seconds }}
           BUILD_SECONDS: ${{ steps.build.outputs.seconds }}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -172,7 +157,6 @@ jobs:
             runner_os = $env:RUNNER_OS
             runner_arch = $env:RUNNER_ARCH
             runtime_sha256 = (Get-FileHash "$proof/$hostName" -Algorithm SHA256).Hash.ToLowerInvariant()
-            native_configure_seconds = $env:CONFIGURE_SECONDS
             native_build_seconds = $env:BUILD_SECONDS
             proof_seconds = $timer.Elapsed.TotalSeconds
             proof_exit_code = $process.ExitCode

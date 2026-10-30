@@ -325,7 +325,6 @@ static bool distribution_source(char root[SDK_PATH])
         "tools/toolchain/Build.chibi",
         "tools/toolchain/Graph.chibi",
         "tools/toolchain/SDK.chibi",
-        "tools/configure_inputs.py",
         "LICENSE.md",
         "COPYING",
         "COPYING.LESSER",
@@ -798,9 +797,6 @@ TEST_CASE(compiler_tools_package_and_run_after_relocation)
         join(source, "tools/toolchain", programs[i]);
         REQUIRE(copied(original, installed, CHIBI_SOURCE_ROOT, source));
     }
-    REQUIRE(
-        copied(original, "share/chibi/tools/configure_inputs.py", CHIBI_SOURCE_ROOT, "tools/configure_inputs.py")
-    );
     static const char *licenses[] = {
         "LICENSE.md",
         "COPYING",

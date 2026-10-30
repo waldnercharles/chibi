@@ -190,7 +190,7 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Agent selectors run existing drivers; use test-build to build them.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact publish-seed bootstrap-recover test-recovery test-short test-policy-inventory tools-build native-census
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-refresh publish-seed bootstrap-recover test-recovery test-short test-policy-inventory tools-build native-census
 agent-list:
 	@python3 tools/agent.py list
 
@@ -241,6 +241,18 @@ bootstrap-artifact:
 	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(BOOTSTRAP_DRIVER_BUILD)" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
 	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_SEED)"
+
+# bootstrap-refresh writes a seed for the sources on disk without the
+# bootstrap check's sample runs: recovery's fixed point and the arguments it
+# compiled the sources with make the seed folder, and writing it proves again
+# that the seed compiles the sources to itself.
+BOOTSTRAP_REFRESH = $(RELEASE_BUILD_DIR)/bootstrap.refresh
+bootstrap-refresh:
+	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
+	@rm -rf "$(BOOTSTRAP_REFRESH)" && mkdir -p "$(BOOTSTRAP_REFRESH)"
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --recover "$(BOOTSTRAP_REFRESH)/compiler.chibip" --arguments "$(BOOTSTRAP_REFRESH)/compile.json"
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_REFRESH)" --revision "$$(git describe --always --dirty --abbrev=40)"
+	@rm -rf "$(BOOTSTRAP_REFRESH)"
 
 publish-seed:
 	@sh tools/bootstrap/publish-seed.sh

@@ -46,9 +46,6 @@ CPU_SELECTORS = {
     '--material-simulation': 'material-simulation',
     '--material-ecs': 'material-ecs',
     '--particles': 'particles',
-    '--project-document': 'project-document',
-    '--prototype-documents': 'prototype-documents',
-    
     '--shader-bake': 'shader-bake',
     '--shader-source-debug': 'shader-source-debug',
     '--asset-compiler-host': 'language-asset-compiler-host',
@@ -56,9 +53,9 @@ CPU_SELECTORS = {
     '--shader-source-chibi': 'language-shader-source-chibi',
     '--material-bake': 'material-bake',
     '--environment-authoring': 'environment-authoring',
+    '--terrain-seams': 'terrain-seams',
     '--material-surface-mesh': 'material-surface-mesh',
     '--terrain-checkpoint': 'terrain-checkpoint',
-    '--terrain-seams': 'terrain-seams',
     '--terrain-storage': 'terrain-storage',
     '--terrain-storage-commands': 'terrain-storage-commands',
     

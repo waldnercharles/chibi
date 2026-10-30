@@ -102,9 +102,6 @@ void test_arena();
 void test_program_sdk();
 #endif
 void test_tool_scene();
-#ifdef CHIBI_TEST_SCENE_AUTHORING
-void test_scene_hierarchy();
-#endif
 #ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
 #endif
 void test_scene_prepared();
@@ -121,7 +118,6 @@ bool test_source_runtime_active()
 }
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
-void test_component_presentation();
 void test_tool_scheduler_benchmark();
 void test_tool_scheduler();
 #endif
@@ -183,7 +179,6 @@ void test_tool_transforms();
 #endif
 
 #ifdef CHIBI_TEST_ASSET_VALUES
-void test_asset_text();
 void test_asset_value();
 #endif
 #ifdef CHIBI_TEST_UI_DOCUMENT
@@ -198,12 +193,6 @@ void test_fmt();
 #ifdef CHIBI_TEST_PARTICLES
 void test_particles();
 #endif
-#ifdef CHIBI_TEST_PROJECT_DOCUMENT
-void test_project_document();
-#endif
-#ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
-void test_prototype_documents();
-#endif
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
 static const char *const document_selectors[] = {
@@ -213,8 +202,6 @@ static const char *const document_selectors[] = {
     "--text-files",
     "--fmt",
     "--particles",
-    "--project-document",
-    "--prototype-documents",
     "--reference-index",
     "--asset-source",
     "--behavior-loader",
@@ -249,7 +236,6 @@ static bool run_document_suites(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_ASSET_VALUES
     if (selected(argc, argv, "--asset-values")) {
-        test_asset_text();
         test_asset_value();
         return true;
     }
@@ -278,19 +264,9 @@ static bool run_document_suites(int argc, char **argv)
         return true;
     }
 #endif
-#ifdef CHIBI_TEST_PROJECT_DOCUMENT
-    if (selected(argc, argv, "--project-document")) {
-        test_project_document();
-        return true;
-    }
-#endif
 #ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
     /* These read the game's reflected types through the type catalog. */
     source_runtime_active = true;
-    if (selected(argc, argv, "--prototype-documents")) {
-        test_prototype_documents();
-        return true;
-    }
     if (selected(argc, argv, "--reference-index")) {
         return true;
     }
@@ -653,10 +629,6 @@ int main(int argc, char **argv)
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
-    bool scene_hierarchy = false;
-#ifdef CHIBI_TEST_SCENE_AUTHORING
-    scene_hierarchy = argc == 2 && !strcmp(argv[1], "--scene-hierarchy");
-#endif
 #ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
 #endif
     bool native = false, native_values = false, native_catalog = false,
@@ -665,8 +637,7 @@ int main(int argc, char **argv)
          model_graphs = false, model_catalog = false, shader_graphs = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, persistent_store = false;
-    bool source_presentation = false, system_schedule = false,
-         scheduler_benchmark = false,
+    bool system_schedule = false, scheduler_benchmark = false,
 
          source_systems = false, source_query_rows = false, new_asset = false,
          asset_refactor = false;
@@ -696,7 +667,6 @@ int main(int argc, char **argv)
     scheduler_benchmark = argc == 2 && !strcmp(argv[1], "--scheduler-benchmark");
     source_systems = argc == 2 && !strcmp(argv[1], "--source-systems");
     source_query_rows = argc == 2 && !strcmp(argv[1], "--source-query-rows");
-    source_presentation = argc == 2 && !strcmp(argv[1], "--source-presentation");
 #endif
 #ifdef CHIBI_TEST_BOX3D
     box3d = argc == 2 && !strcmp(argv[1], "--box3d");
@@ -712,15 +682,15 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor && !tilemap &&
-        !package && !third_party_publish && !collab && !unit && !test_runner &&
-        !validation_plan && !web_storage && !wasm_browser && !query_benchmark &&
-        !scene && !scene_prepared && !scene_hierarchy && !native && !native_values &&
+    if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
+        !tilemap && !package && !third_party_publish && !collab && !unit &&
+        !test_runner && !validation_plan && !web_storage && !wasm_browser &&
+        !query_benchmark && !scene && !scene_prepared && !native && !native_values &&
         !native_catalog && !physics && !physics3d && !transforms && !arena &&
-        !types && !box3d && !sky_files && !mesh_files && !model_import &&
-        !model_graphs && !model_catalog && !shader_graphs && !persistent_store &&
-        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
-        !source_presentation && !system_schedule && !scheduler_benchmark &&
+        !types && !radiance_horizons && !box3d && !sky_files && !mesh_files &&
+        !model_import && !model_graphs && !model_catalog && !shader_graphs &&
+        !persistent_store && !whole_math && !whole_integer && !whole_conversion &&
+        !whole_select && !system_schedule && !scheduler_benchmark &&
         !source_systems && !source_query_rows && !graph_document &&
         !graph_presentation && !graph_functions && !vector_nodes && !material) {
         fprintf(
@@ -743,7 +713,7 @@ int main(int argc, char **argv)
             "--ecs-query-benchmark | --arena | --types | "
             ""
             "--scene | "
-            "--scene-prepared | --scene-hierarchy | "
+            "--scene-prepared | "
             "--native | --native-values "
             "| --native-catalog "
             "| --physics | --physics3d | --transforms "
@@ -771,7 +741,7 @@ int main(int argc, char **argv)
             "--whole-select | "
             ""
             ""
-            "--source-presentation | --system-schedule | --scheduler-benchmark "
+            "--system-schedule | --scheduler-benchmark "
             "| --source-systems | "
             "--source-query-rows | "
             ""
@@ -785,8 +755,8 @@ int main(int argc, char **argv)
             "--ui-document | --text-files | --fmt | --particles | "
             "--audio-analysis | "
             ""
-            "--project-document | "
-            "--prototype-documents | "
+            ""
+            ""
             "--reference-index | --asset-source | --behavior-loader | "
             "--engine-clock | --preview-layout | --fields]\n",
             argv[0]
@@ -798,8 +768,8 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     source_runtime_active = shader_parameters || new_asset || asset_refactor ||
                             system_schedule || scheduler_benchmark ||
-                            source_systems || source_query_rows || persistent_store ||
-                            source_presentation || whole_math || whole_integer ||
+                            source_systems || source_query_rows ||
+                            persistent_store || whole_math || whole_integer ||
                             whole_conversion || whole_select || graph_document ||
                             graph_presentation || graph_functions || vector_nodes;
     if (source_runtime_active) {
@@ -811,8 +781,6 @@ int main(int argc, char **argv)
             test_tool_scheduler_benchmark();
         } else if (source_systems) {
         } else if (source_query_rows) {
-        } else if (source_presentation) {
-            test_component_presentation();
         } else
 #endif
             if (new_asset) {
@@ -892,13 +860,6 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_TILEMAP
     if (tilemap) {
         test_tool_tilemap();
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-#endif
-#ifdef CHIBI_TEST_SCENE_AUTHORING
-    if (scene_hierarchy) {
-        test_scene_hierarchy();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

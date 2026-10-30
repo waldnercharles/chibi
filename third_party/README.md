@@ -27,9 +27,9 @@ for each:
 - Cute Framework, with SDL3, PhysicsFS, its own Box2D and Box3D and, on Linux,
   s2n-tls; RmlUi, with FreeType.
 - Box2D, Box3D, enkiTS (not in `web` or `web-player`), SLJIT (native only),
-  tree-sitter and its CSS and HTML grammars. The SDK exports them as
+  and tree-sitter. The SDK exports them as
   `Chibi::box2d`, `Chibi::box3d`, `Chibi::task_scheduler`,
-  `Chibi::execution_sljit`, `Chibi::syntax_runtime` and `Chibi::ui_syntax`.
+  `Chibi::execution_sljit` and `Chibi::syntax_runtime`.
   They keep the flags the SDK compiled them with: Box2D and Box3D without
   floating-point contraction and with SIMD only in `web-threads` among the web
   targets, enkiTS with three task priorities, SLJIT with its W^X allocator.
@@ -118,7 +118,3 @@ to pointer alignment, since a freed element stores a pointer.
 
 SLJIT (`sljit/`): arm64-immediate-negation, ARM64 negates immediates in
 unsigned arithmetic, so negating the most negative value is defined.
-
-tree-sitter CSS and HTML (`tree_sitter_css/`, `tree_sitter_html/`):
-scanner-create-prototype, the scanner's `create()` takes `(void)`, as the
-parser and runtime declare it, so UBSan sees one function type.

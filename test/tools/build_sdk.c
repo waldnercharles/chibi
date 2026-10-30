@@ -301,13 +301,8 @@ static bool distribution_source(char root[SDK_PATH])
     join(root, suite, "containment source");
     REQUIRE(!mkdir(root, 0700));
     static const char *directories[] = {
-        "tools",
-        "packages",
-        "tools/toolchain",
-        "third_party",
-        "third_party/fmt",
-        "third_party/yyjson",
-        "third_party/ckdl",
+        "tools",       "packages",        "tools/toolchain",
+        "third_party", "third_party/fmt", "third_party/yyjson",
         "docs",
     };
     for (size_t i = 0; i < sizeof directories / sizeof *directories; i++) {
@@ -339,7 +334,6 @@ static bool distribution_source(char root[SDK_PATH])
         "third_party/fmt/LICENSE",
         "third_party/fmt/README.md",
         "third_party/yyjson/LICENSE",
-        "third_party/ckdl/COPYING",
     };
     for (size_t i = 0; i < sizeof inputs / sizeof *inputs; i++) {
         char from[SDK_PATH], to[SDK_PATH];
@@ -823,7 +817,6 @@ TEST_CASE(compiler_tools_package_and_run_after_relocation)
         "fmt/LICENSE",
         "fmt/README.md",
         "yyjson/LICENSE",
-        "ckdl/COPYING",
     };
     for (size_t i = 0; i < sizeof dependencies / sizeof *dependencies; i++) {
         char installed[SDK_PATH], source[SDK_PATH];

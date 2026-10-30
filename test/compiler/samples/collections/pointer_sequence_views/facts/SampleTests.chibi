@@ -31,3 +31,9 @@ Calls :: () {
     e10: int = 907;
     assert(r10 == e10, "Parameter call 10");
 }
+
+// fails: Array view is out of range
+@test
+ShrunkViewFails :: () {
+    Shrunk();
+}

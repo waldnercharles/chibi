@@ -72,7 +72,6 @@ void test_build_sdk(const char *host, const char *build, const char *third_party
 void test_runtime_sdk(const char *host);
 #endif
 #endif
-void test_tool_third_party_publish();
 void test_tool_collab();
 void test_tool_web_storage();
 void test_tool_wasm_browser();
@@ -443,7 +442,6 @@ int main(int argc, char **argv)
 #endif
     }
     bool package = argc == 2 && !strcmp(argv[1], "--package");
-    bool third_party_publish = argc == 2 && !strcmp(argv[1], "--third-party-publish");
     bool collab = argc == 2 && !strcmp(argv[1], "--collab");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
@@ -488,7 +486,7 @@ int main(int argc, char **argv)
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
 #endif
     if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
-        !package && !third_party_publish && !collab && !unit && !web_storage &&
+        !package && !collab && !unit && !web_storage &&
         !wasm_browser && !query_benchmark && !scene && !native_values && !arena &&
         !types && !box3d && !mesh_files && !model_import && !model_graphs &&
         !model_catalog && !shader_graphs && !persistent_store && !whole_math &&
@@ -498,7 +496,7 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--package | "
-            "--third-party-publish | --collab | "
+            "--collab | "
             "--unit | "
             "--validation-plan | "
             "--reflect-ranges | "
@@ -609,8 +607,6 @@ int main(int argc, char **argv)
 #endif
     if (wasm_browser) {
         test_tool_wasm_browser();
-    } else if (third_party_publish) {
-        test_tool_third_party_publish();
     } else if (collab) {
         test_tool_collab();
     } else if (package) {
@@ -638,7 +634,6 @@ int main(int argc, char **argv)
         test_tool_ecs_world();
         test_tool_ecs_query();
         test_tool_package();
-        test_tool_third_party_publish();
         test_tool_collab();
 #ifdef CHIBI_TEST_REFLECT
         test_tool_reflect();

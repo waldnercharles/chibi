@@ -36,7 +36,6 @@ tool	build-graph-debug-optimization	@build@/test/tools/test_tools	--build-graph-
 tool	build-graph-programs	@build@/test/tools/test_tools	--build-graph-programs	@host@
 tool	build-sdk	@build@/test/tools/test_tools	--build-sdk	@host@	@release@	
 tool	runtime-sdk	@build@/test/tools/test_tools	--runtime-sdk	@host@
-tool	third-party-publish	@build@/test/tools/test_tools	--third-party-publish
 tool	collab	@build@/test/tools/test_tools	--collab
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
 tool	whole-conversion	@build@/test/tools/test_tools	--whole-conversion

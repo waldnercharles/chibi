@@ -306,7 +306,7 @@ jobs:
           # the build fetches them, and the notices the binaries carry.
           short=${GITHUB_SHA:0:12}
           git archive --format=tar.gz --prefix="chibi-$short/" -o "$out/chibi-source-$short.tar.gz" HEAD
-          pin() { awk -v name="$1" '$1 == "chibi_third_party(" name { getline; sub(/\)$/, "", $1); print $1 }' third_party/CMakeLists.txt; }
+          pin() { awk -v name="$1" '$1 == "chibi_third_party(" name { getline; sub(/\)$/, "", $1); print $1 }' archive/third_party/CMakeLists.txt; }
           sljit=$(pin sljit)
           tree_sitter=$(pin tree_sitter)
           [[ $sljit =~ ^[0-9a-f]{40}$ && $tree_sitter =~ ^[0-9a-f]{40}$ ]]

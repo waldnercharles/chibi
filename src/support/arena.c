@@ -645,9 +645,8 @@ void arena_collect_begin(arena_collection *c, arena **arenas, int count)
         assert(arenas[i]->collectable);
     }
 }
-void arena_collect_mark(void *collection, const void *address)
+bool arena_collect_mark_held(arena_collection *c, const void *address)
 {
-    arena_collection *c = collection;
     for (int i = 0; i < c->count; i++) {
         arena_slabs *s = c->arenas[i]->slabs;
         arena_slab *slab = s ? find_slab(s, (uintptr_t)address) : NULL;
@@ -657,14 +656,19 @@ void arena_collect_mark(void *collection, const void *address)
         s->recent[recent_index((uintptr_t)address)] = slab;
         arena_slot *value = slot_in(slab, (uintptr_t)address, false);
         if (!value) {
-            return;
+            return false;
         }
         if (!value->marked) {
             value->marked = true;
             apush(c->pending, value);
         }
-        return;
+        return true;
     }
+    return false;
+}
+void arena_collect_mark(void *collection, const void *address)
+{
+    (void)arena_collect_mark_held(collection, address);
 }
 void arena_collect_end(arena_collection *c)
 {

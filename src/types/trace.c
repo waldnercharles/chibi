@@ -67,6 +67,34 @@ void pin_value_trace(const pin_value *value, arena_marker mark, void *user)
         }
     }
 }
+void pin_array_trace_items(const pin_array *array, arena_marker mark, void *user)
+{
+    assert(!array->pointer);
+    if (!array->count || !pin_array_items_reach(array)) {
+        return;
+    }
+    if (!array->stride || array->element_type != PIN_STRUCT) {
+        for (int i = 0; i < array->count; i++) {
+            pin_value item = pin_array_get(array, i);
+            pin_value_trace(&item, mark, user);
+        }
+        return;
+    }
+    /* Fixed-layout records share their header, type and data block, which
+     * the first item marks; the rest need only their fields walked. */
+    pin_value first = pin_array_get(array, 0);
+    pin_value_trace(&first, mark, user);
+    const type_desc *type = pin_value_type(&first);
+    assert(type);
+    for (int i = 1; i < array->count; i++) {
+        const void *data = (const char *)array->data + (size_t)i * array->stride;
+        if (first.schema) {
+            pin_schema_trace_fields(first.schema, type, data, mark, user);
+        } else {
+            struct_fields(type, data, mark, user, 0);
+        }
+    }
+}
 bool pin_array_items_reach(const pin_array *array)
 {
     /* Only authored records hold pointers, and their layouts travel with the
@@ -100,11 +128,7 @@ static void trace_array(const void *data, const void *, arena_marker mark, void 
     mark(user, array->items);
     mark(user, array->data);
     mark(user, array->buckets);
-    bool reach = pin_array_items_reach(array);
-    for (int i = 0; reach && i < array->count; i++) {
-        pin_value item = pin_array_get(array, i);
-        pin_value_trace(&item, mark, user);
-    }
+    pin_array_trace_items(array, mark, user);
 }
 static void trace_union(const void *data, const void *, arena_marker mark, void *user)
 {

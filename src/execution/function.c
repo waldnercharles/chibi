@@ -1706,6 +1706,12 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
                 (!array->pointer && !pin_array_items_reach(array))) {
                 continue;
             }
+            /* A shared payload whose anchor the collection holds is walked
+             * once, by the anchor's tracer, as a shell in the collection is. */
+            if (mark == arena_collect_mark && !array->pointer &&
+                pin_array_collect_backing(array, user)) {
+                continue;
+            }
             managed_push_items(&pending, array, false);
         } else if (value.type == PIN_UNION) {
             const pin_union *sum = value.ptr;

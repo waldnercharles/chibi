@@ -197,7 +197,8 @@ package scalar_facts
 // changes what it consumes, as `append(a, x)` and `extend(a, b)` do not. A For row with
 // RangeArray declares variable `value`, of its element `type` and `name`,
 // and its one operand is the array it iterates, whose elements the body
-// cannot change. It runs its body for each element in order. The array is
+// cannot change. With RangeKeyed the variable after it is the int index of the
+// element, which the body cannot change either. It runs its body for each element in order. The array is
 // read once, so a producer iterates a Copy of the variable when the body
 // assigns it.
 // A condition's last operand is its bool; a
@@ -352,10 +353,12 @@ pub ArrayJoin: int : 13;
 // follows it, and that Switch reads it.
 pub SwitchSubject: int : 1;
 
-// A For row's range flags; RangeArray stands alone.
+// A For row's range flags; RangeArray stands alone or with RangeKeyed, which
+// declares the next variable, an int, as the index of the element.
 pub RangeExclusive: int : 1;
 pub RangeReverse: int : 2;
 pub RangeArray: int : 4;
+pub RangeKeyed: int : 8;
 
 // Conversions between integer types: `T(value)` clamps the value to T, and
 // `T(wrap: value)` keeps its low bits. A floating value converts to an

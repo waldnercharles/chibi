@@ -1,7 +1,5 @@
 #include "authoring/asset_compiler_host.h"
 
-#include "assets/prototype.h"
-#include "assets/scene_document.h"
 #include "execution/function.h"
 #include "portable_asset_source.h"
 #include "support/array.h"
@@ -14,21 +12,14 @@
 
 /* Public installed-component consumer; the authored generator owns the resource. */
 static av_doc *document;
-static scene_document *scene;
-static prototype *object;
 static av_doc *before;
 static char *written;
-static const prototype_registry registry;
 static void cleanup()
 {
     free(written);
     written = NULL;
     av_doc_free(before);
     before = NULL;
-    scene_document_free(scene);
-    scene = NULL;
-    prototype_free(object);
-    object = NULL;
     av_doc_free(document);
     document = NULL;
     asset_source_release_thread();
@@ -262,110 +253,6 @@ TEST_CASE(asset_source_malformed_build_reports_position)
     REQUIRE(!asset_source_cache_stats().evaluations && !behavior_execution_scope_active());
     return true;
 }
-TEST_CASE(asset_source_native_scene_values_own_their_storage)
-{
-    static const char *const SOURCES[] = {
-        "package probe\nimport data \"game:assets\"\n"
-        "pub Build :: () -> u8[] { return data.Encode(data.Scene(\"Empty\", "
-        "[], [])); }\n",
-        "package probe\nimport data \"game:assets\"\n"
-        "pub Build :: () -> u8[] { return data.Encode(data.Scene(\"Owned\", "
-        "[data.EntityDefinition.Named(\"Root\", \"Base\", "
-        "[data.Field.Named(\"Unregistered\", data.Object("
-        "[data.Field.Named(\"label\", data.Value.Text(\"kept\"))]))], [])], "
-        "[])); }\n"
-    };
-    for (int i = 0; i < 2; i++) {
-        document = read_document(SOURCES[i]);
-        REQUIRE(document);
-        const av_value *version = av_obj_get(av_doc_root(document), "version");
-        REQUIRE(av_is_uint(version) && av_get_uint(version) == 1);
-        char error[256] = { 0 };
-        scene = scene_document_load_value(av_doc_root(document), error, sizeof error);
-        REQUIRE(scene && !error[0]);
-        drop_source();
-        REQUIRE(!behavior_execution_scope_active());
-        REQUIRE(!strcmp(scene->name, i ? "Owned" : "Empty"));
-        REQUIRE(acount(scene->entities) == i);
-        if (i) {
-            REQUIRE(scene_document_entity_index(scene, "Root") == 0);
-            REQUIRE(scene->entities[0].parent == -1);
-            REQUIRE(!strcmp(scene->entities[0].prototype, "Base"));
-            const av_value *fields = av_obj_get(scene->entities[0].components, "Unregistered");
-            const av_value *label = av_obj_get(fields, "label");
-            REQUIRE(av_is_str(label) && !strcmp(av_get_str(label), "kept"));
-        }
-        scene_document_free(scene);
-        scene = NULL;
-    }
-    return true;
-}
-TEST_CASE(asset_source_native_prototype_owns_name_and_identity)
-{
-    static const char SOURCE[] = "package probe\nimport data \"game:assets\"\n"
-                                 "pub Build :: () -> u8[] { return data.Encode("
-                                 "data.Prototype(\"Seed\", [], [], [], "
-                                 "[data.Field.Named(\"identity\", "
-                                 "data.Value.Text(\"owned-identity\"))])); }\n";
-    document = read_document(SOURCE);
-    REQUIRE(document);
-    char error[256] = { 0 };
-    object = prototype_load_value(av_doc_root(document), &registry, error, sizeof error);
-    REQUIRE(object && !error[0]);
-    drop_source();
-    REQUIRE(!behavior_execution_scope_active());
-    REQUIRE(!strcmp(object->name, "Seed"));
-    REQUIRE(!strcmp(object->identity, "owned-identity"));
-    REQUIRE(
-        !acount(object->components) && !acount(object->includes) &&
-        !acount(object->graphs)
-    );
-    REQUIRE(!object->registry->component_count);
-    return true;
-}
-TEST_CASE(asset_source_native_readers_keep_kind_shape_and_catalog_checks)
-{
-    static const char *const SOURCES[] = {
-        "package probe\nimport data \"game:assets\"\n"
-        "pub Build :: () -> u8[] { return data.Encode(data.Object("
-        "[data.Field.Named(\"version\", data.Value.Int(1)), "
-        "data.Field.Named(\"name\", data.Value.Text(\"Signed\")), "
-        "data.Field.Named(\"entities\", data.List([]))])); }\n",
-        "package probe\nimport data \"game:assets\"\n"
-        "pub Build :: () -> u8[] { return data.Encode(data.Object("
-        "[data.Field.Named(\"version\", data.Value.UInt(1)), "
-        "data.Field.Named(\"name\", data.Value.Text(\"WrongShape\")), "
-        "data.Field.Named(\"entities\", data.Value.Text(\"not-an-array\"))])); "
-        "}\n"
-    };
-    for (int i = 0; i < 2; i++) {
-        document = read_document(SOURCES[i]);
-        REQUIRE(document);
-        if (!i) {
-            const av_value *version = av_obj_get(av_doc_root(document), "version");
-            REQUIRE(av_is_sint(version) && av_get_sint(version) == 1);
-        }
-        char error[256] = { 0 };
-        scene = scene_document_load_value(av_doc_root(document), error, sizeof error);
-        REQUIRE(!scene);
-        REQUIRE(strstr(error, "scene document requires version 1, name, and entities"));
-        drop_source();
-    }
-    static const char
-        UNKNOWN[] = "package probe\nimport data \"game:assets\"\n"
-                    "pub Build :: () -> u8[] { return data.Encode("
-                    "data.Prototype(\"Unknown\", "
-                    "[data.Field.Named(\"Unregistered\", data.Object([]))], "
-                    "[], [], [])); }\n";
-    document = read_document(UNKNOWN);
-    REQUIRE(document);
-    char error[256] = { 0 };
-    object = prototype_load_value(av_doc_root(document), &registry, error, sizeof error);
-    REQUIRE(!object);
-    REQUIRE(strstr(error, "component Unregistered is unavailable"));
-    REQUIRE(!behavior_execution_scope_active());
-    return true;
-}
 TEST_CASE(asset_source_public_writer_preserves_kinds_and_owned_source)
 {
     document = writer_values();
@@ -436,60 +323,6 @@ TEST_CASE(asset_source_writer_and_reader_reject_nul_without_mutation)
     }
     return true;
 }
-TEST_CASE(asset_source_writer_canonical_scene_reaches_owned_native_reader)
-{
-    /* Independently checked with the normal source formatter and its fixpoint. */
-    static const char EXPECTED[] =
-        "package asset\n\nimport data \"game:assets\"\n\n"
-        "pub Build :: () -> u8[] {\n"
-        "    return data.Encode(\n"
-        "        data.Object([\n"
-        "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
-        "            data.Field.Named(\"name\", "
-        "data.Value.Text(\"Written\")),\n"
-        "            data.Field.Named(\"entities\", data.List([])),\n"
-        "            data.Field.Named(\"numbers\", data.Object([\n"
-        "                data.Field.Named(\"signed\", data.Value.Int(1)),\n"
-        "                data.Field.Named(\"unsigned\", data.Value.UInt(1))\n"
-        "            ]))\n"
-        "        ])\n"
-        "    )\n"
-        "}\n";
-    document = av_doc_new();
-    av_value *root = av_obj(document);
-    av_doc_set_root(document, root);
-    av_obj_add_val(document, root, "version", av_uint(document, 1));
-    av_obj_add_str(document, root, "name", "Written");
-    av_obj_add_arr(document, root, "entities");
-    av_value *numbers = av_obj_add_obj(document, root, "numbers");
-    av_obj_add_val(document, numbers, "signed", av_sint(document, 1));
-    av_obj_add_val(document, numbers, "unsigned", av_uint(document, 1));
-    asset_compiler_options config = options();
-    asset_compiler_diagnostic diagnostic;
-    written = asset_source_write(root, &config, &diagnostic);
-    REQUIRE(written && !diagnostic.message[0]);
-    if (strcmp(written, EXPECTED)) {
-        fprintf(stderr, "writer canonical output:\n%s", written);
-    }
-    REQUIRE(!strcmp(written, EXPECTED));
-    drop_source();
-    document = read_document(written);
-    REQUIRE(document);
-    root = av_doc_root(document);
-    REQUIRE(av_is_uint(av_obj_get(root, "version")));
-    numbers = av_obj_get(root, "numbers");
-    REQUIRE(av_is_sint(av_obj_get(numbers, "signed")));
-    REQUIRE(av_is_uint(av_obj_get(numbers, "unsigned")));
-    char error[256] = { 0 };
-    scene = scene_document_load_value(root, error, sizeof error);
-    REQUIRE(scene && !error[0]);
-    free(written);
-    written = NULL;
-    drop_source();
-    REQUIRE(!strcmp(scene->name, "Written") && !acount(scene->entities));
-    REQUIRE(!behavior_execution_scope_active());
-    return true;
-}
 TEST_CASE(asset_source_writer_restores_outer_scope_on_budget_and_cancel)
 {
     document = writer_values();
@@ -534,12 +367,8 @@ void test_language_asset_compiler_host()
     RUN_TEST_CASE(asset_source_public_byte_libraries_reach_owned_document);
     RUN_TEST_CASE(asset_source_authored_validation_rejects_duplicate_field);
     RUN_TEST_CASE(asset_source_malformed_build_reports_position);
-    RUN_TEST_CASE(asset_source_native_scene_values_own_their_storage);
-    RUN_TEST_CASE(asset_source_native_prototype_owns_name_and_identity);
-    RUN_TEST_CASE(asset_source_native_readers_keep_kind_shape_and_catalog_checks);
     RUN_TEST_CASE(asset_source_public_writer_preserves_kinds_and_owned_source);
     RUN_TEST_CASE(asset_source_writer_and_reader_reject_nul_without_mutation);
-    RUN_TEST_CASE(asset_source_writer_canonical_scene_reaches_owned_native_reader);
     RUN_TEST_CASE(asset_source_writer_restores_outer_scope_on_budget_and_cancel);
     pu_clear_setup();
 }

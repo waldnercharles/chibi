@@ -1,6 +1,6 @@
 # Test selectors for `chibi build test`: name, then the command, tab separated.
-# @build@ and @release@ are the --build and --release-build directories; paths
-# without them are relative to the checkout. `group` rows list a group's selectors.
+# @build@ and @release@ are the --build and --release-build directories and @host@
+# the --build-host path, all made absolute; other paths are relative to the checkout. `group` rows list a group's selectors.
 # Generated from the retired tools/test_policy.py tables; edit it by hand now.
 tool	types	@build@/test/tools/test_tools	--types
 tool	execution-scope	@build@/test/language/test_language	--execution-scope
@@ -26,21 +26,21 @@ tool	native-build	@build@/test/tools/test_tools	--native-build	@release@/sdk/chi
 tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
 tool	chibi-cli-installed	@build@/test/tools/test_tools	--chibi-cli-installed	dist/sdk/bin/chibi
 tool	native-aot-driver	@build@/test/tools/test_tools	--native-aot-driver	tools/native_aot/Driver.chibi
-tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/tools/policy_worker	@build@/sdk/chibi-build-host
-tool	build-timings	@build@/test/tools/test_tools	--build-timings	@build@/test/tools/policy_worker	@build@/sdk/chibi-build-host
-tool	build-process-files	@build@/test/tools/test_tools	--build-process-files	@build@/test/tools/policy_worker	@build@/sdk/chibi-build-host
+tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/tools/policy_worker	@host@
+tool	build-timings	@build@/test/tools/test_tools	--build-timings	@build@/test/tools/policy_worker	@host@
+tool	build-process-files	@build@/test/tools/test_tools	--build-process-files	@build@/test/tools/policy_worker	@host@
 tool	compiler-artifact	@build@/test/tools/test_tools	--compiler-artifact	@build@/test/language/test_language	@build@/sdk/chibi-compiler-host
 tool	compiler-bootstrap	@build@/test/tools/test_tools	--compiler-bootstrap	@build@/test/language/test_language	@build@/sdk/chibi-compiler-host
 tool	bootstrap-recovery	@build@/test/tools/test_tools	--bootstrap-recovery	@release@/sdk/chibi-compiler-host	tools/compiler/bootstrap
-tool	build-graph	@build@/test/tools/test_tools	--build-graph	@build@/sdk/chibi-build-host
-tool	build-graph-link-response	@build@/test/tools/test_tools	--build-graph-link-response	@build@/sdk/chibi-build-host
-tool	build-graph-support	@build@/test/tools/test_tools	--build-graph-support	@build@/sdk/chibi-build-host
-tool	build-graph-reflect	@build@/test/tools/test_tools	--build-graph-reflect	@build@/sdk/chibi-build-host
-tool	build-graph-generated	@build@/test/tools/test_tools	--build-graph-generated	@build@/sdk/chibi-build-host
-tool	build-graph-debug-optimization	@build@/test/tools/test_tools	--build-graph-debug-optimization	@build@/sdk/chibi-build-host
-tool	build-graph-programs	@build@/test/tools/test_tools	--build-graph-programs	@build@/sdk/chibi-build-host
-tool	build-sdk	@build@/test/tools/test_tools	--build-sdk	@release@/sdk/chibi-build-host	@release@	
-tool	runtime-sdk	@build@/test/tools/test_tools	--runtime-sdk	@build@/sdk/chibi-build-host
+tool	build-graph	@build@/test/tools/test_tools	--build-graph	@host@
+tool	build-graph-link-response	@build@/test/tools/test_tools	--build-graph-link-response	@host@
+tool	build-graph-support	@build@/test/tools/test_tools	--build-graph-support	@host@
+tool	build-graph-reflect	@build@/test/tools/test_tools	--build-graph-reflect	@host@
+tool	build-graph-generated	@build@/test/tools/test_tools	--build-graph-generated	@host@
+tool	build-graph-debug-optimization	@build@/test/tools/test_tools	--build-graph-debug-optimization	@host@
+tool	build-graph-programs	@build@/test/tools/test_tools	--build-graph-programs	@host@
+tool	build-sdk	@build@/test/tools/test_tools	--build-sdk	@host@	@release@	
+tool	runtime-sdk	@build@/test/tools/test_tools	--runtime-sdk	@host@
 tool	third-party-publish	@build@/test/tools/test_tools	--third-party-publish
 tool	collab	@build@/test/tools/test_tools	--collab
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer

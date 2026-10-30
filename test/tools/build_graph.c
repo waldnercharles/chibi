@@ -992,7 +992,7 @@ TEST_CASE(driver_lists_and_plans_test_selectors)
                                  "projects",        NULL };
     REQUIRE(driver_test(plan, &log));
     bool planned = strstr(log, "chibi-cli: env ") &&
-                   strstr(log, " out/test/tools/test_tools --chibi-cli rel/sdk/chibi") &&
+                   strstr(log, "/out/test/tools/test_tools --chibi-cli /") &&
                    strstr(log, "CHIBI_CLI=") && strstr(log, "/rel/sdk/chibi ");
     if (!planned) {
         fprintf(stderr, "unexpected test plan: %s\n", log);

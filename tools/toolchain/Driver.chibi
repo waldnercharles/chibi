@@ -298,7 +298,8 @@ TestCommand :: (row: string, directory: string, releases: string, host: string) 
         Join(["CHIBI_RELEASE_LANGUAGE_BUILD_DIR=", Absolute(releases), "/test/language"])
     ]
     for (i in 2..<length(fields)) {
-        word := build.replace(build.replace(fields[i], "@build@", directory), "@release@", releases)
+        word := build.replace(fields[i], "@host@", Absolute(host))
+        word = build.replace(build.replace(word, "@build@", Absolute(directory)), "@release@", Absolute(releases))
         command = build.concat(command, [word])
     }
     return command

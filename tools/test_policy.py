@@ -253,8 +253,6 @@ TOOLS = {
                                                  '--package-compiler-chibi-bootstrap'],
     'language-type-relations-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--type-relations-chibi'],
-    'language-unit-algebra-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                  '--unit-algebra-chibi'],
     'language-package-resolution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--package-resolution'],
     'language-package-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -392,7 +390,7 @@ if sys.platform in ASSET_COMPILER_HOST_PLATFORMS:
     GROUPS['language'].append('language-asset-compiler-host')
 # The authored compiler's own @test cases, one Release `chibi test` root per
 # package: the whole compiler is too large to compile as one test closure.
-COMPILER_TEST_PACKAGES = ['package_paths']
+COMPILER_TEST_PACKAGES = ['package_paths', 'unit_algebra']
 for package in COMPILER_TEST_PACKAGES:
     TOOLS[f'compiler-tests-{package}'] = [str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi')), 'test',
                                           str(ROOT / 'tools/compiler' / package)]

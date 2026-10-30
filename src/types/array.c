@@ -88,11 +88,7 @@ static void trace_backing(const void *data, const void *shape, arena_marker mark
     mark(user, array->schema);
     mark(user, array->buckets);
     /* A shared backing reaches what an unshared payload's items reach. */
-    bool reach = pin_array_items_reach(array);
-    for (int i = 0; reach && i < array->count; i++) {
-        pin_value item = pin_array_get(array, i);
-        pin_value_trace(&item, mark, user);
-    }
+    pin_array_trace_items(array, mark, user);
 }
 bool pin_array_trace_backing(const pin_array *array, arena_marker mark, void *user)
 {
@@ -101,6 +97,11 @@ bool pin_array_trace_backing(const pin_array *array, arena_marker mark, void *us
     }
     mark(user, array->backing->anchor);
     return true;
+}
+bool pin_array_collect_backing(const pin_array *array, arena_collection *collection)
+{
+    return array->backing &&
+           arena_collect_mark_held(collection, array->backing->anchor);
 }
 static void backing_attach(pin_array *array, pin_array_backing *backing)
 {

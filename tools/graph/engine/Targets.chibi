@@ -555,7 +555,7 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_application") {
         return ["src/host/application.c", "src/host/application_tools.c", "src/host/application_io.c",
-                "src/host/process.c", "src/host/serve.c"];
+                "src/host/process.c"];
     }
     if (target == "chibi_program_consumer") {
         return ["test/tools/program_consumer.c"];
@@ -1288,7 +1288,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_launcher") {
         return ["host/application.h", "host/application_tools.h", "host/application_io.h",
-                "host/process.h", "host/serve.h",
+                "host/process.h",
                 "toolchain/compiler_syntax.h", "toolchain/compiler_json.h"];
     }
     if (target == "chibi_compiler-syntax") {

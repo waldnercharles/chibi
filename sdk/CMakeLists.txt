@@ -684,7 +684,7 @@ if(TARGET chibi-compile AND TARGET chibi-player)
         "${CHIBI_SDK_ROOT}/src/host/application_tools.c"
         "${CHIBI_SDK_ROOT}/src/host/application_io.c"
         "${CHIBI_SDK_ROOT}/src/host/process.c")
-    foreach(header application application_tools application_io process serve)
+    foreach(header application application_tools application_io process)
         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/launcher/host/${header}.h" COPYONLY)
     endforeach()
@@ -692,10 +692,6 @@ if(TARGET chibi-compile AND TARGET chibi-player)
         configure_file("${CHIBI_SDK_ROOT}/src/toolchain/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/launcher/toolchain/${header}.h" COPYONLY)
     endforeach()
-    # chibi web serves an export on loopback; Windows has no server yet.
-    if(NOT WIN32)
-        target_sources(chibi_application PRIVATE "${CHIBI_SDK_ROOT}/src/host/serve.c")
-    endif()
     target_include_directories(chibi_application PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/private/launcher")
     target_include_directories(chibi_application PRIVATE
         "${CHIBI_SDK_ROOT}/third_party/yyjson")

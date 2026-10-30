@@ -209,6 +209,10 @@ Fields :: (row: string) -> string[] {
 Rows :: () -> string[] {
     rows: string[] = []
     table := os.ReadText("tools/tests.tsv")
+    if (table.error) {
+        os.Print("test: cannot read tools/tests.tsv")
+        return rows
+    }
     for (line in build.lines(table.text)) {
         if (line != "" && !strings.HasPrefix(line, "#")) {
             rows = build.concat(rows, [line])

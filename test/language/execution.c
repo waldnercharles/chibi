@@ -76,6 +76,8 @@ static const type_desc narrow_enum_type = { .name = "fixture.narrow_enum",
                                             .field_count = 1 };
 static const type_desc *const types[] = { &box_type, &c_text_type, &narrow_enum_type };
 
+/* The engine's reflected types follow the fixtures, as in the engine's own
+ * targets, so natives whose defaults are engine structs (vec3) link. */
 int type_catalog_pack_count()
 {
     return 2;

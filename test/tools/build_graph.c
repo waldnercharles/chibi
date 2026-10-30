@@ -689,7 +689,7 @@ static bool debug_optimization_instrumentation(bool instrumented, int frame_mode
             REQUIRE(frames == (instrumented || frame_mode == 1));
             REQUIRE(optimizations == (level != 0));
             const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
-            saw_engine |= strstr(output, "/objects/chibi_engine/") != NULL;
+            saw_engine |= strstr(output, "/objects/chibi_events/") != NULL;
             saw_sdk |= strstr(output, "/objects/chibi_compiler/") != NULL;
             if (strstr(output, "/objects/test_host/") ||
                 strstr(output, "/objects/policy_worker/")) {
@@ -880,7 +880,7 @@ void test_build_graph_debug_optimization(const char *host)
     tool_remove_tree(suite);
 }
 
-/* `chibi build` plans the same steps as the retired make build: a non-Release
+/* `chibi build` plans the same steps as the retired tools/build.sh build: a non-Release
  * profile first builds the Release hosts it borrows, then runs the third-party
  * and graph steps, and a Release build borrows nothing. --dry-run prints the
  * commands without running them. */
@@ -949,9 +949,10 @@ TEST_CASE(driver_plans_the_engine_build_steps)
     return true;
 }
 
-/* `chibi build test` runs the selectors of tools/tests.tsv; --list names them
- * and --dry-run prints the command each selector would run. */
-static bool driver_test(const char *const *options, char **log)
+/* `chibi build VERB` runs one of the driver's verbs. `test` runs the selectors
+ * of tools/tests.tsv; --list names them and --dry-run prints the command each
+ * selector would run. */
+static bool driver_verb(const char *verb, const char *const *options, char **log)
 {
     const char *argv[24] = { host_path,
                              "--root",
@@ -966,7 +967,7 @@ static bool driver_test(const char *const *options, char **log)
                              "50000",
                              "--",
                              "build",
-                             "test" };
+                             verb };
     int count = 14;
     for (int i = 0; options[i]; i++) {
         assert(count < 23);
@@ -982,7 +983,7 @@ TEST_CASE(driver_lists_and_plans_test_selectors)
 {
     char *log = NULL;
     const char *const list[] = { "--list", NULL };
-    REQUIRE(driver_test(list, &log));
+    REQUIRE(driver_verb("test", list, &log));
     bool listed = strstr(log, "tool chibi-cli") &&
                   strstr(log, "group native") && strstr(log, "group language");
     free(log);
@@ -990,7 +991,7 @@ TEST_CASE(driver_lists_and_plans_test_selectors)
     const char *const plan[] = { "--dry-run",       "--build", "out",
                                  "--release-build", "rel",     "chibi-cli",
                                  "projects",        NULL };
-    REQUIRE(driver_test(plan, &log));
+    REQUIRE(driver_verb("test", plan, &log));
     bool planned = strstr(log, "chibi-cli: env ") &&
                    strstr(log, "/out/test/tools/test_tools --chibi-cli /") &&
                    strstr(log, "CHIBI_CLI=") && strstr(log, "/rel/sdk/chibi ");
@@ -1000,10 +1001,50 @@ TEST_CASE(driver_lists_and_plans_test_selectors)
     free(log);
     REQUIRE(planned);
     const char *const unknown[] = { "no-such-selector", NULL };
-    REQUIRE(!driver_test(unknown, &log));
+    REQUIRE(!driver_verb("test", unknown, &log));
     bool rejected = log && strstr(log, "unknown selector 'no-such-selector'");
     free(log);
     REQUIRE(rejected);
+    return true;
+}
+
+TEST_CASE(driver_plans_the_other_verbs)
+{
+    const char *const install[] = { "--dry-run", "--prefix", "/prefix", NULL };
+    char *log = NULL;
+    REQUIRE(driver_verb("install", install, &log));
+    bool planned = strstr(log, "--profile release") &&
+                   strstr(log, "--entry Install") && strstr(log, "--prefix /prefix");
+    free(log);
+    REQUIRE(planned);
+    const char *const refresh[] = { "--dry-run", "--release-build", "rel", NULL };
+    REQUIRE(driver_verb("bootstrap-refresh", refresh, &log));
+    planned = strstr(log, "/rel/sdk/chibi-compiler-host --bootstrap tools/compiler/bootstrap") &&
+              strstr(log, "--recover ") &&
+              strstr(log, "/rel/bootstrap.refresh/compile.json") &&
+              strstr(log, "--seed ") && strstr(log, "--revision ");
+    free(log);
+    REQUIRE(planned);
+    const char *const reflect[] = { "--dry-run", "--libclang-root", "/llvm",
+                                    "--",        "-DFLAG=1",        NULL };
+    REQUIRE(driver_verb("sdk-reflect", reflect, &log));
+    planned = strstr(log, "--entry SDKReflect") &&
+              strstr(log, "--libclang-root /llvm") && strstr(log, "-- -DFLAG=1");
+    free(log);
+    REQUIRE(planned);
+    const char *const format[] = { "--dry-run", "--check", NULL };
+    REQUIRE(driver_verb("format", format, &log));
+    planned = strstr(log, "format: sh tools/clang-format.sh --check");
+    free(log);
+    REQUIRE(planned);
+    const char *const clean[] = { "--dry-run", "--build", "out", NULL };
+    REQUIRE(driver_verb("clean", clean, &log));
+    planned = strstr(log, "clean: rm -rf -- ") && strstr(log, "/out");
+    free(log);
+    REQUIRE(planned);
+    const char *const unknown[] = { "--dry-run", NULL };
+    REQUIRE(!driver_verb("no-such-verb", unknown, &log));
+    free(log);
     return true;
 }
 
@@ -1015,6 +1056,7 @@ void test_build_graph_programs(const char *host)
     RUN_TEST_CASE(named_programs_build_what_they_run);
     RUN_TEST_CASE(driver_plans_the_engine_build_steps);
     RUN_TEST_CASE(driver_lists_and_plans_test_selectors);
+    RUN_TEST_CASE(driver_plans_the_other_verbs);
     RUN_TEST_CASE(invalid_arguments_fail_before_writing_commands);
     RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
     RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);

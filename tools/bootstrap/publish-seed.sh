@@ -1,5 +1,5 @@
 #!/bin/sh
-# Publishes the seed `make bootstrap-artifact` wrote as a release asset and pins
+# Publishes the seed `tools/build.sh build bootstrap-artifact` wrote as a release asset and pins
 # it in tools/bootstrap/seed.tsv; commit that file with bootstrap.json.
 # Usage: tools/bootstrap/publish-seed.sh
 set -eu

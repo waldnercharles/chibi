@@ -131,21 +131,12 @@ static const type_desc *const second_types[] = {
 };
 static const enum_desc *const first_enums[] = { &mode_type };
 static const enum_desc *const second_enums[] = { &duplicate_mode };
-#ifdef CHIBI_TEST_NATIVE_RUNTIME
-bool test_native_catalog_active();
-type_catalog_pack test_native_catalog_pack();
-#endif
 
 int type_catalog_pack_count()
 {
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     if (test_source_runtime_active()) {
         return 2;
-    }
-#endif
-#ifdef CHIBI_TEST_NATIVE_RUNTIME
-    if (test_native_catalog_active()) {
-        return 3;
     }
 #endif
     return 2;
@@ -157,11 +148,6 @@ type_catalog_pack type_catalog_pack_at(int index)
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     if (test_source_runtime_active()) {
         return index ? TEST_REFLECTED_TYPES_PACK : TYPE_PACK;
-    }
-#endif
-#ifdef CHIBI_TEST_NATIVE_RUNTIME
-    if (index == 2) {
-        return test_native_catalog_pack();
     }
 #endif
     if (index == 0) {

@@ -4,11 +4,8 @@
 # Generated from the retired tools/test_policy.py tables; edit it by hand now.
 tool	types	@build@/test/tools/test_tools	--types
 tool	execution-scope	@build@/test/language/test_language	--execution-scope
-tool	audio-analysis	@build@/test/tools/test_tools	--audio-analysis
 tool	studio-panel-idle	build-studio/bin/studio-acceptance	--panel-idle	--project-root	
-tool	tilemap	@build@/test/tools/test_tools	--tilemap
 tool	shader-parameters-prepared	@build@/test/tools/test_tools	--shader-parameters-prepared
-tool	shader-source-debug	@build@/test/tools/test_tools	--shader-source-debug
 tool	ecs-query	@build@/test/tools/test_tools	--ecs-query
 tool	ecs-strings	@build@/test/tools/test_tools	--ecs-strings
 tool	ecs-query-benchmark	@build@/test/tools/test_tools	--ecs-query-benchmark
@@ -39,40 +36,20 @@ tool	build-graph-debug-optimization	@build@/test/tools/test_tools	--build-graph-
 tool	build-graph-programs	@build@/test/tools/test_tools	--build-graph-programs	@host@
 tool	build-sdk	@build@/test/tools/test_tools	--build-sdk	@host@	@release@	
 tool	runtime-sdk	@build@/test/tools/test_tools	--runtime-sdk	@host@
-tool	third-party-publish	@build@/test/tools/test_tools	--third-party-publish
 tool	collab	@build@/test/tools/test_tools	--collab
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
 tool	whole-conversion	@build@/test/tools/test_tools	--whole-conversion
 tool	whole-select	@build@/test/tools/test_tools	--whole-select
 tool	whole-math	@build@/test/tools/test_tools	--whole-math
-tool	material-destruction	@build@/test/tools/test_tools	--material-destruction
-tool	material-fluids	@build@/test/tools/test_tools	--material-fluids
-tool	material-mpm	@build@/test/tools/test_tools	--material-mpm
-tool	material-simulation	@build@/test/tools/test_tools	--material-simulation
-tool	material-ecs	@build@/test/tools/test_tools	--material-ecs
-tool	material-benchmark	@build@/test/tools/test_tools	--material-benchmark
-tool	scene-prepared	@build@/test/tools/test_tools	--scene-prepared
-tool	native-catalog	@build@/test/tools/test_tools	--native-catalog
 tool	native-values	@build@/test/tools/test_tools	--native-values
 tool	text-format	@build@/test/language/test_language	--text-format
 tool	box3d	@build@/test/tools/test_tools	--box3d
-tool	sky-files	@build@/test/tools/test_tools	--sky-files
-tool	shader-bake	@build@/test/tools/test_tools	--shader-bake
-tool	terrain-seams	@build@/test/tools/test_tools	--terrain-seams
-tool	material-surface-mesh	@build@/test/tools/test_tools	--material-surface-mesh
-tool	terrain-checkpoint	@build@/test/tools/test_tools	--terrain-checkpoint
-tool	terrain-storage	@build@/test/tools/test_tools	--terrain-storage
 tool	native-runtime	@build@/test/tools/test_tools	--native
-tool	physics	@build@/test/tools/test_tools	--physics
-tool	physics3d	@build@/test/tools/test_tools	--physics3d
-tool	transforms	@build@/test/tools/test_tools	--transforms
-tool	field-runtime	@build@/test/language/test_language	--field-runtime
 tool	runtime-scene	@build@/test/tools/test_tools	--scene
 tool	asset-values	@build@/test/tools/test_tools	--asset-values
 tool	ui-document	@build@/test/tools/test_tools	--ui-document
 tool	text-files	@build@/test/tools/test_tools	--text-files
 tool	fmt	@build@/test/tools/test_tools	--fmt
-tool	particles	@build@/test/tools/test_tools	--particles
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
 tool	language-build-workflow	@build@/test/language/test_language	--build-workflow
 tool	scheduler-benchmark	@build@/test/tools/test_tools	--scheduler-benchmark
@@ -120,7 +97,6 @@ tool	language-component-write-layout	@build@/test/language/test_language	--compo
 tool	language-component-write	@build@/test/language/test_language	--component-write
 tool	language-record-compatibility	@build@/test/language/test_language	--record-compatibility
 tool	language-record-document	@build@/test/language/test_language	--record-document
-tool	language-record-services	@build@/test/language/test_language	--record-services
 tool	language-record-values	@build@/test/language/test_language	--record-values
 tool	language-program-session	@build@/test/language/test_language	--program-session
 tool	language-program	@build@/test/language/test_language	--program
@@ -158,9 +134,8 @@ tool	wasm-package-compiler-chibi-literals	node	build-wasm-language/test_language
 tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math	wasm-package-compiler-chibi	wasm-package-compiler-chibi-compiled
-group	native	native-runtime	native-catalog	native-values	audio-analysis	build-graph-link-response	physics	physics3d	transforms	box3d	sky-files	tilemap	runtime-scene	scene-prepared	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	particles	arena	shader-bake	shader-source-debug	terrain-seams	terrain-storage	material-surface-mesh
-group	projects	terrain-checkpoint	chibi-cli	native-build
-group	materials	material-destruction	material-fluids	material-mpm	material-simulation	material-ecs
-group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	language-package-math	chibi-test-compiler	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages	language-host-packages-compiler	field-runtime	text-format	language-compiler-fixture	language-compositional-records	language-package-compiler-chibi-scalar	language-package-compiler-chibi-fallible	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-behaviors-rest	language-integer-semantics	language-integer-shift-counts	language-integer-shift-counts-authored	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
+group	native	native-runtime	native-values	build-graph-link-response	box3d	runtime-scene	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	arena
+group	projects	chibi-cli	native-build
+group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	language-package-math	chibi-test-compiler	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages	language-host-packages-compiler	text-format	language-compiler-fixture	language-compositional-records	language-package-compiler-chibi-scalar	language-package-compiler-chibi-fallible	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-behaviors-rest	language-integer-semantics	language-integer-shift-counts	language-integer-shift-counts-authored	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
 group	compiler	language-package-compiler-chibi	language-package-compiler-chibi-compiled	language-package-compiler-chibi-types	language-package-compiler-chibi-fallible	language-package-compiler-chibi-types-compiled	language-package-compiler-chibi-collections	language-package-compiler-chibi-collections-compiled	language-package-compiler-chibi-literals	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-actions	language-package-compiler-chibi-behaviors-rest	language-package-compiler-chibi-queries	language-package-compiler-chibi-libraries	language-package-compiler-chibi-sharing	language-package-compiler-chibi-debug-free	language-package-compiler-chibi-native-arguments	language-package-compiler-chibi-native-arguments-oracle	language-package-compiler-chibi-scalar	language-package-compiler-chibi-imports	language-package-compiler-chibi-imports-compiled	language-package-compiler-chibi-bootstrap
-group	benchmarks	ecs-query-benchmark	native-workload-benchmark	material-benchmark	scheduler-benchmark	language-package-math-benchmark
+group	benchmarks	ecs-query-benchmark	native-workload-benchmark	scheduler-benchmark	language-package-math-benchmark

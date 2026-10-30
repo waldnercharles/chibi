@@ -270,6 +270,49 @@ InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: i
     return WordStorage;
 }
 
+// A local initializer built only from literals and arithmetic takes the
+// storage its literals spell, as a lone literal does: `1 + 2` is int, `1 + 2.5`
+// is number, and a literal beyond int widens the result. A shift keeps its left
+// operand's storage. Anything else is 0.
+ConstantExpressionStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    expression := Unparenthesized(forest, node);
+    spelled := InferredNumberStorage(forest, text, expression);
+    if (spelled != 0) {
+        return spelled;
+    }
+    if (Is(forest, expression, "unary_expression")) {
+        sign := Text(forest, text, Field(forest, expression, "operator"));
+        if (sign == "-" || sign == "+" || sign == "~") {
+            return ConstantExpressionStorage(forest, text, Field(forest, expression, "operand"));
+        }
+        return 0;
+    }
+    if (!Is(forest, expression, "binary_expression")) {
+        return 0;
+    }
+    operator := Text(forest, text, Field(forest, expression, "operator"));
+    shifts := operator == "<<" || operator == ">>";
+    if (!shifts && operator != "+" && operator != "-" && operator != "*" && operator != "/" && operator != "%" &&
+        operator != "&" && operator != "|" && operator != "^") {
+        return 0;
+    }
+    left := ConstantExpressionStorage(forest, text, Field(forest, expression, "left"));
+    right := ConstantExpressionStorage(forest, text, Field(forest, expression, "right"));
+    if (left == 0 || right == 0) {
+        return 0;
+    }
+    if (shifts) {
+        return left;
+    }
+    if (left == FloatStorage || right == FloatStorage) {
+        return FloatStorage;
+    }
+    if (left > right) {
+        return left;
+    }
+    return right;
+}
+
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 // A function's named results are locals from `named` on.
@@ -378,7 +421,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 }
                 expected = Expect(value, resolved.storage, resolved.container, resolved.record);
             } else {
-                inferred := InferredNumberStorage(forest, text, value);
+                inferred := ConstantExpressionStorage(forest, text, value);
                 if (inferred > 0) {
                     expected = Expect(value, inferred, 0, -1);
                 }
@@ -673,6 +716,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 code.extend(NumberCode(ops, result.storage, local.storage, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, local.storage, 0, -1);
             }
+            wrap := OptionalFor(types, local.storage, local.container, local.record, result);
+            if (wrap >= 0) {
+                wrap_slot := at.slot + length(slots);
+                wrap_cell := at.cell + length(cells);
+                code.extend(OptionalWrapCode(result, ops, target, wrap_slot, wrap_cell, at.host + length(hosts), node));
+                slots.extend(OptionalWrapSlots(target));
+                cells.extend(OptionalWrapCells(types, wrap, result));
+                hosts.append(OptionalWrapHost(wrap_cell));
+                result = OptionalWrapValue(wrap_slot, wrap_cell, wrap);
+            }
             if (!Accepts(types, local.storage, local.container, local.record, result)) {
                 return Fail(forest, item.node, document, "local value differs from its type");
             }
@@ -770,6 +823,13 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, item.node, document,
                             format_text("Mismatched integer types {} and {}; convert one operand",
                                         TypeName(binding.storage), TypeName(result.storage)));
+            }
+            // Storing an absent or plain value into an optional local needs the
+            // cell write to copy a union that has no cell, which is not supported yet.
+            if (Is(forest, StatementValue(forest, item.node), "nil") && binding.storage == UnionStorage &&
+                binding.container == 0 && binding.record >= 0 && binding.record < length(types) &&
+                types[binding.record].kind == OptionalDecl) {
+                return Fail(forest, item.node, document, "assigning nil to an optional local is not supported yet");
             }
             if (binding.place == NarrowedPlace) {
                 if (operator != "") {
@@ -883,6 +943,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 slots.append(widened);
                 code.extend(NumberCode(ops, result.storage, callable.result, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, callable.result, 0, -1);
+            }
+            wrap := OptionalFor(types, callable.result, callable.result_container, callable.result_record, result);
+            if (wrap >= 0) {
+                wrap_slot := at.slot + length(slots);
+                wrap_cell := at.cell + length(cells);
+                code.extend(OptionalWrapCode(result, ops, target, wrap_slot, wrap_cell, at.host + length(hosts), node));
+                slots.extend(OptionalWrapSlots(target));
+                cells.extend(OptionalWrapCells(types, wrap, result));
+                hosts.append(OptionalWrapHost(wrap_cell));
+                result = OptionalWrapValue(wrap_slot, wrap_cell, wrap);
             }
             if (!Returns(types, callable.result, callable.result_container, callable.result_record, result) &&
                 !Accepts(types, callable.result, callable.result_container, callable.result_record, result)) {
@@ -1234,7 +1304,20 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
         }
     }
-    if (kind == "nil" || (kind == "number" && item.storage == HandleStorage && item.container == 0)) {
+    // A literal where an optional is expected is its element; the statement
+    // that stores it wraps it.
+    if ((kind == "number" || kind == "boolean" || kind == "string") && item.storage == UnionStorage &&
+        item.container == 0 && item.record >= 0 && item.record < length(types) &&
+        types[item.record].kind == OptionalDecl) {
+        element := OptionalElement(types, Typed(-1, item.storage, item.container, item.record));
+        item.storage = element.storage;
+        item.container = element.container;
+        item.record = element.record;
+    }
+    // `nil` where an optional is expected is the absent optional, below.
+    absent := kind == "nil" && item.storage == UnionStorage && item.container == 0 && item.record >= 0 &&
+              item.record < length(types) && types[item.record].kind == OptionalDecl;
+    if ((kind == "nil" && !absent) || (kind == "number" && item.storage == HandleStorage && item.container == 0)) {
         empty := kind == "nil" && Text(forest, text, item.node) == "null";
         if (kind == "number") {
             switch NumberBits(forest, text, item.node) {

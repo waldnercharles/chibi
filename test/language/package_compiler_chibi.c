@@ -3107,6 +3107,28 @@ static const sample samples[] = {
                  { .function = "First", .arguments = "[]", .expected = "[7]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
                  { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "optional locals start absent and become present",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Main :: () -> int { absent: int? = nil; present: int? = 4; r := 0; if absent { r += 100; } if present { r += present - 1; } return r; }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[3]" } } },
+    { .name = "optional results wrap values and return nil",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Find :: (n: int) -> int? { if n > 2 { return n; } return nil; }" "\n"
+                "Main :: () -> int { a := Find(1); b := Find(5); r := 0; if a { r += 100; } if b { r += b; } return r; }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[5]" } } },
+    { .name = "optional parameters take optionals and nil",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Pick :: (v: int?) -> int { if v { return v; } return 9; }" "\n"
+                "Main :: () -> int { some: int? = 3; none: int? = nil; return Pick(some) * 10 + Pick(none) + Pick(nil); }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[48]" } } },
+    { .name = "optional coalescing and nil comparisons",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Main :: () -> int { x: int? = nil; y: int? = 7; r := (x ?? 3) * 10 + (y ?? 1); if y != nil { r += 100; } if x == nil { r += 1000; } return r + (x ?? y ?? 8); }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[1144]" } } },
     { .name = "generic collection and optional values preserve ownership",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"

@@ -559,6 +559,7 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Wi
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_bootstrap.c"
+        "${CHIBI_SDK_ROOT}/src/support/binary_cache.c"
         "${CHIBI_SDK_ROOT}/src/support/sha256.c")
     foreach(header compiler_artifact compiler_bootstrap compiler_host compiler_json compiler_syntax
             compiler_target)
@@ -567,6 +568,10 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Wi
     endforeach()
     configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host/support/sha256.h" COPYONLY)
+    configure_file("${CHIBI_SDK_ROOT}/src/support/binary_cache.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host/support/binary_cache.h" COPYONLY)
+    configure_file("${CHIBI_SDK_ROOT}/src/support/file_io.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host/support/file_io.h" COPYONLY)
     target_include_directories(chibi_compiler_host PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host")
     target_include_directories(chibi_compiler_host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")

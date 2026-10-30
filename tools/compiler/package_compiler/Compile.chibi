@@ -674,6 +674,14 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
         return ReadTypeSuffixes(forest, node, table, {storage: UnionStorage, container: MapContainer, record: declared},
                                 package, view);
     }
+    application := ApplicationNode(forest, node);
+    if (application >= 0) {
+        found := FindType(table^, package, ApplicationName(forest, text, table^, package, application));
+        if (found < 0) {
+            return none;
+        }
+        return ReadTypeSuffixes(forest, node, table, {storage: StructStorage, container: 0, record: found}, package, view);
+    }
     first := FirstMember(forest, Field(forest, node, "name"));
     if (first < 0) {
         return none;
@@ -704,7 +712,7 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
         }
     }
     declared := FindType(table^, home, name);
-    if (declared < 0) {
+    if (declared < 0 || table^[declared].kind == TemplateDecl) {
         return none;
     }
     storage := StructStorage;
@@ -1009,6 +1017,19 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                 if (FindType(types, package, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
+                if (record && Field(forest, member, "parameters") >= 0) {
+                    // A template has no values of its own: its applications are records.
+                    template: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), package: package,
+                                          node: member, kind: TemplateDecl, first: 0, count: 0, size: 0, parent: -1,
+                                          storage: 0,
+                                          id: binding.ID("package-symbol", format_text("{}:{}:{}", documents[files[0]].identity,
+                                                                                       TypeKind, name)),
+                                          layout: 0, component: 0, key: 0, value_storage: 0, value_container: 0,
+                                          value_record: -1, error: false};
+                    types.append(template);
+                    member = NextMember(forest, member);
+                    continue;
+                }
                 declared: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), package: package,
                                       node: member,
                                       kind: RecordDecl, first: length(members), count: 0, size: 0, parent: -1,
@@ -1085,6 +1106,23 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             member = NextMember(forest, member);
         }
     }
+    instance_records: int[] = [];
+    instance_files: int[] = [];
+    instance_starts: int[] = [];
+    instance_counts: int[] = [];
+    instance_bound: Name[] = [];
+    switch InstantiateRecords(forest, documents, files, package, package_name, documents[files[0]].identity, types, members) {
+        case .Failed(diagnostic):
+            return Declarations.Failed(diagnostic);
+        case .Collected(more_types, more_members, records, record_files, starts, counts, bound):
+            types = more_types;
+            members = more_members;
+            instance_records = records;
+            instance_files = record_files;
+            instance_starts = starts;
+            instance_counts = counts;
+            instance_bound = bound;
+    }
     for (file in files) {
         types = DeclarePointers(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
         types = DeclareMaps(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
@@ -1133,7 +1171,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
     // links carry identity but do not participate in inline layout cycles.
     for (file in files) {
         for (declaration in Members(forest, documents[file].syntax_root)) {
-            if (!Is(forest, declaration, "record_declaration")) {
+            if (!Is(forest, declaration, "record_declaration") || Field(forest, declaration, "parameters") >= 0) {
                 continue;
             }
             holder := FindType(types, package, Text(forest, documents[file].text, Field(forest, declaration, "name")));
@@ -1159,6 +1197,14 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                 index += 1;
             }
         }
+    }
+    switch ResolveInstances(forest, documents, links, package, types, members, instance_records, instance_files,
+                            instance_starts, instance_counts, instance_bound) {
+        case .Failed(diagnostic):
+            return Declarations.Failed(diagnostic);
+        case .Read(more_types, more_members):
+            types = more_types;
+            members = more_members;
     }
     // Each type is solved once. Child summaries prevent repeated references
     // from expanding recursively during size, alignment, depth and hash work.
@@ -1272,7 +1318,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
         if (unresolved && !progress) {
             for (file in files) {
                 for (declaration in Members(forest, documents[file].syntax_root)) {
-                    if (Is(forest, declaration, "record_declaration")) {
+                    if (Is(forest, declaration, "record_declaration") && Field(forest, declaration, "parameters") < 0) {
                         holder := FindType(types, package, Text(forest, documents[file].text,
                                                                 Field(forest, declaration, "name")));
                         if (record_alignments[holder] == 0) {

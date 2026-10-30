@@ -139,7 +139,7 @@ Compiler inputs are separate from the build program's imports:
 
 | Option | Meaning |
 | --- | --- |
-| `--compiler DIR` | Compiler sources, including `bootstrap.txt`, `bootstrap/bootstrap.json` and `bootstrap/compiler.chibip`. |
+| `--compiler DIR` | Compiler sources, including `bootstrap.kdl`, `bootstrap/bootstrap.json` and `bootstrap/compiler.chibip`. |
 | `--compiler-core DIR` | The core collection used to recover that compiler. |
 | `--core DIR` | An optional core collection imported by the build program itself. |
 | `--collection NAME=DIR` | Another collection imported by the build program. |
@@ -158,11 +158,32 @@ are visible.
 contract, full prepared target/native ABI and source completeness. Matching
 source hashes load the recorded closure directly. Changed existing source bytes
 use the self-hosted recovery path: the seed compiles the current compiler, and
-that compiler must reproduce itself in a second compile. Both paths return an
-owned generation without writing an artifact or persistent cache into the SDK.
-The C API borrows it through `chibi_build_options.compiler`; reuse it sequentially
-and reload it after compiler source edits. Release it with
-`chibi_build_compiler_free`.
+that compiler must reproduce itself in a second compile, which takes minutes.
+Both paths return an owned generation and write no artifact into the SDK.
+
+The recovered compiler is kept in a cache so that only the first start after a
+compiler-source change pays for the recovery, as Zig keeps its global cache. The
+build host stores it in `.chibi/compiler-cache` below `--root`, or in the
+directory `CHIBI_COMPILER_CACHE` names; `CHIBI_COMPILER_CACHE=off` disables it.
+An entry is named by the SHA-256 of what decides its bytes: the seed's closure,
+Compile's arguments (every compiler and core source's path and text, and the
+target description), the prepared format and the host executable's own bytes.
+Each entry is framed with the SHA-256 of its payload, written to a temporary
+file and renamed into place under a publication lock, so a reader sees a whole
+entry or none. A load that finds an entry reads it back, checks its frame and
+loads it as a compiler for this target; any failure removes it and recovers
+again. This is safe where a snapshot of the sources would not be: the key
+covers every input, nothing is trusted unread, and a stale entry is never
+named. It has no eviction, because a key changes only with a compiler edit;
+delete the directory to reclaim it. Windows does not cache. The recovery proofs
+never use it: `chibi-compiler-host --bootstrap ... [--recover FILE]`, `make
+test-recovery` and the compiler-recovery workflow call the check path, which
+neither reads nor writes the cache, so they always recover from the seed.
+
+The C API borrows the generation through `chibi_build_options.compiler`; reuse
+it sequentially and reload it after compiler source edits. Release it with
+`chibi_build_compiler_free`. `chibi_build_compiler_load` takes the cache
+directory, or NULL for no cache.
 
 When changing the prepared format, the checked bootstrap cannot yet run on the
 new runtime. `make bootstrap-artifact` first builds the compiler-only SDK language
@@ -797,7 +818,7 @@ folder). It runs in two steps:
 `bootstrap.json` records these fields:
 
 - `format`: the manifest format this host reads, 1.
-- `version` and `minimum`: copied from `tools/compiler/bootstrap.txt`.
+- `version` and `minimum`: copied from `tools/compiler/bootstrap.kdl`.
 - `revision`: the tree's `git describe --dirty` revision.
 - `entry`: `CompileClosure`'s entry ID.
 - `closure`: its file, length and SHA-256.
@@ -814,7 +835,7 @@ folder). It runs in two steps:
   - the natives and their ports;
   - each native's identity and signature ABI.
 
-`tools/compiler/bootstrap.txt` is the sources' bootstrap contract. `version` is
+`tools/compiler/bootstrap.kdl` is the sources' bootstrap contract. `version` is
 the bootstrap version a compiler built from them has. `minimum` is the oldest
 version that can compile them. Update language dependencies in two steps:
 1. When the compiler gains a feature, raise `version` and produce an artifact.
@@ -947,7 +968,7 @@ compiler generates for itself need no new seed. A new file needs a line in
 A language feature takes two PRs, as in Zig, where a feature lands before
 `zig1.wasm` is rebuilt and only then do `stage2` sources use it:
 1. Add the feature to the compiler and raise `version` in
-   `tools/compiler/bootstrap.txt`. The compiler sources themselves must not use
+   `tools/compiler/bootstrap.kdl`. The compiler sources themselves must not use
    the feature yet, because the checked seed cannot compile it. Run
    `make bootstrap-artifact` and commit the seed with this change.
 2. Use the feature in the compiler sources and raise `minimum` to that

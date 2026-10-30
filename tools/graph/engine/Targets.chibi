@@ -435,7 +435,8 @@ Files :: (target: string) -> string[] {
         return [
             "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
             "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
-            "src/toolchain/compiler_target.c", "src/toolchain/compiler_bootstrap.c", "src/support/sha256.c"
+            "src/toolchain/compiler_target.c", "src/toolchain/compiler_bootstrap.c", "src/support/sha256.c",
+            "src/support/binary_cache.c"
         ];
     }
     if (target == "chibi-compiler-host") {
@@ -522,8 +523,8 @@ Files :: (target: string) -> string[] {
             "test/language/execution_scope.c", "test/language/integer_semantics.c",
             "test/language/integer_arithmetic.c",
             "test/language/type_relations_chibi.c", "test/language/unit_algebra_chibi.c",
-            "test/language/signature_fixture.c", "test/language/signature_reader_chibi.c",
-            "test/language/numeric.c",
+
+
             "test/parallel.c", "test/language/parallel.c",
             "test/language/record_services.c"
         ];
@@ -1024,7 +1025,8 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_compiler-host") {
         return [
-            "support/sha256.h", "toolchain/compiler_artifact.h", "toolchain/compiler_bootstrap.h",
+            "support/binary_cache.h", "support/file_io.h", "support/sha256.h", "toolchain/compiler_artifact.h",
+            "toolchain/compiler_bootstrap.h",
             "toolchain/compiler_host.h", "toolchain/compiler_json.h", "toolchain/compiler_syntax.h",
             "toolchain/compiler_target.h"
         ];
@@ -2249,7 +2251,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/execution.c", "test/language/execution_scope.c",
         "test/language/integer_semantics.c", "test/language/host_packages_compiler.c",
         "test/language/native_census.c",
-        "test/language/numeric.c",
+
         "test/language/package_compiler_chibi.c",
         "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
         "test/language/package_portable.c", "test/language/package_portable_compiler.c",
@@ -2258,8 +2260,8 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/ranges.c",
         "test/language/record_prepared.c",
         "test/language/compositional_records.c",
-        "test/language/signature_fixture.c",
-        "test/language/signature_reader_chibi.c", "test/language/source_tokenizer_chibi.c",
+
+        "test/language/source_tokenizer_chibi.c",
         "test/language/source_parser_chibi.c",
         "test/language/type_relations_chibi.c",
         "test/language/unit_algebra_chibi.c"

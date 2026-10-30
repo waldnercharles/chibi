@@ -4,11 +4,7 @@
 # Generated from the retired tools/test_policy.py tables; edit it by hand now.
 tool	types	@build@/test/tools/test_tools	--types
 tool	execution-scope	@build@/test/language/test_language	--execution-scope
-tool	player-clock	@build@/test/tools/test_tools	--player-clock
-tool	player-url	@build@/test/tools/test_tools	--player-url
-tool	audio-browser	@build@/test/tools/test_tools	--audio-browser
 tool	audio-analysis	@build@/test/tools/test_tools	--audio-analysis
-tool	shader-webgpu	@build@/test/tools/test_tools	--shader-webgpu
 tool	studio-panel-idle	build-studio/bin/studio-acceptance	--panel-idle	--project-root	
 tool	tilemap	@build@/test/tools/test_tools	--tilemap
 tool	shader-parameters-prepared	@build@/test/tools/test_tools	--shader-parameters-prepared
@@ -57,9 +53,6 @@ tool	material-mpm	@build@/test/tools/test_tools	--material-mpm
 tool	material-simulation	@build@/test/tools/test_tools	--material-simulation
 tool	material-ecs	@build@/test/tools/test_tools	--material-ecs
 tool	material-benchmark	@build@/test/tools/test_tools	--material-benchmark
-tool	material-render	@build@/test/tools/test_tools	--material-render
-tool	render-resources	@build@/test/tools/test_tools	--render-resources
-tool	render-geometry	@build@/test/tools/test_tools	--render-geometry
 tool	scene-prepared	@build@/test/tools/test_tools	--scene-prepared
 tool	native-catalog	@build@/test/tools/test_tools	--native-catalog
 tool	native-values	@build@/test/tools/test_tools	--native-values
@@ -69,12 +62,8 @@ tool	sky-files	@build@/test/tools/test_tools	--sky-files
 tool	shader-bake	@build@/test/tools/test_tools	--shader-bake
 tool	terrain-seams	@build@/test/tools/test_tools	--terrain-seams
 tool	material-surface-mesh	@build@/test/tools/test_tools	--material-surface-mesh
-tool	scene3d-camera	@build@/test/tools/test_tools	--scene3d-camera
-tool	scene3d-volume	@build@/test/tools/test_tools	--scene3d-volume
-tool	scene3d-terrain	@build@/test/tools/test_tools	--scene3d-terrain
 tool	terrain-checkpoint	@build@/test/tools/test_tools	--terrain-checkpoint
 tool	terrain-storage	@build@/test/tools/test_tools	--terrain-storage
-tool	terrain-playable-render	@build@/test/tools/test_tools	--terrain-playable-render	dist/sdk/bin/chibi-player			dist/sdk/share/chibi/shaders	.chibi/environment-authoring/terrain-playable-render
 tool	native-runtime	@build@/test/tools/test_tools	--native
 tool	physics	@build@/test/tools/test_tools	--physics
 tool	physics3d	@build@/test/tools/test_tools	--physics3d
@@ -86,7 +75,6 @@ tool	ui-document	@build@/test/tools/test_tools	--ui-document
 tool	text-files	@build@/test/tools/test_tools	--text-files
 tool	fmt	@build@/test/tools/test_tools	--fmt
 tool	particles	@build@/test/tools/test_tools	--particles
-tool	png-encoding	@build@/test/tools/test_tools	--png-encoding
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
 tool	language-build-workflow	@build@/test/language/test_language	--build-workflow
 tool	script-benchmark	@build@/test/language/test_language	--script-benchmark
@@ -162,7 +150,6 @@ tool	language-execution	@build@/test/language/test_language	--execution
 tool	language	@build@/test/language/test_language	--syntax	--corpus	@build@/test/language/corpus.txt
 tool	wasm-browser	@build@/test/tools/test_tools	--wasm-browser
 tool	web-storage	@build@/test/tools/test_tools	--web-storage
-tool	webgpu-staging	@build@/test/tools/test_tools	--webgpu-staging
 tool	native-tools	@build@/test/tools/test_tools
 tool	reflect-ranges	@build@/test/tools/test_tools	--reflect-ranges
 tool	language-i	@build@/test/language/test_language	--i
@@ -213,9 +200,9 @@ tool	wasm-package-portable-compiler	node	build-wasm-language/test_language.js	--
 tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-integer-arithmetic	wasm-package-math	wasm-package-compiler-chibi	wasm-package-compiler-chibi-compiled	wasm-package-portable	wasm-package-portable-compiler
-group	native	native-runtime	native-catalog	native-values	audio-analysis	shader-webgpu	player-url	player-clock	build-graph-link-response	physics	physics3d	transforms	box3d	sky-files	tilemap	runtime-scene	scene-prepared	render-resources	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	vector-nodes	asset-values	ui-document	text-files	fmt	particles	png-encoding	render-geometry	arena	shader-bake	shader-source-debug	terrain-seams	terrain-storage	material-surface-mesh	scene3d-camera	scene3d-volume	scene3d-terrain
+group	native	native-runtime	native-catalog	native-values	audio-analysis	build-graph-link-response	physics	physics3d	transforms	box3d	sky-files	tilemap	runtime-scene	scene-prepared	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	vector-nodes	asset-values	ui-document	text-files	fmt	particles	arena	shader-bake	shader-source-debug	terrain-seams	terrain-storage	material-surface-mesh
 group	projects	terrain-checkpoint	chibi-cli	native-build
-group	materials	material-destruction	material-fluids	material-mpm	material-simulation	material-ecs	material-render
+group	materials	material-destruction	material-fluids	material-mpm	material-simulation	material-ecs
 group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	language-package-math	language-package-tests	language-argument-effects-chibi	language-package-core	language-package-portable	language-package-portable-compiler	language-host-packages	language-host-packages-compiler	field-runtime	text-format	language-shader-source-chibi	language-compiler-fixture	language-compositional-records	language-package-compiler-chibi-scalar	language-package-compiler-chibi-fallible	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-behaviors-rest	language-integer-semantics	language-integer-arithmetic	language-integer-shift-counts	language-integer-shift-counts-authored	language-asset-packaging-chibi	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
 group	compiler	language-package-compiler-chibi	language-package-compiler-chibi-compiled	language-package-compiler-chibi-types	language-package-compiler-chibi-fallible	language-package-compiler-chibi-types-compiled	language-package-compiler-chibi-collections	language-package-compiler-chibi-collections-compiled	language-package-compiler-chibi-literals	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-actions	language-package-compiler-chibi-behaviors-rest	language-package-compiler-chibi-queries	language-package-compiler-chibi-libraries	language-package-compiler-chibi-sharing	language-package-compiler-chibi-debug-free	language-package-compiler-chibi-native-arguments	language-package-compiler-chibi-native-arguments-oracle	language-package-compiler-chibi-scalar	language-package-compiler-chibi-imports	language-package-compiler-chibi-imports-compiled	language-package-compiler-chibi-bootstrap
 group	benchmarks	ecs-query-benchmark	native-workload-benchmark	material-benchmark	script-benchmark	scheduler-benchmark	language-package-math-benchmark

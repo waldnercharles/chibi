@@ -147,8 +147,6 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_asset_json "${CHIBI_SDK_ROOT}/src/support" chibi_asset_values chibi_json)
     chibi_sdk_contract(chibi_source_catalog "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_authoring chibi_ui_document chibi_json chibi_tasks)
-    chibi_sdk_contract(chibi_studio_capabilities "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_native_capabilities chibi_execution)
     chibi_sdk_contract(chibi_text_source "${CHIBI_SDK_ROOT}/src/support" chibi_support chibi_text_search)
     chibi_sdk_contract(chibi_ui_document "${CHIBI_SDK_ROOT}/src" chibi_text_source chibi_ui_document_values)
     chibi_sdk_contract(chibi_ui_authoring "${CHIBI_SDK_ROOT}/src/assets"
@@ -166,17 +164,6 @@ if(CHIBI_SDK_BUILD_COMPILER)
         chibi_source_catalog chibi_native_capabilities chibi_behavior_runtime)
 endif()
 
-if(CHIBI_SDK_BUILD_DESKTOP)
-    chibi_sdk_contract(chibi_platform "${CHIBI_SDK_ROOT}/src/support" chibi_json chibi_support
-        "${CHIBI_DESKTOP_CUTE}")
-    chibi_sdk_contract(chibi_ui_host "${CHIBI_SDK_ROOT}/src" chibi_platform chibi_json chibi_ui_document_values chibi_ui_documents chibi_builtin_fonts chibi_text_search chibi_support
-        "${CHIBI_DESKTOP_RMLUI}" c++ stdc++)
-    chibi_sdk_contract(chibi_renderer "${CHIBI_SDK_ROOT}/src" chibi_platform chibi_ui_host chibi_engine chibi_player
-        chibi_shader_runtime chibi_model_runtime chibi_mesh_runtime chibi_native_types chibi_native_capabilities
-        chibi_particle_runtime chibi_material_runtime chibi_ui_runtime chibi_save_runtime chibi_ui_document_values chibi_ui_documents chibi_visual_catalog
-        chibi_image_catalog chibi_spatial_runtime chibi_support chibi_json chibi_asset_values chibi_task_pool_runtime chibi_tilemap_runtime
-        "-framework Metal" "-framework Foundation")
-endif()
 if(CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_visual_catalog "${CHIBI_SDK_ROOT}/src/render"
         chibi_native_types chibi_shader_runtime chibi_model_runtime chibi_mesh_runtime
@@ -193,13 +180,6 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
         chibi_text_source chibi_ui_authoring chibi_builtin_fonts
         chibi_image_preparation chibi_json chibi_compiler_syntax chibi_compiler_json chibi_text_capabilities chibi_array_capabilities chibi_task_pool_runtime
         chibi_asset_compiler_host)
-    if(CHIBI_SDK_BUILD_DESKTOP)
-        chibi_sdk_contract(chibi_project_preparation "${CHIBI_SDK_ROOT}/src/authoring"
-            chibi_project_compilation chibi_engine chibi_ui_host chibi_renderer
- chibi_host_native_default
- chibi_ui_authoring chibi_image_preparation
-            chibi_declared_components)
-    endif()
 endif()
 
 # Consumers select exported targets as package components, so ChibiConfig

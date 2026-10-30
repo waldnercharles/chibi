@@ -66,7 +66,7 @@ jobs:
           echo "$RUNNER_TEMP/graph-sdk-build-tools/bin" >> "$GITHUB_PATH"
           install -d -m 700 "$XDG_RUNTIME_DIR"
       - name: Build Release graph products and private hosts
-        run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi chibi-compile chibi-player chibi-build-host chibi-compiler-host'
+        run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi chibi-compile chibi-build-host chibi-compiler-host'
       - name: Record Release graph tool identities
         run: |
           sha256sum \
@@ -77,7 +77,7 @@ jobs:
             > "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
           cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Build graph products and test drivers (selected Debug profile)
-        run: make build GRAPH_BUILD=1 BUILD_DIR=build-sdk-tests BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language chibi-compiler-host' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk
+        run: make build GRAPH_BUILD=1 BUILD_DIR=build-sdk-tests BUILD_TARGET='chibi chibi-compile test_tools test_language chibi-compiler-host' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk
       - name: Verify executed graph profile, assertions and links
         run: python3 .github/verify-native-profile.py --build build-sdk-tests --output "$RUNNER_TEMP/graph-sdk-native-profile.json"
       - name: Verify Release graph tools survived the harness build unchanged

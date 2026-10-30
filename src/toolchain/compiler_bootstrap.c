@@ -2,8 +2,6 @@
 
 #include "execution/prepared.h"
 #include "execution/status.h"
-#include "support/asset_text.h"
-#include "support/asset_value.h"
 #include "support/binary_cache.h"
 #include "support/file_io.h"
 #include "support/sha256.h"
@@ -28,7 +26,7 @@
 #define BOOTSTRAP_BUDGET 4000000000u
 #define CLOSURE_FILE "compiler.chibip"
 #define MANIFEST_FILE "bootstrap.json"
-#define CONTRACT_FILE "bootstrap.kdl"
+#define CONTRACT_FILE "bootstrap.txt"
 /* Below the compiler sources: the compiler's sources in Compile's order. */
 #define SOURCES_FILE "asset_compiler/CompilerSources.txt"
 /* Compile's arguments: the project, its collections' names and paths, the
@@ -139,21 +137,22 @@ typedef struct
     int version, minimum;
 } contract;
 
+/* Reads the "version N" and "minimum N" lines; other lines are comments. */
 static bool read_contract(const char *compiler, contract *c, char *error, size_t size)
 {
     char *path = join(compiler, CONTRACT_FILE);
     size_t length;
     char *text = (char *)read_bytes(path, 4096, &length);
-    char reason[256] = "it cannot be read";
-    av_doc *doc = text ? av_doc_read(text, reason, sizeof reason) : NULL;
-    av_value *root = doc ? av_doc_root(doc) : NULL;
-    *c = (contract){ .version = root ? av_get_int(av_obj_get(root, "version")) : 0,
-                     .minimum = root ? av_get_int(av_obj_get(root, "minimum")) : 0 };
+    *c = (contract){ 0 };
+    for (char *line = text; line; line = strchr(line, '\n')) {
+        line += *line == '\n';
+        sscanf(line, "version %d", &c->version);
+        sscanf(line, "minimum %d", &c->minimum);
+    }
     bool valid = c->minimum >= 1 && c->minimum <= c->version;
     if (!valid) {
-        snprintf(error, size, "%s: %s", path, doc ? "needs a version and a minimum from 1 to it" : reason);
+        snprintf(error, size, "%s: %s", path, text ? "needs a version and a minimum from 1 to it" : "it cannot be read");
     }
-    av_doc_free(doc);
     free(text);
     free(path);
     return valid;

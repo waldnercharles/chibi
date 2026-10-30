@@ -5,12 +5,11 @@ if(TARGET chibi_ui_document)
 endif()
 add_library(chibi_text_source STATIC
     "${CHIBI_SDK_ROOT}/src/support/file_watch.c"
-    "${CHIBI_SDK_ROOT}/src/support/code_lex.c"
     "${CHIBI_SDK_ROOT}/src/support/text_file.c"
     "${CHIBI_SDK_ROOT}/src/support/text_overlay.c")
 add_library(Chibi::text_source ALIAS chibi_text_source)
 set_target_properties(chibi_text_source PROPERTIES EXPORT_NAME text_source)
-chibi_sdk_headers(chibi_text_source PUBLIC support/file_watch.h support/code_lex.h support/text_file.h
+chibi_sdk_headers(chibi_text_source PUBLIC support/file_watch.h support/text_file.h
     support/text_overlay.h)
 target_link_libraries(chibi_text_source PUBLIC chibi_support chibi_text_search)
 

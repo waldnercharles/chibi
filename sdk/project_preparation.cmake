@@ -18,12 +18,11 @@ target_link_libraries(chibi_compiler_json PRIVATE chibi_json chibi_native_capabi
 # Offline asset preparation has no display host dependencies.
 add_library(chibi_shader_preparation STATIC
     "${CHIBI_SDK_ROOT}/src/authoring/parts_prepare.c"
-    "${CHIBI_SDK_ROOT}/src/authoring/mesh_prepare.c"
-    "${CHIBI_SDK_ROOT}/src/authoring/visual_prepare.c")
+    "${CHIBI_SDK_ROOT}/src/authoring/mesh_prepare.c")
 add_library(Chibi::shader_preparation ALIAS chibi_shader_preparation)
 set_target_properties(chibi_shader_preparation PROPERTIES EXPORT_NAME shader_preparation)
 chibi_sdk_headers(chibi_shader_preparation PUBLIC
-    authoring/parts_prepare.h authoring/mesh_prepare.h authoring/visual_prepare.h)
+    authoring/parts_prepare.h authoring/mesh_prepare.h)
 target_include_directories(chibi_shader_preparation PRIVATE
     "${CHIBI_SDK_ROOT}/third_party/yyjson")
 target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi_player

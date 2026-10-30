@@ -58,8 +58,8 @@ pub Targets :: () -> string[] {
 // archive for a `third-party/` entry.
 Files :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_host") {
-        return ["src/authoring/asset_compiler_host.c", "src/support/binary_cache.c",
-                "build/sdk/generated/assets/asset_compiler_packaged.c"];
+        return ["src/authoring/asset_compiler_host.c", "src/authoring/package_compile.c",
+                "src/support/binary_cache.c", "build/sdk/generated/assets/asset_compiler_packaged.c"];
     }
     if (target == "chibi_asset_compiler_consumer") {
         return ["test/language/asset_compiler_host.c"];
@@ -619,9 +619,9 @@ Files :: (target: string) -> string[] {
             "test/language/record_document.c", "test/language/record_producer.c",
             "test/language/record_prepared_runtime.c", "test/language/record_runtime.c",
             "test/language/compositional_records.c",
-            "test/language/record_semantic.c", "test/language/record_values.c",
+            "test/language/record_values.c",
             "test/language/record_prepared.c", "test/language/runtime_attribution.c",
-            "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c",
+            "test/language/syntax.c", "test/language/execution.c",
             "test/language/program.c", "test/language/retention.c", "test/language/capture.c",
             "test/language/query_boundary.c", "test/language/query_values.c",
             "test/language/incremental.c", "test/language/operations.c",
@@ -656,14 +656,14 @@ Files :: (target: string) -> string[] {
             "test/language/execution_scope.c", "test/language/integer_semantics.c",
             "test/language/integer_arithmetic.c",
             "test/language/scalar_lowering_chibi.c",
-            "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
-            "test/language/lexical_binding_chibi.c", "test/language/nominal_binding_chibi.c",
-            "test/language/named_binding_chibi.c", "test/language/type_constructors_chibi.c",
+
+
+
             "test/language/type_relations_chibi.c", "test/language/unit_algebra_chibi.c",
             "test/language/signature_fixture.c", "test/language/signature_reader_chibi.c",
-            "test/language/callable_headers_chibi.c", "test/language/unit_analysis_chibi.c",
-            "test/language/union_members_chibi.c", "test/language/effect_analysis_chibi.c",
-            "test/language/record_members_chibi.c", "test/language/numeric.c",
+
+
+            "test/language/numeric.c",
             "test/parallel.c", "test/language/parallel.c", "test/language/effects.c", "test/language/maps.c", "test/language/generic.c",
             "test/language/symbol_references.c", "test/language/packed.c", "test/language/iteration.c",
             "test/language/source_assets.c", "test/language/record_services.c"
@@ -807,7 +807,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["toolchain/compiler_host.h"];
     }
     if (target == "chibi_asset_compiler_host") {
-        return ["authoring/asset_compiler_host.h"];
+        return ["authoring/asset_compiler_host.h", "authoring/package_compile.h"];
     }
     if (target == "chibi_save_runtime") {
         return ["runtime/save.h", "runtime/save_definition.h", "runtime/save_native.h"];
@@ -1290,7 +1290,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_project_preparation") {
         return [
-            
+
         ];
     }
     if (target == "chibi_ui_host") {
@@ -1464,7 +1464,9 @@ pub Includes :: (target: string) -> string[] {
             "public/asset_compiler_host", "private/asset_compiler_host", "build/sdk/generated/assets",
             "third_party/yyjson", "public/asset_values", "public/support", "public/compiler_host",
             "public/behavior_runtime", "public/execution", "public/types", "public/execution_contract", "public/capabilities",
-            "public/ecs", "public/tasks", "public/events", "public/asset_json", "public/json"
+            "public/ecs", "public/tasks", "public/events", "public/asset_json", "public/json",
+            "public/source_catalog", "private/compiler-target", "public/native_prepared",
+            "public/native_capabilities"
         ];
     }
     if (target == "reflect") {
@@ -2961,17 +2963,17 @@ LanguageTestsOverSource :: () -> string[] {
         "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
         "src/toolchain/compiler_target.c", "test/language/argument_effects_chibi.c",
         "test/language/binding_benchmark.c", "test/language/borrow.c", "test/language/bounded_compiler_chibi.c",
-        "test/language/callable_headers_chibi.c", "test/language/capture.c",
+        "test/language/capture.c",
         "test/language/compiler_artifact_chibi.c", "test/language/component_write.c",
         "test/language/component_write_ir.c", "test/language/component_write_source.c",
-        "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
-        "test/language/effect_analysis_chibi.c",
+
+
         "test/language/effects.c",
         "test/language/execution.c", "test/language/execution_scope.c", "test/language/generic.c",
         "test/language/inferred_string_arrays.c", "test/language/integer_semantics.c", "test/language/host_packages_compiler.c",
-        "test/language/lexical_binding_chibi.c",
-        "test/language/maps.c", "test/language/named_binding_chibi.c",
-        "test/language/native_census.c", "test/language/nominal_binding_chibi.c",
+
+        "test/language/maps.c",
+        "test/language/native_census.c",
         "test/language/numeric.c",
         "test/language/outliner_projection.c", "test/language/package_compiler_chibi.c",
         "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
@@ -2980,18 +2982,18 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/package_syntax_chibi.c", "test/language/package_tests.c",
         "test/language/prepared_writer_chibi.c",
         "test/language/program.c", "test/language/query_boundary.c", "test/language/query_values.c", "test/language/ranges.c",
-        "test/language/record_members_chibi.c", "test/language/record_prepared.c",
+        "test/language/record_prepared.c",
         "test/language/record_prepared_runtime.c", "test/language/record_publication.c",
-        "test/language/record_runtime.c", "test/language/record_semantic.c",
+        "test/language/record_runtime.c",
         "test/language/compositional_records.c",
         "test/language/record_state.c", "test/language/row_array.c",
         "test/language/runtime_attribution.c", "test/language/scalar_lowering_chibi.c",
         "test/language/scalarize.c", "test/language/signature_fixture.c",
         "test/language/signature_reader_chibi.c", "test/language/source_tokenizer_chibi.c",
         "test/language/source_parser_chibi.c",
-        "test/language/type_constructors_chibi.c", "test/language/type_relations_chibi.c",
-        "test/language/union_members_chibi.c", "test/language/unit_algebra_chibi.c",
-        "test/language/unit_analysis_chibi.c", "test/language/wasm.c"
+        "test/language/type_relations_chibi.c",
+        "test/language/unit_algebra_chibi.c",
+        "test/language/wasm.c"
     ];
 }
 

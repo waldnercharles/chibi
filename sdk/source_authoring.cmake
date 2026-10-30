@@ -36,5 +36,8 @@ add_library(Chibi::program ALIAS chibi_program)
 set_target_properties(chibi_program PROPERTIES EXPORT_NAME program)
 chibi_sdk_headers(chibi_program PUBLIC authoring/program.h authoring/program_service.h)
 target_link_libraries(chibi_program PUBLIC chibi_source_catalog chibi_native_capabilities chibi_behavior_runtime)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_link_libraries(chibi_program PUBLIC chibi_asset_compiler_host)
+endif()
 
 list(APPEND CHIBI_SDK_TARGETS chibi_source_catalog chibi_program)

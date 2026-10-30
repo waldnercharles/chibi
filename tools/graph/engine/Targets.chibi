@@ -1164,7 +1164,7 @@ pub Includes :: (target: string) -> string[] {
             "public/types", "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
             "public/native_capabilities", "public/reference_index", "public/input_action",
             "public/asset_values",
-            "public/scene_runtime", "public/behavior_runtime", "public/events"
+            "public/scene_runtime", "public/behavior_runtime", "public/events", "public/asset_compiler_host"
         ];
     }
     if (target == "chibi_asset_compiler_consumer") {

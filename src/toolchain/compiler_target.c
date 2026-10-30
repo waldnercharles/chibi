@@ -581,6 +581,20 @@ char *compiler_behavior_catalog_input_json(
     return written(doc, length, true);
 }
 
+/* The platform core:target describes: os 1 Linux, 2 Darwin, 3 Windows; arch 1
+ * x86-64, 2 Arm64. This host is the target of its own compiles. */
+#if defined(_WIN32)
+#define TARGET_OS 3
+#elif defined(__APPLE__)
+#define TARGET_OS 2
+#else
+#define TARGET_OS 1
+#endif
+#if defined(__aarch64__) || defined(_M_ARM64)
+#define TARGET_ARCH 2
+#else
+#define TARGET_ARCH 1
+#endif
 char *compiler_package_catalog_request_json(
     const char *project,
     const char *const *names,
@@ -616,6 +630,8 @@ char *compiler_package_catalog_request_json(
     add_target(doc, arguments, &input);
     add_types(doc, arguments, &input);
     yyjson_mut_arr_add_uint(doc, arguments, catalog->entity_type);
+    yyjson_mut_arr_add_int(doc, arguments, TARGET_OS);
+    yyjson_mut_arr_add_int(doc, arguments, TARGET_ARCH);
     add_effects(doc, yyjson_mut_arr_add_arr(doc, arguments), &input);
     afree(input.natives);
     return written(doc, length, true);

@@ -1,7 +1,9 @@
 #include "authoring/package_tests.h"
 
 #include "execution/function.h"
+#include "execution/log.h"
 #include "execution/module.h"
+#include "execution/service.h"
 #include "execution/status.h"
 #include "runtime/tasks.h"
 #include "support/arena.h"
@@ -183,6 +185,13 @@ static int refuse_task(behavior_function_context *context, int)
     return FLOW_ERR_INVALID_GRAPH;
 }
 
+static void print(void *, const execution_log_message *message)
+{
+    fwrite(message->text, 1, message->text_length, stdout);
+    fputc('\n', stdout);
+    fflush(stdout);
+}
+
 bool package_test_run(
     const package_test *test,
     behavior_backend backend,
@@ -208,8 +217,11 @@ bool package_test_run(
                                           .start_task = refuse_task };
     arena storage = { 0 };
     behavior_function_bind_storage(&context, &storage);
-    /* Without services nothing can be missing from them. */
-    bool bound = behavior_function_bind(test->body, &context, NULL, 0);
+    /* A test prints to its own output, as it runs. */
+    execution_log_service log = { .emit = print };
+    service_binding *services = NULL;
+    apush(services, ((service_binding){ EXECUTION_LOG_SERVICE, &log }));
+    bool bound = behavior_function_bind(test->body, &context, services, 0);
     assert(bound);
     (void)bound;
     /* A function the authored compiler prepared draws its calls' instructions
@@ -236,6 +248,7 @@ bool package_test_run(
         );
     }
     behavior_function_release_host(&context);
+    afree(services);
     behavior_function_activation_free(&activation);
     behavior_managed_heap_free(&managed);
     arena_free(&storage);

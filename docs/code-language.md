@@ -731,8 +731,11 @@ declares the library's functions by signature alone. A function's name is its
 C symbol.
 
 Parameters and results are integers, floats, `bool` and `rawptr`, an opaque
-64-bit word. A parameter may also be `cstring`, which takes a string literal
-and passes the address of its NUL-ended bytes; a result cannot be one.
+64-bit word. A parameter may also be `cstring`, which takes any string. The call
+copies it with a NUL into a 4096-byte stack buffer and passes the buffer, so the
+cost is one small copy, visible in the declaration, with no heap allocation. A
+string of 4096 bytes or more, or one that holds a NUL byte, traps instead of
+being truncated. A result cannot be a `cstring`.
 
 A foreign function is a native whose identity names the library path and the
 symbol, so a target that does not link the library cannot load a program that

@@ -128,21 +128,18 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
     return ScalarOperands.Built(output);
 }
 // The rows of one argument of a foreign call, converted to the storage its
-// parameter spells. A cstring is passed as a string literal, whose bytes the
-// module ends with a NUL.
+// parameter spells. A cstring is any string; the call copies it to a buffer
+// with its NUL.
 ScalarForeignArgument :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                           callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
                           constants: ConstDecl[], argument: int, storage: int, rows: facts.Row[]) -> ScalarOperands {
     if (storage == 0 || Is(forest, argument, "named_argument") || Is(forest, argument, "typed_argument")) {
         return ScalarOperands.Failed(Diagnose(forest, argument, 0,
-                                              "scalar proof passes numbers, bools and string literals to a foreign function by position"));
+                                              "scalar proof passes numbers, bools and strings to a foreign function by position"));
     }
     if (storage != TextStorage) {
         return ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, argument,
                              argument, storage, storage, facts.Clamp, rows);
-    }
-    if (!Is(forest, Unparenthesized(forest, argument), "string")) {
-        return ScalarOperands.Failed(Diagnose(forest, argument, 0, "a cstring argument is a string literal"));
     }
     return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, argument,
                          TextStorage, rows);

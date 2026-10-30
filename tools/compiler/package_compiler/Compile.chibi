@@ -325,7 +325,7 @@ ForeignRows :: union {
 }
 // The type `node` spells as a native port storage, 0 when a foreign signature
 // may not use it. A procedure type is the address it holds, a word, and a
-// cstring is a string literal the callee reads up to its NUL.
+// cstring is a string the call copies, with its NUL, for the callee to read.
 ForeignStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     if (Field(forest, node, "proc") >= 0) {
         return WordStorage;

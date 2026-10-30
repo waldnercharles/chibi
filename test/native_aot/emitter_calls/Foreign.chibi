@@ -108,9 +108,9 @@ IndirectCallNeedsItsAddress :: () {
     code[4] = Code(native.ForeignCall, 6, 3, 1, 0, 0, 0);
     Rejects(IndirectModule(code, [9, 6, 6, 6], [""]), ForeignMismatch);
 }
-// A string passes as the pointer to its NUL-ended bytes.
+// A string is copied with its NUL to a stack buffer the callee reads as a C string.
 @test
-ForeignStringArgumentIsItsPointer :: () {
+ForeignStringArgumentIsCopiedWithItsNul :: () {
     code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
              Code(native.Constant, 13, 0, 0, 0, 0, 0),
              Code(native.ForeignCall, 6, 1, 0, 0, 1, 1),
@@ -123,6 +123,8 @@ ForeignStringArgumentIsItsPointer :: () {
     text := Emitted(native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 2, 0, 5, 0, 1)], empty, [13, 6], empty, code, [0],
                                 records, empty, ["probe", "chibi_probe_length"], source, names, empty, empty, false, 1));
     assert(strings.Contains(text, "declare i32 @chibi_probe_length(ptr)\n"));
-    assert(strings.Contains(text, "%c2_0.data = extractvalue "));
-    assert(strings.Contains(text, "%v2 = call i32 @chibi_probe_length(ptr %c2_0.data)\n"));
+    assert(strings.Contains(text, "%cstr0 = alloca [4097 x i8]\n"));
+    assert(strings.Contains(text, "%c2_0.ok = call i1 @chibi_scalar.cstring(ptr %cstr0, ptr %c2_0.data, i32 %c2_0.length)\n"));
+    assert(strings.Contains(text, "%v2 = call i32 @chibi_probe_length(ptr %cstr0)\n"));
+    assert(strings.Contains(text, "define internal i1 @chibi_scalar.cstring("));
 }

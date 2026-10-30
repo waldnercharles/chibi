@@ -289,11 +289,35 @@ RecordLayout :: (records: Record[], fields: int[]) -> bool {
         return false;
     }
     for (type in fields) {
-        if (abi.ScalarType(type) == "" && type != abi.TextStorage) {
+        if (!Valued(records, type)) {
+            return false;
+        }
+    }
+    for (index in 0..<length(records)) {
+        if (Nests(records, fields, index, index, 0)) {
             return false;
         }
     }
     return true;
+}
+// Whether record `from` holds record `wanted` by value, directly or through
+// the records it holds. An array holds its elements apart. `depth` bounds the
+// walk for cycles that do not reach `wanted`.
+Nests :: (records: Record[], fields: int[], from: int, wanted: int, depth: int) -> bool {
+    if (depth > length(records)) {
+        return true;
+    }
+    record := records[from];
+    for (index in record.first..<record.first + record.count) {
+        type := fields[index];
+        if (type < RecordType || type >= ArrayType) {
+            continue;
+        }
+        if (type - RecordType == wanted || Nests(records, fields, type - RecordType, wanted, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
 }
 // Whether the backend computes `op` in `type`: every operation on integers,
 // IEEE arithmetic other than remainders and every comparison on floats,

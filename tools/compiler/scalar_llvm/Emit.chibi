@@ -45,8 +45,30 @@ Scalar :: (type: int) -> bool {
 }
 // Whether a record field or union payload may have `type`: a scalar or a
 // string.
-Stored :: (type: int) -> bool {
-    return Scalar(type) || type == facts.StringType;
+Stored :: (records: int[], type: int) -> bool {
+    return Valued(records, type);
+}
+// Whether the record or union of type RecordType + `from` holds the one of
+// type RecordType + `wanted` by value, directly or through others it holds by
+// value. An array holds its elements apart, so it breaks a cycle. `depth`
+// bounds the walk for cycles that do not reach `wanted`.
+Nests :: (rows: facts.Row[], records: int[], from: int, wanted: int, depth: int) -> bool {
+    head := records[from];
+    end := After(rows, head);
+    if (depth > length(records) || end < 0) {
+        return true;
+    }
+    for (row in head + 1..<end) {
+        member := rows[row];
+        if (member.kind != facts.MemberRow || member.type < facts.RecordType || member.type >= facts.ArrayType) {
+            continue;
+        }
+        held := member.type - facts.RecordType;
+        if (held == wanted || Nests(rows, records, held, wanted, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
 }
 // Whether `type` is a scalar, a string or one of the module's records and
 // unions, or an array of one of them, whose Record and Union rows are at
@@ -254,9 +276,12 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
             }
         }
         if (record.kind == facts.UnionRow) {
-            error := ValidUnion(rows, head, starts, size);
+            error := ValidUnion(rows, records, head, starts, size);
             if (error != "") {
                 return error;
+            }
+            if (Nests(rows, records, index, index, 0)) {
+                return "invalid scalar union row";
             }
             continue;
         }
@@ -267,7 +292,7 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
         }
         for (field in 0..<record.count) {
             member := rows[head + 1 + field];
-            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(member.type) ||
+            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(records, member.type) ||
                 member.value != field || member.count != 0 || member.literal != 0 || !Located(member, starts, size) ||
                 !Within(member, record)) {
                 return "invalid scalar record member row";
@@ -278,6 +303,9 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
                 }
             }
         }
+        if (Nests(rows, records, index, index, 0)) {
+            return "invalid scalar record row";
+        }
     }
     return "";
 }
@@ -285,7 +313,7 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
 // a Variant row within its declaration with its uniquely named scalar
 // payloads, each a Member row within its variant numbered across the union,
 // and a function follows it.
-ValidUnion :: (rows: facts.Row[], head: int, starts: int[], size: int) -> string {
+ValidUnion :: (rows: facts.Row[], records: int[], head: int, starts: int[], size: int) -> string {
     declared := rows[head];
     beyond := After(rows, head);
     if (beyond < 0 || beyond >= length(rows) || declared.name == "" || declared.text != "" || declared.type != 0 ||
@@ -309,7 +337,7 @@ ValidUnion :: (rows: facts.Row[], head: int, starts: int[], size: int) -> string
         variants.append(at);
         for (field in at + 1..<at + variant.count + 1) {
             member := rows[field];
-            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(member.type) ||
+            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(records, member.type) ||
                 member.value != payloads || member.count != 0 || member.literal != 0 ||
                 !Located(member, starts, size) || !Within(member, variant)) {
                 return "invalid scalar union member row";

@@ -1,0 +1,17 @@
+package source_snapshot_tests
+
+import graph "project:package_graph"
+import snap "project:source_snapshot"
+
+// The moved-union-payload miscompile: the second P1 call indexes an emptied graph.
+P1 :: (result: snap.Result) -> int {
+    built := Graph(result);
+    return graph.FilePackage(built, 1);
+}
+
+@test
+ReproTwice :: () {
+    result := Build([Corpus()[2], Corpus()[3]], "/workspace/project", None());
+    assert(P1(result) == 1, "first");
+    assert(P1(result) == 1, "second");
+}

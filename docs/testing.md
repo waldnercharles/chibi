@@ -1452,8 +1452,8 @@ Both also include the two-case Outliner selected-range projection
 specimen: twelve-field policy over owned synthetic inputs, filtering/windows,
 full-width keys and detached ownership. Its two mechanical text bindings are
 test-local; it is not live Studio integration or a production text API.
-Other focused record routes remain standalone, as do the dedicated Wasm
-formatter and root-state routes. Use `make test-list` to inspect the groups
+Other focused record routes remain standalone, as does the dedicated Wasm
+formatter route. Use `make test-list` to inspect the groups
 and standalone routes; registering a route alone does not add it to a group.
 
 The Chrome C driver also includes counted-row construction and Outliner
@@ -3345,24 +3345,6 @@ equivalence and migration.
 Existing implicit root lifetimes are unchanged. These checks do not establish
 the later unified system syntax, queryable embedded components, packed storage,
 or Studio/browser acceptance.
-
-### Redundant root-state canonicalization
-
-`language-root-state` and `wasm-root-state` select two finite C cases with five
-fixed source strings, at most 137 UTF-8 bytes each. They check behavior/library/
-system root storage, distinct callable storage, system shared storage, exact
-declaration and read ranges, stable symbol identities, comments, idempotence,
-formatter token preservation and invalid-source refusal. The full successful
-path makes six explicit semantic analyses, seven minimizer calls and two
-formatter calls. The minimizer's existing internal oracle rounds are unchanged.
-
-The format dispatcher includes these two cases and the package separator case:
-47 finite cases, plus the existing bounded corpus case on native. Wasm has no
-corpus file dependency. No catalog, generated source, runtime frame, world,
-subprocess, network or GPU workload is added. Configuration and compilation are
-separate from test execution. These SDK checks do not establish CLI/Studio
-integration or a
-caret map across semantic rewriting.
 
 ### Authored record project publication
 

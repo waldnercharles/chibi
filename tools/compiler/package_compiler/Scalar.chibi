@@ -105,8 +105,8 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
         return ScalarOperands.Failed(Diagnose(forest, node, 0, "call has the wrong number of arguments"));
     }
     result := ScalarForeignResult(forest, text, declaration);
-    library := ScalarForeignLibrary(forest, text, declaration);
-    if (result == 0 || library == "") {
+    archive := ScalarForeignLibrary(forest, text, declaration);
+    if (result == 0 || archive == "") {
         return ScalarOperands.Failed(Diagnose(forest, declaration, 0,
                                               "scalar proof requires a foreign function with a number or bool result and an import"));
     }
@@ -128,7 +128,7 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
     }
     row := ScalarAt(forest, node, facts.ForeignRow, ScalarTypeOf(result), 0, length(arguments),
                     Text(forest, text, Field(forest, declaration, "name")));
-    row.text = library;
+    row.text = archive;
     output.append(row);
     return ScalarOperands.Built(output);
 }
@@ -516,9 +516,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (callee >= 0) {
             return callables[callee].result;
         }
-        foreign := ScalarForeignDeclaration(forest, text, node);
-        if (foreign >= 0) {
-            return ScalarForeignResult(forest, text, foreign);
+        callee_foreign := ScalarForeignDeclaration(forest, text, node);
+        if (callee_foreign >= 0) {
+            return ScalarForeignResult(forest, text, callee_foreign);
         }
         if (ScalarLengthOf(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
             return IntStorage;
@@ -612,10 +612,10 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     if (Is(forest, node, "call_expression") &&
         CalledFunction(forest, text, callables, [], names, callable.package, node) < 0) {
-        foreign := ScalarForeignDeclaration(forest, text, node);
-        if (foreign >= 0) {
+        callee_foreign := ScalarForeignDeclaration(forest, text, node);
+        if (callee_foreign >= 0) {
             return ScalarForeignRows(forest, text, callables, params, callable, names, types, members, constants, node,
-                                     foreign, rows);
+                                     callee_foreign, rows);
         }
     }
     native := ScalarArrayCall(forest, text, callables, params, names, types, members, callable.package, node);

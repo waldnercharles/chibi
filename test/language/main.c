@@ -13,13 +13,6 @@
 
 void test_language_syntax();
 void test_language_parallel();
-void test_language_inferred_string_arrays(bool repro);
-void test_language_outliner_projection();
-void test_language_row_array();
-void test_language_packed();
-void test_language_packed_benchmark();
-void test_language_runtime_attribution();
-void test_language_runtime_attribution_benchmark();
 void test_language_record_values();
 void test_language_record_document();
 void test_language_record_compatibility();
@@ -31,7 +24,6 @@ void test_language_record_prepared_runtime();
 void test_language_corpus(const char *manifest);
 void test_language_execution();
 void test_language_execution_scope();
-void test_language_wasm();
 void test_language_source_assets();
 void test_language_program_session();
 void test_language_capture();
@@ -76,17 +68,9 @@ void test_language_package_portable();
 void test_language_package_portable_compiler();
 void test_language_package_tests();
 void test_language_argument_effects_chibi();
-void test_language_component_write();
-void test_language_component_write_source();
 void test_language_component_write_ir();
 void test_language_component_write_layout();
-void test_language_benchmark();
-void test_language_activation_benchmark();
-void test_language_binding_benchmark();
-void test_language_borrow_benchmark();
 void test_language_incremental_benchmark();
-void test_language_binding_schedule();
-void test_language_activation_cache();
 void test_language_headless();
 void test_language_build_workflow();
 void test_language_navigation();
@@ -122,21 +106,11 @@ int main(int argc, char **argv)
     bool compiler_artifact = argc == 3 &&
                              !strcmp(argv[1], "--compiler-artifact-write");
     bool corpus = argc == 4 && !strcmp(argv[2], "--corpus");
-    bool inferred_arrays = argc == 2 && !strcmp(argv[1], "--inferred-string-arrays");
-    bool inferred_array_repro = argc == 2 &&
-                                !strcmp(argv[1], "--inferred-string-array-repro");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
     bool execution_scope = argc == 2 && !strcmp(argv[1], "--execution-scope");
-    bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
-    bool activation_benchmark = argc == 2 &&
-                                !strcmp(argv[1], "--activation-benchmark");
-    bool binding_benchmark = argc == 2 && !strcmp(argv[1], "--binding-benchmark");
-    bool borrow_benchmark = argc == 2 && !strcmp(argv[1], "--borrow-benchmark");
     bool incremental_benchmark = argc == 2 &&
                                  !strcmp(argv[1], "--incremental-benchmark");
     bool record_prepared_runtime = argc == 2 && !strcmp(argv[1], "--record-prepared");
-    bool outliner_projection = argc == 2 && !strcmp(argv[1], "--outliner-projection");
-    bool row_array = argc == 2 && !strcmp(argv[1], "--row-array");
     bool compositional_records = argc == 2 &&
                                  !strcmp(argv[1], "--compositional-records");
     bool record_compatibility = argc == 2 &&
@@ -144,11 +118,6 @@ int main(int argc, char **argv)
     bool record_document = argc == 2 && !strcmp(argv[1], "--record-document");
     bool record_services = argc == 2 && !strcmp(argv[1], "--record-services");
     bool record_values = argc == 2 && !strcmp(argv[1], "--record-values");
-    bool packed_benchmark = argc == 2 && !strcmp(argv[1], "--packed-benchmark");
-    bool runtime_attribution = argc == 2 && !strcmp(argv[1], "--runtime-attribution");
-    bool runtime_attribution_benchmark = argc == 2 &&
-                                         !strcmp(argv[1], "--runtime-attribution-benchmark");
-    bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool program_session = argc == 2 && !strcmp(argv[1], "--program-session");
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
@@ -264,8 +233,6 @@ int main(int argc, char **argv)
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
     bool component_write_layout = argc == 2 &&
                                   !strcmp(argv[1], "--component-write-layout");
-    bool binding_schedule = argc == 2 && !strcmp(argv[1], "--binding-schedule");
-    bool activation_cache = argc == 2 && !strcmp(argv[1], "--activation-cache");
     bool build_workflow = argc == 2 && !strcmp(argv[1], "--build-workflow");
     bool headless = argc == 2 && !strcmp(argv[1], "--headless");
     bool navigation = argc == 2 && !strcmp(argv[1], "--navigation");
@@ -274,21 +241,18 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((!prepared && !compiler_artifact && !record_producer && !execution &&
-         !execution_scope && !inferred_arrays && !inferred_array_repro && !benchmark &&
-         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
-         !incremental_benchmark && !record_values && !record_document &&
-         !record_services && !record_compatibility && !record_prepared_runtime &&
-         !outliner_projection && !row_array && !compositional_records &&
-         !runtime_attribution && !runtime_attribution_benchmark && !packed_benchmark &&
-         !wasm && !program && !program_session && !incremental && !modules &&
-         !native_calls && !ranges && !numeric_exact_core && !integer_semantics &&
-         !integer_arithmetic && !integer_shift_counts && !integer_shift_counts_authored &&
-         !package_graph && !package_graph_chibi && !asset_compiler_host &&
-         !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
-         !source_tokenizer_chibi && !source_parser_chibi && !package_syntax &&
-         !package_syntax_chibi && !package_paths_chibi && !package_routes_chibi &&
-         !package_snapshot_chibi && !scalar_lowering_chibi && !compiler_fixture &&
-         !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
+         !execution_scope && !incremental_benchmark && !record_values &&
+         !record_document && !record_services && !record_compatibility &&
+         !record_prepared_runtime && !compositional_records && !program &&
+         !program_session && !incremental && !modules && !native_calls && !ranges &&
+         !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
+         !integer_shift_counts && !integer_shift_counts_authored && !package_graph &&
+         !package_graph_chibi && !asset_compiler_host && !asset_packaging_chibi &&
+         !shader_source_chibi && !syntax_chibi && !source_tokenizer_chibi &&
+         !source_parser_chibi && !package_syntax && !package_syntax_chibi &&
+         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
+         !scalar_lowering_chibi && !compiler_fixture && !bounded_compiler_chibi &&
+         !prepared_writer_chibi && !package_compiler_chibi &&
          !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
          !package_compiler_chibi_fallible && !package_compiler_chibi_imports &&
          !package_compiler_chibi_math_native && !package_compiler_chibi_imports &&
@@ -305,11 +269,10 @@ int main(int argc, char **argv)
          !package_compiler_chibi_native_arguments_oracle && !type_relations_chibi &&
          !unit_algebra_chibi && !signature_reader_chibi && !snapshot_reader_chibi &&
          !package_execution && !package_resolution && !package_imports &&
-         !host_packages && !host_packages_compiler && !package_files &&
-         !package_core && !package_math && !package_math_benchmark &&
-         !package_portable && !package_portable_compiler && !package_tests &&
-         !argument_effects_chibi && !component_write && !component_write_layout &&
-         !binding_schedule && !activation_cache && !headless && !build_workflow &&
+         !host_packages && !host_packages_compiler && !package_files && !package_core &&
+         !package_math && !package_math_benchmark && !package_portable &&
+         !package_portable_compiler && !package_tests && !argument_effects_chibi &&
+         !component_write && !component_write_layout && !headless && !build_workflow &&
          !navigation && !field_runtime && !prototype && !ui_authoring &&
          !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -317,7 +280,7 @@ int main(int argc, char **argv)
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
             "--execution | "
             "--execution-scope | --compositional-records "
-            "| --inferred-string-arrays | --inferred-string-array-repro "
+            "  "
             "| --program | --program-session | "
             ""
             ""
@@ -377,23 +340,23 @@ int main(int argc, char **argv)
             "--package-tests | --argument-effects-chibi | "
             "--component-write | --component-write-layout | "
             ""
-            "--binding-schedule | "
+            ""
             "--activation-cache "
             "| "
-            "--script-benchmark | --activation-benchmark | --binding-benchmark "
+            "--binding-benchmark "
             "| "
-            "--borrow-benchmark | --incremental-benchmark | --wasm | "
+            "--incremental-benchmark | "
             "--headless | --build-workflow | "
             "--navigation | "
             ""
             "--field-runtime | --prototype-document "
             "| --ui-authoring | "
-            "--text-format | --runtime-attribution | "
-            "--runtime-attribution-benchmark | "
-            "--packed-benchmark | --record-values | "
+            "--text-format | "
+            ""
+            "--record-values | "
             "--record-document | --record-services | "
-            "--record-compatibility | --row-array | "
-            "--outliner-projection | "
+            "--record-compatibility | "
+            ""
             ""
             "--compiler-artifact-write "
             "directory | --prepared-write "
@@ -403,14 +366,7 @@ int main(int argc, char **argv)
         return 2;
     }
     pu_display_time(true);
-    if (inferred_arrays || inferred_array_repro) {
-        test_language_inferred_string_arrays(inferred_array_repro);
-    } else if (outliner_projection) {
-        test_language_outliner_projection();
-    } else if (row_array) {
-        test_language_row_array();
-        test_language_packed();
-    } else if (record_compatibility) {
+    if (record_compatibility) {
         test_language_record_compatibility();
 #ifdef CHIBI_TEST_RECORD_SERVICES
         test_language_record_global_compatibility();
@@ -432,28 +388,8 @@ int main(int argc, char **argv)
         test_language_record_document();
     } else if (record_values) {
         test_language_record_values();
-    } else if (runtime_attribution) {
-        test_language_runtime_attribution();
-    } else if (packed_benchmark) {
-        test_language_packed_benchmark();
-    } else if (runtime_attribution_benchmark) {
-        test_language_runtime_attribution_benchmark();
-    } else if (wasm) {
-        test_language_wasm();
-    } else if (benchmark) {
-        test_language_benchmark();
-    } else if (activation_benchmark) {
-        test_language_activation_benchmark();
-    } else if (binding_benchmark) {
-        test_language_binding_benchmark();
-    } else if (borrow_benchmark) {
-        test_language_borrow_benchmark();
     } else if (incremental_benchmark) {
         test_language_incremental_benchmark();
-    } else if (binding_schedule) {
-        test_language_binding_schedule();
-    } else if (activation_cache) {
-        test_language_activation_cache();
     } else if (text_format) {
         test_language_text_format();
     } else if (ui_authoring) {
@@ -619,8 +555,6 @@ int main(int argc, char **argv)
     } else if (component_write_layout) {
         test_language_component_write_layout();
     } else if (component_write) {
-        test_language_component_write();
-        test_language_component_write_source();
         test_language_component_write_ir();
     } else if (program) {
         test_language_capture();

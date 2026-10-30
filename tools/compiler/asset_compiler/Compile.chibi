@@ -128,19 +128,24 @@ pub CompilePackages :: (project: string, collection_names: string[], collection_
     return compiler.CompileClosureWithEffects(project, collection_names, collection_paths, paths, sources, debug, target,
                                               abi, names, natives, ports, identities, native_effects);
 }
+// The host reads a rejection's payload by position.
+pub Rejection :: union {
+    Accepted
+    | Rejected(document: int, line: int, column: int, message: string)
+}
+
 // The first diagnostic CompilePackages' input is rejected with.
 pub RejectPackages :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                        sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],
                        natives: compiler.Native[], ports: compiler.Port[], identities: u64[],
-                       native_effects: int[]) -> Result {
+                       native_effects: int[]) -> Rejection {
     compiled := compiler.CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target,
                                             abi, names, natives, ports, identities, native_effects);
     diagnostic := compiled.error;
     if (diagnostic) {
-        return Result.Completed(false, 0, [], diagnostic.document, diagnostic.start, diagnostic.end,
-                                diagnostic.line, diagnostic.column, diagnostic.message);
+        return Rejection.Rejected(diagnostic.document, diagnostic.line, diagnostic.column, diagnostic.message);
     }
-    return Result.Completed(true, 0, [], -1, 0, 0, 0, 0, "");
+    return Rejection.Accepted;
 }
 
 // Native transport envelope: status byte, entry uint64 LE, five int32 LE

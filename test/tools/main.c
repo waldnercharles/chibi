@@ -70,10 +70,6 @@ void test_tool_shader_source_debug();
 void test_tool_tilemap();
 #endif
 void test_tool_execution_policy();
-#ifdef CHIBI_TEST_C_EXPORT
-void test_tool_c_export();
-void test_tool_record_c_export();
-#endif
 void test_tool_package();
 void test_tool_chibi_cli(const char *binary, const char *self);
 void test_tool_chibi_cli_process(const char *binary, const char *self);
@@ -128,13 +124,9 @@ void test_tool_ecs_world();
 void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
 void test_arena();
-void test_tool_prepared(const char *producer, const char *consumer);
 #ifdef CHIBI_TEST_PROGRAM
 void test_program_sdk();
 #endif
-void test_tool_record_prepared(const char *producer, const char *consumer);
-void test_tool_record_runtime(const char *directory);
-void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
 #ifdef CHIBI_TEST_SCENE_AUTHORING
 void test_scene_hierarchy();
@@ -722,35 +714,6 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
-    if ((argc == 4 && !strcmp(argv[1], "--record-prepared")) ||
-        (argc == 3 && !strcmp(argv[1], "--record-read"))) {
-        tool_init();
-        pu_display_time(true);
-        if (argc == 4) {
-            test_tool_record_prepared(argv[2], argv[3]);
-        } else {
-            test_tool_record_runtime(argv[2]);
-        }
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-    if (argc == 2 && (!strcmp(argv[1], "--c-export-alias") ||
-                      !strcmp(argv[1], "--record-c-export"))) {
-#ifdef CHIBI_TEST_C_EXPORT
-        tool_init();
-        pu_display_time(true);
-        if (!strcmp(argv[1], "--record-c-export")) {
-            test_tool_record_c_export();
-        } else {
-            test_tool_c_export();
-        }
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-#else
-        fprintf(stderr, "%s requires a native in-tree POSIX single-configuration build\n", argv[1]);
-        return 2;
-#endif
-    }
     if (argc == 2 && !strcmp(argv[1], "--reflect-ranges")) {
 #ifdef CHIBI_TEST_REFLECT
         tool_init();
@@ -835,8 +798,6 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_TILEMAP
     tilemap = argc == 2 && !strcmp(argv[1], "--tilemap");
 #endif
-    bool prepared = argc == 3 && !strcmp(argv[1], "--prepared");
-    bool read = argc == 3 && !strcmp(argv[1], "--prepared-read");
     bool package = argc == 2 && !strcmp(argv[1], "--package");
     bool third_party_publish = argc == 2 && !strcmp(argv[1], "--third-party-publish");
     bool collab = argc == 2 && !strcmp(argv[1], "--collab");
@@ -962,8 +923,8 @@ int main(int argc, char **argv)
     if (argc != 1 && !corpus && !unit_fixtures && !shader_parameters && !new_asset &&
         !asset_refactor && !tilemap && !package && !third_party_publish &&
         !collab && !unit && !test_runner && !validation_plan && !web_storage &&
-        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared && !read &&
-        !scene && !scene_prepared && !scene_hierarchy && !scene_snapshot_read &&
+        !webgpu_staging && !wasm_browser && !query_benchmark && !scene &&
+        !scene_prepared && !scene_hierarchy && !scene_snapshot_read &&
         !native && !native_values && !native_catalog && !physics && !physics3d &&
         !transforms && !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
@@ -986,7 +947,7 @@ int main(int argc, char **argv)
             "--third-party-publish | --collab | "
             "--unit | "
             "--test-runner | --validation-plan | "
-            "--reflect-ranges | --c-export-alias | "
+            "--reflect-ranges | "
             "--ecs-query | --ecs-strings | "
             "--shader-bake | --terrain-seams | "
             "--material-terrain-seams | --terrain-checkpoint | "
@@ -1000,8 +961,7 @@ int main(int argc, char **argv)
             "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | --types | "
             ""
-            "--prepared "
-            "test_language | --prepared-read directory | --scene | "
+            "--scene | "
             "--scene-prepared | --scene-hierarchy | --scene-snapshot-read | "
             "--native | --native-values "
             "| --native-catalog "
@@ -1253,10 +1213,6 @@ int main(int argc, char **argv)
         test_scene_prepared();
     } else if (scene) {
         test_tool_scene();
-    } else if (prepared) {
-        test_tool_prepared(argv[2], argv[0]);
-    } else if (read) {
-        test_tool_prepared_runtime(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
     } else if (test_runner) {
@@ -1286,9 +1242,6 @@ int main(int argc, char **argv)
         test_tool_collab();
         test_tool_test_policy();
         test_tool_validation_plan();
-#ifdef CHIBI_TEST_C_EXPORT
-        test_tool_c_export();
-#endif
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
         test_tool_audio_analysis();
 #ifdef CHIBI_TEST_RENDER_RUNTIME

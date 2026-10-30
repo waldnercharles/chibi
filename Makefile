@@ -217,7 +217,7 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Agent selectors run existing drivers; use test-build to build them.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-recover test-recovery test-short test-policy-inventory tools-build test-stage-one native-census
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-recover test-recovery test-short test-policy-inventory tools-build native-census
 agent-list:
 	@python3 tools/agent.py list
 
@@ -273,12 +273,6 @@ bootstrap-recover:
 test-recovery: test-build
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_RELEASE_COMPILER_HOST="$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" CHIBI_BOOTSTRAP_ARTIFACT="$(BOOTSTRAP_ARTIFACT)" python3 tools/test_policy.py tool bootstrap-recovery
-
-# Stage one's route rebuilds Counter as chibi-compile does. Recovering stage
-# one compiles the compiler, so it runs on a Release compiler host.
-test-stage-one: test-build
-	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_RELEASE_COMPILER_HOST="$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" python3 tools/test_policy.py tool game-equivalence-stage-one
 
 # W21's census rewrites docs/native-compiler-census.md: the first native
 # blocker of each self-hosted compiler function. See docs/native-llvm-ledger.md.

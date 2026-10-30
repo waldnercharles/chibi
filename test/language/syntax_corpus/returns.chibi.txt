@@ -1,0 +1,49 @@
+package returns
+
+F0 :: () {
+    return (42);
+}
+
+F1 :: () {
+    return (a, b);
+}
+
+F2 :: () {
+    return ();
+}
+
+F3 :: () {
+    return (a)
+}
+
+F4 :: () {
+    return (Count: 1, Other: 2);
+}
+
+F5 :: () {
+    return (a + b) * 2;
+}
+
+F6 :: () {
+    return (a)(b);
+}
+
+F7 :: () {
+    return (f(1, 2));
+}
+
+F8 :: () {
+    return ([1, 2]);
+}
+
+F9 :: () {
+    return (x: 1);
+}
+
+F10 :: () {
+    return .Ok (a, b)
+}
+
+F11 :: () {
+    return .Ok (a)
+}

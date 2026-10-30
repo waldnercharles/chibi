@@ -1,0 +1,20 @@
+package p
+
+@error
+Failure :: struct {
+    code: int
+}
+
+@error
+pub Problem :: union {
+    A | B
+}
+
+@test
+pub T :: () {
+}
+
+@a
+@b
+R :: struct {
+}

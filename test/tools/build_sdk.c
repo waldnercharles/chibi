@@ -330,7 +330,6 @@ static bool distribution_source(char root[SDK_PATH])
         "tools/toolchain/Build.chibi",
         "tools/toolchain/Graph.chibi",
         "tools/toolchain/SDK.chibi",
-        "tools/toolchain/StageOne.chibi",
         "tools/configure_inputs.py",
         "LICENSE.md",
         "COPYING",
@@ -798,7 +797,7 @@ TEST_CASE(compiler_tools_package_and_run_after_relocation)
         copied(original, "share/chibi/tools/native_aot", build_path, "share/chibi/tools/native_aot")
     );
     REQUIRE(copied(original, "share/chibi/graph", CHIBI_SOURCE_ROOT, "tools/graph"));
-    static const char *programs[] = { "Build.chibi", "Graph.chibi", "SDK.chibi", "StageOne.chibi" };
+    static const char *programs[] = { "Build.chibi", "Graph.chibi", "SDK.chibi" };
     for (size_t i = 0; i < sizeof programs / sizeof *programs; i++) {
         char installed[SDK_PATH], source[SDK_PATH];
         join(installed, "share/chibi/tools/toolchain", programs[i]);

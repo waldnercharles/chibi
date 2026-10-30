@@ -1,8 +1,6 @@
 #include "toolchain/compiler_bootstrap.h"
 
 #include "execution/status.h"
-#include "support/asset_text.h"
-#include "support/asset_value.h"
 #include "support/sha256.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_host.h"
@@ -136,21 +134,23 @@ typedef struct
     int version, minimum;
 } contract;
 
+/* Reads the "version N" and "minimum N" lines; other lines are comments. The
+ * file keeps its .kdl name because the pinned first build host reads it as KDL. */
 static bool read_contract(const char *compiler, contract *c, char *error, size_t size)
 {
     char *path = join(compiler, CONTRACT_FILE);
     size_t length;
     char *text = (char *)read_bytes(path, 4096, &length);
-    char reason[256] = "it cannot be read";
-    av_doc *doc = text ? av_doc_read(text, reason, sizeof reason) : NULL;
-    av_value *root = doc ? av_doc_root(doc) : NULL;
-    *c = (contract){ .version = root ? av_get_int(av_obj_get(root, "version")) : 0,
-                     .minimum = root ? av_get_int(av_obj_get(root, "minimum")) : 0 };
+    *c = (contract){ 0 };
+    for (char *line = text; line; line = strchr(line, '\n')) {
+        line += *line == '\n';
+        sscanf(line, "version %d", &c->version);
+        sscanf(line, "minimum %d", &c->minimum);
+    }
     bool valid = c->minimum >= 1 && c->minimum <= c->version;
     if (!valid) {
-        snprintf(error, size, "%s: %s", path, doc ? "needs a version and a minimum from 1 to it" : reason);
+        snprintf(error, size, "%s: %s", path, text ? "needs a version and a minimum from 1 to it" : "it cannot be read");
     }
-    av_doc_free(doc);
     free(text);
     free(path);
     return valid;

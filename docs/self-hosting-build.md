@@ -240,10 +240,8 @@ the Makefile's profile name (`BUILD_PROFILE`: `sanitizer`, or `debug` and
 on`, which writes every target's compile commands; it links the root
 `compile_commands.json` to them, as CMake did, for clangd. `LOCAL_CMAKE_FLAGS`
 no longer apply there; the graph finds the profile's toolchain on the
-machine. Without a current host, `make stage-zero-build` builds the first
-one with CMake in `BUILD_DIR-cmake` and the graph builds its own. `make
-graph-reference` configures that tree with the sanitizer profile and builds
-what the build-graph checks compare with. The SDK, web and Studio builds
+machine. Without a current host, the driver (`tools/toolchain/Driver.chibi`, run as `chibi build` or
+`tools/build.sh`) fetches the pinned first one with `tools/bootstrap.sh` and the graph builds its own. The SDK, web and Studio builds
 still use CMake as below, so a source, define or library CMake gains
 belongs in `tools/graph/engine/Targets.chibi` too: `build-graph` fails until
 the graph's commands equal CMake's again.
@@ -317,9 +315,7 @@ results. Older hosts take first-host recovery before a warm full graph can
 exhaust their retained helper storage while trying to rebuild them.
 `--protocol-version` reports the version without loading compiler inputs or
 starting a build. A cold build or an older host
-uses `make stage-zero-build`, which retains the existing shell/CMake recovery
-path and builds the host for subsequent invocations (on Linux and macOS in
-`BUILD_DIR-cmake`, for the one graph run that builds `BUILD_DIR`'s own). `BUILD_HOST` and
+fetches the pinned host with `tools/bootstrap.sh` (the driver's bootstrap step). `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery
 target remains available if the authored driver cannot run.
 
@@ -472,11 +468,10 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
 `graph:engine`'s `Targets.chibi` lists the 104 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
-the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
-over ckdl) and the libraries over them, and three header-only libraries
+the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson) and the
+libraries over them, and three header-only libraries
 (`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
-`chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
-engine component KDL are generated sources, `chibi_save_runtime`, and
+`chibi_builtin_fonts`, whose fonts are generated sources, `chibi_save_runtime`, and
 `chibi_execution` over the third-party archive's prebuilt SLJIT and the
 header-only `chibi_math` from it, with the libraries that need only those (the
 behavior, scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and

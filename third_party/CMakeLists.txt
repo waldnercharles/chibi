@@ -98,10 +98,6 @@ chibi_third_party(rmlui https://github.com/mikke89/RmlUi.git
     event-propagation variable-line-height move-keeps-data data-template context-update-profile
     document-source document-layout)
 chibi_third_party(enkits https://github.com/dougbinks/enkiTS.git 4cba61a045d8e759bd35e5d85691bf9f7271f822)
-chibi_third_party(tree_sitter_css https://github.com/tree-sitter/tree-sitter-css.git
-    dda5cfc5722c429eaba1c910ca32c2c0c5bb1a3f scanner-create-prototype)
-chibi_third_party(tree_sitter_html https://github.com/tree-sitter/tree-sitter-html.git
-    5a5ca8551a179998360b4a4ca2c0f366a35acc03 scanner-create-prototype)
 
 # --- Cute Framework, with the SDL3, s2n, Box2D, Box3D and PhysicsFS it adds ---
 set(CF_FRAMEWORK_STATIC ON CACHE BOOL "" FORCE)
@@ -192,7 +188,7 @@ add_subdirectory("${rmlui_SOURCE}" rmlui)
 
 # --- Physics, task, JIT and syntax libraries the SDK links ------------------
 # They keep the flags the SDK compiled them with.
-set(sdk_libraries box2d box3d tree_sitter tree_sitter_css tree_sitter_html)
+set(sdk_libraries box2d box3d tree_sitter)
 # Box2D and Box3D round deterministically: no fused multiply-add. Their SIMD
 # paths need Wasm SIMD, which only the threaded web build enables.
 foreach(physics box2d box3d)
@@ -248,16 +244,6 @@ target_include_directories(tree_sitter PRIVATE "${tree_sitter_SOURCE}/lib/src"
     PUBLIC "${tree_sitter_SOURCE}/lib/include")
 target_compile_definitions(tree_sitter PRIVATE _DEFAULT_SOURCE _DARWIN_C_SOURCE)
 target_compile_options(tree_sitter PRIVATE -w)
-foreach(grammar tree_sitter_css tree_sitter_html)
-    add_library(${grammar} STATIC "${${grammar}_SOURCE}/src/parser.c"
-        "${${grammar}_SOURCE}/src/scanner.c")
-    target_include_directories(${grammar} PRIVATE "${${grammar}_SOURCE}/src")
-    target_link_libraries(${grammar} PRIVATE tree_sitter)
-    target_compile_options(${grammar} PRIVATE -w)
-    # Consumers declare the grammar's one function, so the exporter finds no
-    # headers to take the licence from.
-    install(FILES "${${grammar}_SOURCE}/LICENSE" DESTINATION "share/chibi/licenses/vendor/${grammar}")
-endforeach()
 
 # --- The archive ---------------------------------------------------------------
 set(CHIBI_VENDOR_DEPENDENCY_CONFIG "${CMAKE_CURRENT_BINARY_DIR}/third-party.cmake")

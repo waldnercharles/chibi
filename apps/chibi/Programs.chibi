@@ -25,19 +25,15 @@ Run :: (options: Options, tail: string[]) -> int {
         return 2
     }
     arguments := Concat([path], tail)
-    return Session(program.open(path, "", arguments), options.watch)
+    return Session(path, arguments, options.watch)
 }
 
-Stopped :: (handle: Program, watch: bool) -> int {
-    program.close(handle)
+// The status of a run that ended because it was stopped.
+StopStatus :: (watch: bool) -> int {
     if watch {
         return 0
     }
     return application.interrupt_status()
-}
-
-Failed :: (handle: Program) {
-    Error(program.diagnostic(handle))
 }
 
 ExitStatus :: (status: int) -> int {
@@ -52,7 +48,8 @@ ExitStatus :: (status: int) -> int {
 // stopped. With --watch every accepted edit replaces the running program's
 // code between calls: state is kept and `Main` is not called again. A failure
 // pauses the program until the next accepted edit.
-Session :: (handle: Program, watch: bool) -> int {
+Session :: (path: string, arguments: string[], watch: bool) -> int {
+    handle := program.open(path, "", arguments)
     polled := 0
     loaded := false
     started := false
@@ -63,10 +60,11 @@ Session :: (handle: Program, watch: bool) -> int {
         if polled == 0 && (watch || !loaded) {
             update := program.update(handle)
             if application.stopped() {
-                return Stopped(handle, watch)
+                program.close(handle)
+                return StopStatus(watch)
             }
             if update < 0 {
-                Failed(handle)
+                Error(program.diagnostic(handle))
                 if !loaded {
                     paused = true
                 }
@@ -88,10 +86,11 @@ Session :: (handle: Program, watch: bool) -> int {
             if program.has(handle, "Main") {
                 called := program.call_entry(handle, "Main")
                 if application.stopped() {
-                    return Stopped(handle, watch)
+                    program.close(handle)
+                    return StopStatus(watch)
                 }
                 if called.status != 0 {
-                    Failed(handle)
+                    Error(program.diagnostic(handle))
                     result = 1
                     paused = true
                 } else {
@@ -115,10 +114,11 @@ Session :: (handle: Program, watch: bool) -> int {
             framing = true
             frame := program.call_entry(handle, "Frame")
             if application.stopped() {
-                return Stopped(handle, watch)
+                program.close(handle)
+                return StopStatus(watch)
             }
             if frame.status != 0 {
-                Failed(handle)
+                Error(program.diagnostic(handle))
                 result = 1
                 paused = true
             } else if frame.result != 0 {
@@ -126,7 +126,8 @@ Session :: (handle: Program, watch: bool) -> int {
                 return ExitStatus(frame.result)
             }
             if !application.wait(16) {
-                return Stopped(handle, watch)
+                program.close(handle)
+                return StopStatus(watch)
             }
             continue
         }
@@ -140,5 +141,6 @@ Session :: (handle: Program, watch: bool) -> int {
             return 0
         }
     }
-    return Stopped(handle, watch)
+    program.close(handle)
+    return StopStatus(watch)
 }

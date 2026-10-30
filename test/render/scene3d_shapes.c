@@ -1,4 +1,3 @@
-#include "authoring/parts_prepare.h"
 #include "hidden_app.h"
 #include "render/scene3d.h"
 #include "render/scene3d_geometry.h"
@@ -25,7 +24,7 @@ enum
     PIXELS = SIDE * SIDE
 };
 
-static const float QUARTER_TURN = 1.5707963268f, EIGHTH_TURN = .7853981634f;
+static const float EIGHTH_TURN = .7853981634f;
 
 static ecs_world *world;
 static render_scene3d *scene3d;
@@ -373,40 +372,6 @@ TEST_CASE(nearer_solids_win_in_any_order)
     return true;
 }
 
-TEST_CASE(parallel_geometry_draws_what_serial_geometry_does)
-{
-    const char *parts = "(array)- {\n"
-                        "    - {\n"
-                        "        primitive 0\n"
-                        "        (array)size 0.1 0.1 0.1\n"
-                        "        (array)rotation 0 0.3 0\n"
-                        "    }\n"
-                        "}\n";
-    char error[256];
-    REQUIRE(authoring_parts_prepare(parts, error, sizeof error));
-    for (int i = 0; i < 1537; i++) {
-        ecs_entity entity = add_shape(
-            i % 2 ? PRIMITIVE_BOX : PRIMITIVE_OCTAHEDRON,
-            (CF_V3){ (i % 32 - 15.5f) * .15f, (i / 32 - 23.5f) * .15f, (i % 3) * .1f },
-            i % 3 ? 0x4080ffffu : 0xff804080u
-        );
-        Geometry3D *shape = Geometry3D_get(world, entity);
-        shape->width = shape->height = shape->depth = .1f;
-        if (i % 200 == 0) {
-            add(entity, &COMPONENT_MeshParts, &(MeshParts){ .parts = parts });
-        }
-    }
-    render_scene3d_camera camera = front_camera();
-    render_scene3d_set_parallel(scene3d, false);
-    REQUIRE(render(&camera, first));
-    REQUIRE(!render_scene3d_last_work(scene3d).tasks);
-    render_scene3d_set_parallel(scene3d, true);
-    REQUIRE(render(&camera, second));
-    REQUIRE(render_scene3d_last_work(scene3d).entities == 1537);
-    REQUIRE(!memcmp(first, second, sizeof first));
-    return true;
-}
-
 /* A tall turned box framed by its own fit fills 1 / 1.2 of the image. */
 TEST_CASE(fitted_bounds_frame_what_draws)
 {
@@ -532,55 +497,6 @@ TEST_CASE(octahedra_draw_and_pick_a_closed_solid)
     return true;
 }
 
-/* Eight canonical tetrahedra rebuild every visible face of an octahedron, so
- * the parts draw and pick as the solid did. */
-TEST_CASE(tetrahedron_parts_compose_an_octahedron)
-{
-    ecs_entity entity = add_shape(PRIMITIVE_OCTAHEDRON, (CF_V3){ 0 }, 0xffffffffu);
-    *Geometry3D_get(world, entity) = (Geometry3D){ PRIMITIVE_OCTAHEDRON, 4, 3, 2, 0 };
-    VisualTransform visual = { .pitch = .31f, .yaw = .22f, .roll = .5f, .scale = .8f };
-    add(entity, &COMPONENT_VisualTransform, &visual);
-    render_scene3d_camera camera = front_camera();
-    REQUIRE(render(&camera, first));
-    bool before[225];
-    for (int i = 0; i < 225; i++) {
-        before[i] = picks_any(&camera, (CF_V2){ (i % 15 - 7) * .065f, (i / 15 - 7) * .065f });
-    }
-    scene3d_parts parts = { .count = 8 };
-    for (int i = 0; i < 8; i++) {
-        int x = i & 1 ? 1 : -1, y = i & 2 ? 1 : -1, z = i & 4 ? 1 : -1;
-        bool even = x * y * z > 0;
-        parts.parts[i] = (scene3d_part){
-            .primitive = PRIMITIVE_TETRAHEDRON,
-            .dimensions = even ? (CF_V3){ 2, 1, 1.5f } : (CF_V3){ 1.5f, 1, 2 },
-            .position = { x, y * .5f, z * .75f },
-            .rotation = { 0,
-                          even ? (x < 0 ? 2 * QUARTER_TURN : 0) : z * QUARTER_TURN,
-                          y < 0 ? 2 * QUARTER_TURN : 0 }
-        };
-    }
-    char *text = authoring_parts_write(&parts), error[256];
-    bool prepared = authoring_parts_prepare(text, error, sizeof error);
-    add(entity, &COMPONENT_MeshParts, &(MeshParts){ .parts = text });
-    bool drawn = render(&camera, second);
-    bool same_picks = true;
-    for (int i = 0; i < 225; i++) {
-        CF_V2 point = { (i % 15 - 7) * .065f, (i / 15 - 7) * .065f };
-        same_picks &= picks_any(&camera, point) == before[i];
-    }
-    /* A zero scale hides the composed body from bounds and picks. */
-    VisualTransform_get(world, entity)->scale = 0;
-    CF_V3 bounds[8];
-    bool unbounded = !render_scene3d_entity_bounds(world, entity, bounds);
-    bool unpicked = !picks_any(&camera, (CF_V2){ 0 });
-    free(text);
-    REQUIRE(prepared && drawn);
-    REQUIRE(changed_pixels(first, second) < 20);
-    REQUIRE(same_picks);
-    REQUIRE(unbounded && unpicked);
-    return true;
-}
-
 /* Flat and hollow polygons agree between their mesh and exact picking: the
  * chevron's rear notch, the frame's and outline's holes stay empty. */
 TEST_CASE(polygons_draw_and_pick_the_same_outline)
@@ -693,11 +609,9 @@ void test_scene3d_shapes()
     RUN_TEST_CASE(every_solid_primitive_draws);
     RUN_TEST_CASE(repeated_primitives_share_instanced_draws);
     RUN_TEST_CASE(nearer_solids_win_in_any_order);
-    RUN_TEST_CASE(parallel_geometry_draws_what_serial_geometry_does);
     RUN_TEST_CASE(fitted_bounds_frame_what_draws);
     RUN_TEST_CASE(prisms_draw_and_pick_their_heading);
     RUN_TEST_CASE(octahedra_draw_and_pick_a_closed_solid);
-    RUN_TEST_CASE(tetrahedron_parts_compose_an_octahedron);
     RUN_TEST_CASE(polygons_draw_and_pick_the_same_outline);
     RUN_TEST_CASE(box_frame_parts_match_their_frame);
     pu_clear_setup();

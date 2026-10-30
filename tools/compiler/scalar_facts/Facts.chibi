@@ -24,12 +24,14 @@ package scalar_facts
 // name for a native library source. Then each record and union the source declares
 // follows in declaration order:
 // - a record is a Record row, its `name`, `count` fields and declaration
-//   range, then `count` Member rows: `name`, scalar `type`, ordinal `value`
-//   and name range;
+//   range, then `count` Member rows: `name`, `type`, ordinal `value`
+//   and name range. A member's `type` is a scalar, a string, an array, or
+//   a record or union of the module, though not one that holds itself by
+//   value, as an array holds its elements apart;
 // - a union is a Union row, its `name`, `count` variants and declaration
 //   range, then each variant in order: a Variant row, its `name`, ordinal
 //   `value`, `count` payload fields and range, then `count` Member rows:
-//   `name`, scalar `type`, name range and `value`, the payload's ordinal
+//   `name`, `type` as a record's field has, name range and `value`, the payload's ordinal
 //   among all the union's payloads in declaration order.
 // Then, for each function with several named results in declaration order,
 // a record of them: a Record row named for the function with `.results`, its

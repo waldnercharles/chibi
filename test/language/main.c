@@ -36,7 +36,6 @@ void test_language_asset_packaging_chibi();
 void test_language_asset_compiler_host();
 #endif
 void test_language_syntax_chibi();
-void test_language_source_parser_chibi();
 void test_language_package_syntax();
 void test_language_package_syntax_chibi();
 void test_language_package_paths_chibi();
@@ -103,7 +102,6 @@ int main(int argc, char **argv)
                                  !strcmp(argv[1], "--asset-packaging-chibi");
     bool shader_source_chibi = argc == 2 && !strcmp(argv[1], "--shader-source-chibi");
     bool syntax_chibi = argc == 2 && !strcmp(argv[1], "--syntax-chibi");
-    bool source_parser_chibi = argc == 2 && !strcmp(argv[1], "--source-parser-chibi");
     bool package_paths_chibi = argc == 2 && !strcmp(argv[1], "--package-paths-chibi");
     bool package_routes_chibi = argc == 2 &&
                                 !strcmp(argv[1], "--package-routes-chibi");
@@ -189,10 +187,10 @@ int main(int argc, char **argv)
     if ((!compiler_artifact && !execution && !execution_scope && !record_values &&
          !record_document && !record_services && !record_compatibility &&
          !compositional_records && !program && !program_session && !ranges &&
-         !integer_semantics && !integer_shift_counts && !integer_shift_counts_authored &&
-         !package_graph && !package_graph_chibi && !asset_compiler_host &&
-         !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
-         !source_parser_chibi && !package_syntax && !package_syntax_chibi &&
+         !integer_semantics && !integer_shift_counts &&
+         !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
+         !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
+         !syntax_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !compiler_fixture && !bounded_compiler_chibi && !package_compiler_chibi &&
          !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
@@ -231,7 +229,7 @@ int main(int argc, char **argv)
             "--integer-shift-counts [case] | --integer-shift-counts-authored | "
             "--package-graph | --package-graph-chibi | --shader-source-chibi | "
             "--asset-packaging-chibi | --syntax-chibi | "
-            "--source-parser-chibi | "
+            ""
             "--package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
             ""
@@ -436,8 +434,6 @@ int main(int argc, char **argv)
         test_language_shader_source_chibi();
     } else if (syntax_chibi) {
         test_language_syntax_chibi();
-    } else if (source_parser_chibi) {
-        test_language_source_parser_chibi();
     } else if (package_graph) {
         test_language_package_graph();
     } else if (ranges) {

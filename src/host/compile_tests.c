@@ -66,11 +66,43 @@ static int run_tests(const package_collection *packages, behavior_backend backen
     return failed;
 }
 /* Where the tests' packages compile: a package of its own that imports every
- * package below the project root, so one closure reaches them all. */
+ * package below the project root that declares a test, so one closure reaches
+ * them and what they import. */
 #define TESTS_PACKAGE "__tests__"
 
+/* An `@test` attribute alone on a line, as a test function is declared. */
+static bool has_test_marker(const source_package_input *file)
+{
+    static const char marker[] = "@test";
+    size_t length = sizeof marker - 1;
+    for (size_t at = 0; at + length <= file->size; at++) {
+        bool starts = at == 0 || file->text[at - 1] == '\n';
+        bool ends = at + length == file->size || file->text[at + length] == '\n' ||
+                    file->text[at + length] == '\r';
+        if (starts && ends && !memcmp(file->text + at, marker, length)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Whether a file of the directory named by the first `prefix` bytes of `path`
+ * declares a test. What that directory imports joins the closure anyway. */
+static bool directory_has_tests(const source_package_snapshot_options *inputs, const char *path, size_t prefix)
+{
+    for (int i = 0; i < inputs->file_count; i++) {
+        const char *candidate = inputs->files[i].path;
+        if (!strncmp(candidate, path, prefix) && candidate[prefix] == '/' &&
+            !strchr(candidate + prefix + 1, '/') &&
+            has_test_marker(&inputs->files[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* The text of that package, which imports the directory of each project file
- * outside the collections. */
+ * outside the collections that declares a test. */
 static char *tests_package(const source_package_snapshot_options *inputs)
 {
     size_t root = strlen(inputs->project_root);
@@ -100,6 +132,9 @@ static char *tests_package(const source_package_snapshot_options *inputs)
         }
         previous = path + root + 1;
         previous_length = length;
+        if (!directory_has_tests(inputs, path, root + 1 + length)) {
+            continue;
+        }
         size_t used = strlen(text);
         text = xrealloc(text, used + length + 48);
         snprintf(text + used, length + 48, "import p%d \"project:%.*s\"\n", imports++, (int)length, previous);

@@ -1,6 +1,6 @@
 package source_tokenizer_tests
 
-import tk "project:"
+import tk "project:source_tokenizer"
 
 // Hand-written expectations from the tokenizer's differential: terminators
 // with no gap before them, which a Tree-sitter comparison cannot see, and

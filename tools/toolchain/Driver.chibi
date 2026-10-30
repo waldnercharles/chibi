@@ -1,5 +1,6 @@
 package driver
 
+import os "core:os"
 import strings "core:strings"
 
 // The engine's one build command, `chibi build` in an engine checkout. It
@@ -53,18 +54,18 @@ Absolute :: (path: string) -> string {
     if (strings.HasPrefix(path, "/")) {
         return path
     }
-    return Join([build.root(), "/", path])
+    return Join([os.Root(), "/", path])
 }
 
 // Prints or runs one step and reports a failure under its name.
 Step :: (name: string, command: string[], dry: bool) -> int {
     if (dry) {
-        build.report(Join([name, ": ", strings.Join(command, " ")]))
+        os.Print(Join([name, ": ", strings.Join(command, " ")]))
         return 0
     }
-    status := build.run(command)
+    status := os.Run(command)
     if (status != 0) {
-        build.report(format_text("{}: failed with status {}", name, status))
+        os.Print(format_text("{}: failed with status {}", name, status))
     }
     return status
 }
@@ -90,16 +91,17 @@ DefaultDirectory :: (profile: string) -> string {
 }
 
 HostUsable :: (host: string) -> bool {
-    if (!build.file_exists(host)) {
+    if (!os.Exists(host)) {
         return false
     }
-    return build.probe([host, "--protocol-version"]) == 0 && build.trim(build.last_stdout()) == "14"
+    probe := os.Capture([host, "--protocol-version"])
+    return probe.status == 0 && build.trim(probe.stdout) == "14"
 }
 
 // The command that runs an authored program under the private host.
 Program :: (host: string, source: string, function: string, collections: string[], timeout: string) -> string[] {
     command := [
-        host, "--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", build.root(),
+        host, "--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", os.Root(),
         "--source", source, "--core", "packages/core"
     ]
     for (collection in collections) {
@@ -178,7 +180,7 @@ Build :: (arguments: string[]) -> int {
         graph = build.concat(graph, ["--target", target])
     }
     command := build.concat(
-        ["env", Join(["CCACHE_BASEDIR=", build.root()])],
+        ["env", Join(["CCACHE_BASEDIR=", os.Root()])],
         build.concat(Program(host, "tools/toolchain/Graph.chibi", "Libraries", ["graph=tools/graph"], timeout), graph)
     )
     status = Step("graph", command, dry)
@@ -206,7 +208,8 @@ Fields :: (row: string) -> string[] {
 // The selector table's rows: `tool NAME COMMAND...` and `group NAME MEMBER...`.
 Rows :: () -> string[] {
     rows: string[] = []
-    for (line in build.lines(build.read_file("tools/tests.tsv"))) {
+    table := os.ReadText("tools/tests.tsv")
+    for (line in build.lines(table.text)) {
         if (line != "" && !strings.HasPrefix(line, "#")) {
             rows = build.concat(rows, [line])
         }
@@ -238,7 +241,7 @@ Selection :: (rows: string[], requested: string[]) -> string[] {
         } else if (Row(rows, "tool", name) != "") {
             selected = build.concat(selected, [name])
         } else {
-            build.report(format_text("test: unknown selector '{}'; use --list", name))
+            os.Print(format_text("test: unknown selector '{}'; use --list", name))
             none: string[] = []
             return none
         }
@@ -305,7 +308,7 @@ Test :: (arguments: string[]) -> int {
     if (Flag(arguments, "--list")) {
         for (row in rows) {
             fields := Fields(row)
-            build.report(Join([fields[0], " ", fields[1]]))
+            os.Print(Join([fields[0], " ", fields[1]]))
         }
         return 0
     }
@@ -315,7 +318,7 @@ Test :: (arguments: string[]) -> int {
     jobs := Count(Option(arguments, "--jobs", "1"))
     requested := Positionals(arguments)
     if (jobs < 1 || length(requested) == 0) {
-        build.report("usage: build test [--build DIR] [--release-build DIR] [--jobs N] [--list] [--dry-run] NAME...")
+        os.Print("usage: build test [--build DIR] [--release-build DIR] [--jobs N] [--list] [--dry-run] NAME...")
         return 2
     }
     selected := Selection(rows, requested)
@@ -325,7 +328,7 @@ Test :: (arguments: string[]) -> int {
     if (Flag(arguments, "--dry-run")) {
         for (name in selected) {
             command := TestCommand(Row(rows, "tool", name), directory, releases, host)
-            build.report(Join([name, ": ", strings.Join(command, " ")]))
+            os.Print(Join([name, ": ", strings.Join(command, " ")]))
         }
         return 0
     }
@@ -335,19 +338,19 @@ Test :: (arguments: string[]) -> int {
     failed := 0
     while (waited < length(selected)) {
         while (started < length(selected) && started - waited < jobs) {
-            handles.append(build.start(TestCommand(Row(rows, "tool", selected[started]), directory, releases, host)))
+            handles.append(os.Spawn(TestCommand(Row(rows, "tool", selected[started]), directory, releases, host)))
             started += 1
         }
-        status := build.wait(handles[waited])
+        status := os.Wait(handles[waited])
         if (status == 0) {
-            build.report(format_text("PASS {}", selected[waited]))
+            os.Print(format_text("PASS {}", selected[waited]))
         } else {
-            build.report(format_text("FAIL {} (status {})", selected[waited], status))
+            os.Print(format_text("FAIL {} (status {})", selected[waited], status))
             failed += 1
         }
         waited += 1
     }
-    build.report(format_text("{} tests, {} failed", length(selected), failed))
+    os.Print(format_text("{} tests, {} failed", length(selected), failed))
     if (failed > 0) {
         return 1
     }
@@ -355,13 +358,13 @@ Test :: (arguments: string[]) -> int {
 }
 
 Usage :: () -> int {
-    build.report("usage: build [--release|--debug] [--build DIR] [--target NAME]... [--all] [--jobs N] [--dry-run]")
-    build.report("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--list] [--dry-run] NAME...")
+    os.Print("usage: build [--release|--debug] [--build DIR] [--target NAME]... [--all] [--jobs N] [--dry-run]")
+    os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--list] [--dry-run] NAME...")
     return 2
 }
 
 Main :: () -> int {
-    arguments := build.arguments()
+    arguments := os.Arguments()
     if (length(arguments) == 0 || arguments[0] != "build") {
         return Usage()
     }

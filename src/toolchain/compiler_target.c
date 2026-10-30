@@ -581,6 +581,46 @@ char *compiler_behavior_catalog_input_json(
     return written(doc, length, true);
 }
 
+char *compiler_package_catalog_request_json(
+    const char *project,
+    const char *const *names,
+    const char *const *roots,
+    int collections,
+    const char *const *paths,
+    const char *const *texts,
+    const size_t *sizes,
+    int files,
+    const script_catalog *catalog,
+    const native_capabilities *bindings,
+    size_t *length
+)
+{
+    target_input input = input_new(catalog, bindings, true);
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *arguments = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, arguments);
+    yyjson_mut_arr_add_strcpy(doc, arguments, project);
+    yyjson_mut_val *name_list = yyjson_mut_arr_add_arr(doc, arguments);
+    yyjson_mut_val *root_list = yyjson_mut_arr_add_arr(doc, arguments);
+    for (int i = 0; i < collections; i++) {
+        yyjson_mut_arr_add_strcpy(doc, name_list, names[i]);
+        yyjson_mut_arr_add_strcpy(doc, root_list, roots[i]);
+    }
+    yyjson_mut_val *path_list = yyjson_mut_arr_add_arr(doc, arguments);
+    yyjson_mut_val *text_list = yyjson_mut_arr_add_arr(doc, arguments);
+    for (int i = 0; i < files; i++) {
+        yyjson_mut_arr_add_strcpy(doc, path_list, paths[i]);
+        yyjson_mut_arr_add_strncpy(doc, text_list, texts[i], sizes[i]);
+    }
+    yyjson_mut_arr_add_false(doc, arguments);
+    add_target(doc, arguments, &input);
+    add_types(doc, arguments, &input);
+    yyjson_mut_arr_add_uint(doc, arguments, catalog->entity_type);
+    add_effects(doc, yyjson_mut_arr_add_arr(doc, arguments), &input);
+    afree(input.natives);
+    return written(doc, length, true);
+}
+
 char *compiler_package_request_json(
     const char *project,
     const char *const *names,

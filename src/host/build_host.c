@@ -597,7 +597,12 @@ void chibi_build_compiler_free(chibi_build_compiler *compiler)
 
 /* The program is one file of the package at its directory; it may import
  * the packages of its collections, core: among them. */
-static char *compile_input(const build_host *host, const native_capabilities *native, size_t *length)
+static char *compile_input(
+    const build_host *host,
+    const native_capabilities *native,
+    size_t *length,
+    char ***paths_out
+)
 {
     const chibi_build_options *options = host->options;
     source_package_collection collections[CHIBI_BUILD_MAX_COLLECTIONS + 1];
@@ -662,6 +667,12 @@ static char *compile_input(const build_host *host, const native_capabilities *na
     );
     free(sizes);
     free(texts);
+    /* The rejection names a document by its place in this list. */
+    char **named = NULL;
+    for (int i = 0; i < file_count; i++) {
+        apush(named, xstrdup(paths[i]));
+    }
+    *paths_out = named;
     free(paths);
     free(path);
     source_package_files_free(files);
@@ -671,7 +682,28 @@ static char *compile_input(const build_host *host, const native_capabilities *na
     return json;
 }
 
-static void compile_rejection(build_host *host, const char *json, size_t length)
+/* "path:line:column: message" when the rejection says where, else the message. */
+static void located_diagnostic(build_host *host, yyjson_val *diagnostic, const char *message, char **paths)
+{
+    int64_t line = yyjson_get_sint(yyjson_obj_get(diagnostic, "line"));
+    int64_t column = yyjson_get_sint(yyjson_obj_get(diagnostic, "column"));
+    int64_t document = yyjson_get_sint(yyjson_obj_get(diagnostic, "document"));
+    if (line > 0 && document >= 0 && document < acount(paths)) {
+        snprintf(
+            host->result->diagnostic,
+            sizeof host->result->diagnostic,
+            "%s:%lld:%lld: %s",
+            paths[document],
+            (long long)line,
+            (long long)column,
+            message
+        );
+        return;
+    }
+    diagnose(host->result, message);
+}
+
+static void compile_rejection(build_host *host, const char *json, size_t length, char **paths)
 {
     compiler_host_result result = { 0 };
     bool called = compiler_host_invoke(
@@ -688,7 +720,7 @@ static void compile_rejection(build_host *host, const char *json, size_t length)
     yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(error, "values"), 0);
     const char *message = yyjson_get_str(yyjson_obj_get(diagnostic, "message"));
     if (message) {
-        diagnose(host->result, message);
+        located_diagnostic(host, diagnostic, message, paths);
     } else {
         diagnose(host->result, result.diagnostic[0] ? result.diagnostic : "build source compilation failed");
     }
@@ -699,8 +731,13 @@ static void compile_rejection(build_host *host, const char *json, size_t length)
 static package_collection *prepare(build_host *host, const native_capabilities *native, uint64_t *root)
 {
     size_t length = 0;
-    char *json = compile_input(host, native, &length);
+    char **paths = NULL;
+    char *json = compile_input(host, native, &length, &paths);
     if (!json) {
+        for (int i = 0; i < acount(paths); i++) {
+            free(paths[i]);
+        }
+        afree(paths);
         return NULL;
     }
     compiler_host_bytes compiled = { 0 };
@@ -717,9 +754,13 @@ static package_collection *prepare(build_host *host, const native_capabilities *
     if (!called || failure) {
         diagnose(host->result, failure ? failure : compiled.diagnostic);
     } else if (!compiled.length) {
-        compile_rejection(host, json, length);
+        compile_rejection(host, json, length, paths);
     }
     free(json);
+    for (int i = 0; i < acount(paths); i++) {
+        free(paths[i]);
+    }
+    afree(paths);
     package_collection *packages = NULL;
     if (called && !failure && compiled.length) {
         native_prepared_context context = { .native = native };

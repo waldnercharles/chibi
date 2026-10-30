@@ -6,6 +6,7 @@ import raw "project:compiler_syntax"
 import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 import routes "project:package_routes"
+import graph "project:package_graph"
 import strings "core:strings"
 
 // Opt-in internal producer of a scalar_facts module. The snapshot,
@@ -620,7 +621,8 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (callee < 0 && ScalarTextOperator(forest, text, node) != 0) {
         return ScalarText(forest, text, callables, params, callable, names, types, members, constants, node, output);
     }
-    if (!Is(forest, Field(forest, node, "function"), "identifier") || callee < 0) {
+    if ((!Is(forest, Field(forest, node, "function"), "identifier") &&
+         !Is(forest, Field(forest, node, "function"), "member_expression")) || callee < 0) {
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, node, "function"), 0,
                                               "scalar proof calls only functions of its own source"));
     }
@@ -1888,7 +1890,8 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
 ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[],
                  params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], ops: Ops,
                  target: Target, natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[],
-                 is_library: bool, generic_bindings: GenericBinding[], documents: snapshot.Document[]) -> ScalarOperands {
+                 is_library: bool, generic_bindings: GenericBinding[], documents: snapshot.Document[],
+                 links: graph.Binding[]) -> ScalarOperands {
     // The view the facts take; EmitBody takes the ordinary compiler's own.
     seen: Callable[] = [];
     records: TypeDecl[] = [];
@@ -1918,6 +1921,8 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, "results"), 0,
                                               "scalar proof requires its first function to return int"));
     }
+    // One document's text and offsets serve its functions: the caller's own
+    // `text` for a single source, the callable's document in a package set.
     solid := SolidOffsets(text);
     rows: facts.Row[] = [];
     switch ScalarRecords(forest, records, fields) {
@@ -1927,18 +1932,32 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
             rows = record_rows;
     }
     for (function in 0..<length(callables)) {
-        empty_aliases: Name[] = [];
-        aliases := GenericAliases(empty_aliases, generic_bindings, function);
+        // A set of packages holds each function in its own document, whose
+        // import aliases resolve its qualified calls.
+        home_text := text;
+        home_key := key;
+        home_solid := solid;
+        home_aliases: Name[] = [];
+        if (length(documents) > 0 && length(links) > 0) {
+            home_aliases = Aliases(links, callables[function].document);
+        }
+        if (length(documents) > 0 && !is_library) {
+            home := callables[function].document;
+            home_text = documents[home].text;
+            home_key = documents[home].key;
+            home_solid = SolidOffsets(documents[home].text);
+        }
+        aliases := GenericAliases(home_aliases, generic_bindings, function);
         used := constants;
         if (length(generic_bindings) > 0) {
             used = GenericConstants(forest, constants, generic_bindings, function, callables[function], documents);
         }
-        emitted := ScalarEmits(forest, text, key, callables, params, types, members, used, solid, function,
+        emitted := ScalarEmits(forest, home_text, home_key, callables, params, types, members, used, home_solid, function,
                                ops, target, natives, ports, identities, aliases);
         if (emitted.message != "") {
             return ScalarOperands.Failed(emitted);
         }
-        switch ScalarFunction(forest, text, key, solid, seen, params, records, fields, used,
+        switch ScalarFunction(forest, home_text, home_key, home_solid, seen, params, records, fields, used,
                               function, ops, target, aliases) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
@@ -1980,9 +1999,9 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "scalar proof requires number and bool results where a function has several"));
             }
-            if (type == 0 || type == facts.StringType || field.container != 0) {
+            if (type == 0 || field.container != 0) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
-                                                      "scalar proof requires number and bool record fields"));
+                                                      "scalar proof requires number, bool and string record fields"));
             }
             rows.append(ScalarAt(forest, Field(forest, fields[index], "name"), facts.MemberRow, type, index, 0,
                                  field.name));
@@ -2011,9 +2030,9 @@ ScalarUnion :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: Typ
         for (index in 0..<variant.count) {
             field := members[variant.first + index];
             payload := ScalarTypeOf(field.storage);
-            if (payload == 0 || payload == facts.StringType || field.container != 0) {
+            if (payload == 0 || field.container != 0) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
-                                                      "scalar proof requires number and bool union payloads"));
+                                                      "scalar proof requires number, bool and string union payloads"));
             }
             rows.append(ScalarAt(forest, Field(forest, fields[index], "name"), facts.MemberRow, payload,
                                  variant.first + index - payloads, 0, field.name));
@@ -2032,7 +2051,7 @@ ScalarPassed :: () -> syntax.Diagnostic {
 // The first member of one source document this subset cannot express, which
 // admits only function, record, union and constant declarations. A constant
 // is the value Declare folds it to, so its reads are literals.
-ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int) -> syntax.Diagnostic {
+ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int, needs_function: bool) -> syntax.Diagnostic {
     functions := false;
     member := FirstMember(forest, root);
     while (member >= 0) {
@@ -2049,7 +2068,7 @@ ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int) -> syntax.Diagnost
         }
         member = NextMember(forest, member);
     }
-    if (!functions) {
+    if (needs_function && !functions) {
         return Diagnose(forest, root, 0, "scalar proof requires at least one function");
     }
     return ScalarPassed();
@@ -2133,7 +2152,7 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
     members: TypeMember[] = [];
     constants: ConstDecl[] = [];
     switch ScalarModule(forest, text, path, callables, params, empty_types, members, constants, ops, target, natives,
-                        ports, identities, true, [], []) {
+                        ports, identities, true, [], [], []) {
         case .Failed(diagnostic):
             return ScalarFailure(path, text, diagnostic);
         case .Built(rows):
@@ -2154,6 +2173,23 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
     }
 }
 
+// The callables with those of document 0 first, in their order, then the rest
+// in theirs: the entry of a package set is the first function of its first
+// file, whichever package order puts the dependencies in front.
+ScalarEntryFirst :: (callables: Callable[]) -> Callable[] {
+    ordered: Callable[] = [];
+    for (callable in callables) {
+        if (callable.document == 0) {
+            ordered.append(callable);
+        }
+    }
+    for (callable in callables) {
+        if (callable.document != 0) {
+            ordered.append(callable);
+        }
+    }
+    return ordered;
+}
 // The facts rows of `text` at `path`. `names`, `natives`, `ports` and
 // `identities` are the host's instruction names and native catalog, as
 // Compile takes them. Its text_byte_length, text_byte_at, text_slice and
@@ -2161,6 +2197,27 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
 // function.
 pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[], natives: Native[],
                       ports: Port[], identities: u64[]) -> facts.Row[] {
+    return ScalarCollect(project, [], [], [path], [text], target, names, natives, ports, identities, false);
+}
+// The facts rows of the project packages `paths` hold, as CollectScalar gives
+// one source's: the first function of the first file is the entry, the other
+// files are packages it imports, and a call may name an import's function. The
+// collections are Compile's; every package must be a project package.
+pub CollectScalarPackages :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                              sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
+                              identities: u64[]) -> facts.Row[] {
+    return ScalarCollect(project, collection_names, collection_paths, paths, sources, target, names, natives, ports,
+                         identities, true);
+}
+ScalarCollect :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                  sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
+                  identities: u64[], packaged: bool) -> facts.Row[] {
+    if (length(paths) == 0 || length(paths) != length(sources) || length(collection_names) != length(collection_paths) ||
+        (!packaged && length(paths) != 1)) {
+        return ScalarFailure("", "", ScalarStart("scalar proof requires matching paths and sources"));
+    }
+    path := paths[0];
+    text := sources[0];
     ops := ResolveOps(names, false);
     if (!Complete(ops)) {
         return ScalarFailure(path, text, ScalarStart("scalar proof requires a complete instruction catalog"));
@@ -2173,19 +2230,35 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
     text_natives := ScalarTextNatives(resolved);
     text_ports := ScalarTextPorts(resolved, resolved_ports);
     text_identities := ScalarTextIdentities(resolved, identities);
-    nul := ScalarNul(text);
-    if (nul.message != "") {
-        return ScalarFailure(path, text, nul);
+    for (source in sources) {
+        nul := ScalarNul(source);
+        if (nul.message != "") {
+            return ScalarFailure(path, text, nul);
+        }
     }
-    library_rows := ScalarLibrary(path, text, ops, target, text_natives, text_ports, text_identities);
-    if (length(library_rows) > 0) {
-        return library_rows;
+    if (!packaged) {
+        library_rows := ScalarLibrary(path, text, ops, target, text_natives, text_ports, text_identities);
+        if (length(library_rows) > 0) {
+            return library_rows;
+        }
     }
-    input: snapshot.Input = {path: path, text: text, has_path: true, has_text: true};
-    options: snapshot.Options = {project: project, has_project: true, has_options: true,
-                                 has_files: true, has_collections: false, file_count: 1, collection_count: 0};
     collections: routes.Collection[] = [];
-    switch snapshot.Build(options, collections, [input], [u64(strings.ByteLength(text))]) {
+    for (index in 0..<length(collection_names)) {
+        collection: routes.Collection = {name: collection_names[index], path: collection_paths[index], has_name: true,
+                                         has_path: true};
+        collections.append(collection);
+    }
+    inputs: snapshot.Input[] = [];
+    sizes: u64[] = [];
+    for (index in 0..<length(paths)) {
+        input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
+        inputs.append(input);
+        sizes.append(u64(strings.ByteLength(sources[index])));
+    }
+    options: snapshot.Options = {project: project, has_project: true, has_options: true,
+                                 has_files: true, has_collections: length(collections) != 0, file_count: length(inputs),
+                                 collection_count: length(collections)};
+    switch snapshot.Build(options, collections, inputs, sizes) {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return ScalarFailure(path, text, diagnostic);
         case .Accepted(roots, documents, nodes, imports, built):
@@ -2195,15 +2268,39 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
                     return ScalarFailure(path, text,
                                          Diagnose(nodes, document.syntax_root, 0, "scalar proof requires an accepted package graph"));
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
-                    unsupported := ScalarMembers(nodes, document.syntax_root);
-                    if (unsupported.message != "") {
-                        return ScalarFailure(path, text, unsupported);
+                    if (!packaged) {
+                        unsupported := ScalarMembers(nodes, document.syntax_root, true);
+                        if (unsupported.message != "") {
+                            return ScalarFailure(path, text, unsupported);
+                        }
                     }
-                    if (length(packages) != 1 || length(imports) != 0) {
+                    if (packaged) {
+                        for (candidate in documents) {
+                            if (!strings.HasPrefix(candidate.identity, "project:")) {
+                                return ScalarFailure(path, text,
+                                                     Diagnose(nodes, candidate.syntax_root, 0,
+                                                              "scalar proof imports only project packages"));
+                            }
+                            member_gap := ScalarMembers(nodes, candidate.syntax_root, false);
+                            if (member_gap.message != "") {
+                                return ScalarFailure(path, text, member_gap);
+                            }
+                        }
+                    }
+                    if (!packaged && (length(packages) != 1 || length(imports) != 0)) {
                         return ScalarFailure(path, text,
                                              Diagnose(nodes, document.syntax_root, 0, "scalar proof requires one package without imports"));
                     }
-                    switch Declare(nodes, documents, packages, files_of, order, imports, links, target) {
+                    active := order;
+                    roots_named: string[] = [document.identity];
+                    if (packaged) {
+                        active = ActivePackageOrder(documents, packages, files_of, order, edges, file_packages[0]);
+                        roots_named = [];
+                        for (listed in packages) {
+                            roots_named.append(documents[files_of[listed.member_start]].identity);
+                        }
+                    }
+                    switch Declare(nodes, documents, packages, files_of, active, imports, links, target) {
                         case .Failed(diagnostic):
                             return ScalarFailure(path, text, diagnostic);
                         case .Collected(callables, params, types, members, constants):
@@ -2211,16 +2308,24 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
                             // scalar pass then checks its existing pure numeric domain.
                             table := types;
                             effects := resize([int(0)], length(text_natives));
-                            switch SpecializePackages(nodes, documents, order, links, [document.identity],
+                            switch SpecializePackages(nodes, documents, active, links, roots_named,
                                                       WaitingCallables(nodes, callables), params, &table, members,
                                                       constants, text_natives, text_ports, text_identities,
                                                       BodyContext.Known(effects), ops, target) {
                                 case .Failed(diagnostic):
                                     return ScalarFailure(path, text, diagnostic);
                                 case .Ready(concrete, concrete_params, bindings):
-                                    switch ScalarModule(nodes, text, document.key, concrete, concrete_params, table, members,
+                                    entered := concrete;
+                                    if (packaged && length(concrete) > 0 && concrete[0].document != 0) {
+                                        if (length(bindings) > 0) {
+                                            return ScalarFailure(path, text, Diagnose(nodes, document.syntax_root, 0,
+                                                "scalar proof cannot order generic functions across packages"));
+                                        }
+                                        entered = ScalarEntryFirst(concrete);
+                                    }
+                                    switch ScalarModule(nodes, text, document.key, entered, concrete_params, table, members,
                                                         constants, ops, target, text_natives, text_ports, text_identities, false,
-                                                        bindings, documents) {
+                                                        bindings, documents, links) {
                                         case .Failed(diagnostic):
                                             return ScalarFailure(path, text, diagnostic);
                                         case .Built(rows):

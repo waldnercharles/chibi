@@ -1,0 +1,758 @@
+TEST_CASE(package_compiler_compiles_executable_libraries)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "libraries/Leaf.chibi" };
+    const char *sources[] = { "Leaf :: library { Answer :: (value: int = 7) -> "
+                              "(result: int) { return value; } }" };
+    REQUIRE(libraries_alike(identities, sources, 1, false, false));
+    return true;
+}
+
+TEST_CASE(package_compiler_folds_constants_as_stage_zero_does)
+{
+    REQUIRE(prepare());
+    const char *identity = "behaviors/Nested.chibi";
+    const char
+        *source = "Nested :: behavior { observed: int = 0; Read :: () -> int { "
+                  "x: int = int(u8(9)) + int(u8(wrap: 300)); "
+                  "y: int = (4 - 1); return x + y + int(-3) + (2 * 3); } "
+                  "on Tick :: () { observed = Read(); } }";
+    const library_result result = { identity, 59, 0, 0 };
+    REQUIRE(libraries_with_results(&identity, &source, 1, false, false, &result, 1));
+    return true;
+}
+
+TEST_CASE(package_compiler_links_executable_libraries)
+{
+    REQUIRE(prepare());
+    const type_desc *reflected[] = { &spot_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    publish_project(&pack);
+    const char *identities[] = { "behaviors/Caller.chibi",
+                                 "libraries/Middle.chibi",
+                                 "libraries/Leaf.chibi",
+                                 "libraries/Unused.chibi" };
+    const char *sources[] = {
+        "Caller :: behavior { label: string = \"seed\"; on Tick :: () { "
+        "p := Middle.Make().point; q := p; q.count += 5; later := "
+        "Leaf.Make(19).value; label = p.text; "
+        "if p.count == 7 && q.count == 12 && later.count == 19 { self.Spot.x "
+        "+= 7; } "
+        "self.Spot.y += Middle.Amount(); "
+        "if Middle.OwnerMatches() { self.Spot.x += 1; } "
+        "if Middle.CheckText(label) { self.Spot.y += 1; } } }",
+        "Middle :: library { Make :: () -> (point: Leaf.Row) { return "
+        "Leaf.Make(); } "
+        "Amount :: () -> number { return Leaf.Amount(); } "
+        "OwnerMatches :: () -> bool { return Leaf.OwnerMatches(); } "
+        "CheckText :: (value: string) -> bool { return value == \"a\\u0000b\"; "
+        "} }",
+        "Leaf :: library { Row :: struct { text: string; count: int; } "
+        "Make :: (n: int = 7) -> (value: Row) { return {text: \"a\\u0000b\", "
+        "count: n}; } "
+        "Amount :: (n: number = 2.5) -> number { return n; } "
+        "OwnerMatches :: () -> bool { return self == globals.Terrain; } }",
+        "Unused :: library { Answer :: () -> int { return 19; } }"
+    };
+    REQUIRE(libraries_alike(identities, sources, 4, true, false));
+    publish_project(NULL);
+    return true;
+}
+
+TEST_CASE(package_compiler_rejects_deferred_char_states)
+{
+    static const struct
+    {
+        const char *name, *source;
+        bool native_valid;
+    } cases[] = {
+        { "grouped negative", "Bad :: behavior { value: (char) = -1; Read :: () -> char { return value; } }", false },
+        { "nested surrogate", "Bad :: behavior { value: ((char)) = 0xD800; Read :: () -> char { return value; } }", false },
+        { "grouped valid", "Bad :: behavior { value: (char) = 65; Read :: () -> char { return value; } }", true },
+        { "nested valid", "Bad :: behavior { value: ((char)) = 65; Read :: () -> char { return value; } }", true }
+    };
+    REQUIRE(prepare());
+    script_catalog native = game_catalog();
+    const char *identities[] = { "behaviors/CharState.chibi" };
+    bool native_matches = true, rejected_all = true;
+    for (int i = 0; i < NATIVE_COUNT(cases); i++) {
+        char root[] = "/tmp/chibi-char-states-XXXXXX", path[256];
+        REQUIRE(mkdtemp(root));
+        snprintf(path, sizeof path, "%s/%s", root, identities[0]);
+        source_catalog_edit edit = { .path = path, .text = cases[i].source };
+        source_catalog *snapshot = source_catalog_replaced(root, &native, &edit, 1);
+        script_lower_bindings bindings = { .host = library_host, .global = game_global };
+        authoring_sources *oracle = authoring_sources_prepare_catalog(snapshot, &bindings, BEHAVIOR_BYTECODE);
+        native_matches &= authoring_sources_valid(oracle) == cases[i].native_valid;
+        for (int b = 0; b < 2; b++) {
+            const char *sources[] = { cases[i].source };
+            pin_value out;
+            REQUIRE(
+                catalog_compile_sources(b, &native, identities, sources, 1, "CompileBehaviorsWithCatalog", &out)
+            );
+            const pin_array *bytes = out.ptr;
+            bool rejected = !bytes || !bytes->count;
+            if (!rejected) {
+                fprintf(
+                    stderr,
+                    "stage one accepted deferred char state %s on backend %d\n",
+                    cases[i].name,
+                    b
+                );
+            }
+            rejected_all &= rejected;
+            arena_free(&detached);
+            if (rejected) {
+                REQUIRE(
+                    catalog_compile_sources(b, &native, identities, sources, 1, "BehaviorRejectionWithCatalog", &out)
+                );
+                REQUIRE(strstr(pin_text(out).bytes, "state type is not supported yet"));
+                arena_free(&detached);
+            }
+        }
+        authoring_sources_free(oracle);
+        REQUIRE(!rmdir(root));
+    }
+    REQUIRE(native_matches);
+    REQUIRE(rejected_all);
+    return true;
+}
+/* The production generic arithmetic native retains its input type. Its
+ * char form is deferred until every such result preserves Unicode validity. */
+
+TEST_CASE(package_compiler_rejects_invalid_library_closures)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "libraries/A.chibi",
+                                 "libraries/B.chibi",
+                                 "behaviors/Use.chibi" };
+    const char *ambiguous[] = {
+        "A :: library { Value :: () -> int { return 1; } }",
+        "B :: library { Value :: () -> int { return 2; } }",
+        "Use :: behavior { Read :: () -> int { return Value(); } }"
+    };
+    REQUIRE(library_rejects(identities, ambiguous, 3, "Ambiguous function", true));
+    const char *cycle[] = {
+        "A :: library { Value :: () -> int { return B.Value(); } }",
+        "B :: library { Value :: () -> int { return A.Value(); } }"
+    };
+    REQUIRE(library_rejects(identities, cycle, 2, "cross-library import cycle", true));
+    const char *duplicates[] = { "libraries/A.chibi", "libraries/A.chibi" };
+    REQUIRE(
+        library_rejects(duplicates, ambiguous, 2, "duplicate executable source identity", false)
+    );
+    const char *roots[] = {
+        "A :: library { Value :: () -> int { return 1; } }",
+        "A :: library { Value :: () -> int { return 2; } }"
+    };
+    REQUIRE(library_rejects(identities, roots, 2, "duplicate library declaration", true));
+    const char *non_declaration[] = {
+        "A :: library { Value :: () -> int { return 1; } }",
+        "Batch :: struct { value: int; }"
+    };
+    REQUIRE(library_rejects(identities, non_declaration, 2, "Unexpected syntax", false));
+    return true;
+}
+/* Stage zero's build of stage one passes arguments without copying them to
+ * every function but those that run once per compile. One that pushes onto an
+ * array argument, or stores a uint64 into a field of a local record, copies
+ * every argument on each call, and so does every function that calls it,
+ * slowing stage one compiling itself. */
+
+TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "behaviors/Unsupported.chibi", "libraries/Leaf.chibi" };
+    /* A primitive conversion wins over a library or native export with the
+     * same name, including char's checked scalar conversion. */
+    const char *behaviors[] = {
+        "Unsupported :: behavior { observed: int = 0; "
+        "on Tick :: () { observed = int(char(65)); } }"
+    };
+    const char
+        *library = "Leaf :: library { char :: (value: int) -> int { return "
+                   "value + 5; } "
+                   "number :: (value: int) -> int { return value + 6; } "
+                   "f32 :: (value: int) -> int { return value + 7; } "
+                   "f64 :: (value: int) -> int { return value + 8; } }";
+    native_capability_definition primitive_definitions[2] = {
+        LIBRARY_ALIAS_DEFINITIONS[0],
+        LIBRARY_ALIAS_DEFINITIONS[1]
+    };
+    primitive_definitions[0].canonical_name = "char";
+    primitive_definitions[0].source_name = "character_function";
+    primitive_definitions[1].canonical_name = "number";
+    primitive_definitions[1].source_name = "number_function";
+    const script_catalog empty = { 0 };
+    char error[256];
+    native_definition_catalog *definitions = native_definition_catalog_new(
+        &empty,
+        primitive_definitions,
+        NATIVE_COUNT(primitive_definitions),
+        NULL,
+        0,
+        error,
+        sizeof error
+    );
+    REQUIRE(definitions);
+    const script_catalog *declared = native_definition_catalog_view(definitions);
+    script_catalog native = game_catalog();
+    script_catalog_capability *capabilities = NULL;
+    for (int i = 0; i < native.capability_count; i++) {
+        apush(capabilities, native.capabilities[i]);
+    }
+    for (int i = 0; i < declared->capability_count; i++) {
+        apush(capabilities, declared->capabilities[i]);
+    }
+    script_catalog with_native = native;
+    with_native.capabilities = capabilities;
+    with_native.capability_count = acount(capabilities);
+    for (int i = 0; i < NATIVE_COUNT(behaviors); i++) {
+        const char *sources[] = { behaviors[i], library };
+        const library_result result = { identities[0], 65, 0, 0 };
+        REQUIRE(libraries_with_results(identities, sources, 2, false, false, &result, 1));
+        REQUIRE(
+            libraries_with_results_catalog(&with_native, identities, sources, 1, false, false, &result, 1)
+        );
+        const char *invalid[] = {
+            "Unsupported :: behavior { Read :: () -> "
+            "char { return char(wrap: 65); } }",
+            "Unsupported :: behavior { Read :: (value: number) -> "
+            "char { return char(value); } }",
+            "Unsupported :: behavior { Read :: () -> int { "
+            "value := char(65); value = -1; return int(value); } }"
+        };
+        REQUIRE(
+            library_rejects_catalog(&with_native, identities, invalid, 1, "char converts only with char(value)", LIBRARY_ORACLE_INVALID)
+        );
+        REQUIRE(
+            library_rejects_catalog(&with_native, identities, invalid + 1, 1, "char converts from an integer", LIBRARY_ORACLE_INVALID)
+        );
+        REQUIRE(
+            library_rejects_catalog(&with_native, identities, invalid + 2, 1, "assigned value differs from its local", LIBRARY_ORACLE_INVALID)
+        );
+    }
+    afree(capabilities);
+    native_definition_catalog_free(definitions);
+    /* A floating conversion converts, ahead of a library's function. */
+    const char *converted[] = {
+        "Unsupported :: behavior { observed: int = 0; "
+        "on Tick :: () { observed = int(f64(7)) + int(number(1)); } }",
+        library
+    };
+    const library_result result = { identities[0], 8, 0, 0 };
+    REQUIRE(libraries_with_results(identities, converted, 2, false, false, &result, 1));
+    return true;
+}
+
+TEST_CASE(package_compiler_resolves_library_array_updates)
+{
+    REQUIRE(prepare());
+    const native_definition_pack packs[] = { NATIVE_ARRAY_DEFINITION_PACK };
+    script_catalog base = game_catalog();
+    char error[256];
+    native_capabilities *arrays = native_capabilities_from_definition_packs(
+        NULL,
+        0,
+        packs,
+        NATIVE_COUNT(packs),
+        error,
+        sizeof error
+    );
+    REQUIRE(arrays);
+    const script_catalog *array_catalog = native_capabilities_catalog(arrays);
+    script_catalog_capability *capabilities = NULL;
+    for (int i = 0; i < base.capability_count; i++) {
+        apush(capabilities, base.capabilities[i]);
+    }
+    for (int i = 0; i < array_catalog->capability_count; i++) {
+        apush(capabilities, array_catalog->capabilities[i]);
+    }
+    base.capabilities = capabilities;
+    base.capability_count = acount(capabilities);
+    const char *identities[] = { "libraries/ArrayTools.chibi", "behaviors/Use.chibi" };
+    const char *sources[] = {
+        "ArrayTools :: library { append :: (array: int[], item: int) -> int[] "
+        "{ return array; } }",
+        "Use :: behavior { Read :: () -> int { xs: int[] = []; xs = append(xs, "
+        "7); return length(xs); } }"
+    };
+    REQUIRE(
+        library_rejects_catalog(&base, identities, sources, 2, "Ambiguous function", LIBRARY_ORACLE_INVALID)
+    );
+    afree(capabilities);
+    native_capabilities_free(arrays);
+    return true;
+}
+/* These sources are independently rejected by stage zero. The stage-one
+ * checks exercise nominal scalar identity and constant scalar validation,
+ * rather than trusting an integer storage code or the UTF-8 library itself. */
+
+TEST_CASE(package_compiler_resolves_library_names)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "behaviors/Probe.chibi", "libraries/Leaf.chibi" };
+    const char *sources[] = {
+        "Probe :: behavior { observed: int = 0; Read :: () -> int { return "
+        "leaf.value(); } "
+        "Owned :: () -> bool { return Leaf.Native(\"Terrain\").Value == self; "
+        "} on Tick :: () { observed = Read(); if Owned() { observed += 1000; } "
+        "} }",
+        "Leaf :: library { Value :: () -> int { return Twice(2); } "
+        "Native_ :: (key: string) -> (Value: int) { return 0; } "
+        "Twice :: (n: int) -> int { if n == 0 { return 0; } return Twice(n - "
+        "1) + 1; } }"
+    };
+    const library_result result = { identities[0], 1002, 0, 0 };
+    REQUIRE(libraries_with_results(identities, sources, 2, false, true, &result, 1));
+    return true;
+}
+
+TEST_CASE(package_compiler_resolves_library_primitive_names)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "behaviors/Primitive.chibi",
+                                 "libraries/Leaf.chibi",
+                                 "behaviors/Qualified.chibi",
+                                 "behaviors/Lexical.chibi" };
+    const char *sources[] = {
+        "Primitive :: behavior { observed: int = 0; Read :: () -> int { return "
+        "int(7); } "
+        "on Tick :: () { observed = Read(); } }",
+        "Leaf :: library { int :: (value: int) -> int { return value + 5; } "
+        "char :: (value: int) -> int { return value + 6; } "
+        "number :: (value: int) -> int { return value + 7; } }",
+        "Qualified :: behavior { observed: int = 0; Read :: () -> int { return "
+        "Leaf.int(7) + "
+        "Leaf.char(7) + Leaf.number(7); } on Tick :: () { observed = Read(); } "
+        "}",
+        "Lexical :: behavior { observed: int = 0; int :: (value: int) -> int { "
+        "return value + 9; "
+        "} "
+        "char :: (value: int) -> int { return value + 10; } "
+        "number :: (value: int) -> int { return value + 11; } "
+        "Read :: () -> int { return int(7) + char(7) + number(7); } "
+        "on Tick :: () { observed = Read(); } }"
+    };
+    const library_result results[] = { { identities[0], 7, 0, 0 },
+                                       { identities[2], 39, 0, 0 },
+                                       { identities[3], 51, 0, 0 } };
+    REQUIRE(
+        libraries_with_results(identities, sources, 4, false, false, results, NATIVE_COUNT(results))
+    );
+    return true;
+}
+
+TEST_CASE(package_compiler_resolves_native_canonical_names)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "behaviors/Probe.chibi", "libraries/Alias.chibi" };
+    const char *sources[] = {
+        "Probe :: behavior { observed: int = 0; Read :: () -> int { return "
+        "Alias.Native(7).length; } "
+        "ReadAlias :: () -> int { return leaf_alias(8).length; } "
+        "ReadSource :: () -> bool { return Alias.Native_(9).length; } "
+        "on Tick :: () { observed = Read() + ReadAlias(); if !ReadSource() { "
+        "observed += 1000; } } }",
+        "Alias :: library { Native_ :: (value: int) -> (length: bool) { return "
+        "false; } }"
+    };
+    const library_result result = { identities[0], 1215, 2, 0 };
+    REQUIRE(libraries_with_results(identities, sources, 2, false, true, &result, 1));
+    return true;
+}
+
+TEST_CASE(package_compiler_resolves_unqualified_libraries)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "behaviors/Probe.chibi", "libraries/Leaf.chibi" };
+    const char *sources[] = {
+        "Probe :: behavior { observed: int = 0; Read :: () -> int { return "
+        "Answer().value; } "
+        "on Tick :: () { observed = Read(); } }",
+        "Leaf :: library { Answer :: () -> (value: int) { return 7; } }"
+    };
+    const library_result result = { identities[0], 7, 0, 0 };
+    REQUIRE(libraries_with_results(identities, sources, 2, false, false, &result, 1));
+    return true;
+}
+
+TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
+{
+    REQUIRE(prepare());
+    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(
+        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
+    );
+    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
+    char directory[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    pin_value count;
+    REQUIRE(
+        compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count)
+    );
+    int accepted = 0, deep = 0;
+    bool agreed = true;
+    for (int i = 0; agreed && !native_cancelled && i < count.i; i++) {
+        agreed = scalar_case_agrees(directory, i, &accepted, &deep);
+        arena_free(&detached);
+    }
+    agreed = agreed && folded_sources_agree(directory) &&
+             folded_overflow_rejected() && widths_agree(directory) &&
+             floats_agree(directory) && control_agrees(directory) &&
+             long_functions_agree(directory) && loops_agree(directory) &&
+             widest_loops_agree(directory) && switches_agree(directory) &&
+             endless_loops_hang(directory) && recursion_agrees(directory) &&
+             recursion_overflows_by_name(directory) &&
+             library_runs_in_a_scene(directory);
+    REQUIRE(remove_native_files(directory));
+    if (native_cancelled) {
+        fprintf(stderr, "native scalar run was cancelled\n");
+    }
+    REQUIRE(agreed && !native_cancelled);
+    REQUIRE(accepted == SCALAR_ACCEPTED_CASES && deep == DEEP_CASE_COUNT);
+    return true;
+}
+#endif
+/* Query tests use the target's canonical Tick(dt: number), while the older
+ * behavior fixtures above exercise an event named DeltaSeconds. */
+
+static bool libraries_alike(
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    bool playing,
+    bool namespace_native
+)
+{
+    return libraries_with_results(identities, sources, count, playing, namespace_native, NULL, 0);
+}
+
+static bool libraries_with_results(
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    bool playing,
+    bool namespace_native,
+    const library_result *results,
+    int result_count
+)
+{
+    return libraries_with_results_catalog(NULL, identities, sources, count, playing, namespace_native, results, result_count);
+}
+
+static bool libraries_with_results_catalog(
+    const script_catalog *provided,
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    bool playing,
+    bool namespace_native,
+    const library_result *results,
+    int result_count
+)
+{
+    char root[] = "/tmp/chibi-compiler-libraries-XXXXXX";
+    REQUIRE(mkdtemp(root));
+    source_catalog_edit *edits = NULL;
+    char (*paths)[256] = xmalloc((size_t)count * sizeof *paths);
+    for (int i = 0; i < count; i++) {
+        snprintf(paths[i], sizeof paths[i], "%s/%s", root, identities[i]);
+        apush(edits, ((source_catalog_edit){ .path = paths[i], .text = sources[i] }));
+    }
+    script_catalog native = provided ? *provided : game_catalog();
+    script_catalog_capability
+        capabilities[sizeof game_capabilities / sizeof *game_capabilities + NATIVE_COUNT(LIBRARY_ALIAS_DEFINITIONS)];
+    char definition_error[256];
+    const script_catalog definition_base = { 0 };
+    native_definition_catalog *definitions = native_definition_catalog_new(
+        &definition_base,
+        LIBRARY_ALIAS_DEFINITIONS,
+        NATIVE_COUNT(LIBRARY_ALIAS_DEFINITIONS),
+        NULL,
+        0,
+        definition_error,
+        sizeof definition_error
+    );
+    REQUIRE(definitions);
+    const script_catalog *aliases = native_definition_catalog_view(definitions);
+    if (namespace_native) {
+        memcpy(capabilities, game_capabilities, sizeof game_capabilities);
+        for (int i = 0; i < native.capability_count; i++) {
+            if (capabilities[i].id == GET_TERRAIN) {
+                capabilities[i].name = "Leaf.Native";
+                capabilities[i].qualified_name = "Leaf.Native";
+            }
+        }
+        for (int i = 0; i < aliases->capability_count; i++) {
+            capabilities[native.capability_count++] = aliases->capabilities[i];
+        }
+        native.capabilities = capabilities;
+    }
+    source_catalog *snapshot = source_catalog_replaced(root, &native, edits, count);
+    afree(edits);
+    free(paths);
+    for (int i = 0; i < source_catalog_diagnostic_count(snapshot); i++) {
+        fprintf(
+            stderr,
+            "library catalog: %s\n",
+            source_catalog_diagnostic_at(snapshot, i)->message
+        );
+    }
+    REQUIRE(!source_catalog_diagnostic_count(snapshot));
+    script_lower_bindings bindings = { .host = library_host, .global = game_global };
+    authoring_sources *oracle = authoring_sources_prepare_catalog(snapshot, &bindings, BEHAVIOR_BYTECODE);
+    for (int i = 0; i < authoring_sources_count(oracle); i++) {
+        const authoring_source *source = authoring_sources_at(oracle, i);
+        for (int j = 0; j < source->diagnostic_count; j++) {
+            fprintf(
+                stderr,
+                "library oracle %s: %s\n",
+                source->path,
+                source->diagnostics[j].message
+            );
+        }
+    }
+    REQUIRE(authoring_sources_valid(oracle));
+    const script_catalog *catalog = authoring_sources_catalog(oracle);
+    for (int b = 0; b < 2; b++) {
+        pin_value out;
+        REQUIRE(
+            catalog_compile_sources(b, catalog, identities, sources, count, "CompileBehaviorsWithCatalog", &out)
+        );
+        const pin_array *bytes = out.ptr;
+        if (!bytes || !bytes->count) {
+            arena_free(&detached);
+            REQUIRE(
+                catalog_compile_sources(b, catalog, identities, sources, count, "BehaviorRejectionWithCatalog", &out)
+            );
+            fprintf(
+                stderr,
+                "executable library rejected: %.*s\n",
+                (int)pin_text(out).length,
+                pin_text(out).bytes
+            );
+            REQUIRE(false);
+        }
+        size_t length = (size_t)bytes->count;
+        unsigned char *copied = xmalloc(length);
+        for (size_t i = 0; i < length; i++) {
+            copied[i] = bytes->items[i].u8;
+        }
+        arena_free(&detached);
+        for (int backend = 0; backend < 2; backend++) {
+            execution_prepared_linker linker = { .user = (void *)catalog,
+                                                 .type = link_game_type,
+                                                 .host = link_library_host,
+                                                 .event = link_game_event };
+            size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+            uint64_t root_id = 0;
+            char error[256];
+            package_collection *actual = compiler_artifact_read(
+                copied,
+                length,
+                &linker,
+                backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+                &remaining,
+                &root_id,
+                error,
+                sizeof error
+            );
+            if (!actual) {
+                fprintf(stderr, "executable library load: %s\n", error);
+            }
+            REQUIRE(actual && package_collection_count(actual) == count);
+            int checked_results = 0;
+            for (int i = 0; i < count; i++) {
+                execution_module *got = package_collection_module(actual, i);
+                const execution_module *expected = NULL;
+                const char *identity = NULL;
+                for (int j = 0; j < count; j++) {
+                    const execution_module *candidate = authoring_sources_at(oracle, j)
+                                                            ->module;
+                    if (execution_module_id(candidate) == execution_module_id(got)) {
+                        REQUIRE(!expected);
+                        expected = candidate;
+                        identity = authoring_sources_at(oracle, j)->path +
+                                   strlen(root) + 1;
+                    }
+                }
+                REQUIRE(expected);
+                REQUIRE(got->plan.import_count == expected->plan.import_count);
+                REQUIRE(same_declarations(expected, got));
+                REQUIRE(same_points(expected, got));
+                REQUIRE(same_watches(expected, got));
+                for (int r = 0; r < result_count; r++) {
+                    if (!strcmp(identity, results[r].identity)) {
+                        REQUIRE(
+                            library_result_plays((execution_module *)expected, got, backend, &results[r])
+                        );
+                        checked_results++;
+                    }
+                }
+                if (playing && execution_module_id(got) == root_id) {
+                    int calls = 0;
+                    for (int j = 0; j < got->plan.function_count; j++) {
+                        calls += acount(got->plan.functions[j].body->calls);
+                    }
+                    REQUIRE(calls > 0);
+                }
+                for (int j = 0; j < execution_module_function_count(got); j++) {
+                    execution_module_function_info x = execution_module_function_at(expected, j);
+                    execution_module_function_info y = execution_module_function_at(got, j);
+                    REQUIRE(x.continuation_wait == y.continuation_wait);
+                }
+                if (playing && execution_module_id(got) == root_id) {
+                    REQUIRE(library_plays((execution_module *)expected, got, backend));
+                }
+            }
+            REQUIRE(checked_results == result_count);
+            package_collection_free(actual);
+        }
+        if (playing && b == 1) {
+            REQUIRE(library_generations(catalog, identities, sources, copied, length));
+        }
+        free(copied);
+    }
+    authoring_sources_free(oracle);
+    native_definition_catalog_free(definitions);
+    REQUIRE(!rmdir(root));
+    return true;
+}
+
+static bool library_loads_and_agrees(const char *directory, const char *library)
+{
+    char folder[PATH_MAX], misnamed[PATH_MAX], shipped[PATH_MAX],
+        reason[PATH_MAX + 64], error[PATH_MAX + 64] = "";
+    snprintf(folder, sizeof folder, "%s/natives", directory);
+    snprintf(misnamed, sizeof misnamed, "%s/Other.so", folder);
+    snprintf(shipped, sizeof shipped, "%s/Native.so", folder);
+    snprintf(reason, sizeof reason, "native library %s has no chibi_natives_Other", misnamed);
+    native_file(misnamed);
+    native_file(shipped);
+    native_file(folder);
+    native_libraries *libraries = native_libraries_open(folder, error, sizeof error);
+    REQUIRE(libraries);
+    int count = 1;
+    native_libraries_manifests(libraries, &count);
+    REQUIRE(!count);
+    native_libraries_close(libraries);
+    REQUIRE(!mkdir(folder, 0700) && !rename(library, misnamed));
+    REQUIRE(!native_libraries_open(folder, error, sizeof error) && !strcmp(error, reason));
+    REQUIRE(!rename(misnamed, shipped));
+    libraries = native_libraries_open(folder, error, sizeof error);
+    if (!libraries) {
+        fprintf(stderr, "%s\n", error);
+    }
+    count = 0;
+    const execution_native_manifest *const
+        *manifests = libraries ? native_libraries_manifests(libraries, &count) : NULL;
+    bool agreed = count == 1 && manifests[0]->abi == EXECUTION_NATIVE_ABI &&
+                  manifests[0]->count == 8 && exports_small_alone(manifests[0]) &&
+                  native_calls_agree(manifests[0]);
+    native_libraries_close(libraries);
+    REQUIRE(!remove(shipped) && !rmdir(folder) && agreed);
+    return true;
+}
+/* NATIVE_CALLS_LIBRARY compiled natively at O0 and O2 runs in a scene. */
+
+static bool library_rejects(
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    const char *message,
+    bool native_invalid
+)
+{
+    script_catalog native = game_catalog();
+    return library_rejects_catalog(
+        &native,
+        identities,
+        sources,
+        count,
+        message,
+        native_invalid ? LIBRARY_ORACLE_INVALID : LIBRARY_ORACLE_UNCHECKED
+    );
+}
+
+static bool library_rejects_catalog(
+    const script_catalog *native,
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    const char *message,
+    library_oracle_expectation expectation
+)
+{
+    char root[] = "/tmp/chibi-compiler-libraries-XXXXXX";
+    REQUIRE(mkdtemp(root));
+    source_catalog_edit *edits = NULL;
+    char (*paths)[256] = xmalloc((size_t)count * sizeof *paths);
+    for (int i = 0; i < count; i++) {
+        snprintf(paths[i], sizeof paths[i], "%s/%s", root, identities[i]);
+        apush(edits, ((source_catalog_edit){ .path = paths[i], .text = sources[i] }));
+    }
+    source_catalog *snapshot = source_catalog_replaced(root, native, edits, count);
+    afree(edits);
+    free(paths);
+    const script_catalog *catalog = source_catalog_view(snapshot);
+    authoring_sources *oracle = NULL;
+    if (expectation != LIBRARY_ORACLE_UNCHECKED) {
+        script_lower_bindings bindings = { .host = library_host, .global = game_global };
+        oracle = authoring_sources_prepare_catalog(snapshot, &bindings, BEHAVIOR_BYTECODE);
+        REQUIRE(authoring_sources_valid(oracle) == (expectation == LIBRARY_ORACLE_VALID));
+    }
+    for (int b = 0; b < 2; b++) {
+        pin_value out;
+        REQUIRE(
+            catalog_compile_sources(b, catalog, identities, sources, count, "CompileBehaviorsWithCatalog", &out)
+        );
+        const pin_array *bytes = out.ptr;
+        REQUIRE(!bytes || !bytes->count);
+        arena_free(&detached);
+        REQUIRE(
+            catalog_compile_sources(b, catalog, identities, sources, count, "BehaviorRejectionWithCatalog", &out)
+        );
+        if (!strstr(pin_text(out).bytes, message)) {
+            fprintf(
+                stderr,
+                "library rejection wanted '%s', got '%s'\n",
+                message,
+                pin_text(out).bytes
+            );
+        }
+        REQUIRE(strstr(pin_text(out).bytes, message));
+        arena_free(&detached);
+    }
+    if (expectation != LIBRARY_ORACLE_UNCHECKED) {
+        authoring_sources_free(oracle);
+    } else {
+        source_catalog_free(snapshot);
+    }
+    REQUIRE(!rmdir(root));
+    return true;
+}
+
+static bool library_runs_in_a_scene(const char *directory)
+{
+    pin_value rows;
+    char *ir;
+    REQUIRE(
+        collected_at(1, "libraries/Native.chibi", "library", text(NATIVE_CALLS_LIBRARY), &rows)
+    );
+    if (row_int(&rows, 1, "kind") != 2) {
+        report_rejection(1, "library", &rows);
+    }
+    REQUIRE(row_int(&rows, 1, "kind") == 2 && emitted_ir(1, &rows, &ir) && ir);
+    bool agreed = true;
+    for (int level = 0; agreed && level <= 2; level += 2) {
+        char library[PATH_MAX];
+        agreed = native_library(directory, "library", ir, "", level, library) &&
+                 library_loads_and_agrees(directory, library);
+    }
+    free(ir);
+    REQUIRE(agreed);
+    return true;
+}
+

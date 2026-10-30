@@ -59,8 +59,11 @@ def diagnostics(path):
     context = 0
     with path.open(errors='replace') as source:
         for line in source:
+            # Reflection progress runs beside failing steps and would fill the tail.
+            if line.startswith('reflect:'):
+                continue
             tail.append(line)
-            if re.search(r'error:|fatal error|CMake Error|FAILED|FAIL:|AssertionError|Traceback', line):
+            if re.search(r'error:|fatal error|CMake Error|FAILED|FAIL:|failed:|AssertionError|Traceback', line):
                 context = 5
             if context:
                 errors.append(line[:500])

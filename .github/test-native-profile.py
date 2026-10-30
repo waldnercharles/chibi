@@ -41,7 +41,7 @@ class ProfileTests(unittest.TestCase):
             env=dict(os.environ, BUILD_DEBUG_OPTIMIZATION='1', BUILD_DEBUG_FRAME_POINTERS='on',
                      ASSET_GENERATOR_HOSTS='/tmp/borrowed-generator-hosts'))
         self.assertIn('BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION=', result)
-        self.assertIn('--profile "release"', result)
+        self.assertIn('--release --build "build-release"', result)
         self.assertNotIn('--debug-optimization "1"', result)
         self.assertNotIn('--debug-frame-pointers "on"', result)
         self.assertNotIn('--asset-generator-hosts', result)

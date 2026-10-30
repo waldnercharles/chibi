@@ -448,9 +448,7 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_authoring") {
         return [
             "src/authoring/native_bindings.c", "src/authoring/source_literal.c",
-            "src/authoring/source_prepare.c",
-            "src/authoring/source_link.c", "src/authoring/source_navigation.c",
-            "src/authoring/source_prototype_flow.c"
+                        "src/authoring/source_link.c"
         ];
     }
     if (target == "chibi_asset_authoring") {
@@ -470,10 +468,9 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_source_catalog") {
         return [
-            "src/authoring/language_catalog.c", "src/authoring/source_catalog.c",
-            "src/authoring/source_asset.c",
+            "src/authoring/language_catalog.c",
             "src/authoring/source_catalog_snapshot.c",
-            "src/authoring/source_collection.c", "src/authoring/source_packages.c",
+            "src/authoring/source_packages.c",
             "src/authoring/source_package_syntax.c", "src/authoring/source_package_paths.c",
             "src/authoring/source_package_routes.c", "src/authoring/source_package_snapshot.c",
             "src/authoring/source_package_files.c", "src/authoring/source_package_exports.c",
@@ -559,7 +556,7 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_application") {
         return ["src/host/application.c", "src/host/application_tools.c", "src/host/application_io.c",
-                "src/host/process.c", "src/host/serve.c"];
+                "src/host/process.c"];
     }
     if (target == "chibi_program_consumer") {
         return ["test/tools/program_consumer.c"];
@@ -617,15 +614,15 @@ Files :: (target: string) -> string[] {
             "test/language/syntax.c", "test/language/execution.c",
             "test/language/capture.c",
 
-            "test/language/incremental.c",
-            "test/language/modules.c", "test/language/native_calls.c",
+
+
             "test/language/ranges.c",
             "test/language/component_write_ir.c",
 
 
 
-            "test/language/incremental_benchmark.c", "test/language/headless.c",
-            "test/language/navigation.c",
+
+
             "test/language/field_runtime.c", "test/language/prototype.c",
             "test/language/ui.c", "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
             "test/language/packages.c", "test/language/package_syntax.c",
@@ -659,7 +656,7 @@ Files :: (target: string) -> string[] {
             "test/language/numeric.c",
             "test/parallel.c", "test/language/parallel.c",
 
-            "test/language/source_assets.c", "test/language/record_services.c"
+            "test/language/record_services.c"
         ];
     }
     if (target == "chibi_sdk_contracts") {
@@ -677,9 +674,6 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_scene_authoring_consumer") {
         return ["test/authoring/scene_hierarchy.c"];
-    }
-    if (target == "chibi_scene_snapshot_read_consumer") {
-        return ["test/authoring/scene_snapshot_read.c"];
     }
     if (target == "chibi_native_consumer") {
         return [
@@ -727,15 +721,13 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_source_runtime_consumer") {
         return [
             "test/runtime/whole_math.c", "test/runtime/whole_integer.c",
-            "test/runtime/whole_conversion.c", "test/runtime/owned_tick.c",
-            "test/runtime/parallel_tick.c", "test/runtime/whole_alias.c",
+            "test/runtime/whole_conversion.c",
             "test/runtime/persistent_store.c", "test/support/reflected_types.c"
         ];
     }
     if (target == "chibi_source_features_consumer") {
         return [
-            "test/runtime/source_features.c", "test/runtime/source_input_save.c",
-            "test/runtime/source_reductions.c", "test/tools/scheduler_benchmark.c",
+            "test/tools/scheduler_benchmark.c",
             "test/authoring/component_presentation.c"
         ];
     }
@@ -1104,9 +1096,9 @@ pub PublicHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_authoring") {
         return [
-            "authoring/native_bindings.h", "authoring/source_declaration.h",
-            "authoring/source_link.h", "authoring/source_literal.h", "authoring/source_navigation.h",
-            "authoring/source_prepare.h", "authoring/source_prototype_flow.h",
+            "authoring/native_bindings.h",
+            "authoring/source_link.h", "authoring/source_literal.h"
+
 
         ];
     }
@@ -1126,8 +1118,8 @@ pub PublicHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_source_catalog") {
         return [
-            "authoring/language_catalog.h", "authoring/package_tests.h", "authoring/source_asset.h",
-            "authoring/source_catalog.h", "authoring/source_collection.h",
+            "authoring/language_catalog.h", "authoring/package_tests.h",
+
             "authoring/source_package_exports.h", "authoring/source_package_files.h", "authoring/source_package_io.h",
             "authoring/source_package_prepare.h", "authoring/source_package_snapshot.h",
             "authoring/source_packages.h"
@@ -1237,7 +1229,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
         ];
     }
     if (target == "chibi_authoring") {
-        return ["authoring/source_prepare_internal.h"];
+        return [];
     }
     if (target == "chibi_player") {
         return ["host/player_clock.h", "host/player_url.h", "host/native_libraries.h", "host/stack_overflow.h"];
@@ -1246,7 +1238,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
         return [
             "authoring/source_catalog_snapshot.h", "authoring/source_package_paths.h",
             "authoring/source_package_routes.h", "authoring/source_package_syntax.h",
-            "authoring/source_prepare_internal.h", "capabilities/catalog_index.h"
+            "capabilities/catalog_index.h"
         ];
     }
     if (target == "chibi_language") {
@@ -1298,7 +1290,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_launcher") {
         return ["host/application.h", "host/application_tools.h", "host/application_io.h",
-                "host/process.h", "host/serve.h",
+                "host/process.h",
                 "toolchain/compiler_syntax.h", "toolchain/compiler_json.h"];
     }
     if (target == "chibi_compiler-syntax") {
@@ -1355,7 +1347,7 @@ ToolConsumers :: () -> string[] {
     return [
         "chibi_sdk_contracts",
         "chibi_scene_consumer", "chibi_shader_bake_consumer", "chibi_scene_authoring_consumer",
-        "chibi_scene_snapshot_read_consumer", "chibi_native_consumer", "chibi_asset_values_consumer",
+        "chibi_native_consumer", "chibi_asset_values_consumer",
         "chibi_ui_document_consumer", "chibi_particle_consumer", "chibi_png_consumer",
         "chibi_project_document_consumer", "chibi_render_consumer", "chibi_image_preparation_consumer", "chibi_source_runtime_consumer",
         "chibi_source_features_consumer", "chibi_program_consumer"
@@ -2228,18 +2220,6 @@ pub Includes :: (target: string) -> string[] {
             "public/behavior_runtime", "public/execution", "public/tasks", "public/events"
         ];
     }
-    if (target == "chibi_scene_snapshot_read_consumer") {
-        return [
-            "build/test/tools/testing/include", "public/scene_authoring", "public/native_types",
-            "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
-            "public/source_catalog", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax",
-            "public/execution", "public/tasks", "public/native_capabilities", "public/reference_index",
-            "public/input_map", "public/input_action", "public/prototype_document",
-            "public/asset_values", "public/scene_document", "public/scene_runtime",
-            "public/behavior_runtime", "public/events"
-        ];
-    }
     if (target == "chibi_native_consumer") {
         return [
             "build/test/tools/testing/include", "public/player", "public/engine",
@@ -2581,9 +2561,6 @@ CommonSystemIncludes :: (target: string) -> string[] {
     if (target == "chibi_scene_authoring_consumer") {
         return ["public/math"];
     }
-    if (target == "chibi_scene_snapshot_read_consumer") {
-        return ["public/math", "third-party/include/chibi/vendor/tree_sitter/1"];
-    }
     if (target == "chibi_native_consumer") {
         return ["public/math", "third-party/include/chibi/vendor/tree_sitter/1"];
     }
@@ -2857,9 +2834,6 @@ pub Options :: (target: string) -> string[] {
     if (target == "chibi_scene_authoring_consumer") {
         return ["-UNDEBUG"];
     }
-    if (target == "chibi_scene_snapshot_read_consumer") {
-        return ["-UNDEBUG"];
-    }
     if (target == "chibi_native_consumer") {
         return ["-UNDEBUG"];
     }
@@ -2952,7 +2926,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/signature_reader_chibi.c", "test/language/source_tokenizer_chibi.c",
         "test/language/source_parser_chibi.c",
         "test/language/type_relations_chibi.c",
-        "test/language/unit_algebra_chibi.c",
+        "test/language/unit_algebra_chibi.c"
 
     ];
 }
@@ -2966,13 +2940,6 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
     }
     if (target == "test_language" && file == "test/language/package_compiler_chibi.c") {
         return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
-    }
-    if (target == "test_language" && file == ) {
-        return [
-            "CHIBI_ATTRIBUTION_BASE=\"3c65bb60b6f3443aef6ccf4ab15acbe09b04b191\"",
-            "CHIBI_ATTRIBUTION_BUILD=\"{build_type}\"",
-            "CHIBI_ATTRIBUTION_FIXTURE_SHA=\"{sha256:test/language/runtime_attribution.c}\""
-        ];
     }
     if (target == "test_language" &&
         (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/source_parser_chibi.c" ||
@@ -3389,7 +3356,7 @@ pub LinkedObjects :: (target: string) -> string[] {
         return [
             "chibi_scene_consumer",
             "chibi_sdk_contracts", "chibi_program_consumer", "chibi_shader_bake_consumer", "chibi_scene_authoring_consumer",
-            "chibi_scene_snapshot_read_consumer", "chibi_native_consumer",
+            "chibi_native_consumer",
             "chibi_asset_values_consumer", "chibi_ui_document_consumer", "chibi_particle_consumer",
             "chibi_png_consumer", "chibi_project_document_consumer", "chibi_render_consumer",
             "chibi_image_preparation_consumer", "chibi_source_runtime_consumer",

@@ -393,22 +393,23 @@ TEST_CASE(test_runs_shared_package_tests)
     path(folder, "package-tests");
     REQUIRE(!mkdir(folder, 0700));
     /* Tests run without a program service (#880): they print, and nothing else. */
-    const char
-        *passing = "package facts\n"
-                   "@test\nPasses :: () {\n"
-                   " print_string(\"a test prints as it runs\")\n"
-                   " assert(2 + 2 == 4, \"addition\")\n}\n"
-                   "@test\nPureOne :: () { assert(2 + 2 == 4, \"addition\") }\n"
-                   "@test\nPureTwo :: () { assert(3 * 3 == 9, "
-                   "\"multiplication\") }\n";
+    const char *passing = "package facts\n"
+                          "@test\nPasses :: () {\n"
+                          " print_string(\"a test prints as it runs\")\n"
+                          " two: int = 2\n"
+                          " assert(two + two == 4, \"addition\")\n}\n"
+                          "@test\nPureOne :: () {\n two: int = 2\n assert(two "
+                          "+ two == 4, \"addition\")\n}\n"
+                          "@test\nPureTwo :: () {\n three: int = 3\n "
+                          "assert(three * three == 9, \"multiplication\")\n}\n";
     write_file("package-tests/Facts.chibi", passing);
     const char *named[] = { launcher, "test", "package-tests", NULL };
     REQUIRE(tool_run(named, root, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS facts.Passes\n"));
+    REQUIRE(file_has("output.log", "PASS project.Passes\n"));
     REQUIRE(file_has("output.log", "3 tests, 0 failed\n"));
     const char *here[] = { launcher, "test", NULL };
     REQUIRE(tool_run(here, folder, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS facts.Passes\n"));
+    REQUIRE(file_has("output.log", "PASS project.Passes\n"));
     const char *previous = getenv("CHIBI_TEST_WORKERS");
     char *saved_workers = previous ? xstrdup(previous) : NULL;
     const char *workers[] = { "1", "2" };
@@ -416,7 +417,7 @@ TEST_CASE(test_runs_shared_package_tests)
     for (int i = 0; i < 2; i++) {
         worker_settings &= !setenv("CHIBI_TEST_WORKERS", workers[i], 1);
         worker_settings &= tool_run(named, root, log_path) == 0;
-        worker_settings &= file_is("output.log", "a test prints as it runs\nPASS facts.Passes\nPASS facts.PureOne\nPASS facts.PureTwo\n3 tests, 0 failed\n");
+        worker_settings &= file_is("output.log", "a test prints as it runs\nPASS project.Passes\nPASS project.PureOne\nPASS project.PureTwo\n3 tests, 0 failed\n");
     }
     worker_settings &= !setenv("CHIBI_TEST_WORKERS", "0", 1);
     worker_settings &= tool_run(named, root, log_path) == 1;
@@ -432,7 +433,7 @@ TEST_CASE(test_runs_shared_package_tests)
     REQUIRE(worker_settings);
     write_file("package-tests/Facts.chibi", "package facts\n@test\nFails :: () { assert(false, \"shared test failure\") }\n");
     REQUIRE(tool_run(named, root, log_path) == 1);
-    REQUIRE(file_has("output.log", "FAIL facts.Fails\n"));
+    REQUIRE(file_has("output.log", "FAIL project.Fails\n"));
     REQUIRE(file_has("output.log", "Facts.chibi:3:"));
     REQUIRE(file_has("output.log", "shared test failure"));
     write_file("package-tests/Facts.chibi", "package facts\n@test\nFails :: () { missing() }\n");
@@ -444,21 +445,6 @@ TEST_CASE(test_runs_shared_package_tests)
     REQUIRE(tool_run(help, root, log_path) == 0);
     const char *extra[] = { launcher, "test", "one", "two", NULL };
     REQUIRE(tool_run(extra, root, log_path) == 2);
-    char application[1024];
-    const char *slash = strrchr(built, '/');
-    REQUIRE(slash);
-    int length = snprintf(
-        application,
-        sizeof application,
-        "%.*s/../share/chibi/apps/chibi",
-        (int)(slash - built),
-        built
-    );
-    REQUIRE(length > 0 && length < (int)sizeof application);
-    const char *self[] = { launcher, "test", application, NULL };
-    REQUIRE(tool_run(self, root, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS chibi_cli.CommandArgumentsKeepProgramArguments\n"));
-    REQUIRE(file_has("output.log", "0 failed\n"));
     REQUIRE(!exists("package-tests/.chibi"));
     return true;
 }

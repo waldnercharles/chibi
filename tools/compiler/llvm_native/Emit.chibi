@@ -163,13 +163,16 @@ pub ArrayContains: int : 46;
 // index, or as it is for an index outside it; type is the array type. The
 // elements after the removed move down in place.
 pub ArrayRemove: int : 47;
+// output = an int array of the bytes of the left slot's string, each from 0 to
+// 255; type is the int array type. It allocates through the context.
+pub ArrayBytes: int : 48;
 // output = symbol(arguments...) for a C function the module declares and the
 // linker resolves, as an Odin foreign procedure is: `symbol` is
 // texts[literal], and the argument slots are this function's
 // arguments[right, right + target), each a number or a bool, as is the result,
 // the instruction's type. It passes no context and never fails. A small
 // integer or bool carries the extension the C ABI asks of its caller.
-pub ForeignCall: int : 48;
+pub ForeignCall: int : 49;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -178,7 +181,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayRemove) ||
+    return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) ||
            op == ForeignCall;
 }
 Comparison :: (op: int) -> bool {
@@ -189,7 +192,7 @@ Unary :: (op: int) -> bool {
 }
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
-           (op >= ArrayLength && op <= ArrayRemove);
+           (op >= ArrayLength && op <= ArrayBytes);
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -235,7 +238,7 @@ ReadsTarget :: (op: int) -> bool {
 // an allocation.
 ArrayCalls :: (op: int) -> bool {
     return op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
-           op == ArraySlice || op == ArrayResize;
+           op == ArraySlice || op == ArrayResize || op == ArrayBytes;
 }
 // Whether an instruction reads argument slots: a call's or a format's.
 ReadsArguments :: (op: int) -> bool {
@@ -566,7 +569,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native field read differs from its record");
             }
         }
-        if (item.op >= ArrayLength && item.op <= ArrayRemove && !ArrayValid(records, slots, item)) {
+        if (item.op >= ArrayLength && item.op <= ArrayBytes && !ArrayValid(records, slots, item)) {
             return Result.Rejected(base + pc, "native array operation differs from its operands");
         }
         if (item.op >= TextLength && item.op <= TextTake && !TextValid(slots, item)) {
@@ -631,6 +634,9 @@ ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
         return false;
     }
     held := slots[item.left];
+    if (item.op == ArrayBytes) {
+        return item.type == ArrayType + abi.IntStorage && held == abi.TextStorage;
+    }
     if (item.op == ArrayLength) {
         return item.type == abi.IntStorage && ElementType(records, held) != 0;
     }
@@ -935,6 +941,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}  %v{} = extractvalue {} %a{}, {}\n", out, pc, TypeName(item.right), pc, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == ArrayBytes) {
+        out = format_text("{}{}", out, ArrayBytesRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
         out = format_text("{}{}", out, ArrayRead(item, pc));
     } else if (item.op >= TextLength && item.op <= TextTake) {
@@ -1182,6 +1190,34 @@ ArrayResized :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  call void @chibi_scalar.zero(ptr %rest{}, i64 %fill{})\n", out, pc, pc);
     out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
     out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %make{} ]\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %sized{} = insertvalue {} zeroinitializer, i32 %n{}, 0\n", out, pc, array, pc);
+    out = format_text("{}  %capped{} = insertvalue {} %sized{}, i32 %n{}, 1\n", out, pc, array, pc, pc);
+    out = format_text("{}  %v{} = insertvalue {} %capped{}, ptr %buffer{}, 2\n", out, pc, array, pc, pc);
+    return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+}
+// A new int array of the bytes of the left slot's string, none when it is
+// empty: each byte widens to an int in turn.
+ArrayBytesRead :: (item: Instruction, pc: int) -> string {
+    array := abi.ArrayType();
+    text := abi.TextType();
+    out := Load(format_text("t{}", pc), abi.TextStorage, "s", item.left);
+    out = format_text("{}  %data{} = extractvalue {} %t{}, 0\n  %n{} = extractvalue {} %t{}, 1\n", out, pc, text, pc, pc, text,
+                      pc);
+    out = format_text("{}  %none{} = icmp eq i32 %n{}, 0\n", out, pc, pc);
+    out = format_text("{}  br i1 %none{}, label %done{}, label %make{}\nmake{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %count{} = zext i32 %n{} to i64\n  %bytes{} = shl i64 %count{}, 2\n", out, pc, pc, pc, pc);
+    out = format_text("{}{}", out, Allocated(format_text("fresh{}", pc), format_text("%bytes{}", pc)));
+    out = format_text("{}  br label %scan{}\nscan{}:\n", out, pc, pc);
+    out = format_text("{}  %at{} = phi i32 [ 0, %make{} ], [ %next{}, %body{} ]\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %end{} = icmp eq i32 %at{}, %n{}\n", out, pc, pc, pc);
+    out = format_text("{}  br i1 %end{}, label %done{}, label %body{}\nbody{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %offset{} = zext i32 %at{} to i64\n", out, pc, pc);
+    out = format_text("{}  %from{} = getelementptr inbounds i8, ptr %data{}, i64 %offset{}\n", out, pc, pc, pc);
+    out = format_text("{}  %byte{} = load i8, ptr %from{}\n  %wide{} = zext i8 %byte{} to i32\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %to{} = getelementptr inbounds i32, ptr %fresh{}, i64 %offset{}\n  store i32 %wide{}, ptr %to{}\n",
+                      out, pc, pc, pc, pc, pc);
+    out = format_text("{}  %next{} = add i32 %at{}, 1\n  br label %scan{}\ndone{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %scan{} ]\n", out, pc, pc, pc, pc);
     out = format_text("{}  %sized{} = insertvalue {} zeroinitializer, i32 %n{}, 0\n", out, pc, array, pc);
     out = format_text("{}  %capped{} = insertvalue {} %sized{}, i32 %n{}, 1\n", out, pc, array, pc, pc);
     out = format_text("{}  %v{} = insertvalue {} %capped{}, ptr %buffer{}, 2\n", out, pc, array, pc, pc);

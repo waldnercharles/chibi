@@ -233,4 +233,3 @@ int authoring_project_compile_modules(
     static const package_module none;
     return compile(project, NULL, count ? modules : &none, count, output, AUTHORING_COST_REPORT_NONE);
 }
-

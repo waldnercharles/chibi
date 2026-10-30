@@ -270,6 +270,49 @@ InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: i
     return WordStorage;
 }
 
+// A local initializer built only from literals and arithmetic takes the
+// storage its literals spell, as a lone literal does: `1 + 2` is int, `1 + 2.5`
+// is number, and a literal beyond int widens the result. A shift keeps its left
+// operand's storage. Anything else is 0.
+ConstantExpressionStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    expression := Unparenthesized(forest, node);
+    spelled := InferredNumberStorage(forest, text, expression);
+    if (spelled != 0) {
+        return spelled;
+    }
+    if (Is(forest, expression, "unary_expression")) {
+        sign := Text(forest, text, Field(forest, expression, "operator"));
+        if (sign == "-" || sign == "+" || sign == "~") {
+            return ConstantExpressionStorage(forest, text, Field(forest, expression, "operand"));
+        }
+        return 0;
+    }
+    if (!Is(forest, expression, "binary_expression")) {
+        return 0;
+    }
+    operator := Text(forest, text, Field(forest, expression, "operator"));
+    shifts := operator == "<<" || operator == ">>";
+    if (!shifts && operator != "+" && operator != "-" && operator != "*" && operator != "/" && operator != "%" &&
+        operator != "&" && operator != "|" && operator != "^") {
+        return 0;
+    }
+    left := ConstantExpressionStorage(forest, text, Field(forest, expression, "left"));
+    right := ConstantExpressionStorage(forest, text, Field(forest, expression, "right"));
+    if (left == 0 || right == 0) {
+        return 0;
+    }
+    if (shifts) {
+        return left;
+    }
+    if (left == FloatStorage || right == FloatStorage) {
+        return FloatStorage;
+    }
+    if (left > right) {
+        return left;
+    }
+    return right;
+}
+
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 // A function's named results are locals from `named` on.
@@ -378,7 +421,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 }
                 expected = Expect(value, resolved.storage, resolved.container, resolved.record);
             } else {
-                inferred := InferredNumberStorage(forest, text, value);
+                inferred := ConstantExpressionStorage(forest, text, value);
                 if (inferred > 0) {
                     expected = Expect(value, inferred, 0, -1);
                 }

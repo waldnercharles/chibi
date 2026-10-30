@@ -1310,7 +1310,8 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_compiler-host") {
         return [
-            "support/sha256.h", "toolchain/compiler_artifact.h", "toolchain/compiler_bootstrap.h",
+            "support/binary_cache.h", "support/file_io.h", "support/sha256.h", "toolchain/compiler_artifact.h",
+            "toolchain/compiler_bootstrap.h",
             "toolchain/compiler_host.h", "toolchain/compiler_json.h", "toolchain/compiler_syntax.h",
             "toolchain/compiler_target.h"
         ];

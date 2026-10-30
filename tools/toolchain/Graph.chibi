@@ -434,27 +434,10 @@ BuildLibrariesWithArguments :: (arguments: string[], runtime_sdk: bool) -> int {
         reflect: Option(arguments, "--reflect", ""),
         asset_generator_hosts: Option(arguments, "--asset-generator-hosts", "")
     };
-    // Reject an omitted value too: Option alone falls back at end-of-argv.
-    for (i in 0..<length(arguments)) {
-        if (arguments[i] == "--debug-optimization" &&
-            (i + 1 == length(arguments) ||
-             (arguments[i + 1] != "0" && arguments[i + 1] != "1") ||
-             profile.build_type != "Debug")) {
-            os.Print("graph: --debug-optimization requires 0 or 1 and build type Debug");
-            return 2;
-        }
-        if (arguments[i] == "--debug-frame-pointers" &&
-            (i + 1 == length(arguments) ||
-             (arguments[i + 1] != "on" && arguments[i + 1] != "off") ||
-             profile.build_type != "Debug")) {
-            os.Print("graph: --debug-frame-pointers requires on or off and build type Debug");
-            return 2;
-        }
-        if (arguments[i] == "--asset-generator-hosts" &&
-            (i + 1 == length(arguments) || !strings.HasPrefix(arguments[i + 1], "/"))) {
-            os.Print("graph: --asset-generator-hosts requires an absolute directory");
-            return 2;
-        }
+    rejection := engine.ProfileOptionError(arguments, profile.build_type);
+    if (rejection != "") {
+        os.Print(rejection);
+        return 2;
     }
     tools: c.Tools = {
         launcher: Option(arguments, "--launcher", launcher),

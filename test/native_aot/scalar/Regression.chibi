@@ -78,15 +78,31 @@ pub Check :: (rows: facts.Row[]) -> int {
     }
 }
 
-// The entry's definition: a module that calls the runtime, to format text or
-// to fail an assert, takes the context first.
+// The entry's definition: a module that calls the runtime, to format text,
+// fail an assert or work with arrays, takes the context first.
 Entry :: (rows: facts.Row[]) -> string {
     for (row in rows) {
-        if ((row.kind == facts.TextRow && row.value == facts.TextFormat) || row.kind == facts.AssertRow) {
+        if ((row.kind == facts.TextRow && row.value == facts.TextFormat) || row.kind == facts.AssertRow ||
+            Allocates(row)) {
             return "define i32 @chibi_scalar(ptr %ctx)";
         }
     }
     return "define i32 @chibi_scalar()";
+}
+// Whether the row allocates or checks an index through the context: an array
+// change, read or copy, a loop over an array, or a literal with elements.
+// Length, contains, remove and an empty literal do not.
+Allocates :: (row: facts.Row) -> bool {
+    if (row.kind == facts.ForRow) {
+        return row.literal >= i64(facts.RangeArray);
+    }
+    if (row.kind != facts.ArrayRow) {
+        return false;
+    }
+    if (row.value == facts.ArrayNew) {
+        return row.count > 0;
+    }
+    return row.value != facts.ArrayLength && row.value != facts.ArrayContains && row.value != facts.ArrayRemove;
 }
 // Every recorded call is an emitted LLVM call of its callee, and every other
 // function is defined internally, so the module keeps the source's calls.
@@ -119,6 +135,18 @@ Type :: (type: int) -> string {
     }
     if (type == facts.StringType) {
         return "{ ptr, i32, ptr }";
+    }
+    if (type == facts.FloatType) {
+        return "float";
+    }
+    if (type == facts.DoubleType) {
+        return "double";
+    }
+    if (type >= facts.ArrayType) {
+        return "{ i32, i32, ptr }";
+    }
+    if (type >= facts.RecordType) {
+        return format_text("%record{}", type - facts.RecordType);
     }
     return format_text("i{}", facts.Bits(type));
 }

@@ -613,11 +613,11 @@ Files :: (target: string) -> string[] {
     if (target == "test_language") {
         return [
             "test/language/main.c", "test/language/inferred_string_arrays.c",
-            "test/language/build_workflow.c", "test/language/record_publication.c",
+            "test/language/build_workflow.c",
             "test/language/outliner_projection.c", "test/language/row_array.c",
-            "test/language/record_compatibility.c", "test/language/record_state.c",
+            "test/language/record_compatibility.c",
             "test/language/record_document.c", "test/language/record_producer.c",
-            "test/language/record_prepared_runtime.c", "test/language/record_runtime.c",
+            "test/language/record_prepared_runtime.c",
             "test/language/compositional_records.c",
             "test/language/record_values.c",
             "test/language/record_prepared.c", "test/language/runtime_attribution.c",
@@ -2983,10 +2983,10 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/prepared_writer_chibi.c",
         "test/language/program.c", "test/language/query_boundary.c", "test/language/query_values.c", "test/language/ranges.c",
         "test/language/record_prepared.c",
-        "test/language/record_prepared_runtime.c", "test/language/record_publication.c",
-        "test/language/record_runtime.c",
+        "test/language/record_prepared_runtime.c",
+
         "test/language/compositional_records.c",
-        "test/language/record_state.c", "test/language/row_array.c",
+        "test/language/row_array.c",
         "test/language/runtime_attribution.c", "test/language/scalar_lowering_chibi.c",
         "test/language/scalarize.c", "test/language/signature_fixture.c",
         "test/language/signature_reader_chibi.c", "test/language/source_tokenizer_chibi.c",

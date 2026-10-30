@@ -2292,7 +2292,7 @@ TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage)
 
 static bool ci_initial_build_profile(bool instrumented, bool cmake)
 {
-    const char *targets = "targets=chibi,chibi-compile,chibi-player,"
+    const char *targets = "targets=chibi,chibi-compile,"
                           "test_tools,test_language";
     const char *profile = instrumented ? "sanitizer" : "debug";
     const char *sanitizer = instrumented ? "ON" : "OFF";
@@ -3478,16 +3478,11 @@ static void experiment_evidence(bool complete, bool exported, bool database, int
     path(name, "build/test/tools/testing/include");
     const char *mkdir_argv[] = { "mkdir", "-p", name, NULL };
     assert(tool_run(mkdir_argv, tool_root(), logpath) == 0);
-    const char *targets[] = { "chibi_engine",
-                              "chibi_compiler",
-                              "test_tools",
-                              "test_language",
-                              "chibi_ui_host" };
+    const char *targets[] = { "chibi_engine", "chibi_compiler", "test_tools", "test_language" };
     const char *sources[] = { "src/runtime/engine.c",
                               "src/language/lower.c",
                               "test/tools/main.c",
-                              "test/language/main.c",
-                              "src/ui/rml.cpp" };
+                              "test/language/main.c" };
     path(name, "build/compile_commands.json");
     FILE *db = fopen(name, "w");
     char build_log[64];
@@ -3496,7 +3491,7 @@ static void experiment_evidence(bool complete, bool exported, bool database, int
     FILE *log = fopen(name, "w");
     assert(db && log);
     fprintf(db, "[");
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         char flags[160];
         snprintf(
             flags,
@@ -3505,7 +3500,7 @@ static void experiment_evidence(bool complete, bool exported, bool database, int
             level,
             sanitizers ? "-fsanitize=address,undefined" : ""
         );
-        if (database || i < 4) {
+        if (database || i < 3) {
             fprintf(
                 db,
                 "%s{\"file\":\"/source/%s\",\"command\":\"/usr/bin/clang-18 %s "

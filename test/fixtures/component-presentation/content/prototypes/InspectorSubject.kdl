@@ -1,8 +1,0 @@
-name "InspectorSubject"
-components {
-    (object)Appearance
-    (object)Collider
-    (object)Health
-    (object)Input
-    (object)Material
-}

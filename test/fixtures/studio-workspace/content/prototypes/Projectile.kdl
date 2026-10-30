@@ -1,8 +1,0 @@
-name "Projectile"
-components {
-    (object)Collider
-    (object)Orientation
-    (object)Projectile
-    (object)Transform
-    (object)Velocity
-}

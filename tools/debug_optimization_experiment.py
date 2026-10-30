@@ -25,8 +25,7 @@ BUDGET_SECONDS = 35 * 60
 REPRESENTATIVES = {'engine': ('chibi_engine', 'src/runtime/engine.c'),
                    'sdk': ('chibi_compiler', 'src/language/lower.c'),
                    'tools': ('test_tools', 'test/tools/main.c'),
-                   'language': ('test_language', 'test/language/main.c'),
-                   'cxx': ('chibi_ui_host', 'src/ui/rml.cpp')}
+                   'language': ('test_language', 'test/language/main.c')}
 
 
 def capture(*command):

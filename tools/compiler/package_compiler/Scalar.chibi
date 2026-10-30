@@ -532,7 +532,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     named := ConstantOf(forest, text, constants, names, callable.package, node) >= 0;
     if ((named || Folds(forest, text, constants, names, callable.package, node, storage)) &&
         !ShadowedConversion(forest, text, callables, callable.package, node)) {
-        switch FoldConstant(forest, text, 0, constants, names, callable.package, node, storage) {
+        switch FoldConstant(forest, text, callable.document, constants, names, callable.package, node, storage) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Waiting:
@@ -931,7 +931,7 @@ ScalarShifted :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     counted := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, right, 0);
     if (counted == 0) {
         written := UntypedStorage(forest, text, right);
-        switch FoldConstant(forest, text, 0, constants, names, callable.package, right, written) {
+        switch FoldConstant(forest, text, callable.document, constants, names, callable.package, right, written) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Waiting:
@@ -1866,7 +1866,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
     // No native writes: the text natives are pure.
     writes := resize([int(0)], length(natives));
     table := types;
-    switch EmitBody(forest, text, 0, callables, params, &table, members, constants, natives, ports, identities,
+    switch EmitBody(forest, text, callables[function].document, callables, params, &table, members, constants, natives, ports, identities,
                     operators, makes, indices, aliases, key, solid, 0, 0, function, empty_names,
                     empty_names, indices, BodyContext.Known(writes), indices, ops, target, []) {
         case .Failed(diagnostic):
@@ -1921,8 +1921,6 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, "results"), 0,
                                               "scalar proof requires its first function to return int"));
     }
-    // One document's text and offsets serve its functions: the caller's own
-    // `text` for a single source, the callable's document in a package set.
     solid := SolidOffsets(text);
     rows: facts.Row[] = [];
     switch ScalarRecords(forest, records, fields) {
@@ -1934,30 +1932,21 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     for (function in 0..<length(callables)) {
         // A set of packages holds each function in its own document, whose
         // import aliases resolve its qualified calls.
-        home_text := text;
-        home_key := key;
-        home_solid := solid;
         home_aliases: Name[] = [];
         if (length(documents) > 0 && length(links) > 0) {
             home_aliases = Aliases(links, callables[function].document);
-        }
-        if (length(documents) > 0 && !is_library) {
-            home := callables[function].document;
-            home_text = documents[home].text;
-            home_key = documents[home].key;
-            home_solid = SolidOffsets(documents[home].text);
         }
         aliases := GenericAliases(home_aliases, generic_bindings, function);
         used := constants;
         if (length(generic_bindings) > 0) {
             used = GenericConstants(forest, constants, generic_bindings, function, callables[function], documents);
         }
-        emitted := ScalarEmits(forest, home_text, home_key, callables, params, types, members, used, home_solid, function,
+        emitted := ScalarEmits(forest, text, key, callables, params, types, members, used, solid, function,
                                ops, target, natives, ports, identities, aliases);
         if (emitted.message != "") {
             return ScalarOperands.Failed(emitted);
         }
-        switch ScalarFunction(forest, home_text, home_key, home_solid, seen, params, records, fields, used,
+        switch ScalarFunction(forest, text, key, solid, seen, params, records, fields, used,
                               function, ops, target, aliases) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
@@ -2049,9 +2038,10 @@ ScalarPassed :: () -> syntax.Diagnostic {
     return {start: 0, end: 0, line: 0, column: 0, document: 0, message: ""};
 }
 // The first member of one source document this subset cannot express, which
-// admits only function, record, union and constant declarations. A constant
+// admits only function, record, union and constant declarations, and in a
+// package set, imports, with no function required of a package. A constant
 // is the value Declare folds it to, so its reads are literals.
-ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int, needs_function: bool) -> syntax.Diagnostic {
+ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int, packaged: bool) -> syntax.Diagnostic {
     functions := false;
     member := FirstMember(forest, root);
     while (member >= 0) {
@@ -2061,14 +2051,15 @@ ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int, needs_function: bo
                 return Diagnose(forest, attribute, 0, "scalar proof does not support function attributes");
             }
             functions = true;
-        } else if (!Is(forest, member, "package_header") && !Is(forest, member, "record_declaration") &&
+        } else if (!Is(forest, member, "package_header") && !(packaged && Is(forest, member, "import_declaration")) &&
+                   !Is(forest, member, "record_declaration") &&
                    !Is(forest, member, "union_declaration") && !Is(forest, member, "constant_declaration")) {
             return Diagnose(forest, member, 0,
                             "scalar proof supports only ordinary function, record, union and constant declarations");
         }
         member = NextMember(forest, member);
     }
-    if (needs_function && !functions) {
+    if (!packaged && !functions) {
         return Diagnose(forest, root, 0, "scalar proof requires at least one function");
     }
     return ScalarPassed();
@@ -2173,6 +2164,46 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
     }
 }
 
+// A package set's documents as one text: each ends in a newline, so each
+// starts a line, and every node of the set is moved to its document's place in
+// it, which gives all the set's rows one source to lie in.
+ScalarJoined :: (documents: snapshot.Document[]) -> string {
+    parts: string[] = [];
+    for (document in documents) {
+        parts.append(document.text);
+        if (!strings.HasSuffix(document.text, "\n")) {
+            parts.append("\n");
+        }
+    }
+    return strings.Concatenate(parts);
+}
+ScalarJoinedNodes :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]) -> snapshot.SnapshotNode[] {
+    offsets := resize([int(0)], length(forest));
+    lines := resize([int(0)], length(forest));
+    offset: int = 0;
+    row: int = 0;
+    for (document in documents) {
+        for (at in document.node_start..<document.node_start + document.node_count) {
+            offsets[at] = offset;
+            lines[at] = row;
+        }
+        offset += strings.ByteLength(document.text);
+        row += strings.Count(document.text, "\n");
+        if (!strings.HasSuffix(document.text, "\n")) {
+            offset += 1;
+            row += 1;
+        }
+    }
+    moved: snapshot.SnapshotNode[] = [];
+    for (at in 0..<length(forest)) {
+        node := forest[at];
+        node.start += offsets[at];
+        node.end += offsets[at];
+        node.row += lines[at];
+        moved.append(node);
+    }
+    return moved;
+}
 // The callables with those of document 0 first, in their order, then the rest
 // in theirs: the entry of a package set is the first function of its first
 // file, whichever package order puts the dependencies in front.
@@ -2269,7 +2300,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                          Diagnose(nodes, document.syntax_root, 0, "scalar proof requires an accepted package graph"));
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
                     if (!packaged) {
-                        unsupported := ScalarMembers(nodes, document.syntax_root, true);
+                        unsupported := ScalarMembers(nodes, document.syntax_root, false);
                         if (unsupported.message != "") {
                             return ScalarFailure(path, text, unsupported);
                         }
@@ -2281,7 +2312,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                                      Diagnose(nodes, candidate.syntax_root, 0,
                                                               "scalar proof imports only project packages"));
                             }
-                            member_gap := ScalarMembers(nodes, candidate.syntax_root, false);
+                            member_gap := ScalarMembers(nodes, candidate.syntax_root, true);
                             if (member_gap.message != "") {
                                 return ScalarFailure(path, text, member_gap);
                             }
@@ -2323,16 +2354,34 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                         }
                                         entered = ScalarEntryFirst(concrete);
                                     }
-                                    switch ScalarModule(nodes, text, document.key, entered, concrete_params, table, members,
-                                                        constants, ops, target, text_natives, text_ports, text_identities, false,
-                                                        bindings, documents, links) {
+                                    // Import aliases name a package set's qualified calls; a lone source has none.
+                                    module_links: graph.Binding[] = [];
+                                    if (packaged) {
+                                        module_links = links;
+                                    }
+                                    scalar_nodes := nodes;
+                                    scalar_text := text;
+                                    scalar_documents := documents;
+                                    if (packaged) {
+                                        scalar_text = ScalarJoined(documents);
+                                        scalar_nodes = ScalarJoinedNodes(nodes, documents);
+                                        scalar_documents = [];
+                                        for (member in documents) {
+                                            joined := member;
+                                            joined.text = scalar_text;
+                                            scalar_documents.append(joined);
+                                        }
+                                    }
+                                    switch ScalarModule(scalar_nodes, scalar_text, document.key, entered, concrete_params, table,
+                                                        members, constants, ops, target, text_natives, text_ports, text_identities,
+                                                        false, bindings, scalar_documents, module_links) {
                                         case .Failed(diagnostic):
                                             return ScalarFailure(path, text, diagnostic);
                                         case .Built(rows):
                                             head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
                                                                literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0,
                                                                column: 0};
-                                            module: facts.Row[] = [ScalarSource(path, text), head];
+                                            module: facts.Row[] = [ScalarSource(path, scalar_text), head];
                                             module.extend(rows);
                                             return module;
                                     }

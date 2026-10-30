@@ -1,9 +1,0 @@
-version 1
-name "Flow"
-(array)entities {
-    - {
-        name "Stage"
-        prototype "Stage"
-        (array)behaviors "SceneProbe"
-    }
-}

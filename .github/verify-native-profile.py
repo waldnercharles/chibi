@@ -14,7 +14,6 @@ REPRESENTATIVES = {
     'sdk': ('chibi_compiler', 'src/language/lower.c'),
     'tools': ('test_tools', 'test/tools/main.c'),
     'language': ('test_language', 'test/language/main.c'),
-    'cxx': ('chibi_ui_host', 'src/ui/rml.cpp'),
 }
 
 

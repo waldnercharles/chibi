@@ -1,4 +1,0 @@
-name "Antenna"
-components {
-    Transform y=4.0
-}

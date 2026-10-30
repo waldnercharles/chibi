@@ -1,5 +1,0 @@
-name "BoostEmitter"
-components {
-    (object)ParticleEmitter
-    (object)Transform
-}

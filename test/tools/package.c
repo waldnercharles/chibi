@@ -105,15 +105,6 @@ static void write_profile(int invalid)
     tool_write(filename, manifest);
 }
 
-static int package()
-{
-    char script[1024];
-    path(script, tool_root(), "tools/package_player.py");
-    const char *argv[] = { "python3",  script, "--sdk", build,
-                           "--output", output, NULL };
-    return tool_run(argv, directory, log_path);
-}
-
 static int configure_fixture(const char *source, const char *search, const char *option, const char *environment)
 {
     const char *argv[] = {
@@ -254,24 +245,6 @@ TEST_CASE(warm_configuration_preserves_input_invalidation)
         file_equals(calls, "configured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\n")
     );
 #endif
-    return true;
-}
-
-TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages)
-{
-    char marker[1024];
-    assert(!mkdir(output, 0700));
-    path(marker, output, "important.txt");
-    tool_write(marker, "keep authored data\n");
-    REQUIRE(package() != 0);
-    REQUIRE(file_equals(marker, "keep authored data\n"));
-    tool_remove_tree(output);
-    for (int invalid = 0; invalid < 2; invalid++) {
-        write_profile(invalid);
-        REQUIRE(package() != 0);
-        REQUIRE(access(output, F_OK) != 0);
-    }
-    write_profile(-1);
     return true;
 }
 
@@ -647,7 +620,6 @@ void test_tool_package()
     tool_write(filename, engine);
     write_profile(-1);
     RUN_TEST_CASE(native_exports_have_package_owners);
-    RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages);
     RUN_TEST_CASE(warm_configuration_preserves_input_invalidation);
     RUN_TEST_CASE(reflection_build_outputs_preserve_sdk_source_identity);
     RUN_TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host);

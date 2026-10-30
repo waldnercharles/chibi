@@ -1,6 +1,0 @@
-name "RenderPart"
-(array)includes "RenderSolid"
-components {
-    Material scene=0xffb050ff
-    VisualTransform scale=1.0 yaw=0.5
-}

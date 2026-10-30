@@ -1,6 +1,0 @@
-name "Drone"
-components {
-    Body type="Kinematic"
-    Collider category=2 mask=2 radius=4.0
-    Transform x=8.0
-}

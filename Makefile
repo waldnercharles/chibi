@@ -10,12 +10,11 @@ SDK_REFLECT_BUILD_DIR ?= build-sdk-reflect
 # Make's abspath splits paths at spaces. Preserve this shared SDK handoff.
 SDK_REFLECT_PATH = $(if $(or $(filter /%,$(firstword $(SDK_REFLECT_BUILD_DIR))),$(findstring :/,$(firstword $(SDK_REFLECT_BUILD_DIR)))),$(SDK_REFLECT_BUILD_DIR),$(CURDIR)/$(SDK_REFLECT_BUILD_DIR))
 SDK_REFLECT_LLVM_ROOT = $(if $(or $(filter /%,$(firstword $(LIBCLANG_ROOT))),$(findstring :/,$(firstword $(LIBCLANG_ROOT)))),$(LIBCLANG_ROOT),$(CURDIR)/$(LIBCLANG_ROOT))
-PLAYER_OUTPUT ?= dist/chibi-player-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
 UPDATE_RUNTIME ?= 1
 CHIBI_COLLAB_URL ?=
 FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
-BUILD_TARGET ?= chibi chibi-compile chibi-player
+BUILD_TARGET ?= chibi chibi-compile
 BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 CHIBI_BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 # Another build's sdk directory, such as build-release/sdk, whose
@@ -69,7 +68,7 @@ NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 # in test-language-all. It runs only when this is set.
 NATIVE_LLVM_BIN ?= $(CHIBI_LLVM_BIN)
 
-.PHONY: all help build build-debug build-release prepare-project player-run  install package-player format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
+.PHONY: all help build build-debug build-release prepare-project install format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
 
 all: build
 
@@ -78,9 +77,7 @@ help:
 		'make build          Build the compiler, player and launcher' \
 		'make build-debug    Build products in plain Debug' \
 		'make build-release  Build products in Release' \
-		'make package-player Package the separate deployed player' \
 		'make prepare-project PROJECT_ROOT=/game ARTIFACT=/output/game.chibip' \
-		'make player-run ARTIFACT=/output/game.chibip [RESOURCE_ROOT=/resources]' \
 		'make install [PREFIX=~/.local]  Install the Release SDK, including chibi' \
 		'make agent-list     List runnable CPU and explicit GPU selectors' \
 		'make agent-test AGENT_SELECTOR=--source-systems' \
@@ -114,7 +111,8 @@ build-debug:
 # The private build host that runs the authored SDK programs: the build's own, or
 # the one cold recovery constructs beside the reflection build.
 define SDK_GRAPH_HOST
-host="$(BUILD_HOST)"; \
+sh tools/bootstrap/seed.sh || exit $$?; \
+	host="$(BUILD_HOST)"; \
 	if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
 		host="$(SDK_REFLECT_BUILD_DIR)/host/bin/chibi-build-host"; \
 		if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
@@ -169,26 +167,17 @@ prepare-project:
 	@$(MAKE) build-release BUILD_TARGET=chibi-compile
 	"$(RELEASE_BUILD_DIR)/sdk/chibi-compile" --project-root "$(abspath $(PROJECT_ROOT))" --output "$(abspath $(ARTIFACT))"
 
-player-run:
-	@test -n "$(ARTIFACT)" && test -f "$(ARTIFACT)" || { printf '%s\n' 'Set ARTIFACT to an existing prepared project' >&2; exit 2; }
-	@$(MAKE) package-player
-	env $(NATIVE_RUNTIME_ENV) "$(PLAYER_OUTPUT)/bin/chibi-player" "$(abspath $(ARTIFACT))" --resource-root "$(abspath $(RESOURCE_ROOT))" $(ARGS)
-
 # Installs the Release graph products into PREFIX (tools/toolchain/SDK.chibi):
-# bin/chibi, bin/chibi-compile, bin/chibi-player, the private hosts in
+# bin/chibi, bin/chibi-compile, the private hosts in
 # libexec/chibi and share/chibi.
 install:
-	@$(MAKE) build-release BUILD_TARGET='chibi chibi-compile chibi-player chibi-build-host chibi-compiler-host'
+	@$(MAKE) build-release BUILD_TARGET='chibi chibi-compile chibi-build-host chibi-compiler-host'
 	@$(QUIET) install -- "$(RELEASE_BUILD_DIR)/sdk/chibi-build-host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source tools/toolchain/SDK.chibi --core packages/core --collection graph=tools/graph --entry Install --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(RELEASE_BUILD_DIR))" --prefix "$(abspath $(PREFIX))"
 
 # The Release build generates its asset compiler with its own hosts, even when
 # a sanitized build in the same make borrows them.
 build-release:
 	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION= BUILD_DEBUG_FRAME_POINTERS= BUILD_TARGET="$(BUILD_TARGET)" ASSET_GENERATOR_HOSTS=
-
-package-player:
-	@$(MAKE) package-runtime-sdk SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
-	@$(QUIET) package_player.py -- python3 tools/package_player.py --sdk "$(RUNTIME_SDK_PREFIX)" --output "$(PLAYER_OUTPUT)"
 
 benchmark: test-build
 	@$(MAKE) build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host'
@@ -201,7 +190,7 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Agent selectors run existing drivers; use test-build to build them.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-recover test-recovery test-short test-policy-inventory tools-build native-census
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-refresh publish-seed bootstrap-recover test-recovery test-short test-policy-inventory tools-build native-census
 agent-list:
 	@python3 tools/agent.py list
 
@@ -234,8 +223,11 @@ test-bootstrap:
 	@$(MAKE) build-release BUILD_TARGET=test_language
 	@CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
 
-# The bootstrap artifact is checked in at tools/compiler/bootstrap, as Zig
-# checks in zig1.wasm. bootstrap-artifact rewrites it: the bootstrap check
+# The bootstrap artifact lives at tools/compiler/bootstrap: bootstrap.json is
+# checked in and pins the seed, compiler.chibip, which tools/bootstrap/seed.sh
+# fetches from a release, as Zig ships zig1.wasm. bootstrap-artifact rewrites
+# both, and publish-seed releases the new seed and pins it in
+# tools/bootstrap/seed.tsv. The bootstrap check
 # leaves stage two and its arguments in a seed folder, and the Release compiler
 # host writes the artifact once stage two compiles the sources to itself.
 # bootstrap-recover recovers the compiler from it with the sources on disk, and
@@ -249,6 +241,21 @@ bootstrap-artifact:
 	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(BOOTSTRAP_DRIVER_BUILD)" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
 	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_SEED)"
+
+# bootstrap-refresh writes a seed for the sources on disk without the
+# bootstrap check's sample runs: recovery's fixed point and the arguments it
+# compiled the sources with make the seed folder, and writing it proves again
+# that the seed compiles the sources to itself.
+BOOTSTRAP_REFRESH = $(RELEASE_BUILD_DIR)/bootstrap.refresh
+bootstrap-refresh:
+	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
+	@rm -rf "$(BOOTSTRAP_REFRESH)" && mkdir -p "$(BOOTSTRAP_REFRESH)"
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --recover "$(BOOTSTRAP_REFRESH)/compiler.chibip" --arguments "$(BOOTSTRAP_REFRESH)/compile.json"
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_REFRESH)" --revision "$$(git describe --always --dirty --abbrev=40)"
+	@rm -rf "$(BOOTSTRAP_REFRESH)"
+
+publish-seed:
+	@sh tools/bootstrap/publish-seed.sh
 
 bootstrap-recover:
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host

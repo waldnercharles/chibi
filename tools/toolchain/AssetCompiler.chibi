@@ -1,6 +1,7 @@
 package toolchain
 
 import generator "asset_generator:."
+import os "core:os"
 import strings "core:strings"
 
 CompilerTimeout :: (argument: string) -> string {
@@ -27,9 +28,9 @@ CompilerTimeout :: (argument: string) -> string {
 }
 
 pub Build :: () -> int {
-    arguments := build.arguments();
+    arguments := os.Arguments();
     if (length(arguments) < 2 || length(arguments) > 4) {
-        build.report("usage: HOST OUTPUT_DIRECTORY [TARGET_JSON] [--compiler-timeout-ms=POSITIVE_MS]");
+        os.Print("usage: HOST OUTPUT_DIRECTORY [TARGET_JSON] [--compiler-timeout-ms=POSITIVE_MS]");
         return 2;
     }
     compiler_timeout := "600000";
@@ -43,21 +44,21 @@ pub Build :: () -> int {
     }
     if (length(arguments) == 4) {
         if (strings.HasPrefix(arguments[2], "--compiler-timeout-ms")) {
-            build.report("usage: HOST OUTPUT_DIRECTORY [TARGET_JSON] [--compiler-timeout-ms=POSITIVE_MS]");
+            os.Print("usage: HOST OUTPUT_DIRECTORY [TARGET_JSON] [--compiler-timeout-ms=POSITIVE_MS]");
             return 2;
         }
         target_argument = 2;
         compiler_timeout = CompilerTimeout(arguments[3]);
     }
     if (compiler_timeout == "") {
-        build.report("invalid --compiler-timeout-ms: expected decimal 1..600000");
+        os.Print("invalid --compiler-timeout-ms: expected decimal 1..600000");
         return 2;
     }
     target := "";
     if (target_argument >= 0) {
         target = build.read_file(arguments[target_argument]);
     }
-    if (!generator.Generate(build.root(), arguments[0], arguments[1], target, compiler_timeout)) {
+    if (!generator.Generate(os.Root(), arguments[0], arguments[1], target, compiler_timeout)) {
         return 1;
     }
     return 0;

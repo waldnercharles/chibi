@@ -427,6 +427,7 @@ ParseForeign :: (c: ^Cursor, n: ^(Node[])) -> int {
         Add(n, block, ParseForeignFunction(c, n), "");
     }
     Expect(c, n, block, tk.CloseBrace, "");
+    Accept(c, n, block, tk.Semicolon, "");
     return block;
 }
 

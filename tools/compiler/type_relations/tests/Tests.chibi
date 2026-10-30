@@ -4,7 +4,6 @@ import named "project:named_binding"
 import relations "project:type_relations"
 
 // Storage ordinals and flag bits, as in capabilities/catalog.h.
-Flow: int : 0;
 Bool: int : 1;
 I8: int : 2;
 U8: int : 3;
@@ -174,21 +173,21 @@ EqualCompareEveryField :: () {
 
 @test
 NumericAcceptsScalarNumbers :: () {
-    assert(relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric lower bound");
-    assert(relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric upper bound");
-    assert(!relations.Numeric(V(Flow, 0, 0, 0, 0)), "below numeric range");
-    assert(!relations.Numeric(V(Flow, 0, 0, 0, 0)), "above numeric range");
-    assert(!relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric array excluded");
-    assert(!relations.Numeric(V(Flow, 0, 0, 0, 0)), "nominal numeric excluded");
-    assert(relations.Numeric(V(Flow, 0, 0, 0, 0)), "generic nominal numeric");
-    assert(!relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric error excluded");
-    assert(!relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric optional excluded");
-    assert(!relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric results excluded");
-    assert(!relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric task excluded");
-    assert(relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric reference allowed");
-    assert(relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric untyped allowed");
-    assert(relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric boxed bit alone allowed");
-    assert(relations.Numeric(V(Flow, 0, 0, 0, 0)), "numeric literal allowed");
+    assert(relations.Numeric(V(I8, 0, 0, 0, 0)), "numeric lower bound");
+    assert(relations.Numeric(V(F64, 0, 0, 0, 0)), "numeric upper bound");
+    assert(!relations.Numeric(V(Bool, 0, 0, 0, 0)), "below numeric range");
+    assert(!relations.Numeric(V(Name, 0, 0, 0, 0)), "above numeric range");
+    assert(!relations.Numeric(V(I32, 1, 0, 0, 0)), "numeric array excluded");
+    assert(!relations.Numeric(V(I32, 0, 0, High, 0)), "nominal numeric excluded");
+    assert(relations.Numeric(V(I32, 0, GenericFlag, High, 0)), "generic nominal numeric");
+    assert(!relations.Numeric(V(I32, 0, ErrorFlag, 0, 0)), "numeric error excluded");
+    assert(!relations.Numeric(V(I32, 0, OptionalFlag | GenericFlag, High, 0)), "numeric optional excluded");
+    assert(!relations.Numeric(V(I32, 0, ResultsFlag, 0, 0)), "numeric results excluded");
+    assert(!relations.Numeric(V(I32, 0, TaskFlag, 0, 0)), "numeric task excluded");
+    assert(relations.Numeric(V(I32, 0, ReferenceFlag, 0, 0)), "numeric reference allowed");
+    assert(relations.Numeric(V(I32, 0, UntypedFlag, 0, 0)), "numeric untyped allowed");
+    assert(relations.Numeric(V(I32, 0, BoxedFlag, 0, 0)), "numeric boxed bit alone allowed");
+    assert(relations.Numeric(V(I32, 0, LiteralFlag, 0, High)), "numeric literal allowed");
 }
 
 @test

@@ -127,7 +127,7 @@ package_test *package_tests_find_compiled(const package_collection *packages)
         const char *name = package_collection_name(packages, i);
         if (!strncmp(name, "project:", strlen("project:"))) {
             const char *directory = name + strlen("project:");
-            add_compiled_tests(&tests, *directory ? directory : ".", package_collection_module(packages, i));
+            add_compiled_tests(&tests, *directory ? directory : "project", package_collection_module(packages, i));
         }
     }
     if (tests) {

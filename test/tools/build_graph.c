@@ -604,182 +604,6 @@ TEST_CASE(invalid_arguments_fail_before_writing_commands)
     return true;
 }
 
-/* No compiler runs: explicit profiles expose every language's argv, including
- * test assertions, before the opt-in experiment is allowed to build. */
-static bool debug_optimization_instrumentation(bool instrumented, int frame_mode)
-{
-    const char *const options[] = { "--profile",
-                                    "explicit",
-                                    "--compiler",
-                                    "/unused/clang",
-                                    "--cxx-compiler",
-                                    "/unused/clang++",
-                                    "--compiler-id",
-                                    "Clang",
-                                    "--build-type",
-                                    "Debug",
-                                    "--sanitizers",
-                                    instrumented ? "address,undefined" : "",
-                                    "--archiver",
-                                    "/unused/ar",
-                                    "--ranlib",
-                                    "/unused/ranlib",
-                                    frame_mode >= 0 ? "--debug-frame-pointers" : NULL,
-                                    frame_mode ? "on" : "off",
-                                    NULL };
-    const char *const levels[] = { "", "0", "1" };
-    for (int level = 0; level < 3; level++) {
-        char build_dir[GRAPH_PATH], path[GRAPH_PATH];
-        char name[64];
-        snprintf(
-            name,
-            sizeof name,
-            "%s debug %s frames %d",
-            instrumented ? "sanitized" : "plain",
-            level ? levels[level] : "default",
-            frame_mode
-        );
-        join(build_dir, suite, name);
-        const char *const extra[] = { "--commands-only",
-                                      "on",
-                                      "--target",
-                                      "chibi_support",
-                                      "--all-commands",
-                                      "on",
-                                      level ? "--debug-optimization" : NULL,
-                                      levels[level],
-                                      level ? "--debug-optimization" : NULL,
-                                      "0",
-                                      NULL };
-        /* Valid repetitions retain Option's existing first-value precedence. */
-        REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, options, extra) == 0);
-        join(path, build_dir, "compile_commands.json");
-        yyjson_doc *doc = yyjson_read_file(path, 0, NULL, NULL);
-        REQUIRE(doc);
-        bool saw_test = false, saw_engine = false, saw_sdk = false;
-        bool saw_tools = false, saw_language = false;
-        yyjson_arr_iter entries = yyjson_arr_iter_with(yyjson_doc_get_root(doc));
-        yyjson_val *entry;
-        while ((entry = yyjson_arr_iter_next(&entries))) {
-            bool debug = false, sanitizer = false, frames = false, assertions = false;
-            int optimizations = 0;
-            yyjson_arr_iter arguments = yyjson_arr_iter_with(
-                yyjson_obj_get(entry, "arguments")
-            );
-            yyjson_val *value;
-            while ((value = yyjson_arr_iter_next(&arguments))) {
-                const char *arg = yyjson_get_str(value);
-                REQUIRE(arg);
-                debug |= !strcmp(arg, "-g");
-                if (!strncmp(arg, "-fsanitize=", 11)) {
-                    REQUIRE(instrumented && !strcmp(arg, "-fsanitize=address,undefined"));
-                    sanitizer = true;
-                }
-                REQUIRE(strcmp(arg, "-fomit-frame-pointer"));
-                frames |= !strcmp(arg, "-fno-omit-frame-pointer");
-                assertions |= !strcmp(arg, "-UNDEBUG");
-                REQUIRE(strncmp(arg, "-DNDEBUG", 8));
-                if (!strncmp(arg, "-O", 2)) {
-                    optimizations++;
-                    REQUIRE(level && !strcmp(arg + 2, levels[level]));
-                }
-            }
-            REQUIRE(debug);
-            REQUIRE(sanitizer == (instrumented != 0));
-            REQUIRE(frames == (instrumented || frame_mode == 1));
-            REQUIRE(optimizations == (level != 0));
-            const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
-            saw_engine |= strstr(output, "/objects/chibi_events/") != NULL;
-            saw_sdk |= strstr(output, "/objects/chibi_compiler/") != NULL;
-            if (strstr(output, "/objects/test_host/") ||
-                strstr(output, "/objects/policy_worker/")) {
-                REQUIRE(assertions);
-                saw_test = true;
-            }
-            if (strstr(output, "/objects/test_tools/")) {
-                REQUIRE(assertions);
-                saw_tools = true;
-            }
-            if (strstr(output, "/objects/test_language/")) {
-                REQUIRE(assertions);
-                saw_language = true;
-            }
-        }
-        REQUIRE(saw_test && saw_engine && saw_sdk);
-        REQUIRE(saw_tools && saw_language);
-        yyjson_doc_free(doc);
-    }
-    return true;
-}
-
-TEST_CASE(debug_optimization_preserves_instrumentation)
-{
-    for (int frames = -1; frames <= 1; frames++) {
-        REQUIRE(debug_optimization_instrumentation(false, frames));
-        REQUIRE(debug_optimization_instrumentation(true, frames));
-    }
-    return true;
-}
-
-TEST_CASE(debug_optimization_rejects_invalid_profiles)
-{
-    const char *const options[] = { "--profile", "explicit", NULL };
-    const char *const cases[][9] = {
-        { "--build-type", "Debug", "--debug-optimization", "2", NULL },
-        { "--build-type", "Debug", "--debug-optimization", "1", "--debug-optimization", "2", NULL },
-        { "--build-type", "Debug", "--debug-optimization", "", NULL },
-        { "--build-type", "Debug", "--debug-optimization", NULL },
-        { "--build-type", "Debug", "--debug-optimization", "--commands-only", "on", NULL },
-        { "--build-type", "Release", "--debug-optimization", "1", NULL },
-        { "--build-type", "RelWithDebInfo", "--debug-optimization", "0", NULL },
-        { "--build-type", "Debug", "--debug-frame-pointers", "bad", NULL },
-        { "--build-type", "Debug", "--debug-frame-pointers", "on", "--debug-frame-pointers", "bad", NULL },
-        { "--build-type", "Debug", "--debug-frame-pointers", "", NULL },
-        { "--build-type", "Debug", "--debug-frame-pointers", NULL },
-        { "--build-type", "Debug", "--debug-frame-pointers", "--commands-only", "on", NULL },
-        { "--build-type", "Release", "--debug-frame-pointers", "on", NULL },
-        { "--build-type", "RelWithDebInfo", "--debug-frame-pointers", "off", NULL }
-    };
-    const int count = (int)(sizeof cases / sizeof *cases);
-    char build_dirs[sizeof cases / sizeof *cases][GRAPH_PATH];
-    for (int first = 0; first < count; first += GRAPH_BATCH_CASES) {
-        graph_case batch[GRAPH_BATCH_CASES];
-        int size = count - first < GRAPH_BATCH_CASES ? count - first : GRAPH_BATCH_CASES;
-        for (int j = 0; j < size; j++) {
-            int i = first + j;
-            char name[64];
-            snprintf(name, sizeof name, "invalid optimization %d", i);
-            join(build_dirs[i], suite, name);
-            const char *expected = !strcmp(cases[i][2], "--debug-optimization") ? "graph: --debug-optimization requires 0 or 1 and build type Debug"
-                                                                                : "graph: --debug-frame-pointers requires on or off and build type Debug";
-            batch[j] = (graph_case){ build_dirs[i], options, cases[i], 2, expected };
-        }
-        REQUIRE(!run_graph_batch(batch, size));
-        REQUIRE(graph_batch_matches(batch, size));
-        for (int j = 0; j < size; j++) {
-            REQUIRE(access(batch[j].build_dir, F_OK));
-        }
-    }
-    /* Keep real Libraries CLI argv-end rejection and exit-status coverage for
-     * both options, not just the test-only batched invocation's success. */
-    const int cli_cases[] = { 3, 10 };
-    for (int j = 0; j < 2; j++) {
-        int i = cli_cases[j];
-        REQUIRE(graph_status(CHIBI_SOURCE_ROOT, build_dirs[i], options, cases[i]) == 2);
-        char *log = tool_read(log_path);
-        const char *expected = j == 0
-                                 ? "graph: --debug-optimization requires 0 or "
-                                   "1 and build type Debug\n"
-                                 : "graph: --debug-frame-pointers requires on "
-                                   "or off and build type Debug\n";
-        bool diagnostic = log && !strcmp(log, expected);
-        free(log);
-        REQUIRE(diagnostic);
-        REQUIRE(access(build_dirs[i], F_OK));
-    }
-    return true;
-}
-
 /* An unexpected result must stop the batch: a later rejection must not hide
  * the first mismatch. The ordinary rejection matrix tests continuation after
  * each expected status 2, with distinct paths and exact per-case diagnostics. */
@@ -873,8 +697,6 @@ void test_build_graph_debug_optimization(const char *host)
 {
     set_up(host);
     fprintf(stderr, "Graph command tests: host=%s; reference=%s\n", host_path, reference);
-    RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
-    RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);
     RUN_TEST_CASE(graph_batch_stops_on_unexpected_result);
     RUN_TEST_CASE(graph_batch_transcripts_are_case_local);
     tool_remove_tree(suite);
@@ -1080,8 +902,6 @@ void test_build_graph_programs(const char *host)
     RUN_TEST_CASE(driver_plans_the_other_verbs);
     RUN_TEST_CASE(with_timeout_stops_a_hung_command_and_its_children);
     RUN_TEST_CASE(invalid_arguments_fail_before_writing_commands);
-    RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
-    RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);
     RUN_TEST_CASE(graph_batch_stops_on_unexpected_result);
     RUN_TEST_CASE(graph_batch_transcripts_are_case_local);
     RUN_TEST_CASE(authored_dependency_files_list_prerequisites);

@@ -1,6 +1,7 @@
 package engine
 
 import c "graph:c"
+import os "core:os"
 import strings "core:strings"
 
 // Builds the engine's libraries, which Targets.chibi describes, with the C
@@ -66,15 +67,18 @@ pub ClangResourceInclude :: (libclang_library: string) -> string {
     // The installation's own driver owns its resource path. CLANG_RESOURCE_DIR
     // may use any directory name; only the driver-absent fallback filters versions.
     clang := Join([library_dir, "/../bin/clang"]);
-    if (build.file_exists(clang) && build.probe([clang, "-print-resource-dir"]) == 0) {
-        include := Join([strings.TrimSpace(build.last_stdout()), "/include"]);
-        if (build.file_exists(Join([include, "/stdbool.h"]))) {
-            return include;
+    if (os.Exists(clang)) {
+        printed := os.Capture([clang, "-print-resource-dir"]);
+        if (printed.status == 0) {
+            include := Join([strings.TrimSpace(printed.stdout), "/include"]);
+            if (os.Exists(Join([include, "/stdbool.h"]))) {
+                return include;
+            }
         }
     }
     // libclang can be installed without its driver. Match resource.cmake's
     // unique matching resource directory fallback; ambiguity is not success.
-    resolved := build.resolve_path(libclang_library);
+    resolved := os.RealPath(libclang_library);
     basename_start := strings.LastIndex(resolved, "/") + 1;
     basename := strings.Slice(resolved, basename_start, strings.ByteLength(resolved) - basename_start);
     version := "";
@@ -98,7 +102,7 @@ pub ClangResourceInclude :: (libclang_library: string) -> string {
             continue;
         }
         include := Join([resources, "/", name, "/include"]);
-        if (build.file_kind(include) == "") {
+        if (os.Kind(include) == os.KindNone) {
             continue;
         }
         if (found != "") {
@@ -106,7 +110,7 @@ pub ClangResourceInclude :: (libclang_library: string) -> string {
         }
         found = include;
     }
-    if (found == "" || !build.file_exists(Join([found, "/stdbool.h"]))) {
+    if (found == "" || !os.Exists(Join([found, "/stdbool.h"]))) {
         return "";
     }
     return found;
@@ -170,7 +174,7 @@ LinkFlags :: (profile: Profile, build_dir: string, target: string) -> string[] {
     if (profile.sysroot != "") {
         flags.extend(["-isysroot", profile.sysroot]);
     }
-    if (build.platform() == "Darwin") {
+    if (os.Platform() == "Darwin") {
         flags.extend(["-Wl,-search_paths_first", "-Wl,-headerpad_max_install_names"]);
     }
     if (profile.sanitizers != "") {
@@ -241,7 +245,7 @@ pub HeaderRoot :: (build_dir: string, target: string, kind: string) -> string {
 Rewrite :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
     for (rewrite in Rewrites(target)) {
         input := Resolve(source_root, build_dir, third_party, build.after(rewrite, "="));
-        if (!build.file_exists(input)) {
+        if (!os.Exists(input)) {
             return false;
         }
         code := build.read_file(input);
@@ -249,11 +253,10 @@ Rewrite :: (source_root: string, build_dir: string, third_party: string, target:
             code = build.replace(code, build.before(rename, "="), build.after(rename, "="));
         }
         output := Join([HeaderRoot(build_dir, target, "private"), "/", build.before(rewrite, "=")]);
-        if (build.file_exists(output) && build.read_file(output) == code) {
+        if (os.Exists(output) && build.read_file(output) == code) {
             continue;
         }
-        build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
-        if (!build.write_file(output, code)) {
+        if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/"))) || os.WriteText(output, code)) {
             return false;
         }
     }
@@ -303,14 +306,18 @@ pub Sources :: (source_root: string, build_dir: string, third_party: string, tar
 }
 
 // Writes each file a target embeds. An unchanged output keeps its stamp; a
-// failure fails the program.
-Embed :: (source_root: string, build_dir: string, target: string) {
+// failure to write one fails the program. False when an output directory
+// cannot be made.
+Embed :: (source_root: string, build_dir: string, target: string) -> bool {
     for (embed in Embeds(target)) {
         output := Resolve(source_root, build_dir, "", build.before(embed, "="));
         rest := build.after(embed, "=");
-        build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
+        if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/")))) {
+            return false;
+        }
         build.embed_file(Join([source_root, "/", build.after(rest, "=")]), output, build.before(rest, "="));
     }
+    return true;
 }
 
 // A define with the values CMake substitutes: {source_root}, {build_type},
@@ -342,7 +349,7 @@ Expand :: (source_root: string, build_dir: string, profile: Profile, define: str
 Configure :: (source_root: string, build_dir: string, profile: Profile, target: string) -> bool {
     for (configure in Configures(target)) {
         input := Resolve(source_root, build_dir, "", build.after(configure, "="));
-        if (!build.file_exists(input)) {
+        if (!os.Exists(input)) {
             return false;
         }
         text := build.read_file(input);
@@ -354,11 +361,10 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
             text = build.join(parts, "");
         }
         output := Join([HeaderRoot(build_dir, target, "private"), "/", build.before(configure, "=")]);
-        if (build.file_exists(output) && build.read_file(output) == text) {
+        if (os.Exists(output) && build.read_file(output) == text) {
             continue;
         }
-        build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
-        if (!build.write_file(output, text)) {
+        if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/"))) || os.WriteText(output, text)) {
             return false;
         }
     }
@@ -382,8 +388,11 @@ Identity :: (source_root: string, profile: Profile) -> string {
         return "";
     }
     processor := profile.architecture;
-    if (processor == "" && build.probe(["uname", "-m"]) == 0) {
-        processor = strings.TrimSpace(build.last_stdout());
+    if (processor == "") {
+        uname := os.Capture(["uname", "-m"]);
+        if (uname.status == 0) {
+            processor = strings.TrimSpace(uname.stdout);
+        }
     }
     records: string[] = [];
     for (format in ArtifactFormats()) {
@@ -395,7 +404,7 @@ Identity :: (source_root: string, profile: Profile) -> string {
     }
     return Join([
         "{\"sdk_version\": \"", sdk, "\", \"system\": \"",
-        build.platform(), "\", \"processors\": [\"", processor,
+        os.Platform(), "\", \"processors\": [\"", processor,
         "\"], \"backends\": [\"bytecode\", \"sljit\"], \"project_version\": ", project,
         ", \"artifact_formats\": {\n", build.join(records, ",\n"), "\n}}\n"
     ]);
@@ -464,16 +473,18 @@ pub WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) 
     if (text == "") {
         return false;
     }
-    if (build.file_exists(path) && build.read_file(path) == text) {
+    if (os.Exists(path) && build.read_file(path) == text) {
         return true;
     }
-    build.make_directory(Join([build_dir, "/sdk"]));
-    return build.write_file(path, text);
+    if (os.MakeDirectory(Join([build_dir, "/sdk"])) || os.WriteText(path, text)) {
+        return false;
+    }
+    return true;
 }
 
 // Copies a file to `to` when it differs, or each file below a directory.
 CopyChanged :: (from: string, to: string) -> bool {
-    if (build.file_kind(from) == "directory") {
+    if (os.IsDirectory(from)) {
         for (name in build.list_directory(from)) {
             if (!CopyChanged(Join([from, "/", name]), Join([to, "/", name]))) {
                 return false;
@@ -481,11 +492,13 @@ CopyChanged :: (from: string, to: string) -> bool {
         }
         return true;
     }
-    if (build.file_exists(to) && build.hash_file(to) == build.hash_file(from)) {
+    if (os.Exists(to) && build.hash_file(to) == build.hash_file(from)) {
         return true;
     }
-    build.make_directory(strings.Slice(to, 0, strings.LastIndex(to, "/")));
-    return build.copy_file(from, to);
+    if (os.MakeDirectory(strings.Slice(to, 0, strings.LastIndex(to, "/"))) || os.Copy(from, to)) {
+        return false;
+    }
+    return true;
 }
 
 // The .chibi files below a directory, by path.
@@ -493,7 +506,7 @@ ChibiSources :: (directory: string) -> string[] {
     sources: string[] = [];
     for (name in build.list_directory(directory)) {
         path := Join([directory, "/", name]);
-        if (build.file_kind(path) == "directory") {
+        if (os.IsDirectory(path)) {
             sources.extend(ChibiSources(path));
         } else if (strings.HasSuffix(name, ".chibi")) {
             sources.append(path);
@@ -529,11 +542,10 @@ WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> 
         listed := ChibiSources(Join([source_root, "/", build.after(source_list, "=")]));
         text := Join([build.join(Sorted(listed), "\n"), "\n"]);
         output := Resolve(source_root, build_dir, "", build.before(source_list, "="));
-        if (build.file_exists(output) && build.read_file(output) == text) {
+        if (os.Exists(output) && build.read_file(output) == text) {
             continue;
         }
-        build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
-        if (!build.write_file(output, text)) {
+        if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/"))) || os.WriteText(output, text)) {
             return false;
         }
     }
@@ -566,7 +578,7 @@ TestSources :: (directory: string) -> string[] {
     names: string[] = [];
     for (name in build.list_directory(directory)) {
         if (strings.HasSuffix(name, ".chibi") &&
-            build.file_kind(Join([directory, "/", name])) != "directory") {
+            !os.IsDirectory(Join([directory, "/", name]))) {
             names.append(name);
         }
     }
@@ -583,7 +595,7 @@ TestSubstitution :: (source_root: string, value: string) -> string {
     directory := Join([source_root, "/", build.after(rest, ":")]);
     names := TestSources(directory);
     if (length(names) == 0) {
-        build.report(Join(["graph: authored test package is empty: ", directory]));
+        os.Print(Join(["graph: authored test package is empty: ", directory]));
         return "";
     }
     lines: string[] = [];
@@ -742,9 +754,8 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
     }
     inventory := Join([output, "/input-inventory.txt"]);
     listing := build.join(inputs, "\n");
-    if (!build.file_exists(inventory) || build.read_file(inventory) != listing) {
-        build.make_directory(output);
-        if (!build.write_file(inventory, listing)) {
+    if (!os.Exists(inventory) || build.read_file(inventory) != listing) {
+        if (os.MakeDirectory(output) || os.WriteText(inventory, listing)) {
             return -1;
         }
     }
@@ -803,7 +814,7 @@ Reflect :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: st
         inputs.append(Join([source_root, "/", input]));
     }
     if (c.Step(command, inputs, types) < 0) {
-        build.report("graph: reflect failed");
+        os.Print("graph: reflect failed");
         return -1;
     }
     return compiled;
@@ -1116,7 +1127,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
     // generator. Publish it even when a later prerequisite compile fails.
     for (target in targets) {
         if (!WriteSourceLists(source_root, build_dir, target)) {
-            build.report(Join(["graph: writing ", target, "'s source lists failed"]));
+            os.Print(Join(["graph: writing ", target, "'s source lists failed"]));
             return -1;
         }
     }
@@ -1128,12 +1139,12 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         installs = installs || length(Resources(target)) > 0;
     }
     if (installs && !WriteIdentity(source_root, build_dir, profile)) {
-        build.report("graph: writing the build identity failed");
+        os.Print("graph: writing the build identity failed");
         return -1;
     }
     for (target in targets) {
         if (!Install(source_root, build_dir, profile.third_party, target)) {
-            build.report(Join(["graph: installing ", target, "'s resources failed"]));
+            os.Print(Join(["graph: installing ", target, "'s resources failed"]));
             return -1;
         }
     }
@@ -1152,7 +1163,10 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         generated += assets_built;
     }
     for (target in targets) {
-        Embed(source_root, build_dir, target);
+        if (!Embed(source_root, build_dir, target)) {
+            os.Print(Join(["graph: embedding ", target, "'s files failed"]));
+            return -1;
+        }
     }
     for (target in Staged(targets)) {
         published := Resolve(source_root, build_dir, profile.third_party, HeaderSource(target));
@@ -1162,7 +1176,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             !Configure(source_root, build_dir, profile, target) ||
             !c.StageHeaders(published, PublicHeaders(target), HeaderRoot(build_dir, target, "public"), []) ||
             !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"), kept)) {
-            build.report(Join(["graph: staging ", target, "'s headers failed"]));
+            os.Print(Join(["graph: staging ", target, "'s headers failed"]));
             return -1;
         }
     }
@@ -1202,7 +1216,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         }
         built := Library(source_root, build_dir, profile.third_party, target);
         if (!c.Archive(tools, built, Sources(source_root, build_dir, profile.third_party, target), compiled)) {
-            build.report(Join(["graph: archiving ", target, " failed"]));
+            os.Print(Join(["graph: archiving ", target, " failed"]));
             return -1;
         }
     }
@@ -1212,7 +1226,7 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         }
         if (c.Link(Linker(tools, target), Executable(build_dir, target), LinkObjects(source_root, build_dir, profile.third_party, target),
                    LinkFlags(profile, build_dir, target), LinkLibraries(source_root, build_dir, target, profile)) < 0) {
-            build.report(Join(["graph: linking ", target, " failed"]));
+            os.Print(Join(["graph: linking ", target, " failed"]));
             return -1;
         }
     }

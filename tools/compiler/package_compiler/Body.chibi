@@ -490,7 +490,7 @@ OverloadArgument :: (forest: snapshot.SnapshotNode[], work: Work[], top: int, no
     call := forest[at].parent;
     index: int = 0;
     while (index < top) {
-        if (work[index].node == call && work[index].phase == 1 && work[index].c == 4) {
+        if (work[index].node == call && work[index].phase == 1 && work[index].c == NativeChoiceCall) {
             return true;
         }
         index += 1;
@@ -2933,7 +2933,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     points.extend(added_points);
             }
         }
-        if (ops.debug && kind == "call_expression" && item.phase == 1 && item.c == 4) {
+        if (ops.debug && kind == "call_expression" && item.phase == 1 && item.c == NativeChoiceCall) {
             typed_at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
                                host: length(hosts), call: length(calls)};
             switch OverloadArguments(forest, text, document, constants, callables, types, names, callable.package,

@@ -2705,9 +2705,19 @@ ArgumentReadEffects :: (types: TypeDecl[], members: TypeMember[], arguments: Val
     return 0;
 }
 
-// Finish marker of a call whose arguments are labeled or reordered; the
-// char conversion's is 8, and the math markers are in Math.chibi.
-LabeledCall: int : 5;
+// What a call's finish work item (phase 1) is finishing, in its `c` field.
+// One set of names: no two meanings share a number.
+AuthoredCall: int : 0; // a package function with positional arguments
+NativeCall: int : 1; // a native whose overload the callee name fixes
+VariantCall: int : 2; // a union variant's constructor
+ConversionCall: int : 3; // a scalar conversion such as i64(x)
+NativeChoiceCall: int : 4; // a native whose overload its arguments pick
+LabeledCall: int : 5; // a function whose arguments are labeled or reordered
+AssertCall: int : 6; // assert
+NativeMethodCall: int : 7; // a native called as a method
+CharConversionCall: int : 8; // char(x), checked
+MathCall: int : 90; // a built-in math constructor
+MathFunctionCall: int : 91; // a built-in math function
 // Calls of the package's functions and of natives. Arguments go to fresh data
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
@@ -2772,7 +2782,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 return Fail(forest, item.node, document, "variant payload needs one value per field");
             }
             finish := Resume(item.node, 1, variant, count);
-            finish.c = 2;
+            finish.c = VariantCall;
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
@@ -2826,7 +2836,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                     }
             }
             finish := Resume(item.node, 1, method, length(sources));
-            finish.c = 7;
+            finish.c = NativeMethodCall;
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
@@ -2935,12 +2945,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 // points and watches before the checked char result.
                 if (SignedLiteral(forest, text, argument) >= 0 || storage == 0) { storage = Int64Storage; }
                 finish := Resume(item.node, 1, 0, 1);
-                finish.c = 8;
+                finish.c = CharConversionCall;
                 return Step.Emitted([], [], [], [], [], [], [], [],
                                     [Expect(argument, storage, 0, -1), finish], 0, NoValue(), NoValue(), []);
             }
             finish := Resume(item.node, 1, 0, 0);
-            finish.c = 8;
+            finish.c = CharConversionCall;
             return Step.Emitted([], [], [], [], [], [], [], [], [Visit(argument), finish], 0, NoValue(), NoValue(), []);
         }
         if (qualifier < 0 && found < 0) {
@@ -2980,7 +2990,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 next.append(Visit(value));
             }
             finish := Resume(item.node, 1, conversion, mode);
-            finish.c = 3;
+            finish.c = ConversionCall;
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
@@ -3043,7 +3053,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             }
             next.append(Expect(condition, BoolStorage, 0, -1));
             finish := Resume(item.node, 1, message, condition);
-            finish.c = 6;
+            finish.c = AssertCall;
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
@@ -3079,7 +3089,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                     ordinal += 1;
                 }
                 choose := Resume(item.node, 1, native, length(sources));
-                choose.c = 4;
+                choose.c = NativeChoiceCall;
                 next.append(choose);
                 return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(),
                                     NoValue(), marks);
@@ -3110,7 +3120,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                     }
             }
             finish := Resume(item.node, 1, native, length(sources));
-            finish.c = 1;
+            finish.c = NativeCall;
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
@@ -3186,7 +3196,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         next.append(finish);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
     }
-    if (item.c == 6) {
+    if (item.c == AssertCall) {
         // An assert fails with its message, or with its condition's source
         // when it gives none.
         said := Text(forest, text, Unparenthesized(forest, item.b));
@@ -3207,10 +3217,10 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, Typed(-1, -1, 0, -1),
                             NoValue(), marks);
     }
-    if (item.c == 8) {
+    if (item.c == CharConversionCall) {
         return CharConversionStep(forest, document, types, values[top - 1], item, ops, target, at);
     }
-    if (item.c == 3) {
+    if (item.c == ConversionCall) {
         // A conversion to types item.a in mode item.b. A constant converted
         // to an integer type folds before this, so an untyped one here
         // converts to a floating type, from int64 or a uint64 beyond it.
@@ -3256,13 +3266,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         value := values[at_argument];
         // An overload ranks an untyped literal, not another constant expression.
         if (value.storage == NumberStorage &&
-            ((item.c != 1 && item.c != 4 && item.c != 7) || (item.c == 4 && SignedLiteral(forest, text, value.record) < 0))) {
+            ((item.c != NativeCall && item.c != NativeChoiceCall && item.c != NativeMethodCall) || (item.c == NativeChoiceCall && SignedLiteral(forest, text, value.record) < 0))) {
             return Fail(forest, value.record, document, "a number needs an integer type here");
         }
         at_argument += 1;
     }
     // Stage zero evaluates the default of each argument a call omits.
-    if (item.c == 0 && item.a >= 0) {
+    if (item.c == AuthoredCall && item.a >= 0) {
         omitted := count;
         while (omitted < callables[item.a].count) {
             param := params[callables[item.a].first + omitted];
@@ -3275,7 +3285,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             omitted += 1;
         }
     }
-    if (item.c == 2) {
+    if (item.c == VariantCall) {
         // The constructor takes the variant's tag, then each payload field. A
         // returned variant is built in the caller's storage, so the return
         // need not copy it, with a mask of the payload values it keeps there:
@@ -3350,7 +3360,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     argument_reads := ArgumentReadEffects(types, members, slice(values, first, count));
     chosen := item.a;
-    if (item.c == 4) {
+    if (item.c == NativeChoiceCall) {
         // An overloaded native: the one whose parameters take the arguments.
         callee := Field(forest, item.node, "function");
         chosen = Overload(forest, text, document, item.node, constants, callables, types, names, package,
@@ -3370,18 +3380,18 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             return Fail(forest, callee, document, "this overload is not supported yet");
         }
     }
-    if ((item.c == 1 || item.c == 4 || item.c == 7) && count == 1 && NameMatches(natives[chosen].name, "length") &&
+    if ((item.c == NativeCall || item.c == NativeChoiceCall || item.c == NativeMethodCall) && count == 1 && NameMatches(natives[chosen].name, "length") &&
         values[first].container == ArrayContainer && !values[first].place && !ops.debug) {
         return EffectsStep(CleanupSequenceValues(ArrayLengthStep(values[first], ops, target, at, node),
                                                  [values[first]], ops, target, at, node), argument_reads);
     }
-    if ((item.c == 1 || item.c == 4 || item.c == 7) && count == 1 && NameMatches(natives[chosen].name, "length") &&
+    if ((item.c == NativeCall || item.c == NativeChoiceCall || item.c == NativeMethodCall) && count == 1 && NameMatches(natives[chosen].name, "length") &&
         values[first].container == ViewContainer) {
         emitted := SequenceCallStep([values[first]], SequenceLengthIntrinsic, Typed(-1, IntStorage, 0, -1),
                                     u64(0), false, 1, ops, target, at, node);
         return EffectsStep(CleanupSequenceValues(emitted, [values[first]], ops, target, at, node), argument_reads);
     }
-    linked := item.c == 1 || item.c == 4 || item.c == 7;
+    linked := item.c == NativeCall || item.c == NativeChoiceCall || item.c == NativeMethodCall;
     inferred := NoValue();
     first_port: int = 0;
     if (linked) {
@@ -3411,7 +3421,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     given: NativeArgument[] = [];
     if (linked) {
-        switch BindNative(forest, text, item.node, NativeSources(forest, item.node, item.c == 7),
+        switch BindNative(forest, text, item.node, NativeSources(forest, item.node, item.c == NativeMethodCall),
                           natives[chosen], ports) {
             case .Failed(problem, message):
                 return Fail(forest, problem, document, message);
@@ -3526,7 +3536,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             argument = Typed(at.slot + length(slots) - 1, expected.storage, 0, -1);
             arguments[index] = argument;
         }
-        if (item.c == 4 && argument.container == 0 && expected.container == 0 && argument.storage != expected.storage &&
+        if (item.c == NativeChoiceCall && argument.container == 0 && expected.container == 0 && argument.storage != expected.storage &&
             Numeric(argument.storage) && Converts(argument.storage, expected.storage)) {
             // The overload stage zero ranks first takes the number converted.
             output := at.slot + length(slots);
@@ -3649,7 +3659,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             written = target.pointer_storage;
             code.append(ReferenceWatch(ops, params[callables[item.a].first + index], index, argument.slot,
                                        node, target));
-        } else if (!ops.debug || item.c != 4 || NativeProvided(given, index) < 0) {
+        } else if (!ops.debug || item.c != NativeChoiceCall || NativeProvided(given, index) < 0) {
             code.append(WatchCode(ops, argument.slot, argument.storage, argument.container, argument.record,
                                   index, false, node, target));
         }

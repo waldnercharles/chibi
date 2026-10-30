@@ -2049,9 +2049,10 @@ ScalarPassed :: () -> syntax.Diagnostic {
     return {start: 0, end: 0, line: 0, column: 0, document: 0, message: ""};
 }
 // The first member of one source document this subset cannot express, which
-// admits only function, record, union and constant declarations. A constant
+// admits only function, record, union and constant declarations, and in a
+// package set, imports, with no function required of a package. A constant
 // is the value Declare folds it to, so its reads are literals.
-ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int, needs_function: bool) -> syntax.Diagnostic {
+ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int, packaged: bool) -> syntax.Diagnostic {
     functions := false;
     member := FirstMember(forest, root);
     while (member >= 0) {
@@ -2061,14 +2062,15 @@ ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int, needs_function: bo
                 return Diagnose(forest, attribute, 0, "scalar proof does not support function attributes");
             }
             functions = true;
-        } else if (!Is(forest, member, "package_header") && !Is(forest, member, "record_declaration") &&
+        } else if (!Is(forest, member, "package_header") && !(packaged && Is(forest, member, "import_declaration")) &&
+                   !Is(forest, member, "record_declaration") &&
                    !Is(forest, member, "union_declaration") && !Is(forest, member, "constant_declaration")) {
             return Diagnose(forest, member, 0,
                             "scalar proof supports only ordinary function, record, union and constant declarations");
         }
         member = NextMember(forest, member);
     }
-    if (needs_function && !functions) {
+    if (!packaged && !functions) {
         return Diagnose(forest, root, 0, "scalar proof requires at least one function");
     }
     return ScalarPassed();
@@ -2269,7 +2271,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                          Diagnose(nodes, document.syntax_root, 0, "scalar proof requires an accepted package graph"));
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
                     if (!packaged) {
-                        unsupported := ScalarMembers(nodes, document.syntax_root, true);
+                        unsupported := ScalarMembers(nodes, document.syntax_root, false);
                         if (unsupported.message != "") {
                             return ScalarFailure(path, text, unsupported);
                         }
@@ -2281,7 +2283,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                                      Diagnose(nodes, candidate.syntax_root, 0,
                                                               "scalar proof imports only project packages"));
                             }
-                            member_gap := ScalarMembers(nodes, candidate.syntax_root, false);
+                            member_gap := ScalarMembers(nodes, candidate.syntax_root, true);
                             if (member_gap.message != "") {
                                 return ScalarFailure(path, text, member_gap);
                             }

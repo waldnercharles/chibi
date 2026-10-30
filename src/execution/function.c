@@ -810,6 +810,21 @@ bool behavior_function_collection_holds(const behavior_function_context *context
     pin_value_collection_visit_owners(value, collection_find, &find);
     return find.held;
 }
+static void collection_check(const pin_value *value, void *user)
+{
+    collection_held *check = user;
+    bool found = false;
+    for (int i = 0; i < acount(check->context->collection_owners); i++) {
+        found |= collection_owner_same(check->context->collection_owners[i], *value);
+    }
+    check->held &= found;
+}
+bool behavior_function_collection_owns(const behavior_function_context *context, const pin_value *value)
+{
+    collection_held check = { .context = context, .held = true };
+    pin_value_collection_visit_owners(value, collection_check, &check);
+    return check.held;
+}
 void behavior_function_collection_empty(behavior_function_context *context)
 {
     for (int i = 0; i < acount(context->collection_owners); i++) {
@@ -1689,6 +1704,12 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
              * walked whatever their type. */
             if (!array || !pin_array_view_valid(array) ||
                 (!array->pointer && !pin_array_items_reach(array))) {
+                continue;
+            }
+            /* A shared payload whose anchor the collection holds is walked
+             * once, by the anchor's tracer, as a shell in the collection is. */
+            if (mark == arena_collect_mark && !array->pointer &&
+                pin_array_collect_backing(array, user)) {
                 continue;
             }
             managed_push_items(&pending, array, false);

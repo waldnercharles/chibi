@@ -85,11 +85,15 @@ previous copy. A generation exports a manifest (`chibi_natives_<Name>`, as nativ
 do) listing `Main`, `Frame` and the state schema. The host owns the state; no generation
 owns anything that outlives it.
 
-**State is a record.** The state of a native program is one record of the program's
-`retain` bindings, passed to `Frame` and returned by it. The compiler lowers `retain`
-bindings to that record (a hidden parameter and result of `Frame`), so source still reads
-as in the VM. The export ABI passes a record of scalars as 64-bit words in field order,
-and the manifest carries the schema: each field's name, scalar type and word index.
+**State is a set of words.** A `retain` local of a native function is a state of its
+library: a global that starts at its initializer, which the variable loads where it is
+declared and writes through on every assignment (`StateLoad` and `StateStore` in
+`llvm_native`). Each generation exports a second manifest, `chibi_retained_<Name>`, with
+each state's name (`Frame.count`), its scalar type, and `get` and `set` entries that move all
+states as 64-bit words in manifest order. The host owns the state between generations: it
+reads the old generation's words, migrates them, and sets them in the new one. Retained
+states are numbers and bools with a literal initializer. A function that takes or returns a
+record of scalars is also exported in `chibi_state_<Name>` with the record's field schema.
 
 **The safe point is between `Frame` calls.** The host loop is: load generation 1, build
 the initial state, call `Main` once, then call `Frame(state)` repeatedly. When a new
@@ -104,7 +108,8 @@ is closed after the swap. Nothing executes inside a generation that is being rep
 | Same name and scalar type | Value kept. |
 | New field | Starts from its initializer. |
 | Removed field | Dropped. |
-| Same name, other scalar type | Converted when the VM's `program_migrate_value` converts it; otherwise reset to the initializer. |
+| Same name, other integer type | Converted, clamped to the new type's range. |
+| Same name, any other type change | Reset to the initializer. |
 
 A migration never partly applies: the new state is built whole, then swapped.
 
@@ -120,11 +125,13 @@ VM session above remains the implementation behind `chibi --watch`.
 
 ### Status
 
-Native programs cannot do this yet. Open pieces, in order: scalar records across the export
-ABI with a schema (`llvm_native/Emit.chibi`); `retain` and `Frame` in the authored compiler
-as the state-record lowering; the generation-swap host in Chibi; `chibi run --native
---watch`; the test that edits source while the loop runs and checks that state survives
-(Linux x86-64 first, as native libraries are).
+Native programs cannot do this yet. Landed: scalar records across the export ABI with a
+schema (`chibi_state_<Name>`); `retain` locals of a library function as exported states
+(`chibi_retained_<Name>`); the schema migration in `apps/chibi/Generations.chibi`. Open, in
+order: the generation-swap host in Chibi, which needs function pointers, a dynamically linked
+libc for `dlopen`, and file and clock access from native code; `chibi run --native --watch`;
+the test that edits source while the loop runs and checks that state survives (Linux x86-64
+first, as native libraries are).
 
 ## Limits
 

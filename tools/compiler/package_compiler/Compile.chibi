@@ -2690,10 +2690,19 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
             generic_bindings = bindings;
     }
     prepared: Body[] = [];
+    retained: StateDecl[] = [];
+    retained_owners: int[] = [];
+    switch RetainedLocals(forest, documents, callables, package_names, &types, ops) {
+        case .Failed(diagnostic):
+            return Result.Rejected(diagnostic);
+        case .Read(states, owners):
+            retained = states;
+            retained_owners = owners;
+    }
     // Bodies may declare types, which every module then reads.
     switch PreparePackages(forest, documents, packages, files_of, order, edges, links, package_names,
                            callables, params, &types, members, constants, natives, ports, identities,
-                           context, generic_bindings, ops, target) {
+                           context, generic_bindings, ops, target, retained, retained_owners) {
         case .Failed(diagnostic):
             return Result.Rejected(diagnostic);
         case .Read(bodies):
@@ -2715,7 +2724,8 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
         switch Assemble(forest, documents, package, files_of[packages[package].member_start], package_names,
                         package_ids, fingerprints,
                         Reachable(edges, length(packages), package), links, callables, params, types, members, constants,
-                        natives, ports, identities, native_effects, effects, ops, target, abi, Game.Package, prepared, []) {
+                        natives, ports, identities, native_effects, effects, ops, target, abi, Game.Package, prepared, [],
+                        PackageStates(retained, retained_owners, callables, package)) {
             case .Rejected(diagnostic):
                 return Result.Rejected(diagnostic);
             case .Compiled(module, bytes, summaries):
@@ -2959,7 +2969,8 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                     files_of: int[], order: int[], edges: graph.Edge[], links: graph.Binding[],
                     package_names: string[], callables: Callable[], params: Param[], table: ^(TypeDecl[]),
                     members: TypeMember[], constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[],
-                    identities: u64[], context: BodyContext, generic_bindings: GenericBinding[], ops: Ops, target: Target) -> Preparation {
+                    identities: u64[], context: BodyContext, generic_bindings: GenericBinding[], ops: Ops, target: Target,
+                    retained: StateDecl[], retained_owners: int[]) -> Preparation {
     bodies: Body[] = [];
     for (callable in callables) {
         bodies.append(Body.Failed(Diagnose(forest, callable.node, callable.document, "missing prepared body")));
@@ -3013,7 +3024,9 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                     meaning := CallableIdentity(package_names, callable);
                     body := FunctionBody(scoped, documents, callables, params, table, members,
                                          GenericConstants(forest, used, generic_bindings, index, callable, documents), natives, ports,
-                                         identities, GenericAliases(Aliases(links, callable.document), generic_bindings, index), [], [], [], index, solid,
+                                         identities, extend(GenericAliases(Aliases(links, callable.document), generic_bindings, index),
+                                                            RetainedNames(retained, retained_owners, callables, package, index)),
+                                         [], [], [], index, solid,
                                          undeclared, meaning, context, generic, ops, target, []);
                     switch body {
                         case .Failed(diagnostic):
@@ -3108,7 +3121,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
              members: TypeMember[], constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[],
              identities: u64[], native_effects: int[], callable_effects: int[], ops: Ops, target: Target,
-             abi: u64, game: Game, prepared: Body[], query_specs: QuerySpec[]) -> Assembly {
+             abi: u64, game: Game, prepared: Body[], query_specs: QuerySpec[], retained: StateDecl[]) -> Assembly {
     identity := package_names[package];
     module := package_ids[package];
     // A behavior's states, the event each of its functions handles, the
@@ -3123,6 +3136,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     switch game {
         case .Package:
             source_mode = false;
+            kept_states = retained;
         case .Library(entity, operators, globals, makes, made_fields):
             owner_type = entity;
             library_mode = true;

@@ -866,9 +866,12 @@ TEST_CASE(compiler_tools_package_and_run_after_relocation)
     join(host, relocated, "libexec/chibi/chibi-compiler-host");
     join(compiler, relocated, "share/chibi/compiler");
     join(bootstrap, compiler, "bootstrap");
+    /* The relocated resources must validate; proving that the sources compile
+     * to themselves is the compiler self-build workflow's job, on every push,
+     * and costs minutes of VM compiles when sources changed since the seed. */
     const char *check[] = {
-        host,     "--bootstrap", bootstrap, "--compiler",
-        compiler, "--core",      core,      NULL,
+        host,     "--bootstrap", bootstrap,    "--compiler", compiler,
+        "--core", core,          "--validate", NULL,
     };
     REQUIRE(!run_without_toolchain(check, consumer));
     REQUIRE(receipts_match(relocated));

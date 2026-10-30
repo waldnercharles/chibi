@@ -58,6 +58,8 @@ static const char *const environment_names[] = {
     "DEVELOPER_DIR",
     "CHIBI_BUILD_WORKER",
     "CHIBI_BUILD_TIMINGS",
+    /* Nested build hosts reuse the recovered compilers the caller keeps. */
+    "CHIBI_COMPILER_CACHE",
     "CC",
     "CXX",
     "CFLAGS",

@@ -231,15 +231,14 @@ int main(int argc, char **argv)
          !package_compiler_chibi_debug_free && !package_compiler_chibi_scalar &&
          !package_compiler_chibi_native && !native_census &&
          !native_census_flattening && !package_compiler_chibi_native_arguments &&
-         !package_compiler_chibi_native_arguments_oracle &&
-         !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
-         !snapshot_reader_chibi && !package_resolution && !package_imports &&
-         !host_packages && !host_packages_compiler && !package_files &&
-         !package_core && !package_math && !package_math_benchmark &&
-         !package_portable && !package_portable_compiler && !package_tests &&
-         !argument_effects_chibi && !component_write && !component_write_layout &&
-         !build_workflow && !field_runtime && !text_format &&
-         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !package_compiler_chibi_native_arguments_oracle && !type_relations_chibi &&
+         !unit_algebra_chibi && !signature_reader_chibi && !snapshot_reader_chibi &&
+         !package_resolution && !package_imports && !host_packages &&
+         !host_packages_compiler && !package_files && !package_core && !package_math &&
+         !package_math_benchmark && !package_portable && !package_portable_compiler &&
+         !package_tests && !argument_effects_chibi && !component_write &&
+         !component_write_layout && !build_workflow && !field_runtime &&
+         !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "

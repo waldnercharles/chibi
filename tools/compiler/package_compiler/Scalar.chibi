@@ -1562,7 +1562,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (condition >= 0) {
         return ScalarPlan.Converted(condition, BoolStorage, BoolStorage);
     }
-    if (!Is(forest, statement, "local_declaration")) {
+    if (!Is(forest, statement, "local_declaration") && !Is(forest, statement, "state_declaration")) {
         return ScalarPlan.Failed(Diagnose(forest, statement, 0,
                                           "scalar proof supports only locals, assignments, asserts, if statements, switches, loops and returns"));
     }
@@ -1975,7 +1975,8 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             binding := ScalarVariable(names, Text(forest, text, RootOf(forest, Field(forest, statement, "target"))));
             type := ScalarValueType(types, binding.storage, binding.container, binding.record);
             row = ScalarAt(forest, statement, facts.AssignRow, type, binding.index, count, "");
-        } else if (Is(forest, statement, "local_declaration")) {
+        } else if (Is(forest, statement, "local_declaration") || Is(forest, statement, "state_declaration")) {
+            retained := Is(forest, statement, "state_declaration");
             declared := Field(forest, statement, "name");
             storage := ScalarDeclared(forest, text, callables, params, callable, names, types, members, constants, statement);
             record: int = -1;
@@ -1991,6 +1992,13 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             name := Text(forest, text, declared);
             type := ScalarValueType(types, storage, container, record);
             row = ScalarAt(forest, statement, facts.LocalRow, type, variables, count, name);
+            if (retained) {
+                if (container != 0 || record >= 0 || storage == TextStorage || Field(forest, statement, "value") < 0) {
+                    return ScalarOperands.Failed(Diagnose(forest, statement, 0,
+                                                          "a retained local is a number or bool with a value"));
+                }
+                row.literal = i64(facts.Retained);
+            }
             // As StatementStep binds it, after its value.
             binding: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: storage, container: container,
                              record: record, writable: true, node: declared};

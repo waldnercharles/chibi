@@ -57,3 +57,57 @@ UnnamedRecordsAreNotState :: () {
     text := Emitted(FrameLibrary(names));
     assert(!strings.Contains(text, "chibi_state_"));
 }
+// Frame() { count: retain int = 0; count += 1; return count }, as the emitter
+// is given it: the state is loaded into the local, the local is stored back
+// to the state after the write, and the library exports the states.
+Counter :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.StateLoad, 6, 0, 0, 0, 0, 0),
+            Code(native.Save, 6, 0, 0, 0, 0, 0),
+            Code(native.Local, 6, 1, 0, 0, 0, 0),
+            Code(native.Constant, 6, 2, 0, 0, 0, 1),
+            Code(native.Add, 6, 3, 1, 2, 0, 0),
+            Code(native.Save, 6, 0, 3, 0, 0, 0),
+            Code(native.Local, 6, 4, 0, 0, 0, 0),
+            Code(native.StateStore, 6, 0, 4, 0, 0, 0),
+            Code(native.Local, 6, 5, 0, 0, 0, 0),
+            Code(native.Publish, 6, 0, 5, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+CounterLibrary :: (code: native.Instruction[]) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    no_names: string[] = [];
+    ids: i64[] = [7];
+    shape: native.Function = {result: 6, first_parameter: 0, parameters: 0, first_slot: 0, slots: 6, first_local: 0,
+                              locals: 1, first_code: 0, code: 12, first_argument: 0, arguments: 0};
+    return native.EmitLibrary(abi.LinuxX64(), "Counter", ["Frame"], ids, [shape], empty, [6, 6, 6, 6, 6, 6], [6], code,
+                              empty, records, empty, ["Frame.count"], 1, no_names);
+}
+// A retained state is a global that starts at its value, read by a load and
+// written by a store, and a library exports the states' names, types, and an
+// entry to get them and another to set them.
+@test
+RetainedStatesAreGlobalsTheLibraryExports :: () {
+    text := Emitted(CounterLibrary(Counter()));
+    assert(strings.Contains(text, "@chibi_scalar.retained.0 = internal global i32 0\n"));
+    assert(strings.Contains(text, "%v1.stored = load i32, ptr @chibi_scalar.retained.0\n"));
+    assert(strings.Contains(text, "store i32 %a8, ptr @chibi_scalar.retained.0\n"));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.retained.get(ptr %ctx, ptr %in, ptr %out) #0 {\n"));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.retained.set(ptr %ctx, ptr %in, ptr %out) #0 {\n"));
+    assert(strings.Contains(text, "@chibi_scalar.retained.types = private unnamed_addr constant [1 x i8] [i8 1]\n"));
+    assert(strings.Contains(text, "@chibi_scalar.retained.names = private unnamed_addr constant [12 x i8] c\"Frame.count\\00\"\n"));
+    assert(strings.Contains(text, "@chibi_retained_Counter = constant { i32, i32, ptr, ptr, ptr, ptr } { i32 1, i32 1, "));
+}
+@test
+RetainedStoreOfAnotherStateIsRejected :: () {
+    code := Counter();
+    code[8] = Code(native.StateStore, 6, 0, 4, 0, 1, 0);
+    Rejects(CounterLibrary(code), "native retained states differ from their loads");
+}
+@test
+RetainedStateMustStartInItsType :: () {
+    code := Counter();
+    code[1] = Code(native.StateLoad, 6, 0, 0, 0, 0, 1099511627776);
+    Rejects(CounterLibrary(code), "native retained state differs from its operands");
+}

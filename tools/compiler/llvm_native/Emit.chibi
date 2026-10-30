@@ -963,6 +963,10 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}  %v{} = extractvalue {} %a{}, {}\n", out, pc, TypeName(item.right), pc, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == StateLoad) {
+        out = format_text("{}{}", out, StateRead(item, pc));
+    } else if (item.op == StateStore) {
+        out = format_text("{}{}", out, StateWrite(item, pc));
     } else if (item.op == ArrayBytes) {
         out = format_text("{}{}", out, ArrayBytesRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {

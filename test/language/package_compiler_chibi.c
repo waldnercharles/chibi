@@ -9191,12 +9191,68 @@ static bool scalar_collects_libraries()
     }
     return true;
 }
+/* A retain local of a library function is a state of the library: a Local
+ * row whose literal is Retained, then the state's global, loaded and stored
+ * around the variable, and the manifest a host reads the states through. */
+static bool scalar_retains_library_states()
+{
+    static const char source[] = "Tools :: library {\n"
+                                 "    Frame :: () -> int {\n"
+                                 "        count: retain int = 4;\n"
+                                 "        count += 1;\n"
+                                 "        return count;\n"
+                                 "    }\n"
+                                 "}\n";
+    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(
+        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
+    );
+    for (int b = 0; b < 2; b++) {
+        pin_value rows, emitted;
+        REQUIRE(library_rows(b, source, &rows));
+        const pin_array *array = rows.ptr;
+        if (array->count > 1 &&
+            scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_REJECTION_ROW) {
+            fprintf(
+                stderr,
+                "retained library rejected: %s\n",
+                pin_text(scalar_field(guard_row(&rows, 1), "text")).bytes
+            );
+        }
+        REQUIRE(array->count > 2 && scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_DOCUMENT_ROW);
+        REQUIRE(emit_bytes(b, "LinuxX64", &rows, &emitted));
+        const pin_array *bytes = emitted.ptr;
+        char *ir = xmalloc((size_t)bytes->count + 1);
+        for (int i = 0; i < bytes->count; i++) {
+            ir[i] = (char)bytes->items[i].u8;
+        }
+        ir[bytes->count] = 0;
+        bool emits = strstr(ir, "@chibi_scalar.retained.0 = internal global i32 4\n") &&
+                     strstr(ir, "load i32, ptr @chibi_scalar.retained.0") &&
+                     strstr(ir, "store i32 %a") &&
+                     strstr(ir, "c\"Frame.count\\00\"") &&
+                     strstr(ir, "@chibi_retained_Tools = constant { i32, i32, ptr, ptr, ptr, ptr } { i32 1, i32 1, ");
+        if (!emits) {
+            fprintf(stderr, "retained library IR:\n%s\n", ir);
+        }
+        free(ir);
+        REQUIRE(emits);
+        arena_free(&detached);
+    }
+    return true;
+}
 /* One fixture load serves both, since each load takes minutes. */
 TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries)
 {
     REQUIRE(prepare());
     REQUIRE(scalar_rejects_unsupported());
     REQUIRE(scalar_collects_libraries());
+    return true;
+}
+TEST_CASE(package_compiler_scalar_retains_library_states)
+{
+    REQUIRE(prepare());
+    REQUIRE(scalar_retains_library_states());
     return true;
 }
 TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
@@ -15321,6 +15377,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
+    RUN_TEST_CASE(package_compiler_scalar_retains_library_states);
     RUN_TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit);
     pu_clear_setup();
 }

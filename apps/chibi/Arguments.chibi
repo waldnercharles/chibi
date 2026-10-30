@@ -21,6 +21,7 @@ Options :: struct {
     explain: bool
     json: bool
     debug: bool
+    static_link: bool
 }
 
 NewOptions :: (command: string) -> Options {
@@ -28,7 +29,7 @@ NewOptions :: (command: string) -> Options {
             target: "x86_64-unknown-linux-gnu", mode: "2", error: "",
             tail_first: 0, port: 8000, valid: true, help: false, watch: false,
             native: false, archive: false, explain: false,
-            json: false, debug: false}
+            json: false, debug: false, static_link: false}
 }
 
 Tail :: (arguments: string[], first: int) -> string[] {
@@ -219,6 +220,8 @@ Parse :: (arguments: string[]) -> Options {
             optimized = true
         } else if command == "build" && options.native && argument == "-g" && !options.debug {
             options.debug = true
+        } else if command == "build" && options.native && argument == "--static" && !options.static_link {
+            options.static_link = true
         } else if !Option(argument) && !rooted && command != "doctor" {
             options.path = argument
             rooted = true
@@ -288,6 +291,9 @@ CommandArgumentsSelectNativeAndExportOptions :: () {
     native := Parse(["chibi", "build", "--native", "-O0", "-g", "--target", "aarch64-apple-darwin", "--llvm", "/tools", "source"])
     assert(native.valid && native.native && native.mode == "0" && native.debug)
     assert(native.path == "source" && native.llvm == "/tools" && native.target == "aarch64-apple-darwin")
+    linked := Parse(["chibi", "build", "--native", "--static", "source"])
+    assert(linked.valid && linked.static_link && !native.static_link)
+    assert(!Parse(["chibi", "build", "--static"]).valid)
     exported := Parse(["chibi", "export", "game", "--web", "browser", "--output", "site", "--archive"])
     assert(exported.valid && exported.path == "game" && exported.web == "browser")
     assert(exported.output == "site" && exported.archive)

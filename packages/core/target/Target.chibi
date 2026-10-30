@@ -1,0 +1,16 @@
+package target
+
+// The platform a package compiles for, as constants. A compile that supplies a
+// platform replaces this file's text with the same declarations and its own
+// Os, Arch and PointerBits, so a package can select what depends on the target
+// with a `when` on them.
+pub Linux: int : 1
+pub Darwin: int : 2
+pub Windows: int : 3
+
+pub X86_64: int : 1
+pub Arm64: int : 2
+
+pub Os: int : 0
+pub Arch: int : 0
+pub PointerBits: int : 0

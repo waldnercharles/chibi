@@ -421,6 +421,13 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (ScalarLengthOf(forest, text, callables, names, callable.package, node) >= 0) {
             return IntStorage;
         }
+        native := ScalarArrayCall(forest, text, callables, names, callable.package, node);
+        if (native.operator == facts.ArrayContains) {
+            return BoolStorage;
+        }
+        if (native.operator != 0) {
+            return ScalarArrayShape(forest, text, callables, names, callable.package, native.array).storage;
+        }
         operator := ScalarTextOperator(forest, text, node);
         if (operator == facts.TextSlice || operator == facts.TextFormat) {
             return TextStorage;
@@ -500,6 +507,11 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (measured >= 0) {
         return ScalarLength(forest, text, callables, params, callable, names, types, members, constants, node, measured,
                             rows);
+    }
+    native := ScalarArrayCall(forest, text, callables, names, callable.package, node);
+    if (native.operator != 0) {
+        return ScalarNativeRows(forest, text, callables, params, callable, names, types, members, constants, node, native,
+                                rows);
     }
     storage := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, node, expected);
     type := ScalarTypeOf(storage);
@@ -1309,12 +1321,12 @@ ScalarAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
 // bounds, a value of record `record`, an assignment to field `field` of a
 // variable of record `record`, the Tag of the union variable `subject`, an
 // array of the elements `shape` describes, copied when `copied`, an assignment to an
-// array's element, an append to array variable `object`, the array a loop
+// array's element, a change of array variable `object` by `operator`, the array a loop
 // visits, or none.
 ScalarPlan :: union {
     Failed(diagnostic: syntax.Diagnostic) | Converted(value: int, context: int, storage: int) | Compound(storage: int) |
     Range(first: int, last: int) | Record(value: int, record: int) | Member(record: int, field: int) |
-    Tagged(subject: int) | Array(value: int, shape: ValueType, copied: bool) | Element | Appended(object: int) |
+    Tagged(subject: int) | Array(value: int, shape: ValueType, copied: bool) | Element | Changed(object: int, operator: int) |
     Iterated(value: int, copied: bool) | Bare
 }
 // The plan of `statement`'s operands: a return's value, widened to the result
@@ -1419,9 +1431,9 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
         return ScalarPlan.Converted(value, storage, storage);
     }
-    appended := ScalarAppendOf(forest, text, callables, names, callable.package, statement);
-    if (appended >= 0) {
-        return ScalarPlan.Appended(appended);
+    changed := ScalarChangeOf(forest, text, callables, names, callable.package, statement);
+    if (changed >= 0) {
+        return ScalarPlan.Changed(changed, ScalarChangeKind(forest, text, statement));
     }
     condition := ScalarAsserted(forest, text, callables, names, callable, statement);
     if (condition >= 0) {
@@ -1667,10 +1679,10 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             case .Element:
                 built = ScalarElementAssigned(forest, text, callables, params, callable, names, types, members, constants,
                                               statement, operands);
-            case .Appended(object):
+            case .Changed(object, operator):
                 appended = object;
-                built = ScalarAppended(forest, text, callables, params, callable, names, types, members, constants, statement,
-                                       object, operands);
+                built = ScalarChanged(forest, text, callables, params, callable, names, types, members, constants, statement,
+                                      object, operator, operands);
             case .Iterated(value, copied):
                 iterated = true;
                 built = ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants, value,
@@ -1896,11 +1908,14 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[]) -> bool {
 }
 // Whether `native` is one a scalar module may call: the runtime's
 // text_byte_length, text_byte_at, text_slice or format_text, or an array's
-// length or append.
+// length, append, extend, slice, resize, contains or remove_index.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
     return NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
            NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text") ||
-           NativeNameMatches(native, "length") || NativeNameMatches(native, "append");
+           NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||
+           NativeNameMatches(native, "extend") || NativeNameMatches(native, "slice") ||
+           NativeNameMatches(native, "resize") || NativeNameMatches(native, "contains") ||
+           NativeNameMatches(native, "remove_index");
 }
 // The text natives of `natives`, each with its ports at their place among
 // ScalarTextPorts's.
@@ -1953,7 +1968,8 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
                  ReferenceMakeIntrinsic, ReferenceFieldIntrinsic, ReferenceReadIntrinsic, ReferenceWriteIntrinsic,
                  UnionMakeIntrinsic, UnionKeepIntrinsic, UnionTestIntrinsic, UnionGetIntrinsic,
                  ArrayPushIntrinsic, ArrayStoreIntrinsic, ArrayMutateIntrinsic, ArrayMutatePlaceIntrinsic,
-                 SequenceGetIntrinsic, SequenceLengthIntrinsic, SequenceBorrowIntrinsic, SequenceCloneIntrinsic];
+                 SequenceGetIntrinsic, SequenceLengthIntrinsic, SequenceBorrowIntrinsic, SequenceCloneIntrinsic,
+                 ArrayExtendIntrinsic, SequenceSliceIntrinsic];
     for (host in hosts) {
         // A text native, the only natives EmitBody is given.
         if (host.intrinsic == 0 && host.linked >= 0) {

@@ -75,6 +75,17 @@ static double timing_observed(FILE *file, int wanted)
     return 0;
 }
 
+/* A compile rejection reads "path:line:column: message"; other failures are
+ * the message alone. */
+static bool diagnostic_is(const char *actual, const char *expected)
+{
+    size_t have = strlen(actual), want = strlen(expected);
+    if (have == want) {
+        return !strcmp(actual, expected);
+    }
+    return have > want + 2 && !strcmp(actual + have - want, expected) &&
+           actual[have - want - 1] == ' ' && actual[have - want - 2] == ':';
+}
 TEST_CASE(build_timings_are_opt_in_bounded_and_exclusive)
 {
     REQUIRE(!build_timing_open(NULL) && !build_timing_open(""));
@@ -1166,7 +1177,7 @@ TEST_CASE(private_natives_resolve_only_under_the_build_namespace)
         chibi_build_result result;
         bool ran = chibi_build_invoke(&options, &result);
         if (ran != !diagnostics[i] ||
-            (diagnostics[i] && strcmp(result.diagnostic, diagnostics[i]))) {
+            (diagnostics[i] && !diagnostic_is(result.diagnostic, diagnostics[i]))) {
             fprintf(
                 stderr,
                 "namespace case %d: ran=%d steps=%d bytecode=%llu sljit=%llu "
@@ -1181,7 +1192,10 @@ TEST_CASE(private_natives_resolve_only_under_the_build_namespace)
             );
         }
         REQUIRE(ran == !diagnostics[i]);
-        REQUIRE(diagnostics[i] ? !strcmp(result.diagnostic, diagnostics[i]) : result.value == 0);
+        REQUIRE(
+            diagnostics[i] ? diagnostic_is(result.diagnostic, diagnostics[i])
+                           : result.value == 0
+        );
         if (diagnostics[i]) {
             REQUIRE(
                 !result.steps && !result.counts.bytecode_entries &&
@@ -1231,7 +1245,7 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)
     chibi_build_result result;
     REQUIRE(!chibi_build_invoke(&options, &result));
     REQUIRE(
-        !strcmp(result.diagnostic, "Unknown import collection") &&
+        diagnostic_is(result.diagnostic, "Unknown import collection") &&
         !result.counts.bytecode_entries
     );
     return true;
@@ -1398,6 +1412,32 @@ TEST_CASE(private_embed_file_writes_cmake_byte_arrays)
         options = primitive_options(refused[i], BEHAVIOR_BYTECODE);
         REQUIRE(!chibi_build_invoke(&options, &result));
         REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
+    }
+    return true;
+}
+
+/* A source that does not parse is reported where it fails, as
+ * "path:line:column: message", whichever host compiled it. */
+TEST_CASE(private_programs_report_syntax_errors_with_a_location)
+{
+    static const struct
+    {
+        const char *source, *position, *message;
+    } cases[] = {
+        { "package broken\nBuild :: () -> int { return 1 + ; }", ":2:", "Expected an expression, found `;`" },
+        { "package broken\nBuild :: () -> int { return 1;", ":2:", "to close the `{` at 2:" },
+        { "package broken\nimport project:greet\n", ":2:", "write `import greet \"project:greet\"`" },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        chibi_build_options options = primitive_options(cases[i].source, BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(
+            strstr(result.diagnostic, ".chibi") &&
+            strstr(result.diagnostic, cases[i].position)
+        );
+        REQUIRE(strstr(result.diagnostic, cases[i].message));
+        REQUIRE(!result.counts.bytecode_entries && !result.counts.sljit_entries);
     }
     return true;
 }
@@ -2686,6 +2726,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(private_programs_import_named_collections);
     RUN_TEST_CASE(private_programs_allocate_managed_pointers);
     RUN_TEST_CASE(private_embed_file_writes_cmake_byte_arrays);
+    RUN_TEST_CASE(private_programs_report_syntax_errors_with_a_location);
     RUN_TEST_CASE(private_programs_reject_yield_and_unawaited_tasks);
     RUN_TEST_CASE(private_runtime_failures_name_their_cause);
     RUN_TEST_CASE(private_started_steps_run_together);

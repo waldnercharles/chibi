@@ -1096,7 +1096,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_authoring") {
         return [
             "authoring/native_bindings.h",
-            "authoring/source_link.h", "authoring/source_literal.h",
+            "authoring/source_link.h", "authoring/source_literal.h"
 
 
         ];
@@ -2924,7 +2924,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/signature_reader_chibi.c", "test/language/source_tokenizer_chibi.c",
         "test/language/source_parser_chibi.c",
         "test/language/type_relations_chibi.c",
-        "test/language/unit_algebra_chibi.c",
+        "test/language/unit_algebra_chibi.c"
 
     ];
 }

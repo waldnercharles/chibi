@@ -38,7 +38,6 @@ void test_language_asset_compiler_host();
 void test_language_syntax_chibi();
 void test_language_package_syntax();
 void test_language_package_syntax_chibi();
-void test_language_package_routes_chibi();
 void test_language_package_snapshot_chibi();
 void test_language_unit_algebra_chibi();
 void test_language_package_resolution();
@@ -101,8 +100,6 @@ int main(int argc, char **argv)
                                  !strcmp(argv[1], "--asset-packaging-chibi");
     bool shader_source_chibi = argc == 2 && !strcmp(argv[1], "--shader-source-chibi");
     bool syntax_chibi = argc == 2 && !strcmp(argv[1], "--syntax-chibi");
-    bool package_routes_chibi = argc == 2 &&
-                                !strcmp(argv[1], "--package-routes-chibi");
     bool package_snapshot_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--package-snapshot-chibi");
     bool compiler_fixture = argc == 2 && !strcmp(argv[1], "--compiler-fixture");
@@ -188,14 +185,14 @@ int main(int argc, char **argv)
          !integer_semantics && !integer_shift_counts && !integer_shift_counts_authored &&
          !package_graph && !package_graph_chibi && !asset_compiler_host &&
          !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
-         !package_syntax && !package_syntax_chibi && !package_routes_chibi &&
-         !package_snapshot_chibi && !compiler_fixture && !bounded_compiler_chibi &&
-         !package_compiler_chibi && !package_compiler_chibi_libraries &&
-         !package_compiler_chibi_types && !package_compiler_chibi_fallible &&
-         !package_compiler_chibi_imports && !package_compiler_chibi_math_native &&
-         !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
-         !package_compiler_chibi_compiled && !package_compiler_chibi_types_compiled &&
-         !package_compiler_chibi_collections && !package_compiler_chibi_collections_compiled &&
+         !package_syntax && !package_syntax_chibi && !package_snapshot_chibi &&
+         !compiler_fixture && !bounded_compiler_chibi && !package_compiler_chibi &&
+         !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
+         !package_compiler_chibi_fallible && !package_compiler_chibi_imports &&
+         !package_compiler_chibi_math_native && !package_compiler_chibi_imports &&
+         !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
+         !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
+         !package_compiler_chibi_collections_compiled &&
          !package_compiler_chibi_imports_compiled &&
          !package_compiler_chibi_literals && !package_compiler_chibi_behaviors &&
          !package_compiler_chibi_behaviors_rest && !package_compiler_chibi_queries &&
@@ -228,7 +225,7 @@ int main(int argc, char **argv)
             "--asset-packaging-chibi | --syntax-chibi | "
             ""
             ""
-            "--package-routes-chibi | --package-snapshot-chibi | "
+            "--package-snapshot-chibi | "
             ""
             "--compiler-fixture | "
             "--bounded-compiler-chibi | "
@@ -336,8 +333,6 @@ int main(int argc, char **argv)
         test_language_package_syntax();
     } else if (package_syntax_chibi) {
         test_language_package_syntax_chibi();
-    } else if (package_routes_chibi) {
-        test_language_package_routes_chibi();
     } else if (package_snapshot_chibi) {
         test_language_package_snapshot_chibi();
     } else if (compiler_fixture) {

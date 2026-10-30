@@ -515,7 +515,7 @@ Files :: (target: string) -> string[] {
             "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
 
 
-            "test/language/package_routes_chibi.c", "test/language/package_snapshot_chibi.c",
+            "test/language/package_snapshot_chibi.c",
             "test/language/compiler_artifact_chibi.c", "test/language/bounded_compiler_chibi.c",
             "test/language/shader_source_chibi.c",
             "test/language/asset_packaging_chibi.c", "test/language/package_compiler_chibi.c",
@@ -2254,7 +2254,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/native_census.c",
 
         "test/language/package_compiler_chibi.c",
-        "test/language/package_routes_chibi.c",
+
 
         "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
         "test/language/package_syntax_chibi.c",

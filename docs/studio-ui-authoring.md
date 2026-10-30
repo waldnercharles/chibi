@@ -176,10 +176,10 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
 
 - Branch from current `main`; rebase before the PR.
 - Run the gates below. CI isn't running, so they run locally.
-  - `make build`
+  - `chibi build`
   - `make test`
   - `CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 make test-render`
-  - `make check-format`
+  - `chibi build format --check`
   - `build/chibi_ctl --project-root <root> --format` after hand-editing assets
   - `make web`, then check it in the browser
 - Serve the extracted Studio product with `make web-serve STUDIO_SOURCE=<studio repository> WEB_PORT=<port>` and stop that server process explicitly.
@@ -187,6 +187,6 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
   - run `_emscripten_set_main_loop_timing(2, 1)` first;
   - move the pointer with `PointerEvent('pointermove')`;
   - hold a modifier with a keydown that spans frames.
-- Build one worktree at a time where you can (`make build JOBS=4`). Each build directory takes about 2 GB.
+- Build one worktree at a time where you can (`chibi build JOBS=4`). Each build directory takes about 2 GB.
 - Polish: follow [Editor UI references](editor-ui-references.md) and use the kit's primitives. Review each new surface in the web build in both themes and both densities.
 - Update `docs/editor-ui-references.md` and the status table in `docs/authoring-navigation.md` as features land.

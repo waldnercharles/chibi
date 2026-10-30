@@ -13,10 +13,6 @@ void test_language_parallel();
 void test_language_record_values();
 void test_language_record_document();
 void test_language_record_compatibility();
-#ifdef CHIBI_TEST_RECORD_SERVICES
-void test_language_record_services();
-void test_language_record_global_compatibility();
-#endif
 void test_language_corpus(const char *manifest);
 void test_language_execution();
 void test_language_execution_scope();
@@ -38,7 +34,6 @@ void test_language_package_math_benchmark();
 void test_language_component_write_ir();
 void test_language_component_write_layout();
 void test_language_build_workflow();
-void test_field_runtime();
 void test_language_text_format();
 void test_language_native_census(const char *report);
 void test_language_native_census_flattening();
@@ -68,7 +63,6 @@ int main(int argc, char **argv)
     bool record_compatibility = argc == 2 &&
                                 !strcmp(argv[1], "--record-compatibility");
     bool record_document = argc == 2 && !strcmp(argv[1], "--record-document");
-    bool record_services = argc == 2 && !strcmp(argv[1], "--record-services");
     bool record_values = argc == 2 && !strcmp(argv[1], "--record-values");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool program_session = argc == 2 && !strcmp(argv[1], "--program-session");
@@ -142,11 +136,10 @@ int main(int argc, char **argv)
     bool component_write_layout = argc == 2 &&
                                   !strcmp(argv[1], "--component-write-layout");
     bool build_workflow = argc == 2 && !strcmp(argv[1], "--build-workflow");
-    bool field_runtime = argc == 2 && !strcmp(argv[1], "--field-runtime");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
-         !record_services && !record_compatibility && !compositional_records &&
-         !program && !program_session && !ranges && !integer_semantics &&
+         !record_compatibility && !compositional_records && !program &&
+         !program_session && !ranges && !integer_semantics &&
          !integer_shift_counts && !integer_shift_counts_authored &&
          !asset_compiler_host && !compiler_fixture && !package_compiler_chibi &&
          !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
@@ -165,8 +158,8 @@ int main(int argc, char **argv)
          !package_compiler_chibi_native_arguments_oracle && !package_imports &&
          !host_packages && !host_packages_compiler && !package_files &&
          !package_math && !package_math_benchmark && !component_write &&
-         !component_write_layout && !build_workflow && !field_runtime &&
-         !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !component_write_layout && !build_workflow && !text_format &&
+         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
@@ -241,12 +234,10 @@ int main(int argc, char **argv)
             "--build-workflow | "
             ""
             ""
-            "--field-runtime "
-            "| "
             "--text-format | "
             ""
             "--record-values | "
-            "--record-document | --record-services | "
+            "--record-document | "
             "--record-compatibility | "
             ""
             ""
@@ -260,16 +251,6 @@ int main(int argc, char **argv)
     pu_display_time(true);
     if (record_compatibility) {
         test_language_record_compatibility();
-#ifdef CHIBI_TEST_RECORD_SERVICES
-        test_language_record_global_compatibility();
-#endif
-    } else if (record_services) {
-#ifdef CHIBI_TEST_RECORD_SERVICES
-        test_language_record_services();
-#else
-        fprintf(stderr, "Record services require the native entity/UI SDK targets\n");
-        return 2;
-#endif
     } else if (compositional_records) {
         test_language_compositional_records();
     } else if (record_document) {
@@ -278,8 +259,6 @@ int main(int argc, char **argv)
         test_language_record_values();
     } else if (text_format) {
         test_language_text_format();
-    } else if (field_runtime) {
-        test_field_runtime();
     } else if (build_workflow) {
         test_language_build_workflow();
     } else if (integer_shift_counts) {

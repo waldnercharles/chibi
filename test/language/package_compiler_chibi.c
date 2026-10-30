@@ -147,7 +147,7 @@ typedef struct
     sample_group group;
     bool core, math, updates, boxed, game, moves, aliases, variants, built,
         lends, drops, same_rejection, c_string_probe, host_effects,
-        update_order, debug_metadata, traced, char_checks, foreign;
+        update_order, debug_metadata, traced, char_checks;
     /* Its calls run with the probe natives linked, take no arguments and
      * return one int. */
     bool probe_calls;
@@ -1148,36 +1148,6 @@ static const sample samples[] = {
                 "    while (length(parts) < 4 - 1) { parts.append(\"c\"); n += 1; }\n"
                 "    return n + length(parts);\n}",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[4]" } } },
-    /* Foreign functions are natives the sources declare. Stage zero has no
-     * foreign blocks, so these samples have no oracle; the closure is not run
-     * because no target links the library. */
-    { .name = "foreign functions are natives the target must link",
-      .group = TYPE_SAMPLES,
-      .foreign = true,
-      .source = "package facts\nforeign import probe \"libprobe.a\"\n"
-                "foreign probe {\n"
-                "    chibi_probe_add :: (a: i32, b: i32) -> i32\n"
-                "    chibi_probe_scale :: (value: f64, by: f64) -> f64\n"
-                "    chibi_probe_open :: (flags: u32) -> rawptr\n"
-                "}\n"
-                "Run :: () -> int { return chibi_probe_add(1, 2); }" },
-    { .name = "foreign block names an import",
-      .group = TYPE_SAMPLES,
-      .source = "package facts\nforeign missing {\n"
-                "    chibi_probe_add :: (a: i32, b: i32) -> i32\n}\n"
-                "Run :: () -> int { return 1; }",
-      .message = "No foreign import named 'missing'",
-      .line = 2,
-      .column = 9 },
-    { .name = "foreign parameters are plain scalars",
-      .group = TYPE_SAMPLES,
-      .source = "package facts\nforeign import probe \"libprobe.a\"\n"
-                "foreign probe {\n"
-                "    chibi_probe_name :: (text: string) -> i32\n}\n"
-                "Run :: () -> int { return 1; }",
-      .message = "A foreign parameter is an integer, float, bool or rawptr",
-      .line = 4,
-      .column = 26 },
     { .name = "core-math-imported-values",
       .group = IMPORT_SAMPLES,
       .math = true,
@@ -7815,7 +7785,7 @@ static bool run_sample_table(sample_group group, int b, const sample *table, int
                    (!s->built || builds_results(bytes, length)) &&
                    (!s->lends || lends_native_values(bytes, length)) &&
                    (!s->drops || drops_only_collections(bytes, length)) &&
-                   (s->foreign || (b && !s->host_effects && !s->debug_metadata) ||
+                   ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      (s->math || points_like_oracle(bytes, length, s->host_effects))));
         bool hosted = !s->traced || !s->c_string_probe;
@@ -8306,7 +8276,7 @@ static bool write_seed_file(const char *folder, const char *name, const void *by
     return written;
 }
 /* With CHIBI_BOOTSTRAP_SEED naming a folder, leaves stage two and Compile's
- * arguments there, the seed make bootstrap-artifact writes the bootstrap
+ * arguments there, the seed tools/build.sh build bootstrap-artifact writes the bootstrap
  * artifact from. */
 static bool write_seed(const unsigned char *stage_two, size_t length, const char *json, size_t json_length)
 {
@@ -12410,13 +12380,16 @@ static const struct
       "return 0; }\n",
       "scalar proof binds payloads only in switch arms",
       ".Box(w)" },
-    { "package scalar\nNamed :: union { Tag(items: [int: int]) }\nMain :: () -> int "
+    { "package scalar\nNamed :: union { Tag(items: [int: int]) }\nMain :: () "
+      "-> int "
       "{ return 1; }\n",
-      "scalar proof requires number, bool, string, array, record and union payloads",
+      "scalar proof requires number, bool, string, array, record and union "
+      "payloads",
       "items: [int: int]" },
     { "package scalar\nWrapped :: union { Of(p: ^int) }\n"
       "Main :: () -> int { return 1; }\n",
-      "scalar proof requires number, bool, string, array, record and union payloads",
+      "scalar proof requires number, bool, string, array, record and union "
+      "payloads",
       "p: ^int" },
     { "package scalar\nMain :: () -> int { return text_byte_length(Value: "
       "\"ab\"); }\n",
@@ -17390,8 +17363,10 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
             compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
         );
         const char *named = pin_text(name).bytes;
-        if (strncmp(named, "array_", strlen("array_")) && strncmp(named, "union_array", strlen("union_array")) &&
-            strncmp(named, "record_", strlen("record_")) && strncmp(named, "switch_on", strlen("switch_on"))) {
+        if (strncmp(named, "array_", strlen("array_")) &&
+            strncmp(named, "union_array", strlen("union_array")) &&
+            strncmp(named, "record_", strlen("record_")) &&
+            strncmp(named, "switch_on", strlen("switch_on"))) {
             arena_free(&detached);
             continue;
         }

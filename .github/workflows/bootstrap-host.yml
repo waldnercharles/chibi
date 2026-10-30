@@ -33,7 +33,7 @@ jobs:
       - name: Install build dependencies
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
-            python3 .github/install-ubuntu-dependencies.py ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
+            sudo apt-get update -q && sudo apt-get install -y -q ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
               libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
               libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
             echo CC=clang-18 >> "$GITHUB_ENV"
@@ -46,18 +46,17 @@ jobs:
             echo "CC=$LLVM/bin/clang" >> "$GITHUB_ENV"
             echo "CXX=$LLVM/bin/clang++" >> "$GITHUB_ENV"
           fi
-          python3 -m venv /tmp/cmake
-          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
-          echo /tmp/cmake/bin >> "$GITHUB_PATH"
-      # CMake builds the host until the graph can build it from a pinned one.
+      # The graph builds the host with the one pinned in tools/bootstrap/hosts.tsv,
+      # as Zig builds itself with the previous release.
       - name: Build the host
+        env:
+          LIBCLANG_ROOT: ${{ env.LLVM }}
+          NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=${{ env.CC }} -DCMAKE_CXX_COMPILER=${{ env.CXX }}
         run: |
-          sh tools/configure_native.sh build-host -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF \
-            -DCHIBI_ENABLE_WARNINGS=ON -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" -DLIBCLANG_ROOT="$LLVM"
-          cmake --build build-host --target chibi-build-host --parallel 4
-          test "$(build-host/sdk/chibi-build-host --protocol-version)" = 14
+          sh tools/build.sh build --release --target chibi-build-host --libclang-root "$LIBCLANG_ROOT"
+          test "$(build-release/sdk/chibi-build-host --protocol-version)" = 14
           mkdir out
-          cp build-host/sdk/chibi-build-host "out/chibi-build-host-${{ matrix.platform }}"
+          cp build-release/sdk/chibi-build-host "out/chibi-build-host-${{ matrix.platform }}"
       - uses: actions/upload-artifact@v4
         with:
           name: host-${{ matrix.platform }}

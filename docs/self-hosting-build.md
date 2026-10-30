@@ -179,8 +179,8 @@ again. This is safe where a snapshot of the sources would not be: the key
 covers every input, nothing is trusted unread, and a stale entry is never
 named. It has no eviction, because a key changes only with a compiler edit;
 delete the directory to reclaim it. Windows does not cache. The recovery proofs
-never use it: `chibi-compiler-host --bootstrap ... [--recover FILE]`, `make
-test-recovery` and the compiler-recovery workflow call the check path, which
+never use it: `chibi-compiler-host --bootstrap ... [--recover FILE]`, `chibi build
+test bootstrap-recovery` and the compiler-recovery workflow call the check path, which
 neither reads nor writes the cache, so they always recover from the seed.
 
 The C API borrows the generation through `chibi_build_options.compiler`; reuse
@@ -189,7 +189,7 @@ it sequentially and reload it after compiler source edits. Release it with
 directory, or NULL for no cache.
 
 When changing the prepared format, the checked bootstrap cannot yet run on the
-new runtime. `make bootstrap-artifact` first builds the compiler-only SDK language
+new runtime. `chibi build bootstrap-artifact` first builds the compiler-only SDK language
 driver with `CHIBI_SDK_BUILD_NATIVE=OFF`, `CHIBI_SDK_BUILD_DESKTOP=OFF` and
 `CHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF`. Native authoring depends on the
 generated asset service, so it is built after the matching bootstrap exists.
@@ -255,11 +255,11 @@ definitions come last. Repeated `--target` selects build targets, `--jobs` selec
 parallelism, and `--configure-only` stops before compilation. Arguments after
 `--` pass directly to CMake. The public `chibi build` still builds authored games.
 
-On Linux and macOS `make build` compiles with the Chibi build graph instead
+On Linux and macOS `chibi build` compiles with the Chibi build graph instead
 of CMake. `Build.chibi third-party BUILD_DIR` prepares the pinned
 third-party archives, then the host runs `tools/toolchain/Graph.chibi` with
 the Makefile's profile name (`BUILD_PROFILE`: `sanitizer`, or `debug` and
-`release` from `make build-debug` and `make build-release`) and
+`release` from `chibi build --debug` and `chibi build --release`) and
 `CCACHE_BASEDIR` set to the checkout, as CMake sets it, and `--all-commands
 on`, which writes every target's compile commands; it links the root
 `compile_commands.json` to them, as CMake did, for clangd. `LOCAL_CMAKE_FLAGS`
@@ -273,14 +273,14 @@ the graph's commands equal CMake's again.
 ### Linux native graph
 
 Linux uses the same default graph for native products and the full
-tooling/language test drivers. `make build` builds the Release `chibi-build-host` and `chibi-compiler-host` in `build-release` first and generates the asset compiler with them, because Debug hosts exceed the compiler deadline from a cold tree; `ASSET_GENERATOR_HOSTS=DIR` names other hosts. For a fast Debug O1 build with Release generators:
+tooling/language test drivers. `chibi build` builds the Release `chibi-build-host` and `chibi-compiler-host` in `build-release` first and generates the asset compiler with them, because Debug hosts exceed the compiler deadline from a cold tree; `--asset-generator-hosts DIR` names other hosts. For a fast Debug O1 build with Release generators:
 
 ```sh
-make build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host'
-make build BUILD_PROFILE=debug BUILD_DEBUG_OPTIMIZATION=1 \
-  BUILD_DEBUG_FRAME_POINTERS=on BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
-  ASSET_GENERATOR_HOSTS=build-release/sdk \
-  BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language'
+chibi build --release --target chibi --target chibi-build-host --target chibi-compiler-host
+chibi build --debug --debug-optimization 1 \
+  --debug-frame-pointers on --host "$PWD/build-release/sdk/chibi-build-host" \
+  --asset-generator-hosts build-release/sdk \
+  --target chibi --target chibi-compile --target chibi-player --target test_tools --target test_language
 ```
 
 Use the existing Linux development prerequisites and pinned third-party archive;
@@ -293,7 +293,7 @@ invocations can supply `--opengl-include`, `--opengl-library` and `--glx-library
 `--reflect` override for cross or relocated toolchains without extending the
 build host's environment allowlist.
 
-Plain `make build` retains the sanitizer profile. Native CI uses fast Debug O1
+Plain `chibi build` retains the sanitizer profile. Native CI uses fast Debug O1
 on ordinary PRs/pushes and full ASan+UBSan Debug O1 for daily/manual sanitizer
 runs; actual compile/link records, assertions and sanitizer symbols are checked
 before the unchanged test groups. Release planning/generation helpers do not
@@ -306,7 +306,7 @@ These checks are opt-in, not a second full suite on every push.
 
 `make graph-reference` supplies the separate `build-cmake` parity tree;
 `CHIBI_GRAPH_REFERENCE` selects another reference explicitly. To use the retained
-CMake native route, pass `GRAPH_BUILD=`. CMake also remains the temporary first
+CMake native route, pass ` `. CMake also remains the temporary first
 host bootstrap, standalone tooling/language consumer build, and public SDK,
 web and Studio build. Changing the native default does not retire those
 responsibilities or change pinned dependency acquisition prerequisites.
@@ -318,7 +318,7 @@ primitive rather than repeatedly copying an accumulated prefix. Small path
 joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
 Unknown or missing `--target` names fail before toolchain discovery or writes.
 
-Elsewhere `make build` uses this program when its private host reports protocol version 14
+Elsewhere `chibi build` uses this program when its private host reports protocol version 14
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 the compiler bootstrap or `Build.chibi` needs a prepared format, capability or
 syntax an older host lacks; version 3 adds the
@@ -551,7 +551,7 @@ records the run as a link is recorded, over the inputs CMake names, and
 reruns it only when one changed. `--reflect PATH` runs another reflect
 instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
-includes name. On Linux and macOS `make build` builds them with the graph;
+includes name. On Linux and macOS `chibi build` builds them with the graph;
 `build-graph` checks that their compile commands agree
 with a configured CMake build's; `build-graph-support` compiles only
 `chibi_support`. Before the dependency-parser and join improvements, building
@@ -800,7 +800,7 @@ not a snapshot of the current sources: it has to load on the pinned runtime and
 compile the sources on disk, and nothing else ties it to them. The compiler
 reaches its fixed point from the seed (see below), so compiler changes do not
 queue behind a regenerated artifact.
-`make bootstrap-artifact` rewrites it (`BOOTSTRAP_ARTIFACT` names another
+`chibi build bootstrap-artifact` rewrites it (`BOOTSTRAP_ARTIFACT` names another
 folder). It runs in two steps:
 
 1. The Release bootstrap check (`make test-bootstrap`) prepares stage one with
@@ -876,13 +876,13 @@ and return the recovered compiler as an owned host. This API writes no
 files, including when an output path is present in its options; the CLI check
 above still performs the reproduction proof and can write `--recover FILE`.
 
-`make test-recovery` exports HEAD's `tools/compiler` and `packages/core` with
+`chibi build test bootstrap-recovery` exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and runs that check with the Release host. On macOS arm64 the
 check takes one compile, about 11 s, two when the sources changed, about
 26 s, or three when they also changed the generated code; the whole selector
 takes about 18 s.
 
-A clean checkout recovers the compiler with `make bootstrap-recover`. It runs
+A clean checkout recovers the compiler with `chibi build bootstrap-recover`. It runs
 `chibi-compiler-host --bootstrap tools/compiler/bootstrap --compiler
 tools/compiler --core packages/core` and needs neither stage zero, nor a
 compiler built from Chibi, nor a network. `--recover FILE` also writes the
@@ -973,17 +973,17 @@ A language feature takes two PRs, as in Zig, where a feature lands before
 1. Add the feature to the compiler and raise `version` in
    `tools/compiler/bootstrap.kdl`. The compiler sources themselves must not use
    the feature yet, because the checked seed cannot compile it. Run
-   `make bootstrap-artifact` and commit the seed with this change.
+   `chibi build bootstrap-artifact` and commit the seed with this change.
 2. Use the feature in the compiler sources and raise `minimum` to that
    `version`. The seed from step 1 compiles them.
 
-To tell whether a compiler PR needs a seed refresh, run `make bootstrap-recover`
-(or `make test-recovery`) on its head merged with `main`. If recovery reports
+To tell whether a compiler PR needs a seed refresh, run `chibi build bootstrap-recover`
+(or `chibi build test bootstrap-recovery`) on its head merged with `main`. If recovery reports
 that the seed cannot compile a source, the sources use something the seed
 lacks: move that use to a later PR or refresh the seed first.
 
 To rewrite the seed:
-1. Run `make bootstrap-artifact` on a clean tree, so that it records a
+1. Run `chibi build bootstrap-artifact` on a clean tree, so that it records a
    revision without `-dirty`.
 2. Commit `tools/compiler/bootstrap` together with the change that needs it.
 
@@ -1010,7 +1010,7 @@ Build matching Release tools, then name the same unpacked dependency archive
 that their `.chibi-record` link records name:
 
 ```sh
-make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
+chibi build --release  --target chibi-build-host --target chibi-compiler-host
 build-release/sdk/chibi-build-host --root "$PWD" \
   --source tools/toolchain/SDK.chibi --core packages/core \
   --collection graph=tools/graph --entry CompilerTools --timeout-ms 120000 -- \
@@ -1037,18 +1037,18 @@ to its executable. For the installed graph, pass
 `--core PREFIX/share/chibi/core`, and
 `--collection graph=PREFIX/share/chibi/graph`.
 
-`python3 tools/test_policy.py tool build-sdk` runs the C packaging and relocation
+`chibi build test build-sdk` runs the C packaging and relocation
 cases against the Release graph tools. The separate SDK CI lane deliberately
 retains a CMake-built harness as a reference consumer; the full Graph validation
 lane builds the harness with Graph. To run the CMake reference harness:
 
 ```sh
-make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
-make build GRAPH_BUILD= BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+chibi build --release  --target chibi-build-host --target chibi-compiler-host
+chibi build  --build build-sdk-tests --target test_tools --host "$PWD/build-release/sdk/chibi-build-host"
 CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
 CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
 CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
-  python3 tools/test_policy.py tool build-sdk
+  chibi build test build-sdk
 ```
 
 The CMake harness must leave both shipped Release hosts and their adjacent

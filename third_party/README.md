@@ -40,31 +40,10 @@ math headers, image and Vorbis decoders and runtime shader compiler header under
 
 ## Building the archives
 
-`CMakeLists.txt` checks out each library at its pinned commit, applies the
-patches in its directory here in the listed order, builds one target and
-variant, and installs the archive tree. `.github/workflows/third-party.yml`
-runs it for every target and variant, uploads the archives to a new release
-and opens a pull request that updates `archives.tsv`. Only the publishing job
-holds a token that can write; jobs compiling upstream code check out without
-credentials. If repository policy blocks Actions from opening the PR, retain the
-release and pin branch. The publication owner verifies the original run's source,
-artifacts, published digests and pin-branch ownership before opening the missing
-PR through existing authorized access. Required checks and review still apply.
-Do not overwrite assets, force-push the branch or reopen a closed pin PR.
-Archives can also be built locally the same way (the macOS and web
-archives of the first releases were) and uploaded with `gh release upload`. To change a library,
-change its commit or patches in `CMakeLists.txt` and run that workflow.
-
-For an atomic dependency source change plus matching pins, first prepare an
-independently reviewed source PR and exact same-repository source branch.
-Dispatch that branch with a fresh release tag and paired `source_pr` and
-`main_sha` inputs. Main must still equal that frozen SHA and be ancestral to the
-source; source branch and PR ownership/head/base must still match. The helper
-rechecks these bindings before publication and pin changes, and creates a draft
-integration PR containing the source changes plus one pin-only child commit.
-It leaves the original source PR untouched. Explicit holds and required checks
-must be cleared by their owner; selecting a source PR does not clear them.
-See [publication recovery](../docs/testing.md#prepared-source-dependency-releases).
+The archives are published and pinned in `archives.tsv`; nothing here builds them any more.
+The CMake archive builder and its workflow are in `archive/third_party/CMakeLists.txt` and
+`archive/.github/workflows/third-party.yml`. The patch directories stay here as the inputs
+for rebuilding them from upstream (see `archive/README.md`).
 
 ## Patches
 

@@ -2,7 +2,7 @@
 
 The two native CI jobs set `CHIBI_BUILD_TIMINGS` only while building their
 Release helpers and selected-profile products. The directory is included in
-the existing `native-profile-*` artifact, including successful builds. Tests
+the existing `native-profile-*` artifact ("Preserve build logs and timings"), including successful builds. Tests
 and developer builds do not enable tracing by default. The existing test driver's
 `build-timings` selector explicitly exercises the private sink, including authored
 child lifecycle cases, on both native jobs without rebuilding the drivers.

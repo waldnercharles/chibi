@@ -616,8 +616,7 @@ Files :: (target: string) -> string[] {
             "test/language/build_workflow.c",
 
             "test/language/record_compatibility.c",
-            "test/language/record_document.c", "test/language/record_producer.c",
-            "test/language/record_prepared_runtime.c",
+            "test/language/record_document.c",
             "test/language/compositional_records.c",
             "test/language/record_values.c",
             "test/language/record_prepared.c",
@@ -632,7 +631,7 @@ Files :: (target: string) -> string[] {
 
 
             "test/language/incremental_benchmark.c", "test/language/headless.c",
-            "test/language/prepared.c", "test/language/navigation.c",
+            "test/language/navigation.c",
             "test/language/field_runtime.c", "test/language/prototype.c",
             "test/language/ui.c", "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
             "test/language/packages.c", "test/language/package_syntax.c",
@@ -675,12 +674,6 @@ Files :: (target: string) -> string[] {
             "test/tools/ecs_hierarchy.c", "test/tools/ecs_world.c", "test/tools/ecs_query.c",
             "test/tools/ecs_query_benchmark.c"
         ];
-    }
-    if (target == "chibi_prepared_consumer") {
-        return ["test/tools/prepared_runtime.c"];
-    }
-    if (target == "chibi_record_consumer") {
-        return ["test/tools/record_runtime.c"];
     }
     if (target == "chibi_scene_consumer") {
         return ["test/tools/scene.c", "test/tools/scene_prepared.c"];
@@ -756,7 +749,7 @@ Files :: (target: string) -> string[] {
     if (target == "test_tools") {
         return [
             "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
-            "test/tools/graph_dispatch.c", "test/tools/prepared.c",
+            "test/tools/graph_dispatch.c",
             "test/tools/fixture.c", "test/tools/execution_policy.c", "test/tools/package.c",
             "test/tools/chibi_cli.c", "test/tools/native_build.c", "test/tools/native_workloads.c",
             "test/tools/third_party_publish.c",
@@ -768,7 +761,7 @@ Files :: (target: string) -> string[] {
             "test/tools/native_aot_driver.c", "test/tools/build_process.c",
             "test/tools/build_graph.c", "test/tools/build_sdk.c", "test/tools/runtime_sdk.c",
             "test/tools/compiler_artifact.c", "test/tools/compiler_bootstrap.c",
-            "test/tools/c_export.c", "test/tools/record_c_export.c", "test/tools/audio_analysis.c",
+            "test/tools/audio_analysis.c",
             "src/host/native_libraries.c", "test/tools/tilemap.c", "test/tools/shader_webgpu.c",
             "test/support/fmt.c", "test/tools/box3d.c", "test/tools/terrain_playable_render.c",
             "test/tools/particle_fields.c", "test/tools/audio_output.c", "test/tools/player_clock.c",
@@ -1371,7 +1364,7 @@ pub PrivateDirectory :: (target: string) -> string {
 // declares them, so a header that leaks a private include fails here.
 ToolConsumers :: () -> string[] {
     return [
-        "chibi_sdk_contracts", "chibi_prepared_consumer", "chibi_record_consumer",
+        "chibi_sdk_contracts",
         "chibi_scene_consumer", "chibi_shader_bake_consumer", "chibi_scene_authoring_consumer",
         "chibi_scene_snapshot_read_consumer", "chibi_native_consumer", "chibi_asset_values_consumer",
         "chibi_ui_document_consumer", "chibi_particle_consumer", "chibi_png_consumer",
@@ -2228,20 +2221,6 @@ pub Includes :: (target: string) -> string[] {
             "public/native_types", "public/studio_capabilities", "public/native_capabilities"
         ];
     }
-    if (target == "chibi_prepared_consumer") {
-        return [
-            "build/test/tools/testing/include", "public/behavior_runtime", "public/execution",
-            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
-            "public/events"
-        ];
-    }
-    if (target == "chibi_record_consumer") {
-        return [
-            "build/test/tools/testing/include", "public/behavior_runtime", "public/execution",
-            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
-            "public/events"
-        ];
-    }
     if (target == "chibi_scene_consumer") {
         return [
             "build/test/tools/testing/include", "public/scene_runtime", "public/behavior_runtime",
@@ -2880,12 +2859,6 @@ pub Options :: (target: string) -> string[] {
     if (target == "chibi_sdk_contracts") {
         return ["-UNDEBUG"];
     }
-    if (target == "chibi_prepared_consumer") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "chibi_record_consumer") {
-        return ["-UNDEBUG"];
-    }
     if (target == "chibi_scene_consumer") {
         return ["-UNDEBUG"];
     }
@@ -2983,8 +2956,6 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/prepared_writer_chibi.c",
         "test/language/ranges.c",
         "test/language/record_prepared.c",
-        "test/language/record_prepared_runtime.c",
-
         "test/language/compositional_records.c",
 
         "test/language/scalar_lowering_chibi.c",
@@ -3030,9 +3001,6 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
 pub SourceIncludes :: (target: string, file: string) -> string[] {
     if (target == "test_language" && Listed(LanguageTestsOverSource(), file)) {
         return ["src"];
-    }
-    if (target == "test_tools" && (file == "test/tools/c_export.c" || file == "test/tools/record_c_export.c")) {
-        return ["build/test/tools/testing/include"];
     }
     return [];
 }
@@ -3430,7 +3398,7 @@ pub LinkedObjects :: (target: string) -> string[] {
     }
     if (target == "test_tools") {
         return [
-            "chibi_record_consumer", "chibi_prepared_consumer", "chibi_scene_consumer",
+            "chibi_scene_consumer",
             "chibi_sdk_contracts", "chibi_program_consumer", "chibi_shader_bake_consumer", "chibi_scene_authoring_consumer",
             "chibi_scene_snapshot_read_consumer", "chibi_native_consumer",
             "chibi_asset_values_consumer", "chibi_ui_document_consumer", "chibi_particle_consumer",

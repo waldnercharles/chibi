@@ -219,9 +219,6 @@ TOOLS = {
     'project-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--project-document'],
     'prototype-documents': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--prototype-documents'],
     'language-test-parallel': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--test-parallel'],
-    'language-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
-                          '--prepared',
-                          str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language')],
     'language-build-workflow': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                 '--build-workflow'],
     'language-headless': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -367,7 +364,6 @@ TOOLS = {
     'language-record-document': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-document'],
     'language-record-services': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-services'],
     'language-record-values': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-values'],
-    'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
     'language-program-session': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--program-session'],
     'language-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--program'],
@@ -380,12 +376,6 @@ TOOLS = {
     'webgpu-staging': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--webgpu-staging'],
     'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools')],
     'reflect-ranges': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--reflect-ranges'],
-    'record-installed-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
-                                  '--record-prepared',
-                                  str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                  str(ROOT / os.environ.get('CHIBI_RECORD_RUNTIME_BUILD_DIR', 'build/test/record-runtime') / 'test_tools')],
-    'record-c-export': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--record-c-export'],
-    'c-export-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--c-export-alias'],
 
 }
 for selector in ('incremental-benchmark'):
@@ -395,7 +385,7 @@ for selector in ('binding-schedule'):
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('execution', 'program', 'headless', 'format', 'ranges', 'component-write', 'incremental-benchmark', 'modules', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'integer-arithmetic', 'package-math'):
+for selector in ('execution', 'program', 'headless', 'format', 'ranges', 'component-write', 'incremental-benchmark', 'modules', 'record-values', 'record-semantic', 'record-runtime', 'record-document', 'record-state', 'record-compatibility', 'integer-arithmetic', 'package-math'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
                  '-imports', '-imports-compiled', '-behaviors',
@@ -471,7 +461,7 @@ GROUPS = {
                'parallel-tick', 'source-native-features', 'source-native-numeric-queries',
                'source-native-material', 
                'source-systems', 'source-reductions', 
-               'shader-parameters-prepared', 'language-prepared',
+               'shader-parameters-prepared', 
                
                'vector-nodes', 'asset-values', 'ui-document', 'text-files', 'fmt', 'particles',
                'png-encoding', 'project-document', 'prototype-documents', 

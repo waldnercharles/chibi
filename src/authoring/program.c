@@ -23,7 +23,22 @@ struct authoring_program
     uint64_t entry, pending_entry;
     bool calling;
     authoring_program_diagnostic diagnostic;
+    /* Where the compiled sources live, to name the file of a run-time failure. */
+    char *project_root;
+    source_package_collection *collections;
 };
+
+static void forget_roots(authoring_program *program)
+{
+    free(program->project_root);
+    program->project_root = NULL;
+    for (int i = 0; i < acount(program->collections); i++) {
+        free((char *)program->collections[i].name);
+        free((char *)program->collections[i].root);
+    }
+    afree(program->collections);
+    program->collections = NULL;
+}
 
 static void release(package_collection **packages)
 {
@@ -134,6 +149,15 @@ bool authoring_program_compile(authoring_program *program, const source_package_
     }
     authoring_program_discard(program);
     clear_error(program);
+    forget_roots(program);
+    program->project_root = xstrdup(inputs->project_root);
+    for (int i = 0; i < inputs->collection_count; i++) {
+        apush(
+            program->collections,
+            ((source_package_collection){ xstrdup(inputs->collections[i].name),
+                                          xstrdup(inputs->collections[i].root) })
+        );
+    }
     package_compile_error error;
     program->candidate = package_compile(
         inputs,
@@ -270,10 +294,21 @@ static int invoke(
     program->calling = false;
     if (status != FLOW_OK) {
         const execution_program_failure *error = execution_program_error(program->runtime);
+        char shown[4096] = "";
+        if (error && error->asset_name[0]) {
+            package_compile_source_path(
+                program->project_root,
+                program->collections,
+                acount(program->collections),
+                error->asset_name,
+                shown,
+                sizeof shown
+            );
+        }
         diagnostic(
             program,
             status,
-            error && error->asset_name[0] ? error->asset_name : NULL,
+            *shown ? shown : NULL,
             (position){ .start = error ? error->start : 0,
                         .end = error ? error->end : 0,
                         .line = error ? error->line : 0,
@@ -364,6 +399,7 @@ void authoring_program_free(authoring_program *program)
         free((char *)program->services[i].type_name);
     }
     afree(program->services);
+    forget_roots(program);
     clear_error(program);
     free(program);
 }

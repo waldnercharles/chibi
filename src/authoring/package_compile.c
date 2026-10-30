@@ -276,6 +276,31 @@ static char *collections_salt(const source_package_snapshot_options *inputs)
 }
 #endif
 
+void package_compile_source_path(
+    const char *project_root,
+    const source_package_collection *collections,
+    int collection_count,
+    const char *label,
+    char *out,
+    size_t size
+)
+{
+    const char *colon = strchr(label, ':');
+    size_t name = colon ? (size_t)(colon - label) : 0;
+    if (colon && name == strlen("project") && !memcmp(label, "project", name)) {
+        snprintf(out, size, "%s/%s", project_root, colon + 1);
+        return;
+    }
+    for (int i = 0; colon && i < collection_count; i++) {
+        if (name == strlen(collections[i].name) &&
+            !memcmp(label, collections[i].name, name)) {
+            snprintf(out, size, "%s/%s", collections[i].root, colon + 1);
+            return;
+        }
+    }
+    snprintf(out, size, "%s", label);
+}
+
 package_collection *package_compile(
     const source_package_snapshot_options *inputs,
     const char *first_path,

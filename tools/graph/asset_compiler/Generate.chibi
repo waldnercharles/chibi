@@ -203,7 +203,8 @@ Prune :: (cache: string, keep: string[]) {
 
 // Whole seconds from the system clock, for the phase timings the log reports.
 Stamp :: () -> string {
-    return build.trim(os.Capture(["date", "+%s"]).stdout);
+    clock := os.Capture(["date", "+%s"]);
+    return build.trim(clock.stdout);
 }
 
 // Explicit filesystem snapshots and atomic products; source compilation and

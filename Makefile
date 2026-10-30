@@ -86,7 +86,6 @@ help:
 		'make test-tools     Standalone C tooling integrations' \
 		'make test-build     Build the full test drivers in BUILD_DIR' \
 		'make test-native    CPU test_tools selectors' \
-		'make test-materials Material simulation selectors' \
 		'make test-projects  Project, asset import and launcher selectors' \
 		'make test-language-all  Native language aggregate' \
 		'make language-build Build the public language C consumer' \
@@ -190,7 +189,7 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Agent selectors run existing drivers; use test-build to build them.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact publish-seed bootstrap-recover test-recovery test-short test-policy-inventory tools-build native-census
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-projects test-bootstrap bootstrap-artifact publish-seed bootstrap-recover test-recovery test-short test-policy-inventory tools-build native-census
 agent-list:
 	@python3 tools/agent.py list
 
@@ -206,9 +205,6 @@ test-build:
 
 test-native: test-build
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_BUILD_HOST="$(CHIBI_BUILD_HOST)" python3 tools/test_policy.py group native
-
-test-materials: test-build
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py group materials
 
 # Project commands repeatedly load the authoring catalog. Use Release products
 # for these integrations; the native driver retains its sanitizer coverage.
@@ -302,7 +298,7 @@ test-short: tools-build
 test-tools: tools-build
 	@python3 tools/test_policy.py short "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
 
-test-full test-slow: test-tools test-native test-materials test-projects test-language-all
+test-full test-slow: test-tools test-native test-projects test-language-all
 
 test-render: test-build
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py group render

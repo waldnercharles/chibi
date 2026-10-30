@@ -22,7 +22,7 @@ SELECTORS = ('language-package-compiler-chibi-scalar',
              'language-asset-compiler-host', 'compiler-bootstrap')
 # Setup plus this 35-minute supervised budget fits the existing 45-minute job.
 BUDGET_SECONDS = 35 * 60
-REPRESENTATIVES = {'engine': ('chibi_engine', 'src/runtime/engine.c'),
+REPRESENTATIVES = {'engine': ('chibi_events', 'src/runtime/events.c'),
                    'sdk': ('chibi_compiler', 'src/language/lower.c'),
                    'tools': ('test_tools', 'test/tools/main.c'),
                    'language': ('test_language', 'test/language/main.c')}

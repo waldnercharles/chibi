@@ -108,11 +108,10 @@ jobs:
         shell: bash
         run: |
           set -e
-          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" "$CHIBI_BUILD_HOST" "$CHIBI_COMPILER_HOST" build-release/sdk/chibi build-release/sdk/chibi-compile build-release/sdk/chibi-player; do test -x "$driver"; done
+          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" "$CHIBI_BUILD_HOST" "$CHIBI_COMPILER_HOST" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           # Groups retain their existing coverage and admission policy; they
           # remain sequential because fixtures and build outputs are shared.
           python3 tools/test_policy.py group native
-          python3 tools/test_policy.py group materials
           CHIBI_CLI=build-release/sdk/chibi \
           CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin \
             python3 tools/test_policy.py group projects

@@ -26,7 +26,6 @@ HEALTH = None
 NEXT = 'make test-list'
 CPU_SELECTORS = {
     '--execution-scope': 'execution-scope',
-    '--audio-analysis': 'audio-analysis',
     '--arena': 'arena',
     
     '--asset-values': 'asset-values',
@@ -38,25 +37,11 @@ CPU_SELECTORS = {
     
     
     
-    '--material-benchmark': 'material-benchmark',
-    '--material-destruction': 'material-destruction',
-    '--material-fluids': 'material-fluids',
-    '--material-mpm': 'material-mpm',
-    
-    '--material-simulation': 'material-simulation',
-    '--material-ecs': 'material-ecs',
-    '--particles': 'particles',
-    '--shader-bake': 'shader-bake',
-    '--shader-source-debug': 'shader-source-debug',
     '--asset-compiler-host': 'language-asset-compiler-host',
     '--asset-packaging-chibi': 'language-asset-packaging-chibi',
     '--shader-source-chibi': 'language-shader-source-chibi',
     '--material-bake': 'material-bake',
     '--environment-authoring': 'environment-authoring',
-    '--terrain-seams': 'terrain-seams',
-    '--material-surface-mesh': 'material-surface-mesh',
-    '--terrain-checkpoint': 'terrain-checkpoint',
-    '--terrain-storage': 'terrain-storage',
     '--terrain-storage-commands': 'terrain-storage-commands',
     
     

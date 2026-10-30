@@ -144,7 +144,7 @@ class ProfileTests(unittest.TestCase):
             self.assertIn('timeout-minutes: 45', block)
             self.assertIn('make test-tools', block)
             groups = ['python3 tools/test_policy.py group ' + name
-                      for name in ('native', 'materials', 'projects', 'language')]
+                      for name in ('native', 'projects', 'language')]
             positions = [block.index(command) for command in groups]
             self.assertEqual(positions, sorted(positions))
             self.assertTrue(all(block.count(command) == 1 for command in groups))

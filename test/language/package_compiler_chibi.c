@@ -25,6 +25,7 @@
 #include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
 #include "runtime/text_format.h"
+#include "runtime/vectors_definition.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/file_io.h"
@@ -1086,6 +1087,15 @@ static const sample samples[] = {
       .source = "package facts\nRun :: () -> int { value: int = 65; return "
                 "native.kernel(value); }",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[1]" } } },
+    { .name = "collection length beside the vector natives",
+      .group = TYPE_SAMPLES,
+      .game = true,
+      .source = "package facts\nRun :: () -> int {\n"
+                "    parts: string[] = [\"a\", \"b\"];\n"
+                "    n: int = 0;\n"
+                "    while (length(parts) < 4 - 1) { parts.append(\"c\"); n += 1; }\n"
+                "    return n + length(parts);\n}",
+      .calls = { { .function = "Run", .arguments = "[]", .expected = "[4]" } } },
     { .name = "core-math-imported-values",
       .group = IMPORT_SAMPLES,
       .math = true,
@@ -3097,6 +3107,28 @@ static const sample samples[] = {
                  { .function = "First", .arguments = "[]", .expected = "[7]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
                  { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "optional locals start absent and become present",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Main :: () -> int { absent: int? = nil; present: int? = 4; r := 0; if absent { r += 100; } if present { r += present - 1; } return r; }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[3]" } } },
+    { .name = "optional results wrap values and return nil",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Find :: (n: int) -> int? { if n > 2 { return n; } return nil; }" "\n"
+                "Main :: () -> int { a := Find(1); b := Find(5); r := 0; if a { r += 100; } if b { r += b; } return r; }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[5]" } } },
+    { .name = "optional parameters take optionals and nil",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Pick :: (v: int?) -> int { if v { return v; } return 9; }" "\n"
+                "Main :: () -> int { some: int? = 3; none: int? = nil; return Pick(some) * 10 + Pick(none) + Pick(nil); }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[48]" } } },
+    { .name = "optional coalescing and nil comparisons",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Main :: () -> int { x: int? = nil; y: int? = 7; r := (x ?? 3) * 10 + (y ?? 1); if y != nil { r += 100; } if x == nil { r += 1000; } return r + (x ?? y ?? 8); }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[1144]" } } },
     { .name = "generic collection and optional values preserve ownership",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"
@@ -5195,12 +5227,16 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
                                                  COMPILER_JSON_DEFINITION_PACK,
                                                  COMPILER_SYNTAX_DEFINITION_PACK };
         char error[256];
-        native_definition_pack selected[7];
+        native_definition_pack selected[8];
         int count = (int)(sizeof packs / sizeof *packs);
         memcpy(selected, packs, sizeof packs);
         if (game) {
             selected[count++] = CORE_DEFINITION_PACK;
             selected[count++] = NATIVE_MATH_DEFINITION_PACK;
+            /* With the arrays', its length overload makes a call of length
+             * ambiguous among natives; a collection argument still takes the
+             * collection's. */
+            selected[count++] = NATIVE_VECTOR_DEFINITION_PACK;
         }
         if (probe) {
             selected[count++] = CSTRING_PACK;
@@ -5835,7 +5871,8 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CSTRING_PACK,
                                        CORE_DEFINITION_PACK,
-                                       NATIVE_MATH_DEFINITION_PACK };
+                                       NATIVE_MATH_DEFINITION_PACK,
+                                       NATIVE_VECTOR_DEFINITION_PACK };
     /* Only this bytecode owner is serialized and compared below. Each
      * caller still chooses its original target execution backends. */
     REQUIRE(compiler_fixture_prepare_backends(

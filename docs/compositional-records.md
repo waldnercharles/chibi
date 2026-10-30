@@ -1,15 +1,17 @@
 # Compositional records
 
-Nested records and array fields are implemented in both compiler stages and the
-existing VM backends. Arrays can contain scalars, non-null pointers and records.
-Map and union fields, nested-container element types and full LLVM aggregate
-lowering remain separate work.
+Nested records, array fields and tagged-union fields are implemented in both
+compiler stages and the existing VM backends. Arrays can contain scalars,
+non-null pointers and records. Map fields, arrays and optionals of unions,
+nested-container element types and full LLVM aggregate lowering remain separate
+work.
 
 ## Fields and construction
 
-Records can contain other records and arrays in the first stage. The following
-stage adds map and tagged-union fields using the same rules. These use existing
-type annotations and record literals; they need no new declaration syntax.
+Records can contain other records, arrays and tagged unions. A later stage adds
+map fields using the same rules. These use existing type annotations and record
+literals; they need no new declaration syntax. A union field holds one
+alternative and its payload, and is replaced as a whole.
 
 For example, a library description can carry its inputs instead of passing
 sources and flags beside it:

@@ -301,7 +301,7 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         size_t bytes = name_bytes(c, name);
         if (!name || !*name || !bytes || bytes > SIZE_MAX - names ||
             !((kind >= PIN_BOOL && kind <= PIN_ENUM) || kind == PIN_POINTER ||
-              kind == PIN_QUERY)) {
+              kind == PIN_QUERY || kind == PIN_UNION)) {
             w->error = "invalid prepared authored field";
             break;
         }

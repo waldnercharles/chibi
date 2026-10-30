@@ -52,3 +52,12 @@ These compiled project scripts through the stage-zero `authoring/source_prepare`
 - **ECS sessions running script behaviors:** `headless`, `incremental`, `incremental_benchmark` (reload of changed sources, binding schedule), `modules` (imports between project scripts), `native_calls` (natives called from scripts on both backends), `navigation` (references/definitions over analyzed documents), `source_assets`, `scene_snapshot_read` (authored state from scenes).
 - **Runtime behavior from source (test/runtime):** `owned_tick`, `parallel_tick` (tick ownership and parallel ticks), `whole_alias` (compiled aliases), `source_features` (native features, numeric queries, material features, input save), `source_reductions` (reductions and benchmarks).
 - **Cases removed from kept files** (text in `archive/test/*/…_group1_cases.txt`): 12 `package_compiler_chibi.c` cases that compared the authored compiler with script libraries compiled through the project pipeline (executable libraries, library name resolution, scalar-runs-natively-like-the-VM, deferred char states, numeric conversion rejection, constant folding as stage zero does, invalid library closures), and one `build_process.c` case.
+
+## Unreferenced C (dead-code sweep)
+
+No linked product (`chibi`, `chibi-compile`, `chibi-player`, the build and compiler hosts, `test_tools`, `test_language`) or Studio reached these objects after the format, docs, game-compile and network archives:
+
+- `src/execution/c.c`: C source emission for compiled behavior functions and sequences.
+- `src/execution/inputs.c`: frame-argument reconstruction for debuggers.
+- `src/authoring/visual_prepare.c`: scene visual preparation for the archived project pipeline.
+- `src/support/code_lex.c`: the graph-expression lexer.

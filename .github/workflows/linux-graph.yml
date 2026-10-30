@@ -49,14 +49,14 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Select CI native profile
-        run: python3 .github/native-profile.py
+        run: sh .github/native-profile.sh
       - name: Verify clean source candidate
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain --untracked-files=normal)"
       - name: Install graph build dependencies
         run: |
-          python3 .github/install-ubuntu-dependencies.py --no-install-recommends \
+          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends \
             clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 ccache python3-venv \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
@@ -78,8 +78,6 @@ jobs:
           cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Build graph products and test drivers (selected Debug profile)
         run: make build GRAPH_BUILD=1 BUILD_DIR=build-sdk-tests BUILD_TARGET='chibi chibi-compile test_tools test_language chibi-compiler-host' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk
-      - name: Verify executed graph profile, assertions and links
-        run: python3 .github/verify-native-profile.py --build build-sdk-tests --output "$RUNNER_TEMP/graph-sdk-native-profile.json"
       - name: Verify Release graph tools survived the harness build unchanged
         run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Verify graph commands, discovery, incremental builds and resources

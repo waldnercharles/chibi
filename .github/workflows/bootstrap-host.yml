@@ -33,7 +33,7 @@ jobs:
       - name: Install build dependencies
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
-            python3 .github/install-ubuntu-dependencies.py ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
+            sudo apt-get update -q && sudo apt-get install -y -q ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
               libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
               libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
             echo CC=clang-18 >> "$GITHUB_ENV"

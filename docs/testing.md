@@ -131,7 +131,7 @@ candidate; require both Linux and macOS native jobs and all existing functional
 checks to pass. Check the run's commit SHA and profile receipts, investigate any
 sanitizer failure, and rerun on the fixed candidate. A passing fast run is not
 a substitute for sanitizer evidence. Explicit holds and required repository checks
-still apply. Both profiles share `.github/native-profile.py` and the same test
+still apply. Both profiles share `.github/native-profile.sh` and the same test
 steps to prevent drift; macOS Graph and CMake use matching explicit O1 and
 frame-pointer settings. Graph frame pointers are a separate Debug-only opt-in
 (`BUILD_DEBUG_FRAME_POINTERS=on`); ordinary developer Debug/O1 behavior is unchanged.

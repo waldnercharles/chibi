@@ -179,8 +179,8 @@ again. This is safe where a snapshot of the sources would not be: the key
 covers every input, nothing is trusted unread, and a stale entry is never
 named. It has no eviction, because a key changes only with a compiler edit;
 delete the directory to reclaim it. Windows does not cache. The recovery proofs
-never use it: `chibi-compiler-host --bootstrap ... [--recover FILE]`, `make
-test-recovery` and the compiler-recovery workflow call the check path, which
+never use it: `chibi-compiler-host --bootstrap ... [--recover FILE]`, `chibi build
+test bootstrap-recovery` and the compiler-recovery workflow call the check path, which
 neither reads nor writes the cache, so they always recover from the seed.
 
 The C API borrows the generation through `chibi_build_options.compiler`; reuse
@@ -876,7 +876,7 @@ and return the recovered compiler as an owned host. This API writes no
 files, including when an output path is present in its options; the CLI check
 above still performs the reproduction proof and can write `--recover FILE`.
 
-`make test-recovery` exports HEAD's `tools/compiler` and `packages/core` with
+`chibi build test bootstrap-recovery` exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and runs that check with the Release host. On macOS arm64 the
 check takes one compile, about 11 s, two when the sources changed, about
 26 s, or three when they also changed the generated code; the whole selector
@@ -978,7 +978,7 @@ A language feature takes two PRs, as in Zig, where a feature lands before
    `version`. The seed from step 1 compiles them.
 
 To tell whether a compiler PR needs a seed refresh, run `make bootstrap-recover`
-(or `make test-recovery`) on its head merged with `main`. If recovery reports
+(or `chibi build test bootstrap-recovery`) on its head merged with `main`. If recovery reports
 that the seed cannot compile a source, the sources use something the seed
 lacks: move that use to a later PR or refresh the seed first.
 

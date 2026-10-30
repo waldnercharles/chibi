@@ -38,8 +38,6 @@ CPU_SELECTORS = {
     
     
     '--asset-compiler-host': 'language-asset-compiler-host',
-    '--asset-packaging-chibi': 'language-asset-packaging-chibi',
-    '--shader-source-chibi': 'language-shader-source-chibi',
     '--material-bake': 'material-bake',
     '--terrain-storage-commands': 'terrain-storage-commands',
     

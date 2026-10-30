@@ -1,0 +1,9 @@
+package facts
+
+// compile-time arguments retain lexical constant scope
+@test
+Calls :: () {
+    r1: int = Main();
+    e1: int = 16;
+    assert(r1 == e1, "Main call 1");
+}

@@ -1,0 +1,6 @@
+package facts
+Negate :: (a: u8) -> u8 { return -a; }
+Wide :: (a: u64) -> u64 { return -a; }
+Far :: (a: int) -> int { return a << 40; }
+Fill :: (a: int) -> int { return a >> 40; }
+Divide :: (a: int, b: int) -> int { return a / b + a % b; }

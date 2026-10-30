@@ -1,0 +1,10 @@
+package facts
+Run :: () -> i64 {
+    x: i64 = 0;
+    y: int = 1;
+    p := &x;
+    p^ += y;
+    return x;
+}
+
+// error: 6:5: Mismatched integer types i64 and int; convert one operand

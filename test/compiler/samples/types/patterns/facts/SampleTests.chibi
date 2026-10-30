@@ -1,0 +1,44 @@
+package facts
+
+// patterns
+@test
+Calls :: () {
+    a1_0: int = 0;
+    r1: int = Score(a1_0);
+    e1: int = 5;
+    assert(r1 == e1, "Score call 1");
+    a2_0: int = 1;
+    r2: int = Score(a2_0);
+    e2: int = 100;
+    assert(r2 == e2, "Score call 2");
+    a3_0: int = 2;
+    r3: int = Score(a3_0);
+    e3: int = 34;
+    assert(r3 == e3, "Score call 3");
+    a4_0: int = 3;
+    r4: int = Score(a4_0);
+    e4: int = -1;
+    assert(r4 == e4, "Score call 4");
+    a5_0: int = 4;
+    r5: int = Score(a5_0);
+    e5: int = 0;
+    assert(r5 == e5, "Score call 5");
+    a6_0: int = 2;
+    r6: int = Kind(a6_0);
+    e6: int = 7;
+    assert(r6 == e6, "Kind call 6");
+    a7_0: int = 4;
+    r7: int = Kind(a7_0);
+    e7: int = -5;
+    assert(r7 == e7, "Kind call 7");
+    r8: int = Count();
+    e8: int = 10;
+    assert(r8 == e8, "Count call 8");
+    r9: int = Walk();
+    e9: int = 33;
+    assert(r9 == e9, "Walk call 9");
+    a10_0: int = 4;
+    r10: bool = Empty(a10_0);
+    e10: bool = true;
+    assert(r10 == e10, "Empty call 10");
+}

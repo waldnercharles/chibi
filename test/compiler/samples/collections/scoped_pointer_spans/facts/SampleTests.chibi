@@ -1,0 +1,9 @@
+package facts
+
+// scoped pointer spans
+@test
+Calls :: () {
+    r1: int = Reading();
+    e1: int = 4;
+    assert(r1 == e1, "Reading call 1");
+}

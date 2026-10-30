@@ -679,6 +679,11 @@ TEST_CASE(host_packages_catalog_handle_types_reach_package_signatures)
         ) &&
         !*message
     );
+    /* format_text's optional untyped tail needs no argument. */
+    REQUIRE(
+        catalog_compile("package app\nPlain :: () -> string { return format_text(\"plain\"); }\n", message, sizeof message) &&
+        !*message
+    );
     /* core:target carries the compile's platform. */
     REQUIRE(
         catalog_compile(

@@ -1,0 +1,9 @@
+package facts
+Echo :: (value: char) -> char { return value; }
+Named :: (n: int) -> (scalar: char) { scalar = char(n); return; }
+RoundTrip :: (n: int) -> int { value: char = char(n); kept := Echo(value); return int(kept); }
+NamedRead :: (n: int) -> i64 { return Named(n).scalar; }
+ImplicitWide :: (n: int) -> u32 { return Echo(char(n)); }
+ExactDecimal :: () -> int { return int(char(65.0)); }
+ExactInteger :: () -> int { return int(char((+(65)))); }
+PlainInt :: (n: int) -> int { return n; }

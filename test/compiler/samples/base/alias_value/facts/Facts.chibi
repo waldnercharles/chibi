@@ -1,0 +1,5 @@
+package facts
+import lib "project:alias_value/lib"
+One :: () -> int { return lib; }
+
+// error: 3:27: Unknown name 'lib'

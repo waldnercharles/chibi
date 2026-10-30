@@ -1,0 +1,38 @@
+package facts
+
+// unions
+@test
+Calls :: () {
+    a1_0: int = 5;
+    r1: int = Score(a1_0);
+    e1: int = 156;
+    assert(r1 == e1, "Score call 1");
+    r2: int = Kinds();
+    e2: int = 111;
+    assert(r2 == e2, "Kinds call 2");
+    r3: int = Nested();
+    e3: int = 123;
+    assert(r3 == e3, "Nested call 3");
+}
+
+@test
+Records :: () {
+    switch Make(1) {
+        case .Box(width, height): assert(width == 2 && height == 5, "Box");
+        case: assert(false, "Make(1) is a Box");
+    }
+    switch Make(2) {
+        case .Spot(at): assert(at.x == 4 && at.y == 6, "Spot");
+        case: assert(false, "Make(2) is a Spot");
+    }
+    switch Make(3) {
+        case .Named(name, sides):
+            assert(name == "tri" && length(sides) == 3, "Named");
+            assert(sides[0] == 1 && sides[1] == 2 && sides[2] == 3, "Named sides");
+        case: assert(false, "Make(3) is Named");
+    }
+    switch Make(4) {
+        case .Empty: assert(true);
+        case: assert(false, "Make(4) is Empty");
+    }
+}

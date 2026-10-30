@@ -1,0 +1,9 @@
+package facts
+
+// managed pointer arrays
+@test
+Calls :: () {
+    r1: int = Count();
+    e1: int = 27;
+    assert(r1 == e1, "Count call 1");
+}

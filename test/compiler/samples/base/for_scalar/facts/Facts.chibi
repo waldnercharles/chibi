@@ -1,0 +1,4 @@
+package facts
+One :: (n: int) -> int { for (x in n) { } return 0; }
+
+// error: 2:36: for needs an array

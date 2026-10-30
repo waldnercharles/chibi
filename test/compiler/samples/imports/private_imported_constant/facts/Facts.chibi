@@ -1,0 +1,5 @@
+package facts
+import lib "project:private_imported_constant/lib"
+One :: () -> int { return lib.Hidden; }
+
+// error: 3:27: 'lib.Hidden' is private: declare it pub to use it from another package

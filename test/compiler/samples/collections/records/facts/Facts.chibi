@@ -1,0 +1,18 @@
+package facts
+Point :: struct { x: int; y: int; title: string; open: bool; }
+Make :: (x: int, y: int) -> Point {
+    p: Point = {x: x, y: y, title: "p", open: x < y};
+    return p;
+}
+Sum :: (p: Point) -> int { return p.x + p.y; }
+Moved :: (p: Point, dx: int) -> Point {
+    return {title: p.title, open: p.open, y: p.y, x: p.x + dx};
+}
+Total :: (n: int) -> int {
+    acc: Point = {x: 0, y: 0, title: "", open: false};
+    i: int = 0;
+    while (i < n) { acc = Moved(acc, i); i += 1; }
+    first := acc;
+    acc = Moved(acc, 100);
+    return Sum(acc) + Sum(Make(1, 2)) + first.x;
+}

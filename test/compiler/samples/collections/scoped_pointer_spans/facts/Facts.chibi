@@ -1,0 +1,3 @@
+package facts
+Read :: (n: ^int) -> int { return n^; }
+Reading :: () -> int { x: int = 4; return Read(&x); }

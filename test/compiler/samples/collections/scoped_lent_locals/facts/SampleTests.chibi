@@ -1,0 +1,48 @@
+package facts
+
+// scoped lent locals
+@test
+Calls :: () {
+    r1: int = Scoped();
+    e1: int = 22;
+    assert(r1 == e1, "Scoped call 1");
+    r2: int = Passed();
+    e2: int = 4444;
+    assert(r2 == e2, "Passed call 2");
+    r3: int = PassedFalse();
+    e3: int = 4444;
+    assert(r3 == e3, "PassedFalse call 3");
+    r4: int = Broken();
+    e4: int = 633;
+    assert(r4 == e4, "Broken call 4");
+    r5: int = Continued();
+    e5: int = 633;
+    assert(r5 == e5, "Continued call 5");
+    r6: int = Returned();
+    e6: int = 633;
+    assert(r6 == e6, "Returned call 6");
+    r7: int = Whole();
+    e7: int = 33;
+    assert(r7 == e7, "Whole call 7");
+    r8: int = Looped();
+    e8: int = 933;
+    assert(r8 == e8, "Looped call 8");
+    r9: int = RowBroken();
+    e9: int = 633;
+    assert(r9 == e9, "RowBroken call 9");
+    r10: int = RowContinued();
+    e10: int = 633;
+    assert(r10 == e10, "RowContinued call 10");
+    r11: int = RowReturned();
+    e11: int = 633;
+    assert(r11 == e11, "RowReturned call 11");
+    r12: int = Element();
+    e12: int = 22;
+    assert(r12 == e12, "Element call 12");
+    r13: int = Items();
+    e13: int = 43311;
+    assert(r13 == e13, "Items call 13");
+    r14: int = ItemsBroken();
+    e14: int = 33311;
+    assert(r14 == e14, "ItemsBroken call 14");
+}

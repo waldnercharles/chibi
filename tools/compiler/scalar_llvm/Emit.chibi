@@ -1238,6 +1238,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
     arguments: int[] = [];
     records: native.Record[] = [];
     fields: int[] = [];
+    field_names: string[] = [];
     texts: string[] = [];
     names: string[] = [];
     ids: i64[] = [];
@@ -1248,11 +1249,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         record: native.Record = {first: length(fields), count: 0};
         if (rows[head].kind == facts.UnionRow) {
             fields.append(NativeType(facts.IntType));
+            field_names.append("tag");
         }
         // A record's fields, or each of a union's variants and its payloads.
         for (field in head + 1..<After(rows, head)) {
             if (rows[field].kind == facts.MemberRow) {
                 fields.append(NativeType(rows[field].type));
+                field_names.append(rows[field].name);
             }
         }
         record.count = length(fields) - record.first;
@@ -1802,7 +1805,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                               source, names, lines, columns, false, 1);
     } else {
         emitted = native.EmitLibrary(target, rows[1].text, names, ids, functions, parameters, slots, locals,
-                                     code, arguments, records, fields, texts, 1);
+                                     code, arguments, records, fields, texts, 1, field_names);
     }
     switch emitted {
         case .Rejected(instruction, message):

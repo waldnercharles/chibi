@@ -1,5 +1,7 @@
 package sha256
 
+import strings "core:strings"
+
 Same :: (a: u8[], b: u8[]) -> bool {
     if length(a) != length(b) {
         return false;
@@ -17,10 +19,8 @@ Same :: (a: u8[], b: u8[]) -> bool {
 // The ASCII bytes of text, for the published vectors below.
 Ascii :: (text: string) -> u8[] {
     data: u8[] = [];
-    i := 0;
-    while i < length(text) {
-        data.append(u8(text[i]));
-        i += 1;
+    for (byte in strings.Bytes(text)) {
+        data.append(u8(byte));
     }
     return data;
 }

@@ -1,0 +1,4 @@
+package facts
+when 2 > 1 and not (3 == 4) { Chosen :: () -> int { return 11; } } else { Chosen :: () -> int { return 22; } }
+when 1 > 2 { Other :: () -> int { return 1; } } else when 3 == 3 { Other :: () -> int { return 5; } } else { Other :: () -> int { return 6; } }
+Main :: () -> int { return Chosen() * 10 + Other(); }

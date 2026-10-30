@@ -1,0 +1,5 @@
+package facts
+import lib "project:private_imported_record_parameter/lib"
+One :: (value: lib.Hidden) -> int { return value.x; }
+
+// error: 3:16: 'lib.Hidden' is private: declare it pub to use it from another package

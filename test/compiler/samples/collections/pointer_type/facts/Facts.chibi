@@ -1,0 +1,5 @@
+package facts
+Bump :: (v: ^int) { v^ += 1; }
+Run :: () { n: i64 = 1; Bump(&n); }
+
+// error: 3:31: pointer argument differs from the parameter's type

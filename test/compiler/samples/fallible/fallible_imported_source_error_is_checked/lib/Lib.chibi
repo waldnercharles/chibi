@@ -1,0 +1,3 @@
+package lib
+@error pub Failure :: struct { code: int; } 
+pub Read :: () -> (value: int, error: Failure?) { return(7, nil); }

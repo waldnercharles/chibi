@@ -1,0 +1,2 @@
+package facts
+Triple :: (n: int, by: int = 3) -> int { return n * by; }

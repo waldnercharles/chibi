@@ -137,7 +137,7 @@ ScalarResults :: (callables: Callable[], params: Param[], types: TypeDecl[], mem
                                   package: callable.package, node: callable.node, kind: RecordDecl,
                                   first: length(fields), count: callable.results, size: 0, parent: -1, storage: 0,
                                   id: 0, layout: 0, component: 0, key: 0, value_storage: 0, value_container: 0,
-                                  value_record: -1};
+                                  value_record: -1, error: false};
             for (index in 0..<callable.results) {
                 named := params[callable.first + callable.count + index];
                 field: TypeMember = {name: named.name, storage: named.storage, container: named.container,
@@ -1173,7 +1173,7 @@ ScalarDeclared :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     if (declared < 0) {
         value := Field(forest, node, "value");
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, value,
-                                    InferredNumberStorage(forest, text, value));
+                                    ConstantExpressionStorage(forest, text, value));
     }
     // Reading a type may add an optional or pointer type; this analysis
     // keeps none of them.
@@ -1361,7 +1361,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof supports only number, bool and string values"));
     }
     if (Field(forest, statement, "type") < 0) {
-        return ScalarPlan.Converted(value, InferredNumberStorage(forest, text, value), storage);
+        return ScalarPlan.Converted(value, ConstantExpressionStorage(forest, text, value), storage);
     }
     return ScalarPlan.Converted(value, storage, storage);
 }

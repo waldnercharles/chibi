@@ -1873,6 +1873,290 @@ TEST_CASE(package_imports_malformed_definition_environments_are_rejected)
     return true;
 }
 
+TEST_CASE(package_imports_check_errors_only_in_active_collections_and_all_projects)
+{
+    const char unchecked
+        [] = "package hosted\n@error pub Failure :: struct { code: int; }\n"
+             "pub Read :: () -> Failure? { return {code: 3}; }\n"
+             "pub Broken :: () { Read(); }\n";
+    const char project[] = "package other\npub Independent :: () -> int { "
+                           "return 2; }\n";
+    const char *active[] = {
+        "package app\nimport host \"core:host_only\"\npub Main :: (value: int) "
+        "-> int { return value; }\n",
+        "package app\nimport middle \"core:middle\"\npub Main :: (value: int) "
+        "-> int { return value; }\n",
+    };
+    source_package_input files[] = {
+        { "app/App.chibi", NULL, 0 },
+        { "/sdk/core/host_only/HostOnly.chibi", unchecked, 0 },
+        { "/sdk/core/middle/Middle.chibi", "package middle\nimport host \"core:host_only\"\npub Value :: () -> int { return 1; }\n", 0 },
+        { "other/Other.chibi", project, 0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        files[0].text = "package app\npub Main :: (value: int) -> int { return "
+                        "value; }\n";
+        files[1].text = unchecked;
+        files[3].text = project;
+        REQUIRE(prepare_with_collection(0, files, 4, backends[b], -1));
+        REQUIRE(valid(0) && authoring_packages_count(owners[0]) == 2);
+        REQUIRE(!package(0, "core:host_only") && !package(0, "core:middle"));
+        REQUIRE(run(0, "project:app", "Main", backends[b], 4, 4));
+        for (int i = 0; i < 2; i++) {
+            files[0].text = active[i];
+            REQUIRE(prepare_with_collection(1, files, 4, backends[b], 0));
+            REQUIRE(!authoring_packages_valid(owners[1]));
+            const authoring_package *host = package(1, "core:host_only");
+            REQUIRE(host && !host->valid && host->analysis);
+            bool ignored = false;
+            for (int d = 0; d < host->diagnostic_count; d++) {
+                ignored |= !strcmp(host->diagnostics[d].message, "Error result is ignored on a reachable path; check, report, store or return it");
+            }
+            REQUIRE(ignored);
+            REQUIRE(authoring_packages_count(owners[1]) == (i ? 4 : 3));
+        }
+        files[0].text = "package app\npub Main :: (value: int) -> int { return "
+                        "value; }\n";
+        files[3].text = "package other\n@error pub Failure :: struct { code: "
+                        "int; }\n"
+                        "Read :: () -> Failure? { return {code: 3}; }\n"
+                        "pub Broken :: () { Read(); }\n";
+        REQUIRE(prepare_with_collection(1, files, 4, backends[b], 0));
+        REQUIRE(!authoring_packages_valid(owners[1]));
+        const authoring_package *other = package(1, "project:other");
+        REQUIRE(other && !other->valid && other->analysis);
+        bool ignored = false;
+        for (int d = 0; d < other->diagnostic_count; d++) {
+            ignored |= !strcmp(other->diagnostics[d].message, "Error result is ignored on a reachable path; check, report, store or return it");
+        }
+        REQUIRE(ignored && !package(1, "core:host_only"));
+        files[0]
+            .text = "package app\nimport host \"core:host_only\"\npub Main :: "
+                    "(value: int) -> int { return host.Value() + value; }\n";
+        files[1].text = "package hosted\n@error pub Failure :: struct { code: "
+                        "int; }\n"
+                        "Read :: () -> (value: int, error: Failure?) { "
+                        "return(7, {code: 3}); }\n"
+                        "pub Value :: () -> int { read := Read(); if "
+                        "read.error { return read.value + read.error.code; } "
+                        "return read.value; }\n";
+        files[3].text = project;
+        REQUIRE(prepare_with_collection(1, files, 4, backends[b], 0));
+        REQUIRE(valid(1) && authoring_packages_count(owners[1]) == 3);
+        REQUIRE(package(1, "core:host_only") && !package(1, "core:middle"));
+        REQUIRE(run(1, "project:app", "Main", backends[b], 4, 14));
+        cleanup();
+    }
+    return true;
+}
+
+TEST_CASE(package_imports_preserve_fallible_contract)
+{
+    const source_package_input provider = {
+        "reader/main.chibi",
+        "package reader\n@error pub Failure :: struct { code: int; }\n"
+        "pub Read :: (input: int) -> (value: int, error: Failure?) "
+        "{ return(input, {code: 9}); }\n",
+        0
+    };
+    const char *clients[] = {
+        ("package app\nimport renamed \"../reader\"\nMain :: (input: int) -> "
+         "int "
+         "{ read := renamed.Read(input); partial := read.value; "
+         "if read.error { return partial + 1; } return partial; }\n"),
+        ("package app\nimport renamed \"../reader\"\nMain :: (input: int) -> "
+         "int "
+         "{ read := renamed.Read(input); return read.value; }\n"),
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int sample = 0; sample < 2; sample++) {
+            const source_package_input files[] = { { "app/main.chibi", clients[sample], 0 },
+                                                   provider };
+            REQUIRE(prepare(0, files, 2, backends[b], -1, "/project"));
+            const authoring_package *reader = package(0, "project:reader");
+            REQUIRE(
+                reader && reader->valid && reader->exports && reader->exports->metadata
+            );
+            const script_catalog *metadata = reader->exports->metadata;
+            const script_catalog_capability *read = script_catalog_capability_by_id(
+                metadata,
+                function_id(reader, "Read")
+            );
+            REQUIRE(read && read->fallible);
+            const script_catalog_type *failure = script_catalog_type_by_id(
+                metadata,
+                read->results[1].type.nominal
+            );
+            REQUIRE(failure && failure->error);
+            script_catalog copied = { 0 };
+            REQUIRE(script_catalog_snapshot(&metadata_storage, metadata, &copied));
+            const script_catalog_capability
+                *snapshot = script_catalog_capability_by_id(&copied, read->id);
+            REQUIRE(snapshot && snapshot->fallible);
+            const script_catalog_type
+                *copied_failure = script_catalog_type_by_id(&copied, failure->id);
+            REQUIRE(copied_failure && copied_failure->error);
+            const authoring_package *app = package(0, "project:app");
+            REQUIRE(app);
+            if (!sample) {
+                REQUIRE(valid(0));
+                REQUIRE(call(app->module, function_id(app, "Main"), backends[b], 7, 8));
+                continue;
+            }
+            REQUIRE(!app->valid && !app->module && app->diagnostic_count > 0);
+            bool diagnosed = false;
+            for (int i = 0; i < app->diagnostic_count; i++) {
+                diagnosed |= strstr(app->diagnostics[i].message, "ignored") != NULL;
+            }
+            REQUIRE(diagnosed);
+        }
+    }
+    return true;
+}
+
+TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse)
+{
+    const script_catalog_field code = { .id = 1,
+                                        .name = "code",
+                                        .type = { .storage = PIN_I32 },
+                                        .writable = true };
+    script_catalog_type failure = { .id = 702,
+                                    .name = "Failure",
+                                    .type = { .storage = PIN_STRUCT, .nominal = 702 },
+                                    .fields = &code,
+                                    .field_count = 1,
+                                    .size = sizeof(int32_t) };
+    const script_catalog_parameter output = {
+        .name = "error",
+        .type = { .storage = PIN_STRUCT,
+                  .nominal = 702,
+                  .flags = SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL }
+    };
+    script_catalog_capability probe = {
+        .id = 701,
+        .name = "Outcome",
+        .kind = SCRIPT_CAPABILITY_FUNCTION,
+        .results = &output,
+        .result_count = 1,
+        .effects = SCRIPT_EFFECT_HOST,
+    };
+    script_catalog metadata = { .types = &failure,
+                                .type_count = 1,
+                                .capabilities = &probe,
+                                .capability_count = 1 };
+    const script_lower_bindings bound = { .host = default_probe_binding,
+                                          .generation = 1 };
+    const source_package_input files[] = {
+        { "app/main.chibi", "package app\nMain :: (input: int) -> int { Outcome(); return input; }\n", 0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        failure.error = false;
+        REQUIRE(prepare_catalog(0, files, 1, backends[b], -1, "/project", &metadata, &bound));
+        REQUIRE(valid(0));
+        const authoring_package *original = package(0, "project:app");
+        REQUIRE(
+            original &&
+            call(original->module, function_id(original, "Main"), backends[b], 7, 7)
+        );
+        uint64_t abi = script_catalog_capability_abi(&metadata, &probe);
+        script_catalog_parameter flagged_output = output;
+        flagged_output.type.flags ^= SCRIPT_TYPE_ERROR_ALTERNATIVE;
+        script_catalog_capability flagged_probe = probe;
+        flagged_probe.results = &flagged_output;
+        script_catalog flagged_metadata = metadata;
+        flagged_metadata.capabilities = &flagged_probe;
+        REQUIRE(script_catalog_capability_abi(&flagged_metadata, &flagged_probe) == abi);
+        REQUIRE(
+            prepare_catalog(1, files, 1, backends[b], 0, "/project", &flagged_metadata, &bound)
+        );
+        REQUIRE(
+            !authoring_packages_valid(owners[1]) &&
+            !authoring_packages_reused(owners[1])
+        );
+        const authoring_package *flagged = package(1, "project:app");
+        REQUIRE(
+            flagged && flagged->diagnostic_count == 1 &&
+            strstr(flagged->diagnostics[0].message, "ignored")
+        );
+        failure.error = true;
+        REQUIRE(script_catalog_capability_abi(&metadata, &probe) == abi);
+        REQUIRE(prepare_catalog(2, files, 1, backends[b], 0, "/project", &metadata, &bound));
+        REQUIRE(
+            !authoring_packages_valid(owners[2]) &&
+            !authoring_packages_reused(owners[2])
+        );
+        const authoring_package *app = package(2, "project:app");
+        REQUIRE(
+            app && app->diagnostic_count == 1 &&
+            strstr(app->diagnostics[0].message, "ignored")
+        );
+        REQUIRE(call(original->module, function_id(original, "Main"), backends[b], 7, 7));
+    }
+    return true;
+}
+
+TEST_CASE(package_imports_ownership_contract_changes_invalidate_reuse)
+{
+    const script_catalog_parameter output = { .name = "value",
+                                              .type = { .storage = PIN_I32 } };
+    script_catalog_capability probe = { .id = 700,
+                                        .name = "Probe",
+                                        .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                        .results = &output,
+                                        .result_count = 1,
+                                        .effects = SCRIPT_EFFECT_HOST };
+    script_catalog metadata = { .capabilities = &probe, .capability_count = 1 };
+    const script_lower_bindings bound = { .host = default_probe_binding,
+                                          .generation = 1 };
+    const source_package_input files[] = {
+        { "app/main.chibi", "package app\nMain :: (input: int) -> int { return input; }\n", 0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int flag = 0; flag < 2; flag++) {
+            probe.language_values = false;
+            probe.owned_result = false;
+            REQUIRE(prepare_catalog(0, files, 1, backends[b], -1, "/project", &metadata, &bound));
+            REQUIRE(valid(0));
+            REQUIRE(prepare_catalog(1, files, 1, backends[b], 0, "/project", &metadata, &bound));
+            REQUIRE(valid(1) && authoring_packages_reused(owners[1]) == 1);
+            REQUIRE(
+                package(1, "project:app")->generation ==
+                package(0, "project:app")->generation
+            );
+            script_catalog_capability previous = probe;
+            uint64_t abi = script_catalog_capability_abi(&metadata, &probe);
+            if (flag) {
+                probe.owned_result = true;
+            } else {
+                probe.language_values = true;
+            }
+            REQUIRE(script_catalog_capability_abi(&metadata, &probe) != abi);
+            script_catalog copied = { 0 };
+            REQUIRE(script_catalog_snapshot(&metadata_storage, &metadata, &copied));
+            const script_catalog_capability
+                *snapshot = script_catalog_capability_by_id(&copied, probe.id);
+            REQUIRE(
+                snapshot && snapshot->language_values == probe.language_values &&
+                snapshot->owned_result == probe.owned_result
+            );
+            REQUIRE(prepare_catalog(2, files, 1, backends[b], 1, "/project", &metadata, &bound));
+            REQUIRE(valid(2) && !authoring_packages_reused(owners[2]));
+            REQUIRE(
+                package(2, "project:app")->generation !=
+                package(1, "project:app")->generation
+            );
+            probe = previous;
+            REQUIRE(prepare_catalog(3, files, 1, backends[b], 2, "/project", &metadata, &bound));
+            REQUIRE(valid(3) && !authoring_packages_reused(owners[3]));
+            REQUIRE(
+                package(3, "project:app")->generation !=
+                package(2, "project:app")->generation
+            );
+        }
+    }
+    return true;
+}
+
 void test_language_package_imports()
 {
     pu_setup(NULL, cleanup);
@@ -1909,5 +2193,9 @@ void test_language_package_imports()
     RUN_TEST_CASE(package_imports_collection_only_snapshot_checks_first_input_root);
     RUN_TEST_CASE(package_imports_removing_collection_import_releases_only_new_dependency);
     RUN_TEST_CASE(package_imports_malformed_definition_environments_are_rejected);
+    RUN_TEST_CASE(package_imports_check_errors_only_in_active_collections_and_all_projects);
+    RUN_TEST_CASE(package_imports_preserve_fallible_contract);
+    RUN_TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse);
+    RUN_TEST_CASE(package_imports_ownership_contract_changes_invalidate_reuse);
     pu_clear_setup();
 }

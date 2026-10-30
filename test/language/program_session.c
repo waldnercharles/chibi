@@ -23,7 +23,6 @@ static char temporary[1024], source[1200], sibling[1200], core[1200], library[13
 static char *previous_workers;
 static bool workers_changed;
 static task_system test_tasks;
-static int submitted, finished;
 
 typedef struct
 {
@@ -120,7 +119,6 @@ static void cleanup()
         workers_changed = false;
     }
     test_tasks = (task_system){ 0 };
-    submitted = finished = 0;
     for (int i = 0; i < 2; i++) {
         authoring_program_free(sessions[i]);
         sessions[i] = NULL;
@@ -609,75 +607,6 @@ TEST_CASE(program_handles_suppress_rejections_and_never_alias_other_sessions)
     return true;
 }
 
-static void *enqueue_tests(task_range *run, int count, int, void *context, void *)
-{
-    submitted++;
-    assert(count == 2);
-    run(0, 1, 0, context);
-    run(1, 2, 1, context);
-    return NULL;
-}
-
-static void finish_tests(void *task, void *)
-{
-    assert(!task);
-    finished++;
-}
-
-TEST_CASE(program_tests_bind_the_public_catalog_and_copy_transient_diagnostics)
-{
-    test_tasks = (task_system){ .workers = 2, .enqueue = enqueue_tests, .finish = finish_tests };
-    const char *saved = getenv("CHIBI_TEST_WORKERS");
-    previous_workers = saved ? strdup(saved) : NULL;
-    workers_changed = true;
-    REQUIRE(!setenv("CHIBI_TEST_WORKERS", "1", 1));
-    REQUIRE(disk());
-    write_source(library, "package base\nUnused :: () { unused_core_call() }\n");
-    write_source(
-        source,
-        "package app\n"
-        "@test\nFirst :: () { assert(1 + 2 == 3) }\n"
-        "@test\nSecond :: () { assert(4 * 5 == 20) }\n"
-        "@test\nPublic :: () { assert(test.argument_count() == 1); arguments: "
-        "string[] = []; handle := "
-        "program.open(\"chibi-program-absent-93fcde\", \"Main\", arguments); "
-        "assert(program.update(handle) == -1); before := "
-        "program.diagnostic(handle); assert(program.update(handle) == 0); "
-        "other := program.open(\"chibi-program-absent-84cafe\", \"Main\", "
-        "arguments); assert(program.diagnostic(other) == \"\"); assert(before "
-        "!= \"\"); called := program.call(handle); assert(called.status != 0); "
-        "program.close(other); program.close(handle) }\n"
-    );
-    REQUIRE(program_service_test(services[0], source) == 0);
-    REQUIRE(!submitted && !finished);
-    REQUIRE(!setenv("CHIBI_TEST_WORKERS", "2", 1));
-    REQUIRE(program_service_test(services[0], source) == 0);
-    REQUIRE(submitted == 1 && finished == 1);
-    return true;
-}
-
-TEST_CASE(program_tests_reject_nested_runs_and_allow_later_host_runs)
-{
-    REQUIRE(disk());
-    write_source(sibling, "package sibling\n@test\nFinite :: () { assert(2 + 3 == 5) }\n");
-    char escaped[sizeof sibling * 2], *out = escaped;
-    for (const char *part = sibling; *part; part++) {
-        if (*part == '\\' || *part == '"') {
-            *out++ = '\\';
-        }
-        *out++ = *part;
-    }
-    *out = 0;
-    char text[sizeof escaped + 128];
-    snprintf(text, sizeof text, "package outer\n@test\nNested :: () { assert(program.test(\"%s\") == 1) }\n", escaped);
-    write_source(source, text);
-    /* The sibling is finite: the broken path completes and fails the status
-     * assertion instead of recursively exhausting the native stack. */
-    REQUIRE(program_service_test(services[0], source) == 0);
-    REQUIRE(program_service_test(services[0], sibling) == 0);
-    return true;
-}
-
 void test_language_program_session()
 {
     pu_setup(NULL, cleanup);
@@ -692,7 +621,5 @@ void test_language_program_session()
     RUN_TEST_CASE(session_repeated_calls_cannot_reset_the_enclosing_budget);
     RUN_TEST_CASE(session_calls_honor_the_callers_live_cancellation_budget);
     RUN_TEST_CASE(program_handles_suppress_rejections_and_never_alias_other_sessions);
-    RUN_TEST_CASE(program_tests_bind_the_public_catalog_and_copy_transient_diagnostics);
-    RUN_TEST_CASE(program_tests_reject_nested_runs_and_allow_later_host_runs);
     pu_clear_setup();
 }

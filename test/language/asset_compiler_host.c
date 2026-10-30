@@ -251,10 +251,13 @@ TEST_CASE(asset_source_malformed_build_reports_position)
         error.column,
         error.message
     );
-    REQUIRE(!document && strstr(error.message, "Unknown function 'Missing'"));
+    REQUIRE(!document && !strcmp(error.message, "Unknown function 'Missing'"));
+    int missing = (int)(strstr(SOURCE, "Missing") - SOURCE);
+    int line_start = (int)(strchr(SOURCE, '\n') + 1 - SOURCE);
     REQUIRE(
-        error.document == 0 && error.line == 2 && error.column > 0 &&
-        error.end > error.start
+        error.document == 0 && error.line == 2 &&
+        error.column == missing - line_start + 1 && error.start == missing &&
+        error.end == missing + (int)strlen("Missing")
     );
     REQUIRE(!asset_source_cache_stats().evaluations && !behavior_execution_scope_active());
     return true;

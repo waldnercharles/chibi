@@ -270,6 +270,49 @@ InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: i
     return WordStorage;
 }
 
+// A local initializer built only from literals and arithmetic takes the
+// storage its literals spell, as a lone literal does: `1 + 2` is int, `1 + 2.5`
+// is number, and a literal beyond int widens the result. A shift keeps its left
+// operand's storage. Anything else is 0.
+ConstantExpressionStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    expression := Unparenthesized(forest, node);
+    spelled := InferredNumberStorage(forest, text, expression);
+    if (spelled != 0) {
+        return spelled;
+    }
+    if (Is(forest, expression, "unary_expression")) {
+        sign := Text(forest, text, Field(forest, expression, "operator"));
+        if (sign == "-" || sign == "+" || sign == "~") {
+            return ConstantExpressionStorage(forest, text, Field(forest, expression, "operand"));
+        }
+        return 0;
+    }
+    if (!Is(forest, expression, "binary_expression")) {
+        return 0;
+    }
+    operator := Text(forest, text, Field(forest, expression, "operator"));
+    shifts := operator == "<<" || operator == ">>";
+    if (!shifts && operator != "+" && operator != "-" && operator != "*" && operator != "/" && operator != "%" &&
+        operator != "&" && operator != "|" && operator != "^") {
+        return 0;
+    }
+    left := ConstantExpressionStorage(forest, text, Field(forest, expression, "left"));
+    right := ConstantExpressionStorage(forest, text, Field(forest, expression, "right"));
+    if (left == 0 || right == 0) {
+        return 0;
+    }
+    if (shifts) {
+        return left;
+    }
+    if (left == FloatStorage || right == FloatStorage) {
+        return FloatStorage;
+    }
+    if (left > right) {
+        return left;
+    }
+    return right;
+}
+
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 // A function's named results are locals from `named` on.
@@ -378,7 +421,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 }
                 expected = Expect(value, resolved.storage, resolved.container, resolved.record);
             } else {
-                inferred := InferredNumberStorage(forest, text, value);
+                inferred := ConstantExpressionStorage(forest, text, value);
                 if (inferred > 0) {
                     expected = Expect(value, inferred, 0, -1);
                 }
@@ -560,6 +603,30 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 if (Is(forest, object, "identifier")) {
                     found = Lookup(names, Text(forest, text, object));
                 }
+                if (found >= 0 && names[found].place == ResultsPlace &&
+                    names[found].storage == FunctionResultsStorage) {
+                    // A local owns its result bank, including banks copied
+                    // from another local. Select its existing typed cell.
+                    called := callables[names[found].record];
+                    member := Text(forest, text, Field(forest, destination, "member"));
+                    index := NamedResult(params, called, member);
+                    if (index < 0) {
+                        return Fail(forest, destination, document, format_text("Unknown result '{}'", member));
+                    }
+                    result := params[called.first + called.count + index];
+                    // Native bank writes resolve the output cell directly;
+                    // the destination has an origin without reading its root.
+                    code.append(ExpressionCode(ops, forest[destination]));
+                    next.append(Expect(value, result.storage, result.container, result.record));
+                    next.append(Resume(value, CopyValuePhase, 0, 0));
+                    write := Resume(item.node, FieldPhase, found, index);
+                    if (operator != "") {
+                        write.c = 1;
+                    }
+                    next.append(write);
+                    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                                        NoValue(), retained, marks);
+                }
                 if (found >= 0 && !names[found].writable) {
                     return Fail(forest, destination, document, "Assignment requires a writable value");
                 }
@@ -673,6 +740,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 code.extend(NumberCode(ops, result.storage, local.storage, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, local.storage, 0, -1);
             }
+            wrap := OptionalFor(types, local.storage, local.container, local.record, result);
+            if (wrap >= 0) {
+                wrap_slot := at.slot + length(slots);
+                wrap_cell := at.cell + length(cells);
+                code.extend(OptionalWrapCode(result, ops, target, wrap_slot, wrap_cell, at.host + length(hosts), node));
+                slots.extend(OptionalWrapSlots(target));
+                cells.extend(OptionalWrapCells(types, wrap, result));
+                hosts.append(OptionalWrapHost(wrap_cell));
+                result = OptionalWrapValue(wrap_slot, wrap_cell, wrap);
+            }
             if (!Accepts(types, local.storage, local.container, local.record, result)) {
                 return Fail(forest, item.node, document, "local value differs from its type");
             }
@@ -771,6 +848,13 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                             format_text("Mismatched integer types {} and {}; convert one operand",
                                         TypeName(binding.storage), TypeName(result.storage)));
             }
+            // Storing an absent or plain value into an optional local needs the
+            // cell write to copy a union that has no cell, which is not supported yet.
+            if (Is(forest, StatementValue(forest, item.node), "nil") && binding.storage == UnionStorage &&
+                binding.container == 0 && binding.record >= 0 && binding.record < length(types) &&
+                types[binding.record].kind == OptionalDecl) {
+                return Fail(forest, item.node, document, "assigning nil to an optional local is not supported yet");
+            }
             if (binding.place == NarrowedPlace) {
                 if (operator != "") {
                     return Fail(forest, destination, document, "compound narrowed-value assignment is not supported yet");
@@ -787,12 +871,20 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                         shifted: Bases = {pc: at.pc + length(place_code), slot: at.slot + length(place_slots),
                                           local: at.local, cell: at.cell + length(place_cells),
                                           host: at.host + length(place_hosts), call: at.call};
-                        return SequenceJoined(Step.Emitted(place_code, place_slots, place_locals, place_cells,
-                                                           place_hosts, place_roots, place_calls, place_bound,
-                                                           place_next, 0, NoValue(), NoValue(), place_marks),
-                                              IgnoreSequenceValue(SequenceCallStep([place, result],
-                                                                                   ReferenceWriteIntrinsic, Typed(-1, BoolStorage, 0, -1),
-                                                                                   u64(0), false, 1, ops, target, shifted, node)));
+                        written := SequenceJoined(Step.Emitted(place_code, place_slots, place_locals, place_cells,
+                                                               place_hosts, place_roots, place_calls, place_bound,
+                                                               place_next, 0, NoValue(), NoValue(), place_marks),
+                                                  IgnoreSequenceValue(SequenceCallStep([place, result],
+                                                                                       ReferenceWriteIntrinsic, Typed(-1, BoolStorage, 0, -1),
+                                                                                       u64(0), false, 1, ops, target, shifted, node)));
+                        original := names[binding.index];
+                        if (!Parameter(forest, original)) {
+                            // The write updates the original optional symbol.
+                            return SequenceJoined(written, Step.Emitted([SymbolCode(ops, original.node, node)],
+                                                                        [], [], [], [], [], [], [], [], 0,
+                                                                        NoValue(), NoValue(), []));
+                        }
+                        return written;
                 }
             }
             if (binding.place == ManagedPlace) {
@@ -884,6 +976,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 code.extend(NumberCode(ops, result.storage, callable.result, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, callable.result, 0, -1);
             }
+            wrap := OptionalFor(types, callable.result, callable.result_container, callable.result_record, result);
+            if (wrap >= 0) {
+                wrap_slot := at.slot + length(slots);
+                wrap_cell := at.cell + length(cells);
+                code.extend(OptionalWrapCode(result, ops, target, wrap_slot, wrap_cell, at.host + length(hosts), node));
+                slots.extend(OptionalWrapSlots(target));
+                cells.extend(OptionalWrapCells(types, wrap, result));
+                hosts.append(OptionalWrapHost(wrap_cell));
+                result = OptionalWrapValue(wrap_slot, wrap_cell, wrap);
+            }
             if (!Returns(types, callable.result, callable.result_container, callable.result_record, result) &&
                 !Accepts(types, callable.result, callable.result_container, callable.result_record, result)) {
                 return Fail(forest, item.node, document, "returned value differs from the result type");
@@ -914,6 +1016,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     } else if (item.phase == FieldPhase) {
         popped = 1;
         binding := names[item.a];
+        if (binding.place == ResultsPlace && binding.storage == FunctionResultsStorage) {
+            called := callables[binding.record];
+            result := params[called.first + called.count + item.b];
+            return FunctionResultAssignStep(forest, text, document, types, binding, result, values[top - 1],
+                                            item, ops, target, at, node);
+        }
         return WriteStep(EffectsStep(FieldStep(forest, text, document, types, binding, members[item.b], values[top - 1], item,
                                                ops, target, at, node), MemberEffects(types, binding.record)),
                          item.node, binding.place == ReferencePlace);
@@ -1215,6 +1323,10 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     popped: int = 0;
     produced := NoValue();
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    if (kind == "nil" && OptionalElement(types, Typed(-1, item.storage, item.container, item.record)).storage != 0) {
+        return Step.Emitted([ConstantCode(ops, UnionStorage, 0, at.slot, node)], [ValueLocal(UnionStorage)],
+                            [], [], [], [], [], [], [], 0, Typed(at.slot, UnionStorage, 0, item.record), NoValue(), []);
+    }
     if (kind == "nil" && item.container == ViewContainer) {
         return Fail(forest, item.node, document, "view requires an initialized value");
     }
@@ -1234,7 +1346,20 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
         }
     }
-    if (kind == "nil" || (kind == "number" && item.storage == HandleStorage && item.container == 0)) {
+    // A literal where an optional is expected is its element; the statement
+    // that stores it wraps it.
+    if ((kind == "number" || kind == "boolean" || kind == "string") && item.storage == UnionStorage &&
+        item.container == 0 && item.record >= 0 && item.record < length(types) &&
+        types[item.record].kind == OptionalDecl) {
+        element := OptionalElement(types, Typed(-1, item.storage, item.container, item.record));
+        item.storage = element.storage;
+        item.container = element.container;
+        item.record = element.record;
+    }
+    // `nil` where an optional is expected is the absent optional, below.
+    absent := kind == "nil" && item.storage == UnionStorage && item.container == 0 && item.record >= 0 &&
+              item.record < length(types) && types[item.record].kind == OptionalDecl;
+    if ((kind == "nil" && !absent) || (kind == "number" && item.storage == HandleStorage && item.container == 0)) {
         empty := kind == "nil" && Text(forest, text, item.node) == "null";
         if (kind == "number") {
             switch NumberBits(forest, text, item.node) {
@@ -1332,6 +1457,13 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return Fail(forest, item.node, document, "Non-escaping functions may only be called or forwarded to a callable parameter");
         }
         if (binding.place == NarrowedPlace) {
+            if (!OptionalPresent(forest, text, binding, item.node)) {
+                // Replacement invalidates the old proof. Read storage's
+                // optional value so a fresh guard can establish presence.
+                return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound,
+                                    [Resume(item.node, NarrowedOriginalPhase, binding.index, 0)],
+                                    0, NoValue(), NoValue(), marks);
+            }
             // A narrowed name reads its optional, then takes the payload,
             // each watched.
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound,
@@ -1595,6 +1727,10 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             }
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, projected,
                                 NoValue(), marks);
+        }
+        if (OptionalElement(types, object).storage != 0) {
+            return Fail(forest, Field(forest, item.node, "member"), document,
+                        "Optional component requires a presence guard before member access");
         }
         origin := FindNativeCall(native_calls, source.node);
         if (!dereferenced && origin >= 0 && FindResult(ports, natives[native_calls[origin].native], member) == 0) {
@@ -2912,6 +3048,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         expected_count: int = 0;
         if (found >= 0) {
             expected_count = callables[found].count;
+            // Preserve the source contract even when lowering replaces INVOKE.
+            next.append(RecordSemantic(item.node, CallFact, found));
         } else if (qualifier >= 0 && !qualified_native) {
             return Fail(forest, Field(forest, item.node, "function"), document,
                         format_text("Unknown function '{}'", callee_name));
@@ -4418,6 +4556,70 @@ ForStep :: (types: TypeDecl[], array: Value, packable: bool, reverse: bool, lent
     }
 }
 
+// Replace one output in a local function-result bank through the same typed
+// cell reference used by ordinary value writes. Its siblings keep their cells.
+FunctionResultAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                             binding: Name, result: Param, value: Value, item: Work, ops: Ops, target: Target,
+                             at: Bases, node: snapshot.SnapshotNode) -> Step {
+    destination := Field(forest, item.node, "target");
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    if (item.c == 1 && result.container == 0 && MixedCompoundIntegers(operator, result.storage, value)) {
+        return Fail(forest, item.node, document,
+                    format_text("Mismatched integer types {} and {}; convert one operand",
+                                TypeName(result.storage), TypeName(value.storage)));
+    }
+    code: Code[] = [];
+    slots: Slot[] = [];
+    stored := value;
+    if (value.container == 0 && value.storage != result.storage && Converts(value.storage, result.storage)) {
+        slots.extend(NumberSlots(value.storage, result.storage));
+        code.extend(NumberCode(ops, value.storage, result.storage, value.slot, at.slot, node));
+        stored = Typed(at.slot + length(slots) - 1, result.storage, 0, -1);
+    }
+    cell := binding.index + item.b;
+    if (item.c == 1) {
+        op := BinaryOp(ops, operator);
+        if (op < 0 || Comparison(ops, op) || !Numeric(result.storage) || result.container != 0 ||
+            !Single(stored, result.storage)) {
+            return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
+        }
+        if (!Computes(ops, op, result.storage)) {
+            return Fail(forest, item.node, document, "unsupported arithmetic type");
+        }
+        first := at.slot + length(slots);
+        code.extend(CellRead(result.storage, cell, ops, target, first, node));
+        slots.extend([AddressSlot(target), ValueLocal(result.storage), ValueLocal(result.storage)]);
+        code.append(ScalarWatch(ops, first + 1, result.storage, 0, true, forest[destination]));
+        code.append(Instruction(op, result.storage, first + 2, first + 1, stored.slot, -1, node));
+        code.append(ScalarWatch(ops, first + 2, result.storage, 0, true, forest[destination]));
+        stored = Typed(first + 2, result.storage, 0, -1);
+    }
+    if (!Accepts(types, result.storage, result.container, result.record, stored)) {
+        return Fail(forest, destination, document, "assigned value differs from its destination");
+    }
+    view: Name = {owned: false, name: binding.name, place: CellPlace, index: cell,
+                  storage: result.storage, container: result.container, record: result.record,
+                  writable: true, node: binding.node};
+    shifted := SlotsPast(at, length(slots));
+    shifted.pc = at.pc + length(code);
+    switch NamePlaceStep(forest, document, types, view, destination, ops, target, shifted) {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(place_code, place_slots, locals, cells, hosts, roots, calls, bound, next,
+                      popped, place, retained, marks):
+            code.extend(place_code);
+            slots.extend(place_slots);
+            continued: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local + length(locals),
+                                cell: at.cell + length(cells), host: at.host + length(hosts), call: at.call + length(calls)};
+            prefix := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                                   0, NoValue(), NoValue(), marks);
+            written := SequenceJoined(prefix, IgnoreSequenceValue(SequenceCallStep([place, stored], ReferenceWriteIntrinsic,
+                                                                                   Typed(-1, BoolStorage, 0, -1), u64(0), false,
+                                                                                   1, ops, target, continued, node)));
+            return CleanupSequenceValues(written, [value], ops, target, at, node);
+    }
+}
+
 // `x.f = v` and `x.f op= v` on the local record `binding`, as stage zero
 // writes a field: a narrower integer `v` converted first, a reference to the
 // local's cell and then to the field, and a write through it, which copies
@@ -5169,7 +5371,7 @@ WriteStep :: (step: Step, node: int, writes: bool) -> Step {
                                 popped, value, retained, marks);
     }
 }
-// Publishes named locals after all return assignments. Records are copied
+// Publishes named locals after all return assignments. Aggregates are copied
 // before their complete headers enter the result bank, preserving nominal
 // layouts and nested owned values just as an unnamed record return does.
 NamedResultsStep :: (before: Code[], ops: Ops, target: Target, params: Param[], callable: Callable, named: int,
@@ -5182,7 +5384,7 @@ NamedResultsStep :: (before: Code[], ops: Ops, target: Target, params: Param[], 
     while (index < callable.results) {
         result := params[callable.first + callable.count + index];
         first := at.slot + length(slots);
-        if (result.storage != StructStorage) {
+        if (!Pointer(result.storage, result.container)) {
             slots.append(ValueLocal(result.storage));
             code.append(Instruction(ops.local, result.storage, first, named + index, 0, 0, node));
             code.append(Instruction(ops.result, result.storage, 0, first, 0, index, node));
@@ -5216,7 +5418,7 @@ NamedResultsStep :: (before: Code[], ops: Ops, target: Target, params: Param[], 
             destination.offset = target.value_size;
             code.append(destination);
             offsets: int[] = [target.type_offset, target.container_offset, target.name_offset,
-                              target.record_offset, target.payload_offset];
+                              target.record_offset, target.payload_offset, target.schema_offset];
             part: int = 0;
             while (part < length(offsets)) {
                 loaded := address;
@@ -5294,13 +5496,13 @@ ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
         if (!Returns(types, result.storage, result.container, result.record, returned)) {
             return Fail(forest, returned_nodes[item.a], document, "returned value differs from the result type");
         }
-        if (result.storage == StructStorage) {
+        if (Pointer(result.storage, result.container)) {
             next.append(Resume(item.node, ReturnsPhase, item.a, 1));
             return Step.Emitted(code, slots, [], [], [], [], [], [], next, 1, NoValue(), returned, []);
         }
     }
     code.append(SymbolCode(ops, result.node, forest[returned_nodes[item.a]]));
-    if (result.storage == StructStorage) {
+    if (Pointer(result.storage, result.container)) {
         header := at.slot + length(slots);
         slots.append(AddressSlot(target));
         code.append(Instruction(ops.local, target.pointer_storage, header, named + item.a, 0, 0, node));

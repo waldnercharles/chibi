@@ -354,19 +354,29 @@ Suggestion: `s[i]` as a byte and `s[a:b]` as a string, with bounds checks.
 Constant time needs the representation in
 [Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length).
 
-## Stage one has no optionals
+## Stage one's optionals stop at locals, results and parameters
 
-Stage one. Stage zero has `T?`, `nil`, presence tests that narrow, `as T`
-and, since the nil-coalescing PR, `a ?? b`, but stage one's `ReadType`
-rejects any type with `?`. The compiler marks absence with sentinels instead:
-`-1` for a missing node, field or record, and `{storage: 0}` for no type.
+Stage one. Stage zero has `T?`, `nil`, presence tests that narrow, `as T` and
+`a ?? b`. Stage one's `ReadType` reads `?` and compiles `int? = nil`, `int? = 4`,
+`return nil`, `return n` in an `int?` function, optional parameters, `==`/`!=`
+`nil`, presence tests that narrow and `a ?? b`, for a scalar element. It does
+not yet compile:
+
+- assigning `nil` or a plain value to an optional local after its declaration
+  (the store copies a union that has no cell);
+- a plain value passed where an optional parameter is expected (only an
+  optional, or `nil`, is accepted);
+- a string, record or array element, an optional record field, or `as T`.
+
+The compiler still marks absence with sentinels instead: `-1` for a missing
+node, field or record, and `{storage: 0}` for no type.
 
 - Odin has `Maybe(T)` with `or_else`; Zig `?T` with `orelse` and `if (x) |v|`;
   Swift `T?` with `??` and `if let`; Rust `Option<T>` with `unwrap_or`;
   C# and TypeScript `T?` with `??`.
 
-Suggestion: stage one compiles `T?`, `nil`, presence narrowing and `??`, then
-the compiler replaces its `-1` sentinels where a value may be absent.
+Suggestion: finish the forms above, then the compiler replaces its `-1`
+sentinels where a value may be absent.
 
 ## Stage one's maps stop at single values and local writes
 

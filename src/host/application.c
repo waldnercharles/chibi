@@ -131,7 +131,6 @@ int chibi_application_run(
         apush(services, ((service_binding){ EXECUTION_LOG_SERVICE, &log }));
         authoring_program_options options = {
             .native = native,
-            .bindings = authoring_native_bindings(native),
             .backend = behavior_default_backend(),
             .services = services,
             .cancelled = cancelled,

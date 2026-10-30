@@ -103,3 +103,13 @@ With the project content readers archived and the bootstrap contract read as pla
 ## Stories (test/stories)
 
 The game-equivalence stories: five small game projects, each played by a KDL scenario, that compared a reference and a candidate compiler's game artifacts. They left with game projects and the game-equivalence harness.
+
+## Fixture-run @test wrappers (test/language)
+
+`package_core.c`, `package_tests.c`, `package_portable.c`, `package_portable_compiler.c` and `integer_arithmetic.c` ran the @tests of core and portable packages through `compiler_fixture_tests*` on both backends, compiled by stage zero. `tools/test_policy.py` now runs `chibi test packages/core` and `chibi test test/integer_arithmetic` (`chibi-test-core`, `chibi-test-integer-arithmetic`) instead. Lost: both-backend and sanitizer runs of those suites, the package-discovery edge cases of `package_tests.c` (old `package_tests_find*`), and the portable consumer/compiler package fixtures (`test/packages/portable_consumer` has no runner now; re-add `chibi test` for it once its imports resolve).
+
+## Compiler unit tests moved to @test (tools/compiler/<package>/tests)
+
+Each differential that called an authored compiler package's exports from C is replaced by table-driven `@test` functions in `tools/compiler/<package>/tests/Tests.chibi` (it imports the package as `project:`; run `chibi test tools/compiler/<package>`; the folder is not a compiler source folder, so seed recovery is unaffected). The C differential is archived.
+
+- `source_tokenizer_chibi.c` → `tools/compiler/source_tokenizer/tests`: the 12 hand-written expectation cases (range tokens, statement terminators, Odin error messages and offsets). Lost: the corpus and source differentials against the Tree-sitter token stream.

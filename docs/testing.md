@@ -1618,21 +1618,11 @@ ranges, alias presence, names, source order and diagnostics after producer and
 input storage retire. This standalone route has no runtime files, children,
 services or GPU work. Build separately.
 
-`python3 tools/test_policy.py tool language-package-paths-chibi` selects three
-cases with 26 fixed lexical requests: twelve existing resolver inputs and
-fourteen boundary cases. The unchanged C helper supplies 26 oracle results;
-52 authored calls across bytecode and SLJIT allow one million instructions each.
-Two retained owners prepare the actual Paths and core sources once per backend
-(four source parses). Four fixed input buffers are at most 4,097 bytes including
-the terminator. Cases cover the path and joined-path limits before collapse,
-long segments, root boundaries, intermediate escapes, absent inputs and absolute
-paths ignoring the unused base. Returned strings are inspected after producer
-and input storage retire; retained 4,095-byte results survive subsequent invalid
-calls and owner teardown. Used bases and floors are canonical absolute paths.
-This corpus has at most four segments per request; it does not establish
-performance at the maximum segment count. The route has no runtime files,
-children, services or GPU work. Build separately; this route is outside the
-aggregate.
+`compiler-tests-PACKAGE` runs the `@test` cases of one authored compiler
+package with the Release `chibi test` (`COMPILER_TEST_PACKAGES` in
+`tools/test_policy.py`, in the `projects` group). `package_paths/PathsTests.chibi`
+covers 26 lexical requests: resolver inputs, root and floor boundaries,
+intermediate escapes, absent parts and the path limits before and after collapse.
 
 `python3 tools/test_policy.py tool language-package-routes-chibi` compares
 thirteen collection-root requests, eleven file routes and sixteen import routes.

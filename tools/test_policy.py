@@ -190,8 +190,6 @@ TOOLS = {
                                      '--source-parser-chibi'],
     'language-package-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--package-syntax-chibi'],
-    'language-package-paths-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                     '--package-paths-chibi'],
     'language-package-routes-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--package-routes-chibi'],
     'language-package-snapshot-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -392,6 +390,13 @@ GROUPS = {
 }
 if sys.platform in ASSET_COMPILER_HOST_PLATFORMS:
     GROUPS['language'].append('language-asset-compiler-host')
+# The authored compiler's own @test cases, one Release `chibi test` root per
+# package: the whole compiler is too large to compile as one test closure.
+COMPILER_TEST_PACKAGES = ['package_paths']
+for package in COMPILER_TEST_PACKAGES:
+    TOOLS[f'compiler-tests-{package}'] = [str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi')), 'test',
+                                          str(ROOT / 'tools/compiler' / package)]
+    GROUPS['projects'].append(f'compiler-tests-{package}')
 
 GROUPS['render'] = [name for name in GPU_TOOLS if not name.startswith('studio-')
                     and (not name.endswith('-gles') or sys.platform.startswith('linux'))]

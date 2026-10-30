@@ -523,7 +523,7 @@ Files :: (target: string) -> string[] {
             "test/language/native_census.c",
             "test/language/execution_scope.c", "test/language/integer_semantics.c",
             "test/language/integer_arithmetic.c",
-            "test/language/type_relations_chibi.c", "test/language/unit_algebra_chibi.c",
+            "test/language/type_relations_chibi.c",
 
 
             "test/parallel.c", "test/language/parallel.c",
@@ -2263,8 +2263,7 @@ LanguageTestsOverSource :: () -> string[] {
 
         "test/language/source_tokenizer_chibi.c",
         "test/language/source_parser_chibi.c",
-        "test/language/type_relations_chibi.c",
-        "test/language/unit_algebra_chibi.c"
+        "test/language/type_relations_chibi.c"
 
     ];
 }

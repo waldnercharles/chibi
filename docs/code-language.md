@@ -727,14 +727,16 @@ linker for a system library; any other path is a prebuilt archive, relative to
 the importing package. `foreign alias { ... }` declares the library's functions
 by signature alone. A function's name is its C symbol.
 
-Status: the parser reads both forms and the compiler reports
-`unsupported declaration` for them. Declaring the functions, calling them from
-native builds (a call from the VM is rejected), and linking the archive are the
-next steps. Planned parameter types are integers, floats, `bool`, an opaque
-64-bit `rawptr`, a `u8[]` passed as a data pointer with its length given
-separately, and text for `const char *` when the text is NUL-terminated.
-Variadic C functions will take `@variadic` with the number of fixed
-arguments.
+Status: the compiler declares each foreign function as a native the target
+must link. Its identity names the library path and the symbol, so a target that
+does not link the library cannot load a program that calls it; the VM never
+runs foreign code. Parameters and results are integers, floats, `bool` and
+`rawptr`, an opaque 64-bit word. Calls through the native backend and linking
+the archive are the next steps. Names are global like other natives, so two
+foreign functions cannot share one. Planned after that: a `u8[]` passed as a
+data pointer with its length given separately, text for `const char *` when it
+is NUL-terminated, and `@variadic` with the number of fixed arguments for
+variadic C functions.
 
 ## Generics and compile-time values
 

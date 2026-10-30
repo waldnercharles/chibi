@@ -722,21 +722,57 @@ foreign libc {
 }
 ```
 
-`foreign import alias "path"` names the library. A `system:` path asks the
-linker for a system library; any other path is a prebuilt archive, relative to
-the importing package. `foreign alias { ... }` declares the library's functions
-by signature alone. A function's name is its C symbol.
+`foreign import alias "path"` names the library. `system:c` is libc, which a
+native build links dynamically by default (`chibi build --native --static`
+links none); another `system:` path is not linked yet. Any other path is a
+prebuilt archive, relative to the importing package, that the native build adds
+to the link line and records by hash in its receipt. `foreign alias { ... }`
+declares the library's functions by signature alone. A function's name is its
+C symbol.
 
-Status: the compiler declares each foreign function as a native the target
-must link. Its identity names the library path and the symbol, so a target that
-does not link the library cannot load a program that calls it; the VM never
-runs foreign code. Parameters and results are integers, floats, `bool` and
-`rawptr`, an opaque 64-bit word. Calls through the native backend and linking
-the archive are the next steps. Names are global like other natives, so two
-foreign functions cannot share one. Planned after that: a `u8[]` passed as a
-data pointer with its length given separately, text for `const char *` when it
-is NUL-terminated, and `@variadic` with the number of fixed arguments for
-variadic C functions.
+Parameters and results are integers, floats, `bool` and `rawptr`, an opaque
+64-bit word. A parameter may also be `cstring`, which takes a string literal
+and passes the address of its NUL-ended bytes; a result cannot be one.
+
+A foreign function is a native whose identity names the library path and the
+symbol, so a target that does not link the library cannot load a program that
+calls it; the VM never runs foreign code. Names are global like other natives,
+so two foreign functions cannot share one.
+
+### Procedure values
+
+A C function's address has a procedure type, as in Odin: `proc "c" (n: i32) ->
+i32`. It is a 64-bit word that holds the address, so a foreign function can
+return one, a local or a parameter can hold one, and a call through it is a
+C-ABI call.
+
+```chibi
+foreign import libc "system:c"
+
+foreign libc {
+    dlsym :: (handle: rawptr, name: cstring) -> rawptr
+}
+
+Apply :: (f: proc "c" (n: i32) -> i32, value: i32) -> i32 {
+    return f(value)
+}
+
+Main :: () -> int {
+    absolute: proc "c" (n: i32) -> i32 = dlsym(0, "abs")
+    return Apply(absolute, -42)
+}
+```
+
+A procedure type spells its parameters with names, like a foreign function,
+and the `"c"` calling convention is required. The parameters and result follow
+the foreign rules above. A variable holding one is declared with its type, or
+takes it from the foreign function whose result type spells one. Unlike Odin,
+a `rawptr` converts to a procedure type without a cast. An authored function
+cannot yet be turned into a procedure value for C to call.
+
+Planned after that: a `u8[]` passed as a data pointer with its length given
+separately, `@variadic` with the number of fixed arguments for variadic C
+functions, foreign functions without a result, and data symbols.
 
 ## Generics and compile-time values
 

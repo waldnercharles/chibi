@@ -171,7 +171,10 @@ pub ArrayBytes: int : 48;
 // texts[literal], and the argument slots are this function's
 // arguments[right, right + target), each a number or a bool, as is the result,
 // the instruction's type. It passes no context and never fails. A small
-// integer or bool carries the extension the C ABI asks of its caller.
+// integer or bool carries the extension the C ABI asks of its caller. An
+// argument may be a string, passed as the pointer to its NUL-ended bytes. With
+// `left` 1 it calls the address in its first argument instead, and its symbol
+// text is empty.
 pub ForeignCall: int : 49;
 
 Index :: (value: int, count: int) -> bool {
@@ -1396,22 +1399,46 @@ CExtension :: (type: int) -> string {
     }
     return "";
 }
-// Whether a foreign call names a C symbol the module does not define and has
-// number or bool operands and result.
+// Whether an argument of a foreign call is a number, a bool or a string, whose
+// data pointer the callee reads.
+ForeignArgument :: (type: int) -> bool {
+    return abi.ScalarType(type) != "" || type == abi.TextStorage;
+}
+// The type of an argument in a foreign declaration or call: a string is the
+// pointer to its bytes.
+ForeignType :: (type: int) -> string {
+    if (type == abi.TextStorage) {
+        return "ptr";
+    }
+    return format_text("{}{}", TypeName(type), CExtension(type));
+}
+// Whether a foreign call names a C symbol the module does not define, or when
+// its `left` is 1 calls through the address in its first argument, a word, and
+// has number, bool or string operands and a number or bool result.
 ForeignValid :: (slots: int[], arguments: int[], texts: string[], item: Instruction) -> bool {
-    if (item.literal < 0 || item.literal >= i64(length(texts))) {
+    if (item.literal < 0 || item.literal >= i64(length(texts)) || abi.ScalarType(item.type) == "") {
         return false;
     }
     symbol := texts[int(item.literal)];
-    if (!Identifier(symbol) || symbol == "main" || symbol == "chibi_scalar" || abi.ScalarType(item.type) == "") {
+    indirect := item.left == 1;
+    if (item.left != 0 && !indirect) {
+        return false;
+    }
+    if (indirect && symbol != "") {
+        return false;
+    }
+    if (!indirect && (!Identifier(symbol) || symbol == "main" || symbol == "chibi_scalar")) {
         return false;
     }
     if (item.right < 0 || item.target < 0 || item.target > length(arguments) - item.right) {
         return false;
     }
+    if (indirect && (item.target < 1 || !Typed(slots, arguments[item.right], abi.WordStorage))) {
+        return false;
+    }
     for (index in 0..<item.target) {
         slot := arguments[item.right + index];
-        if (!Index(slot, length(slots)) || abi.ScalarType(slots[slot]) == "") {
+        if (!Index(slot, length(slots)) || !ForeignArgument(slots[slot])) {
             return false;
         }
     }
@@ -1424,13 +1451,12 @@ ForeignDeclarations :: (functions: Function[], slots: int[], code: Instruction[]
     for (shape in functions) {
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
-            if (item.op != ForeignCall) {
+            if (item.op != ForeignCall || item.left == 1) {
                 continue;
             }
             listed: string[] = [];
             for (index in 0..<item.target) {
-                type := slots[shape.first_slot + arguments[shape.first_argument + item.right + index]];
-                listed.append(format_text("{}{}", TypeName(type), CExtension(type)));
+                listed.append(ForeignType(slots[shape.first_slot + arguments[shape.first_argument + item.right + index]]));
             }
             declaration := format_text("declare{} {} @{}({})\n", CExtension(item.type), TypeName(item.type),
                                        texts[int(item.literal)], strings.Join(listed, ", "));
@@ -1441,19 +1467,31 @@ ForeignDeclarations :: (functions: Function[], slots: int[], code: Instruction[]
     }
     return out;
 }
-// A call of a foreign symbol: the arguments load in order and nothing else
-// is passed.
+// A call of a foreign symbol, or through an address: the arguments load in
+// order, a string as the pointer to its bytes, and nothing else is passed.
 ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], item: Instruction, pc: int) -> string {
     out := format_text("p{}:\n", pc);
     listed: string[] = [];
+    callee := format_text("@{}", texts[int(item.literal)]);
     for (index in 0..<item.target) {
         slot := arguments[item.right + index];
         type := slots[slot];
-        out = format_text("{}{}", out, Load(format_text("c{}_{}", pc, index), type, "s", slot));
-        listed.append(format_text("{}{} %c{}_{}", TypeName(type), CExtension(type), pc, index));
+        name := format_text("c{}_{}", pc, index);
+        out = format_text("{}{}", out, Load(name, type, "s", slot));
+        if (item.left == 1 && index == 0) {
+            callee = format_text("%callee{}", pc);
+            out = format_text("{}  {} = inttoptr i64 %{} to ptr\n", out, callee, name);
+            continue;
+        }
+        if (type == abi.TextStorage) {
+            out = format_text("{}  %{}.data = extractvalue {} %{}, 0\n", out, name, TypeName(type), name);
+            listed.append(format_text("ptr %{}.data", name));
+            continue;
+        }
+        listed.append(format_text("{}{} %{}", TypeName(type), CExtension(type), name));
     }
-    out = format_text("{}  %v{} = call{} {} @{}({})\n", out, pc, CExtension(item.type), TypeName(item.type),
-                      texts[int(item.literal)], strings.Join(listed, ", "));
+    out = format_text("{}  %v{} = call{} {} {}({})\n", out, pc, CExtension(item.type), TypeName(item.type), callee,
+                      strings.Join(listed, ", "));
     out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }

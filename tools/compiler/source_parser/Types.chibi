@@ -68,10 +68,29 @@ StartsType :: (token: int) -> bool {
            token == tk.Setting || token == tk.Wildcard;
 }
 
+// Whether a procedure type starts here: `proc "c" (`.
+StartsProc :: (c: ^Cursor, n: ^(Node[])) -> bool {
+    return IsWord(c, n, "proc") && Peek(c, n, 1) == tk.String && Peek(c, n, 2) == tk.OpenParen;
+}
+
+// `proc "c" (name: Type, ...) [-> Type]`, the type of a C function's address.
+ParseProc :: (c: ^Cursor, n: ^(Node[])) -> int {
+    proc := New(n, "proc_type");
+    Take(c, n, proc, "");
+    Take(c, n, proc, "convention");
+    Add(n, proc, ParseParameters(c, n), "parameters");
+    ParseResults(c, n, proc);
+    return proc;
+}
+
 // The primary of a type, added to `t`: a name, a binder, an application, a
-// map, a pointer or a parenthesized type.
+// map, a pointer, a procedure type or a parenthesized type.
 ParseTypePrimary :: (c: ^Cursor, n: ^(Node[]), t: int) {
     token := c.token;
+    if (StartsProc(c, n)) {
+        Add(n, t, ParseProc(c, n), "proc");
+        return;
+    }
     if (token == tk.Dollar) {
         binder := New(n, "type_binder");
         Take(c, n, binder, "");
@@ -169,6 +188,9 @@ SkipTypePrimary :: (n: ^(Node[]), at: int, final: int) -> int {
         }
         return at + 2;
     }
+    if (token == tk.Ident && n^[at + 1].token == tk.String && n^[at + 2].token == tk.OpenParen) {
+        return SkipProc(n, at, final);
+    }
     if (token == tk.Xor) {
         return SkipTypePrimary(n, at + 1, final);
     }
@@ -201,6 +223,19 @@ SkipTypePrimary :: (n: ^(Node[]), at: int, final: int) -> int {
         return SkipBrackets(n, at, final);
     }
     return at;
+}
+
+// The position after the procedure type at `at`: its parameters, then a
+// result when `->` follows.
+SkipProc :: (n: ^(Node[]), at: int, final: int) -> int {
+    closed := SkipBrackets(n, at + 2, final);
+    if (closed < 0 || closed >= final || n^[closed].token != tk.ArrowRight) {
+        return closed;
+    }
+    if (n^[closed + 1].token == tk.OpenParen) {
+        return SkipBrackets(n, closed + 1, final);
+    }
+    return SkipType(n, closed + 1, final);
 }
 
 SkipTypeSuffixes :: (n: ^(Node[]), at: int, final: int) -> int {

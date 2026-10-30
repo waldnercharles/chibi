@@ -269,7 +269,8 @@ LinkedLibraries :: (text: string) -> string[] {
 
 // `text` with each `; chibi-library PATH` comment resolved to an existing
 // regular file under `root` and rewritten as `; link ABSOLUTE`, or "" after
-// reporting why not. System libraries are not linked yet.
+// reporting why not. `system:c` is libc and rewritten to nothing; other system
+// libraries are not linked yet.
 ResolveLibraries :: (text: string, root: string) -> string {
     out: string[] = [];
     for (line in strings.SplitLines(text)) {
@@ -278,8 +279,12 @@ ResolveLibraries :: (text: string, root: string) -> string {
             continue;
         }
         path := strings.Slice(line, 16, strings.ByteLength(line) - 16);
+        if (path == "system:c") {
+            // libc, which every dynamic link names already.
+            continue;
+        }
         if (strings.HasPrefix(path, "system:")) {
-            build.report(Join(["native: ", path, " is a system library; link a prebuilt archive instead"]));
+            build.report(Join(["native: ", path, " is a system library; only system:c is linked, so link a prebuilt archive instead"]));
             return "";
         }
         absolute := path;

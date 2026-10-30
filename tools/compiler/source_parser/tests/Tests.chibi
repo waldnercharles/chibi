@@ -39,6 +39,11 @@ AcceptsForeignBlock :: () {
 }
 
 @test
+AcceptsProcedureTypes :: () {
+    Accepts("package p\nforeign import libc \"system:c\"\nforeign libc {\n    dlsym :: (handle: rawptr, name: cstring) -> proc \"c\" (n: i32) -> i32\n}\nApply :: (f: proc \"c\" (n: i32) -> i32, v: i32) -> i32 {\n    g: proc \"c\" () -> i32 = f;\n    return f(v);\n}\n");
+}
+
+@test
 AcceptsTestFunction :: () {
     Accepts("package p\n\n@test\npub T :: () {\n}\n");
 }

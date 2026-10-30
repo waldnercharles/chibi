@@ -67,3 +67,62 @@ ForeignSymbolMayNotBeTheEntry :: () {
 ForeignArgumentsPastTheTableAreRejected :: () {
     ChangedForeign(Code(native.ForeignCall, 6, 2, 0, 1, 2, 0), [6, 6, 6], ["chibi_probe_add"], ForeignMismatch);
 }
+// Main calls the address in slot 0 with 40 and 2 and returns the result.
+Indirects :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 9, 0, 0, 0, 0, 4096),
+            Code(native.Constant, 6, 1, 0, 0, 0, 40),
+            Code(native.Constant, 6, 2, 0, 0, 0, 2),
+            Code(native.ForeignCall, 6, 3, 1, 0, 3, 0),
+            Code(native.Publish, 6, 0, 3, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+IndirectModule :: (code: native.Instruction[], slots: int[], texts: string[]) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 4, 0, 7, 0, 3)], empty, slots, empty, code, [0, 1, 2],
+                       records, empty, texts, source, names, empty, empty, false, 1);
+}
+// A call through an address declares nothing and calls the pointer its first
+// argument holds.
+@test
+ForeignCallThroughAnAddress :: () {
+    text := Emitted(IndirectModule(Indirects(), [9, 6, 6, 6], [""]));
+    assert(strings.Contains(text, "%callee4 = inttoptr i64 %c4_0 to ptr\n"));
+    assert(strings.Contains(text, "%v4 = call i32 %callee4(i32 %c4_1, i32 %c4_2)\n"));
+    assert(!strings.Contains(text, "declare i32 @"));
+}
+@test
+IndirectCallNeedsAWordAddress :: () {
+    Rejects(IndirectModule(Indirects(), [6, 6, 6, 6], [""]), ForeignMismatch);
+}
+@test
+IndirectCallNamesNoSymbol :: () {
+    Rejects(IndirectModule(Indirects(), [9, 6, 6, 6], ["chibi_probe_add"]), ForeignMismatch);
+}
+@test
+IndirectCallNeedsItsAddress :: () {
+    code := Indirects();
+    code[4] = Code(native.ForeignCall, 6, 3, 1, 0, 0, 0);
+    Rejects(IndirectModule(code, [9, 6, 6, 6], [""]), ForeignMismatch);
+}
+// A string passes as the pointer to its NUL-ended bytes.
+@test
+ForeignStringArgumentIsItsPointer :: () {
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, 13, 0, 0, 0, 0, 0),
+             Code(native.ForeignCall, 6, 1, 0, 0, 1, 1),
+             Code(native.Publish, 6, 0, 1, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    text := Emitted(native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 2, 0, 5, 0, 1)], empty, [13, 6], empty, code, [0],
+                                records, empty, ["probe", "chibi_probe_length"], source, names, empty, empty, false, 1));
+    assert(strings.Contains(text, "declare i32 @chibi_probe_length(ptr)\n"));
+    assert(strings.Contains(text, "%c2_0.data = extractvalue "));
+    assert(strings.Contains(text, "%v2 = call i32 @chibi_probe_length(ptr %c2_0.data)\n"));
+}

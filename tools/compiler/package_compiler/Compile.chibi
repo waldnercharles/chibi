@@ -324,17 +324,93 @@ ForeignRows :: union {
     Declared(natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[], effects: int[])
 }
 // The type `node` spells as a native port storage, 0 when a foreign signature
-// may not use it.
+// may not use it. A procedure type is the address it holds, a word, and a
+// cstring is a string literal the callee reads up to its NUL.
 ForeignStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    if (Field(forest, node, "proc") >= 0) {
+        return WordStorage;
+    }
     spelled := Text(forest, text, node);
     if (spelled == "rawptr") {
         return WordStorage;
+    }
+    if (spelled == "cstring") {
+        return TextStorage;
     }
     storage := ScalarStorage(spelled);
     if (storage == 0 || storage == TextStorage) {
         return 0;
     }
     return storage;
+}
+// The type `node` spells as a foreign result, 0 when it may not: a cstring
+// names bytes the callee owns, which no value here can hold.
+ForeignResultStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    storage := ForeignStorage(forest, text, node);
+    if (storage == TextStorage) {
+        return 0;
+    }
+    return storage;
+}
+// The storages of procedure type `proc`: its parameters, then its result, 0
+// when it has none. A part a foreign signature may not use is -1.
+ProcShape :: (forest: snapshot.SnapshotNode[], text: string, proc: int) -> int[] {
+    shape: int[] = [];
+    for (parameter in Members(forest, Field(forest, proc, "parameters"))) {
+        storage := -1;
+        kind := Field(forest, parameter, "type");
+        if (kind >= 0 && ForeignStorage(forest, text, kind) != 0) {
+            storage = ForeignStorage(forest, text, kind);
+        }
+        shape.append(storage);
+    }
+    result := Field(forest, proc, "results");
+    storage := 0;
+    if (result >= 0) {
+        storage = ForeignResultStorage(forest, text, result);
+        if (storage == 0) {
+            storage = -1;
+        }
+    }
+    shape.append(storage);
+    return shape;
+}
+// The name of the native that calls through an address of procedure type
+// `proc`, "" when the type is not one a foreign signature can spell. Its first
+// parameter is the address.
+ProcName :: (forest: snapshot.SnapshotNode[], text: string, proc: int) -> string {
+    shape := ProcShape(forest, text, proc);
+    name := "proc:";
+    for (storage in shape) {
+        if (storage < 0) {
+            return "";
+        }
+        name = format_text("{}{},", name, storage);
+    }
+    return name;
+}
+// The procedure type of the variable `callee` names, -1 when it holds none: the
+// type its declaration spells, or the result type of the foreign function its
+// initializer calls.
+ProcOf :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], callee: int) -> int {
+    found := Lookup(names, Text(forest, text, callee));
+    if (found < 0 || names[found].storage != WordStorage || names[found].container != 0 || names[found].node < 0) {
+        return -1;
+    }
+    declaration := forest[names[found].node].parent;
+    declared := Field(forest, declaration, "type");
+    if (declared >= 0) {
+        return Field(forest, declared, "proc");
+    }
+    value := Field(forest, declaration, "value");
+    if (value < 0 || !Is(forest, Unparenthesized(forest, value), "call_expression")) {
+        return -1;
+    }
+    function := ScalarForeignDeclaration(forest, text, Unparenthesized(forest, value));
+    if (function < 0 || Field(forest, function, "results") < 0) {
+        return -1;
+    }
+    return Field(forest, Field(forest, function, "results"), "proc");
 }
 ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], natives: ResolvedNative[],
                    ports: ResolvedPort[], identities: u64[], effects: int[]) -> ForeignRows {
@@ -387,7 +463,7 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                         }
                         if (storage == 0) {
                             return ForeignRows.Failed(Diagnose(forest, parameter, file,
-                                                               "A foreign parameter is an integer, float, bool or rawptr"));
+                                                               "A foreign parameter is an integer, float, bool, rawptr, cstring or procedure"));
                         }
                         port: ResolvedPort = {name: Text(forest, text, Field(forest, parameter, "name")),
                                               storage: storage, container: 0, c_string: false, record: -1,
@@ -400,10 +476,10 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                     results: int = 0;
                     result := Field(forest, declaration, "results");
                     if (result >= 0) {
-                        storage := ForeignStorage(forest, text, result);
+                        storage := ForeignResultStorage(forest, text, result);
                         if (storage == 0) {
                             return ForeignRows.Failed(Diagnose(forest, result, file,
-                                                               "A foreign result is an integer, float, bool or rawptr"));
+                                                               "A foreign result is an integer, float, bool, rawptr or procedure"));
                         }
                         output: ResolvedPort = {name: "Result", storage: storage, container: 0, c_string: false,
                                                 record: -1, has_default: false, default_owner: false,
@@ -423,6 +499,71 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 }
             }
             member = NextMember(forest, member);
+        }
+        // Calling through a procedure value is the native of its signature, the
+        // address first.
+        pending: int[] = [documents[file].syntax_root];
+        top: int = 1;
+        while (top > 0) {
+            top -= 1;
+            node := pending[top];
+            kind := forest[node].kind;
+            child := forest[node].first_child;
+            while (child >= 0 && !Expression(kind)) {
+                if (forest[child].is_named && !forest[child].is_extra) {
+                    if (top < length(pending)) {
+                        pending[top] = child;
+                    } else {
+                        pending.append(child);
+                    }
+                    top += 1;
+                }
+                child = forest[child].next_sibling;
+            }
+            if (kind != "proc_type") {
+                continue;
+            }
+            name := ProcName(forest, text, node);
+            if (name == "") {
+                return ForeignRows.Failed(Diagnose(forest, node, file,
+                                                   "A procedure type's parameters and result are integers, floats, bool, rawptr, cstring or procedures"));
+            }
+            declared := false;
+            for (native in natives) {
+                declared = declared || native.name == name;
+            }
+            if (declared) {
+                continue;
+            }
+            shape := ProcShape(forest, text, node);
+            first := length(ports);
+            callee: ResolvedPort = {name: "callee", storage: WordStorage, container: 0, c_string: false, record: -1,
+                                    has_default: false, default_owner: false, default_supported: false,
+                                    default_bits: 0, default_text: ""};
+            ports.append(callee);
+            results: int = 0;
+            for (index in 0..<length(shape)) {
+                port: ResolvedPort = {name: "Result", storage: shape[index], container: 0, c_string: false,
+                                      record: -1, has_default: false, default_owner: false,
+                                      default_supported: false, default_bits: 0, default_text: ""};
+                if (index == length(shape) - 1) {
+                    if (shape[index] == 0) {
+                        continue;
+                    }
+                    results = 1;
+                } else {
+                    port.name = format_text("argument{}", index);
+                }
+                ports.append(port);
+            }
+            row: ResolvedNative = {name: name, first: first, parameters: length(shape), results: results,
+                                   variadic: false, direct: true, qualified_name: name,
+                                   kind: NativeFunctionKind, intrinsic: 0,
+                                   effects: ReadEffect | WriteEffect, source: false};
+            natives.append(row);
+            identities.append(binding.ID("foreign-indirect", name));
+            identities.append(binding.ID("foreign-signature", name));
+            effects.append(ReadEffect | WriteEffect);
         }
     }
     return ForeignRows.Declared(natives, ports, identities, effects);
@@ -788,6 +929,13 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
         return ReadTypeSuffixes(forest, node, table, {storage: UnionStorage, container: MapContainer, record: declared},
                                 package, view);
     }
+    proc := Field(forest, node, "proc");
+    if (proc >= 0) {
+        if (ProcName(forest, text, proc) == "") {
+            return none;
+        }
+        return ReadTypeSuffixes(forest, node, table, {storage: WordStorage, container: 0, record: -1}, package, view);
+    }
     application := ApplicationNode(forest, node);
     if (application >= 0) {
         found := FindType(table^, package, ApplicationName(forest, text, table^, package, application));
@@ -809,6 +957,8 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
         if (home < 0 || NextMember(forest, part) >= 0) {
             return none;
         }
+    } else if (name == "rawptr") {
+        return ReadTypeSuffixes(forest, node, table, {storage: WordStorage, container: 0, record: -1}, package, view);
     } else if (name == "char") {
         declared := CharIndex(table^);
         if (declared < 0) { return none; }

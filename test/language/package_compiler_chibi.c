@@ -12387,14 +12387,14 @@ static const struct
       "return 0; }\n",
       "scalar proof binds payloads only in switch arms",
       ".Box(w)" },
-    { "package scalar\nNamed :: union { Tag(text: string) }\nMain :: () -> int "
+    { "package scalar\nNamed :: union { Tag(items: int[]) }\nMain :: () -> int "
       "{ return 1; }\n",
-      "scalar proof requires number and bool union payloads",
-      "text: string" },
+      "scalar proof requires number, bool and string union payloads",
+      "items: int[]" },
     { "package scalar\nPoint :: struct { x: int; }\nWrapped :: union { Of(p: "
       "Point) }\n"
       "Main :: () -> int { return 1; }\n",
-      "scalar proof requires number and bool union payloads",
+      "scalar proof requires number, bool and string union payloads",
       "p: Point" },
     { "package scalar\nMain :: () -> int { return text_byte_length(Value: "
       "\"ab\"); }\n",
@@ -13639,6 +13639,43 @@ ue;
        "    return n;\n"
        "}\n",
        3127061 },
+     /* Strings held by records and union payloads: written, copied, passed,
+      * returned and compared. Fields() 15 (one bit per check) and Variants()
+      * 7, so Main is 15 + 7 * 1000. */
+     { "string fields",
+       "package scalar\n"
+       "Label :: struct { name: string; count: int; }\n"
+       "Shape :: union { Named(text: string, size: int) | Empty }\n"
+       "Main :: () -> int { return Fields() + Variants() * 1000; }\n"
+       "Rename :: (label: Label, name: string) -> Label {\n"
+       "    renamed := label;\n"
+       "    renamed.name = name;\n"
+       "    return renamed;\n"
+       "}\n"
+       "Make :: (text: string) -> Shape { return Shape.Named(text, 7); }\n"
+       "Bit :: (b: bool, weight: int) -> int {\n"
+       "    if (b) { return weight; }\n"
+       "    return 0;\n"
+       "}\n"
+       "Fields :: () -> int {\n"
+       "    label: Label = {name: \"left\", count: 2};\n"
+       "    other := Rename(label, \"right\");\n"
+       "    return Bit(label.name == \"left\", 1) + Bit(other.name == "
+       "\"right\", 2) +\n"
+       "        Bit(label.name != other.name, 4) + Bit(other.count == 2, 8);\n"
+       "}\n"
+       "Variants :: () -> int {\n"
+       "    shape := Make(\"abc\");\n"
+       "    switch shape {\n"
+       "        case .Named(text, size):\n"
+       "            if (text == \"abc\") { return size; }\n"
+       "            return 0;\n"
+       "        case .Empty:\n"
+       "            return -1;\n"
+       "    }\n"
+       "    return 0;\n"
+       "}\n",
+       7015 },
      /* Package constants are their folded values: alone, in folded
       * expressions, as a shift count and typed number, f64 and u64 values,
       * declared after a constant that names them.

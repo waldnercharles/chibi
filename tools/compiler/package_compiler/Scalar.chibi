@@ -1999,9 +1999,9 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "scalar proof requires number and bool results where a function has several"));
             }
-            if (type == 0 || type == facts.StringType || field.container != 0) {
+            if (type == 0 || field.container != 0) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
-                                                      "scalar proof requires number and bool record fields"));
+                                                      "scalar proof requires number, bool and string record fields"));
             }
             rows.append(ScalarAt(forest, Field(forest, fields[index], "name"), facts.MemberRow, type, index, 0,
                                  field.name));
@@ -2030,9 +2030,9 @@ ScalarUnion :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: Typ
         for (index in 0..<variant.count) {
             field := members[variant.first + index];
             payload := ScalarTypeOf(field.storage);
-            if (payload == 0 || payload == facts.StringType || field.container != 0) {
+            if (payload == 0 || field.container != 0) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
-                                                      "scalar proof requires number and bool union payloads"));
+                                                      "scalar proof requires number, bool and string union payloads"));
             }
             rows.append(ScalarAt(forest, Field(forest, fields[index], "name"), facts.MemberRow, payload,
                                  variant.first + index - payloads, 0, field.name));

@@ -43,6 +43,11 @@ Unlocated :: (row: facts.Row) -> bool {
 Scalar :: (type: int) -> bool {
     return type >= facts.IntType && type <= facts.DoubleType;
 }
+// Whether a record field or union payload may have `type`: a scalar or a
+// string.
+Stored :: (type: int) -> bool {
+    return Scalar(type) || type == facts.StringType;
+}
 // Whether `type` is a scalar, a string or one of the module's records and
 // unions, whose Record and Union rows are at `records`.
 Valued :: (records: int[], type: int) -> bool {
@@ -246,7 +251,7 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
         }
         for (field in 0..<record.count) {
             member := rows[head + 1 + field];
-            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Scalar(member.type) ||
+            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(member.type) ||
                 member.value != field || member.count != 0 || member.literal != 0 || !Located(member, starts, size) ||
                 !Within(member, record)) {
                 return "invalid scalar record member row";
@@ -288,7 +293,7 @@ ValidUnion :: (rows: facts.Row[], head: int, starts: int[], size: int) -> string
         variants.append(at);
         for (field in at + 1..<at + variant.count + 1) {
             member := rows[field];
-            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Scalar(member.type) ||
+            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(member.type) ||
                 member.value != payloads || member.count != 0 || member.literal != 0 ||
                 !Located(member, starts, size) || !Within(member, variant)) {
                 return "invalid scalar union member row";

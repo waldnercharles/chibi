@@ -123,8 +123,9 @@ static package_collection *compile_tests(
         return NULL;
     }
     char *package = tests_package(&inputs);
-    char *path = xmalloc(strlen(inputs.project_root) + sizeof "/" TESTS_PACKAGE "/Tests.chibi");
-    sprintf(path, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs.project_root);
+    size_t path_size = strlen(inputs.project_root) + sizeof "/" TESTS_PACKAGE "/Tests.chibi";
+    char *path = xmalloc(path_size);
+    snprintf(path, path_size, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs.project_root);
     package_compile_error error;
     package_collection *packages = package_compile(&inputs, path, package, native, backend, &error);
     if (!packages && *error.path) {

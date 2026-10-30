@@ -1,7 +1,6 @@
 #include "unit_algebra_chibi.h"
 
 #include "compiler_fixture.h"
-#include "language/unit_algebra.h"
 #include "package_core_source.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
@@ -19,6 +18,30 @@
  * At most eight terms, 240 input/name bytes and 192 output bytes coexist.
  * Algebra inputs are explicit raw terms, never C parser policy outputs.
  * No IO, services, processes, tasks, combinations or timing loops. */
+/* The authored Units module's wire shape; the expected results below were
+ * recorded from the retired C unit algebra. */
+enum
+{
+    SCRIPT_UNIT_TERMS = 8,
+};
+typedef enum
+{
+    SCRIPT_UNIT_UNKNOWN,
+    SCRIPT_UNIT_LITERAL,
+    SCRIPT_UNIT_KNOWN,
+    SCRIPT_UNIT_INVALID,
+} script_unit_kind;
+typedef struct
+{
+    const char *name;
+    int length, power;
+} script_unit_term;
+typedef struct
+{
+    script_unit_kind kind;
+    int count;
+    script_unit_term terms[SCRIPT_UNIT_TERMS];
+} script_unit;
 typedef struct
 {
     const char *name;
@@ -218,22 +241,6 @@ static script_unit raw(unit value)
     }
     return out;
 }
-static bool same_unit(script_unit actual, script_unit expected)
-{
-    REQUIRE(actual.kind == expected.kind && actual.count == expected.count);
-    for (int i = 0; i < expected.count; i++) {
-        REQUIRE(
-            actual.terms[i].length == expected.terms[i].length &&
-            actual.terms[i].power == expected.terms[i].power &&
-            !memcmp(
-                actual.terms[i].name,
-                expected.terms[i].name,
-                (size_t)expected.terms[i].length
-            )
-        );
-    }
-    return true;
-}
 static bool pack(int b, script_unit value, pin_value *out)
 {
     REQUIRE(value.count >= 0 && value.count <= 8);
@@ -392,8 +399,7 @@ TEST_CASE(unit_algebra_parse_matches)
     for (int i = 0; i < 24; i++) {
         const parse_case *item = &parses[i];
         REQUIRE(!item->text || strlen(item->text) <= 240);
-        script_unit oracle = script_unit_parse(item->text);
-        REQUIRE(same_unit(oracle, raw(item->expected)));
+        script_unit oracle = raw(item->expected);
         for (int b = 0; b < 2; b++) {
             cleanup();
             pin_value args[] = { boolean(item->text != NULL),
@@ -421,8 +427,7 @@ TEST_CASE(unit_algebra_same_and_product_match)
     for (int i = 0; i < 5; i++) {
         const same_case *item = &equals[i];
         script_unit left = raw(item->left), right = raw(item->right);
-        bool oracle = script_unit_same(left, right);
-        REQUIRE(oracle == item->expected);
+        bool oracle = item->expected;
         for (int b = 0; b < 2; b++) {
             cleanup();
             pin_value args[2], result;
@@ -436,9 +441,8 @@ TEST_CASE(unit_algebra_same_and_product_match)
     for (int i = 0; i < 10; i++) {
         const product_case *item = &products[i];
         script_unit left = raw(item->left), right = raw(item->right);
-        bool overflow = false;
-        script_unit oracle = script_unit_product(left, right, item->sign, &overflow);
-        REQUIRE(overflow == item->overflow && same_unit(oracle, raw(item->expected)));
+        bool overflow = item->overflow;
+        script_unit oracle = raw(item->expected);
         for (int b = 0; b < 2; b++) {
             cleanup();
             pin_value args[3], result;
@@ -474,10 +478,8 @@ TEST_CASE(unit_algebra_format_matches)
     for (int i = 0; i < 9; i++) {
         const format_case *item = &formats[i];
         REQUIRE(item->size > 0 && item->size <= 192);
-        char oracle[192];
+        const char *oracle = item->expected;
         script_unit value = raw(item->value);
-        script_unit_format(value, oracle, (size_t)item->size);
-        REQUIRE(!strcmp(oracle, item->expected));
         for (int b = 0; b < 2; b++) {
             cleanup();
             pin_value args[2], result;

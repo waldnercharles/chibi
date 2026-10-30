@@ -446,22 +446,27 @@ Holds :: (values: int[], wanted: int) -> bool {
     return false;
 }
 // The operands an Array row's operator consumes: ArrayNew's elements, one
-// array, an array and an index or an element, or an array, an index and an
-// element; 0 for no operator.
+// array, an array and an index, an element or another array, or an array and
+// two ints or an index and an element; 0 for no operator.
 ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayNew) {
         return operand.count;
     }
-    consumed := [0, 1, 1, 2, 3, 2, 1];
-    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayCopy) {
+    consumed := [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2];
+    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayRemove) {
         return 0;
     }
     return consumed[operand.value];
 }
+// Whether the operator changes the elements of the array it consumes.
+ArrayChanges :: (operator: int) -> bool {
+    return operator == facts.ArraySet || operator == facts.ArrayPush || operator == facts.ArrayExtend ||
+           operator == facts.ArrayRemove;
+}
 // Whether the Array row at `row` of the operands of the statement at `at`,
 // which end before `last`, reads operands of its types from `stack`, none
-// below `floor`. ArraySet and ArrayPush are the last operand of an Assign to
-// the variable its first operand reads.
+// below `floor`. A change of an array is the last operand of an Assign to the
+// variable its first operand reads.
 ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, operand: facts.Row, stack: int[],
                floor: int) -> string {
     consumed := ArrayOperands(operand);
@@ -485,6 +490,14 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         }
         return "";
     }
+    if (operator == facts.ArrayContains) {
+        searched := Element(records, stack[base]);
+        if (operand.type != facts.BoolType || searched == 0 || searched >= facts.RecordType ||
+            stack[base + 1] != searched) {
+            return mismatch;
+        }
+        return "";
+    }
     element := Element(records, operand.type);
     if (element == 0) {
         return mismatch;
@@ -500,12 +513,31 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
     if (stack[base] != operand.type) {
         return mismatch;
     }
-    if (operator == facts.ArrayCopy) {
-        return "";
+    // What follows the array: nothing, an int, an element, another array, or
+    // two ints.
+    if (operator == facts.ArraySlice) {
+        if (stack[base + 1] != facts.IntType || stack[base + 2] != facts.IntType) {
+            return mismatch;
+        }
+    } else if (operator == facts.ArraySet) {
+        if (stack[base + 1] != facts.IntType || stack[base + 2] != element) {
+            return mismatch;
+        }
+    } else if (operator == facts.ArrayPush) {
+        if (stack[base + 1] != element) {
+            return mismatch;
+        }
+    } else if (operator == facts.ArrayExtend) {
+        if (stack[base + 1] != operand.type) {
+            return mismatch;
+        }
+    } else if (operator == facts.ArrayResize || operator == facts.ArrayRemove) {
+        if (stack[base + 1] != facts.IntType) {
+            return mismatch;
+        }
     }
-    value := stack[base + consumed - 1];
-    if (value != element || (operator == facts.ArraySet && stack[base + 1] != facts.IntType)) {
-        return mismatch;
+    if (!ArrayChanges(operator)) {
+        return "";
     }
     first := rows[at + 1];
     if (rows[at].kind != facts.AssignRow || base != 0 || row != last - 1 || first.kind != facts.ReadRow ||
@@ -1049,6 +1081,21 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     if (operand.value == facts.ArrayPush) {
         return Op(native.ArrayPush, type, slot, stack[base], stack[base + 1], 0);
     }
+    if (operand.value == facts.ArrayExtend) {
+        return Op(native.ArrayExtend, type, slot, stack[base], stack[base + 1], 0);
+    }
+    if (operand.value == facts.ArraySlice) {
+        return Op(native.ArraySlice, type, slot, stack[base], stack[base + 1], stack[base + 2]);
+    }
+    if (operand.value == facts.ArrayResize) {
+        return Op(native.ArrayResize, type, slot, stack[base], stack[base + 1], 0);
+    }
+    if (operand.value == facts.ArrayContains) {
+        return Op(native.ArrayContains, type, slot, stack[base], stack[base + 1], 0);
+    }
+    if (operand.value == facts.ArrayRemove) {
+        return Op(native.ArrayRemove, type, slot, stack[base], stack[base + 1], 0);
+    }
     return Op(native.ArrayCopy, type, slot, stack[base], 0, 0);
 }
 // One native instruction without a literal.
@@ -1471,6 +1518,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         }
                     } else {
                         item = ArrayLowered(operand, type, slot, stack, base);
+                        if (operand.value == facts.ArrayContains) {
+                            // The element type its array holds.
+                            item.literal = i64(slots[shape.first_slot + stack[base]] - native.ArrayType);
+                        }
                     }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.TextRow && operand.value == facts.TextFormat) {

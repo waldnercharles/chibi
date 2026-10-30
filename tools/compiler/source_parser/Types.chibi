@@ -125,6 +125,10 @@ ParseTypePrimary :: (c: ^Cursor, n: ^(Node[]), t: int) {
         Add(n, t, group, "");
         return;
     }
+    if (StartsFn(c, n, c.pos)) {
+        Add(n, t, ParseCallableType(c, n), "");
+        return;
+    }
     name := ParseTypeName(c, n);
     if (c.failed) {
         return;
@@ -137,6 +141,31 @@ ParseTypePrimary :: (c: ^Cursor, n: ^(Node[]), t: int) {
         return;
     }
     Add(n, t, name, "name");
+}
+
+// Whether `fn (` starts at token `at`: the word that makes a callable type or
+// an inline function. Construct marks the leaf `fn`; reading it as a name
+// (TakeName) makes it an identifier again.
+StartsFn :: (c: ^Cursor, n: ^(Node[]), at: int) -> bool {
+    return n^[at].kind == "fn" && n^[at + 1].token == tk.OpenParen;
+}
+
+// `fn (parameters) [-> result]`, a function a parameter takes.
+ParseCallableType :: (c: ^Cursor, n: ^(Node[])) -> int {
+    callable := New(n, "callable_type");
+    word := Take(c, n, callable, "");
+    n^[word].kind = "fn";
+    n^[word].named = false;
+    Add(n, callable, ParseParameters(c, n), "parameters");
+    if (Accept(c, n, callable, tk.ArrowRight, "")) {
+        if (c.token == tk.OpenParen && (Peek(c, n, 1) == tk.CloseParen ||
+                                          (IsName(Peek(c, n, 1)) && Peek(c, n, 2) == tk.Colon))) {
+            Add(n, callable, ParseParameters(c, n), "results");
+        } else {
+            Add(n, callable, ParseType(c, n), "results");
+        }
+    }
+    return callable;
 }
 
 // type_name: a name, then `.name` parts.
@@ -205,6 +234,9 @@ SkipTypePrimary :: (n: ^(Node[]), at: int, final: int) -> int {
         }
         return value + 1;
     }
+    if (n^[at].kind == "fn" && n^[at + 1].token == tk.OpenParen) {
+        return SkipCallableType(n, at + 1, final);
+    }
     if (token == tk.OpenParen) {
         inner := SkipType(n, at + 1, final);
         if (inner < 0 || n^[inner].token != tk.CloseParen) {
@@ -236,6 +268,18 @@ SkipProc :: (n: ^(Node[]), at: int, final: int) -> int {
         return SkipBrackets(n, closed + 1, final);
     }
     return SkipType(n, closed + 1, final);
+}
+
+// The position after `fn (parameters) [-> result]` whose `(` is at `at`.
+SkipCallableType :: (n: ^(Node[]), at: int, final: int) -> int {
+    end := SkipBrackets(n, at, final);
+    if (end < 0 || n^[end].token != tk.ArrowRight) {
+        return end;
+    }
+    if (n^[end + 1].token == tk.OpenParen) {
+        return SkipBrackets(n, end + 1, final);
+    }
+    return SkipType(n, end + 1, final);
 }
 
 SkipTypeSuffixes :: (n: ^(Node[]), at: int, final: int) -> int {

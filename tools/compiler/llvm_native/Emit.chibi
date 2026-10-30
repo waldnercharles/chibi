@@ -176,6 +176,14 @@ pub ArrayBytes: int : 48;
 // `left` 1 it calls the address in its first argument instead, and its symbol
 // text is empty.
 pub ForeignCall: int : 49;
+// A module's retained states: scalars that outlive a call, which a host that
+// replaces the module reads out and sets in the new one. StateLoad declares
+// state `target` and gives its value: the states are numbered in code order,
+// `type` is a number or bool, `literal` the value it starts with, and
+// texts[right] its name. StateStore gives state `target` the left slot's value,
+// of its type.
+pub StateLoad: int : 50;
+pub StateStore: int : 51;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -185,7 +193,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
 }
 Produces :: (op: int) -> bool {
     return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) ||
-           op == ForeignCall;
+           op == ForeignCall || op == StateLoad;
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
@@ -195,7 +203,7 @@ Unary :: (op: int) -> bool {
 }
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
-           (op >= ArrayLength && op <= ArrayBytes);
+           (op >= ArrayLength && op <= ArrayBytes) || op == StateStore;
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -457,6 +465,17 @@ FormatValid :: (slots: int[], arguments: int[], item: Instruction) -> bool {
     }
     return true;
 }
+// A retained state is a number or bool, a load names it and starts it at a
+// value of its type, and a store writes a slot of its type.
+StateValid :: (slots: int[], texts: string[], item: Instruction) -> bool {
+    if (abi.ScalarType(item.type) == "" || item.target < 0) {
+        return false;
+    }
+    if (item.op == StateStore) {
+        return Typed(slots, item.left, item.type);
+    }
+    return Fits(item.literal, item.type) && Index(item.right, length(texts));
+}
 // A call names another function of the module, with its result type and one
 // argument slot of each parameter's type.
 CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments: int[], item: Instruction) -> bool {
@@ -515,7 +534,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > ForeignCall) {
+        if (item.op < Constant || item.op > StateStore) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -580,6 +599,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (item.op == Format && !FormatValid(slots, arguments, item)) {
             return Result.Rejected(base + pc, "native format differs from its operands");
+        }
+        if ((item.op == StateLoad || item.op == StateStore) && !StateValid(slots, texts, item)) {
+            return Result.Rejected(base + pc, "native retained state differs from its operands");
         }
         if (item.op == ForeignCall && !ForeignValid(slots, arguments, texts, item)) {
             return Result.Rejected(base + pc, "native foreign call differs from its operands");
@@ -944,6 +966,10 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}  %v{} = extractvalue {} %a{}, {}\n", out, pc, TypeName(item.right), pc, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == StateLoad) {
+        out = format_text("{}{}", out, StateRead(item, pc));
+    } else if (item.op == StateStore) {
+        out = format_text("{}{}", out, StateWrite(item, pc));
     } else if (item.op == ArrayBytes) {
         out = format_text("{}{}", out, ArrayBytesRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
@@ -1649,6 +1675,84 @@ Failures :: (functions: Function[], code: Instruction[]) -> string {
     return out;
 }
 
+// The symbol of retained state `index`.
+StateSymbol :: (index: int) -> string {
+    return format_text("chibi_scalar.retained.{}", index);
+}
+// The type of a retained state's global: a float or double as the integer of
+// its bits, so a global's initial value is a decimal.
+StateStorage :: (type: int) -> string {
+    if (type == abi.FloatStorage) {
+        return "i32";
+    }
+    if (type == abi.DoubleStorage) {
+        return "i64";
+    }
+    return abi.ScalarType(type);
+}
+// The value of retained state `item.target`, as a `type` value `name`.
+StateValue :: (name: string, item: Instruction) -> string {
+    out := format_text("  %{}.stored = load {}, ptr @{}\n", name, StateStorage(item.type), StateSymbol(item.target));
+    if (abi.Floating(item.type)) {
+        return format_text("{}  %{} = bitcast {} %{}.stored to {}\n", out, name, StateStorage(item.type), name,
+                           abi.ScalarType(item.type));
+    }
+    return format_text("{}  %{} = add {} %{}.stored, 0\n", out, name, abi.ScalarType(item.type), name);
+}
+StateRead :: (item: Instruction, pc: int) -> string {
+    out := StateValue(format_text("v{}", pc), item);
+    return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+}
+StateWrite :: (item: Instruction, pc: int) -> string {
+    out := Load(format_text("a{}", pc), item.type, "s", item.left);
+    value := format_text("%a{}", pc);
+    if (abi.Floating(item.type)) {
+        out = format_text("{}  %b{} = bitcast {} %a{} to {}\n", out, pc, abi.ScalarType(item.type), pc,
+                          StateStorage(item.type));
+        value = format_text("%b{}", pc);
+    }
+    return format_text("{}  store {} {}, ptr @{}\n", out, StateStorage(item.type), value, StateSymbol(item.target));
+}
+// The module's retained states, in the order their loads are in the code.
+RetainedStates :: (code: Instruction[]) -> Instruction[] {
+    states: Instruction[] = [];
+    for (item in code) {
+        if (item.op == StateLoad) {
+            states.append(item);
+        }
+    }
+    return states;
+}
+// Each state's global, which starts at its value. A state's load numbers it
+// by its place among the loads, and a store names a state of the module.
+StateGlobals :: (code: Instruction[]) -> string {
+    out := "";
+    for (item in RetainedStates(code)) {
+        initial := item.literal;
+        if (item.type == abi.FloatStorage) {
+            initial = Spelled(initial, abi.UintStorage);
+        } else if (!abi.Floating(item.type)) {
+            initial = Spelled(initial, item.type);
+        }
+        out = format_text("{}@{} = internal global {} {}\n", out, StateSymbol(item.target), StateStorage(item.type), initial);
+    }
+    return out;
+}
+// Whether the module's states are numbered in order and every store names one.
+StatesNumbered :: (code: Instruction[]) -> bool {
+    states := RetainedStates(code);
+    for (index in 0..<length(states)) {
+        if (states[index].target != index) {
+            return false;
+        }
+    }
+    for (item in code) {
+        if (item.op == StateStore && (item.target >= length(states) || states[item.target].type != item.type)) {
+            return false;
+        }
+    }
+    return true;
+}
 // Whether `code` moves array elements, which the module's copy does.
 Copies :: (code: Instruction[]) -> bool {
     for (item in code) {
@@ -1789,6 +1893,9 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
                 continue;
         }
     }
+    if (!StatesNumbered(code)) {
+        return Result.Rejected(-1, "native retained states differ from their loads");
+    }
     // A program's main has no context to pass.
     runtime := Runtime(code);
     if (runtime && mode == MainEntry) {
@@ -1812,8 +1919,8 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         out = format_text("{}@{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n", out, TextSymbol(index),
                           strings.ByteLength(texts[index]) + 1, Escaped(texts[index]));
     }
-    out = format_text("{}{}declare void @llvm.trap()\n{}{}", out, Failures(functions, code), Declarations(code),
-                      ForeignDeclarations(functions, slots, code, arguments, texts));
+    out = format_text("{}{}{}declare void @llvm.trap()\n{}{}", out, StateGlobals(code), Failures(functions, code),
+                      Declarations(code), ForeignDeclarations(functions, slots, code, arguments, texts));
     debug := source.file != "";
     compares := Compares(code);
     fallible := Fallible(functions, code);
@@ -2244,6 +2351,52 @@ StateManifest :: (text: string, name: string, names: string[], ids: i64[], funct
     return format_text("{}@chibi_state_{} = constant %chibi.manifest { i32 1, i32 {}, ptr @chibi_scalar.states }\n", out,
                        name, length(states));
 }
+// The retained states of a library, in a manifest of their own,
+// `chibi_retained_<library>`: { i32 abi, i32 count, ptr types, ptr names, ptr
+// get, ptr set }. The types are the manifest types of the states in code
+// order and the names their NUL-ended names. `get` writes the states' values
+// as words to its result, and `set` reads them from its arguments, as an
+// export entry does, so a host moves them from one build of a library to the
+// next. A library with no states has no such manifest.
+RetainedManifest :: (text: string, name: string, code: Instruction[], texts: string[]) -> string {
+    states := RetainedStates(code);
+    if (length(states) == 0) {
+        return text;
+    }
+    types: string[] = [];
+    names := "";
+    bytes: int = 0;
+    get := "define internal void @chibi_scalar.retained.get(ptr %ctx, ptr %in, ptr %out) #0 {\nentry:\n";
+    set := "define internal void @chibi_scalar.retained.set(ptr %ctx, ptr %in, ptr %out) #0 {\nentry:\n";
+    for (item in states) {
+        index := item.target;
+        label := texts[item.right];
+        types.append(format_text("i8 {}", abi.ExportType(item.type)));
+        names = format_text("{}{}\\00", names, Escaped(label));
+        bytes += strings.ByteLength(label) + 1;
+        get = format_text("{}{}{}", get, StateValue(format_text("g{}", index), item),
+                          ToWord(format_text("w{}", index), format_text("%g{}", index), item.type));
+        get = format_text("{}  %o{}.at = getelementptr inbounds i64, ptr %out, i64 {}\n  store i64 %w{}, ptr %o{}.at\n", get,
+                          index, index, index, index);
+        set = format_text("{}  %i{}.at = getelementptr inbounds i64, ptr %in, i64 {}\n  %i{} = load i64, ptr %i{}.at\n", set,
+                          index, index, index, index);
+        set = format_text("{}{}", set, FromWord(format_text("v{}", index), format_text("%i{}", index), item.type));
+        value := format_text("%v{}", index);
+        if (abi.Floating(item.type)) {
+            set = format_text("{}  %b{} = bitcast {} %v{} to {}\n", set, index, abi.ScalarType(item.type), index,
+                              StateStorage(item.type));
+            value = format_text("%b{}", index);
+        }
+        set = format_text("{}  store {} {}, ptr @{}\n", set, StateStorage(item.type), value, StateSymbol(index));
+    }
+    out := format_text("{}\n{}  ret void\n}\n\n{}  ret void\n}\n", text, get, set);
+    out = format_text("{}@chibi_scalar.retained.types = private unnamed_addr constant [{} x i8] [{}]\n", out,
+                      length(types), strings.Join(types, ", "));
+    out = format_text("{}@chibi_scalar.retained.names = private unnamed_addr constant [{} x i8] c\"{}\"\n", out, bytes,
+                      names);
+    return format_text("{}@chibi_retained_{} = constant { i32, i32, ptr, ptr, ptr, ptr } { i32 1, i32 {}, ptr @chibi_scalar.retained.types, ptr @chibi_scalar.retained.names, ptr @chibi_scalar.retained.get, ptr @chibi_scalar.retained.set }\n",
+                       out, name, length(states));
+}
 // A library module: each function is internal, and the one symbol it exports
 // is its manifest, `chibi_natives_<library>`, a constant execution_native_manifest
 // (src/execution/native.h) listing an entry for each function whose
@@ -2301,6 +2454,6 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
                       length(exports), strings.Join(exports, ", "));
     out = format_text("{}@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",
                       out, name, abi.ExportAbi, length(exports));
-    return Result.Emitted(StateManifest(out, name, names, ids, functions, parameters, records, fields, field_names,
-                                        runtime));
+    out = StateManifest(out, name, names, ids, functions, parameters, records, fields, field_names, runtime);
+    return Result.Emitted(RetainedManifest(out, name, code, texts));
 }

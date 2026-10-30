@@ -114,9 +114,18 @@ static void run_tests(
             printf("  expected it to fail with %.*s\n", (int)length, expected);
         }
         if (failure.path) {
+            char shown[4096];
+            package_compile_source_path(
+                inputs->project_root,
+                inputs->collections,
+                inputs->collection_count,
+                failure.path,
+                shown,
+                sizeof shown
+            );
             printf(
                 "  %s:%d:%d: %s\n",
-                failure.path,
+                shown,
                 failure.line,
                 failure.column,
                 failure.message
@@ -326,6 +335,9 @@ int authoring_project_test(const char *root, const char *core)
         }
         workers = (int)value;
     }
+    /* A test's own output reaches a pipe as it prints, so a runner watching a
+     * busy test sees where it is. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
     char error[512] = { 0 };
     const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
                                                 COMPILER_JSON_DEFINITION_PACK };

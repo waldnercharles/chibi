@@ -82,6 +82,17 @@ static bool copy_resource(const char *binary, const char *name, const char *dest
     return tool_run(args, root, log_path) == 0;
 }
 
+/* The launcher compiles its application on a first start, which takes longer
+ * than a case may run; start it once, with time to finish, so every case after
+ * it starts from the kept closure. Its status does not matter. */
+static void warm_launcher()
+{
+    const char *version[] = { launcher, "version", NULL };
+    char output[256];
+    path(output, "warm.log");
+    tool_run_within(version, root, output, 300);
+}
+
 static void setup(const char *binary)
 {
     strcpy(root, "/tmp/chibi-cli-XXXXXX");
@@ -137,6 +148,7 @@ static void setup(const char *binary)
     char program[256];
     path(program, "bin/chibi-compile");
     assert(!chmod(program, 0700));
+    warm_launcher();
 }
 
 /* The text of the file at `relative`, which must exist. */
@@ -205,6 +217,61 @@ TEST_CASE(version_of_the_built_launcher)
                     strstr(text, " execution ");
     free(text);
     REQUIRE(reported);
+    return true;
+}
+
+/* The number of closures kept under `cache`. */
+static int closures_kept(const char *cache)
+{
+    char folder[512];
+    snprintf(folder, sizeof folder, "%s/closures", cache);
+    DIR *open = opendir(folder);
+    int count = 0;
+    for (struct dirent *entry; open && (entry = readdir(open));) {
+        count += !strncmp(entry->d_name, "closure-", 8);
+    }
+    if (open) {
+        closedir(open);
+    }
+    return count;
+}
+
+static void append_comment(const char *relative)
+{
+    char file[256];
+    path(file, relative);
+    FILE *stream = fopen(file, "a");
+    assert(stream);
+    fputs("// edited\n", stream);
+    fclose(stream);
+}
+
+/* The launcher compiles its application once per set of sources: a second start
+ * reuses the kept closure, and an edit to the application or to a core package
+ * it imports compiles another. */
+TEST_CASE(launcher_keeps_its_compiled_application)
+{
+    char cache[256];
+    path(cache, "closure-cache");
+    const char *previous = getenv("CHIBI_ASSET_CACHE_DIR");
+    char *saved = previous ? xstrdup(previous) : NULL;
+    REQUIRE(!setenv("CHIBI_ASSET_CACHE_DIR", cache, 1));
+    const char *version[] = { launcher, "version", NULL };
+    bool compiled = tool_run(version, root, log_path) == 0 &&
+                    closures_kept(cache) == 1;
+    bool reused = tool_run(version, root, log_path) == 0 && closures_kept(cache) == 1;
+    append_comment("share/chibi/apps/chibi/Main.chibi");
+    bool application = tool_run(version, root, log_path) == 0 &&
+                       closures_kept(cache) == 2;
+    append_comment("share/chibi/core/strings/Strings.chibi");
+    bool core = tool_run(version, root, log_path) == 0 && closures_kept(cache) == 3;
+    if (saved) {
+        setenv("CHIBI_ASSET_CACHE_DIR", saved, 1);
+    } else {
+        unsetenv("CHIBI_ASSET_CACHE_DIR");
+    }
+    free(saved);
+    REQUIRE(compiled && reused && application && core);
     return true;
 }
 
@@ -325,33 +392,24 @@ TEST_CASE(test_runs_shared_package_tests)
     char folder[256];
     path(folder, "package-tests");
     REQUIRE(!mkdir(folder, 0700));
-    const char *passing =
-        "package facts\nimport strings \"core:strings\"\n"
-        "@test\nPasses :: () {\n"
-        " args := application.arguments()\n"
-        " assert(length(args) == 1 && strings.HasSuffix(args[0], "
-        "\"/package-tests/Facts.chibi\"), \"test source argv\")\n"
-        " child := program.open(args[0], \"Helper\", [\"nested-test\"])\n"
-        " assert(program.update(child) == 1, \"nested test source prepares\")\n"
-        " called := program.call(child)\n"
-        " assert(called.status == 0 && called.result == 17, \"test program "
-        "service\")\n"
-        " program.close(child)\n}\n"
-        "Helper :: () -> int {\n"
-        " args := application.arguments()\n"
-        " assert(length(args) == 1 && args[0] == \"nested-test\", \"nested "
-        "test argv\")\n"
-        " return 17\n}\n"
-        "@test\nPureOne :: () { assert(2 + 2 == 4, \"addition\") }\n"
-        "@test\nPureTwo :: () { assert(3 * 3 == 9, \"multiplication\") }\n";
+    /* Tests run without a program service (#880): they print, and nothing else. */
+    const char *passing = "package facts\n"
+                          "@test\nPasses :: () {\n"
+                          " print_string(\"a test prints as it runs\")\n"
+                          " two: int = 2\n"
+                          " assert(two + two == 4, \"addition\")\n}\n"
+                          "@test\nPureOne :: () {\n two: int = 2\n assert(two "
+                          "+ two == 4, \"addition\")\n}\n"
+                          "@test\nPureTwo :: () {\n three: int = 3\n "
+                          "assert(three * three == 9, \"multiplication\")\n}\n";
     write_file("package-tests/Facts.chibi", passing);
     const char *named[] = { launcher, "test", "package-tests", NULL };
     REQUIRE(tool_run(named, root, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS facts.Passes\n"));
+    REQUIRE(file_has("output.log", "PASS project.Passes\n"));
     REQUIRE(file_has("output.log", "3 tests, 0 failed\n"));
     const char *here[] = { launcher, "test", NULL };
     REQUIRE(tool_run(here, folder, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS facts.Passes\n"));
+    REQUIRE(file_has("output.log", "PASS project.Passes\n"));
     const char *previous = getenv("CHIBI_TEST_WORKERS");
     char *saved_workers = previous ? xstrdup(previous) : NULL;
     const char *workers[] = { "1", "2" };
@@ -359,7 +417,7 @@ TEST_CASE(test_runs_shared_package_tests)
     for (int i = 0; i < 2; i++) {
         worker_settings &= !setenv("CHIBI_TEST_WORKERS", workers[i], 1);
         worker_settings &= tool_run(named, root, log_path) == 0;
-        worker_settings &= file_is("output.log", "PASS facts.Passes\nPASS facts.PureOne\nPASS facts.PureTwo\n3 tests, 0 failed\n");
+        worker_settings &= file_is("output.log", "a test prints as it runs\nPASS project.Passes\nPASS project.PureOne\nPASS project.PureTwo\n3 tests, 0 failed\n");
     }
     worker_settings &= !setenv("CHIBI_TEST_WORKERS", "0", 1);
     worker_settings &= tool_run(named, root, log_path) == 1;
@@ -375,7 +433,7 @@ TEST_CASE(test_runs_shared_package_tests)
     REQUIRE(worker_settings);
     write_file("package-tests/Facts.chibi", "package facts\n@test\nFails :: () { assert(false, \"shared test failure\") }\n");
     REQUIRE(tool_run(named, root, log_path) == 1);
-    REQUIRE(file_has("output.log", "FAIL facts.Fails\n"));
+    REQUIRE(file_has("output.log", "FAIL project.Fails\n"));
     REQUIRE(file_has("output.log", "Facts.chibi:3:"));
     REQUIRE(file_has("output.log", "shared test failure"));
     write_file("package-tests/Facts.chibi", "package facts\n@test\nFails :: () { missing() }\n");
@@ -387,21 +445,6 @@ TEST_CASE(test_runs_shared_package_tests)
     REQUIRE(tool_run(help, root, log_path) == 0);
     const char *extra[] = { launcher, "test", "one", "two", NULL };
     REQUIRE(tool_run(extra, root, log_path) == 2);
-    char application[1024];
-    const char *slash = strrchr(built, '/');
-    REQUIRE(slash);
-    int length = snprintf(
-        application,
-        sizeof application,
-        "%.*s/../share/chibi/apps/chibi",
-        (int)(slash - built),
-        built
-    );
-    REQUIRE(length > 0 && length < (int)sizeof application);
-    const char *self[] = { launcher, "test", application, NULL };
-    REQUIRE(tool_run(self, root, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS chibi_cli.CommandArgumentsKeepProgramArguments\n"));
-    REQUIRE(file_has("output.log", "0 failed\n"));
     REQUIRE(!exists("package-tests/.chibi"));
     return true;
 }
@@ -482,12 +525,13 @@ TEST_CASE(compiler_test_reports_each_test)
     REQUIRE(tool_run(run, root, output) == 0);
     REQUIRE(file_is("tests.log", "PASS facts.Passes\nPASS facts.Fails\n2 tests, 0 failed\n"));
 
-    write_file("broken/facts/Facts.chibi", "package facts\nBroken :: () -> int { return missing; }\n");
+    /* A package is compiled when it declares a test. */
+    write_file("broken/facts/Facts.chibi", "package facts\n@test\nOk :: () {}\nBroken :: () -> int { return missing; }\n");
     char broken[256];
     path(broken, "broken");
     const char *invalid[] = { compiler, "--project-root", broken, "--test", NULL };
     REQUIRE(tool_run(invalid, root, output) == 1);
-    REQUIRE(file_has("tests.log", "/broken/facts/Facts.chibi:2:"));
+    REQUIRE(file_has("tests.log", "/broken/facts/Facts.chibi:4:"));
 
     write_file("game/sounds/Sounds.chibi", "package sounds\n@test\nQuiet :: () {\n    set_master_volume(0.5);\n}\n");
     char game[256];
@@ -561,8 +605,8 @@ TEST_CASE(compiler_runs_cost_explanation_regressions)
                           "--test",
                           NULL };
     REQUIRE(tool_run(run, root, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS cost_explanations.EmptyReport\n"));
-    REQUIRE(file_has("output.log", "PASS cost_explanations.FullWidthIdentifiersAndJsonEscaping\n"));
+    REQUIRE(file_has("output.log", "PASS project.EmptyReport\n"));
+    REQUIRE(file_has("output.log", "PASS project.FullWidthIdentifiersAndJsonEscaping\n"));
     REQUIRE(file_has("output.log", "6 tests, 0 failed\n"));
     return true;
 }
@@ -838,19 +882,19 @@ TEST_CASE(authored_applications_use_independent_program_sessions)
         " source := files.read(args[2])\n"
         " assert(files.write(path, source), \"write valid edit\")\n"
         " assert(program.update(first) == 1, \"first session prepares\")\n"
-        " a = program.call(first); b = program.call(second)\n"
-        " assert(a.status == 0 && a.result == 142, \"retained reload\")\n"
-        " assert(b.status == 0 && b.result == 202, \"independent "
+        " c := program.call(first); d := program.call(second)\n"
+        " assert(c.status == 0 && c.result == 142, \"retained reload\")\n"
+        " assert(d.status == 0 && d.result == 202, \"independent "
         "generation\")\n"
         " assert(files.write(path, \"package counter\\nMain :: () { missing() "
         "}\\n\"), \"write invalid edit\")\n"
         " assert(program.update(first) == -1, \"reject invalid edit\")\n"
         " assert(program.diagnostic(first) != \"\", \"source diagnostic\")\n"
-        " a = program.call(first)\n"
-        " assert(a.status == 0 && a.result == 143, \"last valid state\")\n"
+        " e := program.call(first)\n"
+        " assert(e.status == 0 && e.result == 143, \"last valid state\")\n"
         " program.close(first)\n"
-        " b = program.call(second)\n"
-        " assert(b.status == 0 && b.result == 203, \"other handle remains "
+        " f := program.call(second)\n"
+        " assert(f.status == 0 && f.result == 203, \"other handle remains "
         "alive\")\n"
         " program.close(second)\n"
         " print_string(\"public-programs-ok\")\n}\n"
@@ -1010,7 +1054,7 @@ TEST_CASE(program_failures_report_entry_and_source_errors)
     REQUIRE(file_has("output.log", "/run-errors/Hello.chibi:2:"));
     write_file("run-errors/Hello.chibi", "package hello\nMain :: () { runner.snapshot() }\n");
     REQUIRE(run_program("run-errors/Hello.chibi") == 1);
-    REQUIRE(file_has("output.log", "Unknown value 'runner'"));
+    REQUIRE(file_has("output.log", "Unknown function 'runner.snapshot'"));
     write_file("run-errors/Hello.chibi", "Main :: () {}\n");
     REQUIRE(run_program("run-errors/Hello.chibi") == 1);
     REQUIRE(file_has("output.log", "/run-errors/Hello.chibi:1:1:"));
@@ -1850,6 +1894,7 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(version_of_the_built_launcher);
     RUN_TEST_CASE(doctor_reports_each_capability);
     RUN_TEST_CASE(doctor_of_the_built_launcher);
+    RUN_TEST_CASE(launcher_keeps_its_compiled_application);
     RUN_TEST_CASE(test_runs_shared_package_tests);
     RUN_TEST_CASE(compiler_test_reports_each_test);
     RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
@@ -1921,6 +1966,7 @@ static void setup_installed(const char *binary)
     assert(length > 0 && length < (int)sizeof compiler);
     free(program);
     path(log_path, "output.log");
+    warm_launcher();
 }
 
 TEST_CASE(raw_sdk_build_finds_its_application_and_companions)

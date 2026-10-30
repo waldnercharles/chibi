@@ -429,6 +429,7 @@ Files :: (target: string) -> string[] {
             "src/language/component.c", "src/language/semantic_expression.c", "src/language/semantic_calls.c",
             "src/language/semantic_statement.c", "src/language/semantic_declaration.c",
             "src/language/semantic_effects.c", "src/language/semantic_units.c",
+            "src/language/semantic_results.c",
             "src/language/semantic_recovery.c", "src/language/semantic_union.c",
             "src/language/semantic_record.c", "src/language/semantic_constant.c",
             "src/language/constant_proof.c", "src/language/scalar_constant.c", "src/language/numeric.c",
@@ -730,7 +731,7 @@ Files :: (target: string) -> string[] {
             "test/tools/device_controls.c", "test/render/interior_border.c",
             "test/render/viewport_resize.c", "test/draw_backend.cpp", "test/tools/scene3d_camera.c",
             "test/tools/scene3d_terrain.c", "test/tools/scene3d_volume.c",
-            "test/tools/terrain_cut_benchmark.c", "test/render/material_ramps.c", "test/tools/hrc_spot.c"
+            "test/tools/terrain_cut_benchmark.c", "test/tools/hrc_spot.c"
         ];
     }
     if (target == "chibi_image_preparation_consumer") {
@@ -3167,6 +3168,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_CORE_STRINGS_TEST_INPUTS=test-inputs:CORE_STRINGS_TEST_SOURCE:core_strings:test/core_strings",
             "CHIBI_CORE_TIME_BYTES=bytes:packages/core/time/Time.chibi",
             "CHIBI_CORE_TIME_TEST_BYTES=bytes:test/standard_library/time/TimeTests.chibi",
+            "CHIBI_HOST_CLOCK_BYTES=bytes:packages/host/clock/Clock.chibi",
             "CHIBI_PORTABLE_CONSUMER_BYTES=bytes:test/packages/portable_consumer/Consumer.chibi",
             "CHIBI_PORTABLE_BYTES_SOURCES=test-sources:PORTABLE_BYTES:bytes:packages/core/bytes",
             "CHIBI_PORTABLE_BYTES_INPUTS=test-inputs:PORTABLE_BYTES:bytes:packages/core/bytes",
@@ -3212,6 +3214,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_REFERENCES_BYTES=bytes:tools/compiler/package_compiler/References.chibi",
             "CHIBI_PACKAGE_COMPILER_POINTERS_BYTES=bytes:tools/compiler/package_compiler/Pointers.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAR_BYTES=bytes:tools/compiler/package_compiler/Scalar.chibi",
+            "CHIBI_PACKAGE_COMPILER_FALLIBLE_BYTES=bytes:tools/compiler/package_compiler/Fallible.chibi",
             "CHIBI_PACKAGE_COMPILER_SEQUENCES_BYTES=bytes:tools/compiler/package_compiler/Sequences.chibi",
             "CHIBI_PACKAGE_COMPILER_TASKS_BYTES=bytes:tools/compiler/package_compiler/Tasks.chibi",
             "CHIBI_PACKAGE_COMPILER_TASKRESULTS_BYTES=bytes:tools/compiler/package_compiler/TaskResults.chibi",

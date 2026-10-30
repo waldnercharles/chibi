@@ -106,6 +106,7 @@ void script_analyzer_union_types(analyzer *a, TSNode body)
         if (!script_analyzer_is(node, "union_declaration")) {
             continue;
         }
+        bool error = script_analyzer_error_attribute(a, node);
         TSNode token = script_analyzer_field(node, "name");
         char *name = script_analyzer_name_copy(a, token);
         script_lexical_facts facts = script_lexical_view(a->out, acount(a->out->symbols));
@@ -155,6 +156,7 @@ void script_analyzer_union_types(analyzer *a, TSNode body)
                                    .source_name = declaration.source_name,
                                    .type = declaration.type,
                                    .authored_record = declaration.authored_record,
+                                   .error = error,
                                    .size = declaration.size }
         );
     }
@@ -334,8 +336,11 @@ script_type script_analyzer_union_type(analyzer *a, TSNode node, const script_ty
     (void)node;
     return apply_constructor(a, &facts, &plan);
 }
-script_type script_analyzer_task_type(analyzer *a, script_type result, uint64_t function)
+script_type script_analyzer_task_type(analyzer *a, TSNode node, script_type result, uint64_t function)
 {
+    if (result.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+        script_analyzer_diagnostic(a, node, "Tasks of flattened error unions are not supported yet");
+    }
     script_constructor_facts facts = constructor_facts(a);
     script_constructor_plan plan = script_constructor_task(&a->out->constants, &facts, result, function);
     return apply_constructor(a, &facts, &plan);
@@ -498,7 +503,7 @@ int script_analyzer_union_constructor(analyzer *a, TSNode node)
 script_type script_analyzer_narrowed_type(const analyzer *a, int symbol, script_type fallback)
 {
     for (int i = acount(a->narrowed) - 1; i >= 0; i--) {
-        if (a->narrowed[i].symbol == symbol) {
+        if (a->narrowed[i].symbol == symbol && !a->narrowed[i].member) {
             return a->narrowed[i].typed && a->narrowed[i].mutations ==
                                                a->out->symbols[symbol].mutations
                      ? a->narrowed[i].type
@@ -509,6 +514,9 @@ script_type script_analyzer_narrowed_type(const analyzer *a, int symbol, script_
 }
 void script_analyzer_invalidate_narrowing(analyzer *a, int symbol)
 {
+    if (symbol < 0) {
+        a->presence_epoch++;
+    }
     for (int i = acount(a->narrowed) - 1; i >= 0; i--) {
         if (symbol < 0 || a->narrowed[i].symbol == symbol) {
             if (symbol < 0 && (a->narrowed[i].typed || a->narrowed[i].present)) {

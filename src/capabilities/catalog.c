@@ -1,5 +1,7 @@
 #include "capabilities/catalog.h"
 
+#include "support/array.h"
+#include "support/xalloc.h"
 #include "types/scalar.h"
 #include "types/text.h"
 #include "types/union.h"
@@ -398,6 +400,57 @@ script_type script_catalog_canonical_type(const script_catalog *catalog, script_
     type.flags |= SCRIPT_TYPE_ERROR;
     return type;
 }
+bool script_catalog_type_contains_error(const script_catalog *catalog, script_type type)
+{
+    if (type.container != PIN_CONTAINER_SINGLE || type.collection ||
+        (type.storage != PIN_STRUCT && type.storage != PIN_UNION)) {
+        return false;
+    }
+    if (type.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+        return true;
+    }
+    const script_catalog_type *definition = script_catalog_type_by_id(catalog, type.nominal);
+    if (!definition) {
+        return false;
+    }
+    if (definition->error) {
+        return true;
+    }
+    bool found = false;
+    bool *seen = xcalloc((size_t)catalog->type_count, sizeof *seen);
+    script_type *work = NULL;
+    apush(work, type);
+    while (acount(work) && !found) {
+        script_type value = apop(work);
+        if (value.container != PIN_CONTAINER_SINGLE || value.collection ||
+            (value.storage != PIN_STRUCT && value.storage != PIN_UNION)) {
+            continue;
+        }
+        const script_catalog_type
+            *record = script_catalog_type_by_id(catalog, value.nominal);
+        if (!record) {
+            continue;
+        }
+        int index = (int)(record - catalog->types);
+        if (seen[index]) {
+            continue;
+        }
+        seen[index] = true;
+        found = record->error;
+        if (record->underlying) {
+            value.nominal = record->underlying;
+            apush(work, value);
+        }
+        for (int i = 0; i < record->variant_count; i++) {
+            /* Flattened transparent unions retain a declared tagged union's
+             * nominal on its alternatives. Its fields remain encapsulated. */
+            apush(work, record->variants[i].type);
+        }
+    }
+    free(seen);
+    afree(work);
+    return found;
+}
 bool script_catalog_type_assignable(const script_catalog *catalog, script_type expected, script_type actual)
 {
     if (expected.flags & SCRIPT_TYPE_LITERAL) {
@@ -515,7 +568,7 @@ static uint64_t abi_type_shape(
     hash = abi_word(hash, type.container);
     hash = abi_word(hash, type.nominal);
     hash = abi_word(hash, type.parameter);
-    hash = abi_word(hash, type.flags);
+    hash = abi_word(hash, type.flags & ~SCRIPT_TYPE_ERROR_ALTERNATIVE);
     hash = abi_word(hash, type.collection);
     if (type.collection && depth < 64) {
         const script_catalog_type *collection = script_catalog_type_by_id(catalog, type.collection);

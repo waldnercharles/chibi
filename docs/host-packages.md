@@ -1,8 +1,8 @@
 # Imported host packages
 
 This clock-first foundation supplies private host kernel lookup, explicit
-clock grants, macOS/Linux sampling, and portable time values. The public
-fallible clock API remains pending the results workstream.
+clock grants, macOS/Linux sampling, portable time values and the public
+`Now`/`Between` clock API.
 Filesystem, process and networking services follow in later increments.
 
 ## Registration and names
@@ -62,8 +62,7 @@ work, constants or query predicates. Two reads must observe two provider calls.
 `Nanoseconds` and floating `Seconds` conversion. Copies own values and retain
 no OS resource. An instant has no wall-clock epoch. Its domain is meaningful
 only within the running process; do not persist it or compare it across
-processes. Checked duration/domain operations will use the agreed recoverable
-result contract.
+processes. `Between` checks the domain and reports `DomainMismatch`.
 
 ## Targets
 
@@ -78,23 +77,24 @@ the unsupported package from their selected capabilities. Pure `core:time`
 helpers do not require a host service. A browser adapter would need an explicit
 clock origin and precision contract; it must not silently substitute wall time.
 
-## Public error prerequisite
+## Public clock API
 
-The results workstream owns optional-type and named-result compiler parity.
-The intended Go/Odin-style shape is still pending that implementation:
+`host:clock` ships as the source package `packages/host/clock/Clock.chibi`. Its
+errors use `@error` result types (see `recoverable-errors.md`):
 
 ```chibi
-@fallible
+@error
+pub ClockError :: struct { kind: int; code: int; }
+
 pub Now :: () -> (instant: time.Instant, error: ClockError?)
+pub Between :: (earlier: time.Instant, later: time.Instant)
+    -> (duration: time.Duration, error: ClockError?)
 ```
 
-At baseline `c086475d5`, a real compiler-host invocation rejects that shape with
-`named result type is not supported yet`. Stage one's `ReadType` rejects general
-optional types, and `FunctionSignature` also rejects named union results.
-The focused probe used an `Instant` with `i64`/`u64` fields and a tagged
-`ClockError` with `Denied` and `PlatformFailure(code: int)` alternatives.
-The owner explicitly kept this parity with the results chat. No scalar error
-fallback, generic `Result`, exceptions or propagation syntax is introduced here.
+`kind` is `Denied` (no grant), `Unavailable`, `Failed` (`code` is the platform
+error) or `DomainMismatch` (`Between` across clock domains). On failure `Now`
+returns the zero instant and `Between` a zero duration. Callers must
+acknowledge the error.
 
 ## Validation
 
@@ -102,8 +102,9 @@ fallback, generic `Result`, exceptions or propagation syntax is introduced here.
 bytecode and SLJIT, with authored tests for time values. The independent
 `language-host-packages-compiler` route recovers the current stage-one compiler,
 compiles source-backed host wrappers against an explicit target, links their
-prepared closure and executes it on both VMs. The wrappers are test-local and
-do not publish the pending clock API.
+prepared closure and executes it on both VMs. A transport wrapper test-local to the
+suite exercises the scalar boundary; the shipped package is compiled and run
+separately through `Now` and `Between`.
 
 Coverage includes private-kernel precedence over a same-named ambient native,
 denied/failed/unavailable grants, retained samples above

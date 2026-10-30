@@ -480,7 +480,7 @@ typedef struct
     behavior_function_context context;
     behavior_function_activation activation;
     arena producer;
-    pin_value result;
+    pin_value *results;
     failure_state failure;
 } call_state;
 static void observe_failure(const behavior_function *function, const behavior_function_context *context, int)
@@ -522,16 +522,18 @@ static bool run(
     int budget,
     arena *detached,
     pin_value *out,
+    int result_count,
     call_state *state
 )
 {
     REQUIRE(backend >= 0 && backend < 2 && budget > 0);
+    REQUIRE(result_count >= 0 && (!result_count || out));
     const authoring_package *package = compiler_fixture_package(fixture, backend, identity);
     REQUIRE(package && package->valid && package->module);
     uint64_t id = compiler_fixture_export(fixture, backend, identity, name);
     const script_catalog_capability
         *signature = script_catalog_capability_by_id(package->exports->metadata, id);
-    REQUIRE(signature && signature->result_count == 1);
+    REQUIRE(signature && signature->result_count == result_count);
     const behavior_function *function = NULL;
     for (int i = 0; i < execution_module_function_count(package->module); i++) {
         execution_module_function_info
@@ -541,16 +543,23 @@ static bool run(
         }
     }
     REQUIRE(function);
+    int prepared_count;
+    const pin_value *returns = behavior_function_results(function, &prepared_count);
+    REQUIRE(prepared_count == result_count);
     if (behavior_function_resumable(function)) {
         behavior_function_activation_init(function, &state->activation);
     }
-    state->result = (pin_value){ .type = signature->results[0].type.storage,
-                                 .container = signature->results[0].type.container };
+    state->results = result_count
+                       ? xcalloc((size_t)result_count, sizeof *state->results)
+                       : NULL;
+    for (int i = 0; i < result_count; i++) {
+        state->results[i] = returns[i];
+    }
     state->context = (behavior_function_context){
         .activation = behavior_function_resumable(function) ? &state->activation : NULL,
         .arguments = arguments,
         .argument_count = count,
-        .results = &state->result,
+        .results = state->results,
         .managed_heap = fixture->managed,
         .budget = (uintptr_t)budget,
         .inspection_user = fixture->observe_failures ? &state->failure : NULL,
@@ -559,6 +568,7 @@ static bool run(
     if (fixture->collectable) {
         arena_init_collectable(&state->producer);
     }
+    behavior_function_prepare_results(function, state->results, &state->producer);
     behavior_function_bind_storage(&state->context, &state->producer);
     REQUIRE(behavior_function_bind(function, &state->context, NULL, 0));
     behavior_run_scope runs = { 0 };
@@ -614,7 +624,9 @@ static bool run(
     );
     REQUIRE(backends[backend] != BEHAVIOR_SLJIT || runs.counts.sljit_entries > 0);
     REQUIRE(backends[backend] != BEHAVIOR_WASM || runs.counts.wasm_entries > 0);
-    REQUIRE(!compiler_fixture_snapshot(detached, out, &state->result));
+    for (int i = 0; i < result_count; i++) {
+        REQUIRE(!compiler_fixture_snapshot(detached, &out[i], &state->results[i]));
+    }
     return true;
 }
 int compiler_fixture_snapshot(arena *storage, pin_value *out, const pin_value *value)
@@ -651,21 +663,38 @@ bool compiler_fixture_call(
     pin_value *out
 )
 {
+    return compiler_fixture_call_results(fixture, backend, identity, name, arguments, count, budget, detached, out, 1);
+}
+bool compiler_fixture_call_results(
+    const compiler_fixture *fixture,
+    int backend,
+    const char *identity,
+    const char *name,
+    const pin_value *arguments,
+    int count,
+    int budget,
+    arena *detached,
+    pin_value *out,
+    int result_count
+)
+{
     call_state state = { 0 };
-    bool valid = run(fixture, backend, identity, name, arguments, count, budget, detached, out, &state);
+    bool valid = run(fixture, backend, identity, name, arguments, count, budget, detached, out, result_count, &state);
     behavior_function_release_host(&state.context);
     behavior_function_activation_free(&state.activation);
     arena_free(&state.producer);
+    free(state.results);
     return valid;
 }
 static compiler_fixture prepared_fixtures[2];
-static arena prepared_results;
+static arena prepared_results, prepared_arguments;
 static void preparation_cleanup()
 {
     for (int i = 0; i < 2; i++) {
         compiler_fixture_free(&prepared_fixtures[i]);
     }
     arena_free(&prepared_results);
+    arena_free(&prepared_arguments);
 }
 static bool preparation_value(const compiler_fixture *fixture, int b, pin_value *out)
 {
@@ -745,6 +774,251 @@ TEST_CASE(compiler_fixture_default_keeps_both_backends)
         REQUIRE(
             pin_text_equal(pin_text(values[b]), (pin_string){ .bytes = "both", .length = 4 })
         );
+    }
+    return true;
+}
+/* Heterogeneous result banks snapshot every value before producer teardown. */
+static const char MULTI_RESULT_SOURCE
+    [] = "package fixture\n"
+         "pub Value :: () -> int { return 37; }\n"
+         "pub NoResults :: () { return; }\n"
+         "pub Values :: (input: string) -> (ok: bool, "
+         "message: string, rows: int[]) {\n"
+         "    items: int[] = [3, 5, 8];\n"
+         "    return(true, text_slice(input, 1, 3), items);\n"
+         "}\n";
+TEST_CASE(compiler_fixture_snapshots_multiple_results)
+{
+    source_package_input file = { "fixture/Fixture.chibi",
+                                  MULTI_RESULT_SOURCE,
+                                  sizeof MULTI_RESULT_SOURCE - 1 };
+    for (int collectable = 0; collectable < 2; collectable++) {
+        for (int b = 0; b < 2; b++) {
+            compiler_fixture *fixture = &prepared_fixtures[0];
+            fixture->collectable = collectable != 0;
+            fixture->observe_failures = true;
+            REQUIRE(compiler_fixture_prepare_backends(fixture, 1u << b, &file, 1, NULL, 0));
+            pin_value one;
+            REQUIRE(
+                compiler_fixture_call(fixture, b, "project:fixture", "Value", NULL, 0, 1000, &prepared_results, &one)
+            );
+            REQUIRE(one.type == PIN_I32 && one.i == 37);
+            REQUIRE(compiler_fixture_call_results(
+                fixture,
+                b,
+                "project:fixture",
+                "NoResults",
+                NULL,
+                0,
+                1000,
+                &prepared_results,
+                NULL,
+                0
+            ));
+            pin_value argument;
+            REQUIRE(!pin_value_text(&prepared_arguments, &argument, "xfirsty", 7));
+            pin_value output[3] = { 0 };
+            REQUIRE(compiler_fixture_call_results(
+                fixture,
+                b,
+                "project:fixture",
+                "Values",
+                &argument,
+                1,
+                1000,
+                &prepared_results,
+                output,
+                3
+            ));
+            REQUIRE(fixture->collectable == (collectable != 0) && fixture->observe_failures);
+            arena_free(&prepared_arguments);
+            compiler_fixture_free(fixture);
+            REQUIRE(
+                output[0].type == PIN_BOOL &&
+                output[0].container == PIN_CONTAINER_SINGLE && output[0].b
+            );
+            REQUIRE(output[1].type == PIN_STR && output[1].container == PIN_CONTAINER_SINGLE);
+            REQUIRE(
+                pin_text_equal(pin_text(output[1]), (pin_string){ .bytes = "fir", .length = 3 })
+            );
+            REQUIRE(
+                output[1].text && arena_contains(&prepared_results, output[1].text)
+            );
+            REQUIRE(pin_text(output[1]).owner);
+            REQUIRE(output[2].type == PIN_I32 && output[2].container == PIN_CONTAINER_ARRAY);
+            const pin_array *rows = output[2].ptr;
+            REQUIRE(rows && rows->count == 3 && !rows->stride);
+            REQUIRE(
+                arena_contains(&prepared_results, rows) &&
+                arena_contains(&prepared_results, rows->items)
+            );
+            REQUIRE(rows->items[0].type == PIN_I32 && rows->items[0].i == 3);
+            REQUIRE(rows->items[1].type == PIN_I32 && rows->items[1].i == 5);
+            REQUIRE(rows->items[2].type == PIN_I32 && rows->items[2].i == 8);
+            REQUIRE(one.type == PIN_I32 && one.i == 37);
+            arena_free(&prepared_results);
+        }
+    }
+    return true;
+}
+TEST_CASE(compiler_fixture_snapshots_optional_results)
+{
+    static const char source
+        [] = "package fixture\n"
+             "@error pub Failure :: struct { code: int; message: string; }\n"
+             "pub Scalar :: (present: bool) -> int? { "
+             "if present { return 42; } return nil; }\n"
+             "pub Pair :: (present: bool) -> (value: int, "
+             "error: Failure?) { "
+             "if present { return(7, {code: 9, message: \"bad\"}); } "
+             "return(17, nil); }\n"
+             "pub Defaults :: () -> (value: int, error: "
+             "Failure?) { return; }\n";
+    source_package_input file = { "fixture/Fixture.chibi", source, sizeof source - 1 };
+    for (int collectable = 0; collectable < 2; collectable++) {
+        for (int b = 0; b < 2; b++) {
+            compiler_fixture *fixture = &prepared_fixtures[0];
+            fixture->collectable = collectable != 0;
+            REQUIRE(compiler_fixture_prepare_backends(fixture, 1u << b, &file, 1, NULL, 0));
+            pin_value scalar[2], pair[2][2];
+            for (int present = 0; present < 2; present++) {
+                pin_value argument = { .type = PIN_BOOL, .b = present != 0 };
+                REQUIRE(compiler_fixture_call(
+                    fixture,
+                    b,
+                    "project:fixture",
+                    "Scalar",
+                    &argument,
+                    1,
+                    1000,
+                    &prepared_results,
+                    &scalar[present]
+                ));
+                REQUIRE(compiler_fixture_call_results(
+                    fixture,
+                    b,
+                    "project:fixture",
+                    "Pair",
+                    &argument,
+                    1,
+                    1000,
+                    &prepared_results,
+                    pair[present],
+                    2
+                ));
+            }
+            pin_value defaults[2];
+            REQUIRE(compiler_fixture_call_results(
+                fixture,
+                b,
+                "project:fixture",
+                "Defaults",
+                NULL,
+                0,
+                1000,
+                &prepared_results,
+                defaults,
+                2
+            ));
+            compiler_fixture_free(fixture);
+            REQUIRE(defaults[0].type == PIN_I32 && defaults[0].i == 0);
+            REQUIRE(defaults[1].type == PIN_UNION && !defaults[1].ptr);
+            for (int present = 0; present < 2; present++) {
+                REQUIRE(
+                    scalar[present].type == PIN_UNION &&
+                    scalar[present].container == PIN_CONTAINER_SINGLE
+                );
+                REQUIRE(
+                    pair[present][0].type == PIN_I32 &&
+                    pair[present][0].i == (present ? 7 : 17)
+                );
+                REQUIRE(
+                    pair[present][1].type == PIN_UNION &&
+                    pair[present][1].container == PIN_CONTAINER_SINGLE
+                );
+                if (!present) {
+                    REQUIRE(!scalar[present].ptr && !pair[present][1].ptr);
+                    continue;
+                }
+                const pin_union *number = scalar[present].ptr;
+                REQUIRE(number && number->tag && number->count == 1);
+                REQUIRE(number->values[0].type == PIN_I32 && number->values[0].i == 42);
+                const pin_union *error = pair[present][1].ptr;
+                REQUIRE(
+                    error && error->tag && error->count == 1 &&
+                    error->values[0].type == PIN_STRUCT
+                );
+                const pin_value *record = &error->values[0];
+                const type_desc *type = pin_value_type(record);
+                REQUIRE(type && arena_contains(&prepared_results, type));
+                const type_field *code = pin_type_field_path(type, "code");
+                const type_field *message = pin_type_field_path(type, "message");
+                REQUIRE(code && message);
+                pin_value code_value, message_value;
+                REQUIRE(!pin_read_field(&prepared_results, record->ptr, code, &code_value));
+                REQUIRE(!pin_read_field(&prepared_results, record->ptr, message, &message_value));
+                REQUIRE(code_value.type == PIN_I32 && code_value.i == 9);
+                REQUIRE(pin_text_equal(
+                    pin_text(message_value),
+                    (pin_string){ .bytes = "bad", .length = 3 }
+                ));
+                REQUIRE(
+                    message_value.text &&
+                    arena_contains(&prepared_results, message_value.text)
+                );
+                REQUIRE(pin_text(message_value).owner);
+            }
+            arena_free(&prepared_results);
+        }
+    }
+    return true;
+}
+static const compiler_fixture *single_result_rejection_fixture;
+static int single_result_rejection_backend, single_result_rejection_arguments;
+static const char *single_result_rejection_entry;
+static pin_value single_result_rejection_argument, single_result_rejection_output;
+static bool rejected_single_result_call()
+{
+    return compiler_fixture_call(
+        single_result_rejection_fixture,
+        single_result_rejection_backend,
+        "project:fixture",
+        single_result_rejection_entry,
+        single_result_rejection_arguments ? &single_result_rejection_argument : NULL,
+        single_result_rejection_arguments,
+        1000,
+        &prepared_results,
+        &single_result_rejection_output
+    );
+}
+TEST_CASE(compiler_fixture_keeps_single_result_call_arity)
+{
+    source_package_input file = { "fixture/Fixture.chibi",
+                                  MULTI_RESULT_SOURCE,
+                                  sizeof MULTI_RESULT_SOURCE - 1 };
+    compiler_fixture *fixture = &prepared_fixtures[0];
+    REQUIRE(compiler_fixture_prepare(fixture, &file, 1));
+    REQUIRE(!pin_value_text(&prepared_arguments, &single_result_rejection_argument, "xfirsty", 7));
+    const char *entries[] = { "Values", "NoResults" };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 2; i++) {
+            FILE *output = tmpfile();
+            REQUIRE(output);
+            pu_test_context context = { .quiet = true, .output = output, .errors = output };
+            single_result_rejection_fixture = fixture;
+            single_result_rejection_backend = b;
+            single_result_rejection_entry = entries[i];
+            single_result_rejection_arguments = i == 0;
+            single_result_rejection_output = (pin_value){ .type = PIN_I64, .i64 = -99 };
+            pu_run_test_context(&context, "single result arity", rejected_single_result_call);
+            single_result_rejection_fixture = NULL;
+            fclose(output);
+            REQUIRE(context.failed == 1 && !context.passed);
+            REQUIRE(
+                single_result_rejection_output.type == PIN_I64 &&
+                single_result_rejection_output.i64 == -99
+            );
+        }
     }
     return true;
 }
@@ -1075,6 +1349,9 @@ void test_language_compiler_fixture()
     pu_setup(NULL, preparation_cleanup);
     RUN_TEST_CASE(compiler_fixture_prepares_only_selected_backend);
     RUN_TEST_CASE(compiler_fixture_default_keeps_both_backends);
+    RUN_TEST_CASE(compiler_fixture_snapshots_multiple_results);
+    RUN_TEST_CASE(compiler_fixture_snapshots_optional_results);
+    RUN_TEST_CASE(compiler_fixture_keeps_single_result_call_arity);
     RUN_TEST_CASE(compiler_fixture_runs_authored_tests_on_selected_backends);
     RUN_TEST_CASE(compiler_fixture_rejects_missing_and_failed_authored_tests);
     RUN_TEST_CASE(compiler_fixture_bounds_each_authored_test);

@@ -240,6 +240,8 @@ int main(int argc, char **argv)
                                             !strcmp(argv[1], "--package-compiler-chibi-libraries");
     bool package_compiler_chibi_types = argc == 2 &&
                                         !strcmp(argv[1], "--package-compiler-chibi-types");
+    bool package_compiler_chibi_fallible = argc == 2 &&
+                                           !strcmp(argv[1], "--package-compiler-chibi-fallible");
     bool package_compiler_chibi_math_native = argc == 2 &&
                                               !strcmp(argv[1], "--package-compiler-chibi-math-native");
     bool package_compiler_chibi_literals = argc == 2 &&
@@ -368,6 +370,7 @@ int main(int argc, char **argv)
          !constant_scalar_chibi && !scalar_lowering_chibi && !compiler_fixture &&
          !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
          !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
+         !package_compiler_chibi_fallible && !package_compiler_chibi_imports &&
          !package_compiler_chibi_math_native && !package_compiler_chibi_imports &&
          !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
          !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
@@ -419,6 +422,7 @@ int main(int argc, char **argv)
             "--bounded-compiler-chibi | "
             "--prepared-writer-chibi | --package-compiler-chibi | "
             "--package-compiler-chibi-types | --package-compiler-chibi-imports "
+            "| --package-compiler-chibi-fallible "
             "| --package-compiler-chibi-math-native "
             "| "
             "--package-compiler-chibi-bootstrap | "
@@ -625,6 +629,8 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi();
     } else if (package_compiler_chibi_types) {
         test_language_package_compiler_chibi_types();
+    } else if (package_compiler_chibi_fallible) {
+        test_language_package_compiler_chibi_fallible();
     } else if (package_compiler_chibi_math_native) {
         test_language_package_compiler_chibi_math_native();
     } else if (package_compiler_chibi_imports) {

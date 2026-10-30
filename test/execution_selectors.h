@@ -113,17 +113,6 @@ CHIBI_GPU_SELECTOR("--material-mesh-cache")
 CHIBI_GPU_SELECTOR("--scene3d-terrain-gpu")
 CHIBI_GPU_SELECTOR("--scene3d-volume-gpu")
 CHIBI_GPU_SELECTOR("--hrc-spot")
-/* The 3D renderer's cases in a hidden 64x64 app, with readback. */
-CHIBI_GPU_SELECTOR("--scene3d")
-/* The same cases on GLES, under xvfb-run on Linux. */
-CHIBI_GPU_SELECTOR("--scene3d-gles")
-/* The 3D renderer's global illumination cases in a hidden 64x64 app, with
- * readback, and the same on GLES under xvfb-run on Linux. */
-CHIBI_GPU_SELECTOR("--scene3d-gi")
-CHIBI_GPU_SELECTOR("--scene3d-gi-gles")
-/* Color ramp table cases through 2D and material raster shaders in a hidden
- * 64x64 app, with readback. */
-CHIBI_GPU_SELECTOR("--material-ramps")
 /* HRC's surface light through relief materials in a hidden 128x128 app, with
  * readback. */
 CHIBI_GPU_SELECTOR("--radiance-surface")

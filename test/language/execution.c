@@ -22,6 +22,7 @@
 #include "execution/status.h"
 #include "runtime/arrays.h"
 #include "runtime/behaviors/package.h"
+#include "runtime/component_catalog.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -77,12 +78,15 @@ static const type_desc *const types[] = { &box_type, &c_text_type, &narrow_enum_
 
 int type_catalog_pack_count()
 {
-    return 1;
+    return 2;
 }
 
 type_catalog_pack type_catalog_pack_at(int index)
 {
-    assert(index == 0);
+    assert(index >= 0 && index < 2);
+    if (index == 1) {
+        return TYPE_PACK;
+    }
     return (type_catalog_pack){ .types = types, .type_count = 3 };
 }
 

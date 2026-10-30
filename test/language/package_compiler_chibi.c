@@ -12291,18 +12291,20 @@ static bool scalar_package_arguments(
 }
 /* A function of an imported project package is one module with its caller:
  * the entry is the first function of the first file, whichever package order
- * puts the dependency in front, and the qualified call is a call row to the
- * import's function, which the emitter lowers as a call. */
+ * puts the dependency in front, the qualified call is a call row to the
+ * import's function, which the emitter lowers as a call, and a qualified
+ * constant is the value it folds to. */
 TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
 {
     REQUIRE(prepare());
     static const source_package_input packages[] = {
         { .path = "Main.chibi",
           .text = "package main\nimport lib \"project:lib\"\n"
-                  "Main :: () -> int { return lib.Add(3, lib.Twice(2)) * 2; "
-                  "}\n" },
+                  "Main :: () -> int { return lib.Add(3, lib.Twice(2)) * "
+                  "lib.Limit; }\n" },
         { .path = "lib/Lib.chibi",
-          .text = "package lib\npub Twice :: (n: int) -> int { return n * 2; "
+          .text = "package lib\npub Limit :: 5;\n"
+                  "pub Twice :: (n: int) -> int { return n * 2; "
                   "}\n"
                   "pub Add :: (a: int, b: int) -> int { return a + b; }\n" },
     };

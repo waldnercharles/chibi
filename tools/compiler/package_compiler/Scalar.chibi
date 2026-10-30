@@ -532,7 +532,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     named := ConstantOf(forest, text, constants, names, callable.package, node) >= 0;
     if ((named || Folds(forest, text, constants, names, callable.package, node, storage)) &&
         !ShadowedConversion(forest, text, callables, callable.package, node)) {
-        switch FoldConstant(forest, text, 0, constants, names, callable.package, node, storage) {
+        switch FoldConstant(forest, text, callable.document, constants, names, callable.package, node, storage) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Waiting:
@@ -931,7 +931,7 @@ ScalarShifted :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     counted := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, right, 0);
     if (counted == 0) {
         written := UntypedStorage(forest, text, right);
-        switch FoldConstant(forest, text, 0, constants, names, callable.package, right, written) {
+        switch FoldConstant(forest, text, callable.document, constants, names, callable.package, right, written) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Waiting:
@@ -1866,7 +1866,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
     // No native writes: the text natives are pure.
     writes := resize([int(0)], length(natives));
     table := types;
-    switch EmitBody(forest, text, 0, callables, params, &table, members, constants, natives, ports, identities,
+    switch EmitBody(forest, text, callables[function].document, callables, params, &table, members, constants, natives, ports, identities,
                     operators, makes, indices, aliases, key, solid, 0, 0, function, empty_names,
                     empty_names, indices, BodyContext.Known(writes), indices, ops, target, []) {
         case .Failed(diagnostic):

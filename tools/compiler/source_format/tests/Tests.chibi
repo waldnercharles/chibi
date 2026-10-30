@@ -1,0 +1,116 @@
+package source_format_tests
+
+import format "project:source_format"
+
+// Formats `input` and returns the text, or the rejection message.
+Run :: (input: string, options: format.Options) -> string {
+    switch format.Format(input, options) {
+        case .Formatted(text):
+            return text;
+        case .Rejected(message):
+            return message;
+    }
+}
+
+// One row of the layout table: the input formats to `expected`, and
+// `expected` is a fixed point.
+Case :: (input: string, expected: string) {
+    options := format.Defaults();
+    assert(Run(input, options) == expected, "input formats to the expected layout");
+    assert(Run(expected, options) == expected, "the expected layout is a fixed point");
+}
+
+@test
+LeavesFormattedSourceAlone :: () {
+    source := "package p\n\nMain :: () {\n    x := 1\n}\n";
+    assert(Run(source, format.Defaults()) == source, "formatted source is a fixed point");
+}
+
+@test
+IndentsBodiesByBraceDepth :: () {
+    Case("package p\nMain :: () {\nx := 1\nif x > 0 {\nx = 2\n}\n}\n",
+         "package p\nMain :: () {\n    x := 1\n    if x > 0 {\n        x = 2\n    }\n}\n");
+}
+
+@test
+SpacesTokensOneWay :: () {
+    Case("package p\n\nAdd :: (a:int,b:int)->int {\n    return a+b\n}\n",
+         "package p\n\nAdd :: (a: int, b: int) -> int {\n    return a + b\n}\n");
+}
+
+@test
+KeepsAtMostOneBlankLine :: () {
+    Case("package p\n\n\n\nA :: () {\n}\n\n\n\nB :: () {\n}\n",
+         "package p\n\nA :: () {\n}\n\nB :: () {\n}\n");
+}
+
+@test
+DropsTrailingSpacesAndCarriageReturns :: () {
+    Case("package p   \r\n\r\nA :: () {   \r\n    x := 1   \r\n}   \r\n",
+         "package p\n\nA :: () {\n    x := 1\n}\n");
+}
+
+@test
+KeepsCommentsExactly :: () {
+    Case("package p\n\n// leading\nA :: () {\n  x := 1 //   trailing  \n  /* block\n   kept */\n}\n",
+         "package p\n\n// leading\nA :: () {\n    x := 1 //   trailing  \n    /* block\n   kept */\n}\n");
+}
+
+@test
+AlignsContinuedArguments :: () {
+    Case("package p\n\nA :: () {\n    Call(first,\n    second)\n}\n",
+         "package p\n\nA :: () {\n    Call(first,\n         second)\n}\n");
+}
+
+@test
+HangsAnArgumentListThatEndsItsLine :: () {
+    Case("package p\n\nA :: () {\n    Call(\nfirst,\nsecond\n)\n}\n",
+         "package p\n\nA :: () {\n    Call(\n        first,\n        second\n    )\n}\n");
+}
+
+@test
+UsesTheIndentWidthOrTabs :: () {
+    source := "package p\nA :: () {\nx := 1\n}\n";
+    two: format.Options = {indent_width: 2, use_tabs: false};
+    assert(Run(source, two) == "package p\nA :: () {\n  x := 1\n}\n", "two spaces per level");
+    tabs: format.Options = {indent_width: 4, use_tabs: true};
+    assert(Run(source, tabs) == "package p\nA :: () {\n\tx := 1\n}\n", "one tab per level");
+}
+
+@test
+ReturnsEmptySourceUnchanged :: () {
+    assert(Run("", format.Defaults()) == "", "empty source");
+}
+
+@test
+RejectsSourceTheGrammarCannotRead :: () {
+    got := Run("package p\n\nA :: ( {\n", format.Defaults());
+    assert(got == "Cannot format source with syntax errors", "syntax errors are named");
+}
+
+@test
+RejectsInvalidOptions :: () {
+    zero: format.Options = {indent_width: 0, use_tabs: false};
+    wide: format.Options = {indent_width: 17, use_tabs: false};
+    message := "Invalid formatter options: indent_width must be 1..16";
+    assert(Run("package p\n", zero) == message, "zero width");
+    assert(Run("package p\n", wide) == message, "width past sixteen");
+}
+
+@test
+KeepsElseOnTheClosingBraceLine :: () {
+    Case("package p\n\nA :: () {\nif true {\nx := 1\n} else {\nx := 2\n}\n}\n",
+         "package p\n\nA :: () {\n    if true {\n        x := 1\n    } else {\n        x := 2\n    }\n}\n");
+}
+
+@test
+IndentsSwitchArms :: () {
+    Case("package p\n\nA :: (outcome: Outcome) {\nswitch outcome {\ncase .Built(nodes, root):\nreturn nodes;\ncase .Rejected(message):\nreturn message;\n}\n}\n",
+         "package p\n\nA :: (outcome: Outcome) {\n    switch outcome {\n        case .Built(nodes, root):\n            return nodes;\n        case .Rejected(message):\n            return message;\n    }\n}\n");
+}
+
+@test
+AlignsAContinuedBinaryExpression :: () {
+    Case("package p\n\nA :: () {\n    x := first +\n  second\n}\n",
+         "package p\n\nA :: () {\n    x := first +\n         second\n}\n");
+}

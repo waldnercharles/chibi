@@ -173,11 +173,23 @@ package scalar_facts
 // an element to give the array with that element replaced; ArrayPush consumes
 // an array and an element to give the array with the element after its last;
 // and ArrayCopy consumes an array to give an independent array of its
-// elements. An index outside the array ends the program (D9). ArraySet and
-// ArrayPush change the elements of the array they consume, so each is the last operand of an Assign to a variable of the array's type
-// whose first operand reads that variable: `a[i] = x` is the Assign of `a`
-// with operands that read `a`, then `i`, then `x`, then ArraySet, and
-// `a.append(x)` reads `a`, then `x`, then ArrayPush. A For row with
+// elements. ArrayExtend consumes two arrays of one type to give the first
+// followed by the second's elements; ArraySlice consumes an array and an int
+// start and count to give a new array of the count elements from the start,
+// each clamped to the array; ArrayResize consumes an array and an int length,
+// 0 for a negative one, to give a new array of its first elements, or all of
+// them, and then as many zeros (false, 0, the empty string, a record of
+// zeros) as that length needs; ArrayContains consumes an array of numbers,
+// bools or strings and an element of its type to give a bool, whether an
+// element equals it, a string by its bytes and a float as IEEE does; and
+// ArrayRemove consumes an array and an int index to give the array without
+// that element, or the same array for an index outside it. An index of
+// ArrayGet or ArraySet outside the array ends the program (D9). ArraySet,
+// ArrayPush, ArrayExtend and ArrayRemove change the elements of the array
+// they consume, so each is the last operand of an Assign to a variable of the
+// array's type whose first operand reads that variable: `a[i] = x` is the
+// Assign of `a` with operands that read `a`, then `i`, then `x`, then
+// ArraySet, and `a.append(x)` reads `a`, then `x`, then ArrayPush. A For row with
 // RangeArray declares variable `value`, of its element `type` and `name`,
 // and its one operand is the array it iterates, whose elements the body
 // cannot change. It runs its body for each element in order. The array is
@@ -317,6 +329,11 @@ pub ArrayGet: int : 3;
 pub ArraySet: int : 4;
 pub ArrayPush: int : 5;
 pub ArrayCopy: int : 6;
+pub ArrayExtend: int : 7;
+pub ArraySlice: int : 8;
+pub ArrayResize: int : 9;
+pub ArrayContains: int : 10;
+pub ArrayRemove: int : 11;
 
 // A For row's range flags; RangeArray stands alone.
 pub RangeExclusive: int : 1;

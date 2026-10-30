@@ -81,7 +81,9 @@ context allocates and the call's heap frees. A function takes and returns
 them, declares them with `a: T[] = [...]` or `a := f(...)`, reads `a[i]`,
 `length(a)` and `a.length()`, writes `a[i] = x`, `a[i] += x` and `a[i].f = x`,
 appends with
-`a.append(x)` and visits the elements with `for x in a`. An array is a value:
+`a.append(x)`, `a.extend(b)` and `a.remove_index(i)`, and visits the elements with
+`for x in a`. `slice(a, start, count)` and `resize(a, n)` give new arrays, and
+`contains(a, x)` and `a.contains(x)` search numbers, bool and strings. An array is a value:
 `b := a`, `b = a`, and returning a parameter copy it, and a call lends its
 argument, which the callee cannot change, so no two variables share elements. An append that fills the array moves its elements
 to an allocation of twice the size, or four elements, and an index outside

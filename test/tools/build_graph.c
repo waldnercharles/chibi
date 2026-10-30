@@ -689,7 +689,7 @@ static bool debug_optimization_instrumentation(bool instrumented, int frame_mode
             REQUIRE(frames == (instrumented || frame_mode == 1));
             REQUIRE(optimizations == (level != 0));
             const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
-            saw_engine |= strstr(output, "/objects/chibi_engine/") != NULL;
+            saw_engine |= strstr(output, "/objects/chibi_events/") != NULL;
             saw_sdk |= strstr(output, "/objects/chibi_compiler/") != NULL;
             if (strstr(output, "/objects/test_host/") ||
                 strstr(output, "/objects/policy_worker/")) {

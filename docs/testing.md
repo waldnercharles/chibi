@@ -131,7 +131,7 @@ candidate; require both Linux and macOS native jobs and all existing functional
 checks to pass. Check the run's commit SHA and profile receipts, investigate any
 sanitizer failure, and rerun on the fixed candidate. A passing fast run is not
 a substitute for sanitizer evidence. Explicit holds and required repository checks
-still apply. Both profiles share `.github/native-profile.py` and the same test
+still apply. Both profiles share `.github/native-profile.sh` and the same test
 steps to prevent drift; macOS Graph and CMake use matching explicit O1 and
 frame-pointer settings. Graph frame pointers are a separate Debug-only opt-in
 (`--debug-frame-pointers on`); ordinary developer Debug/O1 behavior is unchanged.
@@ -3337,62 +3337,6 @@ the fixture contract. Header environments, semantic sidecars, body
 analysis, exports, lowering, artifact assembly and `Checked` remain
 unimplemented here.
 
-
-## Third-party publication recovery
-
-Seventeen C/pico_unit cases use the production tools dispatcher selector
-`chibi build test third-party-publish`. Twenty-six disposable local
-Git repositories and a shell `gh` transport fixture exercise the production
-publication helper: invalid inputs, new publication, original-artifact retry,
-partial uploads, completed-release/main-pin no-ops, existing-branch/PR ownership,
-closed/retargeted/fork-owned PRs, different pin contents/source parents, unverified
-and duplicate assets, wrong/concurrently moved source tags and denied API reads. The fixture never contacts GitHub;
-all pushes target disposable local bare repositories. Both publication recovery
-and the SDK release-pin/public Studio checkout preflight cases run in the default
-`make test-tools` aggregate. Configuration and build
-results are separate from test execution.
-
-A failed Third-party **publish job** may be retried with the original workflow
-artifacts. Matching existing assets are verified and retained; only missing
-assets are uploaded. Existing pin branches must contain exactly one pin-only
-commit on the original source, and an existing PR must still be open against
-`main`. Closed or changed work requires an explicit owner decision, not a
-force-push or automatic reopening. A full workflow rebuild can change tarball
-bytes even at the same source commit; use a fresh release tag rather than
-replacing mismatched assets. API failures, absent asset digests and mismatches
-remain failures. This does not enable Actions PR creation, waive repository
-checks or prove a successful SDK build.
-
-Before any publication, the helper validates all nine gzip tar inventories and
-one nonempty regular root `third-party.cmake` per archive (100,000 members /
-8 GiB logical contents per archive), then checks pin-branch/PR ownership. It
-rechecks source tag binding after uploads and ownership before pin writes.
-
-
-### Prepared-source dependency releases
-
-The Third-party workflow accepts optional paired `source_pr` and `main_sha`
-inputs for a reviewed same-repository source branch. Dispatch at that exact
-branch commit and supply the current main SHA. The source PR must be open and
-ready for review against main, with matching repository, branch, source commit
-and frozen main. Main must remain at that SHA and be ancestral to the source.
-The publisher rechecks source/main/PR binding before publication and pin writes;
-any drift requires a newly reviewed binding and fresh release identity.
-
-The pin branch contains exactly one pin-only commit on the frozen source. The
-resulting integration PR is draft and includes the source changes and archive
-pins together, with a source/main marker required on retries. The source PR is
-not retargeted, closed or merged automatically. A non-draft source PR is not proof
-that explicit holds, independent review or required checks are cleared; the
-publication owner verifies those before dispatch. No new token, permission or
-`pull_request_target` route is used.
-
-With both inputs empty, ordinary main-source publication/recovery is unchanged.
-A completed release whose pins already match main is a read-only no-op even
-after source integration. Prepared-mode no-op recovery never uploads missing
-assets without a live source binding. Rebuilt archives require a new release
-tag, including after source, main or PR changes. The original artifacts and
-release digests remain the authority for an original-job retry.
 
 ## Paired Studio SDK verification
 

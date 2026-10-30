@@ -182,7 +182,8 @@ static int usage()
         "--output-artifact FILE | --output-bytes FILE]\n"
         "       chibi-compiler-host --target-json [OUTPUT]\n"
         "       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR "
-        "[--seed DIR [--revision TEXT] | --recover FILE [--arguments FILE]]\n"
+        "[--seed DIR [--revision TEXT] | --recover FILE [--arguments FILE] | "
+        "--validate]\n"
     );
     return 1;
 }
@@ -193,7 +194,8 @@ static int bootstrap(const compiler_bootstrap *b)
 {
     char report[512] = { 0 };
     bool ok = b->seed ? compiler_bootstrap_write(b, report, sizeof report)
-                      : compiler_bootstrap_check(b, report, sizeof report);
+            : b->validate ? compiler_bootstrap_validate(b, report, sizeof report)
+                          : compiler_bootstrap_check(b, report, sizeof report);
     if (!ok) {
         fprintf(stderr, "bootstrap: %s\n", report);
         return 1;
@@ -237,6 +239,10 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--batch") && !batch) {
             batch = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--validate") && !boot.validate) {
+            boot.validate = true;
             continue;
         }
         if (i + 1 == argc) {
@@ -287,12 +293,13 @@ int main(int argc, char **argv)
         }
     }
     if (boot.folder || boot.compiler || boot.core || boot.seed ||
-        boot.revision || boot.output || boot.arguments) {
+        boot.revision || boot.output || boot.arguments || boot.validate) {
         bool alone = !artifact && !input && !output_artifact && !entry && !budget &&
                      !timeout && backend == BEHAVIOR_UNAVAILABLE && !batch;
         bool complete = boot.folder && boot.compiler && boot.core &&
                         (boot.seed || !boot.revision) &&
-                        !(boot.seed && (boot.output || boot.arguments));
+                        !(boot.seed && (boot.output || boot.arguments)) &&
+                        !(boot.validate && (boot.seed || boot.output || boot.arguments));
         return alone && complete ? bootstrap(&boot) : usage();
     }
     if (!artifact || !input || !entry || !budget || !timeout ||

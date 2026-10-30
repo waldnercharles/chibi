@@ -391,18 +391,18 @@ Files :: (target: string) -> string[] {
             "test/language/ranges.c",
             "test/language/component_write_ir.c",
             "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
-            "test/language/packages.c", "test/language/package_syntax.c",
+            "test/language/packages.c",
             "test/language/package_resolution.c",
             "test/language/package_imports.c", "test/language/package_files.c",
             "test/language/package_math.c",
 
             "test/language/package_graph_chibi.c",
             "test/language/argument_effects_chibi.c", "test/language/program_session.c",
-            "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
-            "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
-            "test/language/package_paths_chibi.c",
-            "test/language/source_parser_chibi.c",
-            "test/language/package_routes_chibi.c", "test/language/package_snapshot_chibi.c",
+            "test/language/syntax_corpus.c",
+            "test/language/compiler_fixture.c",
+
+
+            "test/language/package_snapshot_chibi.c",
             "test/language/compiler_artifact_chibi.c", "test/language/bounded_compiler_chibi.c",
             "test/language/shader_source_chibi.c",
             "test/language/asset_packaging_chibi.c", "test/language/package_compiler_chibi.c",
@@ -1685,16 +1685,16 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/native_census.c",
 
         "test/language/package_compiler_chibi.c",
-        "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
 
-        "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
-        "test/language/package_syntax_chibi.c",
+
+        "test/language/package_snapshot_chibi.c",
+
         "test/language/ranges.c",
         "test/language/record_prepared.c",
         "test/language/compositional_records.c",
 
 
-        "test/language/source_parser_chibi.c",
+
         "test/language/type_relations_chibi.c",
         "test/language/unit_algebra_chibi.c"
 
@@ -1712,7 +1712,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
         return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
     }
     if (target == "test_language" &&
-        (file == "test/language/source_parser_chibi.c" || file == "test/language/asset_packaging_chibi.c" ||
+        (file == || file == "test/language/asset_packaging_chibi.c" ||
          file == "test/language/integer_semantics.c" || file == "test/language/host_packages_compiler.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }

@@ -937,6 +937,22 @@ static compiler_host *validated(
              : NULL;
 }
 
+bool compiler_bootstrap_validate(const compiler_bootstrap *b, char *report, size_t size)
+{
+    artifact a = { 0 };
+    char *json = NULL;
+    size_t length = 0;
+    int changed = 0;
+    compiler_host *host = validated(b, &a, &json, &length, &changed, report, size);
+    if (host) {
+        snprintf(report, size, "the artifact admits the sources; %d changed since it was written", changed);
+    }
+    compiler_host_free(host);
+    free(json);
+    free_artifact(&a);
+    return host != NULL;
+}
+
 bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t size)
 {
     artifact a = { 0 };

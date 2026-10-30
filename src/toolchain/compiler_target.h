@@ -35,6 +35,24 @@ char *compiler_package_request_json(
     const script_catalog *,
     size_t *length
 );
+/* The arguments of CompileWithCatalog and CompileClosureWithCatalog: what
+ * compiler_package_request_json lists, then the rich target (native
+ * capabilities with their nominal ports), the catalog's native types and their
+ * fields, the entity type's ID and each native's effect mask. `bindings` may
+ * be NULL when no action has to be linked. Malloc-owned; NULL on failure. */
+char *compiler_package_catalog_request_json(
+    const char *project,
+    const char *const *names,
+    const char *const *roots,
+    int collections,
+    const char *const *paths,
+    const char *const *texts,
+    const size_t *sizes,
+    int files,
+    const script_catalog *,
+    const native_capabilities *bindings,
+    size_t *length
+);
 /* CompileBehaviorsWithCatalog's eighteen arguments for the behaviors
  * identities[i] holding sources[i], as one JSON array: their identities and
  * sources, the same six, then what a behavior links against:

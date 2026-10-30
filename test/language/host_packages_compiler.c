@@ -1,8 +1,10 @@
+#include "authoring/program_service.h"
 #include "execution/service.h"
 #include "execution/status.h"
 #include "host/clock_package.h"
 #include "host_packages_source.h"
 #include "runtime/arrays_definition.h"
+#include "runtime/core_definition.h"
 #include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
 #include "support/array.h"
@@ -133,7 +135,8 @@ static void cleanup()
     native_capabilities_free(native);
     native_capabilities_free(without_clock);
     native_capabilities_free(mixed_native);
-    native = without_clock = mixed_native = NULL;
+    native_capabilities_free(handle_native);
+    native = without_clock = mixed_native = handle_native = NULL;
 }
 
 static bool load_compiler()
@@ -504,9 +507,107 @@ TEST_CASE(host_packages_compile_link_and_run_through_stage_one)
     return true;
 }
 
+/* The catalog compile entry hands the package compiler the target's native
+ * types, so a signature can name a handle type such as the program service's
+ * Program. Returns the diagnostic message, "" when the sources compile. */
+static const char *catalog_compile(const char *source, char *message, size_t capacity)
+{
+    const char *project = "/project", *path = "/project/app/App.chibi";
+    size_t size = strlen(source), length = 0;
+    char *input = compiler_package_catalog_request_json(
+        project,
+        NULL,
+        NULL,
+        0,
+        &path,
+        &source,
+        &size,
+        1,
+        native_capabilities_catalog(handle_native),
+        NULL,
+        &length
+    );
+    if (!input) {
+        return NULL;
+    }
+    compiler_host_result result = { 0 };
+    bool called = compiler_host_invoke(
+        compiler,
+        compiler_host_entry("project:package_compiler:1:CompileWithCatalog:callable"),
+        input,
+        length,
+        COMPILE_BUDGET,
+        &result
+    );
+    free(input);
+    yyjson_doc *doc = called ? yyjson_read(result.json, result.length, 0) : NULL;
+    yyjson_val *error = yyjson_arr_get(yyjson_doc_get_root(doc), 2);
+    yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(error, "values"), 0);
+    const char *reported = yyjson_get_str(yyjson_obj_get(diagnostic, "message"));
+    if (!called || result.flow_status != FLOW_OK) {
+        fprintf(stderr, "host packages catalog compile: %s\n", result.diagnostic);
+        snprintf(message, capacity, "%s", "compiler did not run");
+    } else {
+        snprintf(message, capacity, "%s", reported ? reported : "");
+    }
+    yyjson_doc_free(doc);
+    free(result.json);
+    return message;
+}
+
+TEST_CASE(host_packages_catalog_handle_types_reach_package_signatures)
+{
+    const native_definition_pack definitions[] = { CORE_DEFINITION_PACK,
+                                                   NATIVE_TEXT_DEFINITION_PACK,
+                                                   NATIVE_ARRAY_DEFINITION_PACK };
+    const native_capability_pack packs[] = { *program_service_pack() };
+    char error[256], message[256];
+    handle_native = native_capabilities_from_definition_packs(packs, 1, definitions, 3, error, sizeof error);
+    REQUIRE(handle_native);
+    const char *bootstrap_error = NULL;
+    (void)bootstrap_error;
+    const compiler_bootstrap options = {
+        .folder = CHIBI_HOST_PACKAGES_COMPILER_ROOT "/bootstrap",
+        .compiler = CHIBI_HOST_PACKAGES_COMPILER_ROOT,
+        .core = CHIBI_HOST_PACKAGES_CORE_ROOT,
+    };
+    compiler = compiler_bootstrap_load(&options, error, sizeof error);
+    REQUIRE(compiler);
+    REQUIRE(
+        catalog_compile(
+            "package app\nStopped :: (handle: Program, watch: bool) -> int { "
+            "if watch { return 1; } return 0; }\n",
+            message,
+            sizeof message
+        ) &&
+        !*message
+    );
+    /* The program natives take and return the handle type. */
+    REQUIRE(
+        catalog_compile(
+            "package app\n"
+            "Open :: (path: string, entry: string, arguments: string[]) -> "
+            "Program { return program.open(path, "
+            "entry, arguments); }\n"
+            "Close :: (handle: Program) { program.close(handle); }\n"
+            "Has :: (handle: Program, name: string) -> bool { return "
+            "program.has(handle, name); }\n",
+            message,
+            sizeof message
+        ) &&
+        !*message
+    );
+    REQUIRE(
+        catalog_compile("package app\nStopped :: (handle: Missing) -> int { return 0; }\n", message, sizeof message) &&
+        *message
+    );
+    return true;
+}
+
 void test_language_host_packages_compiler()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(host_packages_compile_link_and_run_through_stage_one);
+    RUN_TEST_CASE(host_packages_catalog_handle_types_reach_package_signatures);
     pu_clear_setup();
 }

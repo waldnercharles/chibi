@@ -19,7 +19,6 @@ void test_language_record_compatibility();
 void test_language_record_services();
 void test_language_record_global_compatibility();
 #endif
-void test_language_record_prepared_runtime();
 void test_language_corpus(const char *manifest);
 void test_language_execution();
 void test_language_execution_scope();
@@ -75,9 +74,7 @@ void test_field_runtime();
 void test_prototype_document();
 void test_ui_authoring();
 void test_language_text_format();
-void test_language_prepared_write(const char *directory);
 void test_language_compiler_artifact_write(const char *directory);
-void test_language_record_producer(const char *directory);
 void test_language_native_census(const char *report);
 void test_language_native_census_flattening();
 
@@ -98,8 +95,6 @@ int main(int argc, char **argv)
     if (argc == 3 && !strcmp(argv[1], "--stack-overflow-child")) {
         return test_language_stack_overflow_child(argv[2]);
     }
-    bool record_producer = argc == 3 && !strcmp(argv[1], "--record-produce");
-    bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");
     bool compiler_artifact = argc == 3 &&
                              !strcmp(argv[1], "--compiler-artifact-write");
     bool corpus = argc == 4 && !strcmp(argv[2], "--corpus");
@@ -107,7 +102,6 @@ int main(int argc, char **argv)
     bool execution_scope = argc == 2 && !strcmp(argv[1], "--execution-scope");
     bool incremental_benchmark = argc == 2 &&
                                  !strcmp(argv[1], "--incremental-benchmark");
-    bool record_prepared_runtime = argc == 2 && !strcmp(argv[1], "--record-prepared");
     bool compositional_records = argc == 2 &&
                                  !strcmp(argv[1], "--compositional-records");
     bool record_compatibility = argc == 2 &&
@@ -232,12 +226,11 @@ int main(int argc, char **argv)
     bool prototype = argc == 2 && !strcmp(argv[1], "--prototype-document");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
-    if ((!prepared && !compiler_artifact && !record_producer && !execution &&
-         !execution_scope && !incremental_benchmark && !record_values &&
-         !record_document && !record_services && !record_compatibility &&
-         !record_prepared_runtime && !compositional_records && !program &&
-         !program_session && !incremental && !modules && !native_calls && !ranges &&
-         !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
+    if ((!compiler_artifact && !execution && !execution_scope &&
+         !incremental_benchmark && !record_values && !record_document &&
+         !record_services && !record_compatibility && !compositional_records &&
+         !program && !program_session && !incremental && !modules && !native_calls &&
+         !ranges && !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
          !integer_shift_counts && !integer_shift_counts_authored && !package_graph &&
          !package_graph_chibi && !asset_compiler_host && !asset_packaging_chibi &&
          !shader_source_chibi && !syntax_chibi && !source_tokenizer_chibi &&
@@ -350,7 +343,7 @@ int main(int argc, char **argv)
             ""
             ""
             "--compiler-artifact-write "
-            "directory | --prepared-write "
+            "directory  "
             "directory\n",
             argv[0]
         );
@@ -369,10 +362,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "Record services require the native entity/UI SDK targets\n");
         return 2;
 #endif
-    } else if (record_producer) {
-        test_language_record_producer(argv[2]);
-    } else if (record_prepared_runtime) {
-        test_language_record_prepared_runtime();
     } else if (compositional_records) {
         test_language_compositional_records();
     } else if (record_document) {
@@ -394,8 +383,6 @@ int main(int argc, char **argv)
         test_field_runtime();
     } else if (navigation) {
         test_language_navigation();
-    } else if (prepared) {
-        test_language_prepared_write(argv[2]);
     } else if (compiler_artifact) {
         test_language_compiler_artifact_write(argv[2]);
     } else if (build_workflow) {

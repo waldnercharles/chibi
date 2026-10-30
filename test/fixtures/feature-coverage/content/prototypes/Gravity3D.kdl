@@ -1,6 +1,0 @@
-name "Gravity3D"
-components {
-    Gravity3D {
-        acceleration y=-320.0
-    }
-}

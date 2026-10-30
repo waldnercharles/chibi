@@ -313,6 +313,120 @@ LegacyPorts :: (ports: Port[]) -> ResolvedPort[] {
     }
     return resolved;
 }
+// The natives the sources declare with foreign blocks, appended to the target's
+// own so calls resolve through the ordinary native path. A foreign function is
+// a native whose identity names its library and symbol; a target that does not
+// link that library has no such native, so a program that calls it cannot be
+// loaded there. Parameters and the result are integers, floats, bool or
+// rawptr, an opaque 64-bit word.
+ForeignRows :: union {
+    Failed(diagnostic: syntax.Diagnostic) |
+    Declared(natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[], effects: int[])
+}
+// The type `node` spells as a native port storage, 0 when a foreign signature
+// may not use it.
+ForeignStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    spelled := Text(forest, text, node);
+    if (spelled == "rawptr") {
+        return WordStorage;
+    }
+    storage := ScalarStorage(spelled);
+    if (storage == 0 || storage == TextStorage) {
+        return 0;
+    }
+    return storage;
+}
+ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], natives: ResolvedNative[],
+                   ports: ResolvedPort[], identities: u64[], effects: int[]) -> ForeignRows {
+    for (file in 0..<length(documents)) {
+        text := documents[file].text;
+        libraries: string[] = [];
+        paths: string[] = [];
+        member := FirstMember(forest, documents[file].syntax_root);
+        while (member >= 0) {
+            if (Is(forest, member, "foreign_import_declaration")) {
+                spelled := Text(forest, text, Field(forest, member, "path"));
+                if (strings.ByteLength(spelled) < 2 || strings.Contains(spelled, "\\")) {
+                    return ForeignRows.Failed(Diagnose(forest, member, file, "A foreign library path is a plain string"));
+                }
+                libraries.append(Text(forest, text, Field(forest, member, "alias")));
+                paths.append(strings.Slice(spelled, 1, strings.ByteLength(spelled) - 2));
+            } else if (Is(forest, member, "foreign_block")) {
+                alias := Text(forest, text, Field(forest, member, "library"));
+                path: string = "";
+                known := false;
+                for (index in 0..<length(libraries)) {
+                    if (libraries[index] == alias) {
+                        path = paths[index];
+                        known = true;
+                    }
+                }
+                if (!known) {
+                    return ForeignRows.Failed(Diagnose(forest, Field(forest, member, "library"), file,
+                                                       format_text("No foreign import named '{}'", alias)));
+                }
+                for (declaration in Members(forest, member)) {
+                    if (!Is(forest, declaration, "foreign_function")) {
+                        continue;
+                    }
+                    name := Text(forest, text, Field(forest, declaration, "name"));
+                    for (native in natives) {
+                        if (native.name == name) {
+                            return ForeignRows.Failed(Diagnose(forest, declaration, file,
+                                                               format_text("Duplicate declaration '{}'", name)));
+                        }
+                    }
+                    first := length(ports);
+                    signature := "";
+                    parameters: int = 0;
+                    for (parameter in Members(forest, Field(forest, declaration, "parameters"))) {
+                        kind := Field(forest, parameter, "type");
+                        storage := 0;
+                        if (kind >= 0) {
+                            storage = ForeignStorage(forest, text, kind);
+                        }
+                        if (storage == 0) {
+                            return ForeignRows.Failed(Diagnose(forest, parameter, file,
+                                                               "A foreign parameter is an integer, float, bool or rawptr"));
+                        }
+                        port: ResolvedPort = {name: Text(forest, text, Field(forest, parameter, "name")),
+                                              storage: storage, container: 0, c_string: false, record: -1,
+                                              has_default: false, default_owner: false, default_supported: false,
+                                              default_bits: 0, default_text: ""};
+                        ports.append(port);
+                        signature = format_text("{}{},", signature, storage);
+                        parameters += 1;
+                    }
+                    results: int = 0;
+                    result := Field(forest, declaration, "results");
+                    if (result >= 0) {
+                        storage := ForeignStorage(forest, text, result);
+                        if (storage == 0) {
+                            return ForeignRows.Failed(Diagnose(forest, result, file,
+                                                               "A foreign result is an integer, float, bool or rawptr"));
+                        }
+                        output: ResolvedPort = {name: "Result", storage: storage, container: 0, c_string: false,
+                                                record: -1, has_default: false, default_owner: false,
+                                                default_supported: false, default_bits: 0, default_text: ""};
+                        ports.append(output);
+                        signature = format_text("{}->{}", signature, storage);
+                        results = 1;
+                    }
+                    row: ResolvedNative = {name: name, first: first, parameters: parameters, results: results,
+                                           variadic: false, direct: true, qualified_name: name,
+                                           kind: NativeFunctionKind, intrinsic: 0,
+                                           effects: ReadEffect | WriteEffect, source: false};
+                    natives.append(row);
+                    identities.append(binding.ID("foreign", format_text("{}:{}", path, name)));
+                    identities.append(binding.ID("foreign-signature", signature));
+                    effects.append(ReadEffect | WriteEffect);
+                }
+            }
+            member = NextMember(forest, member);
+        }
+    }
+    return ForeignRows.Declared(natives, ports, identities, effects);
+}
 NativeInputValid :: (natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[], effects: int[]) -> bool {
     if (length(identities) != 2 * length(natives) || length(effects) != length(natives)) {
         return false;
@@ -1636,7 +1750,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                                               solid[named.end])};
                 constants.append(constant);
             } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
-                       !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration")) {
+                       !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration") &&
+                       !Is(forest, member, "foreign_import_declaration") && !Is(forest, member, "foreign_block")) {
                 return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
             }
             chosen_at += 1;
@@ -2613,11 +2728,11 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
                   callables: Callable[], constants: ConstDecl[], package: int, first_own: int,
                   reachable: bool[]) -> ConstDecl[] {
     // Only a package this one imports declares a constant it can use.
-    foreign := false;
+    outside := false;
     for (constant in constants) {
-        foreign = foreign || (constant.package != package && reachable[constant.package]);
+        outside = outside || (constant.package != package && reachable[constant.package]);
     }
-    if (!foreign) {
+    if (!outside) {
         return constants;
     }
     seen := resize([false], length(constants));
@@ -3432,8 +3547,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                             called_id = binding.ID("symbol", format_text("{}:1:{}:callable", package_names[callee.package], callee.name));
                         }
                         wide.append(called_id);
-                        foreign: writer.Reference = {imported: row, own: 0, function: length(wide) - 1, role: 0};
-                        references.append(foreign);
+                        imported_reference: writer.Reference = {imported: row, own: 0, function: length(wide) - 1, role: 0};
+                        references.append(imported_reference);
                     }
                     call: writer.Call = {owned_arguments: invocation.owned_arguments, function: length(references) - 1, first: invocation.first,
                                          count: invocation.count, result_first: invocation.result_first,
@@ -3797,6 +3912,15 @@ CompileResolved :: (project: string, collection_names: string[], collection_path
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return Result.Rejected(diagnostic);
         case .Accepted(roots, documents, nodes, imports, built):
+            switch ForeignNatives(nodes, documents, resolved_natives, resolved_ports, identities, native_effects) {
+                case .Failed(diagnostic):
+                    return Result.Rejected(diagnostic);
+                case .Declared(foreign_natives, foreign_ports, foreign_identities, foreign_effects):
+                    resolved_natives = foreign_natives;
+                    resolved_ports = foreign_ports;
+                    identities = foreign_identities;
+                    native_effects = foreign_effects;
+            }
             switch built {
                 case .Rejected(error, cycle):
                     return InputFailure(-1, "package graph is invalid");

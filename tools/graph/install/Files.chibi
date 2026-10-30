@@ -1,5 +1,6 @@
 package install
 
+import os "core:os"
 import strings "core:strings"
 
 Join :: (parts: string[]) -> string {
@@ -34,10 +35,10 @@ pub CanonicalPath :: (path: string) -> string {
         if (result == "/") {
             candidate = Join([result, part]);
         }
-        resolved := build.resolve_path(candidate);
-        kind := build.file_kind(candidate);
-        if (kind != "" && (resolved == "" ||
-                           (index < length(parts) - 1 && build.file_kind(resolved) != "directory"))) {
+        resolved := os.RealPath(candidate);
+        kind := os.Kind(candidate);
+        if (kind != os.KindNone && (resolved == "" ||
+                           (index < length(parts) - 1 && !os.IsDirectory(resolved)))) {
             return "";
         }
         result = candidate;
@@ -49,7 +50,7 @@ pub CanonicalPath :: (path: string) -> string {
 }
 // file_stamp starts with device:inode; its remaining metadata may change.
 pub Identity :: (path: string) -> string {
-    stamp := build.file_stamp(path);
+    stamp := os.Stamp(path);
     if (stamp == "") {
         return "";
     }
@@ -78,15 +79,15 @@ pub Inside :: (path: string, directory: string) -> bool {
 }
 // Only regular files and real directories are distribution inputs.
 pub SameTree :: (source: string, staged: string) -> bool {
-    kind := build.file_kind(source);
-    if (kind != build.file_kind(staged)) {
+    kind := os.Kind(source);
+    if (kind != os.Kind(staged)) {
         return false;
     }
-    if (kind == "file") {
+    if (kind == os.KindFile) {
         hash := build.hash_file(source);
         return hash != "" && hash == build.hash_file(staged);
     }
-    if (kind != "directory") {
+    if (kind != os.KindDirectory) {
         return false;
     }
     names := build.list_directory(source);
@@ -101,11 +102,14 @@ pub SameTree :: (source: string, staged: string) -> bool {
     return true;
 }
 pub CopyTree :: (source: string, destination: string) -> bool {
-    kind := build.file_kind(source);
-    if (kind == "file") {
-        return build.make_directory(Parent(destination)) && build.copy_file(source, destination);
+    kind := os.Kind(source);
+    if (kind == os.KindFile) {
+        if (os.MakeDirectory(Parent(destination)) || os.Copy(source, destination)) {
+            return false;
+        }
+        return true;
     }
-    if (kind != "directory" || !build.make_directory(destination)) {
+    if (kind != os.KindDirectory || os.MakeDirectory(destination)) {
         return false;
     }
     for (name in build.list_directory(source)) {
@@ -116,14 +120,15 @@ pub CopyTree :: (source: string, destination: string) -> bool {
     return true;
 }
 pub RemoveTree :: (path: string) -> bool {
-    if (build.file_kind(path) == "directory") {
+    if (os.IsDirectory(path)) {
         for (name in build.list_directory(path)) {
             if (!RemoveTree(Join([path, "/", name]))) {
                 return false;
             }
         }
     }
-    return build.remove(path);
+    failed := os.Remove(path);
+    return !failed;
 }
 // Sorted relative file names and their byte hashes, without absolute paths.
 pub Inventory :: (root: string, relative: string) -> string {
@@ -131,7 +136,7 @@ pub Inventory :: (root: string, relative: string) -> string {
     if (relative != "") {
         path = Join([root, "/", relative]);
     }
-    if (build.file_kind(path) == "file") {
+    if (os.IsFile(path)) {
         return Join([relative, "\t", build.hash_file(path), "\n"]);
     }
     text := "";

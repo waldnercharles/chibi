@@ -708,6 +708,36 @@ Scoring :: library {
 A game calls this function as `Scoring.Reward(10)`.
 Library, behavior and system blocks do not take `pub`.
 
+## Foreign libraries
+
+Native builds call C libraries that were built beforehand, the way Odin's
+`foreign import` does. A project never compiles the library's C source.
+
+```chibi
+foreign import libc "system:c"
+
+foreign libc {
+    getpid :: () -> i32
+    abs :: (value: i32) -> i32
+}
+```
+
+`foreign import alias "path"` names the library. A `system:` path asks the
+linker for a system library; any other path is a prebuilt archive, relative to
+the importing package. `foreign alias { ... }` declares the library's functions
+by signature alone. A function's name is its C symbol.
+
+Status: the compiler declares each foreign function as a native the target
+must link. Its identity names the library path and the symbol, so a target that
+does not link the library cannot load a program that calls it; the VM never
+runs foreign code. Parameters and results are integers, floats, `bool` and
+`rawptr`, an opaque 64-bit word. Calls through the native backend and linking
+the archive are the next steps. Names are global like other natives, so two
+foreign functions cannot share one. Planned after that: a `u8[]` passed as a
+data pointer with its length given separately, text for `const char *` when it
+is NUL-terminated, and `@variadic` with the number of fixed arguments for
+variadic C functions.
+
 ## Generics and compile-time values
 
 `$T` binds a type from an argument. Later uses of `T` refer to that type.

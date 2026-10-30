@@ -84,7 +84,7 @@ class ProfileTests(unittest.TestCase):
                     symbols = '__asan_init\n__ubsan_handle_add_overflow' if sanitized else 'main'
                     with patch.object(profile.subprocess, 'check_output', return_value=symbols):
                         receipt = profile.verify(root, log, sanitized)
-                        self.assertEqual(len(receipt['compile']), 5)
+                        self.assertEqual(len(receipt['compile']), 4)
                         self.assertEqual(len(receipt['links']), 2)
                         if graph:
                             next(root.glob('objects/**/*.chibi-record')).write_text('different command\n\n')

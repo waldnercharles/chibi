@@ -20,7 +20,9 @@ typedef struct
     const char *seed;     /* write: the seed's closure and arguments. */
     const char *revision; /* write: the sources' revision, recorded as given. */
     const char *output;   /* check: where to write the recovered compiler. */
+    const char *arguments; /* check: where to write Compile's arguments. */
     const char *cache; /* load: directory keeping recovered compilers, or NULL. */
+    bool validate;     /* check: validate the artifact without recovering. */
 } compiler_bootstrap;
 
 /* Writes the artifact from a seed folder: compiler.chibip and compile.json,
@@ -37,8 +39,15 @@ bool compiler_bootstrap_write(const compiler_bootstrap *, char *error, size_t si
  * unknown format, a damaged closure, another target, a package with a source
  * the list omits or a version older than the sources' minimum is rejected
  * first. False with why; on success, report says what was recovered, and the
- * recovered compiler is written to `output` when there is one. */
+ * recovered compiler is written to `output` when there is one, and the
+ * arguments it compiled the sources with to `arguments`. Those two files make a
+ * seed folder for compiler_bootstrap_write. */
 bool compiler_bootstrap_check(const compiler_bootstrap *, char *report, size_t size);
+/* The checks compiler_bootstrap_check makes before it recovers anything: the
+ * artifact's format, version, closure checksum and target, and the sources'
+ * completeness. Compiles nothing, so it takes seconds where recovery takes
+ * minutes. False with why; on success, report says how many sources changed. */
+bool compiler_bootstrap_validate(const compiler_bootstrap *, char *report, size_t size);
 
 struct compiler_host;
 

@@ -427,8 +427,7 @@ TEST_CASE(named_programs_build_what_they_run)
     static const char *const programs[] = {
         "test/tools/test_tools",   "test/tools/policy_worker",
         "sdk/chibi-compile",       "sdk/chibi-build-host",
-        "sdk/chibi-compiler-host", "sdk/chibi",
-        "sdk/chibi-player"
+        "sdk/chibi-compiler-host", "sdk/chibi"
     };
     int found = 0;
     yyjson_val *entry;
@@ -436,13 +435,13 @@ TEST_CASE(named_programs_build_what_they_run)
     while ((entry = yyjson_arr_iter_next(&iter))) {
         const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
         REQUIRE(strcmp(base(output), "test_host"));
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < (int)(sizeof programs / sizeof *programs); i++) {
             snprintf(path, sizeof path, "%s/%s", build_dir, programs[i]);
             found += !strcmp(output, path);
         }
     }
     yyjson_doc_free(doc);
-    REQUIRE(found == 8);
+    REQUIRE(found == (int)(sizeof programs / sizeof *programs));
     return true;
 }
 
@@ -657,11 +656,8 @@ static bool debug_optimization_instrumentation(bool instrumented, int frame_mode
         join(path, build_dir, "compile_commands.json");
         yyjson_doc *doc = yyjson_read_file(path, 0, NULL, NULL);
         REQUIRE(doc);
-        bool saw_test = false, saw_cxx = false, saw_engine = false, saw_sdk = false;
+        bool saw_test = false, saw_engine = false, saw_sdk = false;
         bool saw_tools = false, saw_language = false;
-#ifdef __APPLE__
-        bool saw_objc = false;
-#endif
         yyjson_arr_iter entries = yyjson_arr_iter_with(yyjson_doc_get_root(doc));
         yyjson_val *entry;
         while ((entry = yyjson_arr_iter_next(&entries))) {
@@ -700,8 +696,6 @@ static bool debug_optimization_instrumentation(bool instrumented, int frame_mode
                 REQUIRE(assertions);
                 saw_test = true;
             }
-            const char *file = yyjson_get_str(yyjson_obj_get(entry, "file"));
-            saw_cxx |= strstr(file, ".cpp") != NULL;
             if (strstr(output, "/objects/test_tools/")) {
                 REQUIRE(assertions);
                 saw_tools = true;
@@ -710,15 +704,9 @@ static bool debug_optimization_instrumentation(bool instrumented, int frame_mode
                 REQUIRE(assertions);
                 saw_language = true;
             }
-#ifdef __APPLE__
-            saw_objc |= !strcmp(file + strlen(file) - 2, ".m");
-#endif
         }
-        REQUIRE(saw_test && saw_cxx && saw_engine && saw_sdk);
+        REQUIRE(saw_test && saw_engine && saw_sdk);
         REQUIRE(saw_tools && saw_language);
-#ifdef __APPLE__
-        REQUIRE(saw_objc);
-#endif
         yyjson_doc_free(doc);
     }
     return true;

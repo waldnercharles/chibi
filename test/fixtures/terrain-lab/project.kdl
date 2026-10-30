@@ -1,4 +1,0 @@
-version 39
-name "Terrain Lab"
-content "content"
-start_scene "scenes/Quarry.kdl"

@@ -147,7 +147,7 @@ typedef struct
     sample_group group;
     bool core, math, updates, boxed, game, moves, aliases, variants, built,
         lends, drops, same_rejection, c_string_probe, host_effects,
-        update_order, debug_metadata, traced, char_checks;
+        update_order, debug_metadata, traced, char_checks, foreign;
     /* Its calls run with the probe natives linked, take no arguments and
      * return one int. */
     bool probe_calls;
@@ -1148,6 +1148,36 @@ static const sample samples[] = {
                 "    while (length(parts) < 4 - 1) { parts.append(\"c\"); n += 1; }\n"
                 "    return n + length(parts);\n}",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[4]" } } },
+    /* Foreign functions are natives the sources declare. Stage zero has no
+     * foreign blocks, so these samples have no oracle; the closure is not run
+     * because no target links the library. */
+    { .name = "foreign functions are natives the target must link",
+      .group = TYPE_SAMPLES,
+      .foreign = true,
+      .source = "package facts\nforeign import probe \"libprobe.a\"\n"
+                "foreign probe {\n"
+                "    chibi_probe_add :: (a: i32, b: i32) -> i32\n"
+                "    chibi_probe_scale :: (value: f64, by: f64) -> f64\n"
+                "    chibi_probe_open :: (flags: u32) -> rawptr\n"
+                "}\n"
+                "Run :: () -> int { return chibi_probe_add(1, 2); }" },
+    { .name = "foreign block names an import",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nforeign missing {\n"
+                "    chibi_probe_add :: (a: i32, b: i32) -> i32\n}\n"
+                "Run :: () -> int { return 1; }",
+      .message = "No foreign import named 'missing'",
+      .line = 2,
+      .column = 9 },
+    { .name = "foreign parameters are plain scalars",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nforeign import probe \"libprobe.a\"\n"
+                "foreign probe {\n"
+                "    chibi_probe_name :: (text: string) -> i32\n}\n"
+                "Run :: () -> int { return 1; }",
+      .message = "A foreign parameter is an integer, float, bool or rawptr",
+      .line = 4,
+      .column = 26 },
     { .name = "core-math-imported-values",
       .group = IMPORT_SAMPLES,
       .math = true,
@@ -7785,7 +7815,7 @@ static bool run_sample_table(sample_group group, int b, const sample *table, int
                    (!s->built || builds_results(bytes, length)) &&
                    (!s->lends || lends_native_values(bytes, length)) &&
                    (!s->drops || drops_only_collections(bytes, length)) &&
-                   ((b && !s->host_effects && !s->debug_metadata) ||
+                   (s->foreign || (b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      (s->math || points_like_oracle(bytes, length, s->host_effects))));
         bool hosted = !s->traced || !s->c_string_probe;
@@ -8337,7 +8367,10 @@ static bool stage_two_sample(const sample *s)
     args[ARGUMENTS] = linked_effects[s->game][s->c_string_probe][1];
     int argument_count = ARGUMENTS + s->host_effects;
     const char *entry_name = s->host_effects ? "CompileWithEffects" : "Compile";
-    REQUIRE(compiler_call(1, entry_name, args, argument_count, COMPILE_BUDGET, &out));
+    if (!compiler_call(1, entry_name, args, argument_count, COMPILE_BUDGET, &out)) {
+        fprintf(stderr, "stage two failed on sample %s\n", s->name);
+        return false;
+    }
     size_t length, expected_length;
     char *json = document_json(args, argument_count, &length);
     bool compiled = compiler_succeeded(&out);
@@ -8427,6 +8460,8 @@ static int copying_functions(const execution_module_plan *p)
                                  "CompileBehaviorsWithCatalog",
                                  "BehaviorRejectionWithCatalog",
                                  "CollectScalar",
+                                 "CollectScalarPackages",
+                                 "ScalarCollect",
                                  "Declare",
                                  "DeclarePackage" };
     int copying = 0;
@@ -12267,18 +12302,20 @@ static bool scalar_package_arguments(
 }
 /* A function of an imported project package is one module with its caller:
  * the entry is the first function of the first file, whichever package order
- * puts the dependency in front, and the qualified call is a call row to the
- * import's function, which the emitter lowers as a call. */
+ * puts the dependency in front, the qualified call is a call row to the
+ * import's function, which the emitter lowers as a call, and a qualified
+ * constant is the value it folds to. */
 TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
 {
     REQUIRE(prepare());
     static const source_package_input packages[] = {
         { .path = "Main.chibi",
           .text = "package main\nimport lib \"project:lib\"\n"
-                  "Main :: () -> int { return lib.Add(3, lib.Twice(2)) * 2; "
-                  "}\n" },
+                  "Main :: () -> int { return lib.Add(3, lib.Twice(2)) * "
+                  "lib.Limit; }\n" },
         { .path = "lib/Lib.chibi",
-          .text = "package lib\npub Twice :: (n: int) -> int { return n * 2; "
+          .text = "package lib\npub Limit :: 5;\n"
+                  "pub Twice :: (n: int) -> int { return n * 2; "
                   "}\n"
                   "pub Add :: (a: int, b: int) -> int { return a + b; }\n" },
     };
@@ -12304,14 +12341,15 @@ TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
     REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
     for (int b = 0; b < 2; b++) {
         const pin_array *rows = produced[b].ptr;
-        if (produced[b].container == PIN_CONTAINER_ARRAY && rows->count == 2) {
+        REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && rows->count > 1);
+        if (rows->count == 2) {
             fprintf(
                 stderr,
-                "imported scalar rows: %s\n",
-                pin_text(scalar_field(&rows->items[1], "text")).bytes
+                "scalar packages: %s\n",
+                pin_text(scalar_field(guard_row(&produced[b], 1), "text")).bytes
             );
         }
-        REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && rows->count > 2);
+        REQUIRE(rows->count > 2);
         REQUIRE(scalar_field(&rows->items[2], "kind").i != SCALAR_REJECTION_ROW);
         REQUIRE(retained_text(&rows->items[2], "name", "Main"));
         REQUIRE(validated(b, &produced[b], ""));

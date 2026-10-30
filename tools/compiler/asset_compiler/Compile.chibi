@@ -118,15 +118,18 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
     return (Entry(project, collection_names, collection_paths, paths[0]), compiled.bytes, nil);
 }
 
-// Package tests compile a project's packages with the host's complete target
-// catalog and native effect masks. The closure is the compiled root package and
-// the packages it imports, empty when the input is rejected.
+// Package compiles take the host's reflected catalog: its native capabilities
+// with their nominal ports, its native types and fields, the entity type and
+// each native's effect mask. The closure is the compiled root package and the
+// packages it imports, empty when the input is rejected.
 pub CompilePackages :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                         sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],
-                        natives: compiler.Native[], ports: compiler.Port[], identities: u64[],
-                        native_effects: int[]) -> u8[] {
-    return compiler.CompileClosureWithEffects(project, collection_names, collection_paths, paths, sources, debug, target,
-                                              abi, names, natives, ports, identities, native_effects);
+                        natives: compiler.CatalogNative[], ports: compiler.CatalogPort[], identities: u64[],
+                        types: compiler.GameType[], type_fields: compiler.GameField[], entity: u64,
+                        os: int, arch: int, native_effects: int[]) -> u8[] {
+    return compiler.CompileClosureWithCatalog(project, collection_names, collection_paths, paths, sources, debug,
+                                              target, abi, names, natives, ports, identities, types, type_fields,
+                                              entity, os, arch, native_effects);
 }
 // The host reads a rejection's payload by position.
 pub Rejection :: union {
@@ -137,10 +140,12 @@ pub Rejection :: union {
 // The first diagnostic CompilePackages' input is rejected with.
 pub RejectPackages :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                        sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],
-                       natives: compiler.Native[], ports: compiler.Port[], identities: u64[],
-                       native_effects: int[]) -> Rejection {
-    compiled := compiler.CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target,
-                                            abi, names, natives, ports, identities, native_effects);
+                       natives: compiler.CatalogNative[], ports: compiler.CatalogPort[], identities: u64[],
+                       types: compiler.GameType[], type_fields: compiler.GameField[], entity: u64,
+                       os: int, arch: int, native_effects: int[]) -> Rejection {
+    compiled := compiler.CompileWithCatalog(project, collection_names, collection_paths, paths, sources, debug,
+                                            target, abi, names, natives, ports, identities, types, type_fields,
+                                            entity, os, arch, native_effects);
     diagnostic := compiled.error;
     if (diagnostic) {
         return Rejection.Rejected(diagnostic.document, diagnostic.line, diagnostic.column, diagnostic.message);

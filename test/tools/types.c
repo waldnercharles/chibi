@@ -136,18 +136,11 @@ bool test_native_catalog_active();
 type_catalog_pack test_native_catalog_pack();
 #endif
 
-#ifdef CHIBI_TEST_SOURCE_FEATURES
-#include "authoring/studio_schema.h"
-#endif
 int type_catalog_pack_count()
 {
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     if (test_source_runtime_active()) {
-#ifdef CHIBI_TEST_SOURCE_FEATURES
-        return 3;
-#else
         return 2;
-#endif
     }
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
@@ -163,11 +156,6 @@ type_catalog_pack type_catalog_pack_at(int index)
     assert(index >= 0 && index < type_catalog_pack_count());
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     if (test_source_runtime_active()) {
-#ifdef CHIBI_TEST_SOURCE_FEATURES
-        if (index == 2) {
-            return STUDIO_TYPE_PACK;
-        }
-#endif
         return index ? TEST_REFLECTED_TYPES_PACK : TYPE_PACK;
     }
 #endif

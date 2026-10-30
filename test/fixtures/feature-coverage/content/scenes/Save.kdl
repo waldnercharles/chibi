@@ -1,9 +1,0 @@
-version 1
-name "Save"
-(array)entities {
-    - {
-        name "Profile"
-        prototype "Profile"
-        (array)behaviors "SaveProbe"
-    }
-}

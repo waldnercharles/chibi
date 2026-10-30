@@ -2,20 +2,20 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "0ed330d7fd627177017e72fa03b8f9183847296f",
+  "revision": "8cd2f5a526f1cfc6cb649a256056cf6860d4c2da",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 25658351,
-    "sha256": "ea946c0589001b3d687fa5d83bcbf69b38969b4bcf0664c14775d3c0f0c224bd"
+    "bytes": 27995291,
+    "sha256": "7f28ae3628a7cdddd16b8224d73ba430e287d045435ff8d48993d6d55df57196"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 173886,
-      "sha256": "e8e7091148e45ad56b0cf869961cc193a4f18ebf3dd9084489becd929c7b3549"
+      "bytes": 189181,
+      "sha256": "dc3d32fcb53df7ff27d689f7ff809ce7ed3097507d7ac7a7799e4f071b9dd91b"
     },
     {
       "path": "package_compiler/Body.chibi",
@@ -29,13 +29,13 @@
     },
     {
       "path": "package_compiler/Generics.chibi",
-      "bytes": 49137,
-      "sha256": "1077522304916269a915a2865395b856ab16c945797df88b9dbd5ad07f7f741c"
+      "bytes": 62058,
+      "sha256": "3092ebe9b0d0315bfae5765148fe11851768314b540ef10002f621c40bfabdd8"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 341016,
-      "sha256": "8ee7f38ce9d4a6b4c9c772af0266fb5ffacc290e285cd01a828fd7685943fa3b"
+      "bytes": 342735,
+      "sha256": "135160e2ad869fc285e41543d2a7bb3eec689629e8a0b793d6967b7a1fffe0bc"
     },
     {
       "path": "package_compiler/Maps.chibi",
@@ -99,8 +99,8 @@
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 117662,
-      "sha256": "b0aa5b09bd6f05d3e40709627cd0bcfbdbc1a900f0cf756b4f04b4aab0411c57"
+      "bytes": 125654,
+      "sha256": "654f8ed8e219ad71fe1bcdbffad875329f5f05298cfb5948275d4040c276fa62"
     },
     {
       "path": "package_compiler/Math.chibi",
@@ -109,8 +109,8 @@
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
-      "bytes": 2289,
-      "sha256": "732d297724476f8941d6b32e3870a0f46220fa1abcdbc5679c7865f3f5b8ce5f"
+      "bytes": 2455,
+      "sha256": "a5c78725395bab50f008be5a7695def663d9cc4abddc6f9083b0ddda49c4f785"
     },
     {
       "path": "/sdk/core/strings/Strings.chibi",
@@ -123,9 +123,44 @@
       "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622"
     },
     {
+      "path": "source_tokenizer/Tokenizer.chibi",
+      "bytes": 28758,
+      "sha256": "07d20c91dd003c0ae9d6497ad9e4a6bb7702460b0376cd4f7c12a29274cd01ec"
+    },
+    {
+      "path": "source_parser/Tree.chibi",
+      "bytes": 8836,
+      "sha256": "14c6dfb8a430bdb7b64698c745ad98d538dc376fcba7d88706f9330dff504a91"
+    },
+    {
+      "path": "source_parser/Types.chibi",
+      "bytes": 9627,
+      "sha256": "88551cbe1a58511fdafc5291bce3db665b8387f08ddfd876824516a1fd1d4885"
+    },
+    {
+      "path": "source_parser/Expressions.chibi",
+      "bytes": 15335,
+      "sha256": "71c2815cc009cf6c2770efa37ae48cc5808f32b88cf7a2e0c7834a72b97ffd8d"
+    },
+    {
+      "path": "source_parser/Statements.chibi",
+      "bytes": 12777,
+      "sha256": "5a71c8a8d4c33ff21c5311e5635cea41e6456683be40260226c917fda137b73b"
+    },
+    {
+      "path": "source_parser/Declarations.chibi",
+      "bytes": 25052,
+      "sha256": "39bd81eeb7f36e66d80fd44a1806cb96fe043b08d6190e0fb5556653ddce6137"
+    },
+    {
+      "path": "source_parser/Parser.chibi",
+      "bytes": 7711,
+      "sha256": "f406cda8635b169d4a9c306ecc3853e21a9ac0dcc455c6a193e1c3dc77ff799c"
+    },
+    {
       "path": "compiler_syntax/Syntax.chibi",
-      "bytes": 1529,
-      "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+      "bytes": 346,
+      "sha256": "3b606f6078f43f5be1db2acf228dff488be0843e8410c36d151ede06fcc1fe31"
     },
     {
       "path": "package_routes/Routes.chibi",
@@ -169,8 +204,8 @@
     },
     {
       "path": "scalar_facts/Facts.chibi",
-      "bytes": 16982,
-      "sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50"
+      "bytes": 16941,
+      "sha256": "78ff5b02dbab8b4128a078fa9ccf34fcd4c2061d3a82be2a0dc319985ae1d549"
     }
   ],
   "target": [

@@ -87,3 +87,34 @@ With the project content readers archived and the bootstrap contract read as pla
 - `src/support/asset_text.c`: KDL documents to and from asset values; tests `test/support/asset_text.c`, `test/asset_fixture.h`.
 - `third_party/ckdl`: the vendored KDL parser, its license notices in the SDK and compiler runtime seed.
 - `src/authoring/parts_prepare.c`, `mesh_prepare.c` (the `shader_preparation` target): KDL mesh-part preparation; three render cases that prepared parts.
+
+## Native player, renderer and UI host (src/render, src/ui, src/platform, src/host)
+
+`chibi-player` and everything only it (and the render tests) linked leave the build. Games cannot be played, rendered, previewed or exported until a Chibi renderer replaces them; the compiler, build host, `chibi-compile` and the launcher's compile path stay.
+
+- `src/render` (the renderer, shaders and `.shd`/`.frag` sources, audio output, scene3d, materials, HRC): `scene3d_parts`, `shader_catalog`, `shader_parameters`, `shader_values` and the headers they need stay for `chibi_visual_catalog` until project compilation drops its shader catalog.
+- `src/platform` (Cute glue), `src/support/{resources,number_expr,ui_style}`, `src/ui/{rml*,controls/**,drag,list,popover,iframe,motion,focus_within,autofocus,json_items,iframe_profile,input_feel,text_motion}` (the RmlUi host and its controls).
+- `src/host/{player_main,player_url,player_clock}`: the player entry point, its URL gestures and clock; `src/host/web/` (browser page and data loader).
+- `src/authoring/studio_{schema,definition,native,project}`: the Studio type pack and schema, `chibi_studio_capabilities` and `chibi_project_preparation`.
+- `sdk/desktop.cmake`, `sdk/preview.cmake`, `tools/package_player.py`: the player's CMake definition and packaging.
+- Tests: `test/render/**`, `test/draw_backend.cpp`, `test/authoring/render_resources.c`, `test/tools/{audio_output,device_controls,hrc_spot,particle_fields,scene3d_camera,scene3d_terrain,scene3d_volume,terrain_cut_benchmark,terrain_playable_render,player_url,player_clock,webgpu_staging,shader_webgpu}.c` and their selectors in `test_tools`, `tools/agent.py`, `tools/test_policy.py` and `test/execution_selectors.h`.
+- Lost functionality: running a game (`chibi run`, `chibi PATH`, `make player-run`), `chibi export` (desktop and web) and `chibi web`, the web player, the GPU render and audio test selectors (`--radiance*`, `--scene3d*`, `--material-sampling`, `--scene2d`, `--interior-border`, ...), and the Studio type pack. The launcher app (`apps/chibi`), `tools/toolchain/{RuntimeSDK,Graph}.chibi`, `tools/graph/sdk/Evidence.chibi`, `tools/package_sdk.py` and the runtime SDK tests still name `chibi-player` as a product; they cannot build a real player and should be deleted with the runtime SDK.
+
+## Stories (test/stories)
+
+The game-equivalence stories: five small game projects, each played by a KDL scenario, that compared a reference and a candidate compiler's game artifacts. They left with game projects and the game-equivalence harness.
+
+## Fixture-run @test wrappers (test/language)
+
+`package_core.c`, `package_tests.c`, `package_portable.c`, `package_portable_compiler.c` and `integer_arithmetic.c` ran the @tests of core and portable packages through `compiler_fixture_tests*` on both backends, compiled by stage zero. `tools/test_policy.py` now runs `chibi test packages/core` and `chibi test test/integer_arithmetic` (`chibi-test-core`, `chibi-test-integer-arithmetic`) instead. Lost: both-backend and sanitizer runs of those suites, the package-discovery edge cases of `package_tests.c` (old `package_tests_find*`), and the portable consumer/compiler package fixtures (`test/packages/portable_consumer` has no runner now; re-add `chibi test` for it once its imports resolve).
+
+## Compiler unit tests moved to @test (tools/compiler/<package>/tests)
+
+Each differential that called an authored compiler package's exports from C is replaced by table-driven `@test` functions in `tools/compiler/<package>/tests/Tests.chibi` (it imports the package as `project:<package>`; run `chibi test tools/compiler`, which imports only directories that declare an `@test`; the folder is not a compiler source folder, so seed recovery is unaffected). The C differential is archived.
+
+- `source_tokenizer_chibi.c` → `tools/compiler/source_tokenizer/tests`: the 12 hand-written expectation cases (range tokens, statement terminators, Odin error messages and offsets). Lost: the corpus and source differentials against the Tree-sitter token stream.
+- `source_parser_chibi.c` and `SourceParserDiff.chibi` → `tools/compiler/source_parser/tests`: 18 short sources, one per construct family (attributes, `@error` unions, `@test`, behavior, component, library, prototype, relationship, system, return tuples, `when`, operators, collections, `for`) plus the four invalid corpus files with their diagnostic line and column. Lost: the differential over every `.chibi` file in the repository and the full-size `test/language/syntax_corpus` files against Tree-sitter. Note: a test source must stay small (a test has a 100M-instruction budget) and `length(string)` in a test hangs the compile.
+- `package_paths_chibi.c` → `tools/compiler/package_paths/tests`: 22 @tests (21 of the 26 requests plus a missing-path request, each with the C resolver's result). Lost: the three long-path requests (segment over 255 bytes, absolute paths at 4095/4096 bytes, joined-limit-before-collapse) and the detached-results lifetime checks.
+- `package_routes_chibi.c` → `tools/compiler/package_routes/tests`: 37 @tests (11 root-set rejections and accepted roots, 11 file routes, 17 import routes, with the results the C router gave). Lost: the raw UTF-8 and surrogate-pair import literals, the 134-call reuse of one preparation per backend, and the detached-results lifetime case.
+- `package_syntax_chibi.c` → `tools/compiler/package_syntax/tests`: 5 @tests (header only, imports with and without alias with exact ranges, blank name, missing header, syntax error first). Lost: the 32 raw-parse transports of every child and incoming field name against Tree-sitter and the edited-snapshot case.
+- `syntax_chibi.c` → `tools/compiler/syntax_diagnostics/tests`: 5 @tests (valid source, four rejected sources with their diagnostic line and column). Lost: the shared-corpus comparison of raw trees against Tree-sitter snapshots and the incremental UTF-8 and recovery edits.

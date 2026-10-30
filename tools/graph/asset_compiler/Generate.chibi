@@ -1,5 +1,6 @@
 package asset_compiler_stage
 
+import os "core:os"
 import strings "core:strings"
 
 // Retain each fragment once per level, not every growing prefix.
@@ -72,7 +73,7 @@ Sources :: (folder: string) -> string[] {
     paths: string[] = [];
     for (name in build.list_directory(folder)) {
         path := Join([folder, "/", name]);
-        if (build.file_kind(path) == "directory") {
+        if (os.IsDirectory(path)) {
             for (nested in Sources(path)) {
                 paths.append(Join([name, "/", nested]));
             }
@@ -147,13 +148,14 @@ Request :: (first: string, paths: string[], sources: string[], target: string, g
 }
 
 Invoke :: (host: string, artifact: string, callable: string, input: string, output: string, timeout: string) -> bool {
-    if (build.run([host, "--artifact", artifact, "--entry", callable, "--input", input, "--backend", "sljit",
-                   "--budget", "10000000000", "--timeout-ms", timeout, "--output-bytes", output]) != 0) {
-        build.report(Join(["asset compiler generation failed: ", build.last_stderr()]));
+    generated := os.Capture([host, "--artifact", artifact, "--entry", callable, "--input", input, "--backend", "sljit",
+                             "--budget", "10000000000", "--timeout-ms", timeout, "--output-bytes", output]);
+    if (generated.status != 0) {
+        os.Print(Join(["asset compiler generation failed: ", generated.stderr]));
         if (callable == "0x140a9546d9e8c296") {
-            build.run([host, "--artifact", artifact, "--entry", "0x19dfb0cfc681eb4b", "--input", input,
-                       "--backend", "sljit", "--budget", "10000000000", "--timeout-ms", timeout]);
-            build.report(build.last_stdout());
+            diagnosed := os.Capture([host, "--artifact", artifact, "--entry", "0x19dfb0cfc681eb4b", "--input", input,
+                                     "--backend", "sljit", "--budget", "10000000000", "--timeout-ms", timeout]);
+            os.Print(diagnosed.stdout);
         }
         return false;
     }
@@ -170,17 +172,17 @@ Key :: (seed: string, request: string) -> string {
 Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
             cache: string, timeout: string, inputs: string) -> bool {
     stored := Join([cache, "/", key]);
-    if (build.file_exists(stored)) {
-        return build.copy_file(stored, output);
+    if (os.Exists(stored)) {
+        return !os.Copy(stored, output);
     }
-    if (!build.write_file(inputs, request) ||
+    if (os.WriteText(inputs, request) ||
         !Invoke(host, seed, callable, inputs, Join([output, ".tmp"]), timeout)) {
         return false;
     }
-    if (build.make_directory(cache)) {
-        build.copy_file(Join([output, ".tmp"]), stored);
+    if (os.MakeDirectory(cache) || os.Copy(Join([output, ".tmp"]), stored)) {
+        os.Print(Join(["asset compiler: caching product failed: ", key]));
     }
-    return build.rename(Join([output, ".tmp"]), output);
+    return !os.Rename(Join([output, ".tmp"]), output);
 }
 
 // Removes the cached products this build did not use, so the cache stays at
@@ -193,8 +195,8 @@ Prune :: (cache: string, keep: string[]) {
                 used = true;
             }
         }
-        if (!used) {
-            build.remove(Join([cache, "/", name]));
+        if (!used && os.Remove(Join([cache, "/", name]))) {
+            os.Print(Join(["asset compiler: pruning cache entry failed: ", name]));
         }
     }
 }
@@ -204,7 +206,7 @@ Prune :: (cache: string, keep: string[]) {
 // Reports are buffered until normal return/unwinding, not live flushed traces;
 // a killed or crashed host may not publish them.
 pub Generate :: (root: string, host: string, folder: string, target: string, compiler_timeout: string) -> bool {
-    build.report("asset compiler: entered generator");
+    os.Print("asset compiler: entered generator");
     inventory := Inventory(root);
     records: string[] = [];
     stamps: string[] = [];
@@ -217,7 +219,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         stamps.append(Join([checksum, " ", path, "\n"]));
     }
     native_facts := Join([folder, "/native_target.json"]);
-    if (!build.make_directory(folder) || build.run([host, "--target-json", native_facts]) != 0) {
+    if (os.MakeDirectory(folder) || os.Run([host, "--target-json", native_facts]) != 0) {
         return false;
     }
     native_target := build.trim(build.read_file(native_facts));
@@ -266,30 +268,30 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     seed := Join([root, "/tools/compiler/bootstrap/compiler.chibip"]);
     closure_entry := "0x140a9546d9e8c296"; // package_compiler.CompileClosure
     cache := Join([root, "/.chibi/asset-compiler-cache"]);
-    build.report("asset compiler: serialize facade request");
+    os.Print("asset compiler: serialize facade request");
     facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target, true);
     facade_key := Key(seed, facade_request);
     kept := [facade_key];
-    build.report("asset compiler: invoke facade compiler");
+    os.Print("asset compiler: invoke facade compiler");
     if (!Product(host, seed, closure_entry, facade_request, facade_key, facade, cache, compiler_timeout, inputs)) {
         return false;
     }
-    build.report("asset compiler: facade ready");
+    os.Print("asset compiler: facade ready");
     if (target == native_target) {
-        if (!build.copy_file(facade, artifact)) {
+        if (os.Copy(facade, artifact)) {
             return false;
         }
     } else {
-        build.report("asset compiler: serialize target request");
+        os.Print("asset compiler: serialize target request");
         target_request := Request("asset_compiler/Compile.chibi", paths, sources, target, true);
         target_key := Key(seed, target_request);
         kept.append(target_key);
-        build.report("asset compiler: invoke target compiler");
+        os.Print("asset compiler: invoke target compiler");
         if (!Product(host, seed, closure_entry, target_request, target_key, artifact, cache, compiler_timeout, inputs)) {
             return false;
         }
     }
-    if (build.file_kind(cache) == "directory") {
+    if (os.IsDirectory(cache)) {
         Prune(cache, kept);
     }
     // Keep the complete public library snapshot separate from compiler inputs.
@@ -319,8 +321,8 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         }
         index += 1;
     }
-    build.report("asset compiler: serialize packaging request");
-    if (!build.write_file(inputs, Join(["[", Array(library_paths), ",", Array(library_sources), "]"]))) {
+    os.Print("asset compiler: serialize packaging request");
+    if (os.WriteText(inputs, Join(["[", Array(library_paths), ",", Array(library_sources), "]"]))) {
         return false;
     }
     // The same stable package-symbol hash used by all prepared entry IDs.
@@ -328,12 +330,12 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     for (value in strings.Bytes("package-symbol:project:asset_compiler:1:Packaged:callable")) {
         id = (id ^ u64(value)) * u64(1099511628211);
     }
-    build.report("asset compiler: invoke packaging");
+    os.Print("asset compiler: invoke packaging");
     if (!Invoke(host, facade, format_text("0x{:016x}", id), inputs, Join([folder, "/asset_compiler_packaged.c.tmp"]), compiler_timeout) ||
-        !build.rename(Join([folder, "/asset_compiler_packaged.c.tmp"]), Join([folder, "/asset_compiler_packaged.c"]))) {
+        os.Rename(Join([folder, "/asset_compiler_packaged.c.tmp"]), Join([folder, "/asset_compiler_packaged.c"]))) {
         return false;
     }
-    build.report("asset compiler: packaging ready");
+    os.Print("asset compiler: packaging ready");
     index = 0;
     while (index < length(paths)) {
         path := paths[index];
@@ -353,30 +355,30 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         checksum := build.before(stamp, " ");
         path := build.trim(build.after(stamp, " "));
         if (build.hash_file(Join([root, "/", path])) != checksum) {
-            build.report(Join(["asset compiler source changed during generation: ", path]));
+            os.Print(Join(["asset compiler source changed during generation: ", path]));
             return false;
         }
     }
     if (Inventory(root) != inventory) {
-        build.report("asset compiler source inventory changed during generation");
+        os.Print("asset compiler source inventory changed during generation");
         return false;
     }
-    if (!build.write_file(Join([folder, "/inventory.txt"]), inventory) ||
-        !build.write_file(Join([folder, "/inventory-directories.txt"]), Join([strings.Join(InventoryDirectories(), "\n"), "\n"])) ||
-        !build.write_file(Join([folder, "/sources.sha256"]), Join(stamps)) ||
-        !build.write_file(Join([folder, "/manifest.json"]), manifest) ||
-        !build.write_file(Join([folder, "/target.json"]), target)) {
+    if (os.WriteText(Join([folder, "/inventory.txt"]), inventory) ||
+        os.WriteText(Join([folder, "/inventory-directories.txt"]), Join([strings.Join(InventoryDirectories(), "\n"), "\n"])) ||
+        os.WriteText(Join([folder, "/sources.sha256"]), Join(stamps)) ||
+        os.WriteText(Join([folder, "/manifest.json"]), manifest) ||
+        os.WriteText(Join([folder, "/target.json"]), target)) {
         return false;
     }
-    build.report("asset compiler: embed artifact");
+    os.Print("asset compiler: embed artifact");
     blob := Join([folder, "/asset_compiler_blob.inc"]);
     build.embed_file(artifact, blob, "asset_compiler_blob");
-    if (!build.file_exists(blob)) {
+    if (!os.Exists(blob)) {
         return false;
     }
-    build.remove(inputs);
-    build.remove(facade);
-    build.remove(native_facts);
-    build.report("asset compiler: generation complete");
+    if (os.Remove(inputs) || os.Remove(facade) || os.Remove(native_facts)) {
+        return false;
+    }
+    os.Print("asset compiler: generation complete");
     return true;
 }

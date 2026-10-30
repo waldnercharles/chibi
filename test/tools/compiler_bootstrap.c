@@ -789,11 +789,39 @@ TEST_CASE(bootstrap_load_recovers_a_new_listed_source_without_a_new_artifact)
     return true;
 }
 
+/* --validate admits the artifact for the working tree's sources without
+ * recovering a compiler, so it finishes in seconds even when the seed is
+ * stale, and still refuses a closure its manifest does not record. */
+TEST_CASE(bootstrap_validates_without_recovering)
+{
+    char sources[PATH_MAX], collection[PATH_MAX], damaged[PATH_MAX], closure[PATH_MAX];
+    snprintf(sources, sizeof sources, "%s/tools/compiler", tool_root());
+    snprintf(collection, sizeof collection, "%s/packages/core", tool_root());
+    const char *argv[] = { host_path,     "--validate", "--bootstrap",
+                           artifact_path, "--compiler", sources,
+                           "--core",      collection,   NULL };
+    REQUIRE(tool_run_within(argv, root, log_path, 20) == 0);
+    REQUIRE(log_has("the artifact admits the sources; "));
+    folder("damaged-artifact");
+    path(damaged, "damaged-artifact");
+    snprintf(closure, sizeof closure, "%s/bootstrap.json", artifact_path);
+    char *manifest = tool_read(closure);
+    REQUIRE(manifest);
+    write_file("damaged-artifact/bootstrap.json", manifest);
+    free(manifest);
+    write_file("damaged-artifact/compiler.chibip", "not the closure");
+    argv[3] = damaged;
+    REQUIRE(tool_run_within(argv, root, log_path, 20) == 1);
+    REQUIRE(log_has("is not the closure bootstrap.json records"));
+    return true;
+}
+
 void test_tool_bootstrap_recovery(const char *host, const char *artifact)
 {
     host_path = host;
     artifact_path = artifact;
     setup_root();
+    RUN_TEST_CASE(bootstrap_validates_without_recovering);
     RUN_TEST_CASE(bootstrap_recovers_from_a_clean_checkout);
     pu_setup(NULL, cleanup_load);
     RUN_TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing);

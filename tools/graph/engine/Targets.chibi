@@ -297,7 +297,7 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_authoring") {
         return [
             "src/authoring/native_bindings.c", "src/authoring/source_literal.c",
-                        "src/authoring/source_link.c"
+            "src/authoring/source_link.c"
         ];
     }
     if (target == "chibi_source_catalog") {
@@ -673,7 +673,6 @@ pub PublicHeaders :: (target: string) -> string[] {
         return [
             "authoring/native_bindings.h",
             "authoring/source_link.h", "authoring/source_literal.h"
-
 
         ];
     }
@@ -1909,6 +1908,14 @@ pub Resources :: (target: string) -> string[] {
         return [
             "build/share/chibi/engine.json=build/sdk/chibi_engine_metadata.json",
             "build/share/chibi/apps/chibi=apps/chibi",
+            // chibi fmt runs apps/fmt as a program of its own, with the formatter's
+            // packages beside it, so the other commands do not compile them.
+            "build/share/chibi/apps/fmt=apps/fmt",
+            "build/share/chibi/apps/fmt/compiler_syntax=tools/compiler/compiler_syntax",
+            "build/share/chibi/apps/fmt/source_format=tools/compiler/source_format",
+            "build/share/chibi/apps/fmt/source_parser=tools/compiler/source_parser",
+            "build/share/chibi/apps/fmt/source_tokenizer=tools/compiler/source_tokenizer",
+            "build/share/chibi/apps/fmt/syntax_diagnostics=tools/compiler/syntax_diagnostics",
             "build/share/chibi/core=packages/core"
         ];
     }

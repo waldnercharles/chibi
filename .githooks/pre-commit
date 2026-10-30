@@ -1,7 +1,28 @@
 #!/bin/sh
-# Formats staged C sources with the clang-format version CI checks, then
-# re-stages them. Vendored third_party sources are outside its scope.
+# Formats what is staged before it commits:
+#   C sources, with the clang-format version CI checks (vendored third_party
+#   sources are outside its scope);
+#   Chibi sources, with `chibi fmt --staged` from a built SDK.
+# Both re-stage the formatted files.
 root=$(git rev-parse --show-toplevel)
+cd "$root" || exit 1
+
 # Branches older than the shared script keep committing unformatted.
-[ -f "$root/tools/clang-format.sh" ] || exit 0
-exec sh "$root/tools/clang-format.sh" --staged
+if [ -f "$root/tools/clang-format.sh" ]; then
+    sh "$root/tools/clang-format.sh" --staged || exit 1
+fi
+
+if git diff --cached --name-only --diff-filter=ACMR -- '*.chibi' | grep -q .; then
+    chibi=
+    for candidate in "$root/build/sdk/chibi" "$root/build-release/sdk/chibi" "$(command -v chibi)"; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            chibi=$candidate
+            break
+        fi
+    done
+    if [ -z "$chibi" ]; then
+        echo "pre-commit: no chibi found (build/sdk, build-release/sdk or PATH); Chibi sources were not formatted" >&2
+        exit 0
+    fi
+    "$chibi" fmt --staged || exit 1
+fi

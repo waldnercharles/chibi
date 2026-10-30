@@ -114,3 +114,9 @@ AlignsAContinuedBinaryExpression :: () {
     Case("package p\n\nA :: () {\n    x := first +\n  second\n}\n",
          "package p\n\nA :: () {\n    x := first +\n         second\n}\n");
 }
+
+@test
+BreaksStatementsAfterABraceOnOneLine :: () {
+    Case("package p\n\nA :: (flag: bool) -> int { if flag {} return 8; }\n",
+         "package p\n\nA :: (flag: bool) -> int {\n    if flag {}\n    return 8;\n}\n");
+}

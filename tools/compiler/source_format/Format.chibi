@@ -2,17 +2,26 @@ package source_format
 
 import strings "core:strings"
 import syntax "project:compiler_syntax"
-import parser "project:source_parser"
 import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
 
 // Layout formatting for Chibi source: a whitespace-only pass over the
 // tokens of the parser's tree. Line breaks the author wrote stay, except
 // where the grammar forces one; this pass chooses indentation, alignment of
 // continued lines, blank lines (at most one) and the single spaces between
-// tokens. The result is parsed again and must match the input's tree kind for
-// kind, field for field and byte for byte on every leaf, or it is rejected.
+// tokens. The result is tokenized again and must give the input's token
+// stream, statement terminators included, or it is rejected. The parser reads
+// only that stream, so the same stream gives the same tree; checking tokens
+// instead of parsing the output again costs a fraction of the memory.
 // The rules are the archived C formatter's (archive/src/authoring/source_format.c),
 // written over the same tree.
+
+// What CompareTokens finds. TerminatorsDiffer means the streams match apart
+// from zero-width terminators after a closing brace, which a line break there
+// adds; a tree comparison then decides.
+Different: int : 0;
+Same: int : 1;
+TerminatorsDiffer: int : 2;
 
 // The largest source the formatter accepts, in bytes.
 pub MaxBytes: int : 8388608;
@@ -52,12 +61,12 @@ pub Format :: (text: string, options: Options) -> Result {
                 return Result.Formatted(text);
             }
             formatted := Layout(text, rows, fields, root, tokens, options);
-            switch syntax.Parse(formatted) {
-                case .Parsed(again, again_fields, again_named, again_extras, again_root):
-                    if (again[again_root].has_error ||
-                        !Equivalent(text, rows, fields, named, formatted, again, again_fields, again_named)) {
-                        return Result.Rejected("Formatting would change the syntax tree");
-                    }
+            verdict := CompareTokens(text, formatted);
+            if (verdict == Different) {
+                return Result.Rejected("Formatting would change the token stream");
+            }
+            if (verdict == TerminatorsDiffer && !SameTree(text, rows, fields, named, formatted)) {
+                return Result.Rejected("Formatting would change the syntax tree");
             }
             return Result.Formatted(formatted);
     }
@@ -98,12 +107,6 @@ Margin :: struct {
 Frame :: struct {
     inside: Margin;
     close: Margin;
-}
-
-// The open frames; the first `depth` entries are live.
-Frames :: struct {
-    list: Frame[];
-    depth: int;
 }
 
 KindOf :: (rows: diag.Node[], node: int) -> string {
@@ -349,21 +352,22 @@ SpaceBetween :: (rows: diag.Node[], previous: Token, current: Token) -> bool {
     return !TightBefore(rows, current.node) && !TightAfter(rows, previous.node);
 }
 
-Push :: (frames: ^Frames, frame: Frame) {
-    if (frames.depth == length(frames.list)) {
-        frames.list.append(frame);
+// Stores `frame` at index `depth` of the open frames, whose first `depth`
+// entries are live; the caller then counts it.
+Place :: (frames: ^(Frame[]), depth: int, frame: Frame) {
+    if (depth == length(frames^)) {
+        frames.append(frame);
     } else {
-        frames.list[frames.depth] = frame;
+        frames^[depth] = frame;
     }
-    frames.depth += 1;
 }
 
-// The margin of a line inside the innermost open frame.
-Inner :: (frames: ^Frames) -> Margin {
-    if (frames.depth == 0) {
+// The margin of a line inside the innermost of the first `depth` frames.
+Inner :: (frames: Frame[], depth: int) -> Margin {
+    if (depth == 0) {
         return {levels: 0, spaces: 0};
     }
-    return frames.list[frames.depth - 1].inside;
+    return frames[depth - 1].inside;
 }
 
 // Aligns later lines at `column`, indenting with as many of the line's
@@ -416,17 +420,18 @@ Layout :: (text: string, rows: diag.Node[], fields: string[], root: int, tokens:
         unit = "\t";
     }
     packaged := ChildByField(rows, fields, root, "package") >= 0;
-    frames: Frames = {list: [], depth: 0};
+    frames: Frame[] = [];
+    depth: int = 0;
     out: string[] = [];
     line: Margin = {levels: 0, spaces: 0};
     column: int = 0;
     i: int = 0;
     while (i < length(tokens)) {
         current := tokens[i];
-        at := Inner(&frames);
+        at := Inner(frames, depth);
         if (current.close || current.nest_close) {
-            frames.depth -= 1;
-            at = frames.list[frames.depth].close;
+            depth -= 1;
+            at = frames[depth].close;
         }
         if (i > 0) {
             previous := tokens[i - 1];
@@ -463,16 +468,18 @@ Layout :: (text: string, rows: diag.Node[], fields: string[], root: int, tokens:
         // Operands continued on later lines align with the first one.
         chains: int = 0;
         while (chains < current.chain_open) {
-            Push(&frames, {inside: Align(line, start_column, width), close: line});
+            Place(&frames, depth, {inside: Align(line, start_column, width), close: line});
+            depth += 1;
             chains += 1;
         }
         if (current.open || current.case_open) {
-            outer := Inner(&frames);
-            Push(&frames, {inside: {levels: outer.levels + 1, spaces: outer.spaces}, close: outer});
+            outer := Inner(frames, depth);
+            Place(&frames, depth, {inside: {levels: outer.levels + 1, spaces: outer.spaces}, close: outer});
+            depth += 1;
         }
-        frames.depth -= current.chain_close;
+        depth -= current.chain_close;
         if (current.case_close) {
-            frames.depth -= 1;
+            depth -= 1;
         }
         if (current.nest_open) {
             // A bracket that ends its line indents the next lines one level
@@ -482,16 +489,129 @@ Layout :: (text: string, rows: diag.Node[], fields: string[], root: int, tokens:
             if (wraps) {
                 within = {levels: line.levels + 1, spaces: line.spaces};
             }
-            Push(&frames, {inside: within, close: line});
+            Place(&frames, depth, {inside: within, close: line});
+            depth += 1;
         }
         i += 1;
     }
     out.append("\n");
-    return strings.Join(out, "");
+    return Concatenate(out);
 }
 
-// Visible rows are the ones with width; the tree-sitter cursor walk the
-// archived formatter compared skipped the zero-width terminators the same way.
+// The pieces joined in order. strings.Join appends one piece at a time and
+// copies the whole result each time, which costs the square of the output
+// size; merging neighbours copies each byte once per round, log2(pieces) rounds.
+Concatenate :: (pieces: string[]) -> string {
+    level := pieces;
+    while (length(level) > 1) {
+        merged: string[] = [];
+        at: int = 0;
+        while (at + 1 < length(level)) {
+            merged.append(format_text("{}{}", level[at], level[at + 1]));
+            at += 2;
+        }
+        if (at < length(level)) {
+            merged.append(level[at]);
+        }
+        level = merged;
+    }
+    return level[0];
+}
+
+// The first index at or after `at` that is not a zero-width terminator
+// directly after a closing brace.
+SkipTerminators :: (kinds: int[], starts: int[], ends: int[], at: int) -> int {
+    while (at > 0 && at < length(kinds) && kinds[at] == tk.Semicolon && starts[at] == ends[at] &&
+           kinds[at - 1] == tk.CloseBrace) {
+        at += 1;
+    }
+    return at;
+}
+
+// Compares the token streams of two texts: kinds, and the bytes of every
+// token. Zero-width terminators have no bytes; their kinds and places in the
+// sequence matter, except right after a closing brace, where the grammar
+// accepts one or none.
+CompareTokens :: (original: string, rewritten: string) -> int {
+    switch tk.Tokenize(original) {
+        case .Scanned(a_kinds, a_starts, a_ends, a_rows, a_columns, a_errors, a_offsets, a_error_rows, a_error_columns):
+            switch tk.Tokenize(rewritten) {
+                case .Scanned(b_kinds, b_starts, b_ends, b_rows, b_columns, b_errors, b_offsets, b_error_rows, b_error_columns):
+                    if (length(b_errors) > 0) {
+                        return Different;
+                    }
+                    a_bytes := text_bytes(original);
+                    b_bytes := text_bytes(rewritten);
+                    verdict := Same;
+                    i: int = 0;
+                    j: int = 0;
+                    while (i < length(a_kinds) && j < length(b_kinds)) {
+                        if (a_kinds[i] != b_kinds[j] || a_ends[i] - a_starts[i] != b_ends[j] - b_starts[j]) {
+                            // A terminator on one side only.
+                            ni := SkipTerminators(a_kinds, a_starts, a_ends, i);
+                            nj := SkipTerminators(b_kinds, b_starts, b_ends, j);
+                            if (ni == i && nj == j) {
+                                return Different;
+                            }
+                            verdict = TerminatorsDiffer;
+                            i = ni;
+                            j = nj;
+                        } else {
+                            size := a_ends[i] - a_starts[i];
+                            at: int = 0;
+                            while (at < size) {
+                                if (a_bytes[a_starts[i] + at] != b_bytes[b_starts[j] + at]) {
+                                    return Different;
+                                }
+                                at += 1;
+                            }
+                            i += 1;
+                            j += 1;
+                        }
+                    }
+                    if (i < length(a_kinds) || j < length(b_kinds)) {
+                        return Different;
+                    }
+                    return verdict;
+            }
+    }
+}
+
+// Whether the rewritten text parses to the original's tree: the same depth,
+// kind, named flag and field for every row with width, and the same bytes in
+// every leaf. Only a rewrite that adds or drops a terminator comes here,
+// because a second parse costs about 3 KB of heap per source byte.
+SameTree :: (original: string, a: diag.Node[], a_fields: string[], a_named: bool[], rewritten: string) -> bool {
+    switch syntax.Parse(rewritten) {
+        case .Parsed(b, b_fields, b_named, b_extras, b_root):
+            if (b[b_root].has_error) {
+                return false;
+            }
+            a_depths := Depths(a);
+            b_depths := Depths(b);
+            i := NextVisible(a, 0);
+            j := NextVisible(b, 0);
+            while (i < length(a) && j < length(b)) {
+                if (a_depths[i] != b_depths[j] || a[i].kind != b[j].kind || a_named[i] != b_named[j] ||
+                    a_fields[i] != b_fields[j]) {
+                    return false;
+                }
+                if (a[i].first_child < 0 && b[j].first_child < 0) {
+                    size := a[i].end - a[i].start;
+                    if (size != b[j].end - b[j].start ||
+                        text_slice(original, a[i].start, size) != text_slice(rewritten, b[j].start, size)) {
+                        return false;
+                    }
+                }
+                i = NextVisible(a, i + 1);
+                j = NextVisible(b, j + 1);
+            }
+            return i >= length(a) && j >= length(b);
+    }
+}
+
+// Visible rows are the ones with width; the cursor walk the archived formatter
+// compared skipped the zero-width terminators the same way.
 NextVisible :: (rows: diag.Node[], at: int) -> int {
     while (at < length(rows) && rows[at].end == rows[at].start) {
         at += 1;
@@ -508,30 +628,4 @@ Depths :: (rows: diag.Node[]) -> int[] {
         i += 1;
     }
     return depths;
-}
-
-// Whether two parses have the same shape: depth, kind, namedness and field of
-// every visible row, and the same bytes in every visible leaf.
-Equivalent :: (original: string, a: diag.Node[], a_fields: string[], a_named: bool[],
-               rewritten: string, b: diag.Node[], b_fields: string[], b_named: bool[]) -> bool {
-    a_depths := Depths(a);
-    b_depths := Depths(b);
-    i := NextVisible(a, 0);
-    j := NextVisible(b, 0);
-    while (i < length(a) && j < length(b)) {
-        if (a_depths[i] != b_depths[j] || a[i].kind != b[j].kind || a_named[i] != b_named[j] ||
-            a_fields[i] != b_fields[j]) {
-            return false;
-        }
-        if (a[i].first_child < 0 && b[j].first_child < 0) {
-            size := a[i].end - a[i].start;
-            if (size != b[j].end - b[j].start ||
-                text_slice(original, a[i].start, size) != text_slice(rewritten, b[j].start, size)) {
-                return false;
-            }
-        }
-        i = NextVisible(a, i + 1);
-        j = NextVisible(b, j + 1);
-    }
-    return i >= length(a) && j >= length(b);
 }

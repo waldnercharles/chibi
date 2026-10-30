@@ -39,12 +39,52 @@ An invalid width is rejected, never clamped. Wrapping to a preferred line width
 is not implemented yet; the archived formatter's `preferred_width` returns in a
 later change.
 
+## chibi fmt
+
+```sh
+chibi fmt [--check | --staged] [PATH...]
+```
+
+Formats `.chibi` files in place with the defaults. A PATH is a file or a
+directory, which stands for the files git tracks below it; none means the
+working directory. `--check` writes nothing, prints each file that would
+change and exits 1 if any would, or if any file cannot be formatted.
+`--staged` formats the files staged for commit and stages the result; a file
+with unstaged edits is only checked, since staging it would stage those edits.
+`.githooks/pre-commit` runs it with the `chibi` it finds in `build/sdk`,
+`build-release/sdk` or `PATH`, so enable the hooks once with
+`git config core.hooksPath .githooks`.
+
+The command runs `apps/fmt` as a program of its own, installed in
+`share/chibi/apps/fmt` with the formatter's packages beside it, so that no other
+command compiles them. Costs on this checkout (Apple M-series, release SDK):
+
+- Start: about 23 s, all of it compiling the formatter's packages (stage zero
+  compiles about 3 s per thousand lines).
+- Formatting: about 3 s for the 4,000-line `Body.chibi`; parsing dominates.
+- Memory: a program's garbage is collected only between runs, and a parse costs
+  about 3 KB of heap per source byte, so one process formats at most 400 KB of
+  source. A larger job runs its first batch itself and each later batch in a
+  child process, and each child pays the start again.
+- The whole tree, 859 files and 4 MB, takes about 5 minutes with `--check`.
+
+First whole-tree result (2026-10-30): 369 of 859 files would change, 3 cannot
+be formatted. 351 of the 369 are the dense one-line fixtures in
+`test/compiler/samples` (553 files); ten are in `tools/compiler`, eight elsewhere. The other 490
+files, among them `packages/core`, `archive` and `test/fixtures`, are already
+formatted. The three that cannot be formatted are fixtures in
+`test/compiler/samples/fallible`, where a line break after a `{}` block changes
+the tree.
+
 ## Safety
 
-The result is parsed again and compared with the input's tree: the same depth,
-kind, named flag and field for every row that has width, and the same bytes in
-every leaf. Anything else is `Rejected("Formatting would change the syntax
-tree")`, and the input is untouched. Source with syntax errors, or over
+The result is tokenized again and compared with the input's tokens: the same
+kinds in the same order, zero-width statement terminators included, and the same
+bytes in every token. Anything else is `Rejected("Formatting would change the
+token stream")`, and the input is untouched. The parser reads only the token
+stream, so an identical stream gives an identical tree, comments included; the
+check needs no second parse, which dominates the formatter's memory (about
+1.4 KB of heap per source byte). Source with syntax errors, or over
 `format.MaxBytes` (8 MiB), is rejected before any layout.
 
 Empty source is returned unchanged; the archived formatter wrote a lone newline.

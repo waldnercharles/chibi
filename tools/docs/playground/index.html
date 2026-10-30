@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chibi formatter playground</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <h1>Chibi formatter</h1>
+  <label>Indent <input id="indent" type="number" min="1" max="16" value="4"></label>
+  <label><input id="tabs" type="checkbox"> Tabs</label>
+  <span id="status" role="status" aria-live="polite"></span>
+</header>
+<main>
+  <nav id="sidebar" aria-label="Source files">
+    <input id="filter" type="search" placeholder="Filter files" aria-label="Filter files">
+    <div id="count"></div>
+    <div id="tree"></div>
+  </nav>
+  <section class="pane">
+    <div class="pane-title"><span id="name">Scratch</span> <span class="muted">(editable)</span></div>
+    <div class="editor">
+      <div id="original-view" class="view" aria-hidden="true"></div>
+      <textarea id="source" spellcheck="false" aria-label="Original source"></textarea>
+    </div>
+  </section>
+  <section class="pane">
+    <div class="pane-title">Formatted <button id="copy" type="button">Copy</button></div>
+    <div id="formatted" class="view" tabindex="0" aria-label="Formatted source"></div>
+  </section>
+</main>
+<script src="diff.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -76,3 +76,16 @@ BuildNative :: (options: Options) -> int {
     }
     return process.run(NativeDriver(share, "Native", [root, tools, options.mode, debug, options.target]))
 }
+
+// chibi fmt runs apps/fmt, installed beside the CLI with the packages it needs,
+// as a program of its own.
+Format :: (arguments: string[]) -> int {
+    directory := files.resolve(Join([application.bin(), "/../share/chibi/apps/fmt"]))
+    if directory == "" {
+        Error("fmt: cannot find the SDK's share/chibi/apps/fmt")
+        return 2
+    }
+    options := NewOptions("run")
+    options.path = directory
+    return Run(options, arguments)
+}

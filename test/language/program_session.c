@@ -1,4 +1,3 @@
-#include "authoring/native_bindings.h"
 #include "authoring/program.h"
 #include "authoring/program_service.h"
 #include "backend.h"
@@ -29,7 +28,7 @@ typedef struct
     authoring_program *target;
     bool compile;
 } session_bridge;
-static source_package_snapshot *snapshot(const char *, const char *);
+static const source_package_snapshot_options *snapshot(const char *, const char *);
 
 static const char *nested_call(
     const behavior_function_context *context,
@@ -154,23 +153,24 @@ static bool catalog()
 
 static authoring_program_options options(behavior_backend backend)
 {
-    return (authoring_program_options){ .native = native,
-                                        .bindings = authoring_native_bindings(native),
-                                        .backend = backend };
+    return (authoring_program_options){ .native = native, .backend = backend };
 }
 
-static source_package_snapshot *snapshot(const char *main, const char *dependency)
+/* The inputs of one compile, valid until the next call. */
+static const source_package_snapshot_options *snapshot(const char *main, const char *dependency)
 {
-    source_package_input files[] = {
-        { "Main.chibi", main, strlen(main) },
-        { "counter/Counter.chibi", dependency, dependency ? strlen(dependency) : 0 }
-    };
-    source_package_snapshot_options inputs = {
+    static source_package_input files[2];
+    static source_package_snapshot_options inputs;
+    files[0] = (source_package_input){ "/program-session/Main.chibi", main, strlen(main) };
+    files[1] = (source_package_input){ "/program-session/counter/Counter.chibi",
+                                       dependency,
+                                       dependency ? strlen(dependency) : 0 };
+    inputs = (source_package_snapshot_options){
         .project_root = "/program-session",
         .files = files,
         .file_count = dependency ? 2 : 1
     };
-    return source_package_snapshot_new(&inputs);
+    return &inputs;
 }
 
 static bool accept(authoring_program *session, const char *main, const char *dependency, bool restart)
@@ -181,7 +181,7 @@ static bool accept(authoring_program *session, const char *main, const char *dep
     return true;
 }
 
-static source_package_snapshot *collection_snapshot(bool invalid)
+static const source_package_snapshot_options *collection_snapshot(bool invalid)
 {
     const char *unused = "package unused\nUnused :: () -> int { return "
                          "unused_error }\n";
@@ -191,20 +191,23 @@ static source_package_snapshot *collection_snapshot(bool invalid)
                        : "package used\npub Value :: () -> int { return 37 }\n";
     const char *main = "package app\nimport used \"core:used\"\nMain :: () -> "
                        "int { return used.Value() }\n";
-    const source_package_input files[] = {
+    static source_package_input files[3];
+    const source_package_input listed[] = {
         { "/aaa-core/unused/Unused.chibi", unused, strlen(unused) },
         { "/aaa-core/used/Value.chibi", used, strlen(used) },
         { "/program-session/Main.chibi", main, strlen(main) }
     };
-    const source_package_collection collection = { "core", "/aaa-core" };
-    const source_package_snapshot_options inputs = {
+    static const source_package_collection collection = { "core", "/aaa-core" };
+    static source_package_snapshot_options inputs;
+    memcpy(files, listed, sizeof files);
+    inputs = (source_package_snapshot_options){
         .project_root = "/program-session",
         .files = files,
         .file_count = 3,
         .collections = &collection,
         .collection_count = 1
     };
-    return source_package_snapshot_new(&inputs);
+    return &inputs;
 }
 
 TEST_CASE(session_collection_reachability_preserves_entry_and_source_diagnostics)

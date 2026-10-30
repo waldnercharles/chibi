@@ -107,7 +107,7 @@ package_collection *package_compile(
         roots[i] = inputs->collections[i].root;
     }
     size_t request_length = 0;
-    char *request = compiler_package_request_json(
+    char *request = compiler_package_catalog_request_json(
         inputs->project_root,
         names,
         roots,
@@ -117,6 +117,7 @@ package_collection *package_compile(
         sizes,
         count,
         native_capabilities_catalog(native),
+        native,
         &request_length
     );
     package_collection *packages = NULL;

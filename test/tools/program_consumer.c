@@ -1,5 +1,4 @@
 /* Compiles with exported SDK headers and pico_unit only. */
-#include "authoring/native_bindings.h"
 #include "authoring/program.h"
 #include "execution/status.h"
 #include "runtime/core_definition.h"
@@ -7,17 +6,19 @@
 
 #include <string.h>
 
-static source_package_snapshot *snapshot(const char *text)
+static const source_package_snapshot_options *snapshot(const char *text)
 {
-    const source_package_input file = { .path = "Main.chibi",
-                                        .text = text,
-                                        .size = strlen(text) };
-    const source_package_snapshot_options options = {
+    static source_package_input file;
+    static source_package_snapshot_options options;
+    file = (source_package_input){ .path = "/program-consumer/Main.chibi",
+                                   .text = text,
+                                   .size = strlen(text) };
+    options = (source_package_snapshot_options){
         .project_root = "/program-consumer",
         .files = &file,
-        .file_count = 1,
+        .file_count = 1
     };
-    return source_package_snapshot_new(&options);
+    return &options;
 }
 
 static bool accept(authoring_program *program, const char *text)
@@ -36,7 +37,6 @@ TEST_CASE(exported_program_sessions_keep_independent_retained_state)
     REQUIRE(native);
     const authoring_program_options options = {
         .native = native,
-        .bindings = authoring_native_bindings(native),
         .backend = behavior_default_backend(),
     };
     authoring_program *first = authoring_program_new(&options);
@@ -75,11 +75,8 @@ TEST_CASE(exported_program_calls_respect_the_host_instruction_budget)
     native_capabilities *
         native = native_capabilities_from_definition_packs(NULL, 0, &definition, 1, error, sizeof error);
     REQUIRE(native);
-    const authoring_program_options options = {
-        .native = native,
-        .bindings = authoring_native_bindings(native),
-        .backend = behavior_default_backend()
-    };
+    const authoring_program_options options = { .native = native,
+                                                .backend = behavior_default_backend() };
     authoring_program *program = authoring_program_new(&options);
     REQUIRE(
         accept(program, "package consumer\nMain :: () -> int {\n count := 0\n while count < 1000 {\n count += 1\n }\n return count\n}\n")

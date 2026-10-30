@@ -48,10 +48,11 @@ FormatLibraryExportsPassContext :: () {
     empty: int[] = [];
     records: native.Record[] = [];
     ids: i64[] = [3];
+    no_names: string[] = [];
     text := Emitted(native.EmitLibrary(abi.LinuxX64(), "Formats", ["Main"], ids,
                                        [Function(6, 0, 0, 5, 0, 8, 0, 3)], empty,
                                        [13, 6, 13, 13, 6], empty, Formats(), [0, 1, 2],
-                                       records, empty, ["{} {}", "x"], 1));
+                                       records, empty, ["{} {}", "x"], 1, no_names));
     assert(strings.Contains(text, "define internal i32 @chibi_scalar.0(ptr %ctx) #0 {\n"));
     assert(strings.Contains(text, "(ptr %ctx, ptr %in, ptr %out) #0 {\nentry:\n  %r = call i32 @chibi_scalar.0(ptr %ctx)\n"));
 }

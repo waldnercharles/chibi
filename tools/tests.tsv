@@ -1,0 +1,259 @@
+# Test selectors for `chibi build test`: name, then the command, tab separated.
+# @build@ and @release@ are the --build and --release-build directories; paths
+# without them are relative to the checkout. `group` rows list a group's selectors.
+# Generated from the retired tools/test_policy.py tables; edit it by hand now.
+tool	types	@build@/test/tools/test_tools	--types
+tool	execution-scope	@build@/test/language/test_language	--execution-scope
+tool	player-clock	@build@/test/tools/test_tools	--player-clock
+tool	player-url	@build@/test/tools/test_tools	--player-url
+tool	audio-browser	@build@/test/tools/test_tools	--audio-browser
+tool	audio-analysis	@build@/test/tools/test_tools	--audio-analysis
+tool	shader-webgpu	@build@/test/tools/test_tools	--shader-webgpu
+tool	studio-panel-idle	build-studio/bin/studio-acceptance	--panel-idle	--project-root	
+tool	studio-scene-collider3d	python3	tools/agent.py	gpu-test	--	--studio-scene-collider3d
+tool	studio-scene-gizmo3d	python3	tools/agent.py	gpu-test	--	--studio-scene-gizmo3d
+tool	studio-scene-camera	python3	tools/agent.py	gpu-test	--	--studio-scene-camera
+tool	studio-scene-move	python3	tools/agent.py	gpu-test	--	--studio-scene-move
+tool	studio-outliner-move	python3	tools/agent.py	gpu-test	--	--studio-outliner-move
+tool	tilemap	@build@/test/tools/test_tools	--tilemap
+tool	studio-graph-visibility	python3	tools/agent.py	gpu-test	--	--studio-graph-visibility
+tool	studio-graph-pointer	python3	tools/agent.py	gpu-test	--	--studio-graph-pointer
+tool	studio-asset-pointer	python3	tools/agent.py	gpu-test	--	--studio-asset-pointer
+tool	studio-debugger-source-history	python3	tools/agent.py	gpu-test	--	--studio-debugger-source-history
+tool	studio-source-edit	python3	tools/agent.py	gpu-test	--	--studio-source-edit
+tool	shader-parameters-prepared	@build@/test/tools/test_tools	--shader-parameters-prepared
+tool	shader-source-debug	@build@/test/tools/test_tools	--shader-source-debug
+tool	ecs-query	@build@/test/tools/test_tools	--ecs-query
+tool	ecs-strings	@build@/test/tools/test_tools	--ecs-strings
+tool	ecs-query-benchmark	@build@/test/tools/test_tools	--ecs-query-benchmark
+tool	arena	@build@/test/tools/test_tools	--arena
+tool	source-systems	@build@/test/tools/test_tools	--source-systems
+tool	persistent-store	@build@/test/tools/test_tools	--persistent-store
+tool	vector-nodes	@build@/test/tools/test_tools	--vector-nodes
+tool	package	@build@/test/tools/test_tools	--package
+tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
+tool	chibi-cli-build	@build@/test/tools/test_tools	--chibi-cli-build	@release@/sdk/chibi
+tool	chibi-cli-doctor	@build@/test/tools/test_tools	--chibi-cli-doctor	@release@/sdk/chibi
+tool	chibi-cli-process	@build@/test/tools/test_tools	--chibi-cli-process	@release@/sdk/chibi
+tool	chibi-cli	@build@/test/tools/test_tools	--chibi-cli	@release@/sdk/chibi
+tool	native-build	@build@/test/tools/test_tools	--native-build	@release@/sdk/chibi
+tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
+tool	chibi-cli-installed	@build@/test/tools/test_tools	--chibi-cli-installed	dist/sdk/bin/chibi
+tool	native-aot-driver	@build@/test/tools/test_tools	--native-aot-driver	tools/native_aot/Driver.chibi
+tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/tools/policy_worker	@build@/sdk/chibi-build-host
+tool	build-timings	@build@/test/tools/test_tools	--build-timings	@build@/test/tools/policy_worker	@build@/sdk/chibi-build-host
+tool	build-process-files	@build@/test/tools/test_tools	--build-process-files	@build@/test/tools/policy_worker	@build@/sdk/chibi-build-host
+tool	compiler-artifact	@build@/test/tools/test_tools	--compiler-artifact	@build@/test/language/test_language	@build@/sdk/chibi-compiler-host
+tool	compiler-bootstrap	@build@/test/tools/test_tools	--compiler-bootstrap	@build@/test/language/test_language	@build@/sdk/chibi-compiler-host
+tool	bootstrap-recovery	@build@/test/tools/test_tools	--bootstrap-recovery	@release@/sdk/chibi-compiler-host	tools/compiler/bootstrap
+tool	build-graph	@build@/test/tools/test_tools	--build-graph	@build@/sdk/chibi-build-host
+tool	build-graph-link-response	@build@/test/tools/test_tools	--build-graph-link-response	@build@/sdk/chibi-build-host
+tool	build-graph-support	@build@/test/tools/test_tools	--build-graph-support	@build@/sdk/chibi-build-host
+tool	build-graph-reflect	@build@/test/tools/test_tools	--build-graph-reflect	@build@/sdk/chibi-build-host
+tool	build-graph-generated	@build@/test/tools/test_tools	--build-graph-generated	@build@/sdk/chibi-build-host
+tool	build-graph-debug-optimization	@build@/test/tools/test_tools	--build-graph-debug-optimization	@build@/sdk/chibi-build-host
+tool	build-graph-programs	@build@/test/tools/test_tools	--build-graph-programs	@build@/sdk/chibi-build-host
+tool	build-sdk	@build@/test/tools/test_tools	--build-sdk	@release@/sdk/chibi-build-host	@release@	
+tool	runtime-sdk	@build@/test/tools/test_tools	--runtime-sdk	@build@/sdk/chibi-build-host
+tool	third-party-publish	@build@/test/tools/test_tools	--third-party-publish
+tool	collab	@build@/test/tools/test_tools	--collab
+tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
+tool	whole-conversion	@build@/test/tools/test_tools	--whole-conversion
+tool	whole-select	@build@/test/tools/test_tools	--whole-select
+tool	whole-math	@build@/test/tools/test_tools	--whole-math
+tool	material-destruction	@build@/test/tools/test_tools	--material-destruction
+tool	material-fluids	@build@/test/tools/test_tools	--material-fluids
+tool	material-mpm	@build@/test/tools/test_tools	--material-mpm
+tool	material-simulation	@build@/test/tools/test_tools	--material-simulation
+tool	material-ecs	@build@/test/tools/test_tools	--material-ecs
+tool	material-benchmark	@build@/test/tools/test_tools	--material-benchmark
+tool	material-render	@build@/test/tools/test_tools	--material-render
+tool	render-resources	@build@/test/tools/test_tools	--render-resources
+tool	render-geometry	@build@/test/tools/test_tools	--render-geometry
+tool	interior-border	python3	tools/agent.py	gpu-test	--	--interior-border
+tool	viewport-resize	python3	tools/agent.py	gpu-test	--	--viewport-resize
+tool	sdf-visibility	python3	tools/agent.py	gpu-test	--	--sdf-visibility
+tool	radiance	python3	tools/agent.py	gpu-test	--	--radiance
+tool	radiance-depth	python3	tools/agent.py	gpu-test	--	--radiance-depth
+tool	material-sampling	python3	tools/agent.py	gpu-test	--	--material-sampling
+tool	scene2d	python3	tools/agent.py	gpu-test	--	--scene2d
+tool	material-terrain-seams	python3	tools/agent.py	gpu-test	--	--material-terrain-seams
+tool	scene3d-gles	python3	tools/agent.py	gpu-test	--	--scene3d-gles
+tool	scene3d-gi	python3	tools/agent.py	gpu-test	--	--scene3d-gi
+tool	scene3d-gi-gles	python3	tools/agent.py	gpu-test	--	--scene3d-gi-gles
+tool	material-ramps	python3	tools/agent.py	gpu-test	--	--material-ramps
+tool	scene3d-post	python3	tools/agent.py	gpu-test	--	--scene3d-post
+tool	scene3d-shapes	python3	tools/agent.py	gpu-test	--	--scene3d-shapes
+tool	radiance-surface	python3	tools/agent.py	gpu-test	--	--radiance-surface
+tool	radiance-horizons4	python3	tools/agent.py	gpu-test	--	--radiance-horizons4
+tool	radiance-horizons8	python3	tools/agent.py	gpu-test	--	--radiance-horizons8
+tool	texture-transform	python3	tools/agent.py	gpu-test	--	--texture-transform
+tool	scene-prepared	@build@/test/tools/test_tools	--scene-prepared
+tool	scene-hierarchy	@build@/test/tools/test_tools	--scene-hierarchy
+tool	native-catalog	@build@/test/tools/test_tools	--native-catalog
+tool	native-values	@build@/test/tools/test_tools	--native-values
+tool	text-format	@build@/test/language/test_language	--text-format
+tool	box3d	@build@/test/tools/test_tools	--box3d
+tool	sky-files	@build@/test/tools/test_tools	--sky-files
+tool	shader-bake	@build@/test/tools/test_tools	--shader-bake
+tool	terrain-seams	@build@/test/tools/test_tools	--terrain-seams
+tool	material-surface-mesh	@build@/test/tools/test_tools	--material-surface-mesh
+tool	scene3d-camera	@build@/test/tools/test_tools	--scene3d-camera
+tool	scene3d-volume	@build@/test/tools/test_tools	--scene3d-volume
+tool	scene3d-terrain	@build@/test/tools/test_tools	--scene3d-terrain
+tool	scene3d-terrain-gpu	python3	tools/agent.py	gpu-test	--	--scene3d-terrain-gpu
+tool	scene3d-volume-gpu	python3	tools/agent.py	gpu-test	--	--scene3d-volume-gpu
+tool	hrc-spot	python3	tools/agent.py	gpu-test	--	--hrc-spot
+tool	terrain-checkpoint	@build@/test/tools/test_tools	--terrain-checkpoint
+tool	terrain-storage	@build@/test/tools/test_tools	--terrain-storage
+tool	terrain-playable-render	@build@/test/tools/test_tools	--terrain-playable-render	dist/sdk/bin/chibi-player			dist/sdk/share/chibi/shaders	.chibi/environment-authoring/terrain-playable-render
+tool	native-runtime	@build@/test/tools/test_tools	--native
+tool	physics	@build@/test/tools/test_tools	--physics
+tool	physics3d	@build@/test/tools/test_tools	--physics3d
+tool	transforms	@build@/test/tools/test_tools	--transforms
+tool	ui-authoring	@build@/test/language/test_language	--ui-authoring
+tool	prototype-document	@build@/test/language/test_language	--prototype-document
+tool	field-runtime	@build@/test/language/test_language	--field-runtime
+tool	runtime-scene	@build@/test/tools/test_tools	--scene
+tool	asset-values	@build@/test/tools/test_tools	--asset-values
+tool	ui-document	@build@/test/tools/test_tools	--ui-document
+tool	text-files	@build@/test/tools/test_tools	--text-files
+tool	fmt	@build@/test/tools/test_tools	--fmt
+tool	particles	@build@/test/tools/test_tools	--particles
+tool	png-encoding	@build@/test/tools/test_tools	--png-encoding
+tool	project-document	@build@/test/tools/test_tools	--project-document
+tool	prototype-documents	@build@/test/tools/test_tools	--prototype-documents
+tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
+tool	language-build-workflow	@build@/test/language/test_language	--build-workflow
+tool	script-benchmark	@build@/test/language/test_language	--script-benchmark
+tool	scheduler-benchmark	@build@/test/tools/test_tools	--scheduler-benchmark
+tool	language-ranges	@build@/test/language/test_language	--ranges
+tool	language-numeric-exact-core	@build@/test/language/test_language	--numeric-exact-core
+tool	language-integer-shift-counts	@build@/test/language/test_language	--integer-shift-counts
+tool	language-integer-shift-counts-authored	@build@/test/language/test_language	--integer-shift-counts-authored
+tool	language-integer-semantics	@build@/test/language/test_language	--integer-semantics
+tool	language-integer-arithmetic	@build@/test/language/test_language	--integer-arithmetic
+tool	language-package-graph	@build@/test/language/test_language	--package-graph
+tool	language-package-syntax	@build@/test/language/test_language	--package-syntax
+tool	language-asset-compiler-host	@build@/test/language/test_language	--asset-compiler-host
+tool	language-asset-packaging-chibi	@build@/test/language/test_language	--asset-packaging-chibi
+tool	language-shader-source-chibi	@build@/test/language/test_language	--shader-source-chibi
+tool	language-package-graph-chibi	@build@/test/language/test_language	--package-graph-chibi
+tool	language-syntax-chibi	@build@/test/language/test_language	--syntax-chibi
+tool	language-source-tokenizer-chibi	@build@/test/language/test_language	--source-tokenizer-chibi
+tool	language-source-parser-chibi	@build@/test/language/test_language	--source-parser-chibi
+tool	language-package-syntax-chibi	@build@/test/language/test_language	--package-syntax-chibi
+tool	language-package-paths-chibi	@build@/test/language/test_language	--package-paths-chibi
+tool	language-package-routes-chibi	@build@/test/language/test_language	--package-routes-chibi
+tool	language-package-snapshot-chibi	@build@/test/language/test_language	--package-snapshot-chibi
+tool	language-compiler-fixture	@build@/test/language/test_language	--compiler-fixture
+tool	language-compositional-records	@build@/test/language/test_language	--compositional-records
+tool	language-bounded-compiler-chibi	@build@/test/language/test_language	--bounded-compiler-chibi
+tool	language-package-compiler-chibi	@build@/test/language/test_language	--package-compiler-chibi
+tool	language-package-compiler-chibi-compiled	@build@/test/language/test_language	--package-compiler-chibi-compiled
+tool	language-package-compiler-chibi-types	@build@/test/language/test_language	--package-compiler-chibi-types
+tool	language-package-compiler-chibi-fallible	@build@/test/language/test_language	--package-compiler-chibi-fallible
+tool	language-package-compiler-chibi-types-compiled	@build@/test/language/test_language	--package-compiler-chibi-types-compiled
+tool	language-package-compiler-chibi-collections	@build@/test/language/test_language	--package-compiler-chibi-collections
+tool	language-package-compiler-chibi-collections-compiled	@build@/test/language/test_language	--package-compiler-chibi-collections-compiled
+tool	language-package-compiler-chibi-literals	@build@/test/language/test_language	--package-compiler-chibi-literals
+tool	language-package-compiler-chibi-behaviors	@build@/test/language/test_language	--package-compiler-chibi-behaviors
+tool	language-package-compiler-chibi-actions	@build@/test/language/test_language	--package-compiler-chibi-actions
+tool	language-package-compiler-chibi-behaviors-rest	@build@/test/language/test_language	--package-compiler-chibi-behaviors-rest
+tool	language-package-compiler-chibi-queries	@build@/test/language/test_language	--package-compiler-chibi-queries
+tool	language-package-compiler-chibi-libraries	@build@/test/language/test_language	--package-compiler-chibi-libraries
+tool	language-package-compiler-chibi-sharing	@build@/test/language/test_language	--package-compiler-chibi-sharing
+tool	language-package-compiler-chibi-debug-free	@build@/test/language/test_language	--package-compiler-chibi-debug-free
+tool	language-package-compiler-chibi-native-arguments	@build@/test/language/test_language	--package-compiler-chibi-native-arguments
+tool	language-package-compiler-chibi-native-arguments-oracle	@build@/test/language/test_language	--package-compiler-chibi-native-arguments-oracle
+tool	language-package-compiler-chibi-scalar	@build@/test/language/test_language	--package-compiler-chibi-scalar
+tool	language-scalar-native	@build@/test/language/test_language	--package-compiler-chibi-native
+tool	language-native-census	@build@/test/language/test_language	--native-census
+tool	language-native-census-flattening	@build@/test/language/test_language	--native-census-flattening
+tool	language-package-compiler-chibi-imports	@release@/test/language/test_language	--package-compiler-chibi-imports
+tool	language-package-compiler-chibi-imports-compiled	@release@/test/language/test_language	--package-compiler-chibi-imports-compiled
+tool	language-package-compiler-chibi-bootstrap	@release@/test/language/test_language	--package-compiler-chibi-bootstrap
+tool	language-type-relations-chibi	@build@/test/language/test_language	--type-relations-chibi
+tool	language-unit-algebra-chibi	@build@/test/language/test_language	--unit-algebra-chibi
+tool	language-signature-reader-chibi	@build@/test/language/test_language	--signature-reader-chibi
+tool	language-snapshot-reader-chibi	@build@/test/language/test_language	--snapshot-reader-chibi
+tool	language-package-resolution	@build@/test/language/test_language	--package-resolution
+tool	language-package-imports	@build@/test/language/test_language	--package-imports
+tool	language-host-packages	@build@/test/language/test_language	--host-packages
+tool	language-host-packages-compiler	@build@/test/language/test_language	--host-packages-compiler
+tool	language-package-files	@build@/test/language/test_language	--package-files
+tool	language-package-core	@build@/test/language/test_language	--package-core
+tool	language-package-portable-compiler	@build@/test/language/test_language	--package-portable-compiler
+tool	language-package-portable	@build@/test/language/test_language	--package-portable
+tool	language-package-math	@build@/test/language/test_language	--package-math
+tool	language-package-math-benchmark	@build@/test/language/test_language	--package-math-benchmark
+tool	language-package-tests	@build@/test/language/test_language	--package-tests
+tool	language-argument-effects-chibi	@build@/test/language/test_language	--argument-effects-chibi
+tool	language-component-write-layout	@build@/test/language/test_language	--component-write-layout
+tool	language-component-write	@build@/test/language/test_language	--component-write
+tool	language-record-compatibility	@build@/test/language/test_language	--record-compatibility
+tool	language-record-document	@build@/test/language/test_language	--record-document
+tool	language-record-services	@build@/test/language/test_language	--record-services
+tool	language-record-values	@build@/test/language/test_language	--record-values
+tool	language-program-session	@build@/test/language/test_language	--program-session
+tool	language-program	@build@/test/language/test_language	--program
+tool	language-execution	@build@/test/language/test_language	--execution
+tool	language	@build@/test/language/test_language	--syntax	--corpus	@build@/test/language/corpus.txt
+tool	wasm-browser	@build@/test/tools/test_tools	--wasm-browser
+tool	web-storage	@build@/test/tools/test_tools	--web-storage
+tool	webgpu-staging	@build@/test/tools/test_tools	--webgpu-staging
+tool	native-tools	@build@/test/tools/test_tools
+tool	reflect-ranges	@build@/test/tools/test_tools	--reflect-ranges
+tool	language-i	@build@/test/language/test_language	--i
+tool	language-n	@build@/test/language/test_language	--n
+tool	language-c	@build@/test/language/test_language	--c
+tool	language-r	@build@/test/language/test_language	--r
+tool	language-e	@build@/test/language/test_language	--e
+tool	language-m	@build@/test/language/test_language	--m
+tool	language-t	@build@/test/language/test_language	--t
+tool	language-a	@build@/test/language/test_language	--a
+tool	language-l	@build@/test/language/test_language	--l
+tool	language--	@build@/test/language/test_language	---
+tool	language-b	@build@/test/language/test_language	--b
+tool	language-h	@build@/test/language/test_language	--h
+tool	language-k	@build@/test/language/test_language	--k
+tool	language-d	@build@/test/language/test_language	--d
+tool	language-g	@build@/test/language/test_language	--g
+tool	language-s	@build@/test/language/test_language	--s
+tool	language-u	@build@/test/language/test_language	--u
+tool	wasm-execution	node	build-wasm-language/test_language.js	--execution
+tool	wasm-program	node	build-wasm-language/test_language.js	--program
+tool	wasm-format	node	build-wasm-language/test_language.js	--format
+tool	wasm-ranges	node	build-wasm-language/test_language.js	--ranges
+tool	wasm-component-write	node	build-wasm-language/test_language.js	--component-write
+tool	wasm-record-values	node	build-wasm-language/test_language.js	--record-values
+tool	wasm-record-semantic	node	build-wasm-language/test_language.js	--record-semantic
+tool	wasm-record-runtime	node	build-wasm-language/test_language.js	--record-runtime
+tool	wasm-record-document	node	build-wasm-language/test_language.js	--record-document
+tool	wasm-record-state	node	build-wasm-language/test_language.js	--record-state
+tool	wasm-record-compatibility	node	build-wasm-language/test_language.js	--record-compatibility
+tool	wasm-integer-arithmetic	node	build-wasm-language/test_language.js	--integer-arithmetic
+tool	wasm-package-math	node	build-wasm-language/test_language.js	--package-math
+tool	wasm-package-compiler-chibi	node	build-wasm-language/test_language.js	--package-compiler-chibi
+tool	wasm-package-compiler-chibi-compiled	node	build-wasm-language/test_language.js	--package-compiler-chibi-compiled
+tool	wasm-package-compiler-chibi-types	node	build-wasm-language/test_language.js	--package-compiler-chibi-types
+tool	wasm-package-compiler-chibi-types-compiled	node	build-wasm-language/test_language.js	--package-compiler-chibi-types-compiled
+tool	wasm-package-compiler-chibi-collections	node	build-wasm-language/test_language.js	--package-compiler-chibi-collections
+tool	wasm-package-compiler-chibi-collections-compiled	node	build-wasm-language/test_language.js	--package-compiler-chibi-collections-compiled
+tool	wasm-package-compiler-chibi-imports	node	build-wasm-language/test_language.js	--package-compiler-chibi-imports
+tool	wasm-package-compiler-chibi-imports-compiled	node	build-wasm-language/test_language.js	--package-compiler-chibi-imports-compiled
+tool	wasm-package-compiler-chibi-behaviors	node	build-wasm-language/test_language.js	--package-compiler-chibi-behaviors
+tool	wasm-package-compiler-chibi-behaviors-rest	node	build-wasm-language/test_language.js	--package-compiler-chibi-behaviors-rest
+tool	wasm-package-compiler-chibi-sharing	node	build-wasm-language/test_language.js	--package-compiler-chibi-sharing
+tool	wasm-package-compiler-chibi-debug-free	node	build-wasm-language/test_language.js	--package-compiler-chibi-debug-free
+tool	wasm-package-compiler-chibi-literals	node	build-wasm-language/test_language.js	--package-compiler-chibi-literals
+tool	wasm-package-portable	node	build-wasm-language/test_language.js	--package-portable
+tool	wasm-package-portable-compiler	node	build-wasm-language/test_language.js	--package-portable-compiler
+group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-integer-arithmetic	wasm-package-math	wasm-package-compiler-chibi	wasm-package-compiler-chibi-compiled	wasm-package-portable	wasm-package-portable-compiler
+group	native	native-runtime	native-catalog	native-values	audio-analysis	shader-webgpu	player-url	player-clock	build-graph-link-response	physics	physics3d	transforms	box3d	sky-files	tilemap	runtime-scene	scene-prepared	scene-hierarchy	render-resources	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	vector-nodes	asset-values	ui-document	text-files	fmt	particles	png-encoding	project-document	prototype-documents	render-geometry	arena	shader-bake	shader-source-debug	terrain-seams	terrain-storage	material-surface-mesh	scene3d-camera	scene3d-volume	scene3d-terrain
+group	projects	terrain-checkpoint	chibi-cli	native-build
+group	materials	material-destruction	material-fluids	material-mpm	material-simulation	material-ecs	material-render
+group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	language-package-math	language-package-tests	language-argument-effects-chibi	language-package-core	language-package-portable	language-package-portable-compiler	language-host-packages	language-host-packages-compiler	field-runtime	prototype-document	ui-authoring	text-format	language-shader-source-chibi	language-compiler-fixture	language-compositional-records	language-package-compiler-chibi-scalar	language-package-compiler-chibi-fallible	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-behaviors-rest	language-integer-semantics	language-integer-arithmetic	language-integer-shift-counts	language-integer-shift-counts-authored	language-asset-packaging-chibi	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
+group	render	interior-border	viewport-resize	sdf-visibility	radiance	radiance-depth	material-sampling	scene2d	material-terrain-seams	scene3d-terrain-gpu	scene3d-volume-gpu	hrc-spot	scene3d-gi	material-ramps	radiance-surface	radiance-horizons4	radiance-horizons8	scene3d-post	scene3d-shapes	texture-transform
+group	compiler	language-package-compiler-chibi	language-package-compiler-chibi-compiled	language-package-compiler-chibi-types	language-package-compiler-chibi-fallible	language-package-compiler-chibi-types-compiled	language-package-compiler-chibi-collections	language-package-compiler-chibi-collections-compiled	language-package-compiler-chibi-literals	language-package-compiler-chibi-behaviors	language-package-compiler-chibi-actions	language-package-compiler-chibi-behaviors-rest	language-package-compiler-chibi-queries	language-package-compiler-chibi-libraries	language-package-compiler-chibi-sharing	language-package-compiler-chibi-debug-free	language-package-compiler-chibi-native-arguments	language-package-compiler-chibi-native-arguments-oracle	language-package-compiler-chibi-scalar	language-package-compiler-chibi-imports	language-package-compiler-chibi-imports-compiled	language-package-compiler-chibi-bootstrap
+group	benchmarks	ecs-query-benchmark	native-workload-benchmark	material-benchmark	script-benchmark	scheduler-benchmark	language-package-math-benchmark

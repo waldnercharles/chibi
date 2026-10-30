@@ -558,7 +558,7 @@ Files :: (target: string) -> string[] {
             "test/language/ranges.c",
             "test/language/component_write_ir.c",
             "test/language/field_runtime.c",
-            "test/language/ui.c", "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
+            "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
             "test/language/packages.c", "test/language/package_syntax.c",
             "test/language/package_resolution.c",
             "test/language/package_imports.c", "test/language/package_files.c",

@@ -106,7 +106,7 @@ typedef struct
 } clock_fixture;
 
 static compiler_host *compiler;
-static native_capabilities *native, *without_clock, *mixed_native;
+static native_capabilities *native, *without_clock, *mixed_native, *handle_native;
 static compiler_host_bytes closure;
 static package_collection *packages;
 static const execution_module *app_module;

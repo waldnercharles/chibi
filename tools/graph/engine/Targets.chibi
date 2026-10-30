@@ -731,7 +731,7 @@ Files :: (target: string) -> string[] {
             "test/tools/device_controls.c", "test/render/interior_border.c",
             "test/render/viewport_resize.c", "test/draw_backend.cpp", "test/tools/scene3d_camera.c",
             "test/tools/scene3d_terrain.c", "test/tools/scene3d_volume.c",
-            "test/tools/terrain_cut_benchmark.c", "test/render/material_ramps.c", "test/tools/hrc_spot.c"
+            "test/tools/terrain_cut_benchmark.c", "test/tools/hrc_spot.c"
         ];
     }
     if (target == "chibi_image_preparation_consumer") {

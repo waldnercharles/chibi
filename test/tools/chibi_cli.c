@@ -116,28 +116,26 @@ static void setup(const char *binary)
     snprintf(manifest, sizeof manifest, "version %d\nname \"CLI proof\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", CHIBI_PROJECT_VERSION);
     write_file("game with spaces/project.kdl", manifest);
     write_file("game with spaces/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n");
-    write_file(
-        "bin/chibi-compile",
+    /* The stub counts its calls and can be made to fail, and otherwise runs the
+     * real compiler, which finds the core collection beside its own folder. */
+    char *built_directory = realpath(binary, NULL);
+    assert(built_directory);
+    *strrchr(built_directory, '/') = 0;
+    char stub[1024];
+    snprintf(
+        stub,
+        sizeof stub,
         "#!/bin/sh\nset -eu\n"
         "base=$(dirname \"$0\")/..\n"
         "printf 'compile\\n' >> \"$base/compiles\"\n"
-        "printf '%s\\n' \"$@\" > \"$base/compile.args\"\n"
         "[ ! -f \"$base/fail\" ] || exit 37\n"
-        "output=\nwhile [ \"$#\" -gt 0 ]; do\n"
-        "  if [ \"$1\" = --output ]; then output=$2; shift; fi\n"
-        "  shift\ndone\n"
-        "[ -z \"$output\" ] || printf 'artifact' > \"$output\"\n"
+        "exec \"%s/chibi-compile\" \"$@\"\n",
+        built_directory
     );
-    write_file(
-        "bin/chibi-player",
-        "#!/bin/sh\nset -eu\n"
-        "base=$(dirname \"$0\")/..\n"
-        "printf '%s\\n' \"$@\" > \"$base/player.args\"\n"
-    );
+    free(built_directory);
+    write_file("bin/chibi-compile", stub);
     char program[256];
     path(program, "bin/chibi-compile");
-    assert(!chmod(program, 0700));
-    path(program, "bin/chibi-player");
     assert(!chmod(program, 0700));
 }
 
@@ -250,7 +248,7 @@ static void identity(const char *system, const char *backends, bool platform)
 }
 
 /* Runs `chibi doctor` with `extra` arguments and PATH `programs`. */
-static int doctor(const char *extra, const char *web, const char *programs)
+static int doctor(const char *extra, const char *programs)
 {
     char output[256], saved[4096];
     path(output, "doctor.log");
@@ -258,124 +256,57 @@ static int doctor(const char *extra, const char *web, const char *programs)
     assert(previous && strlen(previous) < sizeof saved);
     snprintf(saved, sizeof saved, "%s", previous);
     setenv("PATH", programs, 1);
-    const char *args[] = { launcher, "doctor", extra, web, NULL };
+    const char *args[] = { launcher, "doctor", extra, NULL };
     int status = tool_run(args, root, output);
     setenv("PATH", saved, 1);
     return status;
 }
 
-/* doctor reports each capability and fails only for a broken one it checks;
- * browser export is checked only for --web. */
+/* doctor reports each capability and fails only for a broken one it checks. */
 TEST_CASE(doctor_reports_each_capability)
 {
-    char file[256], expected[512], bin[256], programs[512], tools[512];
+    char file[256], expected[512];
     path(file, "fail");
     unlink(file);
-    path(bin, "node-bin");
-    REQUIRE(!mkdir(bin, 0700));
-    write_file("node-bin/node", "#!/bin/sh\nexit 0\n");
-    path(file, "node-bin/node");
-    REQUIRE(!chmod(file, 0700));
-    snprintf(tools, sizeof tools, "/usr/bin:/bin");
-    snprintf(programs, sizeof programs, "%s:/usr/bin:/bin", bin);
+    const char *tools = "/usr/bin:/bin";
 
     identity(NULL, "\"bytecode\", \"sljit\"", true);
-    REQUIRE(doctor(NULL, NULL, tools) == 0);
+    REQUIRE(doctor(NULL, tools) == 0);
     REQUIRE(file_has("doctor.log", "sdk: supported (chibi 9.8.7, build unpackaged)\n"));
     snprintf(expected, sizeof expected, "compiler: supported (%s/bin/chibi-compile)\n", root);
     REQUIRE(file_has("doctor.log", expected));
-    snprintf(expected, sizeof expected, "player: supported (%s/bin/chibi-player)\n", root);
-    REQUIRE(file_has("doctor.log", expected));
     REQUIRE(file_has("doctor.log", "platform: supported ("));
     REQUIRE(file_has("doctor.log", "native backend: supported (SLJIT)\n"));
-    REQUIRE(file_has("doctor.log", "browser export: unavailable ("));
 
     identity(NULL, "\"bytecode\"", true);
-    REQUIRE(doctor(NULL, NULL, tools) == 0);
+    REQUIRE(doctor(NULL, tools) == 0);
     REQUIRE(
         file_has("doctor.log", "native backend: unavailable (built for the bytecode interpreter only)\n")
     );
 
     /* A platform mismatch is reported; whether the SDK runs is the compiler's
-     * and player's question. */
+     * question. */
     identity("Plan9", "\"bytecode\"", true);
-    REQUIRE(doctor(NULL, NULL, tools) == 0);
+    REQUIRE(doctor(NULL, tools) == 0);
     REQUIRE(file_has("doctor.log", "platform: unavailable (built for Plan9 "));
     identity(NULL, "\"bytecode\"", false);
-    REQUIRE(doctor(NULL, NULL, tools) == 1);
+    REQUIRE(doctor(NULL, tools) == 1);
     REQUIRE(file_has("doctor.log", "platform: broken (the build identity names no platform)\n"));
     identity(NULL, "\"bytecode\"", true);
 
     write_file("fail", "");
-    REQUIRE(doctor(NULL, NULL, tools) == 1);
+    REQUIRE(doctor(NULL, tools) == 1);
     snprintf(expected, sizeof expected, "compiler: broken (%s/bin/chibi-compile --help failed)\n", root);
     REQUIRE(file_has("doctor.log", expected));
     path(file, "fail");
     REQUIRE(!unlink(file));
 
-    char player[256], moved[256];
-    path(player, "bin/chibi-player");
-    path(moved, "chibi-player.moved");
-    REQUIRE(!rename(player, moved));
-    REQUIRE(doctor(NULL, NULL, tools) == 1);
-    snprintf(expected, sizeof expected, "player: broken (missing %s/bin/chibi-player)\n", root);
-    REQUIRE(file_has("doctor.log", expected));
-    REQUIRE(!rename(moved, player));
-
-    char web[256];
-    path(web, "web");
-    REQUIRE(!mkdir(web, 0700));
-    path(file, "web/compiler");
-    REQUIRE(!mkdir(file, 0700));
-    write_file("web/index.html", "");
-    write_file("web/chibi-player.js", "");
-    REQUIRE(doctor("--web", web, programs) == 1);
-    snprintf(expected, sizeof expected, "browser export: broken (%s lacks chibi-player.wasm)\n", web);
-    REQUIRE(file_has("doctor.log", expected));
-    write_file("web/chibi-player.wasm", "");
-    write_file("web/compiler/chibi-compile.js", "");
-    REQUIRE(doctor("--web", web, programs) == 1);
-    snprintf(expected, sizeof expected, "browser export: broken (%s lacks compiler/chibi-compile.wasm)\n", web);
-    REQUIRE(file_has("doctor.log", expected));
-    write_file("web/compiler/chibi-compile.wasm", "");
-    REQUIRE(doctor("--web", web, programs) == 0);
-    snprintf(expected, sizeof expected, "browser export: supported (%s with %s/node)\n", web, bin);
-    REQUIRE(file_has("doctor.log", expected));
-    const char *payloads[] = { "index.html",
-                               "chibi-player.js",
-                               "chibi-player.wasm",
-                               "compiler/chibi-compile.js",
-                               "compiler/chibi-compile.wasm" };
-    bool unreadable = true;
-    for (size_t i = 0; i < sizeof payloads / sizeof *payloads; i++) {
-        int length = snprintf(file, sizeof file, "%s/%s", web, payloads[i]);
-        REQUIRE(length > 0 && length < (int)sizeof file);
-        struct stat info;
-        REQUIRE(!stat(file, &info));
-        REQUIRE(!chmod(file, 0));
-        int status = doctor("--web", web, programs);
-        bool broken = status == 1 &&
-                      file_has("doctor.log", "browser export: broken (") &&
-                      file_has("doctor.log", payloads[i]) &&
-                      !file_has("doctor.log", "browser export: supported (");
-        bool restored = !chmod(file, info.st_mode & 07777);
-        REQUIRE(restored);
-        if (!broken) {
-            fprintf(stderr, "unreadable browser payload %s: doctor status=%d\n", payloads[i], status);
-        }
-        unreadable &= broken;
-        REQUIRE(doctor("--web", web, programs) == 0);
-    }
-    REQUIRE(unreadable);
-    REQUIRE(doctor("--web", web, tools) == 1);
-    REQUIRE(file_has("doctor.log", "browser export: broken (node, which runs "));
-
-    REQUIRE(doctor("--help", NULL, tools) == 0);
-    REQUIRE(doctor("--frames", NULL, tools) == 2);
+    REQUIRE(doctor("--help", tools) == 0);
+    REQUIRE(doctor("--frames", tools) == 2);
     return true;
 }
 
-/* The built launcher in place finds its real compiler and player. */
+/* The built launcher in place finds its real compiler. */
 TEST_CASE(doctor_of_the_built_launcher)
 {
     char output[256];
@@ -383,7 +314,6 @@ TEST_CASE(doctor_of_the_built_launcher)
     const char *args[] = { built, "doctor", NULL };
     REQUIRE(tool_run(args, root, output) == 0);
     REQUIRE(file_has("built-doctor.log", "\ncompiler: supported ("));
-    REQUIRE(file_has("built-doctor.log", "\nplayer: supported ("));
     REQUIRE(file_has("built-doctor.log", "\nplatform: supported ("));
     return true;
 }
@@ -470,7 +400,7 @@ TEST_CASE(test_runs_shared_package_tests)
     REQUIRE(length > 0 && length < (int)sizeof application);
     const char *self[] = { launcher, "test", application, NULL };
     REQUIRE(tool_run(self, root, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS chibi_cli.InterruptedExportKeepsSignalStatus\n"));
+    REQUIRE(file_has("output.log", "PASS chibi_cli.CommandArgumentsKeepProgramArguments\n"));
     REQUIRE(file_has("output.log", "0 failed\n"));
     REQUIRE(!exists("package-tests/.chibi"));
     return true;
@@ -746,11 +676,9 @@ TEST_CASE(run_dispatches_standalone_programs)
 {
     directory("standalone dispatch");
     write_file("standalone dispatch/Hello.chibi", "package hello\nMain :: () { print_string(\"dispatch-main\") }\n");
-    char folder[256], source[256], player[256];
+    char folder[256], source[256];
     path(folder, "standalone dispatch");
     path(source, "standalone dispatch/Hello.chibi");
-    path(player, "player.args");
-    unlink(player);
     char *before = contents("compiles");
     const char *commands[][4] = {
         { launcher, "run", "standalone dispatch/Hello.chibi", NULL },
@@ -761,7 +689,6 @@ TEST_CASE(run_dispatches_standalone_programs)
     for (int i = 0; i < 4; i++) {
         REQUIRE(tool_run(commands[i], root, log_path) == 0);
         REQUIRE(file_is("output.log", "dispatch-main\n"));
-        REQUIRE(!exists("player.args"));
         REQUIRE(!exists("standalone dispatch/.chibi"));
     }
     const char *here[] = { launcher, ".", NULL };
@@ -814,7 +741,6 @@ TEST_CASE(run_dispatches_standalone_programs)
     REQUIRE(!unlink(failure));
     REQUIRE(file_is("compiles", before));
     free(before);
-    REQUIRE(!exists("player.args"));
     REQUIRE(!exists("standalone dispatch/.chibi"));
     return true;
 }
@@ -1907,189 +1833,6 @@ TEST_CASE(program_watch_tracks_siblings_and_keeps_imported_state)
     return true;
 }
 
-/* The whole response to a GET of target from 127.0.0.1:port naming host;
- * NULL when nothing answers. */
-static char *fetch(int port, const char *method, const char *target, const char *host)
-{
-    char request[512];
-    int length = snprintf(request, sizeof request, "%s %s HTTP/1.1\r\nHost: %s\r\n\r\n", method, target, host);
-    assert(length > 0 && length < (int)sizeof request);
-    int client = socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in address = { .sin_family = AF_INET,
-                                   .sin_port = htons((uint16_t)port),
-                                   .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
-    struct timeval timeout = { .tv_sec = 5 };
-    if (client < 0 ||
-        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) ||
-        connect(client, (struct sockaddr *)&address, sizeof address) ||
-        send(client, request, (size_t)length, 0) != length) {
-        if (client >= 0) {
-            close(client);
-        }
-        return NULL;
-    }
-    size_t used = 0, capacity = 1024;
-    char *response = xmalloc(capacity);
-    for (ssize_t count;
-         (count = recv(client, response + used, capacity - used - 1, 0)) > 0;) {
-        used += (size_t)count;
-        if (used + 1 == capacity) {
-            capacity *= 2;
-            response = xrealloc(response, capacity);
-        }
-    }
-    response[used] = '\0';
-    close(client);
-    return response;
-}
-
-/* Whether a GET of target from this computer answers with `first` and, when
- * given, `second`. */
-static bool answers(int port, const char *target, const char *first, const char *second)
-{
-    char *response = fetch(port, "GET", target, "127.0.0.1");
-    bool found = response && strstr(response, first) &&
-                 (!second || strstr(response, second));
-    free(response);
-    return found;
-}
-
-/* Entries in the folder at `relative`, other than . and ... */
-static int entries(const char *relative)
-{
-    char folder[256];
-    path(folder, relative);
-    DIR *directory = opendir(folder);
-    assert(directory);
-    int count = 0;
-    struct dirent *entry;
-    while ((entry = readdir(directory))) {
-        count += strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..");
-    }
-    assert(!closedir(directory));
-    return count;
-}
-
-/* A fake browser player whose compiler runs under a fake node, and the
- * engine files an export copies. */
-static void web_fixture()
-{
-    const char *folders[] = { "player",
-                              "player/compiler",
-                              "node",
-                              "tmp",
-                              "share",
-                              "share/chibi",
-                              "share/chibi/shaders",
-                              "share/chibi/licenses" };
-    for (size_t i = 0; i < sizeof folders / sizeof *folders; i++) {
-        directory(folders[i]);
-    }
-    write_file("player/index.html", "<title>{{TITLE}}</title>");
-    write_file("player/chibi-player.js", "script");
-    write_file("player/chibi-player.wasm", "module");
-    write_file(
-        "player/compiler/chibi-compile.js",
-        "[ ! -f \"$2/fail\" ] || exit 3\nprintf artifact > \"$4\"\n"
-        "printf '{\"external\":[]}' > \"$4.resources.json\"\n"
-    );
-    write_file("node/node", "#!/bin/sh\nscript=$1\nshift\nexec /bin/sh \"$script\" \"$@\"\n");
-    char file[256];
-    path(file, "node/node");
-    assert(!chmod(file, 0700));
-    write_file("share/chibi/engine.json", "{}\n");
-    write_file("share/chibi/shaders/a.glsl", "shader");
-    write_file("share/chibi/licenses/LICENSE.txt", "license");
-}
-
-/* chibi web for the CLI project on port, with the fake node first on PATH and
- * TMPDIR in the fixture, either started into *process or run to its status. */
-static int web(const char *port, chibi_process *process)
-{
-    char *saved_path = xstrdup(getenv("PATH"));
-    char *saved_tmp = getenv("TMPDIR") ? xstrdup(getenv("TMPDIR")) : NULL;
-    char node[4096], tmp[256], player[256], log[256];
-    int length = snprintf(node, sizeof node, "%s/node:%s", root, saved_path);
-    assert(length > 0 && length < (int)sizeof node);
-    path(tmp, "tmp");
-    path(player, "player");
-    path(log, "web.log");
-    setenv("PATH", node, 1);
-    setenv("TMPDIR", tmp, 1);
-    const char *args[] = { launcher,   "web",  "game with spaces",
-                           "--player", player, "--port",
-                           port,       NULL };
-    int status = process ? !chibi_process_start(process, args, root, log)
-                         : tool_run(args, root, log);
-    setenv("PATH", saved_path, 1);
-    if (saved_tmp) {
-        setenv("TMPDIR", saved_tmp, 1);
-    } else {
-        unsetenv("TMPDIR");
-    }
-    free(saved_path);
-    free(saved_tmp);
-    return status;
-}
-
-/* web exports the browser site into a folder of its own under TMPDIR, serves
- * it on loopback to requests that name this computer, refusing paths that
- * leave it, until stopped, and then removes the folder. */
-TEST_CASE(web_serves_the_export_until_stopped)
-{
-    web_fixture();
-    chibi_process process;
-    REQUIRE(web("0", &process) == 0);
-    int port = 0;
-    char log[256];
-    path(log, "web.log");
-    for (int i = 0; i < 100 && !port && !chibi_process_poll(&process); i++) {
-        usleep(50000);
-        char *text = tool_read(log);
-        const char *url = text ? strstr(text, "http://127.0.0.1:") : NULL;
-        port = url ? atoi(url + strlen("http://127.0.0.1:")) : 0;
-        free(text);
-    }
-    char *rebound = port ? fetch(port, "GET", "/", "evil.example:8000") : NULL;
-    char *head = port ? fetch(port, "HEAD", "/index.html", "localhost:8000") : NULL;
-    bool served = port && entries("tmp") == 1 &&
-                  answers(port, "/", "200 OK", "<title>CLI proof</title>") &&
-                  answers(port, "/data/game.chibip", "\r\n\r\nartifact", NULL) &&
-                  answers(port, "/chibi-player.wasm", "Content-Type: application/wasm", NULL) &&
-                  answers(port, "/data/../../tmp", "400 Bad Request", NULL) &&
-                  answers(port, "/%2e%2e/web.log", "400 Bad Request", NULL) &&
-                  answers(port, "/missing.js", "404 Not Found", NULL) &&
-                  rebound && strstr(rebound, "400 Bad Request") && head &&
-                  strstr(head, "Content-Length: 24\r\n") && !strstr(head, "<title>");
-    free(rebound);
-    free(head);
-    chibi_process_stop(&process);
-    for (int i = 0; i < 100 && !chibi_process_poll(&process); i++) {
-        usleep(50000);
-    }
-    REQUIRE(served);
-    REQUIRE(process.finished && process.status == 0);
-    REQUIRE(entries("tmp") == 0);
-    return true;
-}
-
-/* Without its compiler, each command that needs one says so and fails
- * rather than pretending the project is fine. */
-TEST_CASE(commands_fail_without_the_compiler)
-{
-    char program[256], aside[256], output[256];
-    path(program, "bin/chibi-compile");
-    path(aside, "bin/chibi-compile.aside");
-    path(output, "missing.log");
-    REQUIRE(!rename(program, aside));
-    const char *tests[] = { launcher, "test", "package-tests", NULL };
-    bool shared = tool_run(tests, root, output) == 0 &&
-                  file_has("missing.log", "PASS facts.Passes");
-    REQUIRE(!rename(aside, program));
-    REQUIRE(shared);
-    return true;
-}
-
 void test_tool_chibi_cli(const char *binary, const char *self)
 {
     locate_driver(self);
@@ -2124,8 +1867,6 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(program_cancellation_stops_busy_main_and_tests);
     RUN_TEST_CASE(program_process_run_stops_children_when_only_parent_is_signalled);
     RUN_TEST_CASE(program_process_run_hands_the_terminal_to_its_child);
-    RUN_TEST_CASE(web_serves_the_export_until_stopped);
-    RUN_TEST_CASE(commands_fail_without_the_compiler);
     tool_remove_tree(root);
 }
 
@@ -2142,7 +1883,6 @@ TEST_CASE(installed_identity_and_doctor)
     const char *doctor[] = { launcher, "doctor", NULL };
     REQUIRE(tool_run(doctor, root, output) == 0);
     REQUIRE(file_has("installed.log", "\ncompiler: supported ("));
-    REQUIRE(file_has("installed.log", "\nplayer: supported ("));
     return true;
 }
 

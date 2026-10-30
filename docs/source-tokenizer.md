@@ -109,6 +109,6 @@ text is read once with `text_bytes`.
 
 ## Tests
 
-`python3 tools/test_policy.py tool language-source-tokenizer-chibi` compares the
+`chibi build test language-source-tokenizer-chibi` compares the
 tokens of every `.chibi` file below `packages/`, `test/` and `tools/` with
 Tree-sitter's; see `docs/testing.md`.

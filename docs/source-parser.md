@@ -53,7 +53,7 @@ with an argument list against a parenthesized expression, and `not (` as a call.
 
 ## Tests
 
-`python3 tools/test_policy.py tool language-source-parser-chibi` parses every
+`chibi build test language-source-parser-chibi` parses every
 `.chibi` file below `packages/`, `test/` and `tools/` and the sources in
 `test/language/syntax_corpus` (`*.chibi.txt`, so that package scans skip them)
 with both parsers and compares the trees row by row in

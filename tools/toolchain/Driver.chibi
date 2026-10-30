@@ -190,8 +190,181 @@ Build :: (arguments: string[]) -> int {
     return Step("compile-commands", ["ln", "-sfn", Join([Absolute(directory), "/compile_commands.json"]), "compile_commands.json"], dry)
 }
 
+// A tab separated row split into fields; empty fields are kept.
+Fields :: (row: string) -> string[] {
+    fields: string[] = []
+    rest := row
+    while (true) {
+        head := build.before(rest, "\t")
+        fields = build.concat(fields, [head])
+        if (head == rest) {
+            return fields
+        }
+        rest = build.after(rest, "\t")
+    }
+    return fields
+}
+
+// The selector table's rows: `tool NAME COMMAND...` and `group NAME MEMBER...`.
+Rows :: () -> string[] {
+    rows: string[] = []
+    table := os.ReadText("tools/tests.tsv")
+    if (table.error) {
+        os.Print("test: cannot read tools/tests.tsv")
+        return rows
+    }
+    for (line in build.lines(table.text)) {
+        if (line != "" && !strings.HasPrefix(line, "#")) {
+            rows = build.concat(rows, [line])
+        }
+    }
+    return rows
+}
+
+Row :: (rows: string[], kind: string, name: string) -> string {
+    prefix := Join([kind, "\t", name])
+    for (row in rows) {
+        if (row == prefix || strings.HasPrefix(row, Join([prefix, "\t"]))) {
+            return row
+        }
+    }
+    return ""
+}
+
+// The tool selectors a command line names, groups expanded, or [] and a
+// report when one is unknown.
+Selection :: (rows: string[], requested: string[]) -> string[] {
+    selected: string[] = []
+    for (name in requested) {
+        group := Row(rows, "group", name)
+        if (group != "") {
+            members := Fields(group)
+            for (i in 2..<length(members)) {
+                selected = build.concat(selected, [members[i]])
+            }
+        } else if (Row(rows, "tool", name) != "") {
+            selected = build.concat(selected, [name])
+        } else {
+            os.Print(format_text("test: unknown selector '{}'; use --list", name))
+            none: string[] = []
+            return none
+        }
+    }
+    return selected
+}
+
+// The arguments after `build test` that are neither options nor option values.
+Positionals :: (arguments: string[]) -> string[] {
+    names: string[] = []
+    skip := false
+    for (i in 2..<length(arguments)) {
+        argument := arguments[i]
+        if (skip) {
+            skip = false
+        } else if (argument == "--build" || argument == "--release-build" || argument == "--jobs" ||
+            argument == "--build-host") {
+            skip = true
+        } else if (!strings.HasPrefix(argument, "--")) {
+            names = build.concat(names, [argument])
+        }
+    }
+    return names
+}
+
+Count :: (text: string) -> int {
+    value := 0
+    for (byte in strings.Bytes(text)) {
+        if (byte < 48 || byte > 57 || value > 10000) {
+            return -1
+        }
+        value = value * 10 + byte - 48
+    }
+    return value
+}
+
+// The command one selector runs: its row's words with the build directories
+// filled in, under the environment the test drivers read.
+TestCommand :: (row: string, directory: string, releases: string, host: string) -> string[] {
+    fields := Fields(row)
+    command := [
+        "env",
+        Join(["CHIBI_TOOLS_BUILD_DIR=", Absolute(directory), "/test/tools"]),
+        Join(["CHIBI_LANGUAGE_BUILD_DIR=", Absolute(directory), "/test/language"]),
+        Join(["CHIBI_BUILD_HOST=", Absolute(host)]),
+        Join(["CHIBI_CLI=", Absolute(releases), "/sdk/chibi"]),
+        Join(["CHIBI_COMPILE=", Absolute(releases), "/sdk/chibi-compile"]),
+        Join(["CHIBI_CTL=", Absolute(releases), "/bin/chibi_ctl"]),
+        Join(["CHIBI_RELEASE_COMPILER_HOST=", Absolute(releases), "/sdk/chibi-compiler-host"]),
+        Join(["CHIBI_RELEASE_LANGUAGE_BUILD_DIR=", Absolute(releases), "/test/language"])
+    ]
+    for (i in 2..<length(fields)) {
+        word := build.replace(fields[i], "@host@", Absolute(host))
+        word = build.replace(build.replace(word, "@build@", Absolute(directory)), "@release@", Absolute(releases))
+        command = build.concat(command, [word])
+    }
+    return command
+}
+
+// Runs the named selectors or groups of tools/tests.tsv against the built test
+// drivers, up to --jobs at a time, and fails when any fails.
+//   build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--list] [--dry-run] NAME...
+Test :: (arguments: string[]) -> int {
+    rows := Rows()
+    if (Flag(arguments, "--list")) {
+        for (row in rows) {
+            fields := Fields(row)
+            os.Print(Join([fields[0], " ", fields[1]]))
+        }
+        return 0
+    }
+    directory := Option(arguments, "--build", "build")
+    releases := Option(arguments, "--release-build", "build-release")
+    host := Option(arguments, "--build-host", Join([directory, "/sdk/chibi-build-host"]))
+    jobs := Count(Option(arguments, "--jobs", "1"))
+    requested := Positionals(arguments)
+    if (jobs < 1 || length(requested) == 0) {
+        os.Print("usage: build test [--build DIR] [--release-build DIR] [--jobs N] [--list] [--dry-run] NAME...")
+        return 2
+    }
+    selected := Selection(rows, requested)
+    if (length(selected) == 0) {
+        return 2
+    }
+    if (Flag(arguments, "--dry-run")) {
+        for (name in selected) {
+            command := TestCommand(Row(rows, "tool", name), directory, releases, host)
+            os.Print(Join([name, ": ", strings.Join(command, " ")]))
+        }
+        return 0
+    }
+    handles: int[] = []
+    started := 0
+    waited := 0
+    failed := 0
+    while (waited < length(selected)) {
+        while (started < length(selected) && started - waited < jobs) {
+            handles.append(os.Spawn(TestCommand(Row(rows, "tool", selected[started]), directory, releases, host)))
+            started += 1
+        }
+        status := os.Wait(handles[waited])
+        if (status == 0) {
+            os.Print(format_text("PASS {}", selected[waited]))
+        } else {
+            os.Print(format_text("FAIL {} (status {})", selected[waited], status))
+            failed += 1
+        }
+        waited += 1
+    }
+    os.Print(format_text("{} tests, {} failed", length(selected), failed))
+    if (failed > 0) {
+        return 1
+    }
+    return 0
+}
+
 Usage :: () -> int {
     os.Print("usage: build [--release|--debug] [--build DIR] [--target NAME]... [--all] [--jobs N] [--dry-run]")
+    os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--list] [--dry-run] NAME...")
     return 2
 }
 
@@ -200,5 +373,8 @@ Main :: () -> int {
     if (length(arguments) == 0 || arguments[0] != "build") {
         return Usage()
     }
-    return Build(build.concat([], arguments))
+    if (length(arguments) > 1 && arguments[1] == "test") {
+        return Test(arguments)
+    }
+    return Build(arguments)
 }

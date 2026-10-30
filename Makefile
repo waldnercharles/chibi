@@ -68,7 +68,7 @@ NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 # in test-language-all. It runs only when this is set.
 NATIVE_LLVM_BIN ?= $(CHIBI_LLVM_BIN)
 
-.PHONY: all help build build-debug build-release prepare-project install format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
+.PHONY: all help build build-debug build-release prepare-project install format check-format clean
 
 all: build
 
@@ -79,22 +79,6 @@ help:
 		'make build-release  Build products in Release' \
 		'make prepare-project PROJECT_ROOT=/game ARTIFACT=/output/game.chibip' \
 		'make install [PREFIX=~/.local]  Install the Release SDK, including chibi' \
-		'make agent-list     List runnable CPU and explicit GPU selectors' \
-		'make agent-test AGENT_SELECTOR=--source-systems' \
-		'make agent-gpu-test AGENT_SELECTOR=--scene3d' \
-		'make test / test-short  Six C execution-policy checks' \
-		'make test-tools     Standalone C tooling integrations' \
-		'make test-build     Build the full test drivers in BUILD_DIR' \
-		'make test-native    CPU test_tools selectors' \
-		'make test-materials Material simulation selectors' \
-		'make test-projects  Project, asset import and launcher selectors' \
-		'make test-language-all  Native language aggregate' \
-		'make language-build Build the public language C consumer' \
-		'make test-language-{semantic,execution,program,headless,prepared,format}' \
-		'make test-full      CPU native, material, project, language and tooling groups' \
-		'make test-render    Explicit GPU render assertions' \
-		'make test-fast TEST_ARGS=--selector [TEST_BINARY=/path/to/driver]' \
-		'make test-list      List command selectors and explicit groups' \
 		'make format / check-format  Format or check project C sources' \
 		'make clean          Remove default engine build outputs'
 
@@ -179,50 +163,14 @@ install:
 build-release:
 	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION= BUILD_DEBUG_FRAME_POINTERS= BUILD_TARGET="$(BUILD_TARGET)" ASSET_GENERATOR_HOSTS=
 
-benchmark: test-build
-	@$(MAKE) build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host'
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_LLVM_BIN="$(NATIVE_LLVM_BIN)" python3 tools/test_policy.py group benchmarks
-
 format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh
 
 check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
-# Agent selectors run existing drivers; use test-build to build them.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-refresh publish-seed bootstrap-recover test-recovery test-short test-policy-inventory tools-build native-census
-agent-list:
-	@python3 tools/agent.py list
-
-agent-test:
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py agent-env "$(BUILD_DIR)" test
-
-agent-gpu-test:
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py agent-env "$(BUILD_DIR)" gpu-test
-
-# The full test drivers build with the engine, its native packages and reflection.
-test-build:
-	@$(MAKE) build BUILD_TARGET='test_tools test_language'
-
-test-native: test-build
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_BUILD_HOST="$(CHIBI_BUILD_HOST)" python3 tools/test_policy.py group native
-
-test-materials: test-build
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py group materials
-
-# Project commands repeatedly load the authoring catalog. Use Release products
-# for these integrations; the native driver retains its sanitizer coverage.
-test-projects: test-build
-	@$(MAKE) build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host'
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" CHIBI_LLVM_BIN="$(NATIVE_LLVM_BIN)" python3 tools/test_policy.py group projects
-
-# Stage one compiling itself, and stage two compiling the same sources to the
-# same bytes, take about two minutes each under sanitizers, so the bootstrap
-# check runs against an unsanitized Release test_language.
-test-bootstrap:
-	@$(MAKE) build-release BUILD_TARGET=test_language
-	@CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
-
+# Tests run with `chibi build test` (tools/build.sh test before a chibi exists):
+# the selectors and groups are listed in tools/tests.tsv, and --list names them.
 # The bootstrap artifact lives at tools/compiler/bootstrap: bootstrap.json is
 # checked in and pins the seed, compiler.chibip, which tools/bootstrap/seed.sh
 # fetches from a release, as Zig ships zig1.wasm. bootstrap-artifact rewrites
@@ -231,14 +179,15 @@ test-bootstrap:
 # leaves stage two and its arguments in a seed folder, and the Release compiler
 # host writes the artifact once stage two compiles the sources to itself.
 # bootstrap-recover recovers the compiler from it with the sources on disk, and
-# test-recovery with sources exported from HEAD. See docs/self-hosting-build.md.
+# the bootstrap-recovery selector with sources exported from HEAD. See
+# docs/self-hosting-build.md.
 BOOTSTRAP_ARTIFACT ?= tools/compiler/bootstrap
 BOOTSTRAP_SEED = $(RELEASE_BUILD_DIR)/bootstrap.seed
-BOOTSTRAP_DRIVER_BUILD = $(RELEASE_BUILD_DIR)/test/language
+.PHONY: bootstrap-artifact bootstrap-refresh publish-seed bootstrap-recover native-census
 bootstrap-artifact:
 	@$(MAKE) build-release BUILD_TARGET='test_language chibi-compiler-host'
 	@rm -rf "$(BOOTSTRAP_SEED)" && mkdir -p "$(BOOTSTRAP_SEED)"
-	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(BOOTSTRAP_DRIVER_BUILD)" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
+	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" sh tools/build.sh test --release-build "$(RELEASE_BUILD_DIR)" language-package-compiler-chibi-bootstrap
 	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_SEED)"
 
@@ -261,74 +210,11 @@ bootstrap-recover:
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
 	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core
 
-test-recovery: test-build
-	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_RELEASE_COMPILER_HOST="$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" CHIBI_BOOTSTRAP_ARTIFACT="$(BOOTSTRAP_ARTIFACT)" python3 tools/test_policy.py tool bootstrap-recovery
-
 # W21's census rewrites docs/native-compiler-census.md: the first native
 # blocker of each self-hosted compiler function. See docs/native-llvm-ledger.md.
-native-census: test-build
-	@python3 tools/test_policy.py native "$(BUILD_DIR)/test/language/test_language" --native-census docs/native-compiler-census.md
-
-test: test-short
-
-TOOLS_BUILD_DIR ?= $(BUILD_DIR)/test/tools
-TOOLS_C_COMPILER ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),/opt/homebrew/opt/llvm/bin/clang,$(CC))
-
-# Public SDK language checks configure independently of the engine and Studio.
-LANGUAGE_BUILD_DIR ?= $(BUILD_DIR)/test/language
-.PHONY: language-build test-language test-language-all test-language-semantic test-language-execution test-language-program test-language-headless test-language-prepared test-language-format
-language-build:
+native-census:
 	@$(MAKE) build BUILD_TARGET=test_language
-
-test-language:
-	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language
-
-test-language-all: test-build
-	@CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_LLVM_BIN="$(NATIVE_LLVM_BIN)" python3 tools/test_policy.py group language
-
-test-language-semantic:
-	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-semantic
-
-test-language-execution:
-	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-execution
-
-test-language-program:
-	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-program
-
-test-language-headless:
-	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-headless
-
-test-language-format:
-	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-format
-
-test-language-prepared:
-	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" CHIBI_TOOLS_BUILD_DIR="$(TOOLS_BUILD_DIR)" python3 tools/test_policy.py tool language-prepared
-
-tools-build:
-	@$(MAKE) build BUILD_TARGET=test_tools
-
-test-short: tools-build
-	@python3 tools/test_policy.py unit "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
-
-test-tools: tools-build
-	@python3 tools/test_policy.py short "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
-
-test-full test-slow: test-tools test-native test-materials test-projects test-language-all
-
-test-render: test-build
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py group render
-
-test-compiler-parity:
-	@$(MAKE) build-release BUILD_TARGET=test_language
-	@CHIBI_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py group compiler
-
-TEST_BINARY ?= $(abspath $(TOOLS_BUILD_DIR))/test_tools
-test-fast: tools-build
-	@python3 tools/test_policy.py native-env TEST_ARGS "$(TEST_BINARY)"
-
-test-list test-policy-inventory:
-	@python3 tools/test_policy.py inventory
+	@"$(BUILD_DIR)/test/language/test_language" --native-census docs/native-compiler-census.md
 
 clean:
 	@for dir in "$(abspath $(BUILD_DIR))"; do \

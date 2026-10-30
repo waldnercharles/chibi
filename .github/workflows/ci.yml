@@ -125,20 +125,20 @@ jobs:
       - name: Graph Debug optimization (commands only)
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: python3 tools/test_policy.py tool build-graph-debug-optimization
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-graph-debug-optimization
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Build timing host regressions (ready drivers)
         env:
           CHIBI_TOOLS_BUILD_DIR: build/test/tools
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: python3 tools/test_policy.py --timeout 180 tool build-timings
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-timings
       - name: Tooling and process integrations
         env:
           CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
         run: |
           mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
-          make test-tools TOOLS_C_COMPILER=clang-18
-          ./build-tools/test_tools --case-timings
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host short
+          build/test/tools/test_tools --case-timings
       # Products, test drivers and Release helpers are already built and
       # profile-verified. Do not re-enter their planner for the test groups.
       # Keep groups sequential: they share fixtures and build outputs.
@@ -153,10 +153,8 @@ jobs:
           set -e
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-          python3 tools/test_policy.py group native
-          python3 tools/test_policy.py group materials
-          CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group projects
-          CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group language
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native materials
+          CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin sh tools/build.sh test --build-host build-release/sdk/chibi-build-host projects language
       - name: Keep the macOS and Windows native modules
         uses: actions/upload-artifact@v4
         with:
@@ -312,14 +310,14 @@ jobs:
         env:
           CHIBI_TOOLS_BUILD_DIR: build/test/tools
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: python3 tools/test_policy.py --timeout 180 tool build-timings
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-timings
       - name: Tooling and process integrations
         env:
           CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
         run: |
           mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
-          make test-tools TOOLS_C_COMPILER="$CC"
-          ./build-tools/test_tools --case-timings
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host short
+          build/test/tools/test_tools --case-timings
       # The selected-profile build and Release helpers above already produced
       # these drivers. Run the same groups without re-entering either planner.
       # Keep groups sequential: they share fixtures and build outputs.
@@ -329,10 +327,8 @@ jobs:
           set -e
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-          python3 tools/test_policy.py group native
-          python3 tools/test_policy.py group materials
-          CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN= python3 tools/test_policy.py group projects
-          CHIBI_LLVM_BIN= python3 tools/test_policy.py group language
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native materials
+          CHIBI_LLVM_BIN= sh tools/build.sh test --build-host build-release/sdk/chibi-build-host projects language
       - name: Preserve native profile evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -505,7 +501,7 @@ jobs:
           CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
           CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
           CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
-            python3 tools/test_policy.py tool build-sdk
+            sh tools/build.sh test --build build-sdk-tests --build-host "$PWD/build-release/sdk/chibi-build-host" build-sdk
       - name: Verify sources remain unchanged
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"

@@ -813,18 +813,18 @@ the shadow maps, ambient occlusion and global illumination to passes of their
 own. Debug ASan+UBSan on Vulkan llvmpipe passed its 13 cases and 67 assertions
 in 9.3 seconds on 2026-10-11, and in 5.4 seconds on GLES.
 
-`python3 tools/test_policy.py tool render-resources` checks on the CPU that the
+`chibi build test render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half
 floats; that the irradiance terms give the exact cosine integral of an even
 sky, an octant sky and skies quadratic along three axes; that the split-sum
 table matches a fine numerical integral of the GGX lobe; and that skies
 publish, and are charged, with a prepared generation, and
-`python3 tools/test_policy.py tool sky-files` decodes flat and run-length
+`chibi build test sky-files` decodes flat and run-length
 files, rejects malformed ones, prepares skies from mounted content and imports
 them without replacing a file. Both need the in-tree build above.
-`python3 tools/test_policy.py tool mesh-files` checks `.mesh` tangents,
+`chibi build test mesh-files` checks `.mesh` tangents,
 preparation and refusals the same way, and
-`python3 tools/test_policy.py tool model-import` checks the files a glTF
+`chibi build test model-import` checks the files a glTF
 import writes, its names, refusals, warnings, left-out vertices and tangent
 frames.
 

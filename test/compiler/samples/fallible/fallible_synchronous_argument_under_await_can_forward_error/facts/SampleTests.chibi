@@ -1,0 +1,7 @@
+package facts
+
+// The sample only has to compile.
+@test
+Compiles :: () {
+    assert(true);
+}

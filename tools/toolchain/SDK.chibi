@@ -1,5 +1,6 @@
 package toolchain
 
+import os "core:os"
 import strings "core:strings"
 import files "graph:install"
 import engine "graph:engine"
@@ -49,16 +50,18 @@ Entries :: (root: string, build_dir: string, third_party: string) -> string[] {
 // The installed build host must compile and execute the SDK's new bindings,
 // with its own executable-relative compiler resources.
 Verify :: () -> int {
-    reserved := Join([build.root(), "/.compiler-tools-probe"]);
+    reserved := Join([os.Root(), "/.compiler-tools-probe"]);
     published := Join([reserved, ".published"]);
-    if (!build.reserve_directory(reserved)) {
+    if (os.Reserve(reserved)) {
         return 1;
     }
-    if (!build.publish_directory(reserved, published)) {
-        build.remove(reserved);
+    if (os.Publish(reserved, published)) {
+        if (os.Remove(reserved)) {
+            os.Print(Join(["sdk: cannot remove ", reserved]));
+        }
         return 1;
     }
-    if (!build.remove(published)) {
+    if (os.Remove(published)) {
         return 1;
     }
     return 0;
@@ -66,64 +69,64 @@ Verify :: () -> int {
 Prepare :: (stage: string, entries: string[]) -> bool {
     for (item in entries) {
         if (!files.CopyTree(build.after(item, "="), Join([stage, "/", build.before(item, "=")]))) {
-            build.report(Join(["sdk: cannot copy ", build.after(item, "=")]));
+            os.Print(Join(["sdk: cannot copy ", build.after(item, "=")]));
             return false;
         }
     }
     compiler := Join([stage, "/share/chibi/compiler"]);
-    if (build.run([Join([stage, "/libexec/chibi/chibi-compiler-host"]),
+    if (os.Run([Join([stage, "/libexec/chibi/chibi-compiler-host"]),
                    "--bootstrap", Join([compiler, "/bootstrap"]),
                    "--compiler", compiler, "--core", Join([stage, "/share/chibi/core"])]) != 0) {
-        build.report("sdk: staged compiler resources failed recovery");
+        os.Print("sdk: staged compiler resources failed recovery");
         return false;
     }
-    if (build.run([Join([stage, "/libexec/chibi/chibi-build-host"]),
+    if (os.Run([Join([stage, "/libexec/chibi/chibi-build-host"]),
                    "--root", stage, "--source", Join([stage, "/share/chibi/tools/toolchain/SDK.chibi"]),
                    "--core", Join([stage, "/share/chibi/core"]),
                    "--collection", Join(["graph=", stage, "/share/chibi/graph"]), "--entry", "Verify", "--timeout-ms", "120000"]) != 0) {
-        build.report("sdk: staged build host failed capability verification");
+        os.Print("sdk: staged build host failed capability verification");
         return false;
     }
-    return build.write_file(Join([stage, "/share/chibi/compiler-tools.tsv"]), Join(["1\n", files.Inventory(stage, "")]));
+    return !os.WriteText(Join([stage, "/share/chibi/compiler-tools.tsv"]), Join(["1\n", files.Inventory(stage, "")]));
 }
 CompilerTools :: () -> int {
-    arguments := build.arguments();
+    arguments := os.Arguments();
     build_dir := Option(arguments, "--build");
     output := Option(arguments, "--output");
     third_party := Option(arguments, "--third-party");
     if (!strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(output, "/") ||
         !strings.HasPrefix(third_party, "/") || strings.HasSuffix(output, "/") ||
         strings.HasSuffix(output, "/.") || strings.HasSuffix(output, "/..")) {
-        build.report("sdk: --build, --output and --third-party must be absolute paths; output must name a fresh prefix");
+        os.Print("sdk: --build, --output and --third-party must be absolute paths; output must name a fresh prefix");
         return 2;
     }
-    if (build.file_kind(output) != "") {
-        build.report("sdk: output already exists");
+    if (os.Kind(output) != os.KindNone) {
+        os.Print("sdk: output already exists");
         return 2;
     }
-    root := build.root();
+    root := os.Root();
     output = files.CanonicalPath(output);
     if (output == "") {
-        build.report("sdk: output has an invalid directory ancestor");
+        os.Print("sdk: output has an invalid directory ancestor");
         return 2;
     }
     stage := files.CanonicalPath(Join([output, ".chibi-stage"]));
     if (stage == "") {
-        build.report("sdk: staging has an invalid directory ancestor");
+        os.Print("sdk: staging has an invalid directory ancestor");
         return 2;
     }
     entries := Entries(root, build_dir, third_party);
     for (item in entries) {
         source := build.after(item, "=");
-        if (build.file_kind(source) == "directory" &&
+        if (os.IsDirectory(source) &&
             (files.Inside(output, source) || files.Inside(stage, source))) {
-            build.report("sdk: output or staging lies inside a distribution input");
+            os.Print("sdk: output or staging lies inside a distribution input");
             return 2;
         }
     }
     if (!files.SameTree(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
         !files.SameTree(Join([root, "/packages/core"]), Join([build_dir, "/share/chibi/core"]))) {
-        build.report("sdk: graph compiler/core resources are missing or stale; rebuild the private hosts");
+        os.Print("sdk: graph compiler/core resources are missing or stale; rebuild the private hosts");
         return 1;
     }
     for (host in ["chibi-build-host", "chibi-compiler-host"]) {
@@ -135,35 +138,35 @@ CompilerTools :: () -> int {
                 found = found || line == archive;
             }
             if (!found) {
-                build.report("sdk: dependency archive differs from the graph executable link record");
+                os.Print("sdk: dependency archive differs from the graph executable link record");
                 return 1;
             }
         }
     }
     for (item in entries) {
         source := build.after(item, "=");
-        kind := build.file_kind(source);
-        if (kind != "file" && kind != "directory") {
-            build.report(Join(["sdk: missing distribution input ", source]));
+        kind := os.Kind(source);
+        if (kind != os.KindFile && kind != os.KindDirectory) {
+            os.Print(Join(["sdk: missing distribution input ", source]));
             return 1;
         }
     }
-    if (!build.make_directory(files.Parent(output))) {
-        build.report("sdk: cannot create output parent");
+    if (os.MakeDirectory(files.Parent(output))) {
+        os.Print("sdk: cannot create output parent");
         return 1;
     }
-    if (!build.reserve_directory(stage)) {
-        build.report("sdk: cannot reserve staging directory; existing staging is preserved");
+    if (os.Reserve(stage)) {
+        os.Print("sdk: cannot reserve staging directory; existing staging is preserved");
         return 1;
     }
-    if (!Prepare(stage, entries) || !build.publish_directory(stage, output)) {
+    if (!Prepare(stage, entries) || os.Publish(stage, output)) {
         if (!files.RemoveTree(stage)) {
-            build.report(Join(["sdk: incomplete staging directory retained at ", stage]));
+            os.Print(Join(["sdk: incomplete staging directory retained at ", stage]));
         }
-        build.report("sdk: compiler-tools publication failed");
+        os.Print("sdk: compiler-tools publication failed");
         return 1;
     }
-    build.report(Join(["sdk: installed compiler tools at ", output]));
+    os.Print(Join(["sdk: installed compiler tools at ", output]));
     return 0;
 }
 
@@ -182,26 +185,26 @@ InstallEntries :: (root: string, build_dir: string, third_party: string) -> stri
     return entries;
 }
 Install :: () -> int {
-    arguments := build.arguments();
+    arguments := os.Arguments();
     build_dir := Option(arguments, "--build");
     prefix := Option(arguments, "--prefix");
     if (!strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(prefix, "/")) {
-        build.report("sdk: --build and --prefix must be absolute paths");
+        os.Print("sdk: --build and --prefix must be absolute paths");
         return 2;
     }
-    entries := InstallEntries(build.root(), build_dir, engine.ThirdParty(build.root(), "", ""));
+    entries := InstallEntries(os.Root(), build_dir, engine.ThirdParty(os.Root(), "", ""));
     for (item in entries) {
-        if (build.file_kind(build.after(item, "=")) == "") {
-            build.report(Join(["sdk: missing install input ", build.after(item, "=")]));
+        if (os.Kind(build.after(item, "=")) == os.KindNone) {
+            os.Print(Join(["sdk: missing install input ", build.after(item, "=")]));
             return 1;
         }
     }
     for (item in entries) {
         if (!files.CopyTree(build.after(item, "="), Join([prefix, "/", build.before(item, "=")]))) {
-            build.report(Join(["sdk: cannot install ", build.before(item, "=")]));
+            os.Print(Join(["sdk: cannot install ", build.before(item, "=")]));
             return 1;
         }
     }
-    build.report(Join(["sdk: installed at ", prefix]));
+    os.Print(Join(["sdk: installed at ", prefix]));
     return 0;
 }

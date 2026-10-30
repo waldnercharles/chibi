@@ -119,6 +119,24 @@ pub MakeDirectory :: (path: string) -> Error? {
     return nil;
 }
 
+// Makes one new directory whose parent exists. Any existing path, including
+// a link, fails; nothing is replaced.
+pub Reserve :: (path: string) -> Error? {
+    if (!build.reserve_directory(path)) {
+        return Failure(Failed);
+    }
+    return nil;
+}
+
+// Atomically renames a prepared directory to a destination that does not
+// exist. Any existing destination fails; nothing is replaced.
+pub Publish :: (source: string, destination: string) -> Error? {
+    if (!build.publish_directory(source, destination)) {
+        return Failure(Failed);
+    }
+    return nil;
+}
+
 // The names in a directory, in the order the host lists them.
 pub List :: (path: string) -> (names: string[], error: Error?) {
     if (Kind(path) != KindDirectory) {

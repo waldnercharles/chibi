@@ -22,6 +22,7 @@ if [ -z "$host" ]; then
     host=build-release/sdk/chibi-build-host
     sh tools/bootstrap.sh "$host"
 fi
+sh tools/bootstrap/seed.sh
 exec "$host" --compiler tools/compiler --compiler-core packages/core --root "$root" \
     --source tools/toolchain/Driver.chibi --core packages/core --entry Main \
     --timeout-ms 86400000 -- build "$@"

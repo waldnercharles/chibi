@@ -111,7 +111,8 @@ build-debug:
 # The private build host that runs the authored SDK programs: the build's own, or
 # the one cold recovery constructs beside the reflection build.
 define SDK_GRAPH_HOST
-host="$(BUILD_HOST)"; \
+sh tools/bootstrap/seed.sh || exit $$?; \
+	host="$(BUILD_HOST)"; \
 	if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
 		host="$(SDK_REFLECT_BUILD_DIR)/host/bin/chibi-build-host"; \
 		if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
@@ -189,7 +190,7 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Agent selectors run existing drivers; use test-build to build them.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-recover test-recovery test-short test-policy-inventory tools-build native-census
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact publish-seed bootstrap-recover test-recovery test-short test-policy-inventory tools-build native-census
 agent-list:
 	@python3 tools/agent.py list
 
@@ -222,8 +223,11 @@ test-bootstrap:
 	@$(MAKE) build-release BUILD_TARGET=test_language
 	@CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
 
-# The bootstrap artifact is checked in at tools/compiler/bootstrap, as Zig
-# checks in zig1.wasm. bootstrap-artifact rewrites it: the bootstrap check
+# The bootstrap artifact lives at tools/compiler/bootstrap: bootstrap.json is
+# checked in and pins the seed, compiler.chibip, which tools/bootstrap/seed.sh
+# fetches from a release, as Zig ships zig1.wasm. bootstrap-artifact rewrites
+# both, and publish-seed releases the new seed and pins it in
+# tools/bootstrap/seed.tsv. The bootstrap check
 # leaves stage two and its arguments in a seed folder, and the Release compiler
 # host writes the artifact once stage two compiles the sources to itself.
 # bootstrap-recover recovers the compiler from it with the sources on disk, and
@@ -237,6 +241,9 @@ bootstrap-artifact:
 	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(BOOTSTRAP_DRIVER_BUILD)" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
 	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_SEED)"
+
+publish-seed:
+	@sh tools/bootstrap/publish-seed.sh
 
 bootstrap-recover:
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host

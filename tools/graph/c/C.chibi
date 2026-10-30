@@ -1,5 +1,6 @@
 package c
 
+import os "core:os"
 import strings "core:strings"
 
 // Compiles C sources into static libraries. A caller starts the compiles of
@@ -81,7 +82,7 @@ RecordText :: (command: string, inputs: string[], output: string) -> string {
     recorded := slice(inputs, 0, length(inputs));
     recorded.append(output);
     for (input in recorded) {
-        lines.extend([input, build.file_stamp(input)]);
+        lines.extend([input, os.Stamp(input)]);
     }
     lines.append("");
     return build.join(lines, "\n");
@@ -93,7 +94,7 @@ RecordText :: (command: string, inputs: string[], output: string) -> string {
 // separate lines, so validation compares whole fields without splitting again.
 Current :: (command: string[], output: string) -> bool {
     record := Record(output);
-    if (!build.file_exists(record) || !build.file_exists(output)) {
+    if (!os.Exists(record) || !os.Exists(output)) {
         return false;
     }
     lines := build.lines(build.read_file(record));
@@ -111,7 +112,7 @@ Current :: (command: string[], output: string) -> bool {
     }
     for (i in 0..<(length(lines) - count - 1) / 2) {
         at := count + 1 + 2 * i;
-        if (build.file_stamp(lines[at]) != lines[at + 1]) {
+        if (os.Stamp(lines[at]) != lines[at + 1]) {
             return false;
         }
     }
@@ -204,7 +205,8 @@ pub Stale :: (tools: Tools, target: Library, flags: string[], source: string) ->
 }
 
 // A compile that was started: the library that owns it, its object, its
-// command with one argument per line, and the handle to wait for.
+// command with one argument per line, and the handle to wait for, 0 when the
+// object's directory could not be made and nothing started.
 pub Running :: struct {
     owner: string;
     object: string;
@@ -215,7 +217,6 @@ pub Running :: struct {
 // Starts compiling a source, writing its -MD dependencies beside the object.
 pub Start :: (tools: Tools, target: Library, flags: string[], source: string) -> Running {
     object := Object(target, source);
-    build.make_directory(strings.Slice(object, 0, strings.LastIndex(object, "/")));
     command := Command(tools, target, flags, source);
     started := slice(command, 0, length(command));
     if (tools.launcher != "") {
@@ -223,23 +224,29 @@ pub Start :: (tools: Tools, target: Library, flags: string[], source: string) ->
         started.extend(command);
     }
     started.extend(["-MD", "-MF", Join([object, ".d"])]);
+    handle := 0;
+    if (!os.MakeDirectory(strings.Slice(object, 0, strings.LastIndex(object, "/")))) {
+        handle = os.Spawn(started);
+    }
     return {
         owner: target.name,
         object: object,
         command: build.join(command, "\n"),
-        handle: build.start(started)
+        handle: handle
     };
 }
 
 // Waits for a compile and records what built its object; false when it failed,
 // leaving no record so the next run compiles it again.
 pub Finish :: (compile: Running) -> bool {
-    if (build.wait(compile.handle) != 0) {
-        build.remove(Record(compile.object));
+    if (compile.handle == 0 || os.Wait(compile.handle) != 0) {
+        if (os.Remove(Record(compile.object))) {
+            os.Print(Join(["graph: removing compile record failed: ", compile.object]));
+        }
         return false;
     }
     inputs := Dependencies(build.read_file(Join([compile.object, ".d"])));
-    return build.write_file(Record(compile.object), RecordText(compile.command, inputs, compile.object));
+    return !os.WriteText(Record(compile.object), RecordText(compile.command, inputs, compile.object));
 }
 
 // Archives a library's objects when any compiled, or the archive is missing or
@@ -254,10 +261,12 @@ pub Archive :: (tools: Tools, target: Library, sources: string[], compiled: bool
     if (!compiled && Current(archive, target.output)) {
         return true;
     }
-    build.make_directory(strings.Slice(target.output, 0, strings.LastIndex(target.output, "/")));
-    build.remove(target.output);
-    return build.run(archive) == 0 && build.run([tools.ranlib, target.output]) == 0 &&
-           build.write_file(Record(target.output), RecordText(build.join(archive, "\n"), objects, target.output));
+    if (os.MakeDirectory(strings.Slice(target.output, 0, strings.LastIndex(target.output, "/"))) ||
+        os.Remove(target.output)) {
+        return false;
+    }
+    return os.Run(archive) == 0 && os.Run([tools.ranlib, target.output]) == 0 &&
+           !os.WriteText(Record(target.output), RecordText(build.join(archive, "\n"), objects, target.output));
 }
 
 // Copies each header that differs to its place below a staged include root,
@@ -268,17 +277,16 @@ pub StageHeaders :: (root: string, headers: string[], destination: string, kept:
     for (header in headers) {
         from := Join([root, "/", header]);
         to := Join([destination, "/", header]);
-        if (build.file_exists(to) && build.hash_file(to) == build.hash_file(from)) {
+        if (os.Exists(to) && build.hash_file(to) == build.hash_file(from)) {
             continue;
         }
-        build.make_directory(strings.Slice(to, 0, strings.LastIndex(to, "/")));
-        if (!build.copy_file(from, to)) {
+        if (os.MakeDirectory(strings.Slice(to, 0, strings.LastIndex(to, "/"))) || os.Copy(from, to)) {
             return false;
         }
     }
     listed := slice(headers, 0, length(headers));
     listed.extend(kept);
-    return !build.file_exists(destination) || RemoveUnlisted(destination, "", listed);
+    return !os.Exists(destination) || RemoveUnlisted(destination, "", listed);
 }
 
 // Removes the files below directory whose path from the staged root, under
@@ -290,7 +298,7 @@ RemoveUnlisted :: (directory: string, prefix: string, headers: string[]) -> bool
         if (prefix != "") {
             relative = Join([prefix, "/", name]);
         }
-        if (build.file_kind(path) == "directory") {
+        if (os.IsDirectory(path)) {
             if (!RemoveUnlisted(path, relative, headers)) {
                 return false;
             }
@@ -300,7 +308,7 @@ RemoveUnlisted :: (directory: string, prefix: string, headers: string[]) -> bool
         for (header in headers) {
             listed = listed || header == relative;
         }
-        if (!listed && !build.remove(path)) {
+        if (!listed && os.Remove(path)) {
             return false;
         }
     }
@@ -360,13 +368,13 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
     // Records hold one argument per line. A response file must not turn an
     // embedded NUL or line ending into a different command or cache identity.
     if (output == "" || tools.compiler == "") {
-        build.report("graph: invalid link output or compiler");
+        os.Print("graph: invalid link output or compiler");
         return -1;
     }
     for (argument in command) {
         for (byte in strings.Bytes(argument)) {
             if (byte == 0 || byte == 10 || byte == 13) {
-                build.report("graph: link arguments cannot contain NUL or line endings");
+                os.Print("graph: link arguments cannot contain NUL or line endings");
                 return -1;
             }
         }
@@ -380,14 +388,20 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
             inputs.append(linked);
         }
     }
-    build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
+    if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/")))) {
+        os.Print(Join(["graph: creating link output directory failed: ", output]));
+        return -1;
+    }
     response := Join([output, ".chibi-link.rsp"]);
     // A killed host can leave the response file, but no successful record.
     // Retry owns the base and numbered regular files even when its new
     // command needs fewer segments. Other files and directories stay intact.
-    build.remove(Record(output));
+    if (os.Remove(Record(output))) {
+        os.Print(Join(["graph: removing link record failed: ", output]));
+        return -1;
+    }
     if (!RemovePreviousResponses(response)) {
-        build.report(Join(["graph: removing link responses failed: ", output]));
+        os.Print(Join(["graph: removing link responses failed: ", output]));
         return -1;
     }
     // Older GNU response tokenizers discard quoted empty tokens. Keep every
@@ -419,10 +433,10 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
             started.extend(slice(command, first, index - first));
             continue;
         }
-        kind := build.file_kind(path);
-        if (kind != "" && kind != "file") {
+        kind := os.Kind(path);
+        if (kind != os.KindNone && kind != os.KindFile) {
             RemoveResponses(responses);
-            build.report(Join(["graph: writing link response failed: ", output]));
+            os.Print(Join(["graph: writing link response failed: ", output]));
             return -1;
         }
         responses.append(path);
@@ -431,20 +445,20 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
             escaped := build.replace(build.replace(command[i], "\\", "\\\\"), "\"", "\\\"");
             quoted.append(Join(["\"", escaped, "\""]));
         }
-        if (!build.write_file(path, Join([build.join(quoted, "\n"), "\n"]))) {
+        if (os.WriteText(path, Join([build.join(quoted, "\n"), "\n"]))) {
             RemoveResponses(responses);
-            build.report(Join(["graph: writing link response failed: ", output]));
+            os.Print(Join(["graph: writing link response failed: ", output]));
             return -1;
         }
         started.append(argument);
     }
-    status := build.run(started);
+    status := os.Run(started);
     removed := RemoveResponses(responses);
-    if (status != 0 || !removed || !build.file_exists(output)) {
-        build.report(Join(["graph: step failed: ", output]));
+    if (status != 0 || !removed || !os.Exists(output)) {
+        os.Print(Join(["graph: step failed: ", output]));
         return -1;
     }
-    if (!build.write_file(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
+    if (os.WriteText(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
         return -1;
     }
     return 1;
@@ -455,7 +469,7 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
 RemoveResponses :: (paths: string[]) -> bool {
     removed := true;
     for (path in paths) {
-        if (build.file_kind(path) != "" && !build.remove(path)) {
+        if (os.Remove(path)) {
             removed = false;
         }
     }
@@ -485,7 +499,7 @@ RemovePreviousResponses :: (response: string) -> bool {
             }
         }
         path := Join([directory, item]);
-        if (owned && build.file_kind(path) == "file") {
+        if (owned && os.IsFile(path)) {
             paths.append(path);
         }
     }
@@ -500,12 +514,15 @@ pub Step :: (command: string[], inputs: string[], output: string) -> int {
     if (Current(command, output)) {
         return 0;
     }
-    build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
-    if (build.run(command) != 0) {
-        build.report(Join(["graph: step failed: ", output]));
+    if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/")))) {
+        os.Print(Join(["graph: creating step output directory failed: ", output]));
         return -1;
     }
-    if (!build.write_file(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
+    if (os.Run(command) != 0) {
+        os.Print(Join(["graph: step failed: ", output]));
+        return -1;
+    }
+    if (os.WriteText(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
         return -1;
     }
     return 1;

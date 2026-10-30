@@ -12636,7 +12636,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 60
+    SCALAR_ACCEPTED_CASES = 63
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -17433,7 +17433,7 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
         ran++;
         arena_free(&detached);
     }
-    REQUIRE(ran >= 7);
+    REQUIRE(ran >= 10);
     /* Index 3 is past the three elements, as is -1. */
     static const char *const OUTSIDE[] = {
         "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n  "

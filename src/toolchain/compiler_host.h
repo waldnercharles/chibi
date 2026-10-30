@@ -11,7 +11,7 @@
  * verifier checks its largest function, and needs about 394 M units of
  * record-layout work: each record and union value it copies or drops carries
  * its record header. The asset compiler's closure adds its own modules to
- * that and needs more than 512 M units. Loading allows each module, and the
+ * that and needs more than 1 G units. Loading allows each module, and the
  * closure together, this much storage, each module this many records and
  * this much layout work.
  * Its closure, about 30 MB, is returned as a byte[] of that length, and the

@@ -307,11 +307,11 @@ StartsLambda :: (c: ^Cursor, n: ^(Node[])) -> bool {
     if (end < 0) {
         return false;
     }
-    after := n^[end].token;
-    if (after == tk.FatArrow || after == tk.ArrowRight) {
+    next := n^[end].token;
+    if (next == tk.FatArrow || next == tk.ArrowRight) {
         return true;
     }
-    if (after != tk.OpenBrace) {
+    if (next != tk.OpenBrace) {
         return false;
     }
     return n^[open + 1].token == tk.CloseParen || (IsName(n^[open + 1].token) && n^[open + 2].token == tk.Colon);

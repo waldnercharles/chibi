@@ -135,17 +135,17 @@ Shape :: (text: string) -> string[] {
 
 Has :: (shape: string[], item: string) {
     found := false;
-    for (entry in shape) {
-        if (entry == item) {
+    for (row in shape) {
+        if (row == item) {
             found = true;
         }
     }
-    assert(found, item);
+    assert(found, "the shape holds the expected node");
 }
 
 Lacks :: (shape: string[], item: string) {
-    for (entry in shape) {
-        assert(entry != item, item);
+    for (row in shape) {
+        assert(row != item, "the shape lacks the unexpected node");
     }
 }
 

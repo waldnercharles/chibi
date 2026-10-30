@@ -739,8 +739,9 @@ static bool receipts_match(const char *prefix)
         has_compiler |= !in_core;
         join(path, in_core ? core : compiler, in_core ? name + core_length + 1 : name);
         char original[SDK_PATH], base[SDK_PATH], digest[65], expected[65];
-        join(base, CHIBI_SOURCE_ROOT, "tools/compiler");
-        join(original, in_core ? CHIBI_SOURCE_ROOT : base, name);
+        /* Core sources are recorded under the core's logical prefix (/sdk/core). */
+        join(base, CHIBI_SOURCE_ROOT, in_core ? "packages/core" : "tools/compiler");
+        join(original, base, in_core ? name + core_length + 1 : name);
         same = file_digest(path, digest) && file_digest(original, expected) &&
                !strcmp(digest, expected);
         if (!same) {

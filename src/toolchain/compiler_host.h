@@ -9,7 +9,7 @@
 /* A compiler's own closure is a large program, in and out. The package
  * compiler's module keeps about 200 MB, peaks at about 372 MiB while the
  * verifier checks its largest function, and needs about 394 M units of
- * record-layout work: each record and union value it copies or drops carries
+ * record-layout work (the asset compiler's asset_source module now passes 512 M): each record and union value it copies or drops carries
  * its record header. Loading allows each module, and the closure together,
  * this much storage, each module this many records and this much layout work.
  * Its closure, about 30 MB, is returned as a byte[] of that length, and the
@@ -21,7 +21,7 @@
  * COMPILER_HOST_MAX_BYTES. */
 #define COMPILER_HOST_MAX_CLOSURE_BYTES (512u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
-#define COMPILER_HOST_MAX_LAYOUT_WORK (512u * 1024u * 1024u)
+#define COMPILER_HOST_MAX_LAYOUT_WORK (1536u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_OUTPUT_BYTES (16u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_ARTIFACT_BYTES (32u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_VALUES 1000000

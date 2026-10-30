@@ -846,30 +846,18 @@ int main(int argc, char **argv)
 #endif
     if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
         !tilemap && !package && !third_party_publish && !collab && !unit &&
-<<<<<<< HEAD
         !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
-        !scene && !scene_prepared && !scene_hierarchy && !native &&
-        !native_values && !native_catalog && !physics && !physics3d &&
-=======
-        !test_runner && !validation_plan && !web_storage && !webgpu_staging &&
-        !wasm_browser && !query_benchmark && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics && !physics3d &&
->>>>>>> origin/main
-        !transforms && !render_resources && !interior_border && !viewport_resize &&
+        !scene && !scene_prepared && !native && !native_values &&
+        !native_catalog && !physics && !physics3d && !transforms &&
+        !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
         !scene2d && !terrain_seams && !texture_transform && !arena && !types &&
         !render_geometry && !radiance_surface && !radiance_horizons &&
         !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
         !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
-<<<<<<< HEAD
-        !shader_programs && !material_cameras && !mesh_materials && !sdf_quality &&
-        !scene3d_post && !scene3d_shapes && !persistent_store && !whole_math &&
-        !whole_integer && !whole_conversion && !whole_select && !source_presentation &&
-=======
         !shader_programs && !material_cameras && !mesh_materials &&
         !sdf_quality && !scene3d_post && !scene3d_shapes && !persistent_store &&
         !whole_math && !whole_integer && !whole_conversion && !whole_select &&
->>>>>>> origin/main
         !system_schedule && !scheduler_benchmark && !source_systems &&
         !source_query_rows && !graph_document && !graph_presentation &&
         !graph_functions && !vector_nodes && !material_render && !material) {

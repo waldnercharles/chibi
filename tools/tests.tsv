@@ -12,7 +12,6 @@ tool	ecs-query-benchmark	@build@/test/tools/test_tools	--ecs-query-benchmark
 tool	arena	@build@/test/tools/test_tools	--arena
 tool	source-systems	@build@/test/tools/test_tools	--source-systems
 tool	persistent-store	@build@/test/tools/test_tools	--persistent-store
-tool	package	@build@/test/tools/test_tools	--package
 tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
 tool	chibi-cli-build	@build@/test/tools/test_tools	--chibi-cli-build	@release@/sdk/chibi
 tool	chibi-cli-doctor	@build@/test/tools/test_tools	--chibi-cli-doctor	@release@/sdk/chibi

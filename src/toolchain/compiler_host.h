@@ -12,8 +12,10 @@
  * type table (n log n to order it), with each value header's type lookup and
  * with the layouts the verifier checks, so it stays proportional to the
  * program: with the asset compiler's closure, about 10,000 types and 900
- * functions, it measures between 128 and 256 MiB of units, and the bound
- * leaves twice that. Loading allows each module, and the closure together,
+ * functions, it measures between 128 and 256 MiB of units. A cold build's
+ * first host start still exceeds 512 MiB loading project:package_compiler
+ * (2026-10-30, macOS arm64, main 7bafe9256), so the bound stays at 3 GiB
+ * until that load is measured and proportional too. Loading allows each module, and the closure together,
  * this much storage, each module this many records and this much layout work.
  * Its closure, about 30 MB, is returned as a byte[] of that length, and the
  * bootstrap compiles and reads it back with COMPILER_HOST_MAX_ARTIFACT_BYTES.
@@ -24,7 +26,7 @@
  * COMPILER_HOST_MAX_BYTES. */
 #define COMPILER_HOST_MAX_CLOSURE_BYTES (512u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
-#define COMPILER_HOST_MAX_LAYOUT_WORK (512u * 1024u * 1024u)
+#define COMPILER_HOST_MAX_LAYOUT_WORK (3072u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_OUTPUT_BYTES (16u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_ARTIFACT_BYTES (32u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_VALUES 1000000

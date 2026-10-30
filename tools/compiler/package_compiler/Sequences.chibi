@@ -695,11 +695,15 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         if (Is(forest, object, "identifier")) {
             found = Lookup(names, Text(forest, text, object));
         }
-        component = Component(types, Text(forest, text, Field(forest, item.node, "member")));
-        if (component >= 0 && found >= 0 && names[found].storage == HandleStorage) {
-            return Step.Emitted([], [], [], [], [], [], [], [],
-                                [Visit(object), Resume(item.node, PlaceComponentPhase, component, 0)],
-                                0, NoValue(), NoValue(), []);
+        // Only a handle's member can name a component, and finding one scans
+        // every type, so the handle comes first.
+        if (found >= 0 && names[found].storage == HandleStorage) {
+            component = Component(types, Text(forest, text, Field(forest, item.node, "member")));
+            if (component >= 0) {
+                return Step.Emitted([], [], [], [], [], [], [], [],
+                                    [Visit(object), Resume(item.node, PlaceComponentPhase, component, 0)],
+                                    0, NoValue(), NoValue(), []);
+            }
         }
     }
     if (node.kind == "member_expression" || node.kind == "index_expression") {

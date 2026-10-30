@@ -52,3 +52,38 @@ These compiled project scripts through the stage-zero `authoring/source_prepare`
 - **ECS sessions running script behaviors:** `headless`, `incremental`, `incremental_benchmark` (reload of changed sources, binding schedule), `modules` (imports between project scripts), `native_calls` (natives called from scripts on both backends), `navigation` (references/definitions over analyzed documents), `source_assets`, `scene_snapshot_read` (authored state from scenes).
 - **Runtime behavior from source (test/runtime):** `owned_tick`, `parallel_tick` (tick ownership and parallel ticks), `whole_alias` (compiled aliases), `source_features` (native features, numeric queries, material features, input save), `source_reductions` (reductions and benchmarks).
 - **Cases removed from kept files** (text in `archive/test/*/…_group1_cases.txt`): 12 `package_compiler_chibi.c` cases that compared the authored compiler with script libraries compiled through the project pipeline (executable libraries, library name resolution, scalar-runs-natively-like-the-VM, deferred char states, numeric conversion rejection, constant folding as stage zero does, invalid library closures), and one `build_process.c` case.
+
+## Unreferenced C (dead-code sweep)
+
+No linked product (`chibi`, `chibi-compile`, `chibi-player`, the build and compiler hosts, `test_tools`, `test_language`) or Studio reached these objects after the format, docs, game-compile and network archives:
+
+- `src/execution/c.c`: C source emission for compiled behavior functions and sequences.
+- `src/execution/inputs.c`: frame-argument reconstruction for debuggers.
+- `src/authoring/visual_prepare.c`: scene visual preparation for the archived project pipeline.
+- `src/support/code_lex.c`: the graph-expression lexer.
+
+## Studio-only SDK authoring (dead-code sweep)
+
+Only Studio called these; no engine product or test linked them. Studio, which is parked, loses its application catalog, UI loader and checker, palette ranking, call hierarchy, prototype instances, field parameter lists and model baking with them:
+
+- `src/authoring/application_catalog.c`, `studio_catalog.c` (the `studio_catalog` SDK target): Studio's native catalog.
+- `src/authoring/ui_loader.c`, `ui_check.c`: UI asset loading and RmlUi checking for the designer.
+- `src/assets/call_hierarchy.c`, `prototype_instance.c`, `field_parameters.c`: asset authoring services.
+- `src/support/text_rank.c`: command palette ranking.
+- `src/runtime/models/model_bake.c` (the `model_bake` SDK target): model preview baking.
+
+## KDL project content readers (src/assets, src/authoring)
+
+Game projects are archived, so nothing in the toolchain reads project content any more. These C readers of the KDL project formats leave with their tests; project content returns as typed Chibi declarations:
+
+- `src/assets/project.c` (the manifest reader; `src/assets/project.h` keeps only `CHIBI_PROJECT_VERSION`), `input_map.c`, `physics_settings.c`, `prototype.c`, `scene_document.c`, `scenario_document.c`.
+- `src/authoring/native_prototype.c`, `scene_hierarchy.c`, `scene_snapshot.c`, `component_presentation.c` and `engine_components.kdl`, the Properties tabs of the engine's components.
+- `docs/scene-authoring.md`; tests `test/authoring/{prototype_documents,scene_hierarchy,project_document,component_presentation}.c`, `test/language/prototype.c`, two scenario cases of `test/tools/native.c` and four scene and prototype reader cases of `test/language/asset_compiler_host.c`.
+
+## KDL text and ckdl (src/support, third_party)
+
+With the project content readers archived and the bootstrap contract read as plain lines, nothing linked the KDL value layer:
+
+- `src/support/asset_text.c`: KDL documents to and from asset values; tests `test/support/asset_text.c`, `test/asset_fixture.h`.
+- `third_party/ckdl`: the vendored KDL parser, its license notices in the SDK and compiler runtime seed.
+- `src/authoring/parts_prepare.c`, `mesh_prepare.c` (the `shader_preparation` target): KDL mesh-part preparation; three render cases that prepared parts.

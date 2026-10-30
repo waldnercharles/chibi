@@ -685,15 +685,6 @@ assertions in 0.828 seconds with ASan/UBSan. Two of its cases check every field
 node's library host call against the field evaluator, sampled and baked, over
 2,000 operand sets each, and that a call's Seed Offset is its whole seed.
 Neither selector loads a renderer or runs engine frames.
-`ui-authoring` selects two independently reviewed public SDK cases with fixed
-RML/RCSS snapshots, formatting and attribute-edit reparses, owned text after
-producer retirement, last-valid state after malformed RCSS, and exact event token
-ranges. It has no files, processes, worlds, or GPU work.
-Its independently reviewed fourth case adds typed catalog overrides, revision
-replacement invalidating an existing session, new default values and a rejected
-wrong parameter type on a fixed 3-by-3 bake. All four cases pass 267 assertions
-in 0.650 seconds with ASan/UBSan after the typed catalog extraction.
-
 It also runs two component presentation cases on two fixed in-memory documents:
 the engine's tabs, icons and reflected units and ranges, and a document
 overriding them key by key.

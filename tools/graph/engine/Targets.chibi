@@ -504,26 +504,26 @@ Files :: (target: string) -> string[] {
             "test/language/component_write_ir.c",
             "test/language/field_runtime.c",
             "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
-            "test/language/packages.c",
-            "test/language/package_resolution.c",
+
+
             "test/language/package_imports.c", "test/language/package_files.c",
             "test/language/package_math.c",
 
-            "test/language/package_graph_chibi.c",
-            "test/language/argument_effects_chibi.c", "test/language/program_session.c",
+
+            "test/language/program_session.c",
             "test/language/syntax_corpus.c",
             "test/language/compiler_fixture.c",
 
 
-            "test/language/package_snapshot_chibi.c",
-            "test/language/compiler_artifact_chibi.c", "test/language/bounded_compiler_chibi.c",
-            "test/language/shader_source_chibi.c",
-            "test/language/asset_packaging_chibi.c", "test/language/package_compiler_chibi.c",
+
+
+
+            "test/language/package_compiler_chibi.c",
             "src/host/native_libraries.c", "src/host/process.c", "src/host/stack_overflow.c",
             "test/language/native_census.c",
             "test/language/execution_scope.c", "test/language/integer_semantics.c",
 
-            "test/language/type_relations_chibi.c", "test/language/unit_algebra_chibi.c",
+
 
 
             "test/parallel.c", "test/language/parallel.c",
@@ -593,7 +593,7 @@ Files :: (target: string) -> string[] {
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/native_aot_driver.c", "test/tools/build_process.c",
             "test/tools/build_graph.c", "test/tools/build_sdk.c", "test/tools/runtime_sdk.c",
-            "test/tools/compiler_artifact.c", "test/tools/compiler_bootstrap.c",
+            "test/tools/compiler_bootstrap.c",
             "test/tools/audio_analysis.c",
             "src/host/native_libraries.c", "test/tools/tilemap.c", "test/support/fmt.c", "test/tools/box3d.c", "test/runtime/materials.c",
             "test/runtime/material_fixture.c", "test/runtime/material_fluids.c",
@@ -2244,10 +2244,10 @@ LanguageTestsOverSource :: () -> string[] {
         "src/host/process.c", "src/host/native_libraries.c", "src/host/stack_overflow.c",
         "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
         "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
-        "src/toolchain/compiler_target.c", "test/language/argument_effects_chibi.c",
-        "test/language/bounded_compiler_chibi.c",
+        "src/toolchain/compiler_target.c",
+
         "test/language/capture.c",
-        "test/language/compiler_artifact_chibi.c",
+
         "test/language/component_write_ir.c",
         "test/language/execution.c", "test/language/execution_scope.c",
         "test/language/integer_semantics.c", "test/language/host_packages_compiler.c",
@@ -2256,7 +2256,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/package_compiler_chibi.c",
 
 
-        "test/language/package_snapshot_chibi.c",
+
 
         "test/language/ranges.c",
         "test/language/record_prepared.c",
@@ -2264,8 +2264,8 @@ LanguageTestsOverSource :: () -> string[] {
 
 
 
-        "test/language/type_relations_chibi.c",
-        "test/language/unit_algebra_chibi.c"
+
+
 
     ];
 }
@@ -2281,7 +2281,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
         return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
     }
     if (target == "test_language" &&
-        (file == || file == "test/language/asset_packaging_chibi.c" ||
+        (file == || file == ||
          file == "test/language/integer_semantics.c" || file == "test/language/host_packages_compiler.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }

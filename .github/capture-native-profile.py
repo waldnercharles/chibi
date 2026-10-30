@@ -47,7 +47,10 @@ def read_record(output: Path, expected_args: list[str]) -> Path:
         at = expected_args.index("-o")
         inputs = {arg for arg in expected_args[1:at] if arg.endswith(".o")}
         inputs.update(arg for arg in expected_args[at + 2:] if Path(arg).is_absolute())
-    if not inputs or not inputs.issubset(set(footer[:-2:2])):
+    # ccache rebases depfile inputs against the repository cwd. Compare their
+    # identities, then validate every recorded spelling's live stamp below.
+    recorded_inputs = {Path(path).resolve() for path in footer[:-2:2]}
+    if not inputs or not {Path(path).resolve() for path in inputs}.issubset(recorded_inputs):
         raise ValueError(f"{record}: missing command input binding")
     for path, recorded in zip(footer[::2], footer[1::2]):
         if not path or stamp(Path(path)) != recorded:

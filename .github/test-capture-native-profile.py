@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Receipt-validation fixtures; these do not prove that a native build ran."""
 
+import contextlib
 import importlib.util
 import json
 import os
@@ -138,6 +139,26 @@ class Records(unittest.TestCase):
     def test_valid_record(self):
         self.write_record()
         self.assertEqual(capture.read_record(self.output, self.arguments), self.record)
+
+    def test_rebased_relative_dependencies_preserve_source_identity(self):
+        source = self.root / "src/support/arena.c"
+        wrong_source = self.root / "other/arena.c"
+        generated = self.root / "build/generated/include.h"
+        system_header = self.root / "system/include.h"
+        for path in (source, wrong_source, generated, system_header):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("fixture input\n")
+        arguments = ["clang", "-c", str(source), "-o", str(self.output)]
+        with contextlib.chdir(self.root):
+            for relative_source, valid in (("src/support/arena.c", True), ("other/arena.c", False)):
+                self.write_record(arguments, [Path(relative_source), Path("build/generated/include.h"),
+                                              system_header, self.output])
+                with self.subTest(relative_source=relative_source):
+                    if valid:
+                        self.assertEqual(capture.read_record(self.output, arguments), self.record)
+                    else:
+                        with self.assertRaises(ValueError):
+                            capture.read_record(self.output, arguments)
 
     def test_empty_argument_tokens_are_not_footer_separators(self):
         dependency = self.root / "dependency.o"
@@ -297,8 +318,9 @@ class CommandLine(unittest.TestCase):
                         subprocess.run(command, check=True, capture_output=True)
                         databases[index].append({"output": str(output), "arguments": command,
                                                  "file": str(dependency), "directory": str(root)})
+                        recorded_dependency = dependency.relative_to(root) if index == 0 else dependency
                         Path(str(output) + ".chibi-record").write_text("\n".join([
-                            *command, "", str(dependency), capture.stamp(dependency),
+                            *command, "", str(recorded_dependency), capture.stamp(dependency),
                             str(output), capture.stamp(output)]) + "\n")
                 for name, database in zip(("compile_commands.json", "link_commands.json"), databases):
                     (build / name).write_text(json.dumps(database))
@@ -350,7 +372,7 @@ class CommandLine(unittest.TestCase):
                     subprocess.run(actual, check=True, capture_output=True)
                     output = build / objects[0]
                     record.write_text("\n".join([
-                        *declared, "", str(sources[0]), capture.stamp(sources[0]),
+                        *declared, "", str(sources[0].relative_to(root)), capture.stamp(sources[0]),
                         str(output), capture.stamp(output)]) + "\n")
                     receipt = run_capture("unsanitized-built-output", "incomplete")
                     self.assertIn("sanitizer symbols", receipt["error"])

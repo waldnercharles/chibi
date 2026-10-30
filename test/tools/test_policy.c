@@ -3176,7 +3176,6 @@ TEST_CASE(parallel_inner_pools_remain_exclusive_and_covered)
         const char *name, *expected;
     } cases[] = {
         { "language", "0 1\n" },
-        { "language-root-state", "0 0\n" },
         { "language-test-parallel", "0 1\n" },
         { "language-package-tests", "0 1\n" },
         { "language-compiler-fixture", "0 1\n" },

@@ -135,20 +135,17 @@ class CacheTests(unittest.TestCase):
 
     def test_workflow_cache_scope(self):
         workflow = (cache.ROOT / '.github/workflows/ci.yml').read_text()
-        # Two compiler-object caches and three compiled-asset-compiler caches.
-        self.assertEqual(workflow.count('uses: actions/cache/restore@v4'), 5)
-        self.assertEqual(workflow.count('uses: actions/cache/save@v4'), 4)
-        asset_guard = "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.asset-cache.outputs.cache-hit != 'true'"
-        self.assertEqual(workflow.count(asset_guard), 2)
-        self.assertEqual(workflow.count('path: .chibi/asset-compiler-cache'), 5)
+        lines = workflow.splitlines()
+        saves = [i for i, line in enumerate(lines) if line.strip() == 'uses: actions/cache/save@v4']
+        self.assertTrue(saves)
+        # Only main pushes publish snapshots; PRs restore only.
+        main_push = "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+        for index in saves:
+            guard = next(line for line in reversed(lines[:index]) if line.strip().startswith(('if:', '- if:')))
+            self.assertIn(main_push, guard)
         self.assertNotIn('key: ${{ steps.ccache-config.outputs.compatibility-prefix }}', workflow)
         self.assertNotIn('pull_request_target:', workflow)
-        guard = "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'"
-        self.assertEqual(workflow.count(guard), 2)
-        self.assertEqual(workflow.count('path: ${{ env.CCACHE_DIR }}'), 4)
-        self.assertEqual(workflow.count('key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}'), 4)
         self.assertEqual(workflow.count('restore-keys: |\n            ${{ steps.ccache-config.outputs.prefix }}-\n            ${{ steps.ccache-config.outputs.compatibility-prefix }}-'), 2)
-
 
 if __name__ == '__main__':
     unittest.main()

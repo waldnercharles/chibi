@@ -158,11 +158,32 @@ are visible.
 contract, full prepared target/native ABI and source completeness. Matching
 source hashes load the recorded closure directly. Changed existing source bytes
 use the self-hosted recovery path: the seed compiles the current compiler, and
-that compiler must reproduce itself in a second compile. Both paths return an
-owned generation without writing an artifact or persistent cache into the SDK.
-The C API borrows it through `chibi_build_options.compiler`; reuse it sequentially
-and reload it after compiler source edits. Release it with
-`chibi_build_compiler_free`.
+that compiler must reproduce itself in a second compile, which takes minutes.
+Both paths return an owned generation and write no artifact into the SDK.
+
+The recovered compiler is kept in a cache so that only the first start after a
+compiler-source change pays for the recovery, as Zig keeps its global cache. The
+build host stores it in `.chibi/compiler-cache` below `--root`, or in the
+directory `CHIBI_COMPILER_CACHE` names; `CHIBI_COMPILER_CACHE=off` disables it.
+An entry is named by the SHA-256 of what decides its bytes: the seed's closure,
+Compile's arguments (every compiler and core source's path and text, and the
+target description), the prepared format and the host executable's own bytes.
+Each entry is framed with the SHA-256 of its payload, written to a temporary
+file and renamed into place under a publication lock, so a reader sees a whole
+entry or none. A load that finds an entry reads it back, checks its frame and
+loads it as a compiler for this target; any failure removes it and recovers
+again. This is safe where a snapshot of the sources would not be: the key
+covers every input, nothing is trusted unread, and a stale entry is never
+named. It has no eviction, because a key changes only with a compiler edit;
+delete the directory to reclaim it. Windows does not cache. The recovery proofs
+never use it: `chibi-compiler-host --bootstrap ... [--recover FILE]`, `make
+test-recovery` and the compiler-recovery workflow call the check path, which
+neither reads nor writes the cache, so they always recover from the seed.
+
+The C API borrows the generation through `chibi_build_options.compiler`; reuse
+it sequentially and reload it after compiler source edits. Release it with
+`chibi_build_compiler_free`. `chibi_build_compiler_load` takes the cache
+directory, or NULL for no cache.
 
 When changing the prepared format, the checked bootstrap cannot yet run on the
 new runtime. `make bootstrap-artifact` first builds the compiler-only SDK language
@@ -468,11 +489,10 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
 `graph:engine`'s `Targets.chibi` lists the 104 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
-the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
-over ckdl) and the libraries over them, and three header-only libraries
+the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson) and the
+libraries over them, and three header-only libraries
 (`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
-`chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
-engine component KDL are generated sources, `chibi_save_runtime`, and
+`chibi_builtin_fonts`, whose fonts are generated sources, `chibi_save_runtime`, and
 `chibi_execution` over the third-party archive's prebuilt SLJIT and the
 header-only `chibi_math` from it, with the libraries that need only those (the
 behavior, scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and

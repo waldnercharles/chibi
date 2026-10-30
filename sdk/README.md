@@ -121,10 +121,8 @@ component creation defaults are supplied explicitly by an authoring adapter.
 overrides using an explicit borrowed component catalog.
 `Chibi::text_source` owns text edits, search and file reads with unsaved overlays.
 `Chibi::ui_document` owns RML documents, widget expansion, event ranges and RCSS
-expansion with source maps. `Chibi::ui_authoring` provides UI source parsing,
-formatting, edits, completion, references and hover. Its `Chibi::ui_syntax`
-dependency supplies the pinned HTML/CSS grammars and shares the syntax runtime.
-These document and UI packages are compiler-enabled; rendering consumes their
+expansion with source maps. `Chibi::ui_authoring` provides the UI event
+token ranges. These document and UI packages are compiler-enabled; rendering consumes their
 owned results through a separate host.
 `Chibi::authoring` prepares an owned source generation and resolves imported
 library generations without attaching or running anything. Live-world publication

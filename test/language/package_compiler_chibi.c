@@ -3304,6 +3304,20 @@ static const sample samples[] = {
                  { .function = "First", .arguments = "[]", .expected = "[7]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
                  { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "generic records specialize per application",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Inner :: struct { values: int[]; }\n"
+                "Box :: struct($T: Type, $N: int) { item: T; }\n"
+                "Pair :: struct($A: Type, $B: Type) { first: A; second: B; }\n"
+                "Outer :: struct { box: Box(Inner, 2); pair: Pair(int, f64); }\n"
+                "Second :: (o: Outer) -> int { return o.box.item.values[1]; }\n"
+                "Main :: () -> int { "
+                "o: Outer = {box: {item: {values: [7, 9]}}, pair: {first: 5, second: 2.5}}; "
+                "nested: Box(Box(int, 1), 3) = {item: {item: 11}}; "
+                "again: Box(int, 5) = {item: 1}; other: Box(int, 6) = {item: 2}; "
+                "return Second(o) * 1000 + o.pair.first * 100 + nested.item.item * 10 + again.item + other.item; }\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[9613]" } } },
     { .name = "returned structs with array fields survive collections",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"

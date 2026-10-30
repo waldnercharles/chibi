@@ -2,7 +2,6 @@
  * fail closed until classified; tools/agent.py routes each one. */
 /* Bounded prepared scalar scopes and value-host admission; no source I/O. */
 CHIBI_CPU_SELECTOR("--execution-scope")
-CHIBI_CPU_SELECTOR("--source-presentation")
 CHIBI_CPU_SELECTOR("--source-systems")
 CHIBI_CPU_SELECTOR("--system-schedule")
 CHIBI_CPU_SELECTOR("--asset-values")
@@ -11,8 +10,6 @@ CHIBI_CPU_SELECTOR("--text-files")
 CHIBI_CPU_SELECTOR("--fmt")
 CHIBI_CPU_SELECTOR("--particles")
 CHIBI_CPU_SELECTOR("--png-encoding")
-CHIBI_CPU_SELECTOR("--project-document")
-CHIBI_CPU_SELECTOR("--prototype-documents")
 CHIBI_CPU_SELECTOR("--reference-index")
 CHIBI_CPU_SELECTOR("--asset-source")
 CHIBI_CPU_SELECTOR("--behavior-loader")

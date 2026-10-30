@@ -1,6 +1,6 @@
 # Studio preview composes source editing with the desktop runtime.
 add_library(chibi_project_preparation STATIC)
-foreach(unit material_attach prototype_attach source_apply studio_schema ui_loader ui_check application_catalog)
+foreach(unit source_apply studio_schema ui_loader ui_check application_catalog)
     target_sources(chibi_project_preparation PRIVATE "${CHIBI_SDK_ROOT}/src/authoring/${unit}.c")
 endforeach()
 add_library(Chibi::project_preparation ALIAS chibi_project_preparation)

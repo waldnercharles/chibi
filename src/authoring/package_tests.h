@@ -2,6 +2,7 @@
 #define CHIBI_AUTHORING_PACKAGE_TESTS_H
 
 #include "authoring/source_package_prepare.h"
+#include "runtime/behaviors/package.h"
 
 typedef struct task_system task_system;
 
@@ -37,6 +38,10 @@ package_test *package_tests_find(const authoring_packages *);
 /* Explicit collection tests, ordered by file and position. collection is a
  * collection name such as "core", without a colon. An array to afree(). */
 package_test *package_tests_find_collection(const authoring_packages *, const char *collection);
+/* The tests of the packages of the project: collection compiled by the authored
+ * compiler, ordered by package, file and position. A package exports each test
+ * as "@test NAME". An array to afree(). */
+package_test *package_tests_find_compiled(const package_collection *);
 /* Runs one test, prepared for backend, for at most budget instructions and
  * describes where a failed one stopped: at the innermost call, such as the
  * expect that failed. */

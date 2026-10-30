@@ -1799,8 +1799,24 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):
-            return Result.Emitted(text);
+            return Result.Emitted(Linked(text, rows));
     }
+}
+// The module's text with a comment naming each library a foreign call needs,
+// once, for the driver to link: `; chibi-library PATH`, the path as the source
+// spells it.
+Linked :: (text: string, rows: facts.Row[]) -> string {
+    paths: string[] = [];
+    for (row in rows) {
+        if (row.kind == facts.ForeignRow && !paths.contains(row.text)) {
+            paths.append(row.text);
+        }
+    }
+    out := text;
+    for (path in paths) {
+        out = format_text("{}; chibi-library {}\n", out, path);
+    }
+    return out;
 }
 
 // Emit and EmitBytes are the Linux x86-64 entries `chibi build` calls.

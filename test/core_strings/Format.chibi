@@ -96,3 +96,10 @@ TextFormatLiteralPercentRunRemainsUnchanged :: () {
     assert(format_text("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%") == "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
     return;
 }
+
+// A call may omit format_text's optional tail (from #1017).
+@test
+FormatTextTakesNoArguments :: () {
+    assert(format_text("plain") == "plain");
+    assert(format_text("{}{}", 1, 2) == "12");
+}

@@ -1,0 +1,7 @@
+package facts
+@error Failure :: struct { code: int; }
+Fail :: () -> Failure? { return {code: 3}; }
+Use :: (flag: bool) -> int { a := Fail(); b := a; p := &a; if flag { p = &b; } if p^ {} return 8; }
+Rebound :: (flag: bool) -> int { a := Fail(); b := a; p := &a; if flag { p = &b; } a = nil; p = &b; if p^ {} return 9; }
+Survivor :: (flag: bool) -> int { a := Fail(); b := a; p := &a; if flag { p = &b; } a = nil; if b {} return 10; }
+Checked :: (flag: bool) -> int { a := Fail(); if a {} b := a; p := &a; if flag { p = &b; } a = nil; return 11; }

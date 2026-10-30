@@ -1,0 +1,21 @@
+package facts
+
+// scoped pointer relays
+@test
+Calls :: () {
+    r1: int = Relayed();
+    e1: int = 2;
+    assert(r1 == e1, "Relayed call 1");
+    r2: int = Kept();
+    e2: int = 5;
+    assert(r2 == e2, "Kept call 2");
+    r3: int = Thrown();
+    e3: int = 65;
+    assert(r3 == e3, "Thrown call 3");
+    r4: int = Copied();
+    e4: int = 22;
+    assert(r4 == e4, "Copied call 4");
+    r5: int = Parenthesized();
+    e5: int = 3;
+    assert(r5 == e5, "Parenthesized call 5");
+}

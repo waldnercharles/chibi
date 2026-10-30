@@ -1,0 +1,6 @@
+package facts
+@error Failure :: struct { code: int; }
+Work :: () -> Failure { yield; return {code: 3}; }
+Use :: () { task := Work(); cancel task; }
+
+// error: 4:21: Task error result checking is not supported by stage one yet

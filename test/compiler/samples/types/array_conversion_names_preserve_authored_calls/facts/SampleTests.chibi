@@ -1,0 +1,12 @@
+package facts
+
+// array conversion names preserve authored calls
+@test
+Calls :: () {
+    r1: int[] = Use();
+    e1: int[] = [4, 5];
+    assert(length(r1) == length(e1), "Use call 1 length");
+    for k in 0..<length(e1) {
+        assert(r1[k] == e1[k], "Use call 1 element");
+    }
+}

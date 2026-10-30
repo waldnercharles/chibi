@@ -1,0 +1,4 @@
+package facts
+import lib "project:generic_specialization_identities_are_reused_across_document/lib"
+Flat :: () -> int { values: int[] = [3, 5]; return lib.First(values) + Again(values) + lib.First(values); }
+Nested :: () -> int { rows: int[][] = [[4], [6]]; head := lib.First(rows); again := NestedAgain(rows); return head[0] * 10 + again[0]; }

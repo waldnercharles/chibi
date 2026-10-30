@@ -1,0 +1,10 @@
+package facts
+@error ReadError :: struct { offset: int; message: string; }
+ReadU32 :: (bytes: u8[], offset: int) -> (value: u32, error: ReadError?) {
+if offset < 0 || offset > length(bytes) { return(0, {offset: offset, message: "Offset outside input"}); }
+if length(bytes) - offset < 4 { return(0, {offset: offset, message: "Four bytes required"}); }
+value = u32(bytes[offset]) | (u32(bytes[offset + 1]) << 8) | (u32(bytes[offset + 2]) << 16) | (u32(bytes[offset + 3]) << 24);
+return(value, nil); }
+Whole :: () -> u32 { result := ReadU32([u8(1), 2, 3, 4], 0); if result.error { return 0; } return result.value; }
+Short :: () -> int { result := ReadU32([u8(1), 2], 0); if result.error { if result.value == 0 && result.error.offset == 0 && result.error.message == "Four bytes required" { return 1; } } return 0; }
+Outside :: () -> int { result := ReadU32([], -1); if result.error { if result.value == 0 && result.error.offset == -1 && result.error.message == "Offset outside input" { return 1; } } return 0; }

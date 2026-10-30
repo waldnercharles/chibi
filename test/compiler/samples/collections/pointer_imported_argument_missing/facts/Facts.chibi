@@ -1,0 +1,8 @@
+package facts
+import lib "project:pointer_imported_argument_missing/lib"
+Run :: () {
+    n: int = 1;
+    lib.Bump(n);
+}
+
+// error: 5:14: Pointer parameter requires &value or a pointer

@@ -1,0 +1,10 @@
+package facts
+
+// array updates keep aliases
+@test
+Calls :: () {
+    a1_0: int = 3;
+    r1: int = Build(a1_0);
+    e1: int = 343;
+    assert(r1 == e1, "Build call 1");
+}

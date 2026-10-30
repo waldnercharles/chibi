@@ -1,0 +1,16 @@
+package facts
+
+// unions
+@test
+Calls :: () {
+    a1_0: int = 5;
+    r1: int = Score(a1_0);
+    e1: int = 156;
+    assert(r1 == e1, "Score call 1");
+    r2: int = Kinds();
+    e2: int = 111;
+    assert(r2 == e2, "Kinds call 2");
+    r3: int = Nested();
+    e3: int = 123;
+    assert(r3 == e3, "Nested call 3");
+}

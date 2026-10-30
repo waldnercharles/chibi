@@ -1,0 +1,12 @@
+package facts
+
+// named syntax fact arrays survive forwarding and copies
+@test
+Calls :: () {
+    r2: int = Use();
+    e2: int = 371;
+    assert(r2 == e2, "Use call 2");
+    r3: int = DefaultSize();
+    e3: int = 0;
+    assert(r3 == e3, "DefaultSize call 3");
+}

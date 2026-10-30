@@ -1,0 +1,4 @@
+package facts
+Pair :: struct { a: int; a: bool; }
+
+// error: 2:26: Duplicate field 'a'

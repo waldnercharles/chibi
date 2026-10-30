@@ -1,0 +1,4 @@
+package facts
+Bad: int : 1 << 31;
+
+// error: 2:12: Constant value is outside the range of int

@@ -1,0 +1,5 @@
+package facts
+Pair :: struct { a: int; }
+One :: () -> int { p := {a: 1}; return p.a; }
+
+// error: 3:25: Struct literal needs an explicit record type

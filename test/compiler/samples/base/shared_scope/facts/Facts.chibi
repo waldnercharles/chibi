@@ -1,0 +1,5 @@
+package facts
+Point :: struct { x: int; }
+Point :: () -> int { return 1; }
+
+// error: 3:1: Duplicate declaration 'Point'

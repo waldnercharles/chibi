@@ -1,0 +1,4 @@
+package facts
+Build :: () -> int[] { xs: int[] = []; xs = xs.append(1); return xs; }
+
+// error: 2:45: append changes the array; call it as a statement on a name

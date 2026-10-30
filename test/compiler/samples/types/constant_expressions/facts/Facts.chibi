@@ -1,0 +1,10 @@
+package facts
+import lib "project:constant_expressions/lib"
+Area :: Width * Height;
+Width :: (Unit << 2) + 1;
+Height: int : -(Width - 7) / 2 % 3;
+Mask: i64 : ~lib.Bits & 0xFFFF;
+Small: u8 : 0x10 | 2;
+Low: u8 : ~0x0F;
+Unit :: 2;
+Folded :: () -> i64 { return i64(Area) * 1000 + Mask + i64(Small) + i64(Low); }

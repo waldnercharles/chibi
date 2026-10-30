@@ -1,0 +1,9 @@
+package facts
+
+// optional locals start absent and become present
+@test
+Calls :: () {
+    r1: int = Main();
+    e1: int = 3;
+    assert(r1 == e1, "Main call 1");
+}

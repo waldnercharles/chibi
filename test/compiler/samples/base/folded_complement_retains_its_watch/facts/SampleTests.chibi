@@ -1,0 +1,12 @@
+package facts
+
+// folded complement retains its watch
+@test
+Calls :: () {
+    r1: int = One();
+    e1: int = -1;
+    assert(r1 == e1, "One call 1");
+    r2: int = Grouped();
+    e2: int = -1;
+    assert(r2 == e2, "Grouped call 2");
+}

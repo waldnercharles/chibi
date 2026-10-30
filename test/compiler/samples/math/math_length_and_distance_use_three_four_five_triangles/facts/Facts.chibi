@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { return length(vec2(3, 4)) == 5.0 && length(vec3(0, 3, 4)) == 5.0 && length(vec4(0, 0, 3, 4)) == 5.0 && distance(vec3(1, 2, 3), vec3(4, 6, 3)) == 5.0; }

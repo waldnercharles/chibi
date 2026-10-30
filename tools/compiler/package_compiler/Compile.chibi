@@ -892,11 +892,17 @@ RecordFieldType :: (types: TypeDecl[], value: ValueType) -> bool {
         return value.record >= 0 &&
                (types[value.record].kind == RecordDecl || types[value.record].kind == NativeDecl);
     }
+    if (value.storage == UnionStorage) {
+        return value.container == 0 && value.record >= 0 && types[value.record].kind == UnionDecl;
+    }
     return value.record < 0 && (Integer(value.storage) || Floating(value.storage) ||
                                 value.storage == BoolStorage || value.storage == TextStorage);
 }
 RecordFieldSize :: (field: TypeMember, types: TypeDecl[], target: Target) -> int {
     if (field.container == ArrayContainer) {
+        return target.pointer_size;
+    }
+    if (field.storage == UnionStorage) {
         return target.pointer_size;
     }
     if (field.storage == StructStorage) {
@@ -1126,7 +1132,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                      Field(forest, field_node, "type"));
                 if (!RecordFieldType(types, resolved)) {
                     return Declarations.Failed(Diagnose(forest, field_node, file,
-                                                        "record fields require a scalar, pointer, record or array of those types"));
+                                                        "record fields require a scalar, pointer, record, union or array of those types"));
                 }
                 field := members[index];
                 field.storage = resolved.storage;
@@ -1221,7 +1227,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             for (field_index in declared.first..<declared.first + declared.count) {
                 field := members[field_index];
                 step := FieldSize(field.storage, target);
-                if (field.container == ArrayContainer) {
+                if (field.container == ArrayContainer || field.storage == UnionStorage) {
                     step = target.pointer_size;
                 } else if (field.storage == StructStorage) {
                     step = record_alignments[field.record];
@@ -2173,7 +2179,8 @@ LayoutHash :: (record: TypeDecl, fields: TypeMember[], types: TypeDecl[], target
         if (field.storage == TextStorage && field.container == 0) {
             hash = HashBytes(hash, 1, 1);
         }
-        if (field.storage == PointerStorage || field.storage == StructStorage) {
+        if (field.storage == PointerStorage || field.storage == StructStorage ||
+            (field.storage == UnionStorage && field.record >= 0)) {
             hash = HashText(hash, types[field.record].type_name);
         } else {
             hash = HashText(hash, "");
@@ -2789,7 +2796,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 if (members[at].storage == StructStorage) {
                     field.record = requirement_indices[members[at].record];
                 }
-                if (members[at].storage == PointerStorage || members[at].storage == StructStorage) {
+                if (members[at].storage == PointerStorage || members[at].storage == StructStorage ||
+                    (members[at].storage == UnionStorage && members[at].record >= 0)) {
                     field.type_name = types[members[at].record].type_name;
                     field.has_type_name = true;
                 }
@@ -3228,7 +3236,21 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     entries.append(procedure);
                 } else {
                     wide.append(CallableIdentity(package_names, callable));
-                    exported: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: callable.name, has_entry: true,
+                    exported_name := callable.name;
+                    attributes := ReadAttributes(forest, documents[callable.document].text, callable.node);
+                    if (attributes.fault >= 0) {
+                        return Assembly.Rejected(Diagnose(forest, attributes.fault, callable.document, attributes.message));
+                    }
+                    if (attributes.test) {
+                        if (callable.count != 0 || callable.results != 0 || callable.result != 0) {
+                            return Assembly.Rejected(Diagnose(forest, callable.node, callable.document,
+                                                              "A @test function takes no parameters and returns nothing"));
+                        }
+                        // A package test is exported as "@test NAME", so the host that runs tests
+                        // finds the tests among a module's entries.
+                        exported_name = format_text("@test {}", callable.name);
+                    }
+                    exported: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: exported_name, has_entry: true,
                                               event_id: 0, event_abi: 0, event_name: "", has_event_name: false,
                                               continuation_wait: false, effects: 0, body: length(references) - 2,
                                               subscription: length(references) - 1};
@@ -3355,6 +3377,35 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                                                        system_description)), effects);
 }
 
+// The attributes before a function declaration: `@test` marks a package test,
+// and nothing else is an attribute. `fault` is the node of the first one that
+// is unknown or repeated, -1 when there is none.
+Attributes :: struct {
+    test: bool;
+    fault: int;
+    message: string;
+}
+ReadAttributes :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Attributes {
+    read: Attributes = {test: false, fault: -1, message: ""};
+    for (member in Members(forest, node)) {
+        if (!Is(forest, member, "attribute")) {
+            continue;
+        }
+        name := Text(forest, text, Field(forest, member, "name"));
+        if (name != "test") {
+            read.fault = member;
+            read.message = format_text("Unknown attribute '@{}'", name);
+            return read;
+        }
+        if (read.test) {
+            read.fault = member;
+            read.message = "Duplicate attribute '@test'";
+            return read;
+        }
+        read.test = true;
+    }
+    return read;
+}
 // `paths` and `sources` are the files of every package, `paths[0]` one of the
 // root package's; `project` and each named collection are roots that paths
 // and imports resolve against. `abi` is the target's prepared header ABI,

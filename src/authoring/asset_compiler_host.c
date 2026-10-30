@@ -1229,3 +1229,82 @@ char *asset_source_invoke_bytes(
     host_release(host);
     return text;
 }
+
+/* A package closure is larger than an asset and compiles in more instructions. */
+#define CLOSURE_COMPILE_BUDGET UINT64_C(2000000000)
+
+/* The first diagnostic of a rejected package compile. */
+static void closure_rejection(
+    host_lease *host,
+    const char *request,
+    size_t request_length,
+    uint64_t budget,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    compiler_host_result result = { 0 };
+    bool called = compiler_host_invoke(
+        host->host,
+        compiler_host_entry("project:asset_compiler:1:RejectPackages:callable"),
+        request,
+        request_length,
+        host_budget(budget),
+        &result
+    );
+    yyjson_doc *doc = called ? yyjson_read(result.json, result.length, COMPILER_HOST_JSON_READ_FLAGS)
+                             : NULL;
+    yyjson_val *values = yyjson_obj_get(yyjson_arr_get(yyjson_doc_get_root(doc), 0), "values");
+    const char *message = yyjson_get_str(yyjson_arr_get(values, 8));
+    if (message && *message) {
+        failure(diagnostic, message);
+        diagnostic->document = (int)yyjson_get_int(yyjson_arr_get(values, 3));
+        diagnostic->line = (int)yyjson_get_int(yyjson_arr_get(values, 6));
+        diagnostic->column = (int)yyjson_get_int(yyjson_arr_get(values, 7));
+    } else {
+        failure(diagnostic, result.diagnostic[0] ? result.diagnostic : "The package compiler rejected its input");
+    }
+    yyjson_doc_free(doc);
+    free(result.json);
+}
+
+unsigned char *asset_compiler_compile_closure(
+    const char *request,
+    size_t request_length,
+    size_t *length,
+    const asset_compiler_options *options,
+    asset_compiler_diagnostic *diagnostic
+)
+{
+    *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+    *length = 0;
+    options = effective_options(options);
+    host_lease *host = compiler_for(options, diagnostic);
+    if (!host) {
+        return NULL;
+    }
+    uint64_t budget = options->compile_budget ? options->compile_budget : CLOSURE_COMPILE_BUDGET;
+    behavior_execution_scope scope = { .remaining = budget,
+                                       .prefer_compiled = true,
+                                       .cancelled = options->cancelled,
+                                       .user = options->user };
+    compiler_host_bytes result = { 0 };
+    behavior_execution_scope_begin(&scope);
+    bool ok = compiler_host_invoke_bytes(
+        host->host,
+        compiler_host_entry("project:asset_compiler:1:CompilePackages:callable"),
+        request,
+        request_length,
+        host_budget(budget),
+        COMPILER_HOST_MAX_OUTPUT_BYTES,
+        &result
+    );
+    if (!ok) {
+        runtime_failure(diagnostic, result.diagnostic, &result.source);
+    } else if (!result.length) {
+        closure_rejection(host, request, request_length, budget, diagnostic);
+    }
+    behavior_execution_scope_end(&scope);
+    host_release(host);
+    *length = result.length;
+    return result.bytes;
+}

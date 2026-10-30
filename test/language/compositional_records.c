@@ -223,6 +223,27 @@ TEST_CASE(compositional_records_require_explicit_fields)
     return true;
 }
 
+TEST_CASE(compositional_records_union_fields_are_single_and_explicit)
+{
+    REQUIRE(rejects(
+        "Records :: library { Phase :: union { Idle | Done(score: int) } "
+        "Fighter :: struct { phase: Phase; } "
+        "Make :: () -> Fighter { return {}; } }",
+        "Missing required"
+    ));
+    REQUIRE(rejects(
+        "Records :: library { Phase :: union { Idle | Done(score: int) } "
+        "Fighter :: struct { phases: Phase[]; } }",
+        "Record fields require"
+    ));
+    REQUIRE(rejects(
+        "Records :: library { Phase :: union { Idle | Done(score: int) } "
+        "Fighter :: struct { phase: Phase?; } }",
+        "Record fields require"
+    ));
+    return true;
+}
+
 TEST_CASE(compositional_records_pointer_guards_respect_aliases)
 {
     REQUIRE(rejects(COMPOSITIONAL_RECORD_ALIAS_REJECTION, "Nullable pointer requires a presence guard"));
@@ -499,6 +520,7 @@ void test_language_compositional_records()
     RUN_TEST_CASE(compositional_records_authored_values);
     RUN_TEST_CASE(compositional_records_reject_unbounded_layouts);
     RUN_TEST_CASE(compositional_records_require_explicit_fields);
+    RUN_TEST_CASE(compositional_records_union_fields_are_single_and_explicit);
     RUN_TEST_CASE(compositional_records_pointer_guards_respect_aliases);
     RUN_TEST_CASE(compositional_records_bound_record_depth);
     RUN_TEST_CASE(compositional_records_bound_metadata_expansion);

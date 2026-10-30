@@ -17,11 +17,13 @@ bool script_analyzer_record_field(analyzer *a, TSNode node, script_type type, co
                            .container = type.container };
     bool pointer = type.storage == PIN_POINTER &&
                    type.container == PIN_CONTAINER_SINGLE && !type.collection;
+    bool tagged = type.storage == PIN_UNION && type.container == PIN_CONTAINER_SINGLE;
     if ((type.container != PIN_CONTAINER_SINGLE && type.container != PIN_CONTAINER_ARRAY) ||
-        type.collection || type.storage == PIN_UNION ||
+        type.collection ||
         (type.flags & ~(SCRIPT_TYPE_LITERAL | SCRIPT_TYPE_UNTYPED |
+                        (tagged ? SCRIPT_TYPE_UNION : 0) |
                         (pointer ? SCRIPT_TYPE_OPTIONAL : 0)))) {
-        script_analyzer_diagnostic(a, node, "Record fields require a concrete scalar, record, pointer or array type");
+        script_analyzer_diagnostic(a, node, "Record fields require a concrete scalar, record, union, pointer or array type");
         return false;
     }
     return true; /* pin_record_create validates scalar/native nested physical layouts. */

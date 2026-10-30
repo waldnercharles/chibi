@@ -17,6 +17,24 @@ char *compiler_target_json(const script_catalog *, size_t *length);
  * it does not change the stable six-argument bootstrap target description.
  * Malloc-owned; release with free(). */
 char *compiler_target_effects_json(const script_catalog *, size_t *length);
+/* The arguments of the effect-aware package compile entries
+ * (CompileWithEffects, CompileClosureWithEffects): the project directory, the
+ * names and roots of its collections, the files of every package, the first
+ * naming the root package, with their texts (sizes[i] bytes of texts[i]), no
+ * debugging, then the catalog's target and effect masks. A JSON array;
+ * malloc-owned, NULL when the catalog cannot be described. */
+char *compiler_package_request_json(
+    const char *project,
+    const char *const *names,
+    const char *const *roots,
+    int collections,
+    const char *const *paths,
+    const char *const *texts,
+    const size_t *sizes,
+    int files,
+    const script_catalog *,
+    size_t *length
+);
 /* CompileBehaviorsWithCatalog's eighteen arguments for the behaviors
  * identities[i] holding sources[i], as one JSON array: their identities and
  * sources, the same six, then what a behavior links against:

@@ -1,8 +1,0 @@
-name "RenderFrame"
-(array)includes "RenderSolid"
-components {
-    Geometry3D depth=60.0 elevation=36.0 height=60.0 primitive=8 width=60.0
-    Material scene=0x40a0d0ff
-    VisualTransform scale=1.0 yaw=0.5
-}
-(array)behaviors "RenderFrameProbe"

@@ -41,7 +41,6 @@ CPU_SELECTORS = {
     '--asset-packaging-chibi': 'language-asset-packaging-chibi',
     '--shader-source-chibi': 'language-shader-source-chibi',
     '--material-bake': 'material-bake',
-    '--environment-authoring': 'environment-authoring',
     '--terrain-storage-commands': 'terrain-storage-commands',
     
     

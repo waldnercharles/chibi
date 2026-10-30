@@ -109,3 +109,7 @@ With games archived, the compiler path includes nothing of the game runtime. The
 - Tests: `test/runtime/{materials,material_*,particles}.c`, `test/tools/{physics,physics3d,native,native_catalog,transforms,tilemap*,terrain_*,material_surface_mesh,audio_analysis,shader_bake,shader_source_debug,scene_prepared}.c`, `test/language/{field_runtime,record_services}.c`, `test/authoring/sky_files.c`, and `test/tools/test_policy.c` (the policy runner's own test; `chibi build test` replaces it). The `materials` test group and its Make/CI entries go too.
 - Lost functionality: simulation, rendering inputs, audio, saves, tilemaps, particles, terrain, game ECS scheduling and the native catalog for games. The VM keeps ECS queries (`src/ecs`), the scheduler and the source publication code it needs.
 - Not touched: the CMake SDK build (`sdk/*.cmake`) still names these sources; its owner prunes or deletes it.
+
+## Stories (test/stories)
+
+The game-equivalence stories: five small game projects, each played by a KDL scenario, that compared a reference and a candidate compiler's game artifacts. They left with game projects and the game-equivalence harness.

@@ -222,16 +222,6 @@ launcher, with its `chibi-compile` and `chibi-player`, in `build-release/`:
 start builds the authoring catalog. The separate project group and Release tools
 keep that repeated startup work out of the native runtime checks.
 
-`published-docs` copies `docs/site.kdl` and every page, package folder and
-grammar it lists into a temporary root, and runs `chibi-compile --docs` there,
-which is what `chibi doc` runs. Every `` ```chibi `` example on a published page
-must parse, and each whole package must analyze, so a language change that
-breaks one fails `make test-projects` instead of the next site build. The site
-it writes stays out of the source tree. The same selector checks documentation
-fixtures for rendering, package references, and rejection of invalid original
-snippets. These compiler-only cases need no player or launcher. The Release
-`--docs` took 0.2–1.0 s on an M-series Mac under load; the sanitized one took 5–9 s.
-
 `chibi-cli` runs seventeen launcher cases: each command over a fake sibling
 compiler and player, the launcher's own `version` and `doctor`, and the real
 `chibi-compile`'s `--check`, `--test` and `--format` on fixture projects and
@@ -318,41 +308,6 @@ moved in between, the workflow cancels the run and fails, and the PR needs the
 label again. Retargeting a stacked PR to `main` does the same as `ci-rerun`, so
 it gets CI without a new push. A dispatched run checks the head branch, not the
 merge with `main`.
-
-## Feature coverage
-
-`test/fixtures/feature-coverage` is the all-features project: one scene per
-area (2D and 3D physics, tilemaps, UI, particles, audio, save,
-materials, input and entities). `test_tools --feature-coverage <project> <chibi_ctl>` compares the engine
-catalog (components, native functions and events) with what the project's
-scripts, prototypes and scenes use, prints each gap, and runs every scene for
-four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
-failure. The runner passes the selected `CHIBI_CTL` controller,
-defaulting to `build-release/bin/chibi_ctl`. Every prototype, behavior, library and system must be reachable from a
-scene: placed or attached there, spawned or called from source that runs, and
-only that source counts. A spawn reaches the prototype it names directly or
-through a value, such as a local, state or library parameter that holds the
-prototype's name, as find references does. A scene entity with its own behavior list
-runs that list in place of its prototype's; otherwise it and a spawned
-prototype run the prototype's list. A prototype's children spawn with each of
-its instances, so they are reached and run as instances too. Components count on these placed and
-spawned instances, after the scene's overrides, and where running source reads,
-writes or adds them, directly or through a generic call such as
-`add_component(Heat)`; a system query alone matches nothing without
-them, so it does not count.
-A system runs only while an entity's `EngineSystem` names it. Components the
-project declares in `content/components` load as they do in preparation and
-count as its own catalog entries. Run it on any project whose content folder is
-`content` to list what that project leaves unused; it fails while any of that
-is unlisted.
-
-The project's `coverage-gaps.txt` lists the entries no scene uses yet, in groups
-under a comment that gives the reason; without the file, every unused entry is a
-gap. The check fails when a catalog entry is in neither the scenes nor that
-list, when a listed entry has no reason comment above it, and when a listed
-entry becomes used. A PR that adds a component, native function or event uses it
-in a feature-coverage scene; it lists the entry as a gap only with a reason. The
-`projects` group, and so CI, runs it on the fixture.
 
 ## Focused regression coverage
 
@@ -1663,21 +1618,11 @@ ranges, alias presence, names, source order and diagnostics after producer and
 input storage retire. This standalone route has no runtime files, children,
 services or GPU work. Build separately.
 
-`python3 tools/test_policy.py tool language-package-paths-chibi` selects three
-cases with 26 fixed lexical requests: twelve existing resolver inputs and
-fourteen boundary cases. The unchanged C helper supplies 26 oracle results;
-52 authored calls across bytecode and SLJIT allow one million instructions each.
-Two retained owners prepare the actual Paths and core sources once per backend
-(four source parses). Four fixed input buffers are at most 4,097 bytes including
-the terminator. Cases cover the path and joined-path limits before collapse,
-long segments, root boundaries, intermediate escapes, absent inputs and absolute
-paths ignoring the unused base. Returned strings are inspected after producer
-and input storage retire; retained 4,095-byte results survive subsequent invalid
-calls and owner teardown. Used bases and floors are canonical absolute paths.
-This corpus has at most four segments per request; it does not establish
-performance at the maximum segment count. The route has no runtime files,
-children, services or GPU work. Build separately; this route is outside the
-aggregate.
+`compiler-tests-PACKAGE` runs the `@test` cases of one authored compiler
+package with the Release `chibi test` (`COMPILER_TEST_PACKAGES` in
+`tools/test_policy.py`, in the `projects` group). `package_paths/PathsTests.chibi`
+covers 26 lexical requests: resolver inputs, root and floor boundaries,
+intermediate escapes, absent parts and the path limits before and after collapse.
 
 `python3 tools/test_policy.py tool language-package-routes-chibi` compares
 thirteen collection-root requests, eleven file routes and sixteen import routes.
@@ -1949,21 +1894,10 @@ before publication. Build separately. This route stays outside aggregates.
 Source registration records no measured pass, authored compiler dispatch or
 stage-one bootstrap.
 
-`python3 tools/test_policy.py tool language-unit-algebra-chibi` compares unit
-parsing, dimension equality, multiplication/division and formatting. Four pico
-cases run 24 Parse, five Same, ten Product and nine Format requests, totaling
-96 authored calls across bytecode and SLJIT at two million instructions each.
-Units and CoreStrings are prepared once per backend: four preparation parses.
-Inputs contain at most eight terms and 240 bytes per input or name; format
-capacities range from one to 192 bytes including the C terminator.
-
-Each C result has an independent expected witness. Equality, product and format
-inputs are raw algebra values, independent of C parsing. Cases cover missing
-and empty annotations, integer powers, overflow before cancellation, term order,
-sticky denominators, superscript/dot UTF-8 truncation and tiny output buffers.
-Detached results and a retained unit/string survive input and owner retirement.
-There are no runtime files, children, services or GPU work. Build separately;
-this route is outside the language aggregate.
+`compiler-tests-unit_algebra` runs `unit_algebra/UnitsTests.chibi`: 24 Parse,
+five Same, ten Product and nine Format requests covering missing and empty
+annotations, integer powers, overflow before cancellation, term order, sticky
+denominators, superscript and dot UTF-8 truncation and tiny output sizes.
 
 `python3 tools/test_policy.py tool language-signature-reader-chibi` compares raw
 annotation and signature reading. Four pico cases run sixteen Type and thirteen
@@ -2187,82 +2121,6 @@ executes the new export and verifies that the load API writes no output file.
 Interned strings keep the compiler near 9 MB and package sources are capped at
 8 MiB, so this case cannot cross 16 MiB; the sparse cases above cover the
 artifact bound. The instruction budgets and child deadlines are unchanged.
-
-## Game equivalence
-
-`python3 tools/test_policy.py tool game-equivalence` rebuilds the stories in
-`test/stories` with a reference and a
-candidate compiler, and compares what the two artifacts of each story declare
-and how they play. It is a standalone selector, not part of any group, and
-takes about 6 s.
-
-- **Stories.** Each story is a small project that shows one feature, played
-  by its `content/scenarios/Story.kdl`. `test/stories/README.md` lists them in
-  the order stage one reaches them. Each compiles alone, so stage one can
-  pass one story before it compiles another.
-- **Compilers.** A compiler is any program that takes `--project-root ROOT
-  --output FILE`, as `chibi-compile` does, or a build program whose `Compile`
-  entry takes them. `CHIBI_REFERENCE_COMPILER` and `CHIBI_CANDIDATE_COMPILER`
-  select them. Both default to `build/sdk/chibi-compile`;
-  `game-equivalence-stage-one` takes stage one's route as the candidate.
-- **Orchestration.** `test/tools/GameEquivalence.chibi` runs in
-  `chibi-build-host`. Its `Rebuild` entry compiles each story with each
-  compiler and plays them, and `Diff` compares two traces.
-- **Observer.** `test_tools --game-observe TRACE ARTIFACT SCENARIO...` reads
-  each artifact on the CPU and replays its scenario from the scenario's
-  scene. For each story, the trace holds:
-  - a `play NAME` line, NAME being the artifact's file name;
-  - what the artifact declares apart from its code: a digest of every byte
-    outside its module records, located by `player_prepared_modules`, then
-    each module's name and ID (`--native` checks that function);
-  - one line per fixed step, from frame 0 (after Begin) to the scenario's
-    last frame: hashes of the ECS world, saved state, materials, physics
-    bodies, contacts and events, and UI text. The ECS hash reads a string
-    field by its text, not its address, since the two compilers allocate
-    differently (`ecs_world_hash_reads_strings_by_text`). Frame N is the world after N
-    steps, so input keyed at step K first shows in frame K + 1.
-- **Cases.**
-  - Assembling each story from the modules of its own artifact, with
-    `authoring_project_assemble`, writes that artifact again byte for byte.
-    A source without its module, or a module of no source, is refused. This
-    is the assembly a stage-one route uses for modules stage one compiled.
-    `chibi-compile --modules` refuses a file that is no closure and writes no
-    artifact.
-  - `chibi-compile --project-root ROOT --stage-one-input FILE` exports the
-    eighteen-argument `CompileBehaviorsWithCatalog` input: executable source
-    identities and texts, followed by their catalog and native effects. The
-    focused `test_tools --game-input CHIBI_COMPILE` selector checks this
-    transport without compiler recovery. For Counter, it checks the
-    behavior's identity and source. It compares the types with the
-    requirements of the module stage zero writes (in order: ID,
-    layout, storage, size and name), and the module's events (ID, ABI and
-    payload fields) and entity type, that the operators that combine
-    records hold `+` as the native `add`, that the globals hold `self` of
-    the owner's type, and that the record makes hold the `vec2`
-    constructor, making a `vec2` of its `x` and `y`. Only the types modules require are compared;
-    namespaces such as `SceneGlobals` are listed too.
-  - Both compilers rebuild every story to the same trace.
-  - A variant of Motion whose drift is doubled is named in Motion at frame 1,
-    with both lines, and its declarations still match.
-  - Differing declarations are named. A missing trace, or a story with no
-    frames, is refused rather than matched; the observer removes the trace
-    unless every story played.
-
-`make test-stage-one` runs `tool game-equivalence-stage-one`. It rebuilds
-every story with `chibi-compile` and with stage one's route,
-`tools/toolchain/StageOne.chibi`, and compares them as above. The route:
-1. recovers stage one from the bootstrap artifact and the compiler sources
-   with a Release `chibi-compiler-host --bootstrap ... --recover FILE`, and
-   keeps it under `.chibi/stage-one` for the digest of those sources, the
-   artifact and the host, replacing the closure kept for an older digest;
-2. exports stage one's input with `chibi-compile --stage-one-input`;
-3. runs `CompileBehaviorsWithCatalog` with `chibi-compiler-host
-   --output-bytes`. A rejected executable source reports
-   `BehaviorRejectionWithCatalog`'s identity, line, column and message;
-4. assembles the artifact with `chibi-compile --modules`.
-
-`CHIBI_COMPILE` and `CHIBI_STAGE_ONE_HOST` name the two tools. The selector
-takes about 19 s when it recovers stage one and 2 s once it is kept.
 
 ## Compiler artifact runtime checks
 

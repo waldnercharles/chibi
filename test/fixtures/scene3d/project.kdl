@@ -1,4 +1,0 @@
-version 39
-name "3D Scene"
-content "content"
-start_scene "scenes/Shapes.kdl"

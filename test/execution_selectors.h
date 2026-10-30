@@ -31,7 +31,6 @@ CHIBI_CPU_SELECTOR("--shader-source-chibi")
 CHIBI_CPU_SELECTOR("--asset-compiler-host")
 CHIBI_CPU_SELECTOR("--asset-packaging-chibi")
 CHIBI_CPU_SELECTOR("--material-bake")
-CHIBI_CPU_SELECTOR("--environment-authoring")
 CHIBI_CPU_SELECTOR("--terrain-storage-commands")
 
 /* Explicit opt-in checks against installed products. */

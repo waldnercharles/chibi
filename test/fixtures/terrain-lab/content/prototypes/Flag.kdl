@@ -1,5 +1,0 @@
-name "Flag"
-components {
-    Appearance color=0x72ead4ff height=8.0 layer=3 width=14.0
-    Transform x=7.0 y=-16.0
-}

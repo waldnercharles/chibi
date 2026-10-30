@@ -2158,7 +2158,7 @@ activation. The existing array capability pack supplies the append operation.
 check that the compiler host's `--bootstrap` mode refuses bad input before any
 compile runs:
 - mixed or missing options;
-- a missing or invalid `bootstrap.txt`;
+- a missing or invalid `bootstrap.kdl`;
 - another manifest format, or a version older than the minimum;
 - a folder with no manifest, or a closure its manifest doesn't record;
 - a missing source, or a package that gained a file;

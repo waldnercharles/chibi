@@ -1879,6 +1879,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_QUERYLOOPS_BYTES=bytes:tools/compiler/package_compiler/QueryLoops.chibi",
             "CHIBI_PACKAGE_COMPILER_BODY_BYTES=bytes:tools/compiler/package_compiler/Body.chibi",
             "CHIBI_PACKAGE_COMPILER_GENERICS_BYTES=bytes:tools/compiler/package_compiler/Generics.chibi",
+            "CHIBI_PACKAGE_COMPILER_COMPTIME_BYTES=bytes:tools/compiler/package_compiler/Comptime.chibi",
             "CHIBI_PACKAGE_COMPILER_COMPILE_BYTES=bytes:tools/compiler/package_compiler/Compile.chibi",
             "CHIBI_PACKAGE_COMPILER_MAPS_BYTES=bytes:tools/compiler/package_compiler/Maps.chibi",
             "CHIBI_PACKAGE_COMPILER_MATH_BYTES=bytes:tools/compiler/package_compiler/Math.chibi",

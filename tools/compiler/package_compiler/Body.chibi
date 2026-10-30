@@ -1839,6 +1839,10 @@ PrivateAccess :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
 // `alias.Name`; -1 otherwise.
 ConstantOf :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[], package: int,
                node: int) -> int {
+    // A call that compile-time execution already ran stands for its value.
+    if (Is(forest, node, "call_expression")) {
+        return FindMemo(constants, node);
+    }
     if (Is(forest, node, "identifier")) {
         if (Lookup(names, Text(forest, text, node)) >= 0) {
             return -1;

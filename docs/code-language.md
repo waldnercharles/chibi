@@ -767,6 +767,9 @@ Example :: library {
 Compile-time execution supports scalar and type values, authored calls, locals,
 assignment, `if` and `while`. It does not support arrays, `for`, closures or
 native calls. Each evaluation has a 65,536-step budget and a 128-call limit.
+A constant initializer may call such a function, `Size :: Factorial(5)`, and
+may combine calls with arithmetic and conversions; a `when` condition may not
+call functions yet.
 
 ### Choosing declarations per platform
 

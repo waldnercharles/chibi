@@ -2,6 +2,7 @@ package sdk
 
 import engine "graph:engine"
 import c "graph:c"
+import os "core:os"
 import strings "core:strings"
 
 // Runtime package provenance comes from declared graph commands and current
@@ -11,7 +12,7 @@ EvidenceJoin :: (parts: string[]) -> string {
 }
 
 EvidenceFailure :: (message: string) -> string {
-    build.report(EvidenceJoin(["sdk: ", message]));
+    os.Print(EvidenceJoin(["sdk: ", message]));
     return "";
 }
 
@@ -98,8 +99,8 @@ EvidenceToolIdentities :: (profile: engine.Profile, tools: c.Tools) -> string {
         if (path == "" && (names[i] == "launcher" || names[i] == "reflect")) {
             continue;
         }
-        resolved := build.resolve_path(build.find_executable(path));
-        if (resolved == "" || build.file_kind(resolved) != "file") {
+        resolved := os.RealPath(os.FindExecutable(path));
+        if (resolved == "" || !os.IsFile(resolved)) {
             return EvidenceFailure(EvidenceJoin(["runtime tool is unavailable: ", names[i]]));
         }
         checksum := "";
@@ -127,7 +128,7 @@ EvidenceToolIdentities :: (profile: engine.Profile, tools: c.Tools) -> string {
 // SDK preflight binds tool bytes before construction and invalidates only the
 // selected objects' cache records when that binding changed or is unavailable.
 pub PrepareBuildConfiguration :: (build_dir: string, profile: engine.Profile, tools: c.Tools) -> bool {
-    if (!Supported(build.platform()) || !strings.HasPrefix(build_dir, "/") || tools.jobs < 1) {
+    if (!Supported(os.Platform()) || !strings.HasPrefix(build_dir, "/") || tools.jobs < 1) {
         EvidenceFailure("invalid runtime build preflight");
         return false;
     }
@@ -139,16 +140,16 @@ pub PrepareBuildConfiguration :: (build_dir: string, profile: engine.Profile, to
     if (JsonGet(previous, "tool_identities") != identities) {
         // A failed build must not let a restored tool revalidate objects the other tool made.
         configuration := EvidenceJoin([build_dir, "/sdk/runtime-build.json"]);
-        if (build.file_kind(configuration) != "" && !build.remove(configuration)) {
+        if (os.Remove(configuration)) {
             EvidenceFailure("cannot invalidate the previous runtime build configuration");
             return false;
         }
         for (target in EvidenceTargets()) {
-            built := engine.Library(build.root(), build_dir, profile.third_party, target);
-            for (source in engine.Sources(build.root(), build_dir, profile.third_party, target)) {
+            built := engine.Library(os.Root(), build_dir, profile.third_party, target);
+            for (source in engine.Sources(os.Root(), build_dir, profile.third_party, target)) {
                 record := EvidenceJoin([c.Object(built, source), ".chibi-record"]);
-                kind := build.file_kind(record);
-                if (kind != "" && (kind != "file" || !build.remove(record))) {
+                kind := os.Kind(record);
+                if (kind != os.KindNone && (kind != os.KindFile || os.Remove(record))) {
                     EvidenceFailure("cannot invalidate a selected runtime object record");
                     return false;
                 }
@@ -156,17 +157,19 @@ pub PrepareBuildConfiguration :: (build_dir: string, profile: engine.Profile, to
         }
     }
     pending := JsonObject(["format", "system", "profile", "tools", "tool_identities"], [
-        "1", JsonQuote(build.platform()), EvidenceProfile(profile), EvidenceTools(tools), identities
+        "1", JsonQuote(os.Platform()), EvidenceProfile(profile), EvidenceTools(tools), identities
     ]);
-    return pending != "" && build.make_directory(EvidenceJoin([build_dir, "/sdk"])) &&
-           build.write_file(EvidenceJoin([build_dir, "/sdk/runtime-build-pending.json"]),
-                            EvidenceJoin([pending, "\n"]));
+    if (pending == "" || os.MakeDirectory(EvidenceJoin([build_dir, "/sdk"])) ||
+        os.WriteText(EvidenceJoin([build_dir, "/sdk/runtime-build-pending.json"]), EvidenceJoin([pending, "\n"]))) {
+        return false;
+    }
+    return true;
 }
 
 // Called only after successful construction. Preprocessor target facts produce
 // no object or executable, and include the same architecture/sysroot selections.
 pub WriteBuildConfiguration :: (build_dir: string, profile: engine.Profile, tools: c.Tools) -> bool {
-    if (!Supported(build.platform()) || !strings.HasPrefix(build_dir, "/") || tools.compiler == "" ||
+    if (!Supported(os.Platform()) || !strings.HasPrefix(build_dir, "/") || tools.compiler == "" ||
         tools.archiver == "" || tools.ranlib == "" || tools.jobs < 1) {
         EvidenceFailure("invalid runtime build configuration");
         return false;
@@ -175,22 +178,24 @@ pub WriteBuildConfiguration :: (build_dir: string, profile: engine.Profile, tool
     pending := JsonCanonical(build.read_file(pending_path));
     identities := EvidenceToolIdentities(profile, tools);
     if (identities == "" || JsonGet(pending, "format") != "1" ||
-        JsonGet(pending, "system") != JsonQuote(build.platform()) ||
+        JsonGet(pending, "system") != JsonQuote(os.Platform()) ||
         JsonGet(pending, "profile") != EvidenceProfile(profile) || JsonGet(pending, "tools") != EvidenceTools(tools) ||
         JsonGet(pending, "tool_identities") != identities) {
         EvidenceFailure("runtime construction has no matching tool preflight");
         return false;
     }
-    if (build.probe([tools.compiler, "--version"]) != 0) {
+    version := os.Capture([tools.compiler, "--version"]);
+    if (version.status != 0) {
         EvidenceFailure("cannot inspect the runtime compiler version");
         return false;
     }
-    banner := strings.TrimSpace(build.last_stdout());
-    if (banner == "" || build.probe([tools.compiler, "-dumpmachine"]) != 0) {
+    banner := strings.TrimSpace(version.stdout);
+    dumped := os.Capture([tools.compiler, "-dumpmachine"]);
+    if (banner == "" || dumped.status != 0) {
         EvidenceFailure("cannot inspect the runtime compiler default target");
         return false;
     }
-    default_target := strings.TrimSpace(build.last_stdout());
+    default_target := strings.TrimSpace(dumped.stdout);
     probe := [tools.compiler];
     if (profile.architecture != "") {
         probe.extend(["-arch", profile.architecture]);
@@ -199,11 +204,12 @@ pub WriteBuildConfiguration :: (build_dir: string, profile: engine.Profile, tool
         probe.extend(["-isysroot", profile.sysroot]);
     }
     probe.extend(["-dM", "-E", "-x", "c", "/dev/null"]);
-    if (default_target == "" || build.probe(probe) != 0) {
+    layout := os.Capture(probe);
+    if (default_target == "" || layout.status != 0) {
         EvidenceFailure("cannot inspect the runtime compiler target layout");
         return false;
     }
-    macros := build.last_stdout();
+    macros := layout.stdout;
     pointer_bytes := EvidenceNumber(EvidenceDefine(macros, "__SIZEOF_POINTER__"));
     processor := "";
     if (EvidenceDefine(macros, "__aarch64__") != "" || EvidenceDefine(macros, "__arm64__") != "") {
@@ -224,13 +230,16 @@ pub WriteBuildConfiguration :: (build_dir: string, profile: engine.Profile, tool
         "format", "system", "processor", "pointer_bits", "byte_order", "compiler_version",
         "compiler_version_format", "compiler_default_target", "profile", "tools", "tool_identities"
     ], [
-        "1", JsonQuote(build.platform()), JsonQuote(processor), "64", JsonQuote("LITTLE_ENDIAN"),
+        "1", JsonQuote(os.Platform()), JsonQuote(processor), "64", JsonQuote("LITTLE_ENDIAN"),
         JsonQuote(banner), JsonQuote("raw-banner"), JsonQuote(default_target), EvidenceProfile(profile),
         EvidenceTools(tools), identities
     ]);
-    return configuration != "" && EvidenceToolIdentities(profile, tools) == identities &&
-           build.write_file(EvidenceJoin([build_dir, "/sdk/runtime-build.json"]),
-                            EvidenceJoin([configuration, "\n"])) && build.remove(pending_path);
+    if (configuration == "" || EvidenceToolIdentities(profile, tools) != identities ||
+        os.WriteText(EvidenceJoin([build_dir, "/sdk/runtime-build.json"]), EvidenceJoin([configuration, "\n"])) ||
+        os.Remove(pending_path)) {
+        return false;
+    }
+    return true;
 }
 
 EvidenceListed :: (values: string[], value: string) -> bool {
@@ -375,7 +384,7 @@ EvidenceFields :: (fields: JsonField[]) -> string {
 // Roots are [source, build, vendor]; commands and every stamped pair are exact.
 pub RecordEvidence :: (roots: string[], command: string[], output: string, inputs: string[]) -> string {
     if (!EvidenceRootsValid(roots) || length(command) == 0 || command[0] == "" ||
-        !strings.HasPrefix(output, EvidenceJoin([roots[1], "/"])) || build.file_kind(output) != "file") {
+        !strings.HasPrefix(output, EvidenceJoin([roots[1], "/"])) || !os.IsFile(output)) {
         return EvidenceFailure("invalid graph record output or command");
     }
     for (argument in command) {
@@ -384,10 +393,10 @@ pub RecordEvidence :: (roots: string[], command: string[], output: string, input
         }
     }
     record := EvidenceJoin([output, ".chibi-record"]);
-    if (build.file_kind(record) != "file") {
+    if (!os.IsFile(record)) {
         return EvidenceFailure("graph record is missing or is not regular data");
     }
-    record_stamp := build.file_stamp(record);
+    record_stamp := os.Stamp(record);
     lines := build.lines(build.read_file(record));
     count := length(command);
     if (length(lines) != count + 1 + 2 * (length(inputs) + 1) || lines[count] != "") {
@@ -405,14 +414,14 @@ pub RecordEvidence :: (roots: string[], command: string[], output: string, input
             path = inputs[i];
         }
         at := count + 1 + 2 * i;
-        stamp := build.file_stamp(path);
-        resolved := build.resolve_path(path);
-        if (path == "" || resolved == "" || build.file_kind(resolved) != "file" || stamp == "" ||
+        stamp := os.Stamp(path);
+        resolved := os.RealPath(path);
+        if (path == "" || resolved == "" || !os.IsFile(resolved) || stamp == "" ||
             lines[at] != path || lines[at + 1] != stamp) {
             return EvidenceFailure(EvidenceJoin(["graph record input is missing or stale: ", output]));
         }
         checksum := build.hash_file(path);
-        if (checksum == "" || build.file_stamp(path) != stamp) {
+        if (checksum == "" || os.Stamp(path) != stamp) {
             return EvidenceFailure(EvidenceJoin(["graph record input changed while hashing: ", output]));
         }
         if (i < length(inputs)) {
@@ -425,11 +434,11 @@ pub RecordEvidence :: (roots: string[], command: string[], output: string, input
     if (dependency_map == "" || checksum == "") {
         return "";
     }
-    if (build.file_stamp(record) != record_stamp) {
+    if (os.Stamp(record) != record_stamp) {
         return EvidenceFailure("graph record changed during verification");
     }
     for (i in 0..length(inputs)) {
-        if (build.file_stamp(lines[count + 1 + 2 * i]) != lines[count + 2 + 2 * i]) {
+        if (os.Stamp(lines[count + 1 + 2 * i]) != lines[count + 2 + 2 * i]) {
             return EvidenceFailure("graph record input changed during verification");
         }
     }
@@ -545,7 +554,7 @@ EvidenceOwner :: (source_root: string, inputs: JsonField[], owner: string,
 
 EvidenceConfiguredEngine :: (source_root: string, build_dir: string, inputs: string) -> string {
     path := EvidenceJoin([build_dir, "/sdk/chibi_engine_metadata.json"]);
-    if (build.file_kind(path) != "file") {
+    if (!os.IsFile(path)) {
         return EvidenceFailure("runtime build has no configured engine identity");
     }
     document := JsonCanonical(build.read_file(path));
@@ -612,19 +621,19 @@ EvidenceArtifact :: (record: string) -> string {
 pub GraphEvidence :: (source_root: string, build_dir: string, third_party: string) -> string {
     roots := [source_root, build_dir, third_party];
     configuration_path := EvidenceJoin([build_dir, "/sdk/runtime-build.json"]);
-    if (!Supported(build.platform()) || !strings.HasPrefix(source_root, "/") ||
+    if (!Supported(os.Platform()) || !strings.HasPrefix(source_root, "/") ||
         !strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(third_party, "/") ||
-        build.file_kind(configuration_path) != "file" ||
-        build.file_kind(EvidenceJoin([build_dir, "/sdk/runtime-build-pending.json"])) != "") {
+        !os.IsFile(configuration_path) ||
+        os.Kind(EvidenceJoin([build_dir, "/sdk/runtime-build-pending.json"])) != os.KindNone) {
         return EvidenceFailure("runtime build is unsupported, incomplete or has no successful configuration");
     }
-    configuration_stamp := build.file_stamp(configuration_path);
+    configuration_stamp := os.Stamp(configuration_path);
     configuration := JsonCanonical(build.read_file(configuration_path));
     profile_data := JsonGet(configuration, "profile");
     tools_data := JsonGet(configuration, "tools");
     profile := EvidenceReadProfile(profile_data);
     tools := EvidenceReadTools(tools_data);
-    if (JsonGet(configuration, "format") != "1" || JsonGet(configuration, "system") != JsonQuote(build.platform()) ||
+    if (JsonGet(configuration, "format") != "1" || JsonGet(configuration, "system") != JsonQuote(os.Platform()) ||
         JsonGet(configuration, "pointer_bits") != "64" || JsonGet(configuration, "byte_order") != JsonQuote("LITTLE_ENDIAN") ||
         !EvidenceListed(["arm64", "x86_64"], JsonText(JsonGet(configuration, "processor"))) ||
         JsonGet(configuration, "compiler_version_format") != JsonQuote("raw-banner") ||
@@ -638,11 +647,11 @@ pub GraphEvidence :: (source_root: string, build_dir: string, third_party: strin
     targets := EvidenceTargets();
     compile_path := EvidenceJoin([build_dir, "/compile_commands.json"]);
     link_path := EvidenceJoin([build_dir, "/link_commands.json"]);
-    if (build.file_kind(compile_path) != "file" || build.file_kind(link_path) != "file") {
+    if (!os.IsFile(compile_path) || !os.IsFile(link_path)) {
         return EvidenceFailure("runtime build has no compile/link command databases");
     }
-    compile_stamp := build.file_stamp(compile_path);
-    link_stamp := build.file_stamp(link_path);
+    compile_stamp := os.Stamp(compile_path);
+    link_stamp := os.Stamp(link_path);
     actual_compile := JsonCanonical(build.read_file(compile_path));
     actual_link := JsonCanonical(build.read_file(link_path));
     expected_compile := JsonCanonical(engine.CompileCommands(tools, profile, source_root, build_dir, targets));
@@ -671,7 +680,7 @@ pub GraphEvidence :: (source_root: string, build_dir: string, third_party: strin
             if (JsonGet(entries[entry_index], "file") != JsonQuote(source) ||
                 JsonGet(entries[entry_index], "output") != JsonQuote(output) ||
                 JsonGet(entries[entry_index], "directory") != JsonQuote(source_root) ||
-                build.file_kind(EvidenceJoin([output, ".d"])) != "file") {
+                !os.IsFile(EvidenceJoin([output, ".d"]))) {
                 return EvidenceFailure("runtime graph object has no declared source or dependency file");
             }
             dependencies := c.Dependencies(build.read_file(EvidenceJoin([output, ".d"])));
@@ -767,8 +776,8 @@ pub GraphEvidence :: (source_root: string, build_dir: string, third_party: strin
     input_fields.extend(JsonFields(JsonGet(player_record, "dependencies")));
     inputs := EvidenceFields(input_fields);
     configured := EvidenceConfiguredEngine(source_root, build_dir, inputs);
-    if (inputs == "" || configured == "" || build.file_stamp(configuration_path) != configuration_stamp ||
-        build.file_stamp(compile_path) != compile_stamp || build.file_stamp(link_path) != link_stamp ||
+    if (inputs == "" || configured == "" || os.Stamp(configuration_path) != configuration_stamp ||
+        os.Stamp(compile_path) != compile_stamp || os.Stamp(link_path) != link_stamp ||
         JsonGet(configuration, "tool_identities") != EvidenceToolIdentities(profile, tools)) {
         return EvidenceFailure("runtime inputs changed while collecting package evidence");
     }

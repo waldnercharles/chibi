@@ -1,5 +1,6 @@
 package engine
 
+import os "core:os"
 import strings "core:strings"
 
 // The libraries the graph owns, as sdk/CMakeLists.txt and its includes define
@@ -41,7 +42,7 @@ pub Targets :: () -> string[] {
         "chibi-compiler-host", "chibi_asset_compiler_host", "chibi_application", "chibi", "chibi_compiler_syntax", "chibi_compiler_json"
     ];
     // The native products and full test drivers share the platform's archive.
-    if (build.platform() == "Darwin" || build.platform() == "Linux") {
+    if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
         // test_language's object library, which it links.
         targets.extend(["chibi-player", "chibi-compile", "test_behavior_consumer", "chibi_asset_compiler_consumer", "test_language"]);
         // The tooling tests' consumers, several over the archive's headers.
@@ -459,7 +460,7 @@ Files :: (target: string) -> string[] {
             "src/runtime/camera.c"
         ];
         // Metal times the GPU on macOS; elsewhere the clock is portable C.
-        if (build.platform() == "Darwin") {
+        if (os.Platform() == "Darwin") {
             files.append("src/render/gpu_clock.m");
         } else {
             files.append("src/render/gpu_clock.c");
@@ -1179,7 +1180,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
 // The headers in src/DIRECTORY, as paths below src/.
 HeadersIn :: (directory: string) -> string[] {
     headers: string[] = [];
-    for (name in build.list_directory(Join([build.root(), "/src/", directory]))) {
+    for (name in build.list_directory(Join([os.Root(), "/src/", directory]))) {
         if (strings.HasSuffix(name, ".h")) {
             headers.append(Join([directory, "/", name]));
         }
@@ -2139,10 +2140,10 @@ pub SystemIncludes :: (target: string) -> string[] {
     }
     includes: string[] = [];
     for (include in CommonSystemIncludes(target)) {
-        if (build.platform() == "Linux" && include == "third-party/include/chibi/vendor/physfs_static/1") {
+        if (os.Platform() == "Linux" && include == "third-party/include/chibi/vendor/physfs_static/1") {
             includes.append("system/opengl");
         }
-        if (build.platform() == "Linux" && include == "third-party/include/chibi/vendor/SDL3_Headers/1") {
+        if (os.Platform() == "Linux" && include == "third-party/include/chibi/vendor/SDL3_Headers/1") {
             includes.extend(["third-party/include/chibi/vendor/s2n/1", "third-party/include/chibi/vendor/s2n/2"]);
         }
         includes.append(include);
@@ -2496,7 +2497,7 @@ pub Options :: (target: string) -> string[] {
     if (target == "chibi_json") {
         return ["-w"];
     }
-    if (target == "chibi_execution" && build.platform() == "Linux") {
+    if (target == "chibi_execution" && os.Platform() == "Linux") {
         return ["-ffunction-sections", "-fdata-sections"];
     }
     if (target == "chibi_math_capabilities") {
@@ -3007,7 +3008,7 @@ pub Programs :: () -> string[] {
         "reflect", "chibi-build-host", "chibi-compiler-host", "chibi", "test_host", "concurrent_runner",
         "policy_worker", "benchmark_trials"
     ];
-    if (build.platform() == "Darwin" || build.platform() == "Linux") {
+    if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
         programs.extend(["chibi-player", "chibi-compile", "test_language", "test_tools"]);
     }
     return programs;
@@ -3059,7 +3060,7 @@ pub LinkedObjects :: (target: string) -> string[] {
 // Options an executable's link adds after the profile's, its CMake
 // LINK_OPTIONS: the compiler host drops what it does not call.
 pub LinkOptions :: (target: string) -> string[] {
-    if ((target == "chibi-compiler-host" || target == "test_language") && build.platform() == "Darwin") {
+    if ((target == "chibi-compiler-host" || target == "test_language") && os.Platform() == "Darwin") {
         return ["-Wl,-dead_strip"];
     }
     if (target == "chibi-compiler-host") {
@@ -3067,7 +3068,7 @@ pub LinkOptions :: (target: string) -> string[] {
     }
     // SDL's interface link option, which CMake puts among the link flags.
     if (target == "chibi-player" || target == "test_tools") {
-        if (build.platform() == "Linux") {
+        if (os.Platform() == "Linux") {
             return ["-pthread"];
         }
         return ["-lpthread"];
@@ -3107,7 +3108,7 @@ pub Links :: (target: string) -> string[] {
             "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a"
         ];
     }
-    if (target == "chibi" && build.platform() == "Darwin") {
+    if (target == "chibi" && os.Platform() == "Darwin") {
         return [
             "chibi_program", "chibi_project_compilation", "chibi_source_catalog",
             "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
@@ -3140,12 +3141,12 @@ pub Links :: (target: string) -> string[] {
             "chibi_types", "chibi_support", "-lm"
         ];
     }
-    if (target == "chibi" && build.platform() == "Linux") {
+    if (target == "chibi" && os.Platform() == "Linux") {
         links := ["chibi_program"];
         links.extend(LinuxLinks("chibi-compile"));
         return links;
     }
-    if (build.platform() == "Linux") {
+    if (os.Platform() == "Linux") {
         links: string[] = [];
         if (target == "test_language" || target == "test_tools") {
             links.append("chibi_program");
@@ -3153,7 +3154,7 @@ pub Links :: (target: string) -> string[] {
         links.extend(LinuxLinks(target));
         return links;
     }
-    if (target == "chibi-player" && build.platform() == "Darwin") {
+    if (target == "chibi-player" && os.Platform() == "Darwin") {
         return [
             "chibi_renderer", "chibi_player", "chibi_native_prepared", "chibi_host_native_default",
             "chibi_text_capabilities", "chibi_declared_components", "chibi_ui_host", "chibi_platform",
@@ -3191,7 +3192,7 @@ pub Links :: (target: string) -> string[] {
             "chibi_support", "-lm"
         ];
     }
-    if (target == "chibi-compile" && build.platform() == "Darwin") {
+    if (target == "chibi-compile" && os.Platform() == "Darwin") {
         return [
             "chibi_project_compilation", "chibi_behavior_runtime",
             "chibi_asset_json", "chibi_project_compilation",
@@ -3227,7 +3228,7 @@ pub Links :: (target: string) -> string[] {
             "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
         ];
     }
-    if (target == "test_language" && build.platform() == "Darwin") {
+    if (target == "test_language" && os.Platform() == "Darwin") {
         return [
             "chibi_program", "chibi_host_clock", "chibi_task_pool_runtime", "chibi_conversion_capabilities", "chibi_json",
             "chibi_language_syntax", "chibi_asset_json", "chibi_native_prepared", "chibi_compiler_host",
@@ -3265,7 +3266,7 @@ pub Links :: (target: string) -> string[] {
             "chibi_types", "chibi_support", "-lm"
         ];
     }
-    if (target == "test_tools" && build.platform() == "Darwin") {
+    if (target == "test_tools" && os.Platform() == "Darwin") {
         return [
             "chibi_behavior_runtime", "chibi_scene_runtime", "chibi_value_document", "chibi_program",
             "chibi_core_capabilities", "chibi_compiler_host", "chibi_shader_runtime", "chibi_authoring",

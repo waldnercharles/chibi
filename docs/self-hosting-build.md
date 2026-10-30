@@ -468,11 +468,10 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
 `graph:engine`'s `Targets.chibi` lists the 104 libraries the graph owns on
 macOS and Linux, from `chibi_support` through the shader, model and image
 runtimes, the native capability tables, the documents and fields libraries,
-the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson, `chibi_asset_kdl`
-over ckdl) and the libraries over them, and three header-only libraries
+the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson) and the
+libraries over them, and three header-only libraries
 (`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
-`chibi_builtin_fonts` and `chibi_component_presentation`, whose fonts and
-engine component KDL are generated sources, `chibi_save_runtime`, and
+`chibi_builtin_fonts`, whose fonts are generated sources, `chibi_save_runtime`, and
 `chibi_execution` over the third-party archive's prebuilt SLJIT and the
 header-only `chibi_math` from it, with the libraries that need only those (the
 behavior, scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and

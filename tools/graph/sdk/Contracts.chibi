@@ -48,7 +48,6 @@ pub RuntimeTargets :: () -> string[] {
         "math",
         "math_capabilities",
         "mesh_runtime",
-        "model_bake",
         "model_runtime",
         "native_bindings",
         "native_capabilities",
@@ -328,12 +327,6 @@ pub Properties :: (name: string) -> string[] {
         return [
             "INTERFACE_INCLUDE_DIRECTORIES=@prefix/include/chibi/mesh_runtime",
             "INTERFACE_LINK_LIBRARIES=Chibi::math;$<LINK_ONLY:Chibi::support>;$<LINK_ONLY:Chibi::types>"
-        ];
-    }
-    if (name == "model_bake") {
-        return [
-            "INTERFACE_INCLUDE_DIRECTORIES=@prefix/include/chibi/model_bake",
-            "INTERFACE_LINK_LIBRARIES=Chibi::model_runtime;Chibi::mesh_runtime;$<LINK_ONLY:Chibi::support>"
         ];
     }
     if (name == "model_runtime") {

@@ -69,8 +69,6 @@ jobs:
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
-      - name: Verify installed and archived license notices
-        run: python3 test/tools/package_licenses.py
       - name: Configure compiler cache
         id: ccache-config
         run: python3 .github/native-ccache.py

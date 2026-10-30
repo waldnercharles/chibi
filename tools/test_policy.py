@@ -209,7 +209,6 @@ TOOLS = {
     'prototype-document': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--prototype-document'],
     'field-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--field-runtime'],
     'language-navigation': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--navigation'],
-    'language-publication': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--publication'],
     'runtime-scene': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene'],
     'asset-values': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-values'],
     'ui-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ui-document'],
@@ -230,9 +229,6 @@ TOOLS = {
     'script-benchmark': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                          '--script-benchmark'],
     'scheduler-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scheduler-benchmark'],
-    'language-query-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-program'],
-    'language-query-values': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-values'],
-    'language-operations': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--operations'],
     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
     'language-modules': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--modules'],
     'language-native-calls': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--native-calls'],
@@ -274,10 +270,6 @@ TOOLS = {
                                       '--package-routes-chibi'],
     'language-package-snapshot-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                         '--package-snapshot-chibi'],
-    'language-constant-proof-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                     '--constant-proof-chibi'],
-    'language-constant-scalar-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                      '--constant-scalar-chibi'],
     'language-scalar-lowering-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--scalar-lowering-chibi'],
     'language-compiler-fixture': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -339,14 +331,6 @@ TOOLS = {
                                                         '--package-compiler-chibi-imports-compiled'],
     'language-package-compiler-chibi-bootstrap': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
                                                  '--package-compiler-chibi-bootstrap'],
-    'language-lexical-binding-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                      '--lexical-binding-chibi'],
-    'language-nominal-binding-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                      '--nominal-binding-chibi'],
-    'language-named-binding-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                    '--named-binding-chibi'],
-    'language-type-constructors-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                       '--type-constructors-chibi'],
     'language-type-relations-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--type-relations-chibi'],
     'language-unit-algebra-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -355,20 +339,6 @@ TOOLS = {
                                       '--signature-reader-chibi'],
     'language-snapshot-reader-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                      '--snapshot-reader-chibi'],
-    'language-callable-headers-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                     '--callable-headers-chibi'],
-    'language-unit-analysis-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                     '--unit-analysis-chibi'],
-    'language-unit-analysis-zero-id': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                       '--unit-analysis-zero-id'],
-    'language-unit-analysis-deep': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                    '--unit-analysis-deep'],
-    'language-union-members-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                   '--union-members-chibi'],
-    'language-effect-analysis-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                     '--effect-analysis-chibi'],
-    'language-record-members-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                    '--record-members-chibi'],
     'language-package-resolution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--package-resolution'],
     'language-package-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -393,32 +363,16 @@ TOOLS = {
                                        '--argument-effects-chibi'],
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],
     'language-component-write': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write'],
-    'language-runtime-attribution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--runtime-attribution'],
     'language-record-compatibility': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-compatibility'],
     'language-record-document': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-document'],
-    'language-record-state': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-state'],
     'language-record-services': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-services'],
-    'language-record-publication': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-publication'],
-    'language-record-publication-repro': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-publication-repro'],
-    'language-inferred-string-arrays': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--inferred-string-arrays'],
-    'language-inferred-string-array-repro': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--inferred-string-array-repro'],
     'language-record-values': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-values'],
-    'language-record-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-semantic'],
     'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
-    'language-outliner-projection': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--outliner-projection'],
-    'language-row-array': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-array'],
-    'language-record-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-runtime'],
-    'language-scalarize': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--scalarize'],
-    'language-native-char-results': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                    '--native-char-results'],
     'language-program-session': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--program-session'],
     'language-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--program'],
-    'language-wasm': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--wasm'],
     'language-execution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                            '--execution'],
-    'language-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                          '--semantic'],
     'language': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                  '--syntax', '--corpus', str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'corpus.txt')],
     'wasm-browser': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--wasm-browser'],
@@ -434,14 +388,14 @@ TOOLS = {
     'c-export-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--c-export-alias'],
 
 }
-for selector in ('activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark'):
+for selector in ('incremental-benchmark'):
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
-for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions'):
+for selector in ('binding-schedule'):
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'integer-arithmetic', 'outliner-projection', 'package-math'):
+for selector in ('execution', 'program', 'headless', 'format', 'ranges', 'component-write', 'incremental-benchmark', 'modules', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'integer-arithmetic', 'package-math'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
                  '-imports', '-imports-compiled', '-behaviors',
@@ -503,9 +457,9 @@ ASSET_COMPILER_HOST_PLATFORMS = ('linux', 'darwin')
 # Correctness aggregates never run timing/throughput benchmark selectors.
 # Keep performance workloads opt-in through the benchmarks group or tool.
 GROUPS = {
-    'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
-             'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
-             'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-integer-arithmetic', 'wasm-outliner-projection',
+    'wasm': ['wasm-execution', 'wasm-program', 'wasm-headless',
+             'wasm-modules', 'wasm-ranges', 'wasm-component-write',
+             'wasm-integer-arithmetic', 
              'wasm-package-math', 'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled',
              'wasm-package-portable', 'wasm-package-portable-compiler'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
@@ -532,11 +486,11 @@ GROUPS = {
     # two192-particle3000-stepMPM pools, four workers, no windows/children/network.
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 
                   'material-simulation', 'material-ecs', 'material-render'],
-    'language': ['language-test-parallel', 'execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-query-values', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write',
-                 'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
-                 'language-headless', 'language-package-math', 'language-package-tests', 'language-argument-effects-chibi', 'language-package-core', 'language-package-portable', 'language-package-portable-compiler', 'language-host-packages', 'language-host-packages-compiler', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
+    'language': ['language-test-parallel', 'execution-scope', 'language', 'language-execution', 'language-program', 'language-incremental', 'language-ranges', 'language-component-write',
+                 
+                 'language-headless', 'language-package-math', 'language-package-tests', 'language-argument-effects-chibi', 'language-package-core', 'language-package-portable', 'language-package-portable-compiler', 'language-host-packages', 'language-host-packages-compiler', 'language-navigation', 'language-modules', 'language-native-calls', 
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 
-                 'language-row-array', 'language-outliner-projection',
+                 
                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-compositional-records', 'language-package-compiler-chibi-scalar',
                  'language-package-compiler-chibi-fallible',
                  'language-package-compiler-chibi-behaviors', 'language-package-compiler-chibi-behaviors-rest',

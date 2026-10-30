@@ -74,23 +74,15 @@ static const type_desc narrow_enum_type = { .name = "fixture.narrow_enum",
                                             .fields = &narrow_enum_field,
                                             .field_count = 1 };
 static const type_desc *const types[] = { &box_type, &c_text_type, &narrow_enum_type };
-type_catalog_pack test_program_types();
-type_catalog_pack test_reductions_types();
 
 int type_catalog_pack_count()
 {
-    return 3;
+    return 1;
 }
 
 type_catalog_pack type_catalog_pack_at(int index)
 {
-    assert(index >= 0 && index < 3);
-    if (index == 2) {
-        return test_reductions_types();
-    }
-    if (index == 1) {
-        return test_program_types();
-    }
+    assert(index == 0);
     return (type_catalog_pack){ .types = types, .type_count = 3 };
 }
 

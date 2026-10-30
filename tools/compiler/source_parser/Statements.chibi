@@ -6,7 +6,7 @@ import tk "project:source_tokenizer"
 ParseBlock :: (c: ^Cursor, n: ^(Node[])) -> int {
     block := New(n, "block");
     Expect(c, n, block, tk.OpenBrace, "");
-    while (!c.failed && Cur(c, n) != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         Add(n, block, ParseStatement(c, n, false), "");
     }
     Expect(c, n, block, tk.CloseBrace, "");
@@ -17,7 +17,7 @@ ParseBlock :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseCallableBody :: (c: ^Cursor, n: ^(Node[]), kind: string) -> int {
     body := New(n, kind);
     Expect(c, n, body, tk.OpenBrace, "");
-    while (!c.failed && Cur(c, n) != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         Add(n, body, ParseStatement(c, n, true), "");
     }
     Expect(c, n, body, tk.CloseBrace, "");
@@ -32,7 +32,7 @@ IsAssignment :: (token: int) -> bool {
 
 // One statement; with `declarations`, also what a body may declare.
 ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
-    token := Cur(c, n);
+    token := c.token;
     if (token == tk.If) {
         return ParseIf(c, n);
     }
@@ -72,7 +72,7 @@ ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
         stop := New(n, "cancel_statement");
         Take(c, n, stop, "");
         Add(n, stop, ParseBinary(c, n, OrPower), "value");
-        if (Cur(c, n) == tk.After) {
+        if (c.token == tk.After) {
             Take(c, n, stop, "");
             Add(n, stop, ParseBinary(c, n, OrPower), "duration");
         }
@@ -112,7 +112,7 @@ ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
 
 // Whether the cursor starts a declaration that only bodies may hold.
 StartsBodyDeclaration :: (c: ^Cursor, n: ^(Node[])) -> bool {
-    token := Cur(c, n);
+    token := c.token;
     if (token == tk.At || token == tk.Disabled || token == tk.Action || token == tk.Bind ||
         token == tk.On || token == tk.After || token == tk.Macro || token == tk.Events ||
         token == tk.Exit || token == tk.Pub) {
@@ -142,7 +142,7 @@ ParseColonStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
     label := New(n, "label_statement");
     TakeName(c, n, label, "name");
     Expect(c, n, label, tk.Colon, "");
-    if (Cur(c, n) == tk.Semicolon && n^[c.pos].hidden) {
+    if (c.token == tk.Semicolon && n^[c.pos].hidden) {
         Take(c, n, label, "");
     }
     return label;
@@ -175,7 +175,7 @@ ParseKeywordStatement :: (c: ^Cursor, n: ^(Node[]), kind: string) -> int {
 // An assignment or an expression used for its effect.
 ParseExpressionStatement :: (c: ^Cursor, n: ^(Node[])) -> int {
     value := ParseBinary(c, n, OrPower);
-    if (!c.failed && IsAssignment(Cur(c, n))) {
+    if (!c.failed && IsAssignment(c.token)) {
         assignment := New(n, "assignment");
         Add(n, assignment, value, "target");
         Take(c, n, assignment, "operator");
@@ -196,11 +196,11 @@ ParseIf :: (c: ^Cursor, n: ^(Node[])) -> int {
         Take(c, n, current, "");
         Add(n, current, ParseBinary(c, n, OrPower), "condition");
         Add(n, current, ParseBlock(c, n), "consequence");
-        if (c.failed || Cur(c, n) != tk.Else) {
+        if (c.failed || c.token != tk.Else) {
             break;
         }
         Take(c, n, current, "");
-        if (Cur(c, n) != tk.If) {
+        if (c.token != tk.If) {
             Add(n, current, ParseBlock(c, n), "alternative");
             break;
         }
@@ -231,7 +231,7 @@ ParseFor :: (c: ^Cursor, n: ^(Node[])) -> int {
     loop := New(n, "for_statement");
     Take(c, n, loop, "");
     Accept(c, n, loop, tk.Lt, "reverse");
-    grouped := Cur(c, n) == tk.OpenParen;
+    grouped := c.token == tk.OpenParen;
     if (grouped) {
         Take(c, n, loop, "");
     }
@@ -243,7 +243,7 @@ ParseFor :: (c: ^Cursor, n: ^(Node[])) -> int {
     TakeName(c, n, loop, "name");
     Expect(c, n, loop, tk.In, "");
     first := ParseBinary(c, n, OrPower);
-    if (!c.failed && (Cur(c, n) == tk.Ellipsis || Cur(c, n) == tk.HalfOpenRange)) {
+    if (!c.failed && (c.token == tk.Ellipsis || c.token == tk.HalfOpenRange)) {
         Add(n, loop, first, "first");
         Take(c, n, loop, "bound");
         Add(n, loop, ParseBinary(c, n, OrPower), "last");
@@ -262,22 +262,22 @@ ParseSwitch :: (c: ^Cursor, n: ^(Node[])) -> int {
     Take(c, n, selection, "");
     Add(n, selection, ParseBinary(c, n, OrPower), "value");
     Expect(c, n, selection, tk.OpenBrace, "");
-    while (!c.failed && Cur(c, n) == tk.Case) {
+    while (!c.failed && c.token == tk.Case) {
         arm := New(n, "switch_arm");
         Take(c, n, arm, "");
-        if (Cur(c, n) == tk.Colon) {
+        if (c.token == tk.Colon) {
             // The default arm has no value.
-        } else if (Cur(c, n) == tk.Period) {
+        } else if (c.token == tk.Period) {
             Add(n, arm, ParseVariantPattern(c, n), "value");
         } else {
             Add(n, arm, ParseBinary(c, n, OrPower), "value");
         }
         Expect(c, n, arm, tk.Colon, "");
-        if (Cur(c, n) == tk.OpenBrace) {
+        if (c.token == tk.OpenBrace) {
             Add(n, arm, ParseBlock(c, n), "body");
         } else {
             statements := New(n, "block");
-            while (!c.failed && Cur(c, n) != tk.Case && Cur(c, n) != tk.CloseBrace) {
+            while (!c.failed && c.token != tk.Case && c.token != tk.CloseBrace && c.token != tk.EOF) {
                 Add(n, statements, ParseStatement(c, n, false), "");
             }
             Add(n, arm, statements, "body");
@@ -292,12 +292,12 @@ ParseSwitch :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseReturn :: (c: ^Cursor, n: ^(Node[])) -> int {
     statement := New(n, "return_statement");
     Take(c, n, statement, "");
-    if (Cur(c, n) == tk.Period) {
+    if (c.token == tk.Period) {
         Take(c, n, statement, "");
         TakeName(c, n, statement, "outcome");
     }
-    if (!c.failed && Cur(c, n) != tk.Semicolon) {
-        if (Cur(c, n) == tk.OpenParen) {
+    if (!c.failed && c.token != tk.Semicolon) {
+        if (c.token == tk.OpenParen) {
             Add(n, statement, ParseArgumentsOrGroup(c, n), "value");
         } else {
             Add(n, statement, ParseBinary(c, n, OrPower), "value");
@@ -307,21 +307,49 @@ ParseReturn :: (c: ^Cursor, n: ^(Node[])) -> int {
     return statement;
 }
 
-// A parenthesized start is an argument list unless an operator follows the
-// closing parenthesis, which makes it the start of an expression.
+// After `return`, a parenthesized start is an argument list when it is empty,
+// holds a comma or starts an element with `name:`, and a parenthesized
+// expression otherwise, as Tree-sitter reads it.
 ParseArgumentsOrGroup :: (c: ^Cursor, n: ^(Node[])) -> int {
-    following := SkipBrackets(n, c.pos, c.final);
-    if (following >= 0 && n^[following].token == tk.Semicolon) {
+    if (HoldsArguments(c, n)) {
         return ParseArguments(c, n);
     }
     return ParseBinary(c, n, OrPower);
+}
+
+HoldsArguments :: (c: ^Cursor, n: ^(Node[])) -> bool {
+    at := c.pos + 1;
+    if (n^[at].token == tk.CloseParen) {
+        return true;
+    }
+    depth: int = 1;
+    start := true;
+    while (at < c.final && depth > 0) {
+        token := n^[at].token;
+        if (depth == 1 && start && IsMember(token)) {
+            following := SkipArgumentName(n, at, c.final);
+            if (following > 0 && n^[following].token == tk.Colon) {
+                return true;
+            }
+        }
+        start = false;
+        if (token == tk.OpenParen || token == tk.OpenBracket || token == tk.OpenBrace) {
+            depth += 1;
+        } else if (token == tk.CloseParen || token == tk.CloseBracket || token == tk.CloseBrace) {
+            depth -= 1;
+        } else if (depth == 1 && token == tk.Comma) {
+            return true;
+        }
+        at += 1;
+    }
+    return false;
 }
 
 ParseSequence :: (c: ^Cursor, n: ^(Node[])) -> int {
     chain := New(n, "sequence_statement");
     Take(c, n, chain, "");
     Expect(c, n, chain, tk.OpenBrace, "");
-    while (!c.failed && Cur(c, n) == tk.Branch) {
+    while (!c.failed && c.token == tk.Branch) {
         part := New(n, "branch_statement");
         Take(c, n, part, "");
         Add(n, part, ParseBlock(c, n), "body");

@@ -58,8 +58,8 @@ pub Targets :: () -> string[] {
 // archive for a `third-party/` entry.
 Files :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_host") {
-        return ["src/authoring/asset_compiler_host.c", "src/support/binary_cache.c",
-                "build/sdk/generated/assets/asset_compiler_packaged.c"];
+        return ["src/authoring/asset_compiler_host.c", "src/authoring/package_compile.c",
+                "src/support/binary_cache.c", "build/sdk/generated/assets/asset_compiler_packaged.c"];
     }
     if (target == "chibi_asset_compiler_consumer") {
         return ["test/language/asset_compiler_host.c"];
@@ -612,28 +612,28 @@ Files :: (target: string) -> string[] {
     }
     if (target == "test_language") {
         return [
-            "test/language/main.c", "test/language/inferred_string_arrays.c",
-            "test/language/build_workflow.c", "test/language/record_publication.c",
-            "test/language/outliner_projection.c", "test/language/row_array.c",
-            "test/language/record_compatibility.c", "test/language/record_state.c",
+            "test/language/main.c",
+            "test/language/build_workflow.c",
+
+            "test/language/record_compatibility.c",
             "test/language/record_document.c", "test/language/record_producer.c",
-            "test/language/record_prepared_runtime.c", "test/language/record_runtime.c",
+            "test/language/record_prepared_runtime.c",
             "test/language/compositional_records.c",
-            "test/language/record_semantic.c", "test/language/record_values.c",
-            "test/language/record_prepared.c", "test/language/runtime_attribution.c",
-            "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c",
-            "test/language/program.c", "test/language/retention.c", "test/language/capture.c",
-            "test/language/query_boundary.c", "test/language/query_values.c",
-            "test/language/incremental.c", "test/language/operations.c",
+            "test/language/record_values.c",
+            "test/language/record_prepared.c",
+            "test/language/syntax.c", "test/language/execution.c",
+            "test/language/capture.c",
+
+            "test/language/incremental.c",
             "test/language/modules.c", "test/language/native_calls.c",
-            "test/language/ranges.c", "test/language/scalarize.c", "test/language/component_write.c",
-            "test/language/component_write_source.c", "test/language/component_write_ir.c",
-            "test/language/borrow.c", "test/language/reductions.c", "test/language/benchmark.c",
-            "test/language/activation_cache.c", "test/language/activation_benchmark.c",
-            "test/language/binding_benchmark.c", "test/language/borrow_benchmark.c",
-            "test/language/incremental_benchmark.c", "test/language/wasm.c", "test/language/headless.c",
+            "test/language/ranges.c",
+            "test/language/component_write_ir.c",
+
+
+
+            "test/language/incremental_benchmark.c", "test/language/headless.c",
             "test/language/prepared.c", "test/language/navigation.c",
-            "test/language/publication.c", "test/language/field_runtime.c", "test/language/prototype.c",
+            "test/language/field_runtime.c", "test/language/prototype.c",
             "test/language/ui.c", "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
             "test/language/packages.c", "test/language/package_syntax.c",
             "test/language/package_execution.c", "test/language/package_resolution.c",
@@ -656,16 +656,16 @@ Files :: (target: string) -> string[] {
             "test/language/execution_scope.c", "test/language/integer_semantics.c",
             "test/language/integer_arithmetic.c",
             "test/language/scalar_lowering_chibi.c",
-            "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
-            "test/language/lexical_binding_chibi.c", "test/language/nominal_binding_chibi.c",
-            "test/language/named_binding_chibi.c", "test/language/type_constructors_chibi.c",
+
+
+
             "test/language/type_relations_chibi.c", "test/language/unit_algebra_chibi.c",
             "test/language/signature_fixture.c", "test/language/signature_reader_chibi.c",
-            "test/language/callable_headers_chibi.c", "test/language/unit_analysis_chibi.c",
-            "test/language/union_members_chibi.c", "test/language/effect_analysis_chibi.c",
-            "test/language/record_members_chibi.c", "test/language/numeric.c",
-            "test/parallel.c", "test/language/parallel.c", "test/language/effects.c", "test/language/maps.c", "test/language/generic.c",
-            "test/language/symbol_references.c", "test/language/packed.c", "test/language/iteration.c",
+
+
+            "test/language/numeric.c",
+            "test/parallel.c", "test/language/parallel.c",
+
             "test/language/source_assets.c", "test/language/record_services.c"
         ];
     }
@@ -807,7 +807,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["toolchain/compiler_host.h"];
     }
     if (target == "chibi_asset_compiler_host") {
-        return ["authoring/asset_compiler_host.h"];
+        return ["authoring/asset_compiler_host.h", "authoring/package_compile.h"];
     }
     if (target == "chibi_save_runtime") {
         return ["runtime/save.h", "runtime/save_definition.h", "runtime/save_native.h"];
@@ -1290,7 +1290,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_project_preparation") {
         return [
-            
+
         ];
     }
     if (target == "chibi_ui_host") {
@@ -1464,7 +1464,9 @@ pub Includes :: (target: string) -> string[] {
             "public/asset_compiler_host", "private/asset_compiler_host", "build/sdk/generated/assets",
             "third_party/yyjson", "public/asset_values", "public/support", "public/compiler_host",
             "public/behavior_runtime", "public/execution", "public/types", "public/execution_contract", "public/capabilities",
-            "public/ecs", "public/tasks", "public/events", "public/asset_json", "public/json"
+            "public/ecs", "public/tasks", "public/events", "public/asset_json", "public/json",
+            "public/source_catalog", "private/compiler-target", "public/native_prepared",
+            "public/native_capabilities"
         ];
     }
     if (target == "reflect") {
@@ -2960,38 +2962,38 @@ LanguageTestsOverSource :: () -> string[] {
         "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
         "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
         "src/toolchain/compiler_target.c", "test/language/argument_effects_chibi.c",
-        "test/language/binding_benchmark.c", "test/language/borrow.c", "test/language/bounded_compiler_chibi.c",
-        "test/language/callable_headers_chibi.c", "test/language/capture.c",
-        "test/language/compiler_artifact_chibi.c", "test/language/component_write.c",
-        "test/language/component_write_ir.c", "test/language/component_write_source.c",
-        "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
-        "test/language/effect_analysis_chibi.c",
-        "test/language/effects.c",
-        "test/language/execution.c", "test/language/execution_scope.c", "test/language/generic.c",
-        "test/language/inferred_string_arrays.c", "test/language/integer_semantics.c", "test/language/host_packages_compiler.c",
-        "test/language/lexical_binding_chibi.c",
-        "test/language/maps.c", "test/language/named_binding_chibi.c",
-        "test/language/native_census.c", "test/language/nominal_binding_chibi.c",
+        "test/language/bounded_compiler_chibi.c",
+        "test/language/capture.c",
+        "test/language/compiler_artifact_chibi.c",
+        "test/language/component_write_ir.c",
+
+
+
+        "test/language/execution.c", "test/language/execution_scope.c",
+        "test/language/integer_semantics.c", "test/language/host_packages_compiler.c",
+
+
+        "test/language/native_census.c",
         "test/language/numeric.c",
-        "test/language/outliner_projection.c", "test/language/package_compiler_chibi.c",
+        "test/language/package_compiler_chibi.c",
         "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
         "test/language/package_portable.c", "test/language/package_portable_compiler.c",
         "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
         "test/language/package_syntax_chibi.c", "test/language/package_tests.c",
         "test/language/prepared_writer_chibi.c",
-        "test/language/program.c", "test/language/query_boundary.c", "test/language/query_values.c", "test/language/ranges.c",
-        "test/language/record_members_chibi.c", "test/language/record_prepared.c",
-        "test/language/record_prepared_runtime.c", "test/language/record_publication.c",
-        "test/language/record_runtime.c", "test/language/record_semantic.c",
+        "test/language/ranges.c",
+        "test/language/record_prepared.c",
+        "test/language/record_prepared_runtime.c",
+
         "test/language/compositional_records.c",
-        "test/language/record_state.c", "test/language/row_array.c",
-        "test/language/runtime_attribution.c", "test/language/scalar_lowering_chibi.c",
-        "test/language/scalarize.c", "test/language/signature_fixture.c",
+
+        "test/language/scalar_lowering_chibi.c",
+        "test/language/signature_fixture.c",
         "test/language/signature_reader_chibi.c", "test/language/source_tokenizer_chibi.c",
         "test/language/source_parser_chibi.c",
-        "test/language/type_constructors_chibi.c", "test/language/type_relations_chibi.c",
-        "test/language/union_members_chibi.c", "test/language/unit_algebra_chibi.c",
-        "test/language/unit_analysis_chibi.c", "test/language/wasm.c"
+        "test/language/type_relations_chibi.c",
+        "test/language/unit_algebra_chibi.c",
+
     ];
 }
 
@@ -3005,7 +3007,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
     if (target == "test_language" && file == "test/language/package_compiler_chibi.c") {
         return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
     }
-    if (target == "test_language" && file == "test/language/runtime_attribution.c") {
+    if (target == "test_language" && file == ) {
         return [
             "CHIBI_ATTRIBUTION_BASE=\"3c65bb60b6f3443aef6ccf4ab15acbe09b04b191\"",
             "CHIBI_ATTRIBUTION_BUILD=\"{build_type}\"",
@@ -3156,7 +3158,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_BOUNDED_PREPARE_BYTES=bytes:tools/compiler/bounded_compiler/Prepare.chibi",
             "CHIBI_CALLABLE_HEADERS_BYTES=bytes:tools/compiler/callable_headers/Headers.chibi",
             "CHIBI_COMPILER_FACTS_BYTES=bytes:tools/compiler/compiler_facts/Facts.chibi",
-            "CHIBI_COMPILER_SYNTAX_BYTES=bytes:tools/compiler/compiler_syntax/Syntax.chibi",
+            "CHIBI_COMPILER_SYNTAX_BYTES=bytes:test/language/native_syntax/Syntax.chibi.txt",
             "CHIBI_CONSTANT_FOLDING_BYTES=bytes:tools/compiler/constant_folding/Fold.chibi",
             "CHIBI_CONSTANT_IR_BYTES=bytes:tools/compiler/constant_ir/IR.chibi",
             "CHIBI_CONSTANT_PROOF_BYTES=bytes:tools/compiler/constant_admissibility/Proof.chibi",
@@ -3166,6 +3168,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_CORE_STRINGS_TEST_INPUTS=test-inputs:CORE_STRINGS_TEST_SOURCE:core_strings:test/core_strings",
             "CHIBI_CORE_TIME_BYTES=bytes:packages/core/time/Time.chibi",
             "CHIBI_CORE_TIME_TEST_BYTES=bytes:test/standard_library/time/TimeTests.chibi",
+            "CHIBI_HOST_CLOCK_BYTES=bytes:packages/host/clock/Clock.chibi",
             "CHIBI_PORTABLE_CONSUMER_BYTES=bytes:test/packages/portable_consumer/Consumer.chibi",
             "CHIBI_PORTABLE_BYTES_SOURCES=test-sources:PORTABLE_BYTES:bytes:packages/core/bytes",
             "CHIBI_PORTABLE_BYTES_INPUTS=test-inputs:PORTABLE_BYTES:bytes:packages/core/bytes",

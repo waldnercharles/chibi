@@ -647,6 +647,67 @@ TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
     return true;
 }
 
+static const char *const FOREIGN_SOURCE =
+    "package scalar\n"
+    "foreign import probe \"libprobe.a\"\n"
+    "foreign probe {\n"
+    "    chibi_probe_add :: (a: i32, b: i32) -> i32\n"
+    "    chibi_probe_pick :: (n: i32, flag: bool) -> bool\n"
+    "    chibi_probe_scale :: (value: f64, by: f64) -> f64\n"
+    "}\n"
+    "Main :: () -> int {\n"
+    "    total := chibi_probe_add(40, 2);\n"
+    "    if (chibi_probe_pick(5, true)) { total = total + 1; }\n"
+    "    if (chibi_probe_pick(2, true)) { total = total + 100; }\n"
+    "    return total + int(chibi_probe_scale(0.5, 2.0));\n"
+    "}\n";
+
+/* A program links the prebuilt archive its source imports: the driver finds it
+ * beside the source, adds it to the link line and records its hash. The
+ * archive is vendored: nothing here compiles its C. A missing archive fails
+ * the build and names it. */
+TEST_CASE(native_build_links_a_vendored_archive)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024], vendored[1024], copied[1024];
+    path(in_place, built, "sdk/chibi");
+    path(vendored, CHIBI_SOURCE_ROOT, "test/native_aot/foreign/libprobe.a");
+    const char *options[] = { "-O0", NULL };
+    reset("foreign-missing", FOREIGN_SOURCE);
+    real_tools(bin);
+    REQUIRE(build_with(in_place, options, tools) != 0 && strstr(errors, "libprobe.a is not a file"));
+    reset("foreign", FOREIGN_SOURCE);
+    real_tools(bin);
+    path(copied, game, "libprobe.a");
+    copy(vendored, copied);
+    REQUIRE(build_with(in_place, options, tools) == 0);
+    char program[1024], receipt[1024];
+    REQUIRE(printed(program));
+    snprintf(receipt, sizeof receipt, "%.*s/receipt.txt", (int)(strrchr(program, '/') - program), program);
+    char *recorded = tool_read(receipt);
+    REQUIRE(recorded && strstr(recorded, "\nlibrary-sha256 "));
+    free(recorded);
+    const char *argv[] = { program, NULL };
+    const char *envp[] = { NULL };
+    chibi_process_output out = { 0 }, err = { 0 };
+    chibi_process_capture_result ran = chibi_process_capture(
+        program,
+        argv,
+        game,
+        envp,
+        chibi_process_now() + 10,
+        NULL,
+        &out,
+        &err
+    );
+    REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 44);
+    return true;
+}
+
 /* The other targets' bundle directories and program names, in the
  * driver's target order after Linux. */
 static const struct
@@ -857,6 +918,7 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_refuses_what_an_interrupted_build_left);
     RUN_TEST_CASE(native_build_refuses_an_incomplete_output);
     RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
+    RUN_TEST_CASE(native_build_links_a_vendored_archive);
     RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
     free(stage_tool);
     tool_remove_tree(suite);

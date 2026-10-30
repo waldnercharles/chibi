@@ -190,7 +190,8 @@ Kernel32 :: () -> string {
 // object, with the platform's library stub in `partial`. The resolved linker
 // may be lld's generic driver, which reads its flavor from its name unless
 // told.
-Link :: (linker: string, target: int, partial: string, object: string, start: string, program: string) -> string[] {
+Link :: (linker: string, target: int, partial: string, object: string, start: string, program: string,
+         libraries: string[]) -> string[] {
     if (target == 1) {
         return [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
                 "-dead_strip", "-e", "_main", object, start, Join([partial, "/libSystem.tbd"]), "-o", program];
@@ -200,7 +201,51 @@ Link :: (linker: string, target: int, partial: string, object: string, start: st
                 "/nodefaultlib", "/opt:ref", Join(["/out:", program]), object, start,
                 Join([partial, "/kernel32.lib"])];
     }
-    return [linker, "-flavor", "gnu", "-static", "--gc-sections", "-e", "_start", object, start, "-o", program];
+    command := [linker, "-flavor", "gnu", "-static", "--gc-sections", "-e", "_start", object, start];
+    command.extend(libraries);
+    command.extend(["-o", program]);
+    return command;
+}
+
+// The absolute library paths a module's IR names with `; link PATH` comments,
+// which the driver writes in place of the emitter's `; chibi-library PATH`.
+LinkedLibraries :: (text: string) -> string[] {
+    found: string[] = [];
+    for (line in strings.SplitLines(text)) {
+        if (strings.HasPrefix(line, "; link ")) {
+            found.append(strings.Slice(line, 7, strings.ByteLength(line) - 7));
+        }
+    }
+    return found;
+}
+
+// `text` with each `; chibi-library PATH` comment resolved to an existing
+// regular file under `root` and rewritten as `; link ABSOLUTE`, or "" after
+// reporting why not. System libraries are not linked yet.
+ResolveLibraries :: (text: string, root: string) -> string {
+    out: string[] = [];
+    for (line in strings.SplitLines(text)) {
+        if (!strings.HasPrefix(line, "; chibi-library ")) {
+            out.append(line);
+            continue;
+        }
+        path := strings.Slice(line, 16, strings.ByteLength(line) - 16);
+        if (strings.HasPrefix(path, "system:")) {
+            build.report(Join(["native: ", path, " is a system library; link a prebuilt archive instead"]));
+            return "";
+        }
+        absolute := path;
+        if (!strings.HasPrefix(path, "/")) {
+            absolute = Join([root, "/", path]);
+        }
+        absolute = build.resolve_path(absolute);
+        if (absolute == "" || build.file_kind(absolute) != "file") {
+            build.report(Join(["native: the foreign library ", path, " is not a file"]));
+            return "";
+        }
+        out.append(Join(["; link ", absolute]));
+    }
+    return Join([strings.Join(out, "\n"), "\n"]);
 }
 
 // Receipt arguments occupy separate lines. Path controls are rejected before
@@ -300,7 +345,11 @@ Run :: (arguments: string[], executable: bool) -> int {
         return Failed(partial, "canonical target/layout admission", 2);
     }
     program := Join([partial, "/", Program(target)]);
-    link := Link(linker, target, partial, object, start_object, program);
+    libraries := LinkedLibraries(text);
+    if (target != 0 && length(libraries) > 0) {
+        return Failed(partial, "foreign libraries link on Linux x86-64 only", 2);
+    }
+    link := Link(linker, target, partial, object, start_object, program, libraries);
     stub := Join([partial, "/kernel32.def"]);
     imports := [linker, "-flavor", "link", "/lib", "/nologo", Join(["/def:", stub]), "/machine:x64",
                 Join(["/out:", partial, "/kernel32.lib"])];
@@ -377,6 +426,9 @@ Run :: (arguments: string[], executable: bool) -> int {
         if (target == 2) {
             receipt = Join([receipt, Command("import-library", imports)]);
         }
+        for (archive in libraries) {
+            receipt = Join([receipt, "library ", archive, "\nlibrary-sha256 ", build.hash_file(archive), "\n"]);
+        }
         receipt = Join([receipt, Command("link", link)]);
     }
     if (!build.write_file(Join([partial, "/receipt.txt"]), receipt)) {
@@ -387,6 +439,19 @@ Run :: (arguments: string[], executable: bool) -> int {
     }
     build.report(Join(["native-aot: published ", output]));
     return 0;
+}
+
+// The prebuilt archives beside the source with their hashes, so a changed
+// library rebuilds the program that links it.
+Archives :: (root: string) -> string {
+    parts: string[] = [];
+    for (name in build.list_directory(root)) {
+        path := Join([root, "/", name]);
+        if (strings.HasSuffix(name, ".a") && build.file_kind(path) == "file") {
+            parts.append(Join([name, ":", build.hash_file(path)]));
+        }
+    }
+    return strings.Join(parts, ",");
 }
 
 // Existing executable entry and explicit object entry share publication rules.
@@ -674,7 +739,7 @@ Native :: () -> int {
     key := build.hash_text(strings.Join([
         "chibi-native 1", names[0], build.hash_text(text), emitter_key,
         build.hash_file(Join([build.root(), "/Driver.chibi"])), build.hash_file(opt), build.hash_file(llc),
-        build.hash_file(lld), mode, debug, directory, arguments[7]
+        build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root)
     ], "\n"));
     folder := Join([root, "/build/native"]);
     output := Join([folder, "/O", mode, "-", strings.Slice(key, 0, 16)]);
@@ -749,6 +814,13 @@ Native :: () -> int {
         }
         build.report(Join([source, ":", build.read_file(diagnostic)]));
         return Finish(work, 1);
+    }
+    emitted := build.read_file(module);
+    if (strings.Contains(emitted, "\n; chibi-library ")) {
+        resolved := ResolveLibraries(emitted, root);
+        if (resolved == "" || !build.write_file(module, resolved)) {
+            return Finish(work, 1);
+        }
     }
     status := Run([module, output, opt, llc, lld, mode], true);
     if (status == 0) {

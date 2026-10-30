@@ -1,0 +1,241 @@
+#include "assets/project.h"
+#include "authoring/source_asset.h"
+#include "authoring/source_catalog.h"
+#include "backend.h"
+#include "language/lower.h"
+#include "runtime/scenes/prepared.h"
+#include "support/arena.h"
+#include "support/array.h"
+#include "support/asset_text.h"
+#include "third_party/pico_headers/pico_unit.h"
+#include "types/catalog.h"
+#include "types/text.h"
+#ifdef CHIBI_TEST_RECORD_SERVICES
+#include "runtime/behaviors/entities.h"
+#include "runtime/behaviors/entities_native.h"
+#endif
+
+#include <math.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+typedef struct
+{
+    int current, maximum;
+} health;
+static const type_field health_fields[] = {
+    { .name = "current", .type = PIN_I32, .size = sizeof(int), .offset = offsetof(health, current) },
+    { .name = "maximum", .type = PIN_I32, .size = sizeof(int), .offset = offsetof(health, maximum) },
+};
+static const type_desc health_type = { .name = "AssetHealth",
+                                       .size = sizeof(health),
+                                       .fields = health_fields,
+                                       .field_count = 2 };
+static const type_desc *const health_types[] = { &health_type };
+static const type_catalog_pack health_pack = { .types = health_types, .type_count = 1 };
+static bool health_catalog_installed;
+static const ecs_component_desc health_component = { .id = 12001,
+                                                     .key = "test.Health",
+                                                     .name = "Health",
+                                                     .element_size = sizeof(health),
+                                                     .type = &health_type };
+static av_doc *document;
+static ecs_relationship_desc *relation;
+static prototype *authored;
+static scene *prepared, *decoded;
+static scene_instance *instance;
+static ecs_world *world;
+static source_catalog *project;
+static script_syntax *syntax;
+static script_analysis *analysis;
+static execution_module *module;
+static execution_program *program;
+static unsigned char *bytes;
+static char *base_text, *child_text;
+static char error[256];
+static char catalog_root[256];
+#ifdef CHIBI_TEST_RECORD_SERVICES
+static entities *service;
+#endif
+static arena text_reads;
+static void cleanup()
+{
+    arena_free(&text_reads);
+    execution_program_free(program);
+    execution_module_free(module);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    source_catalog_free(project);
+    scene_instance_free(instance);
+#ifdef CHIBI_TEST_RECORD_SERVICES
+    if (service) {
+        entities_free(service);
+    }
+    service = NULL;
+#endif
+    ecs_world_free(world);
+    scene_free(prepared);
+    scene_free(decoded);
+    prototype_free(authored);
+    authoring_relationship_source_free(relation);
+    av_doc_free(document);
+    free(bytes);
+    free(base_text);
+    free(child_text);
+    program = NULL;
+    module = NULL;
+    analysis = NULL;
+    syntax = NULL;
+    project = NULL;
+    instance = NULL;
+    world = NULL;
+    prepared = decoded = NULL;
+    authored = NULL;
+    relation = NULL;
+    document = NULL;
+    bytes = NULL;
+    base_text = child_text = NULL;
+    if (catalog_root[0]) {
+        char path[512];
+        snprintf(path, sizeof path, "%s/libraries/Plain.chibi", catalog_root);
+        unlink(path);
+        snprintf(path, sizeof path, "%s/libraries", catalog_root);
+        rmdir(path);
+        rmdir(catalog_root);
+        catalog_root[0] = 0;
+    }
+    if (health_catalog_installed) {
+        type_catalog_set_project(NULL);
+        health_catalog_installed = false;
+    }
+}
+TEST_CASE(source_catalog_analyzes_libraries_without_specialization_requests)
+{
+    char directory[] = "/tmp/chibi-source-no-requests.XXXXXX";
+    REQUIRE(mkdtemp(directory));
+    snprintf(catalog_root, sizeof catalog_root, "%s", directory);
+    char path[512];
+    snprintf(path, sizeof path, "%s/libraries", catalog_root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/libraries/Plain.chibi", catalog_root);
+    FILE *file = fopen(path, "wb");
+    REQUIRE(file);
+    bool written = fputs("Plain :: library { Identity :: (value: int) -> int { return value } }\n", file) >=
+                   0;
+    int closed = fclose(file);
+    REQUIRE(written && !closed);
+
+    const script_catalog empty = { 0 };
+    project = source_catalog_new(catalog_root, &empty);
+    REQUIRE(project);
+    REQUIRE(!source_catalog_diagnostic_count(project));
+    REQUIRE(source_catalog_source_count(project) == 1);
+    int requests = -1;
+    REQUIRE(!source_catalog_requests(project, &requests));
+    REQUIRE(requests == 0);
+    const script_catalog *view = source_catalog_view(project);
+    REQUIRE(view->capability_count == 1);
+    REQUIRE(!strcmp(view->capabilities[0].qualified_name, "Plain.Identity"));
+    REQUIRE(view->capabilities[0].result_count == 1);
+    REQUIRE(view->capabilities[0].results[0].type.storage == PIN_I32);
+    REQUIRE(view->capabilities[0].pure);
+    REQUIRE(!view->capabilities[0].effects);
+    source_catalog_free(project);
+    project = NULL;
+    return true;
+}
+
+#ifdef CHIBI_TEST_RECORD_SERVICES
+TEST_CASE(source_relationship_native_commands_are_deferred)
+{
+    relation = authoring_relationship_source_read(
+        "Targets :: relationship {exclusive:true}",
+        error,
+        sizeof error
+    );
+    REQUIRE(relation);
+    world = ecs_world_new();
+    REQUIRE(!ecs_world_register_relationship(world, relation, NULL));
+    service = entities_new(world, NULL);
+    ecs_entity owner = ecs_world_create_entity(world),
+               target = ecs_world_create_entity(world);
+    const pin_value args[] = {
+        { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = ecs_entity_to_u64(owner) },
+        { .type = PIN_U64, .u64 = relation->id },
+        { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = ecs_entity_to_u64(target) },
+    };
+    REQUIRE(!ENTITY_ADD_PAIR_COMMAND.invoke(service, NULL, args, 3));
+    pin_value result = { .type = PIN_BOOL };
+    REQUIRE(!ENTITY_HAS_PAIR_CALL.invoke(service, args, &result));
+    REQUIRE(!result.b);
+    REQUIRE(!ecs_world_apply_commands(world));
+    REQUIRE(!ENTITY_HAS_PAIR_CALL.invoke(service, args, &result));
+    REQUIRE(result.b);
+    REQUIRE(!ENTITY_REMOVE_PAIR_COMMAND.invoke(service, NULL, args, 3));
+    REQUIRE(ecs_has_pair(world, owner, relation->id, target));
+    REQUIRE(!ecs_world_apply_commands(world));
+    REQUIRE(!ecs_has_pair(world, owner, relation->id, target));
+    return true;
+}
+#endif
+TEST_CASE(source_scene_release_preserves_external_panic_and_cleans_internal_links)
+{
+    relation = authoring_relationship_source_read(
+        "Targets :: relationship { on_delete_target: Panic }",
+        error,
+        sizeof error
+    );
+    REQUIRE(relation);
+    const scene_object objects[] = { { .name = "owner" }, { .name = "target" } };
+    const int parents[] = { -1, 0 };
+    const scene_pair pair = { 0, 0, 1 };
+    const scene_spec spec = { .name = "PanicRelease",
+                              .physics = physics_defaults(),
+                              .objects = objects,
+                              .object_count = 2,
+                              .parents = parents,
+                              .relationships = relation,
+                              .relationship_count = 1,
+                              .pairs = &pair,
+                              .pair_count = 1 };
+    prepared = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(prepared);
+    world = ecs_world_new();
+    REQUIRE(!scene_register_components(prepared, world, error, sizeof error));
+    instance = scene_instantiate_components(prepared, world, error, sizeof error);
+    REQUIRE(instance);
+    ecs_entity owner = scene_instance_entity(instance, 0),
+               target = scene_instance_entity(instance, 1);
+    ecs_entity external = ecs_world_create_entity(world);
+    REQUIRE(!ecs_world_record_add_pair(world, external, relation->id, target, 0));
+    REQUIRE(!ecs_world_apply_commands(world));
+    REQUIRE(!scene_instance_release(instance, error, sizeof error));
+    REQUIRE(strstr(error, "Panic"));
+    REQUIRE(ecs_world_live_count(world) == 3);
+    REQUIRE(ecs_has_pair(world, owner, relation->id, target));
+    REQUIRE(ecs_has_pair(world, external, relation->id, target));
+    REQUIRE(!ecs_world_record_remove_pair(world, external, relation->id, target, 0));
+    REQUIRE(!ecs_world_apply_commands(world));
+    REQUIRE(scene_instance_release(instance, error, sizeof error));
+    instance = NULL;
+    REQUIRE(!ecs_entity_is_alive(world, owner));
+    REQUIRE(!ecs_entity_is_alive(world, target));
+    REQUIRE(ecs_entity_is_alive(world, external));
+    REQUIRE(ecs_world_live_count(world) == 1);
+    return true;
+}
+
+void test_language_source_assets()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_catalog_analyzes_libraries_without_specialization_requests);
+    RUN_TEST_CASE(source_scene_release_preserves_external_panic_and_cleans_internal_links);
+#ifdef CHIBI_TEST_RECORD_SERVICES
+    RUN_TEST_CASE(source_relationship_native_commands_are_deferred);
+#endif
+    pu_clear_setup();
+}

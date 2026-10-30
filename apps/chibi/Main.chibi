@@ -123,10 +123,10 @@ Main :: () -> int {
         if options.native {
             return BuildNative(options)
         }
-        return Game(options.path, [], false)
+        return GameProjectsArchived("build")
     }
     if command == "check" {
-        return Check(options)
+        return GameProjectsArchived("check")
     }
     if command == "test" {
         return Test(options)

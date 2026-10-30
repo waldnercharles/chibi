@@ -43,6 +43,10 @@ env:
   # Native builds and players need a runtime directory and a silent audio device.
   XDG_RUNTIME_DIR: /tmp/chibi-runtime
   SDL_AUDIODRIVER: dummy
+  # Every build host in a job, including those the SDK tests start under other
+  # roots, shares the cached recovered compilers; an entry's key covers all
+  # its inputs, so sharing is safe (docs/self-hosting-build.md).
+  CHIBI_COMPILER_CACHE: ${{ github.workspace }}/.chibi/compiler-cache
 
 jobs:
   native:
@@ -93,9 +97,18 @@ jobs:
         with:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+      # Recovered compilers, keyed inside by everything that decides their bytes
+      # (docs/self-hosting-build.md), so the newest snapshot is always safe to use.
+      - name: Restore recovered compilers
+        uses: actions/cache/restore@v4
+        with:
+          path: .chibi/compiler-cache
+          key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          restore-keys: compiler-cache-${{ runner.os }}-
       # chibi-cli runs chibi-compile too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.
       - name: Build an unsanitized chibi launcher (Release)
+        id: release-build
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
         run: make build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
@@ -168,20 +181,31 @@ jobs:
       - name: Report compiler cache statistics
         if: always() && steps.ccache-config.outcome == 'success'
         run: ccache --show-stats --verbose
-      # PRs restore only. Only successful main pushes may publish snapshots;
+      # PRs restore only. Main pushes publish snapshots once the Release build
+      # succeeded, even when a later step fails or the job times out;
       # GitHub's ref scope additionally prevents PR caches reaching main.
       - name: Save compiler objects from successful main builds
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'
+        if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
       - name: Save the compiled asset compiler from successful main builds
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.asset-cache.outputs.cache-hit != 'true'
+        if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.asset-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+      # The cache has no eviction; drop entries no build rewrote for three days.
+      - name: Prune old recovered compilers
+        if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: find .chibi/compiler-cache -type f -mtime +3 -delete 2>/dev/null || true
+      - name: Save recovered compilers from main builds
+        if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .chibi/compiler-cache
+          key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
 
   native-macos:
     name: Engine build and native tests (macOS)
@@ -228,6 +252,14 @@ jobs:
         with:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+      # Recovered compilers, keyed inside by everything that decides their bytes
+      # (docs/self-hosting-build.md), so the newest snapshot is always safe to use.
+      - name: Restore recovered compilers
+        uses: actions/cache/restore@v4
+        with:
+          path: .chibi/compiler-cache
+          key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          restore-keys: compiler-cache-${{ runner.os }}-
       # chibi-cli runs chibi-compile too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player, and
       # the Graph build adds the Release build host the Debug builds use.
@@ -318,20 +350,31 @@ jobs:
       - name: Report compiler cache statistics
         if: always() && steps.ccache-config.outcome == 'success'
         run: ccache --show-stats --verbose
-      # PRs restore only. Only successful main pushes may publish snapshots;
+      # PRs restore only. Main pushes publish snapshots once the Release build
+      # succeeded, even when a later step fails or the job times out;
       # GitHub's ref scope additionally prevents PR caches reaching main.
       - name: Save compiler objects from successful main builds
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'
+        if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
       - name: Save the compiled asset compiler from successful main builds
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.asset-cache.outputs.cache-hit != 'true'
+        if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.asset-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+      # The cache has no eviction; drop entries no build rewrote for three days.
+      - name: Prune old recovered compilers
+        if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: find .chibi/compiler-cache -type f -mtime +3 -delete 2>/dev/null || true
+      - name: Save recovered compilers from main builds
+        if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .chibi/compiler-cache
+          key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
 
   # The engine's test drivers do not build on Windows yet, so the Linux job
   # builds each module language-scalar-native runs for macOS arm64 and Windows
@@ -428,6 +471,14 @@ jobs:
         with:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+      # Recovered compilers, keyed inside by everything that decides their bytes
+      # (docs/self-hosting-build.md), so the newest snapshot is always safe to use.
+      - name: Restore recovered compilers
+        uses: actions/cache/restore@v4
+        with:
+          path: .chibi/compiler-cache
+          key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          restore-keys: compiler-cache-${{ runner.os }}-
       - name: Build Release graph compiler and build hosts
         run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
       - name: Record Release graph tool identities

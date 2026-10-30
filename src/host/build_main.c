@@ -156,6 +156,28 @@ static char *read_source(const char *path, double deadline)
         size += (size_t)count;
     }
 }
+/* Where recovered compilers are kept: the directory CHIBI_COMPILER_CACHE
+ * names, none when it is "off", else .chibi/compiler-cache below the root. */
+static char *compiler_cache(const char *root)
+{
+    const char *named = getenv("CHIBI_COMPILER_CACHE");
+    if (named && !strcmp(named, "off")) {
+        return NULL;
+    }
+    if (named && *named) {
+        return xstrdup(named);
+    }
+    static const char SUFFIX[] = "/.chibi/compiler-cache";
+    char *base = realpath(root, NULL);
+    if (!base) {
+        return NULL;
+    }
+    size_t size = strlen(base) + sizeof SUFFIX;
+    char *directory = xmalloc(size);
+    snprintf(directory, size, "%s%s", base, SUFFIX);
+    free(base);
+    return directory;
+}
 /* path, from root unless it is absolute. */
 static char *from_root(const char *root, const char *path)
 {
@@ -306,10 +328,17 @@ int main(int argc, char **argv)
                       "found";
     double loading = timings ? chibi_build_now() : 0;
     build_timing_write(timings, "startup", 0, started, loading, 0, 0);
-    chibi_build_compiler
-        *compiler = sources && compiler_collection
-                      ? chibi_build_compiler_load(sources, compiler_collection, error, sizeof error)
-                      : NULL;
+    char *cache = compiler_cache(root);
+    chibi_build_compiler *compiler = sources && compiler_collection
+                                       ? chibi_build_compiler_load(
+                                             sources,
+                                             compiler_collection,
+                                             cache,
+                                             error,
+                                             sizeof error
+                                         )
+                                       : NULL;
+    free(cache);
     if (timings) {
         build_timing_write(timings, "compiler-load", 0, loading, chibi_build_now(), 0, compiler ? 0 : 1);
     }

@@ -2657,6 +2657,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     build_compiler = chibi_build_compiler_load(
         CHIBI_SOURCE_ROOT "/tools/compiler",
         CHIBI_SOURCE_ROOT "/packages/core",
+        NULL,
         error,
         sizeof error
     );

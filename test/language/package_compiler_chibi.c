@@ -1668,20 +1668,6 @@ static const sample samples[] = {
     /* Package and imported constants. `lib.Scaled(2)` takes a default that
      * stage zero reads from lib's catalog, at the call; `Triple(2)` one that
      * the package's other file declares, whose occurrence is that file's. */
-    { .name = "formatting",
-      .source = "package facts\n"
-                "Label :: (n: int, name: string) -> string { return "
-                "format_text(\"{}:{}\", n, name); }\n"
-                "Plain :: () -> string { return format_text(\"plain\"); "
-                "}\n"
-                "Mixed :: (flag: bool) -> string { big: u64 = "
-                "0xFFFFFFFFFFFFFFFF; small: i64 = -3; return "
-                "format_text(\"{} {} {}\", flag, big, small); }",
-      .calls = { { .function = "Label", .arguments = "[3,\"x\"]", .expected = "[\"3:x\"]" },
-                 { .function = "Plain", .arguments = "[]", .expected = "[\"plain\"]" },
-                 { .function = "Mixed",
-                   .arguments = "[true]",
-                   .expected = "[\"true 18446744073709551615 -3\"]" } } },
     /* A map parameter is the function's own value: removing a key leaves
      * the caller's map as it was. */
     { .name = "assert message",

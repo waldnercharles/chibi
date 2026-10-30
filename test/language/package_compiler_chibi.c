@@ -8573,7 +8573,7 @@ static bool native_emit_library(
     const pin_union **out
 )
 {
-    pin_value tables[10], args[14];
+    pin_value tables[10], args[15];
     REQUIRE(native_tables(b, function, m, tables));
     args[0] = tables[0];
     args[1] = text(name);
@@ -8581,7 +8581,8 @@ static bool native_emit_library(
     args[3] = native_ids(ids, count);
     memcpy(&args[4], &tables[1], sizeof tables - sizeof *tables);
     args[13] = (pin_value){ .type = PIN_I32, .i = 1 };
-    return native_result(b, "EmitLibrary", args, 14, out);
+    args[14] = strings(NULL, 0);
+    return native_result(b, "EmitLibrary", args, 15, out);
 }
 /* Emits m for Linux x86-64. */
 static bool native_emit(int b, const native_module *m, const pin_union **out)
@@ -9252,7 +9253,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 75
+    SCALAR_ACCEPTED_CASES = 76
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on

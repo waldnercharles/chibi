@@ -58,6 +58,11 @@ ArraysAllocateThroughTheContextAndCheckIndexes :: () {
     assert(!strings.Contains(text, "memcpy"));
     assert(strings.Contains(text, "%s0 = alloca { i32, i32, ptr }\n"));
 }
+// The bytes of a string only; an array in the left slot is no string.
+@test
+ArrayBytesRejectsArrayOperand :: () {
+    ChangedArray(3, Code(native.ArrayBytes, 1030, 2, 0, 0, 0, 0));
+}
 @test
 ArrayLengthRejectsIntOperand :: () {
     ChangedArray(7, Code(native.ArrayLength, 6, 6, 3, 0, 0, 0));

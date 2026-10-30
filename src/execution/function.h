@@ -534,13 +534,6 @@ uint64_t behavior_function_vm_allocations();
 /* Caller owns the sequence kernel; all immutable functions must outlive its
  * invocation. Frees with behavior_jit_free. Executes exactly the given order. */
 void *behavior_function_compile_sequence(const behavior_function *const *functions, int count);
-void behavior_function_write_sequence_c(
-    const behavior_function *const *functions,
-    int count,
-    FILE *out,
-    const char *name
-);
-void behavior_function_write_c(const behavior_function *function, FILE *out, const char *name);
 void *behavior_function_entry(const behavior_function *function);
 /* Whether a compiled definition runs on bytecode, past the Wasm JIT's size
  * budget. */
@@ -573,14 +566,6 @@ const behavior_function_source *behavior_function_instruction_source(
 const behavior_function_source *behavior_function_source_at(
     const behavior_function *function,
     int source
-);
-/* Reconstruct frame arguments from owned parameter layouts. */
-const pin_value *behavior_function_frame_inputs(
-    const behavior_function *function,
-    const behavior_function_activation *activation,
-    int frame,
-    arena *storage,
-    int *count
 );
 const pin_string *behavior_function_intern_text(
     behavior_function_context *,

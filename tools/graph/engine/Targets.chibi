@@ -204,7 +204,7 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_text_source") {
         return [
-            "src/support/file_watch.c", "src/support/code_lex.c", "src/support/text_file.c",
+            "src/support/file_watch.c", "src/support/text_file.c",
             "src/support/text_overlay.c"
         ];
     }
@@ -248,9 +248,9 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_execution") {
         return [
             "src/execution/artifact.c", "src/execution/backend.c", "src/execution/borrow.c",
-            "src/execution/c.c", "src/execution/call.c", "src/execution/component.c",
+            "src/execution/call.c", "src/execution/component.c",
             "src/execution/ecs_reader.c", "src/execution/function.c", "src/execution/function_builder.c",
-            "src/execution/host.c", "src/execution/inputs.c",
+            "src/execution/host.c",
             "src/execution/integer_report.c", "src/execution/intrinsics.c", "src/execution/query.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
             "src/execution/jit_component.c", "src/execution/jit_host_call.c", "src/execution/jit_integer.c",
             "src/execution/jit_memory.c", "src/execution/jit_registers.c", "src/execution/jit_suspend.c",
@@ -461,10 +461,7 @@ Files :: (target: string) -> string[] {
         return ["src/runtime/player.c", "src/runtime/player_prepared.c"];
     }
     if (target == "chibi_shader_preparation") {
-        return [
-            "src/authoring/parts_prepare.c", "src/authoring/mesh_prepare.c",
-            "src/authoring/visual_prepare.c"
-        ];
+        return ["src/authoring/parts_prepare.c", "src/authoring/mesh_prepare.c"];
     }
     if (target == "chibi_source_catalog") {
         return [
@@ -906,7 +903,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_text_source") {
         return [
-            "support/code_lex.h", "support/file_watch.h", "support/text_file.h", "support/text_overlay.h"
+            "support/file_watch.h", "support/text_file.h", "support/text_overlay.h"
         ];
     }
     if (target == "chibi_ui_document") {
@@ -1111,9 +1108,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["runtime/player.h", "runtime/player_prepared.h"];
     }
     if (target == "chibi_shader_preparation") {
-        return [
-            "authoring/mesh_prepare.h", "authoring/parts_prepare.h", "authoring/visual_prepare.h"
-        ];
+        return ["authoring/mesh_prepare.h", "authoring/parts_prepare.h"];
     }
     if (target == "chibi_source_catalog") {
         return [

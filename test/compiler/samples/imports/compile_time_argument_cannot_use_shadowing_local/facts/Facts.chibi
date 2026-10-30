@@ -1,0 +1,6 @@
+package facts
+Factor :: 3;
+Scale :: (value: int, $N: int) -> int { return value * N; }
+Main :: () -> int { Factor := 5; return Scale(2, Factor); }
+
+// error: 4:50: constant value must be an integer expression

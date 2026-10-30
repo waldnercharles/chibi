@@ -46,7 +46,7 @@ struct chibi_build_compiler
 /* Instructions one program may run, as many as a package test: a build graph
  * parses a dependency file per object. The deadline bounds the time. */
 #define BUILD_INSTRUCTION_BUDGET 100000000
-#define BUILD_COMPILE_BUDGET 2000000000u
+#define BUILD_COMPILE_BUDGET 4000000000u
 
 static const char *const environment_names[] = {
     "PATH",
@@ -618,47 +618,42 @@ static char *compile_input(const build_host *host, const native_capabilities *na
     }
     const char *slash = strrchr(options->source_path, '/');
     char *path = join(host->program_directory, slash ? slash + 1 : options->source_path);
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *arguments = yyjson_mut_arr(doc);
-    yyjson_mut_doc_set_root(doc, arguments);
-    yyjson_mut_arr_add_strcpy(doc, arguments, host->program_directory);
-    yyjson_mut_val *names = yyjson_mut_arr_add_arr(doc, arguments);
-    yyjson_mut_val *roots = yyjson_mut_arr_add_arr(doc, arguments);
-    for (int i = 0; i < count; i++) {
-        yyjson_mut_arr_add_strcpy(doc, names, collections[i].name);
-        yyjson_mut_arr_add_strcpy(doc, roots, collections[i].root);
-    }
-    yyjson_mut_val *paths = yyjson_mut_arr_add_arr(doc, arguments);
-    yyjson_mut_val *texts = yyjson_mut_arr_add_arr(doc, arguments);
     /* Compile's first file chooses its root package. The program precedes
      * collection inputs even when a collection sorts before it on disk. */
-    yyjson_mut_arr_add_strcpy(doc, paths, path);
-    yyjson_mut_arr_add_strcpy(doc, texts, options->source_text);
+    int file_count = acount(files) + 1;
+    const char **paths = xmalloc((size_t)file_count * sizeof *paths);
+    const char **texts = xmalloc((size_t)file_count * sizeof *texts);
+    size_t *sizes = xmalloc((size_t)file_count * sizeof *sizes);
+    paths[0] = path;
+    texts[0] = options->source_text;
+    sizes[0] = strlen(options->source_text);
     for (int i = 0; i < acount(files); i++) {
-        yyjson_mut_arr_add_strcpy(doc, paths, files[i].path);
-        yyjson_mut_arr_add_strncpy(doc, texts, files[i].text, files[i].size);
+        paths[i + 1] = files[i].path;
+        texts[i + 1] = files[i].text;
+        sizes[i + 1] = files[i].size;
+    }
+    const char *names[CHIBI_BUILD_MAX_COLLECTIONS + 1],
+        *roots[CHIBI_BUILD_MAX_COLLECTIONS + 1];
+    for (int i = 0; i < count; i++) {
+        names[i] = collections[i].name;
+        roots[i] = collections[i].root;
     }
     /* This private host runs builds without a debugger or watch inspection. */
-    yyjson_mut_arr_add_false(doc, arguments);
-    size_t target_length = 0;
-    char *target = compiler_target_json(native_capabilities_catalog(native), &target_length);
-    yyjson_doc *target_doc = yyjson_read(target, target_length, 0);
-    yyjson_val *target_values = yyjson_doc_get_root(target_doc);
-    for (size_t i = 0; i < yyjson_arr_size(target_values); i++) {
-        yyjson_mut_arr_append(arguments, yyjson_val_mut_copy(doc, yyjson_arr_get(target_values, i)));
-    }
-    size_t effects_length = 0;
-    char *effects = compiler_target_effects_json(native_capabilities_catalog(native), &effects_length);
-    yyjson_doc *effects_doc = yyjson_read(effects, effects_length, 0);
-    yyjson_mut_arr_append(arguments, yyjson_val_mut_copy(doc, yyjson_doc_get_root(effects_doc)));
-    char *json = target_doc && effects_doc
-                   ? yyjson_mut_write(doc, YYJSON_WRITE_ALLOW_INVALID_UNICODE, length)
-                   : NULL;
-    yyjson_doc_free(effects_doc);
-    free(effects);
-    yyjson_doc_free(target_doc);
-    free(target);
-    yyjson_mut_doc_free(doc);
+    char *json = compiler_package_request_json(
+        host->program_directory,
+        names,
+        roots,
+        count,
+        paths,
+        texts,
+        sizes,
+        file_count,
+        native_capabilities_catalog(native),
+        length
+    );
+    free(sizes);
+    free(texts);
+    free(paths);
     free(path);
     source_package_files_free(files);
     if (!json) {
@@ -680,8 +675,8 @@ static void compile_rejection(build_host *host, const char *json, size_t length)
     );
     yyjson_doc *doc = called ? yyjson_read(result.json, result.length, COMPILER_HOST_JSON_READ_FLAGS)
                              : NULL;
-    yyjson_val *rejected = yyjson_arr_get(yyjson_doc_get_root(doc), 0);
-    yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(rejected, "values"), 0);
+    yyjson_val *error = yyjson_arr_get(yyjson_doc_get_root(doc), 2);
+    yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(error, "values"), 0);
     const char *message = yyjson_get_str(yyjson_obj_get(diagnostic, "message"));
     if (message) {
         diagnose(host->result, message);

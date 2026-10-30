@@ -27,3 +27,7 @@ coverage.
 `wasm-integer-arithmetic` preserves the original cases' Wasm group coverage,
 using BYTECODE and WASM as the target and stage-one compiler backends.
 The Chrome Wasm acceptance driver runs the same selector.
+
+`LiteralOnlyInitializers*` check that a local initialized by literal-only arithmetic
+(`x := 1 + 2`) takes int, number or a wider integer from its literals' spelling, as
+a lone literal does.

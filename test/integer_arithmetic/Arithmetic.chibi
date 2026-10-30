@@ -16,6 +16,43 @@ WideConstantFoldingIsExact :: () {
     return;
 }
 
+// Locals whose initializers use only literals take their type from the
+// literals' spelling, as a lone literal does: int, number, or a wider integer.
+@test
+LiteralOnlyInitializersDefaultToInt :: () {
+    sum := 1 + 2;
+    product := (3 + 4) * 5 - 6 / 2;
+    shifted := 1 << 4;
+    negated := -(2 + 3);
+    checked: int = sum;
+    assert(checked == 3);
+    assert(product == 32);
+    assert(shifted == 16);
+    assert(negated == -5);
+    total: int = 0;
+    total += sum;
+    assert(total == 3);
+    return;
+}
+
+@test
+LiteralOnlyInitializersWithFractionsDefaultToNumber :: () {
+    half := 1 + 0.5;
+    scaled := 2.0 * 3 - 1;
+    checked: number = half;
+    assert(checked == 1.5);
+    assert(scaled == 5.0);
+    return;
+}
+
+@test
+LiteralOnlyInitializersWidenForLargeLiterals :: () {
+    big := 4294967296 + 1;
+    checked: i64 = big;
+    assert(checked == 4294967297);
+    return;
+}
+
 // Fixed runtime inputs and oracles from packed.c at 7c6ca2f5.
 // Each operation reads ordinary typed parameters; no expected value is computed.
 

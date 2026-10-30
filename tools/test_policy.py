@@ -169,8 +169,6 @@ TOOLS = {
                                             '--integer-shift-counts-authored'],
     'language-integer-semantics': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                    '--integer-semantics'],
-    'language-integer-arithmetic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                    '--integer-arithmetic'],
     'language-package-graph': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-graph'],
     'language-package-syntax': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -267,16 +265,10 @@ TOOLS = {
                                         '--host-packages-compiler'],
     'language-package-files': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-files'],
-    'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                              '--package-core'],
-    'language-package-portable-compiler': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                           '--package-portable-compiler'],
-    'language-package-portable': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                  '--package-portable'],
+    'chibi-test-core': [str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi')), 'test', str(ROOT / 'packages/core')],
+    'chibi-test-integer-arithmetic': [str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi')), 'test', str(ROOT / 'test/integer_arithmetic')],
     'language-package-math': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--package-math'],
     'language-package-math-benchmark': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--package-math-benchmark'],
-    'language-package-tests': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                               '--package-tests'],
     'language-argument-effects-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--argument-effects-chibi'],
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],
@@ -305,7 +297,7 @@ for selector in ('binding-schedule'):
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('execution', 'program', 'format', 'ranges', 'component-write', 'record-values', 'record-semantic', 'record-runtime', 'record-document', 'record-state', 'record-compatibility', 'integer-arithmetic', 'package-math'):
+for selector in ('execution', 'program', 'format', 'ranges', 'component-write', 'record-values', 'record-semantic', 'record-runtime', 'record-document', 'record-state', 'record-compatibility', 'package-math'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
                  '-imports', '-imports-compiled', '-behaviors',
@@ -313,7 +305,7 @@ for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '
     TOOLS['wasm-package-compiler-chibi' + selector] = ['node', str(wasm_build / 'test_language.js'),
                                                        '--package-compiler-chibi' + selector]
 
-for selector in ('package-portable', 'package-portable-compiler'):
+for selector in ('package-portable-compiler'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 
 
@@ -352,9 +344,9 @@ ASSET_COMPILER_HOST_PLATFORMS = ('linux', 'darwin')
 GROUPS = {
     'wasm': ['wasm-execution', 'wasm-program', 
              'wasm-ranges', 'wasm-component-write',
-             'wasm-integer-arithmetic', 
+             
              'wasm-package-math', 'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled',
-             'wasm-package-portable', 'wasm-package-portable-compiler'],
+             'wasm-package-portable-compiler'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 
                'build-graph-link-response',
                'physics', 'physics3d',
@@ -381,13 +373,13 @@ GROUPS = {
                   'material-simulation', 'material-ecs'],
     'language': ['language-test-parallel', 'execution-scope', 'language', 'language-execution', 'language-program', 'language-ranges', 'language-component-write',
                  
-                 'language-package-math', 'language-package-tests', 'language-argument-effects-chibi', 'language-package-core', 'language-package-portable', 'language-package-portable-compiler', 'language-host-packages', 'language-host-packages-compiler', 
+                 'language-package-math', 'chibi-test-core', 'chibi-test-integer-arithmetic', 'language-argument-effects-chibi', 'language-host-packages', 'language-host-packages-compiler', 
                  'field-runtime', 'text-format', 
                  
                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-compositional-records', 'language-package-compiler-chibi-scalar',
                  'language-package-compiler-chibi-fallible',
                  'language-package-compiler-chibi-behaviors', 'language-package-compiler-chibi-behaviors-rest',
-                 'language-integer-semantics', 'language-integer-arithmetic', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap',
+                 'language-integer-semantics', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap',
                  'language-native-census-flattening'],
 }
 if sys.platform in ASSET_COMPILER_HOST_PLATFORMS:

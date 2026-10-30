@@ -88,7 +88,12 @@ Check :: (options: Options) -> int {
 }
 
 Test :: (options: Options) -> int {
-    status := program.test(Default(options.path, "."))
+    root := files.resolve(Default(options.path, "."))
+    if root == "" {
+        Error(format_text("test: cannot find {}", Default(options.path, ".")))
+        return 1
+    }
+    status := process.run([Compiler(), "--project-root", root, "--test"])
     if application.stopped() {
         return application.interrupt_status()
     }

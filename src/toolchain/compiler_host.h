@@ -8,12 +8,13 @@
 #define COMPILER_HOST_MAX_BYTES (64u * 1024u * 1024u)
 /* A compiler's own closure is a large program, in and out. The package
  * compiler's module keeps about 200 MB, peaks at about 372 MiB while the
- * verifier checks its largest function, and needs about 394 M units of
- * record-layout work: each record and union value it copies or drops carries
- * its record header. The asset compiler's closure adds its own modules to
- * that and needs more than 512 M units. Loading allows each module, and the
- * closure together, this much storage, each module this many records and
- * this much layout work.
+ * verifier checks its largest function. Record-layout work grows with the
+ * type table (n log n to order it), with each value header's type lookup and
+ * with the layouts the verifier checks, so it stays proportional to the
+ * program: with the asset compiler's closure, about 10,000 types and 900
+ * functions, it measures between 128 and 256 MiB of units, and the bound
+ * leaves twice that. Loading allows each module, and the closure together,
+ * this much storage, each module this many records and this much layout work.
  * Its closure, about 30 MB, is returned as a byte[] of that length, and the
  * bootstrap compiles and reads it back with COMPILER_HOST_MAX_ARTIFACT_BYTES.
  * The command-line host's file outputs allow that bound too: --output-artifact
@@ -23,7 +24,7 @@
  * COMPILER_HOST_MAX_BYTES. */
 #define COMPILER_HOST_MAX_CLOSURE_BYTES (512u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
-#define COMPILER_HOST_MAX_LAYOUT_WORK (3072u * 1024u * 1024u)
+#define COMPILER_HOST_MAX_LAYOUT_WORK (512u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_OUTPUT_BYTES (16u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_ARTIFACT_BYTES (32u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_VALUES 1000000

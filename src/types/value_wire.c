@@ -571,8 +571,13 @@ static void structure(value_codec *c, pin_value *v, unsigned depth, void *destin
     }
     type_resolver resolver = v->schema ? pin_schema_resolver(v->schema)
                                        : (type_resolver){ 0 };
-    uint64_t layout = v->schema ? pin_schema_layout_type(v->schema, type)
-                                : type_layout_hash(type);
+    /* An authored record's descriptor is immutable and hashed once, when it
+     * is created or validated; rehashing it for each header would visit its
+     * whole nested layout again. */
+    bool own_layout = v->record && !v->record->native && type == &v->record->type;
+    uint64_t layout = v->schema  ? pin_schema_layout_type(v->schema, type)
+                    : own_layout ? v->record->layout
+                                 : type_layout_hash(type);
     uint64_t expected = layout;
     execution_wire_u64(w, &layout);
     if (w->error) {

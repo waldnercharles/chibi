@@ -146,7 +146,7 @@ endif()
 if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_asset_json "${CHIBI_SDK_ROOT}/src/support" chibi_asset_values chibi_json)
     chibi_sdk_contract(chibi_source_catalog "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_authoring chibi_asset_text chibi_ui_document chibi_json chibi_tasks)
+        chibi_authoring chibi_ui_document chibi_json chibi_tasks)
     chibi_sdk_contract(chibi_studio_capabilities "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_native_capabilities chibi_execution)
     chibi_sdk_contract(chibi_text_source "${CHIBI_SDK_ROOT}/src/support" chibi_support chibi_text_search)
@@ -154,8 +154,6 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_ui_authoring "${CHIBI_SDK_ROOT}/src/assets"
         chibi_text_source chibi_ui_document)
     chibi_sdk_contract(chibi_reference_index "${CHIBI_SDK_ROOT}/src/authoring" chibi_support chibi_events)
-    chibi_sdk_contract(chibi_asset_text "${CHIBI_SDK_ROOT}/src/support"
-        chibi_asset_values chibi_asset_kdl)
     chibi_sdk_contract(chibi_language_syntax "${CHIBI_SDK_ROOT}/src/language"
         chibi_support chibi_syntax_runtime)
     chibi_sdk_contract(chibi_language "${CHIBI_SDK_ROOT}/src/language"
@@ -163,7 +161,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_compiler "${CHIBI_SDK_ROOT}/src/language"
         chibi_language chibi_execution)
     chibi_sdk_contract(chibi_authoring "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_compiler chibi_native_capabilities chibi_reference_index chibi_json chibi_asset_text chibi_input_action)
+        chibi_compiler chibi_native_capabilities chibi_reference_index chibi_json chibi_input_action)
     chibi_sdk_contract(chibi_program "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_source_catalog chibi_native_capabilities chibi_behavior_runtime)
 endif()
@@ -189,19 +187,17 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
         chibi_language_syntax chibi_native_capabilities)
     chibi_sdk_contract(chibi_compiler_json "${CHIBI_SDK_ROOT}/src/toolchain"
         chibi_json chibi_native_capabilities)
-    chibi_sdk_contract(chibi_shader_preparation "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_visual_catalog chibi_player chibi_asset_text chibi_json chibi_image_catalog)
     chibi_sdk_contract(chibi_project_compilation "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_source_catalog chibi_player chibi_native_prepared
-        chibi_shader_preparation chibi_host_native_default
-        chibi_asset_text chibi_text_source chibi_ui_authoring chibi_builtin_fonts
+        chibi_host_native_default
+        chibi_text_source chibi_ui_authoring chibi_builtin_fonts
         chibi_image_preparation chibi_json chibi_compiler_syntax chibi_compiler_json chibi_text_capabilities chibi_array_capabilities chibi_task_pool_runtime
         chibi_asset_compiler_host)
     if(CHIBI_SDK_BUILD_DESKTOP)
         chibi_sdk_contract(chibi_project_preparation "${CHIBI_SDK_ROOT}/src/authoring"
             chibi_project_compilation chibi_engine chibi_ui_host chibi_renderer
  chibi_host_native_default
- chibi_asset_text chibi_ui_authoring chibi_image_preparation
+ chibi_ui_authoring chibi_image_preparation
             chibi_declared_components)
     endif()
 endif()

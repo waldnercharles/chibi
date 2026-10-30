@@ -423,7 +423,6 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_headers(chibi_asset_json PUBLIC support/asset_json.h)
     target_link_libraries(chibi_asset_json PUBLIC chibi_asset_values chibi_json)
     list(APPEND CHIBI_SDK_TARGETS chibi_asset_json)
-    include(asset_text.cmake)
     if(CHIBI_SDK_COMPILER_HOST_ONLY)
         set(tree_sitter_root "${CHIBI_THIRD_PARTY_DIR}/source/tree_sitter")
         configure_file("${tree_sitter_root}/lib/include/tree_sitter/api.h"
@@ -500,7 +499,7 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     target_include_directories(chibi_authoring PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/authoring"
         "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_link_libraries(chibi_authoring PUBLIC chibi_compiler chibi_native_capabilities chibi_reference_index
-        PRIVATE chibi_json chibi_asset_text chibi_input_action)
+        PRIVATE chibi_json chibi_input_action)
     list(APPEND CHIBI_SDK_TARGETS chibi_syntax_runtime chibi_language_syntax
         chibi_language chibi_compiler chibi_authoring)
     include(source_authoring.cmake)
@@ -586,7 +585,7 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Wi
     target_include_directories(chibi_compiler_host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_link_libraries(chibi_compiler_host PUBLIC chibi_behavior_runtime
         PRIVATE chibi_native_prepared chibi_text_capabilities chibi_array_capabilities
-        chibi_value_document chibi_asset_json chibi_language_syntax chibi_asset_text chibi_json)
+        chibi_value_document chibi_asset_json chibi_language_syntax chibi_json)
     target_compile_options(chibi_compiler_host PRIVATE -Wall -Wextra -Werror)
     if(NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         add_library(Chibi::compiler_host ALIAS chibi_compiler_host)
@@ -595,7 +594,7 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Wi
         list(APPEND CHIBI_SDK_TARGETS chibi_compiler_host)
     endif()
     add_executable(chibi-compiler-host "${CHIBI_SDK_ROOT}/src/toolchain/compiler_main.c")
-    target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host chibi_asset_text chibi_asset_values
+    target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host chibi_asset_values
         chibi_json)
     target_include_directories(chibi-compiler-host PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host" "${CHIBI_SDK_ROOT}/third_party/yyjson")
@@ -682,7 +681,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND
     endforeach()
 endif()
 foreach(target IN LISTS CHIBI_SDK_TARGETS)
-    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
+    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler)$")
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             target_compile_options(${target} PRIVATE -Wno-experimental)

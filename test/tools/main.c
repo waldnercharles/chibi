@@ -231,7 +231,6 @@ void test_tool_transforms();
 #endif
 
 #ifdef CHIBI_TEST_ASSET_VALUES
-void test_asset_text();
 void test_asset_value();
 #endif
 #ifdef CHIBI_TEST_UI_DOCUMENT
@@ -312,7 +311,6 @@ static bool run_document_suites(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_ASSET_VALUES
     if (selected(argc, argv, "--asset-values")) {
-        test_asset_text();
         test_asset_value();
         return true;
     }

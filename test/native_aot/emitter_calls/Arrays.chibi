@@ -108,7 +108,7 @@ ArraySetValueMustBeDefined :: () {
 @test
 UnsupportedArrayInstructionIsRejected :: () {
     code := Arrays();
-    code[8] = Code(native.ForeignCall + 1, 1030, 7, 4, 0, 0, 0);
+    code[8] = Code(native.StateStore + 1, 1030, 7, 4, 0, 0, 0);
     Rejects(ArrayModule(code), "unsupported native scalar instruction");
 }
 @test

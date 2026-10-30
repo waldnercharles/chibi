@@ -9239,6 +9239,11 @@ TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries)
     REQUIRE(prepare());
     REQUIRE(scalar_rejects_unsupported());
     REQUIRE(scalar_collects_libraries());
+    return true;
+}
+TEST_CASE(package_compiler_scalar_retains_library_states)
+{
+    REQUIRE(prepare());
     REQUIRE(scalar_retains_library_states());
     return true;
 }
@@ -15364,6 +15369,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
+    RUN_TEST_CASE(package_compiler_scalar_retains_library_states);
     RUN_TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit);
     pu_clear_setup();
 }

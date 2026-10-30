@@ -25,6 +25,14 @@ struct authoring_program
     authoring_program_diagnostic diagnostic;
 };
 
+static void release(package_collection **packages)
+{
+    if (*packages) {
+        package_collection_free(*packages);
+        *packages = NULL;
+    }
+}
+
 static void clear_error(authoring_program *program)
 {
     free((char *)program->diagnostic.path);
@@ -119,8 +127,7 @@ void authoring_program_discard(authoring_program *program)
     assert(program && !program->calling);
     execution_program_free(program->prepared);
     program->prepared = NULL;
-    package_collection_free(program->candidate);
-    program->candidate = NULL;
+    release(&program->candidate);
     program->pending_entry = 0;
 }
 
@@ -220,7 +227,7 @@ bool authoring_program_commit(authoring_program *program)
         program->runtime = program->prepared;
     }
     program->prepared = NULL;
-    package_collection_free(program->accepted);
+    release(&program->accepted);
     program->accepted = program->candidate;
     program->candidate = NULL;
     program->entry = program->pending_entry;
@@ -352,7 +359,7 @@ void authoring_program_free(authoring_program *program)
     assert(!program->calling);
     authoring_program_discard(program);
     execution_program_free(program->runtime);
-    package_collection_free(program->accepted);
+    release(&program->accepted);
     native_capabilities_free(program->options.native);
     for (int i = 0; i < acount(program->services); i++) {
         free((char *)program->services[i].type_name);

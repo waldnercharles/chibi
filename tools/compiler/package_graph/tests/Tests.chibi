@@ -1,0 +1,314 @@
+package package_graph_tests
+
+import graph "project:package_graph"
+
+// The package graph corpus of the former C graph and its differential
+// (packages.c, package_graph_chibi.c): resolved file and import descriptors,
+// with the membership, bindings, edges, order and errors the C graph gave.
+F :: (path: string, directory: string, name: string) -> graph.File {
+    return {path: path, directory: directory, name: name};
+}
+// An import with an explicit alias; Default leaves the alias to the directory.
+I :: (file: int, directory: string, alias: string) -> graph.Import {
+    return {file: file, directory: directory, alias: alias, explicit_alias: true};
+}
+Default :: (file: int, directory: string) -> graph.Import {
+    return {file: file, directory: directory, alias: "", explicit_alias: false};
+}
+Files :: () -> graph.File[] {
+    return [F("/project/app/z.chibi", "/project/app", "app"), F("/project/app/a.chibi", "/project/app", "app"),
+            F("/project/app/nested/n.chibi", "/project/app/nested", "nested"),
+            F("/project/math/m.chibi", "/project/math", "numbers")];
+}
+Two :: () -> graph.File[] {
+    files := Files();
+    return [files[0], files[1]];
+}
+
+Accepted :: (built: graph.Graph) -> graph.Graph {
+    switch built {
+        case .Accepted(packages, members, files, order, edges, bindings):
+            return built;
+        case .Rejected(error, cycle):
+            assert(false, "the graph is valid");
+            return built;
+    }
+}
+// The error of a rejected graph, after checking its code.
+Rejected :: (built: graph.Graph, code: int) -> graph.Error {
+    switch built {
+        case .Accepted(packages, members, files, order, edges, bindings):
+            assert(false, "the graph is invalid");
+            return {code: 0, file: -1, import_index: -1, related_file: -1, related_import: -1, cycle_count: 0};
+        case .Rejected(error, cycle):
+            assert(error.code == code, "error code");
+            return error;
+    }
+}
+// Each import of a cycle witness leaves its file's package for the next
+// import's file's package.
+ClosedCycle :: (built: graph.Graph, files: graph.File[], imports: graph.Import[], count: int) {
+    switch built {
+        case .Accepted(packages, members, file_packages, order, edges, bindings):
+            assert(false, "the graph is invalid");
+        case .Rejected(error, cycle):
+            assert(error.cycle_count == count, "cycle length");
+            i: int = 0;
+            while (i < count) {
+                edge := imports[cycle[i]];
+                next := imports[cycle[(i + 1) % count]];
+                assert(edge.directory == files[next.file].directory, "cycle edge reaches the next import's package");
+                assert(files[edge.file].directory != edge.directory, "cycle edge leaves its package");
+                i += 1;
+            }
+    }
+}
+CycleEntry :: (built: graph.Graph, index: int) -> int {
+    switch built {
+        case .Accepted(packages, members, files, order, edges, bindings):
+            return -1;
+        case .Rejected(error, cycle):
+            return cycle[index];
+    }
+}
+
+@test
+EmptySnapshotHasNoPackages :: () {
+    files: graph.File[] = [];
+    imports: graph.Import[] = [];
+    assert(graph.Count(Accepted(graph.Build(files, imports))) == 0);
+}
+
+@test
+MembersJoinTheirDirectoryInFilenameOrder :: () {
+    imports: graph.Import[] = [];
+    built := Accepted(graph.Build(Files(), imports));
+    assert(graph.Count(built) == 3);
+    assert(graph.FilePackage(built, 0) == graph.FilePackage(built, 1));
+    assert(graph.FilePackage(built, 1) != graph.FilePackage(built, 2));
+    app := graph.PackageAt(built, graph.FilePackage(built, 0));
+    assert(app.directory == "/project/app" && app.name == "app");
+    assert(app.member_count == 2);
+    switch built {
+        case .Accepted(packages, members, files, order, edges, bindings):
+            assert(members[app.member_start] == 1 && members[app.member_start + 1] == 0, "members in filename order");
+        case .Rejected(error, cycle):
+            assert(false);
+    }
+}
+
+@test
+ConflictingMemberHeadersAreRejected :: () {
+    files := Two();
+    files[1].name = "other";
+    imports: graph.Import[] = [];
+    error := Rejected(graph.Build(files, imports), graph.HeaderMismatch);
+    assert(error.file == 1 && error.related_file == 0);
+}
+
+@test
+DistinctDirectoriesWithOneNameAreRejected :: () {
+    all := Files();
+    files := [all[0], all[3]];
+    files[1].name = "app";
+    imports: graph.Import[] = [];
+    error := Rejected(graph.Build(files, imports), graph.DuplicateName);
+    assert(error.file == 1 && error.related_file == 0);
+}
+
+@test
+DuplicateFileIsRejected :: () {
+    all := Files();
+    imports: graph.Import[] = [];
+    error := Rejected(graph.Build([all[0], all[0]], imports), graph.DuplicateFile);
+    assert(error.file == 1 && error.related_file == 0);
+}
+
+@test
+ResolvedIdentityIgnoresImportSpelling :: () {
+    built := Accepted(graph.Build(Files(), [I(0, "/project/math", "first"), I(0, "/project/math", "second"),
+                                            I(1, "/project/math", "other")]));
+    app := graph.FilePackage(built, 0);
+    math := graph.FilePackage(built, 3);
+    assert(graph.Count(built) == 3);
+    assert(graph.Lookup(built, 0, "first") == math);
+    assert(graph.Lookup(built, 0, "second") == math);
+    assert(graph.Lookup(built, 1, "other") == math);
+    assert(graph.Dependency(built, app, math) == 0);
+}
+
+@test
+AliasesAreFileLocal :: () {
+    built := Accepted(graph.Build(Files(), [I(0, "/project/math", "lib"), I(1, "/project/app/nested", "lib")]));
+    assert(graph.Lookup(built, 0, "lib") == graph.FilePackage(built, 3));
+    assert(graph.Lookup(built, 1, "lib") == graph.FilePackage(built, 2));
+    assert(graph.Lookup(built, 2, "lib") == -1);
+    assert(graph.Lookup(built, 3, "lib") == -1);
+    assert(graph.Lookup(built, 0, "missing_alias") == -1);
+}
+
+@test
+DefaultAliasIsTheResolvedBasename :: () {
+    built := Accepted(graph.Build(Files(), [Default(0, "/project/math")]));
+    assert(graph.Lookup(built, 0, "math") == graph.FilePackage(built, 3));
+    assert(graph.Lookup(built, 0, "numbers") == -1);
+    assert(graph.Lookup(built, 1, "math") == -1);
+}
+
+@test
+InvalidBasenameNeedsAnExplicitAlias :: () {
+    files := [Files()[0], F("/project/math-v2/m.chibi", "/project/math-v2", "numbers")];
+    error := Rejected(graph.Build(files, [Default(0, "/project/math-v2")]), graph.ImportName);
+    assert(error.file == 0 && error.import_index == 0);
+    built := Accepted(graph.Build(files, [I(0, "/project/math-v2", "math")]));
+    assert(graph.Lookup(built, 0, "math") == graph.FilePackage(built, 1));
+}
+
+@test
+UnderscoreBasenameIsNotAnImplicitBlank :: () {
+    files := [Files()[0], F("/project/_/m.chibi", "/project/_", "numbers")];
+    Rejected(graph.Build(files, [Default(0, "/project/_")]), graph.ImportName);
+    built := Accepted(graph.Build(files, [I(0, "/project/_", "_")]));
+    assert(graph.Lookup(built, 0, "_") == -1);
+    assert(graph.Dependency(built, 0, 1) == 0);
+}
+
+@test
+BlankImportsKeepEdgesWithoutBindings :: () {
+    built := Accepted(graph.Build(Files(), [I(0, "/project/math", "_"), I(0, "/project/math", "_"),
+                                            I(0, "/project/app/nested", "_")]));
+    assert(graph.Lookup(built, 0, "_") == -1);
+    assert(graph.Lookup(built, 0, "math") == -1);
+    assert(graph.Dependency(built, 0, 2) == 0);
+    assert(graph.Dependency(built, 0, 1) == 2);
+    assert(graph.Order(built, 2) == 0);
+}
+
+@test
+DuplicateAliasReportsBothImports :: () {
+    error := Rejected(graph.Build(Files(), [I(0, "/project/math", "lib"), I(0, "/project/app/nested", "lib")]),
+                      graph.DuplicateImport);
+    assert(error.file == 0 && error.related_file == 0);
+    assert(error.import_index == 1 && error.related_import == 0);
+}
+
+@test
+MissingSnapshotMemberIsRejected :: () {
+    error := Rejected(graph.Build(Two(), [I(0, "/project/math", "math")]), graph.Missing);
+    assert(error.file == 0 && error.import_index == 0);
+}
+
+@test
+DirectSelfImportKeepsOneIdentity :: () {
+    built := Accepted(graph.Build(Two(), [I(0, "/project/app", "this_package"), Default(0, "/project/app"),
+                                          I(1, "/project/app", "_")]));
+    assert(graph.Count(built) == 1);
+    assert(graph.Lookup(built, 0, "this_package") == 0);
+    assert(graph.Lookup(built, 0, "app") == 0);
+    assert(graph.Lookup(built, 1, "app") == -1);
+    assert(graph.Lookup(built, 1, "_") == -1);
+    assert(graph.Dependency(built, 0, 0) == 0);
+    assert(graph.Order(built, 0) == 0);
+}
+
+@test
+UnusedTwoPackageCycleIsRejected :: () {
+    imports := [I(0, "/project/math", "_"), I(3, "/project/app", "_")];
+    built := graph.Build(Files(), imports);
+    Rejected(built, graph.Cycle);
+    ClosedCycle(built, Files(), imports, 2);
+}
+
+@test
+UnusedIndirectCycleIsRejected :: () {
+    imports := [I(0, "/project/app/nested", "_"), I(2, "/project/math", "_"), I(3, "/project/app", "_")];
+    built := graph.Build(Files(), imports);
+    Rejected(built, graph.Cycle);
+    ClosedCycle(built, Files(), imports, 3);
+}
+
+@test
+SelfEdgesDoNotHideMultiPackageCycles :: () {
+    imports := [I(0, "/project/app", "_"), I(0, "/project/math", "_"), I(3, "/project/math", "_"),
+                I(3, "/project/app", "_")];
+    built := graph.Build(Files(), imports);
+    Rejected(built, graph.Cycle);
+    ClosedCycle(built, Files(), imports, 2);
+}
+
+@test
+CycleWitnessOmitsTheAcyclicTail :: () {
+    imports := [I(0, "/project/app/nested", "_"), I(2, "/project/math", "_"), I(3, "/project/app/nested", "_")];
+    built := graph.Build(Files(), imports);
+    Rejected(built, graph.Cycle);
+    ClosedCycle(built, Files(), imports, 2);
+    assert(CycleEntry(built, 0) != 0 && CycleEntry(built, 1) != 0);
+}
+
+@test
+OrderIsDependencyFirstWithSelfEdges :: () {
+    built := Accepted(graph.Build(Files(), [I(0, "/project/app/nested", "_"), I(0, "/project/math", "_"),
+                                            I(2, "/project/math", "_"), I(3, "/project/math", "_")]));
+    assert(graph.Order(built, 0) == graph.FilePackage(built, 3));
+    assert(graph.Order(built, 1) == graph.FilePackage(built, 2));
+    assert(graph.Order(built, 2) == graph.FilePackage(built, 0));
+    assert(graph.Dependency(built, 0, 1) == 0);
+    assert(graph.Dependency(built, 0, 2) == 1);
+    assert(graph.Dependency(built, 1, 2) == 2);
+    assert(graph.Dependency(built, 2, 2) == 3);
+}
+
+@test
+OrderIsIndependentOfDiscoveryOrder :: () {
+    files := Files();
+    reversed := [files[3], files[2], files[1], files[0]];
+    imports: graph.Import[] = [];
+    first := Accepted(graph.Build(files, imports));
+    second := Accepted(graph.Build(reversed, imports));
+    i: int = 0;
+    while (i < 3) {
+        a := graph.PackageAt(first, graph.Order(first, i));
+        b := graph.PackageAt(second, graph.Order(second, i));
+        assert(a.directory == b.directory && a.member_count == b.member_count, "same package at each ordinal");
+        i += 1;
+    }
+}
+
+@test
+RejectedCandidateLeavesAnEarlierGraph :: () {
+    imports := [I(0, "/project/math", "math"), I(3, "/project/app", "_")];
+    retained := Accepted(graph.Build(Files(), [imports[0]]));
+    Rejected(graph.Build(Files(), imports), graph.Cycle);
+    assert(graph.Lookup(retained, 0, "math") == graph.FilePackage(retained, 3));
+    assert(graph.Dependency(retained, 2, 0) == -1);
+}
+
+@test
+GraphsDoNotShareBindings :: () {
+    first := Accepted(graph.Build(Files(), [I(0, "/project/math", "one")]));
+    second := Accepted(graph.Build(Files(), [I(0, "/project/math", "two")]));
+    assert(graph.Lookup(first, 0, "one") >= 0 && graph.Lookup(first, 0, "two") == -1);
+    assert(graph.Lookup(second, 0, "two") >= 0 && graph.Lookup(second, 0, "one") == -1);
+}
+
+@test
+MaximumFileCountChainsInReverseOrder :: () {
+    files: graph.File[] = [];
+    imports: graph.Import[] = [];
+    i: int = 0;
+    while (i < 256) {
+        directory := format_text("/project/p{}", i);
+        files.append(F(format_text("{}/a.chibi", directory), directory, format_text("p{}", i)));
+        if (i > 0) {
+            imports.append(I(i - 1, directory, "_"));
+        }
+        i += 1;
+    }
+    built := Accepted(graph.Build(files, imports));
+    assert(graph.Count(built) == 256);
+    i = 0;
+    while (i < 256) {
+        assert(graph.Order(built, i) == 255 - i, "dependency-first chain order");
+        i += 1;
+    }
+}

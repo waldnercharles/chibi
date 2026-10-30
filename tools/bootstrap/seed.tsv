@@ -1,3 +1,3 @@
 # The release holding the bootstrap seed that tools/compiler/bootstrap/bootstrap.json pins:
 # release tag, asset, SHA-256. tools/bootstrap/seed.sh fetches it; publish-seed.sh writes it.
-bootstrap-seed-3cd88f30ed5754b9	compiler.chibip	3cd88f30ed5754b903dee2f2b0c5c410a4419db618ea24fca4e34ba50795ad1d
+bootstrap-seed-3efd86938934d0d9	compiler.chibip	3efd86938934d0d92436f851b75b64d33be97c069ae0529d68a7d5a32d08ffde

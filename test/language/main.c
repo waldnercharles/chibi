@@ -35,7 +35,6 @@ void test_language_asset_packaging_chibi();
 #ifdef CHIBI_TEST_ASSET_COMPILER_HOST
 void test_language_asset_compiler_host();
 #endif
-void test_language_syntax_chibi();
 void test_language_package_syntax();
 void test_language_package_syntax_chibi();
 void test_language_package_snapshot_chibi();
@@ -99,7 +98,6 @@ int main(int argc, char **argv)
     bool asset_packaging_chibi = argc == 2 &&
                                  !strcmp(argv[1], "--asset-packaging-chibi");
     bool shader_source_chibi = argc == 2 && !strcmp(argv[1], "--shader-source-chibi");
-    bool syntax_chibi = argc == 2 && !strcmp(argv[1], "--syntax-chibi");
     bool package_snapshot_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--package-snapshot-chibi");
     bool compiler_fixture = argc == 2 && !strcmp(argv[1], "--compiler-fixture");
@@ -182,9 +180,9 @@ int main(int argc, char **argv)
     if ((!compiler_artifact && !execution && !execution_scope && !record_values &&
          !record_document && !record_services && !record_compatibility &&
          !compositional_records && !program && !program_session && !ranges &&
-         !integer_semantics && !integer_shift_counts && !integer_shift_counts_authored &&
-         !package_graph && !package_graph_chibi && !asset_compiler_host &&
-         !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
+         !integer_semantics && !integer_shift_counts &&
+         !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
+         !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
          !package_syntax && !package_syntax_chibi && !package_snapshot_chibi &&
          !compiler_fixture && !bounded_compiler_chibi && !package_compiler_chibi &&
          !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
@@ -222,7 +220,7 @@ int main(int argc, char **argv)
             ""
             "--integer-shift-counts [case] | --integer-shift-counts-authored | "
             "--package-graph | --package-graph-chibi | --shader-source-chibi | "
-            "--asset-packaging-chibi | --syntax-chibi | "
+            "--asset-packaging-chibi | "
             ""
             ""
             "--package-snapshot-chibi | "
@@ -422,8 +420,6 @@ int main(int argc, char **argv)
         test_language_asset_packaging_chibi();
     } else if (shader_source_chibi) {
         test_language_shader_source_chibi();
-    } else if (syntax_chibi) {
-        test_language_syntax_chibi();
     } else if (package_graph) {
         test_language_package_graph();
     } else if (ranges) {

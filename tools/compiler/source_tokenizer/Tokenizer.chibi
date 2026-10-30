@@ -522,13 +522,67 @@ BraceHolds :: (outer: int, previous: int, valued: bool, prototyping: bool) -> in
 // Assignments, a constant's `::`, `return`, `await`, `in`, and operators
 // other than `>`, which can close a type's arguments before a body.
 ValueFollows :: (kind: int) -> bool {
-    return kind == Eq || kind == ColonEq || kind == ColonColon ||
-           (kind >= AddEq && kind <= XorEq) ||
-           kind == Not || (kind >= Add && kind <= Shl) || kind == CmpAnd ||
-           kind == CmpOr || kind == CmpEq || kind == NotEq || kind == Lt ||
-           kind == LtEq || kind == GtEq || kind == NotKeyword ||
-           kind == AndKeyword || kind == OrKeyword || kind == Coalesce || kind == Return ||
-           kind == Await || kind == In;
+    if (kind == Eq) {
+        return true;
+    }
+    if (kind == ColonEq) {
+        return true;
+    }
+    if (kind == ColonColon) {
+        return true;
+    }
+    if ((kind >= AddEq && kind <= XorEq)) {
+        return true;
+    }
+    if (kind == Not) {
+        return true;
+    }
+    if ((kind >= Add && kind <= Shl)) {
+        return true;
+    }
+    if (kind == CmpAnd) {
+        return true;
+    }
+    if (kind == CmpOr) {
+        return true;
+    }
+    if (kind == CmpEq) {
+        return true;
+    }
+    if (kind == NotEq) {
+        return true;
+    }
+    if (kind == Lt) {
+        return true;
+    }
+    if (kind == LtEq) {
+        return true;
+    }
+    if (kind == GtEq) {
+        return true;
+    }
+    if (kind == NotKeyword) {
+        return true;
+    }
+    if (kind == AndKeyword) {
+        return true;
+    }
+    if (kind == OrKeyword) {
+        return true;
+    }
+    if (kind == Coalesce) {
+        return true;
+    }
+    if (kind == Return) {
+        return true;
+    }
+    if (kind == Await) {
+        return true;
+    }
+    if (kind == In) {
+        return true;
+    }
+    return false;
 }
 
 Done :: (kind: int, end: int) -> Lexeme {

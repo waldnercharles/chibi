@@ -871,7 +871,16 @@ static bool census_function(int function)
     bool accepted;
     for (;;) {
         build_source(&build, functions);
-        REQUIRE(collect_scalar(build.text, &message, &start, &end, &accepted));
+        bool collected = collect_scalar(build.text, &message, &start, &end, &accepted);
+        if (!collected) {
+            fprintf(
+                stderr,
+                "census: the producer could not run over %s\n%s\n",
+                decls[function].name,
+                build.text
+            );
+        }
+        REQUIRE(collected);
         int missing = accepted || !starts(message, UNKNOWN)
                         ? -1
                         : omitted_call(&build, functions, start, end);
@@ -891,9 +900,10 @@ static bool census_function(int function)
     if (!accepted) {
         int in = owner(&build, start);
         const census_place *place = in >= 0 ? &build.functions[in] : NULL;
-        /* Anything but the producer's own rejections and calls of natives
-         * would be a source the census flattened wrong. */
-        bool ordinary = !starts(message, PRODUCER) &&
+        /* A flattening mistake leaves a name unresolved. Every other rejection
+         * is the producer's, or a limit of the checks it runs over the body,
+         * and so are calls of natives. */
+        bool ordinary = starts(message, "Unknown ") &&
                         (!starts(message, UNKNOWN) ||
                          !native_name(build.text, start, end));
         if (ordinary) {

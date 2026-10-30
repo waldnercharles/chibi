@@ -119,7 +119,7 @@ Cases :: () -> Case[] {
         Rejected("bare_return", "package scalar\nMain :: () -> int { return; }", "return needs a value", "return;"),
         Rejected("no_result", "package scalar\nMain :: () { return; }", "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result", "Main :: () { return; }"),
         Rejected("no_function", "package scalar\n", "scalar proof requires at least one function", "package scalar\n"),
-        Rejected("malformed", "package scalar\nMain :: () -> int { return 42;", "Expected }", ""),
+        Rejected("malformed", "package scalar\nMain :: () -> int { return 42;", "Expected `}`, found the end of the file (to close the `{` at 2:19)", ""),
         Rejected("nul", "package scalar\nMain :: () -> int { return 42; }\u0000", "Package source contains NUL bytes", "\u0000"),
         Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires its first function to return int", "string"),
         Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result", "[int: int]"),

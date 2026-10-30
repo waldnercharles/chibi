@@ -652,6 +652,40 @@ TEST_CASE(language_definitions_unions_and_type_patterns)
     return true;
 }
 
+TEST_CASE(language_type_attributes_are_declaration_children)
+{
+    parse(
+        "package facts\n"
+        "@error Failure :: struct { code: int; }\n"
+        "@error pub PublicFailure :: struct { code: int; }\n"
+        "@error Cause :: union { Missing | Invalid(code: int) }\n"
+        "@error pub PublicCause :: union { Missing | Invalid(code: int) }\n"
+        "@test pub Works :: () {}\n"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode root = ts_tree_root_node(original->tree);
+    const char *kinds[] = {
+        "record_declaration", "record_declaration",   "union_declaration",
+        "union_declaration",  "function_declaration",
+    };
+    const char *names[] = { "Failure", "PublicFailure", "Cause", "PublicCause", "Works" };
+    REQUIRE(ts_node_named_child_count(root) == 6);
+    for (uint32_t i = 0; i < 5; i++) {
+        TSNode declaration = ts_node_named_child(root, i + 1);
+        REQUIRE(!strcmp(ts_node_type(declaration), kinds[i]));
+        REQUIRE(node_text(field(declaration, "name"), names[i]));
+        TSNode attribute = field(declaration, "attribute");
+        REQUIRE(!strcmp(ts_node_type(attribute), "attribute"));
+        REQUIRE(ts_node_eq(ts_node_parent(attribute), declaration));
+        REQUIRE(node_text(field(attribute, "name"), i == 4 ? "test" : "error"));
+        REQUIRE(
+            node_text(field(declaration, "visibility"), "pub") ==
+            (i == 1 || i == 3 || i == 4)
+        );
+    }
+    return true;
+}
+
 TEST_CASE(language_query_header_and_cancel_deadline)
 {
     parse(
@@ -991,6 +1025,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_system_queries_and_control_flow);
     RUN_TEST_CASE(language_nested_typed_records_and_explicit_labels);
     RUN_TEST_CASE(language_definitions_unions_and_type_patterns);
+    RUN_TEST_CASE(language_type_attributes_are_declaration_children);
     RUN_TEST_CASE(language_query_header_and_cancel_deadline);
     RUN_TEST_CASE(language_query_generators_preserve_authored_order);
     RUN_TEST_CASE(language_query_expressions_share_system_terms);

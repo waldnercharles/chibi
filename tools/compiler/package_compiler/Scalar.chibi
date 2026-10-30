@@ -137,7 +137,7 @@ ScalarResults :: (callables: Callable[], params: Param[], types: TypeDecl[], mem
                                   package: callable.package, node: callable.node, kind: RecordDecl,
                                   first: length(fields), count: callable.results, size: 0, parent: -1, storage: 0,
                                   id: 0, layout: 0, component: 0, key: 0, value_storage: 0, value_container: 0,
-                                  value_record: -1};
+                                  value_record: -1, error: false};
             for (index in 0..<callable.results) {
                 named := params[callable.first + callable.count + index];
                 field: TypeMember = {name: named.name, storage: named.storage, container: named.container,

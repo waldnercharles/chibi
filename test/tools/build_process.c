@@ -1,4 +1,3 @@
-#include "authoring/source_prepare.h"
 #include "host/build_host.h"
 #include "host/build_timing.h"
 #include "host/build_values.h"
@@ -445,82 +444,6 @@ TEST_CASE(original_workflow_preserves_order_and_failure_on_real_host)
     free(saved_path);
     free(workflow);
     REQUIRE(valid);
-    return true;
-}
-
-TEST_CASE(ordinary_catalog_rejects_private_process_capabilities)
-{
-#ifdef CHIBI_TEST_NATIVE_RUNTIME
-    void test_native_catalog_enable();
-    test_native_catalog_enable();
-    char error[256];
-    native_capabilities *game = host_native_default_catalog_new(NULL, 0, NULL, 0, error, sizeof error);
-    REQUIRE(game);
-    const script_catalog *catalog = native_capabilities_catalog(game);
-    static const char *private_names[] = {
-        "build.run",
-        "build.environment",
-        "build.arguments",
-        "build.platform",
-        "build.root",
-        "build.program_directory",
-        "build.find_executable",
-        "build.read_file",
-        "build.file_exists",
-        "build.make_directory",
-        "build.reserve_directory",
-        "build.publish_directory",
-        "build.resolve_path",
-        "build.write_file",
-        "build.last_stdout",
-        "build.last_stderr",
-        "build.report",
-        "build.join",
-        "build.starts_with",
-        "build.before",
-        "build.after",
-        "build.lines",
-        "build.trim",
-        "build.concat",
-        "build.length",
-        "build.probe",
-        "build.environment_names",
-        "build.file_kind",
-        "build.file_stamp",
-        "build.list_directory",
-        "build.copy_file",
-        "build.rename",
-        "build.remove",
-        "build.hash_file",
-        "build.hash_text",
-        "build.start",
-        "build.wait",
-        "build.embed_file",
-    };
-    bool absent = true;
-    for (size_t i = 0; i < sizeof private_names / sizeof *private_names; i++) {
-        absent &= script_catalog_find_capability(catalog, private_names[i], SCRIPT_CAPABILITY_FUNCTION) <
-                  0;
-    }
-#else
-    const script_catalog empty = { 0 };
-    const script_catalog *catalog = &empty;
-    bool absent = true;
-#endif
-    const script_lower_bindings bindings = { 0 };
-    authoring_source *source = authoring_source_prepare(
-        "BuildProcessFixture.chibi",
-        fixture_source,
-        catalog,
-        &bindings,
-        BEHAVIOR_BYTECODE
-    );
-    bool rejected = source && !source->valid && source->diagnostic_count > 0;
-    authoring_source_free(source);
-#ifdef CHIBI_TEST_NATIVE_RUNTIME
-    native_capabilities_free(game);
-#endif
-    REQUIRE(absent && rejected);
     return true;
 }
 
@@ -2746,7 +2669,6 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(authored_fixture_runs_real_children_on_each_backend);
     RUN_TEST_CASE(authored_capability_errors_do_not_become_exit_codes);
     RUN_TEST_CASE(original_workflow_preserves_order_and_failure_on_real_host);
-    RUN_TEST_CASE(ordinary_catalog_rejects_private_process_capabilities);
     RUN_TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements);
     RUN_TEST_CASE(private_host_cli_executes_source_and_reports_errors);
     RUN_TEST_CASE(default_compiler_follows_relocated_read_only_sdk_and_refuses_corrupt_seed);

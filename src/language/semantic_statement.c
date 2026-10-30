@@ -14,6 +14,13 @@ static bool discards_result(const analyzer *a, const script_expression *call)
     }
     const script_catalog_capability
         *native = script_catalog_capability_by_id(a->catalog, call->capability);
+    for (int i = 0; native && i < native->result_count; i++) {
+        script_type type = i < acount(call->results) ? call->results[i]
+                                                     : native->results[i].type;
+        if (script_catalog_type_contains_error(a->catalog, type)) {
+            return false; /* The error-result pass reports the contract. */
+        }
+    }
     /* An array method that changes its array reports that itself. */
     return native && native->pure &&
            !(call->left >= 0 && script_analyzer_array_changer(native));
@@ -274,9 +281,36 @@ void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool tr
         return;
     }
     const script_expression *condition = &a->out->expressions[expression_index];
+    const script_expression *member = condition;
+    while (member->kind == SCRIPT_EXPR_UNWRAP && member->left >= 0) {
+        member = &a->out->expressions[member->left];
+    }
+    int root = script_analyzer_result_member_root(a, member);
+    if (root >= 0 && condition->type.storage == PIN_BOOL &&
+        condition->type.container == PIN_CONTAINER_SINGLE &&
+        !(condition->type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        /* An already unwrapped bool tests its payload. False does not erase
+         * the optional's established presence. */
+        return;
+    }
+    if (root >= 0 && member->presence_mutations == a->out->symbols[root].mutations &&
+        member->presence_epoch == a->presence_epoch &&
+        ((member->type.flags & SCRIPT_TYPE_OPTIONAL) ||
+         script_analyzer_result_member_present(a, root, member->member))) {
+        apush(
+            a->narrowed,
+            ((narrowing){ .symbol = root,
+                          .member = member->member,
+                          .present = truth,
+                          .mutations = a->out->symbols[root].mutations })
+        );
+        return;
+    }
     if ((condition->kind == SCRIPT_EXPR_SYMBOL ||
          condition->kind == SCRIPT_EXPR_QUERY_FIELD) &&
-        condition->symbol >= 0 && (condition->type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        condition->symbol >= 0 && (condition->type.flags & SCRIPT_TYPE_OPTIONAL) &&
+        condition->presence_mutations == a->out->symbols[condition->symbol].mutations &&
+        condition->presence_epoch == a->presence_epoch) {
         apush(
             a->narrowed,
             ((narrowing){ .symbol = condition->symbol,
@@ -287,7 +321,9 @@ void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool tr
     }
     if (condition->kind == SCRIPT_EXPR_IS) {
         const script_expression *source = &a->out->expressions[condition->left];
-        if (source->kind != SCRIPT_EXPR_SYMBOL || source->symbol < 0) {
+        if (source->kind != SCRIPT_EXPR_SYMBOL || source->symbol < 0 ||
+            source->presence_mutations != a->out->symbols[source->symbol].mutations ||
+            source->presence_epoch != a->presence_epoch) {
             return;
         }
         bool matches = truth != condition->negated;
@@ -369,6 +405,14 @@ void script_analyzer_condition_type(analyzer *a, TSNode node, int value)
                              condition->symbol >= 0 &&
                              (a->out->symbols[condition->symbol].type.flags &
                               SCRIPT_TYPE_OPTIONAL);
+    const script_expression *member = condition;
+    while (member->kind == SCRIPT_EXPR_UNWRAP && member->left >= 0) {
+        member = &a->out->expressions[member->left];
+    }
+    int root = script_analyzer_result_member_root(a, member);
+    narrowed_optional |= root >= 0 &&
+                         ((member->type.flags & SCRIPT_TYPE_OPTIONAL) ||
+                          script_analyzer_result_member_present(a, root, member->member));
     if (!narrowed_optional && !(type.flags & SCRIPT_TYPE_OPTIONAL) &&
         !((type.flags & SCRIPT_TYPE_TASK) && type.container == PIN_CONTAINER_SINGLE)) {
         script_analyzer_require(a, node, script_analyzer_boolean_type(), type);
@@ -826,12 +870,30 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
     if (script_analyzer_is(node, "assignment")) {
         result.kind = SCRIPT_STMT_ASSIGN;
         TSNode target = script_analyzer_field(node, "target");
-        if (script_analyzer_is(target, "identifier")) {
-            int symbol = script_analyzer_lookup(a, target);
-            if (symbol >= 0) {
-                a->out->symbols[symbol].mutations++;
-                script_analyzer_invalidate_narrowing(a, symbol);
+        TSNode root = target;
+        while (script_analyzer_is(root, "parenthesized_expression")) {
+            root = script_analyzer_field(root, "expression");
+        }
+        bool member_target = script_analyzer_is(root, "member_expression");
+        if (member_target) {
+            root = script_analyzer_field(root, "object");
+            while (script_analyzer_is(root, "parenthesized_expression")) {
+                root = script_analyzer_field(root, "expression");
             }
+        }
+        int symbol = script_analyzer_is(root, "identifier")
+                       ? script_analyzer_lookup(a, root)
+                       : -1;
+        bool result_member = symbol >= 0 && (a->out->symbols[symbol].type.flags &
+                                             SCRIPT_TYPE_RESULTS);
+        for (int i = 0; member_target && symbol >= 0 && i < acount(a->narrowed); i++) {
+            result_member |= a->narrowed[i].symbol == symbol && a->narrowed[i].member;
+        }
+        if (symbol >= 0 && (!member_target || result_member)) {
+            /* Invalidate before resolving the destination, so an optional
+             * result member remains boxed when it is replaced. */
+            a->out->symbols[symbol].mutations++;
+            script_analyzer_invalidate_narrowing(a, symbol);
         }
         result.expression = script_analyzer_expression(a, target, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
         script_expression address = a->out->expressions[result.expression];

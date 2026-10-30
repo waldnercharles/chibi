@@ -69,7 +69,7 @@ TaskResultDeclarations :: (callables: Callable[], params: Param[], input_types: 
                               kind: TaskResultDecl, first: parent + 1, count: 2, size: 0, parent: index,
                               storage: UnionStorage, id: id, layout: 0, component: 0, key: 0,
                               value_storage: value.storage, value_container: value.container,
-                              value_record: value.record};
+                              value_record: value.record, error: false};
         types.append(declared);
         tags: u64[] = [first_tag, second_tag];
         for (tag in tags) {
@@ -88,7 +88,7 @@ TaskResultDeclarations :: (callables: Callable[], params: Param[], input_types: 
             variant: TypeDecl = {name: name, type_name: "", package: callable.package, node: -1,
                                  kind: VariantDecl, first: first, count: count, size: 0, parent: parent,
                                  storage: UnionStorage, id: tag, layout: 0, component: 0, key: 0,
-                                 value_storage: 0, value_container: 0, value_record: -1};
+                                 value_storage: 0, value_container: 0, value_record: -1, error: false};
             types.append(variant);
         }
         index += 1;

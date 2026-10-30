@@ -1618,11 +1618,21 @@ ranges, alias presence, names, source order and diagnostics after producer and
 input storage retire. This standalone route has no runtime files, children,
 services or GPU work. Build separately.
 
-`compiler-tests-PACKAGE` runs the `@test` cases of one authored compiler
-package with the Release `chibi test` (`COMPILER_TEST_PACKAGES` in
-`tools/test_policy.py`, in the `projects` group). `package_paths/PathsTests.chibi`
-covers 26 lexical requests: resolver inputs, root and floor boundaries,
-intermediate escapes, absent parts and the path limits before and after collapse.
+`python3 tools/test_policy.py tool language-package-paths-chibi` selects three
+cases with 26 fixed lexical requests: twelve existing resolver inputs and
+fourteen boundary cases. The unchanged C helper supplies 26 oracle results;
+52 authored calls across bytecode and SLJIT allow one million instructions each.
+Two retained owners prepare the actual Paths and core sources once per backend
+(four source parses). Four fixed input buffers are at most 4,097 bytes including
+the terminator. Cases cover the path and joined-path limits before collapse,
+long segments, root boundaries, intermediate escapes, absent inputs and absolute
+paths ignoring the unused base. Returned strings are inspected after producer
+and input storage retire; retained 4,095-byte results survive subsequent invalid
+calls and owner teardown. Used bases and floors are canonical absolute paths.
+This corpus has at most four segments per request; it does not establish
+performance at the maximum segment count. The route has no runtime files,
+children, services or GPU work. Build separately; this route is outside the
+aggregate.
 
 `python3 tools/test_policy.py tool language-package-routes-chibi` compares
 thirteen collection-root requests, eleven file routes and sixteen import routes.
@@ -1894,10 +1904,21 @@ before publication. Build separately. This route stays outside aggregates.
 Source registration records no measured pass, authored compiler dispatch or
 stage-one bootstrap.
 
-`compiler-tests-unit_algebra` runs `unit_algebra/UnitsTests.chibi`: 24 Parse,
-five Same, ten Product and nine Format requests covering missing and empty
-annotations, integer powers, overflow before cancellation, term order, sticky
-denominators, superscript and dot UTF-8 truncation and tiny output sizes.
+`python3 tools/test_policy.py tool language-unit-algebra-chibi` compares unit
+parsing, dimension equality, multiplication/division and formatting. Four pico
+cases run 24 Parse, five Same, ten Product and nine Format requests, totaling
+96 authored calls across bytecode and SLJIT at two million instructions each.
+Units and CoreStrings are prepared once per backend: four preparation parses.
+Inputs contain at most eight terms and 240 bytes per input or name; format
+capacities range from one to 192 bytes including the C terminator.
+
+Each C result has an independent expected witness. Equality, product and format
+inputs are raw algebra values, independent of C parsing. Cases cover missing
+and empty annotations, integer powers, overflow before cancellation, term order,
+sticky denominators, superscript/dot UTF-8 truncation and tiny output buffers.
+Detached results and a retained unit/string survive input and owner retirement.
+There are no runtime files, children, services or GPU work. Build separately;
+this route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-signature-reader-chibi` compares raw
 annotation and signature reading. Four pico cases run sixteen Type and thirteen

@@ -85,6 +85,19 @@ class Symbols(unittest.TestCase):
             with self.subTest(nm_text=nm_text):
                 self.assertEqual(capture.check_symbols(nm_text, False), [])
 
+    def test_objects_require_imported_sanitizers(self):
+        for prefix in ("__", "___"):
+            for asan_kind, ubsan_kind in (("U", "U"), ("T", "T"), ("U", "T"), ("T", "U")):
+                nm_text = (f"{asan_kind} {prefix}asan_init\n"
+                           f"{ubsan_kind} {prefix}ubsan_handle_add_overflow\n")
+                with self.subTest(prefix=prefix, asan=asan_kind, ubsan=ubsan_kind):
+                    self.assertTrue(capture.check_symbols(nm_text, True))
+                    if asan_kind == ubsan_kind == "U":
+                        self.assertTrue(capture.check_symbols(nm_text, True, compiled=True))
+                    else:
+                        with self.assertRaises(ValueError):
+                            capture.check_symbols(nm_text, True, compiled=True)
+
     def test_rejects_missing_or_contaminating_symbols(self):
         cases = [
             ("no symbols", "", True),
@@ -375,6 +388,43 @@ class CommandLine(unittest.TestCase):
                         *declared, "", str(sources[0].relative_to(root)), capture.stamp(sources[0]),
                         str(output), capture.stamp(output)]) + "\n")
                     receipt = run_capture("unsanitized-built-output", "incomplete")
+                    self.assertIn("sanitizer symbols", receipt["error"])
+
+                    # Cross-compiled Mach-O objects need no macOS SDK. Replacing
+                    # a recorded link input should validate its symbols, then
+                    # reject the old link's now-stale input stamp.
+                    macho = [str(llvm / "bin/clang"), "--target=arm64-apple-macos15", *declared[1:]]
+                    subprocess.run(macho, check=True, capture_output=True)
+                    databases[0][0]["arguments"] = macho
+                    (build / "compile_commands.json").write_text(json.dumps(databases[0]))
+                    record.write_text("\n".join([
+                        *macho, "", str(sources[0].relative_to(root)), capture.stamp(sources[0]),
+                        str(output), capture.stamp(output)]) + "\n")
+                    receipt = run_capture("macho-object-stale-link", "incomplete")
+                    self.assertEqual(len(receipt["checked"]), 3, receipt)
+                    self.assertIn("stale input/output", receipt["error"])
+                    self.assertTrue(all(symbol.startswith("___") for symbol in receipt["checked"][0]["symbols"]))
+
+                    # The Mach-O path must also reject an uninstrumented object
+                    # even when fresh constructed records claim sanitizer flags.
+                    subprocess.run([arg for arg in macho if not arg.startswith("-fsanitize=")],
+                                   check=True, capture_output=True)
+                    record.write_text("\n".join([
+                        *macho, "", str(sources[0].relative_to(root)), capture.stamp(sources[0]),
+                        str(output), capture.stamp(output)]) + "\n")
+                    receipt = run_capture("macho-unsanitized-output", "incomplete")
+                    self.assertEqual(receipt["checked"], [])
+                    self.assertIn("sanitizer symbols", receipt["error"])
+
+                    subprocess.run([str(llvm / "bin/clang"), "--target=arm64-apple-macos15",
+                                    "-x", "c", "-", "-o", str(output), "-c"],
+                                   input="void __asan_init(void) {}\nvoid __ubsan_handle_add_overflow(void) {}\n",
+                                   text=True, check=True, capture_output=True)
+                    record.write_text("\n".join([
+                        *macho, "", str(sources[0].relative_to(root)), capture.stamp(sources[0]),
+                        str(output), capture.stamp(output)]) + "\n")
+                    receipt = run_capture("macho-defined-stubs", "incomplete")
+                    self.assertEqual(receipt["checked"], [])
                     self.assertIn("sanitizer symbols", receipt["error"])
 
 

@@ -81,9 +81,12 @@ def check_flags(arguments: list[str], sanitizers: bool, test: bool = False) -> N
     check_sanitizers(arguments, sanitizers)
 
 
-def check_symbols(nm_text: str, sanitizers: bool) -> list[str]:
+def check_symbols(nm_text: str, sanitizers: bool, *, compiled: bool = False) -> list[str]:
     # Mach-O adds one leading underscore to the same runtime symbol names.
-    symbols = sorted(set(re.findall(r"(?m)^\s*(?:[0-9a-fA-F]+\s+)?[UT]\s+(___?(?:asan|ubsan)_\w+)\s*$", nm_text)))
+    # Objects must reference instrumentation; runtime definitions count only
+    # after linking, not in a source object defining sanitizer-named stubs.
+    kind = "U" if compiled else "[UT]"
+    symbols = sorted(set(re.findall(rf"(?m)^\s*(?:[0-9a-fA-F]+\s+)?{kind}\s+(___?(?:asan|ubsan)_\w+)\s*$", nm_text)))
     families = {symbol.lstrip("_").split("_", 1)[0] for symbol in symbols}
     if families != ({"asan", "ubsan"} if sanitizers else set()):
         raise ValueError("sanitizer symbols do not match the requested profile")
@@ -162,10 +165,12 @@ def main() -> int:
                 read_record(output, command)
                 with output.open("rb") as stream:
                     digest = hashlib.file_digest(stream, "sha256").hexdigest()
-                nm_text = subprocess.check_output([args.nm, "-u" if compiled else "-g", str(output)], text=True)
+                # Mach-O's -u output omits symbol types; -g preserves the U/T
+                # columns used by the same strict parser for objects and links.
+                nm_text = subprocess.check_output([args.nm, "-g", str(output)], text=True)
                 Path(str(destination) + ".symbols.txt").write_text("\n".join(
                     line for line in nm_text.splitlines() if "__asan_" in line or "__ubsan_" in line) + "\n")
-                symbols = check_symbols(nm_text, sanitizers)
+                symbols = check_symbols(nm_text, sanitizers, compiled=compiled)
                 if stamp(output) != before:
                     raise ValueError(f"output changed during capture: {output}")
                 receipt["checked"].append({"output": str(output), "sha256": digest,

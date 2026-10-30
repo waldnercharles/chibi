@@ -35,7 +35,6 @@ static behavior_function_context context;
 static behavior_managed_heap managed;
 static arena storage, retained, catalog_storage;
 static unsigned char *image;
-static size_t image_size;
 const char COMPOSITIONAL_RECORD_ALIAS_REJECTION
     [] = "package facts\n"
          "Node :: struct { value: int; }\n"
@@ -137,7 +136,6 @@ static void cleanup()
     arena_free(&catalog_storage);
     free(image);
     image = NULL;
-    image_size = 0;
 }
 
 TEST_CASE(compositional_records_authored_values)

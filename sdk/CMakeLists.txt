@@ -474,56 +474,12 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     chibi_sdk_headers(chibi_studio_capabilities PUBLIC authoring/studio_schema.h authoring/studio_definition.h)
     target_link_libraries(chibi_studio_capabilities PUBLIC chibi_native_capabilities PRIVATE chibi_execution)
     list(APPEND CHIBI_SDK_TARGETS chibi_studio_capabilities)
-    set(engine_components "${CMAKE_CURRENT_BINARY_DIR}/generated/authoring/engine_components.c")
-    add_custom_command(OUTPUT "${engine_components}"
-        COMMAND ${CMAKE_COMMAND} "-DINPUT=${CHIBI_SDK_ROOT}/src/authoring/engine_components.kdl"
-            "-DOUTPUT=${engine_components}" "-DSYMBOL=component_presentation_engine_kdl"
-            -P "${CHIBI_SDK_ROOT}/cmake/embed_binary.cmake"
-        DEPENDS "${CHIBI_SDK_ROOT}/src/authoring/engine_components.kdl"
-            "${CHIBI_SDK_ROOT}/cmake/embed_binary.cmake"
-            "${CHIBI_SDK_ROOT}/cmake/generated_file.cmake" VERBATIM)
-    add_library(chibi_component_presentation STATIC
-        "${CHIBI_SDK_ROOT}/src/authoring/component_presentation.c" "${engine_components}")
-    add_library(Chibi::component_presentation ALIAS chibi_component_presentation)
-    set_target_properties(chibi_component_presentation PROPERTIES EXPORT_NAME component_presentation)
-    chibi_sdk_headers(chibi_component_presentation PUBLIC authoring/component_presentation.h)
-    target_link_libraries(chibi_component_presentation PUBLIC chibi_ecs PRIVATE chibi_asset_text)
-    list(APPEND CHIBI_SDK_TARGETS chibi_component_presentation)
-    add_library(chibi_input_map STATIC "${CHIBI_SDK_ROOT}/src/assets/input_map.c")
-    add_library(Chibi::input_map ALIAS chibi_input_map)
-    set_target_properties(chibi_input_map PROPERTIES EXPORT_NAME input_map)
-    chibi_sdk_headers(chibi_input_map PUBLIC assets/input_map.h)
-    target_link_libraries(chibi_input_map PUBLIC chibi_input_action
-        PRIVATE chibi_types chibi_asset_values chibi_asset_text chibi_support)
-    list(APPEND CHIBI_SDK_TARGETS chibi_input_map)
-    add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c")
-    add_library(Chibi::project_document ALIAS chibi_project_document)
-    set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
-    chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h)
-    target_link_libraries(chibi_project_document PRIVATE chibi_input_action chibi_asset_text
-        chibi_language_syntax chibi_json chibi_support)
-    list(APPEND CHIBI_SDK_TARGETS chibi_project_document)
     add_library(chibi_reference_index STATIC "${CHIBI_SDK_ROOT}/src/authoring/reference_index.c")
     add_library(Chibi::reference_index ALIAS chibi_reference_index)
     set_target_properties(chibi_reference_index PROPERTIES EXPORT_NAME reference_index)
     chibi_sdk_headers(chibi_reference_index PUBLIC authoring/reference_index.h)
     target_link_libraries(chibi_reference_index PRIVATE chibi_support chibi_events)
     list(APPEND CHIBI_SDK_TARGETS chibi_reference_index)
-    add_library(chibi_prototype_document STATIC "${CHIBI_SDK_ROOT}/src/assets/prototype.c")
-    add_library(Chibi::prototype_document ALIAS chibi_prototype_document)
-    set_target_properties(chibi_prototype_document PROPERTIES EXPORT_NAME prototype_document)
-    chibi_sdk_headers(chibi_prototype_document PUBLIC assets/prototype.h)
-    target_link_libraries(chibi_prototype_document PUBLIC chibi_ecs chibi_asset_values chibi_scene_document
-        PRIVATE chibi_asset_text)
-    list(APPEND CHIBI_SDK_TARGETS chibi_prototype_document)
-    add_library(chibi_scene_document STATIC "${CHIBI_SDK_ROOT}/src/assets/scene_document.c"
-        "${CHIBI_SDK_ROOT}/src/assets/physics_settings.c")
-    add_library(Chibi::scene_document ALIAS chibi_scene_document)
-    set_target_properties(chibi_scene_document PROPERTIES EXPORT_NAME scene_document)
-    chibi_sdk_headers(chibi_scene_document PUBLIC assets/scene_document.h assets/physics_settings.h)
-    target_link_libraries(chibi_scene_document PUBLIC chibi_ecs chibi_asset_values chibi_scene_runtime
-        PRIVATE chibi_asset_text chibi_support)
-    list(APPEND CHIBI_SDK_TARGETS chibi_scene_document)
     include(ui.cmake)
     add_library(chibi_compiler STATIC "${CHIBI_SDK_ROOT}/src/language/lower.c")
     add_library(Chibi::compiler ALIAS chibi_compiler)
@@ -550,7 +506,6 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     include(source_authoring.cmake)
     if(CHIBI_SDK_BUILD_NATIVE)
         include(project_preparation.cmake)
-        include(asset_authoring.cmake)
         if(CHIBI_SDK_BUILD_DESKTOP)
             include(preview.cmake)
         endif()
@@ -686,7 +641,7 @@ if(TARGET chibi-compile AND TARGET chibi-player)
     target_include_directories(chibi_application PRIVATE
         "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_link_libraries(chibi_application PUBLIC chibi_program chibi_project_compilation
-        chibi_project_document chibi_host_native_default chibi_core_capabilities
+        chibi_host_native_default chibi_core_capabilities
         chibi_text_capabilities chibi_array_capabilities chibi_support chibi_json chibi_task_pool_runtime
         chibi_compiler_syntax chibi_compiler_json)
     target_compile_options(chibi_application PRIVATE -Wall -Wextra -Werror)

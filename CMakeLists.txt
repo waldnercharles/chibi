@@ -40,13 +40,6 @@ option(CHIBI_DISTRIBUTION "Load native resources only from the installed package
 if(CHIBI_DISTRIBUTION AND CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     message(FATAL_ERROR "CHIBI_DISTRIBUTION requires the static native application")
 endif()
-if(CHIBI_DISTRIBUTION)
-    set_source_files_properties(src/support/resources.c PROPERTIES
-        COMPILE_DEFINITIONS CHIBI_DISTRIBUTION=1)
-else()
-    set_source_files_properties(src/support/resources.c PROPERTIES
-        COMPILE_DEFINITIONS "CHIBI_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\"")
-endif()
 if(CHIBI_ENABLE_CCACHE)
     find_program(CCACHE_PROGRAM ccache)
     if(CCACHE_PROGRAM)

@@ -36,7 +36,7 @@ The owner's top priority is replacing C, C++ and CMake with Chibi as fast as pos
 - Keep ownership/lifetimes explicit; mark file-private symbols `static`.
 - Prefer direct calls and `switch` statements to function pointers.
 - Keep native-boundary tests and benchmark harnesses in C using pico_unit; use another third-party library when additional functionality is needed.
-- Never write C++. The remaining pass-through shims to C++ APIs (`src/ui/rml.cpp` for RmlUi, Studio's `src/editor/text/zep_bridge.cpp` for Zep, `test/draw_backend.cpp` for Cute's draw diagnostics) only convert types and forward calls; delete them when their C callers move to Chibi.
+- Never write C++. The one remaining pass-through shim to a C++ API is Studio's `src/editor/text/zep_bridge.cpp` for Zep; it only converts types and forwards calls. Delete it when its C callers move to Chibi.
 - The C style rules above apply to C that still exists; don't write new C when Chibi can do the job.
 - Follow existing names and clang-format; keep short names local; name constants and invariants with `#define`, `enum`, or `static const`.
 

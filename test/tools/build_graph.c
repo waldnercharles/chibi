@@ -427,8 +427,7 @@ TEST_CASE(named_programs_build_what_they_run)
     static const char *const programs[] = {
         "test/tools/test_tools",   "test/tools/policy_worker",
         "sdk/chibi-compile",       "sdk/chibi-build-host",
-        "sdk/chibi-compiler-host", "sdk/chibi",
-        "sdk/chibi-player"
+        "sdk/chibi-compiler-host", "sdk/chibi"
     };
     int found = 0;
     yyjson_val *entry;
@@ -436,13 +435,13 @@ TEST_CASE(named_programs_build_what_they_run)
     while ((entry = yyjson_arr_iter_next(&iter))) {
         const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
         REQUIRE(strcmp(base(output), "test_host"));
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < (int)(sizeof programs / sizeof *programs); i++) {
             snprintf(path, sizeof path, "%s/%s", build_dir, programs[i]);
             found += !strcmp(output, path);
         }
     }
     yyjson_doc_free(doc);
-    REQUIRE(found == 8);
+    REQUIRE(found == (int)(sizeof programs / sizeof *programs));
     return true;
 }
 

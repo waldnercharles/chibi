@@ -94,7 +94,7 @@ jobs:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
       # chibi-cli runs chibi-compile too slowly under sanitizers. The
-      # chibi launcher target also builds chibi-compile and chibi-player.
+      # chibi launcher target also builds chibi-compile.
       - name: Build an unsanitized chibi launcher (Release)
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          make build BUILD_TARGET='chibi chibi-compile test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
       # Run authored command generation on the Release helper; test_tools and
@@ -229,7 +229,7 @@ jobs:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
       # chibi-cli runs chibi-compile too slowly under sanitizers. The
-      # chibi launcher target also builds chibi-compile and chibi-player, and
+      # chibi launcher target also builds chibi-compile, and
       # the Graph build adds the Release build host the Debug builds use.
       - name: Build an unsanitized chibi launcher (Release)
         id: release-build
@@ -265,7 +265,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          make build BUILD_TARGET='chibi chibi-compile test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
       - name: Preserve failed macOS Graph stage log

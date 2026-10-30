@@ -3,37 +3,6 @@ package engine
 // Linux CMake reference link order; repeated libraries are intentional.
 // System OpenGL paths are resolved by the profile, not pinned to a distro.
 pub LinuxLinks :: (target: string) -> string[] {
-    if (target == "chibi-player") {
-        return [
-            "chibi_renderer", "chibi_player", "chibi_native_prepared", "chibi_host_native_default",
-            "chibi_text_capabilities", "-ldl", "chibi_declared_components", "chibi_ui_host", "chibi_platform",
-            "third-party/lib/chibi-vendor/libchibi_vendor_cute.a", "system/libGLX.so", "system/libOpenGL.so",
-            "third-party/lib/chibi-vendor/libchibi_vendor_physfs_static.a", "-lpthread",
-            "third-party/lib/chibi-vendor/libchibi_vendor_s2n.a",
-            "third-party/lib/chibi-vendor/libchibi_vendor_AWS__crypto.a", "-ldl", "-lrt",
-            "third-party/lib/chibi-vendor/libchibi_vendor_SDL3_static.a", "chibi_text_search",
-            "chibi_builtin_fonts", "third-party/lib/chibi-vendor/libchibi_vendor_rmlui_core.a",
-            "third-party/lib/chibi-vendor/libchibi_vendor_freetype.a", "chibi_engine", "chibi_scheduling",
-            "chibi_ui_document_values", "chibi_ui_documents", "chibi_visual_catalog", "chibi_model_runtime",
-            "chibi_image_catalog", "chibi_fmt", "chibi_ui_runtime", "chibi_value_document",
-            "chibi_asset_values", "chibi_host_native_catalog", "chibi_core_capabilities",
-            "chibi_array_capabilities", "chibi_field_capabilities", "chibi_state_capabilities",
-            "chibi_selection_capabilities", "chibi_set_capabilities", "chibi_comparison_capabilities",
-            "chibi_conversion_capabilities", "chibi_native_bindings", "chibi_audio_runtime",
-            "chibi_url_runtime", "chibi_vector_capabilities", "chibi_math_capabilities",
-            "chibi_arithmetic_capabilities", "chibi_physics3d_runtime",
-            "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a", "chibi_visibility_runtime",
-            "chibi_physics_runtime", "chibi_material_runtime", "chibi_shader_runtime", "chibi_mesh_runtime",
-            "chibi_particle_runtime", "chibi_save_runtime", "chibi_json", "chibi_field_catalog", "chibi_fields",
-            "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lstdc++",
-            "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_scene_runtime",
-            "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_input_runtime",
-            "chibi_spatial_runtime", "chibi_native_types", "chibi_native_capabilities",
-            "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
-            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_capabilities", "chibi_events",
-            "chibi_types", "chibi_support", "-lm"
-        ];
-    }
     if (target == "chibi-compile") {
         return [
             "chibi_project_compilation", "chibi_project_document", "chibi_behavior_runtime", "chibi_asset_json",
@@ -118,18 +87,16 @@ pub LinuxLinks :: (target: string) -> string[] {
             "chibi_comparison_capabilities", "chibi_conversion_capabilities", "chibi_host_native_default",
             "chibi_physics_runtime", "chibi_physics3d_runtime", "chibi_material_runtime",
             "chibi_task_pool_runtime", "chibi_spatial_runtime", "chibi_tilemap_runtime", "chibi_mesh_runtime",
-            "chibi_tilemap_runtime", "chibi_shader_runtime", "chibi_platform", "chibi_asset_text",
+            "chibi_tilemap_runtime", "chibi_shader_runtime", "chibi_asset_text",
             "chibi_asset_json", "chibi_asset_text", "chibi_ui_document", "chibi_fmt", "chibi_particle_runtime",
-            "chibi_platform", "chibi_project_document", "chibi_text_source", "chibi_asset_text",
-            "chibi_renderer", "chibi_shader_preparation", "chibi_project_preparation", "chibi_image_preparation", "chibi_shader_preparation", "chibi_mesh_runtime", "chibi_mesh_runtime",
+            "chibi_project_document", "chibi_text_source", "chibi_asset_text",
+            "chibi_shader_preparation", "chibi_image_preparation", "chibi_shader_preparation", "chibi_mesh_runtime", "chibi_mesh_runtime",
             "chibi_native_types", "chibi_asset_text",
-            "chibi_platform", "chibi_authoring", "chibi_asset_authoring", "chibi_arithmetic_capabilities",
-            "chibi_project_preparation", "chibi_component_presentation", "chibi_task_pool_runtime", "chibi_math_capabilities", "chibi_particle_runtime",
-            "chibi_save_runtime", "chibi_studio_capabilities", "chibi_asset_text", "chibi_vector_capabilities",
-            "chibi_project_preparation", "chibi_renderer", "chibi_reference_index", "chibi_prototype_document", "chibi_scene_document", "chibi_native_types",
-            "chibi_project_preparation", "chibi_renderer",
-            "chibi_ui_host",
-            "chibi_platform", "third-party/lib/chibi-vendor/libchibi_vendor_cute.a", "system/libGLX.so",
+            "chibi_authoring", "chibi_asset_authoring", "chibi_arithmetic_capabilities",
+            "chibi_component_presentation", "chibi_task_pool_runtime", "chibi_math_capabilities", "chibi_particle_runtime",
+            "chibi_save_runtime", "chibi_asset_text", "chibi_vector_capabilities",
+            "chibi_reference_index", "chibi_prototype_document", "chibi_scene_document", "chibi_native_types",
+            "third-party/lib/chibi-vendor/libchibi_vendor_cute.a", "system/libGLX.so",
             "system/libOpenGL.so", "third-party/lib/chibi-vendor/libchibi_vendor_physfs_static.a", "-lpthread",
             "third-party/lib/chibi-vendor/libchibi_vendor_s2n.a",
             "third-party/lib/chibi-vendor/libchibi_vendor_AWS__crypto.a", "-ldl", "-lrt",
@@ -160,7 +127,7 @@ pub LinuxLinks :: (target: string) -> string[] {
             "chibi_events", "chibi_asset_values", "chibi_text_capabilities", "chibi_fmt",
             "chibi_core_capabilities", "chibi_state_capabilities", "chibi_selection_capabilities",
             "chibi_set_capabilities", "chibi_field_catalog", "chibi_field_capabilities", "chibi_model_runtime",
-            "chibi_shader_runtime", "chibi_fields", "chibi_studio_capabilities", "chibi_execution", "chibi_ecs",
+            "chibi_shader_runtime", "chibi_fields", "chibi_execution", "chibi_ecs",
             "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_native_capabilities",
             "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
         ];

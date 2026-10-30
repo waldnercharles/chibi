@@ -2292,7 +2292,7 @@ TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage)
 
 static bool ci_initial_build_profile(bool instrumented, bool cmake)
 {
-    const char *targets = "targets=chibi,chibi-compile,chibi-player,"
+    const char *targets = "targets=chibi,chibi-compile,"
                           "test_tools,test_language";
     const char *profile = instrumented ? "sanitizer" : "debug";
     const char *sanitizer = instrumented ? "ON" : "OFF";

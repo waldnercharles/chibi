@@ -14,7 +14,7 @@ import strings "core:strings"
 //
 // A sanitized build in `build` is the default; --release builds `build-release`
 // and --debug `build-debug`. Without --target it builds chibi, chibi-compile,
-// chibi-player and chibi_ctl; --all builds every target. --dry-run prints the
+// and chibi_ctl; --all builds every target. --dry-run prints the
 // commands instead of running them.
 
 Join :: (parts: string[]) -> string {
@@ -169,7 +169,7 @@ Build :: (arguments: string[]) -> int {
     graph = build.concat(graph, ["--all-commands", "on"])
     targets := Values(arguments, "--target")
     if (length(targets) == 0 && !Flag(arguments, "--all")) {
-        targets = ["chibi", "chibi-compile", "chibi-player", "chibi_ctl"]
+        targets = ["chibi", "chibi-compile", "chibi_ctl"]
     }
     if (length(targets) > 0) {
         targets = build.concat(targets, ["chibi-build-host"])

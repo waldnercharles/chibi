@@ -461,19 +461,9 @@ endif()
 if(CHIBI_SDK_BUILD_NATIVE)
     include(visual_catalog.cmake)
 endif()
-if(CHIBI_SDK_BUILD_DESKTOP)
-    include(desktop.cmake)
-endif()
 if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
-    install(PROGRAMS "${CHIBI_SDK_ROOT}/tools/package_sdk.py" "${CHIBI_SDK_ROOT}/tools/package_player.py"
+    install(PROGRAMS "${CHIBI_SDK_ROOT}/tools/package_sdk.py"
         "${CHIBI_SDK_ROOT}/tools/package_studio.py" DESTINATION share/chibi/tools)
-    add_library(chibi_studio_capabilities STATIC "${CHIBI_SDK_ROOT}/src/authoring/studio_native.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/studio_definition.c")
-    add_library(Chibi::studio_capabilities ALIAS chibi_studio_capabilities)
-    set_target_properties(chibi_studio_capabilities PROPERTIES EXPORT_NAME studio_capabilities)
-    chibi_sdk_headers(chibi_studio_capabilities PUBLIC authoring/studio_schema.h authoring/studio_definition.h)
-    target_link_libraries(chibi_studio_capabilities PUBLIC chibi_native_capabilities PRIVATE chibi_execution)
-    list(APPEND CHIBI_SDK_TARGETS chibi_studio_capabilities)
     set(engine_components "${CMAKE_CURRENT_BINARY_DIR}/generated/authoring/engine_components.c")
     add_custom_command(OUTPUT "${engine_components}"
         COMMAND ${CMAKE_COMMAND} "-DINPUT=${CHIBI_SDK_ROOT}/src/authoring/engine_components.kdl"
@@ -551,9 +541,6 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     if(CHIBI_SDK_BUILD_NATIVE)
         include(project_preparation.cmake)
         include(asset_authoring.cmake)
-        if(CHIBI_SDK_BUILD_DESKTOP)
-            include(preview.cmake)
-        endif()
     endif()
 endif()
 # Private executable and authored orchestration; no build capabilities in game catalogs.
@@ -669,7 +656,7 @@ if(CHIBI_SDK_COMPILER_HOST_ONLY)
     return()
 endif()
 # `chibi PROJECT` prepares a changed project and plays it with its siblings.
-if(TARGET chibi-compile AND TARGET chibi-player)
+if(TARGET chibi-compile)
     add_library(chibi_application OBJECT "${CHIBI_SDK_ROOT}/src/host/application.c"
         "${CHIBI_SDK_ROOT}/src/host/application_tools.c"
         "${CHIBI_SDK_ROOT}/src/host/application_io.c"
@@ -710,7 +697,7 @@ if(TARGET chibi-compile AND TARGET chibi-player)
     install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
         FILES_MATCHING PATTERN "*.chibi")
     target_compile_options(chibi PRIVATE -Wall -Wextra -Werror)
-    add_dependencies(chibi chibi-compile chibi-player)
+    add_dependencies(chibi chibi-compile)
     chibi_windows_manifest(chibi)
     chibi_install_product(chibi)
 endif()
@@ -719,7 +706,7 @@ endif()
 # Embedded product builds and compiler-host-only bootstraps keep their paths.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND
    NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    foreach(target chibi chibi-compile chibi-player chibi-build-host chibi-compiler-host)
+    foreach(target chibi chibi-compile chibi-build-host chibi-compiler-host)
         if(TARGET ${target})
             set_target_properties(${target} PROPERTIES
                 RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/bin>")

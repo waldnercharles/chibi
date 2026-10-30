@@ -26,10 +26,7 @@ HEALTH = None
 NEXT = 'make test-list'
 CPU_SELECTORS = {
     '--execution-scope': 'execution-scope',
-    '--player-url': 'player-url',
-    '--player-clock': 'player-clock',
     '--audio-analysis': 'audio-analysis',
-    '--shader-webgpu': 'shader-webgpu',
     '--arena': 'arena',
     
     '--asset-values': 'asset-values',
@@ -48,16 +45,9 @@ CPU_SELECTORS = {
     
     '--material-simulation': 'material-simulation',
     '--material-ecs': 'material-ecs',
-    '--material-render': 'material-render',
-    
-    
     '--particles': 'particles',
-    '--png-encoding': 'png-encoding',
-    
     '--project-document': 'project-document',
     '--prototype-documents': 'prototype-documents',
-    
-    '--render-geometry': 'render-geometry',
     
     '--shader-bake': 'shader-bake',
     '--shader-source-debug': 'shader-source-debug',
@@ -66,12 +56,9 @@ CPU_SELECTORS = {
     '--shader-source-chibi': 'language-shader-source-chibi',
     '--material-bake': 'material-bake',
     '--environment-authoring': 'environment-authoring',
-    '--terrain-seams': 'terrain-seams',
     '--material-surface-mesh': 'material-surface-mesh',
-    '--scene3d-camera': 'scene3d-camera',
-    '--scene3d-volume': 'scene3d-volume',
-    '--scene3d-terrain': 'scene3d-terrain',
     '--terrain-checkpoint': 'terrain-checkpoint',
+    '--terrain-seams': 'terrain-seams',
     '--terrain-storage': 'terrain-storage',
     '--terrain-storage-commands': 'terrain-storage-commands',
     
@@ -104,28 +91,11 @@ STUDIO_ACCEPTANCE = {
     '--studio-asset-pointer': ('--asset-pointer', 20, 'Studio asset pointer accepted: frames=20'),
     '--studio-debugger-source-history': ('--debugger-source-history', 47, 'Studio debugger source history accepted: frames=47'),
 }
-RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize': 'viewport-resize',
-                    
-                    
-                    '--scene3d-terrain-gpu': 'scene3d-terrain-gpu',
-                    '--scene3d-volume-gpu': 'scene3d-volume-gpu',
-                    '--hrc-spot': 'hrc-spot',
-                    '--sdf-visibility': 'sdf-visibility',
-                    '--radiance': 'radiance', '--radiance-depth': 'radiance-depth',
-                    '--material-sampling': 'material-sampling',
-                    '--scene2d': 'scene2d', '--material-terrain-seams': 'material-terrain-seams',
-                    '--scene3d-gles': 'scene3d-gles',
+RENDER_SELECTORS = {'--scene3d-gles': 'scene3d-gles',
                     '--scene3d-gi': 'scene3d-gi', '--scene3d-gi-gles': 'scene3d-gi-gles',
-                    '--material-ramps': 'material-ramps', '--radiance-surface': 'radiance-surface',
-                    '--radiance-horizons4': 'radiance-horizons4', '--radiance-horizons8': 'radiance-horizons8',
-                    
-                    
-                    
-                    '--scene3d-post': 'scene3d-post', '--scene3d-shapes': 'scene3d-shapes',
-                    '--texture-transform': 'texture-transform'}
+                    '--material-ramps': 'material-ramps', '--texture-transform': 'texture-transform'}
 GPU_SELECTORS = STUDIO_SELECTORS | RENDER_SELECTORS | {
-    '--terrain-playable-render': 'terrain-playable-render',
-}
+    }
 
 
 def selector_command(selector, mappings):

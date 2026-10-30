@@ -25,11 +25,7 @@ TOOLS = {
     'types': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--types'],
     'execution-scope': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--execution-scope'],
-    'player-clock': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--player-clock'],
-    'player-url': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--player-url'],
-    'audio-browser': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--audio-browser'],
     'audio-analysis': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--audio-analysis'],
-    'shader-webgpu': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-webgpu'],
     'studio-panel-idle': [str(Path(os.environ.get('CHIBI_STUDIO_BUILD', 'build-studio')) / 'bin/studio-acceptance'),
                           '--panel-idle', '--project-root', os.environ.get('CHIBI_STUDIO_IDLE_PROJECT', '')],
     'studio-scene-collider3d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-scene-collider3d'],
@@ -134,27 +130,10 @@ TOOLS = {
     'material-simulation': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-simulation'],
     'material-ecs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-ecs'],
     'material-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-benchmark'],
-    'material-render': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-render'],
-    'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--render-resources'],
-    'render-geometry': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--render-geometry'],
-    'interior-border': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--interior-border'],
-    'viewport-resize': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--viewport-resize'],
-    'sdf-visibility': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-visibility'],
-    'radiance': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance'],
-    'radiance-depth': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-depth'],
-    'material-sampling': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-sampling'],
-    'scene2d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene2d'],
-    'material-terrain-seams': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-terrain-seams'],
     'scene3d-gles': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-gles'],
     'scene3d-gi': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-gi'],
     'scene3d-gi-gles': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-gi-gles'],
     'material-ramps': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-ramps'],
-    'scene3d-post': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-post'],
-    'scene3d-shapes': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-shapes'],
-    'radiance-surface': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-surface'],
-    'radiance-horizons4': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-horizons4'],
-    'radiance-horizons8': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-horizons8'],
-    'texture-transform': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--texture-transform'],
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-prepared'],
     'scene-hierarchy': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-hierarchy'],
     'native-catalog': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native-catalog'],
@@ -163,21 +142,10 @@ TOOLS = {
     'box3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--box3d'],
     'sky-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--sky-files'],
     'shader-bake': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-bake'],
-    'terrain-seams': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-seams'],
     'material-surface-mesh': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-surface-mesh'],
-    'scene3d-camera': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene3d-camera'],
-    'scene3d-volume': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene3d-volume'],
-    'scene3d-terrain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene3d-terrain'],
-    'scene3d-terrain-gpu': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-terrain-gpu'],
-    'scene3d-volume-gpu': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-volume-gpu'],
-    'hrc-spot': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--hrc-spot'],
     'terrain-checkpoint': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-checkpoint'],
+    'terrain-seams': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-seams'],
     'terrain-storage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-storage'],
-    'terrain-playable-render': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-playable-render',
-        str(ROOT / os.environ.get('CHIBI_TERRAIN_PLAYER', 'dist/sdk/bin/chibi-player')),
-        os.environ.get('CHIBI_TERRAIN_ARTIFACT', ''), os.environ.get('CHIBI_TERRAIN_RESOURCES', ''),
-        str(ROOT / os.environ.get('CHIBI_TERRAIN_SHADERS', 'dist/sdk/share/chibi/shaders')),
-        str(ROOT / os.environ.get('CHIBI_TERRAIN_RENDER_OUTPUT', '.chibi/environment-authoring/terrain-playable-render'))],
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native'],
     'physics': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--physics'],
     'physics3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--physics3d'],
@@ -191,7 +159,6 @@ TOOLS = {
     'text-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--text-files'],
     'fmt': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--fmt'],
     'particles': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--particles'],
-    'png-encoding': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--png-encoding'],
     'project-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--project-document'],
     'prototype-documents': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--prototype-documents'],
     'language-test-parallel': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--test-parallel'],
@@ -338,7 +305,6 @@ TOOLS = {
                  '--syntax', '--corpus', str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'corpus.txt')],
     'wasm-browser': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--wasm-browser'],
     'web-storage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--web-storage'],
-    'webgpu-staging': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--webgpu-staging'],
     'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools')],
     'reflect-ranges': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--reflect-ranges'],
 
@@ -373,36 +339,19 @@ GPU_TOOLS = (
     'studio-scene-camera',
     'studio-scene-gizmo3d',
     'studio-scene-collider3d',
-    'interior-border',
-    'viewport-resize',
-    'sdf-visibility',
-    'radiance',
-    'radiance-depth',
-    'material-sampling',
-    'scene2d',
-    'material-terrain-seams',
     
     
-    'scene3d-terrain-gpu',
-    'scene3d-volume-gpu',
-    'hrc-spot',
     
     'scene3d-gles',
     'scene3d-gi',
     'scene3d-gi-gles',
     'material-ramps',
-    'radiance-surface',
-    'radiance-horizons4',
-    'radiance-horizons8',
     
     
     
     
     
     
-    'scene3d-post',
-    'scene3d-shapes',
-    'texture-transform',
 )
 
 # Native source generation is currently provided only on these host platforms.
@@ -417,11 +366,11 @@ GROUPS = {
              'wasm-integer-arithmetic', 
              'wasm-package-math', 'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled',
              'wasm-package-portable', 'wasm-package-portable-compiler'],
-    'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
-               'player-url', 'player-clock', 'build-graph-link-response',
+    'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis',
+               'build-graph-link-response',
                'physics', 'physics3d',
                'transforms', 'box3d', 'sky-files', 'tilemap', 'runtime-scene', 'scene-prepared',
-               'scene-hierarchy', 'render-resources', 'persistent-store', 
+               'scene-hierarchy', 'persistent-store', 
                'whole-integer', 'whole-conversion', 'whole-select', 'whole-math', 
                
                
@@ -429,10 +378,10 @@ GROUPS = {
                'shader-parameters-prepared', 
                
                'vector-nodes', 'asset-values', 'ui-document', 'text-files', 'fmt', 'particles',
-               'png-encoding', 'project-document', 'prototype-documents', 
+               'project-document', 'prototype-documents', 
                
-               'render-geometry', 'arena', 'shader-bake', 'shader-source-debug', 'terrain-seams', 'terrain-storage',
-               'material-surface-mesh', 'scene3d-camera', 'scene3d-volume', 'scene3d-terrain'],
+               'arena', 'shader-bake', 'shader-source-debug', 'terrain-seams', 'terrain-storage',
+               'material-surface-mesh'],
     # Imported assets, Terrain Lab's authored save/load restart, the published
     # documentation site and the Release launcher's commands.
     'projects': ['terrain-checkpoint',
@@ -440,7 +389,7 @@ GROUPS = {
     # Independently reviewed fixed CPU workloads: cave<=2048x768, flow<=192x192,
     # two192-particle3000-stepMPM pools, four workers, no windows/children/network.
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 
-                  'material-simulation', 'material-ecs', 'material-render'],
+                  'material-simulation', 'material-ecs'],
     'language': ['language-test-parallel', 'execution-scope', 'language', 'language-execution', 'language-program', 'language-ranges', 'language-component-write',
                  
                  'language-package-math', 'language-package-tests', 'language-argument-effects-chibi', 'language-package-core', 'language-package-portable', 'language-package-portable-compiler', 'language-host-packages', 'language-host-packages-compiler', 

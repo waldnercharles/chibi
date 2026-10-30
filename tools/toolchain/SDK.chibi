@@ -179,10 +179,8 @@ InstallEntries :: (root: string, build_dir: string, third_party: string) -> stri
     entries.extend([
         Join(["bin/chibi=", build_dir, "/sdk/chibi"]),
         Join(["bin/chibi-compile=", build_dir, "/sdk/chibi-compile"]),
-        Join(["bin/chibi-player=", build_dir, "/sdk/chibi-player"]),
         Join(["share/chibi/engine.json=", build_dir, "/share/chibi/engine.json"]),
-        Join(["share/chibi/apps=", build_dir, "/share/chibi/apps"]),
-        Join(["share/chibi/shaders=", build_dir, "/share/chibi/shaders"])
+        Join(["share/chibi/apps=", build_dir, "/share/chibi/apps"])
     ]);
     return entries;
 }

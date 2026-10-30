@@ -10,12 +10,11 @@ SDK_REFLECT_BUILD_DIR ?= build-sdk-reflect
 # Make's abspath splits paths at spaces. Preserve this shared SDK handoff.
 SDK_REFLECT_PATH = $(if $(or $(filter /%,$(firstword $(SDK_REFLECT_BUILD_DIR))),$(findstring :/,$(firstword $(SDK_REFLECT_BUILD_DIR)))),$(SDK_REFLECT_BUILD_DIR),$(CURDIR)/$(SDK_REFLECT_BUILD_DIR))
 SDK_REFLECT_LLVM_ROOT = $(if $(or $(filter /%,$(firstword $(LIBCLANG_ROOT))),$(findstring :/,$(firstword $(LIBCLANG_ROOT)))),$(LIBCLANG_ROOT),$(CURDIR)/$(LIBCLANG_ROOT))
-PLAYER_OUTPUT ?= dist/chibi-player-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
 UPDATE_RUNTIME ?= 1
 CHIBI_COLLAB_URL ?=
 FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
-BUILD_TARGET ?= chibi chibi-compile chibi-player
+BUILD_TARGET ?= chibi chibi-compile
 BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 CHIBI_BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 # Another build's sdk directory, such as build-release/sdk, whose
@@ -69,7 +68,7 @@ NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 # in test-language-all. It runs only when this is set.
 NATIVE_LLVM_BIN ?= $(CHIBI_LLVM_BIN)
 
-.PHONY: all help build build-debug build-release prepare-project player-run  install package-player format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
+.PHONY: all help build build-debug build-release prepare-project install format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
 
 all: build
 
@@ -78,9 +77,7 @@ help:
 		'make build          Build the compiler, player and launcher' \
 		'make build-debug    Build products in plain Debug' \
 		'make build-release  Build products in Release' \
-		'make package-player Package the separate deployed player' \
 		'make prepare-project PROJECT_ROOT=/game ARTIFACT=/output/game.chibip' \
-		'make player-run ARTIFACT=/output/game.chibip [RESOURCE_ROOT=/resources]' \
 		'make install [PREFIX=~/.local]  Install the Release SDK, including chibi' \
 		'make agent-list     List runnable CPU and explicit GPU selectors' \
 		'make agent-test AGENT_SELECTOR=--source-systems' \
@@ -170,26 +167,17 @@ prepare-project:
 	@$(MAKE) build-release BUILD_TARGET=chibi-compile
 	"$(RELEASE_BUILD_DIR)/sdk/chibi-compile" --project-root "$(abspath $(PROJECT_ROOT))" --output "$(abspath $(ARTIFACT))"
 
-player-run:
-	@test -n "$(ARTIFACT)" && test -f "$(ARTIFACT)" || { printf '%s\n' 'Set ARTIFACT to an existing prepared project' >&2; exit 2; }
-	@$(MAKE) package-player
-	env $(NATIVE_RUNTIME_ENV) "$(PLAYER_OUTPUT)/bin/chibi-player" "$(abspath $(ARTIFACT))" --resource-root "$(abspath $(RESOURCE_ROOT))" $(ARGS)
-
 # Installs the Release graph products into PREFIX (tools/toolchain/SDK.chibi):
-# bin/chibi, bin/chibi-compile, bin/chibi-player, the private hosts in
+# bin/chibi, bin/chibi-compile, the private hosts in
 # libexec/chibi and share/chibi.
 install:
-	@$(MAKE) build-release BUILD_TARGET='chibi chibi-compile chibi-player chibi-build-host chibi-compiler-host'
+	@$(MAKE) build-release BUILD_TARGET='chibi chibi-compile chibi-build-host chibi-compiler-host'
 	@$(QUIET) install -- "$(RELEASE_BUILD_DIR)/sdk/chibi-build-host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source tools/toolchain/SDK.chibi --core packages/core --collection graph=tools/graph --entry Install --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(RELEASE_BUILD_DIR))" --prefix "$(abspath $(PREFIX))"
 
 # The Release build generates its asset compiler with its own hosts, even when
 # a sanitized build in the same make borrows them.
 build-release:
 	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION= BUILD_DEBUG_FRAME_POINTERS= BUILD_TARGET="$(BUILD_TARGET)" ASSET_GENERATOR_HOSTS=
-
-package-player:
-	@$(MAKE) package-runtime-sdk SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
-	@$(QUIET) package_player.py -- python3 tools/package_player.py --sdk "$(RUNTIME_SDK_PREFIX)" --output "$(PLAYER_OUTPUT)"
 
 benchmark: test-build
 	@$(MAKE) build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host'

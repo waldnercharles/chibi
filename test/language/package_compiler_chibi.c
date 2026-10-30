@@ -8344,7 +8344,10 @@ static bool stage_two_sample(const sample *s)
     args[ARGUMENTS] = linked_effects[s->game][s->c_string_probe][1];
     int argument_count = ARGUMENTS + s->host_effects;
     const char *entry_name = s->host_effects ? "CompileWithEffects" : "Compile";
-    REQUIRE(compiler_call(1, entry_name, args, argument_count, COMPILE_BUDGET, &out));
+    if (!compiler_call(1, entry_name, args, argument_count, COMPILE_BUDGET, &out)) {
+        fprintf(stderr, "stage two failed on sample %s\n", s->name);
+        return false;
+    }
     size_t length, expected_length;
     char *json = document_json(args, argument_count, &length);
     bool compiled = compiler_succeeded(&out);
@@ -8434,6 +8437,8 @@ static int copying_functions(const execution_module_plan *p)
                                  "CompileBehaviorsWithCatalog",
                                  "BehaviorRejectionWithCatalog",
                                  "CollectScalar",
+                                 "CollectScalarPackages",
+                                 "ScalarCollect",
                                  "Declare",
                                  "DeclarePackage" };
     int copying = 0;

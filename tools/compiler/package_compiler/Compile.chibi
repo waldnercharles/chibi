@@ -352,18 +352,18 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 libraries.append(Text(forest, text, Field(forest, member, "alias")));
                 paths.append(strings.Slice(spelled, 1, strings.ByteLength(spelled) - 2));
             } else if (Is(forest, member, "foreign_block")) {
-                library := Text(forest, text, Field(forest, member, "library"));
+                alias := Text(forest, text, Field(forest, member, "library"));
                 path: string = "";
                 known := false;
                 for (index in 0..<length(libraries)) {
-                    if (libraries[index] == library) {
+                    if (libraries[index] == alias) {
                         path = paths[index];
                         known = true;
                     }
                 }
                 if (!known) {
                     return ForeignRows.Failed(Diagnose(forest, Field(forest, member, "library"), file,
-                                                       format_text("No foreign import named '{}'", library)));
+                                                       format_text("No foreign import named '{}'", alias)));
                 }
                 for (declaration in Members(forest, member)) {
                     if (!Is(forest, declaration, "foreign_function")) {

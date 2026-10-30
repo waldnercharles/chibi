@@ -18,11 +18,7 @@ Run :: (options: Options, tail: string[]) -> int {
         game = files.kind(Join([path, "/project.kdl"])) != 0
     }
     if game {
-        if options.watch {
-            Error("--watch requires a standalone .chibi program or package directory")
-            return 2
-        }
-        return Game(path, tail, true)
+        return GameProjectsArchived("run")
     }
     if !directory && !strings.HasSuffix(path, ".chibi") {
         Error("A program requires a .chibi file or package directory")

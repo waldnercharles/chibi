@@ -1,5 +1,4 @@
 #include "authoring/application_catalog.h"
-#include "authoring/component_declarations.h"
 #include "authoring/language_catalog.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_collection.h"
@@ -28,20 +27,12 @@ static behavior_backend preparation_backend;
 static FILE *manifest;
 static int aggregate_files;
 static size_t aggregate_bytes;
-static declared_components *fixture_components;
-static char *fixture_text[5];
 static void cleanup()
 {
     script_analysis_free(analysis);
     authoring_sources_free(prepared);
     source_catalog_free(project);
     authoring_language_catalog_free(native);
-    declared_components_free(fixture_components);
-    fixture_components = NULL;
-    for (size_t i = 0; i < sizeof fixture_text / sizeof *fixture_text; i++) {
-        free(fixture_text[i]);
-        fixture_text[i] = NULL;
-    }
     if (manifest) {
         fclose(manifest);
     }
@@ -276,168 +267,9 @@ enum
     UNIT_COMPONENT_BYTES = 16 * 1024,
     UNIT_COMPONENT_ENTRIES = 32
 };
-static size_t unit_source_bytes, unit_component_bytes;
 typedef struct
 {
     const char *root, *component;
     const char *sources[5];
     int count;
 } unit_fixture;
-static const unit_fixture declared_unit_fixture = {
-    .root = CHIBI_SOURCE_ROOT "/test/fixtures/declared-components/content",
-    .component = "Charge.chibi",
-    .sources = { "systems/Recharge.chibi" },
-    .count = 1,
-};
-static const unit_fixture native_unit_fixture = {
-    .root = CHIBI_SOURCE_ROOT "/test/fixtures/feature-coverage/content",
-    .component = "Heat.chibi",
-    .sources = { "systems/Cool.chibi",
-                 "systems/Drift.chibi",
-                 "behaviors/PhysicsProbe.chibi",
-                 "behaviors/PlatformRiderGravity.chibi",
-                 "behaviors/Physics3DProbe.chibi" },
-    .count = 5,
-};
-static bool read_unit_source(const char *path, char **text, size_t *total, size_t limit)
-{
-    FILE *file = fopen(path, "rb");
-    if (!file) {
-        fprintf(stderr, "Cannot read unit fixture: %s\n", path);
-        return false;
-    }
-    bool valid = fseek(file, 0, SEEK_END) == 0;
-    long size = valid ? ftell(file) : -1;
-    valid = size >= 0 && size <= UNIT_FILE_BYTES &&
-          *total + (size_t)size <= limit && fseek(file, 0, SEEK_SET) == 0;
-    if (valid) {
-        *text = xmalloc((size_t)size + 1);
-        valid = fread(*text, 1, (size_t)size, file) == (size_t)size &&
-                !ferror(file) && fgetc(file) == EOF;
-        (*text)[size] = 0;
-        valid = valid && strlen(*text) == (size_t)size;
-        *total += (size_t)size;
-    }
-    fclose(file);
-    if (!valid) {
-        fprintf(stderr, "Unit fixture exceeds its bounds or is unreadable: %s\n", path);
-    }
-    return valid;
-}
-static bool unit_component_bound(const unit_fixture *fixture)
-{
-    char directory[MAX_PATH];
-    REQUIRE(
-        snprintf(directory, sizeof directory, "%s/components", fixture->root) <
-        (int)sizeof directory
-    );
-    DIR *dir = opendir(directory);
-    REQUIRE(dir != NULL);
-    int entries = 0, components = 0;
-    bool valid = true;
-    struct dirent *entry;
-    while ((entry = readdir(dir))) {
-        if (++entries > UNIT_COMPONENT_ENTRIES) {
-            valid = false;
-            break;
-        }
-        size_t length = strlen(entry->d_name);
-        if (entry->d_name[0] != '.' && length > 6 &&
-            !strcmp(entry->d_name + length - 6, ".chibi")) {
-            components++;
-            valid = valid && !strcmp(entry->d_name, fixture->component);
-        }
-    }
-    closedir(dir);
-    REQUIRE(valid && components == 1);
-    char path[MAX_PATH], *text = NULL;
-    REQUIRE(
-        snprintf(path, sizeof path, "%s/%s", directory, fixture->component) < (int)sizeof path
-    );
-    valid = read_unit_source(path, &text, &unit_component_bytes, UNIT_COMPONENT_BYTES);
-    free(text);
-    return valid;
-}
-static bool check_unit_fixture(const unit_fixture *fixture)
-{
-    REQUIRE(unit_component_bound(fixture));
-    char paths[5][MAX_PATH];
-    for (int i = 0; i < fixture->count; i++) {
-        REQUIRE(
-            snprintf(paths[i], sizeof paths[i], "%s/%s", fixture->root, fixture->sources[i]) <
-            (int)sizeof paths[i]
-        );
-        REQUIRE(read_unit_source(paths[i], &fixture_text[i], &unit_source_bytes, UNIT_SOURCE_BYTES));
-    }
-    char error[256] = { 0 };
-    native_capabilities *table = authoring_application_catalog_new(false, error, sizeof error);
-    if (table) {
-        bool loaded = authoring_component_declarations_load(
-            fixture->root,
-            native_capabilities_catalog(table),
-            &fixture_components,
-            error,
-            sizeof error
-        );
-        if (loaded) {
-            /* The loader installs the owned component set in the project slot,
-             * which the language catalog copies exactly as project preparation does. */
-            const authoring_language_catalog_input input = { .native = table };
-            native = authoring_language_catalog_new(&input, error, sizeof error);
-        }
-        native_capabilities_free(table);
-    }
-    if (!native) {
-        fprintf(stderr, "%s: unit fixture catalog: %s\n", fixture->root, error);
-    }
-    REQUIRE(native != NULL && fixture_components != NULL);
-    /* These six sources depend only on native declarations and the loaded
-     * components. This checks their real unit metadata without discovering
-     * unrelated project declarations or executing any gameplay. */
-    int failures = 0;
-    for (int i = 0; i < fixture->count; i++) {
-        script_syntax *syntax = script_parse(fixture_text[i]);
-        analysis = script_analyze_document(
-            syntax,
-            authoring_language_catalog_view(native),
-            fixture->sources[i]
-        );
-        if (!analysis->valid) {
-            failures++;
-            for (int j = 0; j < analysis->diagnostic_count && j < 8; j++) {
-                const script_diagnostic *diagnostic = &analysis->diagnostics[j];
-                fprintf(
-                    stderr,
-                    "%s:%d:%d: %s\n",
-                    paths[i],
-                    diagnostic->range.line,
-                    diagnostic->range.column,
-                    diagnostic->message
-                );
-            }
-        }
-        script_analysis_free(analysis);
-        script_syntax_free(syntax);
-        analysis = NULL;
-    }
-    printf("Unit fixture: %s, %d sources, %d failures\n", fixture->root, fixture->count, failures);
-    REQUIRE(failures == 0);
-    return true;
-}
-TEST_CASE(language_declared_unit_fixture)
-{
-    return check_unit_fixture(&declared_unit_fixture);
-}
-TEST_CASE(language_native_unit_fixtures)
-{
-    return check_unit_fixture(&native_unit_fixture);
-}
-void test_language_unit_fixtures()
-{
-    unit_source_bytes = 0;
-    unit_component_bytes = 0;
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(language_declared_unit_fixture);
-    RUN_TEST_CASE(language_native_unit_fixtures);
-    pu_clear_setup();
-}

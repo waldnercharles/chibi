@@ -818,63 +818,6 @@ static uint64_t played(const char *data, bool native)
 }
 #endif
 
-/* `chibi export --native` with real LLVM tools ships each library native
- * code holds as natives/<Library>.so and says why another stays in the VM.
- * The player binds what it ships, which plays as the VM does. */
-TEST_CASE(native_export_ships_libraries_the_player_binds)
-{
-    const char *bin = getenv("CHIBI_LLVM_BIN");
-    if (!bin || !*bin) {
-        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to export native libraries with real LLVM tools\n");
-        return true;
-    }
-    exportable();
-    char project[1024], exported[1024], data[1024], library[1024];
-    path(project, suite, "native game");
-    path(exported, suite, "exported game");
-    path(data, exported, "data");
-    native_game(project);
-    chibi_process_output out = { .data = output, .capacity = sizeof output };
-    chibi_process_output err = { .data = errors, .capacity = sizeof errors };
-    const char *envp[] = { "PATH=", NULL };
-    const char *vm_only[] = { launcher,        "export", project, "--output",
-                              "exported game", "--llvm", bin,     NULL };
-    status = chibi_process_capture(launcher, vm_only, suite, envp, chibi_process_now() + 60, NULL, &out, &err);
-    REQUIRE(status.error == CHIBI_PROCESS_OK && status.status == 2);
-    REQUIRE(strstr(errors, "export --llvm needs --native") && !exists(exported));
-    /* A relative --output: the driver is given absolute paths. */
-    const char *argv[] = {
-        launcher,   "export", project, "--output", "exported game",
-        "--native", "--llvm", bin,     NULL
-    };
-    status = chibi_process_capture(launcher, argv, suite, envp, chibi_process_now() + 300, NULL, &out, &err);
-    if (status.error != CHIBI_PROCESS_OK || status.status) {
-        fprintf(stderr, "%s", errors);
-    }
-    REQUIRE(status.error == CHIBI_PROCESS_OK && status.status == 0);
-    REQUIRE(
-        strstr(errors, "libraries/Effects.chibi:2:5: ") &&
-        strstr(errors, "; the library stays in the VM")
-    );
-    path(library, data, "natives/Mix.so");
-    REQUIRE(exists(library));
-    static const char *const skipped[] = { "natives/Effects.so",
-                                           "natives/Demo.so",
-                                           "natives/Old.so" };
-    for (size_t i = 0; i < sizeof skipped / sizeof *skipped; i++) {
-        path(library, data, skipped[i]);
-        REQUIRE(!exists(library));
-    }
-#ifdef CHIBI_TEST_NATIVE_RUNTIME
-    test_native_catalog_enable(); /* The default natives' records need test_tools' types. */
-    uint64_t vm = played(data, false);
-    REQUIRE(vm && played(data, true) == vm);
-#else
-    fprintf(stderr, "native build: playing the exported game needs the native runtime test build\n");
-#endif
-    return true;
-}
-
 /* The other targets' bundle directories and program names, in the
  * driver's target order after Linux. */
 static const struct
@@ -1086,7 +1029,6 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_refuses_an_incomplete_output);
     RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
     RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
-    RUN_TEST_CASE(native_export_ships_libraries_the_player_binds);
     free(stage_tool);
     tool_remove_tree(suite);
 #else

@@ -1,0 +1,294 @@
+TEST_CASE(compositional_records_bound_metadata_expansion)
+{
+    char source[4096];
+    REQUIRE(compositional_records_fanout_source(source, sizeof source));
+    REQUIRE(rejects(source, "layout"));
+    return true;
+}
+
+
+TEST_CASE(compositional_records_bound_record_depth)
+{
+    char source[4096];
+    for (int arrays = 0; arrays < 2; arrays++) {
+        REQUIRE(compositional_records_depth_source(source, sizeof source, 16, arrays));
+        REQUIRE(analyze_source(source));
+        for (int i = 0; !analysis->valid && i < analysis->diagnostic_count; i++) {
+            fprintf(
+                stderr,
+                "compositional depth %d: %s\n",
+                arrays,
+                analysis->diagnostics[i].message
+            );
+        }
+        REQUIRE(analysis->valid);
+        REQUIRE(compositional_records_depth_source(source, sizeof source, 17, arrays));
+        REQUIRE(rejects(source, "recursive"));
+    }
+    return true;
+}
+
+
+TEST_CASE(compositional_records_pointer_guards_respect_aliases)
+{
+    REQUIRE(rejects(COMPOSITIONAL_RECORD_ALIAS_REJECTION, "Nullable pointer requires a presence guard"));
+    return true;
+}
+
+
+TEST_CASE(compositional_records_prepared_values_outlive_producers)
+{
+    syntax = script_parse(
+        "Records :: library { Inner :: struct { label: string; } "
+        "Outer :: struct { inner: Inner; values: int[]; } "
+        "Make :: () -> Outer { return {inner: {label: \"retained\"}, "
+        "values: [11, 13]}; } }"
+    );
+    REQUIRE(!syntax->diagnostic_count);
+    analysis = script_analyze(syntax, &catalog);
+    REQUIRE(analysis->valid && analysis->function_count == 1);
+    uint64_t id = analysis->symbols[analysis->functions[0].symbol].id;
+    plan = script_lower(analysis, &catalog, &bindings);
+    REQUIRE(plan && plan->valid);
+    char error[256];
+    module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(module);
+    clear_analysis();
+    REQUIRE(execution_prepared_write(module, &image, &image_size, error, sizeof error));
+    execution_module_free(module);
+    module = NULL;
+    REQUIRE(image && image_size > 32);
+    for (int b = 0; b < 2; b++) {
+        unsigned char *input = malloc(image_size);
+        REQUIRE(input);
+        memcpy(input, image, image_size);
+        module = execution_prepared_read(input, image_size, NULL, backends[b], error, sizeof error);
+        memset(input, 0xa5, image_size);
+        free(input);
+        if (!module) {
+            fprintf(stderr, "compositional prepared read: %s\n", error);
+        }
+        REQUIRE(module);
+        pin_value saved, inner, label, values;
+        REQUIRE(call_retained(id, backends[b], &saved));
+        REQUIRE(saved.record && arena_contains(&retained, saved.record));
+        REQUIRE(member(&saved, "inner", &inner));
+        REQUIRE(inner.record && arena_contains(&retained, inner.record));
+        REQUIRE(member(&inner, "label", &label));
+        REQUIRE(!strcmp(pin_text(label).bytes, "retained"));
+        REQUIRE(member(&saved, "values", &values));
+        REQUIRE(values.container == PIN_CONTAINER_ARRAY && values.type == PIN_I32);
+        const pin_array *array = values.ptr;
+        REQUIRE(array && array->count == 2 && arena_contains(&retained, array));
+        REQUIRE(pin_array_get(array, 0).i == 11 && pin_array_get(array, 1).i == 13);
+        arena_free(&retained);
+    }
+    return true;
+}
+
+static const script_catalog_capability TOUCH = { .id = 71,
+                                                 .name = "Touch",
+                                                 .kind = SCRIPT_CAPABILITY_EVENT };
+
+
+TEST_CASE(compositional_records_reject_unbounded_layouts)
+{
+    REQUIRE(rejects("Records :: library { Node :: struct { next: Node; } }", "recursive"));
+    REQUIRE(rejects(
+        "Records :: library { Left :: struct { right: Right; } "
+        "Right :: struct { left: Left; } }",
+        "recursive"
+    ));
+    REQUIRE(rejects("Records :: library { Node :: struct { children: Node[]; } }", "recursive"));
+    return true;
+}
+
+
+TEST_CASE(compositional_records_reload_checks_child_layouts)
+{
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        uint64_t state, replaced;
+        REQUIRE(compile_reload(0, backends[b], &module, &state));
+        world = ecs_world_new();
+        REQUIRE(world);
+        uint64_t owner = ecs_entity_to_u64(ecs_world_create_entity(world));
+        REQUIRE(owner && ecs_world_apply_commands(world) == ECS_OK);
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(program, owner);
+        REQUIRE(instance && reload_value(instance, state, 3, 5, false));
+        uint64_t first_layout = execution_instance_state(instance, state)
+                                    ->record->layout;
+        REQUIRE(execution_instance_dispatch(instance, TOUCH.id, NULL, 0, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(reload_value(instance, state, 4, 6, false));
+        REQUIRE(compile_reload(1, backends[b], &next, &replaced) && replaced == state);
+        REQUIRE(execution_program_replace(program, next, false) == FLOW_OK);
+        execution_module_free(module);
+        module = next;
+        next = NULL;
+        instance = execution_program_instance(program, owner);
+        REQUIRE(reload_value(instance, state, 4, 6, false));
+        REQUIRE(execution_instance_state(instance, state)->record->layout == first_layout);
+        REQUIRE(compile_reload(2, backends[b], &next, &replaced) && replaced == state);
+        REQUIRE(execution_program_replace(program, next, false) == FLOW_OK);
+        execution_module_free(module);
+        module = next;
+        next = NULL;
+        instance = execution_program_instance(program, owner);
+        /* The incompatible child uses its new initial value; the compatible
+         * array field retains its previously mutated elements. */
+        REQUIRE(reload_value(instance, state, 300, 6, true));
+        REQUIRE(execution_instance_state(instance, state)->record->layout != first_layout);
+        REQUIRE(execution_instance_dispatch(instance, TOUCH.id, NULL, 0, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(reload_value(instance, state, 301, 7, true));
+    }
+    return true;
+}
+
+
+TEST_CASE(compositional_records_require_explicit_fields)
+{
+    REQUIRE(rejects(
+        "Records :: library { Inner :: struct { value: int; } "
+        "Outer :: struct { inner: Inner; } "
+        "Make :: () -> Outer { return {}; } }",
+        "Missing required"
+    ));
+    REQUIRE(rejects(
+        "Records :: library { Numbers :: struct { values: int[]; } "
+        "Make :: () -> Numbers { return {}; } }",
+        "Missing required"
+    ));
+    return true;
+}
+
+
+TEST_CASE(compositional_records_union_fields_are_single_and_explicit)
+{
+    REQUIRE(rejects(
+        "Records :: library { Phase :: union { Idle | Done(score: int) } "
+        "Fighter :: struct { phase: Phase; } "
+        "Make :: () -> Fighter { return {}; } }",
+        "Missing required"
+    ));
+    REQUIRE(rejects(
+        "Records :: library { Phase :: union { Idle | Done(score: int) } "
+        "Fighter :: struct { phases: Phase[]; } }",
+        "Record fields require"
+    ));
+    REQUIRE(rejects(
+        "Records :: library { Phase :: union { Idle | Done(score: int) } "
+        "Fighter :: struct { phase: Phase?; } }",
+        "Record fields require"
+    ));
+    return true;
+}
+
+
+static bool analyze_source(const char *source)
+{
+    clear_analysis();
+    syntax = script_parse(source);
+    REQUIRE(!syntax->diagnostic_count);
+    if (!strncmp(source, "package ", 8)) {
+        const script_package_document document = { "/facts/Main.chibi",
+                                                   "facts/Main.chibi",
+                                                   syntax };
+        const script_package_options options = { .documents = &document,
+                                                 .document_count = 1,
+                                                 .identity = "project:facts",
+                                                 .native = &catalog };
+        analysis = script_analyze_package(&options);
+    } else {
+        analysis = script_analyze(syntax, &catalog);
+    }
+    REQUIRE(analysis);
+    return true;
+}
+
+
+static bool compile_reload(int generation, behavior_backend backend, execution_module **out, uint64_t *state)
+{
+    clear_analysis();
+    char source[512];
+    int wrote = snprintf(
+        source,
+        sizeof source,
+        "Records :: library { Child :: struct { value: int; %s } "
+        "Outer :: struct { child: Child; values: int[]; } }",
+        generation == 2 ? "extra: int = 0;" : ""
+    );
+    REQUIRE(wrote > 0 && (size_t)wrote < sizeof source);
+    REQUIRE(analyze_source(source) && analysis->valid);
+    script_catalog source_catalog = { .types = analysis->types,
+                                      .type_count = analysis->type_count,
+                                      .capabilities = &TOUCH,
+                                      .capability_count = 1 },
+                   owned;
+    REQUIRE(script_catalog_snapshot(&catalog_storage, &source_catalog, &owned));
+    clear_analysis();
+    wrote = snprintf(
+        source,
+        sizeof source,
+        "Store :: behavior { row: Records.Outer = {child: {value: %d}, "
+        "values: [%d]}; on Touch :: () { row.child.value += 1; "
+        "row.values[0] += 1; } }",
+        generation == 2   ? 300
+        : generation == 1 ? 30
+                          : 3,
+        generation == 2   ? 500
+        : generation == 1 ? 50
+                          : 5
+    );
+    REQUIRE(wrote > 0 && (size_t)wrote < sizeof source);
+    syntax = script_parse(source);
+    REQUIRE(!syntax->diagnostic_count);
+    analysis = script_analyze(syntax, &owned);
+    for (int i = 0; !analysis->valid && i < analysis->diagnostic_count; i++) {
+        fprintf(stderr, "compositional reload: %s\n", analysis->diagnostics[i].message);
+    }
+    REQUIRE(analysis->valid);
+    *state = 0;
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        if (analysis->symbols[i].kind == SCRIPT_STATE &&
+            !strcmp(analysis->symbols[i].name, "row")) {
+            *state = analysis->symbols[i].id;
+        }
+    }
+    REQUIRE(*state);
+    plan = script_lower(analysis, &owned, &bindings);
+    REQUIRE(plan && plan->valid);
+    char error[256];
+    *out = execution_module_finish(&plan, backend, error, sizeof error);
+    if (!*out) {
+        fprintf(stderr, "compositional reload module: %s\n", error);
+    }
+    REQUIRE(*out);
+    clear_analysis();
+    arena_free(&catalog_storage);
+    return true;
+}
+
+
+static bool rejects(const char *source, const char *message)
+{
+    REQUIRE(analyze_source(source));
+    REQUIRE(!analysis->valid);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        if (strstr(analysis->diagnostics[i].message, message)) {
+            return true;
+        }
+    }
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "compositional record rejection: %s\n",
+            analysis->diagnostics[i].message
+        );
+    }
+    REQUIRE(false);
+    return false;
+}
+
+

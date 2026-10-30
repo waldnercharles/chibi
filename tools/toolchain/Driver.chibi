@@ -384,6 +384,16 @@ Rest :: (arguments: string[]) -> string[] {
     return rest
 }
 
+// The `--libclang-root DIR` a graph program takes, made absolute, or nothing.
+Libclang :: (arguments: string[]) -> string[] {
+    root := Option(arguments, "--libclang-root", "")
+    none: string[] = []
+    if (root == "") {
+        return none
+    }
+    return ["--libclang-root", Absolute(root)]
+}
+
 // The private host that runs the authored SDK programs: --host when it speaks
 // the current protocol, else the pinned first host fetched beside the
 // reflection build. "" after a failed fetch.
@@ -453,10 +463,7 @@ SdkReflect :: (arguments: string[]) -> int {
         return 1
     }
     tail := ["--build", Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "--jobs", Option(arguments, "--jobs", "8")]
-    libclang := Option(arguments, "--libclang-root", "")
-    if (libclang != "") {
-        tail = build.concat(tail, ["--libclang-root", Absolute(libclang)])
-    }
+    tail = build.concat(tail, Libclang(arguments))
     return GraphStep("sdk-reflect", host, "tools/toolchain/Graph.chibi", "SDKReflect", build.concat(tail, build.concat(["--"], Rest(arguments))), dry)
 }
 
@@ -481,10 +488,7 @@ RuntimeSdk :: (arguments: string[], package: bool) -> int {
         Join([Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "/reflect"]), "--jobs",
         Option(arguments, "--jobs", "8")
     ]
-    libclang := Option(arguments, "--libclang-root", "")
-    if (libclang != "") {
-        tail = build.concat(tail, ["--libclang-root", Absolute(libclang)])
-    }
+    tail = build.concat(tail, Libclang(arguments))
     flags := Rest(arguments)
     if (length(flags) == 0) {
         flags = ["-DCMAKE_BUILD_TYPE=Debug", "-DCHIBI_ENABLE_SANITIZERS=OFF"]

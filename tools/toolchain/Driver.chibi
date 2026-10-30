@@ -6,7 +6,8 @@ import strings "core:strings"
 // runs under the private build host: `chibi-build-host --source
 // tools/toolchain/Driver.chibi --entry Main -- build [OPTIONS]`.
 //
-//   build [--release|--debug] [--build DIR] [--target NAME]... [--all] [--jobs N]
+//   build [--release|--debug] [--build DIR] [--release-build DIR] [--target NAME]... [--all]
+//         [--jobs N]
 //         [--host PATH] [--libclang-root DIR] [--reflect PATH]
 //         [--asset-generator-hosts DIR] [--debug-optimization 0|1]
 //         [--debug-frame-pointers on|off] [--dry-run]
@@ -88,27 +89,6 @@ DefaultDirectory :: (profile: string) -> string {
     return "build"
 }
 
-// The CMake definitions the first-host recovery build uses for a profile.
-RecoveryFlags :: (profile: string) -> string[] {
-    flags: string[] = []
-    if (build.file_exists("/opt/homebrew/opt/llvm/bin/clang")) {
-        flags = [
-            "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang",
-            "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++"
-        ]
-    }
-    common := ["-DCHIBI_ENABLE_WARNINGS=ON", "-DCHIBI_ENABLE_CCACHE=ON"]
-    if (profile == "release") {
-        return build.concat(flags, build.concat(["-DCMAKE_BUILD_TYPE=Release", "-DCHIBI_ENABLE_SANITIZERS=OFF"], common))
-    }
-    if (profile == "debug") {
-        return build.concat(flags, build.concat(["-DCMAKE_BUILD_TYPE=Debug", "-DCHIBI_ENABLE_SANITIZERS=OFF"], common))
-    }
-    return build.concat(flags, build.concat([
-        "-DCMAKE_BUILD_TYPE=Debug", "-DCHIBI_ENABLE_SANITIZERS=ON", "-DCHIBI_SANITIZERS=address,undefined"
-    ], common))
-}
-
 HostUsable :: (host: string) -> bool {
     if (!build.file_exists(host)) {
         return false
@@ -117,7 +97,7 @@ HostUsable :: (host: string) -> bool {
 }
 
 // The command that runs an authored program under the private host.
-Program :: (host: string, source: string, entry: string, collections: string[], timeout: string) -> string[] {
+Program :: (host: string, source: string, function: string, collections: string[], timeout: string) -> string[] {
     command := [
         host, "--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", build.root(),
         "--source", source, "--core", "packages/core"
@@ -125,7 +105,7 @@ Program :: (host: string, source: string, entry: string, collections: string[], 
     for (collection in collections) {
         command = build.concat(command, ["--collection", collection])
     }
-    return build.concat(command, ["--entry", entry, "--timeout-ms", timeout, "--"])
+    return build.concat(command, ["--entry", function, "--timeout-ms", timeout, "--"])
 }
 
 // Builds a profile, first the Release hosts a non-Release graph borrows to
@@ -136,33 +116,29 @@ Build :: (arguments: string[]) -> int {
     profile := Profile(arguments)
     directory := Option(arguments, "--build", DefaultDirectory(profile))
     jobs := Option(arguments, "--jobs", "8")
+    releases := Option(arguments, "--release-build", "build-release")
     host := Absolute(Option(arguments, "--host", Join([directory, "/sdk/chibi-build-host"])))
     if (!HostUsable(host)) {
-        recovery := Join([directory, "-cmake"])
-        flags := build.concat(RecoveryFlags(profile), [])
-        libclang := Option(arguments, "--libclang-root", "")
-        if (libclang != "") {
-            flags = build.concat(flags, [Join(["-DLIBCLANG_ROOT=", libclang])])
-        }
-        status := Step("configure-native", build.concat(["sh", "tools/configure_native.sh", recovery], flags), dry)
+        // A cold tree fetches the pinned first build host (tools/bootstrap/hosts.tsv).
+        status := Step("bootstrap", ["sh", "tools/bootstrap.sh", host], dry)
         if (status != 0) {
             return status
         }
-        status = Step("build", ["cmake", "--build", recovery, "--target", "chibi-build-host", "--parallel", jobs], dry)
-        if (status != 0) {
-            return status
-        }
-        host = Absolute(Join([recovery, "/sdk/chibi-build-host"]))
     }
     generators := Option(arguments, "--asset-generator-hosts", "")
     if (generators == "" && profile != "release") {
-        status := Build([
-            "--release", "--host", host, "--jobs", jobs, "--target", "chibi-build-host", "--target", "chibi-compiler-host"
-        ])
+        nested := [
+            "--release", "--build", releases, "--host", host, "--jobs", jobs, "--target", "chibi-build-host",
+            "--target", "chibi-compiler-host"
+        ]
+        if (dry) {
+            nested = build.concat(nested, ["--dry-run"])
+        }
+        status := Build(nested)
         if (status != 0) {
             return status
         }
-        generators = Absolute("build-release/sdk")
+        generators = Absolute(Join([releases, "/sdk"]))
     }
     timeout := Option(arguments, "--timeout-ms", "3600000")
     status := Step(

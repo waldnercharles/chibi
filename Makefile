@@ -22,12 +22,6 @@ CHIBI_BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 # chibi-build-host and chibi-compiler-host generate the asset compiler instead
 # of this build's. The resource is the same; Release hosts generate it faster.
 ASSET_GENERATOR_HOSTS ?=
-ASSET_GENERATOR_HOSTS_PATH = $(if $(strip $(ASSET_GENERATOR_HOSTS)),$(abspath $(ASSET_GENERATOR_HOSTS)),)
-# Compiling the asset compiler with Debug hosts exceeds its compiler deadline from a
-# cold tree, so a non-Release graph build borrows the Release hosts, which it builds
-# first, unless ASSET_GENERATOR_HOSTS names other hosts.
-ASSET_GENERATOR_HOSTS_DEFAULT = $(if $(or $(strip $(ASSET_GENERATOR_HOSTS)),$(filter release,$(BUILD_PROFILE))),,$(RELEASE_BUILD_DIR)/sdk)
-ASSET_GENERATOR_HOSTS_EFFECTIVE = $(if $(ASSET_GENERATOR_HOSTS_PATH),$(ASSET_GENERATOR_HOSTS_PATH),$(if $(ASSET_GENERATOR_HOSTS_DEFAULT),$(abspath $(ASSET_GENERATOR_HOSTS_DEFAULT)),))
 BUILD_PROGRAM ?= tools/toolchain/Build.chibi
 BUILD_TIMEOUT_MS ?= 1800000
 # On Linux and macOS `make build` compiles with the Chibi build graph (PLAN.md M6), by
@@ -39,7 +33,6 @@ BUILD_PROFILE ?= sanitizer
 BUILD_DEBUG_OPTIMIZATION ?=
 BUILD_DEBUG_FRAME_POINTERS ?=
 GRAPH_PROGRAM ?= tools/toolchain/Graph.chibi
-BUILD_HOST_TARGET = chibi-build-host
 GRAPH_TIMEOUT_MS ?= 3600000
 # Optional existing native reflection tool, including cross-build wrappers.
 GRAPH_REFLECT ?=
@@ -108,24 +101,15 @@ help:
 		'make format / check-format  Format or check project C sources' \
 		'make clean          Remove default engine build outputs'
 
+# The engine build is `chibi build`, tools/toolchain/Driver.chibi (tools/build.sh
+# runs it before a chibi exists). These variables become its options.
+BUILD_PROFILE_FLAG = $(if $(filter release,$(BUILD_PROFILE)),--release,$(if $(filter debug,$(BUILD_PROFILE)),--debug,))
+BUILD_FLAGS = $(BUILD_PROFILE_FLAG) --build "$(BUILD_DIR)" --release-build "$(RELEASE_BUILD_DIR)" --jobs "$(JOBS)" --host "$(BUILD_HOST)" $(if $(strip $(BUILD_TARGET)),$(foreach target,$(BUILD_TARGET),--target $(target)),--all) $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(LIBCLANG_ROOT)",) $(if $(strip $(GRAPH_REFLECT)),--reflect "$(GRAPH_REFLECT)",) $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) $(if $(strip $(BUILD_DEBUG_FRAME_POINTERS)),--debug-frame-pointers "$(BUILD_DEBUG_FRAME_POINTERS)",) $(if $(strip $(ASSET_GENERATOR_HOSTS)),--asset-generator-hosts "$(ASSET_GENERATOR_HOSTS)",)
 build:
-	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 14 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
-
-.PHONY: toolchain-build stage-zero-build
-toolchain-build:
-	@if [ -n "$(ASSET_GENERATOR_HOSTS_DEFAULT)" ]; then $(MAKE) build-release BUILD_HOST="$(abspath $(BUILD_HOST))" BUILD_TARGET='chibi-build-host chibi-compiler-host' || exit $$?; fi
-	@$(QUIET) third-party -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(BUILD_DIR)"
-	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(abspath $(LIBCLANG_ROOT))",) $(if $(strip $(GRAPH_REFLECT)),--reflect "$(abspath $(GRAPH_REFLECT))",) $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) $(if $(strip $(BUILD_DEBUG_FRAME_POINTERS)),--debug-frame-pointers "$(BUILD_DEBUG_FRAME_POINTERS)",) --jobs "$(JOBS)" $(if $(ASSET_GENERATOR_HOSTS_EFFECTIVE),--asset-generator-hosts "$(ASSET_GENERATOR_HOSTS_EFFECTIVE)",) --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
-	@ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json
-
-# A cold tree fetches the pinned first build host (tools/bootstrap/hosts.tsv);
-# the graph then builds its own.
-stage-zero-build:
-	@$(QUIET) bootstrap -- sh tools/bootstrap.sh "$(BUILD_HOST)"
-	@$(MAKE) toolchain-build
+	@sh tools/build.sh build $(BUILD_FLAGS)
 
 build-debug:
-	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_PROFILE=debug BUILD_TARGET="$(BUILD_TARGET)"
+	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" BUILD_PROFILE=debug BUILD_TARGET="$(BUILD_TARGET)"
 
 # The private build host that runs the authored SDK programs: the build's own, or
 # the one cold recovery constructs beside the reflection build.
@@ -200,7 +184,7 @@ install:
 # The Release build generates its asset compiler with its own hosts, even when
 # a sanitized build in the same make borrows them.
 build-release:
-	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION= BUILD_DEBUG_FRAME_POINTERS= BUILD_TARGET="$(BUILD_TARGET)" ASSET_GENERATOR_HOSTS=
+	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION= BUILD_DEBUG_FRAME_POINTERS= BUILD_TARGET="$(BUILD_TARGET)" ASSET_GENERATOR_HOSTS=
 
 package-player:
 	@$(MAKE) package-runtime-sdk SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"

@@ -892,12 +892,82 @@ void test_build_graph_debug_optimization(const char *host)
     tool_remove_tree(suite);
 }
 
+/* `chibi build` plans the same steps as the retired make build: a non-Release
+ * profile first builds the Release hosts it borrows, then runs the third-party
+ * and graph steps, and a Release build borrows nothing. --dry-run prints the
+ * commands without running them. */
+static bool driver_plan(const char *const *options, char **log)
+{
+    const char *argv[24] = { host_path,
+                             "--root",
+                             CHIBI_SOURCE_ROOT,
+                             "--source",
+                             "tools/toolchain/Driver.chibi",
+                             "--core",
+                             "packages/core",
+                             "--entry",
+                             "Main",
+                             "--timeout-ms",
+                             "50000",
+                             "--",
+                             "build",
+                             "--dry-run",
+                             "--host",
+                             host_path };
+    int count = 16;
+    for (int i = 0; options[i]; i++) {
+        assert(count < 23);
+        argv[count++] = options[i];
+    }
+    argv[count] = NULL;
+    REQUIRE(!tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS));
+    *log = tool_read(log_path);
+    return *log != NULL;
+}
+
+TEST_CASE(driver_plans_the_engine_build_steps)
+{
+    char *log = NULL;
+    const char *const sanitizer[] = { "--target", "chibi", NULL };
+    REQUIRE(driver_plan(sanitizer, &log));
+    const char *release = strstr(log, "--profile release");
+    const char *sanitized = strstr(log, "--profile sanitizer");
+    bool planned = release && sanitized && release < sanitized &&
+                   strstr(log, "--target chibi-compiler-host") &&
+                   strstr(log, "--target chibi --target chibi-build-host") &&
+                   strstr(log, "--asset-generator-hosts") &&
+                   strstr(log, "third-party:") && strstr(log, "compile-commands:");
+    if (!planned) {
+        fprintf(stderr, "unexpected sanitizer plan: %s\n", log);
+    }
+    free(log);
+    REQUIRE(planned);
+    const char *const optimized[] = { "--release", "--target", "chibi", NULL };
+    REQUIRE(driver_plan(optimized, &log));
+    planned = strstr(log, "--profile release") &&
+              !strstr(log, "--profile sanitizer") &&
+              !strstr(log, "--asset-generator-hosts") &&
+              strstr(log, "build-release/compile_commands.json");
+    if (!planned) {
+        fprintf(stderr, "unexpected release plan: %s\n", log);
+    }
+    free(log);
+    REQUIRE(planned);
+    const char *const everything[] = { "--debug", "--all", NULL };
+    REQUIRE(driver_plan(everything, &log));
+    planned = strstr(log, "--profile debug") && !strstr(log, "--target chibi ");
+    free(log);
+    REQUIRE(planned);
+    return true;
+}
+
 /* A separate route: another commands-only run of the whole graph takes
  * seconds. */
 void test_build_graph_programs(const char *host)
 {
     set_up(host);
     RUN_TEST_CASE(named_programs_build_what_they_run);
+    RUN_TEST_CASE(driver_plans_the_engine_build_steps);
     RUN_TEST_CASE(invalid_arguments_fail_before_writing_commands);
     RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
     RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);

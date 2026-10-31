@@ -73,7 +73,7 @@ SDKReflect :: () -> int {
             os.Print(format_text("graph: native reflection tool not found for '{0}'", chosen));
             return 2;
         }
-        options = build.concat([name, program], options);
+        options = extend([name, program], options);
     }
     return LibrariesWithArguments(options);
 }
@@ -136,7 +136,7 @@ RuntimeSDKWithArguments :: (arguments: string[]) -> int {
                 os.Print(format_text("graph: invalid runtime SDK value for '{0}'", argument));
                 return 2;
             }
-            options = build.concat([argument, value], options);
+            options = extend([argument, value], options);
             continue;
         }
         if (argument == "-D" && !split) {
@@ -151,8 +151,8 @@ RuntimeSDKWithArguments :: (arguments: string[]) -> int {
         name := "";
         value := "";
         if (strings.HasPrefix(definition, "-D") && strings.Contains(definition, "=")) {
-            name = build.before(build.before(build.after(definition, "-D"), "="), ":");
-            value = build.after(definition, "=");
+            name = strings.Partition(strings.Partition(strings.Partition(definition, "-D").tail, "=").head, ":").head;
+            value = strings.Partition(definition, "=").tail;
         }
         if (name == "CMAKE_BUILD_TYPE") {
             if (value != "Debug" && value != "Release" && value != "RelWithDebInfo" && value != "MinSizeRel") {
@@ -192,7 +192,7 @@ RuntimeSDKWithArguments :: (arguments: string[]) -> int {
             os.Print(format_text("graph: unsupported runtime SDK toolchain argument '{0}'", definition));
             return 2;
         }
-        options = build.concat(mapped, options);
+        options = extend(mapped, options);
     }
     if (split || Option(options, "--build", "") == "" || Option(options, "--reflect", "") == "") {
         os.Print("graph: runtime SDK requires --build and --reflect; -D requires a definition");
@@ -251,7 +251,7 @@ RuntimeSDKWithArguments :: (arguments: string[]) -> int {
             os.Print(format_text("graph: runtime SDK tool not found for '{0}'", chosen));
             return 2;
         }
-        options = build.concat([name, program], options);
+        options = extend([name, program], options);
     }
     profile := "debug";
     if (build_type == "Release") {

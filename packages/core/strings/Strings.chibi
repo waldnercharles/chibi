@@ -500,6 +500,17 @@ pub SplitLines :: (s: string) -> string[] {
     return SplitLinesKeeping(s, 0, -1);
 }
 
+// The lines of s as a reader sees them: split at line feeds, each without a
+// trailing carriage return, and no empty last line after a final terminator,
+// so "" has none and "a\n" has one. SplitLines keeps that empty line.
+pub Lines :: (s: string) -> string[] {
+    lines := SplitLines(s);
+    if (length(lines) > 0 && lines[length(lines) - 1] == "") {
+        return slice(lines, 0, length(lines) - 1);
+    }
+    return lines;
+}
+
 pub SplitLinesN :: (s: string, n: int) -> string[] {
     return SplitLinesKeeping(s, 0, n);
 }

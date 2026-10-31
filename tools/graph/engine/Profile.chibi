@@ -90,9 +90,9 @@ pub ThirdParty :: (source_root: string, compiler_id: string, sanitizers: string)
         cache = Join([strings.TrimSpace(git.stdout), "/chibi/third_party"]);
     }
     pin := Join([family, "-", architecture, "\t", variant, "\t"]);
-    for (line in build.lines(build.read_file(Join([source_root, "/third_party/archives.tsv"])))) {
+    for (line in strings.Lines(build.read_file(Join([source_root, "/third_party/archives.tsv"])))) {
         if (strings.HasPrefix(line, pin)) {
-            return Join([cache, "/", build.after(build.after(build.after(line, "\t"), "\t"), "\t")]);
+            return Join([cache, "/", strings.Partition(strings.Partition(strings.Partition(line, "\t").tail, "\t").tail, "\t").tail]);
         }
     }
     return "";
@@ -125,10 +125,10 @@ pub CxxCompiler :: (compiler: string, compiler_id: string) -> string {
     directory := strings.Slice(compiler, 0, strings.LastIndex(compiler, "/") + 1);
     name := strings.Slice(compiler, strings.ByteLength(directory), strings.ByteLength(compiler));
     for (pair in ["clang=clang++", "gcc=g++", "cc=c++"]) {
-        prefix := build.before(pair, "=");
+        prefix := strings.Partition(pair, "=").head;
         if (name == prefix || strings.HasPrefix(name, Join([prefix, "-"]))) {
             suffix := strings.Slice(name, strings.ByteLength(prefix), strings.ByteLength(name));
-            candidate := Join([directory, build.after(pair, "="), suffix]);
+            candidate := Join([directory, strings.Partition(pair, "=").tail, suffix]);
             if (os.Exists(candidate)) {
                 return candidate;
             }
@@ -356,9 +356,9 @@ pub SystemLibrary :: (compiler: string, name: string) -> string {
     if (compiler != "") {
         dirs := os.Capture([compiler, "-print-search-dirs"]);
         if (dirs.status == 0) {
-            for (line in build.lines(dirs.stdout)) {
+            for (line in strings.Lines(dirs.stdout)) {
                 if (strings.HasPrefix(line, "libraries: =")) {
-                    directories.extend(strings.Split(build.after(line, "libraries: ="), ":"));
+                    directories.extend(strings.Split(strings.Partition(line, "libraries: =").tail, ":"));
                 }
             }
         }

@@ -1654,8 +1654,17 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
     // An address points to any declared type, so its pointers are added once
     // the other types stop changing; adding them inside the loop would add
     // a pointer to every new pointer and optional on each pass.
+    addresses := false;
     for (file in files) {
-        types = DeclareAddressPointers(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
+        switch DeclareAddressPointers(forest, documents[file].text, types, Aliases(links, file), package,
+                                      documents[file].syntax_root) {
+            case .Declared(more_types, file_addresses):
+                types = more_types;
+                addresses = addresses || file_addresses;
+        }
+    }
+    if (addresses) {
+        types = DeclareUniversePointers(types, package);
     }
     types = DeclareSequenceOptionals(types, package);
     // Resolve every field after names and type constructors exist. Pointer

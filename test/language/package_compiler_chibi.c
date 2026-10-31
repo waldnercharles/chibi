@@ -86,26 +86,12 @@ enum
     TARGET_BUDGET = 100000
 };
 /* A NULL expected result means the call must fail. */
-typedef struct
-{
-    const char *function, *arguments, *expected;
-    const char *diagnostic;
-    /* Instructions the call may run; TARGET_BUDGET when zero. */
-    int budget;
-} sample_call;
+
 /* Focused selectors group unions, constants, patterns and integer types
  * (TYPE_SAMPLES); imports, core-pack calls, moves, reads in place and array
  * methods (IMPORT_SAMPLES, run in Release); and maps, references, arrays and
  * ranges (COLLECTION_SAMPLES). */
-typedef enum
-{
-    BASE_SAMPLES,
-    TYPE_SAMPLES,
-    IMPORT_SAMPLES,
-    COLLECTION_SAMPLES,
-    FALLIBLE_SAMPLES,
-    MATH_SAMPLES
-} sample_group;
+
 /* `source` is package facts, and `more` another file of it when present;
  * `library` is package lib when present, and `core` adds core:strings.
  * `collection_source` and `collection_dependency` add core:host_only and
@@ -136,24 +122,7 @@ typedef enum
  * watches stage zero's do, in its order and with its values; a traced
  * `c_string_probe` sample's calls run only that way, because the compiler
  * host does not link the probe natives, and return int. */
-typedef struct
-{
-    const char *name, *source, *more, *library;
-    const char *collection_source, *collection_dependency;
-    sample_group group;
-    bool core, math, updates, boxed, game, moves, aliases, variants, built,
-        lends, drops, same_rejection, c_string_probe, host_effects,
-        update_order, debug_metadata, traced, char_checks;
-    /* Its calls run with the probe natives linked, take no arguments and
-     * return one int. */
-    bool probe_calls;
-    sample_call calls[CALLS];
-    const char *message;
-    const char *oracle_message, *oracle_package;
-    int line, column, project_modules;
-    int oracle_line, oracle_column;
-    int specializations;
-} sample;
+
 static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
 {
     const char *value = NULL;
@@ -551,71 +520,7 @@ static bool prepare()
 }
 /* The sample's files: package facts, then lib and core:strings when it
  * uses them. */
-static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INPUTS])
-{
-    int count = 0;
-    inputs[count++] = (source_package_input){ "facts/Main.chibi",
-                                              s->source,
-                                              strlen(s->source) };
-    if (s->more) {
-        inputs[count++] = (source_package_input){ "facts/More.chibi",
-                                                  s->more,
-                                                  strlen(s->more) };
-    }
-    if (s->library) {
-        inputs[count++] = (source_package_input){ "lib/Lib.chibi",
-                                                  s->library,
-                                                  strlen(s->library) };
-    }
-    if (s->core) {
-        inputs[count++] = (source_package_input){
-            "/sdk/core/strings/Strings.chibi",
-            CORE_STRINGS_SOURCE,
-            sizeof CORE_STRINGS_SOURCE - 1
-        };
-    }
-    if (s->collection_source) {
-        assert(count < SAMPLE_INPUTS);
-        inputs[count++] = (source_package_input){
-            "/sdk/core/host_only/HostOnly.chibi",
-            s->collection_source,
-            strlen(s->collection_source)
-        };
-    }
-    if (s->collection_dependency) {
-        assert(count < SAMPLE_INPUTS);
-        inputs[count++] = (source_package_input){
-            "/sdk/core/host_dependency/Dependency.chibi",
-            s->collection_dependency,
-            strlen(s->collection_dependency)
-        };
-    }
-    if (s->math) {
-        static char sources[3][32768];
-        static const char *const names[] = { "Math.chibi", "Spring.chibi", "ease/Ease.chibi" };
-        static const char *const paths[] = { "/sdk/core/math/Math.chibi",
-                                             "/sdk/core/math/Spring.chibi",
-                                             "/sdk/core/math/ease/Ease.chibi" };
-        const char *root = getenv("CHIBI_CORE_MATH_ROOT");
-        if (!root || !root[0]) {
-            root = CHIBI_CORE_MATH_ROOT;
-        }
-        for (int i = 0; i < 3; i++) {
-            char path[4096];
-            int n = snprintf(path, sizeof path, "%s/%s", root, names[i]);
-            assert(n > 0 && (size_t)n < sizeof path && count < SAMPLE_INPUTS);
-            FILE *file = fopen(path, "rb");
-            assert(file);
-            size_t length = fread(sources[i], 1, sizeof sources[i] - 1, file);
-            bool read = !ferror(file) && feof(file);
-            fclose(file);
-            assert(read);
-            sources[i][length] = 0;
-            inputs[count++] = (source_package_input){ paths[i], sources[i], length };
-        }
-    }
-    return count;
-}
+
 static pin_value files(const source_package_input *inputs, int count, bool sources)
 {
     pin_array *array = pin_array_snapshot_allocate(&input, PIN_STR, NULL, count);
@@ -719,122 +624,10 @@ static bool arguments(int b, bool game, const source_package_input *inputs, int 
 {
     return arguments_for(b, game, false, inputs, count, args);
 }
-typedef struct
-{
-    pin_value module, bytes, error;
-} compiler_result;
-static bool compiler_succeeded(const compiler_result *result)
-{
-    return !result->error.ptr;
-}
-static const pin_value *compiler_error(const compiler_result *result)
-{
-    const pin_union *error = result->error.ptr;
-    assert(error && error->count == 1);
-    return &error->values[0];
-}
-static bool compiler_call(
-    int b,
-    const char *entry,
-    const pin_value *arguments,
-    int count,
-    uintptr_t budget,
-    compiler_result *out
-)
-{
-    pin_value values[3];
-    REQUIRE(
-        compiler_fixture_call_results(&fixture, b, PACKAGE, entry, arguments, count, budget, &detached, values, 3)
-    );
-    REQUIRE(values[0].type == PIN_U64);
-    REQUIRE(values[1].type == PIN_U8 && values[1].container == PIN_CONTAINER_ARRAY);
-    REQUIRE(values[2].type == PIN_UNION && values[2].container == PIN_CONTAINER_SINGLE);
-    const pin_union *error = values[2].ptr;
-    REQUIRE(!error || (error->count == 1 && error->values[0].type == PIN_STRUCT));
-    if (error) {
-        const pin_array *bytes = values[1].ptr;
-        REQUIRE(values[0].u64 == 0);
-        REQUIRE(!bytes || bytes->count == 0);
-    }
-    *out = (compiler_result){ .module = values[0],
-                              .bytes = values[1],
-                              .error = values[2] };
-    return true;
-}
-static bool compile(
-    int b,
-    bool game,
-    bool probe,
-    bool effects,
-    const source_package_input *inputs,
-    int count,
-    uintptr_t budget,
-    compiler_result *out
-)
-{
-    pin_value args[ARGUMENTS + 1];
-    REQUIRE(arguments_for(b, game, probe, inputs, count, args));
-    args[ARGUMENTS] = linked_effects[game][probe][b];
-    REQUIRE(
-        compiler_call(b, effects ? "CompileWithEffects" : "Compile", args, ARGUMENTS + effects, budget, out)
-    );
-    return true;
-}
-static uint64_t function_id(const char *name)
-{
-    char text[256];
-    snprintf(text, sizeof text, "project:facts:1:%s:callable", name);
-    return script_catalog_id("package-symbol", text);
-}
+
 /* Math packages link the ordinary native libm pack, outside the compiler
  * host's intentionally restricted JSON/text/array execution profile. */
 
-static bool run(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
-{
-    char error[256];
-    host = compiler_host_load(
-        bytes,
-        length,
-        backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-        error,
-        sizeof error
-    );
-    if (!host) {
-        fprintf(stderr, "package compiler load: %s\n", error);
-    }
-    REQUIRE(host);
-    bool valid = compiler_host_invoke(
-        host,
-        function_id(call->function),
-        call->arguments,
-        strlen(call->arguments),
-        call->budget ? call->budget : TARGET_BUDGET,
-        &result
-    );
-    bool passed = valid && result.flow_status == FLOW_OK;
-    bool expected = call->expected ? passed && !strcmp(result.json, call->expected)
-                                   : !passed;
-    if (call->diagnostic) {
-        expected = expected && strstr(result.diagnostic, call->diagnostic);
-    }
-    if (!expected) {
-        fprintf(
-            stderr,
-            "package compiler run %s%s: %d %s %s\n",
-            call->function,
-            call->arguments,
-            result.flow_status,
-            valid && result.json ? result.json : "",
-            result.diagnostic
-        );
-    }
-    REQUIRE(expected);
-    compiler_host_free(host);
-    host = NULL;
-    free(result.json);
-    result = (compiler_host_result){ 0 };
-    return true;
-}
 /* Whether a point is one this compiler places as stage zero does: a
  * function's entry and completions, each statement's, each evaluated
  * expression's and each symbol's it reads or stores. */
@@ -845,277 +638,17 @@ static bool placed(const behavior_source_point *point)
            point->kind == BEHAVIOR_SOURCE_EXPRESSION ||
            point->kind == BEHAVIOR_SOURCE_SYMBOL;
 }
-static void print_points(const char *compiler, const behavior_function *f)
-{
-    for (int k = 0; k < acount(f->source_points); k++) {
-        const behavior_source_point *p = &f->source_points[k];
-        fprintf(
-            stderr,
-            "  %s point kind %d at %d..%d occurrence %016llx completion %d\n",
-            compiler,
-            p->kind,
-            p->start,
-            p->end,
-            (unsigned long long)p->occurrence,
-            p->completion
-        );
-    }
-}
-static bool same_point(const behavior_source_point *x, const behavior_source_point *y)
-{
-    return x->kind == y->kind && x->occurrence == y->occurrence &&
-           x->start == y->start && x->end == y->end && x->line == y->line &&
-           x->column == y->column && x->completion == y->completion &&
-           (x->kind != BEHAVIOR_SOURCE_FUNCTION || x->meaning == y->meaning);
-}
+
 /* Each function of stage one's module has stage zero's function and
  * statement points, as many of each, in any order. */
-static bool same_points(const execution_module *expected, const execution_module *actual)
-{
-    if (expected->plan.function_count != actual->plan.function_count) {
-        fprintf(
-            stderr,
-            "function count module %016llx: stage zero=%d stage one=%d\n",
-            (unsigned long long)execution_module_id(actual),
-            expected->plan.function_count,
-            actual->plan.function_count
-        );
-        for (int i = 0; i < expected->plan.function_count; i++) {
-            fprintf(
-                stderr,
-                "  stage zero function %016llx\n",
-                (unsigned long long)expected->plan.functions[i].id
-            );
-        }
-        for (int i = 0; i < actual->plan.function_count; i++) {
-            fprintf(
-                stderr,
-                "  stage one function %016llx\n",
-                (unsigned long long)actual->plan.functions[i].id
-            );
-        }
-    }
-    REQUIRE(expected->plan.function_count == actual->plan.function_count);
-    bool all_alike = true;
-    for (int i = 0; i < expected->plan.function_count; i++) {
-        const behavior_function *x = expected->plan.functions[i].body, *y = NULL;
-        for (int j = 0; !y && j < actual->plan.function_count; j++) {
-            if (actual->plan.functions[j].id == expected->plan.functions[i].id) {
-                y = actual->plan.functions[j].body;
-            }
-        }
-        if (!y) {
-            fprintf(
-                stderr,
-                "stage one lacks function %016llx\n",
-                (unsigned long long)expected->plan.functions[i].id
-            );
-        }
-        REQUIRE(y);
-        int count = acount(y->source_points);
-        bool *used = xcalloc((size_t)count + 1, sizeof *used);
-        bool alike = true;
-        int placed_count = 0;
-        for (int j = 0; alike && j < acount(x->source_points); j++) {
-            if (!placed(&x->source_points[j])) {
-                continue;
-            }
-            placed_count++;
-            int found = -1;
-            for (int k = 0; found < 0 && k < count; k++) {
-                found = !used[k] && same_point(&x->source_points[j], &y->source_points[k])
-                          ? k
-                          : -1;
-            }
-            alike = found >= 0;
-            if (alike) {
-                used[found] = true;
-            } else {
-                fprintf(
-                    stderr,
-                    "function %d lacks stage zero's point kind %d at %d..%d\n",
-                    i,
-                    x->source_points[j].kind,
-                    x->source_points[j].start,
-                    x->source_points[j].end
-                );
-            }
-        }
-        for (int k = 0; alike && k < count; k++) {
-            alike = !placed(&y->source_points[k]) || used[k];
-            placed_count -= placed(&y->source_points[k]);
-            if (!alike) {
-                fprintf(
-                    stderr,
-                    "function %d has an extra point at %d..%d\n",
-                    i,
-                    y->source_points[k].start,
-                    y->source_points[k].end
-                );
-            }
-        }
-        free(used);
-        if (!alike || placed_count != 0) {
-            print_points("stage zero", x);
-            print_points("stage one", y);
-            all_alike = false;
-        }
-    }
-    return all_alike;
-}
-static bool same_watch(const behavior_source_watch *x, const behavior_source_watch *y)
-{
-    const char *a = x->initial.type_name ? x->initial.type_name : "",
-               *b = y->initial.type_name ? y->initial.type_name : "";
-    return x->origin.kind == y->origin.kind &&
-           x->origin.occurrence == y->origin.occurrence &&
-           x->origin.start == y->origin.start && x->origin.end == y->origin.end &&
-           x->origin.line == y->origin.line && x->origin.column == y->origin.column &&
-           x->initial.type == y->initial.type &&
-           x->initial.container == y->initial.container && !strcmp(a, b) &&
-           x->ordinal == y->ordinal && x->output == y->output &&
-           x->reference == y->reference;
-}
-static void print_watches(const char *compiler, const behavior_function *f)
-{
-    for (int k = 0; k < acount(f->source_watches); k++) {
-        const behavior_source_watch *w = &f->source_watches[k];
-        fprintf(
-            stderr,
-            "  %s watch at %d..%d occurrence %016llx type %d container %d name "
-            "%s ordinal %d output %d "
-            "reference %d\n",
-            compiler,
-            w->origin.start,
-            w->origin.end,
-            (unsigned long long)w->origin.occurrence,
-            w->initial.type,
-            w->initial.container,
-            w->initial.type_name ? w->initial.type_name : "-",
-            w->ordinal,
-            w->output,
-            w->reference
-        );
-    }
-}
+
 /* Each function of stage one's module has stage zero's watches, as many of
  * each, in any order. */
-static bool same_watches(const execution_module *expected, const execution_module *actual)
-{
-    REQUIRE(expected->plan.function_count == actual->plan.function_count);
-    bool all_alike = true;
-    for (int i = 0; i < expected->plan.function_count; i++) {
-        const behavior_function *x = expected->plan.functions[i].body, *y = NULL;
-        for (int j = 0; !y && j < actual->plan.function_count; j++) {
-            if (actual->plan.functions[j].id == expected->plan.functions[i].id) {
-                y = actual->plan.functions[j].body;
-            }
-        }
-        if (!y) {
-            fprintf(
-                stderr,
-                "stage one lacks function %016llx\n",
-                (unsigned long long)expected->plan.functions[i].id
-            );
-        }
-        REQUIRE(y);
-        int count = acount(y->source_watches);
-        bool *used = xcalloc((size_t)count + 1, sizeof *used);
-        bool alike = count == acount(x->source_watches);
-        for (int j = 0; alike && j < acount(x->source_watches); j++) {
-            int found = -1;
-            for (int k = 0; found < 0 && k < count; k++) {
-                found = !used[k] && same_watch(&x->source_watches[j], &y->source_watches[k])
-                          ? k
-                          : -1;
-            }
-            alike = found >= 0;
-            if (alike) {
-                used[found] = true;
-            }
-        }
-        free(used);
-        if (!alike) {
-            fprintf(stderr, "WATCHES %d\n", i);
-            print_watches("stage zero", x);
-            print_watches("stage one", y);
-            all_alike = false;
-        }
-    }
-    return all_alike;
-}
+
 /* Stage zero's closure of the same packages, whose calls must give the same
  * results. */
-static bool oracle_closure(const sample *s, unsigned char **closure, size_t *length)
-{
-    source_package_input inputs[SAMPLE_INPUTS];
-    int count = sample_inputs(s, inputs);
-    compiler_fixture_free(&oracle);
-    /* The natives the stage-one target links. */
-    native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
-                                       COMPILER_SYNTAX_DEFINITION_PACK,
-                                       CSTRING_PACK,
-                                       CORE_DEFINITION_PACK,
-                                       NATIVE_MATH_DEFINITION_PACK,
-                                       NATIVE_VECTOR_DEFINITION_PACK };
-    /* Only this bytecode owner is serialized and compared below. Each
-     * caller still chooses its original target execution backends. */
-    REQUIRE(compiler_fixture_prepare_backends(
-        &oracle,
-        COMPILER_FIXTURE_BYTECODE,
-        inputs,
-        count,
-        packs,
-        s->math   ? 5
-        : s->game ? 4
-                  : 3
-    ));
-    const authoring_packages *owner = oracle.owners[0];
-    package_module rows[3];
-    REQUIRE(authoring_packages_count(owner) <= 3);
-    int written = 0;
-    char error[256];
-    bool valid = true;
-    for (int p = 0; valid && p < authoring_packages_count(owner); p++) {
-        const authoring_package *package = authoring_packages_at(owner, p);
-        unsigned char *prepared = NULL;
-        size_t size = 0;
-        valid = package->module &&
-                execution_prepared_write(package->module, &prepared, &size, error, sizeof error);
-        rows[written++] = (package_module){ package->identity,
-                                            valid ? execution_module_id(package->module)
-                                                  : 0,
-                                            prepared,
-                                            size };
-    }
-    const authoring_package *root = compiler_fixture_package(&oracle, 0, "project:facts");
-    valid = valid && root &&
-            compiler_artifact_write(
-                rows,
-                written,
-                execution_module_id(root->module),
-                closure,
-                length,
-                error,
-                sizeof error
-            );
-    for (int i = 0; i < written; i++) {
-        free((void *)rows[i].data);
-    }
-    REQUIRE(valid);
-    return true;
-}
+
 /* Own the compiler's detached byte output after its result arena is retired. */
-static unsigned char *closure_bytes(const compiler_result *result, size_t *length)
-{
-    const pin_array *array = result->bytes.ptr;
-    *length = (size_t)array->count;
-    unsigned char *bytes = xmalloc(*length);
-    for (size_t i = 0; i < *length; i++) {
-        bytes[i] = array->items[i].u8;
-    }
-    return bytes;
-}
 
 /* Compile the discovered test package with each compiler backend, then run
  * the same fixed assertions on each independently loaded target backend. */
@@ -1180,43 +713,7 @@ static unsigned char *closure_bytes(const compiler_result *result, size_t *lengt
 
 /* The packages of a closure, linked against the compiler host's natives,
  * which `native` holds; NULL when it does not load. */
-static package_collection *read_packages(
-    const unsigned char *bytes,
-    size_t length,
-    native_capabilities **native,
-    behavior_backend backend
-)
-{
-    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK,
-                                             CSTRING_PACK };
-    char error[256];
-    *native = native_capabilities_from_definition_packs(NULL, 0, packs, 5, error, sizeof error);
-    assert(*native);
-    native_prepared_context context = { .native = *native };
-    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
-    linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    linker.decoded_records = COMPILER_HOST_MAX_CLOSURE_RECORDS;
-    linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
-    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    uint64_t root = 0;
-    package_collection *packages = compiler_artifact_read(
-        bytes,
-        length,
-        &linker,
-        backend,
-        &remaining,
-        &root,
-        error,
-        sizeof error
-    );
-    if (!packages) {
-        fprintf(stderr, "package compiler load: %s\n", error);
-    }
-    return packages;
-}
+
 /* Repeated equivalent bindings share one emitted specialization, while
  * distinct bindings have different IDs. Source points separately compare
  * those IDs with stage zero's independently prepared modules. */
@@ -1240,66 +737,10 @@ static package_collection *read_packages(
 
 /* Compare serialized function flags, independently of the runtime's derived
  * effect summary. Direct, recursive and imported HOST callers must retain it. */
-static bool same_host_effects(const execution_module *expected, const execution_module *actual)
-{
-    bool same = true;
-    int observed = 0;
-    for (int i = 0; i < expected->plan.function_count; i++) {
-        const execution_module_function *x = &expected->plan.functions[i];
-        const execution_module_function *y = NULL;
-        for (int j = 0; !y && j < actual->plan.function_count; j++) {
-            if (actual->plan.functions[j].id == x->id) {
-                y = &actual->plan.functions[j];
-            }
-        }
-        bool host_call = x->id == function_id("Probe") ||
-                         x->id == function_id("Caller") ||
-                         x->id == function_id("Recursive") ||
-                         x->id == function_id("ImportedHost") ||
-                         x->id == script_catalog_id("package-symbol", "project:lib:1:Through:callable");
-        REQUIRE(!host_call || (x->effects & SCRIPT_EFFECT_HOST));
-        observed += host_call;
-        REQUIRE(y);
-        if (x->effects != y->effects) {
-            fprintf(
-                stderr,
-                "stored function effects %016llx: stage zero=%u stage one=%u\n",
-                (unsigned long long)x->id,
-                x->effects,
-                y->effects
-            );
-        }
-        same &= x->effects == y->effects;
-    }
-    REQUIRE(observed > 0);
-    return same;
-}
+
 /* Each module retains stage zero's source points, watches and, when supplied,
  * effects for the target's natives. */
-static bool points_like_oracle(const unsigned char *bytes, size_t length, bool host_effects)
-{
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    const authoring_packages *owner = oracle.owners[0];
-    bool alike = package_collection_count(packages) == authoring_packages_count(owner);
-    for (int p = 0; alike && p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        const execution_module *expected = NULL;
-        for (int q = 0; !expected && q < authoring_packages_count(owner); q++) {
-            const execution_module *candidate = authoring_packages_at(owner, q)->module;
-            expected = execution_module_id(candidate) == execution_module_id(module)
-                         ? candidate
-                         : NULL;
-        }
-        alike = expected && same_points(expected, module) &&
-                same_watches(expected, module) &&
-                (!host_effects || same_host_effects(expected, module));
-    }
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    return alike;
-}
+
 /* Each compiler backend has a focused selector. Bytecode compares source
  * points with stage zero; both compare explicit target effects. */
 /* Stage zero's packages for the sample, linked against the fixture's
@@ -3177,14 +2618,7 @@ static bool native_record_table(int b, const native_record *records, int count, 
     free(values);
     return built;
 }
-static pin_value native_ids(const int64_t *values, int count)
-{
-    pin_array *array = pin_array_snapshot_allocate(&input, PIN_I64, NULL, count);
-    for (int i = 0; i < count; i++) {
-        array->items[i] = (pin_value){ .type = PIN_I64, .i64 = values[i] };
-    }
-    return (pin_value){ .type = PIN_I64, .container = PIN_CONTAINER_ARRAY, .ptr = array };
-}
+
 /* native_abi's target `function` and m's tables, the arguments Emit and
  * EmitLibrary share. */
 static bool native_tables(int b, const char *function, const native_module *m, pin_value args[10])
@@ -3242,81 +2676,12 @@ static bool native_target_emit(int b, const char *function, const native_module 
 /* Emits m for native_abi's target `function` as the library `name` under
  * budget 1, its functions named and identified by `names` and `ids`, `count`
  * of each. */
-static bool native_emit_library(
-    int b,
-    const char *function,
-    const native_module *m,
-    const char *name,
-    const char *const *names,
-    const int64_t *ids,
-    int count,
-    const pin_union **out
-)
-{
-    pin_value tables[10], args[15];
-    REQUIRE(native_tables(b, function, m, tables));
-    args[0] = tables[0];
-    args[1] = text(name);
-    args[2] = strings(names, count);
-    args[3] = native_ids(ids, count);
-    memcpy(&args[4], &tables[1], sizeof tables - sizeof *tables);
-    args[13] = (pin_value){ .type = PIN_I32, .i = 1 };
-    args[14] = strings(NULL, 0);
-    return native_result(b, "EmitLibrary", args, 15, out);
-}
+
 /* Emits m for Linux x86-64. */
-static bool native_emit(int b, const native_module *m, const pin_union **out)
-{
-    return native_target_emit(b, "LinuxX64", m, out);
-}
-static bool native_rejects(int b, const native_module *m, const char *message)
-{
-    const pin_union *value;
-    REQUIRE(native_emit(b, m, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
-    pin_string text = pin_text(value->values[1]);
-    REQUIRE(pin_text_equal(text, (pin_string){ .bytes = message, .length = strlen(message) }));
-    return true;
-}
+
 /* main() returns Pick(7, true, 9), and Pick :: (int, bool, int) -> int
  * returns its third argument. Slots s0..s2 hold the arguments in call order. */
-static const native_code CALLER_AND_CALLEE[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .literal = 7 },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .output = 1, .literal = 1 },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 2, .literal = 9 },
-    { .op = NATIVE_CALL, .type = NATIVE_INT, .output = 3, .left = 1, .target = 3 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 3 },
-    { .op = NATIVE_RETURN },
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_ARGUMENT, .type = NATIVE_INT, .left = 2 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    CALL_CODE = (int)(sizeof CALLER_AND_CALLEE / sizeof *CALLER_AND_CALLEE)
-};
-static const native_function CALL_FUNCTIONS[] = {
-    { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
-    { NATIVE_INT, 0, 3, 4, 1, 7, 4, 3, 0 },
-};
-static const int CALL_PARAMETERS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT };
-static const int CALL_SLOTS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT, NATIVE_INT, NATIVE_INT };
-static const int CALL_ARGUMENTS[] = { 0, 1, 2 };
-static native_module call_module(const native_code *code, const int *arguments, int argument_count)
-{
-    return (native_module){ .functions = CALL_FUNCTIONS,
-                            .function_count = 2,
-                            .parameters = CALL_PARAMETERS,
-                            .parameter_count = 3,
-                            .slots = CALL_SLOTS,
-                            .slot_count = 5,
-                            .code = code,
-                            .code_count = CALL_CODE,
-                            .arguments = arguments,
-                            .argument_count = argument_count };
-}
+
 static bool contains(pin_string haystack, const char *needle)
 {
     char *text = xmalloc(haystack.length + 1);
@@ -3328,112 +2693,11 @@ static bool contains(pin_string haystack, const char *needle)
 }
 /* The call module as the library Lib: every function internal, one wrapper
  * per word signature, and the manifest the only exported symbol. */
-static bool native_libraries_export_words(int b)
-{
-    native_module m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
-    static const char *const names[] = { "Main", "Pick" };
-    static const int64_t ids[] = { 11, -5 };
-    const pin_union *value;
-    REQUIRE(native_emit_library(b, "LinuxX64", &m, "Lib", names, ids, 2, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    pin_string text = pin_text(value->values[0]);
-    REQUIRE(!contains(text, "define i32"));
-    REQUIRE(contains(text, "define internal i32 @chibi_scalar.0() #0 {"));
-    REQUIRE(
-        contains(text, "define internal void @chibi_scalar.export.1(ptr %ctx, ptr %in, ptr %out) #0 {")
-    );
-    REQUIRE(
-        contains(text, "@chibi_scalar.export.types.1 = private unnamed_addr constant [4 x i8] [i8 1, i8 2, i8 1, i8 1]")
-    );
-    REQUIRE(
-        contains(text, "@chibi_scalar.export.name.1 = private unnamed_addr constant [5 x i8] c\"Pick\\00\"")
-    );
-    REQUIRE(contains(
-        text,
-        "%chibi.export { ptr @chibi_scalar.export.name.1, i64 -5, ptr "
-        "@chibi_scalar.export.types.1, i32 3, "
-        "i32 1, ptr @chibi_scalar.export.1 }"
-    ));
-    REQUIRE(
-        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 4, i32 2, ptr @chibi_scalar.exports }")
-    );
-    static const char malformed[] = "native library needs an identifier and a "
-                                    "name and ID for each function";
-    static const char *const repeated[] = { "Main", "Main" };
-    static const int64_t shared[] = { 11, 11 };
-    /* Libraries are Linux-only: other targets reject them rather than export
-     * Linux's word ABI. */
-    static const char linux_only[] = "native libraries are Linux x86-64 only";
-    static const struct
-    {
-        const char *function;
-        const char *name;
-        const char *const *names;
-        const int64_t *ids;
-        int count;
-        const char *message;
-    } rejected[] = {
-        { "LinuxX64", "1Lib", names, ids, 2, malformed },
-        { "LinuxX64", "", names, ids, 2, malformed },
-        { "LinuxX64", "Lib", names, ids, 1, malformed },
-        { "LinuxX64", "Lib", repeated, ids, 2, "native library names each function once" },
-        { "LinuxX64", "Lib", names, shared, 2, "native library names each function once" },
-        { "MacOSArm64", "Lib", names, ids, 2, linux_only },
-        { "WindowsX64", "Lib", names, ids, 2, linux_only },
-    };
-    for (size_t i = 0; i < sizeof rejected / sizeof *rejected; i++) {
-        REQUIRE(native_emit_library(
-            b,
-            rejected[i].function,
-            &m,
-            rejected[i].name,
-            rejected[i].names,
-            rejected[i].ids,
-            rejected[i].count,
-            &value
-        ));
-        REQUIRE(
-            value->tag ==
-            fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected")
-        );
-        pin_string message = pin_text(value->values[1]);
-        REQUIRE(pin_text_equal(
-            message,
-            (pin_string){ .bytes = rejected[i].message,
-                          .length = strlen(rejected[i].message) }
-        ));
-    }
-    return true;
-}
-typedef struct native_change
-{
-    int index;
-    size_t field;
-    int value;
-} native_change;
+
 /* Sets one field of code[change.index], at the width of that field. */
-static void change_code(native_code *code, native_change change)
-{
-    native_code *item = &code[change.index];
-    if (change.field == offsetof(native_code, literal)) {
-        item->literal = change.value;
-        return;
-    }
-    memcpy((char *)item + change.field, &change.value, sizeof change.value);
-}
-static const char
-    TABLES[] = "unsupported native scalar signature or table size";
-static const char OUTPUT[] = "native scalar output has an invalid type or "
-                             "multiple definitions";
+
 /* The IR native_emit gives for m. */
-static bool native_text(int b, const native_module *m, pin_string *ir)
-{
-    const pin_union *value;
-    REQUIRE(native_emit(b, m, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    *ir = pin_text(value->values[0]);
-    return true;
-}
+
 /* The native LLVM fixtures target 64-bit layouts. Portable hosts still store
  * pin_string as their own bytes pointer, 32-bit length and owner pointer. */
 
@@ -3445,146 +2709,9 @@ static bool native_text(int b, const native_module *m, pin_string *ir)
 /* Main returns whether its two texts differ: each constant is a private
  * global of its bytes and a NUL, named by its index in the text table, and
  * `!=` negates the module's one byte comparison. */
-static const native_code TEXT_CODE[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT, .output = 1, .literal = 1 },
-    { .op = NATIVE_NE, .type = NATIVE_TEXT, .output = 2, .right = 1 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_BOOL, .left = 2 },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    TEXT_CODE_COUNT = (int)(sizeof TEXT_CODE / sizeof *TEXT_CODE)
-};
-static const native_function TEXT_FUNCTIONS[] = {
-    { NATIVE_BOOL, 0, 0, 0, 3, 0, TEXT_CODE_COUNT, 0, 0 }
-};
-static const int TEXT_SLOTS[] = { NATIVE_TEXT, NATIVE_TEXT, NATIVE_BOOL };
-static const char *const TEXTS[] = { "a\"\\\n\xc3\xa9", "" };
-static native_module text_module(const native_code *code)
-{
-    return (native_module){ .functions = TEXT_FUNCTIONS,
-                            .function_count = 1,
-                            .slots = TEXT_SLOTS,
-                            .slot_count = 3,
-                            .code = code,
-                            .code_count = TEXT_CODE_COUNT,
-                            .texts = TEXTS,
-                            .text_count = 2 };
-}
+
 /* The text module with one instruction field changed. */
-static bool native_rejects_text_change(int b, native_change change, const char *message)
-{
-    native_code code[TEXT_CODE_COUNT];
-    memcpy(code, TEXT_CODE, sizeof code);
-    change_code(code, change);
-    native_module m = text_module(code);
-    return native_rejects(b, &m, message);
-}
-static bool native_strings_emit(int b)
-{
-    pin_value type;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:native_abi", "TextType", NULL, 0, COMPILE_BUDGET, &input, &type)
-    );
-    REQUIRE(
-        pin_text_equal(pin_text(type), (pin_string){ .bytes = "{ ptr, i32, ptr }", .length = 17 })
-    );
-    native_module m = text_module(TEXT_CODE);
-    pin_string ir;
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(contains(
-        ir,
-        "@chibi_scalar.text.0 = private unnamed_addr constant [7 x i8] "
-        "c\"a\\22\\5C\\0A\\C3\\A9\\00\"\n"
-    ));
-    REQUIRE(contains(ir, "@chibi_scalar.text.1 = private unnamed_addr constant [1 x i8] c\"\\00\"\n"));
-    REQUIRE(
-        contains(ir, "store { ptr, i32, ptr } { ptr @chibi_scalar.text.0, i32 6, ptr null }, ptr %s0")
-    );
-    REQUIRE(
-        contains(ir, "store { ptr, i32, ptr } { ptr @chibi_scalar.text.1, i32 0, ptr null }, ptr %s1")
-    );
-    REQUIRE(
-        contains(ir, "call i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a3, { ptr, i32, ptr } %b3)")
-    );
-    REQUIRE(contains(ir, "xor i1 %e3, true"));
-    REQUIRE(
-        contains(ir, "define internal i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a, { ptr, i32, ptr } %b) #0 {")
-    );
-    static const char outside[] = "native constant is outside its type",
-                      operands[] = "native scalar operand type mismatch";
-    static const struct
-    {
-        native_change change;
-        const char *message;
-    } changes[] = {
-        /* A text past the table, or before it. */
-        { { 2, offsetof(native_code, literal), 2 }, outside },
-        { { 2, offsetof(native_code, literal), -1 }, outside },
-        /* Strings ordered, a sum of strings, which no bool slot holds, and a
-         * string compared with a bool. */
-        { { 3, offsetof(native_code, op), 19 }, operands },
-        { { 3, offsetof(native_code, op), 7 }, OUTPUT },
-        { { 3, offsetof(native_code, right), 2 }, operands },
-    };
-    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
-        REQUIRE(native_rejects_text_change(b, changes[i].change, changes[i].message));
-    }
-    /* No string crosses the exported entry. */
-    static const native_code returned[] = {
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_TEXT },
-        { .op = NATIVE_RETURN },
-    };
-    static const native_function exported[] = { { NATIVE_TEXT, 0, 0, 0, 1, 0, 4, 0, 0 } },
-                                 taking[] = { { NATIVE_BOOL, 0, 1, 0, 1, 0, 4, 0, 0 } };
-    static const int text_parameter[] = { NATIVE_TEXT };
-    native_module alone = { .functions = exported,
-                            .function_count = 1,
-                            .slots = TEXT_SLOTS,
-                            .slot_count = 1,
-                            .code = returned,
-                            .code_count = 4,
-                            .texts = TEXTS,
-                            .text_count = 1 };
-    REQUIRE(native_rejects(b, &alone, TABLES));
-    /* A library keeps such a function internal and exports no wrapper. */
-    static const char *const name[] = { "Named" };
-    static const int64_t id[] = { 3 };
-    const pin_union *library;
-    REQUIRE(native_emit_library(b, "LinuxX64", &alone, "Texts", name, id, 1, &library));
-    REQUIRE(library->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    pin_string kept = pin_text(library->values[0]);
-    REQUIRE(contains(kept, "define internal { ptr, i32, ptr } @chibi_scalar.0() #0 {"));
-    REQUIRE(!contains(kept, "@chibi_scalar.export.0"));
-    REQUIRE(contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
-    REQUIRE(
-        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 4, i32 0, ptr @chibi_scalar.exports }")
-    );
-    static const native_code published[] = {
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_BOOL },
-        { .op = NATIVE_RETURN },
-    };
-    alone.functions = taking;
-    alone.parameters = text_parameter;
-    alone.parameter_count = 1;
-    alone.slots = TEXT_SLOTS + 2;
-    alone.code = published;
-    REQUIRE(native_rejects(b, &alone, "unsupported native scalar parameter"));
-    /* A module that compares no strings defines no comparison. */
-    native_code equal[TEXT_CODE_COUNT];
-    memcpy(equal, TEXT_CODE, sizeof equal);
-    equal[3] = (native_code){ .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .output = 2 };
-    m = text_module(equal);
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(!contains(ir, "text_equal"));
-    return true;
-}
+
 /* CollectScalarPackages' arguments for the project files `inputs`: no
  * collection, the paths and sources, this host's target and the natives. */
 static bool scalar_package_arguments(
@@ -3679,21 +2806,7 @@ TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
 /* llvm_native's call and float contracts: definitions, argument order,
  * floating encodings and conversions, and the malformed or cyclic plans it
  * rejects before writing IR. */
-TEST_CASE(package_compiler_native_emitter_checks_calls)
-{
-    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS,
-                                             EMITTER_TEST_SOURCE_INPUTS };
-    const native_definition_pack core[] = { CORE_DEFINITION_PACK };
-    REQUIRE(
-        compiler_fixture_prepare_packs(&consumer, sources, (int)(sizeof sources / sizeof *sources), core, 1)
-    );
-    for (int b = 0; b < 2; b++) {
-        REQUIRE(native_libraries_export_words(b));
-        REQUIRE(native_strings_emit(b));
-    }
-    REQUIRE(compiler_fixture_tests(&consumer));
-    return true;
-}
+
 /* A shared wrong result is not an oracle. Each executed value must match
  * the fixture's literal, including Main's value. */
 static bool scalar_results_match(const int64_t values[4], int64_t expected)
@@ -6329,7 +5442,6 @@ void test_language_package_compiler_chibi_scalar()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_scalar_rows_span_imported_packages);
-    RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
     RUN_TEST_CASE(package_compiler_scalar_retains_library_states);
@@ -6379,100 +5491,8 @@ void test_language_package_compiler_chibi_native()
 
 /* Fixed primitive-native argument association, checked against literal
  * results and the independent stage-zero reference. */
-static const sample native_argument_samples[] = {
-    { .name = "native named CString expression location",
-      .source = "package facts\nRun :: () -> int { return "
-                "cstring_probe(value: "
-                "(\"a\\u0000b\")); }",
-      .c_string_probe = true,
-      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
-      .line = 2,
-      .column = 48 },
-    { .name = "native reordered CString expression location",
-      .source = "package facts\nRun :: () -> int { return "
-                "cstring_pair(value: "
-                "(\"a\\u0000b\"), prefix: 1); }",
-      .c_string_probe = true,
-      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
-      .line = 2,
-      .column = 47 },
-};
 
 /* Stage zero picks native.overload's integer or text overload by the
  * argument; an untyped number never converts to text, so it cannot pick the
  * text one. native.kernel's number overload takes literals and typed values
  * other than i64, which takes the f64 one. */
-
-TEST_CASE(native_arguments_authored_contract)
-{
-    REQUIRE(prepare());
-    bool all = true;
-    for (int b = 0; b < 2; b++) {
-        for (int i = 0;
-             i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
-             i++) {
-            const sample *s = &native_argument_samples[i];
-            source_package_input inputs[SAMPLE_INPUTS];
-            int count = sample_inputs(s, inputs);
-            compiler_result out;
-            REQUIRE(
-                compile(b, false, s->c_string_probe, false, inputs, count, COMPILE_BUDGET, &out)
-            );
-            bool passed = false;
-            if (!compiler_succeeded(&out)) {
-                pin_value message, line, column;
-                REQUIRE(get(compiler_error(&out), "message", &message));
-                REQUIRE(get(compiler_error(&out), "line", &line));
-                REQUIRE(get(compiler_error(&out), "column", &column));
-                passed = s->message && !strcmp(s->message, pin_text(message).bytes) &&
-                         line.i == s->line && column.i == s->column;
-                fprintf(
-                    stderr,
-                    "native arguments authored %d: %s: %s at %d:%d (%s)\n",
-                    b,
-                    s->name,
-                    pin_text(message).bytes,
-                    line.i,
-                    column.i,
-                    passed ? "expected" : "MISMATCH"
-                );
-            } else {
-                size_t length = 0;
-                unsigned char *bytes = closure_bytes(&out, &length);
-                unsigned char *expected = NULL;
-                size_t expected_length = 0;
-                passed = !s->message &&
-                         (b || (oracle_closure(s, &expected, &expected_length) &&
-                                points_like_oracle(bytes, length, false))) &&
-                         run(bytes, length, &s->calls[0], 0) &&
-                         run(bytes, length, &s->calls[0], 1);
-                free(expected);
-                free(bytes);
-                /* run() leaves a failed invocation for cleanup; continue the
-                 * remaining fixtures without overwriting that ownership. */
-                compiler_host_free(host);
-                host = NULL;
-                free(result.json);
-                result = (compiler_host_result){ 0 };
-                fprintf(
-                    stderr,
-                    "native arguments authored %d: %s: compiled (%s)\n",
-                    b,
-                    s->name,
-                    passed ? "expected" : "MISMATCH"
-                );
-            }
-            arena_free(&detached);
-            all = passed && all;
-        }
-    }
-    REQUIRE(all);
-    return true;
-}
-
-void test_language_package_compiler_chibi_native_arguments()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(native_arguments_authored_contract);
-    pu_clear_setup();
-}

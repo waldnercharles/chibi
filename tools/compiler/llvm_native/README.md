@@ -141,7 +141,7 @@ scalar ordinals.
 
 ## Consumers and checks
 
-- `test/native_aot/emitter/Tests.chibi`: pure `Tests() -> int`, zero on success
+- `tools/compiler/native_abi/tests/Tests.chibi`: pure `Tests() -> int`, zero on success
   and 1-6 for a failed group. It checks scalar emission, malformed types/control
   flow, definition dominance, total arithmetic, explicit budgets and
   recursion with stack probes.

@@ -25,7 +25,7 @@ ForeignResultModule :: (result: int, code: native.Instruction[], slots: int[], t
 ForeignModule :: (code: native.Instruction[], slots: int[], texts: string[]) -> native.Result {
     return ForeignResultModule(6, code, slots, texts);
 }
-ForeignMismatch: string : "native foreign call differs from its operands";
+ForeignMismatch :: () -> string { return "native foreign call differs from its operands"; }
 ChangedForeign :: (item: native.Instruction, slots: int[], texts: string[], message: string) {
     code := Foreigns();
     code[3] = item;
@@ -53,19 +53,19 @@ ForeignBoolsAreZeroExtended :: () {
 }
 @test
 ForeignSymbolMustBeInTheTextTable :: () {
-    ChangedForeign(Code(native.ForeignCall, 6, 2, 0, 0, 2, 1), [6, 6, 6], ["chibi_probe_add"], ForeignMismatch);
+    ChangedForeign(Code(native.ForeignCall, 6, 2, 0, 0, 2, 1), [6, 6, 6], ["chibi_probe_add"], ForeignMismatch());
 }
 @test
 ForeignSymbolMustBeAnIdentifier :: () {
-    Rejects(ForeignModule(Foreigns(), [6, 6, 6], ["llvm.trap"]), ForeignMismatch);
+    Rejects(ForeignModule(Foreigns(), [6, 6, 6], ["llvm.trap"]), ForeignMismatch());
 }
 @test
 ForeignSymbolMayNotBeTheEntry :: () {
-    Rejects(ForeignModule(Foreigns(), [6, 6, 6], ["main"]), ForeignMismatch);
+    Rejects(ForeignModule(Foreigns(), [6, 6, 6], ["main"]), ForeignMismatch());
 }
 @test
 ForeignArgumentsPastTheTableAreRejected :: () {
-    ChangedForeign(Code(native.ForeignCall, 6, 2, 0, 1, 2, 0), [6, 6, 6], ["chibi_probe_add"], ForeignMismatch);
+    ChangedForeign(Code(native.ForeignCall, 6, 2, 0, 1, 2, 0), [6, 6, 6], ["chibi_probe_add"], ForeignMismatch());
 }
 // Main calls the address in slot 0 with 40 and 2 and returns the result.
 Indirects :: () -> native.Instruction[] {

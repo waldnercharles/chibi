@@ -3122,6 +3122,10 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
     params: Param[] = [];
     ids: u64[] = [];
     member := FirstMember(forest, Field(forest, declaration, syntax.FieldBody));
+    scopes := NoScopes();
+    if (member >= 0) {
+        scopes = SiblingScopes(forest, text, member);
+    }
     while (member >= 0) {
         if (!Is(forest, member, syntax.FunctionDeclaration) || Field(forest, member, syntax.FieldAttribute) >= 0) {
             return ScalarFailure(path, text, Diagnose(forest, member, 0,
@@ -3131,7 +3135,7 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
         if (FindCallable(callables, 0, name) >= 0) {
             return ScalarFailure(path, text, Diagnose(forest, member, 0, format_text("Duplicate declaration '{}'", name)));
         }
-        switch FunctionSignature(forest, text, path, solid, &empty_types, aliases, 0, 0, member, name, length(params)) {
+        switch FunctionSignature(forest, text, path, solid, &empty_types, aliases, 0, 0, member, name, length(params), scopes) {
             case .Failed(diagnostic):
                 return ScalarFailure(path, text, diagnostic);
             case .Read(callable, added):

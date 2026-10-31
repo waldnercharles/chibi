@@ -2788,10 +2788,13 @@ static void build_process(const char *worker, const char *host, build_process_ca
         error,
         sizeof error
     );
-    if (!build_compiler) {
+    /* The cases' deadlines time builds, not loading the compiler. */
+    bool ready = build_compiler &&
+                 chibi_build_compiler_ready(build_compiler, error, sizeof error);
+    if (!ready) {
         fprintf(stderr, "build compiler: %s\n", error);
     }
-    assert(build_compiler);
+    assert(ready);
 
     strcpy(root, "/tmp/chibi-build-process-XXXXXX");
     assert(mkdtemp(root));

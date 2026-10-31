@@ -87,8 +87,7 @@ Sources :: (folder: string) -> string[] {
 
 pub InventoryDirectories :: () -> string[] {
     return ["tools/compiler/package_compiler", "tools/compiler/scalar_facts", "tools/compiler/asset_compiler",
-            "tools/compiler/asset_source", "tools/compiler/asset_packaging", "packages/core", "packages/game",
-            "tools/graph/asset_compiler", "tools/compiler/cost_explanations", "tools/compiler/math_types"];
+            "packages/core", "tools/graph/asset_compiler", "tools/compiler/math_types"];
 }
 
 pub Inventory :: (root: string) -> string {
@@ -106,8 +105,6 @@ Read :: (root: string, paths: string[]) -> string[] {
     for (path in paths) {
         if (strings.HasPrefix(path, "/sdk/core/")) {
             sources.append(build.read_file(Join([root, "/packages/core/", strings.Slice(path, 10, strings.ByteLength(path))])));
-        } else if (strings.HasPrefix(path, "/sdk/game/")) {
-            sources.append(build.read_file(Join([root, "/packages/game/", strings.Slice(path, 10, strings.ByteLength(path))])));
         } else {
             sources.append(build.read_file(Join([root, "/tools/compiler/", path])));
         }
@@ -115,7 +112,7 @@ Read :: (root: string, paths: string[]) -> string[] {
     return sources;
 }
 
-Request :: (first: string, paths: string[], sources: string[], target: string, game: bool) -> string {
+Request :: (first: string, paths: string[], sources: string[], target: string) -> string {
     ordered_paths := [first];
     ordered_sources: string[] = [];
     index: int = 0;
@@ -141,9 +138,6 @@ Request :: (first: string, paths: string[], sources: string[], target: string, g
         return "";
     }
     collections := "[\"/project\",[\"core\"],[\"/sdk/core\"],";
-    if (game) {
-        collections = "[\"/project\",[\"core\",\"game\"],[\"/sdk/core\",\"/sdk/game\"],";
-    }
     return Join([collections, Array(ordered_paths), ",", Array(ordered_sources),
                  ",false,", strings.Slice(target, 1, strings.ByteLength(target) - 2), "]"]);
 }
@@ -245,18 +239,11 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         }
     }
     // Compiler implementation dependencies are explicit in CompilerSources.txt.
-    // Public core sources are packaged below, without entering the seed target.
-    for (directory in ["asset_compiler", "asset_source", "asset_packaging"]) {
-        for (file in build.list_directory(Join([root, "/tools/compiler/", directory]))) {
-            if (strings.HasSuffix(file, ".chibi")) {
-                paths.append(Join([directory, "/", file]));
-            }
+    for (file in build.list_directory(Join([root, "/tools/compiler/asset_compiler"]))) {
+        if (strings.HasSuffix(file, ".chibi")) {
+            paths.append(Join(["asset_compiler/", file]));
         }
     }
-    for (path in Sources(Join([root, "/packages/game"]))) {
-        paths.append(Join(["/sdk/game/", path]));
-    }
-    paths.append("cost_explanations/Explain.chibi");
     sources := Read(root, paths);
     inputs := Join([folder, "/input.json"]);
     facade := Join([folder, "/native_facade.chibip"]);
@@ -267,7 +254,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     closure_entry := "0x140a9546d9e8c296"; // package_compiler.CompileClosure
     cache := Location(os.Getenv("CHIBI_ASSET_COMPILER_CACHE"), os.Getenv("XDG_CACHE_HOME"), os.Getenv("HOME"), root);
     os.Print("asset compiler: serialize facade request");
-    facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target, true);
+    facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target);
     facade_key := Key(seed, facade_request);
     kept := [facade_key];
     os.Print(format_text("asset compiler: invoke facade compiler at {} ({} sources, {} bytes)", Stamp(), length(paths),
@@ -282,7 +269,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         }
     } else {
         os.Print("asset compiler: serialize target request");
-        target_request := Request("asset_compiler/Compile.chibi", paths, sources, target, true);
+        target_request := Request("asset_compiler/Compile.chibi", paths, sources, target);
         target_key := Key(seed, target_request);
         kept.append(target_key);
         os.Print("asset compiler: invoke target compiler");
@@ -293,49 +280,18 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     if (os.IsDirectory(cache)) {
         Evict(cache, Budget, kept);
     }
-    // Keep the complete public library snapshot separate from compiler inputs.
-    // Retain original compiled source bytes so the final hash check still
-    // rejects a file changed during generation.
-    for (relative in Sources(Join([root, "/packages/core"]))) {
-        path := Join(["/sdk/core/", relative]);
-        found := false;
-        for (item in paths) {
-            if (item == path) {
-                found = true;
-            }
-        }
-        if (!found) {
-            captured := Read(root, [path]);
-            paths.append(path);
-            sources.append(captured[0]);
-        }
+    // The resource is the artifact's address and size; C never sees source text.
+    os.Print("asset compiler: write resource");
+    resource := Join([folder, "/asset_compiler_packaged.c"]);
+    text := Join(["#include \"authoring/asset_compiler_host.h\"\n#include \"asset_compiler_blob.inc\"\n",
+                  "const asset_compiler_options *asset_compiler_packaged_options() {\n",
+                  "static const asset_compiler_options options = {\n",
+                  ".compiler = asset_compiler_blob, .compiler_length = sizeof asset_compiler_blob\n};\n",
+                  "return &options;\n}\n"]);
+    if (os.WriteText(Join([resource, ".tmp"]), text) || os.Rename(Join([resource, ".tmp"]), resource)) {
+        return false;
     }
-    library_paths: string[] = [];
-    library_sources: string[] = [];
     index: int = 0;
-    while (index < length(paths)) {
-        if (strings.HasPrefix(paths[index], "/sdk/core/") || strings.HasPrefix(paths[index], "/sdk/game/")) {
-            library_paths.append(paths[index]);
-            library_sources.append(sources[index]);
-        }
-        index += 1;
-    }
-    os.Print("asset compiler: serialize packaging request");
-    if (os.WriteText(inputs, Join(["[", Array(library_paths), ",", Array(library_sources), "]"]))) {
-        return false;
-    }
-    // The same stable package-symbol hash used by all prepared entry IDs.
-    id := u64(14695981039346656037);
-    for (value in strings.Bytes("package-symbol:project:asset_compiler:1:Packaged:callable")) {
-        id = (id ^ u64(value)) * u64(1099511628211);
-    }
-    os.Print(format_text("asset compiler: invoke packaging at {}", Stamp()));
-    if (!Invoke(host, facade, format_text("0x{:016x}", id), inputs, Join([folder, "/asset_compiler_packaged.c.tmp"]), compiler_timeout) ||
-        os.Rename(Join([folder, "/asset_compiler_packaged.c.tmp"]), Join([folder, "/asset_compiler_packaged.c"]))) {
-        return false;
-    }
-    os.Print(format_text("asset compiler: packaging ready at {}", Stamp()));
-    index = 0;
     while (index < length(paths)) {
         path := paths[index];
         disk := Join(["tools/compiler/", path]);

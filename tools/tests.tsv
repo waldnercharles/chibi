@@ -32,7 +32,6 @@ tool	bootstrap-load	@release@/test/tools/test_tools	--bootstrap-load	@root@/tool
 tool	graph-engine	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/EngineTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000
 tool	graph-driver	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/DriverTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000	--	@host@
 tool	graph-discovery	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/DiscoveryTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000	--	@host@
-tool	graph-sdk	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/SDKTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000
 tool	graph-c	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/CTests.chibi	--core	packages/core	--collection	graph_c=tools/graph/c	--entry	Run	--timeout-ms	600000	--	@host@
 tool	graph-build	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/BuildTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	1200000	--	@host@
 tool	graph-asset-cache	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/AssetCompilerCacheTests.chibi	--core	packages/core	--collection	asset_generator=tools/graph/asset_compiler	--entry	Run	--timeout-ms	600000
@@ -67,7 +66,6 @@ tool	chibi-test-samples-math	@release@/sdk/chibi	test	test/compiler/samples/math
 tool	chibi-test-samples-native	@release@/sdk/chibi	test	test/compiler/samples/native
 tool	chibi-test-samples-native-arguments	@release@/sdk/chibi	test	test/compiler/samples/native_arguments
 tool	chibi-test-samples-types	@release@/sdk/chibi	test	test/compiler/samples/types
-tool	language-asset-compiler-host	@build@/test/language/test_language	--asset-compiler-host
 tool	language-package-compiler-chibi-scalar	@build@/test/language/test_language	--package-compiler-chibi-scalar
 tool	language-scalar-native	@build@/test/language/test_language	--package-compiler-chibi-native
 tool	language-native-census	@build@/test/language/test_language	--native-census
@@ -92,6 +90,6 @@ timeout	bootstrap-load	1800
 exclusive	language-test-parallel
 group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	asset-values	fmt	arena
 group	projects	chibi-cli	native-build
-group	language	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host	bootstrap-recovery	native-link
+group	language	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	bootstrap-recovery	native-link
 group	compiler	language-package-compiler-chibi-scalar
 group	benchmarks	ecs-query-benchmark	native-workload-benchmark	scheduler-benchmark

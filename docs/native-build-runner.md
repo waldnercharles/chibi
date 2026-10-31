@@ -67,7 +67,7 @@ Measured 2026-10-31 at main f730e36dd with `test_language --native-census`, whic
 is a file adds that file under PREFIX; a directory adds its `.chibi` files except tests; a
 package is a folder; `graph:x` is the folder `graph/x`). Three runs, because the three programs
 share one folder and some names: `Driver.chibi`, `Build.chibi`, and `Graph.chibi` with
-`RuntimeSDK`, `SDK` and `AssetCompiler` and everything under `tools/graph`. Each also read
+`SDK` and `AssetCompiler` and everything under `tools/graph`. Each also read
 `core:os`, `core:bytes` and `core:strings`. 347 functions of the programs themselves.
 
 **As the programs are written** (`build.*` natives unknown to the producer): 154 pass.

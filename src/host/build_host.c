@@ -34,11 +34,14 @@
 #include <unistd.h>
 #include <yyjson.h>
 
+/* A program the cache keeps needs no compiler, so the host is loaded, about a
+ * second for the compiler's closure, only when a program is compiled. */
 struct chibi_build_compiler
 {
-    compiler_host *host;
-    char identity[65]; /* The closure's SHA-256; empty when unknown. */
+    compiler_host *host; /* NULL until a compile needs it. */
+    char identity[65];   /* The closure's SHA-256; empty when unknown. */
     char *cache; /* Owned; where compiled build programs are kept, or NULL. */
+    char *sources, *core; /* Owned; what the host loads from. */
 };
 
 #define BUILD_MAX_ARGUMENTS 256
@@ -666,16 +669,43 @@ chibi_build_compiler *chibi_build_compiler_load(
                                  .core = core,
                                  .cache = cache,
                                  .identity = identity };
-    compiler_host *host = compiler_bootstrap_load(&input, error, size);
+    /* A closure that is not at hand is recovered, and kept, now. */
+    compiler_host *host = compiler_bootstrap_identity(&input, error, size)
+                            ? NULL
+                            : compiler_bootstrap_load(&input, error, size);
     free(folder);
-    if (!host) {
+    if (!identity[0]) {
+        compiler_host_free(host);
         return NULL;
     }
     chibi_build_compiler *compiler = xcalloc(1, sizeof *compiler);
     compiler->host = host;
     memcpy(compiler->identity, identity, sizeof identity);
     compiler->cache = cache ? xstrdup(cache) : NULL;
+    compiler->sources = xstrdup(sources);
+    compiler->core = xstrdup(core);
     return compiler;
+}
+
+/* The loaded compiler, or NULL with why in `error`. */
+static compiler_host *compiler_host_of(chibi_build_compiler *compiler, char *error, size_t size)
+{
+    assert(compiler->sources && compiler->core);
+    if (!compiler->host) {
+        char *folder = join(compiler->sources, "bootstrap");
+        compiler_bootstrap input = { .folder = folder,
+                                     .compiler = compiler->sources,
+                                     .core = compiler->core,
+                                     .cache = compiler->cache };
+        compiler->host = compiler_bootstrap_load(&input, error, size);
+        free(folder);
+    }
+    return compiler->host;
+}
+
+bool chibi_build_compiler_ready(chibi_build_compiler *compiler, char *error, size_t size)
+{
+    return compiler_host_of(compiler, error, size) != NULL;
 }
 
 void chibi_build_compiler_free(chibi_build_compiler *compiler)
@@ -683,6 +713,8 @@ void chibi_build_compiler_free(chibi_build_compiler *compiler)
     if (compiler) {
         compiler_host_free(compiler->host);
         free(compiler->cache);
+        free(compiler->sources);
+        free(compiler->core);
         free(compiler);
     }
 }
@@ -798,14 +830,20 @@ static void located_diagnostic(build_host *host, yyjson_val *diagnostic, const c
 static void compile_rejection(build_host *host, const char *json, size_t length, char **paths)
 {
     compiler_host_result result = { 0 };
-    bool called = compiler_host_invoke(
-        host->options->compiler->host,
-        compiler_host_entry("project:package_compiler:1:CompileWithEffects:callable"),
-        json,
-        length,
-        BUILD_COMPILE_BUDGET,
-        &result
+    compiler_host *compiler = compiler_host_of(
+        host->options->compiler,
+        result.diagnostic,
+        sizeof result.diagnostic
     );
+    bool called = compiler &&
+                  compiler_host_invoke(
+                      compiler,
+                      compiler_host_entry("project:package_compiler:1:CompileWithEffects:callable"),
+                      json,
+                      length,
+                      BUILD_COMPILE_BUDGET,
+                      &result
+                  );
     yyjson_doc *doc = called ? yyjson_read(result.json, result.length, COMPILER_HOST_JSON_READ_FLAGS)
                              : NULL;
     yyjson_val *error = yyjson_arr_get(yyjson_doc_get_root(doc), 2);
@@ -882,16 +920,23 @@ static package_collection *prepare(build_host *host, const native_capabilities *
                              )
                            : NULL;
     bool kept = compiled.bytes != NULL;
+    compiler_host *compiler = kept ? NULL
+                                   : compiler_host_of(
+                                         host->options->compiler,
+                                         compiled.diagnostic,
+                                         sizeof compiled.diagnostic
+                                     );
     bool called = kept ||
-                  compiler_host_invoke_bytes(
-                      host->options->compiler->host,
-                      compiler_host_entry("project:package_compiler:1:CompileClosureWithEffects:callable"),
-                      json,
-                      length,
-                      BUILD_COMPILE_BUDGET,
-                      COMPILER_HOST_MAX_OUTPUT_BYTES,
-                      &compiled
-                  );
+                  (compiler &&
+                   compiler_host_invoke_bytes(
+                       compiler,
+                       compiler_host_entry("project:package_compiler:1:CompileClosureWithEffects:callable"),
+                       json,
+                       length,
+                       BUILD_COMPILE_BUDGET,
+                       COMPILER_HOST_MAX_OUTPUT_BYTES,
+                       &compiled
+                   ));
     const char *failure = build_host_ready(host);
     if (!called || failure) {
         diagnose(host->result, failure ? failure : compiled.diagnostic);

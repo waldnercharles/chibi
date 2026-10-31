@@ -63,12 +63,29 @@ Admitted :: (triple: string, layout: string) -> int {
 // Only LLVM's verified, canonical textual output is inspected. This admits
 // declared target metadata, not source semantics or arbitrary LLVM syntax.
 // The result is the admitted target's index, or -1.
+// The lines of a module the link reads: comments (`; link`, `; chibi-library`,
+// `; chibi-import`, `; chibi-self`), the target lines and declarations and
+// definitions. A module is tens of MB for the compiler, so one pass tests each
+// line's first byte and the readers below walk only these.
+Markers :: (text: string) -> string[] {
+    found: string[] = [];
+    for (line in build.lines(text)) {
+        first := strings.ByteAt(line, 0);
+        if (first == 59 || first == 116 || first == 100) {
+            found.append(line);
+        }
+    }
+    return found;
+}
 pub Target :: (text: string) -> int {
+    return TargetIn(Markers(text));
+}
+TargetIn :: (lines: string[]) -> int {
     triples := 0;
     layouts := 0;
     triple := "";
     layout := "";
-    for (line in build.lines(text)) {
+    for (line in lines) {
         if (strings.HasPrefix(line, "target triple = ")) {
             triple = line;
             triples += 1;
@@ -126,22 +143,23 @@ LibSystem :: (symbols: string[]) -> string {
 // The C symbols a macOS program imports, by their Mach-O names: each function
 // the module and its start module declare but neither defines, which the
 // foreign calls and the start's context name, then the copies llc may lower
-// to calls, and dyld's binder for the lazy stubs lld writes for them.
-Imports :: (module: string, start: string) -> string[] {
-    lines := strings.SplitLines(module);
-    lines.extend(strings.SplitLines(start));
-    own: string[] = [];
+// to calls, and dyld's binder for the lazy stubs lld writes for them. `lines`
+// are both modules' Markers.
+Imports :: (lines: string[]) -> string[] {
+    // A module holds thousands of definitions, so both sets are maps.
+    own: [string: bool] = [:];
     for (line in lines) {
         if (strings.HasPrefix(line, "; chibi-self ")) {
-            own.append(strings.Slice(line, 13, strings.ByteLength(line) - 13));
+            own[strings.Slice(line, 13, strings.ByteLength(line) - 13)] = true;
         }
         at := strings.Index(line, "@");
         end := strings.Index(line, "(");
         if (strings.HasPrefix(line, "define ") && at >= 0 && end > at) {
-            own.append(strings.Slice(line, at + 1, end - at - 1));
+            own[strings.Slice(line, at + 1, end - at - 1)] = true;
         }
     }
     symbols: string[] = [];
+    listed: [string: bool] = [:];
     for (line in lines) {
         at := strings.Index(line, "@");
         end := strings.Index(line, "(");
@@ -150,12 +168,13 @@ Imports :: (module: string, start: string) -> string[] {
         }
         name := strings.Slice(line, at + 1, end - at - 1);
         symbol := Join(["_", name]);
-        if (!strings.HasPrefix(name, "llvm.") && !own.contains(name) && !symbols.contains(symbol)) {
+        if (!strings.HasPrefix(name, "llvm.") && !own.has(name) && !listed.has(symbol)) {
             symbols.append(symbol);
+            listed[symbol] = true;
         }
     }
     for (name in ["_memcpy", "_memmove", "_memset", "dyld_stub_binder"]) {
-        if (!symbols.contains(name)) {
+        if (!listed.has(name)) {
             symbols.append(name);
         }
     }
@@ -193,10 +212,10 @@ ImportLibrary :: (linker: string, partial: string, name: string) -> string[] {
 
 // The system libraries a module's IR names, other than libc: the NAME of each
 // `; chibi-library system:NAME`, once, in order.
-SystemLibraries :: (text: string) -> string[] {
+SystemLibraries :: (lines: string[]) -> string[] {
     names: string[] = [];
     prefix := "; chibi-library system:";
-    for (line in strings.SplitLines(text)) {
+    for (line in lines) {
         if (strings.HasPrefix(line, prefix)) {
             name := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
             if (name != "c" && !names.contains(name)) {
@@ -209,10 +228,10 @@ SystemLibraries :: (text: string) -> string[] {
 
 // The symbols the module imports from the system library `name`, once, in
 // order: `; chibi-import system:NAME SYMBOL`.
-SystemSymbols :: (text: string, name: string) -> string[] {
+SystemSymbols :: (lines: string[], name: string) -> string[] {
     symbols: string[] = [];
     prefix := Join(["; chibi-import system:", name, " "]);
-    for (line in strings.SplitLines(text)) {
+    for (line in lines) {
         if (strings.HasPrefix(line, prefix)) {
             symbol := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
             if (!symbols.contains(symbol)) {
@@ -303,9 +322,9 @@ LinkDynamic :: (linker: string, libc: string[], object: string, start: string, p
 
 // The absolute library paths a module's IR names with `; link PATH` comments,
 // which the driver writes in place of the emitter's `; chibi-library PATH`.
-LinkedLibraries :: (text: string) -> string[] {
+LinkedLibraries :: (lines: string[]) -> string[] {
     found: string[] = [];
-    for (line in strings.SplitLines(text)) {
+    for (line in lines) {
         if (strings.HasPrefix(line, "; link ")) {
             found.append(strings.Slice(line, 7, strings.ByteLength(line) - 7));
         }
@@ -498,8 +517,10 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         return Failed(partial, "LLVM verification/optimization", status);
     }
     target := -1;
+    optimized: string[] = [];
     if (build.file_kind(module) == "file") {
-        target = Target(build.read_file(module));
+        optimized = Markers(build.read_file(module));
+        target = TargetIn(optimized);
     }
     if (target < 0) {
         return Failed(partial, "canonical target/layout admission", 2);
@@ -509,8 +530,9 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     if (shared) {
         program = Join([partial, "/generation.so"]);
     }
-    libraries := LinkedLibraries(text);
-    imported := SystemLibraries(text);
+    markers := Markers(text);
+    libraries := LinkedLibraries(markers);
+    imported := SystemLibraries(markers);
     if (target != 2 && length(imported) > 0) {
         return Failed(partial, Join(["system library ", imported[0], " links on Windows only; link a prebuilt archive instead"]), 2);
     }
@@ -518,7 +540,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         if (!ImportName(name)) {
             return Failed(partial, Join(["invalid system library name ", name]), 2);
         }
-        for (symbol in SystemSymbols(text, name)) {
+        for (symbol in SystemSymbols(markers, name)) {
             if (!ImportName(symbol)) {
                 return Failed(partial, Join(["invalid symbol name ", symbol, " imported from ", name]), 2);
             }
@@ -531,7 +553,10 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     // A program that allocates takes the runtime context, which only a dynamic
     // link supplies, from libc's allocator. A macOS program always links
     // libSystem dynamically.
-    takes_context := strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx)");
+    takes_context := false;
+    for (line in markers) {
+        takes_context = takes_context || strings.HasPrefix(line, "define i32 @chibi_scalar(ptr %ctx)");
+    }
     if (executable && takes_context && !dynamic && target == 0) {
         return Failed(partial, "a program that allocates links libc dynamically; omit --static", 2);
     }
@@ -563,7 +588,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     }
     // kernel32 exports what the start module imports, then the module's own.
     kernel32 := DllImports(start_text);
-    for (symbol in SystemSymbols(text, "kernel32")) {
+    for (symbol in SystemSymbols(markers, "kernel32")) {
         if (!kernel32.contains(symbol)) {
             kernel32.append(symbol);
         }
@@ -597,14 +622,14 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         if (build.file_kind(start_object) != "file") {
             return Failed(partial, "start object emission", 1);
         }
-        if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem(Imports(build.read_file(module), start_text)))) {
+        if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem(Imports(build.concat(optimized, Markers(start_text)))))) {
             return Failed(partial, "libSystem stub", 1);
         }
         if (target == 2) {
             for (name in windows_libraries) {
                 symbols := kernel32;
                 if (name != "kernel32") {
-                    symbols = SystemSymbols(text, name);
+                    symbols = SystemSymbols(markers, name);
                 }
                 if (!build.write_file(Join([partial, "/", name, ".def"]), ImportDefinition(name, symbols))) {
                     return Failed(partial, Join([name, " definition"]), 1);
@@ -727,25 +752,16 @@ EmitterCoreSources :: () -> string[] {
     return ["strings/Strings.chibi"];
 }
 
+// A request quotes every source it carries, about 2 MB for the compiler, so
+// each byte costs only integer tests; text between escapes is copied in runs.
 Quote :: (text: string) -> string {
     parts := ["\""];
     start := 0;
     index := 0;
     for (value in strings.Bytes(text)) {
-        escape := "";
-        if (value == 34) {
-            escape = "\\\"";
-        } else if (value == 92) {
-            escape = "\\\\";
-        } else if (value == 10) {
-            escape = "\\n";
-        } else if (value < 32) {
-            digits := "0123456789abcdef";
-            escape = Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
-        }
-        if (escape != "") {
+        if (value < 32 || value == 34 || value == 92) {
             parts.append(strings.Slice(text, start, index - start));
-            parts.append(escape);
+            parts.append(Escape(value));
             start = index + 1;
         }
         index += 1;
@@ -753,6 +769,20 @@ Quote :: (text: string) -> string {
     parts.append(strings.Slice(text, start, index - start));
     parts.append("\"");
     return Join(parts);
+}
+// The JSON escape of a quote, a backslash or a control byte.
+Escape :: (value: int) -> string {
+    if (value == 34) {
+        return "\\\"";
+    }
+    if (value == 92) {
+        return "\\\\";
+    }
+    if (value == 10) {
+        return "\\n";
+    }
+    digits := "0123456789abcdef";
+    return Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
 }
 
 Array :: (values: string[]) -> string {
@@ -1318,7 +1348,11 @@ pub Native :: () -> int {
         return Finish(work, 1);
     }
     emitted := build.read_file(module);
-    if (strings.Contains(emitted, "\n; chibi-library ")) {
+    libraries := false;
+    for (line in Markers(emitted)) {
+        libraries = libraries || strings.HasPrefix(line, "; chibi-library ");
+    }
+    if (libraries) {
         resolved := ResolveLibraries(emitted, root, vendor);
         if (resolved == "" || !build.write_file(module, resolved)) {
             return Finish(work, 1);

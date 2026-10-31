@@ -63,5 +63,11 @@ struct compiler_host;
  * the cache, so recovery proofs always recover. Writes no other file.
  * Release the result with compiler_host_free. */
 struct compiler_host *compiler_bootstrap_load(const compiler_bootstrap *, char *error, size_t size);
+/* The SHA-256 of the closure compiler_bootstrap_load would load, written to
+ * `identity`, without loading it: the recorded closure when the sources match
+ * it, else the recovered one the cache keeps. False when that closure is not
+ * at hand (recovery is needed, or the cache is off) or the inputs are
+ * rejected, with why. The closure is still to be checked by the load. */
+bool compiler_bootstrap_identity(const compiler_bootstrap *, char *error, size_t size);
 
 #endif

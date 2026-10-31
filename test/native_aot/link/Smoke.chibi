@@ -32,19 +32,19 @@ Add :: (triple: string) -> string {
                  "define i32 @add(i32 %a, i32 %b) {\n  %c = add i32 %a, %b\n  ret i32 %c\n}\n"]);
 }
 
-// The program's entry, which link.Start's shim calls: 42 when the shim kept the
-// process arguments (argc is 1 with none, or on Windows the command line is
-// set), by way of `add` from the archive.
+// The program's entry, which link.Start's shim calls: 42 when the shim's argument
+// functions work (no arguments but the program's own, its name has bytes, an index
+// past the end is -1), by way of `add` from the archive.
 Entry :: (triple: string) -> string {
-    if (link.TargetOf(triple) == link.WindowsX64) {
-        return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\n@chibi_command_line = external global ptr\n",
-                     "define i32 @chibi_scalar() {\n  %line = load ptr, ptr @chibi_command_line\n",
-                     "  %set = icmp ne ptr %line, null\n  %one = zext i1 %set to i32\n",
-                     "  %x = call i32 @add(i32 41, i32 %one)\n  ret i32 %x\n}\n"]);
-    }
-    return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\n@chibi_argc = external global i32\n",
-                 "define i32 @chibi_scalar() {\n  %argc = load i32, ptr @chibi_argc\n",
-                 "  %x = call i32 @add(i32 41, i32 %argc)\n  ret i32 %x\n}\n"]);
+    return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\ndeclare i64 @chibi_argument_count()\n",
+                 "declare i64 @chibi_argument(i64, ptr, i64)\n",
+                 "define i32 @chibi_scalar() {\n  %buffer = alloca [64 x i8]\n",
+                 "  %count = call i64 @chibi_argument_count()\n",
+                 "  %name = call i64 @chibi_argument(i64 0, ptr %buffer, i64 64)\n",
+                 "  %past = call i64 @chibi_argument(i64 %count, ptr %buffer, i64 64)\n",
+                 "  %one = icmp eq i64 %count, 1\n  %named = icmp sgt i64 %name, 0\n  %missing = icmp eq i64 %past, -1\n",
+                 "  %first = and i1 %one, %named\n  %all = and i1 %first, %missing\n  %bit = zext i1 %all to i32\n",
+                 "  %x = call i32 @add(i32 41, i32 %bit)\n  ret i32 %x\n}\n"]);
 }
 
 // Removes the folder and the files in it, which is all a run leaves.
@@ -62,6 +62,37 @@ Clear :: (folder: string) -> bool {
         }
     }
     return os.Remove(folder) == nil;
+}
+
+// Windows programs split their UTF-16 command line with link.CommandLineParser, IR that
+// calls no system function. Parser.ll holds its cases (quotes, backslashes, empty and
+// spaced arguments, non-ASCII and a surrogate pair) and an entry that returns 42 when
+// every one parses as listed; it runs here on any host.
+ParserCases :: (llvm: string, work: string, triple: string, windows: bool) -> int {
+    harness := os.ReadText(Join([os.Root(), "/test/native_aot/link/Parser.ll"]));
+    if (harness.error != nil) {
+        return Fail("cannot read Parser.ll");
+    }
+    module := Join(["target triple = \"", triple, "\"\n", harness.text, link.CommandLineParser()]);
+    suffix := "";
+    if (windows) {
+        suffix = ".exe";
+    }
+    program := Join([work, "/parser", suffix]);
+    if (os.WriteText(Join([work, "/parser.ll"]), module) != nil ||
+        host.Object(llvm, Join([work, "/parser.ll"]), Join([work, "/parser.o"]), 2) != nil) {
+        return Fail("the parser cases do not compile");
+    }
+    plan := link.Program(triple, llvm, [Join([work, "/parser.o"]), Join([work, "/start.o"])], [], [], [], program, "", windows);
+    failure := host.Link(plan);
+    if (failure != nil) {
+        return Fail(format_text("the parser cases did not link, kind {} code {}", failure.kind, failure.code));
+    }
+    status := os.Run([program]);
+    if (status != 42) {
+        return Fail(format_text("the parser cases ended with {}; the code names the case: 100 plus its number is a wrong argument, 200 a short buffer, 300 a missing -1, 400 a wrong count", status));
+    }
+    return 0;
 }
 
 Fail :: (what: string) -> int {
@@ -130,6 +161,10 @@ Run :: () -> int {
     if (status != 42) {
         return Fail(format_text("the program exited with {}, not 42", status));
     }
-    os.Print("native-link: linked and ran a program from an object and an archive");
+    parsed := ParserCases(llvm, work, triple, windows);
+    if (parsed != 0) {
+        return parsed;
+    }
+    os.Print("native-link: linked and ran a program from an object and an archive; the command-line parser agrees on its cases");
     return 0;
 }

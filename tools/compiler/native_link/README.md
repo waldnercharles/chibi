@@ -9,16 +9,15 @@ executable through LLVM's lld, with no C compiler or compiler driver on `PATH`.
 - `native_link_host` has the effects, over `core:os`: `Tool` finds an LLVM tool in the
   LLVM folder, `Object` runs `llc` over a module, `Discover` finds the C library's
   start files on Linux, and `Link` writes the macOS stubs, runs `Command`'s vector and
-  publishes the program (`output.partial`, then a rename).
+  publishes the program (a rename from the work folder).
 
 ```chibi
 import link "project:native_link"
 import host "project:native_link_host"
 
 failure := host.Object(llvm, "main.ll", "main.o", 2);
-plan: link.Plan = {triple: "x86_64-unknown-linux-gnu", llvm: llvm, objects: ["main.o"],
-                   archives: ["vendor/libbox3d.a"], libraries: ["m"], libpaths: [],
-                   output: "program", work: "work", libc: "", interpreter: "", static: false};
+plan := link.Program("x86_64-unknown-linux-gnu", llvm, ["main.o", "start.o"], ["vendor/libbox3d.a"],
+                     ["m"], [], "program", "", false);
 failure = host.Link(plan);
 ```
 
@@ -31,9 +30,20 @@ compiled with `host.Object` and linked beside the program's own objects. It call
 `mainCRTStartup` with `ExitProcess` for a static Windows one. A static Linux program takes no
 context ("" is returned).
 
-Before the entry runs the shim keeps the process arguments in globals that `core:os` reads:
-`chibi_argc` (i32) and `chibi_argv` (ptr to the argument strings) on Linux and macOS, and on
-Windows `chibi_command_line`, the UTF-16 string `GetCommandLineW` returns.
+Every start module also defines the process arguments as C-ABI functions, which `core:os`
+binds with `foreign import`:
+
+- `chibi_argument_count() -> i64`;
+- `chibi_argument(index: i64, buffer: ptr, size: i64) -> i64` copies up to `size` bytes of the
+  argument (no NUL) and returns its whole length, so a caller can retry with a larger buffer;
+  -1 for an index out of range;
+- `chibi_environment() -> ptr`, the `envp` array (null on Windows).
+
+On Linux and macOS they read `chibi_argc`, `chibi_argv` and `chibi_envp`, which the shim sets
+before the entry runs (from `main`'s arguments, or from the stack in the static `_start`). On
+Windows the shim keeps the UTF-16 `chibi_command_line` (`GetCommandLineW`) and the functions
+split it with the C runtime's rules and encode UTF-8; that parser (`CommandLineParser`) calls
+no system function, and `test/native_aot/link/Parser.ll` runs its cases on any host.
 
 ## What each target does
 

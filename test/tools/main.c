@@ -45,7 +45,6 @@ void test_tool_chibi_cli_process(const char *binary, const char *self);
 void test_tool_chibi_cli_build(const char *binary);
 void test_tool_chibi_cli_doctor(const char *binary);
 void test_tool_chibi_cli_installed(const char *binary, const char *self);
-void test_native_build(const char *binary);
 void test_native_workload_benchmark(const char *binary);
 void test_tool_chibi_cli_export(const char *binary);
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
@@ -255,13 +254,6 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_tool_chibi_cli_export(argv[2]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-    if (argc == 3 && !strcmp(argv[1], "--native-build")) {
-        tool_init();
-        pu_display_time(true);
-        test_native_build(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

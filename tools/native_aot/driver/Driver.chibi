@@ -1002,11 +1002,13 @@ pub Native :: () -> int {
     }
     // The packages the sources import from the project beside them and from
     // core are inputs too.
+    // Each folder below holds a package already listed: its import key is
+    // the folder's whole path, as `project:sample/facts` names it.
     held: string[] = [];
     for (path in packages) {
-        top := strings.Split(path, "/");
-        if (length(top) > 1) {
-            held.append(Join(["project:", top[0]]));
+        slash := strings.LastIndex(path, "/");
+        if (slash > 0) {
+            held.append(Join(["project:", strings.Slice(path, 0, slash)]));
         }
     }
     for (path in Reach(base, core, build.concat([text], package_texts), held)) {

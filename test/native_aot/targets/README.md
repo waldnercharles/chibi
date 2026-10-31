@@ -20,7 +20,7 @@ directory, it also emits each module it runs for the other targets
   both VMs and the native Linux runs gave: `call SYMBOL EXPECTED COUNT
   ARGUMENTS...`.
 
-`native-build` (`test/tools/native_build.c`) adds programs that
+`native-build` (`test/native_aot/native_build/BuildTests.chibi`) adds programs that
 `chibi build --native --target` links on Linux, at O0 and O2, and one with a
 256 KiB frame, which Windows code probes through the program's `__chkstk`.
 `<target>/programs.txt` lists each as `program NAME STATUS`, and the program

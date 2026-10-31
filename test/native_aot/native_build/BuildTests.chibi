@@ -471,11 +471,11 @@ LinksAVendoredArchive :: (suite: Suite) {
 
 // A program calls a C function through an address: dlsym finds libc's abs, a
 // local of function type holds it, and the call goes through the address.
-// RTLD_DEFAULT is 0 on Linux and -2 on macOS.
+// RTLD_DEFAULT is 0 on Linux and -2, as a word, on macOS.
 CallsThroughAFunctionPointer :: (suite: Suite) {
     handle := "0";
     if (os.Platform() == "Darwin") {
-        handle = "-2";
+        handle = "18446744073709551614";
     }
     source := Path(["package scalar\nforeign import libc \"system:c\"\nforeign libc {\n    dlsym :: (handle: rawptr, name: cstring) -> rawptr\n}\nMain :: () -> int {\n    absolute: fn(n: i32) -> i32 = dlsym(", handle, ", \"abs\");\n    return absolute(-42) + 1;\n}\n"]);
     assert(RunNative(suite, "procedure", source) == 43, "the call through dlsym's address");
@@ -668,10 +668,99 @@ DriverBuild :: (suite: Suite, built: Case, ir: string, out: string) {
     assert(ran.status == 0, "the driver links the frame");
 }
 
-// The build host runs this entry with the build tree's launcher.
+// C calls an authored function: a thread C starts runs Worker through the
+// adapter the compiler makes, and joining it collects its result. Linux has
+// C11's thrd_create; macOS's libc has only pthread_create.
+GivesCAnAuthoredFunction :: (suite: Suite) {
+    source := "package scalar\nforeign import libc \"system:c\"\nforeign libc {\n    thrd_create :: (thread: u8[], start: fn(argument: u64) -> i32, argument: u64) -> i32\n    thrd_join :: (thread: u64, result: u8[]) -> i32\n}\nMain :: () -> int {\n    thread: u8[] = [0, 0, 0, 0, 0, 0, 0, 0];\n    result: u8[] = [0, 0, 0, 0];\n    started := thrd_create(thread, Worker, 41);\n    joined := thrd_join(Word(thread), result);\n    return int(result[0]) + started + joined;\n}\n";
+    if (os.Platform() == "Darwin") {
+        source = "package scalar\nforeign import libc \"system:c\"\nforeign libc {\n    pthread_create :: (thread: u8[], attributes: u64, start: fn(argument: u64) -> u64, argument: u64) -> i32\n    pthread_join :: (thread: u64, result: u8[]) -> i32\n}\nMain :: () -> int {\n    thread: u8[] = [0, 0, 0, 0, 0, 0, 0, 0];\n    result: u8[] = [0, 0, 0, 0, 0, 0, 0, 0];\n    started := pthread_create(thread, 0, Worker, 41);\n    joined := pthread_join(Word(thread), result);\n    return int(result[0]) + started + joined;\n}\n";
+    }
+    worker := "Worker :: (argument: u64) -> i32 {\n    return i32(argument) + 1;\n}\n";
+    if (os.Platform() == "Darwin") {
+        worker = "Worker :: (argument: u64) -> u64 {\n    return argument + 1;\n}\n";
+    }
+    word := "Word :: (bytes: u8[]) -> u64 {\n    return u64(bytes[0]) | (u64(bytes[1]) << 8) | (u64(bytes[2]) << 16) | (u64(bytes[3]) << 24) |\n           (u64(bytes[4]) << 32) | (u64(bytes[5]) << 40) | (u64(bytes[6]) << 48) | (u64(bytes[7]) << 56);\n}\n";
+    // Main stays first: the scalar proof reads the first function.
+    assert(RunNative(suite, "callback", Path([source, worker, word])) == 42, "C runs the authored function");
+}
+
+// Each case by name, so Run can give each a build host of its own.
+Cases :: (llvm: bool) -> string[] {
+    names := ["LinksStaticallyOnRequest", "AddsLineTablesWithG", "KeepsPriorProgramsAndNeverFallsBack",
+              "RejectsMissingAndFailingTools", "LinksMacOSAndWindowsPrograms", "RefusesWhatAnInterruptedBuildLeft",
+              "RefusesAnIncompleteOutput"];
+    if (llvm) {
+        names.extend(["RunsWithLLVMAndNoCCompiler", "LinksAVendoredArchive", "CallsThroughAFunctionPointer",
+                      "PassesAByteArrayToC", "ReportsAFailedAssert", "RunsTheForeignSamples", "GivesCAnAuthoredFunction",
+                      "LinksOtherTargetsWithLLVM"]);
+    }
+    return names;
+}
+RunCase :: (suite: Suite, name: string) {
+    if (name == "LinksAProgramAndReusesIt") {
+        LinksAProgramAndReusesIt(suite);
+    } else if (name == "LinksStaticallyOnRequest") {
+        LinksStaticallyOnRequest(suite);
+    } else if (name == "AddsLineTablesWithG") {
+        AddsLineTablesWithG(suite);
+    } else if (name == "KeepsPriorProgramsAndNeverFallsBack") {
+        KeepsPriorProgramsAndNeverFallsBack(suite);
+    } else if (name == "RejectsMissingAndFailingTools") {
+        RejectsMissingAndFailingTools(suite);
+    } else if (name == "LinksMacOSAndWindowsPrograms") {
+        LinksMacOSAndWindowsPrograms(suite);
+    } else if (name == "RefusesWhatAnInterruptedBuildLeft") {
+        RefusesWhatAnInterruptedBuildLeft(suite);
+    } else if (name == "RefusesAnIncompleteOutput") {
+        RefusesAnIncompleteOutput(suite);
+    } else if (name == "RunsWithLLVMAndNoCCompiler") {
+        RunsWithLLVMAndNoCCompiler(suite);
+    } else if (name == "LinksAVendoredArchive") {
+        LinksAVendoredArchive(suite);
+    } else if (name == "CallsThroughAFunctionPointer") {
+        CallsThroughAFunctionPointer(suite);
+    } else if (name == "PassesAByteArrayToC") {
+        PassesAByteArrayToC(suite);
+    } else if (name == "ReportsAFailedAssert") {
+        ReportsAFailedAssert(suite);
+    } else if (name == "RunsTheForeignSamples") {
+        RunsTheForeignSamples(suite);
+    } else if (name == "GivesCAnAuthoredFunction") {
+        GivesCAnAuthoredFunction(suite);
+    } else if (name == "LinksOtherTargetsWithLLVM") {
+        LinksOtherTargetsWithLLVM(suite);
+    } else {
+        assert(false, "a known case");
+    }
+}
+
+NewSuite :: (folder: string, built: string, launcher: string) -> Suite {
+    cache := os.Getenv("CHIBI_COMPILER_CACHE");
+    if (cache == "") {
+        cache = Path([os.Root(), "/.chibi/compiler-cache"]);
+    }
+    suite: Suite = {folder: folder, built: built, launcher: launcher,
+                    stage_tool: Read(Path([os.Root(), "/test/native_aot/driver/fixtures/stage-tool.sh"])),
+                    llvm: os.Getenv("CHIBI_LLVM_BIN"), cache: Path(["CHIBI_COMPILER_CACHE=", cache])};
+    return suite;
+}
+
+// Run's worker: FOLDER BUILT_LAUNCHER SDK_LAUNCHER CASE.
+pub One :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 4, "a case and its suite");
+    RunCase(NewSuite(arguments[0], arguments[1], arguments[2]), arguments[3]);
+    return 0;
+}
+
+// The build host runs this entry with its own path and the build tree's
+// launcher. The first case recovers the compiler into the shared cache; the
+// rest run after it, four at a time, each in a build host of its own, and
+// reuse that recovery.
 pub Run :: () -> int {
     arguments := os.Arguments();
-    assert(length(arguments) == 1, "the build tree's launcher");
+    assert(length(arguments) == 2, "the build host and the build tree's launcher");
     platform := os.Platform();
     if (platform != "Linux" && platform != "Darwin") {
         os.Print("native build: Linux and macOS only");
@@ -681,25 +770,45 @@ pub Run :: () -> int {
     assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the old scratch removed");
     Make(folder);
     folder = os.RealPath(folder);
-    cache := os.Getenv("CHIBI_COMPILER_CACHE");
-    if (cache == "") {
-        cache = Path([os.Root(), "/.chibi/compiler-cache"]);
-    }
-    suite: Suite = {folder: folder, built: os.RealPath(arguments[0]), launcher: Relocate(folder, os.RealPath(arguments[0])),
-                    stage_tool: Read(Path([os.Root(), "/test/native_aot/driver/fixtures/stage-tool.sh"])),
-                    llvm: os.Getenv("CHIBI_LLVM_BIN"), cache: Path(["CHIBI_COMPILER_CACHE=", cache])};
-    RefusesAnIncompleteOutput(suite);
+    built := os.RealPath(arguments[1]);
+    suite := NewSuite(folder, built, Relocate(folder, built));
+    LinksAProgramAndReusesIt(suite);
     if (suite.llvm == "") {
         os.Print("native build: set CHIBI_LLVM_BIN to link with real LLVM tools");
-    } else {
-        RunsWithLLVMAndNoCCompiler(suite);
-        LinksAVendoredArchive(suite);
-        CallsThroughAFunctionPointer(suite);
-        PassesAByteArrayToC(suite);
-        ReportsAFailedAssert(suite);
-        RunsTheForeignSamples(suite);
-        LinksOtherTargetsWithLLVM(suite);
     }
+    names := Cases(suite.llvm != "");
+    running: int[] = [];
+    owners: string[] = [];
+    failed: string[] = [];
+    next := 0;
+    while (next < length(names) || length(running) > 0) {
+        while (next < length(names) && length(running) < 4) {
+            running.append(os.Start([arguments[0], "--compiler", Path([os.Root(), "/tools/compiler"]), "--compiler-core",
+                                     Path([os.Root(), "/packages/core"]), "--root", os.Root(), "--source",
+                                     Path([os.Root(), "/test/native_aot/native_build/BuildTests.chibi"]), "--core",
+                                     Path([os.Root(), "/packages/core"]), "--entry", "One", "--timeout-ms", "1200000", "--",
+                                     folder, built, suite.launcher, names[next]], os.Inherited));
+            owners.append(names[next]);
+            next += 1;
+        }
+        still: int[] = [];
+        kept: string[] = [];
+        for (index in 0..<length(running)) {
+            status := os.Wait(running[index], 50);
+            if (status == os.StillRunning) {
+                still.append(running[index]);
+                kept.append(owners[index]);
+            } else if (status != 0) {
+                failed.append(owners[index]);
+            }
+        }
+        running = still;
+        owners = kept;
+    }
+    for (name in failed) {
+        os.Print(Path(["native build: ", name, " FAILED"]));
+    }
+    assert(length(failed) == 0, "every case passes");
     assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the scratch cleanup");
     return 0;
 }

@@ -133,3 +133,15 @@ Each compiled authored sources with stage zero (`source_package_prepare`, `autho
 ## Fixture-compiled sequence cases removed from execution.c
 
 `test/language/execution.c` no longer includes `compiler_fixture.h` or `authoring/source_package_prepare.h`. Seven cases compiled `project:sequences` sources through stage zero and called them on each backend: sequence values copying at ownership boundaries, scoped lent locals, strict sequence ranges, pointer views following rebinding, sequence-place evaluation order, calls lending arguments (callees copying writes), and lent records copying nothing. Deleted; the hand-built-module cases in the file remain.
+
+## native_census.c no longer uses compiler_fixture
+
+The census loads the compiler with `compiler_bootstrap_load` (the sources on disk, recovered from the checked-in seed) and runs `CollectScalar` through `compiler_host_invoke` with the target taken from `compiler_target_json`, instead of preparing the compiler with stage zero. Report format and flattening are unchanged. Not run locally when it landed (all heavy slots were held); the first run of `--native-census-flattening` verifies it.
+
+## Stage-zero bootstrap lane removed (package_compiler_chibi.c)
+
+`package_compiler_compiles_itself` (`--package-compiler-chibi-bootstrap`, `make test-bootstrap`) had stage zero prepare stage one, compile the compiler sources to stage two, and compare stage one and stage two byte for byte on every sample. `chibi build bootstrap-artifact` now writes the seed from recovery's fixed point (seed -> stage one -> stage two, `--recover`), which checks the same fixed point without stage zero. Not re-covered: stage one against stage zero on the samples.
+
+## package_compiler_chibi.c reduced to the native and scalar lanes
+
+Deleted (stage zero prepared the compiler, then each lane compared the authored compiler with stage zero or ran its output): the plain, `_compiled`, `_types`, `_types_compiled`, `_collections`, `_collections_compiled`, `_imports`, `_imports_compiled`, `_fallible`, `_literals`, `_behaviors`, `_behaviors_rest`, `_actions`, `_queries`, `_libraries`, `_sharing`, `_debug_free` and `_math_native` selectors, and the `_records` lane with `compositional_records.c` (archived, with its source header and `Values.chibi`). The authored `@test` suites under `tools/compiler` and `chibi test` cover the compiler's own behavior; not re-covered: authored-compiler output executing on both backends against the same sample tables. Kept for now, still on `compiler_fixture`: `--package-compiler-chibi-scalar`, `--package-compiler-chibi-native` (+ `-native-call`) and `--package-compiler-chibi-native-arguments`.

@@ -1,13 +1,19 @@
-#include "compiler_fixture.h"
+#include "authoring/source_package_io.h"
 #include "execution/function.h"
 #include "execution/instruction.h"
 #include "execution/prepared.h"
 #include "package_compiler_chibi_source.h"
+#include "runtime/arrays_definition.h"
+#include "runtime/native_definitions.h"
+#include "runtime/text_definition.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "toolchain/compiler_bootstrap.h"
+#include "toolchain/compiler_host.h"
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
+#include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/map.h"
 #include "types/text.h"
@@ -18,6 +24,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <tree_sitter/api.h>
+#include <yyjson.h>
+
+const TSLanguage *tree_sitter_chibi(void);
 
 /* W21's census: the first feature that keeps each function of the
  * self-hosted compiler from the native path. Every function of the bootstrap
@@ -35,7 +45,6 @@
 
 enum
 {
-    CENSUS_BACKEND = 1,
     CENSUS_BUDGET = 20000000,
     CENSUS_EXCERPT = 60
 };
@@ -45,7 +54,8 @@ enum
     DECL_TYPE,
     DECL_CONSTANT
 };
-static const char PACKAGE[] = "project:package_compiler";
+static const char
+    COLLECT_SCALAR[] = "project:package_compiler:1:CollectScalar:callable";
 /* The producer's own rejections and the ordinary compiler's rejection of a
  * call it cannot resolve. */
 static const char PRODUCER[] = "scalar proof ";
@@ -166,8 +176,10 @@ typedef struct
     bool imports, constants;
 } census_row;
 
-static compiler_fixture fixture;
-static arena input, detached;
+static compiler_host *compiler;
+static native_capabilities *native; /* What the census sources may call. */
+static char *target_json;           /* The JSON array of its target parts. */
+static size_t target_length;
 static TSParser *parser;
 static const source_package_input *files; /* The sources the census reads. */
 static census_source *sources;
@@ -207,9 +219,12 @@ static void forget_rows()
 static void cleanup()
 {
     unload();
-    compiler_fixture_free(&fixture);
-    arena_free(&input);
-    arena_free(&detached);
+    compiler_host_free(compiler);
+    compiler = NULL;
+    native_capabilities_free(native);
+    native = NULL;
+    free(target_json);
+    target_json = NULL;
     forget_rows();
     ts_parser_delete(parser);
     parser = NULL;
@@ -612,117 +627,64 @@ static void build_free(census_build *build)
     afree(build->calls);
     *build = (census_build){ 0 };
 }
-static pin_value text_value(const char *s)
-{
-    pin_value value = { 0 };
-    if (pin_value_text(&input, &value, s, strlen(s))) {
-        abort();
-    }
-    return value;
-}
-static bool put(pin_value *row, const char *name, int64_t value)
-{
-    const type_field *field = pin_type_field_path(pin_value_type(row), name);
-    REQUIRE(field && (field->type == PIN_I32 || field->type == PIN_I64));
-    pin_value v = { .type = PIN_I64, .i64 = value };
-    if (field->type == PIN_I32) {
-        v = (pin_value){ .type = PIN_I32, .i = (int32_t)value };
-    }
-    REQUIRE(!pin_write_field(&input, row->ptr, field, v));
-    return true;
-}
-/* This host's target, as CollectScalar takes it. */
-static bool target(pin_value *out)
-{
-    const pin_record *record = compiler_fixture_record(&fixture, CENSUS_BACKEND, PACKAGE, "Target", &input);
-    REQUIRE(record);
-    *out = (pin_value){ .type = PIN_STRUCT,
-                        .ptr = arena_alloc(&input, record->type.size),
-                        .record = record,
-                        .type_name = record->type.name };
-    memset(out->ptr, 0, record->type.size);
-    REQUIRE(put(out, "pointer_storage", BF_POINTER_TYPE));
-    REQUIRE(put(out, "pointer_size", (int)sizeof(void *)));
-    REQUIRE(put(out, "value_size", (int)sizeof(pin_value)));
-    REQUIRE(put(out, "payload_offset", (int)offsetof(pin_value, d)));
-    REQUIRE(put(out, "results_offset", (int)offsetof(behavior_function_context, results)));
-    REQUIRE(put(out, "type_offset", (int)offsetof(pin_value, type)));
-    REQUIRE(put(out, "container_offset", (int)offsetof(pin_value, container)));
-    REQUIRE(put(out, "name_offset", (int)offsetof(pin_value, type_name)));
-    REQUIRE(put(out, "record_offset", (int)offsetof(pin_value, record)));
-    REQUIRE(put(out, "count_offset", (int)offsetof(pin_array, count)));
-    REQUIRE(put(out, "items_offset", (int)offsetof(pin_array, items)));
-    REQUIRE(put(out, "data_offset", (int)offsetof(pin_array, data)));
-    REQUIRE(put(out, "stride_offset", (int)offsetof(pin_array, stride)));
-    REQUIRE(put(out, "map_count_offset", (int)offsetof(pin_map, count)));
-    REQUIRE(put(out, "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
-    REQUIRE(put(out, "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
-    REQUIRE(put(out, "assert_failure", BEHAVIOR_FUNCTION_DATA));
-    return true;
-}
-static pin_value instruction_names()
-{
-    int instructions = execution_prepared_instruction_count();
-    pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, instructions);
-    for (int i = 0; i < instructions; i++) {
-        names->items[i] = text_value(execution_prepared_instruction_name(i));
-    }
-    return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
-}
-static pin_value row_field(const pin_value *row, const char *name)
-{
-    const type_field *field = pin_type_field_path(pin_value_type(row), name);
-    pin_value value;
-    if (!field || pin_read_field(&detached, row->ptr, field, &value)) {
-        abort();
-    }
-    return value;
-}
 /* The producer's verdict on `text`: true when it accepts it; otherwise its
- * message and the bytes [start, end) it covers. */
+ * message and the bytes [start, end) it covers. CollectScalar takes the
+ * project, the path, the text, then the target, instruction names, natives,
+ * ports and identities, which are parts 0 and 2 to 5 of the target JSON. */
 static bool collect_scalar(const char *text, char **message, int *start, int *end, bool *accepted)
 {
-    pin_value args[8] = { text_value("/project"),
-                          text_value("Census.chibi"),
-                          text_value(text),
-                          { 0 },
-                          instruction_names() };
-    REQUIRE(target(&args[3]));
-    pin_value effects;
-    REQUIRE(compiler_fixture_natives(
-        &fixture,
-        CENSUS_BACKEND,
-        PACKAGE,
-        native_capabilities_catalog(fixture.native),
-        &input,
-        &args[5],
-        &effects
-    ));
-    pin_value produced;
-    REQUIRE(compiler_fixture_call(
-        &fixture,
-        CENSUS_BACKEND,
-        PACKAGE,
-        "CollectScalar",
-        args,
-        (int)(sizeof args / sizeof *args),
-        CENSUS_BUDGET,
-        &detached,
-        &produced
-    ));
-    const pin_array *array = produced.ptr;
-    REQUIRE(array->count >= 2);
-    *accepted = row_field(&array->items[1], "kind").i != REJECTION_ROW;
-    if (!*accepted) {
-        pin_string said = pin_text(row_field(&array->items[1], "text"));
-        *message = xmalloc(said.length + 1);
-        memcpy(*message, said.bytes, said.length);
-        (*message)[said.length] = 0;
-        *start = row_field(&array->items[1], "start").i;
-        *end = row_field(&array->items[1], "end").i;
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *arguments = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, arguments);
+    yyjson_mut_arr_add_str(doc, arguments, "/project");
+    yyjson_mut_arr_add_str(doc, arguments, "Census.chibi");
+    yyjson_mut_arr_add_str(doc, arguments, text);
+    yyjson_doc *target = yyjson_read(target_json, target_length, 0);
+    REQUIRE(target);
+    for (size_t part = 0; part < 6; part++) {
+        if (part != 1) {
+            yyjson_mut_arr_append(
+                arguments,
+                yyjson_val_mut_copy(doc, yyjson_arr_get(yyjson_doc_get_root(target), part))
+            );
+        }
     }
-    arena_free(&input);
-    arena_free(&detached);
+    yyjson_doc_free(target);
+    size_t length;
+    char *json = yyjson_mut_write(doc, 0, &length);
+    yyjson_mut_doc_free(doc);
+    REQUIRE(json);
+    compiler_host_result result = { 0 };
+    bool called = compiler_host_invoke(
+        compiler,
+        compiler_host_entry(COLLECT_SCALAR),
+        json,
+        length,
+        CENSUS_BUDGET,
+        &result
+    );
+    free(json);
+    if (!called) {
+        fprintf(stderr, "native census: %s\n", result.diagnostic);
+    }
+    REQUIRE(called);
+    yyjson_doc *produced = yyjson_read(result.json, result.length, COMPILER_HOST_JSON_READ_FLAGS);
+    free(result.json);
+    REQUIRE(produced);
+    yyjson_val *rows_json = yyjson_arr_get(yyjson_doc_get_root(produced), 0);
+    yyjson_val *verdict = yyjson_arr_get(rows_json, 1);
+    REQUIRE(yyjson_arr_size(rows_json) >= 2);
+    *accepted = yyjson_get_int(yyjson_obj_get(verdict, "kind")) != REJECTION_ROW;
+    if (!*accepted) {
+        const char *said = yyjson_get_str(yyjson_obj_get(verdict, "text"));
+        size_t said_length = yyjson_get_len(yyjson_obj_get(verdict, "text"));
+        *message = xmalloc(said_length + 1);
+        memcpy(*message, said, said_length);
+        (*message)[said_length] = 0;
+        *start = yyjson_get_int(yyjson_obj_get(verdict, "start"));
+        *end = yyjson_get_int(yyjson_obj_get(verdict, "end"));
+    }
+    yyjson_doc_free(produced);
     return true;
 }
 /* A function `build` names in bytes [start, end) and leaves out, or -1. */
@@ -930,16 +892,32 @@ static bool census_function(int function)
     return true;
 }
 
+/* Loads the compiler from the sources on disk and describes the natives the
+ * census sources may call. */
 static bool prepare()
 {
-    if (fixture.owners[CENSUS_BACKEND]) {
+    if (compiler) {
         return true;
     }
-    native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
-                                       COMPILER_SYNTAX_DEFINITION_PACK };
-    REQUIRE(
-        compiler_fixture_prepare_backends(&fixture, COMPILER_FIXTURE_COMPILED, SOURCES, SOURCE_COUNT, packs, 2)
-    );
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK,
+                                             COMPILER_JSON_DEFINITION_PACK,
+                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    char error[512];
+    native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+    REQUIRE(native);
+    target_json = compiler_target_json(native_capabilities_catalog(native), &target_length);
+    REQUIRE(target_json);
+    const compiler_bootstrap options = {
+        .folder = CHIBI_SOURCE_ROOT "/tools/compiler/bootstrap",
+        .compiler = CHIBI_SOURCE_ROOT "/tools/compiler",
+        .core = CHIBI_SOURCE_ROOT "/packages/core"
+    };
+    compiler = compiler_bootstrap_load(&options, error, sizeof error);
+    if (!compiler) {
+        fprintf(stderr, "native census bootstrap: %s\n", error);
+    }
+    REQUIRE(compiler);
     return true;
 }
 /* Reads the `count` sources of `in`, which outlive the census of them. */

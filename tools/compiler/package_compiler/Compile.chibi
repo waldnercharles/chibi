@@ -6,6 +6,7 @@ import graph "project:package_graph"
 import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 import writer "project:prepared_writer"
+import json "project:json_string"
 import strings "core:strings"
 
 // Compiles packages of functions, records and unions, and the packages they
@@ -2569,7 +2570,7 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
         return Default.Read(0, "");
     }
     if (declared.storage == TextStorage && Is(forest, node, "string")) {
-        decoded := compiler_json_value_string(Text(forest, text, node));
+        decoded := json.Value(Text(forest, text, node));
         if (!decoded.valid) {
             return Default.Failed(Diagnose(forest, node, file, "Invalid string literal"));
         }

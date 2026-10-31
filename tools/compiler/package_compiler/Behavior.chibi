@@ -6,6 +6,7 @@ import graph "project:package_graph"
 import syntax "project:syntax_diagnostics"
 import binding "project:lexical_binding"
 import writer "project:prepared_writer"
+import json "project:json_string"
 import strings "core:strings"
 
 // Compiles a behavior asset to the prepared module of the game a target
@@ -547,7 +548,7 @@ StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, 
         return Default.Read(bits, "");
     }
     if (storage == TextStorage && Is(forest, value, "string")) {
-        decoded := compiler_json_value_string(Text(forest, source, value));
+        decoded := json.Value(Text(forest, source, value));
         if (!decoded.valid) {
             return Default.Failed(Diagnose(forest, value, 0, "Invalid string literal"));
         }

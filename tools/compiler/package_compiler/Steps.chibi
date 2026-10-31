@@ -2,6 +2,7 @@ package package_compiler
 
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
+import json "project:json_string"
 import strings "core:strings"
 
 // The steps EmitBody takes for nodes other than control flow. Each reads the
@@ -1407,7 +1408,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         } else {
             // String literals are JSON strings.
             storage = TextStorage;
-            decoded := compiler_json_value_string(Text(forest, text, item.node));
+            decoded := json.Value(Text(forest, text, item.node));
             if (!decoded.valid) {
                 return Fail(forest, item.node, document, "Invalid string literal");
             }
@@ -2220,7 +2221,7 @@ CStringMessage :: (forest: snapshot.SnapshotNode[], text: string, node: int, bou
     if (!Is(forest, at, "string")) {
         return "";
     }
-    decoded := compiler_json_value_string(Text(forest, text, at));
+    decoded := json.Value(Text(forest, text, at));
     if (!decoded.valid) {
         return "";
     }
@@ -3228,7 +3229,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // when it gives none.
         said := Text(forest, text, Unparenthesized(forest, item.b));
         if (item.a >= 0) {
-            decoded := compiler_json_value_string(Text(forest, text, Unparenthesized(forest, item.a)));
+            decoded := json.Value(Text(forest, text, Unparenthesized(forest, item.a)));
             if (!decoded.valid) {
                 return Fail(forest, item.a, document, "Invalid string literal");
             }

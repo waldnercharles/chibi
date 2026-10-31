@@ -2,6 +2,7 @@ package asset_source
 
 import raw "project:compiler_syntax"
 import syntax "project:syntax_diagnostics"
+import json "project:json_string"
 import strings "core:strings"
 import numbers "project:package_compiler"
 
@@ -253,7 +254,7 @@ ReadChildren :: (source: string, nodes: syntax.Node[], fields: string[], named: 
             if (key_node < 0 || nodes[key_node].kind != "string") {
                 return Children.Computed;
             }
-            decoded := compiler_json_string(CstText(source, nodes, key_node));
+            decoded := json.Metadata(CstText(source, nodes, key_node));
             if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
                 return Children.Computed;
             }
@@ -353,7 +354,7 @@ pub Inspect :: (source: string, function_name: string) -> Inspection {
             for (node in NamedChildren(nodes, named, extra, root)) {
                 if (nodes[node].kind == "import_declaration") {
                     path := CstField(nodes, fields, node, "path");
-                    decoded := compiler_json_string(CstText(source, nodes, path));
+                    decoded := json.Metadata(CstText(source, nodes, path));
                     if (decoded.valid && decoded.value == "game:assets") {
                         alias = CstText(source, nodes, CstField(nodes, fields, node, "alias"));
                         if (alias == "") {

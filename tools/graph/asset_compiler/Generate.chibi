@@ -2,6 +2,7 @@ package asset_compiler_stage
 
 import os "core:os"
 import strings "core:strings"
+import sha "core:hash/sha256"
 
 // Retain each fragment once per level, not every growing prefix.
 Join :: (parts: string[]) -> string {
@@ -135,7 +136,7 @@ Request :: (first: string, paths: string[], sources: string[], target: string, g
         }
         index += 1;
     }
-    target = build.trim(target);
+    target = strings.TrimSpace(target);
     if (!strings.HasPrefix(target, "[") || !strings.HasSuffix(target, "]")) {
         return "";
     }
@@ -168,7 +169,7 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
 // instead of compiling the compiler's sources again. An empty `cache` keeps
 // nothing.
 Key :: (seed: string, request: string) -> string {
-    return build.hash_text(Join([build.hash_file(seed), "\n", request]));
+    return sha.Hex(Join([build.hash_file(seed), "\n", request]));
 }
 
 Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
@@ -195,7 +196,7 @@ Product :: (host: string, seed: string, callable: string, request: string, key: 
 // Whole seconds from the system clock, for the phase timings the log reports.
 Stamp :: () -> string {
     clock := os.Capture(["date", "+%s"]);
-    return build.trim(clock.stdout);
+    return strings.TrimSpace(clock.stdout);
 }
 
 // Explicit filesystem snapshots and atomic products; source compilation and
@@ -219,12 +220,12 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     if (os.MakeDirectory(folder) || os.Run([host, "--target-json", native_facts]) != 0) {
         return false;
     }
-    native_target := build.trim(build.read_file(native_facts));
+    native_target := strings.TrimSpace(build.read_file(native_facts));
     if (target == "") {
         target = native_target;
     }
     paths: string[] = [];
-    for (path in build.lines(build.read_file(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"])))) {
+    for (path in strings.Lines(build.read_file(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"])))) {
         if (path != "") {
             paths.append(path);
         }
@@ -341,8 +342,8 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         if (strings.HasPrefix(path, "/sdk/")) {
             disk = Join(["packages/", strings.Slice(path, 5, strings.ByteLength(path))]);
         }
-        stamps.append(Join([build.hash_text(sources[index]), " ", disk, "\n"]));
-        records.append(Join(["{\"path\":", Quote(disk), ",\"sha256\":", Quote(build.hash_text(sources[index])), "}"]));
+        stamps.append(Join([sha.Hex(sources[index]), " ", disk, "\n"]));
+        records.append(Join(["{\"path\":", Quote(disk), ",\"sha256\":", Quote(sha.Hex(sources[index])), "}"]));
         index += 1;
     }
     manifest := Join(["{\"format\":1,\"artifact\":\"asset_compiler.chibip\",\"artifact_sha256\":",
@@ -350,8 +351,8 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
                       Quote(build.hash_file(Join([folder, "/asset_compiler_packaged.c"]))),
                       ",\"target\":", target, ",\"sources\":[", strings.Join(records, ","), "]}\n"]);
     for (stamp in stamps) {
-        checksum := build.before(stamp, " ");
-        path := build.trim(build.after(stamp, " "));
+        checksum := strings.Partition(stamp, " ").head;
+        path := strings.TrimSpace(strings.Partition(stamp, " ").tail);
         if (build.hash_file(Join([root, "/", path])) != checksum) {
             os.Print(Join(["asset compiler source changed during generation: ", path]));
             return false;

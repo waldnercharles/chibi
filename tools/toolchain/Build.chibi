@@ -1,12 +1,14 @@
 package toolchain
 
 import os "core:os"
+import strings "core:strings"
+import sha "core:hash/sha256"
 
 Join :: (parts: string[]) -> string {
-    return build.join(parts, "");
+    return strings.Join(parts, "");
 }
 Contains :: (text: string, part: string) -> bool {
-    return build.before(text, part) != text;
+    return strings.Partition(text, part).head != text;
 }
 // Removes a file, link or directory tree; true when nothing is left.
 RemoveTree :: (path: string) -> bool {
@@ -30,7 +32,7 @@ RemoveTree :: (path: string) -> bool {
 ThirdPartyCache :: () -> string {
     git := os.Capture(["git", "-C", os.Root(), "rev-parse", "--path-format=absolute", "--git-common-dir"]);
     if (git.status == 0) {
-        return Join([build.trim(git.stdout), "/chibi/third_party"]);
+        return Join([strings.TrimSpace(git.stdout), "/chibi/third_party"]);
     }
     return Join([os.Root(), "/.chibi/third_party"]);
 }
@@ -40,7 +42,7 @@ ThirdPartyTarget :: () -> string {
     if (uname.status != 0) {
         return "";
     }
-    machine := build.trim(uname.stdout);
+    machine := strings.TrimSpace(uname.stdout);
     family := "linux";
     if (os.Platform() == "Darwin") {
         family = "macos";
@@ -55,7 +57,7 @@ ThirdPartyTarget :: () -> string {
 ThirdPartyArchive :: (cache: string, buildDir: string, repository: string, release: string,
                       asset: string, sha256: string) -> bool {
     destination := Join([cache, "/", sha256]);
-    partial := Join([destination, ".", build.hash_text(os.RealPath(buildDir)), ".partial"]);
+    partial := Join([destination, ".", sha.Hex(os.RealPath(buildDir)), ".partial"]);
     file := Join([partial, "/", asset]);
     tree := Join([partial, "/tree"]);
     if (!RemoveTree(partial)) {
@@ -92,16 +94,16 @@ ThirdParty :: (cache: string, buildDir: string) -> bool {
         os.Print("third_party/archives.tsv cannot be read");
         return false;
     }
-    for (line in build.lines(manifest.text)) {
-        if (build.starts_with(line, "# repository ")) {
-            repository = build.after(line, "# repository ");
+    for (line in strings.Lines(manifest.text)) {
+        if (strings.HasPrefix(line, "# repository ")) {
+            repository = strings.Partition(line, "# repository ").tail;
         }
-        if (build.starts_with(line, "#") || build.before(line, "\t") != target) {
+        if (strings.HasPrefix(line, "#") || strings.Partition(line, "\t").head != target) {
             continue;
         }
-        variant := build.before(build.after(line, "\t"), "\t");
-        release := build.before(build.after(build.after(line, "\t"), "\t"), "\t");
-        sha256 := build.after(build.after(build.after(line, "\t"), "\t"), "\t");
+        variant := strings.Partition(strings.Partition(line, "\t").tail, "\t").head;
+        release := strings.Partition(strings.Partition(strings.Partition(line, "\t").tail, "\t").tail, "\t").head;
+        sha256 := strings.Partition(strings.Partition(strings.Partition(line, "\t").tail, "\t").tail, "\t").tail;
         asset := Join(["third-party-", target, "-", variant, ".tar.gz"]);
         if (!os.IsFile(Join([cache, "/", sha256, "/third-party.cmake"])) &&
             !ThirdPartyArchive(cache, buildDir, repository, release, asset, sha256)) {
@@ -119,17 +121,17 @@ PruneThirdParty :: (cache: string) -> bool {
         return true;
     }
     pinned := "|";
-    for (line in build.lines(worktrees.stdout)) {
-        if (!build.starts_with(line, "worktree ")) {
+    for (line in strings.Lines(worktrees.stdout)) {
+        if (!strings.HasPrefix(line, "worktree ")) {
             continue;
         }
-        pins := os.ReadText(Join([build.after(line, "worktree "), "/third_party/archives.tsv"]));
+        pins := os.ReadText(Join([strings.Partition(line, "worktree ").tail, "/third_party/archives.tsv"]));
         if (pins.error) {
             continue;
         }
-        for (row in build.lines(pins.text)) {
-            if (!build.starts_with(row, "#")) {
-                pinned = Join([pinned, build.after(build.after(build.after(row, "\t"), "\t"), "\t"), "|"]);
+        for (row in strings.Lines(pins.text)) {
+            if (!strings.HasPrefix(row, "#")) {
+                pinned = Join([pinned, strings.Partition(strings.Partition(strings.Partition(row, "\t").tail, "\t").tail, "\t").tail, "|"]);
             }
         }
     }

@@ -65,6 +65,8 @@ static const char *const environment_names[] = {
     /* Nested build hosts reuse the recovered compilers the caller keeps, by
      * default under $XDG_CACHE_HOME or ~/.cache. */
     "CHIBI_COMPILER_CACHE",
+    /* Where the asset compiler keeps its products, shared by every checkout. */
+    "CHIBI_ASSET_COMPILER_CACHE",
     "XDG_CACHE_HOME",
     /* bootstrap-artifact's check leaves stage two and its arguments here. */
     "CHIBI_BOOTSTRAP_SEED",
@@ -103,7 +105,6 @@ static const char *const environment_names[] = {
     "PKG_CONFIG_SYSROOT_DIR",
     "CMAKE_TOOLCHAIN_FILE",
     "EMMAKEN_CMAKE_TOOLCHAIN",
-    "XDG_CACHE_HOME",
     "GH_TOKEN",
     "CMAKE_BUILD_PARALLEL_LEVEL",
     "MallocNanoZone",

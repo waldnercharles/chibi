@@ -434,11 +434,14 @@ Word64 :: (bytes: u8[], at: int) -> u64 {
     return value;
 }
 
-// Stores the 64-bit integer into `bytes` at `at`, little endian.
-Put64 :: (bytes: u8[], at: int, value: u64) {
+// The bytes with the 64-bit integer stored at `at`, little endian. Arrays are
+// values, so the caller keeps what this returns.
+Put64 :: (bytes: u8[], at: int, value: u64) -> u8[] {
+    changed := bytes;
     for index in 0..<8 {
-        bytes[at + index] = u8((value >> u32(8 * index)) & 255);
+        changed[at + index] = u8((value >> u32(8 * index)) & 255);
     }
+    return changed;
 }
 
 // A standard handle made inheritable, or 0 when this process has none, so a
@@ -464,9 +467,9 @@ Start :: (command: string[], input: u64, output: u64, errors: u64) -> int {
     startup := Block(104);
     startup[0] = 104;
     startup[61] = 1;
-    Put64(startup, 80, input);
-    Put64(startup, 88, output);
-    Put64(startup, 96, errors);
+    startup = Put64(startup, 80, input);
+    startup = Put64(startup, 88, output);
+    startup = Put64(startup, 96, errors);
     information := Block(24);
     started := CreateProcessW(0, Wide(CommandLine(command)), 0, 0, 1, 0, 0, 0, startup, information);
     if started == 0 {
@@ -506,29 +509,30 @@ pub Run :: (command: string[]) -> int {
     return Wait(process);
 }
 
-// Appends what is waiting in the pipe to `into`: false once the pipe is
-// closed, true while it may still give bytes.
-Drain :: (pipe: u64, into: u8[]) -> bool {
+// How many bytes are waiting in the pipe; -1 once it is closed or broken.
+Waiting :: (pipe: u64) -> int {
     available: u32[] = [0];
     if PeekNamedPipe(pipe, 0, 0, 0, available, 0) == 0 {
-        return false;
+        return -1;
     }
-    wanted := int(available[0]);
-    if wanted == 0 {
-        return true;
-    }
+    return int(available[0]);
+}
+
+// Up to `count` of the bytes waiting in the pipe.
+Take :: (pipe: u64, count: int) -> u8[] {
+    wanted := count;
     if wanted > 4096 {
         wanted = 4096;
     }
     chunk := Block(wanted);
     read: u32[] = [0];
-    if ReadFile(pipe, chunk, u32(wanted), read, 0) == 0 {
-        return false;
+    taken: u8[] = [];
+    if ReadFile(pipe, chunk, u32(wanted), read, 0) != 0 {
+        for index in 0..<int(read[0]) {
+            taken.append(chunk[index]);
+        }
     }
-    for index in 0..<int(read[0]) {
-        into.append(chunk[index]);
-    }
-    return true;
+    return taken;
 }
 
 // Runs the program with its standard output and error read into the result.
@@ -558,10 +562,20 @@ pub Capture :: (command: string[]) -> Result {
         while open_out || open_err {
             before := length(standard) + length(errors);
             if open_out {
-                open_out = Drain(out_read[0], standard);
+                waiting := Waiting(out_read[0]);
+                if waiting < 0 {
+                    open_out = false;
+                } else if waiting > 0 {
+                    standard.extend(Take(out_read[0], waiting));
+                }
             }
             if open_err {
-                open_err = Drain(err_read[0], errors);
+                waiting := Waiting(err_read[0]);
+                if waiting < 0 {
+                    open_err = false;
+                } else if waiting > 0 {
+                    errors.extend(Take(err_read[0], waiting));
+                }
             }
             if length(standard) + length(errors) == before && (open_out || open_err) {
                 // Nothing waiting: let the child run for a moment.

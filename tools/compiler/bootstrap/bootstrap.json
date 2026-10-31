@@ -2,25 +2,25 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "3360fcdaca8b03287d4deb8b36c4170352df84da",
+  "revision": "40996ac0b69b76699a6929b2e7e127261c13b66c",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 13810887,
-    "sha256": "a678b578680c5e55e8d5de8bc8a5b892ea3d8af89e99577df8e25ee7596a3e02"
+    "bytes": 13882353,
+    "sha256": "a27a1cbd846a1231542cd267fc139eab8897ffa2188515816184a132fd6b2cf1"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 210458,
-      "sha256": "287010591cc5d8f6e3dbaf8c07f7f81287e1d2e0bf3a4c53f9f0cde3adf295e2"
+      "bytes": 210973,
+      "sha256": "005bb63e85877256e46d791ca4fe93aea738b93d2ad64a2061a76b66b68ffa00"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 201389,
-      "sha256": "40b8009776066a923e097899f2338bc2b2a055e2423af305506cb689edb5cae5"
+      "bytes": 201797,
+      "sha256": "3b230b042ec53c78c70aadbd4a0a0a20525c095a547ad1a3bcec916ce42c2ba3"
     },
     {
       "path": "package_compiler/Fallible.chibi",
@@ -104,13 +104,13 @@
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 170108,
-      "sha256": "5f755039c088a6a73d66879fc55af21d1174f7a4a7b28963087a241ddfe199c8"
+      "bytes": 181374,
+      "sha256": "cd3539356b5241a9cc717d46260a76615858f7ce148ae10d8c345e03066a8843"
     },
     {
       "path": "package_compiler/ScalarArrays.chibi",
-      "bytes": 35458,
-      "sha256": "dec7cfa21b0d8e1aa3703429f5022336e5fb75ed65af92f069dc88cf6847d5b5"
+      "bytes": 35532,
+      "sha256": "3bbd4f67424383f03ed50a3ce7bf6bebb82fe4cb18094e338e7c055533739428"
     },
     {
       "path": "package_compiler/Math.chibi",
@@ -164,8 +164,8 @@
     },
     {
       "path": "source_parser/Declarations.chibi",
-      "bytes": 28032,
-      "sha256": "051d2ca913dfc62af838f69fa9656be7ed9b65780e2653a670827e9c53b26f7c"
+      "bytes": 28177,
+      "sha256": "6b11813a68c4a4d61da777c6d6ef4212c6f1506055c7f77966a2d6a5f8388327"
     },
     {
       "path": "source_parser/Parser.chibi",

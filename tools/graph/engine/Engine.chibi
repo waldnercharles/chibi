@@ -83,9 +83,9 @@ pub ClangResourceInclude :: (libclang_library: string) -> string {
     basename := strings.Slice(resolved, basename_start, strings.ByteLength(resolved) - basename_start);
     version := "";
     if (strings.HasPrefix(basename, "libclang-")) {
-        version = build.after(basename, "libclang-");
+        version = strings.Partition(basename, "libclang-").tail;
     } else if (strings.HasPrefix(basename, "libclang.")) {
-        version = build.after(basename, "libclang.");
+        version = strings.Partition(basename, "libclang.").tail;
     }
     digits := 0;
     for (byte in strings.Bytes(version)) {
@@ -234,7 +234,7 @@ pub Language :: (file: string) -> string {
 pub HeaderRoot :: (build_dir: string, target: string, kind: string) -> string {
     directory := PrivateDirectory(target);
     if (kind == "private" && directory != "") {
-        return Join([build_dir, "/", build.after(directory, "/")]);
+        return Join([build_dir, "/", strings.Partition(directory, "/").tail]);
     }
     return Join([build_dir, "/sdk/", kind, "/", Component(target)]);
 }
@@ -244,15 +244,15 @@ pub HeaderRoot :: (build_dir: string, target: string, kind: string) -> string {
 // missing or a header cannot be written.
 Rewrite :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
     for (rewrite in Rewrites(target)) {
-        input := Resolve(source_root, build_dir, third_party, build.after(rewrite, "="));
+        input := Resolve(source_root, build_dir, third_party, strings.Partition(rewrite, "=").tail);
         if (!os.Exists(input)) {
             return false;
         }
         code := build.read_file(input);
         for (rename in Renames(target)) {
-            code = build.replace(code, build.before(rename, "="), build.after(rename, "="));
+            code = strings.ReplaceAll(code, strings.Partition(rename, "=").head, strings.Partition(rename, "=").tail);
         }
-        output := Join([HeaderRoot(build_dir, target, "private"), "/", build.before(rewrite, "=")]);
+        output := Join([HeaderRoot(build_dir, target, "private"), "/", strings.Partition(rewrite, "=").head]);
         if (os.Exists(output) && build.read_file(output) == code) {
             continue;
         }
@@ -267,7 +267,7 @@ Rewrite :: (source_root: string, build_dir: string, third_party: string, target:
 Rewritten :: (target: string) -> string[] {
     headers: string[] = [];
     for (rewrite in Rewrites(target)) {
-        headers.append(build.before(rewrite, "="));
+        headers.append(strings.Partition(rewrite, "=").head);
     }
     return headers;
 }
@@ -288,10 +288,10 @@ pub Library :: (source_root: string, build_dir: string, third_party: string, tar
 // `third-party/` path; otherwise below the source root.
 Resolve :: (source_root: string, build_dir: string, third_party: string, path: string) -> string {
     if (strings.HasPrefix(path, "build/")) {
-        return Join([build_dir, "/", build.after(path, "/")]);
+        return Join([build_dir, "/", strings.Partition(path, "/").tail]);
     }
     if (strings.HasPrefix(path, "third-party/")) {
-        return Join([third_party, "/", build.after(path, "/")]);
+        return Join([third_party, "/", strings.Partition(path, "/").tail]);
     }
     return Join([source_root, "/", path]);
 }
@@ -309,22 +309,22 @@ pub Sources :: (source_root: string, build_dir: string, third_party: string, tar
 // {sha256:PATH} for a file's SHA-256 and {program:NAME} for where an
 // executable is written.
 Expand :: (source_root: string, build_dir: string, profile: Profile, define: string) -> string {
-    if (build.before(define, "{") == define) {
+    if (strings.Partition(define, "{").head == define) {
         return define;
     }
-    text := build.replace(define, "{source_root}", source_root);
-    text = build.replace(text, "{build_type}", profile.build_type);
-    if (build.before(text, "{program:") != text) {
-        rest := build.after(text, "{program:");
-        program := Executable(build_dir, build.before(rest, "}"));
-        text = Join([build.before(text, "{program:"), program, build.after(rest, "}")]);
+    text := strings.ReplaceAll(define, "{source_root}", source_root);
+    text = strings.ReplaceAll(text, "{build_type}", profile.build_type);
+    if (strings.Partition(text, "{program:").head != text) {
+        rest := strings.Partition(text, "{program:").tail;
+        program := Executable(build_dir, strings.Partition(rest, "}").head);
+        text = Join([strings.Partition(text, "{program:").head, program, strings.Partition(rest, "}").tail]);
     }
-    if (build.before(text, "{sha256:") == text) {
+    if (strings.Partition(text, "{sha256:").head == text) {
         return text;
     }
-    rest := build.after(text, "{sha256:");
-    sha256 := build.hash_file(Join([source_root, "/", build.before(rest, "}")]));
-    return Join([build.before(text, "{sha256:"), sha256, build.after(rest, "}")]);
+    rest := strings.Partition(text, "{sha256:").tail;
+    sha256 := build.hash_file(Join([source_root, "/", strings.Partition(rest, "}").head]));
+    return Join([strings.Partition(text, "{sha256:").head, sha256, strings.Partition(rest, "}").tail]);
 }
 
 // Writes each header a target configures into its private root, as CMake's
@@ -333,7 +333,7 @@ Expand :: (source_root: string, build_dir: string, profile: Profile, define: str
 // missing or an output cannot be written.
 Configure :: (source_root: string, build_dir: string, profile: Profile, target: string) -> bool {
     for (configure in Configures(target)) {
-        input := Resolve(source_root, build_dir, "", build.after(configure, "="));
+        input := Resolve(source_root, build_dir, "", strings.Partition(configure, "=").tail);
         if (!os.Exists(input)) {
             return false;
         }
@@ -343,9 +343,9 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
             if (length(parts) == 0) {
                 return false;
             }
-            text = build.join(parts, "");
+            text = strings.Join(parts, "");
         }
-        output := Join([HeaderRoot(build_dir, target, "private"), "/", build.before(configure, "=")]);
+        output := Join([HeaderRoot(build_dir, target, "private"), "/", strings.Partition(configure, "=").head]);
         if (os.Exists(output) && build.read_file(output) == text) {
             continue;
         }
@@ -391,7 +391,7 @@ Identity :: (source_root: string, profile: Profile) -> string {
         "{\"sdk_version\": \"", sdk, "\", \"system\": \"",
         os.Platform(), "\", \"processors\": [\"", processor,
         "\"], \"backends\": [\"bytecode\", \"sljit\"], \"project_version\": ", project,
-        ", \"artifact_formats\": {\n", build.join(records, ",\n"), "\n}}\n"
+        ", \"artifact_formats\": {\n", strings.Join(records, ",\n"), "\n}}\n"
     ]);
 }
 
@@ -414,7 +414,7 @@ FormatRecord :: (source_root: string, fields: string[]) -> string {
                 implementation.append(Join(["{\"source\": \"src/", source, "\", \"sha256\": \"",
                                             build.hash_file(Join([source_root, "/src/", source])), "\"}"]));
             }
-            parts.extend([", \"implementation\": [", build.join(implementation, ", "), "]"]);
+            parts.extend([", \"implementation\": [", strings.Join(implementation, ", "), "]"]);
         }
     }
     parts.append("}");
@@ -435,11 +435,11 @@ Owner :: (source_root: string, source: string, header: string) -> string {
 // declares, or empty when it declares none.
 Version :: (path: string, define: string) -> string {
     prefix := Join(["#define ", define, " "]);
-    for (line in build.lines(build.read_file(path))) {
+    for (line in strings.Lines(build.read_file(path))) {
         if (!strings.HasPrefix(line, prefix)) {
             continue;
         }
-        value := strings.TrimPrefix(build.after(line, prefix), "UINT64_C(");
+        value := strings.TrimPrefix(strings.Partition(line, prefix).tail, "UINT64_C(");
         digits := 0;
         while (digits < strings.ByteLength(value) && strings.ByteAt(value, digits) >= 48 &&
                strings.ByteAt(value, digits) <= 57) {
@@ -524,9 +524,9 @@ Sorted :: (paths: string[]) -> string[] {
 // Writes each of a target's source lists (SourceLists) when its text changed.
 WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> bool {
     for (source_list in SourceLists(target)) {
-        listed := ChibiSources(Join([source_root, "/", build.after(source_list, "=")]));
-        text := Join([build.join(Sorted(listed), "\n"), "\n"]);
-        output := Resolve(source_root, build_dir, "", build.before(source_list, "="));
+        listed := ChibiSources(Join([source_root, "/", strings.Partition(source_list, "=").tail]));
+        text := Join([strings.Join(Sorted(listed), "\n"), "\n"]);
+        output := Resolve(source_root, build_dir, "", strings.Partition(source_list, "=").head);
         if (os.Exists(output) && build.read_file(output) == text) {
             continue;
         }
@@ -540,8 +540,8 @@ WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> 
 // Installs a target's resources into the build tree (Resources).
 Install :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
     for (resource in Resources(target)) {
-        if (!CopyChanged(Resolve(source_root, build_dir, third_party, build.after(resource, "=")),
-                         Resolve(source_root, build_dir, third_party, build.before(resource, "=")))) {
+        if (!CopyChanged(Resolve(source_root, build_dir, third_party, strings.Partition(resource, "=").tail),
+                         Resolve(source_root, build_dir, third_party, strings.Partition(resource, "=").head))) {
             return false;
         }
     }
@@ -552,7 +552,7 @@ Install :: (source_root: string, build_dir: string, third_party: string, target:
 Configured :: (target: string) -> string[] {
     headers: string[] = [];
     for (configure in Configures(target)) {
-        headers.append(build.before(configure, "="));
+        headers.append(strings.Partition(configure, "=").head);
     }
     return headers;
 }
@@ -572,12 +572,12 @@ TestSources :: (directory: string) -> string[] {
 // PREFIX:PACKAGE:DIR declares each source's byte array or its package input,
 // exactly as package_compiler_chibi.cmake configures the shared template.
 TestSubstitution :: (source_root: string, value: string) -> string {
-    kind := build.before(value, ":");
-    rest := build.after(value, ":");
-    prefix := build.before(rest, ":");
-    rest = build.after(rest, ":");
-    identity := build.before(rest, ":");
-    directory := Join([source_root, "/", build.after(rest, ":")]);
+    kind := strings.Partition(value, ":").head;
+    rest := strings.Partition(value, ":").tail;
+    prefix := strings.Partition(rest, ":").head;
+    rest = strings.Partition(rest, ":").tail;
+    identity := strings.Partition(rest, ":").head;
+    directory := Join([source_root, "/", strings.Partition(rest, ":").tail]);
     names := TestSources(directory);
     if (length(names) == 0) {
         os.Print(Join(["graph: authored test package is empty: ", directory]));
@@ -594,7 +594,7 @@ TestSubstitution :: (source_root: string, value: string) -> string {
                                "\", ", symbol, "), \\\n"]));
         }
     }
-    return build.join(lines, "");
+    return strings.Join(lines, "");
 }
 
 // A substitution's value: `bytes:PATH` as the C initializer CMake writes from
@@ -604,34 +604,34 @@ TestSubstitution :: (source_root: string, value: string) -> string {
 // test/tools/CMakeLists.txt writes them. Test package substitutions take
 // `test-sources:PREFIX:PACKAGE:DIR` or `test-inputs:PREFIX:PACKAGE:DIR`.
 Substitute :: (source_root: string, build_dir: string, profile: Profile, value: string) -> string {
-    kind := build.before(value, ":");
+    kind := strings.Partition(value, ":").head;
     if (kind == "test-sources" || kind == "test-inputs") {
         return TestSubstitution(source_root, value);
     }
-    if (build.before(value, ":") == "compiler") {
+    if (strings.Partition(value, ":").head == "compiler") {
         arguments := [profile.compiler];
         arguments.extend(DebugDirectoryFlags(profile, build_dir));
         arguments.extend(BuildTypeFlags(profile));
         if (profile.sanitizers != "") {
             arguments.extend([Join(["-fsanitize=", profile.sanitizers]), "-fno-omit-frame-pointer"]);
         }
-        if (build.after(value, ":") != "") {
-            arguments.append(build.after(value, ":"));
+        if (strings.Partition(value, ":").tail != "") {
+            arguments.append(strings.Partition(value, ":").tail);
         }
         lines: string[] = [];
         for (argument in arguments) {
-            escaped := build.replace(build.replace(argument, "\\", "\\\\"), "\"", "\\\"");
+            escaped := strings.ReplaceAll(strings.ReplaceAll(argument, "\\", "\\\\"), "\"", "\\\"");
             lines.append(Join(["    \"", escaped, "\",\n"]));
         }
-        return build.join(lines, "");
+        return strings.Join(lines, "");
     }
-    path := Join([source_root, "/", build.after(value, ":")]);
-    if (build.before(value, ":") == "bytes") {
+    path := Join([source_root, "/", strings.Partition(value, ":").tail]);
+    if (strings.Partition(value, ":").head == "bytes") {
         return build.byte_list(path);
     }
-    text := build.replace(build.read_file(path), "\\", "\\\\");
-    text = build.replace(text, "\"", "\\\"");
-    return build.replace(text, "\n", "\\n\"\n\"");
+    text := strings.ReplaceAll(build.read_file(path), "\\", "\\\\");
+    text = strings.ReplaceAll(text, "\"", "\\\"");
+    return strings.ReplaceAll(text, "\n", "\\n\"\n\"");
 }
 
 // The parts of a template with each `@NAME@` of a target's Substitutions
@@ -643,8 +643,8 @@ Substituted :: (source_root: string, build_dir: string, profile: Profile, target
     placeholders: string[] = [];
     values: string[] = [];
     for (substitution in Substitutions(target)) {
-        placeholders.append(Join(["@", build.before(substitution, "="), "@"]));
-        values.append(build.after(substitution, "="));
+        placeholders.append(Join(["@", strings.Partition(substitution, "=").head, "@"]));
+        values.append(strings.Partition(substitution, "=").tail);
     }
     replacements: string[] = [];
     replaced: bool[] = [];
@@ -678,7 +678,7 @@ Substituted :: (source_root: string, build_dir: string, profile: Profile, target
         }
         if (!replaced[index]) {
             replacement := Substitute(source_root, build_dir, profile, values[index]);
-            kind := build.before(values[index], ":");
+            kind := strings.Partition(values[index], ":").head;
             if ((kind == "test-sources" || kind == "test-inputs") && replacement == "") {
                 return [];
             }
@@ -738,7 +738,7 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
         inputs.append(Join([output, "/", name]));
     }
     inventory := Join([output, "/input-inventory.txt"]);
-    listing := build.join(inputs, "\n");
+    listing := strings.Join(inputs, "\n");
     if (!os.Exists(inventory) || build.read_file(inventory) != listing) {
         if (os.MakeDirectory(output) || os.WriteText(inventory, listing)) {
             return -1;
@@ -872,7 +872,7 @@ pub LinkCommands :: (tools: c.Tools, profile: Profile, source_root: string, buil
                                        Executable(build_dir, target)));
         }
     }
-    return Join(["[\n", build.join(entries, ",\n"), "\n]\n"]);
+    return Join(["[\n", strings.Join(entries, ",\n"), "\n]\n"]);
 }
 
 // Where an include directory the tables name is: staged headers below the
@@ -1048,7 +1048,7 @@ Staged :: (targets: string[]) -> string[] {
         includes.extend(SystemIncludes(target));
         for (include in includes) {
             if (strings.HasPrefix(include, "public/") || strings.HasPrefix(include, "private/")) {
-                staged = Add(staged, ExportTarget(build.after(include, "/")));
+                staged = Add(staged, ExportTarget(strings.Partition(include, "/").tail));
             } else if (DirectorySet(include) != "") {
                 staged = Add(staged, DirectorySet(include));
             }
@@ -1081,7 +1081,7 @@ pub NeedsThirdParty :: (targets: string[]) -> bool {
     for (target in Staged(targets)) {
         paths.append(HeaderSource(target));
         for (rewrite in Rewrites(target)) {
-            paths.append(build.after(rewrite, "="));
+            paths.append(strings.Partition(rewrite, "=").tail);
         }
     }
     for (path in paths) {
@@ -1224,5 +1224,5 @@ pub CompileCommands :: (tools: c.Tools, profile: Profile, source_root: string, b
             entries.append(c.CompileEntry(tools, built, SourceFlags(source_root, build_dir, target, file, profile, flags), source));
         }
     }
-    return Join(["[\n", build.join(entries, ",\n"), "\n]\n"]);
+    return Join(["[\n", strings.Join(entries, ",\n"), "\n]\n"]);
 }

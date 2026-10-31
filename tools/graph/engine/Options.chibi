@@ -8,16 +8,16 @@ pub NativeToolchainOption :: (argument: string) -> string[] {
     if (!strings.HasPrefix(argument, "-D") || !strings.Contains(argument, "=")) {
         return [];
     }
-    name := build.before(build.before(build.after(argument, "-D"), "="), ":");
-    value := build.after(argument, "=");
+    name := strings.Partition(strings.Partition(strings.Partition(argument, "-D").tail, "=").head, ":").head;
+    value := strings.Partition(argument, "=").tail;
     if (value == "") {
         return [];
     }
     for (pair in ["CMAKE_C_COMPILER=--compiler", "CMAKE_CXX_COMPILER=--cxx-compiler",
                   "CMAKE_OSX_SYSROOT=--sysroot", "CMAKE_OSX_ARCHITECTURES=--architecture",
                   "CMAKE_AR=--archiver", "CMAKE_RANLIB=--ranlib", "LIBCLANG_ROOT=--libclang-root"]) {
-        if (name == build.before(pair, "=")) {
-            return [build.after(pair, "="), value];
+        if (name == strings.Partition(pair, "=").head) {
+            return [strings.Partition(pair, "=").tail, value];
         }
     }
     return [];
@@ -66,13 +66,13 @@ pub ReflectionOptions :: (arguments: string[]) -> (options: string[], error: str
         if (length(mapped) != 2) {
             return (options, format_text("graph: unsupported native reflection toolchain argument '{0}'", definition));
         }
-        options = build.concat(mapped, options);
+        options = extend(mapped, options);
     }
     if (split) {
         return (options, "graph: -D requires a native toolchain definition");
     }
     if (libclang != "") {
-        options = build.concat(["--libclang-root", libclang], options);
+        options = extend(["--libclang-root", libclang], options);
     }
     return (options, "");
 }

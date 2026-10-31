@@ -4,6 +4,7 @@ import engine "graph:engine"
 import c "graph:c"
 import os "core:os"
 import strings "core:strings"
+import sha "core:hash/sha256"
 
 // Runtime package provenance comes from declared graph commands and current
 // records. Compiler banners are observations, not a parsed version promise.
@@ -39,9 +40,9 @@ EvidenceBool :: (value: bool) -> string {
 
 EvidenceDefine :: (text: string, name: string) -> string {
     prefix := EvidenceJoin(["#define ", name, " "]);
-    for (line in build.lines(text)) {
+    for (line in strings.Lines(text)) {
         if (strings.HasPrefix(line, prefix)) {
-            return strings.TrimSpace(build.after(line, prefix));
+            return strings.TrimSpace(strings.Partition(line, prefix).tail);
         }
     }
     return "";
@@ -292,7 +293,7 @@ EvidenceNormalize :: (roots: string[], value: string) -> string {
                 label = "@vendor";
             }
             // Only whole path components: /x/tp must not rewrite /x/tp-build.
-            result = build.replace(result, EvidenceJoin([roots[i], "/"]), EvidenceJoin([label, "/"]));
+            result = strings.ReplaceAll(result, EvidenceJoin([roots[i], "/"]), EvidenceJoin([label, "/"]));
             if (strings.HasSuffix(result, roots[i])) {
                 result = EvidenceJoin([strings.Slice(result, 0, strings.ByteLength(result) - strings.ByteLength(roots[i])), label]);
             }
@@ -397,7 +398,7 @@ pub RecordEvidence :: (roots: string[], command: string[], output: string, input
         return EvidenceFailure("graph record is missing or is not regular data");
     }
     record_stamp := os.Stamp(record);
-    lines := build.lines(build.read_file(record));
+    lines := strings.Lines(build.read_file(record));
     count := length(command);
     if (length(lines) != count + 1 + 2 * (length(inputs) + 1) || lines[count] != "") {
         return EvidenceFailure(EvidenceJoin(["graph record membership differs: ", output]));
@@ -444,7 +445,7 @@ pub RecordEvidence :: (roots: string[], command: string[], output: string, input
     }
     return JsonObject(["path", "sha256", "arguments", "command_sha256", "dependencies"], [
         JsonQuote(EvidenceNormalize(roots, output)), JsonQuote(checksum), arguments,
-        JsonQuote(build.hash_text(arguments)), dependency_map
+        JsonQuote(sha.Hex(arguments)), dependency_map
     ]);
 }
 
@@ -500,7 +501,7 @@ EvidenceNormalizeJSON :: (roots: string[], data: string) -> string {
 EvidenceHeaderVersion :: (path: string, name: string) -> string {
     value := EvidenceDefine(build.read_file(path), name);
     if (strings.HasPrefix(value, "UINT64_C(")) {
-        value = build.after(value, "UINT64_C(");
+        value = strings.Partition(value, "UINT64_C(").tail;
     }
     count := 0;
     for (byte in strings.Bytes(value)) {

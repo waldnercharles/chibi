@@ -7,6 +7,7 @@
 #include "runtime/arrays_definition.h"
 #include "runtime/native_definitions.h"
 #include "runtime/text_definition.h"
+#include "scalar_host.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -173,6 +174,7 @@ typedef struct
 {
     const char *function, *path, *callee;
     char *message, *excerpt;
+    char *native; /* What scalar_llvm said of an accepted function, or NULL. */
     int category;
     bool imports, constants;
 } census_row;
@@ -214,12 +216,14 @@ static void forget_rows()
     for (int i = 0; i < acount(rows); i++) {
         free(rows[i].message);
         free(rows[i].excerpt);
+        free(rows[i].native);
     }
     afree(rows);
 }
 static void cleanup()
 {
     unload();
+    scalar_host_close();
     compiler_host_free(compiler);
     compiler = NULL;
     native_capabilities_free(native);
@@ -632,8 +636,45 @@ static void build_free(census_build *build)
  * message and the bytes [start, end) it covers. CollectScalar takes the
  * project, the path, the text, then the target, instruction names, natives,
  * ports and identities, which are parts 0 and 2 to 5 of the target JSON. */
-static bool collect_scalar(const char *text, char **message, int *start, int *end, bool *accepted)
+/* What scalar_llvm says of the producer's `rows_json`: its Validate message,
+ * "emission produced no bytes", or NULL when the rows lower to an object. */
+static bool lower_rows(yyjson_val *rows_json, char **native_message)
 {
+    *native_message = NULL;
+    for (int step = 0; step < 2; step++) {
+        yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+        yyjson_mut_val *arguments = yyjson_mut_arr(doc);
+        yyjson_mut_doc_set_root(doc, arguments);
+        yyjson_mut_arr_append(arguments, yyjson_val_mut_copy(doc, rows_json));
+        yyjson_doc *result;
+        /* The call frees `doc`. */
+        REQUIRE(scalar_host_consumer(step ? "EmitSize" : "ValidateRows", doc, &result));
+        yyjson_val *value = yyjson_arr_get(yyjson_doc_get_root(result), 0);
+        const char *said = step ? "emission produced no bytes" : yyjson_get_str(value);
+        size_t said_length = step ? strlen(said) : yyjson_get_len(value);
+        bool done = step ? yyjson_get_sint(value) == 0 : said_length != 0;
+        if (done) {
+            *native_message = xmalloc(said_length + 1);
+            memcpy(*native_message, said, said_length);
+            (*native_message)[said_length] = 0;
+        }
+        yyjson_doc_free(result);
+        if (done) {
+            return true;
+        }
+    }
+    return true;
+}
+static bool collect_scalar(
+    const char *text,
+    char **message,
+    char **native_message,
+    int *start,
+    int *end,
+    bool *accepted
+)
+{
+    *native_message = NULL;
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *arguments = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, arguments);
@@ -684,6 +725,9 @@ static bool collect_scalar(const char *text, char **message, int *start, int *en
         (*message)[said_length] = 0;
         *start = yyjson_get_int(yyjson_obj_get(verdict, "start"));
         *end = yyjson_get_int(yyjson_obj_get(verdict, "end"));
+    }
+    if (*accepted) {
+        REQUIRE(lower_rows(rows_json, native_message));
     }
     yyjson_doc_free(produced);
     return true;
@@ -829,12 +873,12 @@ static bool census_function(int function)
     int *functions = NULL;
     apush(functions, function);
     census_build build = { 0 };
-    char *message = NULL;
+    char *message = NULL, *native_message = NULL;
     int start = 0, end = 0;
     bool accepted;
     for (;;) {
         build_source(&build, functions);
-        bool collected = collect_scalar(build.text, &message, &start, &end, &accepted);
+        bool collected = collect_scalar(build.text, &message, &native_message, &start, &end, &accepted);
         if (!collected) {
             fprintf(
                 stderr,
@@ -857,7 +901,8 @@ static bool census_function(int function)
         message = NULL;
         build_free(&build);
     }
-    census_row row = { .function = decls[function].name,
+    census_row row = { .native = native_message,
+                       .function = decls[function].name,
                        .path = files[decls[function].source].path,
                        .category = CENSUS_NATIVE,
                        .imports = build.imports,
@@ -920,6 +965,7 @@ static bool prepare()
         fprintf(stderr, "native census bootstrap: %s\n", error);
     }
     REQUIRE(compiler);
+    REQUIRE(scalar_host_open());
     return true;
 }
 /* Reads the `count` sources of `in`, which outlive the census of them. */
@@ -1014,6 +1060,31 @@ static void write_summary(FILE *out)
             }
         }
     }
+    int lowered = 0;
+    for (int i = 0; i < acount(rows); i++) {
+        lowered += rows[i].category == CENSUS_NATIVE && !rows[i].native;
+    }
+    fprintf(
+        out,
+        "\nOf the %d that pass the producer, %d lower to an object through "
+        "`scalar_llvm`. Each rejection of the rest:\n\n"
+        "| `scalar_llvm` message | Functions |\n| --- | ---: |\n",
+        count_of(CENSUS_NATIVE),
+        lowered
+    );
+    for (int i = 0; i < acount(rows); i++) {
+        bool first = rows[i].native != NULL;
+        for (int j = 0; first && j < i; j++) {
+            first = !rows[j].native || strcmp(rows[j].native, rows[i].native);
+        }
+        int count = 0;
+        for (int j = i; first && j < acount(rows); j++) {
+            count += rows[j].native && !strcmp(rows[j].native, rows[i].native);
+        }
+        if (first) {
+            fprintf(out, "| %s | %d |\n", rows[i].native, count);
+        }
+    }
     fprintf(
         out,
         "\nThe census flattens two features, so neither is ever a first "
@@ -1079,7 +1150,9 @@ static void write_report(FILE *out)
             r->excerpt ? "`" : "",
             r->excerpt ? r->excerpt : "",
             r->excerpt ? "`" : "",
-            r->message ? r->message : ""
+            r->message  ? r->message
+            : r->native ? r->native
+                        : ""
         );
     }
 }

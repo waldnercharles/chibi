@@ -97,17 +97,17 @@ ForeignCallThroughAnAddress :: () {
 }
 @test
 IndirectCallNeedsAWordAddress :: () {
-    Rejects(IndirectModule(Indirects(), [6, 6, 6, 6], [""]), ForeignMismatch);
+    Rejects(IndirectModule(Indirects(), [6, 6, 6, 6], [""]), ForeignMismatch());
 }
 @test
 IndirectCallNamesNoSymbol :: () {
-    Rejects(IndirectModule(Indirects(), [9, 6, 6, 6], ["chibi_probe_add"]), ForeignMismatch);
+    Rejects(IndirectModule(Indirects(), [9, 6, 6, 6], ["chibi_probe_add"]), ForeignMismatch());
 }
 @test
 IndirectCallNeedsItsAddress :: () {
     code := Indirects();
     code[4] = Code(native.ForeignCall, 6, 3, 1, 0, 0, 0);
-    Rejects(IndirectModule(code, [9, 6, 6, 6], [""]), ForeignMismatch);
+    Rejects(IndirectModule(code, [9, 6, 6, 6], [""]), ForeignMismatch());
 }
 // A string is copied with its NUL to a stack buffer the callee reads as a C string.
 @test

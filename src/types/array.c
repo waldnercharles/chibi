@@ -126,6 +126,34 @@ void pin_array_mutation_end(pin_array *array)
         backing_attach(array, backing);
     }
 }
+/* Releases the collections boxed items own. A record array's items share one
+ * layout, so a layout without references is found once per run of items
+ * rather than walked for each item. */
+static void release_items(const pin_value *items, int count)
+{
+    /* The last record layout found to hold no references, and its name. */
+    const pin_record *inert = NULL;
+    const char *inert_name = NULL;
+    for (int i = 0; i < count; i++) {
+        const pin_value *item = &items[i];
+        if (!pin_value_may_own_collections(item)) {
+            continue;
+        }
+        if (item->container == PIN_CONTAINER_SINGLE &&
+            item->type == PIN_STRUCT && item->record) {
+            if (item->record == inert && item->type_name == inert_name) {
+                continue;
+            }
+            const type_desc *type = pin_value_type(item);
+            if (type && !type_holds_references(type)) {
+                inert = item->record;
+                inert_name = item->type_name;
+                continue;
+            }
+        }
+        pin_value_collection_release(item);
+    }
+}
 void pin_array_release(pin_array *array)
 {
     if (!array || array->pointer) {
@@ -134,11 +162,8 @@ void pin_array_release(pin_array *array)
     if (!array->backing) {
         if (array->storage && array->storage->collectable && !array->stride) {
             int count = array->count;
-            pin_value *items = array->items;
             array->count = 0;
-            for (int i = 0; i < count; i++) {
-                pin_value_collection_release(&items[i]);
-            }
+            release_items(array->items, count);
         }
         return;
     }
@@ -146,9 +171,7 @@ void pin_array_release(pin_array *array)
     array->backing = NULL;
     if (atomic_load_explicit(&backing->refs, memory_order_relaxed) == 1 &&
         !array->stride) {
-        for (int i = 0; i < array->count; i++) {
-            pin_value_collection_release(&array->items[i]);
-        }
+        release_items(array->items, array->count);
     }
     array->items = NULL;
     array->data = NULL;
@@ -2057,6 +2080,40 @@ static void owner_push(owner_stack *stack, pin_value value)
     }
     stack->items[stack->count++] = value;
 }
+/* The nodes an owner walk has reached, so that a node two union payloads
+ * share is walked once. Walks reach few nodes (1.8 on average in the
+ * compiler's self-compile, 2026-10-31), which stay inline; the rest spill to
+ * a hash set. */
+typedef struct
+{
+    struct
+    {
+        const void *ptr;
+        pin_type type;
+    } local[OWNER_LOCAL_WORK];
+    int count;
+    graph_copy spilled;
+} owner_reached;
+/* Whether the walk reached node before; remembers it if not. */
+static bool owner_reach(owner_reached *reached, const pin_value *node)
+{
+    int local = reached->count < OWNER_LOCAL_WORK ? reached->count : OWNER_LOCAL_WORK;
+    for (int i = 0; i < local; i++) {
+        if (reached->local[i].ptr == node->ptr && reached->local[i].type == node->type) {
+            return true;
+        }
+    }
+    if (reached->count < OWNER_LOCAL_WORK) {
+        reached->local[reached->count].ptr = node->ptr;
+        reached->local[reached->count].type = node->type;
+    } else if (graph_find(&reached->spilled, node)) {
+        return true;
+    } else {
+        graph_remember(&reached->spilled, node, *node);
+    }
+    reached->count++;
+    return false;
+}
 static void collection_visit_layout(const type_desc *type, const void *data, owner_stack *pending)
 {
     if (type_alias_layout(type)) {
@@ -2086,18 +2143,13 @@ void pin_value_collection_visit_owners(
     void *user
 )
 {
-    if (!value || !value->ptr) {
+    if (!pin_value_may_own_collections(value)) {
         return;
     }
-    /* Most values are scalars or one collection, which need no work list. */
+    /* One collection is its own only owner and needs no work list. */
     pin_value root = *value;
-    if (root.container == PIN_CONTAINER_ARRAY ||
-        root.container == PIN_CONTAINER_MAP || root.container == PIN_CONTAINER_SET) {
+    if (root.container != PIN_CONTAINER_SINGLE) {
         visit(&root, user);
-        return;
-    }
-    if (root.container != PIN_CONTAINER_SINGLE ||
-        (root.type != PIN_UNION && root.type != PIN_STRUCT)) {
         return;
     }
     if (root.type == PIN_STRUCT && !type_holds_references(pin_value_type(&root))) {
@@ -2105,10 +2157,12 @@ void pin_value_collection_visit_owners(
     }
     owner_stack pending = { .capacity = OWNER_LOCAL_WORK };
     pending.items = pending.local;
-    graph_copy visited = { 0 };
+    owner_reached reached;
+    reached.count = 0;
+    reached.spilled = (graph_copy){ 0 };
     owner_push(&pending, root);
     /* Values form no cycles, so nothing reaches the root again and it needs
-     * no visited entry. */
+     * no reached entry. */
     bool first = true;
     while (pending.count) {
         pin_value next = pending.items[--pending.count];
@@ -2122,11 +2176,8 @@ void pin_value_collection_visit_owners(
         }
         if (next.container != PIN_CONTAINER_SINGLE ||
             (next.type != PIN_UNION && next.type != PIN_STRUCT) ||
-            graph_find(&visited, &next)) {
+            (!first && owner_reach(&reached, &next))) {
             continue;
-        }
-        if (!first) {
-            graph_remember(&visited, &next, next);
         }
         first = false;
         if (next.type == PIN_UNION) {
@@ -2141,7 +2192,7 @@ void pin_value_collection_visit_owners(
     if (pending.items != pending.local) {
         free(pending.items);
     }
-    free(visited.entries);
+    free(reached.spilled.entries);
 }
 
 static void collection_release_owner(const pin_value *value, void *user)

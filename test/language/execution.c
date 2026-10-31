@@ -1147,6 +1147,77 @@ TEST_CASE(execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers
     return true;
 }
 
+/* Contexts own hundreds of shells, so membership goes through an index once a
+ * list outgrows a short scan. Grows both lists past that bound and drains
+ * them, twice, and checks every answer against a plain membership table. A
+ * shell can be in both lists. Shells here are never dereferenced: retain and
+ * transfer compare pointers, and nothing drops. */
+TEST_CASE(execution_collection_owners_match_a_membership_table)
+{
+    enum
+    {
+        shells = 300,
+        steps = 40000
+    };
+    static char storage[shells];
+    /* Membership by context (1 and 2) and key; key < shells is an array. */
+    static bool owned[3][2 * shells];
+    memset(owned, 0, sizeof owned);
+    behavior_function_context first = { 0 }, second = { 0 };
+    behavior_function_context *contexts[] = { NULL, &first, &second };
+    uint32_t random = 0x9E3779B9u;
+    for (int step = 0; step < steps; step++) {
+        random = random * 1664525u + 1013904223u;
+        /* The same address as an array and as a map are distinct shells. */
+        int key = (int)((random >> 8) % (2 * shells));
+        pin_value shell = { .container = key < shells ? PIN_CONTAINER_ARRAY
+                                                      : PIN_CONTAINER_MAP,
+                            .ptr = &storage[key % shells] };
+        /* Retains and moves fill the first and third quarters; transfers
+         * out drain the second and fourth. */
+        bool growing = (step / (steps / 4)) % 2 == 0;
+        unsigned op = (random >> 28) % 8;
+        int from = 1 + (int)((random >> 4) & 1), to = 3 - from;
+        if (growing && op < 5) {
+            behavior_function_collection_retain(contexts[from], &shell);
+            owned[from][key] = true;
+        } else if (op < 7) {
+            /* A move retains in the other context even what the first did
+             * not own. */
+            bool move = growing && op == 6;
+            behavior_function_collection_transfer(contexts[from], move ? contexts[to] : NULL, &shell);
+            owned[from][key] = false;
+            owned[to][key] |= move;
+        }
+        for (int c = 1; c <= 2; c++) {
+            REQUIRE(behavior_function_collection_holds(contexts[c], &shell) == owned[c][key]);
+            REQUIRE(behavior_function_collection_owns(contexts[c], &shell) == owned[c][key]);
+        }
+        if ((step + 1) % (steps / 4) == 0) {
+            for (int c = 1; c <= 2; c++) {
+                int count = 0;
+                for (int k = 0; k < 2 * shells; k++) {
+                    count += owned[c][k];
+                }
+                REQUIRE(growing ? count > 400 : count < 8);
+            }
+        }
+    }
+    for (int key = 0; key < 2 * shells; key++) {
+        pin_value shell = { .container = key < shells ? PIN_CONTAINER_ARRAY
+                                                      : PIN_CONTAINER_MAP,
+                            .ptr = &storage[key % shells] };
+        for (int c = 1; c <= 2; c++) {
+            REQUIRE(behavior_function_collection_holds(contexts[c], &shell) == owned[c][key]);
+            behavior_function_collection_transfer(contexts[c], NULL, &shell);
+        }
+    }
+    behavior_function_collection_clear(&first);
+    behavior_function_collection_clear(&second);
+    REQUIRE(!first.collection_owners && !second.collection_owners);
+    return true;
+}
+
 TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service)
 {
     builder = behavior_function_builder_new();
@@ -6809,6 +6880,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_raw_scalar_helper_preserves_owned_failure_text);
     RUN_TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service);
     RUN_TEST_CASE(execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers);
+    RUN_TEST_CASE(execution_collection_owners_match_a_membership_table);
     RUN_TEST_CASE(execution_integer_bitwise_preserves_width_and_valid_shifts);
     RUN_TEST_CASE(execution_integer_shift_past_the_width_shifts_every_bit_out);
     RUN_TEST_CASE(execution_fast_shift_past_the_width_keeps_both_stores);

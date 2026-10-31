@@ -76,3 +76,18 @@ pub ReflectionOptions :: (arguments: string[]) -> (options: string[], error: str
     }
     return (options, "");
 }
+
+// Whether a target was named with --target, or none were, or a named
+// executable needs it.
+pub Selected :: (arguments: string[], target: string) -> bool {
+    named := false;
+    for (i in 0..<length(arguments) - 1) {
+        if (arguments[i] == "--target") {
+            named = true;
+            if (arguments[i + 1] == target || Needed(arguments[i + 1], target)) {
+                return true;
+            }
+        }
+    }
+    return !named;
+}

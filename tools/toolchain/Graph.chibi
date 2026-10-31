@@ -50,24 +50,6 @@ Count :: (text: string) -> int {
     return value;
 }
 
-// Whether a target was named with --target, or none were, or a named
-// executable needs it (engine.Needed).
-Selected :: (arguments: string[], target: string) -> bool {
-    named := false;
-    for (i in 0..<length(arguments) - 1) {
-        if (arguments[i] == "--target") {
-            named = true;
-            if (arguments[i + 1] == target) {
-                return true;
-            }
-            if (engine.Needed(arguments[i + 1], target)) {
-                return true;
-            }
-        }
-    }
-    return !named;
-}
-
 Libraries :: () -> int {
     return LibrariesWithArguments(os.Arguments());
 }
@@ -390,12 +372,12 @@ BuildLibrariesWithArguments :: (arguments: string[], runtime_sdk: bool) -> int {
     }
     selected: string[] = [];
     for (target in targets) {
-        if (Selected(arguments, target)) {
+        if (engine.Selected(arguments, target)) {
             selected.append(target);
         }
     }
     if (Option(arguments, "--commands-only", "") != "on" &&
-        Selected(arguments, "reflect") && profile.reflect == "" &&
+        engine.Selected(arguments, "reflect") && profile.reflect == "" &&
         (!os.Exists(strings.Join([profile.libclang_include, "/clang-c/Index.h"], "")) ||
          !os.Exists(profile.libclang_library) ||
          !os.Exists(strings.Join([profile.clang_resource_include, "/stdbool.h"], "")))) {

@@ -3,8 +3,7 @@ package graph_driver_tests
 import os "core:os"
 import strings "core:strings"
 
-// `chibi build` plans, from test/tools/build_graph.c's driver cases: the
-// driver runs in the build host this program is given, with --dry-run, so it
+// `chibi build` plans: the driver runs in the build host this program is given, with --dry-run, so it
 // prints the commands each verb would run without running them.
 Driver :: (host: string, arguments: string[]) -> os.Result {
     command := ["--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", os.Root(), "--source", "tools/toolchain/Driver.chibi", "--core", "packages/core",

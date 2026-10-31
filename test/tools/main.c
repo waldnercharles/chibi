@@ -59,9 +59,6 @@ void test_native_aot_driver(const char *source);
 void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
-void test_build_graph(const char *host);
-void test_build_graph_support(const char *host);
-void test_build_graph_programs(const char *host);
 #ifndef _WIN32
 void test_build_sdk(const char *host, const char *build, const char *third_party);
 void test_runtime_sdk(const char *host);
@@ -243,26 +240,6 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_runtime_sdk(argv[2]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-#else
-        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
-        return 2;
-#endif
-    }
-    if (argc == 3 && (!strcmp(argv[1], "--build-graph") ||
-                      !strcmp(argv[1], "--build-graph-support") ||
-                      !strcmp(argv[1], "--build-graph-programs"))) {
-#ifdef CHIBI_TEST_BUILD_PROCESS
-        tool_init();
-        pu_display_time(true);
-        if (!strcmp(argv[1], "--build-graph")) {
-            test_build_graph(argv[2]);
-        } else if (!strcmp(argv[1], "--build-graph-support")) {
-            test_build_graph_support(argv[2]);
-        } else {
-            test_build_graph_programs(argv[2]);
-        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

@@ -4,8 +4,7 @@ import engine "graph:engine"
 import os "core:os"
 import strings "core:strings"
 
-// Toolchain discovery, from test/tools/build_graph.c's discovery cases. Run
-// builds fixture installations in a scratch directory and runs each check in
+// Toolchain discovery. Run builds fixture installations in a scratch directory and runs each check in
 // a build host of its own, because discovery reads the environment.
 
 Path :: (parts: string[]) -> string {

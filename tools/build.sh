@@ -7,7 +7,7 @@ root=$(cd "$(dirname "$0")/.." && pwd -P)
 cd "$root"
 [ "${1:-}" = build ] && shift
 usable() {
-    [ -x "$1" ] && [ "$("$1" --protocol-version 2>/dev/null)" = 14 ]
+    [ -x "$1" ] && [ "$("$1" --protocol-version 2>/dev/null)" = 15 ]
 }
 host=${CHIBI_BUILD_HOST:-}
 if [ -z "$host" ]; then

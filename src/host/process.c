@@ -290,9 +290,10 @@ chibi_process_capture_result chibi_process_begin(
         }
     }
     size_t bytes = 0;
-    if (!executable || executable[0] != '/' || !argv || !argv[0] || !argv[0][0] ||
-        !cwd || !cwd[0] || !isfinite(deadline) || deadline <= 0 || !out || !err ||
-        out == err || (out->capacity && !out->data) || (err->capacity && !err->data) ||
+    if (!executable || executable[0] != '/' || !argv || !argv[0] ||
+        !argv[0][0] || !cwd || !cwd[0] || !isfinite(deadline) || deadline <= 0 ||
+        (out && out == err) || (out && out->capacity && !out->data) ||
+        (err && err->capacity && !err->data) ||
         !capture_strings(argv, &bytes) || !capture_strings(envp, &bytes)) {
         return result;
     }
@@ -308,7 +309,8 @@ chibi_process_capture_result chibi_process_begin(
     }
     int pipes[2][2] = { { -1, -1 }, { -1, -1 } };
     result.error = CHIBI_PROCESS_HOST_FAILED;
-    if (!capture_pipe(pipes[0]) || !capture_pipe(pipes[1])) {
+    /* A NULL buffer leaves that stream inherited: no pipe, nothing to read. */
+    if ((out && !capture_pipe(pipes[0])) || (err && !capture_pipe(pipes[1]))) {
         result.system_error = errno;
         goto close_pipes;
     }
@@ -326,7 +328,9 @@ chibi_process_capture_result chibi_process_begin(
         goto close_pipes;
     }
     for (int i = 0; !error && i < 2; i++) {
-        error = posix_spawn_file_actions_adddup2(&actions, pipes[i][1], i + 1);
+        if (pipes[i][1] >= 0) {
+            error = posix_spawn_file_actions_adddup2(&actions, pipes[i][1], i + 1);
+        }
     }
     if (!error) {
         error = posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);

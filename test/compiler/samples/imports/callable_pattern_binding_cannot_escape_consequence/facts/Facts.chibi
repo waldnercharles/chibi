@@ -1,0 +1,6 @@
+package facts
+import lib "project:callable_pattern_binding_cannot_escape_consequence/lib"
+Choice :: union { Some(amount: int) | None }
+Main :: (payload: int) -> int { return lib.Remap(3, (value: int) { choice := Choice.Some(value); if choice is .Some(payload) { return value; } return payload; }); }
+
+// error: 4:151: Inline functions cannot capture enclosing locals

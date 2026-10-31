@@ -1,6 +1,7 @@
 # Test selectors for `chibi build test`: name, then the command, tab separated.
 # @build@ and @release@ are the --build and --release-build directories and @host@
 # the --build-host path, all made absolute; other paths are relative to the checkout. `group` rows list a group's selectors.
+# `timeout NAME SECONDS` rows give a selector a deadline other than the runner's.
 # Generated from the retired tools/test_policy.py tables; edit it by hand now.
 tool	types	@build@/test/tools/test_tools	--types
 tool	execution-scope	@build@/test/language/test_language	--execution-scope
@@ -32,6 +33,7 @@ tool	build-graph-support	@build@/test/tools/test_tools	--build-graph-support	@ho
 tool	build-graph-reflect	@build@/test/tools/test_tools	--build-graph-reflect	@host@
 tool	build-graph-generated	@build@/test/tools/test_tools	--build-graph-generated	@host@
 tool	build-graph-debug-optimization	@build@/test/tools/test_tools	--build-graph-debug-optimization	@host@
+tool	graph-engine	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/EngineTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000
 tool	build-graph-programs	@build@/test/tools/test_tools	--build-graph-programs	@host@
 tool	build-sdk	@build@/test/tools/test_tools	--build-sdk	@host@	@release@	
 tool	runtime-sdk	@build@/test/tools/test_tools	--runtime-sdk	@host@
@@ -138,6 +140,7 @@ tool	wasm-package-compiler-chibi-debug-free	node	build-wasm-language/test_langua
 tool	wasm-package-compiler-chibi-literals	node	build-wasm-language/test_language.js	--package-compiler-chibi-literals
 tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
+timeout	language-package-compiler-chibi-bootstrap	1200
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math	wasm-package-compiler-chibi	wasm-package-compiler-chibi-compiled
 group	native	native-values	build-graph-link-response	box3d	runtime-scene	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	arena
 group	projects	chibi-cli	native-build

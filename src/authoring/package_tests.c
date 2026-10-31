@@ -147,6 +147,86 @@ package_test *package_tests_find_compiled(const package_collection *packages)
     return tests;
 }
 
+/* The message each kind of failure reports: its whole text, or the start of
+ * it for assertions, which add their own message. */
+static const struct
+{
+    const char *text;
+    bool prefix;
+} FAILURE_TEXTS[PACKAGE_TEST_FAILURE_COUNT] = {
+    [PACKAGE_TEST_FAILURE_INDEX_OUT_OF_RANGE] = { "array index out of range", false },
+    [PACKAGE_TEST_FAILURE_MAP_KEY_ABSENT] = { "Map key is absent or invalid", false },
+    [PACKAGE_TEST_FAILURE_VIEW_OUT_OF_RANGE] = { "Array view is out of range", false },
+    [PACKAGE_TEST_FAILURE_ASSERTION_FAILED] = { "Assertion failed", true },
+    [PACKAGE_TEST_FAILURE_BUDGET_EXHAUSTED] = { "instruction budget exhausted", false },
+    [PACKAGE_TEST_FAILURE_DEPTH_EXCEEDED] = { "call depth exceeded", false },
+};
+static const char *const FAILURE_NAMES[PACKAGE_TEST_FAILURE_COUNT] = {
+    [PACKAGE_TEST_FAILURE_INDEX_OUT_OF_RANGE] = "IndexOutOfRange",
+    [PACKAGE_TEST_FAILURE_MAP_KEY_ABSENT] = "MapKeyAbsent",
+    [PACKAGE_TEST_FAILURE_VIEW_OUT_OF_RANGE] = "ViewOutOfRange",
+    [PACKAGE_TEST_FAILURE_ASSERTION_FAILED] = "AssertionFailed",
+    [PACKAGE_TEST_FAILURE_BUDGET_EXHAUSTED] = "BudgetExhausted",
+    [PACKAGE_TEST_FAILURE_DEPTH_EXCEEDED] = "DepthExceeded",
+};
+
+/* The kind of a failure's message, or NONE when it is none of them. */
+static package_test_failure_kind failure_kind(const char *message)
+{
+    for (int kind = 1; kind < PACKAGE_TEST_FAILURE_COUNT; kind++) {
+        const char *text = FAILURE_TEXTS[kind].text;
+        size_t length = strlen(text);
+        if (!strncmp(message, text, length) &&
+            (FAILURE_TEXTS[kind].prefix || !message[length])) {
+            return (package_test_failure_kind)kind;
+        }
+    }
+    return PACKAGE_TEST_FAILURE_NONE;
+}
+
+/* The failure record of the test this thread runs; a test runs on one thread
+ * from start to end. */
+static _Thread_local package_test_failure *running;
+
+static const char *expect_failure(
+    const behavior_function_context *,
+    void *,
+    const pin_value *arguments,
+    pin_value *
+)
+{
+    int kind = arguments[0].i;
+    if (!running || kind <= PACKAGE_TEST_FAILURE_NONE ||
+        kind >= PACKAGE_TEST_FAILURE_COUNT) {
+        return "ExpectFailure needs a running test and a failure kind";
+    }
+    running->expected = (package_test_failure_kind)kind;
+    return NULL;
+}
+static const native_parameter_definition EXPECT_INPUTS[] = {
+    { .name = "kind", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
+static const native_capability_definition TESTING_DEFINITIONS[] = {
+    { .canonical_name = "Test Expect Failure",
+      .source_name = "test_expect_failure",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = EXPECT_INPUTS,
+      .input_count = NATIVE_COUNT(EXPECT_INPUTS),
+      .completion_output = -1 },
+};
+static const node_host_call EXPECT_CALL = { .context = expect_failure };
+static const node_access EXPECT_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+static const native_definition_binding TESTING_BINDINGS[] = {
+    { .canonical_name = "Test Expect Failure",
+      .implementation = { .call = &EXPECT_CALL, .access = &EXPECT_ACCESS } },
+};
+const native_definition_pack TESTING_DEFINITION_PACK = {
+    .definitions = TESTING_DEFINITIONS,
+    .definition_count = NATIVE_COUNT(TESTING_DEFINITIONS),
+    .bindings = TESTING_BINDINGS,
+    .binding_count = NATIVE_COUNT(TESTING_BINDINGS),
+};
+
 /* The innermost failing call reports first; its callers report after it. */
 static void observe(const behavior_function *function, const behavior_function_context *context, int)
 {
@@ -231,7 +311,9 @@ bool package_test_run(
     if (owned_scope) {
         behavior_execution_scope_begin(&scope);
     }
+    running = failure;
     int status = behavior_function_run(test->body, &context, backend != BEHAVIOR_BYTECODE);
+    running = NULL;
     if (owned_scope) {
         behavior_execution_scope_end(&scope);
     }
@@ -246,6 +328,27 @@ bool package_test_run(
             "%s",
             behavior_function_failure_text(context.failure)
         );
+    }
+    /* A test that expected a failure passes only by ending with that kind. */
+    if (failure->expected) {
+        package_test_failure_kind kind = passed ? PACKAGE_TEST_FAILURE_NONE
+                                                : failure_kind(failure->message);
+        const char *expected = FAILURE_NAMES[failure->expected];
+        if (passed) {
+            snprintf(failure->message, sizeof failure->message, "expected %s, but the test returned", expected);
+        } else if (kind != failure->expected) {
+            char actual[sizeof failure->message];
+            snprintf(actual, sizeof actual, "%s", failure->message);
+            snprintf(
+                failure->message,
+                sizeof failure->message,
+                "expected %s, but it failed with %s: %s",
+                expected,
+                kind ? FAILURE_NAMES[kind] : "another failure",
+                actual
+            );
+        }
+        passed = !passed && kind == failure->expected;
     }
     behavior_function_release_host(&context);
     afree(services);

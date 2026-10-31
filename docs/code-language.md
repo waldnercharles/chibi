@@ -1306,6 +1306,25 @@ DoublesPoints :: () {
 }
 ```
 
+A test that must end with a run-time failure says so with `core:testing`,
+as Odin's `expect_assert` does. `testing.ExpectFailure(kind)` makes the
+running test pass only if it then ends with that kind of failure:
+`IndexOutOfRange`, `MapKeyAbsent`, `ViewOutOfRange`, `AssertionFailed`,
+`BudgetExhausted` or `DepthExceeded`. Returning normally, or failing with
+another kind, fails the test, and a failure before the call is an ordinary
+failure. Nothing unwinds: the failure ends the test as it otherwise would.
+
+```chibi
+import testing "core:testing"
+
+@test
+PickPastTheEnd :: () {
+    values: int[] = [1, 2]
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange)
+    assert(values[2] == 3)
+}
+```
+
 Run tests and format source with the command line tools.
 
 ```sh

@@ -1609,16 +1609,17 @@ QueryPresence :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
     if (!Is(forest, node, "member_expression")) {
         return -1;
     }
-    component := Component(types, Text(forest, text, Field(forest, node, "member")));
-    if (component < 0) {
-        return -1;
-    }
     owner := Field(forest, node, "object");
     if (!Is(forest, owner, "identifier")) {
         return -1;
     }
     found := Lookup(names, Text(forest, text, owner));
     if (found < 0 || names[found].storage != HandleStorage) {
+        return -1;
+    }
+    // Finding the component scans every type, so the handle comes first.
+    component := Component(types, Text(forest, text, Field(forest, node, "member")));
+    if (component < 0) {
         return -1;
     }
     parent := forest[node].parent;

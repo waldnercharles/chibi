@@ -1,0 +1,9 @@
+package facts
+
+// formatting
+@test
+Calls :: () {
+    assert(Label(3, "x") == "3:x", "Label");
+    assert(Plain() == "plain", "Plain");
+    assert(Mixed(true) == "true 18446744073709551615 -3", "Mixed");
+}

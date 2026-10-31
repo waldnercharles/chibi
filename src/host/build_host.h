@@ -10,7 +10,7 @@
 /* Raise with the Makefile's `build` gate whenever the compiler bootstrap or
  * build programs need a prepared format, capability or syntax an older host
  * lacks. */
-#define CHIBI_BUILD_HOST_PROTOCOL 14
+#define CHIBI_BUILD_HOST_PROTOCOL 15
 #define CHIBI_BUILD_OUTPUT_CAPACITY 4096
 
 /* A collection a program imports as name:path, as Odin's -collection names. */
@@ -55,6 +55,9 @@ typedef struct
     void (*prepared)();
     /* Optional private TSV timing sink, borrowed. NULL skips trace IO/clocks. */
     FILE *timings;
+    /* Optional output sinks, borrowed, set together. build.report text and
+     * reported step output go there as they happen instead of into the result. */
+    FILE *stdout_sink, *stderr_sink;
 } chibi_build_options;
 
 typedef struct

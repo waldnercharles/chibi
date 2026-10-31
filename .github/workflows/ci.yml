@@ -117,7 +117,7 @@ jobs:
       - name: Graph Debug optimization (commands only)
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-graph-debug-optimization
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine build-graph-debug-optimization
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Build timing host regressions (ready drivers)
         env:

@@ -235,9 +235,7 @@ Those presentation checks are separate from the original-snippet validation
 above, which cannot access the generator's private parser native.
 
 `chibi build test <name>` runs one mapped selector against
-the drivers `make test-build` produced and those Release tools, except
-`language-package-compiler-chibi-bootstrap`, which runs the Release
-`test_language` that `make test-bootstrap` builds; set
+the drivers `make test-build` produced and those Release tools; set
 `CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CTL`, `CHIBI_CLI` or
 `CHIBI_COMPILE` to use another build.
 

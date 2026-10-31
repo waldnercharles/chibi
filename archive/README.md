@@ -137,3 +137,7 @@ Each compiled authored sources with stage zero (`source_package_prepare`, `autho
 ## native_census.c no longer uses compiler_fixture
 
 The census loads the compiler with `compiler_bootstrap_load` (the sources on disk, recovered from the checked-in seed) and runs `CollectScalar` through `compiler_host_invoke` with the target taken from `compiler_target_json`, instead of preparing the compiler with stage zero. Report format and flattening are unchanged. Not run locally when it landed (all heavy slots were held); the first run of `--native-census-flattening` verifies it.
+
+## Stage-zero bootstrap lane removed (package_compiler_chibi.c)
+
+`package_compiler_compiles_itself` (`--package-compiler-chibi-bootstrap`, `make test-bootstrap`) had stage zero prepare stage one, compile the compiler sources to stage two, and compare stage one and stage two byte for byte on every sample. `chibi build bootstrap-artifact` now writes the seed from recovery's fixed point (seed -> stage one -> stage two, `--recover`), which checks the same fixed point without stage zero. Not re-covered: stage one against stage zero on the samples.

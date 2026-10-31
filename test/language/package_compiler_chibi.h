@@ -34,7 +34,6 @@ void test_language_package_compiler_chibi_types_compiled();
 void test_language_package_compiler_chibi_collections();
 void test_language_package_compiler_chibi_collections_compiled();
 void test_language_package_compiler_chibi_imports_compiled();
-void test_language_package_compiler_chibi_bootstrap();
 void test_language_package_compiler_chibi_literals();
 void test_language_package_compiler_chibi_behaviors();
 void test_language_package_compiler_chibi_actions();

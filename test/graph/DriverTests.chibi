@@ -61,8 +61,8 @@ TestSelectors :: (host: string) {
     assert(Has(log, "/out/test/tools/test_tools --chibi-cli /") && Has(log, "CHIBI_CLI=") && Has(log, "/rel/sdk/chibi "), "the selector command");
     bounded := Verb(host, "test", ["--dry-run", "--timeout", "30", "chibi-cli"]);
     assert(bounded.status == 0 && Has(Output(bounded), "chibi-cli: sh tools/with-timeout.sh 30 env "), "an explicit deadline");
-    heavy := Verb(host, "test", ["--dry-run", "language-package-compiler-chibi-bootstrap"]);
-    assert(heavy.status == 0 && Has(Output(heavy), "language-package-compiler-chibi-bootstrap: sh tools/with-timeout.sh 1200 env "), "a selector's own deadline");
+    heavy := Verb(host, "test", ["--dry-run", "language-package-compiler-chibi-imports"]);
+    assert(heavy.status == 0 && Has(Output(heavy), "language-package-compiler-chibi-imports: sh tools/with-timeout.sh 1200 env "), "a selector's own deadline");
     unknown := Verb(host, "test", ["no-such-selector"]);
     assert(unknown.status != 0 && Has(Output(unknown), "unknown selector 'no-such-selector'"), "an unknown selector");
 }

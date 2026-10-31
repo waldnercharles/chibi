@@ -555,8 +555,8 @@ TEST_CASE(compiler_test_reports_each_test)
 }
 
 /* A compiler whose SDK lacks the core collection says so and fails. */
-/* The compiler's own packages read raw syntax and JSON strings through the
- * compiler's bridges, so --test links both. */
+/* The compiler's own packages read JSON strings through the compiler's bridge,
+ * so --test links it. */
 static const char COMPILER_FACTS
     [] = "package words\n"
          "\n"
@@ -564,12 +564,6 @@ static const char COMPILER_FACTS
          "Decodes :: () {\n"
          "    decoded := compiler_json_string(\"\\\"hi\\\"\");\n"
          "    assert(decoded.valid && decoded.value == \"hi\", \"decodes\");\n"
-         "}\n"
-         "\n"
-         "@test\n"
-         "Parses :: () {\n"
-         "    tree := compiler_syntax_parse(\"package words\\n\");\n"
-         "    assert(tree.root >= 0, \"parses\");\n"
          "}\n";
 TEST_CASE(compiler_test_links_the_compiler_bridges)
 {
@@ -591,10 +585,10 @@ TEST_CASE(compiler_test_links_the_compiler_bridges)
         free(log);
     }
     REQUIRE(status == 0);
-    REQUIRE(file_is("bridged.log", "PASS words.Decodes\nPASS words.Parses\n2 tests, 0 failed\n"));
+    REQUIRE(file_is("bridged.log", "PASS words.Decodes\n1 tests, 0 failed\n"));
     const char *public_run[] = { built, "test", tests, NULL };
     REQUIRE(tool_run(public_run, root, output) == 0);
-    REQUIRE(file_is("bridged.log", "PASS words.Decodes\nPASS words.Parses\n2 tests, 0 failed\n"));
+    REQUIRE(file_is("bridged.log", "PASS words.Decodes\n1 tests, 0 failed\n"));
     return true;
 }
 TEST_CASE(compiler_runs_cost_explanation_regressions)

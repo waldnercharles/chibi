@@ -20,7 +20,7 @@ tool	chibi-cli-build	@build@/test/tools/test_tools	--chibi-cli-build	@release@/s
 tool	chibi-cli-doctor	@build@/test/tools/test_tools	--chibi-cli-doctor	@release@/sdk/chibi
 tool	chibi-cli-process	@build@/test/tools/test_tools	--chibi-cli-process	@release@/sdk/chibi
 tool	chibi-cli	@build@/test/tools/test_tools	--chibi-cli	@release@/sdk/chibi
-tool	native-build	@build@/test/tools/test_tools	--native-build	@release@/sdk/chibi
+tool	native-build	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/native_aot/native_build/BuildTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	1500000	--	@release@/sdk/chibi
 tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
 tool	chibi-cli-installed	@build@/test/tools/test_tools	--chibi-cli-installed	dist/sdk/bin/chibi
 tool	native-aot-driver	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/native_aot/driver/DriverTests.chibi	--core	packages/core	--collection	native_aot=tools/native_aot/driver	--entry	Run	--timeout-ms	600000	--	@host@

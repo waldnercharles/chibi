@@ -1,0 +1,705 @@
+package native_build_tests
+
+import bytes "core:bytes"
+import os "core:os"
+import strings "core:strings"
+
+// `chibi build --native` through a relocated SDK and the build tree's own
+// launcher, on Linux and macOS. Controlled LLVM stand-ins (the driver's
+// stage-tool.sh) cover the process contract; CHIBI_LLVM_BIN's real tools
+// cover the program, which runs here when it is for the host. Run takes the
+// build tree's launcher.
+
+Path :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+Read :: (path: string) -> string {
+    read := os.ReadText(path);
+    assert(!read.error, "the file reads");
+    return read.text;
+}
+Write :: (path: string, text: string) {
+    assert(os.WriteText(path, text) == nil, "the file writes");
+}
+Make :: (path: string) {
+    assert(os.MakeDirectory(path) == nil, "the directory");
+}
+Exists :: (path: string) -> bool {
+    return os.Kind(path) != os.KindNone;
+}
+Holds :: (path: string, text: string) -> bool {
+    read := os.ReadText(path);
+    return !read.error && strings.Contains(read.text, text);
+}
+Names :: (path: string) -> string[] {
+    listed := os.List(path);
+    if (listed.error) {
+        empty: string[] = [];
+        return empty;
+    }
+    return listed.names;
+}
+Clone :: (source: string, destination: string) {
+    copy := ["/bin/cp", "-R", "--reflink=auto", source, destination];
+    if (os.Platform() == "Darwin") {
+        copy = ["/bin/cp", "-cR", source, destination];
+    }
+    assert(os.Run(copy) == 0, "the copy");
+}
+
+// The test's paths and tools, shared by every case.
+Suite :: struct {
+    folder: string;
+    // The build tree's launcher, whose sibling hosts and share/chibi it uses.
+    built: string;
+    // The relocated SDK's launcher.
+    launcher: string;
+    stage_tool: string;
+    llvm: string;
+    cache: string;
+}
+
+// A package folder and its LLVM folder of controlled tools.
+Case :: struct {
+    game: string;
+    tools: string;
+}
+
+// An installed SDK's layout, assembled from the build tree beside `binary`.
+Relocate :: (folder: string, binary: string) -> string {
+    bin := strings.Slice(binary, 0, strings.LastIndex(binary, "/"));
+    built := Path([bin, "/.."]);
+    sdk := Path([folder, "/sdk with spaces"]);
+    for (child in ["/bin", "/libexec/chibi", "/share/chibi/tools"]) {
+        Make(Path([sdk, child]));
+    }
+    Clone(binary, Path([sdk, "/bin/chibi"]));
+    for (host in ["chibi-build-host", "chibi-compiler-host"]) {
+        Clone(Path([bin, "/", host]), Path([sdk, "/libexec/chibi/", host]));
+    }
+    for (shared in ["compiler", "core", "tools/native_aot", "apps"]) {
+        Clone(Path([built, "/share/chibi/", shared]), Path([sdk, "/share/chibi/", shared]));
+    }
+    return Path([sdk, "/bin/chibi"]);
+}
+
+Reset :: (suite: Suite, name: string, source: string) -> Case {
+    folder := Path([suite.folder, "/", name]);
+    built: Case = {game: Path([folder, "/game with spaces"]), tools: Path([folder, "/llvm with spaces"])};
+    Make(built.game);
+    Make(built.tools);
+    Write(Path([built.game, "/Main.chibi"]), source);
+    for (tool in ["opt", "llc", "ld.lld"]) {
+        Write(Path([built.tools, "/", tool]), suite.stage_tool);
+    }
+    assert(os.Run(["/bin/chmod", "700", Path([built.tools, "/opt"]), Path([built.tools, "/llc"]), Path([built.tools, "/ld.lld"])]) == 0, "the stand-ins run");
+    Write(Path([built.tools, "/action"]), "ok\n");
+    return built;
+}
+
+// Links the controlled tools' names to the real LLVM tools.
+RealTools :: (suite: Suite, built: Case) {
+    for (tool in ["opt", "llc", "ld.lld"]) {
+        path := Path([built.tools, "/", tool]);
+        assert(os.Remove(path) == nil && os.Run(["/bin/ln", "-s", Path([suite.llvm, "/", tool]), path]) == 0, "a real tool");
+    }
+}
+
+Result :: struct {
+    status: int;
+    log: string;
+}
+
+// Runs `chibi build --native OPTIONS --llvm TOOLS GAME` in an environment of
+// only an empty PATH and the compiler cache.
+Build :: (suite: Suite, launcher: string, built: Case, options: string[]) -> Result {
+    command := ["/usr/bin/env", "-i", "PATH=", suite.cache, launcher, "build", "--native"];
+    command.extend(options);
+    command.extend(["--llvm", built.tools, built.game]);
+    ran := os.Capture(command);
+    result: Result = {status: ran.status, log: Path([ran.stdout, ran.stderr])};
+    return result;
+}
+Says :: (result: Result, text: string) -> bool {
+    return strings.Contains(result.log, text);
+}
+
+// The program path the launcher printed, as "native: PATH".
+Printed :: (result: Result) -> string {
+    at := strings.Index(result.log, "native: /");
+    if (at < 0) {
+        return "";
+    }
+    rest := strings.Slice(result.log, at + 8, strings.ByteLength(result.log) - at - 8);
+    end := strings.Index(rest, "\n");
+    if (end < 0) {
+        return rest;
+    }
+    return strings.Slice(rest, 0, end);
+}
+
+// The entries of game/build/native named with `prefix`, and with `suffix`, or
+// with no dot when `suffix` is "".
+Outputs :: (built: Case, prefix: string, suffix: string) -> string[] {
+    folder := Path([built.game, "/build/native"]);
+    found: string[] = [];
+    for (name in Names(folder)) {
+        if (strings.HasPrefix(name, prefix) && strings.HasSuffix(name, suffix) && (suffix != "" || !strings.Contains(name, "."))) {
+            found.append(Path([folder, "/", name]));
+        }
+    }
+    return found;
+}
+Only :: (built: Case, prefix: string, suffix: string) -> string {
+    found := Outputs(built, prefix, suffix);
+    assert(length(found) == 1, "exactly one output");
+    return found[0];
+}
+Count :: (built: Case, prefix: string) -> int {
+    count := 0;
+    for (name in Names(Path([built.game, "/build/native"]))) {
+        if (strings.HasPrefix(name, prefix)) {
+            count += 1;
+        }
+    }
+    return count;
+}
+Executable :: (path: string) -> bool {
+    return os.Run(["/bin/test", "-x", path]) == 0;
+}
+// Runs a program with an empty environment and returns its exit status.
+Exit :: (program: string) -> int {
+    return os.Run(["/usr/bin/env", "-i", program]);
+}
+
+Source :: () -> string {
+    return "package scalar\nMain :: () -> int {\n    return Twice(21);\n}\nTwice :: (x: int) -> int {\n    return x * 2;\n}\n";
+}
+// Options that build for Linux x86-64 with no C library on any host, for
+// what only that target has.
+Linux :: () -> string[] {
+    return ["--target", "x86_64-unknown-linux-gnu", "--static"];
+}
+
+LinksAProgramAndReusesIt :: (suite: Suite) {
+    built := Reset(suite, "cache", Source());
+    result := Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status == 0, "the program builds");
+    folder := Only(built, "O0-", "");
+    receipt := Read(Path([folder, "/receipt.txt"]));
+    assert(strings.Contains(receipt, "output-kind executable\n") && strings.Contains(receipt, "\nlinkage dynamic "), "a dynamic executable");
+    assert(strings.Contains(receipt, Path(["\nlinker ", built.tools, "/ld.lld\n"])), "the named linker");
+    program := Path([folder, "/program"]);
+    assert(Executable(program) && Says(result, program), "the printed program");
+    trace := Path([built.tools, "/llc.argv"]);
+    assert(os.Remove(trace) == nil, "the trace removed");
+    assert(Says(Build(suite, suite.launcher, built, ["-O0"]), "is up to date") && !Exists(trace), "an unchanged build runs nothing");
+    assert(Read(Path([folder, "/receipt.txt"])) == receipt, "the receipt is kept");
+    assert(Build(suite, suite.launcher, built, ["-O2"]).status == 0 && Count(built, "O2-") == 1 && Count(built, "O0-") == 1, "-O2 builds its own output");
+    assert(Count(built, "emitter-") == 1, "one emitter closure");
+}
+
+// --static keeps the no-CRT static link of a Linux program as an explicit
+// option, and the receipt says so; a macOS program links libSystem whatever
+// was asked.
+LinksStaticallyOnRequest :: (suite: Suite) {
+    built := Reset(suite, "static", Source());
+    options := ["-O0"];
+    options.extend(Linux());
+    assert(Build(suite, suite.launcher, built, options).status == 0, "the static program builds");
+    assert(Holds(Path([Only(built, "O0-", ""), "/receipt.txt"]), "\nlinkage static\n"), "a static receipt");
+    mac := Reset(suite, "static macOS", Source());
+    assert(Build(suite, suite.launcher, mac, ["-O0", "--target", "aarch64-apple-darwin", "--static"]).status == 0, "the macOS program builds");
+    assert(Holds(Path([Only(mac, "O0-", ""), "/receipt.txt"]), "\nlinkage dynamic libSystem\n"), "a macOS program links libSystem");
+}
+
+// The IR of the O0 outputs, with or without line tables.
+Modules :: (built: Case, lines: bool) -> string[] {
+    found: string[] = [];
+    for (folder in Outputs(built, "O0-", "")) {
+        text := Read(Path([folder, "/source.ll"]));
+        if (strings.Contains(text, "!dbg") == lines) {
+            found.append(text);
+        }
+    }
+    return found;
+}
+
+// -g emits line tables, as rustc's -C debuginfo=line-tables-only: each
+// function a subprogram under its source name, each statement at its line and
+// column, the file in the game's folder. It is an output of its own, keyed on
+// that folder, so moving the game rebuilds it and keeps the simple program.
+AddsLineTablesWithG :: (suite: Suite) {
+    built := Reset(suite, "lines", Source());
+    simple := ["-O0"];
+    simple.extend(Linux());
+    lines := ["-O0", "-g"];
+    lines.extend(Linux());
+    assert(Build(suite, suite.launcher, built, simple).status == 0, "the simple program builds");
+    assert(Build(suite, suite.launcher, built, lines).status == 0 && Count(built, "O0-") == 2, "-g builds its own output");
+    assert(Says(Build(suite, suite.launcher, built, lines), "is up to date"), "an unchanged -g build");
+    untraced := Modules(built, false);
+    traced := Modules(built, true);
+    assert(length(untraced) == 1 && !strings.Contains(untraced[0], "!llvm") && length(traced) == 1, "one output each");
+    ir := traced[0];
+    assert(strings.Contains(ir, Path(["!1 = !DIFile(filename: \"Main.chibi\", directory: \"", built.game, "\")\n"])), "the source file");
+    for (expected in ["define i32 @chibi_scalar() #0 !dbg !6 {", "emissionKind: LineTablesOnly",
+                      "!6 = distinct !DISubprogram(name: \"Main\", linkageName: \"chibi_scalar\", scope: !1, file: !1, line: 2,",
+                      "!7 = distinct !DISubprogram(name: \"Twice\", linkageName: \"chibi_scalar.1\", scope: !1, file: !1, line: 5,",
+                      "!DILocation(line: 3, column: 5, scope: !6)", "!DILocation(line: 6, column: 5, scope: !7)"]) {
+        assert(strings.Contains(ir, expected), "a line table entry");
+    }
+    moved: Case = {game: Path([built.game, " moved"]), tools: built.tools};
+    assert(os.Rename(built.game, moved.game) == nil, "the game moves");
+    assert(Says(Build(suite, suite.launcher, moved, simple), "is up to date"), "the simple program is reused");
+    assert(Build(suite, suite.launcher, moved, lines).status == 0 && Count(moved, "O0-") == 3, "a moved game rebuilds its line tables");
+    placed := false;
+    for (text in Modules(moved, true)) {
+        placed = placed || strings.Contains(text, Path(["directory: \"", moved.game, "\")"]));
+    }
+    assert(placed, "the line tables name the moved folder");
+    assert(Says(Build(suite, suite.launcher, moved, ["-g", "-g"]), "Invalid build option; use --help."), "-g twice");
+}
+
+KeepsPriorProgramsAndNeverFallsBack :: (suite: Suite) {
+    built := Reset(suite, "rejection", Source());
+    assert(Build(suite, suite.launcher, built, ["-O0"]).status == 0, "the program builds");
+    prior := Only(built, "O0-", "");
+    receipt := Read(Path([prior, "/receipt.txt"]));
+    main := Path([built.game, "/Main.chibi"]);
+    Write(main, "package scalar\nMain :: () -> int {\n    print(\"x\");\n    return 1;\n}\n");
+    result := Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status == 1 && Says(result, Path([main, ":3:5: Unknown function 'print'"])), "an unknown function");
+    // A native library has no entry to link a program from.
+    Write(main, "Tools :: library {\n    Seven :: () -> int {\n        return 7;\n    }\n}\n");
+    result = Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status == 1 && Says(result, Path([main, ":a native library has no entry"])), "a library");
+    // Formatting calls the runtime, which only the VM supplies.
+    Write(main, "package scalar\nMain :: () -> int {\n    return text_byte_length(format_text(\"{}\", i64(7)));\n}\n");
+    result = Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status == 1 && Says(result, Path([main, ":a native program cannot call the runtime"])), "formatting");
+    assert(Read(Path([prior, "/receipt.txt"])) == receipt && Count(built, "O0-") == 1, "the prior program is kept");
+    assert(!Exists(Path([built.game, "/.chibi"])) && length(Outputs(built, "O0-", ".work")) == 0 && length(Outputs(built, "O0-", ".partial")) == 0, "failures leave nothing");
+    Write(main, "package scalar\nMain :: () -> int {\n    return 7;\n}\n");
+    assert(Build(suite, suite.launcher, built, ["-O0"]).status == 0 && Count(built, "O0-") == 2 && Exists(Path([prior, "/receipt.txt"])), "a changed program keeps the prior one");
+}
+
+RejectsMissingAndFailingTools :: (suite: Suite) {
+    built := Reset(suite, "tools", Source());
+    linker := Path([built.tools, "/ld.lld"]);
+    moved := Path([built.tools, "/linker"]);
+    assert(os.Rename(linker, moved) == nil, "the linker moves");
+    result := Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status == 2 && Says(result, "must hold LLVM's opt, llc and ld.lld") && !Exists(Path([built.game, "/build"])), "a missing linker");
+    assert(os.Rename(moved, linker) == nil, "the linker returns");
+    Write(Path([built.tools, "/action"]), "fail\n");
+    result = Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status == 71 && Says(result, "LLVM object emission failed") && Count(built, "O0-") == 0, "a failing compiler");
+    Write(Path([built.tools, "/action"]), "ok\n");
+    assert(Build(suite, suite.launcher, built, ["-O0"]).status == 0 && Count(built, "O0-") == 1, "the build recovers");
+    bare := os.Capture(["/usr/bin/env", "-i", "PATH=", suite.launcher, "build", "--native", built.game]);
+    assert(bare.status == 2 && strings.Contains(Path([bare.stdout, bare.stderr]), "build --native needs LLVM"), "no LLVM");
+}
+
+// --target links a macOS arm64 program with lld's darwin flavor against a
+// libSystem stub, with dyld calling `main`, and a Windows x64 program.exe
+// with lld-link and no C runtime, through an import library for kernel32's
+// ExitProcess. The target is part of the key, and an unknown target or
+// Windows line tables are rejected.
+LinksMacOSAndWindowsPrograms :: (suite: Suite) {
+    built := Reset(suite, "targets", Source());
+    mac := ["-O0", "--target", "aarch64-apple-darwin"];
+    result := Build(suite, suite.launcher, built, mac);
+    assert(result.status == 0, "the macOS program builds");
+    folder := Only(built, "O0-", "");
+    assert(Printed(result) == Path([folder, "/program"]), "the printed macOS program");
+    link := Path(["-flavor\ndarwin\n-arch\narm64\n-platform_version\nmacos\n11.0.0\n11.0.0\n-dead_strip\n-e\n_main\n",
+                  folder, ".partial/object.o\n", folder, ".partial/start.o\n", folder, ".partial/libSystem.tbd\n-o\n", folder, ".partial/program\n"]);
+    assert(Read(Path([built.tools, "/ld.lld.argv"])) == link, "the macOS link");
+    assert(Holds(Path([folder, "/libSystem.tbd"]), "install-name: '/usr/lib/libSystem.B.dylib'\n"), "the libSystem stub");
+    assert(Holds(Path([folder, "/start.ll"]), "target triple = \"arm64-apple-macosx11.0.0\""), "the macOS start module");
+    assert(Holds(Path([folder, "/start.ll"]), "define i32 @main() {\n  %status = call i32 @chibi_scalar()"), "dyld calls main");
+    assert(Holds(Path([folder, "/source.ll"]), "target triple = \"arm64-apple-macosx11.0.0\""), "the macOS module");
+    assert(Says(Build(suite, suite.launcher, built, mac), "/program is up to date"), "an unchanged macOS build");
+
+    windows := ["-O0", "--target", "x86_64-pc-windows-msvc"];
+    result = Build(suite, suite.launcher, built, windows);
+    assert(result.status == 0 && Count(built, "O0-") == 2, "the Windows program builds");
+    program := Printed(result);
+    assert(strings.HasSuffix(program, "/program.exe"), "program.exe");
+    folder = strings.TrimSuffix(program, "/program.exe");
+    imports := Path(["-flavor\nlink\n/lib\n/nologo\n/def:", folder, ".partial/kernel32.def\n/machine:x64\n/out:", folder, ".partial/kernel32.lib\n"]);
+    assert(Read(Path([built.tools, "/ld.lld.lib.argv"])) == imports, "the import library");
+    link = Path(["-flavor\nlink\n/nologo\n/subsystem:console\n/entry:mainCRTStartup\n/nodefaultlib\n/opt:ref\n/out:", folder,
+                 ".partial/program.exe\n", folder, ".partial/object.o\n", folder, ".partial/start.o\n", folder, ".partial/kernel32.lib\n"]);
+    assert(Read(Path([built.tools, "/ld.lld.argv"])) == link, "the Windows link");
+    assert(Holds(Path([folder, "/kernel32.def"]), "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n"), "the kernel32 definition");
+    for (text in ["call void @ExitProcess(i32 %status)", "module asm \"__chkstk:\"", "@_fltused = dso_local global i32 0"]) {
+        assert(Holds(Path([folder, "/start.ll"]), text), "the Windows start module");
+    }
+    assert(Holds(Path([folder, "/source.ll"]), "\"probe-stack\"=\"__chkstk\"") && Holds(Path([folder, "/receipt.txt"]), "\nstage import-library\n"), "the Windows module and receipt");
+    assert(Says(Build(suite, suite.launcher, built, windows), "/program.exe is up to date"), "an unchanged Windows build");
+
+    result = Build(suite, suite.launcher, built, ["--target", "riscv64gc-unknown-linux-gnu"]);
+    assert(result.status == 2 && Says(result, "unknown target riscv64gc-unknown-linux-gnu; use "), "an unknown target");
+    result = Build(suite, suite.launcher, built, ["-g", "--target", "x86_64-pc-windows-msvc"]);
+    assert(result.status == 2 && Says(result, "line tables are Linux x86-64 only"), "Windows line tables");
+    result = Build(suite, suite.launcher, built, ["--target", "aarch64-apple-darwin", "--target", "aarch64-apple-darwin"]);
+    assert(result.status == 2 && Says(result, "Invalid build option; use --help."), "--target twice");
+    assert(Count(built, "O0-") == 2, "rejections build nothing");
+}
+
+RefusesWhatAnInterruptedBuildLeft :: (suite: Suite) {
+    built := Reset(suite, "interrupted", Source());
+    Write(Path([built.tools, "/action"]), "terminate\n");
+    result := Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status != 0 && Says(result, "build process cancelled"), "an interrupted build");
+    work := Only(built, "O0-", ".work");
+    partial := Only(built, "O0-", ".partial");
+    assert(Count(built, "O0-") == 2 && Read(Path([partial, "/object.o"])) == "controlled object\n", "the interrupted build's folders");
+    Write(Path([built.tools, "/action"]), "ok\n");
+    result = Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status == 1 && Says(result, "an interrupted build left"), "a build after an interruption is refused");
+    assert(Read(Path([partial, "/object.o"])) == "controlled object\n" && Count(built, "O0-") == 2, "the interrupted output is kept");
+    assert(os.Run(["/bin/rm", "-rf", work, partial]) == 0, "the interrupted folders removed");
+    assert(Build(suite, suite.launcher, built, ["-O0"]).status == 0 && Count(built, "O0-") == 1, "the build recovers");
+}
+
+// A folder the key names but that lacks a valid program is refused and kept,
+// never reported up to date or overwritten.
+RefusesAnIncompleteOutput :: (suite: Suite) {
+    built := Reset(suite, "incomplete", Source());
+    assert(Build(suite, suite.launcher, built, ["-O0"]).status == 0, "the program builds");
+    folder := Only(built, "O0-", "");
+    program := Path([folder, "/program"]);
+    assert(os.Run(["/bin/chmod", "600", program]) == 0, "the program loses its mode");
+    result := Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status == 1 && Says(result, "has no executable program; remove it"), "a program that cannot run");
+    assert(os.Run(["/bin/chmod", "700", program]) == 0, "the program regains its mode");
+    original := Read(program);
+    Write(program, "#!/bin/sh\nexit 7\n");
+    assert(os.Run(["/bin/chmod", "700", program]) == 0, "the changed program runs");
+    result = Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status == 1 && Says(result, "does not match its receipt (program-sha256)"), "a changed program");
+    Write(program, original);
+    assert(os.Run(["/bin/chmod", "700", program]) == 0, "the program restored");
+    assert(Says(Build(suite, suite.launcher, built, ["-O0"]), "is up to date"), "the restored program is current");
+    assert(os.Remove(Path([folder, "/receipt.txt"])) == nil && os.Remove(program) == nil, "the receipt and program removed");
+    result = Build(suite, suite.launcher, built, ["-O0"]);
+    assert(result.status == 1 && Says(result, "has no receipt") && Count(built, "O0-") == 1 && Exists(folder), "a folder with no receipt");
+    assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the folder removed");
+    assert(Build(suite, suite.launcher, built, ["-O0"]).status == 0 && Count(built, "O0-") == 1, "the build recovers");
+}
+
+// llvm-symbolizer in the LLVM folder places `symbol` of `program` at `expected`.
+Symbolized :: (suite: Suite, program: string, symbol: string, expected: string) -> bool {
+    ran := os.Capture([Path([suite.llvm, "/llvm-symbolizer"]), Path(["--obj=", program]), symbol]);
+    return ran.status == 0 && strings.Contains(ran.stdout, expected);
+}
+
+// The build tree's launcher finds its sibling hosts; real LLVM tools link a
+// program for the host that runs, with no C compiler on an empty PATH. On
+// Linux, with -g, its line tables place its functions in the source at O0 and
+// O2.
+RunsWithLLVMAndNoCCompiler :: (suite: Suite) {
+    built := Reset(suite, "llvm", Source());
+    RealTools(suite, built);
+    rounds := 2;
+    if (os.Platform() == "Linux") {
+        rounds = 4;
+    }
+    for (i in 0..<rounds) {
+        options := ["-O0"];
+        if (i % 2 == 1) {
+            options = ["-O2"];
+        }
+        if (i >= 2) {
+            options.append("-g");
+        }
+        result := Build(suite, suite.built, built, options);
+        assert(result.status == 0, "the program builds");
+        program := Printed(result);
+        assert(Exit(program) == 42, "the program exits 42");
+        if (i < 2) {
+            continue;
+        }
+        source := Path([built.game, "/Main.chibi:"]);
+        // O2 inlines Twice, so Main is all that is left to place.
+        main := source;
+        if (i == 2) {
+            main = Path([source, "2:0\n"]);
+        }
+        assert(Symbolized(suite, program, "chibi_scalar", main), "Main's line");
+        assert(i == 3 || Symbolized(suite, program, "chibi_scalar.1", Path([source, "5:0\n"])), "Twice's line");
+    }
+}
+
+// Builds `source` with real LLVM tools at O0 and returns the program's exit status.
+RunNative :: (suite: Suite, name: string, source: string) -> int {
+    built := Reset(suite, name, source);
+    RealTools(suite, built);
+    result := Build(suite, suite.built, built, ["-O0"]);
+    if (result.status != 0) {
+        os.Print(result.log);
+    }
+    assert(result.status == 0, "the program builds");
+    return Exit(Printed(result));
+}
+
+// A program links the prebuilt archive its source imports: the driver finds it
+// beside the source, adds it to the link line and records its hash. The
+// archive is vendored x86-64 Linux code: nothing here compiles its C. A
+// missing archive fails the build and names it.
+LinksAVendoredArchive :: (suite: Suite) {
+    if (os.Platform() != "Linux") {
+        return;
+    }
+    source := "package scalar\nforeign import probe \"libprobe.a\"\nforeign probe {\n    chibi_probe_add :: (a: i32, b: i32) -> i32\n    chibi_probe_pick :: (n: i32, flag: bool) -> bool\n    chibi_probe_scale :: (value: f64, by: f64) -> f64\n}\nMain :: () -> int {\n    total := chibi_probe_add(40, 2);\n    if (chibi_probe_pick(5, true)) { total = total + 1; }\n    if (chibi_probe_pick(2, true)) { total = total + 100; }\n    return total + int(chibi_probe_scale(0.5, 2.0));\n}\n";
+    missing := Reset(suite, "foreign-missing", source);
+    RealTools(suite, missing);
+    result := Build(suite, suite.built, missing, ["-O0"]);
+    assert(result.status != 0 && Says(result, "libprobe.a is not a file"), "a missing archive");
+    built := Reset(suite, "foreign", source);
+    RealTools(suite, built);
+    Clone(Path([os.Root(), "/test/native_aot/foreign/libprobe.a"]), Path([built.game, "/libprobe.a"]));
+    result = Build(suite, suite.built, built, ["-O0"]);
+    assert(result.status == 0, "the program builds");
+    program := Printed(result);
+    assert(Holds(Path([strings.Slice(program, 0, strings.LastIndex(program, "/")), "/receipt.txt"]), "\nlibrary-sha256 "), "the archive's hash");
+    assert(Exit(program) == 44, "the program calls the archive");
+}
+
+// A program calls a C function through an address: dlsym finds libc's abs, a
+// local of function type holds it, and the call goes through the address.
+// RTLD_DEFAULT is 0 on Linux and -2 on macOS.
+CallsThroughAFunctionPointer :: (suite: Suite) {
+    handle := "0";
+    if (os.Platform() == "Darwin") {
+        handle = "-2";
+    }
+    source := Path(["package scalar\nforeign import libc \"system:c\"\nforeign libc {\n    dlsym :: (handle: rawptr, name: cstring) -> rawptr\n}\nMain :: () -> int {\n    absolute: fn(n: i32) -> i32 = dlsym(", handle, ", \"abs\");\n    return absolute(-42) + 1;\n}\n"]);
+    assert(RunNative(suite, "procedure", source) == 43, "the call through dlsym's address");
+}
+
+// An array of bytes passes to C as the pointer to its elements, and the callee
+// writes through it: libc's memset fills the first three of four bytes.
+PassesAByteArrayToC :: (suite: Suite) {
+    source := "package scalar\nforeign import libc \"system:c\"\nforeign libc {\n    memset :: (buffer: u8[], value: i32, count: u64) -> rawptr\n}\nMain :: () -> int {\n    buffer: u8[] = [1, 2, 3, 4];\n    done := memset(buffer, 7, 3);\n    return int(buffer[0]) + int(buffer[2]) + int(buffer[3]);\n}\n";
+    assert(RunNative(suite, "bytes", source) == 18, "memset writes the array");
+}
+
+// A failed assert ends the program early: main reports where on stderr and
+// exits with status 134, and a passing assert changes nothing.
+ReportsAFailedAssert :: (suite: Suite) {
+    assert(RunNative(suite, "assert-holds", "package scalar\nMain :: () -> int {\n    assert(true, \"fine\");\n    return 7;\n}\n") == 7, "a passing assert");
+    built := Reset(suite, "assert-fails", "package scalar\nMain :: () -> int {\n    assert(true, \"fine\");\n    assert(false, \"broken\");\n    return 7;\n}\n");
+    RealTools(suite, built);
+    result := Build(suite, suite.built, built, ["-O0"]);
+    assert(result.status == 0, "the program builds");
+    ran := os.Capture(["/usr/bin/env", "-i", Printed(result)]);
+    assert(ran.status == 134 && strings.Contains(ran.stderr, "assertion failed in function"), "a failed assert");
+}
+
+// A sample's test source as a native program takes it: the @test mark goes,
+// and Calls returns 0, since an authored native function has a result.
+AsProgram :: (source: string) -> string {
+    kept: string[] = [];
+    for (line in strings.Split(source, "\n")) {
+        if (line != "@test") {
+            kept.append(line);
+        }
+    }
+    text := strings.Join(kept, "\n");
+    head := strings.Index(text, "Calls :: () {");
+    last := strings.LastIndex(text, "}");
+    if (head < 0 || last < 0) {
+        return text;
+    }
+    body := head + strings.ByteLength("Calls :: () {");
+    return Path([strings.Slice(text, 0, head), "Calls :: () -> int {", strings.Slice(text, body, last - body), "    return 0;\n}\n"]);
+}
+
+// Copies a sample's package folders into a project, each source as a program.
+CopySample :: (from: string, to: string) {
+    for (name in Names(from)) {
+        if (strings.HasPrefix(name, ".")) {
+            continue;
+        }
+        source := Path([from, "/", name]);
+        target := Path([to, "/", name]);
+        if (os.IsDirectory(source)) {
+            Make(target);
+            CopySample(source, target);
+            continue;
+        }
+        Write(target, AsProgram(Read(source)));
+    }
+}
+
+// The foreign samples, which the VM skips as native only, run natively: each
+// becomes a project whose Main calls the sample's Calls, builds with
+// `chibi build --native` and runs, and its asserts hold when the program exits
+// 0. libc is the foreign library.
+RunsTheForeignSamples :: (suite: Suite) {
+    for (sample in ["foreign_declared", "foreign_library"]) {
+        built := Reset(suite, sample, "package main\n");
+        target := Path([built.game, "/", sample]);
+        Make(target);
+        CopySample(Path([os.Root(), "/test/compiler/samples/native/", sample]), target);
+        Write(Path([target, "/facts/Native.chibi"]), "package facts\npub Native :: () -> int {\n    return Calls();\n}\n");
+        Write(Path([built.game, "/Main.chibi"]), Path(["package main\nimport facts \"project:", sample, "/facts\"\nMain :: () -> int {\n    return facts.Native();\n}\n"]));
+        RealTools(suite, built);
+        result := Build(suite, suite.built, built, ["-O0"]);
+        if (result.status != 0) {
+            os.Print(result.log);
+        }
+        assert(result.status == 0 && Exit(Printed(result)) == 0, "the sample's asserts hold natively");
+    }
+}
+
+CrossTarget :: struct {
+    triple: string;
+    directory: string;
+    program: string;
+    // What `file` says the program is.
+    kind: string;
+    // The start of the frame module's IR.
+    module: string;
+    probe: string;
+    // What the frame's object holds when its probes survive O2.
+    probes: u8[];
+}
+
+// The targets other than the host, in the driver's order after Linux, and on
+// macOS the host's own, whose programs also run.
+CrossTargets :: () -> CrossTarget[] {
+    // arm64's inline probe loop: `sub sp, sp, #1, lsl #12`, `cmp sp, x9` and `str xzr, [sp]`.
+    mac: CrossTarget = {triple: "aarch64-apple-darwin", directory: "macos-arm64", program: "program", kind: "Mach-O 64-bit executable arm64",
+                        module: "target triple = \"arm64-apple-macosx11.0.0\"\n", probe: "inline-asm",
+                        probes: [u8(255), u8(7), u8(64), u8(209), u8(255), u8(99), u8(41), u8(235), u8(255), u8(3), u8(0), u8(249)]};
+    windows: CrossTarget = {triple: "x86_64-pc-windows-msvc", directory: "windows-x64", program: "program.exe", kind: "PE32+ executable",
+                            module: "target triple = \"x86_64-pc-windows-msvc\"\n", probe: "__chkstk",
+                            probes: bytes.FromString("__chkstk")};
+    targets: CrossTarget[] = [mac, windows];
+    return targets;
+}
+
+// With CHIBI_NATIVE_BUNDLE set, copies `program` into the target's bundle
+// directory as `name` and lists it with its exit status 42, for
+// test/native_aot/targets/run.c to run on that target.
+BundleProgram :: (program: string, target: CrossTarget, name: string) {
+    bundle := os.Getenv("CHIBI_NATIVE_BUNDLE");
+    if (bundle == "") {
+        return;
+    }
+    folder := Path([bundle, "/", target.directory]);
+    Make(Path([folder, "/programs"]));
+    copied := Path([folder, "/programs/", name]);
+    assert(os.Remove(copied) == nil, "the old copy removed");
+    Clone(program, copied);
+    list := Path([folder, "/programs.txt"]);
+    listed := "";
+    if (Exists(list)) {
+        listed = Read(list);
+    }
+    Write(list, Path([listed, "program ", name, " 42\n"]));
+}
+
+// Real LLVM tools link macOS arm64 and Windows x64 programs with no SDK of
+// either system. A 256 KiB frame links too: Windows code calls the start
+// object's __chkstk, and arm64 probes inline. A volatile index keeps O2 from
+// shrinking the frame to the one element it touches. On macOS its programs
+// run. With CHIBI_NATIVE_BUNDLE set, the programs go into the bundle that
+// CI's native-targets job runs on macOS and Windows.
+LinksOtherTargetsWithLLVM :: (suite: Suite) {
+    built := Reset(suite, "cross", Source());
+    RealTools(suite, built);
+    runs := os.Platform() == "Darwin";
+    for (target in CrossTargets()) {
+        bundle := os.Getenv("CHIBI_NATIVE_BUNDLE");
+        if (bundle != "") {
+            assert(os.Remove(Path([bundle, "/", target.directory, "/programs.txt"])) == nil, "the old list removed");
+        }
+        for (mode in ["-O0", "-O2"]) {
+            result := Build(suite, suite.built, built, [mode, "--target", target.triple]);
+            assert(result.status == 0, "the program builds");
+            program := Printed(result);
+            assert(strings.Contains(os.Capture(["file", "-b", program]).stdout, target.kind), "a program for the target");
+            assert(!runs || target.program != "program" || Exit(program) == 42, "the host's program runs");
+            name := Path(["twice", strings.TrimPrefix(mode, "-")]);
+            if (target.program == "program.exe") {
+                name = Path([name, ".exe"]);
+            }
+            BundleProgram(program, target, name);
+        }
+        ir := Path([built.game, "/frame-", target.directory, ".ll"]);
+        out := Path([built.game, "/frame-", target.directory]);
+        Write(ir, Path([target.module, "@index = internal global i64 60000\ndefine i32 @chibi_scalar() #0 {\n  %frame = alloca [65536 x i32]\n",
+                        "  %i = load volatile i64, ptr @index\n  %at = getelementptr [65536 x i32], ptr %frame, i64 0, i64 %i\n",
+                        "  store volatile i32 42, ptr %at\n  %value = load volatile i32, ptr %at\n  ret i32 %value\n}\n",
+                        "attributes #0 = { \"probe-stack\"=\"", target.probe, "\" }\n"]));
+        DriverBuild(suite, built, ir, out);
+        assert(bytes.Contains(bytes.FromString(Read(Path([out, "/object.o"]))), target.probes), "the frame's probes");
+        program := Path([out, "/", target.program]);
+        assert(strings.Contains(os.Capture(["file", "-b", program]).stdout, target.kind), "a frame program for the target");
+        assert(!runs || target.program != "program" || Exit(program) == 42, "the host's frame program runs");
+        frame := "frame-O2";
+        if (target.program == "program.exe") {
+            frame = "frame-O2.exe";
+        }
+        BundleProgram(program, target, frame);
+    }
+}
+
+// Links `ir` to a program in `out` through the relocated SDK's Driver.Build,
+// with the tools in the case's folder at O2.
+DriverBuild :: (suite: Suite, built: Case, ir: string, out: string) {
+    sdk := strings.TrimSuffix(suite.launcher, "/bin/chibi");
+    share := Path([sdk, "/share/chibi"]);
+    driver := Path([share, "/tools/native_aot"]);
+    ran := os.Capture(["/usr/bin/env", "-i", "PATH=", suite.cache, Path([sdk, "/libexec/chibi/chibi-build-host"]), "--root", driver,
+                       "--source", Path([driver, "/Driver.chibi"]), "--collection", Path(["native_aot=", driver, "/driver"]),
+                       "--core", Path([share, "/core"]), "--compiler", Path([share, "/compiler"]), "--compiler-core", Path([share, "/core"]),
+                       "--entry", "Build", "--timeout-ms", "120000", "--", ir, out, Path([built.tools, "/opt"]), Path([built.tools, "/llc"]),
+                       Path([built.tools, "/ld.lld"]), "2"]);
+    if (ran.status != 0) {
+        os.Print(Path([ran.stdout, ran.stderr]));
+    }
+    assert(ran.status == 0, "the driver links the frame");
+}
+
+// The build host runs this entry with the build tree's launcher.
+pub Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 1, "the build tree's launcher");
+    platform := os.Platform();
+    if (platform != "Linux" && platform != "Darwin") {
+        os.Print("native build: Linux and macOS only");
+        return 0;
+    }
+    folder := Path([os.Root(), "/.chibi/native-build"]);
+    assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the old scratch removed");
+    Make(folder);
+    folder = os.RealPath(folder);
+    cache := os.Getenv("CHIBI_COMPILER_CACHE");
+    if (cache == "") {
+        cache = Path([os.Root(), "/.chibi/compiler-cache"]);
+    }
+    suite: Suite = {folder: folder, built: os.RealPath(arguments[0]), launcher: Relocate(folder, os.RealPath(arguments[0])),
+                    stage_tool: Read(Path([os.Root(), "/test/native_aot/driver/fixtures/stage-tool.sh"])),
+                    llvm: os.Getenv("CHIBI_LLVM_BIN"), cache: Path(["CHIBI_COMPILER_CACHE=", cache])};
+    RefusesAnIncompleteOutput(suite);
+    if (suite.llvm == "") {
+        os.Print("native build: set CHIBI_LLVM_BIN to link with real LLVM tools");
+    } else {
+        RunsWithLLVMAndNoCCompiler(suite);
+        LinksAVendoredArchive(suite);
+        CallsThroughAFunctionPointer(suite);
+        PassesAByteArrayToC(suite);
+        ReportsAFailedAssert(suite);
+        RunsTheForeignSamples(suite);
+        LinksOtherTargetsWithLLVM(suite);
+    }
+    assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the scratch cleanup");
+    return 0;
+}

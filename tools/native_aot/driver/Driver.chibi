@@ -581,6 +581,10 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         if (dynamic) {
             kind_of_link = Join(["dynamic ", libc[0]]);
         }
+        // A macOS program links libSystem dynamically whatever was asked.
+        if (target == 1) {
+            kind_of_link = "dynamic libSystem";
+        }
         receipt = Join([receipt, "linkage ", kind_of_link, "\nstart-object-sha256 ", start_hash, "\nlinker ", linker,
                         "\nlinker-sha256 ", linker_hash, "\nprogram-sha256 ", program_hash, "\n",
                         Command("llc-start", compile_start)]);

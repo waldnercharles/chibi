@@ -50,6 +50,11 @@ case "$name" in
                 test "$3" = -static && test "$5" = -e && test "$9" = -o || exit 64
                 out=${10}
                 ;;
+            gnu:*)
+                # The default dynamic link: interpreter, crt objects and -lc.
+                test "$3" = --dynamic-linker && test "$5" = --gc-sections && test "$6" = -o || exit 64
+                out=$7
+                ;;
             darwin:16)
                 test "$3" = -arch && test "${15}" = -o || exit 64
                 out=${16}

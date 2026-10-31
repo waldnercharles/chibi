@@ -2148,6 +2148,42 @@ TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
     REQUIRE(spans);
     return true;
 }
+/* A package set may import a collection's packages, such as core:strings,
+ * whose files lie among the inputs under the collection's path. */
+TEST_CASE(package_compiler_scalar_rows_span_collection_packages)
+{
+    REQUIRE(prepare());
+    static const source_package_input packages[] = {
+        { .path = "Main.chibi",
+          .text = "package main\nimport strings \"core:strings\"\n"
+                  "Main :: () -> int { return strings.ByteLength(\"hello\"); "
+                  "}\n" },
+        { .path = "/sdk/core/strings/Strings.chibi",
+          .text = "package strings\npub ByteLength :: (value: string) -> int "
+                  "{ return text_byte_length(value); }\n" },
+    };
+    pin_value produced;
+    REQUIRE(
+        scalar_host_collect_collection("core", "/sdk/core", packages, 2, &detached, &produced)
+    );
+    const pin_array *rows = produced.ptr;
+    REQUIRE(produced.container == PIN_CONTAINER_ARRAY && rows->count > 1);
+    if (rows->count == 2) {
+        fprintf(
+            stderr,
+            "scalar collection: %s\n",
+            pin_text(scalar_field(guard_row(&produced, 1), "text")).bytes
+        );
+    }
+    REQUIRE(rows->count > 2);
+    REQUIRE(validated(&produced, ""));
+    char *ir;
+    REQUIRE(target_ir("LinuxX64", &produced, &ir) && ir);
+    bool spans = strstr(ir, "define internal i32 @chibi_scalar.1(") != NULL;
+    free(ir);
+    REQUIRE(spans);
+    return true;
+}
 /* llvm_native's call and float contracts: definitions, argument order,
  * floating encodings and conversions, and the malformed or cyclic plans it
  * rejects before writing IR. */
@@ -4919,6 +4955,7 @@ void test_language_package_compiler_chibi_scalar()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_scalar_rows_span_imported_packages);
+    RUN_TEST_CASE(package_compiler_scalar_rows_span_collection_packages);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
     RUN_TEST_CASE(package_compiler_scalar_retains_library_states);

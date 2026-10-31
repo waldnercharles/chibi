@@ -2985,10 +2985,11 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                     }
                     if (packaged) {
                         for (candidate in documents) {
-                            if (!strings.HasPrefix(candidate.identity, "project:")) {
+                            if (!strings.HasPrefix(candidate.identity, "project:") &&
+                                !strings.HasPrefix(candidate.identity, "core:")) {
                                 return ScalarFailure(path, text,
                                                      Diagnose(nodes, candidate.syntax_root, 0,
-                                                              "scalar proof imports only project packages"));
+                                                              "scalar proof imports only project and core packages"));
                             }
                             member_gap := ScalarMembers(nodes, candidate.syntax_root, true);
                             if (member_gap.message != "") {

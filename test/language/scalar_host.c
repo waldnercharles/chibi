@@ -302,13 +302,29 @@ bool scalar_host_collect(const char *path, const char *source, arena *storage, p
 
 bool scalar_host_collect_packages(const source_package_input *inputs, int count, arena *storage, pin_value *rows)
 {
+    return scalar_host_collect_collection(NULL, NULL, inputs, count, storage, rows);
+}
+
+bool scalar_host_collect_collection(
+    const char *collection,
+    const char *collection_path,
+    const source_package_input *inputs,
+    int count,
+    arena *storage,
+    pin_value *rows
+)
+{
     REQUIRE(scalar_host_open());
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *arguments = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, arguments);
     yyjson_mut_arr_add_str(doc, arguments, "/project");
-    yyjson_mut_arr_add_arr(doc, arguments);
-    yyjson_mut_arr_add_arr(doc, arguments);
+    yyjson_mut_val *collection_names = yyjson_mut_arr_add_arr(doc, arguments);
+    yyjson_mut_val *collection_paths = yyjson_mut_arr_add_arr(doc, arguments);
+    if (collection) {
+        yyjson_mut_arr_add_str(doc, collection_names, collection);
+        yyjson_mut_arr_add_str(doc, collection_paths, collection_path);
+    }
     yyjson_mut_val *paths = yyjson_mut_arr_add_arr(doc, arguments);
     yyjson_mut_val *sources = yyjson_mut_arr_add_arr(doc, arguments);
     for (int i = 0; i < count; i++) {

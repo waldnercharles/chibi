@@ -1,0 +1,121 @@
+package posix
+
+import target "core:target"
+
+// The POSIX calls core:os needs, declared against libc and called from native
+// programs; the VM never runs foreign code. Paths are copied with a NUL into
+// the call's stack buffer (see "Foreign libraries" in docs/code-language.md),
+// so a path of 4096 bytes or more traps. A call that fails returns its libc
+// result unchanged: 0 for success, -1 for failure; errno is not read yet.
+//
+// The stat layout below is Linux x86-64's, and Darwin's when the compile
+// supplies it.
+
+foreign import libc "system:c"
+
+foreign libc {
+    access :: (path: cstring, mode: i32) -> i32
+    mkdir :: (path: cstring, mode: u32) -> i32
+    unlink :: (path: cstring) -> i32
+    rmdir :: (path: cstring) -> i32
+    rename :: (source: cstring, destination: cstring) -> i32
+    stat :: (path: cstring, buffer: u8[]) -> i32
+    lstat :: (path: cstring, buffer: u8[]) -> i32
+    getenv :: (name: cstring) -> rawptr
+    strlen :: (text: rawptr) -> u64
+    memcpy :: (destination: u8[], source: rawptr, count: u64) -> rawptr
+}
+
+pub KindNone: int : 0;
+pub KindFile: int : 1;
+pub KindDirectory: int : 2;
+pub KindLink: int : 3;
+pub KindOther: int : 4;
+
+StatBytes: int : 256;
+
+when target.Os == target.Darwin {
+    ModeOffset: int : 4;
+    ModeBytes: int : 2;
+} else {
+    ModeOffset: int : 24;
+    ModeBytes: int : 4;
+}
+
+// Whether the path names anything a link points at.
+pub Exists :: (path: string) -> bool {
+    return access(path, 0) == 0;
+}
+
+// The mode bits of the path's stat, -1 when it does not exist. A link is
+// followed unless `link`.
+Mode :: (path: string, link: bool) -> int {
+    buffer: u8[] = [];
+    for index in 0..<StatBytes {
+        buffer.append(0);
+    }
+    status: i32 = 0;
+    if link {
+        status = lstat(path, buffer);
+    } else {
+        status = stat(path, buffer);
+    }
+    if status != 0 {
+        return -1;
+    }
+    mode := 0;
+    for index in 0..<ModeBytes {
+        mode += int(buffer[ModeOffset + index]) << (8 * index);
+    }
+    return mode;
+}
+
+// What the path names, KindNone when nothing. A link is not followed.
+pub Kind :: (path: string) -> int {
+    mode := Mode(path, true);
+    if mode < 0 {
+        return KindNone;
+    }
+    format := mode & 61440;
+    if format == 32768 {
+        return KindFile;
+    }
+    if format == 16384 {
+        return KindDirectory;
+    }
+    if format == 40960 {
+        return KindLink;
+    }
+    return KindOther;
+}
+
+pub MakeDirectory :: (path: string) -> bool {
+    return mkdir(path, 493) == 0;
+}
+
+// Removes a file or link, or an empty directory.
+pub Remove :: (path: string) -> bool {
+    if Kind(path) == KindDirectory {
+        return rmdir(path) == 0;
+    }
+    return unlink(path) == 0;
+}
+
+pub Rename :: (source: string, destination: string) -> bool {
+    return rename(source, destination) == 0;
+}
+
+// The environment variable's value, "" when it is unset.
+pub Getenv :: (name: string) -> string {
+    value := getenv(name);
+    if value == 0 {
+        return "";
+    }
+    size := strlen(value);
+    buffer: u8[] = [];
+    for index in 0..<int(size) {
+        buffer.append(0);
+    }
+    memcpy(buffer, value, size);
+    return text_from_bytes(buffer);
+}

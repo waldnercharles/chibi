@@ -836,6 +836,56 @@ TEST_CASE(native_build_passes_a_byte_array_to_c)
     return true;
 }
 
+static const char *const POSIX_SOURCE =
+    "package scalar\n"
+    "import posix \"core:sys/posix\"\n"
+    "Main :: () -> int {\n"
+    "    result := 0;\n"
+    "    if posix.MakeDirectory(\"probe\") { result += 1; }\n"
+    "    if posix.Kind(\"probe\") == posix.KindDirectory { result += 2; }\n"
+    "    if posix.Rename(\"probe\", \"moved\") && posix.Exists(\"moved\") && "
+    "!posix.Exists(\"probe\") { result += 4; }\n"
+    "    if posix.Remove(\"moved\") && !posix.Exists(\"moved\") { result += 8; "
+    "}\n"
+    "    if posix.Getenv(\"CHIBI_PROBE\") == \"hello\" { result += 16; }\n"
+    "    if posix.Kind(\"Main.chibi\") == posix.KindFile { result += 32; }\n"
+    "    return result;\n"
+    "}\n";
+
+/* core:sys/posix calls libc from a native program: it makes, renames and removes
+ * a directory, reads a stat mode and an environment variable. */
+TEST_CASE(native_build_runs_core_sys_posix)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", NULL };
+    reset("posix", POSIX_SOURCE);
+    real_tools(bin);
+    REQUIRE(build_with(in_place, options, tools) == 0);
+    char program[1024];
+    REQUIRE(printed(program));
+    const char *argv[] = { program, NULL };
+    const char *envp[] = { "CHIBI_PROBE=hello", NULL };
+    chibi_process_output out = { 0 }, err = { 0 };
+    chibi_process_capture_result ran = chibi_process_capture(
+        program,
+        argv,
+        game,
+        envp,
+        chibi_process_now() + 10,
+        NULL,
+        &out,
+        &err
+    );
+    REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 63);
+    return true;
+}
+
 /* The other targets' bundle directories and program names, in the
  * driver's target order after Linux. */
 static const struct
@@ -1052,6 +1102,7 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_links_a_vendored_archive);
     RUN_TEST_CASE(native_build_calls_through_a_function_pointer);
     RUN_TEST_CASE(native_build_passes_a_byte_array_to_c);
+    RUN_TEST_CASE(native_build_runs_core_sys_posix);
     RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
     free(stage_tool);
     tool_remove_tree(suite);

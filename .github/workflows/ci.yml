@@ -143,6 +143,9 @@ jobs:
       - name: Native, material, project and language selectors
         env:
           UBSAN_OPTIONS: halt_on_error=1
+          # native-build cross-links the macOS and Windows programs and lists
+          # them in programs.txt there; native-targets runs them.
+          CHIBI_NATIVE_BUNDLE: ${{ runner.temp }}/native-bundle
         shell: bash
         run: |
           set -e
@@ -152,7 +155,8 @@ jobs:
           CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin sh tools/build.sh test --build-host build-release/sdk/chibi-build-host --jobs 3 projects language
       # Linux x86-64 only. It also builds each module it runs for macOS arm64
       # and Windows x64, and native-targets runs them there, so it and the
-      # steps below run even when a selector above failed.
+      # steps below run even when a selector above failed. The programs
+      # native-targets runs need native-build to have passed above.
       - name: Native scalar execution and its macOS and Windows modules
         id: scalar-native
         if: always() && steps.debug-build.outcome == 'success'

@@ -868,7 +868,7 @@ Driver :: (host: string, artifact: string, core: string, work: string, target: s
     all := build.concat([entry_path], packages);
     sources := build.concat([text], package_texts);
     for (at in 0..<length(all)) {
-        if (!strings.HasSuffix(all[at], "/Main.chibi") && !strings.HasPrefix(all[at], Join([core, "/os/"])) &&
+        if (!strings.HasSuffix(all[at], "/Main.chibi") && !strings.HasPrefix(all[at], Join([core, "/os/"])) && !strings.HasPrefix(all[at], Join([core, "/sys/"])) &&
             !strings.HasPrefix(all[at], "native_link")) {
             location := all[at];
             if (strings.HasPrefix(location, Join([core, "/"]))) {

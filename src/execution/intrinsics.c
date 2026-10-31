@@ -9,7 +9,6 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
-#include "types/copy_internal.h"
 #include "types/map.h"
 #include "types/pointer.h"
 #include "types/record.h"
@@ -1477,7 +1476,6 @@ static int snapshot_reference_root(
     }
     assert(source->type == PIN_STRUCT && source->container == PIN_CONTAINER_SINGLE);
     *out = *source;
-    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     out->record = pin_record_from_type_resolved(storage, layout, resolver);
     if (!out->record) {
         return -1;
@@ -1486,7 +1484,6 @@ static int snapshot_reference_root(
     const type_desc *owned = &out->record->type;
     out->ptr = arena_alloc(storage, owned->size);
     memcpy(out->ptr, source->ptr, owned->size);
-    pin_copy_record(PIN_COPY_RECORD, owned->size);
     return pin_struct_snapshot_fields(storage, owned, out->ptr);
 }
 /* Whether two headers describe the same storage: the same type and

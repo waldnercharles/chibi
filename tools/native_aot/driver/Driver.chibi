@@ -1222,6 +1222,39 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
     return found;
 }
 
+// The paths the import lines of `text` name with no collection: each is
+// relative to the importing package's folder.
+ImportedRelatively :: (text: string) -> string[] {
+    found: string[] = [];
+    for (line in build.lines(text)) {
+        if (!strings.HasPrefix(line, "import ")) {
+            continue;
+        }
+        parts := strings.Split(line, "\"");
+        if (length(parts) >= 3 && parts[1] != "" && strings.IndexByte(parts[1], 58) < 0) {
+            found.append(parts[1]);
+        }
+    }
+    return found;
+}
+
+// The folder `relative` names below `folder`, its `.` and `..` resolved as the
+// compiler resolves a relative import.
+Below :: (folder: string, relative: string) -> string {
+    resolved := folder;
+    for (part in strings.Split(relative, "/")) {
+        if (part == "..") {
+            at := strings.LastIndex(resolved, "/");
+            if (at >= 0) {
+                resolved = strings.Slice(resolved, 0, at);
+            }
+        } else if (part != "." && part != "") {
+            resolved = Join([resolved, "/", part]);
+        }
+    }
+    return resolved;
+}
+
 // The .chibi files directly in package folder `folder`.
 PackageFiles :: (folder: string) -> string[] {
     files: string[] = [];
@@ -1233,38 +1266,50 @@ PackageFiles :: (folder: string) -> string[] {
     return files;
 }
 
-// The packages the sources import beyond the ones already held, followed
-// transitively, in the order found. A project package lies in `base`'s folder
-// of its name, a core package in `core`'s. Each is the folder's files, as
-// `<name>/<file>` for a project package and `<core>/<name>/<file>` for core.
-Reach :: (base: string, core: string, texts: string[], held: string[]) -> string[] {
+// The packages the sources import beyond the folders already held, followed
+// transitively, in the order found; `texts[i]` is a file of the package in
+// `folders[i]`. A project package lies in `base`'s folder of its name, a core
+// package in `core`'s, and a relatively imported one below the importing
+// package's folder. Each is the folder's files, as `<name>/<file>` below
+// `base` for a project package and `<core>/<name>/<file>` for core.
+Reach :: (base: string, core: string, texts: string[], folders: string[], held: string[]) -> string[] {
     files: string[] = [];
     seen: string[] = held;
     pending := texts;
+    places := folders;
     while (length(pending) > 0) {
         text := pending[length(pending) - 1];
+        place := places[length(places) - 1];
         pending = slice(pending, 0, length(pending) - 1);
-        for (kind in ["project", "core"]) {
-            for (name in ImportedFrom(text, kind)) {
-                key := Join([kind, ":", name]);
-                known := false;
-                for (other in seen) {
-                    known = known || other == key;
-                }
-                if (known) {
-                    continue;
-                }
-                seen.append(key);
-                folder := Join([base, "/", name]);
-                prefix := Join([name, "/"]);
-                if (kind == "core") {
-                    folder = Join([core, "/", name]);
-                    prefix = Join([core, "/", name, "/"]);
-                }
-                for (file in PackageFiles(folder)) {
-                    files.append(Join([prefix, file]));
-                    pending.append(build.read_file(Join([folder, "/", file])));
-                }
+        places = slice(places, 0, length(places) - 1);
+        imported: string[] = [];
+        for (name in ImportedFrom(text, "project")) {
+            imported.append(Join([base, "/", name]));
+        }
+        for (name in ImportedFrom(text, "core")) {
+            imported.append(Join([core, "/", name]));
+        }
+        for (path in ImportedRelatively(text)) {
+            imported.append(Below(place, path));
+        }
+        for (folder in imported) {
+            // A closure holds tens of packages, so the scan is short.
+            known := false;
+            for (other in seen) {
+                known = known || other == folder;
+            }
+            if (known) {
+                continue;
+            }
+            seen.append(folder);
+            prefix := Join([folder, "/"]);
+            if (!strings.HasPrefix(folder, Join([core, "/"])) && strings.HasPrefix(folder, Join([base, "/"]))) {
+                prefix = Join([strings.TrimPrefix(folder, Join([base, "/"])), "/"]);
+            }
+            for (file in PackageFiles(folder)) {
+                files.append(Join([prefix, file]));
+                pending.append(build.read_file(Join([folder, "/", file])));
+                places.append(folder);
             }
         }
     }
@@ -1382,14 +1427,26 @@ pub Native :: () -> int {
     }
     // The packages the sources import from the project beside them and from
     // core are inputs too.
-    held: string[] = [];
+    // The folders of the files already read, the entry's first, which their
+    // relative imports start from.
+    held: string[] = [root];
+    places: string[] = [root];
     for (path in packages) {
-        top := strings.Split(path, "/");
-        if (length(top) > 1) {
-            held.append(Join(["project:", top[0]]));
+        place := base;
+        at := strings.LastIndex(path, "/");
+        if (at >= 0) {
+            place = Join([base, "/", strings.Slice(path, 0, at)]);
+        }
+        places.append(place);
+        known := false;
+        for (other in held) {
+            known = known || other == place;
+        }
+        if (!known) {
+            held.append(place);
         }
     }
-    for (path in Reach(base, core, build.concat([text], package_texts), held)) {
+    for (path in Reach(base, core, build.concat([text], package_texts), places, held)) {
         packages.append(path);
         location := path;
         if (!strings.HasPrefix(path, Join([core, "/"]))) {

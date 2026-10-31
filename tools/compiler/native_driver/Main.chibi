@@ -39,6 +39,39 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
     return found;
 }
 
+// The paths the import lines of `text` name with no collection: each is
+// relative to the importing package's folder.
+ImportedRelatively :: (text: string) -> string[] {
+    found: string[] = [];
+    for (line in strings.SplitLines(text)) {
+        if (!strings.HasPrefix(line, "import ")) {
+            continue;
+        }
+        parts := strings.Split(line, "\"");
+        if (length(parts) >= 3 && parts[1] != "" && strings.IndexByte(parts[1], 58) < 0) {
+            found.append(parts[1]);
+        }
+    }
+    return found;
+}
+
+// The folder `relative` names below `folder`, its `.` and `..` resolved as the
+// compiler resolves a relative import.
+Below :: (folder: string, relative: string) -> string {
+    resolved := folder;
+    for (part in strings.Split(relative, "/")) {
+        if (part == "..") {
+            at := strings.LastIndex(resolved, "/");
+            if (at >= 0) {
+                resolved = strings.Slice(resolved, 0, at);
+            }
+        } else if (part != "." && part != "") {
+            resolved = strings.Concatenate([resolved, "/", part]);
+        }
+    }
+    return resolved;
+}
+
 // The .chibi files directly in a package folder, in the listing's order.
 PackageFiles :: (folder: string) -> string[] {
     files: string[] = [];
@@ -52,9 +85,10 @@ PackageFiles :: (folder: string) -> string[] {
 }
 
 // The sources of the closure: the package's own files, Main.chibi first, then
-// each imported project package of the project folder and core package of the
-// core folder, in the order first imported. `paths[i]` is the project-relative
-// path of project files and the absolute path of core files.
+// each imported project package of the project folder, core package of the
+// core folder and package a relative import names below the importing
+// package's folder, in the order first imported. `paths[i]` is the
+// project-relative path of project files and the absolute path of core files.
 Inputs :: struct {
     paths: string[];
     sources: string[];
@@ -63,8 +97,6 @@ Inputs :: struct {
 
 Gather :: (project: string, core: string, package: string) -> Inputs {
     found: Inputs = {paths: [], sources: [], problem: ""};
-    seen: string[] = [strings.Concatenate(["project:", package])];
-    pending: string[] = [];
     folders: string[] = [strings.Concatenate([project, "/", package])];
     prefixes: string[] = [strings.Concatenate([package, "/"])];
     next := 0;
@@ -90,22 +122,29 @@ Gather :: (project: string, core: string, package: string) -> Inputs {
             }
             found.paths.append(strings.Concatenate([prefixes[next], file]));
             found.sources.append(read.text);
-            for (kind in ["project", "core"]) {
-                for (name in ImportedFrom(read.text, kind)) {
-                    key := strings.Concatenate([kind, ":", name]);
-                    known := false;
-                    for (other in seen) {
-                        known = known || other == key;
-                    }
-                    if (!known) {
-                        seen.append(key);
-                        if (kind == "core") {
-                            folders.append(strings.Concatenate([core, "/", name]));
-                            prefixes.append(strings.Concatenate([core, "/", name, "/"]));
-                        } else {
-                            folders.append(strings.Concatenate([project, "/", name]));
-                            prefixes.append(strings.Concatenate([name, "/"]));
-                        }
+            imported: string[] = [];
+            for (name in ImportedFrom(read.text, "project")) {
+                imported.append(strings.Concatenate([project, "/", name]));
+            }
+            for (name in ImportedFrom(read.text, "core")) {
+                imported.append(strings.Concatenate([core, "/", name]));
+            }
+            for (path in ImportedRelatively(read.text)) {
+                imported.append(Below(folders[next], path));
+            }
+            for (folder in imported) {
+                // A closure holds tens of packages, so the scan is short.
+                known := false;
+                for (other in folders) {
+                    known = known || other == folder;
+                }
+                if (!known) {
+                    folders.append(folder);
+                    if (strings.HasPrefix(folder, strings.Concatenate([core, "/"])) ||
+                        !strings.HasPrefix(folder, strings.Concatenate([project, "/"]))) {
+                        prefixes.append(strings.Concatenate([folder, "/"]));
+                    } else {
+                        prefixes.append(strings.Concatenate([strings.TrimPrefix(folder, strings.Concatenate([project, "/"])), "/"]));
                     }
                 }
             }

@@ -2,6 +2,7 @@
 # @build@ and @release@ are the --build and --release-build directories and @host@
 # the --build-host path, all made absolute; other paths are relative to the checkout. `group` rows list a group's selectors.
 # `timeout NAME SECONDS` rows give a selector a deadline other than the runner's.
+# `exclusive NAME` rows run a selector alone under --jobs: it starts its own workers or shares files.
 # Generated from the retired tools/test_policy.py tables; edit it by hand now.
 tool	types	@build@/test/tools/test_tools	--types
 tool	execution-scope	@build@/test/language/test_language	--execution-scope
@@ -63,7 +64,6 @@ tool	chibi-test-samples-native-arguments	@release@/sdk/chibi	test	test/compiler/
 tool	chibi-test-samples-types	@release@/sdk/chibi	test	test/compiler/samples/types
 tool	language-asset-compiler-host	@build@/test/language/test_language	--asset-compiler-host
 tool	language-compiler-fixture	@build@/test/language/test_language	--compiler-fixture
-tool	language-package-compiler-chibi-native-arguments	@build@/test/language/test_language	--package-compiler-chibi-native-arguments
 tool	language-package-compiler-chibi-scalar	@build@/test/language/test_language	--package-compiler-chibi-scalar
 tool	language-scalar-native	@build@/test/language/test_language	--package-compiler-chibi-native
 tool	language-native-census	@build@/test/language/test_language	--native-census
@@ -98,9 +98,10 @@ tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 timeout	chibi-cli	900
 timeout	graph-sdk-install	1200
+exclusive	language-test-parallel
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math
 group	native	native-values	graph-c	box3d	runtime-scene	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	arena
 group	projects	chibi-cli	native-build
 group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages-compiler	text-format	language-compiler-fixture	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
-group	compiler	language-package-compiler-chibi-native-arguments	language-package-compiler-chibi-scalar
+group	compiler	language-package-compiler-chibi-scalar
 group	benchmarks	ecs-query-benchmark	native-workload-benchmark	scheduler-benchmark

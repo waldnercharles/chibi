@@ -24,14 +24,14 @@ Arrays :: () -> native.Instruction[] {
 ArrayModule :: (code: native.Instruction[]) -> native.Result {
     return Emit([Function(6, 0, 0, 10, 0, 13, 0, 0)], [], [1030, 6, 1030, 6, 1030, 6, 6, 1030, 6, 6], code, []);
 }
-ArrayOperands: string : "native array operation differs from its operands";
+ArrayOperands :: () -> string { return "native array operation differs from its operands"; }
 Changed :: (code: native.Instruction[], row: int, item: native.Instruction) -> native.Instruction[] {
     changed := code;
     changed[row] = item;
     return changed;
 }
 ChangedArray :: (row: int, item: native.Instruction) {
-    Rejects(ArrayModule(Changed(Arrays(), row, item)), ArrayOperands);
+    Rejects(ArrayModule(Changed(Arrays(), row, item)), ArrayOperands());
 }
 // The elements move to an allocation from the context when they are full, and
 // an index outside the array calls the context's failure.
@@ -74,7 +74,7 @@ ArrayGetRejectsWrongElementType :: () {
                  [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Constant, 1025, 0, 0, 0, 0, 0),
                   Code(native.Constant, 6, 1, 0, 0, 0, 0), Code(native.ArrayGet, 6, 2, 0, 1, 0, 0),
                   Code(native.Return, 0, 0, 0, 0, 0, 0)], []),
-            ArrayOperands);
+            ArrayOperands());
 }
 @test
 ArrayGetRejectsArrayIndex :: () {
@@ -183,23 +183,23 @@ ArrayRemoveMovesDownAndContainsScans :: () {
 }
 @test
 ArrayExtendRejectsIntOperand :: () {
-    Rejects(NativesModule(Changed(ArrayNatives(), 6, Code(native.ArrayExtend, 1030, 5, 4, 1, 0, 0))), ArrayOperands);
+    Rejects(NativesModule(Changed(ArrayNatives(), 6, Code(native.ArrayExtend, 1030, 5, 4, 1, 0, 0))), ArrayOperands());
 }
 @test
 ArraySliceRejectsArrayCount :: () {
-    Rejects(NativesModule(Changed(ArrayNatives(), 9, Code(native.ArraySlice, 1030, 8, 5, 6, 5, 0))), ArrayOperands);
+    Rejects(NativesModule(Changed(ArrayNatives(), 9, Code(native.ArraySlice, 1030, 8, 5, 6, 5, 0))), ArrayOperands());
 }
 @test
 ArrayResizeRejectsArrayLength :: () {
-    Rejects(NativesModule(Changed(ArrayNatives(), 11, Code(native.ArrayResize, 1030, 10, 8, 8, 0, 0))), ArrayOperands);
+    Rejects(NativesModule(Changed(ArrayNatives(), 11, Code(native.ArrayResize, 1030, 10, 8, 8, 0, 0))), ArrayOperands());
 }
 @test
 ArrayContainsNamesItsElementType :: () {
-    Rejects(NativesModule(Changed(ArrayNatives(), 14, Code(native.ArrayContains, 1, 13, 12, 1, 0, 13))), ArrayOperands);
+    Rejects(NativesModule(Changed(ArrayNatives(), 14, Code(native.ArrayContains, 1, 13, 12, 1, 0, 13))), ArrayOperands());
 }
 @test
 ArrayRemoveRejectsArrayIndex :: () {
-    Rejects(NativesModule(Changed(ArrayNatives(), 13, Code(native.ArrayRemove, 1030, 12, 10, 10, 0, 0))), ArrayOperands);
+    Rejects(NativesModule(Changed(ArrayNatives(), 13, Code(native.ArrayRemove, 1030, 12, 10, 10, 0, 0))), ArrayOperands());
 }
 @test
 ArraySliceCountMustBeDefined :: () {

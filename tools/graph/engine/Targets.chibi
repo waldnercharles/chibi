@@ -1486,6 +1486,7 @@ pub Resources :: (target: string) -> string[] {
         return [
             "build/share/chibi/engine.json=build/sdk/chibi_engine_metadata.json",
             "build/share/chibi/apps/chibi=apps/chibi",
+            "build/share/chibi/apps/host=apps/host",
             "build/share/chibi/core=packages/core"
         ];
     }

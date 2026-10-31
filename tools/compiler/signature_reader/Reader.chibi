@@ -5,7 +5,6 @@ import constructors "project:type_constructors"
 import binding "project:lexical_binding"
 import units "project:unit_algebra"
 import syntax "project:syntax_diagnostics"
-import json "project:json_string"
 import strings "core:strings"
 
 // Complete raw tree, including anonymous children and extras. Fields describe
@@ -96,7 +95,7 @@ pub Name :: (tree: Tree, node: int, document: int) -> Decoded {
     if (strings.ByteAt(raw, 0) != 34) {
         return Decoded.Name(raw, diagnostics);
     }
-    decoded := json.Metadata(raw);
+    decoded := compiler_json_string(raw);
     if (!decoded.valid || strings.IndexByte(decoded.value, 0) >= 0) {
         diagnostics.append(Diagnostic(tree, node, document, "Invalid string or embedded NUL"));
         return Decoded.Name("", diagnostics);

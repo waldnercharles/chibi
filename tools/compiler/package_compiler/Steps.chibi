@@ -2,7 +2,6 @@ package package_compiler
 
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
-import json "project:json_string"
 import parser "project:source_parser"
 import strings "core:strings"
 
@@ -1409,7 +1408,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         } else {
             // String literals are JSON strings.
             storage = TextStorage;
-            decoded := json.Value(Text(forest, text, item.node));
+            decoded := compiler_json_value_string(Text(forest, text, item.node));
             if (!decoded.valid) {
                 return Fail(forest, item.node, document, "Invalid string literal");
             }
@@ -2222,7 +2221,7 @@ CStringMessage :: (forest: snapshot.SnapshotNode[], text: string, node: int, bou
     if (!Is(forest, at, syntax.String)) {
         return "";
     }
-    decoded := json.Value(Text(forest, text, at));
+    decoded := compiler_json_value_string(Text(forest, text, at));
     if (!decoded.valid) {
         return "";
     }
@@ -3228,7 +3227,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // when it gives none.
         said := Text(forest, text, Unparenthesized(forest, item.b));
         if (item.a >= 0) {
-            decoded := json.Value(Text(forest, text, Unparenthesized(forest, item.a)));
+            decoded := compiler_json_value_string(Text(forest, text, Unparenthesized(forest, item.a)));
             if (!decoded.valid) {
                 return Fail(forest, item.a, document, "Invalid string literal");
             }

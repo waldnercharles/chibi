@@ -22,6 +22,19 @@ plan: link.Plan = {triple: "x86_64-unknown-linux-gnu", llvm: llvm, objects: ["ma
 failure = host.Link(plan);
 ```
 
+## The start module and the process arguments
+
+`link.Start(triple, static, context)` is the LLVM IR of the shim that starts a program, to be
+compiled with `host.Object` and linked beside the program's own objects. It calls the entry
+`chibi_scalar() -> i32` (`chibi_scalar(ptr)` with a runtime context) and exits with its result:
+`main` for libc and dyld, `_start` with an `exit_group` for a static Linux program, and
+`mainCRTStartup` with `ExitProcess` for a static Windows one. A static Linux program takes no
+context ("" is returned).
+
+Before the entry runs the shim keeps the process arguments in globals that `core:os` reads:
+`chibi_argc` (i32) and `chibi_argv` (ptr to the argument strings) on Linux and macOS, and on
+Windows `chibi_command_line`, the UTF-16 string `GetCommandLineW` returns.
+
 ## What each target does
 
 | Target | Linker (in `llvm`) | Default | `static` |
@@ -44,6 +57,11 @@ stub naming its install path, so no SDK is read.
   and runs it to exit status 42. It needs `CHIBI_LLVM_BIN` (the folder of `llc`, `llvm-ar` and
   the lld tools) and says it did not run without it. The build host reads collections, not
   project packages, so `run.sh` stages the two packages as collections.
+
+Two links of the same inputs give the same bytes whatever the output is called or where the
+work folder is: the linker writes `a.out` (`a.exe`) in the work folder, which is
+`OUTPUT.work` unless the plan names one and is removed afterwards, lld-link gets `/Brepro`,
+and the stubs carry no timestamps. `native-link` checks it.
 
 Failures are `Error` values (`kind`, and the tool's exit status in `code`); the tool's
 own output reaches the build's output.

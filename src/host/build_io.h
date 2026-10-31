@@ -8,7 +8,6 @@
 /* Private build-host file operations. Root is an explicit absolute directory;
  * absolute paths are also accepted. Returned strings are caller-owned. No
  * operation changes the process working directory. */
-char *build_io_path(const char *root, const char *path);
 char *build_io_resolve(const char *root, const char *path);
 bool build_io_exists(const char *root, const char *path);
 bool build_io_mkdir(const char *root, const char *path);

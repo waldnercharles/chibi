@@ -937,16 +937,6 @@ project-owned scenario coverage.
 The tilemap case executes both tilemap functions on VM and SLJIT using one
 two-cell map, then edits its cells and checks the next dispatch sees the change.
 
-`chibi build test language-headless` selects two independently
-reviewed public SDK consumer cases on VM and SLJIT. Each owns one entity and
-scalar component, runs five explicit steps, and checks registration ownership,
-Begin, Tick, named payloads, bindings, destruction and removal. Preparation uses
-`Chibi::authoring`; its source snapshot is freed before execution. The second case
-round-trips prepared bytes, retires the producer module, and frees the bytes before
-execution. The consumer compiles with only `Chibi::behavior_runtime`. There are no
-files, processes or GPU work. Debug Clang 23.1.1 with ASan/UBSan passed two
-cases and 106 assertions in 0.635 seconds on 2026-10-07.
-
 `chibi build test language-prepared` starts the existing C tooling
 dispatcher with an exact compiler-test producer path. One producer process exports
 three small modules and checks repeatable bytes, then exits. A separate runtime-only

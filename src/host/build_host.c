@@ -64,6 +64,8 @@ static const char *const environment_names[] = {
     "CHIBI_BUILD_TIMINGS",
     /* Nested build hosts reuse the recovered compilers the caller keeps. */
     "CHIBI_COMPILER_CACHE",
+    /* Where the asset compiler keeps its products, shared by every checkout. */
+    "CHIBI_ASSET_COMPILER_CACHE",
     /* bootstrap-artifact's check leaves stage two and its arguments here. */
     "CHIBI_BOOTSTRAP_SEED",
     /* The LLVM tools the native driver links with, as test/native_aot reads. */

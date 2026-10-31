@@ -34,6 +34,7 @@ tool	graph-discovery	@host@	--compiler	tools/compiler	--compiler-core	packages/c
 tool	graph-sdk	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/SDKTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000
 tool	graph-c	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/CTests.chibi	--core	packages/core	--collection	graph_c=tools/graph/c	--entry	Run	--timeout-ms	600000	--	@host@
 tool	graph-build	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/BuildTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	1200000	--	@host@
+tool	graph-asset-cache	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/AssetCompilerCacheTests.chibi	--core	packages/core	--collection	asset_generator=tools/graph/asset_compiler	--entry	Run	--timeout-ms	600000
 tool	graph-sdk-install	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/SDKInstallTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	3000000	--	@host@	@release@
 tool	collab	@build@/test/tools/test_tools	--collab
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer

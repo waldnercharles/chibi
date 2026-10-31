@@ -52,7 +52,13 @@ static bool snapshot_type_valid(const type_desc *type)
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
-        if (field->type == PIN_STRUCT) {
+        /* An array field holds a pin_array pointer whatever its element type,
+         * and snapshot_fields copies it as an array. */
+        if (field->container == PIN_CONTAINER_ARRAY) {
+            if (field->size != sizeof(pin_array *)) {
+                return false;
+            }
+        } else if (field->type == PIN_STRUCT) {
             const type_desc *nested = type_field_type(field, (type_resolver){ 0 });
             if (!nested || nested->size != field->size || !snapshot_type_valid(nested)) {
                 return false;

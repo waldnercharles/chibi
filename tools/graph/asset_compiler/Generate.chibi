@@ -163,8 +163,10 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
 }
 
 // A compiled product depends only on its request and the seed that compiles
-// it, so it is kept under their digest in `cache`: a build whose sources did
-// not change copies it instead of compiling the compiler's sources again.
+// it, so it is kept under their digest in `cache`, a directory shared by every
+// checkout on the machine: a build whose sources did not change copies it
+// instead of compiling the compiler's sources again. An empty `cache` keeps
+// nothing.
 Key :: (seed: string, request: string) -> string {
     return build.hash_text(Join([build.hash_file(seed), "\n", request]));
 }
@@ -172,33 +174,22 @@ Key :: (seed: string, request: string) -> string {
 Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
             cache: string, timeout: string, inputs: string) -> bool {
     stored := Join([cache, "/", key]);
-    if (os.Exists(stored)) {
-        return !os.Copy(stored, output);
+    if (cache != "" && os.Exists(stored) && !os.Copy(stored, output)) {
+        Refresh(stored, Number(Stamp()));
+        return true;
     }
     if (os.WriteText(inputs, request) ||
         !Invoke(host, seed, callable, inputs, Join([output, ".tmp"]), timeout)) {
         return false;
     }
-    if (os.MakeDirectory(cache) || os.Copy(Join([output, ".tmp"]), stored)) {
-        os.Print(Join(["asset compiler: caching product failed: ", key]));
+    // Publish whole: another checkout may be reading the cache.
+    if (cache != "") {
+        pending := Join([stored, ".new"]);
+        if (os.MakeDirectory(cache) || os.Copy(Join([output, ".tmp"]), pending) || os.Rename(pending, stored)) {
+            os.Print(Join(["asset compiler: caching product failed: ", key]));
+        }
     }
     return !os.Rename(Join([output, ".tmp"]), output);
-}
-
-// Removes the cached products this build did not use, so the cache stays at
-// the size of one build.
-Prune :: (cache: string, keep: string[]) {
-    for (name in build.list_directory(cache)) {
-        used := false;
-        for (item in keep) {
-            if (item == name) {
-                used = true;
-            }
-        }
-        if (!used && os.Remove(Join([cache, "/", name]))) {
-            os.Print(Join(["asset compiler: pruning cache entry failed: ", name]));
-        }
-    }
 }
 
 // Whole seconds from the system clock, for the phase timings the log reports.
@@ -218,7 +209,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     stamps: string[] = [];
     // Capture non-text snapshot inputs before any host invocation reads them.
     for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json",
-                  "tools/graph/asset_compiler/Generate.chibi", "tools/compiler/asset_compiler/CompilerSources.txt",
+                  "tools/graph/asset_compiler/Generate.chibi", "tools/graph/asset_compiler/Cache.chibi", "tools/compiler/asset_compiler/CompilerSources.txt",
                   "tools/toolchain/AssetCompiler.chibi"]) {
         checksum := build.hash_file(Join([root, "/", path]));
         records.append(Join(["{\"path\":", Quote(path), ",\"sha256\":", Quote(checksum), "}"]));
@@ -273,7 +264,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     // it only has to compile them, so no stage-one compiler is built first.
     seed := Join([root, "/tools/compiler/bootstrap/compiler.chibip"]);
     closure_entry := "0x140a9546d9e8c296"; // package_compiler.CompileClosure
-    cache := Join([root, "/.chibi/asset-compiler-cache"]);
+    cache := Location(os.Getenv("CHIBI_ASSET_COMPILER_CACHE"), os.Getenv("XDG_CACHE_HOME"), os.Getenv("HOME"), root);
     os.Print("asset compiler: serialize facade request");
     facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target, true);
     facade_key := Key(seed, facade_request);
@@ -299,7 +290,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         }
     }
     if (os.IsDirectory(cache)) {
-        Prune(cache, kept);
+        Evict(cache, Budget, kept);
     }
     // Keep the complete public library snapshot separate from compiler inputs.
     // Retain original compiled source bytes so the final hash check still

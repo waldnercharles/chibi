@@ -72,7 +72,34 @@ static const type_desc narrow_enum_type = { .name = "fixture.narrow_enum",
                                             .size = 1,
                                             .fields = &narrow_enum_field,
                                             .field_count = 1 };
-static const type_desc *const types[] = { &box_type, &c_text_type, &narrow_enum_type };
+/* An int64_t[] field beside an int64_t: the array slot holds a pin_array
+ * pointer as wide as the int64_t. */
+typedef struct
+{
+    pin_array *items;
+    int64_t count;
+} fixture_listed;
+static const type_field listed_fields[] = {
+    { .name = "items",
+      .type = PIN_I64,
+      .offset = offsetof(fixture_listed, items),
+      .size = sizeof(pin_array *),
+      .type_name = "int64_t",
+      .container = PIN_CONTAINER_ARRAY },
+    { .name = "count",
+      .type = PIN_I64,
+      .offset = offsetof(fixture_listed, count),
+      .size = sizeof(int64_t),
+      .type_name = "int64_t" },
+};
+static const type_desc listed_type = { .name = "fixture.listed",
+                                       .size = sizeof(fixture_listed),
+                                       .fields = listed_fields,
+                                       .field_count = 2 };
+static const type_desc *const types[] = { &box_type,
+                                          &c_text_type,
+                                          &narrow_enum_type,
+                                          &listed_type };
 
 /* The engine's reflected types follow the fixtures, as in the engine's own
  * targets, so natives whose defaults are engine structs (vec3) link. */
@@ -87,7 +114,8 @@ type_catalog_pack type_catalog_pack_at(int index)
     if (index == 1) {
         return TYPE_PACK;
     }
-    return (type_catalog_pack){ .types = types, .type_count = 3 };
+    return (type_catalog_pack){ .types = types,
+                                .type_count = (int)(sizeof types / sizeof *types) };
 }
 
 static behavior_function_builder *builder;
@@ -1569,6 +1597,36 @@ TEST_CASE(execution_verifier_rejects_signature_and_local_type_mismatches)
     char error[256];
     REQUIRE(behavior_function_builder_finish(builder, error, sizeof error) == NULL);
     REQUIRE(error[0] != '\0');
+    return true;
+}
+
+/* An indirect access reads or writes a scalar stored in the record. An array
+ * field of that scalar type holds a pin_array pointer, so the verifier once
+ * accepted an int access that would overwrite it. */
+TEST_CASE(execution_verifier_rejects_indirect_access_to_array_fields)
+{
+    static const size_t offsets[] = { offsetof(fixture_listed, count),
+                                      offsetof(fixture_listed, items) };
+    const pin_value listed = { .type = PIN_STRUCT, .type_name = "fixture.listed" };
+    for (int i = 0; i < 2; i++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        behavior_function_builder_signature(builder, &listed, 1, NULL, 0, NULL, 0);
+        slot(PIN_I64);
+        emit((behavior_function_instruction){ .op = BF_ARGUMENT,
+                                              .type = PIN_I64,
+                                              .indirect = true,
+                                              .offset = offsets[i],
+                                              .value = { .type = PIN_I64 } });
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256] = "";
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        if (i == 0) {
+            REQUIRE(function);
+        } else {
+            REQUIRE(!function && strstr(error, "invalid indirect struct field range"));
+        }
+    }
     return true;
 }
 
@@ -6744,6 +6802,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_verifier_rejects_invalid_saved_aggregate_roots);
     RUN_TEST_CASE(execution_saved_aggregate_roots_keep_only_live_shapes);
     RUN_TEST_CASE(execution_verifier_rejects_signature_and_local_type_mismatches);
+    RUN_TEST_CASE(execution_verifier_rejects_indirect_access_to_array_fields);
     RUN_TEST_CASE(execution_linked_function_returns_checked_value);
     RUN_TEST_CASE(execution_helper_returns_keep_native_schema_after_input_retirement);
     RUN_TEST_CASE(execution_owned_intrinsics_validate_action_state_targets);

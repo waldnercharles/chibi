@@ -99,7 +99,7 @@ GenericParameters :: (forest: snapshot.SnapshotNode[], text: string, declaration
         }
         params.append({name: Text(forest, text, Field(forest, parameter, "name")), storage: storage,
                        container: 0, record: -1, has_default: false, default_bits: 0, default_text: "",
-                       default_occurrence: 0, reference: false, node: Field(forest, parameter, "name")});
+                       default_occurrence: 0, reference: false, written: false, node: Field(forest, parameter, "name")});
     }
     return params;
 }

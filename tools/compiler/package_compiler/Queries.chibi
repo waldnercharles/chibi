@@ -1187,16 +1187,16 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
         named := creation_names[found];
         param: Param = {name: named.name, storage: named.storage, container: named.container, record: named.record,
                         has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
-                        reference: false, node: capture};
+                        reference: false, written: false, node: capture};
         params.append(param);
     }
     accepted: Param = {name: "", storage: BoolStorage, container: 0, record: -1, has_default: false,
-                       default_bits: 0, default_text: "", default_occurrence: 0, reference: false, node: node};
+                       default_bits: 0, default_text: "", default_occurrence: 0, reference: false, written: false, node: node};
     params.append(accepted);
     for (field in fields) {
         result: Param = {name: "", storage: field.storage, container: field.container, record: field.record,
                          has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
-                         reference: false, node: field.node};
+                         reference: false, written: false, node: field.node};
         params.append(result);
     }
     evaluator := length(callables);

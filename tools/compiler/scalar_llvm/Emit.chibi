@@ -1919,17 +1919,29 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
 }
 // The module's text with a comment naming each library a foreign call needs,
 // once, for the driver to link: `; chibi-library PATH`, the path as the source
-// spells it.
+// spells it. A system library also gets a `; chibi-import PATH SYMBOL` comment
+// per symbol the module calls, which a Windows link needs to write the library's
+// import definition.
 Linked :: (text: string, rows: facts.Row[]) -> string {
     paths: string[] = [];
+    imports: string[] = [];
     for (row in rows) {
         if (row.kind == facts.ForeignRow && row.text != "" && !paths.contains(row.text)) {
             paths.append(row.text);
+        }
+        if (row.kind == facts.ForeignRow && strings.HasPrefix(row.text, "system:")) {
+            line := format_text("; chibi-import {} {}\n", row.text, row.name);
+            if (!imports.contains(line)) {
+                imports.append(line);
+            }
         }
     }
     out := text;
     for (path in paths) {
         out = format_text("{}; chibi-library {}\n", out, path);
+    }
+    for (line in imports) {
+        out = format_text("{}{}", out, line);
     }
     return out;
 }

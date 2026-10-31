@@ -1030,7 +1030,9 @@ TEST_CASE(native_build_runs_the_foreign_samples)
         fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
         return true;
     }
-    static const char *const SAMPLES[] = { "foreign_declared", "foreign_library" };
+    static const char *const SAMPLES[] = { "foreign_declared",
+                                           "foreign_library",
+                                           "foreign_posix" };
     char in_place[1024];
     path(in_place, built, "sdk/chibi");
     const char *options[] = { "-O0", NULL };
@@ -1069,6 +1071,115 @@ TEST_CASE(native_build_runs_the_foreign_samples)
         );
         REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 0);
     }
+    return true;
+}
+
+static const char *const LOOP_FIRST = "Loop :: library {\n"
+                                      "    Main :: () -> int { return 0; }\n"
+                                      "    Frame :: () -> int {\n"
+                                      "        count: retain int = 0;\n"
+                                      "        count += 1;\n"
+                                      "        return 0;\n"
+                                      "    }\n"
+                                      "}\n",
+                         LOOP_EDITED = "Loop :: library {\n"
+                                       "    Main :: () -> int { return 9; }\n"
+                                       "    Frame :: () -> int {\n"
+                                       "        count: retain int = 0;\n"
+                                       "        flag: retain int = 7;\n"
+                                       "        count += 1;\n"
+                                       "        if count < 3 { return 3; }\n"
+                                       "        return flag;\n"
+                                       "    }\n"
+                                       "}\n";
+
+/* Builds the library `source` as a generation and copies it to `destination`. */
+static bool generation(const char *llvm, const char *name, const char *source, const char *destination)
+{
+    char in_place[1024], library[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", "--shared", NULL };
+    reset(name, source);
+    real_tools(llvm);
+    REQUIRE(build_with(in_place, options, tools) == 0 && printed(library));
+    const char *copying[] = { "/bin/cp", library, destination, NULL };
+    char log[1024];
+    path(log, suite, "copy.log");
+    REQUIRE(!tool_run(copying, suite, log));
+    return true;
+}
+
+/* Edit and Continue on native code, end to end: a loop host written in Chibi
+ * and built natively runs the first generation of a library, Frame after
+ * Frame. The library is edited and rebuilt while the host runs, and published
+ * as next.so; the host swaps it in at its next Frame. The edited Frame returns
+ * the exit status 7 only when the count it had survived (count < 3 gives 3, a
+ * restarted count) and its new state started at its initializer, and the
+ * edited Main, which would return 9, never runs. */
+TEST_CASE(native_build_swaps_a_running_loop_keeping_state)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024], host[1024], run[1024], live[1024], pending[1024],
+        next[1024], source[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", NULL };
+    reset("watch-host", "package host\n");
+    path(source, CHIBI_SOURCE_ROOT, "apps/host/Host.chibi");
+    char main_file[1024], log[1024];
+    path(main_file, game, "Main.chibi");
+    path(log, suite, "copy.log");
+    const char *installing[] = { "/bin/cp", source, main_file, NULL };
+    REQUIRE(!tool_run(installing, suite, log));
+    real_tools(bin);
+    REQUIRE(build_with(in_place, options, tools) == 0 && printed(host));
+    path(run, suite, "watch-run");
+    REQUIRE(!mkdir(run, 0700));
+    path(live, run, "live-0.so");
+    path(pending, run, "pending.so");
+    path(next, run, "next.so");
+    REQUIRE(generation(bin, "watch-first", LOOP_FIRST, live));
+    char host_output[4096] = "", host_errors[4096] = "";
+    chibi_process_output out = { host_output, sizeof host_output, 0, false },
+                         err = { host_errors, sizeof host_errors, 0, false };
+    const char *argv[] = { host, NULL };
+    const char *envp[] = { NULL };
+    chibi_process_job job;
+    chibi_process_capture_result begun = chibi_process_begin(
+        &job,
+        host,
+        argv,
+        run,
+        envp,
+        chibi_process_now() + 90,
+        NULL,
+        &out,
+        &err
+    );
+    REQUIRE(begun.error == CHIBI_PROCESS_OK);
+    /* The first generation runs on its own for a while. */
+    for (int i = 0; i < 50; i++) {
+        chibi_process_service(&job, 1, chibi_process_now() + 90, NULL);
+    }
+    REQUIRE(chibi_process_running(&job));
+    REQUIRE(generation(bin, "watch-edited", LOOP_EDITED, pending));
+    REQUIRE(!rename(pending, next));
+    while (chibi_process_running(&job)) {
+        chibi_process_service(&job, 1, chibi_process_now() + 90, NULL);
+    }
+    chibi_process_capture_result ended = chibi_process_end(&job);
+    fprintf(
+        stderr,
+        "watch host: error %d status %d\n%s%s",
+        (int)ended.error,
+        ended.status,
+        host_output,
+        host_errors
+    );
+    REQUIRE(ended.error == CHIBI_PROCESS_OK && ended.status == 7);
     return true;
 }
 
@@ -1139,6 +1250,23 @@ static const struct
 } PROBES[] = { { "\xff\x07\x40\xd1\xff\x63\x29\xeb\xff\x03\x00\xf9", 12 },
                { "__chkstk", 8 } };
 
+/* Whether the file `name` holds the text `needle`. */
+static bool file_holds(const char *name, const char *needle)
+{
+    FILE *file = fopen(name, "rb");
+    assert(file);
+    static char data[1 << 20];
+    size_t length = fread(data, 1, sizeof data - 1, file);
+    fclose(file);
+    data[length] = 0;
+    for (size_t i = 0; i + strlen(needle) <= length; i++) {
+        if (!memcmp(data + i, needle, strlen(needle))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Whether the object.o published in `out` holds `size` bytes of `bytes`. */
 static bool object_holds(const char *out, const char *bytes, size_t size)
 {
@@ -1196,6 +1324,77 @@ static bool driver_build(const char *ir, const char *out)
     chibi_process_output err = { .data = errors, .capacity = sizeof errors };
     status = chibi_process_capture(host, argv, suite, envp, deadline, NULL, &out_text, &err);
     return status.error == CHIBI_PROCESS_OK && !status.status;
+}
+
+/* `chibi run --native --watch`: the CLI builds the loop host and the first
+ * generation of the source, runs the host, and when the source is saved while
+ * the loop runs, rebuilds it and publishes the next generation, which the host
+ * swaps in between two Frames. The edited Frame's exit status 7 proves the
+ * count survived the swap and the new state started at its initializer; its
+ * Main, which would return 9, never runs. */
+TEST_CASE(native_build_watches_and_swaps_a_running_loop)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024], live[1024], source[1024];
+    path(in_place, built, "sdk/chibi");
+    reset("native-run", LOOP_FIRST);
+    real_tools(bin);
+    path(live, game, "build/native/run/live-0.so");
+    path(source, game, "Main.chibi");
+    char cache[1100] = "";
+    const char *configured = getenv("CHIBI_COMPILER_CACHE");
+    if (configured && *configured) {
+        snprintf(cache, sizeof cache, "CHIBI_COMPILER_CACHE=%s", configured);
+    }
+    const char *argv[] = { in_place,
+                           "run",
+                           "--native",
+                           "--watch",
+                           "-O0",
+                           "--target",
+                           "x86_64-unknown-linux-gnu",
+                           "--llvm",
+                           tools,
+                           game,
+                           NULL };
+    const char *envp[] = { "PATH=", cache[0] ? cache : NULL, NULL };
+    static char watch_output[65536], watch_errors[65536];
+    chibi_process_output out = { watch_output, sizeof watch_output, 0, false },
+                         err = { watch_errors, sizeof watch_errors, 0, false };
+    chibi_process_job job;
+    double limit = chibi_process_now() + 600;
+    REQUIRE(
+        chibi_process_begin(&job, in_place, argv, suite, envp, limit, NULL, &out, &err)
+            .error == CHIBI_PROCESS_OK
+    );
+    /* The first generation is live once the work folder holds it; the host runs
+     * it on its own for a moment before the edit is saved. */
+    while (chibi_process_running(&job) && !exists(live)) {
+        chibi_process_service(&job, 1, limit, NULL);
+    }
+    for (int i = 0; i < 150; i++) {
+        chibi_process_service(&job, 1, limit, NULL);
+    }
+    REQUIRE(chibi_process_running(&job));
+    tool_write(source, LOOP_EDITED);
+    while (chibi_process_running(&job)) {
+        chibi_process_service(&job, 1, limit, NULL);
+    }
+    chibi_process_capture_result ended = chibi_process_end(&job);
+    fprintf(
+        stderr,
+        "native run: error %d status %d\n%s%s",
+        (int)ended.error,
+        ended.status,
+        watch_output,
+        watch_errors
+    );
+    REQUIRE(ended.error == CHIBI_PROCESS_OK && ended.status == 7);
+    return true;
 }
 
 /* Real LLVM tools on Linux link macOS arm64 and Windows x64 programs with no
@@ -1264,6 +1463,95 @@ TEST_CASE(native_build_links_other_targets_with_llvm)
         REQUIRE(executable_for(program, t));
         bundle_program(program, t, t ? "frame-O2.exe" : "frame-O2");
     }
+    return true;
+}
+
+static const char *const
+    WINDOWS_IMPORT_SOURCE = "package scalar\n"
+                            "foreign import k32 \"system:kernel32\"\n"
+                            "foreign k32 {\n"
+                            "    GetCurrentProcessId :: () -> u32\n"
+                            "    GetTickCount :: () -> u32\n"
+                            "}\n"
+                            "Main :: () -> int {\n"
+                            "    if (int(GetCurrentProcessId()) > 0 && "
+                            "int(GetTickCount()) >= 0) { return 42; }\n"
+                            "    return 1;\n"
+                            "}\n";
+
+/* A Windows program imports from a system library its source names: the
+ * driver writes the library's import definition from the symbols the program
+ * calls and lld-link makes the import library from it, so no Windows SDK is
+ * needed. The import table of the PE file names each symbol. Other targets
+ * refuse a system library. With CHIBI_NATIVE_BUNDLE set, the program goes
+ * into the bundle that CI's native-targets job runs on Windows. */
+TEST_CASE(native_build_imports_from_a_windows_system_library)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link Windows imports with real LLVM tools\n");
+        return true;
+    }
+    reset("windows-imports", WINDOWS_IMPORT_SOURCE);
+    real_tools(bin);
+    char in_place[1024], program[1024], folder[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *windows[] = { "-O0", "--target", "x86_64-pc-windows-msvc", NULL };
+    REQUIRE(build_with(in_place, windows, tools) == 0 && printed(program));
+    REQUIRE(executable_for(program, 1));
+    size_t length = strlen(program) - strlen("/program.exe");
+    memcpy(folder, program, length);
+    folder[length] = 0;
+    REQUIRE(
+        holds(folder, "kernel32.def", "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCurrentProcessId\n    GetTickCount\n")
+    );
+    REQUIRE(file_holds(program, "GetCurrentProcessId") && file_holds(program, "GetTickCount"));
+    bundle_program(program, 1, "windows-imports.exe");
+    const char *linux_only[] = { "-O0", NULL };
+    REQUIRE(
+        build_with(in_place, linux_only, tools) != 0 &&
+        strstr(errors, "system library kernel32 links on Windows only")
+    );
+    return true;
+}
+
+static const char *const
+    WINDOWS_HEAP_SOURCE = "package scalar\n"
+                          "Main :: () -> int {\n"
+                          "    values: int[] = [40, 1, 1];\n"
+                          "    return values[0] + values[1] + values[2];\n"
+                          "}\n";
+
+/* A Windows program that allocates links no C library: its start module
+ * allocates with HeapAlloc and reports a failed assert with WriteFile, so the
+ * program imports only kernel32. With CHIBI_NATIVE_BUNDLE set, the program
+ * goes into the bundle that CI's native-targets job runs on Windows. */
+TEST_CASE(native_build_allocates_on_windows_without_libc)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link Windows programs with real LLVM tools\n");
+        return true;
+    }
+    reset("windows-heap", WINDOWS_HEAP_SOURCE);
+    real_tools(bin);
+    char in_place[1024], program[1024], folder[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *windows[] = { "-O0", "--target", "x86_64-pc-windows-msvc", NULL };
+    REQUIRE(build_with(in_place, windows, tools) == 0 && printed(program));
+    REQUIRE(executable_for(program, 1));
+    size_t length = strlen(program) - strlen("/program.exe");
+    memcpy(folder, program, length);
+    folder[length] = 0;
+    REQUIRE(holds(folder, "start.ll", "call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)"));
+    REQUIRE(
+        holds(folder, "kernel32.def", "    GetProcessHeap\n    HeapAlloc\n    GetStdHandle\n    WriteFile\n")
+    );
+    REQUIRE(
+        file_holds(program, "HeapAlloc") && !file_holds(program, "msvcrt") &&
+        !file_holds(program, "ucrtbase")
+    );
+    bundle_program(program, 1, "windows-heap.exe");
     return true;
 }
 
@@ -1341,10 +1629,14 @@ TEST_CASE(native_build_runs_the_cases_in_parallel)
         "native_build_links_a_vendored_archive",
         "native_build_calls_through_a_function_pointer",
         "native_build_passes_a_byte_array_to_c",
+        "native_build_swaps_a_running_loop_keeping_state",
+        "native_build_watches_and_swaps_a_running_loop",
         "native_build_reports_a_failed_assert",
         "native_build_runs_the_foreign_samples",
         "native_build_gives_c_an_authored_function",
         "native_build_links_other_targets_with_llvm",
+        "native_build_imports_from_a_windows_system_library",
+        "native_build_allocates_on_windows_without_libc",
     };
     static bool (*const cases[])(void) = {
         native_build_links_statically_on_request,
@@ -1358,10 +1650,14 @@ TEST_CASE(native_build_runs_the_cases_in_parallel)
         native_build_links_a_vendored_archive,
         native_build_calls_through_a_function_pointer,
         native_build_passes_a_byte_array_to_c,
+        native_build_swaps_a_running_loop_keeping_state,
+        native_build_watches_and_swaps_a_running_loop,
         native_build_reports_a_failed_assert,
         native_build_runs_the_foreign_samples,
         native_build_gives_c_an_authored_function,
         native_build_links_other_targets_with_llvm,
+        native_build_imports_from_a_windows_system_library,
+        native_build_allocates_on_windows_without_libc,
     };
     long cores = sysconf(_SC_NPROCESSORS_ONLN);
     int workers = cores < 1 ? 1 : cores > 4 ? 4 : (int)cores;

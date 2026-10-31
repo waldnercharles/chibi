@@ -1,0 +1,73 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import abi "project:native_abi"
+import scalar "project:scalar_llvm"
+import strings "core:strings"
+
+// The native compiler's pure core: the sources of a program's closure in, one
+// LLVM module or the first rejection out. It touches no file and no global, so
+// Main runs it natively and the VM-hosted compiler runs it as an entry.
+
+pub Output :: union {
+    Rejected(message: string) | Emitted(module: u8[])
+}
+
+Target :: (triple: string) -> abi.Target {
+    if (strings.HasPrefix(triple, "aarch64-apple")) {
+        return abi.MacOSArm64();
+    }
+    if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+        return abi.WindowsX64();
+    }
+    return abi.LinuxX64();
+}
+
+// The function whose declaration lies last before byte `at` of `text`.
+FunctionAt :: (text: string, at: int) -> string {
+    lines := strings.SplitLines(strings.Slice(text, 0, at));
+    index := length(lines) - 1;
+    while (index >= 0) {
+        line := lines[index];
+        marker := strings.Index(line, " :: (");
+        if (marker > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "/")) {
+            return strings.TrimPrefix(strings.Slice(line, 0, marker), "pub ");
+        }
+        index -= 1;
+    }
+    return "(entry)";
+}
+
+// `paths[0]` and `sources[0]` are the entry file, the others its closure: project
+// packages by project-relative path and core packages by path under `core`.
+// A rejection message reads `rejected FUNCTION: MESSAGE`.
+pub Module :: (core: string, paths: string[], sources: string[], triple: string) -> Output {
+    rows := compiler.CollectScalarPackages("/project", ["core"], [core], paths, sources, TargetFacts(), Names(),
+                                           Natives(), Ports(), Identities());
+    if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
+        rejected := rows[length(rows) - 1];
+        return Output.Rejected(strings.Concatenate(["rejected ", FunctionAt(rows[0].text, rejected.start), ": ",
+                                                    rejected.text]));
+    }
+    module := scalar.EmitBytesFor(Target(triple), rows);
+    if (length(module) == 0) {
+        return Output.Rejected("rejected (module): the rows lower to no module");
+    }
+    return Output.Emitted(module);
+}
+
+// The compiler host's entry: the module's bytes, or a 0 byte and then the
+// rejection's text.
+pub Compile :: (core: string, paths: string[], sources: string[], triple: string) -> u8[] {
+    switch Module(core, paths, sources, triple) {
+        case .Rejected(message):
+            flagged: u8[] = [0];
+            for (byte in strings.Bytes(message)) {
+                flagged.append(u8(byte));
+            }
+            return flagged;
+        case .Emitted(module):
+            return module;
+    }
+}

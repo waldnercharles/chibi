@@ -8,12 +8,10 @@
 tool	types	@build@/test/tools/test_tools	--types
 tool	execution-scope	@build@/test/language/test_language	--execution-scope
 tool	studio-panel-idle	build-studio/bin/studio-acceptance	--panel-idle	--project-root	
-tool	shader-parameters-prepared	@build@/test/tools/test_tools	--shader-parameters-prepared
 tool	ecs-query	@build@/test/tools/test_tools	--ecs-query
 tool	ecs-strings	@build@/test/tools/test_tools	--ecs-strings
 tool	ecs-query-benchmark	@build@/test/tools/test_tools	--ecs-query-benchmark
 tool	arena	@build@/test/tools/test_tools	--arena
-tool	source-systems	@build@/test/tools/test_tools	--source-systems
 tool	persistent-store	@build@/test/tools/test_tools	--persistent-store
 tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
 tool	chibi-cli-build	@build@/test/tools/test_tools	--chibi-cli-build	@release@/sdk/chibi
@@ -57,6 +55,8 @@ tool	language-integer-shift-counts	@build@/test/language/test_language	--integer
 tool	chibi-test-compiler	@release@/sdk/chibi	test	tools/compiler
 tool	chibi-test-core	@release@/sdk/chibi	test	packages/core
 tool	chibi-test-integer-arithmetic	@release@/sdk/chibi	test	test/integer_arithmetic
+tool	chibi-test-time	@release@/sdk/chibi	test	test/standard_library/time
+tool	chibi-test-portable-consumer	@release@/sdk/chibi	test	test/packages/portable_consumer
 tool	chibi-test-samples-base	@release@/sdk/chibi	test	test/compiler/samples/base
 tool	chibi-test-samples-collections	@release@/sdk/chibi	test	test/compiler/samples/collections
 tool	chibi-test-samples-comptime	@release@/sdk/chibi	test	test/compiler/samples/comptime
@@ -83,29 +83,14 @@ tool	language-execution	@build@/test/language/test_language	--execution
 tool	wasm-browser	@build@/test/tools/test_tools	--wasm-browser
 tool	web-storage	@build@/test/tools/test_tools	--web-storage
 tool	native-tools	@build@/test/tools/test_tools
-tool	reflect-ranges	@build@/test/tools/test_tools	--reflect-ranges
-tool	wasm-execution	node	build-wasm-language/test_language.js	--execution
-tool	wasm-program	node	build-wasm-language/test_language.js	--program
-tool	wasm-format	node	build-wasm-language/test_language.js	--format
-tool	wasm-ranges	node	build-wasm-language/test_language.js	--ranges
-tool	wasm-component-write	node	build-wasm-language/test_language.js	--component-write
-tool	wasm-record-values	node	build-wasm-language/test_language.js	--record-values
-tool	wasm-record-semantic	node	build-wasm-language/test_language.js	--record-semantic
-tool	wasm-record-runtime	node	build-wasm-language/test_language.js	--record-runtime
-tool	wasm-record-document	node	build-wasm-language/test_language.js	--record-document
-tool	wasm-record-state	node	build-wasm-language/test_language.js	--record-state
-tool	wasm-record-compatibility	node	build-wasm-language/test_language.js	--record-compatibility
-tool	wasm-package-math	node	build-wasm-language/test_language.js	--package-math
-tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 timeout	chibi-cli	900
 timeout	native-build	1500
 timeout	graph-sdk-install	1200
 timeout	bootstrap-load	1800
 exclusive	language-test-parallel
-group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math
-group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	fmt	arena
+group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	asset-values	fmt	arena
 group	projects	chibi-cli	native-build
-group	language	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host	bootstrap-recovery	native-link
+group	language	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host	bootstrap-recovery	native-link
 group	compiler	language-package-compiler-chibi-scalar
 group	benchmarks	ecs-query-benchmark	native-workload-benchmark	scheduler-benchmark

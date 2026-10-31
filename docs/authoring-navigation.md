@@ -26,8 +26,9 @@ its displayed name. Prepared runtime modules contain no parser references.
 Consumers use these shared APIs:
 
 Static [allocation and copy explanations](cost-explanations.md) expose finalized
-cost evidence through the SDK and `chibi check --explain-costs`, with source
-ranges and explicit uncertainty. They do not measure runtime traffic.
+cost evidence through the SDK, with source ranges and explicit uncertainty.
+They do not measure runtime traffic. Their command, `chibi check
+--explain-costs`, is archived with game projects.
 
 - `authoring/source_navigation.h` indexes executable documents and exact external
   declaration ranges. Definitions, references and callers use resolved IDs;

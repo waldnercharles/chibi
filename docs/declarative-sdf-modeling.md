@@ -201,21 +201,10 @@ or whole-frame time; report those separately with matched workloads. The
 
 ## Isolated package validation
 
-Prepare authored model/material/scene assets with a pinned installed compiler SDK.
-Deploy its prepared artifact and declared resources alongside a separate verified
-player package:
-
-```text
-make package-player PLAYER_OUTPUT=build/model-evidence/player
-/installed/sdk/bin/chibi-compile --project-root /absolute/project \
-  --output /absolute/output/game.chibip
-build/model-evidence/player/bin/chibi-player /absolute/output/game.chibip \
-  --resource-root /absolute/output
-```
-
-Packaging leaves games untouched. Compiler preparation and package integrity do not establish
-successful rendered model behavior; use affected runtime/GPU checks.
-See [native packages](native-package.md) for product boundaries and exact pins.
+The player, its packaging and `chibi-compile --project-root/--output` are
+archived with game projects (`archive/README.md`),
+so model assets can't be prepared, packaged or rendered until a Chibi renderer
+replaces them.
 
 The evidence below predates the separate SDK/compiler/player contract and
 records the retired combined package. It is historical, rather than acceptance
@@ -287,7 +276,7 @@ project and package hashes unchanged. Evidence is
 logs are `package-build-delivery.log`, `package-assemble-delivery.log`, and
 `package-tests-delivery.log`. The earlier 116-asset validation and Release
 benchmark records retain their precise earlier build identity; the later change
-only fixes Studio pointer handling. Final exact-source `make test` reported
+only fixes Studio pointer handling. Final exact-source `make test` (retired) reported
 ALL CHECKS PASSED (266.8 seconds), followed by the whole-function audit
 (1.5 seconds). Native, Web, and actual Chrome authoring/orbit boundary gates
 passed. The separate delivery validation record records these scopes.

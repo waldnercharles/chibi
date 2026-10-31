@@ -9413,8 +9413,98 @@ static chibi_process_capture_result library_calls(
  * `symbol:a,b` for an adapter, `symbol:` for one of no arguments, and prints
  * each value on its own line as it returns. A context's heap is freed after
  * its call, as the VM frees it. */
+/* A library's retained-state manifest, chibi_retained_<Name>, as
+ * llvm_native's RetainedManifest writes it. */
+typedef struct
+{
+    uint32_t abi;
+    int32_t count;
+    const uint8_t *types;
+    const char *names;
+    execution_native_entry get, set;
+} retained_manifest;
+/* The `index`th of the NUL-ended names. */
+static const char *retained_name(const retained_manifest *manifest, int index)
+{
+    const char *at = manifest->names;
+    for (; index > 0; index--) {
+        at += strlen(at) + 1;
+    }
+    return at;
+}
+/* Calls `library`'s Frame, a function of no arguments that returns an int. */
+static bool frame_call(void *library, const char *name, int64_t *value)
+{
+    char symbol[64];
+    snprintf(symbol, sizeof symbol, "chibi_natives_%s", name);
+    const execution_native_manifest *natives = dlsym(library, symbol);
+    for (int i = 0; natives && i < natives->count; i++) {
+        if (!strcmp(natives->exports[i].name, "Frame")) {
+            uint64_t word = 0;
+            natives->exports[i].entry(NULL, NULL, &word);
+            *value = (int32_t)word;
+            return true;
+        }
+    }
+    return false;
+}
+static const retained_manifest *retained_of(void *library, const char *name)
+{
+    char symbol[64];
+    snprintf(symbol, sizeof symbol, "chibi_retained_%s", name);
+    return dlsym(library, symbol);
+}
+/* The edit-and-continue child: the loop `first` runs three Frames, then the
+ * loop `second`, an edit of it, takes its place. The host reads the old
+ * states, migrates them by name and type, sets them in the new library and
+ * runs two more Frames, without calling Main. Each Frame's value is printed. */
+static int enc_child(const char *first, const char *second)
+{
+    stack_overflow_init();
+    void *old = dlopen(first, RTLD_NOW | RTLD_LOCAL),
+         *next = dlopen(second, RTLD_NOW | RTLD_LOCAL);
+    if (!old || !next) {
+        fprintf(stderr, "native generation load: %s\n", dlerror());
+        return 1;
+    }
+    int64_t value;
+    for (int i = 0; i < 3; i++) {
+        if (!frame_call(old, "Loop", &value)) {
+            return 1;
+        }
+        printf("%" PRId64 "\n", value);
+    }
+    const retained_manifest *before = retained_of(old, "Loop"),
+                            *after = retained_of(next, "Loop");
+    if (!before || !after || before->count > 16 || after->count > 16) {
+        return 1;
+    }
+    uint64_t was[16], now[16];
+    before->get(NULL, NULL, was);
+    after->get(NULL, NULL, now);
+    for (int i = 0; i < after->count; i++) {
+        for (int j = 0; j < before->count; j++) {
+            if (!strcmp(retained_name(after, i), retained_name(before, j)) &&
+                after->types[i] == before->types[j]) {
+                now[i] = was[j];
+            }
+        }
+    }
+    after->set(NULL, now, NULL);
+    for (int i = 0; i < 2; i++) {
+        if (!frame_call(next, "Loop", &value)) {
+            return 1;
+        }
+        printf("%" PRId64 "\n", value);
+    }
+    fflush(stdout);
+    return 0;
+}
 static int library_child(const char *library, int count, char **specs)
 {
+    if (count == 2 && !strcmp(specs[0], "continue")) {
+        return enc_child(library, specs[1]);
+    }
     stack_overflow_init();
     void *opened = dlopen(library, RTLD_NOW | RTLD_LOCAL);
     if (!opened) {
@@ -13000,6 +13090,74 @@ TEST_CASE(stack_overflow_leaves_other_faults)
     }
     return true;
 }
+/* The rows of the library `source`, emitted for Linux x86-64 as LLVM text. */
+static bool library_ir(const char *source, char **ir)
+{
+    pin_value rows, emitted;
+    REQUIRE(library_rows(0, source, &rows));
+    const pin_array *array = rows.ptr;
+    REQUIRE(array->count > 2);
+    REQUIRE(emit_bytes(0, "LinuxX64", &rows, &emitted));
+    const pin_array *bytes = emitted.ptr;
+    *ir = xmalloc((size_t)bytes->count + 1);
+    for (int i = 0; i < bytes->count; i++) {
+        (*ir)[i] = (char)bytes->items[i].u8;
+    }
+    (*ir)[bytes->count] = 0;
+    arena_free(&detached);
+    return true;
+}
+/* Edit and Continue on native code: a loop's Frame counts with a retained
+ * local; the loop is edited to count by ten and to add a new retained
+ * bonus; the host moves the count to the edited library and its next Frames
+ * carry on from it, with the new state at its initializer, and Main, which
+ * a library lacks, is never called. */
+TEST_CASE(package_compiler_native_edit_and_continue_keeps_state)
+{
+    static const char before[] = "Loop :: library {\n"
+                                 "    Frame :: () -> int {\n"
+                                 "        count: retain int = 0;\n"
+                                 "        count += 1;\n"
+                                 "        return count;\n"
+                                 "    }\n"
+                                 "}\n",
+                      after[] = "Loop :: library {\n"
+                                "    Frame :: () -> int {\n"
+                                "        count: retain int = 0;\n"
+                                "        bonus: retain int = 100;\n"
+                                "        count += 10;\n"
+                                "        return count + bonus;\n"
+                                "    }\n"
+                                "}\n";
+    REQUIRE(prepare());
+    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(
+        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
+    );
+    char directory[PATH_MAX], first[PATH_MAX], second[PATH_MAX], self[PATH_MAX],
+        out[NATIVE_OUTPUT];
+    REQUIRE(native_directory(directory));
+    char *ir;
+    REQUIRE(library_ir(before, &ir));
+    bool built = native_library(directory, "loop-before", ir, "", 0, first);
+    free(ir);
+    REQUIRE(built && library_ir(after, &ir));
+    built = native_library(directory, "loop-after", ir, "", 0, second);
+    free(ir);
+    REQUIRE(built);
+    ssize_t length = readlink("/proc/self/exe", self, sizeof self - 1);
+    REQUIRE(length > 0);
+    self[length] = 0;
+    const char *const argv[] = { self,   "--package-compiler-chibi-native-call",
+                                 first,  "continue",
+                                 second, NULL };
+    chibi_process_capture_result ran = run_native(argv, directory, CALLS_SECONDS, out);
+    REQUIRE(native_passed(ran));
+    /* Three Frames of the first, then the edited one carries the count on. */
+    REQUIRE(!strcmp(out, "1\n2\n3\n113\n123\n"));
+    REQUIRE(remove_native_files(directory));
+    return true;
+}
 TEST_CASE(package_compiler_native_runs_are_bounded)
 {
     char out[NATIVE_OUTPUT];
@@ -14589,6 +14747,7 @@ void test_language_package_compiler_chibi_native()
     RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
     RUN_TEST_CASE(package_compiler_native_arithmetic_is_total);
     RUN_TEST_CASE(package_compiler_native_arrays_run_and_check_indexes);
+    RUN_TEST_CASE(package_compiler_native_edit_and_continue_keeps_state);
     pu_clear_setup();
     sigaction(SIGINT, &interrupt, NULL);
     sigaction(SIGTERM, &terminate, NULL);

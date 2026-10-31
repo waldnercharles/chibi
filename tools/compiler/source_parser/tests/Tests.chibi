@@ -39,6 +39,11 @@ AcceptsForeignBlock :: () {
 }
 
 @test
+RejectsASecondRootDeclaration :: () {
+    Rejects("Tools :: library {\n}\nMore :: library {\n}\n", 3, 1);
+}
+
+@test
 AcceptsTestFunction :: () {
     Accepts("package p\n\n@test\npub T :: () {\n}\n");
 }

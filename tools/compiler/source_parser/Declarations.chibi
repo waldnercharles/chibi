@@ -16,8 +16,10 @@ ParseSourceFile :: (c: ^Cursor, n: ^(Node[])) -> int {
             Add(n, root, ParseDeclaration(c, n), syntax.FieldNone);
         }
     } else {
-        while (!c.failed && c.token != tk.EOF) {
-            Add(n, root, ParseDeclaration(c, n), syntax.FieldNone);
+        // Without a package, the file is one behavior-like declaration.
+        Add(n, root, ParseDeclaration(c, n), syntax.FieldNone);
+        if (!c.failed && c.token != tk.EOF) {
+            Fail(c, n, "Unexpected syntax");
         }
     }
     return root;

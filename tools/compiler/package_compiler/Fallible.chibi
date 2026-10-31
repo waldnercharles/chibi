@@ -719,7 +719,8 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
             children.append(Field(forest, node, syntax.FieldFunction));
             children.extend(Members(forest, Field(forest, node, syntax.FieldArguments)));
             child_mode = 2;
-        } else if (kind == syntax.UnaryExpression) {
+        } else if (kind == syntax.UnaryExpression || kind == syntax.ForceUnwrapExpression ||
+                   kind == syntax.OptionalMemberExpression) {
             children.append(Field(forest, node, syntax.FieldOperand));
         } else if (kind == syntax.NamedArgument || kind == syntax.StructField) {
             children.append(Field(forest, node, syntax.FieldValue));

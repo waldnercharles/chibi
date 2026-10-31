@@ -216,9 +216,12 @@ bool package_test_run(
     if (resumable) {
         behavior_function_activation_init(test->body, &activation);
     }
-    /* Each run owns its heap, so parallel tests never share one. */
+    /* Each run owns its heap, so parallel tests never share one. The test is
+     * the heap's one root call, so it collects while it runs, as the build
+     * and compiler hosts do. */
     behavior_managed_heap managed;
     behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     behavior_function_context context = { .managed_heap = &managed,
                                           .activation = resumable ? &activation : NULL,
                                           .budget = budget,

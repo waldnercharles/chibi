@@ -2716,6 +2716,7 @@ NativeMethodCall: int : 7; // a native called as a method
 CharConversionCall: int : 8; // char(x), checked
 MathCall: int : 90; // a built-in math constructor
 MathFunctionCall: int : 91; // a built-in math function
+ProcCall: int : 92; // a call through a procedure value's address
 // Calls of the package's functions and of natives. Arguments go to fresh data
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
@@ -2853,6 +2854,34 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         found := CalledFunction(forest, text, callables, natives, names, package, item.node);
         if (qualified_native) {
             callee_name = native_name;
+        }
+        proc := -1;
+        if (qualifier < 0 && found == -1 && !qualified_native) {
+            proc = ProcOf(forest, text, names, callee);
+        }
+        if (proc >= 0) {
+            // The address is the first value, then the arguments, as the
+            // signature's native takes them.
+            address_native := FindNative(natives, ProcName(forest, text, proc));
+            shape := ProcShape(forest, text, proc);
+            arguments := Members(forest, Field(forest, item.node, syntax.FieldArguments));
+            if (address_native < 0) {
+                return Fail(forest, callee, document, "procedure type has no native");
+            }
+            if (length(arguments) != length(shape) - 1) {
+                return Fail(forest, item.node, document, "call has the wrong number of arguments");
+            }
+            next.append(Expect(callee, WordStorage, 0, -1));
+            for (index in 0..<length(arguments)) {
+                if (Is(forest, arguments[index], syntax.NamedArgument) || Is(forest, arguments[index], syntax.TypedArgument)) {
+                    return Fail(forest, arguments[index], document, "a procedure takes positional arguments");
+                }
+                next.append(Expect(arguments[index], shape[index], 0, -1));
+            }
+            finish := Resume(item.node, 1, address_native, length(arguments) + 1);
+            finish.c = ProcCall;
+            next.append(finish);
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
         math_kind := MathName(callee_name);
         if (qualifier < 0 && found == -1 && math_kind != 0) {
@@ -3388,7 +3417,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                                     u64(0), false, 1, ops, target, at, node);
         return EffectsStep(CleanupSequenceValues(emitted, [values[first]], ops, target, at, node), argument_reads);
     }
-    linked := item.c == NativeCall || item.c == NativeChoiceCall || item.c == NativeMethodCall;
+    linked := item.c == NativeCall || item.c == NativeChoiceCall || item.c == NativeMethodCall || item.c == ProcCall;
     inferred := NoValue();
     first_port: int = 0;
     if (linked) {
@@ -3417,7 +3446,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         arguments = ordered;
     }
     given: NativeArgument[] = [];
-    if (linked) {
+    if (item.c == ProcCall) {
+        // The values already stand in port order.
+    } else if (linked) {
         switch BindNative(forest, text, item.node, NativeSources(forest, item.node, item.c == NativeMethodCall),
                           natives[chosen], ports) {
             case .Failed(problem, message):

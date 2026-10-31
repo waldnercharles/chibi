@@ -168,6 +168,12 @@ The build graph's `c.Library` (M6) cannot hold its sources or flags, so every
 graph function takes them as two arrays beside the record, and a library's
 description is three functions (`Support`, `SupportSources`, `SupportFlags`)
 instead of one value.
+Stage one now accepts array and record fields, but until 2026-10-30 a live
+record holding an array of records crashed the collector, which walked the
+field as a record stored inline. #1073's `AddressPointers { types: TypeDecl[];
+addresses: bool; }` shipped as a one-variant union for that reason. A field
+still cannot be an array of unions, although the diagnostic says "union or
+array of those types".
 
 - C, C++, Rust, Odin, Zig, C#, F#, TypeScript, Python and Ruby all let a
   struct, record or object hold any value type.

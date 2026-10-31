@@ -54,7 +54,9 @@ pub BinaryExpression: int : UnaryExpression + 1;
 pub IsExpression: int : BinaryExpression + 1;
 pub AddressExpression: int : IsExpression + 1;
 pub DereferenceExpression: int : AddressExpression + 1;
-pub AsExpression: int : DereferenceExpression + 1;
+pub OptionalMemberExpression: int : DereferenceExpression + 1;
+pub ForceUnwrapExpression: int : OptionalMemberExpression + 1;
+pub AsExpression: int : ForceUnwrapExpression + 1;
 pub AwaitExpression: int : AsExpression + 1;
 pub EmitExpression: int : AwaitExpression + 1;
 pub LambdaExpression: int : EmitExpression + 1;
@@ -167,15 +169,16 @@ pub KindNames :: () -> string[] {
     return ["comment", "character", "parenthesized_expression", "number", "boolean", "string", "nil",
             "identifier", "member_expression", "index_expression", "struct_expression", "array_expression",
             "map_expression", "call_expression", "unary_expression", "binary_expression", "is_expression",
-            "address_expression", "dereference_expression", "as_expression", "await_expression",
-            "emit_expression", "lambda_expression", "range_expression", "query_expression", "builtin_reference",
-            "not_in", "argument_list", "argument_name", "named_argument", "typed_argument", "struct_field",
-            "map_entry", "measure", "unit", "variant_pattern", "pattern_bindings", "query_list",
-            "query_binding", "query_guard", "query_generator", "callable_body", "block", "if_statement",
-            "while_statement", "for_statement", "switch_statement", "break_statement", "continue_statement",
-            "local_declaration", "assignment", "expression_statement", "return_statement", "delete_statement",
-            "switch_arm", "system_body", "branch_statement", "cancel_statement", "goto_statement",
-            "label_statement", "reduce_statement", "sequence_statement", "yield_statement", "type", "type_name",
+            "address_expression", "dereference_expression", "optional_member_expression",
+            "force_unwrap_expression", "as_expression", "await_expression", "emit_expression",
+            "lambda_expression", "range_expression", "query_expression", "builtin_reference", "not_in",
+            "argument_list", "argument_name", "named_argument", "typed_argument", "struct_field", "map_entry",
+            "measure", "unit", "variant_pattern", "pattern_bindings", "query_list", "query_binding",
+            "query_guard", "query_generator", "callable_body", "block", "if_statement", "while_statement",
+            "for_statement", "switch_statement", "break_statement", "continue_statement", "local_declaration",
+            "assignment", "expression_statement", "return_statement", "delete_statement", "switch_arm",
+            "system_body", "branch_statement", "cancel_statement", "goto_statement", "label_statement",
+            "reduce_statement", "sequence_statement", "yield_statement", "type", "type_name",
             "type_application", "type_binder", "pointer_type", "map_type", "union_type", "callable_type",
             "measured_type", "range_type", "parenthesized_type", "source_file", "package_header",
             "import_declaration", "foreign_import_declaration", "foreign_block", "foreign_function",

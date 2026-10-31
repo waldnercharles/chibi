@@ -204,6 +204,22 @@ ParseUnary :: (c: ^Cursor, n: ^(Node[])) -> int {
             Add(n, deref, left, syntax.FieldOperand);
             Take(c, n, deref, syntax.FieldNone);
             left = deref;
+        } else if (token == tk.Question && Peek(c, n, 1) == tk.Period && n^[c.pos].start == n^[c.pos - 1].end &&
+                   n^[c.pos + 1].start == n^[c.pos].end) {
+            // `value?.member` is nil when value is, else the member as an optional.
+            chain := New(n, syntax.OptionalMemberExpression);
+            Add(n, chain, left, syntax.FieldOperand);
+            Take(c, n, chain, syntax.FieldNone);
+            Take(c, n, chain, syntax.FieldNone);
+            TakeMember(c, n, chain, syntax.FieldMember);
+            left = chain;
+        } else if (token == tk.Not && n^[c.pos].start == n^[c.pos - 1].end) {
+            // `value!` takes an optional's payload and traps on nil. The `!`
+            // must touch its operand, so `a !b` is still not followed by one.
+            unwrap := New(n, syntax.ForceUnwrapExpression);
+            Add(n, unwrap, left, syntax.FieldOperand);
+            Take(c, n, unwrap, syntax.FieldNone);
+            left = unwrap;
         } else {
             break;
         }

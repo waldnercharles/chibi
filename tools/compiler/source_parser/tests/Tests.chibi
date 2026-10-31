@@ -51,6 +51,31 @@ AcceptsForeignBlock :: () {
 }
 
 @test
+AcceptsForceUnwrap :: () {
+    Accepts("package p\nF :: (x: int?, y: int?) -> int {\n    return x! + y!;\n}\n");
+}
+
+@test
+AcceptsOptionalMember :: () {
+    Accepts("package p\nF :: (a: P?) -> int {\n    return a?.b?.c ?? 0;\n}\n");
+}
+
+@test
+KeepsNotAndNotEqualApart :: () {
+    Accepts("package p\nF :: (a: bool, b: bool, c: int) -> bool {\n    return !a && !b || c != 1;\n}\n");
+}
+
+@test
+AcceptsFunctionTypeValues :: () {
+    Accepts("package p\nforeign import libc \"system:c\"\nforeign libc {\n    dlsym :: (handle: rawptr, name: cstring) -> fn(n: i32) -> i32\n}\nF :: (v: i32) -> i32 {\n    g: fn() -> i32 = dlsym(0, \"abs\");\n    return g();\n}\n");
+}
+
+@test
+RejectsASecondRootDeclaration :: () {
+    Rejects("Tools :: library {\n}\nMore :: library {\n}\n", 3, 1);
+}
+
+@test
 AcceptsTestFunction :: () {
     Accepts("package p\n\n@test\npub T :: () {\n}\n");
 }

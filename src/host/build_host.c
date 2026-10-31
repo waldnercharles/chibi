@@ -66,6 +66,8 @@ static const char *const environment_names[] = {
     "CHIBI_COMPILER_CACHE",
     /* bootstrap-artifact's check leaves stage two and its arguments here. */
     "CHIBI_BOOTSTRAP_SEED",
+    /* The LLVM tools the native driver links with, as test/native_aot reads. */
+    "CHIBI_LLVM_BIN",
     "CC",
     "CXX",
     "CFLAGS",

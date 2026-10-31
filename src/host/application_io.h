@@ -19,12 +19,9 @@ typedef const pin_array *(*application_arguments_fn)(void *, const execution_pro
 application_io *application_io_new(const char *bin, application_arguments_fn, void *);
 void application_io_free(application_io *);
 bool application_io_stopped(const application_io *);
-int application_io_interrupt_status(const application_io *);
 /* Controlling-thread host operations may borrow the signal flag while they
  * supervise child processes. Sync afterwards so a child's control signal is
  * also visible to worker-safe application cancellation polling. */
-volatile sig_atomic_t *application_io_stop_flag(application_io *);
-void application_io_sync_stop(application_io *);
 const native_capability_pack *application_io_natives();
 
 #endif

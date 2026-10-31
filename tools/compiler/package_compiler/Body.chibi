@@ -704,7 +704,8 @@ Expression :: (kind: int) -> bool {
            kind == syntax.Identifier || kind == syntax.MemberExpression || kind == syntax.IndexExpression ||
            kind == syntax.StructExpression || kind == syntax.ArrayExpression || kind == syntax.MapExpression ||
            kind == syntax.CallExpression || kind == syntax.UnaryExpression || kind == syntax.BinaryExpression ||
-           kind == syntax.IsExpression || kind == syntax.AddressExpression || kind == syntax.DereferenceExpression;
+           kind == syntax.IsExpression || kind == syntax.AddressExpression || kind == syntax.DereferenceExpression ||
+           kind == syntax.ForceUnwrapExpression || kind == syntax.OptionalMemberExpression;
 }
 // The occurrence of the symbol the node `declared` declares, or `undeclared`
 // for one the source declares nowhere.
@@ -3702,6 +3703,15 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                         "Inline functions may only be passed to a callable parameter"));
         } else if (kind == syntax.FunctionDeclaration || kind == syntax.LambdaExpression) {
             step = ParameterStep(params, callable, item, ops, target, at, node);
+        } else if ((kind == syntax.ForceUnwrapExpression || kind == syntax.OptionalMemberExpression) && item.phase == 0) {
+            stepped = false;
+            next.append(Visit(Field(forest, item.node, syntax.FieldOperand)));
+            next.append(Resume(item.node, 1, 0, 0));
+        } else if (kind == syntax.ForceUnwrapExpression) {
+            step = ForceUnwrapStep(forest, document, types, values[value_top - 1], item.node, ops, target, at, node);
+        } else if (kind == syntax.OptionalMemberExpression) {
+            step = OptionalMemberStep(forest, text, document, types, members, values[value_top - 1], item.node, ops, target,
+                                      at, node);
         } else if (kind == syntax.IsExpression && item.phase == 0) {
             stepped = false;
             next.append(Visit(Field(forest, item.node, syntax.FieldValue)));

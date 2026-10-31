@@ -611,6 +611,26 @@ TEST_CASE(compiler_runs_cost_explanation_regressions)
     return true;
 }
 
+/* A package that declares `foreign import`, or imports one that does, is native
+ * only: the VM cannot prepare it, so the runner reports it as skipped. */
+TEST_CASE(compiler_test_skips_native_only_packages)
+{
+    const char *run[] = { compiler,
+                          "--project-root",
+                          CHIBI_SOURCE_ROOT "/test/compiler/samples/native",
+                          "--test",
+                          NULL };
+    REQUIRE(cli_run(run, root, log_path) == 0);
+    REQUIRE(file_is(
+        "output.log",
+        "SKIP foreign_declared/facts (native only: foreign import)\n"
+        "SKIP foreign_library/facts (native only: foreign import)\n"
+        "PASS plain_package/facts.Calls\n"
+        "1 tests, 0 failed, 2 skipped\n"
+    ));
+    return true;
+}
+
 TEST_CASE(compiler_test_needs_the_core_collection)
 {
     const char *directories[] = { "sdk", "sdk/bin" };
@@ -682,12 +702,14 @@ TEST_CASE(native_build_forwards_driver_arguments)
         sizeof expected,
         "--root\n%s/share/chibi/tools/native_aot\n"
         "--source\n%s/share/chibi/tools/native_aot/Driver.chibi\n"
+        "--collection\nnative_aot=%s/share/chibi/tools/native_aot/driver\n"
         "--core\n%s/share/chibi/core\n--compiler\n%s/share/chibi/compiler\n"
         "--compiler-core\n%s/share/chibi/"
         "core\n--entry\nNative\n--timeout-ms\n900000\n--\n"
         "%s/bin/../libexec/chibi/chibi-compiler-host\n%s/share/chibi/"
         "compiler\n%s/share/chibi/core\n"
         "%s\n%s\n0\nlines\narm64-apple-darwin\n",
+        root,
         root,
         root,
         root,
@@ -1098,9 +1120,12 @@ static size_t watch_output_size()
     return length;
 }
 
+/* A watched program compiles before it prints, and again after each edit it
+ * picks up: 8 s for a small one on a workstation, longer on a loaded CI runner,
+ * so its output gets the bound cli_run gives a first compile. */
 static bool watch_output(chibi_process *process, size_t after, const char *expected)
 {
-    double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
+    double deadline = chibi_process_now() + 120;
     do {
         char *text = tool_read(log_path);
         bool found = text && strlen(text) >= after && strstr(text + after, expected);
@@ -1899,6 +1924,7 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(compiler_test_reports_each_test);
     RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
     RUN_TEST_CASE(compiler_runs_cost_explanation_regressions);
+    RUN_TEST_CASE(compiler_test_skips_native_only_packages);
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
     RUN_TEST_CASE(native_build_forwards_driver_arguments);
     RUN_TEST_CASE(run_dispatches_standalone_programs);

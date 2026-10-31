@@ -1,0 +1,23 @@
+package facts
+
+Point :: struct {
+    x: int;
+    y: int;
+}
+
+Find :: (found: bool) -> Point? {
+    if (found) {
+        return {x: 4, y: 5};
+    }
+    return nil;
+}
+
+Main :: () -> int {
+    p: Point? = {x: 4, y: 5};
+    total := p!.x * 10 + p!.y;
+    return total + Find(true)!.x - 4;
+}
+
+Missing :: () -> int {
+    return Find(false)!.x;
+}

@@ -17,24 +17,11 @@ pixel, renderer, backend and authored-workflow assertions until a focused test
 covers their contract. A short unit result does not satisfy unrelated integration
 requirements or clear a PR hold. The broad suites below still need migration.
 
-Compiler fixtures normally prepare independent bytecode and compiled owners.
-The package-compiler sample selectors request only their compiler backend;
-their stage-zero oracle prepares only the bytecode owner it serializes. The
-generated sample closures still run on both target backends, with the existing
-output, diagnostic, debug metadata and execution-counter assertions. Each
-preparation owns a fresh source snapshot and native catalog; preparation is not
-cached across fixture lifetimes. Scalar producer/consumer lifetime tests retain
-their original preparation of both backends.
-
-`language-compiler-fixture` retains two native ownership cases: six single-backend
-preparations and one default dual-backend preparation of a one-function source,
-with eight calls at budget 100. It checks absent unrequested owners, independent
-snapshots, mutation of the original source, concurrent fixtures, detached text
-after teardown, changed source on re-preparation, and both execution backends.
-Native adapter cases additionally check selected and dual-backend authored
-execution, ordered failure reporting and continuation, missing tests, invalid
-worker settings, exact collection selection, custom budgets and replacement-module bodies. They add no
-processes, timing loops, network, rendering or GPU work.
+The scalar lane (`language-package-compiler-chibi-scalar`) runs the authored
+compiler, as `compiler_bootstrap_load` recovers it, through `test/language/scalar_host.c`:
+`CollectScalar` produces rows, and a closure of the consumer packages (`scalar_llvm`,
+`llvm_native`, `native_abi`, the `scalar_cases` corpus) validates and emits them.
+Nothing is prepared with stage zero.
 
 ### Authored emitter regressions
 
@@ -2449,7 +2436,6 @@ the `language-` prefix.
 
 | Selector | Cases / assertions |
 | --- | ---: |
-| `compiler-fixture` | 2 / 201 |
 | `bounded-compiler-chibi` | 1 / 37,599 |
 | `prepared-writer-chibi` | 2 / 1,112 |
 | `package-compiler-chibi` | 3 / 20,139 |

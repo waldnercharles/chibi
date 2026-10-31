@@ -1,0 +1,5 @@
+include(CMakeFindDependencyMacro)
+get_filename_component(_chibi_vendor_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+add_library(Chibi::vendor_sljit STATIC IMPORTED)
+set_target_properties(Chibi::vendor_sljit PROPERTIES IMPORTED_LOCATION "${_chibi_vendor_prefix}/lib/chibi-vendor/libchibi_vendor_sljit.a")
+set_property(TARGET Chibi::vendor_sljit PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${_chibi_vendor_prefix}/include/chibi/vendor/sljit/1")

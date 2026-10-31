@@ -1,0 +1,16 @@
+layout(set = 3, binding = 1) uniform shd_uniforms {
+    vec2 step_uv;
+};
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    vec2 uv = params.uv;
+    // Nine-tap Gaussian, sigma two samples. The caller sets their spacing in
+    // viewport units, so non-square targets and resizing preserve the radius.
+    vec3 c = texture(u_image, uv).rgb * 0.204164;
+    c += (texture(u_image, uv - step_uv).rgb + texture(u_image, uv + step_uv).rgb) * 0.180174;
+    c += (texture(u_image, uv - step_uv * 2.0).rgb + texture(u_image, uv + step_uv * 2.0).rgb) * 0.123832;
+    c += (texture(u_image, uv - step_uv * 3.0).rgb + texture(u_image, uv + step_uv * 3.0).rgb) * 0.066282;
+    c += (texture(u_image, uv - step_uv * 4.0).rgb + texture(u_image, uv + step_uv * 4.0).rgb) * 0.027630;
+    return vec4(c, 1);
+}

@@ -1,0 +1,10 @@
+// The bootstrap contract of the compiler sources in this folder.
+// version: the bootstrap version a compiler built from these sources has.
+//   Raise it when the compiler gains a language feature.
+// minimum: the oldest bootstrap version that can compile these sources.
+//   Raise it, to at most version, only once the sources use such a feature.
+// bootstrap/ holds the artifact that recovers the compiler from a clean
+// checkout. Rewrite it with make bootstrap-artifact when minimum rises or the
+// host's target changes; see docs/self-hosting-build.md.
+version 8
+minimum 6

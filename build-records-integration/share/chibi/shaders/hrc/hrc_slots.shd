@@ -1,0 +1,14 @@
+// Levels store items in parity order, evens first and odds after, so fragments
+// that run together take the same branch: fluence rows order their probes this
+// way, and interval rows order each probe's directions. Slot s of count items
+// holds item hrc_parity_item(s, count); item i sits in slot hrc_parity_slot.
+int hrc_parity_item(int slot, int count)
+{
+	int evens = (count + 1) / 2;
+	return slot < evens ? 2 * slot : 2 * (slot - evens) + 1;
+}
+
+int hrc_parity_slot(int item, int count)
+{
+	return (item & 1) != 0 ? (count + 1) / 2 + item / 2 : item / 2;
+}

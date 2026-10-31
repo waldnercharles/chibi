@@ -1,0 +1,75 @@
+// Adapted from the user-supplied Neon-Swarm shaders. Original shader equations retained.
+// Shared SDF primitives.
+
+float sdf_circle(vec2 p, float r)
+{
+    return length(p) - r;
+}
+
+float sdf_circle_stroked(vec2 p, float r, float t)
+{
+    return abs(length(p) - r) - t * 0.5;
+}
+
+float sdf_box(vec2 p, vec2 half_ext)
+{
+    vec2 d = abs(p) - half_ext;
+    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+}
+
+float sdf_segment(vec2 p, vec2 a, vec2 b)
+{
+    vec2 ba = b - a;
+    vec2 pa = p - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h);
+}
+
+float sdf_capsule(vec2 p, vec2 a, vec2 b, float r)
+{
+    return sdf_segment(p, a, b) - r;
+}
+
+float sdf_line(vec2 p, vec2 a, vec2 b, float t)
+{
+    return sdf_segment(p, a, b) - t * 0.5;
+}
+
+float cross2(vec2 a, vec2 b)
+{
+    return a.x * b.y - a.y * b.x;
+}
+
+float sdf_triangle(vec2 p, vec2 a, vec2 b, vec2 c)
+{
+    vec2 e0 = b - a, e1 = c - b, e2 = a - c;
+    vec2 v0 = p - a, v1 = p - b, v2 = p - c;
+
+    vec2 pq0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+    vec2 pq1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+    vec2 pq2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+
+    float s = sign(cross2(e0, e2));
+    vec2 d0 = vec2(dot(pq0, pq0), s * cross2(v0, e0));
+    vec2 d1 = vec2(dot(pq1, pq1), s * cross2(v1, e1));
+    vec2 d2 = vec2(dot(pq2, pq2), s * cross2(v2, e2));
+
+    vec2 dm = min(min(d0, d1), d2);
+    return -sqrt(dm.x) * sign(dm.y);
+}
+
+float smin(float a, float b, float k)
+{
+    float h = max(k - abs(a - b), 0.0) / k;
+    return min(a, b) - h * h * k * 0.25;
+}
+
+float sdf_square(vec2 p, float r)
+{
+    return max(abs(p.x), abs(p.y)) - r;
+}
+
+float sdf_diamond(vec2 p, float r)
+{
+    return (abs(p.x) + abs(p.y)) - r;
+}

@@ -1,0 +1,310 @@
+package asset_source
+
+import data "game:assets"
+import strings "core:strings"
+
+ColumnValue :: (kinds: int[], parents: int[], keys: string[], texts: string[], signed: i64[],
+                unsigned: u64[], reals: f64[], booleans: bool[]) -> data.Value {
+    count := length(kinds);
+    first: int[] = [];
+    last: int[] = [];
+    next: int[] = [];
+    values: data.Value[] = [];
+    for (kind in kinds) {
+        first.append(-1);
+        last.append(-1);
+        next.append(-1);
+        values.append(data.Value.Null);
+    }
+    at: int = 1;
+    while (at < count) {
+        parent := parents[at];
+        if (last[parent] >= 0) {
+            next[last[parent]] = at;
+        } else {
+            first[parent] = at;
+        }
+        last[parent] = at;
+        at += 1;
+    }
+    at = count - 1;
+    while (at >= 0) {
+        kind := kinds[at];
+        if (kind == 0) {
+            values[at] = data.Value.Null;
+        } else if (kind == 1) {
+            values[at] = data.Value.Bool(booleans[at]);
+        } else if (kind == 2) {
+            values[at] = data.Value.Int(signed[at]);
+        } else if (kind == 3) {
+            values[at] = data.Value.UInt(unsigned[at]);
+        } else if (kind == 4) {
+            values[at] = data.Value.Real(reals[at]);
+        } else if (kind == 5) {
+            values[at] = data.Value.Text(texts[at]);
+        } else {
+            names: string[] = [];
+            children: data.Value[] = [];
+            child := first[at];
+            while (child >= 0) {
+                names.append(keys[child]);
+                children.append(values[child]);
+                child = next[child];
+            }
+            if (kind == 7) {
+                values[at] = data.Value.Array(children);
+            } else {
+                values[at] = data.Value.Object(names, children);
+            }
+        }
+        at -= 1;
+    }
+    return values[0];
+}
+
+ValueSource :: (value: data.Value, alias: string) -> string {
+    kinds: int[] = [];
+    parents: int[] = [];
+    keys: string[] = [];
+    texts: string[] = [];
+    signed: i64[] = [];
+    unsigned: u64[] = [];
+    reals: f64[] = [];
+    booleans: bool[] = [];
+    pending: data.Value[] = [value];
+    owners: int[] = [-1];
+    names: string[] = [""];
+    while (length(pending) > 0) {
+        end := length(pending) - 1;
+        current := pending[end];
+        owner := owners[end];
+        name := names[end];
+        pending.remove_index(end);
+        owners.remove_index(end);
+        names.remove_index(end);
+        index := length(kinds);
+        kinds.append(0);
+        parents.append(owner);
+        keys.append(name);
+        texts.append("");
+        signed.append(0);
+        unsigned.append(0);
+        reals.append(0.0);
+        booleans.append(false);
+        switch current {
+            case .Null:
+                kinds[index] = 0;
+            case .Bool(flag):
+                kinds[index] = 1;
+                booleans[index] = flag;
+            case .Int(number):
+                kinds[index] = 2;
+                signed[index] = number;
+            case .UInt(number):
+                kinds[index] = 3;
+                unsigned[index] = number;
+            case .Real(number):
+                kinds[index] = 4;
+                reals[index] = number;
+            case .Text(text):
+                kinds[index] = 5;
+                texts[index] = text;
+            case .Array(values):
+                kinds[index] = 7;
+                child := length(values) - 1;
+                while (child >= 0) {
+                    pending.append(values[child]);
+                    owners.append(index);
+                    names.append("");
+                    child -= 1;
+                }
+            case .Object(field_keys, values):
+                kinds[index] = 6;
+                child := length(values) - 1;
+                while (child >= 0) {
+                    pending.append(values[child]);
+                    owners.append(index);
+                    names.append(field_keys[child]);
+                    child -= 1;
+                }
+        }
+    }
+    return EmitNamed(kinds, parents, keys, texts, signed, unsigned, reals, booleans, false, alias);
+}
+
+Has :: (value: data.Value, name: string) -> bool {
+    switch value {
+        case .Object(keys, values):
+            for (key in keys) {
+                if (key == name) {
+                    return true;
+                }
+            }
+        case:
+            return false;
+    }
+    return false;
+}
+Equal :: (left: data.Value, right: data.Value) -> bool {
+    return ValueSource(left, "data") == ValueSource(right, "data");
+}
+FunctionReplacement :: (source: string, name: string, value: data.Value) -> Replacement {
+    switch Inspect(source, name) {
+        case .Rejected(start, end, message):
+            assert(false, "Asset source metadata is not directly editable");
+            return {start: 0, end: 0, text: ""};
+        case .Found(bindings, alias):
+            assert(length(bindings) > 0 && bindings[0].kind == 6 && !bindings[0].computed,
+                   "Computed asset edits require literal Parameters and Overrides functions");
+            for (binding in bindings) {
+                assert(!binding.computed, "Metadata object must contain literal constructors");
+            }
+            return {start: bindings[0].start, end: bindings[0].end,
+                    text: RetainComments(source, bindings[0].start, bindings[0].end, ValueSource(value, alias))};
+    }
+}
+
+ComputedChanges :: (source: string, old_value: data.Value, new_value: data.Value) -> u8[] {
+    switch old_value {
+        case .Object(keys, values):
+            index: int = 0;
+            while (index < length(keys)) {
+                key := keys[index];
+                assert(Has(new_value, key), "Removing computed root fields requires an explicit source edit");
+                if (key != "parameters" && key != "overrides" && key != "components") {
+                    assert(Equal(values[index], data.Get(new_value, key)), "Changing computed root fields requires an explicit source edit");
+                }
+                index += 1;
+            }
+        case:
+            assert(false, "Computed asset root must be an object");
+    }
+    switch new_value {
+        case .Object(keys, values):
+            for (key in keys) {
+                assert(Has(old_value, key), "Adding computed root fields requires an explicit source edit");
+            }
+        case:
+            assert(false, "Computed asset root must be an object");
+    }
+    old_parameters := data.Get(old_value, "parameters");
+    new_parameters := data.Get(new_value, "parameters");
+    switch old_parameters {
+        case .Object(keys, values):
+            for (key in keys) {
+                assert(Has(new_parameters, key), "Removing parameters requires an explicit source edit");
+            }
+        case:
+            assert(false, "Parameters must be an object");
+    }
+    switch new_parameters {
+        case .Object(keys, values):
+            for (key in keys) {
+                assert(Has(old_parameters, key), "Adding parameters requires an explicit source edit");
+            }
+        case:
+            assert(false, "Parameters must be an object");
+    }
+    overrides := data.Get(new_value, "overrides");
+    old_components := data.Get(old_value, "components");
+    new_components := data.Get(new_value, "components");
+    switch old_components {
+        case .Object(keys, values):
+            for (key in keys) {
+                assert(Has(new_components, key), "Removing computed components requires an explicit source edit");
+            }
+        case:
+            assert(false, "Components must be objects");
+    }
+    // A native component field is an atomic editor operation, so copy the
+    // complete evaluated field into the explicit overlay, including siblings.
+    changed_components: data.Field[] = [];
+    switch new_components {
+        case .Object(component_keys, component_values):
+            index: int = 0;
+            while (index < length(component_keys)) {
+                component := component_keys[index];
+                assert(Has(old_components, component), "Adding computed components requires an explicit source edit");
+                previous := data.Get(old_components, component);
+                next := component_values[index];
+                if (!Equal(previous, next)) {
+                    switch previous {
+                        case .Object(keys, values):
+                            for (key in keys) {
+                                assert(Has(next, key), "Removing computed fields requires an explicit source edit");
+                            }
+                        case:
+                            assert(false, "Components must be objects");
+                    }
+                    changed_fields: data.Field[] = [];
+                    switch next {
+                        case .Object(field_keys, field_values):
+                            field: int = 0;
+                            while (field < length(field_keys)) {
+                                key := field_keys[field];
+                                assert(Has(previous, key), "Adding computed fields requires an explicit source edit");
+                                if (!Equal(data.Get(previous, key), field_values[field])) {
+                                    changed_fields.append(data.Field.Named(key, field_values[field]));
+                                }
+                                field += 1;
+                            }
+                        case:
+                            assert(false, "Components must be objects");
+                    }
+                    changed_components.append(data.Field.Named(component, data.Object(changed_fields)));
+                }
+                index += 1;
+            }
+        case:
+            assert(false, "Components must be objects");
+    }
+    overrides = data.Merge(overrides, data.Object(changed_components));
+    changes: Replacement[] = [];
+    if (!Equal(old_parameters, new_parameters)) {
+        switch Inspect(source, "Parameters") {
+            case .Rejected(start, end, message):
+                assert(false, "Asset source metadata is not directly editable");
+            case .Found(bindings, alias):
+                for (binding in bindings) {
+                    if (binding.parent == 0) {
+                        assert(Has(new_parameters, binding.key), "Removing parameters requires an explicit source edit");
+                        old := data.Get(old_parameters, binding.key);
+                        next := data.Get(new_parameters, binding.key);
+                        if (!Equal(old, next)) {
+                            assert(!binding.computed && binding.literal_start >= 0, "Parameters must use scalar literal constructors");
+                            // JSON transport keeps integer magnitude but does not
+                            // distinguish small signed/unsigned constructor types.
+                            constructor := ValueSource(next, "data");
+                            if (binding.kind == 2) {
+                                constructor = Scalar(2, "", data.AsInt(next), 0, 0.0, false);
+                            }
+                            if (binding.kind == 3) {
+                                constructor = Scalar(3, "", 0, data.AsUInt(next), 0.0, false);
+                            }
+                            bytes := strings.Bytes(constructor);
+                            open: int = 0;
+                            while (open < length(bytes) && bytes[open] != 40) {
+                                open += 1;
+                            }
+                            assert(open < length(bytes), "Parameters require scalar values");
+                            // Kind equality follows from the complete constructor prefix.
+                            old_constructor := ValueSource(old, "data");
+                            if (binding.kind == 2) {
+                                old_constructor = Scalar(2, "", data.AsInt(old), 0, 0.0, false);
+                            }
+                            if (binding.kind == 3) {
+                                old_constructor = Scalar(3, "", 0, data.AsUInt(old), 0.0, false);
+                            }
+                            assert(strings.Slice(old_constructor, 0, open) == strings.Slice(constructor, 0, open), "Parameter edits must preserve scalar type");
+                            changes.append({start: binding.literal_start, end: binding.literal_end,
+                                            text: RetainComments(source, binding.literal_start, binding.literal_end, strings.Slice(constructor, open + 1, length(bytes) - open - 2))});
+                        }
+                    }
+                }
+        }
+    }
+    if (!Equal(data.Get(old_value, "overrides"), overrides)) {
+        changes.append(FunctionReplacement(source, "Overrides", overrides));
+    }
+    return Apply(source, changes);
+}

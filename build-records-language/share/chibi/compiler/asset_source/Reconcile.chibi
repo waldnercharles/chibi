@@ -1,0 +1,317 @@
+package asset_source
+
+import strings "core:strings"
+
+TreePath :: (parents: int[], keys: string[], index: int) -> string {
+    path := "";
+    current := index;
+    depth: int = 0;
+    while (current > 0) {
+        parent := parents[current];
+        ordinal: int = 0;
+        prior := current - 1;
+        while (prior > parent) {
+            if (parents[prior] == parent) {
+                ordinal += 1;
+            }
+            prior -= 1;
+        }
+        part := format_text("{}:{}", ordinal, keys[current]);
+        path = format_text("{}:{}{}", strings.ByteLength(part), part, path);
+        current = parent;
+        depth += 1;
+        assert(depth <= MaxDepth, "Asset tree exceeds depth quota");
+    }
+    return path;
+}
+BindingPath :: (bindings: Binding[], index: int) -> string {
+    path := "";
+    current := index;
+    while (current > 0) {
+        parent := bindings[current].parent;
+        ordinal: int = 0;
+        prior := current - 1;
+        while (prior > parent) {
+            if (bindings[prior].parent == parent) {
+                ordinal += 1;
+            }
+            prior -= 1;
+        }
+        part := format_text("{}:{}", ordinal, bindings[current].key);
+        path = format_text("{}:{}{}", strings.ByteLength(part), part, path);
+        current = parent;
+    }
+    return path;
+}
+Replacement :: struct {
+    start: int;
+    end: int;
+    text: string;
+}
+Apply :: (source: string, changes: Replacement[]) -> u8[] {
+    parts: string[] = [];
+    cursor: int = 0;
+    // Source order, independent of object field declaration order.
+    used: bool[] = [];
+    for (change in changes) {
+        used.append(false);
+    }
+    count: int = 0;
+    while (count < length(changes)) {
+        next: int = -1;
+        index: int = 0;
+        while (index < length(changes)) {
+            if (!used[index] && (next < 0 || changes[index].start < changes[next].start)) {
+                next = index;
+            }
+            index += 1;
+        }
+        change := changes[next];
+        assert(change.start >= cursor && change.end >= change.start && change.end <= strings.ByteLength(source), "Overlapping source changes");
+        parts.append(strings.Slice(source, cursor, change.start - cursor));
+        parts.append(change.text);
+        cursor = change.end;
+        used[next] = true;
+        count += 1;
+    }
+    parts.append(strings.Slice(source, cursor, strings.ByteLength(source) - cursor));
+    return SourceBytes(strings.Join(parts, ""));
+}
+
+// Recover an integral magnitude using exact powers of two. No conversion of a
+// rounded double to int64/uint64 (or uint64 back to double) crosses the bounds.
+IntegralReal :: (real: f64) -> u64[] {
+    if (real != real || real <= -18446744073709551616.0 || real >= 18446744073709551616.0) {
+        return [];
+    }
+    if (real == 0.0 && format_text("{:.17g}", real) == "-0") {
+        return [];
+    }
+    remaining := real;
+    if (remaining < 0.0) {
+        remaining = 0.0 - remaining;
+    }
+    power: f64 = 9223372036854775808.0;
+    bit: u64 = 9223372036854775808;
+    magnitude: u64 = 0;
+    while (bit != 0) {
+        if (remaining >= power) {
+            remaining -= power;
+            magnitude = magnitude | bit;
+        }
+        power *= 0.5;
+        bit = bit >> u64(1);
+    }
+    if (remaining != 0.0) {
+        return [];
+    }
+    return [magnitude];
+}
+
+ReconcileValues :: (native_projection: bool, source: string,
+                    old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
+                    old_signed: i64[], old_unsigned: u64[], old_reals: f64[], old_booleans: bool[],
+                    new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
+                    new_signed: i64[], new_unsigned: u64[], new_reals: f64[], new_booleans: bool[]) -> u8[] {
+    // Native reflected real fields may already use an integer constructor.
+    // Preserve that spelling for exact integral edits and unchanged siblings.
+    if (native_projection && length(old_kinds) == length(new_kinds)) {
+        index: int = 0;
+        while (index < length(new_kinds)) {
+            if (old_parents[index] == new_parents[index] && old_keys[index] == new_keys[index] &&
+                (old_kinds[index] == 2 || old_kinds[index] == 3) && new_kinds[index] == 4) {
+                real := new_reals[index];
+                magnitude := IntegralReal(real);
+                if (length(magnitude) > 0) {
+                    value := magnitude[0];
+                    preserved: bool = false;
+                    if (old_kinds[index] == 2 && real >= -9223372036854775808.0 && real < 9223372036854775808.0) {
+                        signed: i64 = -9223372036854775807;
+                        if (value == 9223372036854775808) {
+                            signed -= 1;
+                        } else {
+                            signed = i64(value);
+                            if (real < 0.0) {
+                                signed = -signed;
+                            }
+                        }
+                        new_signed[index] = signed;
+                        preserved = true;
+                    }
+                    if (old_kinds[index] == 3 && real >= 0.0) {
+                        new_unsigned[index] = value;
+                        preserved = true;
+                    }
+                    if (preserved) {
+                        new_kinds[index] = old_kinds[index];
+                        new_reals[index] = 0.0;
+                    }
+                }
+            }
+            index += 1;
+        }
+    }
+    old_canonical := Emit(old_kinds, old_parents, old_keys, old_texts, old_signed, old_unsigned, old_reals, old_booleans, true);
+    // Model serializers omit authoring-only metadata. Its absence is not a
+    // request to delete declared parameters/overrides; explicit edits include
+    // those keys, including an empty Overrides object for Reset.
+    for (metadata in ["parameters", "overrides"]) {
+        old_index: int = -1;
+        present: bool = false;
+        at: int = 1;
+        while (at < length(old_kinds)) {
+            if (old_parents[at] == 0 && old_keys[at] == metadata) {
+                old_index = at;
+            }
+            at += 1;
+        }
+        at = 1;
+        while (at < length(new_kinds)) {
+            if (new_parents[at] == 0 && new_keys[at] == metadata) {
+                present = true;
+            }
+            at += 1;
+        }
+        if (old_index >= 0 && !present) {
+            function_name := "Parameters";
+            if (metadata == "overrides") {
+                function_name = "Overrides";
+            }
+            declared: bool = false;
+            switch Inspect(source, function_name) {
+                case .Rejected(start, end, message):
+                    declared = true;
+                case .Found(bindings, alias):
+                    declared = length(bindings) > 0;
+            }
+            if (!declared) {
+                continue;
+            }
+            first := length(new_kinds);
+            at = old_index;
+            while (at < length(old_kinds) && (at == old_index || old_parents[at] >= old_index)) {
+                parent: int = 0;
+                if (at != old_index) {
+                    parent = first + old_parents[at] - old_index;
+                }
+                new_kinds.append(old_kinds[at]);
+                new_parents.append(parent);
+                new_keys.append(old_keys[at]);
+                new_texts.append(old_texts[at]);
+                new_signed.append(old_signed[at]);
+                new_unsigned.append(old_unsigned[at]);
+                new_reals.append(old_reals[at]);
+                new_booleans.append(old_booleans[at]);
+                at += 1;
+            }
+        }
+    }
+    new_canonical := Emit(new_kinds, new_parents, new_keys, new_texts, new_signed, new_unsigned, new_reals, new_booleans, true);
+    if (old_canonical == new_canonical) {
+        return SourceBytes(source);
+    }
+    if (source == old_canonical) {
+        return SourceBytes(new_canonical);
+    }
+    old_value := ColumnValue(old_kinds, old_parents, old_keys, old_texts, old_signed, old_unsigned, old_reals, old_booleans);
+    if (Has(old_value, "parameters") && Has(old_value, "overrides") && Has(old_value, "components")) {
+        new_value := ColumnValue(new_kinds, new_parents, new_keys, new_texts, new_signed, new_unsigned, new_reals, new_booleans);
+        return ComputedChanges(source, old_value, new_value);
+    }
+    switch Inspect(source, "Build") {
+        case .Rejected(start, end, message):
+            assert(false, "Asset source metadata is not directly editable");
+            return [];
+        case .Found(bindings, alias):
+            shape_changed := length(old_kinds) != length(new_kinds);
+            if (!shape_changed) {
+                index: int = 0;
+                while (index < length(new_kinds)) {
+                    if (old_parents[index] != new_parents[index] || old_keys[index] != new_keys[index] || old_kinds[index] != new_kinds[index]) {
+                        shape_changed = true;
+                    }
+                    index += 1;
+                }
+            }
+            if (shape_changed) {
+                assert(length(bindings) > 0, "Asset Build requires an editable constructor expression");
+                for (binding in bindings) {
+                    assert(!binding.computed, "Structural edits to computed values require an explicit source edit");
+                }
+                next := ColumnValue(new_kinds, new_parents, new_keys, new_texts, new_signed, new_unsigned, new_reals, new_booleans);
+                replacement := RetainComments(source, bindings[0].start, bindings[0].end, ValueSource(next, alias));
+                return Apply(source, [{start: bindings[0].start, end: bindings[0].end, text: replacement}]);
+            }
+            changes: Replacement[] = [];
+            index: int = 0;
+            while (index < length(new_kinds)) {
+                assert(old_parents[index] == new_parents[index] && old_keys[index] == new_keys[index] && old_kinds[index] == new_kinds[index],
+                       "Structural edits require canonical source or an explicit source edit");
+                kind := new_kinds[index];
+                changed := old_texts[index] != new_texts[index] || old_signed[index] != new_signed[index] ||
+                           old_unsigned[index] != new_unsigned[index] || old_reals[index] != new_reals[index] || old_booleans[index] != new_booleans[index] ||
+                           (kind == 4 && format_text("{:.17g}", old_reals[index]) != format_text("{:.17g}", new_reals[index]));
+                if (changed) {
+                    path := TreePath(new_parents, new_keys, index);
+                    found: int = -1;
+                    binding_index: int = 0;
+                    while (binding_index < length(bindings)) {
+                        if (BindingPath(bindings, binding_index) == path) {
+                            found = binding_index;
+                            break;
+                        }
+                        binding_index += 1;
+                    }
+                    assert(found >= 0 && !bindings[found].computed && bindings[found].literal_start >= 0,
+                           "Computed values require an explicit Overrides source edit");
+                    value := Scalar(kind, new_texts[index], new_signed[index], new_unsigned[index], new_reals[index], new_booleans[index]);
+                    open: int = 0;
+                    bytes := strings.Bytes(value);
+                    while (open < length(bytes) && bytes[open] != 40) {
+                        open += 1;
+                    }
+                    literal := strings.Slice(value, open + 1, length(bytes) - open - 2);
+                    changes.append({start: bindings[found].literal_start, end: bindings[found].literal_end, text: RetainComments(source, bindings[found].literal_start, bindings[found].literal_end, literal)});
+                }
+                index += 1;
+            }
+            return Apply(source, changes);
+    }
+}
+
+pub Reconcile :: (source: string,
+                  old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
+                  old_signed: i64[], old_unsigned: u64[], old_reals: f64[], old_booleans: bool[],
+                  new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
+                  new_signed: i64[], new_unsigned: u64[], new_reals: f64[], new_booleans: bool[]) -> u8[] {
+    return ReconcileValues(false, source, old_kinds, old_parents, old_keys, old_texts,
+                           old_signed, old_unsigned, old_reals, old_booleans, new_kinds, new_parents,
+                           new_keys, new_texts, new_signed, new_unsigned, new_reals, new_booleans);
+}
+
+// Only the native prototype adapter requests reflected numeric spelling.
+pub ReconcileNative :: (source: string,
+                        old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
+                        old_signed: i64[], old_unsigned: u64[], old_reals: f64[], old_booleans: bool[],
+                        new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
+                        new_signed: i64[], new_unsigned: u64[], new_reals: f64[], new_booleans: bool[]) -> u8[] {
+    return ReconcileValues(true, source, old_kinds, old_parents, old_keys, old_texts,
+                           old_signed, old_unsigned, old_reals, old_booleans, new_kinds, new_parents,
+                           new_keys, new_texts, new_signed, new_unsigned, new_reals, new_booleans);
+}
+
+// This is an explicit inherited-member removal operation, never the fallback
+// for generic reconciliation. Only Build's constructor expression changes.
+pub Materialize :: (source: string, kinds: int[], parents: int[], keys: string[], texts: string[],
+                    signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[]) -> u8[] {
+    switch Inspect(source, "Build") {
+        case .Rejected(start, end, message):
+            assert(false, "Materialization requires one direct Build return expression");
+            return [];
+        case .Found(bindings, alias):
+            assert(length(bindings) > 0 && alias != "", "Materialization requires an ordinary asset Build expression");
+            constructor := EmitNamed(kinds, parents, keys, texts, signed, unsigned, reals, booleans, false, alias);
+            expression := RetainComments(source, bindings[0].start, bindings[0].end, constructor);
+            return Apply(source, [{start: bindings[0].start, end: bindings[0].end, text: expression}]);
+    }
+}

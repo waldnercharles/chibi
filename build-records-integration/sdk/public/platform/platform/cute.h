@@ -1,0 +1,72 @@
+#ifndef CHIBI_PLATFORM_CUTE_H
+#define CHIBI_PLATFORM_CUTE_H
+
+/* Cute exports ckit short array macros. Isolate them from project arrays: the
+ * two allocators have different headers. Use project arrays in application code.
+ * Framework declarations and inline definitions are still the actual headers. */
+#pragma push_macro("acap")
+#undef acap
+#pragma push_macro("aclear")
+#undef aclear
+#pragma push_macro("acopy")
+#undef acopy
+#pragma push_macro("acount")
+#undef acount
+#pragma push_macro("adel")
+#undef adel
+#pragma push_macro("aend")
+#undef aend
+#pragma push_macro("afit")
+#undef afit
+#pragma push_macro("afree")
+#undef afree
+#pragma push_macro("agrow")
+#undef agrow
+#pragma push_macro("ahash")
+#undef ahash
+#pragma push_macro("alast")
+#undef alast
+#pragma push_macro("alen")
+#undef alen
+#pragma push_macro("apop")
+#undef apop
+#pragma push_macro("apush")
+#undef apush
+#pragma push_macro("arev")
+#undef arev
+#pragma push_macro("aset")
+#undef aset
+#pragma push_macro("asetcap")
+#undef asetcap
+#pragma push_macro("asetlen")
+#undef asetlen
+#pragma push_macro("asize")
+#undef asize
+#pragma push_macro("astatic")
+#undef astatic
+#pragma push_macro("dyna_grow")
+#undef dyna_grow
+#include <cute.h>
+#pragma pop_macro("dyna_grow")
+#pragma pop_macro("astatic")
+#pragma pop_macro("asize")
+#pragma pop_macro("asetlen")
+#pragma pop_macro("asetcap")
+#pragma pop_macro("aset")
+#pragma pop_macro("arev")
+#pragma pop_macro("apush")
+#pragma pop_macro("apop")
+#pragma pop_macro("alen")
+#pragma pop_macro("alast")
+#pragma pop_macro("ahash")
+#pragma pop_macro("agrow")
+#pragma pop_macro("afree")
+#pragma pop_macro("afit")
+#pragma pop_macro("aend")
+#pragma pop_macro("adel")
+#pragma pop_macro("acount")
+#pragma pop_macro("acopy")
+#pragma pop_macro("aclear")
+#pragma pop_macro("acap")
+
+#endif

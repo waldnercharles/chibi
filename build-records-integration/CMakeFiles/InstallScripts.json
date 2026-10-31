@@ -1,0 +1,12 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/build-records-integration/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/build-records-integration/sdk/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/build-records-integration/sdk/language/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/build-records-integration/tools/chibi_ctl/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/build-records-integration/test/language/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/build-records-integration/test/tools/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

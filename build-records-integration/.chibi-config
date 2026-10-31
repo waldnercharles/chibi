@@ -1,0 +1,13 @@
+native
+/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi
+-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang
+-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++
+-DCMAKE_BUILD_TYPE=Release
+-DCHIBI_ENABLE_SANITIZERS=OFF
+-DCHIBI_ENABLE_WARNINGS=ON
+-DCHIBI_ENABLE_CCACHE=ON
+-DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF
+-DCHIBI_ASSET_GENERATOR_HOSTS=
+-DCMAKE_OSX_SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk
+3015419801 6032 /Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/tools/configure.sh
+1066402951 22159 build-records-integration/CMakeCache.txt

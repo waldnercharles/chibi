@@ -1,0 +1,43 @@
+// Adapted from the user-supplied Neon-Swarm shaders. Original shader equations retained.
+// Shared std430 layout; must match render_material_entity in material_raster.h.
+
+#define SHAPE_CIRCLE   0
+#define SHAPE_BOX      1
+#define SHAPE_CAPSULE  2
+#define SHAPE_LINE     3
+#define SHAPE_TRI      4
+#define SHAPE_POLY     5
+#define SHAPE_DIAMOND    6
+#define SHAPE_POLY_FILL  7
+#define SHAPE_SPRITE     8
+
+struct Entity {
+    vec4 inv_rot;       // inv_xx, inv_xy, inv_yx, inv_yy
+    vec2 pos;           // pos_x, pos_y
+    vec2 extent;       // conservative world-space half extents
+    uint shape_type;
+    float radius;
+    float thickness;
+    float relief;       // world units above the plane
+    float aa;
+    uint point_count;
+    uint metaball_group;
+    float metaball_blend;
+    float border_thickness;
+    float reserved0; float reserved1; float reserved2;
+    vec4 points_01;     // points[0..3]
+    vec4 points_23;     // points[4..7]
+    vec4 points_45;     // points[8..11]
+    vec4 points_67;     // points[12..15]
+    vec4 scene;
+    vec4 emission;
+    vec4 absorption;
+    vec4 albedo;
+    vec4 border_scene;
+    vec4 border_emission;
+    vec4 border_absorption;
+    vec4 border_albedo;
+    vec3 simulation_time; // .x = time, .y = parameter block, .z = emission scale
+    float tile_group;   // nonzero: adds coverage with neighbors sharing it
+    vec4 material_frame; // laid-out position (Y up), cos, sin; zero cos and sin = none
+};

@@ -1,0 +1,20 @@
+// Depth q3 stores brought light in x, its signed shading change in w, and
+// the sky share in z. A shared exponent in y keeps bright sums inside RGBA16F
+// without clamping their ratio or widening the four-target browser budget.
+// Fetch exact texels and unpack before filtering or comparing light; pack
+// only when writing a target. Ordinary sums need no scaling.
+vec4 depth_pack_shading(vec4 shade)
+{
+    float largest = max(max(abs(shade.x), abs(shade.w)), 1.0);
+    float exponent = max(ceil(log2(largest)) - 14.0, 0.0);
+    shade.xw *= exp2(-exponent);
+    shade.y = exponent;
+    return shade;
+}
+
+vec4 depth_unpack_shading(vec4 shade)
+{
+    shade.xw *= exp2(shade.y);
+    shade.y = 0.0;
+    return shade;
+}

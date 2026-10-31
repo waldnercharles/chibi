@@ -1,0 +1,112 @@
+// Where the global illumination probes are and the light they hold, for the
+// lit pass and the probes' own passes. The includer declares the probes'
+// atlas, scene_gi, and their grid, scene_gi_grid:
+// [0] the first probe's world position, and the spacing between probes;
+// [1] the probes along each axis, and 1 while the atlas holds their light;
+// [2] the atlas's probes per row, the texel row where the depth tiles start,
+//     the distance a probe's depths are measured in, and nothing.
+// Each probe has a tile of irradiance and a tile of the mean distance and
+// squared distance its rays reached, each an octahedral map of directions
+// with a border that repeats its far edges for filtering across them.
+const int GI_IRRADIANCE_TEXELS = 8;
+const int GI_DISTANCE_TEXELS = 16;
+
+float gi_sign(float x)
+{
+    return x >= 0.0 ? 1.0 : -1.0;
+}
+
+// A direction as a point of the octahedron unfolded onto [-1, 1] squared,
+// with +z at its middle and -z at its corners.
+vec2 gi_octahedron(vec3 d)
+{
+    d /= abs(d.x) + abs(d.y) + abs(d.z);
+    if (d.z >= 0.0) return d.xy;
+    return (1.0 - abs(d.yx)) * vec2(gi_sign(d.x), gi_sign(d.y));
+}
+
+vec3 gi_direction(vec2 e)
+{
+    vec3 d = vec3(e, 1.0 - abs(e.x) - abs(e.y));
+    if (d.z < 0.0) d.xy = (1.0 - abs(d.yx)) * vec2(gi_sign(d.x), gi_sign(d.y));
+    return normalize(d);
+}
+
+ivec3 gi_counts()
+{
+    return ivec3(scene_gi_grid[1].xyz);
+}
+
+vec3 gi_probe_position(ivec3 probe)
+{
+    return scene_gi_grid[0].xyz + vec3(probe) * scene_gi_grid[0].w;
+}
+
+int gi_probe_index(ivec3 probe)
+{
+    ivec3 counts = gi_counts();
+    return probe.x + counts.x * (probe.y + counts.y * probe.z);
+}
+
+// The atlas texel at the corner of a probe's tile, of the given side, in the
+// tiles starting at texel row top.
+vec2 gi_tile(int probe, int texels, float top)
+{
+    int row = int(scene_gi_grid[2].x);
+    return vec2(float(probe % row * texels), top + float(probe / row * texels));
+}
+
+// A probe's tile filtered in direction d.
+vec4 gi_lookup(int probe, vec3 d, int texels, float top)
+{
+    vec2 inside = (gi_octahedron(d) * 0.5 + 0.5) * float(texels - 2);
+    vec2 texel = gi_tile(probe, texels, top) + 1.0 + inside;
+    return textureLod(scene_gi, texel / vec2(textureSize(scene_gi, 0)), 0.0);
+}
+
+// The probes' light reaching a surface at p facing n, seen from toward_eye,
+// as irradiance over pi: what a white surface gives back, and the weight
+// behind it, zero where none of them holds light. Each of the eight probes
+// around p counts by its nearness, by whether it lies in front of the
+// surface, and by the chance, from the distances it saw, that it sees p.
+vec4 gi_irradiance(vec3 p, vec3 n, vec3 toward_eye)
+{
+    float spacing = scene_gi_grid[0].w;
+    ivec3 counts = gi_counts();
+    // Off the surface, so that it doesn't hide itself from the probes.
+    vec3 biased = p + (n * 0.2 + toward_eye * 0.8) * (0.225 * spacing);
+    vec3 grid = (biased - scene_gi_grid[0].xyz) / spacing;
+    ivec3 base = clamp(ivec3(floor(grid)), ivec3(0), counts - 2);
+    vec3 alpha = clamp(grid - vec3(base), 0.0, 1.0);
+    float depth_top = scene_gi_grid[2].y;
+    vec4 sum = vec4(0.0);
+    for (int i = 0; i < 8; i++) {
+        ivec3 corner = ivec3(i & 1, (i >> 1) & 1, i >> 2);
+        ivec3 probe = base + corner;
+        int index = gi_probe_index(probe);
+        vec3 position = gi_probe_position(probe);
+        vec3 toward_probe = normalize(position - p);
+        float facing = (dot(toward_probe, n) + 1.0) * 0.5;
+        float weight = facing * facing + 0.2;
+        vec3 away = biased - position;
+        float distance = length(away);
+        vec2 moments = gi_lookup(index, away / max(distance, 1e-6), GI_DISTANCE_TEXELS, depth_top).rg;
+        distance /= scene_gi_grid[2].z;
+        if (distance > moments.x) {
+            float variance = abs(moments.y - moments.x * moments.x);
+            float beyond = distance - moments.x;
+            float chance = variance / (variance + beyond * beyond);
+            weight *= max(0.05, chance * chance * chance);
+        }
+        // Crushes small weights further, so that a probe that barely sees p
+        // leaks none of its light into it.
+        weight = max(weight, 0.000001);
+        if (weight < 0.2) weight *= weight * weight / 0.04;
+        vec3 trilinear = max(mix(1.0 - alpha, alpha, vec3(corner)), vec3(0.001));
+        vec4 light = gi_lookup(index, n, GI_IRRADIANCE_TEXELS, 0.0);
+        // A probe inside a solid holds no light; its alpha says so.
+        weight *= trilinear.x * trilinear.y * trilinear.z * light.a;
+        sum += vec4(light.rgb * weight, weight);
+    }
+    return sum.w > 0.0 ? vec4(sum.rgb / sum.w, sum.w) : vec4(0.0);
+}

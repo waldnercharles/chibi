@@ -1,0 +1,27 @@
+// From Neon-Swarm shaders/hrc_common.shd.
+// Shared HRC cascade utilities: interval type and probe helpers. The RGB
+// transport's light is a color. The luminance transport (HRC_SCALAR) carries
+// brightness alone and pairs each direction with its opposite: lane x holds
+// quadrant u_rotate's value, lane y quadrant u_rotate + 2's.
+
+#ifdef HRC_SCALAR
+#define HRC_LIGHT vec2
+#define HRC_DEPTH vec2
+#else
+#define HRC_LIGHT vec3
+#define HRC_DEPTH float
+#endif
+
+struct Interval
+{
+	HRC_LIGHT rad;
+	HRC_DEPTH tau;
+};
+
+int probe_count(int world_w, int n)
+{
+	int step = 1 << n;
+	return (world_w + step - 1) / step;
+}
+
+const vec3 HRC_LUMA = vec3(0.2126, 0.7152, 0.0722);

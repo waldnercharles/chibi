@@ -1,0 +1,901 @@
+package package_compiler
+
+import strings "core:strings"
+
+// Numeric literals of floating types: the binary64 nearest the literal, and
+// the binary32 nearest that, as stage zero reads them where long double is
+// double. The reading
+// ports the slow path of Odin's core:strconv (decimal_to_float_bits over
+// core:strconv/decimal, itself Go's strconv): the literal becomes a
+// multiple-precision decimal that shifts by powers of two until its integer
+// part is the rounded mantissa. It needs only integer arithmetic.
+
+// A multiple-precision decimal: digits[0, count), most significant first,
+// each 0 to 9, with the decimal point after `point` of them; `trunc` when
+// nonzero digits beyond the last were dropped.
+Decimal :: union {
+    Value(digits: int[], count: int, point: int, trunc: bool) | Malformed
+}
+// A literal's bit patterns, or OutOfRange for one that must be finite but is
+// not: overflow, and underflow to zero or a subnormal.
+// `float_fits` is false when the value exceeds the largest binary32.
+pub FloatBits :: union {
+    Finite(double_bits: u64, float_fits: bool, float_bits: u64) | OutOfRange
+}
+
+// Odin keeps 384 digits; Go 800. Dropped digits only set `trunc`.
+DecimalDigits: int : 800;
+// The largest shift whose digit arithmetic stays within int.
+MaxShift: int : 27;
+// binary64: 52 mantissa bits, 11 exponent bits, bias -1023.
+MantissaBits: int : 52;
+ExponentLimit: int : 2047;
+Bias: int : -1023;
+
+// The decimal without trailing zeros, as Odin's trim leaves it.
+Trimmed :: (digits: int[], count: int, point: int, trunc: bool) -> Decimal {
+    kept := count;
+    while (kept > 0 && digits[kept - 1] == 0) {
+        kept -= 1;
+    }
+    at := point;
+    if (kept == 0) {
+        at = 0;
+    }
+    return Decimal.Value(digits, kept, at, trunc);
+}
+
+// The decimal spelling of a number literal: digits, an optional fraction and
+// an optional exponent, as Odin's decimal.set reads them, except that the
+// point counts every significant digit read, those beyond the stored ones
+// too.
+DecimalOf :: (spelling: string) -> Decimal {
+    size := strings.ByteLength(spelling);
+    digits: int[] = [];
+    count: int = 0;
+    read: int = 0;
+    point: int = 0;
+    trunc := false;
+    dot := false;
+    seen := false;
+    index: int = 0;
+    while (index < size) {
+        c := strings.ByteAt(spelling, index);
+        if (c == 46) {
+            if (dot) {
+                return Decimal.Malformed;
+            }
+            dot = true;
+            point = read;
+        } else if (c >= 48 && c <= 57) {
+            seen = true;
+            if (c == 48 && read == 0) {
+                point -= 1;
+            } else {
+                read += 1;
+                if (count < DecimalDigits) {
+                    digits.append(c - 48);
+                    count += 1;
+                } else if (c != 48) {
+                    trunc = true;
+                }
+            }
+        } else {
+            break;
+        }
+        index += 1;
+    }
+    if (!seen) {
+        return Decimal.Malformed;
+    }
+    if (!dot) {
+        point = read;
+    }
+    if (index < size && (strings.ByteAt(spelling, index) == 101 || strings.ByteAt(spelling, index) == 69)) {
+        index += 1;
+        sign: int = 1;
+        if (index < size && strings.ByteAt(spelling, index) == 43) {
+            index += 1;
+        } else if (index < size && strings.ByteAt(spelling, index) == 45) {
+            index += 1;
+            sign = -1;
+        }
+        if (index >= size || strings.ByteAt(spelling, index) < 48 || strings.ByteAt(spelling, index) > 57) {
+            return Decimal.Malformed;
+        }
+        exponent: int = 0;
+        while (index < size && strings.ByteAt(spelling, index) >= 48 && strings.ByteAt(spelling, index) <= 57) {
+            if (exponent < 10000) {
+                exponent = exponent * 10 + strings.ByteAt(spelling, index) - 48;
+            }
+            index += 1;
+        }
+        point += exponent * sign;
+    }
+    if (index != size) {
+        return Decimal.Malformed;
+    }
+    return Decimal.Value(digits, count, point, trunc);
+}
+
+// An integer decimal plus `value`, carrying into new leading digits.
+Added :: (digits: int[], count: int, point: int, trunc: bool, value: int) -> Decimal {
+    // The integer's every digit, the trimmed zeros included.
+    full: int[] = [];
+    index: int = 0;
+    while (index < point) {
+        if (index < count) {
+            full.append(digits[index]);
+        } else {
+            full.append(int(0));
+        }
+        index += 1;
+    }
+    carry := value;
+    index = point - 1;
+    while (carry > 0 && index >= 0) {
+        sum := full[index] + carry;
+        full[index] = sum % 10;
+        carry = sum / 10;
+        index -= 1;
+    }
+    width := point;
+    while (carry > 0) {
+        lead: int[] = [carry % 10];
+        full = extend(lead, full);
+        carry = carry / 10;
+        width += 1;
+    }
+    return Trimmed(full, width, width, trunc);
+}
+
+// The decimal of a hexadecimal integer literal, `0x` and its digits.
+HexDecimalOf :: (spelling: string) -> Decimal {
+    size := strings.ByteLength(spelling);
+    digits: int[] = [];
+    count: int = 0;
+    point: int = 0;
+    trunc := false;
+    index: int = 2;
+    while (index < size) {
+        digit := HexDigit(strings.ByteAt(spelling, index));
+        if (digit < 0) {
+            return Decimal.Malformed;
+        }
+        switch Shifted(digits, count, point, trunc, 4) {
+            case .Value(shifted_digits, shifted_count, shifted_point, shifted_trunc):
+                switch Added(shifted_digits, shifted_count, shifted_point, shifted_trunc, digit) {
+                    case .Value(sum_digits, sum_count, sum_point, sum_trunc):
+                        digits = sum_digits;
+                        count = sum_count;
+                        point = sum_point;
+                        trunc = sum_trunc;
+                    case .Malformed:
+                        return Decimal.Malformed;
+                }
+            case .Malformed:
+                return Decimal.Malformed;
+        }
+        index += 1;
+    }
+    return Decimal.Value(digits, count, point, trunc);
+}
+
+// The decimal times 2^k for 0 < k <= MaxShift. Odin finds the new length
+// from a table of powers of five; computing the carry's digits first gives
+// the same digits.
+ShiftLeft :: (digits: int[], count: int, point: int, trunc: bool, k: int) -> Decimal {
+    // Product digits, least significant first.
+    reversed: int[] = [];
+    n: int = 0;
+    read := count - 1;
+    while (read >= 0) {
+        n += digits[read] << u8(k);
+        quotient := n / 10;
+        reversed.append(n - 10 * quotient);
+        n = quotient;
+        read -= 1;
+    }
+    while (n > 0) {
+        quotient := n / 10;
+        reversed.append(n - 10 * quotient);
+        n = quotient;
+    }
+    delta := length(reversed) - count;
+    product: int[] = [];
+    dropped := trunc;
+    index := length(reversed) - 1;
+    while (index >= 0) {
+        if (length(product) < DecimalDigits) {
+            product.append(reversed[index]);
+        } else if (reversed[index] != 0) {
+            dropped = true;
+        }
+        index -= 1;
+    }
+    return Trimmed(product, length(product), point + delta, dropped);
+}
+
+// The nonzero decimal divided by 2^k for 0 < k <= MaxShift, as Odin's
+// shift_right.
+ShiftRight :: (digits: int[], count: int, point: int, trunc: bool, k: int) -> Decimal {
+    read: int = 0;
+    n: int = 0;
+    while ((n >> u8(k)) == 0) {
+        if (read >= count) {
+            while ((n >> u8(k)) == 0) {
+                n = n * 10;
+                read += 1;
+            }
+            break;
+        }
+        n = n * 10 + digits[read];
+        read += 1;
+    }
+    at := point - (read - 1);
+    mask := (int(1) << u8(k)) - 1;
+    quotient: int[] = [];
+    while (read < count) {
+        next := digits[read];
+        quotient.append(n >> u8(k));
+        n = n & mask;
+        n = n * 10 + next;
+        read += 1;
+    }
+    dropped := trunc;
+    while (n > 0) {
+        digit := n >> u8(k);
+        n = n & mask;
+        if (length(quotient) < DecimalDigits) {
+            quotient.append(digit);
+        } else if (digit > 0) {
+            dropped = true;
+        }
+        n = n * 10;
+    }
+    return Trimmed(quotient, length(quotient), at, dropped);
+}
+
+// The decimal times 2^shift, divided when `shift` is negative, in steps of
+// at most MaxShift, as Odin's shift.
+Shifted :: (digits: int[], count: int, point: int, trunc: bool, shift: int) -> Decimal {
+    current := Decimal.Value(digits, count, point, trunc);
+    left := shift;
+    while (left != 0) {
+        step := left;
+        if (step > MaxShift) {
+            step = MaxShift;
+        }
+        if (step < -MaxShift) {
+            step = -MaxShift;
+        }
+        switch current {
+            case .Value(now_digits, now_count, now_point, now_trunc):
+                if (now_count == 0) {
+                    return current;
+                }
+                if (step > 0) {
+                    current = ShiftLeft(now_digits, now_count, now_point, now_trunc, step);
+                } else {
+                    current = ShiftRight(now_digits, now_count, now_point, now_trunc, -step);
+                }
+            case .Malformed:
+                return current;
+        }
+        left -= step;
+    }
+    return current;
+}
+
+// Whether rounding at digit `at` rounds up: above half, or exactly half with
+// an odd digit before it or truncated digits after it, as Odin's
+// can_round_up.
+RoundsUp :: (digits: int[], count: int, trunc: bool, at: int) -> bool {
+    if (at < 0 || at >= count) {
+        return false;
+    }
+    if (digits[at] == 5 && at + 1 == count) {
+        if (trunc) {
+            return true;
+        }
+        return at > 0 && digits[at - 1] % 2 != 0;
+    }
+    return digits[at] >= 5;
+}
+
+// The decimal's integer part, rounded half to even, as Odin's
+// rounded_integer; the callers keep it below 2^54.
+RoundedInteger :: (digits: int[], count: int, point: int, trunc: bool) -> i64 {
+    n: i64 = 0;
+    index: int = 0;
+    while (index < point && index < count) {
+        n = n * 10 + i64(digits[index]);
+        index += 1;
+    }
+    while (index < point) {
+        n = n * 10;
+        index += 1;
+    }
+    if (RoundsUp(digits, count, trunc, point)) {
+        n += 1;
+    }
+    return n;
+}
+
+// The steps that move the decimal point by a decimal place or more, by
+// how far it is from the units, as Odin's power_table.
+PowerStep :: (distance: int) -> int {
+    steps: int[] = [1, 3, 6, 9, 13, 16, 19, 23, 26];
+    if (distance >= length(steps)) {
+        return 27;
+    }
+    return steps[distance];
+}
+
+// The binary32 nearest a normal binary64 value: its mantissa rounded half to
+// even to 24 bits, or to a subnormal's fewer bits, as a C conversion rounds.
+FloatFromDouble :: (exponent: int, mantissa: i64) -> i64 {
+    whole := mantissa | (i64(1) << 52);
+    unbiased := exponent - 1023;
+    narrow := unbiased + 127;
+    shift: int = 29;
+    if (narrow <= 0) {
+        shift = 30 - narrow;
+    }
+    if (shift > 54) {
+        return 0;
+    }
+    kept := whole >> u32(shift);
+    rest := whole & ((i64(1) << u32(shift)) - 1);
+    half := i64(1) << u32(shift - 1);
+    if (rest > half || (rest == half && (kept & 1) != 0)) {
+        kept += 1;
+    }
+    if (narrow <= 0) {
+        // A subnormal; rounding up to 2^23 is the least normal's encoding.
+        return kept;
+    }
+    // kept is in [2^23, 2^24]; 2^24 carries into the exponent.
+    return (i64(narrow) << 23) + kept - (i64(1) << 23);
+}
+
+// Convert already represented floating values. Literal admission is separate:
+// explicit narrowing may overflow to infinity, and preserves signed zero.
+FloatingBits :: (bits: u64, from: int, to: int) -> u64 {
+    if (from == to) {
+        return bits;
+    }
+    if (from == DoubleStorage) {
+        sign := (bits >> u32(32)) & u64(0x80000000);
+        exponent := int((bits >> u32(52)) & u64(0x7ff));
+        fraction := bits & u64(0xfffffffffffff);
+        if (exponent == 2047 && fraction != 0) {
+            return sign | u64(0x7fc00000);
+        }
+        if (exponent > 1150) {
+            return sign | u64(0x7f800000);
+        }
+        if (exponent == 0) {
+            return sign;
+        }
+        return sign | u64(FloatFromDouble(exponent, i64(fraction)));
+    }
+    sign := (bits & u64(0x80000000)) << u32(32);
+    exponent := int((bits >> u32(23)) & u64(0xff));
+    fraction := bits & u64(0x7fffff);
+    if (exponent == 255) {
+        if (fraction != 0) {
+            return sign | u64(0x7ff8000000000000);
+        }
+        return sign | u64(0x7ff0000000000000);
+    }
+    if (exponent == 0) {
+        if (fraction == 0) {
+            return sign;
+        }
+        exponent = 1;
+        while ((fraction & u64(0x800000)) == 0) {
+            fraction = fraction << u32(1);
+            exponent -= 1;
+        }
+        fraction = fraction & u64(0x7fffff);
+    }
+    return sign | (u64(exponent + 896) << u32(52)) | (fraction << u32(29));
+}
+
+// The bit patterns of the decimal, negated when `negative`, as Odin's
+// decimal_to_float_bits for binary64.
+DecimalBits :: (digits: int[], count: int, point: int, trunc: bool, negative: bool) -> FloatBits {
+    sign: u64 = 0;
+    if (negative) {
+        sign = 0x8000000000000000;
+    }
+    if (count == 0) {
+        float_sign: u64 = 0;
+        if (negative) {
+            float_sign = 0x80000000;
+        }
+        return FloatBits.Finite(sign, true, float_sign);
+    }
+    if (point > 310 || point < -330) {
+        return FloatBits.OutOfRange;
+    }
+    now_digits := digits;
+    now_count := count;
+    now_point := point;
+    now_trunc := trunc;
+    exponent: int = 0;
+    while (now_point != 0 || now_digits[0] < 5) {
+        shift: int = 0;
+        if (now_point > 0) {
+            shift = -PowerStep(now_point);
+        } else {
+            shift = PowerStep(-now_point);
+        }
+        switch Shifted(now_digits, now_count, now_point, now_trunc, shift) {
+            case .Value(shifted_digits, shifted_count, shifted_point, shifted_trunc):
+                now_digits = shifted_digits;
+                now_count = shifted_count;
+                now_point = shifted_point;
+                now_trunc = shifted_trunc;
+            case .Malformed:
+                return FloatBits.OutOfRange;
+        }
+        exponent -= shift;
+    }
+    // From [0.5, 1) to [1, 2).
+    exponent -= 1;
+    if (exponent < Bias + 1) {
+        // Below the least normal exponent: the mantissa takes a subnormal's
+        // place, though rounding may still make it normal.
+        step := Bias + 1 - exponent;
+        switch Shifted(now_digits, now_count, now_point, now_trunc, -step) {
+            case .Value(shifted_digits, shifted_count, shifted_point, shifted_trunc):
+                now_digits = shifted_digits;
+                now_count = shifted_count;
+                now_point = shifted_point;
+                now_trunc = shifted_trunc;
+            case .Malformed:
+                return FloatBits.OutOfRange;
+        }
+        exponent += step;
+    }
+    if (exponent - Bias >= ExponentLimit) {
+        return FloatBits.OutOfRange;
+    }
+    mantissa: i64 = 0;
+    switch Shifted(now_digits, now_count, now_point, now_trunc, 1 + MantissaBits) {
+        case .Value(final_digits, final_count, final_point, final_trunc):
+            mantissa = RoundedInteger(final_digits, final_count, final_point, final_trunc);
+        case .Malformed:
+            return FloatBits.OutOfRange;
+    }
+    if (mantissa == i64(2) << u32(MantissaBits)) {
+        mantissa = mantissa >> 1;
+        exponent += 1;
+        if (exponent - Bias >= ExponentLimit) {
+            return FloatBits.OutOfRange;
+        }
+    }
+    if ((mantissa & (i64(1) << u32(MantissaBits))) == 0) {
+        // A result that underflows to zero or a subnormal is out of range.
+        return FloatBits.OutOfRange;
+    }
+    fraction := mantissa & ((i64(1) << u32(MantissaBits)) - 1);
+    biased := exponent - Bias;
+    bits := (i64(biased) << u32(MantissaBits)) | fraction;
+    // Stage zero compares the value with the largest binary32 before it
+    // converts: (2 - 2^-23) * 2^127, exponent 1150 and mantissa 2^52 - 2^29.
+    float_fits := biased < 1150 || (biased == 1150 && fraction <= 0xFFFFFE0000000);
+    narrow := FloatFromDouble(biased, fraction);
+    float_sign: i64 = 0;
+    if (negative) {
+        float_sign = 0x80000000;
+    }
+    return FloatBits.Finite(u64(wrap: bits) | sign, float_fits, u64(wrap: narrow | float_sign));
+}
+
+// The bit patterns of the number literal `spelling`, negated when
+// `negative`.
+pub LiteralBits :: (spelling: string, negative: bool) -> FloatBits {
+    size := strings.ByteLength(spelling);
+    hexadecimal := size > 2 && strings.ByteAt(spelling, 0) == 48 &&
+                   (strings.ByteAt(spelling, 1) == 120 || strings.ByteAt(spelling, 1) == 88);
+    parsed := Decimal.Malformed;
+    if (hexadecimal) {
+        parsed = HexDecimalOf(spelling);
+    } else {
+        parsed = DecimalOf(spelling);
+    }
+    switch parsed {
+        case .Value(digits, count, point, trunc):
+            return DecimalBits(digits, count, point, trunc, negative);
+        case .Malformed:
+            return FloatBits.OutOfRange;
+    }
+}
+
+// A decimal literal's exact value at an integer type, with no binary
+// rounding: Whole with its magnitude, Large when its integer part needs more
+// than 64 bits, else Fraction when it has one.
+pub Integral :: union {
+    Whole(magnitude: u64) | Large | Fraction
+}
+// The digits of the largest uint64, 18446744073709551615.
+LargestWholeDigits: int : 20;
+LargestWholeDigit :: (index: int) -> int {
+    return strings.ByteAt("18446744073709551615", index) - 48;
+}
+
+// The decimal spelling `spelling` read exactly at an integer type. Stage zero
+// reads it as a long double, which holds these exactly where it has 64
+// mantissa bits.
+pub IntegralOf :: (spelling: string) -> Integral {
+    switch DecimalOf(spelling) {
+        case .Malformed:
+            return Integral.Large;
+        case .Value(digits, count, point, trunc):
+            if (count == 0) {
+                return Integral.Whole(0);
+            }
+            if (point > LargestWholeDigits) {
+                return Integral.Large;
+            }
+            magnitude: u64 = 0;
+            // Compared with the largest uint64 digit by digit while equal.
+            below := point < LargestWholeDigits;
+            index: int = 0;
+            while (index < point) {
+                digit: int = 0;
+                if (index < count) {
+                    digit = digits[index];
+                }
+                if (!below && digit > LargestWholeDigit(index)) {
+                    return Integral.Large;
+                }
+                below = below || digit < LargestWholeDigit(index);
+                magnitude = magnitude * 10 + u64(digit);
+                index += 1;
+            }
+            fraction := trunc;
+            while (index < count) {
+                fraction = fraction || (index >= 0 && digits[index] != 0);
+                index += 1;
+            }
+            if (fraction) {
+                return Integral.Fraction;
+            }
+            return Integral.Whole(magnitude);
+    }
+}
+
+// Exact integers, as stage zero's numeric.c evaluates constant expressions.
+// Element 0 is 1 for a negative value, else 0; the magnitude follows in
+// 32-bit limbs, least significant first, without a high zero limb. Zero is
+// [0]. A magnitude alone is the limbs, and may have high zero limbs.
+// The most bits a constant may need, and the largest constant shift count.
+ExactLimit: int : 4096;
+LimbMask: u64 : 0xFFFFFFFF;
+
+// The exact integer of a sign and magnitude.
+Exact :: (negative: bool, limbs: u64[]) -> u64[] {
+    count := length(limbs);
+    while (count > 0 && limbs[count - 1] == 0) {
+        count -= 1;
+    }
+    sign: u64 = 0;
+    if (negative && count > 0) {
+        sign = 1;
+    }
+    return extend([sign], slice(limbs, 0, count));
+}
+ExactOf :: (negative: bool, magnitude: u64) -> u64[] {
+    return Exact(negative, [magnitude & LimbMask, magnitude >> 32]);
+}
+// The value an integer type's `bits` hold, sign-extended when signed.
+ExactStored :: (bits: u64, storage: int) -> u64[] {
+    if (Signed(storage) && (bits >> 63) == 1) {
+        return ExactOf(true, ~bits + 1);
+    }
+    return ExactOf(false, bits);
+}
+// The largest value of an integer type.
+ExactMax :: (storage: int) -> u64[] {
+    width := u64(Width(storage));
+    if (Signed(storage)) {
+        width -= 1;
+    }
+    if (width == 64) {
+        return ExactOf(false, ~u64(0));
+    }
+    return ExactOf(false, (u64(1) << width) - 1);
+}
+ExactNegative :: (value: u64[]) -> bool {
+    return value[0] == 1;
+}
+ExactZero :: (value: u64[]) -> bool {
+    return length(value) == 1;
+}
+Magnitude :: (value: u64[]) -> u64[] {
+    return slice(value, 1, length(value));
+}
+// The low 64 bits of a magnitude.
+LowBits :: (limbs: u64[]) -> u64 {
+    low: u64 = 0;
+    if (length(limbs) > 0) {
+        low = limbs[0];
+    }
+    if (length(limbs) > 1) {
+        low = low | (limbs[1] << 32);
+    }
+    return low;
+}
+// The bits a magnitude needs.
+MagnitudeBits :: (limbs: u64[]) -> int {
+    count := length(limbs);
+    while (count > 0 && limbs[count - 1] == 0) {
+        count -= 1;
+    }
+    if (count == 0) {
+        return 0;
+    }
+    bits := (count - 1) * 32;
+    top := limbs[count - 1];
+    while (top != 0) {
+        bits += 1;
+        top = top >> 1;
+    }
+    return bits;
+}
+ExactFits :: (value: u64[], storage: int) -> bool {
+    return length(value) <= 3 && Fits(ExactNegative(value), LowBits(Magnitude(value)), storage);
+}
+// The bits an integer type keeps of `value`: its low bits in two's
+// complement, sign-extended when the type is signed.
+ExactWrapped :: (value: u64[], storage: int) -> u64 {
+    bits := LowBits(Magnitude(value));
+    if (ExactNegative(value)) {
+        bits = ~bits + 1;
+    }
+    width := u64(Width(storage));
+    if (width == 64) {
+        return bits;
+    }
+    mask := (u64(1) << width) - 1;
+    bits = bits & mask;
+    if (Signed(storage) && (bits >> (width - 1)) == 1) {
+        bits = bits | ~mask;
+    }
+    return bits;
+}
+// -1, 0 or 1 as magnitude `a` is less than, equal to or greater than `b`.
+MagnitudeCompare :: (a: u64[], b: u64[]) -> int {
+    count := length(a);
+    if (length(b) > count) {
+        count = length(b);
+    }
+    at := count - 1;
+    while (at >= 0) {
+        x: u64 = 0;
+        y: u64 = 0;
+        if (at < length(a)) {
+            x = a[at];
+        }
+        if (at < length(b)) {
+            y = b[at];
+        }
+        if (x != y) {
+            if (x < y) {
+                return -1;
+            }
+            return 1;
+        }
+        at -= 1;
+    }
+    return 0;
+}
+MagnitudeAdd :: (a: u64[], b: u64[]) -> u64[] {
+    count := length(a);
+    if (length(b) > count) {
+        count = length(b);
+    }
+    sum: u64[] = [];
+    carry: u64 = 0;
+    for (at in 0..<count) {
+        total := carry;
+        if (at < length(a)) {
+            total += a[at];
+        }
+        if (at < length(b)) {
+            total += b[at];
+        }
+        sum.append(total & LimbMask);
+        carry = total >> 32;
+    }
+    sum.append(carry);
+    return sum;
+}
+// `a` minus `b`, which is at most `a`.
+MagnitudeSubtract :: (a: u64[], b: u64[]) -> u64[] {
+    difference: u64[] = [];
+    borrow: u64 = 0;
+    for (at in 0..<length(a)) {
+        taken := borrow;
+        if (at < length(b)) {
+            taken += b[at];
+        }
+        if (a[at] >= taken) {
+            difference.append(a[at] - taken);
+            borrow = 0;
+        } else {
+            difference.append(a[at] + (LimbMask + 1) - taken);
+            borrow = 1;
+        }
+    }
+    return difference;
+}
+// A limb product plus two limbs is below 2^64, so no step overflows.
+MagnitudeMultiply :: (a: u64[], b: u64[]) -> u64[] {
+    product := resize([u64(0)], length(a) + length(b) + 1);
+    for (i in 0..<length(a)) {
+        carry: u64 = 0;
+        for (j in 0..<length(b)) {
+            total := product[i + j] + a[i] * b[j] + carry;
+            product[i + j] = total & LimbMask;
+            carry = total >> 32;
+        }
+        product[i + length(b)] = carry;
+    }
+    return product;
+}
+MagnitudeShiftLeft :: (limbs: u64[], count: int) -> u64[] {
+    shifted := resize([u64(0)], count / 32);
+    bits := u64(count % 32);
+    carry: u64 = 0;
+    for (limb in limbs) {
+        shifted.append(((limb << bits) & LimbMask) | carry);
+        carry = 0;
+        if (bits != 0) {
+            carry = limb >> (32 - bits);
+        }
+    }
+    shifted.append(carry);
+    return shifted;
+}
+MagnitudeShiftRight :: (limbs: u64[], count: int) -> u64[] {
+    skipped := count / 32;
+    bits := u64(count % 32);
+    shifted: u64[] = [];
+    at := skipped;
+    while (at < length(limbs)) {
+        limb := limbs[at] >> bits;
+        if (bits != 0 && at + 1 < length(limbs)) {
+            limb = limb | ((limbs[at + 1] << (32 - bits)) & LimbMask);
+        }
+        shifted.append(limb);
+        at += 1;
+    }
+    return shifted;
+}
+// Whether shifting right by `count` drops a set bit.
+MagnitudeDrops :: (limbs: u64[], count: int) -> bool {
+    return MagnitudeCompare(MagnitudeShiftLeft(MagnitudeShiftRight(limbs, count), count), limbs) != 0;
+}
+Division :: union {
+    Parts(quotient: u64[], remainder: u64[])
+}
+// The quotient and remainder of magnitudes, by one limb directly or else
+// bit by bit; `b` is not zero.
+MagnitudeDivide :: (a: u64[], b: u64[]) -> Division {
+    divisor := slice(b, 0, (MagnitudeBits(b) + 31) / 32);
+    quotient := resize([u64(0)], length(a));
+    if (length(divisor) == 1) {
+        rest: u64 = 0;
+        at := length(a) - 1;
+        while (at >= 0) {
+            current := (rest << 32) | a[at];
+            quotient[at] = current / divisor[0];
+            rest = current % divisor[0];
+            at -= 1;
+        }
+        return Division.Parts(quotient, [rest]);
+    }
+    rest: u64[] = [];
+    bit := MagnitudeBits(a) - 1;
+    while (bit >= 0) {
+        // Adds the next bit rather than storing it in the shifted array: an
+        // element store into a call's result makes stage one's build of
+        // this function copy its arguments, and so every caller's.
+        shifted := MagnitudeShiftLeft(Magnitude(Exact(false, rest)), 1);
+        rest = MagnitudeAdd(shifted, [(a[bit / 32] >> u64(bit % 32)) & 1]);
+        if (MagnitudeCompare(rest, divisor) >= 0) {
+            rest = MagnitudeSubtract(rest, divisor);
+            quotient[bit / 32] = quotient[bit / 32] | (u64(1) << u64(bit % 32));
+        }
+        bit -= 1;
+    }
+    return Division.Parts(quotient, rest);
+}
+ExactNegate :: (value: u64[]) -> u64[] {
+    return Exact(!ExactNegative(value), Magnitude(value));
+}
+ExactAdd :: (a: u64[], b: u64[]) -> u64[] {
+    if (ExactNegative(a) == ExactNegative(b)) {
+        return Exact(ExactNegative(a), MagnitudeAdd(Magnitude(a), Magnitude(b)));
+    }
+    if (MagnitudeCompare(Magnitude(a), Magnitude(b)) >= 0) {
+        return Exact(ExactNegative(a), MagnitudeSubtract(Magnitude(a), Magnitude(b)));
+    }
+    return Exact(ExactNegative(b), MagnitudeSubtract(Magnitude(b), Magnitude(a)));
+}
+ExactSubtract :: (a: u64[], b: u64[]) -> u64[] {
+    return ExactAdd(a, ExactNegate(b));
+}
+ExactMultiply :: (a: u64[], b: u64[]) -> u64[] {
+    return Exact(ExactNegative(a) != ExactNegative(b), MagnitudeMultiply(Magnitude(a), Magnitude(b)));
+}
+// The quotient rounds toward zero; the remainder takes the dividend's sign.
+// `b` is not zero.
+ExactDivide :: (a: u64[], b: u64[], remainder: bool) -> u64[] {
+    switch MagnitudeDivide(Magnitude(a), Magnitude(b)) {
+        case .Parts(quotient, rest):
+            if (remainder) {
+                return Exact(ExactNegative(a), rest);
+            }
+            return Exact(ExactNegative(a) != ExactNegative(b), quotient);
+    }
+}
+ExactShiftLeft :: (value: u64[], count: int) -> u64[] {
+    return Exact(ExactNegative(value), MagnitudeShiftLeft(Magnitude(value), count));
+}
+// The floor of `value` over 2^count, as an arithmetic shift gives it.
+ExactShiftRight :: (value: u64[], count: int) -> u64[] {
+    shifted := MagnitudeShiftRight(Magnitude(value), count);
+    if (ExactNegative(value) && MagnitudeDrops(Magnitude(value), count)) {
+        shifted = MagnitudeAdd(shifted, [1]);
+    }
+    return Exact(ExactNegative(value), shifted);
+}
+// `count` limbs of `value` in two's complement.
+Twos :: (value: u64[], count: int) -> u64[] {
+    limbs := Magnitude(value);
+    out: u64[] = [];
+    carry: u64 = 1;
+    for (at in 0..<count) {
+        limb: u64 = 0;
+        if (at < length(limbs)) {
+            limb = limbs[at];
+        }
+        if (ExactNegative(value)) {
+            limb = (~limb & LimbMask) + carry;
+            carry = limb >> 32;
+            limb = limb & LimbMask;
+        }
+        out.append(limb);
+    }
+    return out;
+}
+// `&`, `|` or `^` of exact integers, as their two's complements combine.
+ExactBitwise :: (operator: string, a: u64[], b: u64[]) -> u64[] {
+    count := length(a);
+    if (length(b) > count) {
+        count = length(b);
+    }
+    x := Twos(a, count);
+    y := Twos(b, count);
+    out: u64[] = [];
+    for (at in 0..<count) {
+        if (operator == "&") {
+            out.append(x[at] & y[at]);
+        } else if (operator == "|") {
+            out.append(x[at] | y[at]);
+        } else {
+            out.append(x[at] ^ y[at]);
+        }
+    }
+    negative := (out[count - 1] >> 31) == 1;
+    if (negative) {
+        return ExactNegate(Exact(false, Twos(Exact(true, out), count)));
+    }
+    return Exact(false, out);
+}

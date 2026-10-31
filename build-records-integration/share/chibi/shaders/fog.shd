@@ -1,0 +1,37 @@
+layout(set = 2, binding = 1) uniform sampler2D visibility_mask;
+layout(set = 3, binding = 1) uniform shd_uniforms {
+    mat4 eye_rays;
+    vec3 eye;
+    vec4 fog_color;
+    vec2 grid_origin;
+    vec2 grid_extent;
+    vec2 view_center;
+    vec2 view_span;
+    float fog_time;
+    int perspective;
+};
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    vec2 ndc = params.screen_uv * vec2(2, -2) + vec2(-1, 1);
+    vec2 world = view_center + ndc * view_span * vec2(0.5, -0.5);
+    bool ground = true;
+    if (perspective != 0) {
+        // Unprojected about the eye, so a distant eye keeps its rays precise.
+        vec4 near_h = eye_rays * vec4(ndc, 0, 1);
+        vec4 far_h = eye_rays * vec4(ndc, 1, 1);
+        vec3 start = near_h.xyz / near_h.w;
+        vec3 origin = eye + start;
+        vec3 direction = far_h.xyz / far_h.w - start;
+        // A ray that never reaches the ground ahead sees past the grid.
+        ground = origin.y * direction.y < 0;
+        world = (origin + direction * (ground ? -origin.y / direction.y : 1)).xz;
+    }
+    vec2 uv = (world - grid_origin) / grid_extent;
+    float sight = texture(visibility_mask, clamp(uv, vec2(0), vec2(1))).r;
+    if (!ground || any(lessThan(uv, vec2(0))) || any(greaterThanEqual(uv, vec2(1)))) sight = 0;
+    float opacity = 1 - smoothstep(0.15, 0.85, sight);
+    float clouds = sin(world.x * 0.018 + fog_time * 0.2) * sin(world.y * 0.023 - fog_time * 0.13);
+    vec3 tint = fog_color.rgb * (1 + clouds * 0.12);
+    return vec4(tint, opacity);
+}

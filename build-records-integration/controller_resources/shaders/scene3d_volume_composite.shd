@@ -1,0 +1,60 @@
+layout(set = 2, binding = 1) uniform sampler2D volume_field;
+layout(set = 2, binding = 2) uniform sampler2D volume_depth;
+layout(set = 3, binding = 1) uniform shd_uniforms {
+    float frame_width;
+    float frame_height;
+};
+
+// The integration already premultiplies scattered radiance by visibility, and
+// clips each field texel at the nearest opaque depth of the full-resolution
+// pixels in its block. Joint bilateral upsampling blends the four nearest
+// texels by how closely that block depth matches this pixel's depth. A texel
+// whose fog runs past this pixel's surface is rejected, so fog still never
+// covers a foreground silhouette, without point sampling's staircase.
+float block_depth(ivec2 cell, vec2 ratio, ivec2 frame)
+{
+    ivec2 low = max(ivec2(ceil(vec2(cell) * ratio - 0.5)), ivec2(0));
+    ivec2 high = min(ivec2(ceil(vec2(cell + 1) * ratio - 0.5)), frame);
+    float depth = 1.0;
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            ivec2 sample_pixel = low + ivec2(x, y);
+            if (all(lessThan(sample_pixel, high)))
+                depth = min(depth, texelFetch(volume_depth, sample_pixel, 0).r);
+        }
+    }
+    return depth;
+}
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    ivec2 size = textureSize(volume_field, 0);
+    ivec2 frame = ivec2(frame_width, frame_height);
+    vec2 ratio = vec2(frame) / vec2(size);
+    ivec2 pixel = clamp(ivec2(screen_uv * vec2(frame)), ivec2(0), frame - 1);
+    float depth = texelFetch(volume_depth, pixel, 0).r;
+    vec2 position = (vec2(pixel) + 0.5) / ratio - 0.5;
+    ivec2 base = ivec2(floor(position));
+    vec2 f = position - vec2(base);
+    vec4 sum = vec4(0);
+    float total = 0.0;
+    vec4 nearest = vec4(0);
+    float closest = 2.0;
+    for (int i = 0; i < 4; i++) {
+        ivec2 corner = ivec2(i & 1, i >> 1);
+        ivec2 cell = clamp(base + corner, ivec2(0), size - 1);
+        float difference = block_depth(cell, ratio, frame) - depth;
+        vec4 value = texelFetch(volume_field, cell, 0);
+        if (abs(difference) < closest && difference <= 1e-5) {
+            closest = abs(difference);
+            nearest = value;
+        }
+        if (difference > 1e-5)
+            continue;
+        vec2 bilinear = mix(1.0 - f, f, vec2(corner));
+        float weight = bilinear.x * bilinear.y / (1e-3 + abs(difference));
+        sum += value * weight;
+        total += weight;
+    }
+    return total > 0.0 ? sum / total : nearest;
+}

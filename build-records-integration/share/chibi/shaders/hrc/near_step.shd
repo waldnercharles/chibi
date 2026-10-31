@@ -1,0 +1,42 @@
+// A near-field step through one canvas pixel, shared by gather and near.frag.
+// The including shader declares the u_source and u_bounce samplers and the
+// u_canvas_w, u_canvas_h, u_out_w, u_out_h, u_crop_uv, u_history_offset,
+// u_history_valid and u_bounce_intensity uniforms.
+
+#include "hrc/hrc_domain.shd"
+#include "hrc/source_average.shd"
+
+// Emission at canvas pixel p, whose full-resolution source texel is source.
+vec3 emission_at(ivec2 p, vec4 source)
+{
+	ivec2 out_size = ivec2(u_out_w, u_out_h);
+	vec2 uv = (vec2(p) + 0.5) / vec2(u_canvas_w, u_canvas_h);
+	vec3 emission;
+	if (all(equal(out_size, ivec2(u_canvas_w, u_canvas_h)))) {
+		emission = source.rgb;
+	} else {
+		vec2 cell = floor(uv * vec2(out_size));
+		uv = (cell + 0.5) / vec2(out_size);
+		vec2 ratio = vec2(u_canvas_w, u_canvas_h) / vec2(out_size);
+		float lod = log2(max(ratio.x, ratio.y));
+		emission = textureLod(u_source, uv, lod).rgb;
+	}
+	return emission * hrc_emission_weight(uv, u_crop_uv);
+}
+
+vec3 bounce_at(ivec2 p)
+{
+	vec2 uv = (vec2(p) + 0.5) / vec2(u_canvas_w, u_canvas_h) + u_history_offset;
+	if (u_history_valid == 0 || any(lessThan(uv, vec2(0.0))) ||
+	    any(greaterThanEqual(uv, vec2(1.0)))) return vec3(0.0);
+	return textureLod(u_bounce, uv, 0.0).rgb * u_bounce_intensity;
+}
+
+// Light and transmittance of a step of length s at a canvas pixel, and its
+// reflected light.
+vec4 near_step(ivec2 p, float s, out vec3 bounce)
+{
+	vec4 source = texelFetch(u_source, p, 0);
+	bounce = bounce_at(p);
+	return source_step(vec4(emission_at(p, source), source.a), s);
+}

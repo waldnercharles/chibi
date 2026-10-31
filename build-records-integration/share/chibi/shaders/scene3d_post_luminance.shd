@@ -1,0 +1,28 @@
+// Meters this texel's footprint in the scene with an 8x8 grid of point taps,
+// which sanitize each raw texel so one NaN cannot spoil its neighbors' taps.
+// Red is the sum of log2 luminance over lit taps and green the lit count, both
+// divided by the tap count. Taps darker than 2^-10, such as an empty
+// background, are left out so they cannot brighten the frame.
+layout(set = 3, binding = 1) uniform shd_uniforms {
+    vec2 footprint;
+};
+
+#include "tonemap.shd"
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    const int TAPS = 8;
+    float sum = 0.0, lit = 0.0;
+    for (int y = 0; y < TAPS; y++) {
+        for (int x = 0; x < TAPS; x++) {
+            vec2 offset = (vec2(x, y) + 0.5) / float(TAPS) - 0.5;
+            vec3 c = finite_hdr(texture(u_image, params.uv + offset * footprint).rgb);
+            float luminance = dot(c, vec3(0.2126, 0.7152, 0.0722));
+            if (luminance > 1.0 / 1024.0) {
+                sum += log2(luminance);
+                lit += 1.0;
+            }
+        }
+    }
+    return vec4(vec2(sum, lit) / float(TAPS * TAPS), 0, 1);
+}

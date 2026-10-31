@@ -1,0 +1,32 @@
+// Transport sources: RGB emission density λ, light per canvas pixel of path,
+// and A optical depth τ per canvas pixel. A step of length L emits
+// λ (1 - exp(-τ L)) / τ: λ L through clear cells, and λ / τ through opaque
+// ones, whose radiance is therefore λ / τ. The law is continuous in τ, so
+// faint absorbers such as thin gas or exhaust never switch between emitting
+// by density and by radiance as they move.
+//
+// A cell's light and transmittance are the means of its parts' over one step
+// of the cell's length, so both follow coverage linearly. Averaging optical
+// depth instead turns a half-covered opaque cell nearly opaque and dims its
+// light, by amounts that change as edges cross cells, so moving bodies flicker.
+
+// The path length a step of length s emits for, after its own absorption.
+float source_length(float tau, float s)
+{
+	float x = max(tau, 0.0) * s;
+	return x > 1e-3 ? (1.0 - exp(-x)) / max(tau, 1e-20) : s * (1.0 - 0.5 * x);
+}
+
+// A source's light over a step of length s, and the step's transmittance.
+vec4 source_step(vec4 source, float s)
+{
+	return vec4(source.rgb * source_length(source.a, s), exp(-max(source.a, 0.0) * s));
+}
+
+// The source whose step of length s gives a mean step's light and
+// transmittance.
+vec4 source_resolve(vec4 part, float s)
+{
+	float tau = -log(max(part.a, 1e-6)) / s;
+	return vec4(part.rgb / source_length(tau, s), tau);
+}

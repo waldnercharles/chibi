@@ -1,0 +1,152 @@
+// Compact density splats feed the same emission/absorption field as solids.
+// Gas joins into a translucent density field. Liquid keeps a continuous surface.
+// Authored exhaust uses smooth unions; combustion uses separate hot streaks.
+//
+// Each pixel reads its tile's particle list. Including passes define
+// the storage buffer bindings, which follow their samplers. GLSL ES emulates
+// each storage buffer as texel fetches of a single vec4 or uvec4 array.
+struct Particle { vec4 position; vec4 color; vec4 optical; vec4 detail; };
+layout(set = 2, binding = FLUID_PARTICLES_BINDING) readonly buffer Particles { vec4 particle_data[]; };
+layout(set = 2, binding = FLUID_OFFSETS_BINDING) readonly buffer Offsets { uvec4 offset_data[]; };
+layout(set = 2, binding = FLUID_INDICES_BINDING) readonly buffer Indices { uvec4 index_data[]; };
+
+int tile_start(int i) { return int(offset_data[i >> 2][i & 3]); }
+
+Particle particle_at(int i)
+{
+    int b = 4 * int(index_data[i >> 2][i & 3]);
+    return Particle(particle_data[b], particle_data[b + 1], particle_data[b + 2], particle_data[b + 3]);
+}
+layout(set = 3, binding = 0) uniform uniform_block {
+    vec4 u_view;
+    int u_tiles_x;
+    int u_tile_size;
+    int u_debug;
+};
+
+struct FluidSample
+{
+    float gas, liquid, absorption;
+    float gas_alpha, liquid_alpha, flame_alpha;
+    vec4 gas_color, liquid_color, flame_color;
+    vec3 emission, gas_visibility, liquid_visibility;
+    float liquid_refraction;
+    vec2 gradient;
+    float aa;
+    // Individual discs carry coverage and optical channels without a density
+    // threshold. The shader composites them in stable particle order.
+    vec4 grain_color;
+    vec3 grain_emission, grain_source, grain_visibility;
+    float grain_absorption, grain_refraction, grain_liquid;
+    vec2 grain_normal;
+};
+
+const float FLUID_GRAIN_FIRST = 1.5;
+const float FLUID_GRAIN_LIQUID = 2.5;
+
+// False where no fluid covers the pixel.
+bool fluid_sample(ivec2 pixel, out FluidSample f)
+{
+    int tile = (pixel.y / u_tile_size) * u_tiles_x + pixel.x / u_tile_size;
+    f.gas = 0; f.liquid = 0; f.absorption = 0;
+    f.gas_alpha = 0; f.liquid_alpha = 0; f.flame_alpha = 0;
+    f.gas_color = vec4(0); f.liquid_color = vec4(0); f.flame_color = vec4(0);
+    f.emission = vec3(0); f.gas_visibility = vec3(0); f.liquid_visibility = vec3(0);
+    f.liquid_refraction = 0;
+    f.gradient = vec2(0);
+    f.grain_color = vec4(0);
+    f.grain_emission = vec3(0); f.grain_source = vec3(0); f.grain_visibility = vec3(0);
+    f.grain_absorption = 0; f.grain_refraction = 0; f.grain_liquid = 0;
+    f.grain_normal = vec2(0);
+    int first = tile_start(tile), last = tile_start(tile + 1);
+    if (first == last) return false;
+    vec2 world = u_view.xy + (vec2(pixel) + .5) * u_view.zw * vec2(1, -1);
+    float liquid_absorption = 0;
+    f.aa = max(u_view.z, u_view.w) * .5;
+    float flame_distance = 1e20;
+    vec2 flame_optical = vec2(0);
+    vec3 hot_emission = vec3(0);
+    for (int i = first; i < last; i++) {
+        Particle p = particle_at(i);
+        if (p.position.w > FLUID_GRAIN_FIRST) {
+            vec2 offset = world - p.position.xy;
+            float distance = length(offset);
+            float alpha = (1.0 - smoothstep(-f.aa, f.aa, distance - p.position.z)) * p.color.a;
+            float coverage = alpha * (1.0 - f.grain_color.a);
+            f.grain_color += vec4(p.color.rgb * coverage, coverage);
+            f.grain_emission += p.color.rgb * p.optical.y * coverage;
+            // Each grain supplies its own source density; a neighboring
+            // absorber must not amplify a transparent grain's emission.
+            float optical_depth = p.optical.x > 0.0 ? p.optical.x : 1.0;
+            f.grain_source += p.color.rgb * p.optical.y * optical_depth * coverage;
+            f.grain_absorption += p.optical.x * coverage;
+            f.grain_visibility += p.color.rgb * p.detail.w * coverage;
+            if (p.position.w > FLUID_GRAIN_LIQUID) {
+                f.grain_liquid += coverage;
+                f.grain_refraction += p.detail.z * coverage;
+                f.grain_normal += offset / max(distance, .00001) * coverage;
+            }
+            continue;
+        }
+        vec2 local = (world - p.position.xy) / p.position.z;
+        if (p.optical.z > 0.0) {
+            float d = length(world - p.position.xy) - p.position.z;
+            float k = p.optical.z;
+            float h = clamp(.5 + .5 * (d - flame_distance) / k, 0.0, 1.0);
+            flame_distance = mix(d, flame_distance, h) - k * h * (1.0 - h);
+            f.flame_color = mix(p.color, f.flame_color, h);
+            flame_optical = mix(p.optical.xy, flame_optical, h);
+            continue;
+        }
+        // Negative gas stretch marks a cold wisp. Area-preserving ellipses
+        // follow velocity; the widened support connects neighboring parcels.
+        bool wisp = p.position.w < .5 && p.detail.z < 0.0;
+        if (wisp) {
+            vec2 direction = p.detail.xy;
+            local = vec2(dot(local, direction) / -p.detail.z,
+                         dot(local, vec2(-direction.y, direction.x)) * -p.detail.z);
+        }
+        float q = max(0.0, 1.0 - dot(local, local));
+        if (q <= 0.0) continue;
+        float weight = q * q * q;
+        if (wisp) weight /= 2.25;
+        if (p.optical.w > .001) {
+            vec2 offset = world - p.position.xy;
+            float half_length = p.position.z * .12 * p.detail.z;
+            offset -= p.detail.xy * clamp(dot(offset, p.detail.xy), -half_length, half_length);
+            float radius = p.position.z * .16 * sqrt(p.optical.w);
+            float core = (1.0 - smoothstep(-f.aa, f.aa, length(offset) - radius)) * p.color.a;
+            // Overlapping burning samples cannot accumulate an unlimited glow.
+            hot_emission = max(hot_emission, p.color.rgb * p.optical.y * core);
+        } else {
+            f.emission += p.color.rgb * p.optical.y * weight;
+        }
+        if (p.position.w < .5) {
+            f.gas += weight;
+            f.gas_color += p.color * weight;
+            f.gas_visibility += p.color.rgb * p.detail.w * weight;
+            f.absorption += p.optical.x * weight;
+        } else {
+            f.liquid += weight;
+            f.liquid_color += p.color * weight;
+            liquid_absorption += p.optical.x * weight;
+            f.liquid_visibility += p.color.rgb * p.detail.w * weight;
+            f.liquid_refraction += p.detail.z * weight;
+            f.gradient -= 6.0 * q * q * local / p.position.z;
+        }
+    }
+    f.flame_alpha = (1.0 - smoothstep(-f.aa, f.aa, flame_distance)) * f.flame_color.a;
+    if (f.gas + f.liquid + f.flame_alpha + f.grain_color.a <= .00001) return false;
+    f.gas_color /= max(f.gas, .00001);
+    f.liquid_color /= max(f.liquid, .00001);
+    // A single dispersed parcel is nearly invisible; overlapping parcels stay
+    // continuous. Broad support replaces the old four-lobe beaded contour.
+    f.gas_alpha = smoothstep(.25, 1.4, f.gas) * (1.0 - exp(-f.gas * .5)) * f.gas_color.a;
+    // Convert one screen pixel to density units using the analytic gradient.
+    float density_aa = max(.0001, f.aa * length(f.gradient));
+    f.liquid_alpha = smoothstep(.6 - density_aa, .6 + density_aa, f.liquid) * f.liquid_color.a;
+    f.absorption += liquid_absorption / max(f.liquid, .00001) * f.liquid_alpha;
+    f.absorption += flame_optical.x * f.flame_alpha;
+    f.emission += hot_emission + f.flame_color.rgb * flame_optical.y * f.flame_alpha;
+    return true;
+}

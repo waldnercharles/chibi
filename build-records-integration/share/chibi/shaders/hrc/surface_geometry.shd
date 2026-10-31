@@ -1,0 +1,21 @@
+// Camera-space reconstruction uses the same perspective inversion as the
+// depth gather. Projection.w is the receiver grid's full-resolution block.
+vec3 surface_position(vec2 pixel, float height, vec4 projection, vec2 spacing)
+{
+    vec2 plane = projection.xy + pixel * spacing * vec2(1, -1);
+    float scale = projection.z > 0.0 ? max(1.0 - height / projection.z, 0.001) : 1.0;
+    return vec3(plane * scale, height);
+}
+
+vec2 surface_receiver_pixel(ivec2 p, vec2 canvas_size, float block)
+{
+    return clamp(floor((vec2(p) + 0.5) * block), vec2(0), canvas_size - 1.0) + 0.5;
+}
+
+// Raw height differences reject steep neighbors on a single surface. Require
+// agreement with both tangent planes instead, retaining separation between
+// parallel layers and the existing normal/coverage guards at object edges.
+float surface_plane_distance(vec3 delta, vec3 normal, vec3 neighbor_normal)
+{
+    return max(abs(dot(delta, normal)), abs(dot(delta, neighbor_normal)));
+}

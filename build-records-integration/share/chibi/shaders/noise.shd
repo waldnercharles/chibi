@@ -1,0 +1,29 @@
+// Adapted from the user-supplied Neon-Swarm shaders. Original shader equations retained.
+// Noise utilities (from LYGIA, MIT/Prosperity License)
+
+float random(vec2 st)
+{
+    return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+vec2 random2(vec2 p)
+{
+    vec4 s = vec4(443.897, 441.423, 0.0973, 0.1099);
+    vec3 p3 = fract(p.xyx * s.xyz);
+    p3 += dot(p3, p3.yzx + 19.19);
+    return fract((p3.xx + p3.yz) * p3.zy);
+}
+
+float gnoise(vec2 st)
+{
+    vec2 i = floor(st);
+    vec2 f = fract(st);
+    float a = random(i);
+    float b = random(i + vec2(1.0, 0.0));
+    float c = random(i + vec2(0.0, 1.0));
+    float d = random(i + vec2(1.0, 1.0));
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(a, b, u.x) +
+           (c - a) * u.y * (1.0 - u.x) +
+           (d - b) * u.x * u.y;
+}

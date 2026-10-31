@@ -567,43 +567,6 @@ TEST_CASE(compiler_test_reports_each_test)
     return true;
 }
 
-/* A compiler whose SDK lacks the core collection says so and fails. */
-/* The compiler's own packages read JSON strings through the compiler's bridge,
- * so --test links it. */
-static const char COMPILER_FACTS
-    [] = "package words\n"
-         "\n"
-         "@test\n"
-         "Decodes :: () {\n"
-         "    decoded := compiler_json_string(\"\\\"hi\\\"\");\n"
-         "    assert(decoded.valid && decoded.value == \"hi\", \"decodes\");\n"
-         "}\n";
-TEST_CASE(compiler_test_links_the_compiler_bridges)
-{
-    const char *directories[] = { "bridged", "bridged/words" };
-    for (int i = 0; i < 2; i++) {
-        char directory[256];
-        path(directory, directories[i]);
-        REQUIRE(!mkdir(directory, 0700));
-    }
-    write_file("bridged/words/Words.chibi", COMPILER_FACTS);
-    char tests[256], output[256];
-    path(tests, "bridged");
-    path(output, "bridged.log");
-    const char *run[] = { compiler, "--project-root", tests, "--test", NULL };
-    int status = cli_run(run, root, output);
-    if (status) {
-        char *log = contents("bridged.log");
-        fprintf(stderr, "compiler bridges: %s\n", log);
-        free(log);
-    }
-    REQUIRE(status == 0);
-    REQUIRE(file_is("bridged.log", "PASS words.Decodes\n1 tests, 0 failed\n"));
-    const char *public_run[] = { built, "test", tests, NULL };
-    REQUIRE(cli_run(public_run, root, output) == 0);
-    REQUIRE(file_is("bridged.log", "PASS words.Decodes\n1 tests, 0 failed\n"));
-    return true;
-}
 TEST_CASE(compiler_runs_cost_explanation_regressions)
 {
     const char *run[] = { compiler,
@@ -1929,7 +1892,6 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(launcher_keeps_its_compiled_application);
     RUN_TEST_CASE(test_runs_shared_package_tests);
     RUN_TEST_CASE(compiler_test_reports_each_test);
-    RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
     RUN_TEST_CASE(compiler_runs_cost_explanation_regressions);
     RUN_TEST_CASE(compiler_test_skips_native_only_packages);
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);

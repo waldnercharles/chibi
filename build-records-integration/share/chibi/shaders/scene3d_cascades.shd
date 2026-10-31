@@ -1,0 +1,189 @@
+// What the screen light's passes read: the camera's depth and where it
+// places things, the last frame's color, the cascade above, and the shape of
+// the cascade being drawn.
+layout(location = 0) out vec4 result;
+layout(set = 2, binding = 0) uniform sampler2D depth_map;
+layout(set = 2, binding = 1) uniform sampler2D history;
+layout(set = 2, binding = 2) uniform sampler2D upper;
+layout(set = 2, binding = 3) uniform sampler2D occlusion_map;
+// World tracing: the carved rock density on the terrain volume's coarse
+// lattice, and the frame's emitted light per unit length, each layer a tile.
+layout(set = 2, binding = 4) uniform sampler2D rock;
+layout(set = 2, binding = 5) uniform sampler2D light;
+// The probes' light accumulated over earlier frames, which the filter blends.
+layout(set = 2, binding = 6) uniform sampler2D previous;
+layout(set = 3, binding = 0) uniform uniform_block {
+    // Clip space to view space, view to world, world to view, world to this
+    // frame's clip space and world to the last frame's.
+    mat4 cascade_unproject;
+    mat4 cascade_to_world;
+    mat4 cascade_to_view;
+    mat4 cascade_to_clip;
+    mat4 cascade_to_history;
+    // The frame's size in pixels, whether the last frame's color holds, and
+    // the first cascade's probe spacing in pixels.
+    vec4 cascade_frame;
+    // This cascade's and the one above's probe spacing in pixels, map side,
+    // and probes across and down; zero above the top.
+    vec4 cascade_probe;
+    vec4 cascade_upper;
+    // The interval's start and end in the first cascade's probe spacing,
+    // samples along it, and the tracing: 1 the screen, 2 the world.
+    vec4 cascade_ray;
+    // Each world volume's first point (x, top y, z) and spacing, and its
+    // cells across, down and deep and tiles across.
+    vec4 rock_corner;
+    vec4 rock_cells;
+    vec4 light_corner;
+    vec4 light_cells;
+    // The frame's number, which turns each ray within its direction's cell,
+    // the share of a new frame in the probes' accumulated light, and whether
+    // the accumulation starts over.
+    vec4 cascade_jitter;
+};
+
+const float PI = 3.141592653589793;
+
+ivec2 frame_size()
+{
+    return ivec2(cascade_frame.xy);
+}
+
+// The view-space point at a depth behind pixel coordinate p, row 0 at the top.
+vec3 view_at(vec2 p, float depth)
+{
+    vec2 uv = p / cascade_frame.xy;
+    vec4 view = cascade_unproject * vec4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
+    return view.xyz / view.w;
+}
+
+float depth_at(ivec2 p)
+{
+    return texelFetch(depth_map, clamp(p, ivec2(0), frame_size() - 1), 0).r;
+}
+
+vec3 view_point(ivec2 p)
+{
+    p = clamp(p, ivec2(0), frame_size() - 1);
+    return view_at(vec2(p) + 0.5, texelFetch(depth_map, p, 0).r);
+}
+
+// The surface's view-space normal at pixel p, facing the eye, from the
+// neighbor nearer in depth along each axis.
+vec3 view_normal(ivec2 p, vec3 center)
+{
+    ivec2 last = frame_size() - 1;
+    vec3 eye = normalize(view_at(vec2(p) + 0.5, 0.0) - view_at(vec2(p) + 0.5, 0.5));
+    vec3 left = view_point(p - ivec2(1, 0)), right = view_point(p + ivec2(1, 0));
+    vec3 above = view_point(p - ivec2(0, 1)), below = view_point(p + ivec2(0, 1));
+    bool rightward = p.x < last.x && (p.x == 0 || abs(right.z - center.z) < abs(center.z - left.z));
+    bool downward = p.y < last.y && (p.y == 0 || abs(below.z - center.z) < abs(center.z - above.z));
+    vec3 across = rightward ? right - center : center - left;
+    vec3 down = downward ? below - center : center - above;
+    vec3 normal = cross(across, down);
+    float length_squared = dot(normal, normal);
+    if (length_squared <= 0.0) return eye;
+    normal *= inversesqrt(length_squared);
+    return dot(normal, eye) < 0.0 ? -normal : normal;
+}
+
+// A hash of three integers to [0, 1).
+float hash(uvec3 v)
+{
+    v = v * uvec3(1664525u, 1013904223u, 2654435769u);
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z;
+    return float(v.x) / 4294967296.0;
+}
+
+// The octahedral point at position sub within texel t of a map side texels
+// wide, before it is normalized onto the sphere.
+vec3 octahedral_point(ivec2 t, float side, vec2 sub)
+{
+    vec2 e = (vec2(t) + sub) / side * 2.0 - 1.0;
+    vec3 v = vec3(e, 1.0 - abs(e.x) - abs(e.y));
+    if (v.z < 0.0) {
+        vec2 flip = vec2(e.x >= 0.0 ? 1.0 : -1.0, e.y >= 0.0 ? 1.0 : -1.0);
+        v.xy = (1.0 - abs(v.yx)) * flip;
+    }
+    return v;
+}
+
+// The direction at position sub within texel t.
+vec3 octahedral_direction(ivec2 t, float side, vec2 sub)
+{
+    return normalize(octahedral_point(t, side, sub));
+}
+
+// The solid angle texel t covers, as seen from position sub within it: its
+// area on the octahedron's unfolded square, (2 / side)^2, over the cube of
+// that point's distance from the sphere's center, since every face lies at
+// |x| + |y| + |z| = 1. Averaged over sub, it is the texel's solid angle.
+float texel_solid_angle(ivec2 t, float side, vec2 sub)
+{
+    float r = length(octahedral_point(t, side, sub));
+    return 4.0 / (side * side) / (r * r * r);
+}
+
+// Where within its direction's texel this frame casts the ray of cascade
+// texel t, so that the light accumulated over frames covers the whole texel.
+vec2 ray_jitter(ivec2 t)
+{
+    uvec3 seed = uvec3(uvec2(t), uint(cascade_jitter.x));
+    return vec2(hash(seed), hash(seed + uvec3(0u, 0u, 7919u)));
+}
+
+// A layered volume's value at world point p, blended between its cells, or
+// outside it.
+vec4 volume_at(sampler2D atlas, vec4 corner, vec4 cells, vec3 p, vec4 outside)
+{
+    vec3 g = vec3(p.x - corner.x, p.z - corner.z, corner.y - p.y) / corner.w;
+    if (any(lessThan(g, vec3(0.0))) || any(greaterThan(g, cells.xyz - 1.0))) return outside;
+    float k = min(floor(g.z), cells.z - 2.0);
+    float f = g.z - k;
+    vec2 size = vec2(textureSize(atlas, 0));
+    vec2 lower = vec2(mod(k, cells.w), floor(k / cells.w)) * cells.xy;
+    vec2 next = vec2(mod(k + 1.0, cells.w), floor((k + 1.0) / cells.w)) * cells.xy;
+    vec4 a = textureLod(atlas, (lower + g.xy + 0.5) / size, 0.0);
+    vec4 b = textureLod(atlas, (next + g.xy + 0.5) / size, 0.0);
+    return mix(a, b, f);
+}
+
+// The world length of the first cascade's probe spacing on the surface at
+// view point v, the unit of the cascades' intervals.
+float probe_unit(vec2 pixel, vec3 v)
+{
+    float depth = texelFetch(depth_map, clamp(ivec2(pixel), ivec2(0), frame_size() - 1), 0).r;
+    vec3 beside = view_at(pixel + vec2(1.0, 0.0), depth);
+    return length(beside - view_at(pixel, depth)) * cascade_frame.w;
+}
+
+// Light as the cascades keep it: finite and not negative, whatever the last
+// frame left in a texture.
+vec3 kept_light(vec3 light)
+{
+    bvec3 bad = bvec3(isnan(light.x) || isinf(light.x), isnan(light.y) || isinf(light.y),
+                      isnan(light.z) || isinf(light.z));
+    return any(bad) ? vec3(0.0) : max(light, vec3(0.0));
+}
+
+// The last frame's color at world point p, where the last frame's camera saw
+// it; nothing where that camera did not.
+vec3 history_at(vec3 p)
+{
+    vec4 seen = cascade_to_history * vec4(p, 1.0);
+    if (seen.w <= 0.0) return vec3(0.0);
+    vec2 uv = seen.xy / seen.w * vec2(0.5, -0.5) + 0.5;
+    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec3(0.0);
+    ivec2 texel = clamp(ivec2(uv * cascade_frame.xy), ivec2(0), frame_size() - 1);
+    return kept_light(texelFetch(history, texel, 0).rgb);
+}
+
+// The pixel at the center of probe q of a cascade spaced spacing pixels apart.
+vec2 probe_pixel(ivec2 q, float spacing)
+{
+    return (vec2(q) + 0.5) * spacing;
+}

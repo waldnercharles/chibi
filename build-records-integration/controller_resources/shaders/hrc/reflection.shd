@@ -1,0 +1,27 @@
+// Stylized 2D planar image mapping. HRC supplies the already-lit source.
+// No recursive feedback, offscreen reconstruction, refraction or extra lights.
+layout(set = 2, binding = 1) uniform sampler2D u_scene;
+layout(set = 3, binding = 1) uniform shd_uniforms {
+    vec4 u_view;
+    vec4 u_plane;
+    vec4 u_tint;
+    vec2 u_optics;
+    vec2 u_pixel;
+};
+vec4 shader(vec4 color, ShaderParams params)
+{
+    vec2 world = u_view.xy + screen_uv * u_view.zw * vec2(1,-1);
+    vec2 normal = vec2(-u_plane.w, u_plane.z);
+    vec2 reflected = world - 2.0 * normal * dot(world-u_plane.xy,normal);
+    vec2 uv = (reflected-u_view.xy) / (u_view.zw*vec2(1,-1));
+    float edge = min(min(uv.x,uv.y),min(1.0-uv.x,1.0-uv.y));
+    float weight = u_optics.x * smoothstep(0.0,.04,edge);
+    vec3 base = texture(u_scene,screen_uv).rgb;
+    vec2 spread = u_pixel*(1.0+u_optics.y*6.0);
+    vec3 reflection = texture(u_scene,uv).rgb*.5;
+    reflection += texture(u_scene,uv+spread).rgb*.125;
+    reflection += texture(u_scene,uv-spread).rgb*.125;
+    reflection += texture(u_scene,uv+vec2(spread.x,-spread.y)).rgb*.125;
+    reflection += texture(u_scene,uv+vec2(-spread.x,spread.y)).rgb*.125;
+    return vec4(mix(base,reflection*u_tint.rgb,weight),1);
+}

@@ -1,0 +1,631 @@
+package strings
+
+// String operations compare, count and offset bytes.
+// Spaces and case use ASCII. Offsets are byte offsets, and -1 means not found.
+
+// Compiler text operations use bytes, including bytes inside UTF-8 sequences.
+pub ByteLength :: (value: string) -> int {
+    return text_byte_length(value);
+}
+
+// Returns -1 outside the string; valid bytes are unsigned values from 0 to 255.
+// Reads the runtime's stored byte length.
+pub ByteAt :: (value: string, index: int) -> int {
+    return text_byte_at(value, index);
+}
+
+// Every byte of the string, from 0 to 255, read in one pass.
+pub Bytes :: (value: string) -> int[] {
+    return text_bytes(value);
+}
+
+// Start clamps to the string and count clamps to its remaining bytes.
+pub Slice :: (value: string, start: int, count: int) -> string {
+    return text_slice(value, start, count);
+}
+
+pub Compare :: (left: string, right: string) -> int {
+    leftLength := ByteLength(left);
+    rightLength := ByteLength(right);
+    index: int = 0;
+    while (index < leftLength && index < rightLength) {
+        a := ByteAt(left, index);
+        b := ByteAt(right, index);
+        if (a < b) {
+            return -1;
+        }
+        if (a > b) {
+            return 1;
+        }
+        index += 1;
+    }
+    if (leftLength < rightLength) {
+        return -1;
+    }
+    if (leftLength > rightLength) {
+        return 1;
+    }
+    return 0;
+}
+
+pub IsIdentifier :: (value: string) -> bool {
+    size := ByteLength(value);
+    if (size == 0) {
+        return false;
+    }
+    index: int = 0;
+    while (index < size) {
+        byte := ByteAt(value, index);
+        letter := byte == 95 || (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122);
+        if (!letter && !(index > 0 && byte >= 48 && byte <= 57)) {
+            return false;
+        }
+        index += 1;
+    }
+    return true;
+}
+
+pub BaseName :: (path: string) -> string {
+    size := ByteLength(path);
+    start: int = 0;
+    index: int = 0;
+    while (index < size) {
+        if (ByteAt(path, index) == 47) {
+            start = index + 1;
+        }
+        index += 1;
+    }
+    return Slice(path, start, size - start);
+}
+
+pub Contains :: (s: string, substr: string) -> bool {
+    return Index(s, substr) >= 0;
+}
+
+pub ContainsAny :: (s: string, chars: string) -> bool {
+    return IndexAny(s, chars) >= 0;
+}
+
+pub HasPrefix :: (s: string, prefix: string) -> bool {
+    size := ByteLength(prefix);
+    return ByteLength(s) >= size && Slice(s, 0, size) == prefix;
+}
+
+pub HasSuffix :: (s: string, suffix: string) -> bool {
+    size := ByteLength(s);
+    count := ByteLength(suffix);
+    return size >= count && Slice(s, size - count, count) == suffix;
+}
+
+pub IndexByte :: (s: string, c: int) -> int {
+    size := ByteLength(s);
+    i: int = 0;
+    while (i < size) {
+        if (ByteAt(s, i) == c) {
+            return i;
+        }
+        i += 1;
+    }
+    return -1;
+}
+
+pub LastIndexByte :: (s: string, c: int) -> int {
+    i: int = ByteLength(s) - 1;
+    while (i >= 0) {
+        if (ByteAt(s, i) == c) {
+            return i;
+        }
+        i -= 1;
+    }
+    return -1;
+}
+
+// Verify hash hits byte for byte.
+MatchesAt :: (s: string, substr: string, start: int) -> bool {
+    i: int = 0;
+    while (i < ByteLength(substr)) {
+        if (ByteAt(s, start + i) != ByteAt(substr, i)) {
+            return false;
+        }
+        i += 1;
+    }
+    return true;
+}
+
+// Search from a byte offset without copying.
+IndexFrom :: (s: string, substr: string, start: int) -> int {
+    n := ByteLength(substr);
+    size := ByteLength(s);
+    if (n == 0) {
+        return start;
+    }
+    if (n > size - start) {
+        return -1;
+    }
+    if (n == 1) {
+        c := ByteAt(substr, 0);
+        i := start;
+        while (i < size) {
+            if (ByteAt(s, i) == c) {
+                return i;
+            }
+            i += 1;
+        }
+        return -1;
+    }
+    hash: i64 = 0;
+    pow: i64 = 1;
+    h: i64 = 0;
+    i: int = 0;
+    while (i < n) {
+        hash = (hash * 16777619 + i64(ByteAt(substr, i))) & 0xFFFFFFFF;
+        pow = (pow * 16777619) & 0xFFFFFFFF;
+        h = (h * 16777619 + i64(ByteAt(s, start + i))) & 0xFFFFFFFF;
+        i += 1;
+    }
+    i += start;
+    if (h == hash && MatchesAt(s, substr, start)) {
+        return start;
+    }
+    while (i < size) {
+        h = (h * 16777619 + i64(ByteAt(s, i)) - pow * i64(ByteAt(s, i - n))) & 0xFFFFFFFF;
+        i += 1;
+        if (h == hash && MatchesAt(s, substr, i - n)) {
+            return i - n;
+        }
+    }
+    return -1;
+}
+
+// Uses a 32-bit Rabin-Karp rolling hash. An empty substring is found at 0.
+pub Index :: (s: string, substr: string) -> int {
+    return IndexFrom(s, substr, 0);
+}
+
+// Index's search from the end. An empty substring is found at the length of s.
+pub LastIndex :: (s: string, substr: string) -> int {
+    n := ByteLength(substr);
+    size := ByteLength(s);
+    if (n == 0) {
+        return size;
+    }
+    if (n == 1) {
+        return LastIndexByte(s, ByteAt(substr, 0));
+    }
+    if (n == size) {
+        if (s == substr) {
+            return 0;
+        }
+        return -1;
+    }
+    if (n > size) {
+        return -1;
+    }
+    hash: i64 = 0;
+    pow: i64 = 1;
+    h: i64 = 0;
+    i: int = 0;
+    while (i < n) {
+        hash = (hash * 16777619 + i64(ByteAt(substr, n - 1 - i))) & 0xFFFFFFFF;
+        pow = (pow * 16777619) & 0xFFFFFFFF;
+        h = (h * 16777619 + i64(ByteAt(s, size - 1 - i))) & 0xFFFFFFFF;
+        i += 1;
+    }
+    i = size - n;
+    if (h == hash && Slice(s, i, n) == substr) {
+        return i;
+    }
+    i -= 1;
+    while (i >= 0) {
+        h = (h * 16777619 + i64(ByteAt(s, i)) - pow * i64(ByteAt(s, i + n))) & 0xFFFFFFFF;
+        if (h == hash && Slice(s, i, n) == substr) {
+            return i;
+        }
+        i -= 1;
+    }
+    return -1;
+}
+
+// The offset of the first byte of s that is any byte of chars.
+pub IndexAny :: (s: string, chars: string) -> int {
+    size := ByteLength(s);
+    i: int = 0;
+    while (i < size) {
+        if (IndexByte(chars, ByteAt(s, i)) >= 0) {
+            return i;
+        }
+        i += 1;
+    }
+    return -1;
+}
+
+pub LastIndexAny :: (s: string, chars: string) -> int {
+    i: int = ByteLength(s) - 1;
+    while (i >= 0) {
+        if (IndexByte(chars, ByteAt(s, i)) >= 0) {
+            return i;
+        }
+        i -= 1;
+    }
+    return -1;
+}
+
+// Non-overlapping occurrences. An empty substring occurs at every byte
+// boundary, one more than the byte length.
+pub Count :: (s: string, substr: string) -> int {
+    n := ByteLength(substr);
+    if (n == 0) {
+        return ByteLength(s) + 1;
+    }
+    total: int = 0;
+    if (n == 1) {
+        c := ByteAt(substr, 0);
+        size := ByteLength(s);
+        i: int = 0;
+        while (i < size) {
+            if (ByteAt(s, i) == c) {
+                total += 1;
+            }
+            i += 1;
+        }
+        return total;
+    }
+    start: int = 0;
+    while (true) {
+        i := IndexFrom(s, substr, start);
+        if (i < 0) {
+            break;
+        }
+        total += 1;
+        start = i + n;
+    }
+    return total;
+}
+
+// Everything before the first c, or all of s when c is absent.
+pub TruncateToByte :: (s: string, c: int) -> string {
+    n := IndexByte(s, c);
+    if (n < 0) {
+        return s;
+    }
+    return Slice(s, 0, n);
+}
+
+// ASCII letters match in either case; every other byte must be equal.
+pub EqualFold :: (u: string, v: string) -> bool {
+    size := ByteLength(u);
+    if (size != ByteLength(v)) {
+        return false;
+    }
+    i: int = 0;
+    while (i < size) {
+        sr := ByteAt(u, i);
+        tr := ByteAt(v, i);
+        if (tr < sr) {
+            swap := sr;
+            sr = tr;
+            tr = swap;
+        }
+        if (tr != sr && !(sr >= 65 && sr <= 90 && tr == sr + 32)) {
+            return false;
+        }
+        i += 1;
+    }
+    return true;
+}
+
+// ASCII letters only; other bytes, including those of UTF-8 sequences, stay.
+pub ToLower :: (s: string) -> string {
+    size := ByteLength(s);
+    result: string = "";
+    start: int = 0;
+    i: int = 0;
+    while (i < size) {
+        c := ByteAt(s, i);
+        if (c >= 65 && c <= 90) {
+            letter := Slice("abcdefghijklmnopqrstuvwxyz", c - 65, 1);
+            result = format_text("{}{}{}", result, Slice(s, start, i - start), letter);
+            start = i + 1;
+        }
+        i += 1;
+    }
+    if (start == 0) {
+        return s;
+    }
+    return format_text("{}{}", result, Slice(s, start, size - start));
+}
+
+pub ToUpper :: (s: string) -> string {
+    size := ByteLength(s);
+    result: string = "";
+    start: int = 0;
+    i: int = 0;
+    while (i < size) {
+        c := ByteAt(s, i);
+        if (c >= 97 && c <= 122) {
+            letter := Slice("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c - 97, 1);
+            result = format_text("{}{}{}", result, Slice(s, start, i - start), letter);
+            start = i + 1;
+        }
+        i += 1;
+    }
+    if (start == 0) {
+        return s;
+    }
+    return format_text("{}{}", result, Slice(s, start, size - start));
+}
+
+// Tab, line feed, vertical tab, form feed, carriage return and space.
+pub IsAsciiSpace :: (c: int) -> bool {
+    return c == 32 || (c >= 9 && c <= 13);
+}
+
+// Removes the leading bytes that are bytes of cutset.
+pub TrimLeft :: (s: string, cutset: string) -> string {
+    size := ByteLength(s);
+    i: int = 0;
+    while (i < size && IndexByte(cutset, ByteAt(s, i)) >= 0) {
+        i += 1;
+    }
+    return Slice(s, i, size - i);
+}
+
+pub TrimRight :: (s: string, cutset: string) -> string {
+    i := ByteLength(s);
+    while (i > 0 && IndexByte(cutset, ByteAt(s, i - 1)) >= 0) {
+        i -= 1;
+    }
+    return Slice(s, 0, i);
+}
+
+pub Trim :: (s: string, cutset: string) -> string {
+    return TrimRight(TrimLeft(s, cutset), cutset);
+}
+
+pub TrimLeftSpace :: (s: string) -> string {
+    size := ByteLength(s);
+    i: int = 0;
+    while (i < size && IsAsciiSpace(ByteAt(s, i))) {
+        i += 1;
+    }
+    return Slice(s, i, size - i);
+}
+
+pub TrimRightSpace :: (s: string) -> string {
+    i := ByteLength(s);
+    while (i > 0 && IsAsciiSpace(ByteAt(s, i - 1))) {
+        i -= 1;
+    }
+    return Slice(s, 0, i);
+}
+
+pub TrimSpace :: (s: string) -> string {
+    return TrimRightSpace(TrimLeftSpace(s));
+}
+
+pub TrimPrefix :: (s: string, prefix: string) -> string {
+    if (HasPrefix(s, prefix)) {
+        return Slice(s, ByteLength(prefix), ByteLength(s));
+    }
+    return s;
+}
+
+pub TrimSuffix :: (s: string, suffix: string) -> string {
+    if (HasSuffix(s, suffix)) {
+        return Slice(s, 0, ByteLength(s) - ByteLength(suffix));
+    }
+    return s;
+}
+
+// The count bytes from offset, or all bytes from offset when count is below 1.
+// An offset outside s keeps all of s. A count past the end keeps the rest.
+pub Cut :: (s: string, offset: int, count: int) -> string {
+    rest: string = s;
+    size := ByteLength(s);
+    if (offset >= 0 && offset < size) {
+        rest = Slice(s, offset, size - offset);
+    }
+    if (count < 1 || count >= ByteLength(rest)) {
+        return rest;
+    }
+    return Slice(rest, 0, count);
+}
+
+// Produces at most n parts, or every part when n is negative.
+// The last part holds the rest of s. Each other part keeps the first keep
+// bytes of the separator after it. An empty separator splits s into bytes.
+SplitKeeping :: (s: string, sep: string, keep: int, n: int) -> string[] {
+    parts: string[] = [];
+    size := ByteLength(sep);
+    limit := n;
+    if (size == 0) {
+        count := ByteLength(s);
+        if (limit < 0 || limit > count) {
+            limit = count;
+        }
+        while (length(parts) < limit - 1) {
+            parts.append(Slice(s, length(parts), 1));
+        }
+        if (limit > 0) {
+            parts.append(Slice(s, limit - 1, count));
+        }
+        return parts;
+    }
+    if (limit == 0) {
+        return parts;
+    }
+    start: int = 0;
+    while (limit < 0 || length(parts) < limit - 1) {
+        m := IndexFrom(s, sep, start);
+        if (m < 0) {
+            break;
+        }
+        parts.append(Slice(s, start, m - start + keep));
+        start = m + size;
+    }
+    if (start == 0) {
+        parts.append(s);
+        return parts;
+    }
+    parts.append(Slice(s, start, ByteLength(s) - start));
+    return parts;
+}
+
+pub Split :: (s: string, sep: string) -> string[] {
+    return SplitKeeping(s, sep, 0, -1);
+}
+
+pub SplitN :: (s: string, sep: string, n: int) -> string[] {
+    return SplitKeeping(s, sep, 0, n);
+}
+
+pub SplitAfter :: (s: string, sep: string) -> string[] {
+    return SplitKeeping(s, sep, ByteLength(sep), -1);
+}
+
+pub SplitAfterN :: (s: string, sep: string, n: int) -> string[] {
+    return SplitKeeping(s, sep, ByteLength(sep), n);
+}
+
+// Splits at line feeds; a line that ends in a carriage return loses it.
+SplitLinesKeeping :: (s: string, keep: int, n: int) -> string[] {
+    lines: string[] = [];
+    for (line in SplitKeeping(s, "\n", keep, n)) {
+        lines.append(TrimSuffix(line, "\r"));
+    }
+    return lines;
+}
+
+pub SplitLines :: (s: string) -> string[] {
+    return SplitLinesKeeping(s, 0, -1);
+}
+
+pub SplitLinesN :: (s: string, n: int) -> string[] {
+    return SplitLinesKeeping(s, 0, n);
+}
+
+pub SplitLinesAfter :: (s: string) -> string[] {
+    return SplitLinesKeeping(s, 1, -1);
+}
+
+pub SplitLinesAfterN :: (s: string, n: int) -> string[] {
+    return SplitLinesKeeping(s, 1, n);
+}
+
+// The runs of bytes between ASCII spaces.
+pub Fields :: (s: string) -> string[] {
+    fields: string[] = [];
+    size := ByteLength(s);
+    start: int = -1;
+    i: int = 0;
+    while (i < size) {
+        if (IsAsciiSpace(ByteAt(s, i))) {
+            if (start >= 0) {
+                fields.append(Slice(s, start, i - start));
+                start = -1;
+            }
+        } else if (start < 0) {
+            start = i;
+        }
+        i += 1;
+    }
+    if (start >= 0) {
+        fields.append(Slice(s, start, size - start));
+    }
+    return fields;
+}
+
+pub Join :: (a: string[], sep: string) -> string {
+    if (length(a) == 0) {
+        return "";
+    }
+    result: string = a[0];
+    i: int = 1;
+    while (i < length(a)) {
+        result = format_text("{}{}{}", result, sep, a[i]);
+        i += 1;
+    }
+    return result;
+}
+
+pub Concatenate :: (a: string[]) -> string {
+    return Join(a, "");
+}
+
+// Doubles the result until it reaches the requested length.
+// A count below 1 gives an empty string.
+pub Repeat :: (s: string, count: int) -> string {
+    if (count < 1) {
+        return "";
+    }
+    total: i64 = i64(ByteLength(s)) * i64(count);
+    result: string = s;
+    while (i64(ByteLength(result)) < total) {
+        rest: i64 = total - i64(ByteLength(result));
+        result = format_text("{}{}", result, Slice(result, 0, int(rest)));
+    }
+    return result;
+}
+
+// Replaces the first n non-overlapping matches of old, or all of them when n is
+// negative. An empty old matches at every byte boundary.
+pub Replace :: (s: string, old: string, new: string, n: int) -> string {
+    if (old == new || n == 0) {
+        return s;
+    }
+    matches := Count(s, old);
+    if (matches == 0) {
+        return s;
+    }
+    if (n > 0 && n < matches) {
+        matches = n;
+    }
+    size := ByteLength(s);
+    width := ByteLength(old);
+    result: string = "";
+    start: int = 0;
+    i: int = 0;
+    while (i < matches) {
+        j := start;
+        if (width == 0) {
+            if (i > 0) {
+                j += 1;
+            }
+        } else {
+            j += Index(Slice(s, start, size - start), old);
+        }
+        result = format_text("{}{}{}", result, Slice(s, start, j - start), new);
+        start = j + width;
+        i += 1;
+    }
+    return format_text("{}{}", result, Slice(s, start, size - start));
+}
+
+pub ReplaceAll :: (s: string, old: string, new: string) -> string {
+    return Replace(s, old, new, -1);
+}
+
+pub Remove :: (s: string, key: string, n: int) -> string {
+    return Replace(s, key, "", n);
+}
+
+pub RemoveAll :: (s: string, key: string) -> string {
+    return Remove(s, key, -1);
+}
+
+pub Parts :: struct {
+    head: string;
+    match: string;
+    tail: string;
+}
+
+// The text before the first sep, sep and the text after it; when sep is
+// absent, head is all of str and the others are empty.
+pub Partition :: (str: string, sep: string) -> Parts {
+    i := Index(str, sep);
+    if (i < 0) {
+        return {head: str, match: "", tail: ""};
+    }
+    size := ByteLength(sep);
+    return {head: Slice(str, 0, i), match: sep, tail: Slice(str, i + size, ByteLength(str))};
+}

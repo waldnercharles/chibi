@@ -1,0 +1,63 @@
+// Procedural star placement adapted from Neon-Swarm. Cached as unlit presentation.
+layout(set = 3, binding = 1) uniform shd_uniforms {
+    vec2 camera_pos;
+    vec2 world_size;
+    vec4 far_layer;
+    vec4 middle_layer;
+    vec4 near_layer;
+    vec3 parallax;
+    vec4 palette_a;
+    vec4 palette_b;
+    vec4 palette_c;
+    vec4 palette_d;
+};
+#include "noise.shd"
+vec2 voronoi_star(vec2 pos, float cell_size, float star_radius, float density, vec2 layer_seed)
+{
+    vec2 cell = floor(pos / cell_size);
+    float min_dist = 1e9;
+    float color_seed = 0.0;
+
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            vec2 neighbor = cell + vec2(float(dx), float(dy));
+            vec2 h = random2(neighbor + layer_seed);
+
+            if (h.x > density) continue;
+
+            vec2 star_pos = (neighbor + h) * cell_size;
+            float d = length(pos - star_pos);
+
+            if (d < min_dist) {
+                min_dist = d;
+                color_seed = random(neighbor + layer_seed * 17.31);
+            }
+        }
+    }
+
+    float brightness = exp(-min_dist * min_dist / (star_radius * star_radius));
+    brightness = smoothstep(0.3, 1.0, brightness);
+
+    return vec2(brightness, color_seed);
+}
+
+
+vec3 star_color(float seed) {
+    float t = seed * 4.0;
+    if (t < 1.0) return mix(palette_a.rgb, palette_b.rgb, t);
+    if (t < 2.0) return mix(palette_b.rgb, palette_c.rgb, t - 1.0);
+    if (t < 3.0) return mix(palette_c.rgb, palette_d.rgb, t - 2.0);
+    return mix(palette_d.rgb, palette_a.rgb, t - 3.0);
+}
+vec3 layer(vec2 offset, vec4 settings, float depth, vec2 seed) {
+    if (settings.x <= 0.0 || settings.y <= 0.0 || settings.z <= 0.0) return vec3(0.0);
+    vec2 s = voronoi_star(offset + camera_pos * depth, settings.x, settings.y, settings.z, seed);
+    return star_color(s.y) * s.x * settings.w;
+}
+vec4 shader(vec4 color, ShaderParams params) {
+    vec2 offset = (screen_uv - 0.5) * vec2(1.0, -1.0) * world_size;
+    vec3 stars = layer(offset, far_layer, parallax.x, vec2(0.0));
+    stars += layer(offset, middle_layer, parallax.y, vec2(53.7,91.2));
+    stars += layer(offset, near_layer, parallax.z, vec2(137.4,219.8));
+    return vec4(stars, 1.0);
+}

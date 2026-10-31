@@ -1,0 +1,930 @@
+package source_tokenizer
+
+// A port of Odin's core:odin/tokenizer to Chibi source. Tokenize reads a whole
+// text and returns aligned token columns that end with an EOF token. Offsets
+// count bytes; rows and byte columns count from zero, as Tree-sitter's do.
+
+// Token kinds, in the order of Odin's Token_Kind; KindNames spells each.
+Invalid: int : 0;
+EOF: int : 1;
+Comment: int : 2;
+Ident: int : 3;
+Integer: int : 4;
+Float: int : 5;
+String: int : 6;
+Eq: int : 7;
+Not: int : 8;
+At: int : 9;
+Dollar: int : 10;
+Question: int : 11;
+Add: int : 12;
+Sub: int : 13;
+Mul: int : 14;
+Quo: int : 15;
+Mod: int : 16;
+And: int : 17;
+Or: int : 18;
+Xor: int : 19;
+Complement: int : 20;
+Shl: int : 21;
+Shr: int : 22;
+CmpAnd: int : 23;
+CmpOr: int : 24;
+AddEq: int : 25;
+SubEq: int : 26;
+MulEq: int : 27;
+QuoEq: int : 28;
+ModEq: int : 29;
+AndEq: int : 30;
+OrEq: int : 31;
+XorEq: int : 32;
+ArrowRight: int : 33;
+FatArrow: int : 34;
+CmpEq: int : 35;
+NotEq: int : 36;
+Lt: int : 37;
+Gt: int : 38;
+LtEq: int : 39;
+GtEq: int : 40;
+OpenParen: int : 41;
+CloseParen: int : 42;
+OpenBracket: int : 43;
+CloseBracket: int : 44;
+OpenBrace: int : 45;
+CloseBrace: int : 46;
+Colon: int : 47;
+Semicolon: int : 48;
+Period: int : 49;
+Comma: int : 50;
+Ellipsis: int : 51;
+ColonColon: int : 52;
+ColonEq: int : 53;
+// Keywords, in the order grammar.js lists them. Odin's names for `!`, `&` and
+// `|` are taken, so the words `not`, `and` and `or` end in Keyword.
+Package: int : 54;
+Import: int : 55;
+Behavior: int : 56;
+Library: int : 57;
+System: int : 58;
+State: int : 59;
+Retain: int : 60;
+Action: int : 61;
+Event: int : 62;
+Disabled: int : 63;
+On: int : 64;
+After: int : 65;
+As: int : 66;
+Bind: int : 67;
+Events: int : 68;
+Union: int : 69;
+Struct: int : 70;
+Switch: int : 71;
+Is: int : 72;
+NotKeyword: int : 73;
+AndKeyword: int : 74;
+OrKeyword: int : 75;
+Macro: int : 76;
+Entry: int : 77;
+Exit: int : 78;
+Query: int : 79;
+If: int : 80;
+Else: int : 81;
+While: int : 82;
+For: int : 83;
+In: int : 84;
+Case: int : 85;
+Sequence: int : 86;
+Branch: int : 87;
+Return: int : 88;
+Reduce: int : 89;
+Unordered: int : 90;
+Goto: int : 91;
+Break: int : 92;
+Continue: int : 93;
+Await: int : 94;
+Yield: int : 95;
+Cancel: int : 96;
+True: int : 97;
+False: int : 98;
+Nil: int : 99;
+Null: int : 100;
+Plain: int : 101;
+Ref: int : 102;
+Service: int : 103;
+Setting: int : 104;
+Wildcard: int : 105;
+From: int : 106;
+Split: int : 107;
+Component: int : 108;
+Prototype: int : 109;
+Relationship: int : 110;
+Pub: int : 111;
+Delete: int : 112;
+HalfOpenRange: int : 113;
+KindCount: int : 114;
+
+// Byte classes.
+SpaceClass: int : 1;
+LetterClass: int : 2;
+DigitClass: int : 3;
+
+// What an open bracket holds, which decides where a statement can end.
+Statements: int : 0; // the file, a block or a declaration body
+Literal: int : 1; // a struct literal
+Variants: int : 2; // a union's variants
+Group: int : 3; // parentheses or brackets
+Fields: int : 4; // a prototype's components and fields
+Embedded: int : 5; // a literal that ends nothing: a prototype's component or a relationship
+
+Quote: int : 34;
+Slash: int : 47;
+Star: int : 42;
+Backslash: int : 92;
+Newline: int : 10;
+CarriageReturn: int : 13;
+
+// Odin's keyword table: FNV-1a hashes into a power-of-two table, here probed
+// linearly because Chibi's keywords collide in Odin's 512 slots.
+KeywordSlots: int : 512;
+KeywordHashBasis: u64 : 0x811C9DC5;
+KeywordHashPrime: u64 : 0x01000193;
+
+Tokens :: union {
+    Scanned(kinds: int[], starts: int[], ends: int[], rows: int[], columns: int[],
+            errors: string[], error_offsets: int[], error_rows: int[], error_columns: int[])
+}
+
+// A token that can fail, as Scan returns it: its kind and end, and at most
+// one error. A string stops at a failed escape with `partial` set and resumes
+// after it.
+Lexeme :: struct {
+    kind: int;
+    end: int;
+    message: string;
+    at: int;
+    partial: bool;
+}
+
+pub KindNames :: () -> string[] {
+    return ["Invalid", "EOF", "Comment", "Ident", "Integer", "Float", "String", "=",
+            "!", "@", "$", "?", "+", "-", "*", "/", "%", "&", "|", "^", "~", "<<",
+            ">>", "&&", "||", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "->",
+            "=>", "==", "!=", "<", ">", "<=", ">=", "(", ")", "[", "]", "{", "}", ":",
+            ";", ".", ",", "..", "::", ":=", "package", "import", "behavior",
+            "library", "system", "state", "retain", "action", "event",
+            "disabled", "on", "after", "as", "bind", "events", "union", "struct",
+            "switch", "is", "not", "and", "or", "macro", "entry", "exit",
+            "query", "if", "else", "while", "for", "in", "case", "sequence",
+            "branch", "return", "reduce", "unordered", "goto", "break", "continue",
+            "await", "yield", "cancel", "true", "false", "nil", "null", "plain",
+            "service", "setting", "wildcard", "from", "split", "component",
+            "prototype", "relationship", "pub", "delete", "..<"];
+}
+
+pub Tokenize :: (text: string) -> Tokens {
+    bytes := text_bytes(text);
+    count := length(bytes);
+    classes := Classes();
+    endings := Endings();
+    names := KindNames();
+    keywords := KeywordTable(names);
+    kinds: int[] = [];
+    starts: int[] = [];
+    ends: int[] = [];
+    rows: int[] = [];
+    columns: int[] = [];
+    errors: string[] = [];
+    error_offsets: int[] = [];
+    error_rows: int[] = [];
+    error_columns: int[] = [];
+    // The open brackets; the first `depth` entries are live.
+    contexts: int[] = [Statements];
+    depth: int = 1;
+    // The end of the last token, and the row and offset of the line it ends on.
+    offset: int = 0;
+    row: int = 0;
+    line: int = 0;
+    // Odin's insert_semicolon: the last token can end a statement.
+    insert := false;
+    // The last two tokens other than comments; whether the last is a name
+    // that starts a statement, as a label's does; whether a declaration's
+    // type follows its name's `:`; and whether a brace now opens a value,
+    // after a `return .Name` outcome or a typed constant's second `:`.
+    previous: int = Invalid;
+    before: int = Invalid;
+    label := false;
+    annotating := false;
+    valued := false;
+    // A `:: prototype` declaration whose body has not opened yet.
+    prototyping := false;
+    while (true) {
+        // Odin's skip_whitespace, counting rows. Calls cost more than the
+        // scanning, so the hot paths read class tables inline.
+        start := offset;
+        newline := false;
+        while (start < count && classes[bytes[start]] == SpaceClass) {
+            if (bytes[start] == Newline) {
+                row += 1;
+                line = start + 1;
+            }
+            newline = newline || bytes[start] == Newline || bytes[start] == CarriageReturn;
+            start += 1;
+        }
+        column := start - line;
+        kept := insert;
+        top := contexts[depth - 1];
+        if (insert && (top == Statements || top == Fields) && Terminates(bytes, start, newline)) {
+            kinds.append(Semicolon);
+            starts.append(start);
+            ends.append(start);
+            rows.append(row);
+            columns.append(column);
+            before = previous;
+            previous = Semicolon;
+            label = false;
+            annotating = false;
+            valued = false;
+            kept = false;
+        }
+        insert = false;
+        if (start >= count) {
+            break;
+        }
+        c := bytes[start];
+        next: int = -1;
+        if (start + 1 < count) {
+            next = bytes[start + 1];
+        }
+        kind: int = Invalid;
+        end := start + 1;
+        if (classes[c] == LetterClass) {
+            end = ScanIdentifier(bytes, classes, start);
+            kind = Keyword(keywords, names, bytes, start, end);
+        } else {
+            kind = Pair(c, next);
+            if (kind == Ellipsis && ByteAt(bytes, start + 2) == 60) {
+                kind = HalfOpenRange;
+                end = start + 3;
+            } else if (kind == GtEq && start + 2 < count && bytes[start + 2] == 62) {
+                // `>=>` closes type arguments before `=>`.
+                kind = Gt;
+            } else if (kind == Ellipsis && start + 2 < count && bytes[start + 2] == 60) {
+                kind = HalfOpenRange;
+                end = start + 3;
+            } else if (kind != Invalid) {
+                end = start + 2;
+            } else {
+                kind = Single(c);
+            }
+        }
+        if (kind == Invalid || (kind == Quo && (next == Slash || next == Star))) {
+            lexeme := Scan(text, bytes, start);
+            kind = lexeme.kind;
+            while (true) {
+                // Strings, numbers and characters fail on their line, and a
+                // comment fails at its start.
+                if (lexeme.message != "") {
+                    errors.append(lexeme.message);
+                    error_offsets.append(lexeme.at);
+                    error_rows.append(row);
+                    error_columns.append(lexeme.at - line);
+                }
+                if (!lexeme.partial) {
+                    break;
+                }
+                lexeme = ScanString(bytes, start, lexeme.end);
+            }
+            end = lexeme.end;
+        }
+        kinds.append(kind);
+        starts.append(start);
+        ends.append(end);
+        rows.append(row);
+        columns.append(column);
+        // An adjacent caret after an expression is postfix dereference;
+        // spaced carets keep their existing binary xor meaning.
+        dereference := kind == Xor && kept && start == offset;
+        offset = end;
+        if (kind == Comment) {
+            at := start;
+            while (at < end) {
+                if (bytes[at] == Newline) {
+                    row += 1;
+                    line = at + 1;
+                }
+                at += 1;
+            }
+        }
+
+        // Odin's parser skips newlines inside expressions by its expression
+        // level; Chibi's grammar never ends a statement there, so the
+        // tokenizer tracks brackets and inserts only between statements.
+        opened: int = -1;
+        if (kind == OpenParen || kind == OpenBracket) {
+            opened = Group;
+        } else if (kind == OpenBrace) {
+            opened = BraceHolds(top, previous, valued, prototyping);
+            prototyping = false;
+        }
+        if (opened >= 0) {
+            if (depth == length(contexts)) {
+                contexts.append(opened);
+            } else {
+                contexts[depth] = opened;
+            }
+            depth += 1;
+        }
+        closed: int = Statements;
+        if ((kind == CloseParen || kind == CloseBracket || kind == CloseBrace) && depth > 1) {
+            depth -= 1;
+            closed = contexts[depth];
+        }
+        // A word after `.` is a member name, which can end a statement; an
+        // attribute's name cannot.
+        ends := endings[kind] || dereference || (previous == Period && kind >= Package && kind <= Delete);
+        insert = (ends && previous != At) || (kind == CloseBrace && closed == Literal) ||
+                 (kind == Colon && label);
+        if (kind == Invalid) {
+            // Odin keeps insert_semicolon across an illegal character.
+            insert = kept;
+        }
+        if (kind != Comment) {
+            valued = (kind == Ident && previous == Period && before == Return) ||
+                     (kind == Colon && annotating);
+            annotating = (kind == Colon && label) ||
+                         (annotating && kind != Colon && kind != Eq && kind != ColonEq &&
+                          kind != Semicolon && kind != OpenBrace);
+            label = (kind == Ident || kind == String) && top == Statements &&
+                    (previous == Invalid || previous == Semicolon || previous == Colon ||
+                     previous == OpenBrace || previous == CloseBrace);
+            prototyping = prototyping || (kind == Prototype && previous == ColonColon);
+            before = previous;
+            previous = kind;
+        }
+    }
+    kinds.append(EOF);
+    starts.append(count);
+    ends.append(count);
+    rows.append(row);
+    columns.append(count - line);
+    return Tokens.Scanned(kinds, starts, ends, rows, columns,
+                          errors, error_offsets, error_rows, error_columns);
+}
+
+ByteAt :: (bytes: int[], offset: int) -> int {
+    if (offset < length(bytes)) {
+        return bytes[offset];
+    }
+    return -1;
+}
+
+IsSpace :: (c: int) -> bool {
+    return c == 32 || (c >= 9 && c <= 13);
+}
+
+IsDigit :: (c: int) -> bool {
+    return c >= 48 && c <= 57;
+}
+
+DigitValue :: (c: int) -> int {
+    if (IsDigit(c)) {
+        return c - 48;
+    }
+    if (c >= 65 && c <= 70) {
+        return c - 55;
+    }
+    if (c >= 97 && c <= 102) {
+        return c - 87;
+    }
+    return 16;
+}
+
+// Whether Tree-sitter's external scanner (src/language/src/scanner.c) ends
+// a statement at `start`, the first byte after the last token and its
+// spacing, which held a line break if `newline`: before `}`, at the end of the
+// text, or after a line break, which comments can hold, unless the next line
+// continues the expression. The terminator is empty and precedes comments.
+Terminates :: (bytes: int[], start: int, newline: bool) -> bool {
+    count := length(bytes);
+    broken := newline;
+    at := start;
+    while (at + 1 < count && bytes[at] == Slash && (bytes[at + 1] == Slash || bytes[at + 1] == Star)) {
+        if (bytes[at + 1] == Slash) {
+            while (at < count && bytes[at] != Newline) {
+                at += 1;
+            }
+        } else {
+            at += 2;
+            last: int = 0;
+            while (at < count) {
+                c := bytes[at];
+                broken = broken || c == Newline || c == CarriageReturn;
+                at += 1;
+                if (last == Star && c == Slash) {
+                    break;
+                }
+                last = c;
+            }
+        }
+        while (at < count && IsSpace(bytes[at])) {
+            broken = broken || bytes[at] == Newline || bytes[at] == CarriageReturn;
+            at += 1;
+        }
+    }
+    c := ByteAt(bytes, at);
+    if (c == Slash) {
+        // Division continues the expression.
+        return false;
+    }
+    if (c == 123) {
+        // A brace on the next line opens the header's body, as Odin's parser
+        // also reads it; Tree-sitter's scanner differs only before a
+        // statement that starts with a struct literal.
+        return false;
+    }
+    if (c == 125 || c < 0) {
+        return true;
+    }
+    return broken && !Continues(c);
+}
+
+// A line that starts with one of `+-*/%&|^!<>=.,?:([` continues the last one.
+Continues :: (c: int) -> bool {
+    return c == 43 || c == 45 || c == 42 || c == 47 || c == 37 || c == 38 ||
+           c == 124 || c == 94 || c == 33 || c == 60 || c == 62 || c == 61 ||
+           c == 46 || c == 44 || c == 63 || c == 58 || c == 40 || c == 91;
+}
+
+// Odin's insert_semicolon kinds, with Chibi's: a name, literal or closing
+// bracket ends an expression, as does a contextual keyword, which can be a
+// name, and `?`, `>` and `>>` end a type.
+Endings :: () -> bool[] {
+    endings := resize([false], KindCount);
+    for (kind in [Ident, Integer, Float, String, CloseParen, CloseBracket, Question, Gt, Shr,
+                  True, False, Nil, Null, State, Event, Entry, Unordered, Break, Continue,
+                  Yield, Return, Package, Import, Struct, From, Split, Component,
+                  NotKeyword]) {
+        endings[kind] = true;
+    }
+    return endings;
+}
+
+// Each byte's class: SpaceClass, LetterClass, DigitClass or 0.
+Classes :: () -> int[] {
+    classes := resize([int(0)], 256);
+    c: int = 0;
+    while (c < 256) {
+        if (IsSpace(c)) {
+            classes[c] = SpaceClass;
+        } else if (c == 95 || (c >= 65 && c <= 90) || (c >= 97 && c <= 122)) {
+            classes[c] = LetterClass;
+        } else if (IsDigit(c)) {
+            classes[c] = DigitClass;
+        }
+        c += 1;
+    }
+    return classes;
+}
+
+// A brace opens a struct literal inside an expression or where a value
+// follows; a union's variants after `union`; a prototype's fields, whose
+// components and a relationship's body are literals that end nothing; and
+// otherwise statements.
+BraceHolds :: (outer: int, previous: int, valued: bool, prototyping: bool) -> int {
+    if (outer == Fields) {
+        if (previous == Colon) {
+            return Literal;
+        }
+        return Embedded;
+    }
+    if (outer != Statements || valued) {
+        return Literal;
+    }
+    if (prototyping) {
+        return Fields;
+    }
+    if (previous == Union) {
+        return Variants;
+    }
+    if (previous == Relationship) {
+        return Embedded;
+    }
+    if (ValueFollows(previous)) {
+        return Literal;
+    }
+    return Statements;
+}
+
+// Assignments, a constant's `::`, `return`, `await`, `in`, and operators
+// other than `>`, which can close a type's arguments before a body.
+ValueFollows :: (kind: int) -> bool {
+    return kind == Eq || kind == ColonEq || kind == ColonColon ||
+           (kind >= AddEq && kind <= XorEq) ||
+           kind == Not || (kind >= Add && kind <= Shl) || kind == CmpAnd ||
+           kind == CmpOr || kind == CmpEq || kind == NotEq || kind == Lt ||
+           kind == LtEq || kind == GtEq || kind == NotKeyword ||
+           kind == AndKeyword || kind == OrKeyword || kind == Return ||
+           kind == Await || kind == In;
+}
+
+Done :: (kind: int, end: int) -> Lexeme {
+    return {kind: kind, end: end, message: "", at: end, partial: false};
+}
+
+Failed :: (kind: int, end: int, message: string, at: int) -> Lexeme {
+    return {kind: kind, end: end, message: message, at: at, partial: false};
+}
+
+// Odin's scan for the tokens that can fail. `offset` is at the token's
+// first byte.
+Scan :: (text: string, bytes: int[], offset: int) -> Lexeme {
+    c := bytes[offset];
+    if (IsDigit(c)) {
+        return ScanNumber(bytes, offset);
+    }
+    if (c == Quote) {
+        return ScanString(bytes, offset, offset + 1);
+    }
+    if (c == Slash) {
+        return ScanComment(bytes, offset);
+    }
+    return Illegal(text, bytes, offset);
+}
+
+ScanIdentifier :: (bytes: int[], classes: int[], offset: int) -> int {
+    count := length(bytes);
+    at := offset;
+    while (at < count && (classes[bytes[at]] == LetterClass || classes[bytes[at]] == DigitClass)) {
+        at += 1;
+    }
+    return at;
+}
+
+KeywordTable :: (names: string[]) -> int[] {
+    table := resize([int(0)], KeywordSlots);
+    kind: int = Package;
+    while (kind <= Delete) {
+        name := names[kind];
+        hash: u64 = KeywordHashBasis;
+        index: int = 0;
+        while (index < text_byte_length(name)) {
+            hash = ((hash ^ u64(text_byte_at(name, index))) * KeywordHashPrime) & 0xFFFFFFFF;
+            index += 1;
+        }
+        slot := int(hash & 511);
+        while (table[slot] != Invalid) {
+            slot = (slot + 1) % KeywordSlots;
+        }
+        table[slot] = kind;
+        kind += 1;
+    }
+    return table;
+}
+
+// The keyword `bytes[start:end]` spells, or Ident. Like Odin, only words of
+// two to fifteen bytes are looked up.
+Keyword :: (table: int[], names: string[], bytes: int[], start: int, end: int) -> int {
+    if (end - start < 2 || end - start >= 16) {
+        return Ident;
+    }
+    hash: u64 = KeywordHashBasis;
+    index := start;
+    while (index < end) {
+        hash = ((hash ^ u64(bytes[index])) * KeywordHashPrime) & 0xFFFFFFFF;
+        index += 1;
+    }
+    slot := int(hash & 511);
+    while (table[slot] != Invalid) {
+        kind := table[slot];
+        if (Spells(names[kind], bytes, start, end)) {
+            return kind;
+        }
+        slot = (slot + 1) % KeywordSlots;
+    }
+    return Ident;
+}
+
+Spells :: (name: string, bytes: int[], start: int, end: int) -> bool {
+    if (text_byte_length(name) != end - start) {
+        return false;
+    }
+    index: int = 0;
+    while (index < end - start) {
+        if (text_byte_at(name, index) != bytes[start + index]) {
+            return false;
+        }
+        index += 1;
+    }
+    return true;
+}
+
+// grammar.js's number: hexadecimal digits after 0x, or decimal digits with
+// an optional fraction and exponent. Odin's checks report a prefix or an
+// exponent without digits.
+ScanNumber :: (bytes: int[], offset: int) -> Lexeme {
+    at := offset + 1;
+    marker := ByteAt(bytes, at);
+    if (bytes[offset] == 48 && (marker == 120 || marker == 88)) {
+        at += 1;
+        digits := at;
+        while (DigitValue(ByteAt(bytes, at)) < 16) {
+            at += 1;
+        }
+        if (at == digits) {
+            return Failed(Invalid, at, "illegal hexadecimal integer", at);
+        }
+        return Done(Integer, at);
+    }
+    kind: int = Integer;
+    at = ScanMantissa(bytes, at);
+    // A fraction needs a digit, so `0..n` stays a range.
+    if (ByteAt(bytes, at) == 46 && IsDigit(ByteAt(bytes, at + 1))) {
+        kind = Float;
+        at = ScanMantissa(bytes, at + 1);
+    }
+    exponent := ByteAt(bytes, at);
+    if (exponent == 101 || exponent == 69) {
+        kind = Float;
+        at += 1;
+        sign := ByteAt(bytes, at);
+        if (sign == 43 || sign == 45) {
+            at += 1;
+        }
+        if (!IsDigit(ByteAt(bytes, at))) {
+            return Failed(Float, at, "illegal floating-point exponent", at);
+        }
+        at = ScanMantissa(bytes, at);
+    }
+    return Done(kind, at);
+}
+
+ScanMantissa :: (bytes: int[], offset: int) -> int {
+    count := length(bytes);
+    at := offset;
+    while (at < count && IsDigit(bytes[at])) {
+        at += 1;
+    }
+    return at;
+}
+
+// The body of the string that opens at `start`, from `from` to its closing
+// quote. Escapes are JSON's; a failed one stops the scan, which resumes at
+// its end, so that every failure is reported as Odin reports them.
+ScanString :: (bytes: int[], start: int, from: int) -> Lexeme {
+    count := length(bytes);
+    at := from;
+    while (at < count && bytes[at] != Newline) {
+        c := bytes[at];
+        at += 1;
+        if (c == Quote) {
+            return Done(String, at);
+        }
+        if (c == Backslash) {
+            escape := ScanEscape(bytes, at);
+            if (escape.message != "") {
+                return {kind: String, end: escape.end, message: escape.message,
+                        at: escape.at, partial: true};
+            }
+            at = escape.end;
+        }
+    }
+    return Failed(String, at, "String literal not terminated", start);
+}
+
+// The escape whose character is at `offset`, after its backslash. Like Odin,
+// a failure leaves the offending character unread.
+ScanEscape :: (bytes: int[], offset: int) -> Lexeme {
+    c := ByteAt(bytes, offset);
+    // " \ / b f n r t
+    if (c == Quote || c == Backslash || c == Slash || c == 98 || c == 102 ||
+        c == 110 || c == 114 || c == 116) {
+        return Done(String, offset + 1);
+    }
+    if (c < 0) {
+        return Failed(String, offset, "escape sequence was not terminated", offset);
+    }
+    if (c != 117) {
+        return Failed(String, offset, "unknown escape sequence", offset);
+    }
+    at := offset + 1;
+    while (at < offset + 5) {
+        digit := ByteAt(bytes, at);
+        if (digit < 0) {
+            return Failed(String, at, "escape sequence was not terminated", at);
+        }
+        if (DigitValue(digit) >= 16) {
+            return Failed(String, at, format_text("illegal character {} in escape sequence", digit), at);
+        }
+        at += 1;
+    }
+    return Done(String, at);
+}
+
+// A line comment runs to its line break; a block comment, which does not
+// nest in Chibi, to the first `*/`.
+ScanComment :: (bytes: int[], offset: int) -> Lexeme {
+    count := length(bytes);
+    at := offset + 2;
+    if (bytes[offset + 1] == Slash) {
+        while (at < count && bytes[at] != Newline) {
+            at += 1;
+        }
+        return Done(Comment, at);
+    }
+    while (at + 1 < count) {
+        if (bytes[at] == Star && bytes[at + 1] == Slash) {
+            return Done(Comment, at + 2);
+        }
+        at += 1;
+    }
+    return Failed(Comment, count, "comment not terminated", offset);
+}
+
+// The two-character operator `c` and `next` spell, or Invalid.
+Pair :: (c: int, next: int) -> int {
+    if (next == 61) {
+        if (c == 61) {
+            return CmpEq;
+        }
+        if (c == 33) {
+            return NotEq;
+        }
+        if (c == 43) {
+            return AddEq;
+        }
+        if (c == 45) {
+            return SubEq;
+        }
+        if (c == 42) {
+            return MulEq;
+        }
+        if (c == 47) {
+            return QuoEq;
+        }
+        if (c == 37) {
+            return ModEq;
+        }
+        if (c == 38) {
+            return AndEq;
+        }
+        if (c == 124) {
+            return OrEq;
+        }
+        if (c == 94) {
+            return XorEq;
+        }
+        if (c == 60) {
+            return LtEq;
+        }
+        if (c == 62) {
+            return GtEq;
+        }
+        if (c == 58) {
+            return ColonEq;
+        }
+        return Invalid;
+    }
+    if (c == 45 && next == 62) {
+        return ArrowRight;
+    }
+    if (c == 61 && next == 62) {
+        return FatArrow;
+    }
+    if (c != next) {
+        return Invalid;
+    }
+    if (c == 38) {
+        return CmpAnd;
+    }
+    if (c == 124) {
+        return CmpOr;
+    }
+    if (c == 60) {
+        return Shl;
+    }
+    if (c == 62) {
+        return Shr;
+    }
+    if (c == 58) {
+        return ColonColon;
+    }
+    if (c == 46) {
+        return Ellipsis;
+    }
+    return Invalid;
+}
+
+// The one-character token `c` is, or Invalid.
+Single :: (c: int) -> int {
+    if (c == 61) {
+        return Eq;
+    }
+    if (c == 33) {
+        return Not;
+    }
+    if (c == 64) {
+        return At;
+    }
+    if (c == 36) {
+        return Dollar;
+    }
+    if (c == 63) {
+        return Question;
+    }
+    if (c == 43) {
+        return Add;
+    }
+    if (c == 45) {
+        return Sub;
+    }
+    if (c == 42) {
+        return Mul;
+    }
+    if (c == 47) {
+        return Quo;
+    }
+    if (c == 37) {
+        return Mod;
+    }
+    if (c == 38) {
+        return And;
+    }
+    if (c == 124) {
+        return Or;
+    }
+    if (c == 94) {
+        return Xor;
+    }
+    if (c == 126) {
+        return Complement;
+    }
+    if (c == 60) {
+        return Lt;
+    }
+    if (c == 62) {
+        return Gt;
+    }
+    if (c == 40) {
+        return OpenParen;
+    }
+    if (c == 41) {
+        return CloseParen;
+    }
+    if (c == 91) {
+        return OpenBracket;
+    }
+    if (c == 93) {
+        return CloseBracket;
+    }
+    if (c == 123) {
+        return OpenBrace;
+    }
+    if (c == 125) {
+        return CloseBrace;
+    }
+    if (c == 58) {
+        return Colon;
+    }
+    if (c == 59) {
+        return Semicolon;
+    }
+    if (c == 46) {
+        return Period;
+    }
+    if (c == 44) {
+        return Comma;
+    }
+    return Invalid;
+}
+
+// A character no token starts with, read as UTF-8 so that the error names it
+// as Odin's does and the Invalid token covers all of its bytes.
+Illegal :: (text: string, bytes: int[], offset: int) -> Lexeme {
+    c := bytes[offset];
+    width: int = 1;
+    value := c;
+    if (c >= 0xC2 && c <= 0xDF) {
+        width = 2;
+        value = c - 0xC0;
+    } else if (c >= 0xE0 && c <= 0xEF) {
+        width = 3;
+        value = c - 0xE0;
+    } else if (c >= 0xF0 && c <= 0xF4) {
+        width = 4;
+        value = c - 0xF0;
+    } else if (c >= 0x80) {
+        return Failed(Invalid, offset + 1, "illegal UTF-8 encoding", offset);
+    }
+    index: int = 1;
+    while (index < width) {
+        part := ByteAt(bytes, offset + index);
+        if (part < 0x80 || part > 0xBF) {
+            return Failed(Invalid, offset + 1, "illegal UTF-8 encoding", offset);
+        }
+        value = value * 64 + part - 0x80;
+        index += 1;
+    }
+    return Failed(Invalid, offset + width,
+                  format_text("illegal character '{}': {}", text_slice(text, offset, width), value),
+                  offset);
+}

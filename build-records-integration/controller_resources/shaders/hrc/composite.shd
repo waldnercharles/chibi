@@ -1,0 +1,421 @@
+// Material targets; see render_material_textures.
+layout(set = 2, binding = 1) uniform sampler2D scene_tex;
+layout(set = 2, binding = 2) uniform sampler2D fluence_tex;
+layout(set = 2, binding = 3) uniform sampler2D source_tex;
+layout(set = 2, binding = 4) uniform sampler2D albedo_tex;
+layout(set = 2, binding = 5) uniform sampler2D normal_tex;
+
+layout(set = 2, binding = 6) uniform sampler2D background_tex;
+layout(set = 2, binding = 7) uniform sampler2D visibility_tex;
+layout(set = 2, binding = 8) uniform sampler2D surface_q0;
+layout(set = 2, binding = 9) uniform sampler2D surface_q1;
+layout(set = 2, binding = 10) uniform sampler2D surface_q2;
+layout(set = 2, binding = 11) uniform sampler2D surface_q3;
+layout(set = 2, binding = 12) uniform sampler2D cover_tex;
+layout(set = 2, binding = 13) uniform sampler2D horizon_cardinal;
+layout(set = 2, binding = 14) uniform sampler2D horizon_diagonal;
+layout(set = 2, binding = 15) uniform sampler2D spot_tex;
+
+layout(set = 3, binding = 1) uniform shd_uniforms
+{
+    float ambient;
+    float intensity;
+    float debug_view;
+    float shadow_floor;
+    float fog;
+    float dither_phase;
+    vec4 crop_uv;
+    float surface_sigma;
+    // x enabled, y relief, z bevel, w specular gain.
+    vec4 surface_params;
+    // xy canvas uv to surface uv scale, zw one surface texel in uv.
+    vec4 surface_map;
+    int linear_output;
+    float world_per_px;
+    int horizon_directions;
+    int surface_mode;
+    float surface_thickness;
+    float surface_depth_gain;
+    float surface_depth_shadow_softness;
+    vec4 surface_projection;
+    vec2 surface_world_per_px;
+    // The light open ground receives from the sky; see gather.frag.
+    vec3 sky;
+};
+
+#include "color.shd"
+#include "hrc/brdf.shd"
+#include "hrc/surface_geometry.shd"
+#include "hrc/depth_shading.shd"
+
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+// Transmittance difference over which reconstruction weights fall off.
+const float RECONSTRUCTION_SIGMA = 0.1;
+// Where the lights Depth sees bring all of HRC's light, its estimate of that
+// light can fall to half of HRC's own. Lights estimated to bring this share
+// are taken to bring all of it.
+const float DEPTH_KNOWN_SHARE = 0.5;
+
+float reconstruction_transmittance(ivec2 p, ivec2 sample_size, ivec2 full_size)
+{
+    vec2 uv = (vec2(p) + 0.5) / vec2(sample_size);
+    ivec2 absorption_p = clamp(ivec2(uv * vec2(full_size)), ivec2(0), full_size - 1);
+    float tau = texelFetch(source_tex, absorption_p, 0).a;
+    return exp(-max(tau, 0.0));
+}
+
+vec4 reconstruction_weights(vec2 uv, ivec2 sample_size, ivec2 full_size,
+                            out ivec2 p00, out ivec2 p10,
+                            out ivec2 p01, out ivec2 p11)
+{
+    vec2 grid = uv * vec2(sample_size) - 0.5;
+    ivec2 base = ivec2(floor(grid));
+    vec2 f = fract(grid);
+    ivec2 last = sample_size - 1;
+    p00 = clamp(base, ivec2(0), last);
+    p10 = clamp(base + ivec2(1, 0), ivec2(0), last);
+    p01 = clamp(base + ivec2(0, 1), ivec2(0), last);
+    p11 = clamp(base + ivec2(1, 1), ivec2(0), last);
+
+    ivec2 center = clamp(ivec2(uv * vec2(full_size)), ivec2(0), full_size - 1);
+    float target = exp(-max(texelFetch(source_tex, center, 0).a, 0.0));
+    float t00 = reconstruction_transmittance(p00, sample_size, full_size) - target;
+    float t10 = reconstruction_transmittance(p10, sample_size, full_size) - target;
+    float t01 = reconstruction_transmittance(p01, sample_size, full_size) - target;
+    float t11 = reconstruction_transmittance(p11, sample_size, full_size) - target;
+    float sigma2 = 2.0 * RECONSTRUCTION_SIGMA * RECONSTRUCTION_SIGMA;
+    return vec4((1.0 - f.x) * (1.0 - f.y) * exp(-(t00 * t00) / sigma2),
+                f.x * (1.0 - f.y) * exp(-(t10 * t10) / sigma2),
+                (1.0 - f.x) * f.y * exp(-(t01 * t01) / sigma2),
+                f.x * f.y * exp(-(t11 * t11) / sigma2));
+}
+
+// Height and geometry coverage. Fog's display coverage does not change relief.
+// Mesh samples retain a real face plane through subpixel shadow queries.
+vec2 relief_at(vec2 uv)
+{
+    ivec2 size = textureSize(albedo_tex, 0);
+    ivec2 p = clamp(ivec2(uv * vec2(size)), ivec2(0), size - 1);
+    vec4 geometry = texelFetch(cover_tex, p, 0);
+    if (geometry.g <= 1e-6) return vec2(0);
+    float height = texelFetch(albedo_tex, p, 0).a / geometry.g;
+    if (geometry.b > geometry.g * 0.5) {
+        vec2 tilt = texelFetch(normal_tex, p, 0).xy / geometry.g;
+        float nz = sqrt(max(1.0 - dot(tilt, tilt), 0.0));
+        vec2 offset = (uv * vec2(size) - (vec2(p) + 0.5)) * world_per_px;
+        if (nz > 0.05) height -= dot(tilt, vec2(offset.x, -offset.y)) / nz;
+    }
+    return vec2(height, geometry.g);
+}
+
+vec4 quadrant_at(int i, vec2 uv)
+{
+    if (i == 0) return texture(surface_q0, uv);
+    if (i == 1) return texture(surface_q1, uv);
+    if (i == 2) return texture(surface_q2, uv);
+    return texture(surface_q3, uv);
+}
+
+float horizon_angle(ivec2 p, int direction)
+{
+    if (horizon_directions == 4) return texelFetch(horizon_cardinal, p, 0)[direction];
+    if ((direction & 1) == 0) return texelFetch(horizon_cardinal, p, 0)[direction / 2];
+    return texelFetch(horizon_diagonal, p, 0)[direction / 2];
+}
+
+float horizon_shadow(vec2 uv, vec2 toward)
+{
+    const float TAU = 6.283185307179586;
+    float azimuth = mod(atan(-toward.y, toward.x) + TAU, TAU);
+    float sector = azimuth * float(horizon_directions) / TAU;
+    int first = int(floor(sector)) % horizon_directions;
+    int next = (first + 1) % horizon_directions;
+    ivec2 size = textureSize(horizon_cardinal, 0);
+    ivec2 p = clamp(ivec2(uv * vec2(size)), ivec2(0), size - 1);
+    float angle = mix(horizon_angle(p, first), horizon_angle(p, next), fract(sector));
+    float elevation = atan(1.0 / surface_params.y);
+    // A small angular transition avoids a hard threshold. This is explicitly
+    // an alternative to the reference's height-penetration softness.
+    return smoothstep(angle - 0.03, angle + 0.03, elevation);
+}
+
+float surface_shadow(vec2 uv, vec2 toward, vec2 relief)
+{
+    if (surface_params.y <= 0.0 || relief.y <= 0.5) return 1.0;
+    if (horizon_directions > 0) return horizon_shadow(uv, toward);
+    const float STEP = 0.6;
+    vec2 pixel_uv = 1.0 / vec2(textureSize(albedo_tex, 0));
+    vec2 step_uv = vec2(toward.x, -toward.y) * (STEP / world_per_px) * pixel_uv;
+    float rise = STEP / surface_params.y;
+    float shadow = 1.0;
+    for (int i = 1; i <= 10; i++) {
+        vec2 r = relief_at(uv + step_uv * float(i));
+        if (r.y < 0.5) break;
+        // Half-float height storage requires a bias that follows its precision.
+        float bias = max(0.002, max(abs(relief.x), abs(r.x)) * 0.001);
+        shadow = min(shadow, clamp(1.0 - (r.x - relief.x - rise * float(i) - bias), 0.0, 1.0));
+    }
+    return shadow;
+}
+
+// Received light, and in alpha the share of the sky seen.
+vec4 sample_fluence(vec2 uv)
+{
+    ivec2 sample_size = textureSize(fluence_tex, 0);
+    ivec2 full_size = textureSize(source_tex, 0);
+    if (all(equal(sample_size, full_size))) return texture(fluence_tex, uv);
+
+    ivec2 p00, p10, p01, p11;
+    vec4 weights = reconstruction_weights(uv, sample_size, full_size, p00, p10, p01, p11);
+    float total = dot(weights, vec4(1));
+    if (total <= 1e-6) return vec4(0);
+    vec4 sum = texelFetch(fluence_tex, p00, 0) * weights.x +
+               texelFetch(fluence_tex, p10, 0) * weights.y +
+               texelFetch(fluence_tex, p01, 0) * weights.z +
+               texelFetch(fluence_tex, p11, 0) * weights.w;
+    return max(sum / total, vec4(0));
+}
+
+// Geometry remains an exact sample and rejects faces across depth or normal
+// boundaries. The low-resolution pass has already denoised the radiance.
+void depth_surface_sample(ivec2 p, float spatial, vec3 n,
+                          vec3 origin, float sigma, float gloss,
+                          inout vec3 light, inout vec3 specular, inout vec2 shading,
+                          inout float total, inout float specular_total)
+{
+    ivec2 size = textureSize(surface_q0, 0);
+    if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, size))) return;
+    if (spatial <= 0.0) return;
+    vec4 geometry = texelFetch(surface_q2, p, 0);
+    if (geometry.a < 0.5) return;
+    float agreement = dot(n, geometry.xyz);
+    if (agreement < 0.5) return;
+    vec4 sample_light = texelFetch(surface_q0, p, 0);
+    vec2 canvas_size = vec2(textureSize(cover_tex, 0));
+    vec2 receiver = surface_receiver_pixel(p, canvas_size, surface_projection.w);
+    vec3 position = surface_position(receiver, sample_light.a, surface_projection, surface_world_per_px);
+    float dz = surface_plane_distance(position - origin, n, geometry.xyz) / sigma;
+    if (abs(dz) > 1.0) return;
+    float weight = spatial * pow(agreement, 8.0) * exp(-dz * dz);
+    float boundary = smoothstep(0.5, 0.7, agreement) * (1.0 - smoothstep(0.6, 1.0, abs(dz)));
+    weight *= mix(1.0, boundary, surface_depth_shadow_softness);
+    light += max(sample_light.rgb, vec3(0)) * weight;
+    // Depth changes the light HRC brings from the lights it sees. When they
+    // bring much less than all of HRC's light, the rest, from lights out of
+    // its reach or that HRC barely brings, stays as it is.
+    vec4 shade = depth_unpack_shading(texelFetch(surface_q3, p, 0));
+    float hrc = dot(sample_fluence(receiver / canvas_size).rgb, LUMA);
+    float known = max(max(shade.x, DEPTH_KNOWN_SHARE * hrc), 1e-6);
+    shading += vec2(max(1.0 + shade.w / known, 0.0), shade.z) * weight;
+    if (gloss > 0.0 && surface_params.w > 0.0) {
+        vec4 sample_specular = texelFetch(surface_q1, p, 0);
+        float specular_weight = weight * max(1.0 - abs(gloss - sample_specular.a) * 10.0, 0.0);
+        specular += max(sample_specular.rgb, vec3(0)) * specular_weight;
+        specular_total += specular_weight;
+    }
+    total += weight;
+}
+
+// Depth light reaching into a receiver and its highlights. Shading's x is
+// how Depth shades the HRC light it receives where it absorbs nothing, and y
+// the share of ambient light the heights around it let through.
+vec3 depth_surface_light(vec2 uv, vec3 n, float height, float gloss,
+                         out vec3 specular, out vec2 shading)
+{
+    ivec2 size = textureSize(surface_q0, 0);
+    vec2 grid = uv * vec2(size) - 0.5;
+    ivec2 base = ivec2(floor(grid));
+    vec2 fraction = fract(grid);
+    float sigma = max(max(surface_thickness * 0.25, world_per_px * 8.0), 0.001);
+    vec2 pixel = uv / surface_map.xy * vec2(textureSize(cover_tex, 0));
+    vec3 origin = surface_position(pixel, height, surface_projection, surface_world_per_px);
+    vec3 light = vec3(0);
+    specular = vec3(0);
+    shading = vec2(0);
+    float total = 0.0, specular_total = 0.0;
+    for (int y = 0; y < 2; y++) {
+        for (int x = 0; x < 2; x++) {
+            vec2 w = mix(vec2(1.0) - fraction, fraction, vec2(x, y));
+            depth_surface_sample(base + ivec2(x, y), w.x * w.y,
+                                 n, origin, sigma, gloss, light, specular, shading,
+                                 total, specular_total);
+        }
+    }
+    if (total > 1e-6) {
+        specular /= max(specular_total, 1e-6);
+        shading /= total;
+        return light / total;
+    }
+    // Thin silhouettes may miss all four receiver cells. Borrow only from
+    // compatible nearby geometry, never because valid samples are dark.
+    ivec2 center = ivec2(floor(grid + 0.5));
+    for (int y = -2; y <= 2; y++) {
+        for (int x = -2; x <= 2; x++) {
+            ivec2 p = center + ivec2(x, y);
+            if (all(greaterThanEqual(p, base)) && all(lessThanEqual(p, base + 1))) continue;
+            vec2 offset = vec2(p) - grid;
+            float spatial = max(1.0 - dot(offset, offset) / 6.25, 0.0);
+            depth_surface_sample(p, spatial * spatial,
+                                 n, origin, sigma, gloss, light, specular, shading,
+                                 total, specular_total);
+        }
+    }
+    specular /= max(specular_total, 1e-6);
+    shading = total > 1e-6 ? shading / total : vec2(1);
+    return total > 1e-6 ? light / total : vec3(0);
+}
+
+
+
+// Emission as display shows it: each texel's light scaled back by its cover,
+// then filtered, so partly covered edges keep their coverage.
+vec3 display_emission(vec2 uv)
+{
+    ivec2 size = textureSize(source_tex, 0);
+    vec2 p = uv * vec2(size) - 0.5;
+    ivec2 lo = clamp(ivec2(floor(p)), ivec2(0), size - 1);
+    ivec2 hi = min(lo + 1, size - 1);
+    vec2 f = clamp(p - floor(p), 0.0, 1.0);
+    vec3 e00 = texelFetch(source_tex, lo, 0).rgb * texelFetch(cover_tex, lo, 0).r;
+    vec3 e10 = texelFetch(source_tex, ivec2(hi.x, lo.y), 0).rgb * texelFetch(cover_tex, ivec2(hi.x, lo.y), 0).r;
+    vec3 e01 = texelFetch(source_tex, ivec2(lo.x, hi.y), 0).rgb * texelFetch(cover_tex, ivec2(lo.x, hi.y), 0).r;
+    vec3 e11 = texelFetch(source_tex, hi, 0).rgb * texelFetch(cover_tex, hi, 0).r;
+    return mix(mix(e00, e10, f.x), mix(e01, e11, f.x), f.y);
+}
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    vec2 source_uv = mix(crop_uv.xy, crop_uv.zw, screen_uv);
+    vec4 scene = texture(scene_tex, source_uv);
+    vec4 source = texture(source_tex, source_uv);
+    vec3 emission = display_emission(source_uv);
+    vec3 albedo = texture(albedo_tex, source_uv).rgb;
+    vec4 fluence = sample_fluence(source_uv);
+    vec4 normal = texture(normal_tex, source_uv);
+
+    int mode = int(debug_view + 0.5);
+    if (mode == 1) return scene;
+    if (mode == 2) return vec4(emission, 1.0);
+    if (mode == 3) return vec4(vec3(exp(-source.a)), 1.0);
+    if (mode == 4) return vec4(albedo, 1.0);
+    if (mode == 5) return vec4((fluence.rgb + sky * fluence.a) * 5.0, 1.0);
+    if (mode == 6) return vec4(normal.xyz * 0.5 + 0.5, normal.a);
+
+    // Screen-space liquid distortion samples the background and incident light.
+    // Foreground opaque objects remain in front; this is not a depth/Snell solve.
+    vec2 pixel_uv = 1.0 / vec2(textureSize(normal_tex, 0));
+    vec2 distortion = normal.z < 0.0 ? normal.xy * (-normal.z) * pixel_uv : vec2(0);
+    vec2 fluence_uv = source_uv + distortion;
+    if (normal.z < 0.0) fluence = sample_fluence(fluence_uv);
+    vec4 visibility = texture(visibility_tex, source_uv);
+    // The same exposure as visible emitters reveals light received by fluid.
+    // Coverage blends this artistic gain; it never feeds the transport solver.
+    float volume_exposure = mix(1.0, intensity, visibility.a);
+    vec3 incident = fluence.rgb * volume_exposure;
+    if (normal.z < 0.0) {
+        // Liquid edges brighten from light received just outside them.
+        vec2 reach = 8.0 * pixel_uv;
+        vec3 outside = .25 * (sample_fluence(source_uv + vec2(reach.x, 0)).rgb +
+                              sample_fluence(source_uv - vec2(reach.x, 0)).rgb +
+                              sample_fluence(source_uv + vec2(0, reach.y)).rgb +
+                              sample_fluence(source_uv - vec2(0, reach.y)).rgb);
+        incident += outside * normal.a * 2.0 * intensity;
+    }
+
+    // Each quadrant keeps its RGB energy through the BRDF and visibility.
+    // The four evaluations are independent of the number of emitters.
+    vec4 geometry = texture(cover_tex, source_uv);
+    bool mesh = geometry.b > geometry.g * 0.5 && geometry.g > 0.0;
+    if (normal.z >= 0.0 && geometry.g > 1e-6) normal /= geometry.g;
+    bool solid = normal.z > 0.0 || (normal.z == 0.0 && (normal.w > 0.0 || dot(normal.xy, normal.xy) > 0.0));
+    vec2 tilt = solid ? normal.xy : vec2(0);
+    vec2 suv = source_uv * surface_map.xy;
+    vec2 dx = vec2(surface_map.z, 0), dy = vec2(0, surface_map.w);
+    float open = max(quadrant_at(0, suv).a, 0.0);
+    if (solid && !mesh && surface_params.x > 0.0 && surface_mode == 0) {
+        vec2 outward = 0.5 * surface_sigma * vec2(
+            quadrant_at(0, suv + dx).a - quadrant_at(0, suv - dx).a,
+            quadrant_at(0, suv - dy).a - quadrant_at(0, suv + dy).a);
+        tilt += outward * surface_params.z * step(1e-4, normal.z);
+    }
+    vec3 n = solid ? normalize(vec3(tilt, sqrt(max(1.0 - dot(normal.xy, normal.xy), 0.0)))) : vec3(0, 0, 1);
+    vec3 surface_light = vec3(0), surface_shaded = vec3(0);
+    vec2 dominant = vec2(0);
+    float energy = 0.0, shadow_sum = 0.0;
+    vec2 axes[4] = vec2[4](vec2(1, 0), vec2(0, -1), vec2(-1, 0), vec2(0, 1));
+    vec2 relief = relief_at(source_uv);
+    // Depth thickness brings solids that absorb, where HRC's light stops, the
+    // light HRC brings open space from the lights they see, at HRC's scale,
+    // which intensity leaves alone. On one that absorbs nothing, by the same
+    // test as Depth's occluders, it shades HRC's light instead. Both follow
+    // the solid's edge light. On every solid the heights around it occlude
+    // ambient light.
+    float depth_shading = 1.0, occlusion = 1.0;
+    if (solid && surface_params.x > 0.0 && surface_mode == 2) {
+        vec3 specular;
+        vec2 shading;
+        surface_light = depth_surface_light(suv, n, relief.x, normal.w, specular, shading) * surface_depth_gain;
+        bool absorbs = source.a > 0.01;
+        depth_shading = absorbs ? 1.0 : mix(1.0, shading.x, clamp(normal.z, 0.0, 1.0));
+        occlusion = shading.y;
+        surface_shaded = (absorbs ? surface_light * albedo * normal.z : vec3(0)) +
+                         specular * intensity * surface_depth_gain * surface_params.w * geometry.g * normal.z;
+        energy = 1.0;
+        shadow_sum = occlusion;
+    }
+    if (solid && surface_params.x > 0.0 && surface_mode != 2) {
+        float reach = clamp((2.0 * open - 0.05) / 0.95, 0.0, 1.0);
+        float gain = reach * normal.z * intensity / max(open, 1e-4);
+        float gloss = clamp(normal.w, 0.0, 1.0);
+        for (int i = 0; i < 4; i++) {
+            vec3 q = max(quadrant_at(i, suv).rgb, vec3(0));
+            float power = dot(q, LUMA);
+            if (power <= 1e-8) continue;
+            // Gather's visibility changes are not light-source gradients.
+            // Its probes already follow these four axes; bending directions
+            // from sparse visibility would create false specular highlights.
+            vec2 toward = axes[i];
+            if (surface_mode == 0) {
+                vec2 gradient = vec2(
+                    dot(quadrant_at(i, suv + dx).rgb - quadrant_at(i, suv - dx).rgb, LUMA),
+                    dot(quadrant_at(i, suv - dy).rgb - quadrant_at(i, suv + dy).rgb, LUMA));
+                vec2 slope = 0.5 * surface_sigma * gradient / power;
+                toward += slope / max(1.0, length(slope));
+                toward -= axes[i] * min(dot(toward, axes[i]) - 0.2, 0.0);
+                toward = normalize(toward);
+            }
+            vec3 l = normalize(vec3(toward * surface_params.y, 1.0));
+            float shadow = surface_shadow(source_uv, toward, relief);
+            float diffuse = max(dot(n, l), 0.0) / l.z;
+            float specular = gloss > 0.0
+                ? 3.14159265 * highlight(n, l, 1.0 - gloss) / l.z * surface_params.w : 0.0;
+            vec3 received = q * gain;
+            surface_light += received;
+            surface_shaded += received * (albedo * diffuse + vec3(specular * geometry.g)) * shadow;
+            dominant += toward * power;
+            shadow_sum += shadow * power;
+            energy += power;
+        }
+    }
+    dominant /= max(energy, 1e-8);
+    if (mode == 7) return vec4(surface_light, 1.0);
+    if (mode == 8) return vec4(dominant * 0.5 + 0.5, energy > 0.0 ? shadow_sum / energy : 1.0, 1.0);
+    if (mode == 9) return vec4(n * 0.5 + 0.5, 1.0);
+
+    // Surface light is an artistic addition to HRC, or Depth thickness's
+    // shading of it. Neither feeds temporal bounce. Heights hide part of the
+    // sky light HRC lets through, as they hide ambient light, and sky light
+    // never glows in open air.
+    vec3 lit = (incident * depth_shading + sky * fluence.a * occlusion) * albedo + surface_shaded;
+    lit += max(albedo * shadow_floor * occlusion, visibility.rgb);
+    vec3 out_linear = fluence.rgb * fog + emission * intensity + scene.rgb * ambient * occlusion + lit;
+    // Direct spots are evaluated once with receiver geometry/material. They
+    // never enter the isotropic emission raster or temporal bounce history.
+    out_linear += texture(spot_tex, source_uv).rgb;
+    vec2 background_uv = clamp(screen_uv + distortion / (crop_uv.zw - crop_uv.xy), vec2(0), vec2(1));
+    out_linear += texture(background_tex, background_uv).rgb * (1.0 - scene.a);
+    if (linear_output != 0) return vec4(max(out_linear, vec3(0.0)), 1.0);
+    vec3 out_srgb = linear_to_srgb(max(out_linear, vec3(0.0)));
+    float dither = dither8bit_ign(gl_FragCoord.xy, dither_phase);
+    return vec4(clamp(out_srgb + vec3(dither), vec3(0.0), vec3(1.0)), 1.0);
+}

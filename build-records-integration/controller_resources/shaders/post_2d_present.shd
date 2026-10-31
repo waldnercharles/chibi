@@ -1,0 +1,21 @@
+// Linear HDR frame to display: energy-conserving bloom mix, exposure and AgX.
+layout(set = 2, binding = 1) uniform sampler2D bloom_tex;
+layout(set = 3, binding = 1) uniform shd_uniforms {
+    float exposure;
+    float bloom;
+    float bloom_scale;
+    float dither_phase;
+};
+
+#include "color.shd"
+#include "tonemap.shd"
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    vec2 uv = params.uv;
+    vec3 hdr = finite_hdr(texture(u_image, uv).rgb);
+    vec3 glow = finite_hdr(texture(bloom_tex, uv).rgb) * bloom_scale;
+    vec3 mapped = agx(mix(hdr, glow, bloom) * exp2(exposure));
+    float dither = dither8bit_ign(gl_FragCoord.xy, dither_phase);
+    return vec4(clamp(mapped + vec3(dither), vec3(0), vec3(1)), 1);
+}

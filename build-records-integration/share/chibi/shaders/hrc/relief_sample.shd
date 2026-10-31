@@ -1,0 +1,18 @@
+#ifdef HRC_PACK_RELIEF
+layout(set = 2, binding = 2) uniform sampler2D u_albedo;
+layout(set = 2, binding = 3) uniform sampler2D u_cover;
+layout(set = 2, binding = 4) uniform sampler2D u_normal;
+#else
+layout(set = 2, binding = 0) uniform sampler2D u_albedo;
+layout(set = 2, binding = 1) uniform sampler2D u_cover;
+layout(set = 2, binding = 2) uniform sampler2D u_normal;
+#endif
+vec4 packed_relief(ivec2 p)
+{
+    vec4 geometry = texelFetch(u_cover, p, 0);
+    if (geometry.g <= 1e-6) return vec4(0);
+    float height = texelFetch(u_albedo, p, 0).a / geometry.g;
+    vec2 tilt = geometry.b > geometry.g * 0.5
+        ? texelFetch(u_normal, p, 0).xy / geometry.g : vec2(0);
+    return vec4(height, geometry.g, tilt);
+}

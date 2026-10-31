@@ -1,0 +1,20 @@
+// Batched material colors and visible emission, without light transport.
+layout(set = 2, binding = 1) uniform sampler2D scene_tex;
+layout(set = 2, binding = 2) uniform sampler2D source_tex;
+layout(set = 2, binding = 3) uniform sampler2D cover_tex;
+layout(set = 2, binding = 4) uniform sampler2D background_tex;
+layout(set = 3, binding = 1) uniform shd_uniforms
+{
+    vec2 lighting;
+    float background_present;
+};
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    vec4 scene = texture(scene_tex, screen_uv);
+    // The unlit raster matches the output pixels. Scale emission density by
+    // its coverage before displaying it, including partially covered edges.
+    vec3 emission = texture(source_tex, screen_uv).rgb * texture(cover_tex, screen_uv).r;
+    vec3 background = texture(background_tex, screen_uv).rgb * background_present;
+    return vec4(scene.rgb * lighting.x + emission * lighting.y + background * (1.0 - scene.a), 1);
+}

@@ -1,0 +1,427 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import binding "project:lexical_binding"
+import writer "project:prepared_writer"
+
+// An optional sequence is physically a union. Its synthetic declaration keeps
+// the success type, so an empty sequence remains distinct from an absent one.
+OptionalDecl: int : 12;
+// A nested sequence descriptor. Its ID is a collection identity, not a
+// nominal record identity; value_* describes its immediate element type.
+CollectionDecl: int : 13;
+
+SequenceNominal :: (types: TypeDecl[], value: ValueType) -> u64 {
+    if (value.record < 0) {
+        return 0;
+    }
+    declared := types[value.record];
+    if (declared.kind == MapDecl) {
+        return 0;
+    }
+    if (declared.kind == CollectionDecl && declared.value_record >= 0 &&
+        types[declared.value_record].kind == OptionalDecl) {
+        return 0;
+    }
+    if (declared.kind == CollectionDecl || declared.kind == OptionalDecl) {
+        return SequenceNominal(types, {storage: declared.value_storage, container: declared.value_container,
+                                       record: declared.value_record});
+    }
+    return declared.id;
+}
+SequenceFlags :: (types: TypeDecl[], value: ValueType) -> int {
+    if (value.record < 0) {
+        return 0;
+    }
+    declared := types[value.record];
+    if (declared.kind == OptionalDecl) {
+        return 2;
+    }
+    if (declared.kind == CollectionDecl) {
+        return 0;
+    }
+    // PointerDecl is kind 6. Its identity already encodes the entire pointee;
+    // key describes this pointer's own nullable flag, never its pointee's.
+    if (declared.kind == 6 && declared.key != 0 && value.container == 0) {
+        return 2;
+    }
+    return 0;
+}
+SequenceElement :: (types: TypeDecl[], value: ValueType) -> ValueType {
+    if (value.record >= 0) {
+        declared := types[value.record];
+        if (declared.kind == CollectionDecl) {
+            return {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+        }
+    }
+    return {storage: value.storage, container: 0, record: value.record};
+}
+FindSequenceCollection :: (types: TypeDecl[], element: ValueType) -> int {
+    index: int = 0;
+    while (index < length(types)) {
+        declared := types[index];
+        if (declared.kind == CollectionDecl && declared.value_storage == element.storage &&
+            declared.value_container == element.container && declared.value_record == element.record) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// An additional [] needs a descriptor once the element is itself collected.
+SequenceArrayType :: (types: TypeDecl[], element: ValueType) -> ValueType {
+    if (element.container == 0 && SequenceFlags(types, element) == 0) {
+        return {storage: element.storage, container: 1, record: element.record};
+    }
+    declared := FindSequenceCollection(types, element);
+    if (declared < 0) {
+        return {storage: 0, container: 0, record: -1};
+    }
+    return {storage: element.storage, container: 1, record: declared};
+}
+// The collection of `element` in `table`, which gains it when it has none.
+// The table changes in place, so declaring each type costs its own entry.
+EnsureSequenceCollection :: (table: ^(TypeDecl[]), element: ValueType, package: int) -> int {
+    found := FindSequenceCollection(table^, element);
+    if (found >= 0 || element.storage == 0) {
+        return found;
+    }
+    zero := binding.ID("union-type", "0:0:0:0:0");
+    id := binding.ID("collection-type", format_text("1:{}:{}", zero, OptionalTag(table^, element)));
+    declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package,
+                          node: -1, kind: CollectionDecl, first: 0, count: 0, size: 0, parent: -1,
+                          storage: element.storage, id: id, layout: 0, component: 0, key: 0,
+                          value_storage: element.storage, value_container: element.container, value_record: element.record};
+    table.append(declared);
+    return length(table^) - 1;
+}
+SequenceSuffixType :: (types: TypeDecl[], base: ValueType, depth: int, view: bool, optional: bool) -> ValueType {
+    value := base;
+    nesting: int = 0;
+    while (nesting < depth) {
+        value = SequenceArrayType(types, value);
+        if (value.storage == 0) {
+            return value;
+        }
+        nesting += 1;
+    }
+    if (view) {
+        if (value.container != 1) {
+            return {storage: 0, container: 0, record: -1};
+        }
+        value.container = 4;
+    }
+    return OptionalType(types, value, optional);
+}
+SequenceHeader :: (value: ValueType, types: TypeDecl[]) -> writer.Value {
+    result := ScalarValue(value.storage, 0);
+    result.container = value.container;
+    result.type_name = types[value.record].type_name;
+    result.has_type_name = true;
+    return result;
+}
+// Only declared suffix depth determines this finite table. Descriptor IDs
+// depend on semantic types, so unrelated declaration order cannot change them.
+DeclareSequenceCollections :: (types: TypeDecl[], depth: int, package: int) -> TypeDecl[] {
+    bases: ValueType[] = [];
+    storage := BoolStorage;
+    while (storage <= HandleStorage) {
+        base: ValueType = {storage: storage, container: 0, record: -1};
+        bases.append(base);
+        storage += 1;
+    }
+    index: int = 0;
+    while (index < length(types)) {
+        item := types[index];
+        if (item.kind == RecordDecl || item.kind == UnionDecl || item.kind == NativeDecl || item.kind == 6) {
+            item_storage := item.storage;
+            if (item.kind == RecordDecl) {
+                item_storage = StructStorage;
+            }
+            if (item.kind == UnionDecl) {
+                item_storage = UnionStorage;
+            }
+            base: ValueType = {storage: item_storage, container: 0, record: index};
+            bases.append(base);
+        } else if (item.kind == MapDecl) {
+            base: ValueType = {storage: UnionStorage, container: MapContainer, record: index};
+            bases.append(base);
+        }
+        index += 1;
+    }
+    declared := types;
+    for (base in bases) {
+        element := base;
+        nesting: int = 0;
+        while (nesting < depth) {
+            if (element.container != 0 || SequenceFlags(declared, element) != 0) {
+                EnsureSequenceCollection(&declared, element, package);
+            }
+            element = SequenceArrayType(declared, element);
+            nesting += 1;
+        }
+    }
+    return declared;
+}
+
+OptionalElement :: (types: TypeDecl[], value: Value) -> ValueType {
+    if (value.storage != UnionStorage || value.container != 0 || value.record < 0 ||
+        types[value.record].kind != OptionalDecl) {
+        return {storage: 0, container: 0, record: -1};
+    }
+    declared := types[value.record];
+    return {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+}
+FindOptional :: (types: TypeDecl[], value: ValueType) -> int {
+    index: int = 0;
+    while (index < length(types)) {
+        declared := types[index];
+        if (declared.kind == OptionalDecl && declared.value_storage == value.storage &&
+            declared.value_container == value.container && declared.value_record == value.record) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+OptionalType :: (types: TypeDecl[], value: ValueType, optional: bool) -> ValueType {
+    if (!optional) {
+        return value;
+    }
+    declared := FindOptional(types, value);
+    if (declared < 0) {
+        return {storage: 0, container: 0, record: -1};
+    }
+    return {storage: UnionStorage, container: 0, record: declared};
+}
+// The successful constructor is the complete nonoptional script_type_tag,
+// including the array/view distinction. This is not the optional's own tag.
+OptionalTag :: (types: TypeDecl[], value: ValueType) -> u64 {
+    semantic := value;
+    flags := SequenceFlags(types, value);
+    if (value.record >= 0 && types[value.record].kind == OptionalDecl) {
+        declared := types[value.record];
+        semantic = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+    }
+    nominal := SequenceNominal(types, semantic);
+    collection: u64 = 0;
+    if (semantic.record >= 0 && (types[semantic.record].kind == MapDecl || types[semantic.record].kind == CollectionDecl)) {
+        collection = types[semantic.record].id;
+    }
+    if (collection != 0) {
+        return binding.ID("union-type", format_text("{}:{}:{}:0:{}:{}", semantic.storage, semantic.container, nominal, flags, collection));
+    }
+    return binding.ID("union-type", format_text("{}:{}:{}:0:{}", semantic.storage, semantic.container, nominal, flags));
+}
+// The optional of `value` in `table`, which gains it when it has none.
+EnsureOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int {
+    found := FindOptional(table^, value);
+    if (found >= 0 || value.storage == 0) {
+        return found;
+    }
+    return AddOptional(table, value, package);
+}
+// Appends the optional of `value`, which `table` does not have yet.
+AddOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int {
+    declared: TypeDecl = {name: "", type_name: "", package: package, node: -1, kind: OptionalDecl,
+                          first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage,
+                          id: OptionalTag(table^, value), layout: 0, component: 0, key: 0,
+                          value_storage: value.storage, value_container: value.container,
+                          value_record: value.record};
+    table.append(declared);
+    return length(table^) - 1;
+}
+// The slot of an array (0) or a view (1) of each of the first `count` types:
+// the index of an optional of it, or -1 while `types` has none.
+SequenceOptionals :: (types: TypeDecl[], count: int) -> int[] {
+    known: int[] = [];
+    while (length(known) < 2 * count) {
+        known.append(-1);
+    }
+    index: int = 0;
+    for (declared in types) {
+        if (declared.kind == OptionalDecl && declared.value_record >= 0 && declared.value_record < count &&
+            (declared.value_container == 1 || declared.value_container == 4)) {
+            slot := SequenceOptionalSlot(declared.value_record, declared.value_container);
+            if (known[slot] < 0) {
+                known[slot] = index;
+            }
+        }
+        index += 1;
+    }
+    return known;
+}
+SequenceOptionalSlot :: (record: int, container: int) -> int {
+    if (container == 4) {
+        return 2 * record + 1;
+    }
+    return 2 * record;
+}
+// Register the bounded set of sequence results before signatures are read.
+// Expressions can then select an optional without mutating shared type tables.
+DeclareSequenceOptionals :: (types: TypeDecl[], package: int) -> TypeDecl[] {
+    declared := types;
+    EnsureOptional(&declared, {storage: TextStorage, container: 0, record: -1}, package);
+    storage := BoolStorage;
+    while (storage <= HandleStorage) {
+        EnsureOptional(&declared, {storage: storage, container: 1, record: -1}, package);
+        EnsureOptional(&declared, {storage: storage, container: 4, record: -1}, package);
+        storage += 1;
+    }
+    // Each type's array and view optionals are found through `known`, so
+    // declaring them takes one pass over the table rather than one per type.
+    known := SequenceOptionals(declared, length(types));
+    index: int = 0;
+    while (index < length(types)) {
+        item := types[index];
+        array: ValueType = {storage: 0, container: 1, record: index};
+        if (item.kind == RecordDecl || item.kind == UnionDecl || item.kind == NativeDecl) {
+            array.storage = item.storage;
+            if (item.kind == RecordDecl) {
+                array.storage = StructStorage;
+            }
+            if (item.kind == UnionDecl) {
+                array.storage = UnionStorage;
+            }
+        } else if ((item.kind == 6 && item.key == 0) || item.kind == CollectionDecl) {
+            // Managed pointer identity is already fully structural; a nested
+            // array's descriptor carries its immediate element's complete type.
+            array.storage = item.storage;
+        } else if (item.kind == MapDecl || item.kind == 6) {
+            // A map or nullable pointer element needs the array's descriptor.
+            element: ValueType = {storage: item.storage, container: 0, record: index};
+            if (item.kind == MapDecl) {
+                element = {storage: UnionStorage, container: MapContainer, record: index};
+            }
+            EnsureSequenceCollection(&declared, element, package);
+            array = SequenceArrayType(declared, element);
+        } else {
+            index += 1;
+            continue;
+        }
+        view := array;
+        view.container = 4;
+        for (value in [array, view]) {
+            slot := SequenceOptionalSlot(value.record, value.container);
+            if (value.storage == 0 || value.record < 0 || value.record >= length(types) ||
+                (value.container != 1 && value.container != 4)) {
+                EnsureOptional(&declared, value, package);
+            } else if (known[slot] < 0) {
+                known[slot] = AddOptional(&declared, value, package);
+            } else if (declared[known[slot]].value_storage != value.storage) {
+                EnsureOptional(&declared, value, package);
+            }
+        }
+        index += 1;
+    }
+    return declared;
+}
+// Presence tests inspect the box pointer. A successful empty sequence still
+// has a box, even when the sequence payload itself has no allocation.
+OptionalPresentStep :: (value: Value, negated: bool, popped: int, ops: Ops, target: Target,
+                        at: Bases, node: snapshot.SnapshotNode) -> Step {
+    slots: Slot[] = [ValueLocal(UnionStorage), ValueLocal(BoolStorage)];
+    code: Code[] = [ConstantCode(ops, UnionStorage, 0, at.slot, node)];
+    operation := ops.ne;
+    if (negated) {
+        operation = ops.eq;
+    }
+    code.append(Instruction(operation, UnionStorage, at.slot + 1, value.slot, at.slot, -1, node));
+    return Step.Emitted(code, slots, [], [], [], [], [], [], [], popped,
+                        Typed(at.slot + 1, BoolStorage, 0, -1), NoValue(), []);
+}
+// Extracts the single success payload after the caller establishes presence
+// through a guard or branch, as native narrowing does before union_get.
+OptionalUnwrapStep :: (types: TypeDecl[], value: Value, popped: int, ops: Ops, target: Target,
+                       at: Bases, node: snapshot.SnapshotNode) -> Step {
+    element := OptionalElement(types, value);
+    held: Cell = {storage: UnionStorage, container: 0, record: value.record, constant: 0, variant: -1, kind: ValueKind};
+    tag: Cell = {storage: WordStorage, container: 0, record: -1, constant: OptionalTag(types, element), variant: -1, kind: ValueKind};
+    index: Cell = {storage: IntStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    whole: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    result: Cell = {storage: element.storage, container: element.container, record: element.record,
+                    constant: 0, variant: -1, kind: ValueKind};
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    payload: Slot = {storage: SlotStorage(element.storage, element.container, target),
+                     kind: SlotKind(element.storage, element.container)};
+    slots: Slot[] = [address, address, payload];
+    code: Code[] = [Instruction(ops.host_slot, target.pointer_storage, at.slot, at.cell, 0, 0, node)];
+    put := Instruction(ops.write, UnionStorage, 0, value.slot, at.slot, 0, node);
+    put.offset = target.payload_offset;
+    code.append(put);
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: UnionGetIntrinsic, linked: -1, first: at.cell,
+                  result_first: at.cell + 4, result_count: 1, written: false};
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot + 1, at.cell + 4, 0, 0, node));
+    take := Instruction(ops.load, payload.storage, at.slot + 2, at.slot + 1, 0, 0, node);
+    take.offset = target.payload_offset;
+    code.append(take);
+    roots: Root[] = [];
+    if (Pointer(element.storage, element.container)) {
+        root: Root = {slot: at.slot + 2, storage: element.storage,
+                      container: element.container, record: element.record};
+        roots.append(root);
+    }
+    return Step.Emitted(code, slots, [], [held, tag, index, whole, result], [host], roots, [], [], [], popped,
+                        Typed(at.slot + 2, element.storage, element.container, element.record), NoValue(), []);
+}
+// The place of the payload of the present optional at `place`, which holds
+// `element`.
+PayloadPlaceStep :: (types: TypeDecl[], place: Value, element: ValueType, ops: Ops, target: Target, at: Bases,
+                     node: snapshot.SnapshotNode) -> Step {
+    tag := TypedCell(WordStorage, 0, -1);
+    tag.constant = OptionalTag(types, element);
+    cells: Cell[] = [ReferenceCell(target), tag, TypedCell(IntStorage, 0, -1),
+                     TypedCell(element.storage, element.container, element.record), ReferenceCell(target)];
+    code := CellWrite(target.pointer_storage, place.slot, at.cell, ops, target, at.slot, node);
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(target.pointer_storage, at.cell + 4, ops, target, at.slot + 1, node));
+    hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceUnionIntrinsic, linked: -1, first: at.cell,
+                      result_first: at.cell + 4, result_count: 1, written: false}];
+    result := Typed(at.slot + 2, element.storage, element.container, element.record);
+    result.place = true;
+    return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [], cells, hosts,
+                        [], [], [], [], 0, result, NoValue(), []);
+}
+NarrowedPlace: int : 17;
+NarrowedOriginalPhase: int : 50;
+NarrowedReadPhase: int : 51;
+// The place of the payload of the optional place `step` gives.
+PayloadPlaceAfter :: (types: TypeDecl[], step: Step, element: ValueType, ops: Ops, target: Target, at: Bases,
+                      node: snapshot.SnapshotNode) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, place, retained, marks):
+            shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local + length(locals),
+                              cell: at.cell + length(cells), host: at.host + length(hosts), call: at.call + length(calls)};
+            return SequenceJoined(Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped,
+                                               NoValue(), retained, marks),
+                                  PayloadPlaceStep(types, place, element, ops, target, shifted, node));
+    }
+}
+// The successful path of `if name` / `while name` shadows the optional with
+// its payload. The body's scope removes that proof before the next iteration
+// or the alternative branch; the declaration outside that scope stays optional.
+// As stage zero unwraps it, each use reads the optional, through the shadow's
+// `index` naming it, and takes the payload, or its place, from it.
+OptionalConditionNames :: (types: TypeDecl[], names: Name[], forest: snapshot.SnapshotNode[], text: string,
+                           condition: int, value: Value) -> Name[] {
+    subject := condition;
+    while (Is(forest, subject, "parenthesized_expression")) {
+        subject = Field(forest, subject, "expression");
+    }
+    element := OptionalElement(types, value);
+    found: int = -1;
+    if (Is(forest, subject, "identifier")) {
+        found = Lookup(names, Text(forest, text, subject));
+    }
+    if (element.storage == 0 || found < 0) {
+        return [];
+    }
+    original := names[found];
+    binding: Name = {owned: false, name: original.name, place: NarrowedPlace, index: found, storage: element.storage,
+                     container: element.container, record: element.record, writable: original.writable,
+                     node: original.node};
+    return [binding];
+}

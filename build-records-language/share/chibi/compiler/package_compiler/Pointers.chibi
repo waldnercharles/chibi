@@ -1,0 +1,1063 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import binding "project:lexical_binding"
+import strings "core:strings"
+
+PointerStorage: int : 19;
+PointerDecl: int : 6;
+ManagedPlace: int : 16;
+PointerMakeIntrinsic: int : 46;
+PointerReadIntrinsic: int : 47;
+PointerWriteIntrinsic: int : 48;
+PointerFieldIntrinsic: int : 49;
+PointerReferenceIntrinsic: int : 50;
+PointerReadPhase: int : 30;
+PointerAddressPhase: int : 31;
+PointerStorePhase: int : 32;
+
+// Constructor identity is the complete pointee type's semantic tag. Nullable
+// pointers share runtime identity; their declaration key retains source flags.
+SemanticTag :: (types: TypeDecl[], value: ValueType) -> u64 {
+    return OptionalTag(types, value);
+}
+FindPointer :: (types: TypeDecl[], value: ValueType, nullable: bool) -> int {
+    index: int = 0;
+    while (index < length(types)) {
+        declared := types[index];
+        if (declared.kind == PointerDecl && declared.value_storage == value.storage &&
+            declared.value_container == value.container && declared.value_record == value.record &&
+            (declared.key != 0) == nullable) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+PointerElement :: (types: TypeDecl[], pointer: Value) -> ValueType {
+    if (pointer.storage != PointerStorage || pointer.container != 0 || pointer.record < 0 ||
+        types[pointer.record].kind != PointerDecl) {
+        return {storage: 0, container: 0, record: -1};
+    }
+    declared := types[pointer.record];
+    return {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+}
+// The pointer to `value` in `table`, which gains it when it has none. The
+// table changes in place, so declaring each type costs its own entry.
+EnsurePointer :: (table: ^(TypeDecl[]), value: ValueType, nullable: bool, package: int) -> int {
+    found := FindPointer(table^, value, nullable);
+    if (found >= 0 || value.storage == 0) {
+        return found;
+    }
+    id := binding.ID("pointer-type", format_text("{}", SemanticTag(table^, value)));
+    key: int = 0;
+    if (nullable) {
+        key = 1;
+    }
+    declared: TypeDecl = {name: "", type_name: format_text("__pointer_{}", id), package: package,
+                          node: -1, kind: PointerDecl, first: 0, count: 0, size: 0, parent: -1,
+                          storage: PointerStorage, id: id, layout: 0, component: 0, key: key,
+                          value_storage: value.storage, value_container: value.container,
+                          value_record: value.record};
+    table.append(declared);
+    return length(table^) - 1;
+}
+TypePointerNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    if (Is(forest, node, "pointer_type")) {
+        return node;
+    }
+    for (child in Members(forest, node)) {
+        if (Is(forest, child, "pointer_type")) {
+            return child;
+        }
+    }
+    return -1;
+}
+TypeGroupNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    if (Is(forest, node, "parenthesized_type")) {
+        return Field(forest, node, "type");
+    }
+    for (child in Members(forest, node)) {
+        if (Is(forest, child, "parenthesized_type")) {
+            return Field(forest, child, "type");
+        }
+    }
+    return -1;
+}
+// Constructor declarations precede signatures and bodies. Visit nested types
+// inside out, so a pointer may itself be the pointee of another pointer.
+DeclarePointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: TypeDecl[], aliases: Name[],
+                    package: int, root: int) -> TypeDecl[] {
+    types := input_types;
+    nodes: int[] = [];
+    pending: int[] = [root];
+    while (length(pending) > 0) {
+        at := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (Is(forest, at, "type")) {
+            nodes.append(at);
+        }
+        for (child in Members(forest, at)) {
+            pending.append(child);
+        }
+    }
+    index := length(nodes) - 1;
+    while (index >= 0) {
+        node := nodes[index];
+        index -= 1;
+        pointer := TypePointerNode(forest, node);
+        if (pointer >= 0) {
+            element := ReadType(forest, text, &types, aliases, package, Field(forest, pointer, "target"));
+            EnsurePointer(&types, element, false, package);
+            if (HasToken(forest, node, "?")) {
+                EnsurePointer(&types, element, true, package);
+            }
+        } else if (HasToken(forest, node, "?")) {
+            grouped := TypeGroupNode(forest, node);
+            if (grouped >= 0) {
+                value := ReadType(forest, text, &types, aliases, package, grouped);
+                if (value.storage == PointerStorage && value.container == 0 && value.record >= 0) {
+                    element := PointerElement(types, Typed(-1, value.storage, 0, value.record));
+                    EnsurePointer(&types, element, true, package);
+                }
+            }
+        }
+    }
+    return types;
+}
+// The names whose addresses `root` takes as managed pointers; a `&x` in
+// `lent` lends x to a scoped parameter instead.
+AddressedNames :: (forest: snapshot.SnapshotNode[], text: string, root: int, lent: int[]) -> string[] {
+    found: string[] = [];
+    pending: int[] = [root];
+    while (length(pending) > 0) {
+        at := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (Is(forest, at, "address_expression") && !lent.contains(at)) {
+            operand := RootOf(forest, Field(forest, at, "operand"));
+            if (Is(forest, operand, "identifier")) {
+                found.append(Text(forest, text, operand));
+            }
+        }
+        for (child in Members(forest, at)) {
+            pending.append(child);
+        }
+    }
+    return found;
+}
+PointerCell :: (record: int) -> Cell {
+    return TypedCell(PointerStorage, 0, record);
+}
+PointerReadStep :: (types: TypeDecl[], pointer: Value, popped: int, ops: Ops, target: Target,
+                    at: Bases, node: snapshot.SnapshotNode) -> Step {
+    element := PointerElement(types, pointer);
+    if (element.storage == 0) {
+        return Step.Failed({start: node.start, end: node.end, line: node.row + 1,
+                            column: node.column + 1, document: -1,
+                            message: "dereference requires a pointer"});
+    }
+    if (pointer.record >= 0 && types[pointer.record].key != 0) {
+        return Step.Failed({start: node.start, end: node.end, line: node.row + 1, column: node.column + 1,
+                            document: -1, message: "Nullable pointer requires a presence guard before dereference"});
+    }
+    address := AddressSlot(target);
+    slots: Slot[] = [address, address, {storage: SlotStorage(element.storage, element.container, target),
+                                        kind: SlotKind(element.storage, element.container)}];
+    code := CellWrite(PointerStorage, pointer.slot, at.cell, ops, target, at.slot, node);
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(SlotStorage(element.storage, element.container, target), at.cell + 2, ops, target,
+                         at.slot + 1, node));
+    cells: Cell[] = [PointerCell(pointer.record), TypedCell(element.storage, element.container, element.record),
+                     TypedCell(element.storage, element.container, element.record)];
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerReadIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+                  result_count: 1, written: false};
+    roots: Root[] = [];
+    if (Pointer(element.storage, element.container)) {
+        root: Root = {slot: at.slot + 2, storage: element.storage, container: element.container, record: element.record};
+        roots.append(root);
+    }
+    return CellSchemaStep(Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], popped,
+                                       Typed(at.slot + 2, element.storage, element.container, element.record), NoValue(), []),
+                          at.cell + 2, ops, target, at, node);
+}
+// Address expressions may infer a pointer without spelling its type. The
+// compiler's finite type universe supplies those constructor headers before
+// immutable body emission: a pointer to each declared type, spelled pointers
+// included, so an address of a pointer field has its type. The address of a
+// local that holds a pointer an address made declares its own, as the local
+// is boxed.
+DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: TypeDecl[], aliases: Name[],
+                           package: int, root: int) -> TypeDecl[] {
+    types := input_types;
+    pending: int[] = [root];
+    spelled: int[] = [];
+    addresses := false;
+    while (length(pending) > 0) {
+        at := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (Is(forest, at, "address_expression")) {
+            addresses = true;
+        }
+        if (Is(forest, at, "type")) {
+            spelled.append(at);
+        }
+        for (child in Members(forest, at)) {
+            pending.append(child);
+        }
+    }
+    if (!addresses) {
+        return types;
+    }
+    for (node in spelled) {
+        value := ReadType(forest, text, &types, aliases, package, node);
+        EnsurePointer(&types, value, false, package);
+    }
+    scalar: int = 1;
+    while (scalar <= TextStorage) {
+        if (scalar != 12) {
+            EnsurePointer(&types, {storage: scalar, container: 0, record: -1}, false, package);
+            EnsurePointer(&types, {storage: scalar, container: ArrayContainer, record: -1}, false, package);
+        }
+        scalar += 1;
+    }
+    count := length(types);
+    index: int = 0;
+    while (index < count) {
+        declared := types[index];
+        storage := declared.storage;
+        container: int = 0;
+        if (declared.kind == RecordDecl) {
+            storage = StructStorage;
+        }
+        if (declared.kind == UnionDecl) {
+            storage = UnionStorage;
+        }
+        if (declared.kind == MapDecl) {
+            storage = UnionStorage;
+            container = MapContainer;
+        }
+        // A collection describes the array whose elements it holds.
+        if (declared.kind == CollectionDecl) {
+            container = ArrayContainer;
+        }
+        if (declared.kind != VariantDecl && declared.kind != NamespaceDecl && storage > 0) {
+            EnsurePointer(&types, {storage: storage, container: container, record: index}, false, package);
+        }
+        index += 1;
+    }
+    return types;
+}
+// Prefix slots/code have already been numbered by the caller.
+PointerPrefix :: (code: Code[], slots: Slot[], step: Step) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(body, added, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
+            return Step.Emitted(extend(code, body), extend(slots, added), locals, cells, hosts, roots, calls,
+                                bound, next, popped, produced, retained, marks);
+    }
+}
+ManagedLayoutError :: (types: TypeDecl[], members: TypeMember[], value: ValueType) -> string {
+    record := value.record;
+    storage := value.storage;
+    if (value.container == MapContainer && record >= 0) {
+        storage = types[record].value_storage;
+        record = types[record].value_record;
+    }
+    if (storage != StructStorage || record < 0) {
+        return "";
+    }
+    declared := types[record];
+    if (declared.kind != RecordDecl) {
+        return "Managed values require authored record layouts";
+    }
+    return "";
+}
+ManagedBoxStep :: (types: TypeDecl[], members: TypeMember[], initial: Value, name: string, declaration: int, popped: int,
+                   ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    layout_error := ManagedLayoutError(types, members,
+                                       {storage: initial.storage, container: initial.container, record: initial.record});
+    if (layout_error != "") {
+        return Step.Failed({start: node.start, end: node.end, line: node.row + 1, column: node.column + 1,
+                            document: -1, message: layout_error});
+    }
+    pointer := FindPointer(types, {storage: initial.storage, container: initial.container, record: initial.record}, false);
+    if (pointer < 0) {
+        return Step.Failed({start: node.start, end: node.end, line: node.row + 1, column: node.column + 1,
+                            document: -1, message: "addressed value has no pointer type"});
+    }
+    address := AddressSlot(target);
+    slots: Slot[] = [address, address, address, address, {storage: PointerStorage, kind: ValueKind}];
+    code: Code[] = [Instruction(ops.context, target.pointer_storage, at.slot, 0, 0, 1, node)];
+    code.extend(CellWrite(target.pointer_storage, at.slot, at.cell, ops, target, at.slot + 1, node));
+    code.extend(ValueWriteCode(initial, at.cell + 2, ops, target, at.slot + 2, node));
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(PointerStorage, at.cell + 3, ops, target, at.slot + 3, node));
+    code.append(SymbolCode(ops, declaration, node));
+    context := TypedCell(target.pointer_storage, 0, -1);
+    context.kind = AddressKind;
+    cells: Cell[] = [context,
+                     TypedCell(initial.storage, initial.container, initial.record),
+                     TypedCell(initial.storage, initial.container, initial.record), PointerCell(pointer)];
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
+                  result_count: 1, written: false};
+    binding: Name = {owned: false, name: name, place: ManagedPlace, index: at.cell + 3, storage: initial.storage,
+                     container: initial.container, record: initial.record, writable: true, node: declaration};
+    emitted := Step.Emitted(code, slots, [], cells, [host], [], [], [binding], [], popped,
+                            NoValue(), NoValue(), []);
+    return CleanupSequenceValues(emitted, [initial], ops, target, at, node);
+}
+ManagedReadStep :: (types: TypeDecl[], binding: Name, ops: Ops, target: Target, at: Bases,
+                    node: snapshot.SnapshotNode) -> Step {
+    pointer := FindPointer(types, {storage: binding.storage, container: binding.container, record: binding.record}, false);
+    code := CellRead(PointerStorage, binding.index, ops, target, at.slot, node);
+    slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
+    return PointerPrefix(code, slots, PointerReadStep(types, Typed(at.slot + 1, PointerStorage, 0, pointer),
+                                                      0, ops, target, SlotsPast(at, 2), node));
+}
+PointerWriteStep :: (types: TypeDecl[], pointer: Value, value: Value, popped: int, ops: Ops,
+                     target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    element := PointerElement(types, pointer);
+    code: Code[] = [];
+    slots: Slot[] = [];
+    stored := value;
+    // A narrower integer or a float widens to its target, as ordinary
+    // assignment widens it.
+    if (element.container == 0 && value.container == 0 &&
+        (Widens(value.storage, element.storage) || FloatWidens(value.storage, element.storage))) {
+        code.extend(NumberCode(ops, value.storage, element.storage, value.slot, at.slot, node));
+        slots.append(ValueLocal(element.storage));
+        stored = Typed(at.slot, element.storage, 0, -1);
+    }
+    if (!Accepts(types, element.storage, element.container, element.record, stored)) {
+        return Step.Failed({start: node.start, end: node.end, line: node.row + 1, column: node.column + 1,
+                            document: -1, message: "assigned value differs from its pointer target"});
+    }
+    address := at.slot + length(slots);
+    code.extend(CellWrite(PointerStorage, pointer.slot, at.cell, ops, target, address, node));
+    code.extend(ValueWriteCode(stored, at.cell + 1, ops, target, address + 1, node));
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    slots.extend([AddressSlot(target), AddressSlot(target)]);
+    cells: Cell[] = [PointerCell(pointer.record), TypedCell(stored.storage, stored.container, stored.record),
+                     TypedCell(BoolStorage, 0, -1)];
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+                  result_count: 1, written: false};
+    return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], popped, NoValue(), NoValue(), []);
+}
+ManagedAssignStep :: (types: TypeDecl[], binding: Name, value: Value, ops: Ops, target: Target, at: Bases,
+                      node: snapshot.SnapshotNode) -> Step {
+    pointer := FindPointer(types, {storage: binding.storage, container: binding.container, record: binding.record}, false);
+    code := CellRead(PointerStorage, binding.index, ops, target, at.slot, node);
+    slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
+    return PointerPrefix(code, slots, PointerWriteStep(types, Typed(at.slot + 1, PointerStorage, 0, pointer),
+                                                       value, 1, ops, target, SlotsPast(at, 2), node));
+}
+// A managed pointer lent to a scoped parameter borrows its location through
+// the reference ABI. The managed descriptor stays rooted during the call.
+PointerReferenceStep :: (pointer: Value, ops: Ops, target: Target, at: Bases,
+                         node: snapshot.SnapshotNode) -> Step {
+    code := CellWrite(PointerStorage, pointer.slot, at.cell, ops, target, at.slot, node);
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(target.pointer_storage, at.cell + 1, ops, target, at.slot + 1, node));
+    cells: Cell[] = [PointerCell(pointer.record), ReferenceCell(target)];
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerReferenceIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
+                  result_count: 1, written: true};
+    return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [], cells,
+                        [host], [], [], [], [], 1, Typed(at.slot + 2, ReferenceStorage, 0, -1), NoValue(), []);
+}
+PointerBridgePhase: int : 33;
+PointerParameterPhase: int : 34;
+PointerFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                     members: TypeMember[], base: Value, member_node: int, popped: int, ops: Ops,
+                     target: Target, at: Bases) -> Step {
+    node := forest[member_node];
+    element := PointerElement(types, base);
+    if (element.storage != StructStorage || element.container != 0 || element.record < 0) {
+        return Fail(forest, member_node, document, "pointer member access requires a record target");
+    }
+    if (types[base.record].key != 0) {
+        return Fail(forest, member_node, document, "Nullable pointer requires a presence guard before dereference");
+    }
+    layout_error := "";
+    if (types[element.record].kind != NativeDecl) {
+        layout_error = ManagedLayoutError(types, members, element);
+    }
+    if (layout_error != "") {
+        return Fail(forest, member_node, document, layout_error);
+    }
+    field_index := FindField(types, members, element.record, Text(forest, text, Field(forest, member_node, "member")));
+    if (field_index < 0) {
+        return Fail(forest, member_node, document, "Unknown field");
+    }
+    field := members[field_index];
+    if (!field.writable) {
+        return Fail(forest, member_node, document, "Addressing a field requires a writable field");
+    }
+    pointer := FindPointer(types, {storage: field.storage, container: field.container, record: field.record}, false);
+    if (pointer < 0) {
+        return Fail(forest, member_node, document, "field has no pointer type");
+    }
+    offset := TypedCell(WordStorage, 0, -1);
+    offset.constant = u64(field.offset);
+    cells: Cell[] = [PointerCell(base.record), TypedCell(field.storage, field.container, field.record), offset,
+                     TypedCell(BoolStorage, 0, -1), TypedCell(element.storage, element.container, element.record), PointerCell(pointer)];
+    code := CellWrite(PointerStorage, base.slot, at.cell, ops, target, at.slot, node);
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(PointerStorage, at.cell + 5, ops, target, at.slot + 1, node));
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 5,
+                  result_count: 1, written: false};
+    return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), {storage: PointerStorage, kind: ValueKind}],
+                        [], cells, [host], [], [], [], [], popped,
+                        Typed(at.slot + 2, PointerStorage, 0, pointer), NoValue(), []);
+}
+PointerExpressionStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                          members: TypeMember[], names: Name[], values: Value[], top: int, item: Work,
+                          ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    operand := Unparenthesized(forest, Field(forest, item.node, "operand"));
+    if (node.kind == "dereference_expression") {
+        // A `p^` of a scoped `p` that ScopedTargets keeps reads p's target,
+        // as the name alone does.
+        scoped: int = -1;
+        if (Is(forest, operand, "identifier")) {
+            scoped = Lookup(names, Text(forest, text, operand));
+        }
+        if (item.phase == 0 && scoped >= 0 && names[scoped].place == ReferencePlace) {
+            return Step.Emitted([], [], [], [], [], [], [], [], [Visit(operand)], 0, NoValue(), NoValue(), []);
+        }
+        if (item.phase == 0) {
+            return Step.Emitted([], [], [], [], [], [], [], [],
+                                [Visit(operand), Resume(item.node, PointerReadPhase, 0, 0)], 0,
+                                NoValue(), NoValue(), []);
+        }
+        pointer := values[top - 1];
+        if (PointerElement(types, pointer).storage == 0) {
+            return Fail(forest, item.node, document, "dereference requires a pointer");
+        }
+        return PointerReadStep(types, pointer, 1, ops, target, at, node);
+    }
+    if (item.phase == PointerAddressPhase) {
+        if (item.b == 1) {
+            value := values[top - 1];
+            if (value.storage != PointerStorage || value.container != 0) {
+                return Fail(forest, operand, document, "address requires a writable value");
+            }
+            if (value.record >= 0 && types[value.record].key != 0) {
+                return Fail(forest, operand, document, "Nullable pointer requires a presence guard before dereference");
+            }
+            return Step.Emitted([], [], [], [], [], [], [], [], [], 1, value, NoValue(), []);
+        }
+        projection := operand;
+        if (item.b == 2) {
+            projection = item.a;
+            element := PointerElement(types, values[top - 1]);
+            if (item.c == 1 && element.storage == PointerStorage && element.container == 0) {
+                // The preceding field stores a pointer value. Follow that
+                // pointer once before projecting its target's next field;
+                // the ordinary field step still requires its presence guard.
+                resumed := item;
+                resumed.c = 0;
+                return PointerContinue(PointerReadStep(types, values[top - 1], 1, ops, target, at,
+                                                       forest[projection]), resumed);
+            }
+        }
+        return PointerFieldStep(forest, text, document, types, members, values[top - 1], projection, 1,
+                                ops, target, at);
+    }
+    // A nested address projects each inline field from the same managed
+    // root cell. Reading the intermediate record as a value would lose that
+    // location and could rebind the address after an ordinary value copy.
+    projections: int[] = [];
+    nested_root := operand;
+    while (Is(forest, nested_root, "member_expression")) {
+        projections.append(nested_root);
+        nested_root = Unparenthesized(forest, Field(forest, nested_root, "object"));
+    }
+    if (length(projections) > 1) {
+        scheduled: Work[] = [];
+        index := length(projections) - 1;
+        while (index >= 0) {
+            projection := Resume(item.node, PointerAddressPhase, projections[index], 2);
+            if (index < length(projections) - 1) {
+                projection.c = 1;
+            }
+            scheduled.append(projection);
+            index -= 1;
+        }
+        found: int = -1;
+        if (Is(forest, nested_root, "identifier")) {
+            found = Lookup(names, Text(forest, text, nested_root));
+        }
+        if (found >= 0 && names[found].place == ManagedPlace && names[found].writable &&
+            (names[found].storage != PointerStorage || names[found].container != 0)) {
+            binding := names[found];
+            pointer := FindPointer(types, {storage: binding.storage, container: binding.container, record: binding.record}, false);
+            code := CellRead(PointerStorage, binding.index, ops, target, at.slot, node);
+            slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
+            return Step.Emitted(code, slots, [], [], [], [], [], [], scheduled, 0,
+                                Typed(at.slot + 1, PointerStorage, 0, pointer), NoValue(), []);
+        }
+        source := nested_root;
+        if (Is(forest, source, "dereference_expression")) {
+            source = Field(forest, source, "operand");
+        }
+        return Step.Emitted([], [], [], [], [], [], [], [], extend([Visit(source)], scheduled), 0,
+                            NoValue(), NoValue(), []);
+    }
+    if (Is(forest, operand, "dereference_expression")) {
+        return Step.Emitted([], [], [], [], [], [], [], [],
+                            [Visit(Field(forest, operand, "operand")), Resume(item.node, PointerAddressPhase, 0, 1)],
+                            0, NoValue(), NoValue(), []);
+    }
+    member := Is(forest, operand, "member_expression");
+    root := operand;
+    if (member) {
+        root = Unparenthesized(forest, Field(forest, operand, "object"));
+    }
+    found: int = -1;
+    if (Is(forest, root, "identifier")) {
+        found = Lookup(names, Text(forest, text, root));
+    }
+    if (member && (found < 0 || names[found].storage == PointerStorage)) {
+        source := root;
+        if (Is(forest, source, "dereference_expression")) {
+            source = Field(forest, source, "operand");
+        }
+        return Step.Emitted([], [], [], [], [], [], [], [],
+                            [Visit(source), Resume(item.node, PointerAddressPhase, 0, 0)], 0,
+                            NoValue(), NoValue(), []);
+    }
+    if (found < 0 || names[found].place != ManagedPlace || !names[found].writable) {
+        return Fail(forest, operand, document, "address requires a writable local or record field");
+    }
+    binding := names[found];
+    pointer := FindPointer(types, {storage: binding.storage, container: binding.container, record: binding.record}, false);
+    // Taking a local location does not evaluate its stored value.
+    code := CellRead(PointerStorage, binding.index, ops, target, at.slot, node);
+    slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
+    if (member) {
+        return PointerPrefix(code, slots, PointerFieldStep(forest, text, document, types, members,
+                                                           Typed(at.slot + 1, PointerStorage, 0, pointer), operand, 0,
+                                                           ops, target, SlotsPast(at, 2)));
+    }
+    return Step.Emitted(code, slots, [], [], [], [], [], [], [], 0,
+                        Typed(at.slot + 1, PointerStorage, 0, pointer), NoValue(), []);
+}
+Accepts :: (types: TypeDecl[], storage: int, container: int, record: int, value: Value) -> bool {
+    if (SameType(storage, container, record, value)) {
+        return true;
+    }
+    return storage == PointerStorage && value.storage == PointerStorage && container == 0 && value.container == 0 &&
+           record >= 0 && value.record >= 0 && types[record].key != 0 &&
+           types[record].id == types[value.record].id;
+}
+PointerPopped :: (step: Step, count: int) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count, produced, retained, marks);
+    }
+}
+PointerContinue :: (step: Step, continuation: Work) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, append(next, continuation),
+                                popped, produced, retained, marks);
+    }
+}
+PointerCompoundPhase: int : 35;
+ManagedCompoundStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                        binding: Name, current: Value, right: Value, item: Work, ops: Ops, target: Target,
+                        at: Bases) -> Step {
+    pointer := FindPointer(types, {storage: binding.storage, container: binding.container, record: binding.record}, false);
+    code := CellRead(PointerStorage, binding.index, ops, target, at.slot, forest[item.node]);
+    slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
+    return PointerPrefix(code, slots, PointerCompoundStep(forest, text, document, types,
+                                                          Typed(at.slot + 1, PointerStorage, 0, pointer), current,
+                                                          right, 2, item, ops, target, SlotsPast(at, 2)));
+}
+// `target op= right` writes `current op right` through the pointer. Stage zero
+// reads `current` before it evaluates `right`. Mixed integers reject; a
+// narrower operand widens to the target's type, and narrowing rejects.
+PointerCompoundStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                        pointer: Value, current: Value, right: Value, popped: int, item: Work, ops: Ops,
+                        target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    if (current.container == 0 && MixedCompoundIntegers(operator, current.storage, right)) {
+        return Fail(forest, item.node, document,
+                    format_text("Mismatched integer types {} and {}; convert one operand",
+                                TypeName(current.storage), TypeName(right.storage)));
+    }
+    code: Code[] = [];
+    slots: Slot[] = [];
+    operand := right;
+    // A float or narrower operand widens as it does for an ordinary local.
+    if (current.container == 0 && right.container == 0 &&
+        (Widens(right.storage, current.storage) || FloatWidens(right.storage, current.storage))) {
+        code.extend(NumberCode(ops, right.storage, current.storage, right.slot, at.slot, node));
+        slots.append(ValueLocal(current.storage));
+        operand = Typed(at.slot, current.storage, 0, -1);
+    }
+    op := BinaryOp(ops, operator);
+    if (op < 0 || Comparison(ops, op) || !Numeric(current.storage) || current.container != 0 ||
+        !SameType(current.storage, 0, current.record, operand)) {
+        return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
+    }
+    if (ops.debug) {
+        code.append(WatchCode(ops, current.slot, current.storage, current.container, current.record, 0, true,
+                              forest[StatementTarget(forest, item.node)], target));
+    }
+    result := at.slot + length(slots);
+    code.append(Instruction(op, current.storage, result, current.slot, operand.slot, -1, node));
+    slots.append(ValueLocal(current.storage));
+    return PointerPrefix(code, slots,
+                         PointerWriteStep(types, pointer, Typed(result, current.storage, 0, current.record),
+                                          popped, ops, target, SlotsPast(at, length(slots)), node));
+}
+PointerLvaluePhase: int : 36;
+PointerAssignPhase: int : 37;
+PointerAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                          members: TypeMember[], values: Value[], top: int, item: Work, ops: Ops,
+                          target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    if (item.phase == PointerLvaluePhase) {
+        // An arbitrary receiver is evaluated to distinguish a pointer location
+        // from an ordinary temporary record, which is not an assignable root.
+        if (!Single(values[top - 1], PointerStorage)) {
+            return Fail(forest, StatementTarget(forest, item.node), document,
+                        "field assignment needs a local record");
+        }
+        field := PointerFieldStep(forest, text, document, types, members, values[top - 1],
+                                  StatementTarget(forest, item.node), 1, ops, target, at);
+        object := Field(forest, StatementTarget(forest, item.node), "object");
+        if (!Is(forest, Unparenthesized(forest, object), "dereference_expression")) {
+            field = PointerPrefix([ExpressionCode(ops, forest[object])], [], field);
+        }
+        return PointerContinue(field, Resume(item.node, PointerAssignPhase, 0, 0));
+    }
+    if (item.b == 0) {
+        element := PointerElement(types, values[top - 1]);
+        if (element.storage == 0) {
+            return Fail(forest, item.node, document, "assignment target requires a pointer");
+        }
+        if (types[values[top - 1].record].key != 0) {
+            return Fail(forest, item.node, document, "Nullable pointer requires a presence guard before dereference");
+        }
+        value := Expect(StatementValue(forest, item.node), element.storage, element.container, element.record);
+        if (CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))) != "") {
+            read := PointerContinue(PointerReadStep(types, values[top - 1], 0, ops, target, at, node), value);
+            return PointerContinue(read, Resume(item.node, PointerAssignPhase, 0, 2));
+        }
+        return Step.Emitted([], [], [], [], [], [], [], [], [value, Resume(item.node, PointerAssignPhase, 0, 1)],
+                            0, NoValue(), NoValue(), []);
+    }
+    if (item.b == 2) {
+        return PointerCompoundStep(forest, text, document, types, values[top - 3], values[top - 2],
+                                   values[top - 1], 3, item, ops, target, at);
+    }
+    return PointerWriteStep(types, values[top - 2], values[top - 1], 2, ops, target, at, node);
+}
+
+PointerMemberReadPhase: int : 38;
+PointerNilPhase: int : 39;
+PointerNilComparisonStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], values: Value[],
+                             top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    pointer := values[top - 1];
+    if (Single(pointer, StructStorage) && pointer.record >= 0 && types[pointer.record].kind == OptionalComponentDecl) {
+        constant := ConstantCode(ops, target.pointer_storage, 0, at.slot, node);
+        op := ops.eq;
+        if (item.c != 0) {
+            op = ops.ne;
+        }
+        return Step.Emitted([constant, Instruction(op, target.pointer_storage, at.slot + 1, pointer.slot, at.slot, -1, node)],
+                            [AddressSlot(target), ValueLocal(BoolStorage)], [], [], [], [], [], [], [], 1,
+                            Typed(at.slot + 1, BoolStorage, 0, -1), NoValue(), []);
+    }
+    if (!Single(pointer, PointerStorage) || pointer.record < 0 || types[pointer.record].key == 0) {
+        return Fail(forest, item.node, document, "nil requires a nullable pointer type");
+    }
+    constant := ConstantCode(ops, PointerStorage, 0, at.slot, node);
+    constant.value_record = pointer.record;
+    op := ops.eq;
+    if (item.c != 0) {
+        op = ops.ne;
+    }
+    return Step.Emitted([constant, Instruction(op, PointerStorage, at.slot + 1, pointer.slot, at.slot, -1, node)],
+                        [{storage: PointerStorage, kind: ValueKind}, {storage: BoolStorage, kind: ValueKind}],
+                        [], [], [], [], [], [], [], 1, Typed(at.slot + 1, BoolStorage, 0, -1), NoValue(), []);
+}
+NeedsPointerValue :: (types: TypeDecl[], members: TypeMember[], storage: int, container: int, record: int) -> bool {
+    if (container == ViewContainer) {
+        return true;
+    }
+    if (container != 0) {
+        return false;
+    }
+    if (storage == PointerStorage) {
+        return record >= 0 && types[record].key == 0;
+    }
+    if (storage == StructStorage && record >= 0) {
+        index := types[record].first;
+        while (index < types[record].first + types[record].count) {
+            field := members[index];
+            if (NeedsPointerValue(types, members, field.storage, field.container, field.record)) {
+                return true;
+            }
+            index += 1;
+        }
+    }
+    return false;
+}
+
+PointerDestination :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                       names: Name[], destination: int) -> bool {
+    if (Is(forest, destination, "dereference_expression")) {
+        return true;
+    }
+    if (!Is(forest, destination, "member_expression")) {
+        return false;
+    }
+    object := Field(forest, destination, "object");
+    // `e.C = v` and `e.C.f = v` write an entity's component, not a pointee.
+    if (HandleComponent(forest, text, types, members, names, destination) ||
+        HandleComponent(forest, text, types, members, names, object)) {
+        return false;
+    }
+    if (!Is(forest, object, "identifier")) {
+        return true;
+    }
+    found := Lookup(names, Text(forest, text, object));
+    return found >= 0 && (names[found].storage == PointerStorage || names[found].place == ManagedPlace);
+}
+// Whether `node` is `e.C` on an entity handle `e`: `self`, a handle name or a
+// global's keyed handle.
+HandleComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                    names: Name[], node: int) -> bool {
+    if (!Is(forest, node, "member_expression")) {
+        return false;
+    }
+    owner := Field(forest, node, "object");
+    if (Is(forest, owner, "identifier")) {
+        found := Lookup(names, Text(forest, text, owner));
+        return found >= 0 && names[found].storage == HandleStorage && names[found].container == 0;
+    }
+    keyed := KeyedMember(forest, text, types, members, names, owner);
+    return keyed >= 0 && members[keyed].storage == HandleStorage;
+}
+PointerAssignmentStart :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                           members: TypeMember[], names: Name[], item: Work, ops: Ops, target: Target,
+                           at: Bases) -> Step {
+    node := forest[item.node];
+    code: Code[] = [Instruction(ops.check, 0, 0, 0, 0, 0, node)];
+    destination := StatementTarget(forest, item.node);
+    code.append(ExpressionCode(ops, forest[destination]));
+    if (Is(forest, destination, "dereference_expression")) {
+        return Step.Emitted(code, [], [], [], [], [], [], [],
+                            [Visit(Field(forest, destination, "operand")), Resume(item.node, PointerAssignPhase, 0, 0)],
+                            0, NoValue(), NoValue(), []);
+    }
+    object := Field(forest, destination, "object");
+    found: int = -1;
+    if (Is(forest, object, "identifier")) {
+        found = Lookup(names, Text(forest, text, object));
+    }
+    if (found >= 0 && names[found].place == ManagedPlace && names[found].storage == StructStorage) {
+        binding := names[found];
+        pointer := FindPointer(types, {storage: binding.storage, container: binding.container, record: binding.record}, false);
+        code.extend(NamePoints(forest, text, names, ops, object));
+        code.extend(CellRead(PointerStorage, binding.index, ops, target, at.slot, node));
+        slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
+        field := PointerFieldStep(forest, text, document, types, members,
+                                  Typed(at.slot + 1, PointerStorage, 0, pointer), destination, 0,
+                                  ops, target, SlotsPast(at, 2));
+        return PointerContinue(PointerPrefix(code, slots, field), Resume(item.node, PointerAssignPhase, 0, 0));
+    }
+    source := Unparenthesized(forest, object);
+    if (Is(forest, source, "dereference_expression")) {
+        code.append(ExpressionCode(ops, forest[source]));
+        source = Field(forest, source, "operand");
+    }
+    return Step.Emitted(code, [], [], [], [], [], [], [],
+                        [Visit(source), Resume(item.node, PointerLvaluePhase, 0, 0)], 0, NoValue(), NoValue(), []);
+}
+
+PointerRefFieldPhase: int : 40;
+// Proofs affect reads only. The name retains its declared nullable type for
+// assignments, &name and exact scoped argument matching. A side effect that
+// could change that name ends the proof; managed aliases make every write
+// relevant.
+PointerProofChanged :: (forest: snapshot.SnapshotNode[], text: string, root: int, start: int, finish: int,
+                        name: string, aliases: bool, stable_local: bool = false) -> bool {
+    pending: int[] = [root];
+    while (length(pending) > 0) {
+        at := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        node := forest[at];
+        if (node.start >= start && node.end <= finish) {
+            // A call cannot replace an ordinary local pointer whose address
+            // has never escaped. Its pointee may change without changing
+            // whether that local pointer is present.
+            if ((node.kind == "call_expression" && !stable_local) || node.kind == "await_expression" ||
+                node.kind == "yield_statement") {
+                return true;
+            }
+            if (node.kind == "assignment") {
+                target := Unparenthesized(forest, StatementTarget(forest, at));
+                if (aliases || (Is(forest, target, "identifier") && Text(forest, text, target) == name)) {
+                    return true;
+                }
+            }
+        }
+        for (child in Members(forest, at)) {
+            pending.append(child);
+        }
+    }
+    return false;
+}
+PointerGuard :: (forest: snapshot.SnapshotNode[], text: string, condition: int, name: string, truth: bool) -> bool {
+    at := Unparenthesized(forest, condition);
+    if (Is(forest, at, "identifier") || Is(forest, at, "member_expression")) {
+        return truth && Text(forest, text, at) == name;
+    }
+    if (Is(forest, at, "unary_expression")) {
+        operator := Text(forest, text, Field(forest, at, "operator"));
+        return (operator == "!" || operator == "not") &&
+               PointerGuard(forest, text, Field(forest, at, "operand"), name, !truth);
+    }
+    if (Is(forest, at, "call_expression")) {
+        if (!QueryGuardContext(forest, at)) {
+            return false;
+        }
+        function := Text(forest, text, Field(forest, at, "function"));
+        arguments := Members(forest, Field(forest, at, "arguments"));
+        if (function == "has" && length(arguments) == 1) {
+            return PointerGuard(forest, text, arguments[0], name, truth);
+        }
+        if (function == "not" && length(arguments) == 1) {
+            return PointerGuard(forest, text, arguments[0], name, !truth);
+        }
+        if ((truth && function == "all") || (!truth && function == "any")) {
+            for (argument in arguments) {
+                if (PointerGuard(forest, text, argument, name, truth)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    if (!Is(forest, at, "binary_expression")) {
+        return false;
+    }
+    operator := Text(forest, text, Field(forest, at, "operator"));
+    if ((truth && (operator == "&&" || operator == "and")) ||
+        (!truth && (operator == "||" || operator == "or"))) {
+        return PointerGuard(forest, text, Field(forest, at, "left"), name, truth) ||
+               PointerGuard(forest, text, Field(forest, at, "right"), name, truth);
+    }
+    left := Unparenthesized(forest, Field(forest, at, "left"));
+    right := Unparenthesized(forest, Field(forest, at, "right"));
+    if (Is(forest, left, "nil")) {
+        swapped := left;
+        left = right;
+        right = swapped;
+    }
+    if ((!Is(forest, left, "identifier") && !Is(forest, left, "member_expression")) ||
+        !Is(forest, right, "nil") || Text(forest, text, left) != name) {
+        return false;
+    }
+    return (truth && operator == "!=") || (!truth && operator == "==");
+}
+// Presence tests observe the declared nullable type, even if an earlier
+// initializer or guard already proves the value present.
+PointerNilOperand :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    at := node;
+    parent := forest[at].parent;
+    while (Is(forest, parent, "parenthesized_expression")) {
+        at = parent;
+        parent = forest[at].parent;
+    }
+    if (!Is(forest, parent, "binary_expression")) {
+        return false;
+    }
+    operator := Text(forest, text, Field(forest, parent, "operator"));
+    if (operator != "==" && operator != "!=") {
+        return false;
+    }
+    left := Field(forest, parent, "left");
+    right := Field(forest, parent, "right");
+    return (left == at && Is(forest, Unparenthesized(forest, right), "nil")) ||
+           (right == at && Is(forest, Unparenthesized(forest, left), "nil"));
+}
+PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name, node: int) -> bool {
+    function := node;
+    while (function >= 0 && !Is(forest, function, "function_declaration") && !Is(forest, function, "handler") &&
+           !Is(forest, function, "system")) {
+        function = forest[function].parent;
+    }
+    if (function < 0) {
+        return false;
+    }
+    body := Field(forest, function, "body");
+    aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body, []), binding.name);
+    stable_local := binding.place == LocalPlace && binding.node >= 0 && !aliased;
+    walked_child := node;
+    parent := forest[node].parent;
+    while (parent >= 0 && parent != function) {
+        condition := Field(forest, parent, "condition");
+        if (Is(forest, parent, "argument_list")) {
+            call := forest[parent].parent;
+            spelling := Text(forest, text, Field(forest, call, "function"));
+            if ((spelling == "all" || spelling == "any") && QueryGuardContext(forest, call)) {
+                for (argument in Members(forest, parent)) {
+                    if (Ancestor(forest, argument, node)) {
+                        break;
+                    }
+                    if (PointerGuard(forest, text, argument, binding.name, spelling == "all") &&
+                        !PointerProofChanged(forest, text, call, forest[argument].end, forest[node].start,
+                                             binding.name, aliased, stable_local)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        if (Is(forest, parent, "binary_expression") && Ancestor(forest, Field(forest, parent, "right"), node)) {
+            operator := Text(forest, text, Field(forest, parent, "operator"));
+            left := Field(forest, parent, "left");
+            truth := operator == "&&" || operator == "and";
+            if ((truth || operator == "||" || operator == "or") &&
+                PointerGuard(forest, text, left, binding.name, truth) &&
+                !PointerProofChanged(forest, text, parent, forest[left].end, forest[node].start,
+                                     binding.name, aliased, stable_local)) {
+                return true;
+            }
+        }
+        if (Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) {
+            consequence := Field(forest, parent, "consequence");
+            if (Is(forest, parent, "while_statement")) {
+                consequence = Field(forest, parent, "body");
+            }
+            truth := consequence >= 0 && forest[walked_child].start >= forest[consequence].start &&
+                     forest[walked_child].end <= forest[consequence].end;
+            alternative := Field(forest, parent, "alternative");
+            false_branch := alternative >= 0 && forest[walked_child].start >= forest[alternative].start &&
+                            forest[walked_child].end <= forest[alternative].end;
+            if ((truth || false_branch) && PointerGuard(forest, text, condition, binding.name, truth) &&
+                (binding.node < 0 || forest[binding.node].start < forest[condition].start)) {
+                return !PointerProofChanged(forest, text, parent, forest[condition].end, forest[node].start,
+                                            binding.name, aliased, stable_local);
+            }
+            // An outer proof is not carried through a loop back edge.
+            if (Is(forest, parent, "while_statement")) {
+                return false;
+            }
+        }
+        walked_child = parent;
+        parent = forest[parent].parent;
+    }
+    // A freshly addressed initializer is non-null until the name can change.
+    if (binding.node >= 0) {
+        declaration := forest[binding.node].parent;
+        initial := Unparenthesized(forest, Field(forest, declaration, "value"));
+        if (Is(forest, declaration, "local_declaration") && Is(forest, initial, "address_expression")) {
+            return !PointerProofChanged(forest, text, body, forest[declaration].end, forest[node].start,
+                                        binding.name, aliased, stable_local);
+        }
+    }
+    return false;
+}
+PointerNarrow :: (step: Step, record: int) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
+            narrowed := Typed(produced.slot, produced.storage, produced.container, record);
+            narrowed.schema = produced.schema;
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, narrowed, retained, marks);
+    }
+}
+
+// Keep pointer scheduling outside the body driver; every branch emits the
+// same step protocol as ordinary expressions and parameters.
+PointerWork :: (item: Work, kind: string) -> bool {
+    return (item.phase >= PointerReadPhase && item.phase <= PointerRefFieldPhase &&
+            item.phase != PointerMemberReadPhase) ||
+           (item.phase == 0 && (kind == "address_expression" || kind == "dereference_expression"));
+}
+PointerParameterStep :: (types: TypeDecl[], members: TypeMember[], param: Param, values: Value[], top: int,
+                         item: Work, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    if (item.b != 0) {
+        return ManagedBoxStep(types, members, values[top - 1], param.name, param.node, 1, ops, target, at, node);
+    }
+    read := Instruction(ops.argument, SlotStorage(param.storage, param.container, target), at.slot,
+                        item.a, 0, 0, node);
+    if (Pointer(param.storage, param.container)) {
+        read = Instruction(ops.array, target.pointer_storage, at.slot, item.a, 0, ops.argument, node);
+    }
+    read.value_storage = param.storage;
+    read.value_container = param.container;
+    read.value_record = param.record;
+    slot: Slot = {storage: SlotStorage(param.storage, param.container, target),
+                  kind: SlotKind(param.storage, param.container)};
+    return Step.Emitted([read], [slot], [], [], [], [], [], [],
+                        [Resume(item.node, PointerParameterPhase, item.a, 1)], 0,
+                        Typed(at.slot, param.storage, param.container, param.record), NoValue(), []);
+}
+// Whether `node` is a kept `p^` of a scoped `p` that a dereference reads
+// through or a return returns, which stage zero evaluates as `p` alone,
+// without a point of its own.
+ElidedTarget :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> bool {
+    if (!Is(forest, node, "dereference_expression") || CallArgument(forest, node)) {
+        return false;
+    }
+    operand := Unparenthesized(forest, Field(forest, node, "operand"));
+    if (!Is(forest, operand, "identifier")) {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, operand));
+    return found >= 0 && names[found].place == ReferencePlace;
+}
+PointerStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                members: TypeMember[], names: Name[], params: Param[], first: int, values: Value[], top: int,
+                item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    if (item.phase == PointerRefFieldPhase) {
+        resumed := item;
+        resumed.phase = PointerBridgePhase;
+        return PointerContinue(PointerFieldStep(forest, text, document, types, members, values[top - 1],
+                                                item.node, 1, ops, target, at), resumed);
+    }
+    if (item.phase == PointerNilPhase) {
+        return PointerNilComparisonStep(forest, document, types, values, top, item, ops, target, at);
+    }
+    if (item.phase == PointerAssignPhase || item.phase == PointerLvaluePhase) {
+        return PointerAssignmentStep(forest, text, document, types, members, values, top, item, ops, target, at);
+    }
+    if (item.phase == PointerParameterPhase) {
+        return PointerParameterStep(types, members, params[first + item.a], values, top, item, ops, target, at, node);
+    }
+    if (item.phase == PointerCompoundPhase) {
+        return ManagedCompoundStep(forest, text, document, types, names[item.a], values[top - 2],
+                                   values[top - 1], item, ops, target, at);
+    }
+    if (item.phase == PointerBridgePhase) {
+        pointer := values[top - 1];
+        element := PointerElement(types, pointer);
+        if (element.storage == 0) {
+            return Fail(forest, item.node, document, "Pointer parameter requires &value or a pointer");
+        }
+        if (pointer.record >= 0 && types[pointer.record].key != 0) {
+            return Fail(forest, item.node, document, "Nullable pointer requires a presence guard before dereference");
+        }
+        if (!SameType(item.storage, item.container, item.record,
+                      Typed(-1, element.storage, element.container, element.record))) {
+            return Fail(forest, item.node, document, "pointer argument differs from the parameter's type");
+        }
+        return PointerReferenceStep(pointer, ops, target, at, node);
+    }
+    return PointerExpressionStep(forest, text, document, types, members, names, values, top, item, ops, target, at);
+}

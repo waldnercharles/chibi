@@ -208,6 +208,9 @@ Cases :: () -> Case[] {
         // the point to (6, 7), Twice passes the parameter on for two more, (8, 9),
         // Fill appends 0, 1, 2 to the caller's array and Add raises its total by 4.
         Accepted("reference_parameters", "package scalar\nPoint :: struct { x: int; y: int; }\nMain :: () -> int {\n    p: Point = {x: 1, y: 2};\n    items: int[] = [];\n    total: int = 0;\n    a := Bump(&p, 5);\n    b := Twice(&p);\n    c := Fill(&items, 3);\n    d := Add(&total, 4);\n    return p.x * 100 + p.y * 10 + length(items) + total + a + b + c + d;\n}\nBump :: (point: ^Point, by: int) -> int {\n    point.x += by;\n    point.y = point.y + by;\n    return 1;\n}\nTwice :: (point: ^Point) -> int {\n    a := Bump(point, 1);\n    b := Bump(point, 1);\n    return a + b;\n}\nFill :: (items: ^(int[]), n: int) -> int {\n    for (i in 0..<n) { items.append(i); }\n    return n;\n}\nAdd :: (sum: ^int, by: int) -> int {\n    sum^ += by;\n    return 0;\n}\n", 903, "Main,Bump,Twice,Fill,Add", ""),
+        // rawptr is an opaque 64-bit word that an authored function takes and gives
+        // back: 7 through Id, and one more is 8.
+        Accepted("rawptr_parameter", "package scalar\nMain :: () -> int {\n    x: u64 = 7;\n    r: rawptr = Id(x);\n    y: u64 = r;\n    return int(y) + 1;\n}\nId :: (p: rawptr) -> rawptr { return p; }\n", 8, "Main,Id", ""),
         // Functions with no result run for their writes through a reference: 4, then
         // one more, an early return that is not taken, and one more, is 6.
         Accepted("void_functions", "package scalar\nMain :: () -> int {\n    total: int = 0;\n    Add(&total, 4);\n    Twice(&total);\n    return total;\n}\nAdd :: (sum: ^int, by: int) { sum^ += by; }\nTwice :: (sum: ^int) {\n    Add(sum, 1);\n    if (sum^ > 100) { return; }\n    Add(sum, 1);\n}\n", 6, "Main,Add,Twice", ""),

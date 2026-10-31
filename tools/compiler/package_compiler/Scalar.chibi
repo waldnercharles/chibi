@@ -83,6 +83,9 @@ ScalarForeignResult :: (forest: snapshot.SnapshotNode[], text: string, declarati
 // file has no such import.
 ScalarForeignLibrary :: (forest: snapshot.SnapshotNode[], text: string, declaration: int) -> string {
     block := forest[declaration].parent;
+    if (Field(forest, block, syntax.FieldLibrary) < 0) {
+        return "";
+    }
     alias := Text(forest, text, Field(forest, block, syntax.FieldLibrary));
     root := block;
     while (forest[root].parent >= 0) {
@@ -96,6 +99,26 @@ ScalarForeignLibrary :: (forest: snapshot.SnapshotNode[], text: string, declarat
         }
     }
     return "";
+}
+// Whether the foreign block of `declaration` names a library its file imports,
+// or names none and so declares symbols of the program's own objects.
+ScalarForeignKnown :: (forest: snapshot.SnapshotNode[], text: string, declaration: int) -> bool {
+    block := forest[declaration].parent;
+    if (Field(forest, block, syntax.FieldLibrary) < 0) {
+        return true;
+    }
+    alias := Text(forest, text, Field(forest, block, syntax.FieldLibrary));
+    root := block;
+    while (forest[root].parent >= 0) {
+        root = forest[root].parent;
+    }
+    for (member in Members(forest, root)) {
+        if (Is(forest, member, syntax.ForeignImportDeclaration) &&
+            Text(forest, text, Field(forest, member, syntax.FieldAlias)) == alias) {
+            return true;
+        }
+    }
+    return false;
 }
 // The row of the address of the authored function `argument` names, for a foreign
 // parameter of function type `signature`: the function's parameters and result
@@ -138,7 +161,7 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
     }
     result := ScalarForeignResult(forest, text, declaration);
     archive := ScalarForeignLibrary(forest, text, declaration);
-    if (result == 0 || archive == "") {
+    if (result == 0 || !ScalarForeignKnown(forest, text, declaration)) {
         return ScalarOperands.Failed(Diagnose(forest, declaration, 0,
                                               "scalar proof requires a foreign function with a number or bool result and an import"));
     }

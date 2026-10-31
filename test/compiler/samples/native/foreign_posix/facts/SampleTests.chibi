@@ -25,4 +25,15 @@ Calls :: () {
     empty: u8[] = []
     assert(posix.WriteBytes("posix_probe.bin", empty) && posix.FileSize("posix_probe.bin") == 0, "empty file")
     assert(posix.Remove("posix_probe.bin"), "remove file")
+    assert(posix.ReadText("Main.chibi") != "" && posix.ReadText("posix_missing.bin") == "", "text")
+    assert(posix.Getenv("CHIBI_POSIX_UNSET") == "", "unset variable")
+    assert(posix.MakeDirectory("posix_list"), "list directory")
+    listed: u8[] = [104, 105]
+    assert(posix.WriteBytes("posix_list/hi.txt", listed), "list file")
+    assert(posix.WriteBytes("posix_list/ho.txt", listed), "list second file")
+    names := posix.List("posix_list")
+    assert(length(names) == 2, "two names")
+    assert((names[0] == "hi.txt" && names[1] == "ho.txt") || (names[0] == "ho.txt" && names[1] == "hi.txt"), "names")
+    assert(length(posix.List("posix_missing_dir")) == 0, "missing directory")
+    assert(posix.Remove("posix_list/hi.txt") && posix.Remove("posix_list/ho.txt") && posix.Remove("posix_list"), "list cleanup")
 }

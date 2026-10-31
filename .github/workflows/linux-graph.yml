@@ -84,7 +84,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          for route in graph-engine graph-driver graph-discovery graph-asset-cache graph-os graph-c graph-sdk graph-build; do
+          for route in graph-engine graph-driver graph-discovery graph-asset-cache graph-os graph-c graph-build; do
             sh tools/build.sh test --build build-sdk-tests --build-host build-release/sdk/chibi-build-host "$route"
           done
       - name: Verify graph SDK packaging and relocation

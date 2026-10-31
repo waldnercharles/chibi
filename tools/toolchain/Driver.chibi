@@ -19,7 +19,7 @@ import strings "core:strings"
 // driver, as `zig build` runs its install step; --target names a subset (and
 // the build host the graph needs). --dry-run prints the
 // commands instead of running them. The other verbs are `test`, `install`,
-// `format`, `clean`, `census`, `sdk-reflect`, `runtime-sdk`, `package-runtime-sdk`,
+// `format`, `clean`, `census`, `sdk-reflect`,
 // `bootstrap-artifact`, `bootstrap-recover`,
 // `publish-seed`, `native-census` and `native-self-host`; Usage lists them.
 
@@ -545,42 +545,6 @@ SdkReflect :: (arguments: string[]) -> int {
     return GraphStep("sdk-reflect", host, "tools/toolchain/Graph.chibi", "SDKReflect", extend(tail, extend(["--"], Rest(arguments))), dry)
 }
 
-// The macOS runtime SDK, constructed by the authored graph from the reflection
-// tool, and with --package installed under --output.
-RuntimeSdk :: (arguments: string[], package: bool) -> int {
-    dry := Flag(arguments, "--dry-run")
-    status := SdkReflect(arguments)
-    if (status != 0) {
-        return status
-    }
-    host := PrivateHost(arguments, dry)
-    constructed := Absolute(Option(arguments, "--runtime-build", "build-runtime-sdk"))
-    status = Step(
-        "third-party", extend(Program(host, "tools/toolchain/Build.chibi", "Build", [], "1800000"), ["third-party", constructed]), dry
-    )
-    if (status != 0) {
-        return status
-    }
-    tail := [
-        "--build", constructed, "--reflect",
-        Join([Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "/reflect"]), "--jobs",
-        Jobs(arguments)
-    ]
-    tail = extend(tail, Libclang(arguments))
-    flags := Rest(arguments)
-    if (length(flags) == 0) {
-        flags = ["-DCMAKE_BUILD_TYPE=Debug", "-DCHIBI_ENABLE_SANITIZERS=OFF"]
-    }
-    status = GraphStep("runtime-sdk", host, "tools/toolchain/Graph.chibi", "RuntimeSDK", extend(tail, extend(["--"], flags)), dry)
-    if (status != 0 || !package) {
-        return status
-    }
-    output := Absolute(Option(arguments, "--output", "dist/runtime-sdk"))
-    return GraphStep(
-        "package-runtime-sdk", host, "tools/toolchain/RuntimeSDK.chibi", "RuntimePackage", ["--build", constructed, "--output", output], dry
-    )
-}
-
 // The Release compiler host, which writes and recovers the bootstrap artifact.
 CompilerHost :: (arguments: string[]) -> string {
     return Join([Absolute(Option(arguments, "--release-build", "build-release")), "/sdk/chibi-compiler-host"])
@@ -894,7 +858,7 @@ Usage :: () -> int {
     os.Print("       build format [--check] | clean | census | publish-seed | native-census")
     os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--work DIR] [--release-build DIR] [--skip-vm] [--dry-run]")
     os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
-    os.Print("       build sdk-reflect | runtime-sdk | package-runtime-sdk [--reflect-build DIR] [--runtime-build DIR] [--output DIR] [-- NATIVE ARGUMENTS]")
+    os.Print("       build sdk-reflect [--reflect-build DIR] [-- NATIVE ARGUMENTS]")
     return 2
 }
 
@@ -929,9 +893,6 @@ Main :: () -> int {
     }
     if (verb == "sdk-reflect") {
         return SdkReflect(arguments)
-    }
-    if (verb == "runtime-sdk" || verb == "package-runtime-sdk") {
-        return RuntimeSdk(arguments, verb == "package-runtime-sdk")
     }
     if (verb == "bootstrap-artifact") {
         return Bootstrap(arguments, "artifact")

@@ -117,32 +117,43 @@ Program :: (target: int) -> string {
 // `_fltused` and large frames call `__chkstk`, both of which the C runtime
 // would define. This `__chkstk` is compiler-rt's x86-64 probe: it touches
 // each page from the stack pointer down by RAX bytes and changes no register.
-Start :: (target: int) -> string {
+// What every Windows program starts with: the target, `__chkstk`, `_fltused`
+// and the import of ExitProcess.
+WindowsPrelude :: () -> string {
+    return Join([
+        "target triple = \"x86_64-pc-windows-msvc\"\n",
+        "module asm \".text\"\n",
+        "module asm \".globl __chkstk\"\n",
+        "module asm \"__chkstk:\"\n",
+        "module asm \"pushq %rcx\"\n",
+        "module asm \"pushq %rax\"\n",
+        "module asm \"cmpq $0x1000, %rax\"\n",
+        "module asm \"leaq 24(%rsp), %rcx\"\n",
+        "module asm \"jb 1f\"\n",
+        "module asm \"2:\"\n",
+        "module asm \"subq $0x1000, %rcx\"\n",
+        "module asm \"testq %rcx, (%rcx)\"\n",
+        "module asm \"subq $0x1000, %rax\"\n",
+        "module asm \"cmpq $0x1000, %rax\"\n",
+        "module asm \"ja 2b\"\n",
+        "module asm \"1:\"\n",
+        "module asm \"subq %rax, %rcx\"\n",
+        "module asm \"testq %rcx, (%rcx)\"\n",
+        "module asm \"popq %rax\"\n",
+        "module asm \"popq %rcx\"\n",
+        "module asm \"retq\"\n",
+        "@_fltused = dso_local global i32 0\n",
+        "declare dllimport void @ExitProcess(i32) noreturn\n"
+    ]);
+}
+
+Start :: (target: int, context: bool) -> string {
+    if (target == 2 && context) {
+        return WindowsContextStart();
+    }
     if (target == 2) {
         return Join([
-            "target triple = \"x86_64-pc-windows-msvc\"\n",
-            "module asm \".text\"\n",
-            "module asm \".globl __chkstk\"\n",
-            "module asm \"__chkstk:\"\n",
-            "module asm \"pushq %rcx\"\n",
-            "module asm \"pushq %rax\"\n",
-            "module asm \"cmpq $0x1000, %rax\"\n",
-            "module asm \"leaq 24(%rsp), %rcx\"\n",
-            "module asm \"jb 1f\"\n",
-            "module asm \"2:\"\n",
-            "module asm \"subq $0x1000, %rcx\"\n",
-            "module asm \"testq %rcx, (%rcx)\"\n",
-            "module asm \"subq $0x1000, %rax\"\n",
-            "module asm \"cmpq $0x1000, %rax\"\n",
-            "module asm \"ja 2b\"\n",
-            "module asm \"1:\"\n",
-            "module asm \"subq %rax, %rcx\"\n",
-            "module asm \"testq %rcx, (%rcx)\"\n",
-            "module asm \"popq %rax\"\n",
-            "module asm \"popq %rcx\"\n",
-            "module asm \"retq\"\n",
-            "@_fltused = dso_local global i32 0\n",
-            "declare dllimport void @ExitProcess(i32) noreturn\n",
+            WindowsPrelude(),
             "declare i32 @chibi_scalar()\n",
             "define void @mainCRTStartup() {\n",
             "  %status = call i32 @chibi_scalar()\n",
@@ -165,6 +176,98 @@ Start :: (target: int) -> string {
         "module asm \"syscall\"\n",
         "module asm \"ud2\"\n",
         "declare i32 @chibi_scalar()\n"
+    ]);
+}
+
+// The Windows start module for an entry that takes the runtime context: the
+// plain start's `__chkstk` and `_fltused`, then a context whose allocate is
+// HeapAlloc on the process heap, zeroed as calloc is, and whose index failure
+// and text formatting exit with status 134, as abort does elsewhere. A failed
+// assert ends the entry early with its failure in the context, which the
+// program writes to standard error with WriteFile before it exits with 134.
+// The program calls no C library.
+WindowsContextStart :: () -> string {
+    return Join([
+        WindowsPrelude(),
+        "declare dllimport ptr @GetProcessHeap()\n",
+        "declare dllimport ptr @HeapAlloc(ptr, i32, i64)\n",
+        "declare dllimport ptr @GetStdHandle(i32)\n",
+        "declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n",
+        "declare i32 @chibi_scalar(ptr)\n",
+        "@chibi_report_head = private unnamed_addr constant [29 x i8] c\"assertion failed in function \"\n",
+        "@chibi_report_from = private unnamed_addr constant [17 x i8] c\" at source bytes \"\n",
+        "@chibi_report_to = private unnamed_addr constant [4 x i8] c\" to \"\n",
+        "@chibi_report_end = private unnamed_addr constant [1 x i8] c\"\\0A\"\n",
+        "define internal void @chibi_format_text(ptr %ctx, ptr %values, i32 %count, ptr %result) {\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
+        "  %heap = call ptr @GetProcessHeap()\n",
+        "  %memory = call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)\n",
+        "  ret ptr %memory\n",
+        "}\n",
+        "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal void @chibi_write(ptr %bytes, i32 %count) {\n",
+        "  %error = call ptr @GetStdHandle(i32 -12)\n",
+        "  %written = alloca i32\n",
+        "  %ignored = call i32 @WriteFile(ptr %error, ptr %bytes, i32 %count, ptr %written, ptr null)\n",
+        "  ret void\n",
+        "}\n",
+        "define internal void @chibi_write_decimal(i64 %value) {\n",
+        "entry:\n",
+        "  %buffer = alloca [20 x i8]\n",
+        "  br label %loop\n",
+        "loop:\n",
+        "  %rest = phi i64 [ %value, %entry ], [ %next, %loop ]\n",
+        "  %at = phi i32 [ 20, %entry ], [ %back, %loop ]\n",
+        "  %digit = urem i64 %rest, 10\n",
+        "  %character = add i64 %digit, 48\n",
+        "  %byte = trunc i64 %character to i8\n",
+        "  %back = sub i32 %at, 1\n",
+        "  %slot = getelementptr inbounds [20 x i8], ptr %buffer, i32 0, i32 %back\n",
+        "  store i8 %byte, ptr %slot\n",
+        "  %next = udiv i64 %rest, 10\n",
+        "  %more = icmp ne i64 %next, 0\n",
+        "  br i1 %more, label %loop, label %done\n",
+        "done:\n",
+        "  %first = getelementptr inbounds [20 x i8], ptr %buffer, i32 0, i32 %back\n",
+        "  %count = sub i32 20, %back\n",
+        "  call void @chibi_write(ptr %first, i32 %count)\n",
+        "  ret void\n",
+        "}\n",
+        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
+        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
+        "define void @mainCRTStartup() {\n",
+        "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
+        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
+        "  %failure = load ptr, ptr %failure.at\n",
+        "  %failed = icmp ne ptr %failure, null\n",
+        "  br i1 %failed, label %report, label %done\n",
+        "report:\n",
+        "  %function = load i64, ptr %failure\n",
+        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
+        "  %start = load i32, ptr %start.at\n",
+        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
+        "  %end = load i32, ptr %end.at\n",
+        "  %start.wide = zext i32 %start to i64\n",
+        "  %end.wide = zext i32 %end to i64\n",
+        "  call void @chibi_write(ptr @chibi_report_head, i32 29)\n",
+        "  call void @chibi_write_decimal(i64 %function)\n",
+        "  call void @chibi_write(ptr @chibi_report_from, i32 17)\n",
+        "  call void @chibi_write_decimal(i64 %start.wide)\n",
+        "  call void @chibi_write(ptr @chibi_report_to, i32 4)\n",
+        "  call void @chibi_write_decimal(i64 %end.wide)\n",
+        "  call void @chibi_write(ptr @chibi_report_end, i32 1)\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "done:\n",
+        "  call void @ExitProcess(i32 %status)\n",
+        "  unreachable\n",
+        "}\n"
     ]);
 }
 
@@ -556,7 +659,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     // link supplies, from libc's allocator. A macOS program always links
     // libSystem dynamically.
     takes_context := strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx)");
-    if (executable && takes_context && !dynamic && target != 1) {
+    if (executable && takes_context && !dynamic && target == 0) {
         return Failed(partial, "a program that allocates links libc dynamically; omit --static", 2);
     }
     libc: string[] = [];
@@ -578,6 +681,10 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         }
     }
     kernel32: string[] = ["ExitProcess"];
+    if (target == 2 && takes_context) {
+        // The start module's allocator and assert report.
+        kernel32.extend(["GetProcessHeap", "HeapAlloc", "GetStdHandle", "WriteFile"]);
+    }
     for (symbol in SystemSymbols(text, "kernel32")) {
         if (!kernel32.contains(symbol)) {
             kernel32.append(symbol);
@@ -599,7 +706,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         return Failed(partial, "LLVM object emission", 1);
     }
     if (executable) {
-        start_text := Start(target);
+        start_text := Start(target, takes_context);
         if (dynamic) {
             start_text = StartDynamic("x86_64-unknown-linux-gnu", takes_context);
         }

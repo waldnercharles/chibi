@@ -128,9 +128,27 @@ static int build_with(const char *program, const char *const *options, const cha
     argv[at++] = "--llvm";
     argv[at++] = llvm;
     argv[at] = game;
-    const char *envp[] = { "PATH=", NULL };
+    /* The build host recovers the compiler from source when its sources differ
+     * from the seed's, which takes minutes; the CI cache holds that recovery. */
+    char cache[1100] = "";
+    const char *configured = getenv("CHIBI_COMPILER_CACHE");
+    if (configured && *configured) {
+        snprintf(cache, sizeof cache, "CHIBI_COMPILER_CACHE=%s", configured);
+    }
+    const char *envp[] = { "PATH=", cache[0] ? cache : NULL, NULL };
     status = chibi_process_capture(program, argv, suite, envp, chibi_process_now() + 120, NULL, &out, &err);
-    assert(status.error == CHIBI_PROCESS_OK);
+    if (status.error != CHIBI_PROCESS_OK) {
+        /* An environment failure, such as the 120 s deadline: report it with
+         * the child's stderr so the log says where the build was. */
+        fprintf(
+            stderr,
+            "native build: process error %d (status %d); stderr:\n%s\n",
+            (int)status.error,
+            status.status,
+            errors
+        );
+        return -1;
+    }
     return status.status;
 }
 

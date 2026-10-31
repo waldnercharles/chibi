@@ -306,7 +306,7 @@ ScalarElementValue :: (forest: snapshot.SnapshotNode[], text: string, callables:
         return ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants, node, shape,
                                  true, rows);
     }
-    if (shape.storage == StructStorage) {
+    if (shape.storage == StructStorage || (shape.storage == UnionStorage && ScalarOptional(types, shape.record))) {
         return ScalarRecordValue(forest, text, callables, params, callable, names, types, members, constants, node,
                                  shape.record, rows);
     }

@@ -91,11 +91,7 @@ jobs:
             sh tools/build.sh test --build build-sdk-tests --build-host build-release/sdk/chibi-build-host "$route"
           done
       - name: Verify graph SDK packaging and relocation
-        run: |
-          CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
-          CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
-          CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
-            sh tools/build.sh test --build build-sdk-tests --build-host "$PWD/build-release/sdk/chibi-build-host" build-sdk
+        run: sh tools/build.sh test --build-host "$PWD/build-release/sdk/chibi-build-host" graph-sdk-install
       - name: Native, material, project and language selectors on graph outputs
         env:
           UBSAN_OPTIONS: halt_on_error=1

@@ -211,7 +211,7 @@ ScalarLengthOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     return -1;
 }
 // The array that `statement`, an expression statement, changes, or -1: its
-// call is `a.append(x)`, `a.extend(b)` or `a.remove_index(i)` on a variable
+// call is `a.append(x)`, `a.extend(b)`, `a.remove_index(i)` or `a.resize(n)` on a variable
 // `a`, or on an array field `r.f` of a record variable `r`.
 ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, statement: int) -> int {
@@ -236,7 +236,8 @@ ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     return -1;
 }
 // The Array operator of the method `statement` calls: ArrayPush for append,
-// ArrayExtend for extend and ArrayRemove for remove_index; 0 for any other.
+// ArrayExtend for extend, ArrayRemove for remove_index and ArrayResize for
+// resize; 0 for any other.
 ScalarChangeKind :: (forest: snapshot.SnapshotNode[], text: string, statement: int) -> int {
     function := Field(forest, FirstMember(forest, statement), syntax.FieldFunction);
     if (!Is(forest, function, syntax.MemberExpression)) {
@@ -251,6 +252,9 @@ ScalarChangeKind :: (forest: snapshot.SnapshotNode[], text: string, statement: i
     }
     if (NameMatches(method, "remove_index")) {
         return facts.ArrayRemove;
+    }
+    if (NameMatches(method, "resize")) {
+        return facts.ArrayResize;
     }
     return 0;
 }

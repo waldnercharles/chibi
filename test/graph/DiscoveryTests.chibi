@@ -1,0 +1,248 @@
+package graph_discovery_tests
+
+import engine "graph:engine"
+import os "core:os"
+import strings "core:strings"
+
+// Toolchain discovery, from test/tools/build_graph.c's discovery cases. Run
+// builds fixture installations in a scratch directory and runs each check in
+// a build host of its own, because discovery reads the environment.
+
+Path :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+// Makes a directory and its parents.
+Make :: (path: string) -> bool {
+    return os.MakeDirectory(path) == nil;
+}
+Write :: (path: string, text: string) -> bool {
+    return os.WriteText(path, text) == nil;
+}
+
+// No real compiler or library is needed to exercise the missing-driver and
+// versioned-name boundaries.
+pub Drivers :: () -> int {
+    root := os.Arguments()[0];
+    assert(engine.ClangResourceInclude("") == "", "no library, no resource directory");
+    libraries := Path([root, "/lib"]);
+    include := Path([libraries, "/clang/18/include"]);
+    other := Path([libraries, "/clang/19/include"]);
+    assert(Make(include) && Write(Path([include, "/stdbool.h"]), ""), "the clang 18 resources");
+    names := ["libclang.so", "libclang.18.dylib", "libclang-18.so.18"];
+    for (name in names) {
+        path := Path([libraries, "/", name]);
+        assert(Write(path, "") && engine.ClangResourceInclude(path) == include, "the sole resource directory");
+    }
+    assert(Make(other) && Write(Path([other, "/stdbool.h"]), ""), "the clang 19 resources");
+    for (name in names) {
+        expected := include;
+        if (name == "libclang.so") {
+            expected = "";
+        }
+        assert(engine.ClangResourceInclude(Path([libraries, "/", name])) == expected, "a versioned name picks its resources");
+    }
+    missing := Path([libraries, "/libclang-20.so"]);
+    assert(Write(missing, "") && engine.ClangResourceInclude(missing) == "", "a version without resources");
+    sibling := Path([root, "/clang++-18"]);
+    assert(Write(sibling, "") && engine.CxxCompiler(Path([root, "/clang-18"]), "Clang") == sibling, "the versioned C++ sibling");
+    failing := os.FindExecutable("false");
+    assert(failing != "" && os.Capture([failing]).status == 1, "a failing driver");
+    shared := Path([libraries, "/libGraphDiscovery.so"]);
+    assert(Write(shared, "") && engine.SystemLibrary(failing, "libGraphDiscovery.so") == shared, "a library on the search path");
+    assert(engine.SystemLibrary(failing, "libAbsentGraphDiscovery.so") == "" && engine.SystemLibrary("", "libAbsentGraphDiscovery.so") == "", "an absent library");
+    headers := Path([root, "/include"]);
+    assert(Make(Path([headers, "/GL"])) && Write(Path([headers, "/GL/gl.h"]), "") && engine.OpenGLInclude() == headers, "OpenGL headers on the search path");
+    multiarch := Path([libraries, "/x86_64-linux-gnu"]);
+    versioned := Path([multiarch, "/libclang-18.so.18"]);
+    unversioned := Path([multiarch, "/libclang.so"]);
+    absent := Path([multiarch, "/libclang-20.so"]);
+    assert(Make(multiarch) && Write(versioned, "") && Write(unversioned, "") && Write(absent, ""), "the multiarch libraries");
+    assert(engine.ClangResourceInclude(versioned) == include, "a multiarch library uses its parent's resources");
+    assert(engine.ClangResourceInclude(unversioned) == "" && engine.ClangResourceInclude(absent) == "", "ambiguous multiarch libraries");
+    // Run's fake driver prints the resource directory named in driver_choice.
+    driver_prefix := Path([root, "/multiarch driver"]);
+    driver_libraries := Path([driver_prefix, "/lib/x86_64-linux-gnu"]);
+    driver_resources := Path([driver_prefix, "/share/clang/18/include"]);
+    driver_library := Path([driver_libraries, "/libclang-18.so.18"]);
+    driver_choice := Path([driver_prefix, "/resource-directory"]);
+    assert(Make(driver_libraries) && Make(driver_resources) && Write(driver_library, "") && Write(Path([driver_resources, "/stdbool.h"]), ""), "the driver's installation");
+    assert(Write(driver_choice, Path([driver_prefix, "/share/clang/18\n"])) && engine.ClangResourceInclude(driver_library) == driver_resources, "the driver's resource directory");
+    named := Path([root, "/libclang-unrelated/lib"]);
+    named_include := Path([named, "/clang/18/include"]);
+    named_other := Path([named, "/clang/19/include"]);
+    named_library := Path([named, "/libclang-18.so.18"]);
+    assert(Make(named_include) && Make(named_other) && Write(named_library, ""), "an unrelated prefix");
+    assert(Write(Path([named_include, "/stdbool.h"]), "") && Write(Path([named_other, "/stdbool.h"]), ""), "an unrelated prefix's resources");
+    assert(engine.ClangResourceInclude(named_library) == named_include, "a prefix named libclang is not a driver");
+    // The selected driver's resource path is authoritative, not its dirname.
+    alternate_driver := Path([driver_prefix, "/share/clang/19/include"]);
+    assert(Make(alternate_driver) && Write(Path([alternate_driver, "/stdbool.h"]), ""), "the driver's clang 19 resources");
+    assert(Write(driver_choice, Path([driver_prefix, "/share/clang/19\n"])) && engine.ClangResourceInclude(driver_library) == alternate_driver, "the driver's choice");
+    custom_driver := Path([driver_prefix, "/share/builtin/include"]);
+    assert(Make(custom_driver) && Write(Path([custom_driver, "/stdbool.h"]), ""), "the driver's custom resources");
+    assert(Write(driver_choice, Path([driver_prefix, "/share/builtin\n"])) && engine.ClangResourceInclude(driver_library) == custom_driver, "a custom resource directory");
+    assert(Write(driver_choice, Path([driver_prefix, "/share/clang/18\n"])) && engine.ClangResourceInclude(driver_library) == driver_resources, "the driver's choice again");
+    // An incomplete matching directory is still ambiguous, as CMake's
+    // resource fallback counts candidates before checking the sole header.
+    assert(Make(Path([libraries, "/clang/18.1/include"])), "an incomplete resource directory");
+    assert(engine.ClangResourceInclude(Path([libraries, "/libclang-18.so.18"])) == "" && engine.ClangResourceInclude(versioned) == "", "an ambiguous resource directory");
+    return 0;
+}
+
+Installation :: (prefix: string, directory: string, name: string) -> bool {
+    include := Path([prefix, "/include/clang-c"]);
+    shared := Path([prefix, "/", directory]);
+    resource := Path([shared, "/clang/18/include"]);
+    return Make(include) && Make(resource) && Write(Path([include, "/Index.h"]), "") &&
+        Write(Path([resource, "/stdbool.h"]), "") && Write(Path([shared, "/", name]), "");
+}
+
+Matches :: (root: string, explicit: string, expected: string, relative: string) -> bool {
+    profile := engine.Discover("release", os.Root(), root, explicit);
+    if (profile.libclang_include != Path([expected, "/include"]) || profile.libclang_library != Path([expected, "/", relative])) {
+        os.Print(format_text("libclang selected '{0}' and '{1}'", profile.libclang_include, profile.libclang_library));
+        return false;
+    }
+    directory := strings.Slice(relative, 0, strings.LastIndex(relative, "/"));
+    if (profile.clang_resource_include != Path([expected, "/", directory, "/clang/18/include"])) {
+        os.Print(format_text("libclang selected builtin headers '{0}'", profile.clang_resource_include));
+        return false;
+    }
+    return true;
+}
+
+// Run sets CMAKE_PREFIX_PATH, CMAKE_INCLUDE_PATH and CMAKE_LIBRARY_PATH to
+// the prefixes below, relative to the source root.
+pub Prefixes :: () -> int {
+    root := os.Arguments()[0];
+    first := Path([root, "/first prefix"]);
+    second := Path([root, "/second prefix"]);
+    semicolon := Path([root, "/semicolon;prefix"]);
+    explicit := Path([root, "/explicit prefix"]);
+    direct := Path([root, "/direct prefix"]);
+    wide := Path([root, "/wide prefix"]);
+    assert(Installation(first, "lib", "libclang.dylib") && Installation(second, "lib", "libclang.so") &&
+        Installation(semicolon, "lib", "libclang.so") && Installation(explicit, "lib", "libclang.so") &&
+        Installation(direct, "lib64", "libclang.so") && Installation(wide, "lib64", "libclang-18.so"), "the installations");
+    assert(Matches(root, "", first, "lib/libclang.dylib"), "the first complete prefix");
+    assert(Matches(root, explicit, explicit, "lib/libclang.so"), "an explicit root");
+    // A header-only prefix cannot borrow another installation's library.
+    assert(os.Remove(Path([first, "/lib/libclang.dylib"])) == nil && Matches(root, "", second, "lib/libclang.so"), "the next prefix");
+    assert(os.Remove(Path([second, "/lib/libclang.so"])) == nil && Matches(root, "", semicolon, "lib/libclang.so"), "a prefix with a semicolon");
+    assert(os.Remove(Path([semicolon, "/lib/libclang.so"])) == nil && Matches(root, "", direct, "lib64/libclang.so"), "the include and library paths");
+    assert(Matches(root, wide, wide, "lib64/libclang-18.so"), "a versioned library");
+    assert(os.Remove(Path([direct, "/lib64/libclang.so"])) == nil, "the last fixture library");
+    fallback := engine.Discover("release", os.Root(), root, "");
+    assert(!strings.HasPrefix(fallback.libclang_library, root), "the fallback is the host's libclang");
+    assert(os.Exists(Path([fallback.libclang_include, "/clang-c/Index.h"])) && os.Exists(fallback.libclang_library) &&
+        os.Exists(Path([fallback.clang_resource_include, "/stdbool.h"])), "the host's libclang is complete");
+    return 0;
+}
+
+// POSIX fixture names exercise drive spellings without claiming Windows execution.
+pub PathSpelling :: () -> int {
+    for (prefix in ["C:/LLVM path spelling", "C:\\LLVM path spelling"]) {
+        assert(Installation(prefix, "lib", "libclang.so") && Matches(os.Root(), prefix, prefix, "lib/libclang.so"), "a drive-letter root");
+    }
+    return 0;
+}
+
+// Run supplies conventional relative search paths in an isolated root.
+pub BasenamePaths :: () -> int {
+    arguments := os.Arguments();
+    directory := arguments[0];
+    root := os.Root();
+    if (length(arguments) > 1 && arguments[1] != "") {
+        root = Path([root, "/", arguments[1]]);
+    }
+    assert(Installation(root, directory, "libclang.so"), "the installation");
+    assert(Matches(root, "", root, Path([directory, "/libclang.so"])), "a conventional search path");
+    return 0;
+}
+
+// Runs one check in a build host rooted at root, under env's assignments.
+// The checkout's compiler cache spares a scratch root a compiler rebuild.
+Check :: (host: string, environment: string[], root: string, name: string, arguments: string[]) {
+    source := os.Root();
+    command := ["env"];
+    command.extend(environment);
+    command.extend([Path(["CHIBI_COMPILER_CACHE=", source, "/.chibi/compiler-cache"]), host, "--compiler", Path([source, "/tools/compiler"]), "--compiler-core", Path([source, "/packages/core"]),
+                    "--root", root, "--source", Path([source, "/test/graph/DiscoveryTests.chibi"]), "--core", Path([source, "/packages/core"]),
+                    "--collection", Path(["graph=", source, "/tools/graph"]), "--entry", name, "--timeout-ms", "30000", "--"]);
+    command.extend(arguments);
+    result := os.Capture(command);
+    if (result.status != 0) {
+        os.Print(format_text("{0} failed: {1}{2}", name, result.stdout, result.stderr));
+    }
+    assert(result.status == 0, "a discovery check");
+}
+
+// The case's driver prints the resource directory its installation names.
+DriversCase :: (host: string, scratch: string) {
+    root := Path([scratch, "/toolchain"]);
+    driver_root := Path([root, "/multiarch driver"]);
+    driver := Path([driver_root, "/bin/clang"]);
+    assert(Make(Path([driver_root, "/bin"])), "the driver directory");
+    script := Path(["#!/bin/sh\ntest \"$1\" = -print-resource-dir || exit 1\ncat \"", driver_root, "/resource-directory\"\n"]);
+    assert(Write(driver, script) && os.Run(["chmod", "700", driver]) == 0, "the fake driver");
+    Check(host, ["-u", "CXX", Path(["CMAKE_LIBRARY_PATH=", root, "/lib"]), Path(["CMAKE_INCLUDE_PATH=", root, "/include"])], os.Root(), "Drivers", [root]);
+}
+
+// Empty, missing and separator-only entries are skipped in order.
+PrefixesCase :: (host: string, relative: string) {
+    prefixes := Path(["CMAKE_PREFIX_PATH=:", relative, "/missing prefix::", relative, "/first prefix:", relative, "/second prefix:", relative, "/semicolon;prefix:"]);
+    includes := Path(["CMAKE_INCLUDE_PATH=", relative, "/direct prefix/include/"]);
+    libraries := Path(["CMAKE_LIBRARY_PATH=", relative, "/direct prefix/lib64/"]);
+    root := Path([os.Root(), "/", relative]);
+    Check(host, [prefixes, includes, libraries], os.Root(), "Prefixes", [root]);
+    spelling := Path([root, "/spelling"]);
+    assert(Make(spelling), "the spelling root");
+    Check(host, [], spelling, "PathSpelling", []);
+}
+
+BasenameCase :: struct {
+    include: string;
+    library: string;
+    directory: string;
+    prefix: string;
+    linked_include: bool;
+}
+
+BasenameCases :: (host: string, scratch: string) {
+    cases: BasenameCase[] = [
+        {include: "include/", library: "", directory: "lib64", prefix: "", linked_include: false},
+        {include: "", library: "lib64", directory: "lib64", prefix: "", linked_include: false},
+        {include: "", library: "lib", directory: "lib", prefix: "", linked_include: false},
+        {include: "include", library: "lib64", directory: "lib64", prefix: "", linked_include: true},
+        {include: "", library: "lib/x86_64-linux-gnu/", directory: "lib", prefix: "", linked_include: false},
+        {include: "lib/llvm-18/include", library: "", directory: "lib64", prefix: "lib/llvm-18", linked_include: false},
+        {include: "", library: "lib/llvm-18/lib", directory: "lib", prefix: "lib/llvm-18", linked_include: false},
+        {include: "", library: "lib/llvm-18/lib64", directory: "lib64", prefix: "lib/llvm-18", linked_include: false},
+    ];
+    index := 0;
+    for (item in cases) {
+        root := format_text("{0}/basename paths {1}", scratch, index);
+        index = index + 1;
+        assert(Make(root), "the case root");
+        if (item.linked_include) {
+            assert(Make(Path([root, "/headers"])) && os.Run(["ln", "-s", "headers", Path([root, "/include"])]) == 0, "the linked include directory");
+        }
+        environment := ["CMAKE_PREFIX_PATH=", Path(["CMAKE_INCLUDE_PATH=", item.include]), Path(["CMAKE_LIBRARY_PATH=", item.library])];
+        Check(host, environment, os.RealPath(root), "BasenamePaths", [item.directory, item.prefix]);
+    }
+}
+
+// The build host runs this entry with its own path as the one argument.
+pub Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 1, "the build host's path");
+    host := arguments[0];
+    relative := ".chibi/graph-discovery";
+    scratch := Path([os.Root(), "/", relative]);
+    assert(os.Run(["rm", "-rf", scratch]) == 0 && Make(scratch), "the scratch directory");
+    DriversCase(host, scratch);
+    PrefixesCase(host, Path([relative, "/prefixes"]));
+    BasenameCases(host, scratch);
+    assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch cleanup");
+    return 0;
+}

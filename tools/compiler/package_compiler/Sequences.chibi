@@ -396,8 +396,8 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                       values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
     destination := Field(forest, item.node, syntax.FieldTarget);
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
-    compound := operator != "";
+    operator := CompoundOperator(Operator(forest, item.node));
+    compound := operator != NoOperator;
     if (item.phase == 0) {
         return Step.Emitted([], [], [], [], [], [], [], [],
                             [DestinationVisit(destination), Resume(item.node, 1, 0, 0)],
@@ -755,7 +755,7 @@ StoresLocalElement :: (forest: snapshot.SnapshotNode[], text: string, names: Nam
     object := Field(forest, node, syntax.FieldObject);
     statement := forest[node].parent;
     if (!Is(forest, object, syntax.Identifier) || !Is(forest, statement, syntax.Assignment) ||
-        CompoundOperator(Text(forest, text, Field(forest, statement, syntax.FieldOperator))) != "") {
+        CompoundOperator(Operator(forest, statement)) != NoOperator) {
         return false;
     }
     found := Lookup(names, Text(forest, text, object));

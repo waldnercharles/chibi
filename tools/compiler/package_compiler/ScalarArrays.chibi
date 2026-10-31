@@ -474,7 +474,7 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
         place_type = element;
     }
     output := rows;
-    operator := ScalarArithmetic(CompoundOperator(Text(forest, text, Field(forest, node, syntax.FieldOperator))));
+    operator := ScalarArithmetic(CompoundOperator(Operator(forest, node)));
     reads := 1;
     if (operator != 0 || fielded) {
         reads = 2;

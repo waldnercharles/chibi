@@ -1,6 +1,7 @@
 package package_compiler
 
 import strings "core:strings"
+import tk "project:source_tokenizer"
 
 // Numeric literals of floating types: the binary64 nearest the literal, and
 // the binary32 nearest that, as stage zero reads them where long double is
@@ -876,7 +877,7 @@ Twos :: (value: u64[], count: int) -> u64[] {
     return out;
 }
 // `&`, `|` or `^` of exact integers, as their two's complements combine.
-ExactBitwise :: (operator: string, a: u64[], b: u64[]) -> u64[] {
+ExactBitwise :: (operator: int, a: u64[], b: u64[]) -> u64[] {
     count := length(a);
     if (length(b) > count) {
         count = length(b);
@@ -885,9 +886,9 @@ ExactBitwise :: (operator: string, a: u64[], b: u64[]) -> u64[] {
     y := Twos(b, count);
     out: u64[] = [];
     for (at in 0..<count) {
-        if (operator == "&") {
+        if (operator == tk.And) {
             out.append(x[at] & y[at]);
-        } else if (operator == "|") {
+        } else if (operator == tk.Or) {
             out.append(x[at] | y[at]);
         } else {
             out.append(x[at] ^ y[at]);

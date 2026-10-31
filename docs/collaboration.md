@@ -100,15 +100,17 @@ the collaboration wrapper does not change the project format.
 
 ## Access and deployment
 
-For local development, start the dependency-free Node service and build the
-browser Studio with its public URL:
+For local development, start the dependency-free Node service:
 
 ```sh
 node tools/collab/server/server.mjs
-make web-serve CHIBI_COLLAB_URL=http://127.0.0.1:8787 WEB_PORT=8099
 ```
 
-Open `http://127.0.0.1:8099` in one browser session and choose **Host room**.
+The engine no longer builds or serves the browser Studio: 7b97ecf7c dropped its
+web packaging and the `make web-serve` target. Point a browser Studio built
+elsewhere at the service with `CHIBI_COLLAB_URL=http://127.0.0.1:8787`.
+
+Open that Studio in one browser session and choose **Host room**.
 Copy a viewer or editor invite into a separate browser profile or private window.
 An invite link includes its credential; the room ID alone does not grant access.
 Host creation preserves unsaved documents while moving the room into temporary
@@ -162,8 +164,8 @@ Room controls explain that connecting requires the web editor.
 
 ## Verification
 
-Run `make test`, `chibi build`, and `make web`. The focused C protocol/replay
-selector is `build/test_suite --collab`. It checks malformed and truncated
+Run `chibi build` and `chibi build test collab`, the focused C protocol/replay
+selector (`test_tools --collab`). It checks malformed and truncated
 messages, ordering, duplicate acceptance, rejection, sequence gaps, snapshot
 failure and recovery, replay non-recursion, and host departure.
 

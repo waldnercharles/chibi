@@ -4,7 +4,6 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
-#include "types/copy.h"
 #include "types/text.h"
 
 #include <assert.h>
@@ -159,12 +158,7 @@ TEST_CASE(prototype_text_ownership_releases_backing_and_preserves_shares)
     document = prototype_new("TextOwner");
     document->registry_storage = registry;
     REQUIRE(prototype_add_graph(document, "retained.chibi") == 0);
-    pin_copy_scope copies = { 0 };
-    pin_copy_scope_begin(&copies);
-    int added = prototype_add_component(document, &text_component);
-    pin_copy_scope_end(&copies);
-    REQUIRE(added == 0);
-    REQUIRE(copies.counts.text_bytes == sizeof label + sizeof bytes);
+    REQUIRE(prototype_add_component(document, &text_component) == 0);
     const text_default *row = document->components[0].data;
     REQUIRE(row->text->owner && row->text->length == 3);
     REQUIRE(row->text->bytes != bytes && !memcmp(row->text->bytes, bytes, sizeof bytes));

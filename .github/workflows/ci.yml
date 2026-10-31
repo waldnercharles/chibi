@@ -122,7 +122,7 @@ jobs:
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
         run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-discovery graph-asset-cache graph-os graph-c graph-sdk native-aot-driver
-      # After make build, whose build/reflect the reflection identity cases run.
+      # After `chibi build`, which builds the test drivers this step runs.
       - name: Build timing host regressions (ready drivers)
         env:
           CHIBI_TOOLS_BUILD_DIR: build/test/tools
@@ -230,9 +230,13 @@ jobs:
         run: sh .github/native-profile.sh
       - name: Install build dependencies
         run: |
-          brew install llvm ccache
+          brew install llvm lld ccache
           LLVM="$(brew --prefix llvm)"
           echo "LLVM=$LLVM" >> "$GITHUB_ENV"
+          # The native driver takes opt, llc and ld.lld from one folder.
+          mkdir -p "$RUNNER_TEMP/llvm-bin"
+          ln -s "$LLVM/bin/opt" "$LLVM/bin/llc" "$(brew --prefix lld)/bin/ld.lld" "$RUNNER_TEMP/llvm-bin/"
+          echo "CHIBI_LLVM_BIN=$RUNNER_TEMP/llvm-bin" >> "$GITHUB_ENV"
           echo "CC=$LLVM/bin/clang" >> "$GITHUB_ENV"
           echo "CXX=$LLVM/bin/clang++" >> "$GITHUB_ENV"
           python3 -m venv /tmp/cmake
@@ -297,7 +301,7 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
-      # After make build, whose build/reflect the reflection identity cases run.
+      # After `chibi build`, which builds the test drivers this step runs.
       - name: Build timing host regressions (ready drivers)
         env:
           CHIBI_TOOLS_BUILD_DIR: build/test/tools
@@ -320,7 +324,7 @@ jobs:
           set -e
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native native-aot-driver
           CHIBI_LLVM_BIN= sh tools/build.sh test --build-host build-release/sdk/chibi-build-host --jobs 2 projects language
       - name: Preserve build logs and timings
         if: always()
@@ -521,10 +525,8 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: No Make, CMake or Python build files outside archive/
-        run: |
-          found=$(git ls-files | grep -Ev '^(archive|third_party)/' | grep -E '(^|/)(CMakeLists\.txt|Makefile)$|\.cmake$|\.py$' || true)
-          test -z "$found" || { printf '%s\n' "$found"; exit 1; }
+      - name: No Make, CMake or Python build files outside archive/, and the C that remains
+        run: sh tools/build.sh census
       - name: Install LLVM and the platform libraries
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends \

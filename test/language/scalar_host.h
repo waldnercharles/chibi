@@ -27,6 +27,16 @@ bool scalar_host_collect(const char *path, const char *source, arena *storage, p
 /* The same for CollectScalarPackages: the first function of the first input
  * is the entry and the other inputs are the packages it imports. */
 bool scalar_host_collect_packages(const source_package_input *, int count, arena *storage, pin_value *rows);
+/* The same with `collection` (such as "core") rooted at `collection_path`; the
+ * collection's own files are among the inputs, under that path. */
+bool scalar_host_collect_collection(
+    const char *collection,
+    const char *collection_path,
+    const source_package_input *,
+    int count,
+    arena *storage,
+    pin_value *rows
+);
 
 /* scalar_llvm.Validate: the empty string when the rows are valid, otherwise
  * the reason. Malloc-owned. */

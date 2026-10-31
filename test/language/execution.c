@@ -27,7 +27,6 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
-#include "types/copy.h"
 #include "types/pointer.h"
 #include "types/query.h"
 #include "types/record.h"

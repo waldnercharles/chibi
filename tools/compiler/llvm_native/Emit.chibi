@@ -198,6 +198,13 @@ pub Deref: int : 53;
 // Writes the right slot's value to where the left slot's reference points;
 // type is the value's. It gives nothing.
 pub Poke: int : 54;
+// output = the address of a C-ABI function that calls function `left`, a word;
+// type is the word. The function's parameters and result are numbers or
+// bools, which C passes and returns as it does for any function. A module
+// that takes the runtime context passes the program's own, the global
+// @chibi_context its start module defines, and a failure the function records
+// waits there for the start module to report; C gets the result's zero.
+pub FunctionAddress: int : 55;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -207,7 +214,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
 }
 Produces :: (op: int) -> bool {
     return op <= Local || op == LocalAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) ||
-           op == ForeignCall || op == StateLoad;
+           op == ForeignCall || op == StateLoad || op == FunctionAddress;
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
@@ -512,6 +519,56 @@ ReferenceValid :: (slots: int[], locals: int[], item: Instruction) -> bool {
     }
     return item.type < RefType && Typed(slots, item.left, RefType + item.type) && Typed(slots, item.right, item.type);
 }
+// Whether a function address names a function C can call: a word whose
+// parameters and result are numbers or bools.
+FunctionAddressValid :: (functions: Function[], parameters: int[], item: Instruction) -> bool {
+    if (!Index(item.left, length(functions)) || item.type != abi.WordStorage) {
+        return false;
+    }
+    callee := functions[item.left];
+    if (abi.ScalarType(callee.result) == "") {
+        return false;
+    }
+    for (index in 0..<callee.parameters) {
+        if (abi.ScalarType(parameters[callee.first_parameter + index]) == "") {
+            return false;
+        }
+    }
+    return true;
+}
+// The C-ABI adapter of function `function`, which a function address names:
+// the same parameters and result with the extensions C asks of its caller, and
+// the program's context first when the module takes one.
+CallbackAdapter :: (functions: Function[], parameters: int[], function: int, mode: int, runtime: bool) -> string {
+    callee := functions[function];
+    listed: string[] = [];
+    passed: string[] = [];
+    if (runtime) {
+        passed.append("ptr @chibi_context");
+    }
+    for (index in 0..<callee.parameters) {
+        type := parameters[callee.first_parameter + index];
+        listed.append(format_text("{}{} %a{}", TypeName(type), CExtension(type), index));
+        passed.append(format_text("{} %a{}", TypeName(type), index));
+    }
+    out := format_text("define internal{} {} @chibi_callback.{}({}) #0 {\nentry:\n", CExtension(callee.result),
+                       TypeName(callee.result), function, strings.Join(listed, ", "));
+    out = format_text("{}  %result = call {} @{}({})\n", out, TypeName(callee.result), Symbol(function, mode),
+                      strings.Join(passed, ", "));
+    return format_text("{}  ret {} %result\n}\n", out, TypeName(callee.result));
+}
+// The adapters of the functions whose address the module takes, once each.
+CallbackAdapters :: (functions: Function[], parameters: int[], code: Instruction[], mode: int, runtime: bool) -> string {
+    taken: int[] = [];
+    out := "";
+    for (item in code) {
+        if (item.op == FunctionAddress && !taken.contains(item.left)) {
+            taken.append(item.left);
+            out = format_text("{}\n{}", out, CallbackAdapter(functions, parameters, item.left, mode, runtime));
+        }
+    }
+    return out;
+}
 // A call names another function of the module, with its result type and one
 // argument slot of each parameter's type.
 CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments: int[], item: Instruction) -> bool {
@@ -570,7 +627,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > Poke) {
+        if (item.op < Constant || item.op > FunctionAddress) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -645,6 +702,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (item.op == ForeignCall && !ForeignValid(slots, arguments, texts, item)) {
             return Result.Rejected(base + pc, "native foreign call differs from its operands");
+        }
+        if (item.op == FunctionAddress && !FunctionAddressValid(functions, module_parameters, item)) {
+            return Result.Rejected(base + pc, "native function address differs from its function");
         }
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
@@ -1703,6 +1763,10 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
                                                            fallible[item.left]));
         } else if (item.op == ForeignCall) {
             out = format_text("{}{}", out, ForeignInstruction(Part(slots, shape.first_slot, shape.slots), own, texts, item, pc));
+        } else if (item.op == FunctionAddress) {
+            out = format_text("{}p{}:\n  %v{} = ptrtoint ptr @chibi_callback.{} to i64\n", out, pc, pc, item.left);
+            out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+            out = format_text("{}  br label %p{}\n", out, pc + 1);
         } else if (item.op == Fail) {
             out = format_text("{}{}", out, FailInstruction(function, pc));
         } else if (item.op == Format) {
@@ -2057,6 +2121,13 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
                                                                 functions[function].first_code));
         }
         out = format_text("{}\n{}", out, text);
+    }
+    callbacks := CallbackAdapters(functions, parameters, code, mode, runtime);
+    if (callbacks != "") {
+        if (runtime) {
+            out = format_text("{}\n@chibi_context = external global {}\n", out, abi.ContextType());
+        }
+        out = format_text("{}{}", out, callbacks);
     }
     if (compares) {
         text := TextEqual();

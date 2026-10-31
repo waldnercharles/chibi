@@ -2,8 +2,8 @@ package driver
 
 import strings "core:strings"
 
-// Bounded LLVM CLI consumer. It runs on Linux x64, and its objects and
-// programs may be for any admitted target. The build host is a transitional
+// Bounded LLVM CLI consumer. It runs on Linux x64 and macOS arm64, and its
+// objects and programs may be for any admitted target. The build host is a transitional
 // capability provider, not part of the emitted executable or a C exemption.
 Join :: (parts: string[]) -> string {
     return strings.Join(parts, "");
@@ -32,18 +32,23 @@ pub Tool :: (path: string) -> string {
     return resolved;
 }
 
-// Each admitted triple, in native_abi's target order, with the canonical
-// data layout LLVM 18 gives it. The arm64 layout changes with the LLVM major,
-// so another major's layout is rejected rather than trusted.
+// Each admitted triple, in native_abi's target order, with each canonical
+// data layout LLVM gives it, as measured. The arm64 layout changed with LLVM
+// 19 (-Fn32) and again by 22 (the x86 address spaces), and each is the same
+// ABI; any other layout is rejected rather than trusted.
 Admitted :: (triple: string, layout: string) -> int {
     triples := ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"];
+    targets: int[] = [0, 1, 1, 1, 2];
     layouts := ["e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
                 "e-m:o-i64:64-i128:128-n32:64-S128",
+                "e-m:o-i64:64-i128:128-n32:64-S128-Fn32",
+                "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32",
                 "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"];
-    for (index in 0..<length(triples)) {
-        if (triple == Join(["target triple = \"", triples[index], "\""]) &&
+    for (index in 0..<length(layouts)) {
+        target := targets[index];
+        if (triple == Join(["target triple = \"", triples[target], "\""]) &&
             layout == Join(["target datalayout = \"", layouts[index], "\""])) {
-            return index;
+            return target;
         }
     }
     return -1;
@@ -106,24 +111,13 @@ Program :: (target: int) -> string {
 //
 // On Linux it is shaped like Odin's no-CRT `_start` and musl's crt1: clear the
 // frame pointer, align the stack down to 16 bytes, call the entry, then exit.
-// On macOS dyld calls `main` and exits with its result, so `main` only calls
-// the entry. On Windows `mainCRTStartup` passes the result to ExitProcess, as
-// rustc's no-CRT programs do, rather than returning while the loader's
-// threads may still run. Windows code that uses floating point references
+// A macOS program always links libSystem, so StartDynamic starts it. On
+// Windows `mainCRTStartup` passes the result to ExitProcess, as rustc's no-CRT
+// programs do, rather than returning while the loader's threads may still run. Windows code that uses floating point references
 // `_fltused` and large frames call `__chkstk`, both of which the C runtime
 // would define. This `__chkstk` is compiler-rt's x86-64 probe: it touches
 // each page from the stack pointer down by RAX bytes and changes no register.
 Start :: (target: int) -> string {
-    if (target == 1) {
-        return Join([
-            "target triple = \"arm64-apple-macosx11.0.0\"\n",
-            "declare i32 @chibi_scalar()\n",
-            "define i32 @main() {\n",
-            "  %status = call i32 @chibi_scalar()\n",
-            "  ret i32 %status\n",
-            "}\n"
-        ]);
-    }
     if (target == 2) {
         return Join([
             "target triple = \"x86_64-pc-windows-msvc\"\n",
@@ -174,13 +168,48 @@ Start :: (target: int) -> string {
     ]);
 }
 
-// The macOS program links libSystem, which dyld requires of every program,
-// and imports nothing from it, so a text stub that names the library stands
-// in for the SDK's. The Windows program imports ExitProcess from kernel32,
-// whose import library lld-link writes from a definition, as rustc writes
-// raw-dylib imports, so no Windows SDK is needed either.
-LibSystem :: () -> string {
-    return "--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '/usr/lib/libSystem.B.dylib'\n...\n";
+// A macOS program links libSystem, which dyld requires of every program and
+// which re-exports the C library. A text stub that names it stands in for the
+// SDK's, as Zig's stubs do, so a program links on any host and with any Xcode:
+// lld reads only the stub formats it knows, and newer SDKs name architectures
+// older lld rejects. The stub exports `symbols`, which dyld then binds in
+// libSystem. The Windows program imports ExitProcess from kernel32, whose
+// import library lld-link writes from a definition, as rustc writes raw-dylib
+// imports, so no Windows SDK is needed either.
+LibSystem :: (symbols: string[]) -> string {
+    return Join(["--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '/usr/lib/libSystem.B.dylib'\n",
+                 "exports:\n  - targets: [ arm64-macos ]\n    symbols: [ ", strings.Join(symbols, ", "), " ]\n...\n"]);
+}
+// The C symbols a macOS program imports, by their Mach-O names: each function
+// the module declares, which its foreign calls name, then what the start
+// object's context calls, the copies llc may lower to calls, and dyld's
+// binder for the lazy stubs lld writes for them.
+Imports :: (module: string) -> string[] {
+    symbols: string[] = [];
+    for (line in strings.SplitLines(module)) {
+        if (!strings.HasPrefix(line, "declare ")) {
+            continue;
+        }
+        at := strings.Index(line, "@");
+        end := strings.Index(line, "(");
+        if (at < 0 || end <= at) {
+            continue;
+        }
+        name := strings.Slice(line, at + 1, end - at - 1);
+        if (!strings.HasPrefix(name, "llvm.")) {
+            symbols.append(Join(["_", name]));
+        }
+    }
+    for (name in ["_abort", "_calloc", "_dprintf", "_memcpy", "_memmove", "_memset", "dyld_stub_binder"]) {
+        listed := false;
+        for (symbol in symbols) {
+            listed = listed || symbol == name;
+        }
+        if (!listed) {
+            symbols.append(name);
+        }
+    }
+    return symbols;
 }
 Kernel32 :: () -> string {
     return "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n";
@@ -193,8 +222,11 @@ Kernel32 :: () -> string {
 Link :: (linker: string, target: int, partial: string, object: string, start: string, program: string,
          libraries: string[]) -> string[] {
     if (target == 1) {
-        return [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
-                "-dead_strip", "-e", "_main", object, start, Join([partial, "/libSystem.tbd"]), "-o", program];
+        command := [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
+                    "-dead_strip", "-e", "_main", object, start];
+        command.extend(libraries);
+        command.extend([Join([partial, "/libSystem.tbd"]), "-o", program]);
+        return command;
     }
     if (target == 2) {
         return [linker, "-flavor", "link", "/nologo", "/subsystem:console", "/entry:mainCRTStartup",
@@ -243,15 +275,16 @@ LinkDynamic :: (linker: string, libc: string[], object: string, start: string, p
     return command;
 }
 
-// The module that calls the program's entry from libc's C runtime. An entry
+// The module that calls the program's entry from libc's C runtime, or on
+// macOS from dyld, which calls main and exits with its result. An entry
 // that takes the runtime context gets one whose allocate is libc's calloc and
 // whose index failure aborts; formatting text is not available to a program.
 // A failed assert ends the entry early with its failure in the context, which
 // main reports on stderr before it exits with status 134.
-StartDynamic :: (context: bool) -> string {
+StartDynamic :: (triple: string, context: bool) -> string {
     if (!context) {
         return Join([
-            "target triple = \"x86_64-unknown-linux-gnu\"\n",
+            "target triple = \"", triple, "\"\n",
             "declare i32 @chibi_scalar()\n",
             "define i32 @main() {\n",
             "  %status = call i32 @chibi_scalar()\n",
@@ -260,7 +293,7 @@ StartDynamic :: (context: bool) -> string {
         ]);
     }
     return Join([
-        "target triple = \"x86_64-unknown-linux-gnu\"\n",
+        "target triple = \"", triple, "\"\n",
         "declare ptr @calloc(i64, i64)\n",
         "declare void @abort() noreturn\n",
         "declare i32 @dprintf(i32, ptr, ...)\n",
@@ -279,7 +312,7 @@ StartDynamic :: (context: bool) -> string {
         "  call void @abort()\n",
         "  unreachable\n",
         "}\n",
-        "@chibi_context = internal global { ptr, ptr, ptr, ptr } ",
+        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
         "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
         "define i32 @main() {\n",
         "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
@@ -371,8 +404,8 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         build.report("native-aot: mode must be 0 or 2");
         return 2;
     }
-    if (build.platform() != "Linux" || !Path(arguments[0]) || !Path(arguments[1])) {
-        build.report("native-aot: Linux and absolute input/output paths are required");
+    if (!Path(arguments[0]) || !Path(arguments[1])) {
+        build.report("native-aot: absolute input/output paths are required");
         return 2;
     }
     input := build.resolve_path(arguments[0]);
@@ -449,17 +482,18 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         program = Join([partial, "/generation.so"]);
     }
     libraries := LinkedLibraries(text);
-    if (target != 0 && length(libraries) > 0) {
-        return Failed(partial, "foreign libraries link on Linux x86-64 only", 2);
+    if (target == 2 && length(libraries) > 0) {
+        return Failed(partial, "foreign libraries link on Linux and macOS only", 2);
     }
     if (shared && (!executable || target != 0)) {
         return Failed(partial, "a shared library is a Linux x86-64 link", 2);
     }
     dynamic := executable && linkage == "dynamic" && target == 0;
     // A program that allocates takes the runtime context, which only a dynamic
-    // link supplies, from libc's allocator.
+    // link supplies, from libc's allocator. A macOS program always links
+    // libSystem dynamically.
     takes_context := strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx)");
-    if (executable && takes_context && !dynamic) {
+    if (executable && takes_context && !dynamic && target != 1) {
         return Failed(partial, "a program that allocates links libc dynamically; omit --static", 2);
     }
     libc: string[] = [];
@@ -490,7 +524,10 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         if (!shared) {
             start_text := Start(target);
             if (dynamic) {
-                start_text = StartDynamic(takes_context);
+                start_text = StartDynamic("x86_64-unknown-linux-gnu", takes_context);
+            }
+            if (target == 1) {
+                start_text = StartDynamic("arm64-apple-macosx11.0.0", takes_context);
             }
             if (!build.write_file(start, start_text)) {
                 return Failed(partial, "start module", 1);
@@ -502,7 +539,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
             if (build.file_kind(start_object) != "file") {
                 return Failed(partial, "start object emission", 1);
             }
-            if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem())) {
+            if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem(Imports(build.read_file(module))))) {
                 return Failed(partial, "libSystem stub", 1);
             }
             if (target == 2) {
@@ -827,6 +864,72 @@ Requested :: (name: string) -> int {
     return -1;
 }
 
+// The names an import line of `text` takes from `collection`: each
+// `import alias "collection:name"`.
+ImportedFrom :: (text: string, collection: string) -> string[] {
+    found: string[] = [];
+    prefix := Join([collection, ":"]);
+    for (line in build.lines(text)) {
+        if (!strings.HasPrefix(line, "import ")) {
+            continue;
+        }
+        parts := strings.Split(line, "\"");
+        if (length(parts) >= 3 && strings.HasPrefix(parts[1], prefix)) {
+            found.append(strings.TrimPrefix(parts[1], prefix));
+        }
+    }
+    return found;
+}
+
+// The .chibi files directly in package folder `folder`.
+PackageFiles :: (folder: string) -> string[] {
+    files: string[] = [];
+    for (name in build.list_directory(folder)) {
+        if (strings.HasSuffix(name, ".chibi") && build.file_kind(Join([folder, "/", name])) == "file") {
+            files.append(name);
+        }
+    }
+    return files;
+}
+
+// The packages the sources import beyond the ones already held, followed
+// transitively, in the order found. A project package lies in `base`'s folder
+// of its name, a core package in `core`'s. Each is the folder's files, as
+// `<name>/<file>` for a project package and `<core>/<name>/<file>` for core.
+Reach :: (base: string, core: string, texts: string[], held: string[]) -> string[] {
+    files: string[] = [];
+    seen: string[] = held;
+    pending := texts;
+    while (length(pending) > 0) {
+        text := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        for (kind in ["project", "core"]) {
+            for (name in ImportedFrom(text, kind)) {
+                key := Join([kind, ":", name]);
+                known := false;
+                for (other in seen) {
+                    known = known || other == key;
+                }
+                if (known) {
+                    continue;
+                }
+                seen.append(key);
+                folder := Join([base, "/", name]);
+                prefix := Join([name, "/"]);
+                if (kind == "core") {
+                    folder = Join([core, "/", name]);
+                    prefix = Join([core, "/", name, "/"]);
+                }
+                for (file in PackageFiles(folder)) {
+                    files.append(Join([prefix, file]));
+                    pending.append(build.read_file(Join([folder, "/", file])));
+                }
+            }
+        }
+    }
+    return files;
+}
+
 pub Native :: () -> int {
     arguments := build.arguments();
     if (length(arguments) != 8 && length(arguments) != 9) {
@@ -888,6 +991,51 @@ pub Native :: () -> int {
     }
     source := Join([root, "/", names[0]]);
     text := build.read_file(source);
+    // The other .chibi files below the folder, but its build output, are the
+    // packages the source imports.
+    packages: string[] = [];
+    package_texts: string[] = [];
+    package_state: string[] = [];
+    for (path in Sources(root)) {
+        if (path != names[0] && !strings.HasPrefix(path, "build/")) {
+            packages.append(path);
+            package_texts.append(build.read_file(Join([root, "/", path])));
+            package_state.append(Join([path, ":", build.hash_file(Join([root, "/", path]))]));
+        }
+    }
+    // A project package that is not below the folder but beside it, as the
+    // compiler's packages are beside native_driver, makes the folder's parent
+    // the project: the entry's path then starts with the folder's name.
+    base := root;
+    entry_path := names[0];
+    if (length(packages) == 0) {
+        parent := strings.TrimSuffix(root, Join(["/", strings.BaseName(root)]));
+        for (name in ImportedFrom(text, "project")) {
+            if (build.file_kind(Join([root, "/", name])) != "directory" &&
+                build.file_kind(Join([parent, "/", name])) == "directory") {
+                base = parent;
+                entry_path = Join([strings.BaseName(root), "/", names[0]]);
+            }
+        }
+    }
+    // The packages the sources import from the project beside them and from
+    // core are inputs too.
+    held: string[] = [];
+    for (path in packages) {
+        top := strings.Split(path, "/");
+        if (length(top) > 1) {
+            held.append(Join(["project:", top[0]]));
+        }
+    }
+    for (path in Reach(base, core, build.concat([text], package_texts), held)) {
+        packages.append(path);
+        location := path;
+        if (!strings.HasPrefix(path, Join([core, "/"]))) {
+            location = Join([base, "/", path]);
+        }
+        package_texts.append(build.read_file(location));
+        package_state.append(Join([path, ":", build.hash_file(location)]));
+    }
     emitter_key := EmitterKey(host, artifact, compiler, core);
     // Line tables name the source's directory, so a moved package rebuilds.
     directory := "";
@@ -895,9 +1043,10 @@ pub Native :: () -> int {
         directory = root;
     }
     key := build.hash_text(strings.Join([
-        "chibi-native 1", names[0], build.hash_text(text), emitter_key,
+        "chibi-native 1", entry_path, build.hash_text(text), emitter_key,
         build.hash_file(Join([build.root(), "/Driver.chibi"])), build.hash_file(opt), build.hash_file(llc),
-        build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root), linkage
+        build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root), linkage,
+        strings.Join(package_state, ",")
     ], "\n"));
     folder := Join([root, "/build/native"]);
     output := Join([folder, "/O", mode, "-", strings.Slice(key, 0, 16)]);
@@ -946,8 +1095,17 @@ pub Native :: () -> int {
     module := Join([work, "/module.ll"]);
     request := Join(["[\"/project\",", Quote(names[0]), ",", Quote(text), ",", facts[0], ",", facts[2], ",",
                      facts[3], ",", facts[4], ",", facts[5], "]"]);
+    collector := "0xebbc43e46769862a";
+    if (length(packages) > 0) {
+        // CollectScalarPackages: the entry file first, then the packages, with
+        // core as the collection whose files lie at its own path.
+        request = Join(["[\"/project\",[\"core\"],", Array([core]), ",", Array(build.concat([entry_path], packages)), ",",
+                        Array(build.concat([text], package_texts)), ",", facts[0], ",", facts[2], ",", facts[3], ",",
+                        facts[4], ",", facts[5], "]"]);
+        collector = "0xe248351e192972a1";
+    }
     if (!build.write_file(collect, request) ||
-        Invoke(host, artifact, "0xebbc43e46769862a", collect, "", "120000") != 0 ||
+        Invoke(host, artifact, collector, collect, "", "120000") != 0 ||
         !build.write_file(rows, build.last_stdout())) {
         build.report(Join(["native: the compiler did not read ", source, ": ", build.last_stderr()]));
         return Finish(work, 1);

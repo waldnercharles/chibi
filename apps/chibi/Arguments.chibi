@@ -21,7 +21,7 @@ Options :: struct {
 
 NewOptions :: (command: string) -> Options {
     return {command: command, path: "", llvm: "",
-            target: "x86_64-unknown-linux-gnu", mode: "2", error: "",
+            target: "", mode: "2", error: "",
             tail_first: 0, valid: true, help: false, watch: false,
             native: false, debug: false, static_link: false, shared: false}
 }

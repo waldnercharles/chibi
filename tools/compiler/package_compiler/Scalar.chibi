@@ -1915,7 +1915,10 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         if (first < 0) {
             visited := Field(forest, statement, syntax.FieldValue);
             if (visited >= 0 && Field(forest, statement, syntax.FieldReference) < 0 &&
-                ScalarArrayHeld(forest, text, callables, params, names, types, members, callable.package, visited) != 0) {
+                ScalarArrayType(types, ScalarVisitedShape(forest, text, callables, params, callable, names, types, members,
+                                                          constants, visited).storage,
+                                ScalarVisitedShape(forest, text, callables, params, callable, names, types, members,
+                                                   constants, visited).record) != 0) {
                 return ScalarPlan.Iterated(visited, ScalarIterationCopies(forest, text, Field(forest, statement, syntax.FieldBody),
                                                                            visited));
             }
@@ -2343,7 +2346,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             case .Iterated(value, copied):
                 iterated = true;
                 built = ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants, value,
-                                          ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, value), copied,
+                                          ScalarVisitedShape(forest, text, callables, params, callable, names, types, members, constants, value), copied,
                                           operands);
             case .Bare:
                 built = ScalarOperands.Built(operands);
@@ -2374,8 +2377,8 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 element_record := -1;
                 row = ScalarAt(forest, statement, facts.ForRow, facts.IntType, variables, count, name);
                 if (iterated) {
-                    visited := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package,
-                                                Field(forest, statement, syntax.FieldValue));
+                    visited := ScalarVisitedShape(forest, text, callables, params, callable, names, types, members, constants,
+                                                  Field(forest, statement, syntax.FieldValue));
                     element = visited.storage;
                     element_record = visited.record;
                     row.type = ScalarElementType(types, visited);

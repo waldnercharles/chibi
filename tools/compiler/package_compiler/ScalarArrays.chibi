@@ -280,6 +280,26 @@ ScalarIterationCopies :: (forest: snapshot.SnapshotNode[], text: string, body: i
     return Is(forest, node, syntax.Identifier) &&
            NamePosition(MutatedNames(forest, text, body, []), Text(forest, text, node)) >= 0;
 }
+// The array a loop visits, `node`: ScalarArrayShape's, or for a literal whose
+// first element it cannot type, such as a package constant or a bare number,
+// the storage that element has where it is written, as a local declaration of
+// the literal types it. Storage 0 for any other value.
+ScalarVisitedShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                       callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                       constants: ConstDecl[], node: int) -> ValueType {
+    shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, node);
+    literal := Unparenthesized(forest, node);
+    first := FirstMember(forest, literal);
+    if (shape.storage != 0 || !Is(forest, literal, syntax.ArrayExpression) || first < 0) {
+        return shape;
+    }
+    storage := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, first,
+                                    ConstantExpressionStorage(forest, text, first));
+    if (!ScalarArrayElement(storage)) {
+        return shape;
+    }
+    return {storage: storage, container: ArrayContainer, record: -1};
+}
 // The array variable's type as a facts type, or 0 for a value that is none.
 ScalarArrayHeld :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                     names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> int {

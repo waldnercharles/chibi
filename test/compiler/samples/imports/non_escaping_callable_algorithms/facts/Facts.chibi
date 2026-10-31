@@ -1,0 +1,9 @@
+package facts
+import lib "project:non_escaping_callable_algorithms/lib"
+Less :: (a: int, b: int) -> bool { return a < b; }
+Positive :: (value: int) -> bool { return value > 0; }
+Named :: () -> int { values: int[] = [3, 1, 2]; sorted := lib.Sorted(values, Less); if lib.Any(sorted, Positive) { return values[0] * 1000 + sorted[0] * 100 + sorted[1] * 10 + sorted[2]; } return 0; }
+Inline :: () -> int { values: int[] = [3, 1, 2]; sorted := lib.Sorted(values, (a: int, b: int) => a > b); if lib.Any(sorted, (value: int) => value == 2) { return sorted[0] * 100 + sorted[1] * 10 + sorted[2]; } return 0; }
+Gain :: (input: number) -> number { return input * 2.0; }
+ShaderHelper :: () -> number { return lib.Remap(0.25, Gain); }
+LoopShadow :: () -> int { item := 9; return lib.Remap(3, (value: int) { total := 0; for item in 0..<value { total += item; } return total; }) + item; }

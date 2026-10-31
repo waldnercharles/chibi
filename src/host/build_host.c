@@ -287,8 +287,16 @@ static const char *process_failure(chibi_process_error error)
     }
     return "build process host failure";
 }
+static void write_sink(FILE *sink, const chibi_process_output *output)
+{
+    fwrite(output->data, 1, output->size, sink);
+    if (output->truncated) {
+        fprintf(sink, "build step output truncated\n");
+    }
+    fflush(sink);
+}
 /* A finished step's output becomes build.last_stdout and build.last_stderr;
- * a reported step also adds it to the invocation's result. */
+ * a reported step also goes to the sinks, or else to the invocation's result. */
 static void finish_output(
     build_host *host,
     const chibi_process_output *out,
@@ -297,7 +305,10 @@ static void finish_output(
 )
 {
     chibi_build_result *result = host->result;
-    if (reported) {
+    if (reported && host->options->stdout_sink) {
+        write_sink(host->options->stdout_sink, out);
+        write_sink(host->options->stderr_sink, err);
+    } else if (reported) {
         size_t out_remaining = sizeof(result->stdout_text) - result->stdout_size - 1;
         size_t err_remaining = sizeof(result->stderr_text) - result->stderr_size - 1;
         size_t out_copy = out->size < out_remaining ? out->size : out_remaining;
@@ -368,9 +379,10 @@ const char *build_host_run_probe(void *service, const pin_value *arguments, pin_
     return run_step(service, arguments, results, false);
 }
 /* build.start begins a reported step and returns its handle at once;
- * build.wait(handle) waits for it while every other started step keeps
- * running, then gives its status as build.run does. */
-const char *build_host_start(void *service, const pin_value *arguments, pin_value *results)
+ * build.wait_for(handle, milliseconds) waits for it while every other started
+ * step keeps running, then gives its status as build.run does. build.spawn starts one
+ * whose output is the build's own, as it is written, instead of captured. */
+static const char *start_step(void *service, const pin_value *arguments, pin_value *results, bool inherit)
 {
     build_host *host = service;
     if (!host) {
@@ -389,12 +401,15 @@ const char *build_host_start(void *service, const pin_value *arguments, pin_valu
     if (!argv) {
         return failure;
     }
-    chibi_process_output *out = &host->job_outputs[slot][0],
-                         *err = &host->job_outputs[slot][1];
-    *out = (chibi_process_output){ .data = xmalloc(BUILD_STEP_OUTPUT_CAPACITY),
-                                   .capacity = BUILD_STEP_OUTPUT_CAPACITY };
-    *err = (chibi_process_output){ .data = xmalloc(BUILD_STEP_OUTPUT_CAPACITY),
-                                   .capacity = BUILD_STEP_OUTPUT_CAPACITY };
+    chibi_process_output *out = inherit ? NULL : &host->job_outputs[slot][0],
+                         *err = inherit ? NULL : &host->job_outputs[slot][1];
+    host->job_outputs[slot][0] = host->job_outputs[slot][1] = (chibi_process_output){ 0 };
+    if (!inherit) {
+        *out = (chibi_process_output){ .data = xmalloc(BUILD_STEP_OUTPUT_CAPACITY),
+                                       .capacity = BUILD_STEP_OUTPUT_CAPACITY };
+        *err = (chibi_process_output){ .data = xmalloc(BUILD_STEP_OUTPUT_CAPACITY),
+                                       .capacity = BUILD_STEP_OUTPUT_CAPACITY };
+    }
     if (host->options->timings) {
         host->job_started[slot] = chibi_build_now();
         host->job_observed[slot] = 0;
@@ -423,46 +438,58 @@ const char *build_host_start(void *service, const pin_value *arguments, pin_valu
             started.status,
             started.error
         );
-        free(out->data);
-        free(err->data);
+        free(host->job_outputs[slot][0].data);
+        free(host->job_outputs[slot][1].data);
         return process_failure(started.error);
     }
     host->job_handles[slot] = ++host->job_count;
     results[0].i = host->job_handles[slot];
     return NULL;
 }
-const char *build_host_wait(void *service, const pin_value *arguments, pin_value *results)
+const char *build_host_start(void *service, const pin_value *arguments, pin_value *results)
 {
-    build_host *host = service;
-    if (!host) {
-        return "build host service is unavailable";
-    }
+    return start_step(service, arguments, results, false);
+}
+const char *build_host_spawn(void *service, const pin_value *arguments, pin_value *results)
+{
+    return start_step(service, arguments, results, true);
+}
+static int job_slot(const build_host *host, int handle)
+{
     int slot = 0;
     while (slot < BUILD_MAX_JOBS &&
-           (!host->job_handles[slot] || host->job_handles[slot] != arguments[0].i)) {
+           (!host->job_handles[slot] || host->job_handles[slot] != handle)) {
         slot++;
     }
-    if (slot == BUILD_MAX_JOBS) {
-        return "unknown build job";
-    }
-    chibi_process_job *job = &host->jobs[slot];
-    while (chibi_process_running(job)) {
-        chibi_process_service(
-            host->jobs,
-            BUILD_MAX_JOBS,
-            host->deadline,
-            host->options->cancelled
-        );
-        if (host->options->timings) {
-            double observed = chibi_build_now();
-            for (int i = 0; i < BUILD_MAX_JOBS; i++) {
-                if (host->job_handles[i] && !host->job_observed[i] &&
-                    !chibi_process_running(&host->jobs[i])) {
-                    host->job_observed[i] = observed;
-                }
+    return slot;
+}
+
+/* Reads the output of every started step, so a step that fills its pipe still
+ * finishes, and notes when each exited. */
+static void service_jobs(build_host *host)
+{
+    chibi_process_service(
+        host->jobs,
+        BUILD_MAX_JOBS,
+        host->deadline,
+        host->options->cancelled
+    );
+    if (host->options->timings) {
+        double observed = chibi_build_now();
+        for (int i = 0; i < BUILD_MAX_JOBS; i++) {
+            if (host->job_handles[i] && !host->job_observed[i] &&
+                !chibi_process_running(&host->jobs[i])) {
+                host->job_observed[i] = observed;
             }
         }
     }
+}
+
+/* Ends the step in `slot`, killing its process group if anything of it remains,
+ * and returns its status; the step's output becomes the last output. */
+static const char *job_finish(build_host *host, int slot, pin_value *results)
+{
+    chibi_process_job *job = &host->jobs[slot];
     chibi_process_capture_result child = chibi_process_end(job);
     build_timing_write(
         host->options->timings,
@@ -473,18 +500,62 @@ const char *build_host_wait(void *service, const pin_value *arguments, pin_value
         child.status,
         child.error
     );
-    chibi_process_output *out = &host->job_outputs[slot][0],
-                         *err = &host->job_outputs[slot][1];
-    /* The step's own buffers become the last output. */
-    free(host->last_stdout);
-    free(host->last_stderr);
-    host->last_stdout = out->data;
-    host->last_stderr = err->data;
-    finish_output(host, out, err, true);
+    /* A spawned step has no buffers: its output went where it was written. */
+    if (job->out) {
+        chibi_process_output *out = &host->job_outputs[slot][0],
+                             *err = &host->job_outputs[slot][1];
+        /* The step's own buffers become the last output. */
+        free(host->last_stdout);
+        free(host->last_stderr);
+        host->last_stdout = out->data;
+        host->last_stderr = err->data;
+        finish_output(host, out, err, true);
+    }
     host->job_handles[slot] = 0;
     results[0].i = child.status;
     return process_failure(child.error);
 }
+
+/* build.wait_for(handle, milliseconds): the step's status once it has ended,
+ * BUILD_STEP_RUNNING when `milliseconds` pass first and it still runs; a
+ * negative limit waits without one. A running step is left running. */
+const char *build_host_wait_for(void *service, const pin_value *arguments, pin_value *results)
+{
+    build_host *host = service;
+    if (!host) {
+        return "build host service is unavailable";
+    }
+    int slot = job_slot(host, arguments[0].i);
+    if (slot == BUILD_MAX_JOBS) {
+        return "unknown build job";
+    }
+    double limit = arguments[1].i < 0 ? 0 : chibi_build_now() + arguments[1].i / 1000.0;
+    while (chibi_process_running(&host->jobs[slot])) {
+        service_jobs(host);
+        if (limit && chibi_process_running(&host->jobs[slot]) &&
+            chibi_build_now() >= limit) {
+            results[0].i = BUILD_STEP_RUNNING;
+            return NULL;
+        }
+    }
+    return job_finish(host, slot, results);
+}
+
+/* build.kill(handle): stops the step and everything it started, reaps it and
+ * returns its status, the negative signal number when it was killed. */
+const char *build_host_kill(void *service, const pin_value *arguments, pin_value *results)
+{
+    build_host *host = service;
+    if (!host) {
+        return "build host service is unavailable";
+    }
+    int slot = job_slot(host, arguments[0].i);
+    if (slot == BUILD_MAX_JOBS) {
+        return "unknown build job";
+    }
+    return job_finish(host, slot, results);
+}
+
 /* Steps the program started and never waited for stop with it. */
 void build_host_stop_jobs(build_host *host)
 {
@@ -888,6 +959,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         options->collection_count > CHIBI_BUILD_MAX_COLLECTIONS ||
         (options->collection_count && !options->collections) ||
         (options->argument_count && !options->arguments) ||
+        !options->stdout_sink != !options->stderr_sink ||
         !isfinite(options->deadline) || options->deadline <= 0 ||
         (options->backend != BEHAVIOR_BYTECODE && options->backend != BEHAVIOR_SLJIT) ||
         !behavior_backend_available(options->backend)) {

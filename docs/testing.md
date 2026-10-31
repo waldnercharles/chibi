@@ -235,9 +235,7 @@ Those presentation checks are separate from the original-snippet validation
 above, which cannot access the generator's private parser native.
 
 `chibi build test <name>` runs one mapped selector against
-the drivers `make test-build` produced and those Release tools, except
-`language-package-compiler-chibi-bootstrap`, which runs the Release
-`test_language` that `make test-bootstrap` builds; set
+the drivers `make test-build` produced and those Release tools; set
 `CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CTL`, `CHIBI_CLI` or
 `CHIBI_COMPILE` to use another build.
 
@@ -2343,116 +2341,15 @@ transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
-`chibi build test build-graph` runs one C case for the Chibi
-build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against a
-configured CMake build: on macOS, where `chibi build` uses the graph, the one
-`make graph-reference` configures in `build-cmake`, elsewhere `build`;
-`CHIBI_GRAPH_REFERENCE` names another. Every build-graph route takes it. It reads that build's profile from
-`CMakeCache.txt` and CMake's compiler files. With `--commands-only` and only
-that profile's name, with CMake's compiler as `CC` and no `CXX` (and the
-debug directory, which depends on where a build is), the graph finds the
-rest of its profile on the machine and writes the compile commands of every
-target it owns, including the third-party archive's sources and include
-directories, the options of single sources and C++ and Objective-C sources,
-and each of them (1061 on macOS) must equal `compile_commands.json`'s for the same source
-in the same target, split as the shell splits it, apart from the object path
-and with the temporary build directory standing for CMake's. A second case
-requires each link command it writes in `link_commands.json` (thirteen on macOS,
-eight elsewhere), found in `build.ninja` by its linker rule, to equal its executable's `build.ninja` statement, with the
-C++ compiler for an executable CMake links as C++, apart from where objects, the
-output and archives sit. A third builds the `chibi` launcher with a compiler
-that always fails: the headers its libraries staged stay in place, since an
-executable stages none. Only `reflect` is linked by a test; the other links
-are compared, and a manual full build links and runs them. About 25 s.
-
-`chibi build test build-graph-debug-optimization` is the narrow
-Linux CI route after the existing sanitized products and Release helper builds.
-It uses sanitized `build/test/tools/test_tools` and the Debug CMake reference,
-not the standalone runtime-only `build-tools` driver. CI explicitly selects
-`CHIBI_BUILD_HOST=build-release/sdk/chibi-build-host` only for this route: the
-Release helper executes authored command generation, while the emitted profiles
-retain Debug assertions and ASan/UBSan. The default focused CLI still uses the
-Debug host unless this override is supplied. The initial Debug-host CI attempt
-hit each existing 50-second child ceiling before useful output; Release-helper
-coverage does not establish sanitized-host execution speed or correctness. Three C cases compare reference-profile compile
-commands with CMake, verify default/O0/O1 Debug instrumentation and assertions,
-and reject malformed or non-Debug optimization requests before output creation.
-The eleven authored-host invocations only emit commands or reject arguments;
-they never compile graph products. Existing 50-second child limits and the CI
-job budget remain unchanged. The full graph/program routes retain their cases;
-this focused route is not a full Graph suite or an O1 performance measurement.
-It preserves CMake's exact compiler paths; compiler discovery remains covered
-only by the separate `build-graph` route. Normal macOS CI does not execute the
-new O1 cases; macOS O1 runtime validation remains unrun pending a later experiment.
-
-`chibi build test build-graph-programs` runs the graph with
-`--commands-only on --target test_tools --target chibi`: its link commands
-name them and the programs they run (`policy_worker`, `chibi_ctl`,
-`chibi-compile`, `chibi-player`, the build and compiler hosts), where CMake
-writes them, and no other test driver (macOS only). A second case names `chibi_support`:
-its compile database lists only that library's compiles, and with
-`--all-commands on` every target's, on macOS as many as CMake's. A third case
-rejects four fixed invalid target requests before discovery or output creation:
-an unknown target, a valid and unknown pair, a missing value, and another option
-instead of a value. A fourth case calls the authored `graph:c.Dependencies`
-parser through the bytecode CLI, with one short escaped-path fixture containing
-LF and CRLF continuations, two empty or targetless texts, and one fixed
-128-header file below 16 KiB. It checks exact paths and counts without compiler
-children, frames or GPU work. At most eight host subprocesses retain the existing
-50-second child limit.
-
-`chibi build test build-graph-resources` runs the graph for
-the launcher and `chibi_ctl` with a compiler that always fails: before any
-compile it writes `share/chibi` and `controller_resources`, all 213 files equal
-to CMake's (the build identity `engine.json` and the core and documentation
-sources) or, for the shaders, which CMake copies to `controller_resources`
-only when it configures, to `src/render/shaders`; an unchanged run leaves
-the identity's stamps. A second case runs it for `test_language`, whose
-`corpus.txt` must equal CMake's. macOS only. About 32 s.
-
-`chibi build test build-graph-support` runs three cases in a
-copy of the sources: about ten runs that build only `chibi_support` check
-that an unchanged build compiles nothing, that changing a source, a header or
-the flags or deleting an object recompiles exactly what depends on it, that a
-staged header nothing publishes is removed, and that a source that fails to
-compile keeps no record and is retried alone. The archive must link a program
-that runs. It compiles about thirty C files with the profile's sanitizers,
-about 36 s at a load average of 9.
-
-`chibi build test build-graph-reflect` builds and links
-`reflect` from the graph (27 C files with the profile's sanitizers), requires
-its link command to equal CMake's `build.ninja` statement apart from where
-objects, the output and archives sit, and runs it as CMake does, over the Cute
-math headers the graph staged from the third-party archive: its
-`native_types.c` and `native_capabilities.c` must equal CMake's byte for byte.
-About 42 s at a load average of 11; with other builds running, its first graph
-run can exceed its 50 s share.
-
-`chibi build test build-graph-archive` builds
-`chibi_vector_capabilities` over the Cute math headers of the third-party
-archive CMake configured with, which the graph stages, and the task pool over
-the archive's prebuilt enkiTS: three C files with the profile's sanitizers. A
-second run compiles nothing, and the staged `cute_math.h` and the shared
-`private/physics` headers equal CMake's; a run naming an archive that is not
-unpacked, or one naming the UI host's C++ sources with no C++ compiler, fails
-before compiling and says so. About 12 s.
-
-`chibi build test build-graph-generated` covers sources and
-headers the graph writes. One case builds `chibi_native_types` with the
-configured build's `reflect` (`--reflect`): the graph stages the math headers,
-runs reflect as CMake does and compiles the one source; both written sources
-equal CMake's byte for byte, an unchanged run neither reruns reflect nor
-compiles, and losing an output reruns it. Another builds
-`chibi_image_preparation`, whose codec headers the graph rewrites from Cute's
-with private symbols: they equal CMake's, staging keeps them, and an
-unchanged run compiles nothing and leaves their stamps. On macOS a third
-builds `test_behavior_consumer`, which writes the language tests' configured
-headers (byte initializers, C string lines and copies); they equal CMake's
-and keep their stamps when unchanged. A fourth builds
-`chibi_prepared_consumer`, which writes the tooling tests' copied fixtures
-and `export_compiler.h`, the profile's compiler and C flags; they equal
-CMake's and keep their stamps when unchanged. About 34 s at a load
-average of 4.
+`graph-engine`, `graph-driver`, `graph-discovery`, `graph-c` and `graph-build`
+run the authored programs in `test/graph` under the build host: the profile's
+flags, argument checks and target selection; the driver's plans; toolchain
+discovery against fixture installations; `tools/graph/c`'s steps,
+response-file links and dependency files; and, in `graph-build`, Debug builds
+of `chibi_support` in a copy of the sources that rebuild only what changed,
+retry a failed compile alone and link an archive that runs, plus a launcher
+build whose failing compiler leaves the staged headers in place. `graph-build`
+compiles about fifteen C files and takes about 2.5 minutes.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover
@@ -2461,8 +2358,7 @@ average of 4.
 two-page site with the installed generator. It takes about three seconds and starts no
 player.
 
-`chibi build test runtime-sdk` takes the private build host and selects the
-authored runtime SDK checks: canonical JSON against the Python manifest encoder, and on
+`graph-sdk` runs `test/graph/SDKTests.chibi`'s runtime SDK checks: canonical JSON against the Python manifest encoder, and on
 macOS the installer's verify, replace and rollback paths plus graph record, tool and
 configuration evidence over synthetic records. No engine library, SDK or package is built.
 
@@ -2605,7 +2501,6 @@ the `language-` prefix.
 | `package-compiler-chibi-debug-free` | 1 / 2,452 |
 | `package-compiler-chibi-behaviors-rest` | 2 / 5,730 |
 | `package-compiler-chibi-libraries` | 13 / 17,393 |
-| `package-compiler-chibi-native-arguments-oracle` | 1 / 178 |
 | `package-compiler-chibi-native-arguments` | 1 / 11,664 |
 
 The new fixture regression also failed under a temporary eager-preparation

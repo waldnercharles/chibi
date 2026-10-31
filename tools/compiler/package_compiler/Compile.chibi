@@ -683,9 +683,8 @@ CharType :: (types: TypeDecl[], storage: int, container: int, record: int) -> bo
 FindType :: (types: TypeDecl[], package: int, name: string) -> int {
     index: int = 0;
     while (index < length(types)) {
-        declared := types[index];
-        if (declared.package == package && declared.kind != VariantDecl &&
-            declared.kind != BuiltinScalarDecl && declared.name == name) {
+        if (types[index].package == package && types[index].kind != VariantDecl &&
+            types[index].kind != BuiltinScalarDecl && types[index].name == name) {
             return index;
         }
         index += 1;

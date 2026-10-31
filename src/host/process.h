@@ -92,7 +92,9 @@ typedef struct
 
 /* Starts a child as chibi_process_capture does and returns at once. Unless the
  * result's error is CHIBI_PROCESS_OK nothing was started. The output buffers
- * are borrowed until chibi_process_end; other inputs only during the call. */
+ * are borrowed until chibi_process_end; other inputs only during the call. A
+ * NULL buffer leaves that stream of the child inherited from the caller, as
+ * Zig's Child StdIo.Inherit does, so its output appears as it is written. */
 chibi_process_capture_result chibi_process_begin(
     chibi_process_job *,
     const char *executable,

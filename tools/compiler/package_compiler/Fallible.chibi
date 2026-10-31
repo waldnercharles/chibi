@@ -198,6 +198,57 @@ FallibleFindBinding :: (forest: snapshot.SnapshotNode[], text: string, bindings:
     return -1;
 }
 
+// The binding each identifier of a body names, by node index from `first`:
+// the walk asks for the same identifiers once per fallible call site, so they
+// are resolved once per body. -2 marks a node the body did not resolve.
+FallibleNames :: struct {
+    first: int;
+    bindings: int[];
+}
+FallibleResolveNames :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[],
+                         body: int) -> FallibleNames {
+    identifiers: int[] = [];
+    first: int = -1;
+    last: int = -1;
+    work: int[] = [body];
+    while (length(work) > 0) {
+        node := work[length(work) - 1];
+        work = slice(work, 0, length(work) - 1);
+        if (Is(forest, node, "identifier")) {
+            identifiers.append(node);
+            if (first < 0 || node < first) {
+                first = node;
+            }
+            if (node > last) {
+                last = node;
+            }
+        }
+        // Nested callable bodies own independent obligations.
+        if (node >= 0 && !Is(forest, node, "function_declaration")) {
+            work.extend(Members(forest, node));
+        }
+    }
+    if (first < 0) {
+        return {first: 0, bindings: []};
+    }
+    resolved := resize([int(0)], last - first + 1);
+    for (index in 0..<length(resolved)) {
+        resolved[index] = -2;
+    }
+    for (node in identifiers) {
+        resolved[node - first] = FallibleFindBinding(forest, text, bindings, node);
+    }
+    return {first: first, bindings: resolved};
+}
+FallibleNamed :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames,
+                  node: int) -> int {
+    at := node - names.first;
+    if (at >= 0 && at < length(names.bindings) && names.bindings[at] != -2) {
+        return names.bindings[at];
+    }
+    return FallibleFindBinding(forest, text, bindings, node);
+}
+
 FallibleDeclarationBinding :: (bindings: FallibleBinding[], node: int) -> int {
     for (binding, index in bindings) {
         if (binding.node == node) {
@@ -371,17 +422,24 @@ FallibleBuildGraph :: (forest: snapshot.SnapshotNode[], text: string, statement:
 }
 
 // What a point of the walk knows about the bindings that hold, point at or
-// once held the outcome: rows of four ints in increasing binding order,
-// (binding, alias, pointer target or -1, associated as 0 or 1). A binding
-// without a row holds no alias, points nowhere and was never associated, which
-// is true of most bindings, so a row exists only when a field differs from that.
+// once held the outcome: rows of FallibleRowSize ints in increasing binding
+// order, (binding, alias, pointer target or -1, associated as 0 or 1). A
+// binding without a row holds no alias, points nowhere and was never
+// associated, which is true of most bindings, so a row exists only when a field
+// differs from that. Rows are ints, not records: on the VM a record row costs
+// about 1.5% more of a self-compile. The row count bounds every scan below; it
+// is the bindings that touch the outcome or an address.
+FallibleRowSize: int : 4;
+FallibleAliasAt: int : 1;
+FalliblePointerAt: int : 2;
+FallibleAssociatedAt: int : 3;
 FallibleRow :: (facts: int[], binding: int) -> int {
     at: int = 0;
     while (at < length(facts) && facts[at] <= binding) {
         if (facts[at] == binding) {
             return at;
         }
-        at += 4;
+        at += FallibleRowSize;
     }
     return -1;
 }
@@ -390,18 +448,18 @@ FallibleAliasOf :: (facts: int[], binding: int) -> int {
     if (row < 0) {
         return 0;
     }
-    return facts[row + 1];
+    return facts[row + FallibleAliasAt];
 }
 FalliblePointerOf :: (facts: int[], binding: int) -> int {
     row := FallibleRow(facts, binding);
     if (row < 0) {
         return -1;
     }
-    return facts[row + 2];
+    return facts[row + FalliblePointerAt];
 }
 FallibleAssociated :: (facts: int[], binding: int) -> bool {
     row := FallibleRow(facts, binding);
-    return row >= 0 && facts[row + 3] != 0;
+    return row >= 0 && facts[row + FallibleAssociatedAt] != 0;
 }
 // Appends a binding's row unless every field has its default.
 FallibleAppendRow :: (facts: ^(int[]), binding: int, alias: int, pointer: int, associated: bool) {
@@ -412,25 +470,6 @@ FallibleAppendRow :: (facts: ^(int[]), binding: int, alias: int, pointer: int, a
         }
         facts.extend([binding, alias, pointer, flag]);
     }
-}
-FallibleSet :: (facts: int[], binding: int, alias: int, pointer: int, associated: bool) -> int[] {
-    result: int[] = [];
-    placed := false;
-    at: int = 0;
-    while (at < length(facts)) {
-        if (!placed && facts[at] >= binding) {
-            FallibleAppendRow(&result, binding, alias, pointer, associated);
-            placed = true;
-        }
-        if (facts[at] != binding) {
-            result.extend(slice(facts, at, 4));
-        }
-        at += 4;
-    }
-    if (!placed) {
-        FallibleAppendRow(&result, binding, alias, pointer, associated);
-    }
-    return result;
 }
 FallibleSame :: (left: int[], right: int[]) -> bool {
     if (length(left) != length(right)) {
@@ -449,8 +488,9 @@ FallibleForget :: (facts: int[], associations: bool) -> int[] {
     result: int[] = [];
     at: int = 0;
     while (at < length(facts)) {
-        FallibleAppendRow(&result, facts[at], 0, facts[at + 2], associations && facts[at + 3] != 0);
-        at += 4;
+        FallibleAppendRow(&result, facts[at], 0, facts[at + FalliblePointerAt],
+                          associations && facts[at + FallibleAssociatedAt] != 0);
+        at += FallibleRowSize;
     }
     return result;
 }
@@ -475,26 +515,41 @@ FallibleJoin :: (left_pending: bool, left: int[], right_pending: bool, right: in
         }
         // Read through each predecessor's intact pointer map before a join
         // discards differing targets. Cached address aliases can be stale.
-        first := FallibleAlias(left, binding);
-        second := FallibleAlias(right, binding);
+        first: int = 0;
+        first_pointer: int = -1;
+        first_associated := false;
+        if (at < length(left) && left[at] == binding) {
+            first = left[at + FallibleAliasAt];
+            first_pointer = left[at + FalliblePointerAt];
+            first_associated = left[at + FallibleAssociatedAt] != 0;
+            if (first_pointer >= 0) {
+                first = FallibleAlias(left, binding);
+            }
+            at += FallibleRowSize;
+        }
+        second: int = 0;
+        second_pointer: int = -1;
+        second_associated := false;
+        if (other < length(right) && right[other] == binding) {
+            second = right[other + FallibleAliasAt];
+            second_pointer = right[other + FalliblePointerAt];
+            second_associated = right[other + FallibleAssociatedAt] != 0;
+            if (second_pointer >= 0) {
+                second = FallibleAlias(right, binding);
+            }
+            other += FallibleRowSize;
+        }
         alias := first;
         if (right_pending && !left_pending) {
             alias = second;
         } else if (right_pending && left_pending) {
             alias = first & second;
         }
-        pointer := FalliblePointerOf(left, binding);
-        if (pointer != FalliblePointerOf(right, binding)) {
+        pointer := first_pointer;
+        if (pointer != second_pointer) {
             pointer = -1;
         }
-        FallibleAppendRow(&facts, binding, alias, pointer,
-                          FallibleAssociated(left, binding) || FallibleAssociated(right, binding));
-        if (at < length(left) && left[at] == binding) {
-            at += 4;
-        }
-        if (other < length(right) && right[other] == binding) {
-            other += 4;
-        }
+        FallibleAppendRow(&facts, binding, alias, pointer, first_associated || second_associated);
     }
     return FallibleEval.Evaluated(left_pending || right_pending, false, 0, facts);
 }
@@ -504,7 +559,7 @@ FallibleAlias :: (facts: int[], binding: int) -> int {
     if (binding < 0) {
         return 0;
     }
-    rows := length(facts) / 4;
+    rows := length(facts) / FallibleRowSize;
     at := binding;
     levels: int = 0;
     while (FalliblePointerOf(facts, at) >= 0 && levels < rows) {
@@ -518,35 +573,46 @@ FallibleAlias :: (facts: int[], binding: int) -> int {
     return alias + levels * 8;
 }
 
-FallibleWriteAliases :: (input: int[], target: int, value: int) -> int[] {
-    facts := input;
-    if (FallibleAssociated(facts, target) && value == 0) {
-        // The cell may hold this outcome on only some incoming paths. An
-        // unknown merged pointer cannot retain a proof across its overwrite.
-        // Known pointers follow live targets and normalize at the next join.
-        kept: int[] = [];
-        at: int = 0;
-        while (at < length(facts)) {
-            alias := facts[at + 1];
-            if (facts[at + 2] < 0 && alias >= 8) {
+// `target` comes to hold `value` and point at `pointer`, and is associated if
+// it was or `associated` says so.
+FallibleWrite :: (facts: int[], target: int, value: int, pointer: int, associated: bool) -> int[] {
+    // The cell may hold this outcome on only some incoming paths. An unknown
+    // merged pointer cannot retain a proof across its overwrite. Known pointers
+    // follow live targets and normalize at the next join.
+    was := FallibleAssociated(facts, target);
+    clear := was && value == 0;
+    result: int[] = [];
+    placed := false;
+    at: int = 0;
+    while (at < length(facts)) {
+        if (!placed && facts[at] >= target) {
+            FallibleAppendRow(&result, target, value, pointer, was || associated);
+            placed = true;
+        }
+        if (facts[at] != target) {
+            alias := facts[at + FallibleAliasAt];
+            if (clear && facts[at + FalliblePointerAt] < 0 && alias >= 8) {
                 alias = 0;
             }
-            FallibleAppendRow(&kept, facts[at], alias, facts[at + 2], facts[at + 3] != 0);
-            at += 4;
+            FallibleAppendRow(&result, facts[at], alias, facts[at + FalliblePointerAt],
+                              facts[at + FallibleAssociatedAt] != 0);
         }
-        facts = kept;
+        at += FallibleRowSize;
     }
-    return FallibleSet(facts, target, value, FalliblePointerOf(facts, target), FallibleAssociated(facts, target));
+    if (!placed) {
+        FallibleAppendRow(&result, target, value, pointer, was || associated);
+    }
+    return result;
 }
 
-FallibleTarget :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[],
+FallibleTarget :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames,
                    facts: int[], node: int) -> int {
     value := Unparenthesized(forest, node);
     if (Is(forest, value, "identifier")) {
-        return FallibleFindBinding(forest, text, bindings, value);
+        return FallibleNamed(forest, text, bindings, names, value);
     }
     if (Is(forest, value, "dereference_expression")) {
-        target := FallibleTarget(forest, text, bindings, facts, Field(forest, value, "operand"));
+        target := FallibleTarget(forest, text, bindings, names, facts, Field(forest, value, "operand"));
         if (target >= 0) {
             return FalliblePointerOf(facts, target);
         }
@@ -554,13 +620,13 @@ FallibleTarget :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fall
     return -1;
 }
 
-FalliblePointer :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[],
+FalliblePointer :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames,
                     facts: int[], node: int) -> int {
     value := Unparenthesized(forest, node);
     if (Is(forest, value, "address_expression")) {
-        return FallibleTarget(forest, text, bindings, facts, Field(forest, value, "operand"));
+        return FallibleTarget(forest, text, bindings, names, facts, Field(forest, value, "operand"));
     }
-    target := FallibleTarget(forest, text, bindings, facts, value);
+    target := FallibleTarget(forest, text, bindings, names, facts, value);
     if (target >= 0) {
         return FalliblePointerOf(facts, target);
     }
@@ -569,7 +635,7 @@ FalliblePointer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fal
 
 // mode 0 copies an alias, 1 inspects its value, 2 transfers it explicitly.
 // Comparing an address does not inspect the error stored at that address.
-FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], source: int,
+FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames, source: int,
                        error_name: string, tuple: bool, node: int, mode: int, input_pending: bool,
                        input_facts: int[]) -> FallibleEval {
     facts := input_facts;
@@ -581,16 +647,16 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
     }
     kind := forest[node].kind;
     if (kind == "identifier") {
-        value = FallibleAlias(facts, FallibleFindBinding(forest, text, bindings, node));
+        value = FallibleAlias(facts, FallibleNamed(forest, text, bindings, names, node));
     } else if (kind == "parenthesized_expression") {
-        return FallibleExpression(forest, text, bindings, source, error_name, tuple,
+        return FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
                                   Field(forest, node, "expression"), mode, pending, facts);
     } else if (kind == "member_expression" || kind == "dereference_expression" || kind == "address_expression") {
         operand := Field(forest, node, "object");
         if (kind != "member_expression") {
             operand = Field(forest, node, "operand");
         }
-        switch FallibleExpression(forest, text, bindings, source, error_name, tuple, operand, 0, pending, facts) {
+        switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple, operand, 0, pending, facts) {
             case .Evaluated(next_pending, next_lost, owner, changed):
                 pending = next_pending;
                 lost = next_lost;
@@ -612,7 +678,7 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
         }
     } else if (kind == "binary_expression") {
         operator := Text(forest, text, Field(forest, node, "operator"));
-        switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
+        switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
                                   Field(forest, node, "left"), 1, pending, facts) {
             case .Evaluated(next_pending, next_lost, ignored, changed):
                 pending = next_pending;
@@ -631,7 +697,7 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
         if (runs) {
             before := facts;
             before_pending := pending;
-            switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
+            switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
                                       Field(forest, node, "right"), 1, pending, facts) {
                 case .Evaluated(next_pending, next_lost, ignored, changed):
                     pending = next_pending;
@@ -673,7 +739,7 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
             child_mode = 2;
         }
         for (child in children) {
-            switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
+            switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
                                       child, child_mode, pending, facts) {
                 case .Evaluated(next_pending, next_lost, ignored, changed):
                     pending = next_pending;
@@ -699,7 +765,7 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
 
 // Computing a destination can call functions or inspect an index. Merely
 // replacing the error slot itself does not read or acknowledge its old value.
-FallibleAddress :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], source: int,
+FallibleAddress :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames, source: int,
                     error_name: string, tuple: bool, destination: int, input_pending: bool,
                     input_facts: int[]) -> FallibleEval {
     pending := input_pending;
@@ -713,7 +779,7 @@ FallibleAddress :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fal
         expressions.append(Field(forest, node, "operand"));
     }
     for (expression in expressions) {
-        switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
+        switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
                                   expression, 0, pending, facts) {
             case .Evaluated(next_pending, next_lost, ignored, changed):
                 pending = next_pending;
@@ -722,7 +788,7 @@ FallibleAddress :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fal
         }
     }
     if (Is(forest, node, "index_expression")) {
-        switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
+        switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
                                   Field(forest, node, "index"), 1, pending, facts) {
             case .Evaluated(next_pending, next_lost, ignored, changed):
                 pending = next_pending;
@@ -733,7 +799,7 @@ FallibleAddress :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fal
     return FallibleEval.Evaluated(pending, lost, 0, facts);
 }
 
-FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], source: int,
+FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames, source: int,
                      error_name: string, tuple: bool, current: FallibleNode, input_pending: bool,
                      input_facts: int[]) -> FallibleEval {
     pending := input_pending;
@@ -745,7 +811,7 @@ FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fa
     }
     kind := forest[node].kind;
     if (kind == "assignment") {
-        switch FallibleAddress(forest, text, bindings, source, error_name, tuple,
+        switch FallibleAddress(forest, text, bindings, names, source, error_name, tuple,
                                Field(forest, node, "target"), pending, facts) {
             case .Evaluated(next_pending, next_lost, ignored, changed):
                 pending = next_pending;
@@ -775,7 +841,7 @@ FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fa
         mode = 0;
     }
     value: int = 0;
-    switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
+    switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
                               expression, mode, pending, facts) {
         case .Evaluated(next_pending, next_lost, produced, changed):
             pending = next_pending;
@@ -785,7 +851,7 @@ FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fa
     }
     if (kind == "for_statement" || kind == "cancel_statement") {
         for (field in ["first", "last", "duration"]) {
-            switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
+            switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
                                       Field(forest, node, field), 1, pending, facts) {
                 case .Evaluated(next_pending, next_lost, ignored, changed):
                     pending = next_pending;
@@ -797,21 +863,17 @@ FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fa
     if (kind == "local_declaration") {
         target := FallibleDeclarationBinding(bindings, Field(forest, node, "name"));
         if (target >= 0) {
-            pointer := FalliblePointer(forest, text, bindings, facts, expression);
-            facts = FallibleWriteAliases(facts, target, value);
-            facts = FallibleSet(facts, target, FallibleAliasOf(facts, target), pointer,
-                                FallibleAssociated(facts, target) || value > 0);
+            pointer := FalliblePointer(forest, text, bindings, names, facts, expression);
+            facts = FallibleWrite(facts, target, value, pointer, value > 0);
         }
     } else if (kind == "assignment") {
         destination := Unparenthesized(forest, Field(forest, node, "target"));
-        target := FallibleTarget(forest, text, bindings, facts, destination);
+        target := FallibleTarget(forest, text, bindings, names, facts, destination);
         if (target >= 0) {
-            pointer := FalliblePointer(forest, text, bindings, facts, expression);
-            facts = FallibleWriteAliases(facts, target, value);
-            facts = FallibleSet(facts, target, FallibleAliasOf(facts, target), pointer,
-                                FallibleAssociated(facts, target) || value > 0);
+            pointer := FalliblePointer(forest, text, bindings, names, facts, expression);
+            facts = FallibleWrite(facts, target, value, pointer, value > 0);
         } else if (Is(forest, destination, "member_expression")) {
-            owner := FallibleTarget(forest, text, bindings, facts, Field(forest, destination, "object"));
+            owner := FallibleTarget(forest, text, bindings, names, facts, Field(forest, destination, "object"));
             member := Text(forest, text, Field(forest, destination, "member"));
             if (owner >= 0 && FallibleAlias(facts, owner) == 1) {
                 if (member == error_name) {
@@ -819,9 +881,7 @@ FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fa
                     if (value > 0) {
                         kept = 1;
                     }
-                    facts = FallibleWriteAliases(facts, owner, kept);
-                    facts = FallibleSet(facts, owner, FallibleAliasOf(facts, owner), -1,
-                                        FallibleAssociated(facts, owner) || kept > 0);
+                    facts = FallibleWrite(facts, owner, kept, -1, kept > 0);
                 }
             } else if (value > 0) {
                 pending = false;
@@ -844,6 +904,7 @@ FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fa
 }
 
 FallibleOutcome :: (forest: snapshot.SnapshotNode[], text: string, callable: Callable, bindings: FallibleBinding[],
+                    names: FallibleNames,
                     nodes: FallibleNode[], start: int, source: int, error_name: string, tuple: bool) -> bool {
     // A node's facts are the rows pool[first[node]] onward, count[node] ints;
     // an update appends its rows, so a node's earlier rows stay as they were.
@@ -863,7 +924,7 @@ FallibleOutcome :: (forest: snapshot.SnapshotNode[], text: string, callable: Cal
             facts = slice(pool, first[current], count[current]);
         }
         outgoing := pending[current];
-        switch FallibleTransfer(forest, text, bindings, source, error_name, tuple, nodes[current], outgoing, facts) {
+        switch FallibleTransfer(forest, text, bindings, names, source, error_name, tuple, nodes[current], outgoing, facts) {
             case .Evaluated(next_pending, next_lost, ignored, changed):
                 outgoing = next_pending;
                 lost = lost || next_lost;
@@ -943,6 +1004,7 @@ FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     }
     text := documents[callable.document].text;
     bindings := FallibleBindings(forest, text, callable);
+    names := FallibleResolveNames(forest, text, bindings, Field(forest, callable.node, "body"));
     nodes: FallibleNode[] = [{statement: -1, first: -1, second: -1, guard: true}];
     start: int = 0;
     switch FallibleBuildGraph(forest, text, Field(forest, callable.node, "body"), 0, 0, 0, nodes) {
@@ -968,7 +1030,7 @@ FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
         if (producer.results > 0) {
             error_name = params[producer.first + producer.count + producer.results - 1].name;
         }
-        if (FallibleOutcome(forest, text, callable, bindings, nodes, start, source.node, error_name, producer.results > 1)) {
+        if (FallibleOutcome(forest, text, callable, bindings, names, nodes, start, source.node, error_name, producer.results > 1)) {
             return [Diagnose(forest, source.node, callable.document,
                              "Error result is ignored on a reachable path; check, report, store or return it")];
         }

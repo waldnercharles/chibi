@@ -1157,6 +1157,47 @@ TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values)
     return true;
 }
 
+/* The command-line host passes stdout and stderr, so a hanging step still
+ * shows the reports and step output before it. */
+TEST_CASE(private_sinks_receive_reports_and_step_output_as_they_happen)
+{
+    REQUIRE(!setenv("CHIBI_BUILD_WORKER", worker_path, 1));
+    static const char *source = "package sinks\nBuild :: () -> int { "
+                                "build.report(\"streamed\"); "
+                                "return "
+                                "build.run([build.environment(\"CHIBI_BUILD_"
+                                "WORKER\"),\"cat\",\"sink-stderr\"]); }";
+    char out_path[4096], err_path[4096];
+    snprintf(out_path, sizeof out_path, "%s/sink-stdout", root);
+    snprintf(err_path, sizeof err_path, "%s/sink-stderr", root);
+    FILE *out = fopen(out_path, "w+"), *err = fopen(err_path, "w+");
+    REQUIRE(out && err);
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    options.stdout_sink = out;
+    options.stderr_sink = err;
+    chibi_build_result result;
+    bool invoked = chibi_build_invoke(&options, &result);
+    if (!invoked) {
+        fprintf(stderr, "build sinks: %s\n", result.diagnostic);
+    }
+    REQUIRE(invoked && result.value == 0 && result.steps == 1);
+    REQUIRE(!result.stdout_size && !result.stderr_size);
+    char text[64];
+    rewind(out);
+    size_t size = fread(text, 1, sizeof text - 1, out);
+    text[size] = 0;
+    REQUIRE(!strcmp(text, "streamed\n"));
+    rewind(err);
+    size = fread(text, 1, sizeof text - 1, err);
+    text[size] = 0;
+    REQUIRE(!strcmp(text, "streamed\n"));
+    REQUIRE(!fclose(out) && !fclose(err) && !unlink(out_path) && !unlink(err_path));
+    options.stderr_sink = NULL;
+    REQUIRE(!chibi_build_invoke(&options, &result));
+    REQUIRE(strstr(result.diagnostic, "invalid build host options"));
+    return true;
+}
+
 TEST_CASE(private_natives_resolve_only_under_the_build_namespace)
 {
     static const char *sources[] = {
@@ -1538,7 +1579,7 @@ TEST_CASE(private_runtime_failures_name_their_cause)
         /* A called function's failure reaches the program's diagnostic. */
         "package fails\nInner :: () -> int { xs: int[] = []; return xs[1]; }\n"
         "Build :: () -> int { return Inner(); }",
-        "package fails\nInner :: () -> int { return build.wait(99); }\n"
+        "package fails\nInner :: () -> int { return build.wait_for(99, -1); }\n"
         "Build :: () -> int { return Inner(); }",
     };
     static const char *diagnostics[] = {
@@ -1575,9 +1616,10 @@ TEST_CASE(private_started_steps_run_together)
                   "build.start([worker, \"sleep\", \"0.4\"])); } "
                   "fast := build.start([worker, \"sleep\", \"0.05\"]); "
                   "failed := 0; "
-                  "for (handle in handles) { if (build.wait(handle) != 0) { "
+                  "for (handle in handles) { if (build.wait_for(handle, -1) != "
+                  "0) { "
                   "failed += 1; } } "
-                  "return failed + build.wait(fast); }";
+                  "return failed + build.wait_for(fast, -1); }";
     chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
     primitive_started = 0;
     options.prepared = primitive_prepared;
@@ -1617,11 +1659,13 @@ TEST_CASE(private_waits_take_output_in_wait_order)
         "large := build.start([worker, \"build-output\", \"300000\"]); "
         "argv := build.start([worker, \"build-argv\", \"first\"]); "
         "code := build.start([worker, \"exit\", \"7\"]); "
-        "if (build.wait(code) != 7) { return 1; } "
-        "if (build.wait(large) != 0 || text_byte_length(build.last_stdout()) "
+        "if (build.wait_for(code, -1) != 7) { return 1; } "
+        "if (build.wait_for(large, -1) != 0 || "
+        "text_byte_length(build.last_stdout()) "
         "!= 300000) { return 2; } "
         "held:=build.last_stdout(); build.platform(); "
-        "if (build.wait(argv) != 23 || build.after(build.last_stdout(), "
+        "if (build.wait_for(argv, -1) != 23 || "
+        "build.after(build.last_stdout(), "
         "\"arg=5:\") != \"first\\n\") { return 3; } "
         "if (build.last_stderr() != \"worker-stderr\\n\") { return 4; } "
         "if (text_byte_length(held)!=300000 || text_byte_at(held,0)!=111 || "
@@ -1641,11 +1685,11 @@ TEST_CASE(private_waits_take_output_in_wait_order)
 TEST_CASE(private_waits_refuse_unknown_and_repeated_handles)
 {
     static const char *sources[] = {
-        "package jobs\nBuild :: () -> int { return build.wait(1); }",
+        "package jobs\nBuild :: () -> int { return build.wait_for(1, -1); }",
         "package jobs\nBuild :: () -> int { "
         "step := build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
         "\"exit\", \"0\"]); "
-        "build.wait(step); return build.wait(step); }",
+        "build.wait_for(step, -1); return build.wait_for(step, -1); }",
     };
     for (int i = 0; i < 2; i++) {
         chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
@@ -1653,6 +1697,42 @@ TEST_CASE(private_waits_refuse_unknown_and_repeated_handles)
         REQUIRE(!chibi_build_invoke(&options, &result));
         REQUIRE(!strcmp(result.diagnostic, "unknown build job"));
     }
+    return true;
+}
+
+/* wait_for gives a running step's marker once its limit passes and leaves the
+ * step running, finishes one that ends first, and kill stops a step and returns
+ * its status as the negative signal number; both refuse a finished handle. */
+TEST_CASE(private_waits_have_limits_and_steps_can_be_killed)
+{
+    static const char
+        *source = "package jobs\n"
+                  "Build :: () -> int { worker := "
+                  "build.environment(\"CHIBI_BUILD_WORKER\"); "
+                  "slow := build.start([worker, \"sleep\", \"30\"]); "
+                  "quick := build.start([worker, \"exit\", \"7\"]); "
+                  "if (build.wait_for(slow, 100) != 65536) { return 1; } "
+                  "if (build.wait_for(quick, -1) != 7) { return 2; } "
+                  "if (build.kill(slow) != -9) { return 3; } "
+                  "kept := build.last_stdout(); "
+                  "spawned := build.spawn([worker, \"exit\", \"5\"]); "
+                  "if (build.wait_for(spawned, -1) != 5) { return 4; } "
+                  "if (build.last_stdout() != kept) { return 5; } "
+                  "return 0; }";
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    double started = now();
+    chibi_build_result result;
+    REQUIRE(chibi_build_invoke(&options, &result));
+    REQUIRE(result.value == 0 && now() - started < 10);
+    static const char
+        *finished = "package jobs\nBuild :: () -> int { "
+                    "step := "
+                    "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
+                    "\"exit\", \"0\"]); "
+                    "build.wait_for(step, -1); return build.kill(step); }";
+    options = primitive_options(finished, BEHAVIOR_BYTECODE);
+    REQUIRE(!chibi_build_invoke(&options, &result));
+    REQUIRE(!strcmp(result.diagnostic, "unknown build job"));
     return true;
 }
 
@@ -1675,9 +1755,9 @@ TEST_CASE(private_unwaited_and_late_steps_stop)
     REQUIRE(timing_rows(options.timings, "abandoned", -SIGKILL, CHIBI_PROCESS_OK) == 1);
     REQUIRE(!fclose(options.timings));
     static const char
-        *late = "package jobs\nBuild :: () -> int { return build.wait("
+        *late = "package jobs\nBuild :: () -> int { return build.wait_for("
                 "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
-                "\"sleep\", \"30\"])); }";
+                "\"sleep\", \"30\"]), -1); }";
     options = primitive_options(late, BEHAVIOR_BYTECODE);
     options.deadline = now() + 0.5;
     options.timings = tmpfile();
@@ -1705,9 +1785,9 @@ static void timing_cancel_prepared()
 TEST_CASE(build_timings_record_interrupted_children)
 {
     const char
-        *source = "package jobs\nBuild :: () -> int { return build.wait("
+        *source = "package jobs\nBuild :: () -> int { return build.wait_for("
                   "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
-                  "\"sleep\", \"30\"])); }";
+                  "\"sleep\", \"30\"]), -1); }";
     chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
     options.prepared = timing_cancel_prepared;
     options.cancelled = &cancelled;
@@ -2769,6 +2849,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(steps_take_up_to_1023_arguments);
     RUN_TEST_CASE(private_values_and_process_snapshots_survive_later_calls);
     RUN_TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values);
+    RUN_TEST_CASE(private_sinks_receive_reports_and_step_output_as_they_happen);
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
     RUN_TEST_CASE(private_core_bytes_survive_native_result_bank_reuse);
     RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
@@ -2781,6 +2862,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(private_started_steps_run_together);
     RUN_TEST_CASE(private_waits_take_output_in_wait_order);
     RUN_TEST_CASE(private_waits_refuse_unknown_and_repeated_handles);
+    RUN_TEST_CASE(private_waits_have_limits_and_steps_can_be_killed);
     RUN_TEST_CASE(private_unwaited_and_late_steps_stop);
     RUN_TEST_CASE(build_timings_record_interrupted_children);
     RUN_TEST_CASE(private_value_helpers_preserve_nul_and_validate_c_boundaries);

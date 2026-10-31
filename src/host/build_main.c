@@ -360,6 +360,8 @@ int main(int argc, char **argv)
         .cancelled = &cancelled,
         .prepared = preparation_end,
         .timings = timings,
+        .stdout_sink = stdout,
+        .stderr_sink = stderr,
     };
     chibi_build_result result = { 0 };
     bool success = compiler && chibi_build_invoke(&options, &result);

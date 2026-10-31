@@ -11,7 +11,9 @@ compiles each sample in its own closure.
   the results its functions return.
 - A sample the compiler rejects ends its failing file with
   `// error: LINE:COL: message`, as Zig's test cases do. It passes only when the
-  compile fails with exactly that first diagnostic.
-- A call that must fail at run time is an `@test` with `// fails: message`
-  directly above its `@test` line, like Rust's `should_panic(expected = …)`. It
-  passes only when it fails with exactly that message.
+  compile fails with exactly that first diagnostic. When the diagnostic is in
+  another package of the sample, the comment names its file first, from the
+  sample's folder: `// error: lib/Lib.chibi:LINE:COL: message`.
+- A call that must fail at run time is an `@test` that calls
+  `testing.ExpectFailure` (`core:testing`) with the kind of failure right
+  before it.

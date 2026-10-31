@@ -1,0 +1,2 @@
+package lib
+pub Apply :: (function: fn() -> int) -> int { yield; return function(); }

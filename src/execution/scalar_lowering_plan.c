@@ -26,7 +26,7 @@ static const behavior_function_op operations[] = {
 };
 _Static_assert(sizeof operations / sizeof *operations == SCALAR_LOWERING_OPCODES, "scalar lowering wire opcodes changed");
 _Static_assert(PIN_BOOL == 1 && PIN_I32 == 6 && PIN_U32 == 7 && PIN_U64 == 9, "scalar lowering storage schema changed");
-_Static_assert(EXECUTION_PREPARED_VERSION == 27, "review scalar lowering target schema");
+_Static_assert(EXECUTION_PREPARED_VERSION == 28, "review scalar lowering target schema");
 behavior_function_op scalar_lowering_opcode(int wire)
 {
     assert(wire >= 0 && wire < SCALAR_LOWERING_OPCODES);

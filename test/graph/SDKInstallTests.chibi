@@ -30,11 +30,10 @@ Exists :: (path: string) -> bool {
 }
 // The number of names in a directory, -1 when it is not one.
 Entries :: (path: string) -> int {
-    listed := os.List(path);
-    if (listed.error) {
+    if (!os.IsDirectory(path)) {
         return -1;
     }
-    return length(listed.names);
+    return length(os.List(path));
 }
 // A file's SHA-256, "" when it cannot be read.
 Digest :: (path: string) -> string {
@@ -45,9 +44,8 @@ Digest :: (path: string) -> string {
     return hashed.digest;
 }
 Names :: (path: string) -> string[] {
-    listed := os.List(path);
-    assert(!listed.error, "the directory lists");
-    return listed.names;
+    assert(os.IsDirectory(path), "the directory lists");
+    return os.List(path);
 }
 Link :: (target: string, path: string) {
     assert(os.Run(["ln", "-s", target, path]) == 0, "the link");

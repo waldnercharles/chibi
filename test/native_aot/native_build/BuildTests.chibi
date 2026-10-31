@@ -32,12 +32,7 @@ Holds :: (path: string, text: string) -> bool {
     return !read.error && strings.Contains(read.text, text);
 }
 Names :: (path: string) -> string[] {
-    listed := os.List(path);
-    if (listed.error) {
-        empty: string[] = [];
-        return empty;
-    }
-    return listed.names;
+    return os.List(path);
 }
 Clone :: (source: string, destination: string) {
     copy := ["/bin/cp", "-R", "--reflink=auto", source, destination];

@@ -89,15 +89,15 @@ pub Refresh :: (path: string, now_seconds: i64) {
 // are not products, such as a half-written ".new" file, are neither counted
 // nor removed. Returns the bytes left.
 pub Evict :: (cache: string, budget: i64, keep: string[]) -> i64 {
-    listing := os.List(cache);
-    if (listing.error != nil) {
+    if (!os.IsDirectory(cache)) {
         return 0;
     }
+    listing := os.List(cache);
     names: string[] = [];
     sizes: i64[] = [];
     times: i64[] = [];
     total: i64 = 0;
-    for (name in listing.names) {
+    for (name in listing) {
         if (strings.HasSuffix(name, ".new") || strings.HasSuffix(name, ".refresh") || strings.HasSuffix(name, ".tmp")) {
             continue;
         }

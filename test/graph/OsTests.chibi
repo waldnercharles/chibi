@@ -14,17 +14,17 @@ BytesRoundTripIncludingNulAndInvalidUtf8 :: () {
     data: u8[] = [0, 255, 10, 13, 128, 0, 65];
     assert(os.WriteBytes(path, data) == nil, "bytes are written");
     read := os.ReadBytes(path);
-    assert(read.error == nil && bytes.Equal(read.data, data), "bytes read back unchanged");
+    assert(bytes.Equal(read, data), "bytes read back unchanged");
     empty: u8[] = [];
     assert(os.WriteBytes(path, empty) == nil, "an empty file is written");
     again := os.ReadBytes(path);
-    assert(again.error == nil && length(again.data) == 0, "an empty file reads as no bytes");
+    assert(length(again) == 0, "an empty file reads as no bytes");
     assert(os.Capture(["rm", "-rf", directory]).status == 0, "cleanup");
 }
 
 MissingFileReportsNotFound :: () {
     read := os.ReadBytes("/definitely/missing/file");
-    assert(read.error != nil && length(read.data) == 0, "no bytes for a missing file");
+    assert(length(read) == 0, "no bytes for a missing file");
 }
 
 pub Run :: () -> int {

@@ -183,7 +183,7 @@ MirrorDropsDeletedFiles :: () {
     assert(os.Remove(strings.Join([source, "/sub"], "")) == nil, "the emptied directory is deleted from the source");
     assert(engine.CopyChanged(source, copy), "the second copy");
     listed := os.List(copy);
-    assert(listed.error == nil && length(listed.names) == 1 && listed.names[0] == "kept.chibi", "the copy is the source");
+    assert(length(listed) == 1 && listed[0] == "kept.chibi", "the copy is the source");
     assert(os.Run(["/bin/rm", "-rf", root]) == 0, "the scratch is removed");
 }
 

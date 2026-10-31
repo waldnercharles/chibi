@@ -55,8 +55,10 @@ pub KindOther: int : 4;
 
 StatBytes: int : 256;
 
-// The platform is read at run time, from uname's system name, so the package
-// stays plain declarations that the native lane compiles on every platform. Only
+// The platform is read at run time, from uname's system name, once per call that
+// needs it, so the package stays plain declarations that the native lane
+// compiles on every platform. It is a stand-in for `when target.Os`, which the
+// scalar producer cannot fold yet (docs/native-llvm-ledger.md). Only
 // the layouts of struct stat and of a directory entry differ: Darwin keeps
 // st_mode at 4, two bytes, and d_name at 21; Linux x86-64 keeps st_mode at 24,
 // four bytes, and d_name at 19.
@@ -66,22 +68,22 @@ IsDarwin :: () -> bool {
     return names[0] == 68;
 }
 
-ModeOffset :: () -> int {
-    if IsDarwin() {
+ModeOffset :: (darwin: bool) -> int {
+    if darwin {
         return 4;
     }
     return 24;
 }
 
-ModeBytes :: () -> int {
-    if IsDarwin() {
+ModeBytes :: (darwin: bool) -> int {
+    if darwin {
         return 2;
     }
     return 4;
 }
 
-NameOffset :: () -> int {
-    if IsDarwin() {
+NameOffset :: (darwin: bool) -> int {
+    if darwin {
         return 21;
     }
     return 19;
@@ -89,7 +91,7 @@ NameOffset :: () -> int {
 
 // A directory entry begins with its inode and offset (8 bytes each) and then
 // its record length, two bytes, at 16 on both platforms; the name follows the
-// type at NameOffset().
+// type at NameOffset.
 RecordLengthOffset: int : 16;
 
 // Whether the path names anything a link points at.
@@ -113,9 +115,10 @@ Mode :: (path: string, link: bool) -> int {
     if status != 0 {
         return -1;
     }
+    darwin := IsDarwin();
     mode := 0;
-    for index in 0..<ModeBytes() {
-        mode += int(buffer[ModeOffset() + index]) << u32(8 * index);
+    for index in 0..<ModeBytes(darwin) {
+        mode += int(buffer[ModeOffset(darwin) + index]) << u32(8 * index);
     }
     return mode;
 }
@@ -232,6 +235,7 @@ pub Getenv :: (name: string) -> string {
 // from an empty one).
 pub List :: (path: string) -> string[] {
     names: string[] = [];
+    name_at := NameOffset(IsDarwin());
     directory := opendir(path);
     if directory == 0 {
         return names;
@@ -252,7 +256,7 @@ pub List :: (path: string) -> string[] {
         }
         moved = memcpy(record, record_at, u64(size));
         name: u8[] = [];
-        at := NameOffset();
+        at := name_at;
         while at < length(record) && record[at] != 0 {
             name.append(record[at]);
             at += 1;

@@ -1,0 +1,5 @@
+package facts
+Take :: (value: int) -> int { return value; }
+Run :: () -> int { return Take((value: int) => value); }
+
+// error: 3:32: Inline functions may only be passed to a callable parameter

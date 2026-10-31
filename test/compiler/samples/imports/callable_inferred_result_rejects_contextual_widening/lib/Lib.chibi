@@ -1,0 +1,2 @@
+package lib
+pub Apply :: (value: number, transform: fn(value: number) -> number) -> number { return transform(value); }

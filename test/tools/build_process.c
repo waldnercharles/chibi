@@ -1656,6 +1656,42 @@ TEST_CASE(private_waits_refuse_unknown_and_repeated_handles)
     return true;
 }
 
+/* wait_for gives a running step's marker once its limit passes and leaves the
+ * step running, finishes one that ends first, and kill stops a step and returns
+ * its status as the negative signal number; both refuse a finished handle. */
+TEST_CASE(private_waits_have_limits_and_steps_can_be_killed)
+{
+    static const char
+        *source = "package jobs\n"
+                  "Build :: () -> int { worker := "
+                  "build.environment(\"CHIBI_BUILD_WORKER\"); "
+                  "slow := build.start([worker, \"sleep\", \"30\"]); "
+                  "quick := build.start([worker, \"exit\", \"7\"]); "
+                  "if (build.wait_for(slow, 100) != 65536) { return 1; } "
+                  "if (build.wait_for(quick, -1) != 7) { return 2; } "
+                  "if (build.kill(slow) != -9) { return 3; } "
+                  "kept := build.last_stdout(); "
+                  "spawned := build.spawn([worker, \"exit\", \"5\"]); "
+                  "if (build.wait_for(spawned, -1) != 5) { return 4; } "
+                  "if (build.last_stdout() != kept) { return 5; } "
+                  "return 0; }";
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    double started = now();
+    chibi_build_result result;
+    REQUIRE(chibi_build_invoke(&options, &result));
+    REQUIRE(result.value == 0 && now() - started < 10);
+    static const char
+        *finished = "package jobs\nBuild :: () -> int { "
+                    "step := "
+                    "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
+                    "\"exit\", \"0\"]); "
+                    "build.wait_for(step, -1); return build.kill(step); }";
+    options = primitive_options(finished, BEHAVIOR_BYTECODE);
+    REQUIRE(!chibi_build_invoke(&options, &result));
+    REQUIRE(!strcmp(result.diagnostic, "unknown build job"));
+    return true;
+}
+
 /* A step the program never waits for stops when the program returns, and a
  * wait past the deadline fails the program. */
 TEST_CASE(private_unwaited_and_late_steps_stop)
@@ -2781,6 +2817,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(private_started_steps_run_together);
     RUN_TEST_CASE(private_waits_take_output_in_wait_order);
     RUN_TEST_CASE(private_waits_refuse_unknown_and_repeated_handles);
+    RUN_TEST_CASE(private_waits_have_limits_and_steps_can_be_killed);
     RUN_TEST_CASE(private_unwaited_and_late_steps_stop);
     RUN_TEST_CASE(build_timings_record_interrupted_children);
     RUN_TEST_CASE(private_value_helpers_preserve_nul_and_validate_c_boundaries);

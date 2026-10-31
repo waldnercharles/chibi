@@ -386,6 +386,10 @@ static const script_catalog_parameter embed_parameters[] = {
 };
 static const script_catalog_parameter handle_parameter = { .name = "handle",
                                                            .type = { .storage = PIN_I32 } };
+static const script_catalog_parameter wait_parameters[] = {
+    { .name = "handle", .type = { .storage = PIN_I32 } },
+    { .name = "milliseconds", .type = { .storage = PIN_I32 } },
+};
 static const script_catalog_parameter path_parameter = { .name = "path",
                                                          .type = { .storage = PIN_STR },
                                                          .c_string = true };
@@ -443,7 +447,10 @@ static const script_catalog_parameter array_result = {
     X(937, "build.replace", replace_parameters, 3, text_result, value_replace)                  \
     X(938, "build.byte_list", &path_parameter, 1, text_result, build_byte_list)                 \
     X(939, "build.reserve_directory", &path_parameter, 1, bool_result, build_reserve_directory) \
-    X(940, "build.publish_directory", move_parameters, 2, bool_result, build_publish_directory)
+    X(940, "build.publish_directory", move_parameters, 2, bool_result, build_publish_directory) \
+    X(941, "build.wait_for", wait_parameters, 2, int_result, build_host_wait_for)               \
+    X(942, "build.kill", &handle_parameter, 1, int_result, build_host_kill)                     \
+    X(943, "build.spawn", &array_parameter, 1, int_result, build_host_spawn)
 #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)              \
     { .id = ID,                                                                \
       .name = NAME,                                                            \

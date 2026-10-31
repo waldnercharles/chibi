@@ -166,9 +166,8 @@ import:
   ports take the one type its arguments give them, its wildcard ports each
   argument's own type, and a variadic native's last parameter any number of
   arguments; natives are matched by name as the catalog matches names. A
-  native with several results, such as `compiler_json_string`, gives a value
-  whose `.name` reads one result, directly or through a local:
-  `decoded := compiler_json_string(text); decoded.valid`;
+  native with several results gives a value whose `.name` reads one result,
+  directly or through a local: `decoded := native(text); decoded.valid`;
 - integer constants, typed (`Mask: i64 : 1 << 40;`) or untyped, which
   are `int` (`Width :: Unit * 4 + 1;`), whose value folds from literals, other
   constants of the package in any order or of an import, parentheses and the

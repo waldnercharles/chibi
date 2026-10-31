@@ -134,33 +134,63 @@ LoadOptions :: (request: Request) -> (options: format.Options, error: string) {
     return (parsed.options, parsed.error)
 }
 
+// process.capture keeps at most this many bytes of a command's output
+// (APPLICATION_OUTPUT_LIMIT in src/host/application_io.c) and drops the rest.
+CaptureLimit: int : 65536
+
 // The lines `git` prints for `arguments` run in `directory`; `failed` is set
-// when it fails, with the message already reported.
-GitLines :: (directory: string, arguments: string[]) -> (lines: string[], failed: bool) {
+// when it fails, with the message already reported, and `full` when the output
+// filled the capture, so lines may be missing and the last may be cut.
+GitLines :: (directory: string, arguments: string[]) -> (lines: string[], failed: bool, full: bool) {
     command := Concat(["git", "-C", directory], arguments)
     captured := process.capture(command)
     if captured.error != 0 || captured.status != 0 {
         Error(format_text("fmt: git {} failed in {}: {}", arguments[0], directory,
                           strings.TrimSpace(captured.error_output)))
         none: string[] = []
-        return (none, true)
+        return (none, true, false)
     }
-    return (strings.SplitLines(captured.output), false)
+    return (strings.SplitLines(captured.output), false, text_byte_length(captured.output) >= CaptureLimit - 1)
 }
 
-// Adds the tracked .chibi files below `directory` to `found`.
-TrackedSources :: (directory: string, found: ^(string[])) -> bool {
+// Adds `lines`, paths from the repository root, to `found` as paths under `top`.
+AddPaths :: (top: string, lines: string[], found: ^(string[])) {
+    for name in lines {
+        if name != "" {
+            found.append(Join([top, "/", name]))
+        }
+    }
+}
+
+// Adds the tracked .chibi files below `directory` to `found`, as paths under
+// `top`, the repository's root. A listing that fills the capture is taken one
+// level at a time instead: this directory's own files, then each subdirectory
+// in HEAD's tree.
+TrackedSources :: (top: string, directory: string, found: ^(string[])) -> bool {
     listed := GitLines(directory, ["ls-files", "--full-name", "--", "*.chibi"])
     if listed.failed {
         return false
     }
-    top := GitLines(directory, ["rev-parse", "--show-toplevel"])
-    if top.failed || length(top.lines) == 0 {
+    if !listed.full {
+        AddPaths(top, listed.lines, found)
+        return true
+    }
+    here := GitLines(directory, ["ls-files", "--full-name", "--", ":(glob)*.chibi"])
+    if here.failed {
         return false
     }
-    for name in listed.lines {
-        if name != "" {
-            found.append(Join([top.lines[0], "/", name]))
+    if here.full {
+        Error(format_text("fmt: too many .chibi files directly in {} to list", directory))
+        return false
+    }
+    AddPaths(top, here.lines, found)
+    below := GitLines(directory, ["ls-tree", "-d", "--name-only", "HEAD"])
+    if below.failed || below.full {
+        return false
+    }
+    for name in below.lines {
+        if name != "" && !TrackedSources(top, Join([directory, "/", name]), found) {
+            return false
         }
     }
     return true
@@ -203,7 +233,9 @@ SourcePaths :: (request: Request, arguments: string[]) -> (sources: string[], ok
         if kind == 1 {
             sources.append(files.resolve(path))
         } else if kind == 2 && !request.batch {
-            if !TrackedSources(files.resolve(path), &sources) {
+            directory := files.resolve(path)
+            top := RepositoryTop(directory)
+            if top == "" || !TrackedSources(top, directory, &sources) {
                 return (sources, false)
             }
         } else {
@@ -324,6 +356,15 @@ Slice :: (values: string[], from: int, to: int) -> string[] {
         index += 1
     }
     return part
+}
+
+// The root of the repository that holds `directory`, or "" outside one.
+RepositoryTop :: (directory: string) -> string {
+    top := GitLines(directory, ["rev-parse", "--show-toplevel"])
+    if top.failed || length(top.lines) == 0 {
+        return ""
+    }
+    return top.lines[0]
 }
 
 // The pre-commit step. A file with unstaged edits is left alone, because

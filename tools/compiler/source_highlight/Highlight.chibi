@@ -35,7 +35,7 @@ BuiltinType :: (word: string) -> bool {
 
 // Like a Tree-sitter highlights query, these rules use canonical node kinds
 // and fields, not neighboring spellings or successful semantic resolution.
-IdentifierClass :: (source: string, nodes: syntax.Node[], fields: string[], index: int) -> string {
+IdentifierClass :: (source: string, nodes: syntax.Node[], fields: int[], index: int) -> string {
     node := nodes[index];
     parent := node.parent;
     if (parent < 0) {
@@ -43,7 +43,7 @@ IdentifierClass :: (source: string, nodes: syntax.Node[], fields: string[], inde
     }
     kind := nodes[parent].kind;
     field := fields[index];
-    if (kind == "type_name") {
+    if (kind == syntax.TypeName) {
         if (node.end < nodes[parent].end) {
             return "chibi-namespace";
         }
@@ -53,93 +53,109 @@ IdentifierClass :: (source: string, nodes: syntax.Node[], fields: string[], inde
         }
         return "chibi-type";
     }
-    if (kind == "type_binder") {
+    if (kind == syntax.TypeBinder) {
         return "chibi-type";
     }
-    if (kind == "argument_name") {
+    if (kind == syntax.ArgumentName) {
         return "chibi-property";
     }
-    if (kind == "call_expression" && field == "function") {
+    if (kind == syntax.CallExpression && field == syntax.FieldFunction) {
         return "chibi-function";
     }
-    if (kind == "import_declaration" && field == "alias") {
+    if (kind == syntax.ImportDeclaration && field == syntax.FieldAlias) {
         return "chibi-namespace";
     }
-    if (kind == "member_expression" && field == "member") {
+    if (kind == syntax.MemberExpression && field == syntax.FieldMember) {
         outer := nodes[parent].parent;
         if (outer >= 0 &&
-            ((nodes[outer].kind == "call_expression" && fields[parent] == "function") ||
-             (nodes[outer].kind == "handler" && fields[parent] == "name"))) {
+            ((nodes[outer].kind == syntax.CallExpression && fields[parent] == syntax.FieldFunction) ||
+             (nodes[outer].kind == syntax.Handler && fields[parent] == syntax.FieldName))) {
             return "chibi-function";
         }
         return "chibi-property";
     }
-    if (field != "name") {
+    if (field != syntax.FieldName) {
         return "";
     }
-    if (kind == "library" || kind == "package_header") {
+    if (kind == syntax.Library || kind == syntax.PackageHeader) {
         return "chibi-namespace";
     }
-    if (kind == "record_declaration" || kind == "union_declaration" ||
-        kind == "component" || kind == "prototype_declaration" ||
-        kind == "relationship_declaration" || kind == "behavior" || kind == "system") {
+    if (kind == syntax.RecordDeclaration || kind == syntax.UnionDeclaration ||
+        kind == syntax.Component || kind == syntax.PrototypeDeclaration ||
+        kind == syntax.RelationshipDeclaration || kind == syntax.Behavior || kind == syntax.System) {
         return "chibi-type";
     }
-    if (kind == "function_declaration" || kind == "macro_declaration" ||
-        kind == "action_declaration" || kind == "event_declaration" || kind == "handler") {
+    if (kind == syntax.FunctionDeclaration || kind == syntax.MacroDeclaration ||
+        kind == syntax.ActionDeclaration || kind == syntax.EventDeclaration || kind == syntax.Handler) {
         return "chibi-function";
     }
-    if (kind == "constant_declaration" || kind == "union_variant" || kind == "variant_pattern") {
+    if (kind == syntax.ConstantDeclaration || kind == syntax.UnionVariant || kind == syntax.VariantPattern) {
         return "chibi-constant";
     }
-    if (kind == "record_field" || kind == "component_field" || kind == "struct_field") {
+    if (kind == syntax.RecordField || kind == syntax.ComponentField || kind == syntax.StructField) {
         return "chibi-property";
     }
-    if (kind == "attribute") {
+    if (kind == syntax.Attribute) {
         return "chibi-attribute";
     }
     return "";
 }
 
-Operator :: (kind: string) -> bool {
-    return kind == "::" || kind == ":=" || kind == "=" || kind == "->" || kind == "=>" ||
-           kind == "+" || kind == "-" || kind == "*" || kind == "/" || kind == "%" ||
-           kind == "^" || kind == "&" || kind == "|" || kind == "~" || kind == "!" ||
-           kind == "<" || kind == ">" || kind == "<=" || kind == ">=" || kind == "==" ||
-           kind == "!=" || kind == "<<" || kind == ">>" || kind == "??" || kind == "?" ||
-           kind == ".." || kind == "..<";
+// The role of each anonymous token kind: a keyword (its spelling is a word,
+// such as `return`, or a word the parser renames, such as `fn`), an operator,
+// or none. Built once per text from the token vocabulary.
+TokenRoles :: () -> string[] {
+    roles := resize([""], syntax.KindCount);
+    names := tk.KindNames();
+    kind: int = 0;
+    while (kind < length(names)) {
+        first := strings.ByteAt(names[kind], 0);
+        if (first >= 97 && first <= 122) {
+            roles[kind] = "chibi-keyword";
+        }
+        kind += 1;
+    }
+    for (operator in [tk.ColonColon, tk.ColonEq, tk.Eq, tk.ArrowRight, tk.FatArrow, tk.Add, tk.Sub, tk.Mul,
+                      tk.Quo, tk.Mod, tk.Xor, tk.And, tk.Or, tk.Complement, tk.Not, tk.Lt, tk.Gt, tk.LtEq,
+                      tk.GtEq, tk.CmpEq, tk.NotEq, tk.Shl, tk.Shr, tk.Coalesce, tk.Question, tk.Ellipsis,
+                      tk.HalfOpenRange]) {
+        roles[operator] = "chibi-operator";
+    }
+    for (word in [syntax.Fn, syntax.When, syntax.View, syntax.Self, syntax.Min, syntax.Max]) {
+        roles[word] = "chibi-keyword";
+    }
+    return roles;
 }
 
-TokenClass :: (source: string, nodes: syntax.Node[], fields: string[], named: bool[], index: int) -> string {
+TokenClass :: (source: string, nodes: syntax.Node[], fields: int[], named: bool[], roles: string[], index: int) -> string {
     node := nodes[index];
     kind := node.kind;
-    if (kind == "comment") {
+    if (kind == syntax.Comment) {
         return "chibi-comment";
     }
-    if (kind == "string" || kind == "character") {
+    if (kind == syntax.String || kind == syntax.Character) {
         return "chibi-string";
     }
-    if (kind == "number") {
+    if (kind == syntax.Number) {
         return "chibi-number";
     }
-    if (kind == "boolean" || kind == "nil") {
+    if (kind == syntax.Boolean || kind == syntax.Nil) {
         return "chibi-constant";
     }
-    if (kind == "builtin_reference") {
+    if (kind == syntax.BuiltinReference) {
         return "chibi-keyword";
     }
-    if (kind == "identifier") {
+    if (kind == syntax.Identifier) {
         return IdentifierClass(source, nodes, fields, index);
     }
-    if (node.parent >= 0 && (nodes[node.parent].kind == "boolean" || nodes[node.parent].kind == "nil")) {
+    if (node.parent >= 0 && (nodes[node.parent].kind == syntax.Boolean || nodes[node.parent].kind == syntax.Nil)) {
         return "chibi-constant";
     }
     if (!named[index]) {
-        first := strings.ByteAt(kind, 0);
-        if (first >= 97 && first <= 122) {
-            return "chibi-keyword";
+        if (roles[kind] != "") {
+            return roles[kind];
         }
-        if (fields[index] == "operator" || Operator(kind)) {
+        if (fields[index] == syntax.FieldOperator) {
             return "chibi-operator";
         }
     }
@@ -147,21 +163,23 @@ TokenClass :: (source: string, nodes: syntax.Node[], fields: string[], named: bo
 }
 
 // Every leaf of a parse of `source` that has width, other than `;`, in source
-// order, with its role ("" for none). The leaves are the tokenizer's tokens and comments, so a
-// text with the same tokens, such as a formatted copy, takes the same roles.
-pub Classes :: (source: string, nodes: syntax.Node[], fields: string[], named: bool[]) -> (starts: int[], ends: int[], classes: string[]) {
+// order, with its role ("" for none). The leaves are the tokenizer's tokens and
+// comments, so a text with the same tokens, such as a formatted copy, takes the
+// same roles.
+pub Classes :: (source: string, nodes: syntax.Node[], fields: int[], named: bool[]) -> (starts: int[], ends: int[], classes: string[]) {
     starts: int[] = [];
     ends: int[] = [];
     classes: string[] = [];
+    roles := TokenRoles();
     index: int = 0;
     while (index < length(nodes)) {
         node := nodes[index];
         // An explicit `;` has no role, and leaving it out lets a copy whose
         // semicolons the formatter added or dropped take the same roles.
-        if (node.first_child < 0 && !node.missing && node.end > node.start && node.kind != ";") {
+        if (node.first_child < 0 && node.end > node.start && node.kind != tk.Semicolon) {
             starts.append(node.start);
             ends.append(node.end);
-            classes.append(TokenClass(source, nodes, fields, named, index));
+            classes.append(TokenClass(source, nodes, fields, named, roles, index));
         }
         index += 1;
     }
@@ -274,12 +292,17 @@ pub Retarget :: (source: string, classes: string[]) -> string {
     return Render(source, starts, ends, classes);
 }
 
-// The classified leaves of a parse of `text`, and whether the parse is clean.
+// The classified leaves of a parse of `text`, and whether it parsed; a text
+// the parser rejects has no leaves.
 Classify :: (text: string) -> (starts: int[], ends: int[], classes: string[], clean: bool) {
     switch parser.Parse(text) {
         case .Parsed(nodes, fields, named, extras, root):
             leaves := Classes(text, nodes, fields, named);
-            return (leaves.starts, leaves.ends, leaves.classes, !nodes[root].has_error);
+            return (leaves.starts, leaves.ends, leaves.classes, true);
+        case .Rejected(diagnostic):
+            none: int[] = [];
+            roles: string[] = [];
+            return (none, none, roles, false);
     }
 }
 

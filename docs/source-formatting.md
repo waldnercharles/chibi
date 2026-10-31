@@ -110,7 +110,11 @@ command compiles them. Costs on this checkout (Apple M-series, release SDK):
   about 3 KB of heap per source byte, so one process formats at most 400 KB of
   source. A larger job runs its first batch itself and each later batch in a
   child process, and each child pays the start again.
-- The whole tree, 859 files and 4 MB, takes about 5 minutes with `--check`.
+- The whole tree, 960 files, takes about 2 minutes with `--check` (2026-10-31,
+  after syntax trees moved to integer kinds; about 7 minutes before).
+- A directory's files come from `git ls-files`. `process.capture` keeps only
+  64 KiB of output, so a listing that fills it is taken one directory level at
+  a time.
 
 First whole-tree result (2026-10-30): 369 of 859 files would change, 3 cannot
 be formatted. 351 of the 369 are the dense one-line fixtures in
@@ -120,6 +124,11 @@ elsewhere. The other 490 files, among them `packages/core`, `archive` and
 were fixtures in `test/compiler/samples/fallible` whose `if p^ {}` could not be
 followed by a line break: the tokenizer read the `^` of a postfix dereference
 as binary xor and opened a struct literal at the brace. That is fixed.
+
+On 2026-10-31, after merging main: 437 of 960 files would change, and one
+cannot be formatted, `test/compiler/samples/native/foreign_vendor/facts/SampleTests.chibi`,
+whose foreign function names a parameter `library`, a keyword the stage-one
+parser does not accept as a name.
 
 ## Safety
 

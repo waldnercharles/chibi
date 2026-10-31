@@ -41,6 +41,8 @@ Answer :: (directory: string, id: string, options: format.Options, source: strin
                 case .Formatted(formatted):
                     Respond(directory, id, "ok", [formatted, original, highlight.Retarget(formatted, leaves.classes)]);
             }
+        case .Rejected(diagnostic):
+            Respond(directory, id, "error", [format.Unparsed(diagnostic), highlight.Escape(source), ""]);
     }
 }
 

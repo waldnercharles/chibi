@@ -95,6 +95,7 @@ tool	wasm-package-math	node	build-wasm-language/test_language.js	--package-math
 tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 timeout	chibi-cli	900
+timeout	native-build	1500
 timeout	graph-sdk-install	1200
 exclusive	language-test-parallel
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math

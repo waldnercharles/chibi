@@ -1562,7 +1562,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (condition >= 0) {
         return ScalarPlan.Converted(condition, BoolStorage, BoolStorage);
     }
-    if (!Is(forest, statement, "local_declaration")) {
+    if (!Is(forest, statement, "local_declaration") && !Is(forest, statement, "state_declaration")) {
         return ScalarPlan.Failed(Diagnose(forest, statement, 0,
                                           "scalar proof supports only locals, assignments, asserts, if statements, switches, loops and returns"));
     }
@@ -1975,7 +1975,8 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             binding := ScalarVariable(names, Text(forest, text, RootOf(forest, Field(forest, statement, "target"))));
             type := ScalarValueType(types, binding.storage, binding.container, binding.record);
             row = ScalarAt(forest, statement, facts.AssignRow, type, binding.index, count, "");
-        } else if (Is(forest, statement, "local_declaration")) {
+        } else if (Is(forest, statement, "local_declaration") || Is(forest, statement, "state_declaration")) {
+            retained := Is(forest, statement, "state_declaration");
             declared := Field(forest, statement, "name");
             storage := ScalarDeclared(forest, text, callables, params, callable, names, types, members, constants, statement);
             record: int = -1;
@@ -1991,6 +1992,13 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             name := Text(forest, text, declared);
             type := ScalarValueType(types, storage, container, record);
             row = ScalarAt(forest, statement, facts.LocalRow, type, variables, count, name);
+            if (retained) {
+                if (container != 0 || record >= 0 || storage == TextStorage || Field(forest, statement, "value") < 0) {
+                    return ScalarOperands.Failed(Diagnose(forest, statement, 0,
+                                                          "a retained local is a number or bool with a value"));
+                }
+                row.literal = i64(facts.Retained);
+            }
             // As StatementStep binds it, after its value.
             binding: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: storage, container: container,
                              record: record, writable: true, node: declared};
@@ -2188,6 +2196,30 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
     }
     return true;
 }
+// The names the ordinary compiler reads a function's retained locals by: each
+// a state of the module, at its position among them.
+ScalarRetainedNames :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], callable: Callable) -> Name[] {
+    names: Name[] = [];
+    table := types;
+    pending: int[] = [Field(forest, callable.node, "body")];
+    while (length(pending) > 0) {
+        node := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (Is(forest, node, "state_declaration")) {
+            declared := StateType(forest, text, &table, 0, node);
+            kept: Name = {owned: false, name: Text(forest, text, Field(forest, node, "name")), place: StatePlace,
+                          index: length(names), storage: declared.storage, container: 0, record: declared.record,
+                          writable: true, node: Field(forest, node, "name")};
+            names.append(kept);
+        }
+        child := forest[node].first_child;
+        while (child >= 0) {
+            pending.append(child);
+            child = forest[child].next_sibling;
+        }
+    }
+    return names;
+}
 // The ordinary compiler must emit the body with no semantic effects and none
 // of the storage or host machinery this subset cannot carry: no host calls
 // but a record's construction, copies and field writes and a union's
@@ -2197,7 +2229,7 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
 ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[], params: Param[],
                 types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
-                identities: u64[], aliases: Name[]) -> syntax.Diagnostic {
+                identities: u64[], aliases: Name[], retained: Name[]) -> syntax.Diagnostic {
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
@@ -2214,7 +2246,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
     }
     mutated := MutatedNames(forest, text, body, referenced);
     switch EmitBody(forest, text, callables[function].document, callables, params, &table, members, constants, natives, ports, identities,
-                    operators, makes, indices, aliases, key, solid, 0, 0, function, referenced,
+                    operators, makes, indices, extend(aliases, retained), key, solid, 0, 0, function, referenced,
                     mutated, indices, BodyContext.Known(writes), indices, ops, target, []) {
         case .Failed(diagnostic):
             return diagnostic;
@@ -2225,7 +2257,8 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                             "scalar proof requires a callable body");
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
-            if (effects != 0 || direct_write != 0 || !ScalarHosts(hosts, roots) ||
+            // A retained local reads and writes its state, which the facts carry.
+            if ((length(retained) == 0 && (effects != 0 || direct_write != 0)) || !ScalarHosts(hosts, roots) ||
                 !ScalarCells(cells, calls, hosts, AnyReference(params))) {
                 return Diagnose(forest, Field(forest, callables[function].node, "body"), 0,
                                 "scalar proof requires known effect-free scalar execution");
@@ -2332,7 +2365,8 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
                                                   format_text("scalar proof does not write through pointer '{}' yet", written)));
         }
         emitted := ScalarEmits(scoped, text, key, callables, params, types, members, used, solid, function,
-                               ops, target, natives, ports, identities, aliases);
+                               ops, target, natives, ports, identities, aliases,
+                               ScalarRetainedNames(scoped, text, types, callables[function]));
         if (emitted.message != "") {
             return ScalarOperands.Failed(emitted);
         }

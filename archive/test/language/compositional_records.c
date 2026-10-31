@@ -10,7 +10,6 @@
 #include "execution/module.h"
 #include "execution/prepared.h"
 #include "execution/status.h"
-#include "language/lower.h"
 #include "package_compiler_chibi.h"
 #include "runtime/core_definition.h"
 #include "third_party/pico_headers/pico_unit.h"

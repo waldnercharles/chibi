@@ -1,0 +1,5 @@
+package facts
+import lib "project:callable_inferred_result_rejects_contextual_widening/lib"
+Main :: () -> number { return lib.Apply(2.0, (value: number) => 1); }
+
+// error: 3:46: Function argument does not match the callable parameter signature

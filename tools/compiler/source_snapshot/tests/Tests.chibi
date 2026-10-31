@@ -99,7 +99,9 @@ Imports :: (result: snap.Result) -> snap.ResolvedImport[] {
     }
 }
 // The package of the first document with the identity, or -1.
-Package :: (documents: snap.Document[], built: graph.Graph, identity: string) -> int {
+Package :: (result: snap.Result, identity: string) -> int {
+    built := Graph(result);
+    documents := Documents(result);
     i: int = 0;
     while (i < length(documents)) {
         if (documents[i].identity == identity) {
@@ -109,6 +111,7 @@ Package :: (documents: snap.Document[], built: graph.Graph, identity: string) ->
     }
     return -1;
 }
+
 Failure :: (result: snap.Result) -> Rejection {
     switch result {
         case .Accepted(roots, documents, nodes, imports, built):
@@ -154,9 +157,9 @@ RelativeAndCollectionPathsShareIdentity :: () {
     result := Build(corpus, "/workspace/./project", Core());
     built := Graph(result);
     assert(graph.Count(built) == 4);
-    app := Package(Documents(result), Graph(result), "project:app");
-    math := Package(Documents(result), Graph(result), "project:math");
-    scalar := Package(Documents(result), Graph(result), "core:scalar");
+    app := Package(result, "project:app");
+    math := Package(result, "project:math");
+    scalar := Package(result, "core:scalar");
     assert(app >= 0 && math >= 0 && scalar >= 0);
     assert(graph.FilePackage(built, 0) == app && graph.FilePackage(built, 1) == app);
     assert(graph.Lookup(built, 0, "first") == math && graph.Lookup(built, 0, "second") == math);
@@ -181,9 +184,9 @@ AliasesAreFileLocalAndBlankImportsKeepEdges :: () {
                In("app/b.chibi", "package app\nimport lib \"../other\"\nimport _ \"../math\"\n"), corpus[2], corpus[3]];
     result := Build(inputs, "/workspace/project", None());
     built := Graph(result);
-    app := Package(Documents(result), Graph(result), "project:app");
-    math := Package(Documents(result), Graph(result), "project:math");
-    other := Package(Documents(result), Graph(result), "project:other");
+    app := Package(result, "project:app");
+    math := Package(result, "project:math");
+    other := Package(result, "project:other");
     assert(graph.Lookup(built, 0, "lib") == math && graph.Lookup(built, 1, "lib") == other);
     assert(graph.Lookup(built, 0, "_") == -1 && graph.Lookup(built, 1, "_") == -1);
     assert(graph.Lookup(built, 2, "lib") == -1);
@@ -258,8 +261,8 @@ UnusedCyclesAreRejectedAndSelfEdgesStayValid :: () {
     self := Build([In("a/a.chibi", "package alpha\nimport _ \".\"\nimport _ \"../b\"\n"), In("b/b.chibi", "package beta\n")],
                   "/workspace/project", None());
     built := Graph(self);
-    a := Package(Documents(self), Graph(self), "project:a");
-    b := Package(Documents(self), Graph(self), "project:b");
+    a := Package(self, "project:a");
+    b := Package(self, "project:b");
     assert(graph.Dependency(built, a, a) >= 0);
     assert(graph.Order(built, 0) == b && graph.Order(built, 1) == a);
 }
@@ -289,7 +292,7 @@ PermutedAndRelocatedInputsKeepLogicalKeys :: () {
         assert(original[i].key == replacement[i].key, "relocated keys");
         i += 1;
     }
-    assert(Package(Documents(moved), Graph(moved), "project:app") >= 0 && Package(Documents(moved), Graph(moved), "core:scalar") >= 0);
+    assert(Package(moved, "project:app") >= 0 && Package(moved, "core:scalar") >= 0);
 }
 
 @test
@@ -303,7 +306,7 @@ CollectionImportsResolveToTheirRoot :: () {
     assert(documents[0].text == corpus[1].text);
     imports := Imports(result);
     assert(length(imports) == 1 && imports[0].directory == "/sdk/core/scalar");
-    assert(graph.Dependency(built, Package(Documents(result), Graph(result), "project:app"), Package(Documents(result), Graph(result), "core:scalar")) >= 0);
+    assert(graph.Dependency(built, Package(result, "project:app"), Package(result, "core:scalar")) >= 0);
 }
 
 @test

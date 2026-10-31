@@ -1,0 +1,6 @@
+package facts
+import lib "project:callable_consumer_cannot_suspend/lib"
+One :: () -> int { return 1; }
+Main :: () { pending := lib.Apply(One); }
+
+// error: lib/Lib.chibi:2:1: Non-escaping callable parameters require synchronous function bodies

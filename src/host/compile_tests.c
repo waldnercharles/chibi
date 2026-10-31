@@ -24,54 +24,8 @@ int authoring_project_test(const char *, const char *)
 }
 #else
 /* Runs each test, prints its outcome and adds to the totals. */
-/* The run-time failure the test `name` of the directory named by the first
- * `prefix` bytes of `path` expects, like Rust's should_panic: the message of a
- * `// fails: ` line directly above its `@test`, or NULL. */
-static const char *expected_failure(
-    const source_package_snapshot_options *inputs,
-    const char *path,
-    size_t prefix,
-    const char *name,
-    size_t *length
-)
-{
-    static const char marker[] = "// fails: ", attribute[] = "@test\n";
-    size_t name_length = strlen(name);
-    for (int i = 0; i < inputs->file_count; i++) {
-        const source_package_input *file = &inputs->files[i];
-        if (strncmp(file->path, path, prefix) || file->path[prefix] != '/' ||
-            strchr(file->path + prefix + 1, '/')) {
-            continue;
-        }
-        /* The comment, the attribute and the declaration on consecutive lines. */
-        for (size_t at = 0; at + sizeof marker - 1 <= file->size; at++) {
-            if ((at && file->text[at - 1] != '\n') ||
-                memcmp(file->text + at, marker, sizeof marker - 1)) {
-                continue;
-            }
-            const char *message = file->text + at + sizeof marker - 1;
-            const char *end = memchr(message, '\n', file->size - (size_t)(message - file->text));
-            if (!end) {
-                break;
-            }
-            const char *declaration = end + 1 + sizeof attribute - 1;
-            size_t rest = file->size - (size_t)(end + 1 - file->text);
-            if (rest > sizeof attribute - 1 + name_length + 3 &&
-                !memcmp(end + 1, attribute, sizeof attribute - 1) &&
-                !memcmp(declaration, name, name_length) &&
-                !memcmp(declaration + name_length, " ::", 3)) {
-                *length = (size_t)(end - message);
-                return message;
-            }
-        }
-    }
-    return NULL;
-}
-
 static void run_tests(
     const source_package_snapshot_options *inputs,
-    const char *path,
-    size_t prefix,
     const package_collection *packages,
     behavior_backend backend,
     int workers,
@@ -90,12 +44,7 @@ static void run_tests(
     *total += count;
     for (int i = 0; i < count; i++) {
         package_test_failure failure = results[i].failure;
-        size_t length = 0;
-        const char *expected = expected_failure(inputs, path, prefix, tests[i].name, &length);
-        bool passed = expected ? !results[i].passed &&
-                                     strlen(failure.message) == length &&
-                                     !memcmp(failure.message, expected, length)
-                               : results[i].passed;
+        bool passed = results[i].passed;
         printf(
             "%s %s.%s\n",
             passed ? "PASS" : "FAIL",
@@ -106,17 +55,19 @@ static void run_tests(
             continue;
         }
         (*failed)++;
-        if (expected && results[i].passed) {
-            printf("  expected it to fail with %.*s, but it returned\n", (int)length, expected);
-            continue;
-        }
-        if (expected) {
-            printf("  expected it to fail with %.*s\n", (int)length, expected);
-        }
         if (failure.path) {
+            char shown[4096];
+            package_compile_source_path(
+                inputs->project_root,
+                inputs->collections,
+                inputs->collection_count,
+                failure.path,
+                shown,
+                sizeof shown
+            );
             printf(
                 "  %s:%d:%d: %s\n",
-                failure.path,
+                shown,
                 failure.line,
                 failure.column,
                 failure.message
@@ -285,6 +236,25 @@ static bool rejected_as_expected(
 {
     size_t length;
     const char *expected = expected_error(file, &length);
+    /* The diagnostic may be in another package, named from the folder that
+     * holds this one, when its file only fails as this package uses it. */
+    char failing[4096];
+    snprintf(failing, sizeof failing, "%s", file->path);
+    const char *colon = memchr(expected, ':', length);
+    if (colon && (expected[0] < '0' || expected[0] > '9')) {
+        char *package = strrchr(failing, '/');
+        *package = 0;
+        char *parent = strrchr(failing, '/');
+        snprintf(
+            parent + 1,
+            sizeof failing - (size_t)(parent + 1 - failing),
+            "%.*s",
+            (int)(colon - expected),
+            expected
+        );
+        length -= (size_t)(colon + 1 - expected);
+        expected = colon + 1;
+    }
     char actual[sizeof error->message + 32];
     snprintf(
         actual,
@@ -294,11 +264,11 @@ static bool rejected_as_expected(
         error->column,
         error->message
     );
-    bool passed = !packages && !strcmp(error->path, file->path) &&
+    bool passed = !packages && !strcmp(error->path, failing) &&
                   strlen(actual) == length && !memcmp(actual, expected, length);
     printf("%s %s.compile_error\n", passed ? "PASS" : "FAIL", tested);
     if (!passed) {
-        printf("  %s: expected %.*s, ", file->path, (int)length, expected);
+        printf("  %s: expected %.*s, ", failing, (int)length, expected);
         if (packages) {
             printf("but it compiled\n");
         } else {
@@ -326,11 +296,15 @@ int authoring_project_test(const char *root, const char *core)
         }
         workers = (int)value;
     }
+    /* A test's own output reaches a pipe as it prints, so a runner watching a
+     * busy test sees where it is. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
     char error[512] = { 0 };
     const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
-                                                COMPILER_JSON_DEFINITION_PACK };
+                                                COMPILER_JSON_DEFINITION_PACK,
+                                                TESTING_DEFINITION_PACK };
     native_capabilities
-        *native = host_native_standalone_catalog_new(NULL, 0, compiler, 2, error, sizeof error);
+        *native = host_native_standalone_catalog_new(NULL, 0, compiler, 3, error, sizeof error);
     if (!native) {
         fprintf(stderr, "Test preparation failed: %s\n", error);
         return 1;
@@ -371,7 +345,7 @@ int authoring_project_test(const char *root, const char *core)
         } else if (!packages) {
             fprintf(stderr, "%s\n", error.message);
         } else {
-            run_tests(&inputs, path, prefix, packages, backend, workers, &total, &failed);
+            run_tests(&inputs, packages, backend, workers, &total, &failed);
         }
         free(path);
         compiled &= packages != NULL || rejected;

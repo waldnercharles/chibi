@@ -737,6 +737,11 @@ cost is one small copy, visible in the declaration, with no heap allocation. A
 string of 4096 bytes or more, or one that holds a NUL byte, traps instead of
 being truncated. A result cannot be a `cstring`.
 
+An array of numbers, such as `u8[]`, is passed as the pointer to its elements,
+which the callee may write. The length is a parameter of its own, as in C, so
+`read(fd, buffer, u64(length(buffer)))` fills `buffer` in place. The array is
+lent for the call: nothing copies it, and C must not keep the pointer.
+
 A foreign function is a native whose identity names the library path and the
 symbol, so a target that does not link the library cannot load a program that
 calls it; the VM never runs foreign code. Names are global like other natives,
@@ -773,9 +778,8 @@ runtime address cannot yet be passed to an authored function's `fn` parameter;
 call it where the local is. An authored function cannot yet be turned into a
 function value for C to call.
 
-Planned after that: a `u8[]` passed as a data pointer with its length given
-separately, `@variadic` with the number of fixed arguments for variadic C
-functions, foreign functions without a result, and data symbols.
+Planned after that: `@variadic` with the number of fixed arguments for
+variadic C functions, foreign functions without a result, and data symbols.
 
 ## Generics and compile-time values
 

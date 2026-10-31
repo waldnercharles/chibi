@@ -112,6 +112,19 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
     }
     output := rows;
     for (index in 0..<length(arguments)) {
+        element := ForeignArray(forest, text, Field(forest, parameters[index], "type"));
+        if (element != 0 && !Is(forest, arguments[index], "named_argument") && !Is(forest, arguments[index], "typed_argument")) {
+            // An array is lent: the callee gets the pointer to its own elements.
+            lent: ValueType = {storage: element, container: ArrayContainer, record: -1};
+            switch ScalarArrayValue(forest, text, callables, params, callable, names, types, members, constants,
+                                    arguments[index], lent, output) {
+                case .Failed(diagnostic):
+                    return ScalarOperands.Failed(diagnostic);
+                case .Built(built):
+                    output = built;
+            }
+            continue;
+        }
         storage := ForeignStorage(forest, text, Field(forest, parameters[index], "type"));
         switch ScalarForeignArgument(forest, text, callables, params, callable, names, types, members, constants,
                                      arguments[index], storage, output) {

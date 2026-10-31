@@ -613,21 +613,30 @@ ScalarUnionOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (!Is(forest, value, syntax.CallExpression)) {
         return -1;
     }
+    // A call of a function of the source, qualified by its package or not,
+    // before a variant constructor `U.V(payloads)`.
+    callee := CalledFunction(forest, text, callables, [], names, package, value);
+    if (callee >= 0) {
+        if (callables[callee].result == UnionStorage && callables[callee].result_container == 0) {
+            return callables[callee].result_record;
+        }
+        return -1;
+    }
     if (Is(forest, Field(forest, value, syntax.FieldFunction), syntax.MemberExpression)) {
         return UnionOf(forest, text, types, names, package, Field(forest, value, syntax.FieldFunction));
-    }
-    callee := CalledFunction(forest, text, callables, [], names, package, value);
-    if (callee >= 0 && callables[callee].result == UnionStorage && callables[callee].result_container == 0) {
-        return callables[callee].result_record;
     }
     return -1;
 }
 // Whether `node`, a value of a union, is one of its variants: `U.V` or
-// `U.V(payloads)`.
-ScalarVariantMade :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+// `U.V(payloads)`, not a call of a function of the source.
+ScalarVariantMade :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[], package: int,
+                      node: int) -> bool {
     value := Unparenthesized(forest, node);
-    return Is(forest, value, syntax.MemberExpression) ||
-           (Is(forest, value, syntax.CallExpression) && Is(forest, Field(forest, value, syntax.FieldFunction), syntax.MemberExpression));
+    if (Is(forest, value, syntax.MemberExpression)) {
+        return true;
+    }
+    return Is(forest, value, syntax.CallExpression) && Is(forest, Field(forest, value, syntax.FieldFunction), syntax.MemberExpression) &&
+           CalledFunction(forest, text, callables, [], names, package, value) < 0;
 }
 // The field the member expression `node` reads of a record value, or -1
 // when its object is no record.
@@ -754,7 +763,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     if (Is(forest, node, syntax.String)) {
         return TextStorage;
     }
-    if (ScalarVariantMade(forest, node) && ScalarUnionOf(forest, text, callables, names, types, callable.package, node) >= 0) {
+    if (ScalarVariantMade(forest, text, callables, names, callable.package, node) && ScalarUnionOf(forest, text, callables, names, types, callable.package, node) >= 0) {
         return UnionStorage;
     }
     named := ConstantOf(forest, text, constants, names, callable.package, node);
@@ -941,7 +950,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (storage == UnionStorage && !arrayed && !fielded) {
         held := ScalarUnionOf(forest, text, callables, names, types, callable.package, node);
         type = ScalarRecordType(types, held);
-        if (held >= 0 && ScalarVariantMade(forest, node)) {
+        if (held >= 0 && ScalarVariantMade(forest, text, callables, names, callable.package, node)) {
             return ScalarVariant(forest, text, callables, params, callable, names, types, members, constants, node, held, rows);
         }
     }

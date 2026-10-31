@@ -66,6 +66,34 @@ TestSelectors :: (host: string) {
     assert(unknown.status != 0 && Has(Output(unknown), "unknown selector 'no-such-selector'"), "an unknown selector");
 }
 
+// `test` runs up to --jobs selectors together, an `exclusive` one alone, and
+// stops one at its deadline. The selectors are shell commands in a scratch
+// tests.tsv: `a` and `b` each wait for the other to start, so they pass only
+// when they overlap, and `after` passes only when the exclusive `alone` ended
+// before it started.
+TestScheduling :: (host: string) {
+    source := os.Root();
+    scratch := format_text("{}/.chibi/graph-driver", source);
+    assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(format_text("{}/tools", scratch)) == nil, "the scratch root");
+    rows := ["tool\ta\tsh\t-c\ttouch a.started; until [ -e b.started ]; do sleep 0.05; done",
+             "tool\tb\tsh\t-c\ttouch b.started; until [ -e a.started ]; do sleep 0.05; done",
+             "tool\talone\tsh\t-c\tsleep 0.5; touch alone.done",
+             "tool\tafter\tsh\t-c\ttest -e alone.done",
+             "tool\tslow\tsh\t-c\tsleep 30",
+             "timeout\ta\t20", "timeout\tb\t20", "timeout\tslow\t1", "exclusive\talone", ""];
+    assert(os.WriteText(format_text("{}/tools/tests.tsv", scratch), strings.Join(rows, "\n")) == nil, "the scratch table");
+    command := [host, "--compiler", format_text("{}/tools/compiler", source), "--compiler-core", format_text("{}/packages/core", source),
+                "--root", scratch, "--source", format_text("{}/tools/toolchain/Driver.chibi", source),
+                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "50000", "--",
+                "build", "test", "--build-host", host, "--jobs", "3", "a", "b", "alone", "after", "slow"];
+    result := os.Capture(command);
+    log := Output(result);
+    assert(result.status != 0 && Has(log, "PASS a\n") && Has(log, "PASS b\n"), "overlapping selectors");
+    assert(Has(log, "PASS alone\n") && Has(log, "PASS after\n"), "an exclusive selector runs alone");
+    assert(Has(log, "FAIL slow (timed out after 1s)\n") && Has(log, "5 tests, 1 failed"), "a selector's deadline");
+    assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed");
+}
+
 // The other verbs plan their own commands.
 OtherVerbs :: (host: string) {
     install := Verb(host, "install", ["--dry-run", "--prefix", "/prefix"]);
@@ -95,6 +123,7 @@ pub Run :: () -> int {
     host := arguments[0];
     EngineBuildSteps(host);
     TestSelectors(host);
+    TestScheduling(host);
     OtherVerbs(host);
     return 0;
 }

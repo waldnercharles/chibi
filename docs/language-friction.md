@@ -54,10 +54,13 @@ operations from remaining limits.
   record fields remain rejected by the language's address-taking rules. Flat
   authored records and recursive links through pointer fields are supported.
 - Stage one's body emitter receives a fixed type catalog. Its address prepass
-  conservatively constructs pointer layers using the number of address
-  expressions, including unused combinations. Before pointer-heavy packages
-  grow, replace this with demand-driven constructor publication or a type
-  inference pass; measure compile time and catalog size when doing so.
+  conservatively declares a pointer to every declared type, and one to each
+  of those, for each package that takes an address, including unused
+  combinations. Until 2026-10-30 it added a layer for each file with an
+  address, so the package compiler's module carried 14,350 pointer types; it
+  now carries 1,695. Demand-driven constructor publication or a type
+  inference pass would declare only the pointers addresses use; measure
+  compile time and catalog size when doing so.
 - Delayed continuations currently describe all parent local banks as captures.
   Those banks must stay alive until action completion, when references are
   materialized. More precise capture metadata could reduce retained memory;

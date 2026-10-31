@@ -24,7 +24,7 @@ FormatModule :: (code: native.Instruction[], arguments: int[], main: bool) -> na
                        [13, 6, 13, 13, 6], empty, code, arguments, records, empty,
                        ["{} {}", "x"], source, names, empty, empty, main, 1);
 }
-FormatMismatch: string : "native format differs from its operands";
+FormatMismatch :: () -> string { return "native format differs from its operands"; }
 ChangedFormat :: (item: native.Instruction, message: string) {
     code := Formats();
     code[4] = item;
@@ -62,21 +62,21 @@ NativeProgramCannotFormat :: () {
 }
 @test
 MissingFormatIsRejected :: () {
-    ChangedFormat(Code(native.Format, 13, 3, 0, 0, 0, 0), FormatMismatch);
+    ChangedFormat(Code(native.Format, 13, 3, 0, 0, 0, 0), FormatMismatch());
 }
 @test
 FormatCalleeIsRejected :: () {
-    ChangedFormat(Code(native.Format, 13, 3, 1, 0, 3, 0), FormatMismatch);
+    ChangedFormat(Code(native.Format, 13, 3, 1, 0, 3, 0), FormatMismatch());
 }
 @test
 FormatArgumentsPastTableAreRejected :: () {
-    ChangedFormat(Code(native.Format, 13, 3, 0, 1, 3, 0), FormatMismatch);
+    ChangedFormat(Code(native.Format, 13, 3, 0, 1, 3, 0), FormatMismatch());
 }
 @test
 FormatIntResultIsRejected :: () {
-    ChangedFormat(Code(native.Format, 6, 3, 0, 0, 3, 0), Output);
+    ChangedFormat(Code(native.Format, 6, 3, 0, 0, 3, 0), Output());
 }
 @test
 IntFormatIsRejected :: () {
-    Rejects(FormatModule(Formats(), [1, 0, 2], false), FormatMismatch);
+    Rejects(FormatModule(Formats(), [1, 0, 2], false), FormatMismatch());
 }

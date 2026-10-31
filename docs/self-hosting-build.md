@@ -94,8 +94,15 @@ the result and CLI. A probe's output is data only: compiler reports and tool
 queries stay out of the build's output and leave room for its diagnostics.
 
 `build.start(arguments: string[]) -> int` begins a reported step and returns
-its handle at once; `build.wait(handle: int) -> int` waits for that step and
-gives its status as `build.run` would. While a program waits for one step, the
+its handle at once; `build.wait_for(handle: int, milliseconds: int) -> int`
+waits at most that long for that step (a negative limit waits without one) and
+gives its status as `build.run` would, or 65536 when the step still runs, which
+is left running;
+`build.kill(handle: int) -> int` stops a step and everything it started, reaps
+it and returns its status, the negative signal number for a killed step.
+`build.spawn(arguments: string[]) -> int` starts a step like `build.start` whose
+standard output and error are the build's own, as they are written, and which
+leaves `build.last_stdout` alone. While a program waits for one step, the
 host drains every other started step's output, so steps that write more than a
 pipe holds still finish. Up to 64 started steps run at once, and each counts
 toward the invocation's steps. A wait makes its step's output the last output
@@ -166,8 +173,10 @@ owned generation and write no artifact into the SDK.
 
 The recovered compiler is kept in a cache so that only the first start after a
 compiler-source change pays for the recovery, as Zig keeps its global cache. The
-build host stores it in `.chibi/compiler-cache` below `--root`, or in the
+build host stores it in `chibi/compiler-cache` under `$XDG_CACHE_HOME`, else
+`~/.cache`, so every checkout and worktree on the machine shares it, or in the
 directory `CHIBI_COMPILER_CACHE` names; `CHIBI_COMPILER_CACHE=off` disables it.
+Past 2 GiB the oldest entries are removed first.
 An entry is named by the SHA-256 of what decides its bytes: the seed's closure,
 Compile's arguments (every compiler and core source's path and text, and the
 target description) and the prepared format. The host is not part of the key:
@@ -265,8 +274,8 @@ parallelism, and `--configure-only` stops before compilation. Arguments after
 On Linux and macOS `chibi build` compiles with the Chibi build graph instead
 of CMake. `Build.chibi third-party BUILD_DIR` prepares the pinned
 third-party archives, then the host runs `tools/toolchain/Graph.chibi` with
-the Makefile's profile name (`BUILD_PROFILE`: `sanitizer`, or `debug` and
-`release` from `chibi build --debug` and `chibi build --release`) and
+the profile name (`sanitizer` by default, or `debug` and `release` from
+`chibi build --debug` and `chibi build --release`) and
 `CCACHE_BASEDIR` set to the checkout, as CMake sets it, and `--all-commands
 on`, which writes every target's compile commands; it links the root
 `compile_commands.json` to them, as CMake did, for clangd. `LOCAL_CMAKE_FLAGS`
@@ -274,8 +283,7 @@ no longer apply there; the graph finds the profile's toolchain on the
 machine. Without a current host, the driver (`tools/toolchain/Driver.chibi`, run as `chibi build` or
 `tools/build.sh`) fetches the pinned first one with `tools/bootstrap.sh` and the graph builds its own. The SDK, web and Studio builds
 still use CMake as below, so a source, define or library CMake gains
-belongs in `tools/graph/engine/Targets.chibi` too: `build-graph` fails until
-the graph's commands equal CMake's again.
+belongs in `tools/graph/engine/Targets.chibi` too.
 
 ### Linux native graph
 
@@ -287,7 +295,7 @@ chibi build --release --target chibi --target chibi-build-host --target chibi-co
 chibi build --debug --debug-optimization 1 \
   --debug-frame-pointers on --host "$PWD/build-release/sdk/chibi-build-host" \
   --asset-generator-hosts build-release/sdk \
-  --target chibi --target chibi-compile --target chibi-player --target test_tools --target test_language
+  --target chibi --target chibi-compile --target test_tools --target test_language
 ```
 
 Use the existing Linux development prerequisites and pinned third-party archive;
@@ -311,12 +319,10 @@ full parity, generated/resource, group and compiler-tools relocation proof for
 that exact same-repository PR head. Manual dispatch selects the same profiles.
 These checks are opt-in, not a second full suite on every push.
 
-`make graph-reference` supplies the separate `build-cmake` parity tree;
-`CHIBI_GRAPH_REFERENCE` selects another reference explicitly. To use the retained
-CMake native route, pass ` `. CMake also remains the temporary first
-host bootstrap, standalone tooling/language consumer build, and public SDK,
-web and Studio build. Changing the native default does not retire those
-responsibilities or change pinned dependency acquisition prerequisites.
+The CMake build that supplied the `build-cmake` parity tree (the Makefile's
+`graph-reference` target) and the retained CMake native route were removed in
+ef553b24b, and the Makefile was retired in e4aa7b4e2. The driver fetches the
+pinned first host with `tools/bootstrap.sh`.
 
 The graph parses compiler dependency files in Chibi, reading their bytes once
 and treating line continuations as spaces. It unescapes only paths that need
@@ -325,8 +331,8 @@ primitive rather than repeatedly copying an accumulated prefix. Small path
 joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
 Unknown or missing `--target` names fail before toolchain discovery or writes.
 
-Elsewhere `chibi build` uses this program when its private host reports protocol version 14
-through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
+Elsewhere `chibi build` uses this program when its private host reports protocol version 15
+through `--protocol-version`. The protocol rises, with the gate in `tools/build.sh`, whenever
 the compiler bootstrap or `Build.chibi` needs a prepared format, capability or
 syntax an older host lacks; version 3 adds the
 file primitives and probes and the redesigned syntax, version 4 names the
@@ -457,7 +463,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   library's headers, then starts the compiles that changed across all of them,
   up to `jobs` at once, then archives each. A compile needs only staged
   headers, so no library waits for another's archive. The graph executes the
-  compiles itself through `build.start` and `build.wait`, as Zig's build
+  compiles itself through `build.start` and `build.wait_for`, as Zig's build
   runner does, with no Ninja.
 - Every run first writes `BUILD/compile_commands.json` in the `arguments` form,
   as CMake exports its own; `--commands-only on` stops there. `--target NAME`,
@@ -502,7 +508,7 @@ runtimes, the native capability tables, the documents and fields libraries,
 the vendored in-tree C (`chibi_fmt`, `chibi_json` over yyjson) and the
 libraries over them, and three header-only libraries
 (`chibi_execution_contract`, `chibi_tasks`, `chibi_input_action`),
-`chibi_builtin_fonts`, whose fonts are generated sources, `chibi_save_runtime`, and
+`chibi_save_runtime`, and
 `chibi_execution` over the third-party archive's prebuilt SLJIT and the
 header-only `chibi_math` from it, with the libraries that need only those (the
 behavior, scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, core and
@@ -559,17 +565,10 @@ reruns it only when one changed. `--reflect PATH` runs another reflect
 instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
 includes name. On Linux and macOS `chibi build` builds them with the graph;
-`build-graph` checks that their compile commands agree
-with a configured CMake build's; `build-graph-support` compiles only
-`chibi_support`. Before the dependency-parser and join improvements, building
+`graph-build` rebuilds `chibi_support` incrementally in a copy of the sources.
+Before the dependency-parser and join improvements, building
 everything, `test_tools` included, took about 25 to 32 minutes with sanitizers
 and no compiler cache at a load average of 5.
-`build-graph-archive` compiles a math-header library and the task pool over
-the archive's headers and prebuilt libraries; `build-graph-generated`
-generates the native type sources and rewrites the codec headers,
-`build-graph-programs` checks that naming `test_tools` also builds the programs
-it runs, and `build-graph-resources` that the launcher's and `chibi_ctl`'s
-resources equal CMake's.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads
@@ -585,8 +584,8 @@ The graph also links executables. `engine.Programs` lists them (the
 reflection tool `reflect`, the build host, the compiler host, the `chibi`
 launcher and the host, concurrency, policy-worker and benchmark test drivers,
 the first two over the header set the graph stages below
-`BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS the
-player, `chibi-compile`, `chibi_ctl`, `test_language` and `test_tools`, whose
+`BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS
+`chibi-compile`, `test_language` and `test_tools`, whose
 `Links` name the desktop archive's libraries as `third-party/` paths and its
 frameworks as CMake orders them; Linux's follow its archive). An executable
 over C++ (`LinksCxx`) links with the C++ compiler. `c.Link` runs CMake's
@@ -616,16 +615,15 @@ libraries over staged SDK headers and the fixtures it copies to
 and links `test_tools` over them. A target's defines take the same
 placeholders as a source's, and `{program:NAME}` names where an executable
 is written: below the build directory where CMake writes it
-(`ProgramDirectory`: `sdk/` for the SDK's programs, `bin/chibi_ctl`, and the
-test drivers' CMake subdirectories). A `compiler:ARGUMENT` substitution
+(`ProgramDirectory`: `sdk/` for the SDK's programs and the test drivers'
+CMake subdirectories). A `compiler:ARGUMENT` substitution
 writes the profile's C compiler and C flags, then ARGUMENT, as C string
 initializer lines; `test_tools` exports C with them. An include of `.` is
 the source root.
 A target's `Resources` (`DESTINATION=SOURCE`; a directory copies every file
 below it) are written before any compile, as root `CMakeLists.txt`
-configures them: the launcher's `BUILD/share/chibi`, which `chibi version`,
-`chibi test`, `chibi doc` and the players read as installed ones do, and
-`chibi_ctl`'s `BUILD/controller_resources`. Their `engine.json` is the build
+configures them: the launcher's `BUILD/share/chibi`, which `chibi version`
+and `chibi test` read as installed ones do. Its `engine.json` is the build
 identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
 `sdk/artifact_formats.cmake` does: the SDK version from
 `sdk/VERSION`, the project version from `src/assets/project.h`, the
@@ -644,9 +642,9 @@ builtin headers as `tools/reflect/resource.cmake` does, by asking that
 libclang's `clang -print-resource-dir`.
 
 A run finds its profile on the machine unless told otherwise
-(`graph:engine`'s `Profile.chibi`). `--profile` names the Makefile's
+(`graph:engine`'s `Profile.chibi`). `--profile` names the
 `sanitizer` (the default), `debug` or `release` profile. The compiler is `CC`,
-or Homebrew LLVM's clang as the Makefile prefers it, or `cc`, and its kind
+or Homebrew LLVM's clang, or `cc`, and its kind
 comes from its `--version` banner. The C++ compiler, which compiles `.cpp`
 sources with the same flags and the target's C++ standard, is `CXX` or the
 `clang++`, `g++` or `c++` beside the compiler, or the one on `PATH` for the
@@ -810,14 +808,13 @@ queue behind a regenerated artifact.
 `chibi build bootstrap-artifact` rewrites it (`BOOTSTRAP_ARTIFACT` names another
 folder). It runs in two steps:
 
-1. The Release bootstrap check (`make test-bootstrap`) prepares stage one with
-   stage zero, compiles the compiler sources to stage two and has the compiler
-   host compile them again with stage two, to the same bytes. With
-   `CHIBI_BOOTSTRAP_SEED` naming a folder, it leaves stage two and Compile's
-   arguments there as `compiler.chibip` and `compile.json`. The compiler is
-   compiled without debugger points and watches: its `debug` argument is
-   false, and the seed must say so. The target
-   leaves the seed in `build-release/bootstrap.seed` and removes it after.
+1. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
+   packages/core --recover SEED/compiler.chibip --arguments SEED/compile.json`
+   recovers the compiler from the current seed: it compiles the sources on
+   disk to stage one, stage one compiles them to stage two, and stage two must
+   compile them to itself. It writes that fixed point and Compile's arguments
+   (with `debug` false) to the seed folder, `build-release/bootstrap.artifact`,
+   which the target removes after.
 2. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
    packages/core --seed SEED --revision REV` checks three things: that the
    sources the seed compiled are the ones on disk, with every file of their
@@ -1044,35 +1041,22 @@ to its executable. For the installed graph, pass
 `--core PREFIX/share/chibi/core`, and
 `--collection graph=PREFIX/share/chibi/graph`.
 
-`chibi build test build-sdk` runs the C packaging and relocation
-cases against the Release graph tools. The separate SDK CI lane deliberately
-retains a CMake-built harness as a reference consumer; the full Graph validation
-lane builds the harness with Graph. To run the CMake reference harness:
+`chibi build test graph-sdk-install` runs `test/graph/SDKInstallTests.chibi`
+against the Release graph tools, so build them first:
 
 ```sh
-chibi build --release  --target chibi-build-host --target chibi-compiler-host
-chibi build  --build build-sdk-tests --target test_tools --host "$PWD/build-release/sdk/chibi-build-host"
-CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
-CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
-CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
-  chibi build test build-sdk
+chibi build --release --target chibi-build-host --target chibi-compiler-host
+chibi build test graph-sdk-install
 ```
 
-The CMake harness must leave both shipped Release hosts and their adjacent
-`.chibi-record` files unchanged. Linux CI records and checks those four SHA-256
-identities around the harness build. The separate CMake build supplies the test
-harness; the compiler tools being packaged and relocated remain Release graph
-outputs.
-`/build-sdk-tests/` is the explicitly ignored generated harness directory.
-
-The test derives the archive location from the Release graph link record;
-`CHIBI_SDK_THIRD_PARTY_DIR` can name it explicitly. `CHIBI_TOOLS_BUILD_DIR` selects
-the harness, while `CHIBI_SDK_GRAPH_BUILD_DIR` and `CHIBI_BUILD_HOST` select
-matching graph outputs. The cases exercise recovery and build-program/graph
-compilation after relocation with an empty tool search path. The graph's
-`--profile explicit` disables discovery and requires its compiler, archiver and
-ranlib to be named; an omitted launcher remains empty. This checkpoint
-has no Linux/Windows packaging, full SDK, browser or Studio acceptance claim.
+It reads the dependency archive's location from the Release build host's link
+record. The cases check what `CompilerTools` refuses before staging, the
+staging it owns, and an installed prefix that still recovers its compiler,
+runs a program and writes graph commands after it moves, with an empty tool
+search path. The graph's `--profile explicit` disables discovery and requires
+its compiler, archiver and ranlib to be named; an omitted launcher remains
+empty. This checkpoint has no Linux/Windows packaging, full SDK, browser or
+Studio acceptance claim.
 
 The standalone SDK program adds `build.reserve_directory` and
 `build.publish_directory`. These private bindings reserve one fresh directory

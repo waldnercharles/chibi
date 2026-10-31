@@ -1,0 +1,10 @@
+package facts
+
+// compile-time arrays are built, summed and indexed
+@test
+Calls :: () {
+    r1: int = Main();
+    // 30, 9, 7, 6 and 110 combine as 30 * 1000000 + 9 * 10000 + 7 * 100 + 6 + 110
+    e1: int = 30090816;
+    assert(r1 == e1, "Main call 1");
+}

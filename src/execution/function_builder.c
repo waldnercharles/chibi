@@ -547,6 +547,10 @@ static bool reflected_scalar_field(const type_desc *type, size_t offset, pin_typ
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
+        /* An array field holds a pin_array pointer, never its element type. */
+        if (field->container != PIN_CONTAINER_SINGLE) {
+            continue;
+        }
         if (field->type == value && field->offset == offset &&
             field->size == behavior_scalar_size(value) &&
             (value != PIN_STR || field->text_descriptor)) {

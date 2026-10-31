@@ -1,10 +1,6 @@
 #include "package_compiler_chibi.h"
 
-#include "authoring/native_bindings.h"
 #include "backend.h"
-#include "compiler_fixture.h"
-#include "compositional_records.h"
-#include "compositional_records_source.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
@@ -13,8 +9,6 @@
 #include "execution/prepared.h"
 #include "execution/status.h"
 #include "float_conversion_cases.h"
-#include "language/lower.h"
-#include "language/semantic.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arithmetic_definition.h"
 #include "runtime/arrays_definition.h"
@@ -25,6 +19,7 @@
 #include "runtime/text_definition.h"
 #include "runtime/text_format.h"
 #include "runtime/vectors_definition.h"
+#include "scalar_host.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/file_io.h"
@@ -32,13 +27,11 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_host.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/catalog.h"
-#include "types/copy.h"
 #include "types/map.h"
+#include "types/record.h"
 #include "types/text.h"
 #include "types/union.h"
 #include "types/value_document.h"
@@ -76,7 +69,7 @@ extern char **environ;
  * on bytecode and SLJIT, and stage zero's own closure of the same packages
  * must give the same JSON result. Rejections report their exact message and
  * position. */
-static const char PACKAGE[] = "project:package_compiler";
+
 enum
 {
     CALLS = 14,
@@ -90,26 +83,12 @@ enum
     TARGET_BUDGET = 100000
 };
 /* A NULL expected result means the call must fail. */
-typedef struct
-{
-    const char *function, *arguments, *expected;
-    const char *diagnostic;
-    /* Instructions the call may run; TARGET_BUDGET when zero. */
-    int budget;
-} sample_call;
+
 /* Focused selectors group unions, constants, patterns and integer types
  * (TYPE_SAMPLES); imports, core-pack calls, moves, reads in place and array
  * methods (IMPORT_SAMPLES, run in Release); and maps, references, arrays and
  * ranges (COLLECTION_SAMPLES). */
-typedef enum
-{
-    BASE_SAMPLES,
-    TYPE_SAMPLES,
-    IMPORT_SAMPLES,
-    COLLECTION_SAMPLES,
-    FALLIBLE_SAMPLES,
-    MATH_SAMPLES
-} sample_group;
+
 /* `source` is package facts, and `more` another file of it when present;
  * `library` is package lib when present, and `core` adds core:strings.
  * `collection_source` and `collection_dependency` add core:host_only and
@@ -140,116 +119,15 @@ typedef enum
  * watches stage zero's do, in its order and with its values; a traced
  * `c_string_probe` sample's calls run only that way, because the compiler
  * host does not link the probe natives, and return int. */
-typedef struct
-{
-    const char *name, *source, *more, *library;
-    const char *collection_source, *collection_dependency;
-    sample_group group;
-    bool core, math, updates, boxed, game, moves, aliases, variants, built,
-        lends, drops, same_rejection, c_string_probe, host_effects,
-        update_order, debug_metadata, traced, char_checks;
-    /* Its calls run with the probe natives linked, take no arguments and
-     * return one int. */
-    bool probe_calls;
-    sample_call calls[CALLS];
-    const char *message;
-    const char *oracle_message, *oracle_package;
-    int line, column, project_modules;
-    int oracle_line, oracle_column;
-    int specializations;
-} sample;
-static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
-{
-    const char *value = NULL;
-    size_t nul = 0;
-    const char *error = pin_text_cstring(storage, arguments[0], &value, &nul);
-    if (error) {
-        return error;
-    }
-    result->i = (int)strlen(value);
-    return NULL;
-}
-static const char *integer_probe(arena *, const pin_value *arguments, int, pin_value *result)
-{
-    result->i = arguments[0].i;
-    return NULL;
-}
-static const native_parameter_definition INTEGER_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-};
-static const native_parameter_definition CSTRING_INPUT[] = {
-    { .name = "value",
-      .kind = NATIVE_PARAMETER_DATA,
-      .storage = PIN_STR,
-      .type_name = "const char *",
-      .c_string = true },
-};
+
 /* The second parameter deliberately carries the C-string boundary. */
-static const native_parameter_definition CSTRING_PAIR_INPUT[] = {
-    { .name = "prefix", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-    { .name = "value",
-      .kind = NATIVE_PARAMETER_DATA,
-      .storage = PIN_STR,
-      .type_name = "const char *",
-      .c_string = true },
-};
-static const char *cstring_pair(arena *storage, const pin_value *arguments, int count, pin_value *result)
-{
-    return cstring_probe(storage, arguments + 1, count - 1, result);
-}
+
 /* Overloads that report which one ran: number or f64, and an int and an f64
  * in either order. */
-static const char *first_kernel(arena *, const pin_value *, int, pin_value *result)
-{
-    result->i = 1;
-    return NULL;
-}
-static const char *second_kernel(arena *, const pin_value *, int, pin_value *result)
-{
-    result->i = 2;
-    return NULL;
-}
-static const native_parameter_definition NUMBER_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F32, .type_name = "number" },
-};
-static const native_parameter_definition DOUBLE_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
-};
-static const native_parameter_definition INTEGER_DOUBLE_INPUT[] = {
-    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-    { .name = "second", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
-};
-static const native_parameter_definition DOUBLE_INTEGER_INPUT[] = {
-    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
-    { .name = "second", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-};
-static const native_parameter_definition CSTRING_OUTPUT[] = {
-    { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-};
+
 /* Borrowed native result banks exercise tuple copies without authored named
  * collection results, which stage one does not support. */
-static const char *sequence_pair_probe(void *, const pin_value *, pin_value *results)
-{
-    static int items[] = { 3, 4 };
-    static pin_array values = {
-        .element_type = PIN_I32,
-        .count = 2,
-        .capacity = 2,
-        .data = items,
-        .stride = sizeof *items,
-    };
-    results[0].ptr = &values;
-    results[1].i = 9;
-    return NULL;
-}
-static const native_parameter_definition SEQUENCE_PAIR_OUTPUTS[] = {
-    { .name = "values",
-      .kind = NATIVE_PARAMETER_DATA,
-      .storage = PIN_I32,
-      .container = PIN_CONTAINER_ARRAY,
-      .type_name = "int" },
-    { .name = "stamp", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-};
+
 #define PROBE_DEFINITION(CANONICAL, SOURCE, INPUT, PURE)                       \
     { .canonical_name = CANONICAL,                                             \
       .source_name = SOURCE,                                                   \
@@ -260,44 +138,9 @@ static const native_parameter_definition SEQUENCE_PAIR_OUTPUTS[] = {
       .output_count = 1,                                                       \
       .completion_output = -1,                                                 \
       .pure = PURE }
-static const native_capability_definition CSTRING_DEFINITIONS[] = {
-    PROBE_DEFINITION("CString Probe", "cstring_probe", CSTRING_INPUT, true),
-    { .canonical_name = "CString Pair",
-      .source_name = "cstring_pair",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = CSTRING_PAIR_INPUT,
-      .input_count = 2,
-      .outputs = CSTRING_OUTPUT,
-      .output_count = 1,
-      .completion_output = -1,
-      .pure = true },
-    PROBE_DEFINITION("Qualified Probe", "native.probe", CSTRING_INPUT, false),
-    PROBE_DEFINITION("Qualified Length", "native.length", CSTRING_INPUT, true),
-    PROBE_DEFINITION("Qualified Text Overload", "native.overload", CSTRING_INPUT, true),
-    PROBE_DEFINITION("Qualified Integer Overload", "native.overload", INTEGER_INPUT, true),
-    PROBE_DEFINITION("Qualified Ambiguous One", "native.ProbeOne", CSTRING_INPUT, true),
-    PROBE_DEFINITION("Qualified Ambiguous Two", "native.probe_one", CSTRING_INPUT, true),
-    { .canonical_name = "Sequence Pair Probe",
-      .source_name = "Multi",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .outputs = SEQUENCE_PAIR_OUTPUTS,
-      .output_count = 2,
-      .completion_output = -1,
-      .pure = true },
-    PROBE_DEFINITION("Number Kernel", "native.kernel", NUMBER_INPUT, true),
-    PROBE_DEFINITION("Double Kernel", "native.kernel", DOUBLE_INPUT, true),
-    PROBE_DEFINITION("Integer Double Pair", "native.pair", INTEGER_DOUBLE_INPUT, true),
-    PROBE_DEFINITION("Double Integer Pair", "native.pair", DOUBLE_INTEGER_INPUT, true),
-};
+
 #undef PROBE_DEFINITION
-static const node_host_call CSTRING_CALL = { .value = cstring_probe };
-static const node_host_call CSTRING_PAIR_CALL = { .value = cstring_pair };
-static const node_host_call INTEGER_CALL = { .value = integer_probe };
-static const node_host_call SEQUENCE_PAIR_CALL = { .invoke = sequence_pair_probe };
-static const node_host_call FIRST_CALL = { .value = first_kernel };
-static const node_host_call SECOND_CALL = { .value = second_kernel };
-static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
-static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+
 #define PROBE_BINDING(CANONICAL, CALL, ACCESS)                                 \
     {                                                                          \
         .canonical_name = CANONICAL, .implementation = {                       \
@@ -305,1770 +148,52 @@ static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
             .access = &ACCESS                                                  \
         }                                                                      \
     }
-static const native_definition_binding CSTRING_BINDINGS[] = {
-    PROBE_BINDING("CString Probe", CSTRING_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("CString Pair", CSTRING_PAIR_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Qualified Probe", CSTRING_CALL, HOST_ACCESS),
-    PROBE_BINDING("Qualified Length", CSTRING_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Qualified Text Overload", CSTRING_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Qualified Integer Overload", INTEGER_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Qualified Ambiguous One", CSTRING_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Qualified Ambiguous Two", CSTRING_CALL, CSTRING_ACCESS),
-    { .canonical_name = "Sequence Pair Probe",
-      .implementation = { .call = &SEQUENCE_PAIR_CALL, .access = &CSTRING_ACCESS } },
-    PROBE_BINDING("Number Kernel", FIRST_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Double Kernel", SECOND_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Integer Double Pair", FIRST_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Double Integer Pair", SECOND_CALL, CSTRING_ACCESS),
-};
+
 #undef PROBE_BINDING
-static const native_definition_pack CSTRING_PACK = {
-    .definitions = CSTRING_DEFINITIONS,
-    .definition_count = sizeof CSTRING_DEFINITIONS / sizeof *CSTRING_DEFINITIONS,
-    .bindings = CSTRING_BINDINGS,
-    .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
-};
-typedef struct
-{
-    int first, second;
-    double gain;
-    bool enabled;
-    uint64_t count, target;
-    char message[8], ctext[8], name[8];
-    size_t message_length, ctext_length, name_length;
-} action_record;
-static action_record action_records[8];
-static int action_trace[32], action_record_count, action_trace_count;
-static int action_kind_calls[5];
-static int action_number_calls[2], action_default_calls[2];
-static const pin_string ACTION_TEXT = { .bytes = "a\0\xff"
-                                                 "b",
-                                        .length = 4 },
-                        ACTION_CTEXT = { .bytes = "okay", .length = 4 },
-                        ACTION_NAME = { .bytes = "named", .length = 5 };
-static const char *action_probe(void *, const pin_value *arguments, pin_value *results)
-{
-    pin_string message = pin_text(arguments[5]), ctext = pin_text(arguments[6]),
-               name = pin_text(arguments[8]);
-    if (arguments[0].type != PIN_I32 || arguments[1].type != PIN_I32 ||
-        arguments[2].type != PIN_F64 || arguments[3].type != PIN_BOOL ||
-        arguments[4].type != PIN_U64 || arguments[5].type != PIN_STR ||
-        arguments[6].type != PIN_STR || arguments[7].type != PIN_HANDLE ||
-        !arguments[7].type_name || strcmp(arguments[7].type_name, "fixture.owner") ||
-        arguments[8].type != PIN_NAME || results[0].type != PIN_I32 ||
-        results[0].container != PIN_CONTAINER_SINGLE ||
-        message.length > sizeof action_records[0].message ||
-        ctext.length > sizeof action_records[0].ctext ||
-        name.length > sizeof action_records[0].name) {
-        fprintf(
-            stderr,
-            "action headers: inputs %d/%d/%d/%d/%d/%d/%d/%d/%d, target %s, "
-            "result %d/%d, bytes %u/%u/%u\n",
-            arguments[0].type,
-            arguments[1].type,
-            arguments[2].type,
-            arguments[3].type,
-            arguments[4].type,
-            arguments[5].type,
-            arguments[6].type,
-            arguments[7].type,
-            arguments[8].type,
-            arguments[7].type_name ? arguments[7].type_name : "none",
-            results[0].type,
-            results[0].container,
-            message.length,
-            ctext.length,
-            name.length
-        );
-        return "action argument or result header differs";
-    }
-    assert(action_record_count < NATIVE_COUNT(action_records));
-    assert(action_trace_count < NATIVE_COUNT(action_trace));
-    action_record *record = &action_records[action_record_count++];
-    *record = (action_record){ .first = arguments[0].i,
-                               .second = arguments[1].i,
-                               .gain = arguments[2].d,
-                               .enabled = arguments[3].b,
-                               .count = arguments[4].u64,
-                               .target = arguments[7].u64,
-                               .message_length = message.length,
-                               .ctext_length = ctext.length,
-                               .name_length = name.length };
-    memcpy(record->message, message.bytes, message.length);
-    memcpy(record->ctext, ctext.bytes, ctext.length);
-    memcpy(record->name, name.bytes, name.length);
-    action_trace[action_trace_count++] = 1000 + record->first;
-    results[0].i = record->first * 100 + record->second;
-    return NULL;
-}
-static const char *action_mark(void *, const pin_value *arguments, pin_value *results)
-{
-    assert(action_trace_count < NATIVE_COUNT(action_trace));
-    action_trace[action_trace_count++] = arguments[0].i;
-    results[0].i = arguments[0].i;
-    return NULL;
-}
-static const char *action_zero(void *, const pin_value *, pin_value *results)
-{
-    assert(action_trace_count < NATIVE_COUNT(action_trace));
-    action_trace[action_trace_count++] = 3000;
-    results[0].u64 = 0;
-    return NULL;
-}
-static const char *action_kind_function(void *, const pin_value *arguments, pin_value *results)
-{
-    action_kind_calls[0]++;
-    results[0].i = arguments[0].i + 40;
-    return NULL;
-}
-static const char *action_kind_action(void *, const pin_value *arguments, pin_value *results)
-{
-    if (arguments[0].type != PIN_STR ||
-        !pin_text_equal(pin_text(arguments[0]), (pin_string){ .bytes = "text", .length = 4 }) ||
-        results[0].type != PIN_I32) {
-        return "qualified action argument or result differs";
-    }
-    action_kind_calls[1]++;
-    results[0].i = 99;
-    return NULL;
-}
-static const char *action_duplicate_int(void *, const pin_value *arguments, pin_value *results)
-{
-    if (arguments[0].type != PIN_I32 || arguments[0].i != 3 ||
-        results[0].type != PIN_I32) {
-        return "qualified integer action argument or result differs";
-    }
-    action_kind_calls[3]++;
-    results[0].i = 99;
-    return NULL;
-}
-static const char *action_duplicate_text(void *service, const pin_value *arguments, pin_value *results)
-{
-    const char *error = action_kind_action(service, arguments, results);
-    if (error) {
-        return error;
-    }
-    action_kind_calls[1]--;
-    action_kind_calls[4]++;
-    return NULL;
-}
-static const char *action_assert(void *, const pin_value *, pin_value *)
-{
-    action_kind_calls[2]++;
-    return NULL;
-}
-static const char *action_tiny(void *, const pin_value *arguments, pin_value *results)
-{
-    if (arguments[0].type != PIN_I8 || results[0].type != PIN_I32) {
-        return "tiny numeric overload header differs";
-    }
-    action_number_calls[0]++;
-    results[0].i = arguments[0].i8;
-    return NULL;
-}
-static const char *action_real(void *, const pin_value *arguments, pin_value *results)
-{
-    if (arguments[0].type != PIN_F32 || arguments[0].f != 256 ||
-        results[0].type != PIN_I32) {
-        return "real numeric overload value or header differs";
-    }
-    action_number_calls[1]++;
-    results[0].i = (int)arguments[0].f;
-    return NULL;
-}
+
 /* default_pair's overloads: an int then an f64 that defaults to 5, and the
  * reverse. Each reports which one ran. */
-static const char *action_default_first(void *, const pin_value *arguments, pin_value *results)
-{
-    if (arguments[0].type != PIN_I32 || arguments[1].type != PIN_F64 ||
-        arguments[1].d != 5) {
-        return "default pair's first overload value or header differs";
-    }
-    action_default_calls[0]++;
-    results[0].i = 1;
-    return NULL;
-}
-static const char *action_default_second(void *, const pin_value *, pin_value *results)
-{
-    action_default_calls[1]++;
-    results[0].i = 2;
-    return NULL;
-}
-static const char *action_ambiguous(void *, const pin_value *arguments, pin_value *)
-{
-    assert(action_trace_count < NATIVE_COUNT(action_trace));
-    action_trace[action_trace_count++] = 4000 + 10 * arguments[0].i +
-                                         arguments[1].i;
-    return NULL;
-}
-static const char *action_aggregate(void *, const pin_value *arguments, pin_value *)
-{
-    const pin_array *array = arguments[0].ptr;
-    if (arguments[0].type != PIN_I32 || arguments[0].container != PIN_CONTAINER_ARRAY ||
-        !array || array->count != 2) {
-        return "action aggregate input differs";
-    }
-    assert(action_trace_count < NATIVE_COUNT(action_trace));
-    action_trace[action_trace_count++] = 5000 + pin_array_get(array, 0).i +
-                                         pin_array_get(array, 1).i;
-    return NULL;
-}
-static const char *action_fail(const behavior_function_context *context, void *, const pin_value *, pin_value *)
-{
-    if (!context || !context->value_storage || !context->owner) {
-        return "action context storage or owner is missing";
-    }
-    assert(action_trace_count < NATIVE_COUNT(action_trace));
-    action_trace[action_trace_count++] = 6000;
-    return "fixture action failed";
-}
-static int action_command(void *, const char *, const pin_value *, int)
-{
-    return 0;
-}
-static const node_host_call ACTION_CALL = { .invoke = action_probe },
-                            ACTION_MARK = { .invoke = action_mark },
-                            ACTION_ZERO = { .invoke = action_zero },
-                            ACTION_KIND_FUNCTION = { .invoke = action_kind_function },
-                            ACTION_KIND_ACTION = { .invoke = action_kind_action },
-                            ACTION_DUPLICATE_INT = { .invoke = action_duplicate_int },
-                            ACTION_DUPLICATE_TEXT = { .invoke = action_duplicate_text },
-                            ACTION_ASSERT = { .invoke = action_assert },
-                            ACTION_TINY = { .invoke = action_tiny },
-                            ACTION_REAL = { .invoke = action_real },
-                            ACTION_DEFAULT_FIRST = { .invoke = action_default_first },
-                            ACTION_DEFAULT_SECOND = { .invoke = action_default_second },
-                            ACTION_AMBIGUOUS = { .invoke = action_ambiguous },
-                            ACTION_AGGREGATE = { .invoke = action_aggregate },
-                            ACTION_FAIL = { .context = action_fail };
-static const node_command ACTION_COMMAND = { .invoke = action_command };
-static const native_parameter_definition ACTION_INPUT[] = {
-    CORE_EXEC_INPUTS(NATIVE_PORT){ .name = "First",
-                                   .kind = NATIVE_PARAMETER_DATA,
-                                   .storage = PIN_I32,
-                                   .type_name = "int" },
-    NATIVE_PORT(
-        "Second",
-        NATIVE_PARAMETER_DATA,
-        PIN_I32,
-        "int",
-        PIN_CONTAINER_SINGLE,
-        0,
-        0,
-        SCRIPT_REFERENCE_NONE,
-        false,
-        ((pin_value){ .i = 7 })
-    )
-        NATIVE_PORT(
-            "Gain",
-            NATIVE_PARAMETER_DATA,
-            PIN_F64,
-            "f64",
-            PIN_CONTAINER_SINGLE,
-            0,
-            0,
-            SCRIPT_REFERENCE_NONE,
-            false,
-            ((pin_value){ .d = -2.5 })
-        )
-            NATIVE_PORT(
-                "Enabled",
-                NATIVE_PARAMETER_DATA,
-                PIN_BOOL,
-                "bool",
-                PIN_CONTAINER_SINGLE,
-                0,
-                0,
-                SCRIPT_REFERENCE_NONE,
-                false,
-                ((pin_value){ .b = true })
-            )
-                NATIVE_PORT(
-                    "Count",
-                    NATIVE_PARAMETER_DATA,
-                    PIN_U64,
-                    "u64",
-                    PIN_CONTAINER_SINGLE,
-                    0,
-                    0,
-                    SCRIPT_REFERENCE_NONE,
-                    false,
-                    ((pin_value){ .u64 = UINT64_C(0xfedcba9876543210) })
-                )
-                    NATIVE_PORT(
-                        "Message",
-                        NATIVE_PARAMETER_DATA,
-                        PIN_STR,
-                        "string",
-                        PIN_CONTAINER_SINGLE,
-                        0,
-                        0,
-                        SCRIPT_REFERENCE_NONE,
-                        false,
-                        ((pin_value){ .text = &ACTION_TEXT })
-                    )
-                        NATIVE_CSTRING_PORT(
-                            "CText",
-                            NATIVE_PARAMETER_DATA,
-                            PIN_STR,
-                            "string",
-                            PIN_CONTAINER_SINGLE,
-                            0,
-                            0,
-                            SCRIPT_REFERENCE_NONE,
-                            false,
-                            ((pin_value){ .text = &ACTION_CTEXT })
-                        )
-                            NATIVE_PORT(
-                                "Target",
-                                NATIVE_PARAMETER_DATA,
-                                PIN_HANDLE,
-                                "fixture.owner",
-                                PIN_CONTAINER_SINGLE,
-                                0,
-                                0,
-                                SCRIPT_REFERENCE_NONE,
-                                true,
-                                ((pin_value){ .u64 = 0 })
-                            )
-                                NATIVE_PORT(
-                                    "Name",
-                                    NATIVE_PARAMETER_DATA,
-                                    PIN_NAME,
-                                    "name",
-                                    PIN_CONTAINER_SINGLE,
-                                    0,
-                                    0,
-                                    SCRIPT_REFERENCE_NONE,
-                                    false,
-                                    ((pin_value){ .str = "named" })
-                                )
-};
-static const native_parameter_definition ACTION_OUTPUT[] = {
-    CORE_THEN_OUTPUTS(NATIVE_PORT){ .name = "value",
-                                    .kind = NATIVE_PARAMETER_DATA,
-                                    .storage = PIN_I32,
-                                    .type_name = "int" },
-};
-static const native_parameter_definition ACTION_EXEC[] = { CORE_EXEC_INPUTS(NATIVE_PORT) },
-                                         ACTION_THEN[] = { CORE_THEN_OUTPUTS(NATIVE_PORT) },
-                                         ACTION_ENTITY[] = { CORE_DATA_PORT(NATIVE_PORT, "Value", PIN_HANDLE, "ecs.entity") },
-                                         ACTION_AMBIGUOUS_INPUT[] = {
-    CORE_EXEC_INPUTS(NATIVE_PORT)
-    { .name = "FirstValue", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-    { .name = "first_value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-}, ACTION_AGGREGATE_INPUT[] = {
-    CORE_EXEC_INPUTS(NATIVE_PORT)
-    NATIVE_PORT("Values", NATIVE_PARAMETER_DATA, PIN_I32, "int", PIN_CONTAINER_ARRAY, 0, 0,
-        SCRIPT_REFERENCE_NONE, false, ((pin_value){ .container = PIN_CONTAINER_ARRAY }))
-}, ACTION_TEXT_INPUT[] = {
-    CORE_EXEC_INPUTS(NATIVE_PORT)
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_STR, .type_name = "string" },
-}, ACTION_INTEGER_INPUT[] = {
-    CORE_EXEC_INPUTS(NATIVE_PORT)
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-}, ACTION_ASSERT_INPUT[] = {
-    CORE_EXEC_INPUTS(NATIVE_PORT)
-    { .name = "Condition", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_BOOL, .type_name = "bool" },
-}, ACTION_TINY_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I8, .type_name = "i8" },
-}, ACTION_REAL_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F32, .type_name = "number" },
-}, ACTION_DEFAULT_FIRST_INPUT[] = {
-    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-    { .name = "second",
-      .kind = NATIVE_PARAMETER_DATA,
-      .storage = PIN_F64,
-      .type_name = "f64",
-      .has_default = true,
-      .default_value = { .type = PIN_F64, .d = 5 } },
-}, ACTION_DEFAULT_SECOND_INPUT[] = {
-    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
-    { .name = "second",
-      .kind = NATIVE_PARAMETER_DATA,
-      .storage = PIN_I32,
-      .type_name = "int",
-      .has_default = true,
-      .default_value = { .type = PIN_I32, .i = 5 } },
-};
-static const native_capability_definition ACTION_DEFINITIONS[] = {
-    { .canonical_name = "Fixture Synchronous Action",
-      .source_name = "sync_probe",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_INPUT),
-      .outputs = ACTION_OUTPUT,
-      .output_count = NATIVE_COUNT(ACTION_OUTPUT),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "Fixture Action Tick",
-      .source_name = "Tick",
-      .kind = SCRIPT_CAPABILITY_EVENT,
-      .completion_output = -1 },
-    { .canonical_name = "Fixture Action Mark",
-      .source_name = "action_mark",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = INTEGER_INPUT,
-      .input_count = NATIVE_COUNT(INTEGER_INPUT),
-      .outputs = CSTRING_OUTPUT,
-      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
-      .completion_output = -1,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "Fixture Action Zero",
-      .source_name = "zero_entity",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .outputs = ACTION_ENTITY,
-      .output_count = NATIVE_COUNT(ACTION_ENTITY),
-      .completion_output = -1,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "Fixture Action Ambiguous",
-      .source_name = "ambiguous_probe",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_AMBIGUOUS_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_AMBIGUOUS_INPUT),
-      .outputs = ACTION_THEN,
-      .output_count = NATIVE_COUNT(ACTION_THEN),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "Fixture Action Aggregate",
-      .source_name = "aggregate_probe",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_AGGREGATE_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_AGGREGATE_INPUT),
-      .outputs = ACTION_THEN,
-      .output_count = NATIVE_COUNT(ACTION_THEN),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "Fixture Action Failure",
-      .source_name = "fail_probe",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_EXEC,
-      .input_count = NATIVE_COUNT(ACTION_EXEC),
-      .outputs = ACTION_THEN,
-      .output_count = NATIVE_COUNT(ACTION_THEN),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "Fixture Unsupported Action",
-      .source_name = "unsupported_probe",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_EXEC,
-      .input_count = NATIVE_COUNT(ACTION_EXEC),
-      .outputs = ACTION_THEN,
-      .output_count = NATIVE_COUNT(ACTION_THEN),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "Fixture Suspending Action",
-      .source_name = "suspending_probe",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_EXEC,
-      .input_count = NATIVE_COUNT(ACTION_EXEC),
-      .outputs = ACTION_THEN,
-      .output_count = NATIVE_COUNT(ACTION_THEN),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND },
-    { .canonical_name = "fixture.kind_function",
-      .source_name = "kind_probe",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = INTEGER_INPUT,
-      .input_count = NATIVE_COUNT(INTEGER_INPUT),
-      .outputs = CSTRING_OUTPUT,
-      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
-      .completion_output = -1,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "fixture.kind_action",
-      .source_name = "kind_probe",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_TEXT_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_TEXT_INPUT),
-      .outputs = ACTION_OUTPUT,
-      .output_count = NATIVE_COUNT(ACTION_OUTPUT),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "fixture.duplicate_int",
-      .source_name = "duplicate_action",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_INTEGER_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_INTEGER_INPUT),
-      .outputs = ACTION_OUTPUT,
-      .output_count = NATIVE_COUNT(ACTION_OUTPUT),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "fixture.duplicate_text",
-      .source_name = "duplicate_action",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_TEXT_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_TEXT_INPUT),
-      .outputs = ACTION_OUTPUT,
-      .output_count = NATIVE_COUNT(ACTION_OUTPUT),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "fixture.assert_action",
-      .source_name = "assert",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_ASSERT_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_ASSERT_INPUT),
-      .outputs = ACTION_THEN,
-      .output_count = NATIVE_COUNT(ACTION_THEN),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "fixture.unavailable_function",
-      .source_name = "held_probe",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = INTEGER_INPUT,
-      .input_count = NATIVE_COUNT(INTEGER_INPUT),
-      .outputs = CSTRING_OUTPUT,
-      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
-      .completion_output = -1,
-      .effects = SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND },
-    { .canonical_name = "fixture.available_action",
-      .source_name = "held_probe",
-      .kind = SCRIPT_CAPABILITY_ACTION,
-      .inputs = ACTION_TEXT_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_TEXT_INPUT),
-      .outputs = ACTION_OUTPUT,
-      .output_count = NATIVE_COUNT(ACTION_OUTPUT),
-      .completion_output = 0,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "fixture.numeric_tiny",
-      .source_name = "numeric_choice",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = ACTION_TINY_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_TINY_INPUT),
-      .outputs = CSTRING_OUTPUT,
-      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
-      .completion_output = -1,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "fixture.numeric_real",
-      .source_name = "numeric_choice",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = ACTION_REAL_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_REAL_INPUT),
-      .outputs = CSTRING_OUTPUT,
-      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
-      .completion_output = -1,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "fixture.default_first",
-      .source_name = "default_pair",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = ACTION_DEFAULT_FIRST_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_DEFAULT_FIRST_INPUT),
-      .outputs = CSTRING_OUTPUT,
-      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
-      .completion_output = -1,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .canonical_name = "fixture.default_second",
-      .source_name = "default_pair",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = ACTION_DEFAULT_SECOND_INPUT,
-      .input_count = NATIVE_COUNT(ACTION_DEFAULT_SECOND_INPUT),
-      .outputs = CSTRING_OUTPUT,
-      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
-      .completion_output = -1,
-      .effects = SCRIPT_EFFECT_HOST },
-};
-static const native_definition_binding ACTION_BINDINGS[] = {
-    { .canonical_name = "Fixture Synchronous Action",
-      .implementation = { .call = &ACTION_CALL, .access = &HOST_ACCESS } },
-    { .canonical_name = "Fixture Action Mark",
-      .implementation = { .call = &ACTION_MARK, .access = &HOST_ACCESS } },
-    { .canonical_name = "Fixture Action Zero",
-      .implementation = { .call = &ACTION_ZERO, .access = &HOST_ACCESS } },
-    { .canonical_name = "Fixture Action Ambiguous",
-      .implementation = { .call = &ACTION_AMBIGUOUS, .access = &HOST_ACCESS } },
-    { .canonical_name = "Fixture Action Aggregate",
-      .implementation = { .call = &ACTION_AGGREGATE, .access = &HOST_ACCESS } },
-    { .canonical_name = "Fixture Action Failure",
-      .implementation = { .call = &ACTION_FAIL, .access = &HOST_ACCESS } },
-    { .canonical_name = "Fixture Unsupported Action",
-      .implementation = { .command = &ACTION_COMMAND, .access = &HOST_ACCESS } },
-    { .canonical_name = "Fixture Suspending Action",
-      .implementation = { .call = &ACTION_FAIL, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.kind_function",
-      .implementation = { .call = &ACTION_KIND_FUNCTION, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.kind_action",
-      .implementation = { .call = &ACTION_KIND_ACTION, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.duplicate_int",
-      .implementation = { .call = &ACTION_DUPLICATE_INT, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.duplicate_text",
-      .implementation = { .call = &ACTION_DUPLICATE_TEXT, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.assert_action",
-      .implementation = { .call = &ACTION_ASSERT, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.unavailable_function",
-      .implementation = { .call = &ACTION_KIND_FUNCTION, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.available_action",
-      .implementation = { .call = &ACTION_KIND_ACTION, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.numeric_tiny",
-      .implementation = { .call = &ACTION_TINY, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.numeric_real",
-      .implementation = { .call = &ACTION_REAL, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.default_first",
-      .implementation = { .call = &ACTION_DEFAULT_FIRST, .access = &HOST_ACCESS } },
-    { .canonical_name = "fixture.default_second",
-      .implementation = { .call = &ACTION_DEFAULT_SECOND, .access = &HOST_ACCESS } },
-};
-static const native_global_definition ACTION_GLOBALS[] = {
-    { .canonical_name = "Fixture Action Self", .source_name = "self", .type = ACTION_ENTITY },
-};
-static const native_definition_global_binding ACTION_GLOBAL_BINDINGS[] = {
-    { .canonical_name = "Fixture Action Self",
-      .instruction = { .op = BF_OWNER, .type = PIN_HANDLE } },
-};
-static const native_definition_pack ACTION_PACK = {
-    .definitions = ACTION_DEFINITIONS,
-    .definition_count = NATIVE_COUNT(ACTION_DEFINITIONS),
-    .bindings = ACTION_BINDINGS,
-    .binding_count = NATIVE_COUNT(ACTION_BINDINGS),
-    .global_definitions = ACTION_GLOBALS,
-    .global_count = NATIVE_COUNT(ACTION_GLOBALS),
-    .global_bindings = ACTION_GLOBAL_BINDINGS,
-    .global_binding_count = NATIVE_COUNT(ACTION_GLOBAL_BINDINGS),
-};
-static const char HOST_ONLY_SOURCE[] = "package host_only\n"
-                                       "pub Probe :: () -> int {\n"
-                                       "    return host_only_probe();\n"
-                                       "}\n";
-static const char HOST_DEPENDENCY_SOURCE[] = "package host_dependency\n"
-                                             "pub Probe :: () -> int {\n"
-                                             "    return host_only_probe();\n"
-                                             "}\n";
+
 #define UNCHECKED_COLLECTION_ERROR_BODY                                        \
     "@error pub Failure :: struct { code: int; }\n"                            \
     "pub Read :: () -> Failure? { return {code: 3}; }\n"                       \
     "pub Broken :: () { Read(); }\n"
-static const char UNCHECKED_COLLECTION_ERROR_SOURCE
-    [] = "package host_only\n" UNCHECKED_COLLECTION_ERROR_BODY;
-static const char UNCHECKED_DEPENDENCY_ERROR_SOURCE
-    [] = "package host_dependency\n" UNCHECKED_COLLECTION_ERROR_BODY;
-static const char UNCHECKED_PROJECT_ERROR_SOURCE
-    [] = "package lib\n" UNCHECKED_COLLECTION_ERROR_BODY;
+
 #undef UNCHECKED_COLLECTION_ERROR_BODY
-static const sample samples[] = {
-    { .name = "unused collection host capability is not required",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\npub Value :: () -> int { return 7; }\n",
-      .collection_source = HOST_ONLY_SOURCE,
-      .project_modules = 1,
-      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
-    { .name = "unused collection ill-typed body is not checked",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\npub Value :: () -> int { return 7; }\n",
-      .collection_source = "package host_only\npub Broken :: () -> int { "
-                           "return true; }\n",
-      .project_modules = 1,
-      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
-    { .name = "unused collection declaration is not checked",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\npub Value :: () -> int { return 7; }\n",
-      .collection_source = "package host_only\npub Broken :: (value: Missing) "
-                           "-> int { return 0; }\n",
-      .project_modules = 1,
-      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
-    { .name = "unused collection dependencies stay outside closure",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\npub Value :: () -> int { return 7; }\n",
-      .collection_source = "package host_only\nimport dep "
-                           "\"core:host_dependency\"\n"
-                           "pub Value :: () -> int { return 2; }\n",
-      .collection_dependency = HOST_DEPENDENCY_SOURCE,
-      .project_modules = 1,
-      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
-    { .name = "direct collection import requires its host capability",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport host \"core:host_only\"\n"
-                "pub Value :: () -> int { return 7; }\n",
-      .collection_source = HOST_ONLY_SOURCE,
-      .message = "Unknown function 'host_only_probe'",
-      .line = 3,
-      .column = 12 },
-    { .name = "transitive collection import requires its host capability",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport host \"core:host_only\"\n"
-                "pub Value :: () -> int { return 7; }\n",
-      .collection_source = "package host_only\nimport dep "
-                           "\"core:host_dependency\"\n"
-                           "pub Value :: () -> int { return 2; }\n",
-      .collection_dependency = HOST_DEPENDENCY_SOURCE,
-      .message = "Unknown function 'host_only_probe'",
-      .line = 3,
-      .column = 12 },
-    { .name = "unrelated project package remains checked",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\npub Value :: () -> int { return 7; }\n",
-      .library = "package lib\npub Probe :: () -> int {\n"
-                 "    return host_only_probe();\n}\n",
-      .collection_source = "package host_only\npub Value :: () -> int { return "
-                           "2; }\n",
-      .message = "Unknown function 'host_only_probe'",
-      .line = 3,
-      .column = 12 },
-    { .name = "unrelated project imports retain collection checking",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\npub Value :: () -> int { return 7; }\n",
-      .library = "package lib\nimport host \"core:host_only\"\n"
-                 "pub Value :: () -> int { return 2; }\n",
-      .collection_source = HOST_ONLY_SOURCE,
-      .message = "Unknown function 'host_only_probe'",
-      .line = 3,
-      .column = 12 },
-    { .name = "independent project package remains in emitted closure",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\npub Value :: () -> int { return 7; }\n",
-      .library = "package lib\npub Independent :: () -> int { return 9; }\n",
-      .collection_source = HOST_ONLY_SOURCE,
-      .project_modules = 2,
-      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
-    { .name = "unused collection unchecked error stays outside closure",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\npub Value :: () -> int { return 7; }\n",
-      .collection_source = UNCHECKED_COLLECTION_ERROR_SOURCE,
-      .project_modules = 1,
-      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
-    { .name = "direct collection import checks error obligations",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport host \"core:host_only\"\n"
-                "pub Value :: () -> int { return 7; }\n",
-      .collection_source = UNCHECKED_COLLECTION_ERROR_SOURCE,
-      .message = "Error result is ignored on a reachable path; check, report, store or return it",
-      .oracle_package = "core:host_only",
-      .same_rejection = true },
-    { .name = "transitive collection import checks error obligations",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport host \"core:host_only\"\n"
-                "pub Value :: () -> int { return 7; }\n",
-      .collection_source = "package host_only\nimport dep \"core:host_dependency\"\n"
-                           "pub Value :: () -> int { return 2; }\n",
-      .collection_dependency = UNCHECKED_DEPENDENCY_ERROR_SOURCE,
-      .message = "Error result is ignored on a reachable path; check, report, store or return it",
-      .oracle_package = "core:host_dependency",
-      .same_rejection = true },
-    { .name = "active collection executes checked error results",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport host \"core:host_only\"\n"
-                "pub Value :: () -> int { return host.Value(); }\n",
-      .collection_source = "package host_only\n@error pub Failure :: struct { code: int; }\n"
-                           "Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }\n"
-                           "pub Value :: () -> int { read := Read(); if read.error { return read.value + read.error.code; } return read.value; }\n",
-      .calls = { { .function = "Value", .arguments = "[]", .expected = "[10]" } } },
-#include "fallible_chibi_samples.h"
-    { .name = "char validates dynamic scalars before narrowing",
-      .group = TYPE_SAMPLES,
-      .char_checks = true,
-      .source = "package facts\n"
-                "Signed :: (n: i64) -> int { return int(char(n)); }\n"
-                "Unsigned :: (n: u64) -> int { return int(char(n)); }\n"
-                "Narrow :: (n: int) -> int { return int(char(n)); }",
-      .calls = { { .function = "Narrow", .arguments = "[-1]", .diagnostic = "Value does not fit in char" },
-                 { .function = "Narrow", .arguments = "[55296]", .diagnostic = "Value does not fit in char" },
-                 { .function = "Narrow", .arguments = "[57343]", .diagnostic = "Value does not fit in char" },
-                 { .function = "Narrow", .arguments = "[1114112]", .diagnostic = "Value does not fit in char" },
-                 { .function = "Signed", .arguments = "[4294967296]", .diagnostic = "Value does not fit in char" },
-                 { .function = "Signed",
-                   .arguments = "[-9223372036854775808]",
-                   .diagnostic = "Value does not fit in char" },
-                 { .function = "Unsigned",
-                   .arguments = "[18446744073709551615]",
-                   .diagnostic = "Value does not fit in char" },
-                 { .function = "Unsigned",
-                   .arguments = "[4294967296]",
-                   .diagnostic = "Value does not fit in char" },
-                 { .function = "Signed", .arguments = "[1114111]", .expected = "[1114111]" },
-                 { .function = "Unsigned", .arguments = "[0]", .expected = "[0]" } } },
-    { .name = "ordinary native numeric overload remains available",
-      .group = TYPE_SAMPLES,
-      .c_string_probe = true,
-      .traced = true,
-      .source = "package facts\nRun :: () -> int { value: int = 65; return "
-                "native.kernel(value); }",
-      .calls = { { .function = "Run", .arguments = "[]", .expected = "[1]" } } },
-    { .name = "collection length beside the vector natives",
-      .group = TYPE_SAMPLES,
-      .game = true,
-      .source = "package facts\nRun :: () -> int {\n"
-                "    parts: string[] = [\"a\", \"b\"];\n"
-                "    n: int = 0;\n"
-                "    while (length(parts) < 4 - 1) { parts.append(\"c\"); n += 1; }\n"
-                "    return n + length(parts);\n}",
-      .calls = { { .function = "Run", .arguments = "[]", .expected = "[4]" } } },
-    { .name = "core-math-imported-values",
-      .group = IMPORT_SAMPLES,
-      .math = true,
-      .game = true,
-      .source =
-          "package facts\nimport math \"core:math\"\nimport ease "
-          "\"core:math/ease\"\n"
-          "pub Check :: () -> bool { x: number = 16777215; "
-          "return math.InverseLerp(-1, 16777216, x) == 1 && "
-          "math.InverseLerp(6, 2, 3) == 0.75 && math.Lerp(2, 6, 0.25) == 3 && "
-          "ease.QuadraticInOut(0.5) == 0.5; }\n"
-          "pub Spring :: () -> bool { spring: math.Spring = {position: 1, "
-          "velocity: 0}; "
-          "next := math.AdvanceSpring(spring, 0, 1, 1, 0.125); "
-          "return next.position > 0.8140309 && next.position < 0.8140313 && "
-          "next.velocity > -2.2499655 && next.velocity < -2.2499635; }\n"
-          "pub Narrow :: () -> bool { wide: f64 = 16777217; "
-          "return math.InverseLerp(16777216, 16777218, number(wide)) == 0; }\n",
-      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" },
-                 { .function = "Spring", .arguments = "[]", .expected = "[true]" },
-                 { .function = "Narrow", .arguments = "[]", .expected = "[true]" } } },
-    { .name = "core-math-rejects-implicit-f64-narrowing",
-      .group = IMPORT_SAMPLES,
-      .math = true,
-      .game = true,
-      .source = "package facts\nimport math \"core:math\"\n"
-                "pub Narrow :: (value: f64) -> number { return "
-                "math.InverseLerp(16777216, 16777218, value); }\n",
-      .message = "argument differs from its parameter type",
-      .line = 3,
-      .column = 47 },
-    { .name = "import alias cannot fall through to assertion intrinsic",
-      .group = IMPORT_SAMPLES,
-      .game = true,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "One :: () -> int { lib.assert(false); return 1; }",
-      .library = "package lib\npub Other :: () -> int { return 2; }",
-      .message = "Unknown function 'assert'",
-      .oracle_message = "Unknown callable 'lib.assert'",
-      .same_rejection = true,
-      .line = 3,
-      .column = 20 },
-    { .name = "read in place",
-      .group = IMPORT_SAMPLES,
-      .aliases = true,
-      .source = "package facts\n"
-                "Note :: struct { text: string; count: int; }\n"
-                "AliasedSum :: (notes: Note[]) -> int {\n"
-                "    total: int = 0;\n"
-                "    for (note in notes) { total += note.count; }\n"
-                "    first := notes[0];\n    return total + first.count * "
-                "100;\n}\n"
-                "CopiedWalk :: (notes: Note[]) -> int {\n"
-                "    xs := notes;\n    total: int = 0;\n"
-                "    for (note in xs) { xs[1] = {text: \"z\", count: 100}; "
-                "total += note.count; }\n"
-                "    return total;\n}\n"
-                "LentFind :: (notes: Note[], text: string) -> int {\n"
-                "    index: int = 0;\n"
-                "    while (index < notes.length()) {\n"
-                "        note := notes[index];\n"
-                "        if (note.text == text && note.count > 0) { return index; }\n"
-                "        index += 1;\n    }\n    return -1;\n}\n"
-                "CopiedFind :: (notes: Note[]) -> int {\n"
-                "    note := notes[1];\n    notes[1] = {text: \"z\", count: 100};\n"
-                "    return note.count;\n}\n"
-                "WalkedSum :: (notes: Note[]) -> int {\n"
-                "    total: int = 0;\n    more: Note[] = [{text: \"c\", count: 3}];\n"
-                "    for (note in notes) { total += note.count; }\n"
-                "    for (note in more) { total += note.count; }\n    return total;\n}",
-      .calls = { { .function = "WalkedSum",
-                   .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
-                                "\"b\",\"count\":2}]]",
-                   .expected = "[6]" },
-                 { .function = "AliasedSum",
-                   .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
-                                "\"b\",\"count\":2}]]",
-                   .expected = "[103]" },
-                 { .function = "CopiedWalk",
-                   .arguments = "[[{\"text\":\"x\",\"count\":1},{\"text\":"
-                                "\"y\",\"count\":2}]]",
-                   .expected = "[3]" },
-                 { .function = "LentFind",
-                   .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
-                                "\"b\",\"count\":2}],\"b\"]",
-                   .expected = "[1]" },
-                 { .function = "CopiedFind",
-                   .arguments = "[[{\"text\":\"x\",\"count\":1},{\"text\":"
-                                "\"y\",\"count\":2}]]",
-                   .expected = "[2]" } } },
-    { .name = "plain drops",
-      .group = IMPORT_SAMPLES,
-      .drops = true,
-      .source = "package facts\n"
-                "Point :: struct { x: int; y: int; }\n"
-                "Shape :: union { Dot(at: Point) | Line(a: int, b: int) }\n"
-                "Bag :: union { Items(xs: int[]) | Size(n: int) }\n"
-                "Make :: (x: int) -> Point { return {x: x, y: x + 1}; }\n"
-                "Sum :: (p: Point) -> int { return p.x + p.y; }\n"
-                "Width :: (s: Shape) -> int {\n"
-                "    switch s { case .Dot(at): return at.x; case .Line(a, b): return b - a; }\n}\n"
-                "Count :: (b: Bag) -> int {\n"
-                "    switch b { case .Items(xs): return length(xs); case .Size(n): return n; }\n}\n"
-                "PlainPoint :: (x: int) -> int { return Sum(Make(x)); }\n"
-                "PlainLine :: (x: int) -> int { return Width(Shape.Line(x, x * 3)); }\n"
-                "PlainDot :: (x: int) -> int { return Width(Shape.Dot(Make(x))); }\n"
-                "HeldBag :: (n: int) -> int { return Count(Bag.Items([n, n])); }\n"
-                "HeldArray :: (n: int) -> int { return length(Counted(n)); }\n"
-                "HeldExtend :: (n: int) -> int { xs: int[] = [1]; xs.extend(Counted(n)); xs.append(n); return xs[1] + xs[2]; }\n"
-                "HeldPush :: (n: int) -> int { bags: Bag[] = []; bags.append(Bag.Items(Counted(n))); bags.append(Bag.Size(n)); return Count(bags[0]) + Count(bags[1]); }\n"
-                "Counted :: (n: int) -> int[] { xs: int[] = []; xs.append(n); return xs; }",
-      .calls = { { .function = "PlainPoint", .arguments = "[3]", .expected = "[7]" },
-                 { .function = "PlainLine", .arguments = "[2]", .expected = "[4]" },
-                 { .function = "PlainDot", .arguments = "[2]", .expected = "[2]" },
-                 { .function = "HeldBag", .arguments = "[4]", .expected = "[2]" },
-                 { .function = "HeldArray", .arguments = "[4]", .expected = "[1]" },
-                 { .function = "HeldExtend", .arguments = "[4]", .expected = "[8]" },
-                 { .function = "HeldPush", .arguments = "[4]", .expected = "[5]" } } },
-    /* Records and union payloads hold float and double values; an integer
-     * stored there converts as stage zero converts it. */
-    /* int8, int16, uint16 and uint as stage zero computes them: mixed
-     * operands widen to the type that holds both, and records hold them. */
-    /* Compound arithmetic rejects differing typed integers before assignment
-     * widening, both for a local and for a stored field. */
-    { .name = "mixed compound assignment",
-      .source = "package facts\nGrow :: (b: u8) -> int { a: int = 1; a += b; "
-                "return a; }\n",
-      .message = "Mismatched integer types int and u8; convert one operand",
-      .line = 2,
-      .column = 38 },
-    { .name = "mixed compound field assignment",
-      .source = "package facts\nNote :: struct { count: int; }\n"
-                "Grow :: (b: u8) -> int { n: Note = {count: 1}; n.count += "
-                "b; return n.count; }\n",
-      .message = "Mismatched integer types int and u8; convert one operand",
-      .line = 3,
-      .column = 48 },
-    { .name = "compound assignment preserves contextual and explicit operands",
-      .debug_metadata = true,
-      .source = "package facts\nNote :: struct { count: int; }\n"
-                "Plain :: (b: u8) -> int { a: int = 1; a = b; return a; }\n"
-                "Local :: (b: u8) -> int { a: int = 1; a += int(b); return "
-                "a; }\n"
-                "Literal :: () -> int { a: int = 1; a += 2; return a; }\n"
-                "Field :: (b: u8) -> int { n: Note = {count: 1}; n.count += "
-                "int(b); return n.count; }\n"
-                "FieldLiteral :: () -> int { n: Note = {count: 1}; n.count += "
-                "2; return n.count; }\n"
-                "Shift :: (a: int, count: u8) -> int { return a << count; "
-                "}\n",
-      .calls = { { .function = "Plain", .arguments = "[2]", .expected = "[2]" },
-                 { .function = "Local", .arguments = "[2]", .expected = "[3]" },
-                 { .function = "Literal", .arguments = "[]", .expected = "[3]" },
-                 { .function = "Field", .arguments = "[2]", .expected = "[3]" },
-                 { .function = "FieldLiteral", .arguments = "[]", .expected = "[3]" },
-                 { .function = "Shift", .arguments = "[3,1]", .expected = "[6]" } } },
-    { .name = "mixed compound reference assignment",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\n"
-                "Grow :: (a: ^int, b: u8) { a^ += b; }\n",
-      .message = "Mismatched integer types int and u8; convert one operand",
-      .line = 2,
-      .column = 28 },
-    { .name = "mixed compound reference field assignment",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\n"
-                "Note :: struct { count: int; }\n"
-                "Grow :: (n: ^Note, b: u8) { n.count += b; }\n",
-      .message = "Mismatched integer types int and u8; convert one operand",
-      .line = 3,
-      .column = 29 },
-    { .name = "mixed compound boxed local assignment",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\n"
-                "Touch :: (v: ^int) { v^ += 0; }\n"
-                "Grow :: (b: u8) -> int { a: int = 1; Touch(&a); a += b; "
-                "return a; }\n",
-      .message = "Mismatched integer types int and u8; convert one operand",
-      .line = 3,
-      .column = 49 },
-    { .name = "mixed compound boxed parameter assignment",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\n"
-                "Touch :: (v: ^int) { v^ += 0; }\n"
-                "Grow :: (a: int, b: u8) -> int { Touch(&a); a += b; "
-                "return a; }\n",
-      .message = "Mismatched integer types int and u8; convert one operand",
-      .line = 3,
-      .column = 45 },
-    { .name = "compound reference and boxed operands preserve effects",
-      .debug_metadata = true,
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\n"
-                "Note :: struct { count: int; }\n"
-                "Touch :: (v: ^int) { v^ += 0; }\n"
-                "Bump :: (v: ^int, b: u8) { v^ += int(b); }\n"
-                "BumpField :: (n: ^Note, b: u8) { n.count += int(b); }\n"
-                "Source :: (calls: ^int) -> int { calls^ += 1; return 2; }\n"
-                "Ref :: () -> int { n: int = 1; Bump(&n, u8(2)); return n; "
-                "}\n"
-                "RefField :: () -> int { n: Note = {count: 1}; BumpField(&n, "
-                "u8(2)); return n.count; }\n"
-                "Box :: () -> int { n: int = 1; Touch(&n); n += int(u8(2)); "
-                "return n; }\n"
-                "BoxParam :: (n: int) -> int { Touch(&n); n += 2; return n; }\n"
-                "Once :: () -> int { n: Note = {count: 1}; calls: int = 0; "
-                "n.count += Source(&calls); return n.count * 10 + calls; }\n"
-                "Bits :: (v: int) -> int { n: int = 6; n &= v; n |= 8; n ^= 1; "
-                "return n; }\n"
-                "Clamp :: (v: int) -> u8 { return u8(v); }\n",
-      .calls = { { .function = "Ref", .arguments = "[]", .expected = "[3]" },
-                 { .function = "RefField", .arguments = "[]", .expected = "[3]" },
-                 { .function = "Box", .arguments = "[]", .expected = "[3]" },
-                 { .function = "BoxParam", .arguments = "[1]", .expected = "[3]" },
-                 { .function = "Once", .arguments = "[]", .expected = "[31]" },
-                 { .function = "Bits", .arguments = "[3]", .expected = "[11]" },
-                 { .function = "Clamp", .arguments = "[300]", .expected = "[255]" } } },
-    { .name = "mixed compound bitwise assignment",
-      .source = "package facts\nGrow :: (b: u8) -> int { a: int = 1; a &= b; "
-                "return a; }\n",
-      .message = "Mismatched integer types int and u8; convert one operand",
-      .line = 2,
-      .column = 38 },
-    /* Integer operations never fail at run time: unsigned negation wraps, a
-     * count at or past the width gives 0 and a zero divisor gives 0. */
-    /* An untyped constant expression that names a constant takes its type
-     * from its use, and only integer division by zero is an error. */
-    /* A shift has its left operand's type, and a count past that type's
-     * maximum clamps to it. Exact constant shifts retain the written count. */
-    /* uint64 and byte have every operator, unsigned ordering and division
-     * included, as stage zero computes them. */
-    /* Constants fold integer expressions of literals and other constants,
-     * declared in any order and in an imported package. */
-    /* An omitted argument takes its parameter's literal default. */
-    /* An integer switch tests its arms in order and runs the default arm
-     * after them all, wherever it is written. */
-    /* Range loops count as stage zero's do: inclusive and half-open,
-     * forward and reversed, ending at a bound without wrapping; `for x, i`
-     * names an array's item and its index, and `for <` walks it backwards. */
-    /* Observable sequence semantics use the supported package subset: ordinary
-     * parameters, unnamed results, scalar record fields and inferred optionals.
-     * Multi() below supplies a native result bank; authored named collection
-     * results and nonnumeric state remain outside this fixture's subset. */
-    { .name = "value arguments and result banks",
-      .group = COLLECTION_SAMPLES,
-      .c_string_probe = true,
-      .probe_calls = true,
-      .source =
-          "package facts\n"
-          "Change :: (pointer: ^(int[])) -> int { pointer^[0] = 9; pointer.append(3); return 7; }\n"
-          "Observe :: (values: int[], changed: int) -> int { return values[0] * 100 + values.length() * 10 + changed; }\n"
-          "ObservePointer :: (pointer: ^(int[]), changed: int) -> int { return pointer^[0] + pointer^.length() * 10 + changed; }\n"
-          "ChangeRows :: (pointer: ^(int[][])) -> int { pointer^[0].append(7); return 0; }\n"
-          "ObserveRows :: (values: int[][], changed: int) -> int { return values[0][0] * 10 + values[0].length() + changed; }\n"
-          "ChangeMap :: (pointer: ^([int: int])) -> int { pointer^[1] = 8; return 2; }\n"
-          "ObserveMap :: (values: [int: int], changed: int) -> int { return values[1] * 10 + changed; }\n"
-          "EarlierArray :: () -> int { values: int[] = [1, 2]; observed := Observe(values, Change(&values)); return observed * 1000 + values[0] * 10 + values.length(); }\n"
-          "EarlierNested :: () -> int { values: int[][] = [[1]]; observed := ObserveRows(values, ChangeRows(&values)); return observed * 10 + values[0].length(); }\n"
-          "EarlierPointer :: () -> int { values: int[] = [1]; return ObservePointer(&values, Change(&values)); }\n"
-          "EarlierMap :: () -> int { values: [int: int] = [1: 3]; observed := ObserveMap(values, ChangeMap(&values)); return observed * 10 + values[1]; }\n"
-          "TupleLifetime :: () -> int { p := Multi(); total: int = 0; if total == 0 { q := p; extracted := q.values; extracted[0] = 8; total = extracted[0] + q.values[0]; } return total * 100 + p.values[0] * 10 + p.stamp; }\n"
-          "KeepTupleValue :: () -> int[] { p := Multi(); if p.stamp > 0 { q := p; return q.values; } return []; }\n"
-          "TupleReturned :: () -> int { values := KeepTupleValue(); values.append(5); return values[0] * 100 + values[2] * 10 + values.length(); }\n",
-      .calls = {
-          { .function = "EarlierArray", .arguments = "[]",
-            .expected = "[127093]" },
-          { .function = "EarlierNested", .arguments = "[]",
-            .expected = "[112]" },
-          { .function = "EarlierPointer", .arguments = "[]",
-            .expected = "[36]" },
-          { .function = "EarlierMap", .arguments = "[]",
-            .expected = "[328]" },
-          { .function = "TupleLifetime", .arguments = "[]",
-            .expected = "[1139]" },
-          { .function = "TupleReturned", .arguments = "[]",
-            .expected = "[353]" },
-      } },
-    /* Engine array kernels take arrays of managed pointers without retaining
-     * them, so the native argument boundary does not reject or walk them. */
-    /* Fixed scalar-result calls exercise aliases, escaping storage,
-     * grouped types, widening, aggregate replacement, and one two-node cycle. */
-    /* A compound write reads its pointer target once, before its value, as
-     * stage zero caches the target. Each call adds to `calls`, so receivers
-     * and values evaluate exactly once. */
-    /* A narrower integer widens when it is stored through a pointer or into
-     * an addressed local, as ordinary assignment widens it. */
-    /* A float operand widens in a compound through a pointer, an addressed
-     * local and a pointer's field, as it does for an ordinary local. */
-    /* Mixed integer compounds reject through a pointer, as they do for an
-     * ordinary local. */
-    /* A member of a dereferenced pointer is the pointee's field, as in stage
-     * zero, even when the native call that returned the pointer names its
-     * output the same, directly or through a local. */
-    { .name = "managed pointer named result member",
-      .group = COLLECTION_SAMPLES,
-      .debug_metadata = true,
-      .source = "package facts\n"
-                "Node :: struct { item: int; }\n"
-                "Direct :: () -> int { node: Node = {item: 7}; "
-                "nodes: ^Node[] = [&node]; return get(nodes, 0).item; }\n"
-                "Inferred :: () -> int { node: Node = {item: 7}; "
-                "nodes: ^Node[] = [&node]; p := get(nodes, 0); "
-                "return p.item; }\n",
-      .calls = { { .function = "Direct", .arguments = "[]", .expected = "[7]" },
-                 { .function = "Inferred", .arguments = "[]", .expected = "[7]" } } },
-    /* A callable's named result cannot be a pointer in stage one, so its name
-     * never meets a pointee's field there. */
-    /* A pointer to a pointer passed on dereferenced lends the target it
-     * holds, and an address of a parenthesized dereference escapes. */
-    /* A scoped `n^` keeps its own source span. */
-    { .name = "forwarded callbacks preserve sequence values",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Count :: (input: int[]) -> int { return input.length(); }\n"
-                "Change :: (input: int[]) -> int[] { input.append(9); "
-                "input[0] = 7; return input; }\n"
-                "ReadNamed :: (input: int[]) -> int { return "
-                "lib.ReadForward(input, Count); }\n"
-                "ReadInline :: (input: int[]) -> int { return "
-                "lib.ReadForward(input, (row: int[]) => row.length()); }\n"
-                "CopiedNamed :: () -> int { original: int[] = [1, 2]; "
-                "copied := lib.TransformForward(original, Change); return "
-                "original[0] * 1000 + original.length() * 100 + copied[0] * "
-                "10 + copied.length(); }\n"
-                "CopiedInline :: () -> int { original: int[] = [1, 2]; "
-                "copied := lib.TransformForward(original, (row: int[]) { "
-                "row.append(9); row[0] = 8; return row; }); return "
-                "original[0] * 1000 + original.length() * 100 + copied[0] * "
-                "10 + copied.length(); }\n",
-      .library = "package lib\n"
-                 "pub ReadForward :: (input: $T, operation: fn(data: T) -> "
-                 "int) -> int { return Read(input, operation); }\n"
-                 "Read :: (input: $T, operation: fn(data: T) -> int) -> int { "
-                 "return operation(data: input); }\n"
-                 "pub TransformForward :: (input: $T, operation: fn(data: T) "
-                 "-> T) -> T { return Transform(input, operation); }\n"
-                 "Transform :: (input: $T, operation: fn(data: T) -> T) -> T { "
-                 "return operation(data: input); }\n",
-      .calls = { { .function = "ReadNamed", .arguments = "[[1,2,3]]", .expected = "[3]" },
-                 { .function = "ReadNamed", .arguments = "[[]]", .expected = "[0]" },
-                 { .function = "ReadInline", .arguments = "[[1,2]]", .expected = "[2]" },
-                 { .function = "ReadInline", .arguments = "[[]]", .expected = "[0]" },
-                 { .function = "CopiedNamed", .arguments = "[]", .expected = "[1273]" },
-                 { .function = "CopiedInline", .arguments = "[]", .expected = "[1283]" } } },
-    { .name = "forwarded callback labels survive erased and reordered arguments",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Join :: (left: int, right: int) -> int { return left * 100 + "
-                "right; }\n"
-                "Mark :: (order: ^int, digit: int, value: int) -> int { "
-                "order^ = order^ * 10 + digit; return value; }\n"
-                "Positional :: () -> int { return lib.Forward(2, 3, Join, "
-                "4); }\n"
-                "Named :: () -> int { order := 0; result := "
-                "lib.Forward(tail: Mark(&order, 1, 4), operation: Join, "
-                "input: Mark(&order, 2, 3), Count: 2); return order * 1000 + "
-                "result; }\n"
-                "Inline :: () -> int { return lib.Forward(2, 3, "
-                "(a: int, b: int) => a * 10 + b, 4); }\n",
-      .library = "package lib\n"
-                 "pub Forward :: ($Count: int, input: $T, operation: "
-                 "fn(first: T, second: T) -> T, tail: T) -> T { return "
-                 "Apply(operation, Count, input, tail); }\n"
-                 "Apply :: (operation: fn(first: int, second: int) -> int, "
-                 "$Offset: int, input: int, tail: int) -> int { return "
-                 "operation(second: tail + Offset, first: input); }\n",
-      .calls = { { .function = "Positional", .arguments = "[]", .expected = "[306]" },
-                 { .function = "Named", .arguments = "[]", .expected = "[12306]" },
-                 { .function = "Inline", .arguments = "[]", .expected = "[36]" } } },
-    { .name = "inline pointer parameter shadows enclosing pointer parameter",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Bump :: (value: ^int) -> int { value^ += 1; return value^; }\n"
-                "Held :: (value: ^int) -> int { pointer := value; pointer^ += "
-                "2; return pointer^; }\n"
-                "Observe :: (value: ^int) -> int { other := 7; observed := "
-                "lib.Apply(&other, (value: ^int) -> int { value^ += 2; return "
-                "value^; }); return value^ * 100 + observed * 10 + other; }\n"
-                "Main :: () -> int { original := 3; observed := "
-                "Observe(&original); return observed * 10 + original; }\n"
-                "Scoped :: () -> int { original := 3; observed := "
-                "lib.Apply(&original, Bump); return observed * 10 + original; }\n"
-                "Managed :: () -> int { original := 3; observed := "
-                "lib.Apply(&original, Held); return observed * 10 + original; }\n",
-      .library = "package lib\npub Apply :: (input: ^int, function: "
-                 "fn(value: ^int) -> int) -> int { return function(input); }\n",
-      .calls = { { .function = "Main", .arguments = "[]", .expected = "[3993]" },
-                 { .function = "Scoped", .arguments = "[]", .expected = "[44]" },
-                 { .function = "Managed", .arguments = "[]", .expected = "[55]" } } },
-    { .name = "non-escaping callable algorithms",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Less :: (a: int, b: int) -> bool { return a < b; }\n"
-                "Positive :: (value: int) -> bool { return value > 0; }\n"
-                "Named :: () -> int { values: int[] = [3, 1, 2]; sorted := "
-                "lib.Sorted(values, Less); "
-                "if lib.Any(sorted, Positive) { return values[0] * 1000 + "
-                "sorted[0] * 100 + sorted[1] * 10 + sorted[2]; } return 0; }\n"
-                "Inline :: () -> int { values: int[] = [3, 1, 2]; sorted := "
-                "lib.Sorted(values, (a: int, b: int) => a > b); "
-                "if lib.Any(sorted, (value: int) => value == 2) { return "
-                "sorted[0] * 100 + sorted[1] * 10 + sorted[2]; } return 0; }\n"
-                "Gain :: (input: number) -> number { return input * 2.0; }\n"
-                "ShaderHelper :: () -> number { return lib.Remap(0.25, Gain); "
-                "}\n"
-                "LoopShadow :: () -> int { item := 9; return lib.Remap(3, "
-                "(value: int) { total := 0; for item in 0..<value { total += "
-                "item; } return total; }) + item; }\n",
-      .library = "package lib\n"
-                 "pub Sorted :: (values: $T[], less: fn(a: T, b: T) -> bool) "
-                 "-> T[] {\n"
-                 "  result := values; i := 1; while i < length(result) { j := "
-                 "i; "
-                 "while j > 0 && less(result[j], result[j - 1]) { item: T = "
-                 "result[j]; result[j] = result[j - 1]; result[j - 1] = item; "
-                 "j -= 1; } i += 1; } return result; }\n"
-                 "pub Any :: (values: $T[], predicate: fn(value: T) -> bool) "
-                 "-> bool { return AnyInternal(values, predicate); }\n"
-                 "AnyInternal :: (values: $T[], predicate: fn(value: T) -> "
-                 "bool) -> bool { for value in values { if predicate(value) { "
-                 "return true; } } return false; }\n"
-                 "pub Remap :: (value: $T, transform: (fn(value: T) -> T)) -> "
-                 "T { return transform(value: value); }\n",
-      .calls = { { .function = "Named", .arguments = "[]", .expected = "[3123]" },
-                 { .function = "Inline", .arguments = "[]", .expected = "[321]" },
-                 { .function = "ShaderHelper", .arguments = "[]", .expected = "[0.5]" },
-                 { .function = "LoopShadow", .arguments = "[]", .expected = "[12]" } } },
-    /* No declaration needs specialization. Ordinary body typing must reject
-     * the lambda at its source location instead of treating its parameter as
-     * a parameter of Run. */
-    { .name = "inline function cannot satisfy scalar parameter without templates",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\n"
-                "Take :: (value: int) -> int { return value; }\n"
-                "Run :: () -> int { return Take((value: int) => value); }\n",
-      .message = "Inline functions may only be passed to a callable parameter",
-      .line = 3,
-      .column = 32 },
-    { .name = "callable capture rejection",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Main :: (limit: int) -> bool { return lib.Apply(3, (value: "
-                "int) => value > limit); }\n",
-      .library = "package lib\npub Apply :: (value: int, predicate: fn(value: "
-                 "int) -> bool) -> bool { return predicate(value); }\n",
-      .message = "Inline functions cannot capture enclosing locals",
-      .line = 3,
-      .column = 76 },
-    { .name = "callable pattern bindings shadow enclosing locals",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Choice :: union { Some(amount: int) | None }\n"
-                "IfPattern :: () -> int { payload := 90; return lib.Remap(3, "
-                "(value: int) { choice := Choice.Some(value); if choice is "
-                ".Some(payload) && payload > 0 { return payload + 1; } return "
-                "0; }) + payload; }\n"
-                "WhilePattern :: () -> int { payload := 90; return "
-                "lib.Remap(3, "
-                "(value: int) { choice := Choice.Some(value); total := 0; "
-                "while "
-                "choice is .Some(payload) && payload > 0 { total += payload; "
-                "choice = Choice.Some(payload - 1); } return total; }) + "
-                "payload; }\n",
-      .library = "package lib\npub Remap :: (value: int, transform: fn(value: "
-                 "int) -> int) -> int { return transform(value); }\n",
-      .calls = { { .function = "IfPattern", .arguments = "[]", .expected = "[94]" },
-                 { .function = "WhilePattern", .arguments = "[]", .expected = "[96]" } } },
-    { .name = "callable single result names do not change signature",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Named :: () -> (answer: int) { return 7; }\n"
-                "Unnamed :: () -> int { return 11; }\n"
-                "Main :: () -> int { return lib.UnnamedContract(Named) * 100 + "
-                "lib.NamedContract(Unnamed); }\n"
-                "Inline :: () -> int { answer := 90; return "
-                "lib.UnnamedContract(() -> (answer: int) { answer = 13; "
-                "return; }) + "
-                "lib.NamedContract(() => 17) + answer; }\n",
-      .library = "package lib\n"
-                 "pub UnnamedContract :: (function: fn() -> int) -> int { "
-                 "return function(); }\n"
-                 "pub NamedContract :: (function: fn() -> (expected: int)) -> "
-                 "int { return function(); }\n",
-      .calls = { { .function = "Main", .arguments = "[]", .expected = "[711]" },
-                 { .function = "Inline", .arguments = "[]", .expected = "[120]" } } },
-    { .name = "callable pattern binding cannot escape consequence",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Choice :: union { Some(amount: int) | None }\n"
-                "Main :: (payload: int) -> int { return lib.Remap(3, (value: "
-                "int) { choice := Choice.Some(value); if choice is "
-                ".Some(payload) "
-                "{ return value; } return payload; }); }\n",
-      .library = "package lib\npub Remap :: (value: int, transform: fn(value: "
-                 "int) -> int) -> int { return transform(value); }\n",
-      .message = "Inline functions cannot capture enclosing locals",
-      .line = 4,
-      .column = 151 },
-    { .name = "callable capture respects lexical scopes",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\noffset :: 1;\nimport lib \"project:lib\"\n"
-                "Main :: (offset: int) -> int { return lib.Remap(3, (value: "
-                "int) { if false { offset := 9; } return value + offset; }); "
-                "}\n",
-      .library = "package lib\npub Remap :: (value: int, transform: fn(value: "
-                 "int) -> int) -> int { return transform(value); }\n",
-      .message = "Inline functions cannot capture enclosing locals",
-      .line = 4,
-      .column = 108 },
-    { .name = "callable signature rejection",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Wrong :: (value: int) -> int { return value; }\n"
-                "Main :: () -> bool { return lib.Apply(3, Wrong); }\n",
-      .library = "package lib\npub Apply :: (value: int, predicate: fn(value: "
-                 "int) -> bool) -> bool { return predicate(value); }\n",
-      .message = "Function argument does not match the callable parameter "
-                 "signature",
-      .line = 4,
-      .column = 42 },
-    { .name = "callable inferred result rejects contextual widening",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Main :: () -> number { return lib.Apply(2.0, (value: number) "
-                "=> 1); }\n",
-      .library = "package lib\npub Apply :: (value: number, transform: "
-                 "fn(value: number) -> number) -> number { return "
-                 "transform(value); }\n",
-      .message = "Function argument does not match the callable parameter "
-                 "signature",
-      .line = 3,
-      .column = 46 },
-    { .name = "callable consumer cannot suspend",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "One :: () -> int { return 1; }\nMain :: () { pending := "
-                "lib.Apply(One); }\n",
-      .library = "package lib\npub Apply :: (function: fn() -> int) -> int { "
-                 "yield; return function(); }\n",
-      .message = "Non-escaping callable parameters require synchronous "
-                 "function bodies",
-      .line = 2,
-      .column = 1 },
-    { .name = "callable invocation cannot inherit target defaults",
-      .group = IMPORT_SAMPLES,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Pair :: (a: int = 1, b: int = 2) -> int { return a + b; "
-                "}\nMain :: () -> int { return lib.Apply(Pair); }\n",
-      .library = "package lib\npub Apply :: (function: fn(a: int, b: int) -> "
-                 "int) -> int { return function(b: 5); }\n",
-      .message = "call has the wrong number of arguments",
-      .line = 2,
-      .column = 68 },
-    /* An assert fails the call when its condition is false, with its
-     * message or its condition's source; it names its arguments as the core
-     * catalog does. */
-    { .name = "assertions",
-      .group = IMPORT_SAMPLES,
-      .game = true,
-      .source = "package facts\n"
-                "Double :: (n: int) -> int {\n"
-                "    assert(n > 0, \"n is positive\");\n"
-                "    assert(n < 100);\n"
-                "    assert(condition: n != 7, message: \"\");\n"
-                "    assert((n != 8), (\"not eight\"));\n"
-                "    assert(n != 9, \"a\\u0000b\");\n"
-                "    return n * 2;\n}",
-      .calls = { { .function = "Double", .arguments = "[3]", .expected = "[6]" },
-                 { .function = "Double", .arguments = "[-1]", .expected = NULL },
-                 { .function = "Double", .arguments = "[200]", .expected = NULL },
-                 { .function = "Double", .arguments = "[7]", .expected = NULL },
-                 { .function = "Double", .arguments = "[8]", .expected = NULL },
-                 { .function = "Double",
-                   .arguments = "[9]",
-                   .expected = NULL,
-                   .diagnostic = "Assertion failed: a\\0b" } } },
-    /* Package and imported constants. `lib.Scaled(2)` takes a default that
-     * stage zero reads from lib's catalog, at the call; `Triple(2)` one that
-     * the package's other file declares, whose occurrence is that file's. */
-    { .name = "formatting",
-      .source = "package facts\n"
-                "Label :: (n: int, name: string) -> string { return "
-                "format_text(\"{}:{}\", n, name); }\n"
-                "Plain :: () -> string { return format_text(\"plain\"); "
-                "}\n"
-                "Mixed :: (flag: bool) -> string { big: u64 = "
-                "0xFFFFFFFFFFFFFFFF; small: i64 = -3; return "
-                "format_text(\"{} {} {}\", flag, big, small); }",
-      .calls = { { .function = "Label", .arguments = "[3,\"x\"]", .expected = "[\"3:x\"]" },
-                 { .function = "Plain", .arguments = "[]", .expected = "[\"plain\"]" },
-                 { .function = "Mixed",
-                   .arguments = "[true]",
-                   .expected = "[\"true 18446744073709551615 -3\"]" } } },
-    /* A map parameter is the function's own value: removing a key leaves
-     * the caller's map as it was. */
-    { .name = "assert message",
-      .group = IMPORT_SAMPLES,
-      .game = true,
-      .source = "package facts\nCheck :: (n: int, m: string) -> int {\n"
-                "    assert(n > 0, m);\n    return n;\n}",
-      .message = "assert's message is a string constant",
-      .line = 3,
-      .column = 19 },
-    /* Unary complements are classified as literal-shaped for debug metadata.
-     * Their folded value still needs one watch, including through grouping. */
-    /* An untyped operand of a conversion is int64, or uint64 beyond it,
-     * in parentheses too. */
-    { .name = "qualified native calls",
-      .c_string_probe = true,
-      .host_effects = true,
-      .source = "package facts\nimport lib \"project:lib\"\n"
-                "Probe :: () -> int { return native.probe(\"seven..\"); }\n"
-                "Caller :: () -> int { return Probe(); }\n"
-                "Recursive :: (n: int) -> int { if (n <= 0) { return Probe(); "
-                "} return Recursive(n - 1); }\n"
-                "ImportedHost :: () -> int { return lib.Through(); }\n"
-                "Length :: () -> int { return native.length(\"four\"); }\n"
-                "Text :: () -> int { return native . overload(\"three\"); }\n"
-                "Integer :: (value: int) -> int { return native . "
-                "overload(value); }",
-      .library = "package lib\npub Through :: () -> int { return "
-                 "native.probe(\"lib\"); }" },
-    { .name = "qualified native import and local precedence",
-      .c_string_probe = true,
-      .source = "package facts\nimport native \"project:lib\"\n"
-                "Imported :: () -> int { return native.probe(\"seven..\"); }\n"
-                "Local :: () -> int { native: int[] = [1, 2]; "
-                "native.append(3); return length(native); }",
-      .library = "package lib\npub probe :: (value: string) -> int { return "
-                 "99; }",
-      .calls = { { .function = "Imported", .arguments = "[]", .expected = "[99]" },
-                 { .function = "Local", .arguments = "[]", .expected = "[3]" } } },
-    { .name = "qualified native missing",
-      .c_string_probe = true,
-      .source = "package facts\nCall :: () -> int { return native.absent(); }",
-      .message = "Unknown function 'native.absent'",
-      .line = 2,
-      .column = 35 },
-    { .name = "qualified native ambiguous",
-      .c_string_probe = true,
-      .source = "package facts\nCall :: () -> int { return "
-                "native.PROBE_ONE(\"x\"); }",
-      .message = "Ambiguous function 'native.PROBE_ONE'",
-      .line = 2,
-      .column = 35 },
-    { .name = "qualified native import missing",
-      .c_string_probe = true,
-      .source = "package facts\nimport native \"project:lib\"\nCall :: () -> "
-                "int { return native.probe(\"x\"); }",
-      .library = "package lib\npub Other :: () -> int { return 0; }",
-      .message = "Unknown function 'probe'",
-      .oracle_message = "Unknown callable 'native.probe'",
-      .same_rejection = true,
-      .line = 3,
-      .column = 28 },
-    { .name = "qualified native local shadow",
-      .c_string_probe = true,
-      .source = "package facts\nCall :: () -> int { native: int = 1; return "
-                "native.probe(\"x\"); }",
-      .message = "call needs a function name",
-      .line = 2,
-      .column = 45 },
-    { .name = "C-string dynamic boundary compiles", .c_string_probe = true, .source = "package facts\nDynamic :: (value: string) -> int { return cstring_probe(value); }" },
-    { .name = "C-string literal boundary",
-      .c_string_probe = true,
-      .source = "package facts\nOne :: () -> int { return "
-                "cstring_probe(\"a\\u0000b\"); }",
-      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
-      .same_rejection = true },
-    { .name = "C-string parenthesized boundary",
-      .c_string_probe = true,
-      .source = "package facts\nOne :: () -> int { return "
-                "cstring_probe((\"\\u0000b\")); }",
-      .message = "C-string boundary 'value' cannot accept NUL at byte 0",
-      .same_rejection = true },
-    /* A grouped or signed literal takes a floating type as a literal does,
-     * and each sign around it is watched. */
-    /* A floating literal's outer signs are each watched once; stage zero
-     * folds an integer one, a whole decimal too, to one constant. */
-    { .name = "grouped signed literal results",
-      .traced = true,
-      .source = "package facts\n"
-                "Half :: () -> f64 { return -(1.5); }\n"
-                "Back :: () -> f64 { return -(-(1.5)); }\n"
-                "Two :: () -> int { return -(2); }\n"
-                "Three :: () -> int { return -(+(-(3))); }\n"
-                "Plus :: () -> int { return +(-(4)); }\n"
-                "Whole :: () -> int { return -(+(2.0)); }\n"
-                "Unsigned :: () -> u8 { return +(2e0); }\n",
-      .calls = { { .function = "Half", .arguments = "[]", .expected = "[-1.5]" },
-                 { .function = "Back", .arguments = "[]", .expected = "[1.5]" },
-                 { .function = "Two", .arguments = "[]", .expected = "[-2]" },
-                 { .function = "Three", .arguments = "[]", .expected = "[3]" },
-                 { .function = "Plus", .arguments = "[]", .expected = "[-4]" },
-                 { .function = "Whole", .arguments = "[]", .expected = "[-2]" },
-                 { .function = "Unsigned", .arguments = "[]", .expected = "[2]" } } },
-    /* An overloaded native's untyped literal argument takes the overload
-     * stage zero picks (native_overload_reference_contract) and that
-     * overload's type, grouped, signed or a whole decimal. Stage zero folds a
-     * grouped one and its signs to one constant. */
-    { .name = "untyped literal overload argument",
-      .c_string_probe = true,
-      .traced = true,
-      .source = "package facts\n"
-                "Run :: () -> int { return native.overload(2); }\n"
-                "Grouped :: () -> int { return native.overload((-(2))); }\n"
-                "Whole :: () -> int { return native.overload(2.0); }\n"
-                "Exponent :: () -> int { return native.overload(1e0); }\n"
-                "Zero :: () -> int { return native.overload(0.0); }\n"
-                "Signed :: () -> int { return native.overload(-0.0); }\n"
-                "Signs :: () -> int { return native.overload(+(-(-(2)))); }\n"
-                "Decimal :: () -> int { return native.overload(-(2.0)); }\n",
-      .calls = { { .function = "Run", .arguments = "[]", .expected = "[2]" },
-                 { .function = "Grouped", .arguments = "[]", .expected = "[-2]" },
-                 { .function = "Signs", .arguments = "[]", .expected = "[2]" },
-                 { .function = "Decimal", .arguments = "[]", .expected = "[-2]" },
-                 { .function = "Whole", .arguments = "[]", .expected = "[2]" },
-                 { .function = "Exponent", .arguments = "[]", .expected = "[1]" },
-                 { .function = "Zero", .arguments = "[]", .expected = "[0]" },
-                 { .function = "Signed", .arguments = "[]", .expected = "[0]" } } },
-    /* Typed arguments choose the kernel their width prefers, i64 the f64
-     * one and the rest number, and literals take the number one. */
-    { .name = "typed overload kernels",
-      .c_string_probe = true,
-      .traced = true,
-      .source =
-          "package facts\n"
-          "Literal :: () -> int { return native.kernel(2); }\n"
-          "Decimal :: () -> int { return native.kernel(2.5); }\n"
-          "Integer :: () -> int { v: int = 3; return native.kernel(v * 2); }\n"
-          "Wide :: () -> int { v: i64 = 3; return native.kernel(v * 2); }\n"
-          "Single :: () -> int { v: number = 1.5; return native.kernel(v); }\n"
-          "Double :: () -> int { v: f64 = 1.5; return native.kernel(v); }\n",
-      .calls = { { .function = "Literal", .arguments = "[]", .expected = "[1]" },
-                 { .function = "Decimal", .arguments = "[]", .expected = "[1]" },
-                 { .function = "Integer", .arguments = "[]", .expected = "[1]" },
-                 { .function = "Wide", .arguments = "[]", .expected = "[2]" },
-                 { .function = "Single", .arguments = "[]", .expected = "[1]" },
-                 { .function = "Double", .arguments = "[]", .expected = "[2]" } } },
-    /* An argument before a call the overload depends on is still typed,
-     * converted and watched first, when the call has an effect and when it
-     * fails. */
-    { .name = "overload argument order",
-      .c_string_probe = true,
-      .traced = true,
-      .source = "package facts\n"
-                "Later :: () -> int { return native.probe(\"ab\"); }\n"
-                "Fails :: () -> int { xs: int[] = []; return xs[0]; }\n"
-                "Before :: () -> int { return native.pair(2, Later()); }\n"
-                "After :: () -> int { return native.pair(Later(), 2); }\n"
-                "Stops :: () -> int { return native.pair(-(2), Fails()); }\n"
-                "Floating :: () -> int { return native.pair(+(-(2.5)), "
-                "Later()); }\n"
-                "Local :: () -> int { v: f64 = 2.5; return native.pair(v, "
-                "Later()); }\n"
-                "Widened :: () -> int { v: number = 1.5; return native.pair(v, "
-                "Later()); }\n",
-      .calls = { { .function = "Before", .arguments = "[]", .expected = "[2]" },
-                 { .function = "After", .arguments = "[]", .expected = "[1]" },
-                 { .function = "Stops", .arguments = "[]" },
-                 { .function = "Floating", .arguments = "[]", .expected = "[2]" },
-                 { .function = "Local", .arguments = "[]", .expected = "[2]" },
-                 { .function = "Widened", .arguments = "[]", .expected = "[2]" } } },
-    /* Parentheses produce no value: a grouped argument is typed, converted
-     * and watched once the expression inside has produced it. */
-    { .name = "grouped overload arguments",
-      .c_string_probe = true,
-      .traced = true,
-      .source =
-          "package facts\n"
-          "Later :: () -> int { return native.probe(\"ab\"); }\n"
-          "Fails :: () -> int { xs: int[] = []; return xs[0]; }\n"
-          "Typed :: () -> int { v: number = 1.5; return "
-          "native.kernel((v)); }\n"
-          "Converted :: () -> int { v: int = 3; return native.kernel((v)); "
-          "}\n"
-          "Wide :: () -> int { v: i64 = 3; return native.kernel(((v))); }\n"
-          "Effect :: () -> int { return native.pair(2, (Later())); }\n"
-          "First :: () -> int { return native.pair((Later()), (2)); }\n"
-          "Stops :: () -> int { return native.pair((-(2)), (Fails())); }\n"
-          "Local :: () -> int { v: f64 = 2.5; return native.pair((v), "
-          "(Later())); }\n",
-      .calls = { { .function = "Typed", .arguments = "[]", .expected = "[1]" },
-                 { .function = "Converted", .arguments = "[]", .expected = "[1]" },
-                 { .function = "Wide", .arguments = "[]", .expected = "[2]" },
-                 { .function = "Effect", .arguments = "[]", .expected = "[2]" },
-                 { .function = "First", .arguments = "[]", .expected = "[1]" },
-                 { .function = "Stops", .arguments = "[]" },
-                 { .function = "Local", .arguments = "[]", .expected = "[2]" } } },
-    /* Both stages read a decimal at an integer type exactly, digit by digit:
-     * no floating rounding drops a fraction, an integer unit or the range. */
-    { .name = "exact whole decimals",
-      .traced = true,
-      .source = "package facts\n"
-                "Sum :: () -> i64 { x: i64 = 0; return x + 9007199254740993.0; "
-                "}\n"
-                "Negative :: () -> i64 { return -9007199254740993.0; }\n"
-                "Largest :: () -> u64 { return 18446744073709551615.0; }\n"
-                "Scaled :: () -> i64 { return 9007199254740993e0; }\n"
-                "Least :: () -> i64 { return -9223372036854775808.0; }\n",
-      .calls = { { .function = "Sum", .arguments = "[]", .expected = "[9007199254740993]" },
-                 { .function = "Negative", .arguments = "[]", .expected = "[-9007199254740993]" },
-                 { .function = "Largest", .arguments = "[]", .expected = "[18446744073709551615]" },
-                 { .function = "Scaled", .arguments = "[]", .expected = "[9007199254740993]" },
-                 { .function = "Least", .arguments = "[]", .expected = "[-9223372036854775808]" } } },
-    /* Zero is whole however it is spelled. */
-    { .name = "zero decimals",
-      .traced = true,
-      .source = "package facts\n"
-                "Zero :: () -> int { return 0.0; }\n"
-                "Negative :: () -> int { return -0.0; }\n"
-                "Scaled :: () -> int { return 0e-1; }\n"
-                "Places :: () -> i64 { return 0.000; }\n",
-      .calls = { { .function = "Zero", .arguments = "[]", .expected = "[0]" },
-                 { .function = "Negative", .arguments = "[]", .expected = "[0]" },
-                 { .function = "Scaled", .arguments = "[]", .expected = "[0]" },
-                 { .function = "Places", .arguments = "[]", .expected = "[0]" } } },
-    { .name = "small fraction overload argument",
-      .c_string_probe = true,
-      .source = "package facts\nRun :: () -> int { return "
-                "native.overload(2.0000000000000001); }",
-      .message = "Numeric literal has a fraction, which int cannot hold",
-      .same_rejection = true },
-    { .name = "smaller fraction overload argument",
-      .c_string_probe = true,
-      .source = "package facts\nRun :: () -> int { return "
-                "native.overload(2.0000000000000000001); }",
-      .message = "Numeric literal has a fraction, which int cannot hold",
-      .same_rejection = true },
-    { .name = "ambiguous literal overload",
-      .c_string_probe = true,
-      .source = "package facts\nRun :: () -> int { return native.pair(2, 3); }",
-      .message = "Ambiguous function 'native.pair'",
-      .line = 2,
-      .column = 34 },
-    { .name = "decimal overload argument",
-      .c_string_probe = true,
-      .source = "package facts\nRun :: () -> int { return "
-                "native.overload(2.5); }",
-      .message = "Numeric literal has a fraction, which int cannot hold",
-      .same_rejection = true },
-    { .name = "wide overload argument",
-      .c_string_probe = true,
-      .source = "package facts\nRun :: () -> int { return "
-                "native.overload(4294967296); }",
-      .message = "Numeric literal is outside the range of int",
-      .same_rejection = true },
-    /* Authored constant support boundaries. Stage zero accepts some of these
-     * forms; require the authored diagnostic at the operand, not parity with
-     * stage zero or an earlier unsupported-declaration failure. */
-};
-enum
+
+/* scalar_llvm's IR of `rows` for native_abi's target `function`; *ir is NULL
+ * when it rejects them. */
+static bool target_ir(const char *function, const pin_value *rows, char **ir)
 {
-    SAMPLES = sizeof samples / sizeof *samples
-};
+    REQUIRE(scalar_host_emit(function, rows, ir));
+    if (!**ir) {
+        free(*ir);
+        *ir = NULL;
+    }
+    return true;
+}
 /* Source-level contracts use literal answers. They do not ask the constant
  * evaluator or either compiler to calculate the expected result. */
-static const sample math_samples[] = {
-    { .name = "math pointer receiver calls run once before the rhs",
-      .source = "package facts\n"
-                "Pick :: (v: ^vec3, calls: ^int) -> ^vec3 { "
-                "calls^ = calls^ * 10 + 1; return v; }\n"
-                "Right :: (calls: ^int) -> vec2 { calls^ = calls^ * 10 + 2; "
-                "return vec2(7, 8); }\n"
-                "Check :: () -> (calls: int, x: number, y: number, z: number) "
-                "{ "
-                "v := vec3(1, 2, 3); total: int = 0; Pick(&v, &total).yx = "
-                "Right(&total); "
-                "return (total, v.x, v.y, v.z); }\n",
-      .calls = { { .function = "Check", .arguments = "[]", .expected = "[12,8.0,7.0,3.0]" } } },
-    { .name = "math swizzles preserve copied map values",
-      .source = "package facts\n"
-                "Check :: () -> (x: number, y: number, z: number, sx: number, "
-                "sy: number, sz: number) { "
-                "rows: [int: vec3] = [1: vec3(1, 2, 3)]; "
-                "before := rows; rows[1].yx = rows[1].xy; "
-                "return (rows[1].x, rows[1].y, rows[1].z, before[1].x, "
-                "before[1].y, before[1].z); }\n",
-      .calls = { { .function = "Check",
-                   .arguments = "[]",
-                   .expected = "[2.0,1.0,3.0,1.0,2.0,3.0]" } } },
 
-};
-
-static compiler_fixture fixture, oracle, consumer, corpus;
-/* The compiler host's natives, and those with the core pack a game links,
- * which declares assert. */
-static native_capabilities *linked[2][2];
-static native_capabilities *actions_native;
-/* Compile's native tables for the host and for a game, per compiler backend,
- * built once from `linked`. */
-static pin_value linked_tables[2][2][2][3];
-static pin_value linked_effects[2][2][2];
+/* The rows and sources a test reads live in `detached`; `input` holds what a
+ * test builds for a native call. */
 static arena input, detached;
-static compiler_host *host;
-static compiler_host_result result;
 
-/* Whether a test published its project's types, which cleanup withdraws
- * after a test that returned early. */
-static bool project_published;
-static void publish_project(const type_catalog_pack *pack)
-{
-    type_catalog_set_project(pack);
-    project_published = pack;
-}
 static void cleanup()
 {
-    if (project_published) {
-        publish_project(NULL);
-    }
-    compiler_fixture_free(&fixture);
-    compiler_fixture_free(&oracle);
-    compiler_fixture_free(&consumer);
-    compiler_fixture_free(&corpus);
-    native_capabilities_free(actions_native);
-    actions_native = NULL;
-    for (int game = 0; game < 2; game++) {
-        for (int probe = 0; probe < 2; probe++) {
-            native_capabilities_free(linked[game][probe]);
-        }
-    }
-    memset(linked, 0, sizeof linked);
-    memset(linked_tables, 0, sizeof linked_tables);
-    memset(linked_effects, 0, sizeof linked_effects);
     arena_free(&input);
     arena_free(&detached);
-    compiler_host_free(host);
-    host = NULL;
-    free(result.json);
-    result = (compiler_host_result){ 0 };
 }
+
 static pin_value text(const char *s)
 {
     pin_value value = { 0 };
     assert(!pin_value_text(&input, &value, s, strlen(s)));
     return value;
 }
-static pin_value strings(const char *const *items, int count)
-{
-    pin_array *array = pin_array_snapshot_allocate(&input, PIN_STR, NULL, count);
-    for (int i = 0; i < count; i++) {
-        array->items[i] = text(items[i]);
-    }
-    return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
-}
+
 /* Writes an int or int64 field. */
-static bool put(pin_value *row, const char *name, int64_t value)
-{
-    const type_field *field = pin_type_field_path(pin_value_type(row), name);
-    REQUIRE(field && (field->type == PIN_I32 || field->type == PIN_I64));
-    pin_value v = { .type = PIN_I64, .i64 = value };
-    if (field->type == PIN_I32) {
-        REQUIRE(value >= INT32_MIN && value <= INT32_MAX);
-        v = (pin_value){ .type = PIN_I32, .i = (int32_t)value };
-    }
-    REQUIRE(!pin_write_field(&input, row->ptr, field, v));
-    return true;
-}
-static bool put_value(pin_value *row, const char *name, pin_value value)
-{
-    const type_field *field = pin_type_field_path(pin_value_type(row), name);
-    REQUIRE(field && field->type == value.type);
-    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
-    return true;
-}
-static pin_value record_row(const compiler_fixture *f, int b, const char *identity, const char *name)
-{
-    const pin_record *shape = compiler_fixture_record(f, b, identity, name, &input);
-    assert(shape);
-    pin_value v = { .type = PIN_STRUCT,
-                    .ptr = arena_alloc(&input, shape->type.size),
-                    .record = shape,
-                    .type_name = shape->type.name };
-    memset(v.ptr, 0, shape->type.size);
-    return v;
-}
-static pin_value row(int b, const char *name)
-{
-    return record_row(&fixture, b, PACKAGE, name);
-}
+
 static pin_value rows(const pin_value *items, int count, pin_type type, const pin_record *shape)
 {
     pin_array *
@@ -2087,55 +212,7 @@ static pin_value rows(const pin_value *items, int count, pin_type type, const pi
  * suspension. It links the compiler's text profile, which the compiler is
  * compiled for; a game links the public text pack, which also converts bytes
  * to text. */
-static bool natives(int b, bool game, bool probe, pin_value *out)
-{
-    if (linked_tables[game][probe][b][0].ptr) {
-        memcpy(out, linked_tables[game][probe][b], sizeof linked_tables[game][probe][b]);
-        return true;
-    }
-    if (!linked[game][probe]) {
-        const native_definition_pack packs[] = { game ? NATIVE_TEXT_DEFINITION_PACK
-                                                      : NATIVE_COMPILER_TEXT_DEFINITION_PACK,
-                                                 NATIVE_ARRAY_DEFINITION_PACK,
-                                                 COMPILER_JSON_DEFINITION_PACK,
-                                                 COMPILER_SYNTAX_DEFINITION_PACK };
-        char error[256];
-        native_definition_pack selected[8];
-        int count = (int)(sizeof packs / sizeof *packs);
-        memcpy(selected, packs, sizeof packs);
-        if (game) {
-            selected[count++] = CORE_DEFINITION_PACK;
-            selected[count++] = NATIVE_MATH_DEFINITION_PACK;
-            /* With the arrays', its length overload makes a call of length
-             * ambiguous among natives; a collection argument still takes the
-             * collection's. */
-            selected[count++] = NATIVE_VECTOR_DEFINITION_PACK;
-        }
-        if (probe) {
-            selected[count++] = CSTRING_PACK;
-        }
-        linked[game][probe] = native_capabilities_from_definition_packs(
-            NULL,
-            0,
-            selected,
-            count,
-            error,
-            sizeof error
-        );
-        REQUIRE(linked[game][probe]);
-    }
-    REQUIRE(compiler_fixture_natives(
-        &fixture,
-        b,
-        PACKAGE,
-        native_capabilities_catalog(linked[game][probe]),
-        &input,
-        out,
-        &linked_effects[game][probe][b]
-    ));
-    memcpy(linked_tables[game][probe][b], out, sizeof linked_tables[game][probe][b]);
-    return true;
-}
+
 static bool get(const pin_value *row, const char *name, pin_value *out)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
@@ -2143,172 +220,18 @@ static bool get(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
-static uint64_t fixture_variant_tag(
-    const compiler_fixture *f,
-    int b,
-    const char *identity,
-    const char *union_name,
-    const char *variant
-)
-{
-    const authoring_package *owner = compiler_fixture_package(f, b, identity);
-    const script_catalog_type *type = script_catalog_type_by_id(
-        owner->exports->metadata,
-        compiler_fixture_export(f, b, identity, union_name)
-    );
-    for (int i = 0; type && i < type->variant_count; i++) {
-        if (!strcmp(type->variants[i].name, variant)) {
-            return type->variants[i].tag;
-        }
-    }
-    return 0;
-}
-static uint64_t variant_tag(int b, const char *union_name, const char *variant)
-{
-    return fixture_variant_tag(&fixture, b, PACKAGE, union_name, variant);
-}
-static bool prepare_backends(unsigned backends)
-{
-    const source_package_input sources[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
-    native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
-                                       COMPILER_SYNTAX_DEFINITION_PACK,
-                                       CSTRING_PACK };
-    REQUIRE(compiler_fixture_prepare_backends(
-        &fixture,
-        backends,
-        sources,
-        (int)(sizeof sources / sizeof *sources),
-        packs,
-        3
-    ));
-    return true;
-}
+
 static bool prepare()
 {
-    return prepare_backends(COMPILER_FIXTURE_BOTH);
+    return scalar_host_open();
 }
 /* The sample's files: package facts, then lib and core:strings when it
  * uses them. */
-static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INPUTS])
-{
-    int count = 0;
-    inputs[count++] = (source_package_input){ "facts/Main.chibi",
-                                              s->source,
-                                              strlen(s->source) };
-    if (s->more) {
-        inputs[count++] = (source_package_input){ "facts/More.chibi",
-                                                  s->more,
-                                                  strlen(s->more) };
-    }
-    if (s->library) {
-        inputs[count++] = (source_package_input){ "lib/Lib.chibi",
-                                                  s->library,
-                                                  strlen(s->library) };
-    }
-    if (s->core) {
-        inputs[count++] = (source_package_input){
-            "/sdk/core/strings/Strings.chibi",
-            CORE_STRINGS_SOURCE,
-            sizeof CORE_STRINGS_SOURCE - 1
-        };
-    }
-    if (s->collection_source) {
-        assert(count < SAMPLE_INPUTS);
-        inputs[count++] = (source_package_input){
-            "/sdk/core/host_only/HostOnly.chibi",
-            s->collection_source,
-            strlen(s->collection_source)
-        };
-    }
-    if (s->collection_dependency) {
-        assert(count < SAMPLE_INPUTS);
-        inputs[count++] = (source_package_input){
-            "/sdk/core/host_dependency/Dependency.chibi",
-            s->collection_dependency,
-            strlen(s->collection_dependency)
-        };
-    }
-    if (s->math) {
-        static char sources[3][32768];
-        static const char *const names[] = { "Math.chibi", "Spring.chibi", "ease/Ease.chibi" };
-        static const char *const paths[] = { "/sdk/core/math/Math.chibi",
-                                             "/sdk/core/math/Spring.chibi",
-                                             "/sdk/core/math/ease/Ease.chibi" };
-        const char *root = getenv("CHIBI_CORE_MATH_ROOT");
-        if (!root || !root[0]) {
-            root = CHIBI_CORE_MATH_ROOT;
-        }
-        for (int i = 0; i < 3; i++) {
-            char path[4096];
-            int n = snprintf(path, sizeof path, "%s/%s", root, names[i]);
-            assert(n > 0 && (size_t)n < sizeof path && count < SAMPLE_INPUTS);
-            FILE *file = fopen(path, "rb");
-            assert(file);
-            size_t length = fread(sources[i], 1, sizeof sources[i] - 1, file);
-            bool read = !ferror(file) && feof(file);
-            fclose(file);
-            assert(read);
-            sources[i][length] = 0;
-            inputs[count++] = (source_package_input){ paths[i], sources[i], length };
-        }
-    }
-    return count;
-}
-static pin_value files(const source_package_input *inputs, int count, bool sources)
-{
-    pin_array *array = pin_array_snapshot_allocate(&input, PIN_STR, NULL, count);
-    for (int i = 0; i < count; i++) {
-        array->items[i] = text(sources ? inputs[i].text : inputs[i].path);
-    }
-    return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
-}
+
 /* This host's target, as Compile and CollectScalar take it. */
-static bool target(int b, pin_value *out)
-{
-    const pin_record *record = compiler_fixture_record(&fixture, b, PACKAGE, "Target", &input);
-    REQUIRE(record);
-    *out = (pin_value){ .type = PIN_STRUCT,
-                        .ptr = arena_alloc(&input, record->type.size),
-                        .record = record,
-                        .type_name = record->type.name };
-    memset(out->ptr, 0, record->type.size);
-    REQUIRE(put(out, "pointer_storage", BF_POINTER_TYPE));
-    REQUIRE(put(out, "pointer_size", (int)sizeof(void *)));
-    REQUIRE(put(out, "value_size", (int)sizeof(pin_value)));
-    REQUIRE(put(out, "payload_offset", (int)offsetof(pin_value, d)));
-    REQUIRE(put(out, "arguments_offset", (int)offsetof(behavior_function_context, arguments)));
-    REQUIRE(
-        put(out, "delta_seconds_offset", (int)offsetof(behavior_function_context, delta_seconds))
-    );
-    REQUIRE(put(out, "results_offset", (int)offsetof(behavior_function_context, results)));
-    REQUIRE(
-        put(out, "error_status_offset", (int)offsetof(behavior_function_context, error_status))
-    );
-    REQUIRE(put(out, "type_offset", (int)offsetof(pin_value, type)));
-    REQUIRE(put(out, "container_offset", (int)offsetof(pin_value, container)));
-    REQUIRE(put(out, "name_offset", (int)offsetof(pin_value, type_name)));
-    REQUIRE(put(out, "record_offset", (int)offsetof(pin_value, record)));
-    REQUIRE(put(out, "schema_offset", (int)offsetof(pin_value, schema)));
-    REQUIRE(put(out, "count_offset", (int)offsetof(pin_array, count)));
-    REQUIRE(put(out, "items_offset", (int)offsetof(pin_array, items)));
-    REQUIRE(put(out, "data_offset", (int)offsetof(pin_array, data)));
-    REQUIRE(put(out, "stride_offset", (int)offsetof(pin_array, stride)));
-    REQUIRE(put(out, "map_count_offset", (int)offsetof(pin_map, count)));
-    REQUIRE(put(out, "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
-    REQUIRE(put(out, "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
-    REQUIRE(put(out, "assert_failure", BEHAVIOR_FUNCTION_DATA));
-    return true;
-}
+
 /* The names of this host's prepared instructions, in their order. */
-static pin_value instruction_names()
-{
-    int instructions = execution_prepared_instruction_count();
-    pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, instructions);
-    for (int i = 0; i < instructions; i++) {
-        names->items[i] = text(execution_prepared_instruction_name(i));
-    }
-    return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
-}
+
 enum
 {
     SCALAR_ARGUMENTS = 8
@@ -2316,2747 +239,189 @@ enum
 /* CollectScalar's arguments for `source` at `path` on VM b: the project, the
  * path and source, this host's target and instruction names, and the
  * production natives it links. */
-static bool scalar_arguments(int b, const char *path, pin_value source, pin_value args[SCALAR_ARGUMENTS])
-{
-    args[0] = text("/project");
-    args[1] = text(path);
-    args[2] = source;
-    REQUIRE(target(b, &args[3]));
-    args[4] = instruction_names();
-    REQUIRE(natives(b, false, false, &args[5]));
-    return true;
-}
+
 /* Compile's arguments for `inputs`: the project, the core collection, the
  * files, debugger points and watches, this host's target and the natives it
  * links: with `game`, also the core pack a game links. */
-static bool arguments_for(
-    int b,
-    bool game,
-    bool probe,
-    const source_package_input *inputs,
-    int count,
-    pin_value args[ARGUMENTS]
-)
-{
-    const char *collection_names[] = { "core" };
-    const char *collection_paths[] = { "/sdk/core" };
-    args[0] = text("/project");
-    args[1] = strings(collection_names, 1);
-    args[2] = strings(collection_paths, 1);
-    args[3] = files(inputs, count, false);
-    args[4] = files(inputs, count, true);
-    args[DEBUG_ARGUMENT] = (pin_value){ .type = PIN_BOOL, .b = true };
-    REQUIRE(target(b, &args[6]));
-    args[7] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
-    args[8] = instruction_names();
-    REQUIRE(natives(b, game, probe, &args[9]));
-    return true;
-}
+
 /* Ordinary compilation and bootstrap use only production host natives. */
-static bool arguments(int b, bool game, const source_package_input *inputs, int count, pin_value args[ARGUMENTS])
-{
-    return arguments_for(b, game, false, inputs, count, args);
-}
-typedef struct
-{
-    pin_value module, bytes, error;
-} compiler_result;
-static bool compiler_succeeded(const compiler_result *result)
-{
-    return !result->error.ptr;
-}
-static const pin_value *compiler_error(const compiler_result *result)
-{
-    const pin_union *error = result->error.ptr;
-    assert(error && error->count == 1);
-    return &error->values[0];
-}
-static bool compiler_call(
-    int b,
-    const char *entry,
-    const pin_value *arguments,
-    int count,
-    uintptr_t budget,
-    compiler_result *out
-)
-{
-    pin_value values[3];
-    REQUIRE(
-        compiler_fixture_call_results(&fixture, b, PACKAGE, entry, arguments, count, budget, &detached, values, 3)
-    );
-    REQUIRE(values[0].type == PIN_U64);
-    REQUIRE(values[1].type == PIN_U8 && values[1].container == PIN_CONTAINER_ARRAY);
-    REQUIRE(values[2].type == PIN_UNION && values[2].container == PIN_CONTAINER_SINGLE);
-    const pin_union *error = values[2].ptr;
-    REQUIRE(!error || (error->count == 1 && error->values[0].type == PIN_STRUCT));
-    if (error) {
-        const pin_array *bytes = values[1].ptr;
-        REQUIRE(values[0].u64 == 0);
-        REQUIRE(!bytes || bytes->count == 0);
-    }
-    *out = (compiler_result){ .module = values[0],
-                              .bytes = values[1],
-                              .error = values[2] };
-    return true;
-}
-static bool compile(
-    int b,
-    bool game,
-    bool probe,
-    bool effects,
-    const source_package_input *inputs,
-    int count,
-    uintptr_t budget,
-    compiler_result *out
-)
-{
-    pin_value args[ARGUMENTS + 1];
-    REQUIRE(arguments_for(b, game, probe, inputs, count, args));
-    args[ARGUMENTS] = linked_effects[game][probe][b];
-    REQUIRE(
-        compiler_call(b, effects ? "CompileWithEffects" : "Compile", args, ARGUMENTS + effects, budget, out)
-    );
-    return true;
-}
-static uint64_t function_id(const char *name)
-{
-    char text[256];
-    snprintf(text, sizeof text, "project:facts:1:%s:callable", name);
-    return script_catalog_id("package-symbol", text);
-}
+
 /* Math packages link the ordinary native libm pack, outside the compiler
  * host's intentionally restricted JSON/text/array execution profile. */
-static bool run_math(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
-{
-    REQUIRE(!strcmp(call->arguments, "[]") && !strcmp(call->expected, "[true]"));
-    native_prepared_context native = { .native = linked[1][0] };
-    execution_prepared_linker linker = native_capabilities_prepared_linker(&native);
-    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    uint64_t root;
-    char error[256];
-    behavior_backend mode = backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE;
-    package_collection *collection = compiler_artifact_read(
-        bytes,
-        length,
-        &linker,
-        mode,
-        &remaining,
-        &root,
-        error,
-        sizeof error
-    );
-    if (!collection) {
-        fprintf(stderr, "math artifact: %s\n", error);
-    }
-    REQUIRE(collection);
-    const behavior_function *body = NULL;
-    for (int i = 0; i < package_collection_count(collection); i++) {
-        execution_module *module = package_collection_module(collection, i);
-        if (execution_module_id(module) != root) {
-            continue;
-        }
-        for (int j = 0; j < execution_module_function_count(module); j++) {
-            execution_module_function_info info = execution_module_function_at(module, j);
-            if (info.id == function_id(call->function)) {
-                body = info.body;
-            }
-        }
-    }
-    REQUIRE(body);
-    arena memory = { 0 };
-    behavior_managed_heap heap = { 0 };
-    behavior_managed_heap_init(&heap);
-    behavior_function_activation activation = { 0 };
-    if (behavior_function_resumable(body)) {
-        behavior_function_activation_init(body, &activation);
-    }
-    pin_value answer = { .type = PIN_BOOL };
-    behavior_function_context context = {
-        .results = &answer,
-        .activation = behavior_function_resumable(body) ? &activation : NULL,
-        .managed_heap = &heap,
-        .budget = TARGET_BUDGET
-    };
-    behavior_function_bind_storage(&context, &memory);
-    REQUIRE(behavior_function_bind(body, &context, NULL, 0));
-    behavior_run_scope counts = { 0 };
-    behavior_run_scope_begin(&counts);
-    int status = behavior_function_run(body, &context, backend != 0);
-    behavior_run_scope_end(&counts);
-    bool passed = status == FLOW_OK && context.returned && answer.type == PIN_BOOL &&
-                  answer.b && !counts.counts.inspection_bytecode_fallbacks &&
-                  (!backend || ((TEST_COMPILED_BACKEND == BEHAVIOR_WASM
-                                     ? counts.counts.wasm_entries > 0
-                                     : counts.counts.sljit_entries > 0) &&
-                                !counts.counts.bytecode_entries));
-    if (!passed) {
-        fprintf(
-            stderr,
-            "math artifact %s backend=%d status=%d: %s\n",
-            call->function,
-            backend,
-            status,
-            context.error_message ? context.error_message : "wrong result"
-        );
-    }
-    behavior_function_release_host(&context);
-    behavior_function_activation_free(&activation);
-    behavior_managed_heap_free(&heap);
-    arena_free(&memory);
-    package_collection_free(collection);
-    REQUIRE(passed);
-    return true;
-}
-static bool run(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
-{
-    char error[256];
-    host = compiler_host_load(
-        bytes,
-        length,
-        backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-        error,
-        sizeof error
-    );
-    if (!host) {
-        fprintf(stderr, "package compiler load: %s\n", error);
-    }
-    REQUIRE(host);
-    bool valid = compiler_host_invoke(
-        host,
-        function_id(call->function),
-        call->arguments,
-        strlen(call->arguments),
-        call->budget ? call->budget : TARGET_BUDGET,
-        &result
-    );
-    bool passed = valid && result.flow_status == FLOW_OK;
-    bool expected = call->expected ? passed && !strcmp(result.json, call->expected)
-                                   : !passed;
-    if (call->diagnostic) {
-        expected = expected && strstr(result.diagnostic, call->diagnostic);
-    }
-    if (!expected) {
-        fprintf(
-            stderr,
-            "package compiler run %s%s: %d %s %s\n",
-            call->function,
-            call->arguments,
-            result.flow_status,
-            valid && result.json ? result.json : "",
-            result.diagnostic
-        );
-    }
-    REQUIRE(expected);
-    compiler_host_free(host);
-    host = NULL;
-    free(result.json);
-    result = (compiler_host_result){ 0 };
-    return true;
-}
+
 /* Whether a point is one this compiler places as stage zero does: a
  * function's entry and completions, each statement's, each evaluated
  * expression's and each symbol's it reads or stores. */
-static bool placed(const behavior_source_point *point)
-{
-    return point->kind == BEHAVIOR_SOURCE_FUNCTION ||
-           point->kind == BEHAVIOR_SOURCE_STATEMENT ||
-           point->kind == BEHAVIOR_SOURCE_EXPRESSION ||
-           point->kind == BEHAVIOR_SOURCE_SYMBOL;
-}
-static void print_points(const char *compiler, const behavior_function *f)
-{
-    for (int k = 0; k < acount(f->source_points); k++) {
-        const behavior_source_point *p = &f->source_points[k];
-        fprintf(
-            stderr,
-            "  %s point kind %d at %d..%d occurrence %016llx completion %d\n",
-            compiler,
-            p->kind,
-            p->start,
-            p->end,
-            (unsigned long long)p->occurrence,
-            p->completion
-        );
-    }
-}
-static bool same_point(const behavior_source_point *x, const behavior_source_point *y)
-{
-    return x->kind == y->kind && x->occurrence == y->occurrence &&
-           x->start == y->start && x->end == y->end && x->line == y->line &&
-           x->column == y->column && x->completion == y->completion &&
-           (x->kind != BEHAVIOR_SOURCE_FUNCTION || x->meaning == y->meaning);
-}
+
 /* Each function of stage one's module has stage zero's function and
  * statement points, as many of each, in any order. */
-static bool same_points(const execution_module *expected, const execution_module *actual)
-{
-    if (expected->plan.function_count != actual->plan.function_count) {
-        fprintf(
-            stderr,
-            "function count module %016llx: stage zero=%d stage one=%d\n",
-            (unsigned long long)execution_module_id(actual),
-            expected->plan.function_count,
-            actual->plan.function_count
-        );
-        for (int i = 0; i < expected->plan.function_count; i++) {
-            fprintf(
-                stderr,
-                "  stage zero function %016llx\n",
-                (unsigned long long)expected->plan.functions[i].id
-            );
-        }
-        for (int i = 0; i < actual->plan.function_count; i++) {
-            fprintf(
-                stderr,
-                "  stage one function %016llx\n",
-                (unsigned long long)actual->plan.functions[i].id
-            );
-        }
-    }
-    REQUIRE(expected->plan.function_count == actual->plan.function_count);
-    bool all_alike = true;
-    for (int i = 0; i < expected->plan.function_count; i++) {
-        const behavior_function *x = expected->plan.functions[i].body, *y = NULL;
-        for (int j = 0; !y && j < actual->plan.function_count; j++) {
-            if (actual->plan.functions[j].id == expected->plan.functions[i].id) {
-                y = actual->plan.functions[j].body;
-            }
-        }
-        if (!y) {
-            fprintf(
-                stderr,
-                "stage one lacks function %016llx\n",
-                (unsigned long long)expected->plan.functions[i].id
-            );
-        }
-        REQUIRE(y);
-        int count = acount(y->source_points);
-        bool *used = xcalloc((size_t)count + 1, sizeof *used);
-        bool alike = true;
-        int placed_count = 0;
-        for (int j = 0; alike && j < acount(x->source_points); j++) {
-            if (!placed(&x->source_points[j])) {
-                continue;
-            }
-            placed_count++;
-            int found = -1;
-            for (int k = 0; found < 0 && k < count; k++) {
-                found = !used[k] && same_point(&x->source_points[j], &y->source_points[k])
-                          ? k
-                          : -1;
-            }
-            alike = found >= 0;
-            if (alike) {
-                used[found] = true;
-            } else {
-                fprintf(
-                    stderr,
-                    "function %d lacks stage zero's point kind %d at %d..%d\n",
-                    i,
-                    x->source_points[j].kind,
-                    x->source_points[j].start,
-                    x->source_points[j].end
-                );
-            }
-        }
-        for (int k = 0; alike && k < count; k++) {
-            alike = !placed(&y->source_points[k]) || used[k];
-            placed_count -= placed(&y->source_points[k]);
-            if (!alike) {
-                fprintf(
-                    stderr,
-                    "function %d has an extra point at %d..%d\n",
-                    i,
-                    y->source_points[k].start,
-                    y->source_points[k].end
-                );
-            }
-        }
-        free(used);
-        if (!alike || placed_count != 0) {
-            print_points("stage zero", x);
-            print_points("stage one", y);
-            all_alike = false;
-        }
-    }
-    return all_alike;
-}
-static bool same_watch(const behavior_source_watch *x, const behavior_source_watch *y)
-{
-    const char *a = x->initial.type_name ? x->initial.type_name : "",
-               *b = y->initial.type_name ? y->initial.type_name : "";
-    return x->origin.kind == y->origin.kind &&
-           x->origin.occurrence == y->origin.occurrence &&
-           x->origin.start == y->origin.start && x->origin.end == y->origin.end &&
-           x->origin.line == y->origin.line && x->origin.column == y->origin.column &&
-           x->initial.type == y->initial.type &&
-           x->initial.container == y->initial.container && !strcmp(a, b) &&
-           x->ordinal == y->ordinal && x->output == y->output &&
-           x->reference == y->reference;
-}
-static void print_watches(const char *compiler, const behavior_function *f)
-{
-    for (int k = 0; k < acount(f->source_watches); k++) {
-        const behavior_source_watch *w = &f->source_watches[k];
-        fprintf(
-            stderr,
-            "  %s watch at %d..%d occurrence %016llx type %d container %d name "
-            "%s ordinal %d output %d "
-            "reference %d\n",
-            compiler,
-            w->origin.start,
-            w->origin.end,
-            (unsigned long long)w->origin.occurrence,
-            w->initial.type,
-            w->initial.container,
-            w->initial.type_name ? w->initial.type_name : "-",
-            w->ordinal,
-            w->output,
-            w->reference
-        );
-    }
-}
+
 /* Each function of stage one's module has stage zero's watches, as many of
  * each, in any order. */
-static bool same_watches(const execution_module *expected, const execution_module *actual)
-{
-    REQUIRE(expected->plan.function_count == actual->plan.function_count);
-    bool all_alike = true;
-    for (int i = 0; i < expected->plan.function_count; i++) {
-        const behavior_function *x = expected->plan.functions[i].body, *y = NULL;
-        for (int j = 0; !y && j < actual->plan.function_count; j++) {
-            if (actual->plan.functions[j].id == expected->plan.functions[i].id) {
-                y = actual->plan.functions[j].body;
-            }
-        }
-        if (!y) {
-            fprintf(
-                stderr,
-                "stage one lacks function %016llx\n",
-                (unsigned long long)expected->plan.functions[i].id
-            );
-        }
-        REQUIRE(y);
-        int count = acount(y->source_watches);
-        bool *used = xcalloc((size_t)count + 1, sizeof *used);
-        bool alike = count == acount(x->source_watches);
-        for (int j = 0; alike && j < acount(x->source_watches); j++) {
-            int found = -1;
-            for (int k = 0; found < 0 && k < count; k++) {
-                found = !used[k] && same_watch(&x->source_watches[j], &y->source_watches[k])
-                          ? k
-                          : -1;
-            }
-            alike = found >= 0;
-            if (alike) {
-                used[found] = true;
-            }
-        }
-        free(used);
-        if (!alike) {
-            fprintf(stderr, "WATCHES %d\n", i);
-            print_watches("stage zero", x);
-            print_watches("stage one", y);
-            all_alike = false;
-        }
-    }
-    return all_alike;
-}
+
 /* Stage zero's closure of the same packages, whose calls must give the same
  * results. */
-static bool oracle_closure(const sample *s, unsigned char **closure, size_t *length)
-{
-    source_package_input inputs[SAMPLE_INPUTS];
-    int count = sample_inputs(s, inputs);
-    compiler_fixture_free(&oracle);
-    /* The natives the stage-one target links. */
-    native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
-                                       COMPILER_SYNTAX_DEFINITION_PACK,
-                                       CSTRING_PACK,
-                                       CORE_DEFINITION_PACK,
-                                       NATIVE_MATH_DEFINITION_PACK,
-                                       NATIVE_VECTOR_DEFINITION_PACK };
-    /* Only this bytecode owner is serialized and compared below. Each
-     * caller still chooses its original target execution backends. */
-    REQUIRE(compiler_fixture_prepare_backends(
-        &oracle,
-        COMPILER_FIXTURE_BYTECODE,
-        inputs,
-        count,
-        packs,
-        s->math   ? 5
-        : s->game ? 4
-                  : 3
-    ));
-    const authoring_packages *owner = oracle.owners[0];
-    package_module rows[3];
-    REQUIRE(authoring_packages_count(owner) <= 3);
-    int written = 0;
-    char error[256];
-    bool valid = true;
-    for (int p = 0; valid && p < authoring_packages_count(owner); p++) {
-        const authoring_package *package = authoring_packages_at(owner, p);
-        unsigned char *prepared = NULL;
-        size_t size = 0;
-        valid = package->module &&
-                execution_prepared_write(package->module, &prepared, &size, error, sizeof error);
-        rows[written++] = (package_module){ package->identity,
-                                            valid ? execution_module_id(package->module)
-                                                  : 0,
-                                            prepared,
-                                            size };
-    }
-    const authoring_package *root = compiler_fixture_package(&oracle, 0, "project:facts");
-    valid = valid && root &&
-            compiler_artifact_write(
-                rows,
-                written,
-                execution_module_id(root->module),
-                closure,
-                length,
-                error,
-                sizeof error
-            );
-    for (int i = 0; i < written; i++) {
-        free((void *)rows[i].data);
-    }
-    REQUIRE(valid);
-    return true;
-}
-/* Own the compiler's detached byte output after its result arena is retired. */
-static unsigned char *closure_bytes(const compiler_result *result, size_t *length)
-{
-    const pin_array *array = result->bytes.ptr;
-    *length = (size_t)array->count;
-    unsigned char *bytes = xmalloc(*length);
-    for (size_t i = 0; i < *length; i++) {
-        bytes[i] = array->items[i].u8;
-    }
-    return bytes;
-}
 
-bool package_compiler_closure(
-    int compiler_backend,
-    const source_package_input *sources,
-    int count,
-    uintptr_t budget,
-    unsigned char **bytes,
-    size_t *length
-)
-{
-    assert(compiler_backend == 0 || compiler_backend == 1);
-    *bytes = NULL;
-    *length = 0;
-    compiler_result output;
-    bool valid = prepare_backends(1u << compiler_backend) &&
-                 compile(compiler_backend, true, false, false, sources, count, budget, &output);
-    if (valid && !compiler_succeeded(&output)) {
-        pin_value message, line, column;
-        if (get(compiler_error(&output), "message", &message) &&
-            get(compiler_error(&output), "line", &line) &&
-            get(compiler_error(&output), "column", &column)) {
-            fprintf(
-                pu_errors(),
-                "Authored closure compilation: %s at %d:%d\n",
-                pin_text(message).bytes,
-                line.i,
-                column.i
-            );
-        }
-        valid = false;
-    }
-    if (valid) {
-        *bytes = closure_bytes(&output, length);
-    }
-    cleanup();
-    return valid;
-}
+/* Own the compiler's detached byte output after its result arena is retired. */
 
 /* Compile the discovered test package with each compiler backend, then run
  * the same fixed assertions on each independently loaded target backend. */
-static bool authored_tests(
-    const compiler_fixture *metadata,
-    const source_package_input *sources,
-    int count,
-    uintptr_t budget
-)
-{
-    bool all_passed = true;
-    for (int compiler = 0; compiler < 2; compiler++) {
-        REQUIRE(prepare_backends(1u << compiler));
-        compiler_result output;
-        REQUIRE(compile(compiler, false, false, true, sources, count, COMPILE_BUDGET, &output));
-        if (!compiler_succeeded(&output)) {
-            pin_value message, line, column;
-            REQUIRE(get(compiler_error(&output), "message", &message));
-            REQUIRE(get(compiler_error(&output), "line", &line));
-            REQUIRE(get(compiler_error(&output), "column", &column));
-            fprintf(
-                pu_errors(),
-                "Authored test compilation: %s at %d:%d\n",
-                pin_text(message).bytes,
-                line.i,
-                column.i
-            );
-            return false;
-        }
-        size_t length;
-        unsigned char *bytes = closure_bytes(&output, &length);
-        bool passed = true;
-        for (int backend = 0; backend < 2; backend++) {
-            char error[256];
-            host = compiler_host_load(
-                bytes,
-                length,
-                backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-                error,
-                sizeof error
-            );
-            if (!host) {
-                fprintf(pu_errors(), "Authored test closure: %s\n", error);
-                passed = false;
-                break;
-            }
-            fprintf(
-                pu_output(),
-                "Stage-one compiler %s\n",
-                compiler ? behavior_backend_name(TEST_COMPILED_BACKEND) : "BYTECODE"
-            );
-            passed &= compiler_fixture_module_tests(metadata, backend, compiler_host_root(host), budget);
-            compiler_host_free(host);
-            host = NULL;
-        }
-        free(bytes);
-        all_passed &= passed;
-        cleanup();
-    }
-    return all_passed;
-}
-bool package_compiler_authored_tests(
-    const compiler_fixture *metadata,
-    const source_package_input *sources,
-    int count,
-    uintptr_t budget
-)
-{
-    bool passed = authored_tests(metadata, sources, count, budget);
-    cleanup();
-    return passed;
-}
+
 /* The values `Build(count)` copies in `host`. */
-static uint64_t copies(int count)
-{
-    char arguments[32];
-    snprintf(arguments, sizeof arguments, "[%d]", count);
-    pin_copy_scope scope = { 0 };
-    pin_copy_scope_begin(&scope);
-    bool called = compiler_host_invoke(
-        host,
-        function_id("Build"),
-        arguments,
-        strlen(arguments),
-        TARGET_BUDGET,
-        &result
-    );
-    pin_copy_scope_end(&scope);
-    free(result.json);
-    result = (compiler_host_result){ 0 };
-    return called ? scope.counts.value_header_moves : UINT64_MAX;
-}
-static bool updates_in_place(const unsigned char *bytes, size_t length, const char *name)
-{
-    char error[256];
-    host = compiler_host_load(bytes, length, TEST_COMPILED_BACKEND, error, sizeof error);
-    if (!host) {
-        fprintf(stderr, "package compiler %s load: %s\n", name, error);
-    }
-    REQUIRE(host);
-    uint64_t fewer = copies(100), more = copies(200);
-    if (!fewer || fewer == UINT64_MAX || more > 2 * fewer) {
-        fprintf(
-            stderr,
-            "package compiler %s copies %llu then %llu\n",
-            name,
-            (unsigned long long)fewer,
-            (unsigned long long)more
-        );
-    }
-    REQUIRE(fewer && fewer != UINT64_MAX && more <= 2 * fewer);
-    compiler_host_free(host);
-    host = NULL;
-    return true;
-}
+
 /* An intrinsic's capability ID is "CHII" and its number. */
-static const uint64_t SEQUENCE_GET_CAPABILITY = UINT64_C(0x4348494900000000) |
-                                                EXECUTION_INTRINSIC_SEQUENCE_GET;
+
 /* How many of `f`'s instructions load an array's stride. */
-static int stride_loads(const behavior_function *f)
-{
-    int loads = 0;
-    for (int i = 0; i < acount(f->instructions); i++) {
-        loads += f->instructions[i].op == BF_LOAD &&
-                 f->instructions[i].offset == offsetof(pin_array, stride);
-    }
-    return loads;
-}
-static bool reads_elements(const behavior_function *f)
-{
-    for (int i = 0; i < acount(f->host_calls); i++) {
-        if (f->host_calls[i].capability_id == SEQUENCE_GET_CAPABILITY) {
-            return true;
-        }
-    }
-    return false;
-}
+
 /* An array of strings, unions or records with a string field is never packed,
  * so stage one reads its elements from `items` alone, or through the sequence
  * intrinsic; any other array may be, so its reads in place still choose the
  * representation by its stride. In the root module, only the Packed functions
  * load a stride. */
-static bool reads_boxed(const unsigned char *bytes, size_t length)
-{
-    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    uint64_t root = 0;
-    char error[256];
-    package_collection *packages = compiler_artifact_read(
-        bytes,
-        length,
-        NULL,
-        BEHAVIOR_BYTECODE,
-        &remaining,
-        &root,
-        error,
-        sizeof error
-    );
-    if (!packages) {
-        fprintf(stderr, "package compiler boxed load: %s\n", error);
-    }
-    REQUIRE(packages);
-    int boxed = 0, packed = 0, wrong = 0;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int i = 0; execution_module_id(module) == root &&
-                        i < execution_module_function_count(module);
-             i++) {
-            execution_module_function_info f = execution_module_function_at(module, i);
-            bool box = !strncmp(f.entry, "Boxed", 5),
-                 pack = !strncmp(f.entry, "Packed", 6);
-            int loads = stride_loads(f.body);
-            boxed += box;
-            packed += pack;
-            if ((box && loads) || (pack && !loads)) {
-                fprintf(stderr, "package compiler %s loads a stride %d times\n", f.entry, loads);
-                wrong++;
-            }
-        }
-    }
-    package_collection_free(packages);
-    REQUIRE(boxed == 4 && packed == 1 && !wrong);
-    return true;
-}
-static const uint64_t SNAPSHOT_CAPABILITY = UINT64_C(0x4348494900000000) |
-                                            EXECUTION_INTRINSIC_SNAPSHOT;
-static int snapshots(const behavior_function *f)
-{
-    int count = 0;
-    for (int i = 0; i < acount(f->host_calls); i++) {
-        count += f->host_calls[i].capability_id == SNAPSHOT_CAPABILITY;
-    }
-    return count;
-}
+
 /* A literal or an authored function's result is new in the function's
  * storage, so stage one moves it into a local or a return without a snapshot;
  * an element read from an array is still copied, by the sequence intrinsic
  * that reads it. */
-static bool moves_fresh_values(const unsigned char *bytes, size_t length)
-{
-    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    uint64_t root = 0;
-    char error[256];
-    package_collection *packages = compiler_artifact_read(
-        bytes,
-        length,
-        NULL,
-        BEHAVIOR_BYTECODE,
-        &remaining,
-        &root,
-        error,
-        sizeof error
-    );
-    if (!packages) {
-        fprintf(stderr, "package compiler moves load: %s\n", error);
-    }
-    REQUIRE(packages);
-    int moved = 0, copied = 0, wrong = 0;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int i = 0; execution_module_id(module) == root &&
-                        i < execution_module_function_count(module);
-             i++) {
-            execution_module_function_info f = execution_module_function_at(module, i);
-            bool move = !strncmp(f.entry, "Moved", 5),
-                 copy = !strcmp(f.entry, "Copied");
-            int count = snapshots(f.body);
-            moved += move;
-            copied += copy;
-            if ((move && count) || (copy && !count && !reads_elements(f.body))) {
-                fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
-                wrong++;
-            }
-        }
-    }
-    package_collection_free(packages);
-    REQUIRE(moved == 4 && copied == 1 && !wrong);
-    return true;
-}
-static int union_calls(const behavior_function *f, const node_host_call *call)
-{
-    int count = 0;
-    for (int i = 0; i < acount(f->host_calls); i++) {
-        count += f->host_calls[i].capability_id == execution_intrinsic_id(call);
-    }
-    return count;
-}
+
 /* Variants built in the caller's storage, keeping the locals built there. */
-static int kept_unions(const behavior_function *f)
-{
-    int count = 0;
-    for (int i = 0; i < acount(f->host_calls); i++) {
-        count += f->host_calls[i].capability_id ==
-                 (execution_intrinsic_id(&EXECUTION_union_keep_call) |
-                  EXECUTION_INTRINSIC_IN_RESULT);
-    }
-    return count;
-}
+
 /* A returned variant keeps its payload values, which the return copies to the
  * caller; one kept in a local copies them, since the local's array changes. */
-static bool moves_returned_variants(const unsigned char *bytes, size_t length)
-{
-    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    uint64_t root = 0;
-    char error[256];
-    package_collection *packages = compiler_artifact_read(
-        bytes,
-        length,
-        NULL,
-        BEHAVIOR_BYTECODE,
-        &remaining,
-        &root,
-        error,
-        sizeof error
-    );
-    if (!packages) {
-        fprintf(stderr, "package compiler variants load: %s\n", error);
-    }
-    REQUIRE(packages);
-    int kept = 0, copied = 0, wrong = 0;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int i = 0; execution_module_id(module) == root &&
-                        i < execution_module_function_count(module);
-             i++) {
-            execution_module_function_info f = execution_module_function_at(module, i);
-            bool keep = !strncmp(f.entry, "Kept", 4),
-                 copy = !strncmp(f.entry, "Copied", 6);
-            int moves = kept_unions(f.body),
-                makes = union_calls(f.body, &EXECUTION_union_make_call);
-            kept += keep;
-            copied += copy;
-            if ((keep && (moves != 1 || makes || snapshots(f.body))) ||
-                (copy && (moves || makes != 1))) {
-                fprintf(stderr, "package compiler %s moves %d and makes %d variants\n", f.entry, moves, makes);
-                wrong++;
-            }
-        }
-    }
-    package_collection_free(packages);
-    REQUIRE(kept == 3 && copied == 1 && !wrong);
-    return true;
-}
+
 /* A function builds the variant literal it returns in its caller's storage;
  * one that returns a local it assigns does not. Arrays live on the managed
  * heap, so a returned one is never copied, and a function that changes its
  * arrays through their places, as Counted and Paired do, builds nothing
  * there. */
-static bool builds_results(const unsigned char *bytes, size_t length)
-{
-    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    uint64_t root = 0;
-    char error[256];
-    package_collection *packages = compiler_artifact_read(
-        bytes,
-        length,
-        NULL,
-        BEHAVIOR_BYTECODE,
-        &remaining,
-        &root,
-        error,
-        sizeof error
-    );
-    if (!packages) {
-        fprintf(stderr, "package compiler built load: %s\n", error);
-    }
-    REQUIRE(packages);
-    int built = 0, copied = 0, wrong = 0;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int i = 0; execution_module_id(module) == root &&
-                        i < execution_module_function_count(module);
-             i++) {
-            execution_module_function_info f = execution_module_function_at(module, i);
-            bool build = !strncmp(f.entry, "Built", 5),
-                 copy = !strncmp(f.entry, "Copied", 6);
-            built += build;
-            copied += copy;
-            if ((build && !f.body->builds_results) || (copy && f.body->builds_results)) {
-                fprintf(
-                    stderr,
-                    "package compiler %s builds results: %d\n",
-                    f.entry,
-                    f.body->builds_results
-                );
-                wrong++;
-            }
-        }
-    }
-    package_collection_free(packages);
-    REQUIRE(built == 2 && copied == 1 && !wrong);
-    return true;
-}
+
 /* Whether f's first push or extension drops its item at once: the next host
  * call drops a value. */
-static bool drops_pushed_item(const behavior_function *f)
-{
-    for (int i = 0; i + 1 < acount(f->host_calls); i++) {
-        execution_intrinsic kind = execution_intrinsic_kind(f->host_calls[i].capability_id);
-        if (kind == EXECUTION_INTRINSIC_ARRAY_PUSH ||
-            kind == EXECUTION_INTRINSIC_ARRAY_EXTEND) {
-            return f->host_calls[i + 1].capability_id ==
-                   (UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_VALUE_DROP);
-        }
-    }
-    return false;
-}
-static int intrinsic_calls(const behavior_function *f, execution_intrinsic kind)
-{
-    int count = 0;
-    for (int i = 0; i < acount(f->host_calls); i++) {
-        count += f->host_calls[i].capability_id ==
-                 (UINT64_C(0x4348494900000000) | kind);
-    }
-    return count;
-}
+
 /* Arrays are values a loop retains, so neither a loop over an array nothing
  * changes nor one whose body changes its array snapshots it; CopiedWalk's
  * result shows the walk still sees the array as it was. A local nothing
  * changes reads its element in place without a host call, as stage zero lends
  * it, unless its array changes. WalkedSum walks a parameter and a local
  * nothing changes as they are, without copying either. */
-static bool reads_in_place(const unsigned char *bytes, size_t length)
-{
-    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    uint64_t root = 0;
-    char error[256];
-    package_collection *packages = compiler_artifact_read(
-        bytes,
-        length,
-        NULL,
-        BEHAVIOR_BYTECODE,
-        &remaining,
-        &root,
-        error,
-        sizeof error
-    );
-    if (!packages) {
-        fprintf(stderr, "package compiler aliases load: %s\n", error);
-    }
-    REQUIRE(packages);
-    int walks = 0, wrong = 0;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int i = 0; execution_module_id(module) == root &&
-                        i < execution_module_function_count(module);
-             i++) {
-            execution_module_function_info f = execution_module_function_at(module, i);
-            int count = snapshots(f.body);
-            walks += !strcmp(f.entry, "AliasedSum") || !strcmp(f.entry, "CopiedWalk");
-            if (count) {
-                fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
-                wrong++;
-            }
-            int gets = intrinsic_calls(f.body, EXECUTION_INTRINSIC_SEQUENCE_GET),
-                drops = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_DROP),
-                borrows = intrinsic_calls(f.body, EXECUTION_INTRINSIC_SEQUENCE_BORROW);
-            bool lent = !strcmp(f.entry, "LentFind"),
-                 copied = !strcmp(f.entry, "CopiedFind"),
-                 walked = !strcmp(f.entry, "WalkedSum");
-            int copies = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_COPY);
-            walks += lent || copied || walked;
-            if ((lent && (gets || drops || borrows)) ||
-                (copied && (!gets || borrows)) || (walked && copies)) {
-                fprintf(stderr, "package compiler %s reads %d, borrows %d, drops %d elements\n", f.entry, gets, borrows, drops);
-                wrong++;
-            }
-        }
-    }
-    package_collection_free(packages);
-    REQUIRE(walks == 5 && !wrong);
-    return true;
-}
+
 /* Literals whose binary64 and binary32 readings LiteralBits must agree on:
  * exact and halfway values, the ends of both ranges, long and hexadecimal
  * spellings. */
-static const char *const literal_spellings[] = {
-    "0",
-    "0.0",
-    "000",
-    "1",
-    "007.5",
-    "0.5",
-    "0.1",
-    "0.2",
-    "0.3",
-    "0.001",
-    "384.0",
-    "1e10",
-    "1e22",
-    "1e23",
-    "3.14159265358979323846264338327950288",
-    "123456789012345678901234567890",
-    "9007199254740992",
-    "9007199254740993",
-    "9007199254740995",
-    "18446744073709551615",
-    "1.00000000000000011102230246251565404236316680908203125",
-    "1.00000000000000011102230246251565404236316680908203124",
-    "1.00000000000000011102230246251565404236316680908203126",
-    "1.000000059604644775390625",
-    "1.000000059604644775390624",
-    "1.7976931348623157e308",
-    "1.7976931348623158e308",
-    "1.7976931348623159e308",
-    "1e308",
-    "1e309",
-    "2.2250738585072014e-308",
-    "2.2250738585072011e-308",
-    "2.2250738585072012e-308",
-    "2.2250738585072013e-308",
-    "1.000000178813934326171875",
-    "4.9e-324",
-    "1e-400",
-    "3.4028234663852886e38",
-    "3.4028235e38",
-    "3.4028235677973366e38",
-    "3.4028236e38",
-    "1.17549435e-38",
-    "1.4e-45",
-    "1e-46",
-    "1e-30",
-    "0x0",
-    "0x1F",
-    "0x10000000000001",
-    "0x1FFFFFFFFFFFFF",
-    "0x20000000000001",
-    "0x8000000000000000",
-    "0xFFFFFFFFFFFFFFFF",
-    "1e0",
-    "1E+2",
-    "25e-1",
-    "0.000000000000000000001",
-    "100000000000000000000000000000000000000000000000000",
-    "1.5e300",
-    "6.02214076e23",
-};
+
 /* Whether a literal's significant digits are nonzero. */
-static bool digits_nonzero(const char *text)
-{
-    text += *text == '-';
-    bool hexadecimal = text[0] == '0' && (text[1] == 'x' || text[1] == 'X');
-    for (const char *at = hexadecimal ? text + 2 : text; *at; at++) {
-        if (!hexadecimal && (*at == 'e' || *at == 'E')) {
-            return false;
-        }
-        if (*at != '0' && *at != '.') {
-            return true;
-        }
-    }
-    return false;
-}
+
 /* The reading LiteralBits implements, which is stage zero's where long double
  * is double: the binary64 nearest the literal and the binary32 nearest that;
  * a nonzero literal whose binary64 is infinite, zero or subnormal is out of
  * range. */
-static void literal_reading(const char *text, bool *finite, uint64_t *wide, bool *fits, uint64_t *narrow)
-{
-    char *end;
-    double value = strtod(text, &end);
-    *finite = !*end && isfinite(value) && !(value != 0 && fabs(value) < DBL_MIN) &&
-              !(value == 0 && digits_nonzero(text));
-    memcpy(wide, &value, sizeof *wide);
-    *fits = fabs(value) <= FLT_MAX;
-    float single = (float)value;
-    uint32_t bits;
-    memcpy(&bits, &single, sizeof bits);
-    *narrow = bits;
-}
-static bool literal_agrees(int b, const char *spelling, bool negative)
-{
-    char spelling_text[2100];
-    snprintf(spelling_text, sizeof spelling_text, "%s%s", negative ? "-" : "", spelling);
-    bool finite, fits;
-    uint64_t wide, narrow;
-    literal_reading(spelling_text, &finite, &wide, &fits, &narrow);
-    pin_value args[] = { text(spelling),
-                         (pin_value){ .type = PIN_BOOL, .b = negative } };
-    pin_value out;
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "LiteralBits", args, 2, COMPILE_BUDGET, &detached, &out)
-    );
-    const pin_union *value = out.ptr;
-    bool read = value->tag == variant_tag(b, "FloatBits", "Finite");
-    bool same = read == finite;
-    if (same && read) {
-        same = value->values[0].u64 == wide && value->values[1].b == fits &&
-               (!fits || value->values[2].u64 == narrow);
-    }
-    if (!same) {
-        fprintf(
-            stderr,
-            "package compiler literal %s: expected %d %016llx %d %08llx, read "
-            "%d %016llx %d %08llx\n",
-            spelling_text,
-            finite,
-            (unsigned long long)wide,
-            fits,
-            (unsigned long long)narrow,
-            read,
-            read ? (unsigned long long)value->values[0].u64 : 0ull,
-            read && value->values[1].b,
-            read ? (unsigned long long)value->values[2].u64 : 0ull
-        );
-    }
-    arena_free(&detached);
-    return same;
-}
+
 /* Spellings longer than the listed ones: the exact decimals of binary64
  * values that are binary32 ties, and 800 digits followed by one that decides
  * the rounding, or by an exponent that moves the point back. */
-static int long_spellings(char spellings[][2048], int capacity)
-{
-    static const double ties[] = { 0x3p-150, 0x5p-150, 0x1.000001p0, 0x1.000003p0, 0x1.fffffe8p127 };
-    int count = 0;
-    for (int i = 0; i < (int)(sizeof ties / sizeof *ties) && count < capacity; i++) {
-        snprintf(spellings[count++], sizeof spellings[0], "%.200e", ties[i]);
-    }
-    char *sticky = spellings[count++];
-    int length = snprintf(sticky, sizeof spellings[0], "%s", "1.00000000000000011102230246251565404236316680908203125");
-    for (int i = 0; i < 800; i++) {
-        sticky[length++] = '0';
-    }
-    sticky[length++] = '1';
-    sticky[length] = 0;
-    char *shifted = spellings[count++];
-    shifted[0] = '1';
-    for (int i = 1; i <= 800; i++) {
-        shifted[i] = '0';
-    }
-    snprintf(shifted + 801, sizeof spellings[0] - 801, "%s", "e-800");
-    return count;
-}
+
 /* LiteralBits reads number literals of floating types by that reading:
  * the listed spellings on both compiler backends, with both signs on the
  * compiled one, and there also the long spellings and generated ones across
  * the binary64 range. */
-static bool literals_agree()
-{
-    static char spellings[8][2048];
-    int long_count = long_spellings(spellings, 8);
-    for (int i = 0; i < (int)(sizeof literal_spellings / sizeof *literal_spellings);
-         i++) {
-        REQUIRE(literal_agrees(0, literal_spellings[i], false));
-        REQUIRE(literal_agrees(1, literal_spellings[i], false));
-        REQUIRE(literal_agrees(1, literal_spellings[i], true));
-    }
-    for (int i = 0; i < long_count; i++) {
-        REQUIRE(literal_agrees(1, spellings[i], false));
-    }
-    uint32_t state = 12345;
-    for (int i = 0; i < 120; i++) {
-        char spelling[96];
-        int length = 0;
-        state = state * 1103515245u + 12345u;
-        int digits = 1 + (int)(state >> 16) % 19;
-        for (int d = 0; d < digits; d++) {
-            state = state * 1103515245u + 12345u;
-            spelling[length++] = (char)('0' + (state >> 16) % 10);
-            if (d == digits / 2 && d + 1 < digits && (state & 1)) {
-                spelling[length++] = '.';
-            }
-        }
-        state = state * 1103515245u + 12345u;
-        int exponent = (int)((state >> 8) % 640) - 330;
-        length += snprintf(spelling + length, sizeof spelling - (size_t)length, "e%d", exponent);
-        REQUIRE(literal_agrees(1, spelling, false));
-    }
-    return true;
-}
+
 /* The packages of a closure, linked against the compiler host's natives,
  * which `native` holds; NULL when it does not load. */
-static package_collection *read_packages(
-    const unsigned char *bytes,
-    size_t length,
-    native_capabilities **native,
-    behavior_backend backend
-)
-{
-    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK,
-                                             CSTRING_PACK };
-    char error[256];
-    *native = native_capabilities_from_definition_packs(NULL, 0, packs, 5, error, sizeof error);
-    assert(*native);
-    native_prepared_context context = { .native = *native };
-    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
-    linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    linker.decoded_records = COMPILER_HOST_MAX_CLOSURE_RECORDS;
-    linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
-    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    uint64_t root = 0;
-    package_collection *packages = compiler_artifact_read(
-        bytes,
-        length,
-        &linker,
-        backend,
-        &remaining,
-        &root,
-        error,
-        sizeof error
-    );
-    if (!packages) {
-        fprintf(stderr, "package compiler load: %s\n", error);
-    }
-    return packages;
-}
+
 /* Repeated equivalent bindings share one emitted specialization, while
  * distinct bindings have different IDs. Source points separately compare
  * those IDs with stage zero's independently prepared modules. */
-static bool reuses_specializations(const unsigned char *bytes, size_t length, int expected)
-{
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    uint64_t *ids = NULL;
-    bool distinct = true;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int i = 0; i < execution_module_function_count(module); i++) {
-            execution_module_function_info function = execution_module_function_at(module, i);
-            if (strncmp(function.entry, "__generic_", 10)) {
-                continue;
-            }
-            for (int j = 0; j < acount(ids); j++) {
-                distinct = distinct && ids[j] != function.id;
-            }
-            apush(ids, function.id);
-        }
-    }
-    int count = acount(ids);
-    afree(ids);
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    if (!distinct || count != expected) {
-        fprintf(stderr, "package compiler specialization reuse: %d distinct=%d, expected %d\n", count, distinct, expected);
-    }
-    REQUIRE(distinct && count == expected);
-    return true;
-}
+
 /* A native never changes a value it is passed, so a call lends it a local,
  * and the result it returns is a temporary a local takes over. An element it
  * is passed is copied. */
-static bool lends_native_values(const unsigned char *bytes, size_t length)
-{
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    int lent = 0, copied = 0, wrong = 0;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int i = 0; i < execution_module_function_count(module); i++) {
-            execution_module_function_info f = execution_module_function_at(module, i);
-            bool lend = !strncmp(f.entry, "Lent", 4),
-                 copy = !strncmp(f.entry, "Copied", 6);
-            int copies = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_COPY);
-            lent += lend;
-            copied += copy;
-            if ((lend && copies) || (copy && !copies)) {
-                fprintf(stderr, "package compiler %s copies %d values\n", f.entry, copies);
-                wrong++;
-            }
-        }
-    }
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    REQUIRE(lent == 3 && copied == 1 && !wrong);
-    return true;
-}
+
 /* A drop releases only collections, so a temporary that holds none is not
  * dropped. */
-static bool drops_only_collections(const unsigned char *bytes, size_t length)
-{
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    int plain = 0, held = 0, wrong = 0;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int i = 0; i < execution_module_function_count(module); i++) {
-            execution_module_function_info f = execution_module_function_at(module, i);
-            bool keep = !strncmp(f.entry, "Plain", 5),
-                 drop = !strncmp(f.entry, "Held", 4);
-            int drops = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_DROP);
-            plain += keep;
-            held += drop;
-            if ((keep && drops) || (drop && !drops)) {
-                fprintf(stderr, "package compiler %s drops %d values\n", f.entry, drops);
-                wrong++;
-            }
-        }
-    }
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    REQUIRE(plain == 3 && held == 4 && !wrong);
-    return true;
-}
+
 /* Runs a call with the probe natives: the compiler host links only its own,
  * so the closure is read with them and its function run directly. */
-static bool run_probe(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
-{
-    REQUIRE(!strcmp(call->arguments, "[]") && call->expected);
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    const behavior_function *body = NULL;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int f = 0; f < execution_module_function_count(module); f++) {
-            execution_module_function_info info = execution_module_function_at(module, f);
-            if (info.id == function_id(call->function)) {
-                body = info.body;
-            }
-        }
-    }
-    REQUIRE(body);
-    arena storage = { 0 };
-    pin_value result = { .type = PIN_I32 };
-    behavior_function_activation activation = { 0 };
-    bool resumable = behavior_function_resumable(body);
-    if (resumable) {
-        behavior_function_activation_init(body, &activation);
-    }
-    behavior_function_prepare_results(body, &result, &storage);
-    behavior_managed_heap heap;
-    behavior_managed_heap_init(&heap);
-    behavior_function_context context = { .activation = resumable ? &activation : NULL,
-                                          .managed_heap = &heap,
-                                          .results = &result,
-                                          .budget = TARGET_BUDGET };
-    behavior_function_bind_storage(&context, &storage);
-    bool bound = behavior_function_bind(body, &context, NULL, 0);
-    int status = bound ? behavior_function_run(body, &context, backend != 0)
-                       : FLOW_ERR_ARGUMENT;
-    char text[32];
-    snprintf(text, sizeof text, "[%d]", result.i);
-    bool expected = status == FLOW_OK && context.returned &&
-                    !strcmp(text, call->expected);
-    if (!expected) {
-        fprintf(stderr, "package compiler probe run %s: %d %s\n", call->function, status, text);
-    }
-    behavior_function_release_host(&context);
-    behavior_function_activation_free(&activation);
-    behavior_managed_heap_free(&heap);
-    arena_free(&storage);
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    REQUIRE(expected);
-    return true;
-}
-static bool call_sample(
-    const sample *s,
-    const unsigned char *bytes,
-    size_t length,
-    const sample_call *call,
-    int backend
-)
-{
-    if (s->math) {
-        return run_math(bytes, length, call, backend);
-    }
-    return s->probe_calls ? run_probe(bytes, length, call, backend)
-                          : run(bytes, length, call, backend);
-}
+
 /* The receiver input must be captured before the authored item call. Comparing
  * watch sets alone cannot detect a watch moved across that call. Each fixture
  * function has exactly one update and one authored invocation. */
-static bool array_update_order(const unsigned char *bytes, size_t length, const sample *s)
-{
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    for (int c = 0; c < CALLS && s->calls[c].function; c++) {
-        const behavior_function *body = NULL;
-        for (int p = 0; p < package_collection_count(packages); p++) {
-            const execution_module *module = package_collection_module(packages, p);
-            for (int f = 0; f < module->plan.function_count; f++) {
-                if (module->plan.functions[f].id == function_id(s->calls[c].function)) {
-                    body = module->plan.functions[f].body;
-                }
-            }
-        }
-        REQUIRE(body);
-        int receiver = -1, item = -1, invocation = -1;
-        for (int pc = 0; pc < acount(body->instructions); pc++) {
-            const behavior_function_instruction *op = &body->instructions[pc];
-            if (op->op == BF_INVOKE) {
-                REQUIRE(invocation < 0);
-                invocation = pc;
-            }
-            if (op->op != BF_SOURCE_WATCH) {
-                continue;
-            }
-            const behavior_source_watch *watch = &body->source_watches[op->target];
-            if (watch->output) {
-                continue;
-            }
-            if (watch->ordinal == 0 && watch->initial.container == PIN_CONTAINER_ARRAY) {
-                REQUIRE(receiver < 0);
-                receiver = pc;
-            }
-            if (watch->ordinal == 1) {
-                REQUIRE(item < 0);
-                item = pc;
-            }
-        }
-        if (!(receiver >= 0 && receiver < invocation && invocation < item)) {
-            fprintf(
-                stderr,
-                "%s debug order: receiver %d, invocation %d, item %d\n",
-                s->calls[c].function,
-                receiver,
-                invocation,
-                item
-            );
-        }
-        REQUIRE(receiver >= 0 && receiver < invocation && invocation < item);
-    }
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    return true;
-}
-typedef struct
-{
-    const behavior_function *item;
-    int start, end, step;
-    bool valid;
-} array_update_trace;
-static int array_update_pause(void *user, behavior_function_context *context, const behavior_source_point *point)
-{
-    array_update_trace *trace = user;
-    if (context->source_function == trace->item &&
-        point->kind == BEHAVIOR_SOURCE_FUNCTION && !point->completion) {
-        trace->valid &= trace->step == 1;
-        trace->step++;
-    }
-    return 0;
-}
-static void array_update_capture(
-    void *user,
-    behavior_function_context *,
-    const behavior_source_watch *watch,
-    const pin_value *value
-)
-{
-    array_update_trace *trace = user;
-    if (watch->origin.start != trace->start || watch->origin.end != trace->end) {
-        return;
-    }
-    if (!value) {
-        trace->valid = false;
-        return;
-    }
-    if (!watch->output && watch->ordinal == 1) {
-        trace->valid &= trace->step == 2 && value->type == PIN_I32 &&
-                        value->container == PIN_CONTAINER_SINGLE && value->i == 7;
-        trace->step++;
-        return;
-    }
-    const pin_array *array = value->ptr;
-    bool valid = value->type == PIN_I32 && value->container == PIN_CONTAINER_ARRAY &&
-                 array && array->count == (watch->output ? 2 : 1);
-    if (valid) {
-        valid = pin_array_get(array, 0).i == 1 &&
-                (!watch->output || pin_array_get(array, 1).i == 7);
-    }
-    trace->valid &= valid && watch->ordinal == 0 &&
-                    trace->step == (watch->output ? 3 : 0);
-    trace->step++;
-}
+
 /* Observe actual delivery as well as emitted order. Payload pointers belong
  * to the invocation; the callbacks retain only their checked literal values. */
-static bool observes_array_update(const unsigned char *bytes, size_t length, const sample *s)
-{
-    const char *call = "append(xs, Item())";
-    const char *start = strstr(s->source, call);
-    REQUIRE(start);
-    for (int backend = 0; backend < 2; backend++) {
-        native_capabilities *native;
-        package_collection *packages = read_packages(
-            bytes,
-            length,
-            &native,
-            backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE
-        );
-        REQUIRE(packages);
-        const behavior_function *body = NULL, *item = NULL;
-        for (int p = 0; p < package_collection_count(packages); p++) {
-            const execution_module *module = package_collection_module(packages, p);
-            for (int f = 0; f < execution_module_function_count(module); f++) {
-                execution_module_function_info info = execution_module_function_at(module, f);
-                if (info.id == function_id("AppendLocal")) {
-                    body = info.body;
-                }
-                if (info.id == function_id("Item")) {
-                    item = info.body;
-                }
-            }
-        }
-        REQUIRE(body && item);
-        array_update_trace trace = { .item = item,
-                                     .start = (int)(start - s->source),
-                                     .end = (int)(start - s->source + strlen(call)),
-                                     .valid = true };
-        arena storage = { 0 };
-        pin_value result = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
-        behavior_function_activation activation = { 0 };
-        bool resumable = behavior_function_resumable(body);
-        if (resumable) {
-            behavior_function_activation_init(body, &activation);
-        }
-        behavior_function_prepare_results(body, &result, &storage);
-        /* The array values live in the invocation's managed heap. */
-        behavior_managed_heap heap;
-        behavior_managed_heap_init(&heap);
-        behavior_function_context context = { .activation = resumable ? &activation : NULL,
-                                              .managed_heap = &heap,
-                                              .results = &result,
-                                              .budget = TARGET_BUDGET,
-                                              .source_debug_user = &trace,
-                                              .source_pause = array_update_pause,
-                                              .source_capture = array_update_capture };
-        behavior_function_bind_storage(&context, &storage);
-        bool bound = behavior_function_bind(body, &context, NULL, 0);
-        behavior_run_scope runs = { 0 };
-        behavior_run_scope_begin(&runs);
-        int status = bound ? behavior_function_run(body, &context, backend != 0)
-                           : FLOW_ERR_ARGUMENT;
-        behavior_run_scope_end(&runs);
-        const pin_array *array = result.ptr;
-        bool valid = status == FLOW_OK && context.returned && trace.valid &&
-                     trace.step == 4 && array && array->count == 2 &&
-                     pin_array_get(array, 0).i == 1 &&
-                     pin_array_get(array, 1).i == 7;
-        behavior_function_release_host(&context);
-        behavior_function_activation_free(&activation);
-        behavior_managed_heap_free(&heap);
-        arena_free(&storage);
-        package_collection_free(packages);
-        native_capabilities_free(native);
-        REQUIRE(valid);
-        REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
-        REQUIRE(backend != 0 || runs.counts.bytecode_entries > 0);
-        if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_SLJIT) {
-            REQUIRE(runs.counts.inspected_sljit_entries > 0 && !runs.counts.bytecode_entries);
-        }
-        if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_WASM) {
-            REQUIRE(runs.counts.inspected_wasm_entries > 0);
-        }
-    }
-    return true;
-}
+
 /* Compare serialized function flags, independently of the runtime's derived
  * effect summary. Direct, recursive and imported HOST callers must retain it. */
-static bool same_host_effects(const execution_module *expected, const execution_module *actual)
-{
-    bool same = true;
-    int observed = 0;
-    for (int i = 0; i < expected->plan.function_count; i++) {
-        const execution_module_function *x = &expected->plan.functions[i];
-        const execution_module_function *y = NULL;
-        for (int j = 0; !y && j < actual->plan.function_count; j++) {
-            if (actual->plan.functions[j].id == x->id) {
-                y = &actual->plan.functions[j];
-            }
-        }
-        bool host_call = x->id == function_id("Probe") ||
-                         x->id == function_id("Caller") ||
-                         x->id == function_id("Recursive") ||
-                         x->id == function_id("ImportedHost") ||
-                         x->id == script_catalog_id("package-symbol", "project:lib:1:Through:callable");
-        REQUIRE(!host_call || (x->effects & SCRIPT_EFFECT_HOST));
-        observed += host_call;
-        REQUIRE(y);
-        if (x->effects != y->effects) {
-            fprintf(
-                stderr,
-                "stored function effects %016llx: stage zero=%u stage one=%u\n",
-                (unsigned long long)x->id,
-                x->effects,
-                y->effects
-            );
-        }
-        same &= x->effects == y->effects;
-    }
-    REQUIRE(observed > 0);
-    return same;
-}
+
 /* Each module retains stage zero's source points, watches and, when supplied,
  * effects for the target's natives. */
-static bool points_like_oracle(const unsigned char *bytes, size_t length, bool host_effects)
-{
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    const authoring_packages *owner = oracle.owners[0];
-    bool alike = package_collection_count(packages) == authoring_packages_count(owner);
-    for (int p = 0; alike && p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        const execution_module *expected = NULL;
-        for (int q = 0; !expected && q < authoring_packages_count(owner); q++) {
-            const execution_module *candidate = authoring_packages_at(owner, q)->module;
-            expected = execution_module_id(candidate) == execution_module_id(module)
-                         ? candidate
-                         : NULL;
-        }
-        alike = expected && same_points(expected, module) &&
-                same_watches(expected, module) &&
-                (!host_effects || same_host_effects(expected, module));
-    }
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    return alike;
-}
+
 /* Each compiler backend has a focused selector. Bytecode compares source
  * points with stage zero; both compare explicit target effects. */
 /* Stage zero's packages for the sample, linked against the fixture's
  * natives, and its selected diagnostic package (facts by default). */
-static authoring_packages *oracle_packages(const sample *s, const authoring_package **root)
-{
-    source_package_input inputs[SAMPLE_INPUTS];
-    int count = sample_inputs(s, inputs);
-    source_package_collection collections[] = { { "core", "/sdk/core" } };
-    source_package_snapshot_options options = { .project_root = "/compiler",
-                                                .files = inputs,
-                                                .file_count = count,
-                                                .collections = collections,
-                                                .collection_count = 1 };
-    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
-    assert(snapshot && !source_package_snapshot_error_at(snapshot));
-    script_lower_bindings bindings = authoring_native_bindings(fixture.native);
-    authoring_packages *packages = authoring_packages_prepare(
-        snapshot,
-        native_capabilities_catalog(fixture.native),
-        &bindings,
-        BEHAVIOR_BYTECODE,
-        NULL
-    );
-    assert(packages);
-    const char *identity = s->oracle_package ? s->oracle_package : "project:facts";
-    *root = NULL;
-    for (int p = 0; p < authoring_packages_count(packages); p++) {
-        const authoring_package *candidate = authoring_packages_at(packages, p);
-        if (!strcmp(candidate->identity, identity)) {
-            *root = candidate;
-        }
-    }
-    assert(*root);
-    return packages;
-}
-static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
-{
-    const authoring_package *root;
-    authoring_packages *packages = oracle_packages(s, &root);
-    REQUIRE(!authoring_packages_valid(packages));
-    REQUIRE(root->diagnostic_count);
-    const script_diagnostic *expected = &root->diagnostics[0];
-    bool same = !strcmp(expected->message, s->oracle_message ? s->oracle_message : message) &&
-                expected->range.line == line && expected->range.column == column;
-    if (!same) {
-        fprintf(
-            stderr,
-            "stage zero %s: %s at %d:%d; stage one at %d:%d\n",
-            s->name,
-            expected->message,
-            expected->range.line,
-            expected->range.column,
-            line,
-            column
-        );
-    }
-    authoring_packages_free(packages);
-    REQUIRE(same);
-    return true;
-}
-static bool rejects_malformed_effects()
-{
-    static const source_package_input bad_source = { "facts/Main.chibi", "not source", 10 };
-    pin_value args[ARGUMENTS + 1];
-    REQUIRE(arguments_for(0, false, false, &bad_source, 1, args));
-    const pin_array *declared = linked_effects[0][0][0].ptr;
-    REQUIRE(declared && declared->count > 0);
-    for (int i = 0; i < 3; i++) {
-        int count = i ? declared->count : 0;
-        pin_array *masks = pin_array_snapshot_allocate(&input, PIN_I32, NULL, count);
-        for (int j = 0; j < count; j++) {
-            masks->items[j] = (pin_value){ .type = PIN_I32,
-                                           .i = j      ? 0
-                                              : i == 1 ? -1
-                                                       : 128 };
-        }
-        args[ARGUMENTS] = (pin_value){ .type = PIN_I32,
-                                       .container = PIN_CONTAINER_ARRAY,
-                                       .ptr = masks };
-        compiler_result out;
-        pin_value message, document;
-        REQUIRE(compiler_call(0, "CompileWithEffects", args, ARGUMENTS + 1, COMPILE_BUDGET, &out));
-        REQUIRE(!compiler_succeeded(&out));
-        REQUIRE(get(compiler_error(&out), "message", &message));
-        REQUIRE(get(compiler_error(&out), "document", &document));
-        REQUIRE(
-            !strcmp(pin_text(message).bytes, "unsupported compiler input or target") &&
-            document.i == -1
-        );
-        arena_free(&detached);
-    }
-    return true;
-}
+
 enum
 {
     TRACED_WATCHES = 64
 };
-typedef struct
-{
-    int start, end, ordinal;
-    bool output;
-    pin_type type;
-    uint64_t bits;
-} traced_watch;
+
 /* The watches one call delivers, in order, with each scalar payload's bits. */
-typedef struct
-{
-    traced_watch watches[TRACED_WATCHES];
-    int count;
-    bool overflow;
-} watch_trace;
-static uint64_t payload_bits(const pin_value *value)
-{
-    if (value->container != PIN_CONTAINER_SINGLE) {
-        return 0;
-    }
-    uint32_t single;
-    switch (value->type) {
-        case PIN_BOOL: return value->b;
-        case PIN_I32: return (uint32_t)value->i;
-        case PIN_F32: memcpy(&single, &value->f, sizeof single); return single;
-        case PIN_I64:
-        case PIN_U64:
-        case PIN_F64: return value->u64;
-        default: return 0;
-    }
-}
-static void trace_watch(
-    void *user,
-    behavior_function_context *,
-    const behavior_source_watch *watch,
-    const pin_value *value
-)
-{
-    watch_trace *trace = user;
-    if (trace->count == TRACED_WATCHES) {
-        trace->overflow = true;
-        return;
-    }
-    trace->watches[trace->count++] = (traced_watch){
-        .start = watch->origin.start,
-        .end = watch->origin.end,
-        .ordinal = watch->ordinal,
-        .output = watch->output,
-        .type = value ? value->type : PIN_FLOW,
-        .bits = value ? payload_bits(value) : 0,
-    };
-}
+
 /* Runs `function`, which takes no arguments and returns one value, from a
  * closure linked with the probe natives, tracing the watches it delivers. */
-static bool traced_call(
-    const unsigned char *bytes,
-    size_t length,
-    const char *function,
-    int backend,
-    watch_trace *trace,
-    int *status,
-    pin_value *output
-)
-{
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    const behavior_function *body = NULL;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int f = 0; f < execution_module_function_count(module); f++) {
-            execution_module_function_info info = execution_module_function_at(module, f);
-            if (info.id == function_id(function)) {
-                body = info.body;
-            }
-        }
-    }
-    REQUIRE(body && body->argument_count == 0 && body->result_count == 1);
-    arena storage = { 0 };
-    behavior_function_activation activation = { 0 };
-    bool resumable = behavior_function_resumable(body);
-    if (resumable) {
-        behavior_function_activation_init(body, &activation);
-    }
-    *output = body->result_defaults[0];
-    behavior_function_prepare_results(body, output, &storage);
-    behavior_function_context context = { .activation = resumable ? &activation : NULL,
-                                          .results = output,
-                                          .budget = TARGET_BUDGET,
-                                          .source_debug_user = trace,
-                                          .source_capture = trace_watch };
-    behavior_function_bind_storage(&context, &storage);
-    bool bound = behavior_function_bind(body, &context, NULL, 0);
-    behavior_run_scope runs = { 0 };
-    behavior_run_scope_begin(&runs);
-    *status = bound ? behavior_function_run(body, &context, backend != 0)
-                    : FLOW_ERR_ARGUMENT;
-    behavior_run_scope_end(&runs);
-    if (*status == FLOW_OK && !context.returned) {
-        *status = FLOW_ERR_ARGUMENT;
-    }
-    *output = (pin_value){ .type = output->type, .u64 = payload_bits(output) };
-    behavior_function_release_host(&context);
-    behavior_function_activation_free(&activation);
-    arena_free(&storage);
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    REQUIRE(bound && !trace->overflow);
-    /* The call ran on the backend it selected, inspected, with no fallback. */
-    const behavior_run_counts *n = &runs.counts;
-    uint64_t compiled = n->sljit_entries + n->wasm_entries;
-    REQUIRE(!n->overflow && !n->inspection_bytecode_fallbacks && !n->size_bytecode_fallbacks);
-    REQUIRE(
-        backend ? compiled > 0 && !n->bytecode_entries &&
-                      n->inspected_sljit_entries + n->inspected_wasm_entries == compiled
-                : n->bytecode_entries > 0 && !compiled
-    );
-    return true;
-}
-static bool same_traced(const traced_watch *x, const traced_watch *y)
-{
-    return x->start == y->start && x->end == y->end && x->ordinal == y->ordinal &&
-           x->output == y->output && x->type == y->type && x->bits == y->bits;
-}
-static void print_traced(const char *compiler, int index, const traced_watch *w)
-{
-    fprintf(
-        stderr,
-        "  %s watch %d at %d..%d ordinal %d%s type %d bits %llx\n",
-        compiler,
-        index,
-        w->start,
-        w->end,
-        w->ordinal,
-        w->output ? " output" : "",
-        (int)w->type,
-        (unsigned long long)w->bits
-    );
-}
-static bool same_trace(const watch_trace *expected, const watch_trace *actual)
-{
-    bool same = expected->count == actual->count;
-    for (int i = 0; same && i < expected->count; i++) {
-        same = same_traced(&expected->watches[i], &actual->watches[i]);
-    }
-    for (int i = 0; !same && i < expected->count; i++) {
-        print_traced("stage zero", i, &expected->watches[i]);
-    }
-    for (int i = 0; !same && i < actual->count; i++) {
-        print_traced("stage one", i, &actual->watches[i]);
-    }
-    return same;
-}
+
 /* Each traced call returns what stage zero's does and delivers its watches,
  * on both backends. */
-static bool traces_like_oracle(const unsigned char *bytes, size_t length, const sample *s)
-{
-    unsigned char *expected = NULL;
-    size_t expected_length = 0;
-    REQUIRE(oracle_closure(s, &expected, &expected_length));
-    bool same = true;
-    for (int c = 0; same && c < CALLS && s->calls[c].function; c++) {
-        const sample_call *call = &s->calls[c];
-        REQUIRE(!strcmp(call->arguments, "[]"));
-        for (int backend = 0; same && backend < 2; backend++) {
-            watch_trace traces[2] = { 0 };
-            int statuses[2];
-            pin_value results[2];
-            REQUIRE(traced_call(
-                expected,
-                expected_length,
-                call->function,
-                backend,
-                &traces[0],
-                &statuses[0],
-                &results[0]
-            ));
-            REQUIRE(
-                traced_call(bytes, length, call->function, backend, &traces[1], &statuses[1], &results[1])
-            );
-            char returned[32] = "";
-            if (results[1].type == PIN_I32) {
-                snprintf(returned, sizeof returned, "[%d]", results[1].i);
-            }
-            bool result = call->expected ? statuses[1] == FLOW_OK &&
-                                               results[0].type == results[1].type &&
-                                               results[0].u64 == results[1].u64 &&
-                                               (!s->c_string_probe ||
-                                                !strcmp(returned, call->expected))
-                                         : statuses[1] != FLOW_OK;
-            same = traces[0].count > 0 && statuses[0] == statuses[1] &&
-                   result && same_trace(&traces[0], &traces[1]);
-            if (!same) {
-                fprintf(
-                    stderr,
-                    "package compiler traced %s on backend %d: status %d and "
-                    "%d, %s\n",
-                    call->function,
-                    backend,
-                    statuses[0],
-                    statuses[1],
-                    returned
-                );
-            }
-        }
-    }
-    free(expected);
-    return same;
-}
+
 /* Unused collection packages have no emitted row, even an empty one. All
  * independent project packages retain nonempty module rows. */
-static bool project_closure_only(const unsigned char *bytes, size_t length, int expected)
-{
-    char error[256];
-    int count = 0;
-    uint64_t root = 0;
-    package_module *rows = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
-    if (!rows) {
-        fprintf(stderr, "project-only closure: %s\n", error);
-    }
-    REQUIRE(rows);
-    bool project_only = count == expected &&
-                        root == script_catalog_id("module", "project:facts");
-    for (int i = 0; i < count; i++) {
-        project_only &= !strncmp(rows[i].name, "project:", 8) && rows[i].length > 0;
-    }
-    compiler_artifact_rows_free(rows, count);
-    REQUIRE(project_only);
-    return true;
-}
+
 /* Invalid Unicode scalars are authored data failures, as stage zero's
  * char_check emits, rather than failures attributed to a native host call. */
-static bool char_failures_use_data_status(const unsigned char *bytes, size_t length)
-{
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    int checked = 0;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module_plan *plan = &package_collection_module(packages, p)
-                                                 ->plan;
-        for (int f = 0; f < plan->function_count; f++) {
-            const behavior_function *body = plan->functions[f].body;
-            for (int op = 0; op < acount(body->instructions); op++) {
-                const behavior_function_instruction *instruction = &body->instructions[op];
-                if (instruction->op == BF_ASSERT && instruction->message &&
-                    !strcmp(instruction->message, "Value does not fit in char")) {
-                    REQUIRE(instruction->target == BEHAVIOR_FUNCTION_DATA);
-                    checked++;
-                }
-            }
-        }
-    }
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    REQUIRE(checked > 0);
-    return true;
-}
-static bool math_rejects_at_source(const sample *s)
-{
-    const authoring_package *root;
-    authoring_packages *packages = oracle_packages(s, &root);
-    bool same = !authoring_packages_valid(packages) && root->diagnostic_count > 0;
-    if (same) {
-        const script_diagnostic *diagnostic = &root->diagnostics[0];
-        same = !strcmp(diagnostic->message, s->oracle_message) &&
-               diagnostic->range.line == s->oracle_line &&
-               diagnostic->range.column == s->oracle_column;
-        if (!same) {
-            fprintf(
-                stderr,
-                "stage zero math %s: %s at %d:%d\n",
-                s->name,
-                diagnostic->message,
-                diagnostic->range.line,
-                diagnostic->range.column
-            );
-        }
-    }
-    authoring_packages_free(packages);
-    REQUIRE(same);
-    return true;
-}
-static bool run_sample_table(sample_group group, int b, const sample *table, int table_count)
-{
-    REQUIRE(prepare_backends(1u << b));
-    if (group == BASE_SAMPLES && b == 0) {
-        REQUIRE(rejects_malformed_effects());
-    }
-    for (int i = 0; i < table_count; i++) {
-        const sample *s = &table[i];
-        if ((group != MATH_SAMPLES && s->group != group)) {
-            continue;
-        }
-        source_package_input inputs[SAMPLE_INPUTS];
-        int count = sample_inputs(s, inputs);
-        compiler_result out;
-        bool compiled = compile(b, s->game, s->c_string_probe, s->host_effects, inputs, count, COMPILE_BUDGET, &out);
-        if (!compiled) {
-            fprintf(
-                stderr,
-                "package compiler sample failed: name=%s index=%d group=%d "
-                "backend=%s inputs=%d source_bytes=%zu budget=%d\n",
-                s->name,
-                i,
-                group,
-                b ? "compiled" : "bytecode",
-                count,
-                strlen(s->source),
-                COMPILE_BUDGET
-            );
-        }
-        REQUIRE(compiled);
-        if (s->message) {
-            if (compiler_succeeded(&out)) {
-                fprintf(stderr, "package compiler %s: accepted\n", s->name);
-                if (s->same_rejection && s->oracle_message && s->line > 0 &&
-                    s->column > 0) {
-                    REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
-                    fprintf(
-                        stderr,
-                        "stage zero rejected it: %s at %d:%d\n",
-                        s->oracle_message,
-                        s->line,
-                        s->column
-                    );
-                }
-            }
-            REQUIRE(!compiler_succeeded(&out));
-            pin_value message, line, column;
-            REQUIRE(get(compiler_error(&out), "message", &message));
-            REQUIRE(
-                get(compiler_error(&out), "line", &line) &&
-                get(compiler_error(&out), "column", &column)
-            );
-            bool position = s->same_rejection
-                              ? rejects_like_oracle(
-                                    s,
-                                    pin_text(message).bytes,
-                                    line.i,
-                                    column.i
-                                )
-                              : line.i == s->line && column.i == s->column;
-            if (strcmp(pin_text(message).bytes, s->message) || !position) {
-                fprintf(
-                    stderr,
-                    "package compiler %s: %s at %d:%d\n",
-                    s->name,
-                    pin_text(message).bytes,
-                    line.i,
-                    column.i
-                );
-            }
-            REQUIRE(!strcmp(pin_text(message).bytes, s->message) && position);
-            if (group == MATH_SAMPLES) {
-                REQUIRE(math_rejects_at_source(s));
-            }
-            arena_free(&detached);
-            continue;
-        }
-        if (!compiler_succeeded(&out)) {
-            pin_value message, line, column;
-            get(compiler_error(&out), "message", &message);
-            get(compiler_error(&out), "line", &line);
-            get(compiler_error(&out), "column", &column);
-            fprintf(
-                stderr,
-                "package compiler %s rejected: %s at %d:%d\n",
-                s->name,
-                pin_text(message).bytes,
-                line.i,
-                column.i
-            );
-        }
-        REQUIRE(compiler_succeeded(&out));
-        size_t length;
-        unsigned char *bytes = closure_bytes(&out, &length);
-        arena_free(&detached);
-        if (s->project_modules) {
-            REQUIRE(project_closure_only(bytes, length, s->project_modules));
-        }
-        unsigned char *expected = NULL;
-        size_t expected_length = 0;
-        bool ran = (!s->char_checks || char_failures_use_data_status(bytes, length)) &&
-                   (!s->updates || updates_in_place(bytes, length, s->name)) &&
-                   (!s->specializations ||
-                    reuses_specializations(bytes, length, s->specializations)) &&
-                   (!s->boxed || reads_boxed(bytes, length)) &&
-                   (!s->moves || moves_fresh_values(bytes, length)) &&
-                   (!s->aliases || reads_in_place(bytes, length)) &&
-                   (!s->variants || moves_returned_variants(bytes, length)) &&
-                   (!s->built || builds_results(bytes, length)) &&
-                   (!s->lends || lends_native_values(bytes, length)) &&
-                   (!s->drops || drops_only_collections(bytes, length)) &&
-                   ((b && !s->host_effects && !s->debug_metadata) ||
-                    (oracle_closure(s, &expected, &expected_length) &&
-                     (s->math || points_like_oracle(bytes, length, s->host_effects))));
-        bool hosted = !s->traced || !s->c_string_probe;
-        for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
-            for (int backend = 0; ran && backend < 2; backend++) {
-                ran = call_sample(s, bytes, length, &s->calls[c], backend);
-                if (!ran && group == MATH_SAMPLES) {
-                    fprintf(stderr, "math stage-one compiler=%d target-vm=%d\n", b, backend);
-                }
-            }
-            if (ran && !b) {
-                ran = call_sample(s, expected, expected_length, &s->calls[c], 0);
-                if (!ran && group == MATH_SAMPLES) {
-                    fprintf(stderr, "math stage-zero oracle target-vm=0\n");
-                }
-            }
-            if (ran && !b && group == MATH_SAMPLES) {
-                ran = call_sample(s, expected, expected_length, &s->calls[c], 1);
-                if (!ran) {
-                    fprintf(stderr, "math stage-zero oracle target-vm=1\n");
-                }
-            }
-        }
-        ran = ran && (!s->traced || traces_like_oracle(bytes, length, s));
-        if (ran && s->update_order) {
-            ran = (b || array_update_order(expected, expected_length, s)) &&
-                  array_update_order(bytes, length, s) &&
-                  observes_array_update(bytes, length, s);
-            pin_value args[ARGUMENTS], closure;
-            REQUIRE(arguments(b, false, inputs, count, args));
-            REQUIRE(compiler_fixture_call(
-                &fixture,
-                b,
-                PACKAGE,
-                "CompileClosure",
-                args,
-                ARGUMENTS,
-                COMPILE_BUDGET,
-                &detached,
-                &closure
-            ));
-            const pin_array *array = closure.ptr;
-            REQUIRE(closure.type == PIN_U8 && closure.container == PIN_CONTAINER_ARRAY && array);
-            REQUIRE(length > 0 && (size_t)array->count == length);
-            bool same = true;
-            for (size_t i = 0; i < length; i++) {
-                same &= array->items[i].u8 == bytes[i];
-            }
-            arena_free(&detached);
-            REQUIRE(same);
-        }
-        free(bytes);
-        free(expected);
-        if (!ran) {
-            fprintf(stderr, "package compiler %s: differs\n", s->name);
-        }
-        REQUIRE(ran);
-    }
-    return true;
-}
-static bool run_samples(sample_group group, int b)
-{
-    return run_sample_table(group, b, samples, (int)SAMPLES);
-}
+
 /* Without debugger points and watches, a closure's functions have none, and
  * its loops and branches still run as they do with them. */
 /* The closure the compiler builds for sample `s` without debug information,
  * or NULL when it does not compile. */
-static unsigned char *debug_free_closure(const sample *s, size_t *length)
-{
-    source_package_input inputs[SAMPLE_INPUTS];
-    int count = sample_inputs(s, inputs);
-    pin_value args[ARGUMENTS];
-    compiler_result out;
-    if (!arguments(1, false, inputs, count, args)) {
-        return NULL;
-    }
-    args[DEBUG_ARGUMENT].b = false;
-    if (!compiler_call(1, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &out)) {
-        return NULL;
-    }
-    unsigned char *bytes = compiler_succeeded(&out) ? closure_bytes(&out, length)
-                                                    : NULL;
-    arena_free(&detached);
-    return bytes;
-}
-TEST_CASE(package_compiler_omits_debug_info)
-{
-    REQUIRE(prepare());
-    const char *const names[] = { "loops", "control", "array update debug order" };
-    for (size_t n = 0; n < sizeof names / sizeof *names; n++) {
-        const sample *s = samples;
-        while (strcmp(s->name, names[n])) {
-            s++;
-        }
-        size_t length;
-        unsigned char *bytes = debug_free_closure(s, &length);
-        REQUIRE(bytes);
-        native_capabilities *native;
-        package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-        REQUIRE(packages);
-        int debug = 0;
-        for (int p = 0; p < package_collection_count(packages); p++) {
-            const execution_module_plan *plan = &package_collection_module(packages, p)
-                                                     ->plan;
-            for (int i = 0; i < plan->function_count; i++) {
-                debug += acount(plan->functions[i].body->source_points) +
-                         acount(plan->functions[i].body->source_watches);
-            }
-        }
-        package_collection_free(packages);
-        native_capabilities_free(native);
-        bool ran = !debug;
-        for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
-            for (int backend = 0; ran && backend < 2; backend++) {
-                ran = run(bytes, length, &s->calls[c], backend);
-            }
-        }
-        free(bytes);
-        REQUIRE(ran);
-    }
-    return true;
-}
+
 /* Without debug information, a push or extension of a local array updates it
  * in place and drops a temporary item at once rather than holding it until
  * the function returns. */
-TEST_CASE(package_compiler_drops_pushed_items)
-{
-    REQUIRE(prepare());
-    const sample *s = samples;
-    while (strcmp(s->name, "plain drops")) {
-        s++;
-    }
-    size_t length;
-    unsigned char *bytes = debug_free_closure(s, &length);
-    REQUIRE(bytes);
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    int pushes = 0, wrong = 0;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int i = 0; i < execution_module_function_count(module); i++) {
-            execution_module_function_info f = execution_module_function_at(module, i);
-            if (strcmp(f.entry, "HeldExtend") && strcmp(f.entry, "HeldPush")) {
-                continue;
-            }
-            pushes++;
-            wrong += !drops_pushed_item(f.body);
-        }
-    }
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    bool ran = pushes == 2 && !wrong;
-    for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
-        for (int backend = 0; ran && backend < 2; backend++) {
-            ran = run(bytes, length, &s->calls[c], backend);
-        }
-    }
-    free(bytes);
-    REQUIRE(ran);
-    return true;
-}
+
 /* The instructions compiling a package of `records` records takes, counted
  * across every call, or zero when it does not compile. */
-static uint64_t declaring_steps(int records)
-{
-    static char source[64 * 1024];
-    int used = snprintf(source, sizeof source, "package facts\n");
-    for (int i = 0; i < records; i++) {
-        used += snprintf(source + used, sizeof source - (size_t)used, "R%d :: struct { v: int; }\n", i);
-    }
-    used += snprintf(source + used, sizeof source - (size_t)used, "Read :: (r: R0) -> int { return r.v; }\n");
-    REQUIRE((size_t)used < sizeof source);
-    source_package_input input = { "facts/Main.chibi", source, (size_t)used };
-    behavior_execution_scope scope = { .remaining = UINT64_MAX };
-    behavior_execution_scope_begin(&scope);
-    compiler_result out;
-    bool called = compile(0, false, false, false, &input, 1, COMPILE_BUDGET, &out);
-    behavior_execution_scope_end(&scope);
-    bool compiled = called && compiler_succeeded(&out);
-    arena_free(&detached);
-    return compiled ? UINT64_MAX - scope.remaining : 0;
-}
+
 /* Declaring each type's array and view optionals takes one pass over the
  * type table, not a search of it for each type: twice the records take about
  * twice the steps, where the search took three times as many. */
-TEST_CASE(package_compiler_declares_records_in_linear_steps)
-{
-    REQUIRE(prepare());
-    uint64_t fewer = declaring_steps(100), more = declaring_steps(200);
-    REQUIRE(fewer && 2 * more <= 5 * fewer);
-    return true;
-}
+
 /* Stage zero currently resolves assert through its native catalog, so its
  * ordinary pure-target oracle cannot model this authored intrinsic contract.
  * Compile directly with no game/native assertion pack and inspect the emitted
  * checked instruction before running both execution backends. Existing oracle
  * samples remain unchanged. */
-TEST_CASE(package_compiler_asserts_without_native_capability)
-{
-    REQUIRE(prepare());
-    const sample cases[] = {
-        { .source = "package facts\n"
-                    "Double :: (n: int) -> int {\n"
-                    "    assert(condition: n > 0, message: \"n is "
-                    "positive\");\n"
-                    "    return n * 2;\n}\n",
-          .calls = { { .function = "Double", .arguments = "[3]", .expected = "[6]" },
-                     { .function = "Double",
-                       .arguments = "[-1]",
-                       .expected = NULL,
-                       .diagnostic = "Assertion failed: n is positive" } } },
-        { .source = "package facts\n"
-                    "assert :: (n: int) -> int { return n + 7; }\n"
-                    "Main :: () -> int { return assert(3); }\n",
-          .calls = { { .function = "Main", .arguments = "[]", .expected = "[10]" } } },
-        { .source = "package facts\n"
-                    "import lib \"project:lib\"\n"
-                    "Main :: () -> int { return lib.assert(3); }\n",
-          .library = "package lib\npub assert :: (n: int) -> int { return n + "
-                     "9; }\n",
-          .calls = { { .function = "Main", .arguments = "[]", .expected = "[12]" } } }
-    };
-    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
-        source_package_input inputs[SAMPLE_INPUTS];
-        int count = sample_inputs(&cases[i], inputs);
-        for (int b = 0; b < 2; b++) {
-            compiler_result out;
-            REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
-            REQUIRE(compiler_succeeded(&out));
-            size_t length;
-            unsigned char *bytes = closure_bytes(&out, &length);
-            arena_free(&detached);
-            native_capabilities *native;
-            package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-            REQUIRE(packages);
-            int checked = 0;
-            for (int p = 0; p < package_collection_count(packages); p++) {
-                const execution_module_plan
-                    *plan = &package_collection_module(packages, p)->plan;
-                for (int f = 0; f < plan->function_count; f++) {
-                    const behavior_function *body = plan->functions[f].body;
-                    for (int op = 0; op < acount(body->instructions); op++) {
-                        if (body->instructions[op].op == BF_ASSERT) {
-                            REQUIRE(body->instructions[op].target == BEHAVIOR_FUNCTION_DATA);
-                            REQUIRE(!acount(body->host_calls));
-                            checked++;
-                        }
-                    }
-                }
-            }
-            package_collection_free(packages);
-            native_capabilities_free(native);
-            REQUIRE(checked == (i == 0));
-            bool ran = true;
-            for (int c = 0; ran && c < CALLS && cases[i].calls[c].function; c++) {
-                for (int backend = 0; ran && backend < 2; backend++) {
-                    ran = run(bytes, length, &cases[i].calls[c], backend);
-                }
-            }
-            free(bytes);
-            REQUIRE(ran);
-        }
-    }
-    return true;
-}
-static bool approved_float_conversion_admission(int compiler, bool constants)
-{
-    bool agreed = true;
-    for (size_t i = 0; i < sizeof FLOAT_CONVERSION_CASES / sizeof *FLOAT_CONVERSION_CASES;
-         i++) {
-        const float_conversion_case *item = &FLOAT_CONVERSION_CASES[i];
-        if (item->constant != constants) {
-            continue;
-        }
-        source_package_input source = { "facts/Main.chibi",
-                                        item->source,
-                                        strlen(item->source) };
-        compiler_result out;
-        REQUIRE(compile(compiler, false, false, false, &source, 1, COMPILE_BUDGET, &out));
-        bool accepted = compiler_succeeded(&out);
-        if (!accepted) {
-            pin_value message, line, column;
-            REQUIRE(get(compiler_error(&out), "message", &message));
-            REQUIRE(get(compiler_error(&out), "line", &line));
-            REQUIRE(get(compiler_error(&out), "column", &column));
-            REQUIRE(line.type == PIN_I32 && column.type == PIN_I32);
-            fprintf(
-                stderr,
-                "FLOAT_REJECTION stage1 %s %d:%d %s\n",
-                item->name,
-                line.i,
-                column.i,
-                pin_text(message).bytes
-            );
-            if (!item->accepted) {
-                if (!item->stage_one.message) {
-                    REQUIRE(item->constant);
-                    fprintf(
-                        stderr,
-                        "FLOAT_DEPENDENCY_BLOCKED %s: typed-constant narrowing "
-                        "category is pending; rejection is not policy proof\n",
-                        item->name
-                    );
-                    agreed = false;
-                } else if (
-                    strcmp(pin_text(message).bytes, item->stage_one.message) ||
-                    line.i != item->stage_one.line ||
-                    column.i != item->stage_one.column
-                ) {
-                    fprintf(
-                        stderr,
-                        "FLOAT_REJECTION_MISMATCH stage1 %s expected %d:%d "
-                        "%s\n",
-                        item->name,
-                        item->stage_one.line,
-                        item->stage_one.column,
-                        item->stage_one.message
-                    );
-                    agreed = false;
-                }
-            }
-        }
-        if (accepted != item->accepted) {
-            fprintf(
-                stderr,
-                "stage-one floating admission %s: expected %s, got %s\n",
-                item->name,
-                item->accepted ? "accepted" : "rejected",
-                accepted ? "accepted" : "rejected"
-            );
-            if (!accepted) {
-                pin_value message;
-                REQUIRE(get(compiler_error(&out), "message", &message));
-                fprintf(stderr, "  %s\n", pin_text(message).bytes);
-            }
-            agreed = false;
-        }
-        if (accepted && item->accepted) {
-            size_t length;
-            unsigned char *bytes = closure_bytes(&out, &length);
-            arena_free(&detached);
-            sample_call call = { .function = "Fold",
-                                 .arguments = item->arguments,
-                                 .expected = item->expected };
-            bool ran = true;
-            for (int backend = 0; backend < 2; backend++) {
-                ran = run(bytes, length, &call, backend) && ran;
-                compiler_host_free(host);
-                host = NULL;
-                free(result.json);
-                result = (compiler_host_result){ 0 };
-            }
-            free(bytes);
-            agreed = ran && agreed;
-        }
-        arena_free(&detached);
-    }
-    REQUIRE(agreed);
-    return true;
-}
 
 /* The literal diagnostics also hold in the independent stage-zero frontend,
  * including reference and boxed targets and record fields. */
-TEST_CASE(package_compiler_compound_diagnostics_match_stage_zero)
-{
-    REQUIRE(prepare());
-    int checked = 0;
-    for (int i = 0; i < (int)SAMPLES; i++) {
-        const sample *s = &samples[i];
-        if (!strncmp(s->name, "mixed compound ", strlen("mixed compound "))) {
-            REQUIRE(s->message);
-            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
-            checked++;
-        }
-    }
-    REQUIRE(checked == 7);
-    return true;
-}
-TEST_CASE(package_compiler_builds_runnable_packages)
-{
-    return run_samples(BASE_SAMPLES, 0);
-}
-TEST_CASE(package_compiler_builds_runnable_packages_compiled)
-{
-    return run_samples(BASE_SAMPLES, 1);
-}
-TEST_CASE(package_compiler_builtin_math_source_contracts)
-{
-    enum
-    {
-        COUNT = sizeof math_samples / sizeof *math_samples
-    };
-    REQUIRE(run_sample_table(MATH_SAMPLES, 0, math_samples, COUNT));
-    cleanup();
-    return run_sample_table(MATH_SAMPLES, 1, math_samples, COUNT);
-}
-TEST_CASE(package_compiler_builds_runnable_typed_packages)
-{
-    return run_samples(TYPE_SAMPLES, 0);
-}
-TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled)
-{
-    return run_samples(TYPE_SAMPLES, 1);
-}
-TEST_CASE(package_compiler_checks_fallible_source_results)
-{
-    return run_samples(FALLIBLE_SAMPLES, 0);
-}
-TEST_CASE(package_compiler_checks_fallible_source_results_compiled)
-{
-    return run_samples(FALLIBLE_SAMPLES, 1);
-}
-TEST_CASE(package_compiler_builds_runnable_collection_packages)
-{
-    return run_samples(COLLECTION_SAMPLES, 0);
-}
-TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled)
-{
-    return run_samples(COLLECTION_SAMPLES, 1);
-}
-TEST_CASE(package_compiler_builds_runnable_importing_packages)
-{
-    REQUIRE(run_samples(IMPORT_SAMPLES, 0));
-    return approved_float_conversion_admission(0, false);
-}
-TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
-{
-    REQUIRE(run_samples(IMPORT_SAMPLES, 1));
-    return approved_float_conversion_admission(1, false);
-}
-TEST_CASE(package_compiler_float_constant_dependency)
-{
-    REQUIRE(prepare_backends(COMPILER_FIXTURE_BYTECODE));
-    return approved_float_conversion_admission(0, true);
-}
-TEST_CASE(package_compiler_float_constant_dependency_compiled)
-{
-    REQUIRE(prepare_backends(COMPILER_FIXTURE_COMPILED));
-    return approved_float_conversion_admission(1, true);
-}
+
 /* Values as the compiler host takes arguments and projects results: a JSON
  * array; malloc-owned. */
-static char *document_json(const pin_value *values, int count, size_t *length)
-{
-    av_doc *doc = av_doc_new();
-    av_value *array = av_arr(doc);
-    for (int i = 0; i < count; i++) {
-        av_value *value = pin_value_to_document(doc, &values[i]);
-        assert(value);
-        av_arr_append(array, value);
-    }
-    yyjson_mut_doc *encoded = yyjson_mut_doc_new(NULL);
-    yyjson_mut_doc_set_root(encoded, av_to_json(encoded, array));
-    char *json = yyjson_mut_write(encoded, YYJSON_WRITE_ALLOW_INVALID_UNICODE, length);
-    yyjson_mut_doc_free(encoded);
-    av_doc_free(doc);
-    return json;
-}
+
 /* Stage two's rejection of the compiler's sources, from Compile's result. */
-static void stage_two_rejection(const char *json, size_t length)
-{
-    bool called = compiler_host_invoke(
-        host,
-        script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable"),
-        json,
-        length,
-        SELF_BUDGET,
-        &result
-    );
-    fprintf(
-        stderr,
-        "package compiler stage two rejected: %s\n",
-        called ? result.json : result.diagnostic
-    );
-}
+
 /* Writes bytes to folder/name. */
-static bool write_seed_file(const char *folder, const char *name, const void *bytes, size_t length)
-{
-    char path[4096];
-    snprintf(path, sizeof path, "%s/%s", folder, name);
-    FILE *file = fopen(path, "wb");
-    bool written = file && fwrite(bytes, 1, length, file) == length;
-    if (file) {
-        written = !fclose(file) && written;
-    }
-    return written;
-}
+
 /* With CHIBI_BOOTSTRAP_SEED naming a folder, leaves stage two and Compile's
  * arguments there, the seed tools/build.sh build bootstrap-artifact writes the bootstrap
  * artifact from. */
-static bool write_seed(const unsigned char *stage_two, size_t length, const char *json, size_t json_length)
-{
-    const char *seed = getenv("CHIBI_BOOTSTRAP_SEED");
-    return !seed || (write_seed_file(seed, "compiler.chibip", stage_two, length) &&
-                     write_seed_file(seed, "compile.json", json, json_length));
-}
+
 /* Stage two reads the listed floating literals as stage one does: each
  * LiteralBits result projects to the same JSON. */
-static bool stage_two_literals()
-{
-    uint64_t entry = script_catalog_id("package-symbol", "project:package_compiler:1:LiteralBits:callable");
-    for (int i = 0; i < (int)(sizeof literal_spellings / sizeof *literal_spellings);
-         i++) {
-        for (int sign = 0; sign < 2; sign++) {
-            pin_value args[] = { text(literal_spellings[i]),
-                                 (pin_value){ .type = PIN_BOOL, .b = sign } },
-                      out;
-            REQUIRE(
-                compiler_fixture_call(&fixture, 1, PACKAGE, "LiteralBits", args, 2, COMPILE_BUDGET, &detached, &out)
-            );
-            size_t length, expected_length;
-            char *json = document_json(args, 2, &length);
-            char *expected = document_json(&out, 1, &expected_length);
-            arena_free(&detached);
-            bool called = compiler_host_invoke(host, entry, json, length, COMPILE_BUDGET, &result);
-            bool same = called && result.flow_status == FLOW_OK &&
-                        result.length == expected_length &&
-                        !memcmp(result.json, expected, expected_length);
-            if (!same) {
-                fprintf(
-                    stderr,
-                    "package compiler stage two literal %s%s: %s\n",
-                    sign ? "-" : "",
-                    literal_spellings[i],
-                    called ? result.json : result.diagnostic
-                );
-            }
-            free(json);
-            free(expected);
-            free(result.json);
-            result = (compiler_host_result){ 0 };
-            REQUIRE(same);
-        }
-    }
-    return true;
-}
+
 /* Whether stage two, loaded in `host`, compiles sample `s` as stage one does:
  * to the same closure, or to the same rejection. A closure is compared as
  * bytes, since its JSON output outgrows the host's projection limits. */
-static bool stage_two_sample(const sample *s)
-{
-    source_package_input inputs[SAMPLE_INPUTS];
-    int count = sample_inputs(s, inputs);
-    pin_value args[ARGUMENTS + 1];
-    compiler_result out;
-    REQUIRE(arguments_for(1, s->game, s->c_string_probe, inputs, count, args));
-    args[ARGUMENTS] = linked_effects[s->game][s->c_string_probe][1];
-    int argument_count = ARGUMENTS + s->host_effects;
-    const char *entry_name = s->host_effects ? "CompileWithEffects" : "Compile";
-    if (!compiler_call(1, entry_name, args, argument_count, COMPILE_BUDGET, &out)) {
-        fprintf(stderr, "stage two failed on sample %s\n", s->name);
-        return false;
-    }
-    size_t length, expected_length;
-    char *json = document_json(args, argument_count, &length);
-    bool compiled = compiler_succeeded(&out);
-    const pin_value outputs[] = { out.module, out.bytes, out.error };
-    unsigned char *expected = compiled
-                                ? closure_bytes(&out, &expected_length)
-                                : (unsigned char *)document_json(outputs, 3, &expected_length);
-    arena_free(&detached);
-    bool same;
-    if (compiled) {
-        compiler_host_bytes again = { 0 };
-        same = compiler_host_invoke_bytes(
-                   host,
-                   script_catalog_id("package-symbol", s->host_effects ? "project:package_compiler:1:CompileClosureWithEffects:callable" : "project:package_compiler:1:CompileClosure:callable"),
-                   json,
-                   length,
-                   SELF_BUDGET,
-                   COMPILER_HOST_MAX_OUTPUT_BYTES,
-                   &again
-               ) &&
-               again.flow_status == FLOW_OK && again.length == expected_length &&
-               !memcmp(again.bytes, expected, expected_length);
-        if (!same) {
-            fprintf(
-                stderr,
-                "package compiler stage two %s: %s\n",
-                s->name,
-                again.diagnostic
-            );
-        }
-        free(again.bytes);
-    } else {
-        uint64_t entry = script_catalog_id(
-            "package-symbol",
-            s->host_effects
-                ? "project:package_compiler:1:CompileWithEffects:callable"
-                : "project:package_compiler:1:Compile:callable"
-        );
-        bool called = compiler_host_invoke(host, entry, json, length, SELF_BUDGET, &result);
-        same = called && result.flow_status == FLOW_OK &&
-               result.length == expected_length &&
-               !memcmp(result.json, expected, expected_length);
-        if (!same) {
-            fprintf(
-                stderr,
-                "package compiler stage two %s: %s\n",
-                s->name,
-                called ? result.json : result.diagnostic
-            );
-        }
-        free(result.json);
-        result = (compiler_host_result){ 0 };
-    }
-    free(json);
-    free(expected);
-    return same;
-}
-static bool stage_two_samples()
-{
-    for (int i = 0; i < (int)SAMPLES; i++) {
-        REQUIRE(stage_two_sample(&samples[i]));
-    }
-    return true;
-}
+
 /* Stage zero prepares stage one, which compiles its own packages, without
  * debugger points and watches, to a closure: stage two. Stage two, loaded by
  * the compiler host, compiles the same packages to the same bytes, every
@@ -5065,242 +430,16 @@ static bool stage_two_samples()
 /* The functions of the package compiler's module `p` that copy their
  * arguments, other than those that run once per compile or per source, each
  * reported. */
-static int copying_functions(const execution_module_plan *p)
-{
-    const char *const once[] = { "Compile",
-                                 "CompileClosure",
-                                 "CompileWithEffects",
-                                 "CompileInput",
-                                 "CompileClosureWithEffects",
-                                 "CompileBehavior",
-                                 "CompileBehaviorResolved",
-                                 "CompileSources",
-                                 "PromoteRecords",
-                                 "DeclareSource",
-                                 "CompileBehaviorsResolved",
-                                 "BehaviorRejectionResolved",
-                                 "CompileBehaviorsWithCatalog",
-                                 "BehaviorRejectionWithCatalog",
-                                 "CollectScalar",
-                                 "CollectScalarPackages",
-                                 "ScalarCollect",
-                                 "Declare",
-                                 "DeclarePackage" };
-    int copying = 0;
-    for (int i = 0; i < p->function_count; i++) {
-        const behavior_function *body = p->functions[i].body;
-        bool allowed = false;
-        for (size_t j = 0; j < sizeof once / sizeof *once; j++) {
-            char name[128];
-            snprintf(name, sizeof name, "%s:1:%s:callable", PACKAGE, once[j]);
-            allowed |= p->functions[i].id == script_catalog_id("package-symbol", name);
-        }
-        if (body && body->argument_sharing != BEHAVIOR_SHARING_SAFE && !allowed) {
-            fprintf(
-                stderr,
-                "package compiler function %016llx copies its arguments\n",
-                (unsigned long long)p->functions[i].id
-            );
-            copying++;
-        }
-    }
-    return copying;
-}
-static const source_package_input bootstrap_files[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
-enum
-{
-    BOOTSTRAP_FILES = sizeof bootstrap_files / sizeof *bootstrap_files
-};
-static int bootstrap_inputs(source_package_input inputs[BOOTSTRAP_FILES])
-{
-    /* Compile's root package is its first file's: the package compiler's. */
-    int count = 0;
-    for (int pass = 0; pass < 2; pass++) {
-        for (int i = 0; i < BOOTSTRAP_FILES; i++) {
-            bool own = !strncmp(bootstrap_files[i].path, "package_compiler/", 17);
-            if (own == !pass) {
-                inputs[count++] = bootstrap_files[i];
-            }
-        }
-    }
-    return count;
-}
-bool package_compiler_bootstrap_source_order(const char *inventory, size_t length)
-{
-    source_package_input inputs[BOOTSTRAP_FILES];
-    int count = bootstrap_inputs(inputs);
-    for (int i = 0; i < count; i++) {
-        const char *end = memchr(inventory, '\n', length);
-        size_t line_length = end ? (size_t)(end - inventory) : length;
-        const char *path = inputs[i].path;
-        if (line_length != strlen(path) || memcmp(inventory, path, line_length)) {
-            return false;
-        }
-        size_t consumed = line_length + (end != NULL);
-        inventory += consumed;
-        length -= consumed;
-    }
-    return length == 0;
-}
-TEST_CASE(package_compiler_compiles_itself)
-{
-    REQUIRE(prepare());
-    source_package_input inputs[BOOTSTRAP_FILES];
-    int count = bootstrap_inputs(inputs);
-    pin_value args[ARGUMENTS];
-    compiler_result out;
-    REQUIRE(arguments(1, false, inputs, count, args));
-    /* The compiler is compiled without debugger points and watches, which
-     * no one debugging a game steps through. */
-    args[DEBUG_ARGUMENT].b = false;
-    REQUIRE(compiler_call(1, "Compile", args, ARGUMENTS, SELF_BUDGET, &out));
-    if (!compiler_succeeded(&out)) {
-        pin_value message, line, column;
-        get(compiler_error(&out), "message", &message);
-        get(compiler_error(&out), "line", &line);
-        get(compiler_error(&out), "column", &column);
-        fprintf(
-            stderr,
-            "package compiler stage one rejected: %s at %d:%d\n",
-            pin_text(message).bytes,
-            line.i,
-            column.i
-        );
-    }
-    REQUIRE(compiler_succeeded(&out));
-    size_t length, json_length;
-    unsigned char *stage_two = closure_bytes(&out, &length);
-    char *json = document_json(args, ARGUMENTS, &json_length);
-    arena_free(&detached);
-    char error[256];
-    host = compiler_host_load(stage_two, length, TEST_COMPILED_BACKEND, error, sizeof error);
-    if (!host) {
-        fprintf(stderr, "self-hosted compiler load: %s\n", error);
-    }
-    REQUIRE(host);
-    size_t target_length;
-    char *target_json = compiler_host_target_json(host, &target_length);
-    yyjson_doc *target = yyjson_read(target_json, target_length, 0);
-    yyjson_doc *compiled_arguments = yyjson_read(json, json_length, 0);
-    REQUIRE(target && compiled_arguments);
-    bool target_equal = true;
-    for (size_t i = 0; i < 6; i++) {
-        yyjson_val *host_part = yyjson_arr_get(yyjson_doc_get_root(target), i);
-        yyjson_val *argument_part = yyjson_arr_get(
-            yyjson_doc_get_root(compiled_arguments),
-            TARGET_ARGUMENT + i
-        );
-        bool same = yyjson_equals(host_part, argument_part);
-        if (!same) {
-            char *host_text = yyjson_val_write(host_part, 0, NULL);
-            char *argument_text = yyjson_val_write(argument_part, 0, NULL);
-            size_t at = 0;
-            while (host_text[at] && argument_text[at] &&
-                   host_text[at] == argument_text[at]) {
-                at++;
-            }
-            size_t from = at > 120 ? at - 120 : 0;
-            fprintf(
-                stderr,
-                "self-hosted target part %zu differs at byte %zu:\n host: "
-                "%.240s\n args: %.240s\n",
-                i,
-                at,
-                host_text + from,
-                argument_text + from
-            );
-            free(host_text);
-            free(argument_text);
-        }
-        target_equal &= same;
-    }
-    yyjson_doc_free(compiled_arguments);
-    yyjson_doc_free(target);
-    free(target_json);
-    REQUIRE(target_equal);
-    compiler_host_bytes again = { 0 };
-    bool invoked = host &&
-                   compiler_host_invoke_bytes(
-                       host,
-                       script_catalog_id("package-symbol", "project:package_compiler:1:CompileClosure:callable"),
-                       json,
-                       json_length,
-                       SELF_BUDGET,
-                       COMPILER_HOST_MAX_ARTIFACT_BYTES,
-                       &again
-                   );
-    bool same = invoked && again.flow_status == FLOW_OK &&
-                again.length == length && !memcmp(again.bytes, stage_two, length);
-    if (!invoked) {
-        fprintf(
-            stderr,
-            "package compiler stage two: %s%s\n",
-            host ? "" : error,
-            again.diagnostic
-        );
-    } else if (!again.length) {
-        stage_two_rejection(json, json_length);
-    } else if (!same) {
-        size_t at = 0;
-        while (at < length && at < again.length && again.bytes[at] == stage_two[at]) {
-            at++;
-        }
-        fprintf(
-            stderr,
-            "package compiler stage two: %zu bytes, stage one %zu; first "
-            "difference at %zu\n",
-            again.length,
-            length,
-            at
-        );
-    }
-    /* Stage one's build of the compiler shares arguments as stage zero's
-     * does: a function that copies them made stage two compile itself 20
-     * times slower. */
-    int copying = copying_functions(&compiler_host_root(host)->plan);
-    bool seeded = same && write_seed(stage_two, length, json, json_length);
-    free(again.bytes);
-    free(stage_two);
-    free(json);
-    REQUIRE(same);
-    REQUIRE(copying == 0);
-    REQUIRE(seeded);
-    return stage_two_samples() && stage_two_literals();
-}
-TEST_CASE(package_compiler_reads_float_literals)
-{
-    REQUIRE(prepare());
-    return literals_agree();
-}
+
 /* Behavior assets. Stage one compiles each against a game this test declares,
  * on both compiler backends; its module declares stage zero's identities and
  * plays as stage zero's does. Counter is the Counter story's behavior: a
  * retained state, and a Tick handler that increments it and writes it,
  * converted to a float, to a field of the owner's component. */
-typedef struct
-{
-    const char *name, *source;
-} behavior_sample;
-static const char
-    TEXT_STATE[] = "TextState :: behavior {\n"
-                   "    label: string = \"seed\"\n"
-                   "    Copy :: (value: string) -> string { return value; }\n"
-                   "    on Tick :: () {\n"
-                   "        if label == \"seed\" {\n"
-                   "            label = Copy(\"a\\u0000b\")\n"
-                   "            self.Spot.x = 1\n"
-                   "        } else {\n"
-                   "            label = Copy(\"seed\")\n"
-                   "            self.Spot.x = 2\n"
-                   "        }\n"
-                   "    }\n}\n";
+
 /* Sources stage one rejects, with its message. Where stage zero rejects one
  * too, stage one gives its message at its position. */
-typedef struct
-{
-    const char *source, *message;
-    bool stage_zero;
-} behavior_rejection;
+
 enum
 {
     SPOT = 101,
@@ -5319,638 +458,37 @@ enum
     BEHAVIOR_ARGUMENTS = 17,
     TICKS = 5
 };
-typedef struct
-{
-    float x, y, w;
-    uint64_t owner;
-} spot;
-static const type_field spot_fields[] = {
-    { .name = "x",
-      .type = PIN_F32,
-      .type_name = "number",
-      .offset = offsetof(spot, x),
-      .size = sizeof(float) },
-    { .name = "y",
-      .type = PIN_F32,
-      .type_name = "number",
-      .offset = offsetof(spot, y),
-      .size = sizeof(float) },
-    { .name = "w",
-      .type = PIN_F32,
-      .type_name = "number",
-      .offset = offsetof(spot, w),
-      .size = sizeof(float) },
-    { .name = "owner",
-      .type = PIN_HANDLE,
-      .type_name = "ecs.entity",
-      .offset = offsetof(spot, owner),
-      .size = sizeof(uint64_t) },
-};
-static const type_desc spot_type = { .name = "Spot",
-                                     .size = sizeof(spot),
-                                     .fields = spot_fields,
-                                     .field_count = sizeof spot_fields /
-                                                    sizeof *spot_fields };
-static const script_catalog_field spot_members[] = {
-    { .id = 811,
-      .name = "x",
-      .type = { .storage = PIN_F32 },
-      .offset = offsetof(spot, x),
-      .writable = true },
-    { .id = 812,
-      .name = "y",
-      .type = { .storage = PIN_F32 },
-      .offset = offsetof(spot, y),
-      .writable = true },
-    { .id = 813, .name = "w", .type = { .storage = PIN_F32 }, .offset = offsetof(spot, w) },
-    { .id = 814,
-      .name = "owner",
-      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
-      .offset = offsetof(spot, owner) },
-    { .id = 815,
-      .name = "resolved",
-      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
-      .read = GET_RESOLVED },
-};
-static const script_catalog_parameter delta_seconds = { .name = "DeltaSeconds",
-                                                        .type = { .storage = PIN_F32 } };
-static const script_catalog_parameter move_payload[] = {
-    { .name = "x", .type = { .storage = PIN_F32 } },
-    { .name = "y", .type = { .storage = PIN_F32 } },
-};
-static const script_catalog_parameter global_key = { .name = "key",
-                                                     .type = { .storage = PIN_STR } };
-static const script_catalog_parameter spot_argument = {
-    .name = "spot",
-    .type = { .storage = PIN_STRUCT, .nominal = SPOT }
-};
-static const script_catalog_parameter terrain_result = {
-    .name = "Value",
-    .type = { .storage = PIN_HANDLE, .nominal = ENTITY }
-};
-static const script_catalog_parameter other_result = {
-    .name = "Value",
-    .type = { .storage = PIN_HANDLE, .nominal = OTHER_HANDLE }
-};
-static const script_catalog_capability game_capabilities[] = {
-    { .id = TICK,
-      .name = "Tick",
-      .kind = SCRIPT_CAPABILITY_EVENT,
-      .parameters = &delta_seconds,
-      .parameter_count = 1,
-      .completion_outcome = -1 },
-    { .id = MOVE,
-      .name = "Move",
-      .kind = SCRIPT_CAPABILITY_EVENT,
-      .parameters = move_payload,
-      .parameter_count = 2,
-      .completion_outcome = -1 },
-    { .id = GET_TERRAIN,
-      .name = "Fixture Terrain",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .parameters = &global_key,
-      .parameter_count = 1,
-      .results = &terrain_result,
-      .result_count = 1,
-      .effects = SCRIPT_EFFECT_READ,
-      .completion_outcome = -1 },
-    { .id = GET_OTHER,
-      .name = "Fixture Other",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .parameters = &global_key,
-      .parameter_count = 1,
-      .results = &other_result,
-      .result_count = 1,
-      .effects = SCRIPT_EFFECT_READ,
-      .completion_outcome = -1 },
-    { .id = GET_TARGET,
-      .name = "Fixture Target",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .parameters = &global_key,
-      .parameter_count = 1,
-      .results = &terrain_result,
-      .result_count = 1,
-      .effects = SCRIPT_EFFECT_READ,
-      .completion_outcome = -1 },
-    { .id = GET_RESOLVED,
-      .name = "Fixture Resolved",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .parameters = &spot_argument,
-      .parameter_count = 1,
-      .results = &terrain_result,
-      .result_count = 1,
-      .effects = SCRIPT_EFFECT_READ,
-      .completion_outcome = -1 },
-};
-static const script_catalog_field scene_globals[] = {
-    { .id = 820,
-      .name = "Terrain",
-      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
-      .read = GET_TERRAIN,
-      .read_key = "Terrain" },
-    { .id = 821,
-      .name = "Other",
-      .type = { .storage = PIN_HANDLE, .nominal = OTHER_HANDLE },
-      .read = GET_OTHER,
-      .read_key = "Other" },
-    { .id = 822,
-      .name = "Target",
-      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
-      .read = GET_TARGET,
-      .read_key = "Target" },
-};
-static const script_catalog_global game_globals[] = {
-    { .id = OWNER, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = ENTITY } },
-    { .id = OWNER + 1, .name = "pace", .type = { .storage = PIN_F32 } },
-    { .id = OWNER + 2,
-      .name = "globals",
-      .type = { .storage = PIN_FLOW, .nominal = SCENE_GLOBALS, .flags = SCRIPT_TYPE_NAMESPACE } },
-};
+
 /* The game: Spot, two nominal handle types, and keyed scene globals, with
  * Tick, Move, `self`, and the unsupported scalar global `pace`. */
-static script_catalog_type game_types[4];
-static script_catalog game_catalog()
-{
-    script_catalog_type *types = game_types;
-    types[0] = (script_catalog_type){
-        .id = SPOT,
-        .name = spot_type.name,
-        .type = { .storage = PIN_STRUCT, .nominal = SPOT },
-        .fields = spot_members,
-        .field_count = sizeof spot_members / sizeof *spot_members,
-        .size = spot_type.size,
-        .layout = type_layout_hash(&spot_type),
-        .component_id = SPOT_COMPONENT,
-        .component = true
-    };
-    types[1] = (script_catalog_type){ .id = ENTITY,
-                                      .name = "ecs.entity",
-                                      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
-                                      .size = sizeof(uint64_t) };
-    types[2] = (script_catalog_type){ .id = OTHER_HANDLE,
-                                      .name = "test.other",
-                                      .type = { .storage = PIN_HANDLE,
-                                                .nominal = OTHER_HANDLE },
-                                      .size = sizeof(uint64_t) };
-    types[3] = (script_catalog_type){ .id = SCENE_GLOBALS,
-                                      .name = "SceneGlobals",
-                                      .type = { .storage = PIN_FLOW,
-                                                .nominal = SCENE_GLOBALS,
-                                                .flags = SCRIPT_TYPE_NAMESPACE },
-                                      .fields = scene_globals,
-                                      .field_count = sizeof scene_globals /
-                                                     sizeof *scene_globals };
-    return (script_catalog){ .types = types,
-                             .type_count = sizeof game_types / sizeof *game_types,
-                             .capabilities = game_capabilities,
-                             .capability_count = sizeof game_capabilities /
-                                                 sizeof *game_capabilities,
-                             .globals = game_globals,
-                             .global_count = sizeof game_globals / sizeof *game_globals,
-                             .entity_type = ENTITY,
-                             .tick_event = TICK };
-}
+
 /* The entity `globals.Target` names: the playing world's target. Fresh worlds
  * number their entities alike, so both players of a comparison share it. */
-static uint64_t play_target;
+
 /* The getters preserve the caller's typed result header. Equal payload bits
  * for the two handle types must never make them assignment-compatible. */
-static const char *keyed_handle(
-    const pin_value *arguments,
-    pin_value *out,
-    const char *name,
-    const char *type_name,
-    uint64_t handle
-)
-{
-    pin_string key = pin_text(arguments[0]);
-    if (key.length != strlen(name) || memcmp(key.bytes, name, key.length)) {
-        return "Unexpected keyed global name";
-    }
-    if (out->type != PIN_HANDLE || out->container != PIN_CONTAINER_SINGLE ||
-        !out->type_name || strcmp(out->type_name, type_name)) {
-        return "Keyed global result lost its nominal type";
-    }
-    out->u64 = handle;
-    return NULL;
-}
-static const char *terrain_global(
-    const behavior_function_context *context,
-    void *,
-    const pin_value *arguments,
-    pin_value *out
-)
-{
-    return keyed_handle(arguments, out, "Terrain", "ecs.entity", context->owner);
-}
-static const char *target_global(
-    const behavior_function_context *,
-    void *,
-    const pin_value *arguments,
-    pin_value *out
-)
-{
-    if (!play_target) {
-        return "No world is playing a target";
-    }
-    return keyed_handle(arguments, out, "Target", "ecs.entity", play_target);
-}
-static const char *other_global(
-    const behavior_function_context *context,
-    void *,
-    const pin_value *arguments,
-    pin_value *out
-)
-{
-    return keyed_handle(arguments, out, "Other", "test.other", context->owner);
-}
-static const char *resolved_owner(
-    const behavior_function_context *,
-    void *,
-    const pin_value *arguments,
-    pin_value *out
-)
-{
-    const pin_value *receiver = &arguments[0];
-    if (receiver->type != PIN_STRUCT ||
-        receiver->container != PIN_CONTAINER_SINGLE || !receiver->ptr ||
-        !receiver->type_name || strcmp(receiver->type_name, "Spot")) {
-        return "Resolved getter requires a Spot";
-    }
-    if (out->type != PIN_HANDLE || out->container != PIN_CONTAINER_SINGLE ||
-        !out->type_name || strcmp(out->type_name, "ecs.entity")) {
-        return "Resolved getter result lost its nominal type";
-    }
-    out->u64 = ((const spot *)receiver->ptr)->owner;
-    return NULL;
-}
-static const node_host_call terrain_call = { .context = terrain_global };
-static const node_host_call other_call = { .context = other_global };
-static const node_host_call target_call = { .context = target_global };
-static const node_host_call resolved_call = { .context = resolved_owner };
-static const node_access global_access = { .flags = NODE_EFFECT_PURE };
-static const node_host_call *global_call(uint64_t id)
-{
-    return id == GET_TERRAIN  ? &terrain_call
-         : id == GET_OTHER    ? &other_call
-         : id == GET_TARGET   ? &target_call
-         : id == GET_RESOLVED ? &resolved_call
-                              : NULL;
-}
+
 /* Stage zero's module of `source`. */
-static pin_value u64(uint64_t value)
-{
-    return (pin_value){ .type = PIN_U64, .u64 = value };
-}
-static pin_value flag(bool value)
-{
-    return (pin_value){ .type = PIN_BOOL, .b = value };
-}
+
 /* The index of the type `id` among the catalog's, -1 for none. */
-static int type_index(const script_catalog *catalog, uint64_t id)
-{
-    for (int i = 0; id && i < catalog->type_count; i++) {
-        if (catalog->types[i].id == id) {
-            return i;
-        }
-    }
-    return -1;
-}
+
 /* Behavior targets append these fixture getters after the production host
  * natives. Package compilation and bootstrap keep their original tables. */
-static bool behavior_natives(int b, pin_value tables[3])
-{
-    script_catalog catalog = game_catalog();
-    pin_value *functions = NULL, *ports = NULL, *identities = NULL;
-    pin_array *before[] = { tables[0].ptr, tables[1].ptr, tables[2].ptr };
-    for (int i = 0; i < before[0]->count; i++) {
-        apush(functions, pin_array_get(before[0], i));
-    }
-    for (int i = 0; i < before[1]->count; i++) {
-        apush(ports, pin_array_get(before[1], i));
-    }
-    for (int i = 0; i < before[2]->count; i++) {
-        apush(identities, pin_array_get(before[2], i));
-    }
-    for (int i = 0; i < catalog.capability_count; i++) {
-        const script_catalog_capability *c = &catalog.capabilities[i];
-        if (c->kind != SCRIPT_CAPABILITY_FUNCTION) {
-            continue;
-        }
-        pin_value function = row(b, "Native");
-        REQUIRE(put_value(&function, "name", text(c->name)));
-        REQUIRE(put(&function, "first", acount(ports)));
-        REQUIRE(put(&function, "parameters", c->parameter_count));
-        REQUIRE(put(&function, "results", c->result_count));
-        REQUIRE(put_value(&function, "variadic", flag(false)));
-        apush(functions, function);
-        for (int j = 0; j < c->parameter_count + c->result_count; j++) {
-            const script_catalog_parameter *declared = j < c->parameter_count
-                                                         ? &c->parameters[j]
-                                                         : &c->results[j - c->parameter_count];
-            pin_value port = row(b, "Port");
-            REQUIRE(put_value(&port, "name", text(declared->name)));
-            REQUIRE(put(&port, "storage", compiler_fixture_port_storage(declared->type)));
-            REQUIRE(put(&port, "container", (int)declared->type.container));
-            REQUIRE(put_value(&port, "c_string", flag(false)));
-            apush(ports, port);
-        }
-        apush(identities, u64(c->id));
-        apush(identities, u64(script_catalog_capability_abi(&catalog, c)));
-    }
-    tables[0] = rows(functions, acount(functions), PIN_STRUCT, tables[0].record);
-    tables[1] = rows(ports, acount(ports), PIN_STRUCT, tables[1].record);
-    tables[2] = rows(identities, acount(identities), PIN_U64, NULL);
-    afree(functions);
-    afree(ports);
-    afree(identities);
-    return true;
-}
-static int game_native_index(const script_catalog *catalog, uint64_t id, int first)
-{
-    for (int i = 0; i < catalog->capability_count; i++) {
-        const script_catalog_capability *c = &catalog->capabilities[i];
-        if (c->kind != SCRIPT_CAPABILITY_FUNCTION) {
-            continue;
-        }
-        if (c->id == id) {
-            return first;
-        }
-        first++;
-    }
-    return -1;
-}
+
 /* CompileBehavior's game arguments, as the game target exports them: each
  * event and its payload fields, each type and its fields, the entity type,
  * no operators that combine records, the globals, and no record makes. */
-static bool game_arguments(int b, int first_native, pin_value *out)
-{
-    script_catalog catalog = game_catalog();
-    pin_value *declared = NULL, *payloads = NULL, *types = NULL, *fields = NULL;
-    for (int i = 0; i < catalog.capability_count; i++) {
-        const script_catalog_capability *c = &catalog.capabilities[i];
-        if (c->kind != SCRIPT_CAPABILITY_EVENT) {
-            continue;
-        }
-        pin_value event = row(b, "GameEvent");
-        REQUIRE(put_value(&event, "name", text(c->name)));
-        REQUIRE(put_value(&event, "id", u64(c->id)));
-        REQUIRE(put_value(&event, "abi", u64(script_catalog_capability_abi(&catalog, c))));
-        REQUIRE(put(&event, "first", acount(payloads)));
-        REQUIRE(put(&event, "count", c->parameter_count));
-        apush(declared, event);
-        for (int j = 0; j < c->parameter_count; j++) {
-            pin_value payload = row(b, "GameEventField");
-            REQUIRE(put_value(&payload, "name", text(c->parameters[j].name)));
-            REQUIRE(put(&payload, "storage", (int)c->parameters[j].type.storage));
-            REQUIRE(put_value(&payload, "nominal", u64(c->parameters[j].type.nominal)));
-            REQUIRE(put_value(&payload, "has_default", flag(c->parameters[j].has_default)));
-            REQUIRE(put_value(&payload, "default_owner", flag(c->parameters[j].default_owner)));
-            apush(payloads, payload);
-        }
-    }
-    for (int i = 0; i < catalog.type_count; i++) {
-        const script_catalog_type *t = &catalog.types[i];
-        pin_value type = row(b, "GameType");
-        REQUIRE(put_value(&type, "required", flag(!(t->type.flags & SCRIPT_TYPE_NAMESPACE))));
-        REQUIRE(put(&type, "underlying", type_index(&catalog, t->underlying)));
-        REQUIRE(put_value(&type, "name", text(t->name)));
-        REQUIRE(put_value(&type, "id", u64(t->id)));
-        REQUIRE(put_value(&type, "layout", u64(t->layout)));
-        REQUIRE(put(&type, "storage", (int)t->type.storage));
-        REQUIRE(put(&type, "size", (int)t->size));
-        REQUIRE(put_value(&type, "component", u64(t->component ? t->component_id : 0)));
-        REQUIRE(put(&type, "first", acount(fields)));
-        REQUIRE(put(&type, "count", t->field_count));
-        REQUIRE(put_value(&type, "relationship", flag(false)));
-        REQUIRE(put(&type, "traits", 0));
-        REQUIRE(
-            put_value(&type, "error", flag(script_catalog_type_contains_error(&catalog, t->type)))
-        );
-        apush(types, type);
-        for (int j = 0; j < t->field_count; j++) {
-            pin_value field = row(b, "GameField");
-            REQUIRE(put_value(&field, "name", text(t->fields[j].name)));
-            REQUIRE(put(&field, "storage", (int)t->fields[j].type.storage));
-            REQUIRE(put(&field, "offset", (int)t->fields[j].offset));
-            REQUIRE(put_value(&field, "writable", flag(t->fields[j].writable)));
-            REQUIRE(put_value(&field, "c_string", flag(t->fields[j].c_string)));
-            REQUIRE(put(&field, "record", type_index(&catalog, t->fields[j].type.nominal)));
-            REQUIRE(put_value(&field, "constant", flag(t->fields[j].constant)));
-            REQUIRE(
-                put(&field, "read", game_native_index(&catalog, t->fields[j].read, first_native))
-            );
-            REQUIRE(put_value(
-                &field,
-                "read_key",
-                text(t->fields[j].read_key ? t->fields[j].read_key : "")
-            ));
-            apush(fields, field);
-        }
-    }
-    out[0] = rows(declared, acount(declared), PIN_STRUCT, declared[0].record);
-    out[1] = rows(payloads, acount(payloads), PIN_STRUCT, payloads[0].record);
-    out[2] = rows(types, acount(types), PIN_STRUCT, types[0].record);
-    out[3] = rows(fields, acount(fields), PIN_STRUCT, fields[0].record);
-    out[4] = u64(catalog.entity_type);
-    out[5] = rows(
-        NULL,
-        0,
-        PIN_STRUCT,
-        compiler_fixture_record(&fixture, b, PACKAGE, "NumericOperator", &input)
-    );
-    pin_value *globals = NULL;
-    for (int i = 0; i < catalog.global_count; i++) {
-        const script_catalog_global *g = &catalog.globals[i];
-        pin_value global = row(b, "GameGlobal");
-        REQUIRE(put_value(&global, "name", text(g->name)));
-        REQUIRE(put(&global, "storage", (int)g->type.storage));
-        REQUIRE(put(&global, "record", type_index(&catalog, g->type.nominal)));
-        apush(globals, global);
-    }
-    out[6] = rows(globals, acount(globals), PIN_STRUCT, globals[0].record);
-    out[7] = rows(NULL, 0, PIN_STRUCT, compiler_fixture_record(&fixture, b, PACKAGE, "NativeMake", &input));
-    out[8] = rows(NULL, 0, PIN_I32, NULL);
-    afree(declared);
-    afree(payloads);
-    afree(types);
-    afree(fields);
-    afree(globals);
-    return true;
-}
-static bool catalog_compile(
-    int b,
-    const script_catalog *catalog,
-    const char *identity,
-    const char *source,
-    const char *entry,
-    pin_value *out
-);
+
 /* Stage one's prepared closure for `source`, using the production catalog export. */
-static bool compile_behavior(int b, const char *identity, const char *source, pin_value *out)
-{
-    script_catalog catalog = game_catalog();
-    return catalog_compile(b, &catalog, identity, source, "CompileBehaviorsWithCatalog", out);
-}
+
 /* The game's types and events, as the player links them. */
-static bool link_game_type(void *user, uint64_t id, execution_prepared_type *out)
-{
-    const script_catalog *catalog = user;
-    for (int i = 0; i < catalog->type_count; i++) {
-        const script_catalog_type *t = &catalog->types[i];
-        if (t->id == id) {
-            *out = (execution_prepared_type){ .name = t->name,
-                                              .type = t->id == SPOT ? &spot_type : NULL,
-                                              .storage = t->type.storage,
-                                              .size = t->size,
-                                              .layout = t->layout };
-            return true;
-        }
-    }
-    return false;
-}
-static bool link_game_event(void *user, uint64_t id, uint64_t abi)
-{
-    const script_catalog *catalog = user;
-    for (int i = 0; i < catalog->capability_count; i++) {
-        const script_catalog_capability *c = &catalog->capabilities[i];
-        if (c->kind == SCRIPT_CAPABILITY_EVENT && c->id == id) {
-            return script_catalog_capability_abi(catalog, c) == abi;
-        }
-    }
-    return false;
-}
-static bool link_game_host(void *user, uint64_t id, execution_prepared_host *out)
-{
-    const node_host_call *call = global_call(id);
-    const script_catalog *catalog = user;
-    const script_catalog_capability *capability = script_catalog_capability_by_id(catalog, id);
-    if (!call || !capability) {
-        return false;
-    }
-    *out = (execution_prepared_host){
-        .call = call,
-        .access = &global_access,
-        .abi = script_catalog_capability_abi(catalog, capability)
-    };
-    return true;
-}
+
 /* The module stage one compiles `source` to on backend `b`, linked against
  * the game. */
-static bool stage_one_behavior(int b, const char *identity, const char *source, execution_module **module)
-{
-    *module = NULL;
-    script_catalog catalog = game_catalog();
-    pin_value out;
-    REQUIRE(compile_behavior(b, identity, source, &out));
-    REQUIRE(out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY);
-    const pin_array *array = out.ptr;
-    if (!array || !array->count) {
-        arena_free(&detached);
-        REQUIRE(
-            catalog_compile(b, &catalog, identity, source, "BehaviorRejectionWithCatalog", &out)
-        );
-        REQUIRE(out.type == PIN_STR);
-        fprintf(stderr, "stage one behavior rejected: %s\n", pin_text(out).bytes);
-        arena_free(&detached);
-        return false;
-    }
-    size_t length = (size_t)array->count;
-    unsigned char *bytes = xmalloc(length);
-    for (size_t i = 0; i < length; i++) {
-        bytes[i] = array->items[i].u8;
-    }
-    arena_free(&detached);
-    char error[256] = { 0 };
-    int count = 0;
-    uint64_t root = 0;
-    package_module *modules = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
-    if (!modules || count != 1 || root != modules[0].id) {
-        fprintf(stderr, "stage one behavior %s closure: %s\n", identity, error);
-        compiler_artifact_rows_free(modules, count);
-        free(bytes);
-        return false;
-    }
-    execution_prepared_linker linker = { .user = &catalog,
-                                         .host = link_game_host,
-                                         .type = link_game_type,
-                                         .event = link_game_event };
-    *module = execution_prepared_read(
-        modules[0].data,
-        modules[0].length,
-        &linker,
-        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-        error,
-        sizeof error
-    );
-    if (!*module) {
-        fprintf(stderr, "stage one behavior %s load: %s\n", identity, error);
-    }
-    compiler_artifact_rows_free(modules, count);
-    free(bytes);
-    return *module != NULL;
-}
+
 /* A behavior module playing in its own world, on one owner holding a Spot,
  * beside the target holding another. */
-typedef struct
-{
-    ecs_world *world;
-    execution_program *program;
-    execution_instance *instance;
-    ecs_entity owner, target;
-} player;
-static bool play(execution_module *module, player *out)
-{
-    out->world = ecs_world_new();
-    const ecs_component_desc component = { .id = SPOT_COMPONENT,
-                                           .key = "test.spot",
-                                           .name = spot_type.name,
-                                           .element_size = sizeof(spot),
-                                           .type = &spot_type };
-    REQUIRE(ecs_world_register_component(out->world, &component, NULL) == ECS_OK);
-    for (int i = 0; i < module->plan.query_count; i++) {
-        if (module->plan.queries[i].kind == EXECUTION_QUERY_GENERATOR &&
-            module->plan.queries[i].component == QUERY_TARGETS) {
-            const ecs_relationship_desc targets = { .id = QUERY_TARGETS,
-                                                    .key = "test.query-targets",
-                                                    .name = "Targets" };
-            REQUIRE(ecs_world_register_relationship(out->world, &targets, NULL) == ECS_OK);
-            break;
-        }
-    }
-    out->program = execution_program_new(module, out->world, NULL);
-    REQUIRE(out->program);
-    out->owner = ecs_world_create_entity(out->world);
-    spot initial;
-    memset(&initial, 0, sizeof initial);
-    initial.w = 9;
-    initial.owner = ecs_entity_to_u64(out->owner);
-    REQUIRE(ecs_world_record_add(out->world, out->owner, SPOT_COMPONENT, &initial, 0) == ECS_OK);
-    out->target = ecs_world_create_entity(out->world);
-    uint64_t target = ecs_entity_to_u64(out->target);
-    REQUIRE(target != initial.owner && (!play_target || play_target == target));
-    play_target = target;
-    spot aimed;
-    memset(&aimed, 0, sizeof aimed);
-    aimed.x = 4;
-    aimed.y = 6;
-    aimed.w = 5;
-    aimed.owner = target;
-    REQUIRE(ecs_world_record_add(out->world, out->target, SPOT_COMPONENT, &aimed, 0) == ECS_OK);
-    REQUIRE(ecs_world_apply_commands(out->world) == ECS_OK);
-    if (!module->plan.query_variable_count) {
-        out->instance = execution_program_attach(out->program, ecs_entity_to_u64(out->owner));
-        REQUIRE(out->instance);
-    }
-    return true;
-}
-static void stop(player *p)
-{
-    play_target = 0;
-    execution_program_free(p->program);
-    ecs_world_free(p->world);
-    *p = (player){ 0 };
-}
+
 /* Production catalog export must carry nominal native ports all the way to
  * prepared host banks. SpotAlias shares Spot's layout; OtherSpot does not
  * share its identity. An unsupported native remains harmless until selected. */
@@ -5969,106 +507,7 @@ enum
 };
 /* Decode the production JSON against the actual authored entry signature.
  * No test-side table reconstructs or repairs its port metadata. */
-static bool catalog_compile_sources_native(
-    int b,
-    const script_catalog *catalog,
-    const native_capabilities *native,
-    const char *const *identities,
-    const char *const *sources,
-    int source_count,
-    const char *entry,
-    pin_value *out
-)
-{
-    size_t length;
-    char *json = compiler_behavior_catalog_input_json(catalog, native, identities, sources, source_count, &length);
-    yyjson_doc *parsed = yyjson_read(json, length, YYJSON_READ_ALLOW_INVALID_UNICODE);
-    REQUIRE(parsed);
-    av_doc *doc = av_doc_new();
-    av_value *values = av_from_json(doc, yyjson_doc_get_root(parsed));
-    const authoring_package *package = compiler_fixture_package(&fixture, b, PACKAGE);
-    uint64_t id = compiler_fixture_export(&fixture, b, PACKAGE, entry);
-    const behavior_function *function = NULL;
-    for (int i = 0; i < package->module->plan.function_count; i++) {
-        if (package->module->plan.functions[i].id == id) {
-            function = package->module->plan.functions[i].body;
-        }
-    }
-    REQUIRE(function);
-    int count;
-    const pin_value *declarations = behavior_function_arguments(function, &count);
-    REQUIRE(count == 18 && yyjson_arr_size(yyjson_doc_get_root(parsed)) == 18);
-    pin_value args[18];
-    char error[256];
-    for (int i = 0; i < count; i++) {
-        int status = pin_value_read_document(
-            &input,
-            declarations[i],
-            av_arr_get(values, (size_t)i),
-            &args[i],
-            error,
-            sizeof error
-        );
-        if (status) {
-            fprintf(stderr, "catalog compiler argument %d: %s\n", i, error);
-        }
-        REQUIRE(!status);
-    }
-    yyjson_doc_free(parsed);
-    av_doc_free(doc);
-    free(json);
-    return compiler_fixture_call(&fixture, b, PACKAGE, entry, args, count, COMPILE_BUDGET, &detached, out);
-}
-static bool catalog_compile_sources(
-    int b,
-    const script_catalog *catalog,
-    const char *const *identities,
-    const char *const *sources,
-    int source_count,
-    const char *entry,
-    pin_value *out
-)
-{
-    return catalog_compile_sources_native(b, catalog, NULL, identities, sources, source_count, entry, out);
-}
-static bool catalog_compile_native(
-    int b,
-    const script_catalog *catalog,
-    const native_capabilities *native,
-    const char *identity,
-    const char *source,
-    const char *entry,
-    pin_value *out
-)
-{
-    return catalog_compile_sources_native(b, catalog, native, &identity, &source, 1, entry, out);
-}
-static bool catalog_compile(
-    int b,
-    const script_catalog *catalog,
-    const char *identity,
-    const char *source,
-    const char *entry,
-    pin_value *out
-)
-{
-    return catalog_compile_native(b, catalog, NULL, identity, source, entry, out);
-}
-typedef struct
-{
-    float x, y, z;
-} native_math_vector;
-typedef struct
-{
-    native_capabilities *native;
-    script_syntax *syntax;
-    script_analysis *analysis;
-    execution_module_plan *plan;
-    execution_module *expected[2], *actual;
-    unsigned char *bytes;
-    package_module *modules;
-    int module_count;
-} native_math_fixture;
+
 enum
 {
     CATALOG_SELECT_SPOT = 6100,
@@ -6077,728 +516,17 @@ enum
     CATALOG_INFERRED,
     CATALOG_MAKE
 };
-typedef struct
-{
-    const char *identity;
-    int observed, first_calls, second_calls;
-} library_result;
-TEST_CASE(package_compiler_pure_provider_has_no_write)
-{
-    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK };
-    char error[256];
-    native_capabilities *native = native_capabilities_from_definition_packs(
-        NULL,
-        0,
-        packs,
-        NATIVE_COUNT(packs),
-        error,
-        sizeof error
-    );
-    REQUIRE(native);
-    const script_catalog *catalog = native_capabilities_catalog(native);
-    for (int i = 0; i < catalog->capability_count; i++) {
-        REQUIRE(!(catalog->capabilities[i].effects & SCRIPT_EFFECT_WRITE));
-    }
-    size_t length;
-    char *json = compiler_target_effects_json(catalog, &length);
-    yyjson_doc *effects = yyjson_read(json, length, 0);
-    REQUIRE(effects && yyjson_is_arr(yyjson_doc_get_root(effects)));
-    yyjson_val *rows = yyjson_doc_get_root(effects);
-    REQUIRE(yyjson_arr_size(rows) > 0);
-    for (size_t i = 0; i < yyjson_arr_size(rows); i++) {
-        REQUIRE(yyjson_is_uint(yyjson_arr_get(rows, i)));
-        REQUIRE(!(yyjson_get_uint(yyjson_arr_get(rows, i)) & SCRIPT_EFFECT_WRITE));
-    }
-    fprintf(stderr, "pure12 provider exports %zu native effect masks with no WRITE\n", yyjson_arr_size(rows));
-    yyjson_doc_free(effects);
-    free(json);
-    native_capabilities_free(native);
-    return true;
-}
-TEST_CASE(package_compiler_rejects_invalid_char_conversions)
-{
-    static const char *const sources[] = {
-        "package facts\nBad :: () -> char { return char(-1); }",
-        "package facts\nBad :: () -> char { return char(0xD800); }",
-        "package facts\nBad :: () -> char { return char(0xDFFF); }",
-        "package facts\nBad :: () -> char { return char(0x110000); }",
-        "package facts\nBad :: () -> char { return char(4294967296); }",
-        "package facts\nBad :: () -> char { return char(18446744073709551615); "
-        "}",
-        "package facts\nBad :: () -> char { return char(wrap: 65); }",
-        "package facts\nBad :: (value: number) -> char { return char(value); }",
-        "package facts\nBad :: (value: int) -> char { return value; }",
-        "package facts\nTake :: (value: char) -> int { return int(value); }\n"
-        "Bad :: (value: int) -> int { return Take(value); }",
-        "package facts\nBad :: (n: int) -> int { value: char = char(65); "
-        "value = n; return int(value); }",
-        "package facts\nBad :: (value: char) -> u8 { return value; }",
-        "package facts\nBad :: (n: int) -> (value: char) { value = n; return; "
-        "}",
-        "package facts\nBad :: (n: int) -> (value: char) { return(n); }",
-        "package facts\nBad :: () -> char { return char(65.5); }",
-        "package facts\nFloat: number : 0;\nBad :: () -> char { return "
-        "char(Float); }",
-        "package facts\nFloat: f64 : 0;\nBad :: () -> char { return "
-        "char(Float); }",
-        "package facts\nRow :: struct { x: number; }\n"
-        "Bad :: () -> number { row: Row = {x: 0.0}; row.x = char(65); return "
-        "row.x; }",
-        "package facts\nRow :: struct { x: f64; }\n"
-        "Bad :: () -> f64 { row: Row = {x: 0.0}; row.x = char(65); return "
-        "row.x; }",
-        "package facts\nBad :: (value: char) -> int { return "
-        "native.kernel(value); }"
-    };
-    REQUIRE(prepare());
-    for (int i = 0; i < NATIVE_COUNT(sources); i++) {
-        sample s = { .source = sources[i] };
-        const authoring_package *root;
-        authoring_packages *native = oracle_packages(&s, &root);
-        REQUIRE(!authoring_packages_valid(native));
-        REQUIRE(root->diagnostic_count > 0);
-        authoring_packages_free(native);
-        source_package_input inputs[SAMPLE_INPUTS];
-        int count = sample_inputs(&s, inputs);
-        for (int b = 0; b < 2; b++) {
-            compiler_result out;
-            pin_value message;
-            bool probe = strstr(sources[i], "native.kernel") != NULL;
-            REQUIRE(compile(b, false, probe, false, inputs, count, COMPILE_BUDGET, &out));
-            if (compiler_succeeded(&out)) {
-                fprintf(stderr, "stage one accepted invalid char source: %s\n", sources[i]);
-            }
-            REQUIRE(!compiler_succeeded(&out));
-            REQUIRE(get(compiler_error(&out), "message", &message));
-            if (i < 6) {
-                REQUIRE(strstr(pin_text(message).bytes, "Constant does not fit in char"));
-            }
-            arena_free(&detached);
-        }
-    }
-    return true;
-}
+
 /* The bounded scalar-char prerequisite deliberately does not enable its
  * container, pointer, field or arithmetic forms. Native acceptance proves
  * these failures describe stage-one coverage rather than invalid Chibi. */
-TEST_CASE(package_compiler_rejects_deferred_char_forms)
-{
-    static const struct
-    {
-        const char *name, *source;
-    } cases[] = {
-        { "explicit array",
-          "package facts\nRun :: () -> int { values: char[] = [char(65)]; "
-          "return int(values[0]); }" },
-        { "grouped array", "package facts\nRun :: () -> int { values: (char)[] = [char(65)]; return int(values[0]); }" },
-        { "nested grouped array", "package facts\nRun :: () -> int { values: ((char))[] = [char(65)]; return int(values[0]); }" },
-        { "grouped array type", "package facts\nRun :: () -> int { values: (char[]) = [char(65)]; return int(values[0]); }" },
-        { "inferred array",
-          "package facts\nRun :: () -> int { values := [char(65)]; "
-          "return int(values[0]); }" },
-        { "scoped pointer",
-          "package facts\nRead :: (value: ^char) -> int { return int(value^); "
-          "}\n"
-          "Run :: () -> int { value: char = char(65); return Read(&value); }" },
-        { "addressed local",
-          "package facts\nRun :: () -> int { value: char = char(65); "
-          "pointer := &value; return int(pointer^); }" },
-        { "map key after int key",
-          "package facts\nKnown :: (n: int) -> int { known: [int: int] = [:]; "
-          "known[n] = 1; return known[n]; }\n"
-          "Run :: () -> int { values: [char: int] = [:]; "
-          "values[char(65)] = 7; return values[char(65)]; }" },
-        { "map value",
-          "package facts\nRun :: () -> int { values: [int: char] = [:]; "
-          "values[0] = char(65); return int(values[0]); }" },
-        { "unary arithmetic",
-          "package facts\nRun :: (value: char) -> char { return -value; }" },
-        { "binary arithmetic",
-          "package facts\nRun :: (value: char) -> char { return value + 1; }" },
-        { "compound arithmetic", "package facts\nRun :: (value: char) -> int { value += 1; return int(value); }" },
-        { "record field",
-          "package facts\nRow :: struct { value: char; }\n"
-          "Run :: () -> int { row: Row = {value: char(65)}; return "
-          "int(row.value); }" },
-        { "optional", "package facts\nRun :: () -> char? { return char(65); }" },
-        { "union payload",
-          "package facts\nValue :: union { Rune(value: char) | Empty }\n"
-          "Run :: () -> Value { return Value.Rune(char(65)); }" },
-        { "character literal", "package facts\nRun :: () -> int { return int('A'); }" },
-        { "contextual decimal expression",
-          "package facts\nRun :: () -> int { return int(char(64.0 + 1.0)); }" },
-        { "nested contextual decimal expression", "package facts\nRun :: () -> int { return int(char((32.0 * 2.0) + 1.0)); }" },
-        { "widened named char result projection",
-          "package facts\nNamed :: () -> (scalar: char) { return char(65); }\n"
-          "Run :: () -> char { value: int = Named(); value = -1; return "
-          "value.scalar; }" },
-        { "wide named char result projection",
-          "package facts\nNamed :: () -> (scalar: char) { return char(65); }\n"
-          "Run :: () -> char { value: i64 = Named(); value = 4294967296; "
-          "return value.scalar; }" },
-        { "compound int field with char",
-          "package facts\nRow :: struct { x: int; }\n"
-          "Run :: () -> int { row: Row = {x: 0}; row.x += char(65); return "
-          "row.x; }" },
-        { "compound int array with char",
-          "package facts\nRun :: () -> int { values: int[] = [0]; "
-          "values[0] += char(65); return values[0]; }" },
-        { "inferred generic array",
-          "package facts\nRun :: () -> int { values := make_array(char(65)); "
-          "return int(values[0]); }" }
-    };
-    REQUIRE(prepare());
-    bool rejected_all = true;
-    for (int i = 0; i < NATIVE_COUNT(cases); i++) {
-        sample s = { .source = cases[i].source };
-        const authoring_package *root;
-        authoring_packages *native = oracle_packages(&s, &root);
-        if (!authoring_packages_valid(native)) {
-            for (int j = 0; j < root->diagnostic_count; j++) {
-                fprintf(
-                    stderr,
-                    "native deferred char %s: %s\n",
-                    cases[i].name,
-                    root->diagnostics[j].message
-                );
-            }
-        }
-        REQUIRE(authoring_packages_valid(native));
-        authoring_packages_free(native);
-        source_package_input inputs[SAMPLE_INPUTS];
-        int count = sample_inputs(&s, inputs);
-        for (int b = 0; b < 2; b++) {
-            compiler_result out;
-            pin_value message;
-            REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
-            if (compiler_succeeded(&out)) {
-                fprintf(
-                    stderr,
-                    "stage one accepted deferred char form: %s\n",
-                    cases[i].name
-                );
-            }
-            bool rejected = !compiler_succeeded(&out);
-            rejected_all &= rejected;
-            if (rejected) {
-                REQUIRE(get(compiler_error(&out), "message", &message));
-                REQUIRE(pin_text(message).length > 0);
-            }
-            arena_free(&detached);
-        }
-    }
-    REQUIRE(rejected_all);
-    return true;
-}
+
 /* A state's resolved nominal type must be checked after grouping, before
  * its integer storage or default can enter the behavior state table. */
-TEST_CASE(package_compiler_defers_generic_char_native_results)
-{
-    REQUIRE(prepare());
-    char error[256];
-    const native_definition_pack pack = NATIVE_ARITHMETIC_DEFINITION_PACK;
-    native_capabilities *
-        arithmetic = native_capabilities_from_definition_packs(NULL, 0, &pack, 1, error, sizeof error);
-    REQUIRE(arithmetic);
-    const script_catalog *catalog = native_capabilities_catalog(arithmetic);
-    const char *sources[] = {
-        "package facts\nRun :: () -> char { return negate(char(65)); }",
-        "package facts\nRun :: (value: int) -> int { return negate(value); }"
-    };
-    for (int i = 0; i < NATIVE_COUNT(sources); i++) {
-        source_package_input source = { "facts/Main.chibi",
-                                        sources[i],
-                                        strlen(sources[i]) };
-        source_package_snapshot_options options = { .project_root = "/compiler",
-                                                    .files = &source,
-                                                    .file_count = 1 };
-        source_package_snapshot *snapshot = source_package_snapshot_new(&options);
-        REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
-        script_lower_bindings bindings = authoring_native_bindings(arithmetic);
-        authoring_packages *native = authoring_packages_prepare(snapshot, catalog, &bindings, BEHAVIOR_BYTECODE, NULL);
-        REQUIRE(native && authoring_packages_valid(native));
-        authoring_packages_free(native);
-        for (int b = 0; b < 2; b++) {
-            pin_value args[ARGUMENTS + 1];
-            compiler_result out;
-            REQUIRE(arguments(b, false, &source, 1, args));
-            REQUIRE(
-                compiler_fixture_natives(&fixture, b, PACKAGE, catalog, &input, &args[9], &args[ARGUMENTS])
-            );
-            REQUIRE(
-                compiler_call(b, "CompileWithEffects", args, ARGUMENTS + 1, COMPILE_BUDGET, &out)
-            );
-            REQUIRE(compiler_succeeded(&out) == (i != 0));
-            if (i == 0) {
-                pin_value message;
-                REQUIRE(get(compiler_error(&out), "message", &message));
-                REQUIRE(
-                    strstr(pin_text(message).bytes, "generic char native results are not supported yet")
-                );
-            }
-            arena_free(&detached);
-        }
-    }
-    native_capabilities_free(arithmetic);
-    return true;
-}
-TEST_CASE(package_compiler_shares_its_arguments)
-{
-    REQUIRE(prepare());
-    REQUIRE(
-        copying_functions(
-            &compiler_fixture_package(&fixture, 1, PACKAGE)->module->plan
-        ) == 0
-    );
-    return true;
-}
-static bool action_table()
-{
-    if (actions_native) {
-        return true;
-    }
-    uint64_t entity_id = script_catalog_id("type", "ecs.entity"),
-             alias_id = script_catalog_id("type", "fixture.owner");
-    const script_catalog_type types[] = {
-        { .id = entity_id,
-          .name = "ecs.entity",
-          .type = { .storage = PIN_HANDLE, .nominal = entity_id },
-          .size = sizeof(uint64_t) },
-        { .id = alias_id,
-          .name = "fixture.owner",
-          .type = { .storage = PIN_HANDLE, .nominal = alias_id },
-          .size = sizeof(uint64_t),
-          .underlying = entity_id }
-    };
-    native_definition_pack pack = ACTION_PACK;
-    pack.base = (script_catalog){
-        .types = types,
-        .type_count = NATIVE_COUNT(types),
-        .entity_type = entity_id,
-        .tick_event = native_capability_definition_id(&ACTION_DEFINITIONS[1])
-    };
-    char error[256];
-    actions_native = native_capabilities_from_definition_packs(NULL, 0, &pack, 1, error, sizeof error);
-    if (!actions_native) {
-        fprintf(stderr, "action native definitions: %s\n", error);
-    }
-    REQUIRE(actions_native);
-    return true;
-}
-static yyjson_val *action_exported(yyjson_val *functions, const char *name)
-{
-    size_t index, count;
-    yyjson_val *function;
-    yyjson_arr_foreach(functions, index, count, function)
-    {
-        if (!strcmp(yyjson_get_str(yyjson_obj_get(function, "name")), name)) {
-            return function;
-        }
-    }
-    return NULL;
-}
-static yyjson_val *action_exported_id(yyjson_val *root, uint64_t id)
-{
-    yyjson_val *functions = yyjson_arr_get(root, 5),
-               *identities = yyjson_arr_get(root, 7);
-    for (size_t i = 0; i < yyjson_arr_size(functions); i++) {
-        if (yyjson_get_uint(yyjson_arr_get(identities, 2 * i)) == id) {
-            return yyjson_arr_get(functions, i);
-        }
-    }
-    return NULL;
-}
-TEST_CASE(package_compiler_keeps_unavailable_native_functions)
-{
-    REQUIRE(action_table());
-    const script_catalog *catalog = native_capabilities_catalog(actions_native);
-    uint64_t id = 0;
-    for (int i = 0; i < catalog->capability_count; i++) {
-        const script_catalog_capability *capability = &catalog->capabilities[i];
-        if (capability->qualified_name &&
-            !strcmp(capability->qualified_name, "fixture.unavailable_function")) {
-            REQUIRE(
-                capability->kind == SCRIPT_CAPABILITY_FUNCTION &&
-                (capability->effects & SCRIPT_EFFECT_SUSPEND)
-            );
-            id = capability->id;
-        }
-    }
-    REQUIRE(id);
-    const char *identity = "Unavailable",
-               *source = "Unavailable :: behavior {}";
-    size_t length;
-    char *json = compiler_behavior_catalog_input_json(catalog, actions_native, &identity, &source, 1, &length);
-    yyjson_doc *parsed = yyjson_read(json, length, YYJSON_READ_ALLOW_INVALID_UNICODE);
-    REQUIRE(parsed);
-    yyjson_val *row = action_exported_id(yyjson_doc_get_root(parsed), id);
-    bool retained = row && yyjson_is_false(yyjson_obj_get(row, "direct"));
-    if (!retained) {
-        fprintf(stderr, "rich exporter omitted unavailable FUNCTION fixture.unavailable_function/held_probe; same-source ACTION remains eligible\n");
-    }
-    yyjson_doc_free(parsed);
-    free(json);
-    REQUIRE(retained);
-    return true;
-}
-TEST_CASE(package_compiler_exports_native_actions)
-{
-    REQUIRE(action_table());
-    const script_catalog *catalog = native_capabilities_catalog(actions_native);
-    const script_catalog_capability *action = script_catalog_capability_by_id(
-        catalog,
-        native_capability_definition_id(&ACTION_DEFINITIONS[0])
-    );
-    REQUIRE(action);
-    const native_capability_binding *binding = native_capabilities_find(
-        actions_native,
-        action->id,
-        script_catalog_capability_abi(catalog, action)
-    );
-    REQUIRE(
-        action->kind == SCRIPT_CAPABILITY_ACTION && action->entry_count == 1 &&
-        action->outcome_count == 1 && action->completion_outcome == 0
-    );
-    REQUIRE(binding && binding->call && binding->call->invoke == action_probe);
-    const char *identity = "NativeActions";
-    const char *source = "NativeActions :: behavior {}";
-    size_t length;
-    char *json = compiler_behavior_catalog_input_json(catalog, actions_native, &identity, &source, 1, &length);
-    yyjson_doc *parsed = yyjson_read(json, length, YYJSON_READ_ALLOW_INVALID_UNICODE);
-    REQUIRE(parsed);
-    yyjson_val *root = yyjson_doc_get_root(parsed),
-               *functions = yyjson_arr_get(root, 5),
-               *ports = yyjson_arr_get(root, 6),
-               *native = action_exported(functions, action->name);
-    bool exported = native && yyjson_is_true(yyjson_obj_get(native, "direct"));
-    if (!exported) {
-        fprintf(
-            stderr,
-            "rich exporter omitted synchronous ACTION '%s': %zu callable rows, "
-            "real invoke binding, one entry and completion\n",
-            action->name,
-            yyjson_arr_size(functions)
-        );
-    }
-    REQUIRE(exported && yyjson_arr_size(functions) == NATIVE_COUNT(ACTION_DEFINITIONS) - 1);
-    REQUIRE(yyjson_arr_size(yyjson_arr_get(root, 17)) == yyjson_arr_size(functions));
-    REQUIRE(yyjson_obj_size(native) == 10);
-    static const char *const eligible[] = { "fixture.kind_action",
-                                            "fixture.duplicate_int",
-                                            "fixture.duplicate_text",
-                                            "fixture.assert_action" };
-    for (int i = 0; i < NATIVE_COUNT(eligible); i++) {
-        for (int c = 0; c < catalog->capability_count; c++) {
-            const script_catalog_capability *capability = &catalog->capabilities[c];
-            if (!capability->qualified_name ||
-                strcmp(capability->qualified_name, eligible[i])) {
-                continue;
-            }
-            yyjson_val *row = action_exported_id(root, capability->id);
-            bool direct = row && yyjson_is_true(yyjson_obj_get(row, "direct"));
-            if (!direct) {
-                fprintf(
-                    stderr,
-                    "rich exporter lost eligible action binding '%s' (%s)\n",
-                    capability->qualified_name,
-                    capability->name
-                );
-            }
-            REQUIRE(direct);
-        }
-    }
-    for (int i = 0; i < catalog->capability_count; i++) {
-        const script_catalog_capability *capability = &catalog->capabilities[i];
-        if (capability->kind != SCRIPT_CAPABILITY_FUNCTION &&
-            capability->kind != SCRIPT_CAPABILITY_ACTION) {
-            continue;
-        }
-        yyjson_val *row = action_exported_id(root, capability->id);
-        REQUIRE(row && yyjson_obj_size(row) == 10);
-        REQUIRE(yyjson_get_int(yyjson_obj_get(row, "kind")) == (int)capability->kind);
-        const native_capability_binding *binding = native_capabilities_find(
-            actions_native,
-            capability->id,
-            script_catalog_capability_abi(catalog, capability)
-        );
-        REQUIRE(
-            yyjson_get_int(yyjson_obj_get(row, "intrinsic")) ==
-            (binding ? (int)binding->intrinsic : 0)
-        );
-        REQUIRE(!strcmp(
-            yyjson_get_str(yyjson_obj_get(row, "qualified_name")),
-            capability->qualified_name ? capability->qualified_name : capability->name
-        ));
-    }
-    const char *const unsupported[] = { "unsupported_probe", "suspending_probe" };
-    for (int i = 0; i < NATIVE_COUNT(unsupported); i++) {
-        yyjson_val *row = action_exported(functions, unsupported[i]);
-        REQUIRE(row && yyjson_is_false(yyjson_obj_get(row, "direct")));
-        REQUIRE(
-            !yyjson_get_int(yyjson_obj_get(row, "parameters")) &&
-            !yyjson_get_int(yyjson_obj_get(row, "results"))
-        );
-    }
-    int first = yyjson_get_int(yyjson_obj_get(native, "first"));
-    for (int i = 0; i < action->parameter_count + action->result_count; i++) {
-        yyjson_val *port = yyjson_arr_get(ports, (size_t)(first + i));
-        REQUIRE(yyjson_obj_size(port) == 10);
-        bool has_default = i > 0 && i < action->parameter_count;
-        REQUIRE(yyjson_get_bool(yyjson_obj_get(port, "has_default")) == has_default);
-        REQUIRE(yyjson_get_bool(yyjson_obj_get(port, "default_supported")) == has_default);
-        REQUIRE(yyjson_get_bool(yyjson_obj_get(port, "default_owner")) == (i == 7));
-    }
-    yyjson_val *gain = yyjson_arr_get(ports, (size_t)(first + 2)),
-               *large = yyjson_arr_get(ports, (size_t)(first + 4)),
-               *message = yyjson_arr_get(ports, (size_t)(first + 5)),
-               *name = yyjson_arr_get(ports, (size_t)(first + 8));
-    uint64_t gain_bits;
-    double gain_value = -2.5;
-    memcpy(&gain_bits, &gain_value, sizeof gain_bits);
-    REQUIRE(yyjson_get_uint(yyjson_obj_get(gain, "default_bits")) == gain_bits);
-    REQUIRE(yyjson_get_uint(yyjson_obj_get(large, "default_bits")) == UINT64_C(0xfedcba9876543210));
-    yyjson_val *message_text = yyjson_obj_get(message, "default_text");
-    REQUIRE(
-        yyjson_get_len(message_text) == ACTION_TEXT.length &&
-        !memcmp(yyjson_get_str(message_text), ACTION_TEXT.bytes, ACTION_TEXT.length)
-    );
-    REQUIRE(
-        yyjson_get_int(yyjson_obj_get(name, "storage")) == PIN_NAME &&
-        !strcmp(yyjson_get_str(yyjson_obj_get(name, "default_text")), "named")
-    );
-    yyjson_val *aggregate = action_exported(functions, "aggregate_probe");
-    yyjson_val *aggregate_port = yyjson_arr_get(
-        ports,
-        (size_t)yyjson_get_int(yyjson_obj_get(aggregate, "first"))
-    );
-    REQUIRE(
-        yyjson_is_true(yyjson_obj_get(aggregate_port, "has_default")) &&
-        yyjson_is_false(yyjson_obj_get(aggregate_port, "default_supported"))
-    );
-    yyjson_doc_free(parsed);
-    free(json);
-    return true;
-}
-typedef struct
-{
-    script_catalog catalog;
-    script_catalog_type types[3];
-    script_catalog_parameter parameters[NATIVE_COUNT(ACTION_INPUT) - 1];
-    script_catalog_capability capabilities[2];
-} action_default_fixture;
-static void action_default_setup(action_default_fixture *out, bool wrong_header)
-{
-    const script_catalog *base = native_capabilities_catalog(actions_native);
-    assert(base->type_count == NATIVE_COUNT(out->types) - 1);
-    memcpy(out->types, base->types, (size_t)base->type_count * sizeof *out->types);
-    out->types[2] = base->types[0];
-    out->types[2].id = script_catalog_id("type", "different.entity");
-    out->types[2].name = "different.entity";
-    out->types[2].type.nominal = out->types[2].id;
-    const script_catalog_capability *probe = script_catalog_capability_by_id(
-        base,
-        native_capability_definition_id(&ACTION_DEFINITIONS[0])
-    );
-    memcpy(out->parameters, probe->parameters, sizeof out->parameters);
-    out->parameters[7].type = out->types[0].type;
-    out->parameters[7].default_owner = false;
-    out->parameters[7]
-        .default_value.type_name = out->types[wrong_header ? 2 : 0].name;
-    out->parameters[7].default_value.u64 = 7;
-    out->capabilities[0] = *probe;
-    out->capabilities[1] = *script_catalog_capability_by_id(base, base->tick_event);
-    out->capabilities[0].kind = SCRIPT_CAPABILITY_FUNCTION;
-    out->capabilities[0].parameters = out->parameters;
-    out->capabilities[0].entries = out->capabilities[0].outcomes = NULL;
-    out->capabilities[0].entry_count = out->capabilities[0].outcome_count = 0;
-    out->capabilities[0].completion_outcome = -1;
-    out->catalog = *base;
-    out->catalog.types = out->types;
-    out->catalog.type_count = NATIVE_COUNT(out->types);
-    out->catalog.capabilities = out->capabilities;
-    out->catalog.capability_count = NATIVE_COUNT(out->capabilities);
-}
-static bool action_default_unsupported(const action_default_fixture *values)
-{
-    const char *identity = "Malformed", *source = "Malformed :: behavior {}";
-    size_t length;
-    char *json = compiler_behavior_catalog_input_json(&values->catalog, NULL, &identity, &source, 1, &length);
-    yyjson_doc *parsed = yyjson_read(json, length, YYJSON_READ_ALLOW_INVALID_UNICODE);
-    REQUIRE(parsed);
-    yyjson_val *port = yyjson_arr_get(yyjson_arr_get(yyjson_doc_get_root(parsed), 6), 7);
-    bool unsupported = yyjson_get_int(yyjson_obj_get(port, "storage")) == PIN_HANDLE &&
-                       yyjson_is_true(yyjson_obj_get(port, "has_default")) &&
-                       yyjson_is_false(yyjson_obj_get(port, "default_supported"));
-    if (!unsupported) {
-        fprintf(
-            stderr,
-            "rich exporter admitted non-owner HANDLE default bits7 with header "
-            "%s for declared ecs.entity\n",
-            values->parameters[7].default_value.type_name
-        );
-    }
-    yyjson_doc_free(parsed);
-    free(json);
-    REQUIRE(unsupported);
-    return true;
-}
-TEST_CASE(package_compiler_rejects_nonzero_handle_defaults)
-{
-    REQUIRE(action_table());
-    action_default_fixture values;
-    action_default_setup(&values, false);
-    REQUIRE(action_default_unsupported(&values));
-    return true;
-}
-TEST_CASE(package_compiler_keeps_text_state_per_owner)
-{
-    REQUIRE(prepare());
-    const type_desc *const reflected[] = { &spot_type };
-    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
-    publish_project(&pack);
-    execution_module *module = NULL;
-    REQUIRE(stage_one_behavior(1, "TextState", TEXT_STATE, &module));
-    player p = { 0 };
-    REQUIRE(play(module, &p));
-    ecs_entity other = ecs_world_create_entity(p.world);
-    spot initial = { .w = 9 };
-    REQUIRE(ecs_world_record_add(p.world, other, SPOT_COMPONENT, &initial, 0) == ECS_OK);
-    REQUIRE(ecs_world_apply_commands(p.world) == ECS_OK);
-    execution_instance *second = execution_program_attach(p.program, ecs_entity_to_u64(other));
-    REQUIRE(second);
-    uint64_t state = script_catalog_id("symbol", "TextState:1:label");
-    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
-    behavior_run_scope runs = { 0 };
-    behavior_run_scope_begin(&runs);
-    int first = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000);
-    behavior_run_scope_end(&runs);
-    REQUIRE(first == FLOW_OK);
-    const pin_value *first_value = execution_instance_state(p.instance, state);
-    const pin_value *second_value = execution_instance_state(second, state);
-    REQUIRE(first_value && second_value);
-    REQUIRE(
-        pin_text_equal(pin_text(*first_value), (pin_string){ .bytes = "a\0b", .length = 3 })
-    );
-    REQUIRE(
-        pin_text_equal(pin_text(*second_value), (pin_string){ .bytes = "seed", .length = 4 })
-    );
-    behavior_run_scope_begin(&runs);
-    int repeated = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000);
-    int other_result = execution_instance_dispatch(second, TICK, &delta, 1, 0, 0, 1000);
-    behavior_run_scope_end(&runs);
-    REQUIRE(repeated == FLOW_OK && other_result == FLOW_OK);
-    first_value = execution_instance_state(p.instance, state);
-    second_value = execution_instance_state(second, state);
-    REQUIRE(first_value && second_value);
-    REQUIRE(
-        pin_text_equal(pin_text(*first_value), (pin_string){ .bytes = "seed", .length = 4 })
-    );
-    REQUIRE(
-        pin_text_equal(pin_text(*second_value), (pin_string){ .bytes = "a\0b", .length = 3 })
-    );
-    REQUIRE(
-        TEST_COMPILED_BACKEND == BEHAVIOR_WASM ? runs.counts.wasm_entries > 0
-                                               : runs.counts.sljit_entries > 0
-    );
-    REQUIRE(!runs.counts.overflow && !runs.counts.bytecode_entries);
-    stop(&p);
-    execution_module_free(module);
-    publish_project(NULL);
-    return true;
-}
+
 /* Task results keep cancellation distinct from valid zero/false/empty values.
  * Start runs up to its first yield; joining a completed/cancelled task continues
  * synchronously, and direct await preserves the ordinary return type. */
-TEST_CASE(package_compiler_runs_task_sequencing_and_cancellation)
-{
-    REQUIRE(prepare());
-    const type_desc *const reflected[] = { &spot_type };
-    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
-    type_catalog_set_project(&pack);
-    const char *source =
-        "Tasks :: behavior { started: int = 0; initial: int = 0; zero: int = "
-        "99; "
-        "flags: int = 0; cancelled: int = 0; done: int = 0; failures: int = 0; "
-        "Number :: (value: int) -> int { started += 1; yield; return value } "
-        "Flag :: () -> bool { yield; return false } "
-        "Text :: () -> string { yield; return \"\" } "
-        "Label :: () -> string { yield; return \"ret\\u0000ained\" } "
-        "ReadSpot :: () -> Spot { yield; return self.Spot } "
-        "Void :: () { yield } "
-        "Child :: () { yield; failures += 1000 } "
-        "Parent :: () { Child(); await Delay(100) } "
-        "Run :: () { n := Number(0); initial = started; r := await n; "
-        "if r is Cancelled { failures += 1 } else { "
-        "if (r) is not Cancelled { yield; if r is not Cancelled { zero = r } } "
-        "} "
-        "b := Flag(); br := await b; if br is not Cancelled { if !br { flags "
-        "+= 1 } } "
-        "t := Text(); tr := await t; if tr is not Cancelled { if tr == \"\" { "
-        "flags += 2 } } "
-        "label := Label(); lr := await label; if lr is not Cancelled { "
-        "if lr == \"ret\\u0000ained\" { flags += 32 } } "
-        "s := ReadSpot(); sr := await s; if sr is not Cancelled { "
-        "if sr.w == 9 { flags += 16 } } "
-        "bad := Number(9); cancel bad; cr := await bad; "
-        "if cr is Cancelled { cancelled += 1 } else { failures += cr } "
-        "late := Number(8); cancel late after 0; dr := await late; "
-        "if dr is not Cancelled { failures += dr } else { cancelled += 1 } "
-        "parent := Parent(); cancel parent; pr := await parent; "
-        "if pr is Cancelled { cancelled += 1 } "
-        "v := Void(); vr := await v; if vr is Cancelled { failures += 1 } else "
-        "{ if vr is not Cancelled { flags += 4 } } "
-        "direct := await Number(3); flags += direct; await Delay(0); done = 1 "
-        "} "
-        "on Tick :: () { Run() } }";
-    const char *const states[] = { "initial", "zero",     "flags",  "cancelled",
-                                   "done",    "failures", "started" };
-    const int expected[] = { 1, 0, 58, 3, 1, 0, 4 };
-    for (int b = 0; b < 2; b++) {
-        execution_module *module = NULL;
-        REQUIRE(stage_one_behavior(b, "Tasks", source, &module));
-        player p = { 0 };
-        REQUIRE(play(module, &p));
-        const pin_value delta = { .type = PIN_F32, .f = 1.0f };
-        REQUIRE(execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 10000) == FLOW_OK);
-        const pin_value *initial = execution_instance_state(
-            p.instance,
-            script_catalog_id("symbol", "Tasks:1:initial")
-        );
-        REQUIRE(initial && initial->type == PIN_I32 && initial->i == 1);
-        for (int frame = 1; frame <= 32 && execution_instance_pending(p.instance);
-             frame++) {
-            REQUIRE(execution_program_update(p.program, frame, 1, 10000) == FLOW_OK);
-        }
-        for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
-            char identity[96];
-            snprintf(identity, sizeof identity, "Tasks:1:%s", states[i]);
-            const pin_value *value = execution_instance_state(
-                p.instance,
-                script_catalog_id("symbol", identity)
-            );
-            if (!value || value->type != PIN_I32 || value->i != expected[i]) {
-                fprintf(
-                    stderr,
-                    "task backend %d state %s: type %d value %d expected %d\n",
-                    b,
-                    states[i],
-                    value ? value->type : -1,
-                    value ? value->i : -1,
-                    expected[i]
-                );
-            }
-            REQUIRE(value && value->type == PIN_I32 && value->i == expected[i]);
-        }
-        REQUIRE(execution_instance_pending(p.instance) == 0);
-        stop(&p);
-        execution_module_free(module);
-    }
-    type_catalog_set_project(NULL);
-    return true;
-}
 
 static pin_value scalar_field(const pin_value *row, const char *name)
 {
@@ -6823,7 +551,7 @@ static const char
                       "Pick :: (x: int, b: bool) -> int { return x; }\n";
 /* Two concrete Remap instances, one with a named function and one with an
  * inline function. Main's independent arithmetic oracle is 50 + 150 = 200. */
-static const char CASES_PACKAGE[] = "project:scalar_cases";
+
 static const char GENERIC_SCALAR_SOURCE
     [] = "package scalar\n"
          "Main :: () -> int { return int(Named(0.25) * 100) + int(Inline(0.5) "
@@ -7716,42 +1444,17 @@ static void write_row(const pin_value *rows, int index, const char *name, pin_va
     assert(!pin_write_field(&detached, row->ptr, field, value));
 }
 /* native_abi's target `function`, such as "LinuxX64", on VM b. */
-static bool native_target(int b, const char *function, pin_value *out)
-{
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:native_abi", function, NULL, 0, COMPILE_BUDGET, &input, out)
-    );
-    return true;
-}
+
 /* scalar_llvm's EmitBytesFor of `rows` and native_abi's target `function`. */
-static bool emit_bytes(int b, const char *function, const pin_value *rows, pin_value *emitted)
+
+static bool validated(pin_value *rows, const char *message)
 {
-    pin_value args[2] = { { 0 }, *rows };
-    REQUIRE(native_target(b, function, &args[0]));
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytesFor", args, 2, COMPILE_BUDGET, &input, emitted)
-    );
-    return true;
-}
-static bool validated(int b, pin_value *rows, const char *message)
-{
-    pin_value error, emitted;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "Validate", rows, 1, COMPILE_BUDGET, &input, &error)
-    );
-    REQUIRE(emit_bytes(b, "LinuxX64", rows, &emitted));
-    bool valid = pin_text_equal(
-        pin_text(error),
-        (pin_string){ .bytes = message, .length = strlen(message) }
-    );
+    char *error, *ir;
+    REQUIRE(scalar_host_validate(rows, &error));
+    REQUIRE(scalar_host_emit("LinuxX64", rows, &ir));
+    bool valid = !strcmp(error, message);
     if (!valid) {
-        fprintf(
-            stderr,
-            "scalar_llvm Validate gave \"%.*s\", not \"%s\"\n",
-            (int)pin_text(error).length,
-            pin_text(error).bytes,
-            message
-        );
+        fprintf(stderr, "scalar_llvm Validate gave \"%s\", not \"%s\"\n", error, message);
         const pin_array *dump = rows->ptr;
         for (int i = 0; i < dump->count && i < 40; i++) {
             fprintf(
@@ -7771,12 +1474,15 @@ static bool validated(int b, pin_value *rows, const char *message)
             );
         }
     }
-    REQUIRE(valid && !((const pin_array *)emitted.ptr)->count == !!*message);
+    bool emitted = *ir;
+    free(error);
+    free(ir);
+    REQUIRE(valid && emitted == !*message);
     return true;
 }
 /* Each edit applied to the producer's rows, the message Validate gives, and
  * the rows restored. */
-static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malformed)
+static bool rejects_guard(pin_value *rows, const malformed_guard *malformed)
 {
     pin_value saved[GUARD_EDITS];
     int count = 0;
@@ -7798,7 +1504,7 @@ static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malform
         }
         write_row(rows, edit->row, edit->field, value);
     }
-    bool rejected = validated(b, rows, malformed->message);
+    bool rejected = validated(rows, malformed->message);
     for (int i = count - 1; i >= 0; i--) {
         write_row(rows, malformed->edits[i].row, malformed->edits[i].field, saved[i]);
     }
@@ -7808,7 +1514,6 @@ static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malform
  * each malformed variant of them when its layout, operators, operand types,
  * ranges or calls are not what a producer gives, and emits nothing for it. */
 static bool rejects_malformed(
-    int b,
     pin_value *rows,
     const int *kinds,
     int count,
@@ -7820,16 +1525,16 @@ static bool rejects_malformed(
     for (int i = 0; i < count; i++) {
         REQUIRE(scalar_field(guard_row(rows, i), "kind").i == kinds[i]);
     }
-    REQUIRE(validated(b, rows, ""));
+    REQUIRE(validated(rows, ""));
     bool rejected = true;
     for (int i = 0; i < variants; i++) {
-        if (!rejects_guard(b, rows, &malformed[i])) {
+        if (!rejects_guard(rows, &malformed[i])) {
             fprintf(stderr, "malformed variant %d\n", i);
             rejected = false;
         }
     }
     REQUIRE(rejected);
-    REQUIRE(validated(b, rows, ""));
+    REQUIRE(validated(rows, ""));
     return true;
 }
 /* WIDTH_SOURCE's typed rows: 298 is an int argument that Low wraps to a byte,
@@ -7919,7 +1624,7 @@ static bool recorded_rows(const pin_value *rows)
  * literal 0, its variables, Name's result and its read are strings, and its
  * comparison gives a bool. Its IR holds one text, which both literals name.
  * A literal longer than any source is noncanonical. */
-static bool stringed_rows(int b, pin_value *rows)
+static bool stringed_rows(pin_value *rows)
 {
     static const int STRING_TYPED[] = { STRING_LOCAL,         STRING_ARGUMENT,
                                         STRING_READ,          STRING_LITERAL,
@@ -7936,16 +1641,8 @@ static bool stringed_rows(int b, pin_value *rows)
         );
     }
     REQUIRE(scalar_field(guard_row(rows, STRING_COMPARE), "type").i == SCALAR_BOOL);
-    pin_value emitted;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
-    );
-    const pin_array *bytes = emitted.ptr;
-    char *ir = xmalloc((size_t)bytes->count + 1);
-    for (int i = 0; i < bytes->count; i++) {
-        ir[i] = (char)bytes->items[i].u8;
-    }
-    ir[bytes->count] = 0;
+    char *ir;
+    REQUIRE(target_ir("LinuxX64", rows, &ir) && ir);
     bool shared = strstr(ir, "@chibi_scalar.text.0 = private unnamed_addr constant [4 x i8] c\"one\\00\"") &&
                   !strstr(ir, "@chibi_scalar.text.1");
     free(ir);
@@ -7962,7 +1659,7 @@ static bool stringed_rows(int b, pin_value *rows)
     long_text[LONG_TEXT] = 0;
     write_row(rows, STRING_LITERAL, "text", text(long_text));
     free(long_text);
-    REQUIRE(validated(b, rows, ""));
+    REQUIRE(validated(rows, ""));
     write_row(rows, STRING_LITERAL, "text", saved);
     return true;
 }
@@ -7990,7 +1687,7 @@ static bool texted_rows(pin_value *rows)
 /* ASSERT_ROWS_SOURCE's assert has its call's range and its condition's
  * three operands, and lowers to a branch past a Fail that names the range in
  * a failure constant, which the context carries. */
-static bool asserted_rows(int b, pin_value *rows)
+static bool asserted_rows(pin_value *rows)
 {
     static const char call[] = "assert(x < 2, \"x is small\")";
     const pin_value *row = guard_row(rows, ASSERT_STATEMENT);
@@ -7999,15 +1696,8 @@ static bool asserted_rows(int b, pin_value *rows)
     REQUIRE(scalar_field(row, "start").i == start);
     REQUIRE(scalar_field(row, "end").i == start + (int)strlen(call));
     REQUIRE(scalar_field(row, "line").i == 4 && scalar_field(row, "column").i == 5);
-    pin_value emitted;
-    REQUIRE(emit_bytes(b, "LinuxX64", rows, &emitted));
-    const pin_array *bytes = emitted.ptr;
-    REQUIRE(emitted.container == PIN_CONTAINER_ARRAY && bytes->count > 0);
-    char *ir = xmalloc((size_t)bytes->count + 1), constant[160];
-    for (int i = 0; i < bytes->count; i++) {
-        ir[i] = (char)bytes->items[i].u8;
-    }
-    ir[bytes->count] = 0;
+    char *ir, constant[160];
+    REQUIRE(target_ir("LinuxX64", rows, &ir) && ir);
     snprintf(
         constant,
         sizeof constant,
@@ -8165,48 +1855,17 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
                              switched, recorded,    unioned,
                              stringed, texted,      formatted,
                              asserted, specialized, specialized_integer };
-    for (int b = 0; b < 2; b++) {
-        pin_value args[SCALAR_ARGUMENTS];
-        REQUIRE(scalar_arguments(b, "Scalar.chibi", text(SCALAR_SOURCE), args));
-        for (size_t i = 0; i < sizeof texts / sizeof *texts; i++) {
-            args[2] = text(texts[i]);
-            REQUIRE(compiler_fixture_call(
-                &fixture,
-                b,
-                PACKAGE,
-                "CollectScalar",
-                args,
-                SCALAR_ARGUMENTS,
-                COMPILE_BUDGET,
-                &detached,
-                &outputs[i][b]
-            ));
-        }
+    for (size_t i = 0; i < sizeof texts / sizeof *texts; i++) {
+        REQUIRE(scalar_host_collect("Scalar.chibi", texts[i], &detached, &outputs[i][0]));
     }
-    compiler_fixture_free(&fixture);
-    arena_free(&input);
-    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
-    const source_package_input oracle[] = { SCALAR_CASES_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&corpus, oracle, (int)(sizeof oracle / sizeof *oracle)));
-    for (int b = 0; b < 2; b++) {
+    for (int b = 0; b < 1; b++) {
         REQUIRE(generic_scalar_rows(&specialized[b]));
-        REQUIRE(validated(b, &specialized[b], ""));
+        REQUIRE(validated(&specialized[b], ""));
         REQUIRE(generic_scalar_rows(&specialized_integer[b]));
-        REQUIRE(validated(b, &specialized_integer[b], ""));
-        pin_value expected;
-        REQUIRE(compiler_fixture_call(
-            &corpus,
-            b,
-            CASES_PACKAGE,
-            "Value",
-            &specialized_integer[b],
-            1,
-            COMPILE_BUDGET,
-            &input,
-            &expected
-        ));
-        REQUIRE(expected.type == PIN_I64 && expected.i64 == 200);
+        REQUIRE(validated(&specialized_integer[b], ""));
+        int64_t expected;
+        REQUIRE(scalar_host_case_value(&specialized_integer[b], &expected));
+        REQUIRE(expected == 200);
         const pin_array *rows = produced[b].ptr;
         REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && arena_contains(&detached, rows));
         REQUIRE(rows->count == 12 && arena_contains(&detached, rows->record));
@@ -8218,21 +1877,13 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         REQUIRE(scalar_field(&rows->items[6], "value").i == 1);
         REQUIRE(scalar_field(&rows->items[6], "count").i == 2);
         REQUIRE(retained_text(&rows->items[7], "name", "Pick"));
-        pin_value emitted;
-        REQUIRE(emit_bytes(b, "LinuxX64", &produced[b], &emitted));
-        const pin_array *bytes = emitted.ptr;
-        REQUIRE(emitted.container == PIN_CONTAINER_ARRAY && bytes->count > 0);
-        char *ir = xmalloc((size_t)bytes->count + 1);
-        for (int i = 0; i < bytes->count; i++) {
-            ir[i] = (char)bytes->items[i].u8;
-        }
-        ir[bytes->count] = 0;
+        char *ir;
+        REQUIRE(target_ir("LinuxX64", &produced[b], &ir) && ir);
         bool called = strstr(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1)") &&
                       strstr(ir, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)");
         free(ir);
         REQUIRE(called);
         REQUIRE(rejects_malformed(
-            b,
             &guarded[b],
             GUARD_KINDS,
             GUARD_ROWS,
@@ -8240,7 +1891,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_GUARDS / sizeof *MALFORMED_GUARDS)
         ));
         REQUIRE(rejects_malformed(
-            b,
             &computed[b],
             ARITHMETIC_KINDS,
             ARITHMETIC_ROWS,
@@ -8249,7 +1899,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         ));
         REQUIRE(widened_rows(&widened[b]));
         REQUIRE(rejects_malformed(
-            b,
             &widened[b],
             WIDTH_KINDS,
             WIDTH_ROWS,
@@ -8257,7 +1906,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_WIDTHS / sizeof *MALFORMED_WIDTHS)
         ));
         REQUIRE(rejects_malformed(
-            b,
             &controlled[b],
             CONTROL_KINDS,
             CONTROL_ROWS,
@@ -8266,7 +1914,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         ));
         REQUIRE(looped_rows(&looped[b]));
         REQUIRE(rejects_malformed(
-            b,
             &looped[b],
             LOOP_KINDS,
             LOOP_ROWS,
@@ -8275,7 +1922,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         ));
         REQUIRE(switched_rows(&switched[b]));
         REQUIRE(rejects_malformed(
-            b,
             &switched[b],
             SWITCH_KINDS,
             SWITCH_ROWS,
@@ -8283,7 +1929,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_SWITCHES / sizeof *MALFORMED_SWITCHES)
         ));
         REQUIRE(rejects_malformed(
-            b,
             &recorded[b],
             RECORD_KINDS,
             RECORD_ROWS,
@@ -8293,7 +1938,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         REQUIRE(recorded_rows(&recorded[b]));
         REQUIRE(unioned_rows(&unioned[b]));
         REQUIRE(rejects_malformed(
-            b,
             &unioned[b],
             UNION_KINDS,
             UNION_ROWS,
@@ -8301,17 +1945,15 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_UNIONS / sizeof *MALFORMED_UNIONS)
         ));
         REQUIRE(rejects_malformed(
-            b,
             &stringed[b],
             STRING_KINDS,
             STRING_ROWS,
             MALFORMED_STRINGS,
             (int)(sizeof MALFORMED_STRINGS / sizeof *MALFORMED_STRINGS)
         ));
-        REQUIRE(stringed_rows(b, &stringed[b]));
+        REQUIRE(stringed_rows(&stringed[b]));
         REQUIRE(texted_rows(&texted[b]));
         REQUIRE(rejects_malformed(
-            b,
             &texted[b],
             TEXT_KINDS,
             TEXT_ROWS,
@@ -8320,7 +1962,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         ));
         REQUIRE(formatted_rows(&formatted[b]));
         REQUIRE(rejects_malformed(
-            b,
             &formatted[b],
             FORMAT_KINDS,
             FORMAT_ROWS,
@@ -8328,14 +1969,13 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_FORMATS / sizeof *MALFORMED_FORMATS)
         ));
         REQUIRE(rejects_malformed(
-            b,
             &asserted[b],
             ASSERT_KINDS,
             ASSERT_ROWS,
             MALFORMED_ASSERTS,
             (int)(sizeof MALFORMED_ASSERTS / sizeof *MALFORMED_ASSERTS)
         ));
-        REQUIRE(asserted_rows(b, &asserted[b]));
+        REQUIRE(asserted_rows(&asserted[b]));
     }
     return true;
 }
@@ -8400,15 +2040,7 @@ typedef struct native_module
     const char *const *names;
     const int *lines, *columns;
 } native_module;
-static const char NATIVE_PACKAGE[] = "project:llvm_native";
-static pin_value native_ints(const int *values, int count)
-{
-    pin_array *array = pin_array_snapshot_allocate(&input, PIN_I32, NULL, count);
-    for (int i = 0; i < count; i++) {
-        array->items[i] = (pin_value){ .type = PIN_I32, .i = values[i] };
-    }
-    return (pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = array };
-}
+
 static const char *const CODE_FIELDS[] = { "op",    "type",   "output", "left",
                                            "right", "target", "literal" };
 static const char *const FUNCTION_FIELDS[] = { "result",     "first_parameter",
@@ -8425,511 +2057,48 @@ enum
 };
 /* count Instruction, Function or Record records whose fields, in declaration
  * order, take consecutive values. No records is an empty array. */
-static bool native_records(int b, const char *name, const int64_t *values, int count, pin_value *out)
-{
-    const char *const *fields = RECORD_FIELDS;
-    int width = RECORD_WIDTH;
-    if (!strcmp(name, "Instruction")) {
-        fields = CODE_FIELDS;
-        width = CODE_WIDTH;
-    } else if (!strcmp(name, "Function")) {
-        fields = FUNCTION_FIELDS;
-        width = FUNCTION_WIDTH;
-    }
-    if (!count) {
-        *out = rows(
-            NULL,
-            0,
-            PIN_STRUCT,
-            compiler_fixture_record(&consumer, b, NATIVE_PACKAGE, name, &input)
-        );
-        return true;
-    }
-    pin_value *items = xmalloc(sizeof *items * (size_t)count);
-    for (int i = 0; i < count; i++) {
-        items[i] = record_row(&consumer, b, NATIVE_PACKAGE, name);
-        for (int j = 0; j < width; j++) {
-            REQUIRE(put(&items[i], fields[j], values[i * width + j]));
-        }
-    }
-    *out = rows(items, count, PIN_STRUCT, items[0].record);
-    free(items);
-    return true;
-}
-static bool native_codes(int b, const native_code *code, int count, pin_value *out)
-{
-    int64_t *values = xmalloc(sizeof *values * CODE_WIDTH * (size_t)count);
-    for (int i = 0; i < count; i++) {
-        const native_code *c = &code[i];
-        const int64_t fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
-                                             c->left,   c->right, c->target,
-                                             c->literal };
-        memcpy(&values[i * CODE_WIDTH], fields, sizeof fields);
-    }
-    bool built = native_records(b, "Instruction", values, count, out);
-    free(values);
-    return built;
-}
-static bool native_functions(int b, const native_function *functions, int count, pin_value *out)
-{
-    int64_t *values = xmalloc(sizeof *values * FUNCTION_WIDTH * (size_t)count);
-    for (int i = 0; i < count; i++) {
-        const native_function *f = &functions[i];
-        const int64_t fields[FUNCTION_WIDTH] = {
-            f->result,     f->first_parameter, f->parameters,
-            f->first_slot, f->slots,           f->first_code,
-            f->code,       f->first_argument,  f->arguments
-        };
-        memcpy(&values[i * FUNCTION_WIDTH], fields, sizeof fields);
-    }
-    bool built = native_records(b, "Function", values, count, out);
-    free(values);
-    return built;
-}
-static bool native_record_table(int b, const native_record *records, int count, pin_value *out)
-{
-    int64_t *values = xmalloc(sizeof *values * RECORD_WIDTH * (size_t)count);
-    for (int i = 0; i < count; i++) {
-        values[i * RECORD_WIDTH] = records[i].first;
-        values[i * RECORD_WIDTH + 1] = records[i].count;
-    }
-    bool built = native_records(b, "Record", values, count, out);
-    free(values);
-    return built;
-}
-static pin_value native_ids(const int64_t *values, int count)
-{
-    pin_array *array = pin_array_snapshot_allocate(&input, PIN_I64, NULL, count);
-    for (int i = 0; i < count; i++) {
-        array->items[i] = (pin_value){ .type = PIN_I64, .i64 = values[i] };
-    }
-    return (pin_value){ .type = PIN_I64, .container = PIN_CONTAINER_ARRAY, .ptr = array };
-}
+
 /* native_abi's target `function` and m's tables, the arguments Emit and
  * EmitLibrary share. */
-static bool native_tables(int b, const char *function, const native_module *m, pin_value args[10])
-{
-    REQUIRE(native_target(b, function, &args[0]));
-    REQUIRE(native_functions(b, m->functions, m->function_count, &args[1]));
-    args[2] = native_ints(m->parameters, m->parameter_count);
-    args[3] = native_ints(m->slots, m->slot_count);
-    args[4] = native_ints(NULL, 0);
-    REQUIRE(native_codes(b, m->code, m->code_count, &args[5]));
-    args[6] = native_ints(m->arguments, m->argument_count);
-    REQUIRE(native_record_table(b, m->records, m->record_count, &args[7]));
-    args[8] = native_ints(m->fields, m->field_count);
-    args[9] = strings(m->texts, m->text_count);
-    return true;
-}
-static bool native_result(int b, const char *function, pin_value *args, int count, const pin_union **out)
-{
-    pin_value result;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, function, args, count, COMPILE_BUDGET, &input, &result)
-    );
-    REQUIRE(result.type == PIN_UNION && result.ptr);
-    *out = result.ptr;
-    return true;
-}
+
 /* Emits m for native_abi's target `function` under budget 1, its first
  * function the entry, or `main` for a program. */
-static bool native_entry_emit(
-    int b,
-    const char *function,
-    const native_module *m,
-    bool main,
-    const pin_union **out
-)
-{
-    pin_value args[16];
-    REQUIRE(native_tables(b, function, m, args));
-    args[10] = record_row(&consumer, b, NATIVE_PACKAGE, "Source");
-    REQUIRE(put_value(&args[10], "file", text(m->file ? m->file : "")));
-    REQUIRE(put_value(&args[10], "directory", text(m->directory ? m->directory : "")));
-    int placed = m->file ? m->code_count : 0;
-    args[11] = strings(m->names, m->file ? m->function_count : 0);
-    args[12] = native_ints(m->lines, placed);
-    args[13] = native_ints(m->columns, placed);
-    args[14] = (pin_value){ .type = PIN_BOOL, .b = main };
-    args[15] = (pin_value){ .type = PIN_I32, .i = 1 };
-    return native_result(b, "Emit", args, 16, out);
-}
+
 /* Emits m for native_abi's target `function` with its entry chibi_scalar. */
-static bool native_target_emit(int b, const char *function, const native_module *m, const pin_union **out)
-{
-    return native_entry_emit(b, function, m, false, out);
-}
+
 /* Emits m for native_abi's target `function` as the library `name` under
  * budget 1, its functions named and identified by `names` and `ids`, `count`
  * of each. */
-static bool native_emit_library(
-    int b,
-    const char *function,
-    const native_module *m,
-    const char *name,
-    const char *const *names,
-    const int64_t *ids,
-    int count,
-    const pin_union **out
-)
-{
-    pin_value tables[10], args[15];
-    REQUIRE(native_tables(b, function, m, tables));
-    args[0] = tables[0];
-    args[1] = text(name);
-    args[2] = strings(names, count);
-    args[3] = native_ids(ids, count);
-    memcpy(&args[4], &tables[1], sizeof tables - sizeof *tables);
-    args[13] = (pin_value){ .type = PIN_I32, .i = 1 };
-    args[14] = strings(NULL, 0);
-    return native_result(b, "EmitLibrary", args, 15, out);
-}
+
 /* Emits m for Linux x86-64. */
-static bool native_emit(int b, const native_module *m, const pin_union **out)
-{
-    return native_target_emit(b, "LinuxX64", m, out);
-}
-static bool native_rejects(int b, const native_module *m, const char *message)
-{
-    const pin_union *value;
-    REQUIRE(native_emit(b, m, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
-    pin_string text = pin_text(value->values[1]);
-    REQUIRE(pin_text_equal(text, (pin_string){ .bytes = message, .length = strlen(message) }));
-    return true;
-}
+
 /* main() returns Pick(7, true, 9), and Pick :: (int, bool, int) -> int
  * returns its third argument. Slots s0..s2 hold the arguments in call order. */
-static const native_code CALLER_AND_CALLEE[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .literal = 7 },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .output = 1, .literal = 1 },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 2, .literal = 9 },
-    { .op = NATIVE_CALL, .type = NATIVE_INT, .output = 3, .left = 1, .target = 3 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 3 },
-    { .op = NATIVE_RETURN },
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_ARGUMENT, .type = NATIVE_INT, .left = 2 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    CALL_CODE = (int)(sizeof CALLER_AND_CALLEE / sizeof *CALLER_AND_CALLEE)
-};
-static const native_function CALL_FUNCTIONS[] = {
-    { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
-    { NATIVE_INT, 0, 3, 4, 1, 7, 4, 3, 0 },
-};
-static const int CALL_PARAMETERS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT };
-static const int CALL_SLOTS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT, NATIVE_INT, NATIVE_INT };
-static const int CALL_ARGUMENTS[] = { 0, 1, 2 };
-static native_module call_module(const native_code *code, const int *arguments, int argument_count)
-{
-    return (native_module){ .functions = CALL_FUNCTIONS,
-                            .function_count = 2,
-                            .parameters = CALL_PARAMETERS,
-                            .parameter_count = 3,
-                            .slots = CALL_SLOTS,
-                            .slot_count = 5,
-                            .code = code,
-                            .code_count = CALL_CODE,
-                            .arguments = arguments,
-                            .argument_count = argument_count };
-}
-static bool contains(pin_string haystack, const char *needle)
-{
-    char *text = xmalloc(haystack.length + 1);
-    memcpy(text, haystack.bytes, haystack.length);
-    text[haystack.length] = 0;
-    bool found = strstr(text, needle);
-    free(text);
-    return found;
-}
+
 /* The call module as the library Lib: every function internal, one wrapper
  * per word signature, and the manifest the only exported symbol. */
-static bool native_libraries_export_words(int b)
-{
-    native_module m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
-    static const char *const names[] = { "Main", "Pick" };
-    static const int64_t ids[] = { 11, -5 };
-    const pin_union *value;
-    REQUIRE(native_emit_library(b, "LinuxX64", &m, "Lib", names, ids, 2, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    pin_string text = pin_text(value->values[0]);
-    REQUIRE(!contains(text, "define i32"));
-    REQUIRE(contains(text, "define internal i32 @chibi_scalar.0() #0 {"));
-    REQUIRE(
-        contains(text, "define internal void @chibi_scalar.export.1(ptr %ctx, ptr %in, ptr %out) #0 {")
-    );
-    REQUIRE(
-        contains(text, "@chibi_scalar.export.types.1 = private unnamed_addr constant [4 x i8] [i8 1, i8 2, i8 1, i8 1]")
-    );
-    REQUIRE(
-        contains(text, "@chibi_scalar.export.name.1 = private unnamed_addr constant [5 x i8] c\"Pick\\00\"")
-    );
-    REQUIRE(contains(
-        text,
-        "%chibi.export { ptr @chibi_scalar.export.name.1, i64 -5, ptr "
-        "@chibi_scalar.export.types.1, i32 3, "
-        "i32 1, ptr @chibi_scalar.export.1 }"
-    ));
-    REQUIRE(
-        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 4, i32 2, ptr @chibi_scalar.exports }")
-    );
-    static const char malformed[] = "native library needs an identifier and a "
-                                    "name and ID for each function";
-    static const char *const repeated[] = { "Main", "Main" };
-    static const int64_t shared[] = { 11, 11 };
-    /* Libraries are Linux-only: other targets reject them rather than export
-     * Linux's word ABI. */
-    static const char linux_only[] = "native libraries are Linux x86-64 only";
-    static const struct
-    {
-        const char *function;
-        const char *name;
-        const char *const *names;
-        const int64_t *ids;
-        int count;
-        const char *message;
-    } rejected[] = {
-        { "LinuxX64", "1Lib", names, ids, 2, malformed },
-        { "LinuxX64", "", names, ids, 2, malformed },
-        { "LinuxX64", "Lib", names, ids, 1, malformed },
-        { "LinuxX64", "Lib", repeated, ids, 2, "native library names each function once" },
-        { "LinuxX64", "Lib", names, shared, 2, "native library names each function once" },
-        { "MacOSArm64", "Lib", names, ids, 2, linux_only },
-        { "WindowsX64", "Lib", names, ids, 2, linux_only },
-    };
-    for (size_t i = 0; i < sizeof rejected / sizeof *rejected; i++) {
-        REQUIRE(native_emit_library(
-            b,
-            rejected[i].function,
-            &m,
-            rejected[i].name,
-            rejected[i].names,
-            rejected[i].ids,
-            rejected[i].count,
-            &value
-        ));
-        REQUIRE(
-            value->tag ==
-            fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected")
-        );
-        pin_string message = pin_text(value->values[1]);
-        REQUIRE(pin_text_equal(
-            message,
-            (pin_string){ .bytes = rejected[i].message,
-                          .length = strlen(rejected[i].message) }
-        ));
-    }
-    return true;
-}
-typedef struct native_change
-{
-    int index;
-    size_t field;
-    int value;
-} native_change;
+
 /* Sets one field of code[change.index], at the width of that field. */
-static void change_code(native_code *code, native_change change)
-{
-    native_code *item = &code[change.index];
-    if (change.field == offsetof(native_code, literal)) {
-        item->literal = change.value;
-        return;
-    }
-    memcpy((char *)item + change.field, &change.value, sizeof change.value);
-}
-static const char
-    TABLES[] = "unsupported native scalar signature or table size";
-static const char OUTPUT[] = "native scalar output has an invalid type or "
-                             "multiple definitions";
+
 /* The IR native_emit gives for m. */
-static bool native_text(int b, const native_module *m, pin_string *ir)
-{
-    const pin_union *value;
-    REQUIRE(native_emit(b, m, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    *ir = pin_text(value->values[0]);
-    return true;
-}
+
 /* The native LLVM fixtures target 64-bit layouts. Portable hosts still store
  * pin_string as their own bytes pointer, 32-bit length and owner pointer. */
-_Static_assert(
-    offsetof(pin_string, bytes) == 0 &&
-        offsetof(pin_string, length) == sizeof(void *) &&
-        offsetof(pin_string, owner) == 2 * sizeof(void *) &&
-        sizeof(((pin_string *)0)->length) == 4,
-    "pin_string is { host pointer, i32, host pointer }"
-);
+
 #if UINTPTR_MAX == UINT64_MAX
-_Static_assert(sizeof(pin_string) == 24, "64-bit native text layout");
+
 #else
-_Static_assert(sizeof(void *) == 4 && sizeof(pin_string) == 12, "32-bit portable text layout");
+
 #endif
 /* Main returns whether its two texts differ: each constant is a private
  * global of its bytes and a NUL, named by its index in the text table, and
  * `!=` negates the module's one byte comparison. */
-static const native_code TEXT_CODE[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT, .output = 1, .literal = 1 },
-    { .op = NATIVE_NE, .type = NATIVE_TEXT, .output = 2, .right = 1 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_BOOL, .left = 2 },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    TEXT_CODE_COUNT = (int)(sizeof TEXT_CODE / sizeof *TEXT_CODE)
-};
-static const native_function TEXT_FUNCTIONS[] = {
-    { NATIVE_BOOL, 0, 0, 0, 3, 0, TEXT_CODE_COUNT, 0, 0 }
-};
-static const int TEXT_SLOTS[] = { NATIVE_TEXT, NATIVE_TEXT, NATIVE_BOOL };
-static const char *const TEXTS[] = { "a\"\\\n\xc3\xa9", "" };
-static native_module text_module(const native_code *code)
-{
-    return (native_module){ .functions = TEXT_FUNCTIONS,
-                            .function_count = 1,
-                            .slots = TEXT_SLOTS,
-                            .slot_count = 3,
-                            .code = code,
-                            .code_count = TEXT_CODE_COUNT,
-                            .texts = TEXTS,
-                            .text_count = 2 };
-}
+
 /* The text module with one instruction field changed. */
-static bool native_rejects_text_change(int b, native_change change, const char *message)
-{
-    native_code code[TEXT_CODE_COUNT];
-    memcpy(code, TEXT_CODE, sizeof code);
-    change_code(code, change);
-    native_module m = text_module(code);
-    return native_rejects(b, &m, message);
-}
-static bool native_strings_emit(int b)
-{
-    pin_value type;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:native_abi", "TextType", NULL, 0, COMPILE_BUDGET, &input, &type)
-    );
-    REQUIRE(
-        pin_text_equal(pin_text(type), (pin_string){ .bytes = "{ ptr, i32, ptr }", .length = 17 })
-    );
-    native_module m = text_module(TEXT_CODE);
-    pin_string ir;
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(contains(
-        ir,
-        "@chibi_scalar.text.0 = private unnamed_addr constant [7 x i8] "
-        "c\"a\\22\\5C\\0A\\C3\\A9\\00\"\n"
-    ));
-    REQUIRE(contains(ir, "@chibi_scalar.text.1 = private unnamed_addr constant [1 x i8] c\"\\00\"\n"));
-    REQUIRE(
-        contains(ir, "store { ptr, i32, ptr } { ptr @chibi_scalar.text.0, i32 6, ptr null }, ptr %s0")
-    );
-    REQUIRE(
-        contains(ir, "store { ptr, i32, ptr } { ptr @chibi_scalar.text.1, i32 0, ptr null }, ptr %s1")
-    );
-    REQUIRE(
-        contains(ir, "call i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a3, { ptr, i32, ptr } %b3)")
-    );
-    REQUIRE(contains(ir, "xor i1 %e3, true"));
-    REQUIRE(
-        contains(ir, "define internal i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a, { ptr, i32, ptr } %b) #0 {")
-    );
-    static const char outside[] = "native constant is outside its type",
-                      operands[] = "native scalar operand type mismatch";
-    static const struct
-    {
-        native_change change;
-        const char *message;
-    } changes[] = {
-        /* A text past the table, or before it. */
-        { { 2, offsetof(native_code, literal), 2 }, outside },
-        { { 2, offsetof(native_code, literal), -1 }, outside },
-        /* Strings ordered, a sum of strings, which no bool slot holds, and a
-         * string compared with a bool. */
-        { { 3, offsetof(native_code, op), 19 }, operands },
-        { { 3, offsetof(native_code, op), 7 }, OUTPUT },
-        { { 3, offsetof(native_code, right), 2 }, operands },
-    };
-    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
-        REQUIRE(native_rejects_text_change(b, changes[i].change, changes[i].message));
-    }
-    /* No string crosses the exported entry. */
-    static const native_code returned[] = {
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_TEXT },
-        { .op = NATIVE_RETURN },
-    };
-    static const native_function exported[] = { { NATIVE_TEXT, 0, 0, 0, 1, 0, 4, 0, 0 } },
-                                 taking[] = { { NATIVE_BOOL, 0, 1, 0, 1, 0, 4, 0, 0 } };
-    static const int text_parameter[] = { NATIVE_TEXT };
-    native_module alone = { .functions = exported,
-                            .function_count = 1,
-                            .slots = TEXT_SLOTS,
-                            .slot_count = 1,
-                            .code = returned,
-                            .code_count = 4,
-                            .texts = TEXTS,
-                            .text_count = 1 };
-    REQUIRE(native_rejects(b, &alone, TABLES));
-    /* A library keeps such a function internal and exports no wrapper. */
-    static const char *const name[] = { "Named" };
-    static const int64_t id[] = { 3 };
-    const pin_union *library;
-    REQUIRE(native_emit_library(b, "LinuxX64", &alone, "Texts", name, id, 1, &library));
-    REQUIRE(library->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    pin_string kept = pin_text(library->values[0]);
-    REQUIRE(contains(kept, "define internal { ptr, i32, ptr } @chibi_scalar.0() #0 {"));
-    REQUIRE(!contains(kept, "@chibi_scalar.export.0"));
-    REQUIRE(contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
-    REQUIRE(
-        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 4, i32 0, ptr @chibi_scalar.exports }")
-    );
-    static const native_code published[] = {
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_BOOL },
-        { .op = NATIVE_RETURN },
-    };
-    alone.functions = taking;
-    alone.parameters = text_parameter;
-    alone.parameter_count = 1;
-    alone.slots = TEXT_SLOTS + 2;
-    alone.code = published;
-    REQUIRE(native_rejects(b, &alone, "unsupported native scalar parameter"));
-    /* A module that compares no strings defines no comparison. */
-    native_code equal[TEXT_CODE_COUNT];
-    memcpy(equal, TEXT_CODE, sizeof equal);
-    equal[3] = (native_code){ .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .output = 2 };
-    m = text_module(equal);
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(!contains(ir, "text_equal"));
-    return true;
-}
+
 /* CollectScalarPackages' arguments for the project files `inputs`: no
  * collection, the paths and sources, this host's target and the natives. */
-static bool scalar_package_arguments(
-    int b,
-    const source_package_input *inputs,
-    int count,
-    pin_value args[10]
-)
-{
-    args[0] = text("/project");
-    args[1] = strings(NULL, 0);
-    args[2] = strings(NULL, 0);
-    args[3] = files(inputs, count, false);
-    args[4] = files(inputs, count, true);
-    REQUIRE(target(b, &args[5]));
-    args[6] = instruction_names();
-    REQUIRE(natives(b, false, false, &args[7]));
-    return true;
-}
+
 /* A function of an imported project package is one module with its caller:
  * the entry is the first function of the first file, whichever package order
  * puts the dependency in front, the qualified call is a call row to the
@@ -8949,77 +2118,99 @@ TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
                   "}\n"
                   "pub Add :: (a: int, b: int) -> int { return a + b; }\n" },
     };
-    pin_value produced[2];
-    for (int b = 0; b < 2; b++) {
-        pin_value args[10];
-        REQUIRE(scalar_package_arguments(b, packages, 2, args));
-        REQUIRE(compiler_fixture_call(
-            &fixture,
-            b,
-            PACKAGE,
-            "CollectScalarPackages",
-            args,
-            10,
-            COMPILE_BUDGET,
-            &detached,
-            &produced[b]
-        ));
+    pin_value produced;
+    REQUIRE(scalar_host_collect_packages(packages, 2, &detached, &produced));
+    const pin_array *rows = produced.ptr;
+    REQUIRE(produced.container == PIN_CONTAINER_ARRAY && rows->count > 1);
+    if (rows->count == 2) {
+        fprintf(
+            stderr,
+            "scalar packages: %s\n",
+            pin_text(scalar_field(guard_row(&produced, 1), "text")).bytes
+        );
     }
-    compiler_fixture_free(&fixture);
-    arena_free(&input);
-    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
-    for (int b = 0; b < 2; b++) {
-        const pin_array *rows = produced[b].ptr;
-        REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && rows->count > 1);
-        if (rows->count == 2) {
-            fprintf(
-                stderr,
-                "scalar packages: %s\n",
-                pin_text(scalar_field(guard_row(&produced[b], 1), "text")).bytes
-            );
-        }
-        REQUIRE(rows->count > 2);
-        REQUIRE(scalar_field(&rows->items[2], "kind").i != SCALAR_REJECTION_ROW);
-        REQUIRE(retained_text(&rows->items[2], "name", "Main"));
-        REQUIRE(validated(b, &produced[b], ""));
-        pin_value emitted;
-        REQUIRE(emit_bytes(b, "LinuxX64", &produced[b], &emitted));
-        const pin_array *bytes = emitted.ptr;
-        char *ir = xmalloc((size_t)bytes->count + 1);
-        for (int i = 0; i < bytes->count; i++) {
-            ir[i] = (char)bytes->items[i].u8;
-        }
-        ir[bytes->count] = 0;
-        bool spans = strstr(ir, "define internal i32 @chibi_scalar.1(") &&
-                     strstr(ir, "define internal i32 @chibi_scalar.2(") &&
-                     strstr(ir, "call i32 @chibi_scalar.");
-        if (!spans) {
-            fprintf(stderr, "%s\n", ir);
-        }
-        free(ir);
-        REQUIRE(spans);
+    REQUIRE(rows->count > 2);
+    REQUIRE(scalar_field(&rows->items[2], "kind").i != SCALAR_REJECTION_ROW);
+    REQUIRE(retained_text(&rows->items[2], "name", "Main"));
+    REQUIRE(validated(&produced, ""));
+    char *ir;
+    REQUIRE(target_ir("LinuxX64", &produced, &ir) && ir);
+    bool spans = strstr(ir, "define internal i32 @chibi_scalar.1(") &&
+                 strstr(ir, "define internal i32 @chibi_scalar.2(") &&
+                 strstr(ir, "call i32 @chibi_scalar.");
+    if (!spans) {
+        fprintf(stderr, "%s\n", ir);
     }
+    free(ir);
+    REQUIRE(spans);
+    return true;
+}
+/* A package set may import a collection's packages, such as core:strings,
+ * whose files lie among the inputs under the collection's path. */
+TEST_CASE(package_compiler_scalar_rows_span_collection_packages)
+{
+    REQUIRE(prepare());
+    static const source_package_input packages[] = {
+        { .path = "Main.chibi",
+          .text = "package main\nimport strings \"core:strings\"\n"
+                  "Main :: () -> int { return strings.ByteLength(\"hello\"); "
+                  "}\n" },
+        { .path = "/sdk/core/strings/Strings.chibi",
+          .text = "package strings\npub ByteLength :: (value: string) -> int "
+                  "{ return text_byte_length(value); }\n" },
+    };
+    pin_value produced;
+    REQUIRE(
+        scalar_host_collect_collection("core", "/sdk/core", packages, 2, &detached, &produced)
+    );
+    const pin_array *rows = produced.ptr;
+    REQUIRE(produced.container == PIN_CONTAINER_ARRAY && rows->count > 1);
+    if (rows->count == 2) {
+        fprintf(
+            stderr,
+            "scalar collection: %s\n",
+            pin_text(scalar_field(guard_row(&produced, 1), "text")).bytes
+        );
+    }
+    REQUIRE(rows->count > 2);
+    REQUIRE(validated(&produced, ""));
+    char *ir;
+    REQUIRE(target_ir("LinuxX64", &produced, &ir) && ir);
+    bool spans = strstr(ir, "define internal i32 @chibi_scalar.1(") != NULL;
+    free(ir);
+    REQUIRE(spans);
+    return true;
+}
+/* A rejection inside an imported package lies in the joined source its rows
+ * hold, at the declaration that caused it. */
+TEST_CASE(package_compiler_scalar_rejections_lie_in_package_sets)
+{
+    REQUIRE(prepare());
+    static const source_package_input packages[] = {
+        { .path = "Main.chibi",
+          .text = "package main\nimport lib \"project:lib\"\n"
+                  "Main :: () -> int { return lib.Add(1, 2); }\n" },
+        { .path = "lib/Lib.chibi",
+          .text = "package lib\npub Add :: (a: int, b: int) -> int { return a "
+                  "+ b; }\n"
+                  "pub Table :: struct { m: [int: int]; }\n" },
+    };
+    pin_value produced;
+    REQUIRE(scalar_host_collect_packages(packages, 2, &detached, &produced));
+    const pin_array *rows = produced.ptr;
+    REQUIRE(rows->count == 2);
+    REQUIRE(scalar_field(&rows->items[1], "kind").i == SCALAR_REJECTION_ROW);
+    const char *joined = pin_text(scalar_field(&rows->items[0], "text")).bytes;
+    int start = (int)scalar_field(&rows->items[1], "start").i;
+    int end = (int)scalar_field(&rows->items[1], "end").i;
+    REQUIRE(start > (int)strlen(packages[0].text) && end <= (int)strlen(joined));
+    REQUIRE(!strncmp(joined + start, "m: [int: int];", (size_t)(end - start)));
     return true;
 }
 /* llvm_native's call and float contracts: definitions, argument order,
  * floating encodings and conversions, and the malformed or cyclic plans it
  * rejects before writing IR. */
-TEST_CASE(package_compiler_native_emitter_checks_calls)
-{
-    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS,
-                                             EMITTER_TEST_SOURCE_INPUTS };
-    const native_definition_pack core[] = { CORE_DEFINITION_PACK };
-    REQUIRE(
-        compiler_fixture_prepare_packs(&consumer, sources, (int)(sizeof sources / sizeof *sources), core, 1)
-    );
-    for (int b = 0; b < 2; b++) {
-        REQUIRE(native_libraries_export_words(b));
-        REQUIRE(native_strings_emit(b));
-    }
-    REQUIRE(compiler_fixture_tests(&consumer));
-    return true;
-}
+
 /* A shared wrong result is not an oracle. Each executed value must match
  * the fixture's literal, including Main's value. */
 static bool scalar_results_match(const int64_t values[4], int64_t expected)
@@ -9074,58 +2265,39 @@ static const struct
  * diagnostic and nothing else. */
 static bool scalar_rejects_unsupported()
 {
-    for (int b = 0; b < 2; b++) {
-        for (int i = 0; i < (int)(sizeof UNSUPPORTED / sizeof *UNSUPPORTED); i++) {
-            const char *source = UNSUPPORTED[i].source;
-            pin_value args[SCALAR_ARGUMENTS];
-            REQUIRE(scalar_arguments(b, "Scalar.chibi", text(source), args));
-            pin_value rows;
-            REQUIRE(compiler_fixture_call(
-                &fixture,
-                b,
-                PACKAGE,
-                "CollectScalar",
-                args,
-                SCALAR_ARGUMENTS,
-                COMPILE_BUDGET,
-                &detached,
-                &rows
-            ));
-            const pin_array *array = rows.ptr;
-            REQUIRE(array->count == 2);
-            pin_value *rejection = guard_row(&rows, 1);
-            REQUIRE(scalar_field(rejection, "kind").i == SCALAR_REJECTION_ROW);
-            int start = scalar_field(rejection, "start").i,
-                end = scalar_field(rejection, "end").i;
-            pin_string message = pin_text(scalar_field(rejection, "text"));
-            bool expected = !strcmp(message.bytes, UNSUPPORTED[i].message) &&
-                            end - start == (int)strlen(UNSUPPORTED[i].excerpt) &&
-                            !strncmp(source + start, UNSUPPORTED[i].excerpt, (size_t)(end - start));
-            if (!expected) {
-                fprintf(
-                    stderr,
-                    "unsupported rejection %d: %s at %.*s\n",
-                    i,
-                    message.bytes,
-                    end - start,
-                    source + start
-                );
-            }
-            REQUIRE(expected);
-            arena_free(&detached);
+    for (int i = 0; i < (int)(sizeof UNSUPPORTED / sizeof *UNSUPPORTED); i++) {
+        const char *source = UNSUPPORTED[i].source;
+        pin_value rows;
+        REQUIRE(scalar_host_collect("Scalar.chibi", source, &detached, &rows));
+        const pin_array *array = rows.ptr;
+        REQUIRE(array->count == 2);
+        pin_value *rejection = guard_row(&rows, 1);
+        REQUIRE(scalar_field(rejection, "kind").i == SCALAR_REJECTION_ROW);
+        int start = scalar_field(rejection, "start").i,
+            end = scalar_field(rejection, "end").i;
+        pin_string message = pin_text(scalar_field(rejection, "text"));
+        bool expected = !strcmp(message.bytes, UNSUPPORTED[i].message) &&
+                        end - start == (int)strlen(UNSUPPORTED[i].excerpt) &&
+                        !strncmp(source + start, UNSUPPORTED[i].excerpt, (size_t)(end - start));
+        if (!expected) {
+            fprintf(
+                stderr,
+                "unsupported rejection %d: %s at %.*s\n",
+                i,
+                message.bytes,
+                end - start,
+                source + start
+            );
         }
+        REQUIRE(expected);
+        arena_free(&detached);
     }
     return true;
 }
 /* CollectScalar's rows of `source` at libraries/Tools.chibi on VM b. */
-static bool library_rows(int b, const char *source, pin_value *rows)
+static bool library_rows(const char *source, pin_value *rows)
 {
-    pin_value args[SCALAR_ARGUMENTS];
-    REQUIRE(scalar_arguments(b, "libraries/Tools.chibi", text(source), args));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, SCALAR_ARGUMENTS, COMPILE_BUDGET, &detached, rows)
-    );
-    return true;
+    return scalar_host_collect("libraries/Tools.chibi", source, &detached, rows);
 }
 /* Library sources that are not one library of plain functions, each with
  * its message. A source holds at most one library, so the grammar rejects
@@ -9137,9 +2309,6 @@ static const struct
     { "Tools :: library {\n    Point :: struct { x: int; }\n}\n",
       "a native library holds only functions without attributes" },
     { "Tools :: library {\n}\n", "scalar proof requires at least one function" },
-    { "Tools :: library {\n    One :: () -> int { return 1; }\n}\n"
-      "More :: library {\n    Two :: () -> int { return 2; }\n}\n",
-      "Unexpected syntax" },
     { "Tools :: library {\n    One :: () -> int { return 1; }\n"
       "    One :: () -> int { return 2; }\n}\n",
       "Duplicate declaration 'One'" },
@@ -9157,9 +2326,9 @@ static bool scalar_collects_libraries()
         (int64_t)script_catalog_id("symbol", "libraries/Tools.chibi:1:Add:callable"),
         (int64_t)script_catalog_id("symbol", "libraries/Tools.chibi:1:Name:callable"),
     };
-    for (int b = 0; b < 2; b++) {
+    {
         pin_value rows;
-        REQUIRE(library_rows(b, source, &rows));
+        REQUIRE(library_rows(source, &rows));
         const pin_array *array = rows.ptr;
         REQUIRE(scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_DOCUMENT_ROW);
         REQUIRE(retained_text(guard_row(&rows, 1), "text", "Tools"));
@@ -9176,8 +2345,17 @@ static bool scalar_collects_libraries()
         arena_free(&detached);
         for (size_t i = 0; i < sizeof LIBRARY_REJECTIONS / sizeof *LIBRARY_REJECTIONS;
              i++) {
-            REQUIRE(library_rows(b, LIBRARY_REJECTIONS[i].source, &rows));
+            REQUIRE(library_rows(LIBRARY_REJECTIONS[i].source, &rows));
             array = rows.ptr;
+            if (array->count != 2) {
+                fprintf(
+                    stderr,
+                    "library rejection %zu gave %d rows for:\n%s\n",
+                    i,
+                    array->count,
+                    LIBRARY_REJECTIONS[i].source
+                );
+            }
             REQUIRE(array->count == 2);
             pin_value *rejection = guard_row(&rows, 1);
             REQUIRE(scalar_field(rejection, "kind").i == SCALAR_REJECTION_ROW);
@@ -9191,6 +2369,47 @@ static bool scalar_collects_libraries()
     }
     return true;
 }
+/* A retain local of a library function is a state of the library: a Local
+ * row whose literal is Retained, then the state's global, loaded and stored
+ * around the variable, and the manifest a host reads the states through. */
+static bool scalar_retains_library_states()
+{
+    static const char source[] = "Tools :: library {\n"
+                                 "    Frame :: () -> int {\n"
+                                 "        count: retain int = 4;\n"
+                                 "        count += 1;\n"
+                                 "        return count;\n"
+                                 "    }\n"
+                                 "}\n";
+    {
+        pin_value rows;
+        REQUIRE(library_rows(source, &rows));
+        const pin_array *array = rows.ptr;
+        if (array->count > 1 &&
+            scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_REJECTION_ROW) {
+            fprintf(
+                stderr,
+                "retained library rejected: %s\n",
+                pin_text(scalar_field(guard_row(&rows, 1), "text")).bytes
+            );
+        }
+        REQUIRE(array->count > 2 && scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_DOCUMENT_ROW);
+        char *ir;
+        REQUIRE(target_ir("LinuxX64", &rows, &ir) && ir);
+        bool emits = strstr(ir, "@chibi_scalar.retained.0 = internal global i32 4\n") &&
+                     strstr(ir, "load i32, ptr @chibi_scalar.retained.0") &&
+                     strstr(ir, "store i32 %a") &&
+                     strstr(ir, "c\"Frame.count\\00\"") &&
+                     strstr(ir, "@chibi_retained_Tools = constant { i32, i32, ptr, ptr, ptr, ptr } { i32 1, i32 1, ");
+        if (!emits) {
+            fprintf(stderr, "retained library IR:\n%s\n", ir);
+        }
+        free(ir);
+        REQUIRE(emits);
+        arena_free(&detached);
+    }
+    return true;
+}
 /* One fixture load serves both, since each load takes minutes. */
 TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries)
 {
@@ -9199,39 +2418,158 @@ TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries)
     REQUIRE(scalar_collects_libraries());
     return true;
 }
+TEST_CASE(package_compiler_scalar_retains_library_states)
+{
+    REQUIRE(prepare());
+    REQUIRE(scalar_retains_library_states());
+    return true;
+}
 TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 {
-    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
     static const int32_t expected[] = { 42, 0, INT32_MAX };
-    for (int b = 0; b < 2; b++) {
-        for (int i = 0; i < 3; i++) {
-            pin_value ordinal = { .type = PIN_I32, .i = i }, literal;
-            REQUIRE(compiler_fixture_call(
-                &corpus,
-                b,
-                CASES_PACKAGE,
-                "ExpectedValue",
-                &ordinal,
-                1,
-                COMPILE_BUDGET,
-                &detached,
-                &literal
-            ));
-            REQUIRE(literal.type == PIN_I32 && literal.i == expected[i]);
-            int64_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
-            REQUIRE(scalar_results_match(values, literal.i));
-            int64_t wrong = expected[i] == 42 ? 41 : 1;
-            const int64_t consensus[4] = { wrong, wrong, wrong, wrong };
-            REQUIRE(!scalar_results_match(consensus, literal.i));
-            for (int column = 0; column < 4; column++) {
-                values[column] = wrong;
-                REQUIRE(!scalar_results_match(values, literal.i));
-                values[column] = expected[i];
-            }
-            arena_free(&detached);
+    for (int i = 0; i < 3; i++) {
+        int literal;
+        REQUIRE(scalar_host_case_expected(i, &literal));
+        REQUIRE(literal == expected[i]);
+        int64_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
+        REQUIRE(scalar_results_match(values, literal));
+        int64_t wrong = expected[i] == 42 ? 41 : 1;
+        const int64_t consensus[4] = { wrong, wrong, wrong, wrong };
+        REQUIRE(!scalar_results_match(consensus, literal));
+        for (int column = 0; column < 4; column++) {
+            values[column] = wrong;
+            REQUIRE(!scalar_results_match(values, literal));
+            values[column] = expected[i];
         }
     }
+    return true;
+}
+/* count records whose fields, in declaration order, take consecutive values,
+ * as a JSON array of objects. */
+static yyjson_mut_val *records_json(
+    yyjson_mut_doc *doc,
+    const char *const *fields,
+    int width,
+    const int64_t *values,
+    int count
+)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_val *object = yyjson_mut_obj(doc);
+        for (int j = 0; j < width; j++) {
+            yyjson_mut_obj_add_sint(doc, object, fields[j], values[i * width + j]);
+        }
+        yyjson_mut_arr_append(array, object);
+    }
+    return array;
+}
+static yyjson_mut_val *ints_json(yyjson_mut_doc *doc, const int *values, int count)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_arr_add_sint(doc, array, values[i]);
+    }
+    return array;
+}
+static yyjson_mut_val *texts_json(yyjson_mut_doc *doc, const char *const *items, int count)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_arr_add_str(doc, array, items[i]);
+    }
+    return array;
+}
+/* The LLVM text llvm_native.Emit gives m for native_abi's target `target`
+ * under budget 1, its first function the entry; NULL when it rejects m.
+ * scalar_host_consumer frees the arguments document. */
+static bool native_module_ir(const char *target, const native_module *m, char **ir)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *arguments = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, arguments);
+    yyjson_mut_arr_add_str(doc, arguments, target);
+    /* llvm_native.Function has every field of the module's tables; the tests'
+     * native_function leaves out the locals, which are zero. */
+    static const char *const LLVM_FUNCTION_FIELDS[] = {
+        "result", "first_parameter", "parameters", "first_slot",
+        "slots",  "first_local",     "locals",     "first_code",
+        "code",   "first_argument",  "arguments"
+    };
+    enum
+    {
+        LLVM_FUNCTION_WIDTH = (int)(sizeof LLVM_FUNCTION_FIELDS / sizeof *LLVM_FUNCTION_FIELDS)
+    };
+    int64_t *functions = xmalloc(
+        sizeof *functions * LLVM_FUNCTION_WIDTH * (size_t)m->function_count
+    );
+    for (int i = 0; i < m->function_count; i++) {
+        const native_function *f = &m->functions[i];
+        const int64_t fields[LLVM_FUNCTION_WIDTH] = { f->result,
+                                                      f->first_parameter,
+                                                      f->parameters,
+                                                      f->first_slot,
+                                                      f->slots,
+                                                      0,
+                                                      0,
+                                                      f->first_code,
+                                                      f->code,
+                                                      f->first_argument,
+                                                      f->arguments };
+        memcpy(&functions[i * LLVM_FUNCTION_WIDTH], fields, sizeof fields);
+    }
+    yyjson_mut_arr_append(
+        arguments,
+        records_json(doc, LLVM_FUNCTION_FIELDS, LLVM_FUNCTION_WIDTH, functions, m->function_count)
+    );
+    free(functions);
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->parameters, m->parameter_count));
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->slots, m->slot_count));
+    yyjson_mut_arr_append(arguments, ints_json(doc, NULL, 0));
+    int64_t *code = xmalloc(sizeof *code * CODE_WIDTH * (size_t)m->code_count);
+    for (int i = 0; i < m->code_count; i++) {
+        const native_code *c = &m->code[i];
+        const int64_t fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
+                                             c->left,   c->right, c->target,
+                                             c->literal };
+        memcpy(&code[i * CODE_WIDTH], fields, sizeof fields);
+    }
+    yyjson_mut_arr_append(arguments, records_json(doc, CODE_FIELDS, CODE_WIDTH, code, m->code_count));
+    free(code);
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->arguments, m->argument_count));
+    int64_t *records = xmalloc(
+        sizeof *records * RECORD_WIDTH * (size_t)(m->record_count + 1)
+    );
+    for (int i = 0; i < m->record_count; i++) {
+        records[i * RECORD_WIDTH] = m->records[i].first;
+        records[i * RECORD_WIDTH + 1] = m->records[i].count;
+    }
+    yyjson_mut_arr_append(
+        arguments,
+        records_json(doc, RECORD_FIELDS, RECORD_WIDTH, records, m->record_count)
+    );
+    free(records);
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->fields, m->field_count));
+    yyjson_mut_arr_append(arguments, texts_json(doc, m->texts, m->text_count));
+    yyjson_mut_val *source = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_str(doc, source, "file", m->file ? m->file : "");
+    yyjson_mut_obj_add_str(doc, source, "directory", m->directory ? m->directory : "");
+    yyjson_mut_arr_append(arguments, source);
+    int placed = m->file ? m->code_count : 0;
+    yyjson_mut_arr_append(arguments, texts_json(doc, m->names, m->file ? m->function_count : 0));
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->lines, placed));
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->columns, placed));
+    yyjson_mut_arr_add_false(doc, arguments);
+    yyjson_mut_arr_add_sint(doc, arguments, 1);
+    yyjson_doc *result;
+    REQUIRE(scalar_host_consumer("EmitModule", doc, &result));
+    yyjson_val *text = yyjson_arr_get(yyjson_doc_get_root(result), 0);
+    *ir = NULL;
+    if (yyjson_get_len(text)) {
+        *ir = xmalloc(yyjson_get_len(text) + 1);
+        memcpy(*ir, yyjson_get_str(text), yyjson_get_len(text) + 1);
+    }
+    yyjson_doc_free(result);
     return true;
 }
 #if defined(__linux__) && defined(__x86_64__)
@@ -9253,28 +2591,18 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 76
+    SCALAR_ACCEPTED_CASES = 85
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
  * the recovered compiler, which has no such limit. */
+
 static const char *const DEEP_CASES[] = { "deep_operands" };
 enum
 {
     DEEP_CASE_COUNT = (int)(sizeof DEEP_CASES / sizeof *DEEP_CASES)
 };
-static bool deep_case(pin_string name)
-{
-    for (int i = 0; i < DEEP_CASE_COUNT; i++) {
-        if (pin_text_equal(
-                name,
-                (pin_string){ .bytes = DEEP_CASES[i], .length = strlen(DEEP_CASES[i]) }
-            )) {
-            return true;
-        }
-    }
-    return false;
-}
+
 enum
 {
     MAX_PROBE_ARGUMENTS = 3
@@ -9286,6 +2614,10 @@ typedef struct scalar_probe
     int64_t arguments[MAX_PROBE_ARGUMENTS];
     int64_t expected;
 } scalar_probe;
+
+/* The six comparisons of the operators case, in the order of their source
+ * functions, each probed with every pair. */
+
 static const scalar_probe SCALAR_PROBES[] = {
     { "recursion", "Sum", 1, { 0 }, 0 },
     { "recursion", "Sum", 1, { 10 }, 55 },
@@ -9342,8 +2674,6 @@ static const scalar_probe SCALAR_PROBES[] = {
     { "bool_comparison", "Same", 2, { 0, 1 }, 0 },
     { "helper_statement", "Id", 1, { INT32_MIN }, INT32_MIN },
 };
-/* The six comparisons of the operators case, in the order of their source
- * functions, each probed with every pair. */
 static const char *const COMPARISONS[] = { "Lt", "Le", "Gt", "Ge", "Eq", "Ne" };
 static const int32_t COMPARED[][2] = { { INT32_MIN, INT32_MAX },
                                        { INT32_MAX, INT32_MIN },
@@ -9357,17 +2687,7 @@ enum
     PAIRS = (int)(sizeof COMPARED / sizeof *COMPARED),
     MAX_CASE_PROBES = 160
 };
-static int32_t compared(int comparison, int32_t a, int32_t b)
-{
-    switch (comparison) {
-        case 0: return a < b;
-        case 1: return a <= b;
-        case 2: return a > b;
-        case 3: return a >= b;
-        case 4: return a == b;
-        default: return a != b;
-    }
-}
+
 /* llvm_native's integer operations, by the name the corpus's int_operators
  * case gives each one's function. */
 static const struct
@@ -9409,44 +2729,7 @@ static int32_t total(int op, int32_t a, int32_t b)
     }
 }
 /* The probes of one corpus case. */
-static int case_probes(const char *name, scalar_probe probes[MAX_CASE_PROBES])
-{
-    int count = 0;
-    for (int i = 0; i < PROBES; i++) {
-        if (!strcmp(SCALAR_PROBES[i].source_case, name)) {
-            probes[count++] = SCALAR_PROBES[i];
-        }
-    }
-    /* Each int operator but the shifts, which the int_operators case does
-     * not declare, on the first values of TOTAL_VALUES. */
-    for (int k = 0; !strcmp(name, "int_operators") && k < TOTAL_OPERATION_COUNT - 2;
-         k++) {
-        int n = TOTAL_OPERATIONS[k].parameters, rights = n == 2 ? INT_OPERANDS : 1;
-        for (int i = 0; i < INT_OPERANDS; i++) {
-            for (int j = 0; j < rights; j++) {
-                int32_t a = TOTAL_VALUES[i], b = n == 2 ? TOTAL_VALUES[j] : 0;
-                probes[count++] = (scalar_probe){ "int_operators",
-                                                  TOTAL_OPERATIONS[k].name,
-                                                  n,
-                                                  { a, b },
-                                                  total(TOTAL_OPERATIONS[k].op, a, b) };
-            }
-        }
-    }
-    for (int c = 0; !strcmp(name, "operators") && c < COMPARISON_COUNT; c++) {
-        for (int p = 0; p < PAIRS; p++) {
-            probes[count++] = (scalar_probe){
-                "operators",
-                COMPARISONS[c],
-                2,
-                { COMPARED[p][0], COMPARED[p][1] },
-                compared(c, COMPARED[p][0], COMPARED[p][1])
-            };
-        }
-    }
-    assert(count <= MAX_CASE_PROBES);
-    return count;
-}
+
 static bool llvm_tool(const char *name, char path[PATH_MAX])
 {
     const char *bin = getenv("CHIBI_LLVM_BIN");
@@ -9461,10 +2744,7 @@ static bool llvm_tool(const char *name, char path[PATH_MAX])
 /* Set by SIGINT or SIGTERM while the native tests run: the running child's
  * process group is killed, and the run reports cancellation, not a timeout. */
 static volatile sig_atomic_t native_cancelled;
-static void cancel_native(int)
-{
-    native_cancelled = 1;
-}
+
 /* The deadlines of an LLVM tool and of a library's calls, and the output
  * kept of each. */
 static const double TOOL_SECONDS = 60, CALLS_SECONDS = 20, SPIN_SECONDS = 1;
@@ -9782,260 +3062,32 @@ static bool append_adapter(const pin_value *rows, const char *name, char **adapt
 }
 /* The canonical quiet NaN of a float or double, which adapters return for
  * every NaN. */
-static const int64_t FLOAT_NAN = 0x7fc00000, DOUBLE_NAN = INT64_C(0x7ff8000000000000);
+
 /* The bits a float or double `value` of `type` travels as: a float's
  * zero-extended, and a NaN canonical. */
-static int64_t floating_bits(int type, double value)
-{
-    if (isnan(value)) {
-        return type == SCALAR_FLOAT ? FLOAT_NAN : DOUBLE_NAN;
-    }
-    if (type == SCALAR_FLOAT) {
-        float narrow = (float)value;
-        uint32_t bits;
-        memcpy(&bits, &narrow, sizeof bits);
-        return bits;
-    }
-    int64_t bits;
-    memcpy(&bits, &value, sizeof bits);
-    return bits;
-}
-static double floating_value(int type, int64_t bits)
-{
-    if (type == SCALAR_FLOAT) {
-        uint32_t narrow_bits = (uint32_t)bits;
-        float narrow;
-        memcpy(&narrow, &narrow_bits, sizeof narrow);
-        return narrow;
-    }
-    double value;
-    memcpy(&value, &bits, sizeof value);
-    return value;
-}
+
 /* A probe's arguments as the JSON array the compiler host takes. A float or
  * double is a JSON real, NaN or an infinity, never an integer, so -0 keeps
  * its sign. */
-static void probe_json(const pin_value *rows, const scalar_probe *probe, char *json, size_t size)
-{
-    int ordinal;
-    int head = function_row(rows, probe->function, &ordinal);
-    int n = snprintf(json, size, "[");
-    for (int i = 0; i < probe->count; i++) {
-        int type = row_int(rows, head + 1 + i, "type");
-        const char *separator = i ? "," : "";
-        double value = scalar_floating(type)
-                         ? floating_value(type, probe->arguments[i])
-                         : 0;
-        if (type == SCALAR_BOOL) {
-            n += snprintf(json + n, size - (size_t)n, "%s%s", separator, probe->arguments[i] ? "true" : "false");
-        } else if (scalar_floating(type) && (isnan(value) || isinf(value))) {
-            const char *special = isnan(value) ? "NaN"
-                                : value > 0    ? "Infinity"
-                                               : "-Infinity";
-            n += snprintf(json + n, size - (size_t)n, "%s%s", separator, special);
-        } else if (scalar_floating(type)) {
-            n += snprintf(json + n, size - (size_t)n, "%s%.17e", separator, value);
-        } else if (type == SCALAR_WORD) {
-            n += snprintf(
-                json + n,
-                size - (size_t)n,
-                "%s%" PRIu64,
-                separator,
-                (uint64_t)probe->arguments[i]
-            );
-        } else {
-            n += snprintf(
-                json + n,
-                size - (size_t)n,
-                "%s%" PRId64,
-                separator,
-                probe->arguments[i]
-            );
-        }
-    }
-    snprintf(json + n, size - (size_t)n, "]");
-}
+
 /* Loads `bytes`, a closure, as the test's host on `backend`. */
-static bool vm_load(const unsigned char *bytes, size_t length, int backend)
-{
-    char error[256];
-    host = compiler_host_load(
-        bytes,
-        length,
-        backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-        error,
-        sizeof error
-    );
-    if (!host) {
-        fprintf(stderr, "scalar closure load: %s\n", error);
-    }
-    REQUIRE(host);
-    return true;
-}
+
 /* The value of `type` the loaded closure's `function` of package scalar
  * returns for `json`, as the int64 its probe adapter gives: a bool as 0 or 1,
  * a uint64 as its bits, and a float or double as floating_bits. */
-static bool vm_value(const char *function, const char *json, int type, int64_t *out)
-{
-    char name[256];
-    snprintf(name, sizeof name, "project:scalar:1:%s:callable", function);
-    bool valid = compiler_host_invoke(
-        host,
-        script_catalog_id("package-symbol", name),
-        json,
-        strlen(json),
-        TARGET_BUDGET,
-        &result
-    );
-    if (!valid || result.flow_status != FLOW_OK) {
-        fprintf(
-            stderr,
-            "scalar closure %s%s failed with status %d\n",
-            function,
-            json,
-            result.flow_status
-        );
-    }
-    REQUIRE(valid && result.flow_status == FLOW_OK);
-    /* The host's result is the JSON array of the function's one result. */
-    if (!strcmp(result.json, "[true]") || !strcmp(result.json, "[false]")) {
-        *out = !strcmp(result.json, "[true]");
-    } else if (scalar_floating(type)) {
-        /* The host writes a float as the shortest text that reads back as
-         * it, so a float reads as one, not through a double. */
-        char *end = result.json;
-        double value = 0;
-        if (result.json[0] == '[') {
-            value = type == SCALAR_FLOAT ? strtof(result.json + 1, &end)
-                                         : strtod(result.json + 1, &end);
-        }
-        bool read = end != result.json + 1 && !strcmp(end, "]");
-        if (!read) {
-            fprintf(
-                stderr,
-                "scalar closure %s%s gave %s\n",
-                function,
-                json,
-                result.json
-            );
-        }
-        REQUIRE(read);
-        *out = floating_bits(type, value);
-    } else {
-        char *end = result.json;
-        errno = 0;
-        if (result.json[0] == '[') {
-            *out = type == SCALAR_WORD ? (int64_t)strtoull(result.json + 1, &end, 10)
-                                       : strtoll(result.json + 1, &end, 10);
-        }
-        bool read = end != result.json && !errno && !strcmp(end, "]") &&
-                    (type != SCALAR_WORD || result.json[1] != '-');
-        if (read && scalar_bits(type) < 64) {
-            int64_t limit = INT64_C(1)
-                         << (scalar_bits(type) - !scalar_unsigned(type));
-            read = *out < limit && *out >= (scalar_unsigned(type) ? 0 : -limit);
-        }
-        if (!read) {
-            fprintf(
-                stderr,
-                "scalar closure %s%s gave %s\n",
-                function,
-                json,
-                result.json
-            );
-        }
-        REQUIRE(read);
-    }
-    free(result.json);
-    result = (compiler_host_result){ 0 };
-    return true;
-}
+
 /* The authored compiler's closure of `source` as package scalar. */
-static bool vm_closure(int b, pin_string source, unsigned char **bytes, size_t *length)
-{
-    const source_package_input inputs[] = {
-        { "scalar/Main.chibi", source.bytes, source.length }
-    };
-    compiler_result out;
-    REQUIRE(compile(b, false, false, false, inputs, 1, COMPILE_BUDGET, &out));
-    REQUIRE(compiler_succeeded(&out));
-    *bytes = closure_bytes(&out, length);
-    return true;
-}
+
 /* The text of `ir` from `start` to the end of the definition it begins. */
-static char *definition(const char *ir, const char *start)
-{
-    const char *at = strstr(ir, start);
-    assert(at);
-    const char *end = strstr(at, "\n}\n");
-    assert(end);
-    size_t length = (size_t)(end - at);
-    char *text = xmalloc(length + 1);
-    memcpy(text, at, length);
-    text[length] = 0;
-    return text;
-}
+
 /* The text of `ir` from label `p<pc>` on, or NULL. */
-static const char *labelled(const char *ir, int pc)
-{
-    char label[32];
-    snprintf(label, sizeof label, "\np%d:\n", pc);
-    return strstr(ir, label);
-}
+
 /* Unoptimized IR keeps what the source decides at run time. Min moves its
  * parameters to locals, compares them and branches on the result. Choose's
  * branch goes to its consequence, which calls Taken, and otherwise jumps past
  * it to the call of Skipped, so each runs only on its own path. Mid compares
  * b with c only after branching on a < b. */
-static bool keeps_guards(const char *name, const char *ir)
-{
-    if (!strcmp(name, "min")) {
-        char *min = definition(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i32 %arg1)");
-        bool kept = strstr(min, "store i32 %arg0, ptr %s0") &&
-                    strstr(min, "store i32 %arg1, ptr %s1") &&
-                    strstr(min, "%a5 = load i32, ptr %l0\n  store i32 %a5, ptr %s2") &&
-                    strstr(min, "%a7 = load i32, ptr %s2\n  %b7 = load i32, ptr %s3\n  %v7 = icmp slt i32 %a7, %b7") &&
-                    strstr(min, "store i1 %v7, ptr %s4") &&
-                    strstr(min, "br i1 %a8, label %p");
-        free(min);
-        REQUIRE(kept);
-    }
-    if (!strcmp(name, "lazy_arm")) {
-        char *choose = definition(ir, "define internal i32 @chibi_scalar.1(i1 %arg0)");
-        /* The if statement's branch, not a budget check's `br i1 %available`. */
-        const char *branch = strstr(choose, "  br i1 %a");
-        while (branch && !isdigit((unsigned char)branch[strlen("  br i1 %a")])) {
-            branch = strstr(branch + 1, "  br i1 %a");
-        }
-        int consequence = -1, otherwise = -1, past = -1;
-        REQUIRE(
-            branch &&
-            sscanf(branch, "  br i1 %%a%*d, label %%p%d, label %%p%d", &consequence, &otherwise) == 2
-        );
-        const char *jump = labelled(choose, otherwise);
-        REQUIRE(jump && sscanf(strchr(jump + 1, '\n'), "\n  br label %%p%d", &past) == 1);
-        const char *arm = labelled(choose, consequence),
-                   *rest = labelled(choose, past);
-        const char *taken = strstr(choose, "call i32 @chibi_scalar.2()");
-        const char *skipped = strstr(choose, "call i32 @chibi_scalar.3()");
-        bool lazy = arm && rest && taken && skipped && branch < arm &&
-                    arm < taken && taken < rest && rest < skipped &&
-                    !strstr(taken + 1, "call i32 @chibi_scalar.2()") &&
-                    !strstr(skipped + 1, "call i32 @chibi_scalar.3()");
-        free(choose);
-        REQUIRE(lazy);
-    }
-    if (!strcmp(name, "logical_and")) {
-        char *mid = definition(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i32 %arg1, i32 %arg2)");
-        const char *first = strstr(mid, "icmp slt");
-        const char *branch = first ? strstr(first, "  br i1 %a") : NULL;
-        const char *second = branch ? strstr(branch, "icmp slt") : NULL;
-        bool lazy = second && !strstr(second + 1, "icmp slt");
-        free(mid);
-        REQUIRE(lazy);
-    }
-    return true;
-}
+
 /* A call a case checks, its entry or a probe, and what it gave on the
  * bytecode and compiled VMs and natively at O0 and O2. An entry of a module
  * that calls the runtime takes a context. */
@@ -10054,47 +3106,9 @@ enum
     MAX_WIDTH_CALLS = 1024
 };
 /* Case `name`'s calls: its entry, then each of its probes. */
-static int case_calls(const char *name, const pin_value *rows, int64_t expected, scalar_call calls[MAX_CASE_CALLS])
-{
-    scalar_probe probes[MAX_CASE_PROBES];
-    int count = case_probes(name, probes);
-    calls[0] = (scalar_call){ .probe = { name, "Main", 0, { 0 }, expected },
-                              .json = "[]",
-                              .symbol = "chibi_scalar" };
-    for (int i = 0; i < count; i++) {
-        scalar_call *call = &calls[i + 1];
-        *call = (scalar_call){ .probe = probes[i] };
-        probe_json(rows, &probes[i], call->json, sizeof call->json);
-        snprintf(call->symbol, sizeof call->symbol, "probe_%s", probes[i].function);
-    }
-    return count + 1;
-}
+
 /* Each call's value from the authored compiler's closure on both VMs. */
-static bool vm_values(
-    const unsigned char *closure,
-    size_t length,
-    const pin_value *rows,
-    scalar_call *calls,
-    int count
-)
-{
-    for (int backend = 0; backend < 2; backend++) {
-        REQUIRE(vm_load(closure, length, backend));
-        for (int i = 0; i < count; i++) {
-            int ordinal;
-            int type = row_int(rows, function_row(rows, calls[i].probe.function, &ordinal), "type");
-            REQUIRE(
-                vm_value(calls[i].probe.function, calls[i].json, type, &calls[i].values[backend])
-            );
-        }
-        compiler_host_free(host);
-        host = NULL;
-    }
-    return true;
-}
-typedef int32_t (*scalar_entry)();
-typedef int32_t (*scalar_runtime_entry)(execution_native_context *);
-typedef int64_t (*scalar_adapter)(const int64_t *);
+
 enum
 {
     CALL_SPEC = 160
@@ -10164,8 +3178,102 @@ static chibi_process_capture_result library_calls(
  * `symbol:a,b` for an adapter, `symbol:` for one of no arguments, and prints
  * each value on its own line as it returns. A context's heap is freed after
  * its call, as the VM frees it. */
+/* A library's retained-state manifest, chibi_retained_<Name>, as
+ * llvm_native's RetainedManifest writes it. */
+typedef struct
+{
+    uint32_t abi;
+    int32_t count;
+    const uint8_t *types;
+    const char *names;
+    execution_native_entry get, set;
+} retained_manifest;
+/* The `index`th of the NUL-ended names. */
+static const char *retained_name(const retained_manifest *manifest, int index)
+{
+    const char *at = manifest->names;
+    for (; index > 0; index--) {
+        at += strlen(at) + 1;
+    }
+    return at;
+}
+/* Calls `library`'s Frame, a function of no arguments that returns an int. */
+static bool frame_call(void *library, const char *name, int64_t *value)
+{
+    char symbol[64];
+    snprintf(symbol, sizeof symbol, "chibi_natives_%s", name);
+    const execution_native_manifest *natives = dlsym(library, symbol);
+    for (int i = 0; natives && i < natives->count; i++) {
+        if (!strcmp(natives->exports[i].name, "Frame")) {
+            uint64_t word = 0;
+            natives->exports[i].entry(NULL, NULL, &word);
+            *value = (int32_t)word;
+            return true;
+        }
+    }
+    return false;
+}
+static const retained_manifest *retained_of(void *library, const char *name)
+{
+    char symbol[64];
+    snprintf(symbol, sizeof symbol, "chibi_retained_%s", name);
+    return dlsym(library, symbol);
+}
+/* The edit-and-continue child: the loop `first` runs three Frames, then the
+ * loop `second`, an edit of it, takes its place. The host reads the old
+ * states, migrates them by name and type, sets them in the new library and
+ * runs two more Frames, without calling Main. Each Frame's value is printed. */
+static int enc_child(const char *first, const char *second)
+{
+    stack_overflow_init();
+    void *old = dlopen(first, RTLD_NOW | RTLD_LOCAL),
+         *next = dlopen(second, RTLD_NOW | RTLD_LOCAL);
+    if (!old || !next) {
+        fprintf(stderr, "native generation load: %s\n", dlerror());
+        return 1;
+    }
+    int64_t value;
+    for (int i = 0; i < 3; i++) {
+        if (!frame_call(old, "Loop", &value)) {
+            return 1;
+        }
+        printf("%" PRId64 "\n", value);
+    }
+    const retained_manifest *before = retained_of(old, "Loop"),
+                            *after = retained_of(next, "Loop");
+    if (!before || !after || before->count > 16 || after->count > 16) {
+        return 1;
+    }
+    uint64_t was[16], now[16];
+    before->get(NULL, NULL, was);
+    after->get(NULL, NULL, now);
+    for (int i = 0; i < after->count; i++) {
+        for (int j = 0; j < before->count; j++) {
+            if (!strcmp(retained_name(after, i), retained_name(before, j)) &&
+                after->types[i] == before->types[j]) {
+                now[i] = was[j];
+            }
+        }
+    }
+    after->set(NULL, now, NULL);
+    for (int i = 0; i < 2; i++) {
+        if (!frame_call(next, "Loop", &value)) {
+            return 1;
+        }
+        printf("%" PRId64 "\n", value);
+    }
+    fflush(stdout);
+    return 0;
+}
+typedef int32_t (*scalar_entry)();
+typedef int32_t (*scalar_runtime_entry)(execution_native_context *);
+typedef int64_t (*scalar_adapter)(const int64_t *);
+
 static int library_child(const char *library, int count, char **specs)
 {
+    if (count == 2 && !strcmp(specs[0], "continue")) {
+        return enc_child(library, specs[1]);
+    }
     stack_overflow_init();
     void *opened = dlopen(library, RTLD_NOW | RTLD_LOCAL);
     if (!opened) {
@@ -10442,202 +3550,28 @@ static bool native_values(
 }
 /* Rename only one generated callee definition. Its call sites keep the old
  * symbol, which an observed wrapper supplies. No branch body is rewritten. */
-static bool observed_body(char **ir, int ordinal, const char *name)
-{
-    char before[128], after[128];
-    snprintf(before, sizeof before, "define internal i32 @chibi_scalar.%d()", ordinal);
-    snprintf(after, sizeof after, "define internal i32 @chibi_test_%s_body()", name);
-    const char *at = strstr(*ir, before);
-    REQUIRE(at && !strstr(at + 1, before));
-    size_t prefix = (size_t)(at - *ir), old = strlen(before),
-           replacement = strlen(after);
-    char *renamed = xmalloc(strlen(*ir) - old + replacement + 1);
-    memcpy(renamed, *ir, prefix);
-    memcpy(renamed + prefix, after, replacement);
-    strcpy(renamed + prefix + replacement, at + old);
-    free(*ir);
-    *ir = renamed;
-    return true;
-}
+
 /* Reset, Choose's return, Taken's entry count and Skipped's entry count. */
-static bool lazy_trace_matches(const scalar_call calls[4], int column, int condition)
-{
-    return calls[0].values[column] == 0 &&
-           calls[1].values[column] == (condition ? 1 : 2) &&
-           calls[2].values[column] == condition &&
-           calls[3].values[column] == !condition;
-}
+
 /* An additional validation-only module observes generated callee entries.
  * Normal optimization/result checks above still use the unmodified IR.
  * The extra-call variant keeps Choose's value but must fail the same trace
  * oracle on the true path, even after O2 inlines the pure original bodies. */
-static bool observes_lazy_arm(const char *directory, const pin_value *rows, const char *ir)
-{
-    int taken, skipped;
-    int taken_row = function_row(rows, "Taken", &taken);
-    int skipped_row = function_row(rows, "Skipped", &skipped);
-    REQUIRE(taken_row > 0 && skipped_row > 0);
-    REQUIRE(row_int(rows, taken_row, "count") == 0 && row_int(rows, skipped_row, "count") == 0);
-    REQUIRE(
-        row_int(rows, taken_row, "type") == SCALAR_INT &&
-        row_int(rows, skipped_row, "type") == SCALAR_INT
-    );
-    char *observed = xmalloc(strlen(ir) + 1), *probe = xmalloc(1);
-    strcpy(observed, ir);
-    *probe = 0;
-    bool valid = observed_body(&observed, taken, "taken") &&
-                 observed_body(&observed, skipped, "skipped") &&
-                 append_adapter(rows, "Choose", &probe);
-    for (int extra = 0; valid && extra < 2; extra++) {
-        char discarded[128] = "", wrappers[2048];
-        if (extra) {
-            snprintf(discarded, sizeof discarded, "  %%discarded = call i32 @chibi_scalar.%d()\n", skipped);
-        }
-        int length = snprintf(
-            wrappers,
-            sizeof wrappers,
-            "\n@chibi_test_taken = internal global i32 0\n"
-            "@chibi_test_skipped = internal global i32 0\n"
-            "define internal i32 @chibi_scalar.%d() {\nentry:\n"
-            "  %%n = atomicrmw add ptr @chibi_test_taken, i32 1 monotonic\n"
-            "%s"
-            "  %%r = call i32 @chibi_test_taken_body()\n  ret i32 %%r\n}\n"
-            "define internal i32 @chibi_scalar.%d() {\nentry:\n"
-            "  %%n = atomicrmw add ptr @chibi_test_skipped, i32 1 monotonic\n"
-            "  %%r = call i32 @chibi_test_skipped_body()\n  ret i32 %%r\n}\n"
-            "define i32 @chibi_trace_reset() {\nentry:\n"
-            "  store volatile i32 0, ptr @chibi_test_taken\n"
-            "  store volatile i32 0, ptr @chibi_test_skipped\n  ret i32 0\n}\n"
-            "define i32 @chibi_trace_taken() {\nentry:\n"
-            "  %%n = load volatile i32, ptr @chibi_test_taken\n  ret i32 "
-            "%%n\n}\n"
-            "define i32 @chibi_trace_skipped() {\nentry:\n"
-            "  %%n = load volatile i32, ptr @chibi_test_skipped\n  ret i32 "
-            "%%n\n}\n",
-            taken,
-            discarded,
-            skipped
-        );
-        assert(length > 0 && length < (int)sizeof wrappers);
-        size_t probe_length = strlen(probe);
-        char *adapter = xmalloc(probe_length + (size_t)length + 1);
-        memcpy(adapter, probe, probe_length);
-        memcpy(adapter + probe_length, wrappers, (size_t)length + 1);
-        for (int level = 0; valid && level < 2; level++) {
-            char library[PATH_MAX];
-            valid = native_library(
-                directory,
-                extra ? "lazy_trace_extra" : "lazy_trace",
-                observed,
-                adapter,
-                level * 2,
-                library
-            );
-            for (int condition = 0; valid && condition < 2; condition++) {
-                scalar_call calls[4] = {
-                    { .symbol = "chibi_trace_reset" },
-                    { .symbol = "probe_Choose",
-                      .probe = { .count = 1, .arguments = { condition } } },
-                    { .symbol = "chibi_trace_taken" },
-                    { .symbol = "chibi_trace_skipped" }
-                };
-                int column = 2 + level;
-                valid = native_passed(
-                    library_calls(directory, library, calls, 4, column, CALLS_SECONDS)
-                );
-                bool matches = lazy_trace_matches(calls, column, condition);
-                valid = valid && matches == (!extra || !condition) &&
-                        calls[0].values[column] == 0 &&
-                        calls[1].values[column] == (condition ? 1 : 2) &&
-                        calls[2].values[column] == condition &&
-                        calls[3].values[column] == (!condition || extra);
-                fprintf(
-                    stderr,
-                    "lazy trace O%d extra %d condition %d: return %" PRId64 ", "
-                    "Taken %" PRId64 ", Skipped %" PRId64 ", oracle %s\n",
-                    level * 2,
-                    extra,
-                    condition,
-                    calls[1].values[column],
-                    calls[2].values[column],
-                    calls[3].values[column],
-                    matches ? "accept" : "reject"
-                );
-            }
-        }
-        free(adapter);
-    }
-    free(observed);
-    free(probe);
-    REQUIRE(valid);
-    return true;
-}
+
 /* Every executed result matches its literal fixture or probe oracle. */
-static bool calls_agree(const char *name, const scalar_call *calls, int count)
-{
-    for (int i = 0; i < count; i++) {
-        const int64_t *values = calls[i].values;
-        int64_t expected = calls[i].probe.expected;
-        bool agree = scalar_results_match(values, expected);
-        if (!agree) {
-            fprintf(
-                stderr,
-                "scalar case %s %s%s: expected %" PRId64 ", VM %" PRId64
-                " %" PRId64 ", native O0 %" PRId64 " O2 %" PRId64 "\n",
-                name,
-                calls[i].probe.function,
-                calls[i].json,
-                expected,
-                values[0],
-                values[1],
-                values[2],
-                values[3]
-            );
-        }
-        REQUIRE(agree);
-    }
-    return true;
-}
+
 /* The IR EmitBytesFor gives for `rows` and native_abi's target `function`,
  * NUL-terminated, or NULL for none. */
-static bool target_ir(int b, const char *function, const pin_value *rows, char **ir)
-{
-    pin_value emitted;
-    REQUIRE(emit_bytes(b, function, rows, &emitted));
-    const pin_array *bytes = emitted.ptr;
-    REQUIRE(emitted.container == PIN_CONTAINER_ARRAY);
-    *ir = NULL;
-    if (!bytes->count) {
-        return true;
-    }
-    *ir = xmalloc((size_t)bytes->count + 1);
-    for (int i = 0; i < bytes->count; i++) {
-        (*ir)[i] = (char)bytes->items[i].u8;
-    }
-    (*ir)[bytes->count] = 0;
-    return true;
-}
+
 /* The Linux x86-64 IR EmitBytesFor gives for `rows`, or NULL for none. */
-static bool emitted_ir(int b, pin_value *rows, char **ir)
+static bool emitted_ir(pin_value *rows, char **ir)
 {
-    return target_ir(b, "LinuxX64", rows, ir);
+    return target_ir("LinuxX64", rows, ir);
 }
 /* `source`'s producer rows at `path` from CollectScalar on VM b. */
-static bool collected_at(int b, const char *path, const char *case_name, pin_value source, pin_value *rows)
+static bool collected_at(const char *path, const char *case_name, const char *source, pin_value *rows)
 {
-    pin_value args[SCALAR_ARGUMENTS];
-    REQUIRE(scalar_arguments(b, path, source, args));
-    bool collected = compiler_fixture_call(
-        &fixture,
-        b,
-        PACKAGE,
-        "CollectScalar",
-        args,
-        SCALAR_ARGUMENTS,
-        COMPILE_BUDGET,
-        &detached,
-        rows
-    );
+    bool collected = scalar_host_collect(path, source, &detached, rows);
     if (!collected) {
         fprintf(stderr, "scalar case %s: CollectScalar failed\n", case_name);
     }
@@ -10646,145 +3580,21 @@ static bool collected_at(int b, const char *path, const char *case_name, pin_val
 }
 /* With a bundle, the module of `rows` for each other target, with `calls`,
  * whose values every run agreed on. */
-static bool bundled(
-    const char *directory,
-    int b,
-    const char *name,
-    const pin_value *rows,
-    const scalar_call *calls,
-    int count
-)
+
+static bool collected_rows(const char *case_name, const char *source, pin_value *rows)
 {
-    /* A bundle's runner has no runtime to give a context. */
-    if (!bundle_root() || calls[0].context) {
-        return true;
-    }
-    char *adapter;
-    REQUIRE(call_adapters(rows, calls, count, &adapter));
-    bool built = true;
-    for (int t = 0; built && t < BUNDLE_TARGET_COUNT; t++) {
-        char *ir = NULL;
-        built = target_ir(b, BUNDLE_TARGETS[t].function, rows, &ir) && ir &&
-                bundle_module(directory, t, name, ir, adapter, calls, count);
-        free(ir);
-    }
-    free(adapter);
-    REQUIRE(built);
-    return true;
-}
-static bool collected_rows(int b, const char *case_name, pin_value source, pin_value *rows)
-{
-    return collected_at(b, "Scalar.chibi", case_name, source, rows);
+    return collected_at("Scalar.chibi", case_name, source, rows);
 }
 /* Each of `calls` of an accepted module, `ir` its IR, gives its expected
  * value on both VMs, from the authored compiler's closure of `source` on VM
  * b, and natively at O0 and O2. */
-static bool runs_everywhere(
-    const char *directory,
-    int b,
-    const char *name,
-    pin_string source,
-    const pin_value *rows,
-    const char *ir,
-    scalar_call *calls,
-    int count
-)
-{
-    unsigned char *closure;
-    size_t length;
-    REQUIRE(vm_closure(b, source, &closure, &length));
-    bool agree = vm_values(closure, length, rows, calls, count) &&
-                 native_values(directory, name, rows, ir, calls, count) &&
-                 calls_agree(name, calls, count) &&
-                 bundled(directory, b, name, rows, calls, count);
-    free(closure);
-    REQUIRE(agree);
-    return true;
-}
+
 /* An accepted module, `ir` its IR, which this frees: each of its calls must
  * give one value on both VMs and natively at O0 and O2. */
-static bool module_agrees(
-    const char *directory,
-    int b,
-    const char *case_name,
-    pin_string source,
-    const pin_value *rows,
-    char *ir,
-    int64_t expected,
-    scalar_call calls[MAX_CASE_CALLS]
-)
-{
-    REQUIRE(keeps_guards(case_name, ir));
-    int count = case_calls(case_name, rows, expected, calls);
-    bool agree = runs_everywhere(directory, b, case_name, source, rows, ir, calls, count);
-    if (agree && !strcmp(case_name, "lazy_arm")) {
-        agree = observes_lazy_arm(directory, rows, ir);
-    }
-    free(ir);
-    REQUIRE(agree);
-    return true;
-}
+
 /* Case `index` of the corpus: its producer rows on VM b must be what the case
  * expects, and an accepted module must run natively as it does on both VMs. */
-static bool scalar_case_agrees(const char *directory, int index, int *accepted, int *deep)
-{
-    int b = index % 2;
-    pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows, checked;
-    REQUIRE(
-        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
-    );
-    if (deep_case(pin_text(name))) {
-        ++*deep;
-        return true;
-    }
-    const char *case_name = pin_text(name).bytes;
-    REQUIRE(
-        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
-    );
-    REQUIRE(collected_rows(b, case_name, source, &rows));
-    REQUIRE(
-        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
-    );
-    if (checked.i != 1) {
-        bool rejection = row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW;
-        fprintf(
-            stderr,
-            "scalar case %s: Check gave %d%s%s\n",
-            case_name,
-            checked.i,
-            rejection ? ", rejected: " : "",
-            rejection
-                ? pin_text(scalar_field(&((const pin_array *)rows.ptr)->items[1], "text"))
-                      .bytes
-                : ""
-        );
-    }
-    REQUIRE(checked.i == 1);
-    char *ir;
-    REQUIRE(emitted_ir(b, &rows, &ir));
-    bool rejected = row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW;
-    REQUIRE(rejected == !ir);
-    if (rejected) {
-        return true;
-    }
-    pin_value expected;
-    REQUIRE(
-        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "ExpectedValue", &ordinal, 1, COMPILE_BUDGET, &detached, &expected)
-    );
-    REQUIRE(expected.type == PIN_I32);
-    ++*accepted;
-    scalar_call calls[MAX_CASE_CALLS];
-    return module_agrees(
-        directory,
-        b,
-        case_name,
-        pin_text(source),
-        &rows,
-        ir,
-        expected.i,
-        calls
-    );
-}
+
 #define IDS_10 "Id(Id(Id(Id(Id(Id(Id(Id(Id(Id("
 #define CLOSES_10 "))))))))))"
 #define NESTED_IDS IDS_10 IDS_10 IDS_10 IDS_10 IDS_10
@@ -11200,307 +4010,7 @@ enum
  * each end and slices of slices, compared and searched. Each value is
  * mixed into Main's result, which wraps. The source is joined from
  * pieces, each under C99's 4095-byte bound on a string literal. */
-static const char *const TEXT_NATIVES[] = {
-    "package scalar\n"
-    "Main :: () -> int {\n"
-    "    t: int = 0;\n"
-    "    t = Mix(t, Compare(\"abc\", \"abd\"));\n"
-    "    t = Mix(t, Compare(\"abd\", \"abc\"));\n"
-    "    t = Mix(t, Compare(\"\", \"\"));\n"
-    "    t = Mix(t, Compare(\"ab\", \"abc\"));\n"
-    "    t = Mix(t, Bit(HasPrefix(\"prefix\", \"pre\")));\n"
-    "    t = Mix(t, Bit(HasPrefix(\"pr\", \"pre\")));\n"
-    "    t = Mix(t, Bit(HasSuffix(\"suffix\", \"fix\")));\n"
-    "    t = Mix(t, Bit(HasSuffix(\"x\", \"fix\")));\n"
-    "    t = Mix(t, Bit(EqualFold(\"Chibi\", \"cHIBI\")));\n"
-    "    t = Mix(t, Bit(EqualFold(\"ab\", \"ac\")));\n"
-    "    t = Mix(t, Bit(IsIdentifier(\"_a1\")));\n"
-    "    t = Mix(t, Bit(IsIdentifier(\"1a\")));\n"
-    "    t = Mix(t, Index(\"chicken\", \"ken\"));\n"
-    "    t = Mix(t, Index(\"chicken\", \"dmc\"));\n"
-    "    t = Mix(t, Index(\"abcabc\", \"c\"));\n"
-    "    t = Mix(t, Index(\"abc\", \"\"));\n"
-    "    t = Mix(t, LastIndex(\"abcabc\", \"bc\"));\n"
-    "    t = Mix(t, LastIndex(\"abc\", \"\"));\n"
-    "    t = Mix(t, LastIndex(\"abc\", \"abc\"));\n"
-    "    t = Mix(t, Count(\"cheese\", \"e\"));\n"
-    "    t = Mix(t, Count(\"five\", \"\"));\n"
-    "    t = Mix(t, Count(\"banana\", \"ana\"));\n"
-    "    t = Mix(t, IndexByte(\"hello\", 108));\n"
-    "    t = Mix(t, LastIndexByte(\"hello\", 108));\n"
-    "    t = Mix(t, ByteLength(BaseName(\"/a/b/file.txt\")));\n"
-    "    t = Mix(t, Bit(BaseName(\"/a/b/file.txt\") == \"file.txt\"));\n"
-    "    t = Mix(t, Bit(TruncateToByte(\"key=value\", 61) == \"key\"));\n"
-    "    t = Mix(t, Bit(TruncateToByte(\"plain\", 61) == \"plain\"));\n"
-    "    t = Mix(t, Bit(Slice(\"abc\", -5, 2) == \"ab\"));\n"
-    "    t = Mix(t, Bit(Slice(\"abc\", 2, 99) == \"c\"));\n"
-    "    t = Mix(t, Bit(Slice(\"abc\", 9, 1) == \"\"));\n"
-    "    t = Mix(t, Bit(Slice(\"abc\", 1, -1) == \"\"));\n"
-    "    t = Mix(t, Bit(Slice(Slice(\"abcdef\", 1, 4), 1, 2) == \"cd\"));\n"
-    "    t = Mix(t, ByteAt(\"\xc3\xa9"
-    "\", 1));\n"
-    "    t = Mix(t, ByteAt(\"a\", 5));\n"
-    "    t = Mix(t, ByteAt(\"a\", -1));\n"
-    "    t = Mix(t, ByteLength(\"h\xc3\xa9"
-    "llo\"));\n"
-    "    t = Mix(t, ByteAt(Slice(\"xyz\", 1, 5), 1));\n"
-    "    return t;\n"
-    "}\n"
-    "Mix :: (t: int, value: int) -> int { return t * 31 + value; }\n"
-    "Bit :: (b: bool) -> int {\n"
-    "    if (b) { return 1; }\n"
-    "    return 0;\n"
-    "}\n"
-    "ByteLength :: (value: string) -> int {\n"
-    "    return text_byte_length(value);\n"
-    "}\n"
-    "ByteAt :: (value: string, index: int) -> int {\n"
-    "    return text_byte_at(value, index);\n"
-    "}\n"
-    "Slice :: (value: string, start: int, count: int) -> string {\n"
-    "    return text_slice(value, start, count);\n"
-    "}\n",
-    "Compare :: (left: string, right: string) -> int {\n"
-    "    leftLength := ByteLength(left);\n"
-    "    rightLength := ByteLength(right);\n"
-    "    index: int = 0;\n"
-    "    while (index < leftLength && index < rightLength) {\n"
-    "        a := ByteAt(left, index);\n"
-    "        b := ByteAt(right, index);\n"
-    "        if (a < b) {\n"
-    "            return -1;\n"
-    "        }\n"
-    "        if (a > b) {\n"
-    "            return 1;\n"
-    "        }\n"
-    "        index += 1;\n"
-    "    }\n"
-    "    if (leftLength < rightLength) {\n"
-    "        return -1;\n"
-    "    }\n"
-    "    if (leftLength > rightLength) {\n"
-    "        return 1;\n"
-    "    }\n"
-    "    return 0;\n"
-    "}\n"
-    "IsIdentifier :: (value: string) -> bool {\n"
-    "    size := ByteLength(value);\n"
-    "    if (size == 0) {\n"
-    "        return false;\n"
-    "    }\n"
-    "    index: int = 0;\n"
-    "    while (index < size) {\n"
-    "        byte := ByteAt(value, index);\n"
-    "        letter := byte == 95 || (byte >= 65 && byte <= 90) || (byte >= 97 "
-    "&& byte <= 122);\n"
-    "        if (!letter && !(index > 0 && byte >= 48 && byte <= 57)) {\n"
-    "            return false;\n"
-    "        }\n"
-    "        index += 1;\n"
-    "    }\n"
-    "    return true;\n"
-    "}\n"
-    "BaseName :: (path: string) -> string {\n"
-    "    size := ByteLength(path);\n"
-    "    start: int = 0;\n"
-    "    index: int = 0;\n"
-    "    while (index < size) {\n"
-    "        if (ByteAt(path, index) == 47) {\n"
-    "            start = index + 1;\n"
-    "        }\n"
-    "        index += 1;\n"
-    "    }\n"
-    "    return Slice(path, start, size - start);\n"
-    "}\n"
-    "HasPrefix :: (s: string, prefix: string) -> bool {\n"
-    "    size := ByteLength(prefix);\n"
-    "    return ByteLength(s) >= size && Slice(s, 0, size) == prefix;\n"
-    "}\n"
-    "HasSuffix :: (s: string, suffix: string) -> bool {\n"
-    "    size := ByteLength(s);\n"
-    "    count := ByteLength(suffix);\n"
-    "    return size >= count && Slice(s, size - count, count) == suffix;\n"
-    "}\n",
-    "IndexByte :: (s: string, c: int) -> int {\n"
-    "    size := ByteLength(s);\n"
-    "    i: int = 0;\n"
-    "    while (i < size) {\n"
-    "        if (ByteAt(s, i) == c) {\n"
-    "            return i;\n"
-    "        }\n"
-    "        i += 1;\n"
-    "    }\n"
-    "    return -1;\n"
-    "}\n"
-    "LastIndexByte :: (s: string, c: int) -> int {\n"
-    "    i: int = ByteLength(s) - 1;\n"
-    "    while (i >= 0) {\n"
-    "        if (ByteAt(s, i) == c) {\n"
-    "            return i;\n"
-    "        }\n"
-    "        i -= 1;\n"
-    "    }\n"
-    "    return -1;\n"
-    "}\n"
-    "MatchesAt :: (s: string, substr: string, start: int) -> bool {\n"
-    "    i: int = 0;\n"
-    "    while (i < ByteLength(substr)) {\n"
-    "        if (ByteAt(s, start + i) != ByteAt(substr, i)) {\n"
-    "            return false;\n"
-    "        }\n"
-    "        i += 1;\n"
-    "    }\n"
-    "    return true;\n"
-    "}\n"
-    "IndexFrom :: (s: string, substr: string, start: int) -> int {\n"
-    "    n := ByteLength(substr);\n"
-    "    size := ByteLength(s);\n"
-    "    if (n == 0) {\n"
-    "        return start;\n"
-    "    }\n"
-    "    if (n > size - start) {\n"
-    "        return -1;\n"
-    "    }\n"
-    "    if (n == 1) {\n"
-    "        c := ByteAt(substr, 0);\n"
-    "        i := start;\n"
-    "        while (i < size) {\n"
-    "            if (ByteAt(s, i) == c) {\n"
-    "                return i;\n"
-    "            }\n"
-    "            i += 1;\n"
-    "        }\n"
-    "        return -1;\n"
-    "    }\n"
-    "    hash: i64 = 0;\n"
-    "    pow: i64 = 1;\n"
-    "    h: i64 = 0;\n"
-    "    i: int = 0;\n"
-    "    while (i < n) {\n"
-    "        hash = (hash * 16777619 + i64(ByteAt(substr, i))) & 0xFFFFFFFF;\n"
-    "        pow = (pow * 16777619) & 0xFFFFFFFF;\n"
-    "        h = (h * 16777619 + i64(ByteAt(s, start + i))) & 0xFFFFFFFF;\n"
-    "        i += 1;\n"
-    "    }\n"
-    "    i += start;\n"
-    "    if (h == hash && MatchesAt(s, substr, start)) {\n"
-    "        return start;\n"
-    "    }\n"
-    "    while (i < size) {\n"
-    "        h = (h * 16777619 + i64(ByteAt(s, i)) - pow * i64(ByteAt(s, i - "
-    "n))) & 0xFFFFFFFF;\n"
-    "        i += 1;\n"
-    "        if (h == hash && MatchesAt(s, substr, i - n)) {\n"
-    "            return i - n;\n"
-    "        }\n"
-    "    }\n"
-    "    return -1;\n"
-    "}\n",
-    "Index :: (s: string, substr: string) -> int {\n"
-    "    return IndexFrom(s, substr, 0);\n"
-    "}\n"
-    "LastIndex :: (s: string, substr: string) -> int {\n"
-    "    n := ByteLength(substr);\n"
-    "    size := ByteLength(s);\n"
-    "    if (n == 0) {\n"
-    "        return size;\n"
-    "    }\n"
-    "    if (n == 1) {\n"
-    "        return LastIndexByte(s, ByteAt(substr, 0));\n"
-    "    }\n"
-    "    if (n == size) {\n"
-    "        if (s == substr) {\n"
-    "            return 0;\n"
-    "        }\n"
-    "        return -1;\n"
-    "    }\n"
-    "    if (n > size) {\n"
-    "        return -1;\n"
-    "    }\n"
-    "    hash: i64 = 0;\n"
-    "    pow: i64 = 1;\n"
-    "    h: i64 = 0;\n"
-    "    i: int = 0;\n"
-    "    while (i < n) {\n"
-    "        hash = (hash * 16777619 + i64(ByteAt(substr, n - 1 - i))) & "
-    "0xFFFFFFFF;\n"
-    "        pow = (pow * 16777619) & 0xFFFFFFFF;\n"
-    "        h = (h * 16777619 + i64(ByteAt(s, size - 1 - i))) & 0xFFFFFFFF;\n"
-    "        i += 1;\n"
-    "    }\n"
-    "    i = size - n;\n"
-    "    if (h == hash && Slice(s, i, n) == substr) {\n"
-    "        return i;\n"
-    "    }\n"
-    "    i -= 1;\n"
-    "    while (i >= 0) {\n"
-    "        h = (h * 16777619 + i64(ByteAt(s, i)) - pow * i64(ByteAt(s, i + "
-    "n))) & 0xFFFFFFFF;\n"
-    "        if (h == hash && Slice(s, i, n) == substr) {\n"
-    "            return i;\n"
-    "        }\n"
-    "        i -= 1;\n"
-    "    }\n"
-    "    return -1;\n"
-    "}\n",
-    "Count :: (s: string, substr: string) -> int {\n"
-    "    n := ByteLength(substr);\n"
-    "    if (n == 0) {\n"
-    "        return ByteLength(s) + 1;\n"
-    "    }\n"
-    "    total: int = 0;\n"
-    "    if (n == 1) {\n"
-    "        c := ByteAt(substr, 0);\n"
-    "        size := ByteLength(s);\n"
-    "        i: int = 0;\n"
-    "        while (i < size) {\n"
-    "            if (ByteAt(s, i) == c) {\n"
-    "                total += 1;\n"
-    "            }\n"
-    "            i += 1;\n"
-    "        }\n"
-    "        return total;\n"
-    "    }\n"
-    "    start: int = 0;\n"
-    "    while (true) {\n"
-    "        i := IndexFrom(s, substr, start);\n"
-    "        if (i < 0) {\n"
-    "            break;\n"
-    "        }\n"
-    "        total += 1;\n"
-    "        start = i + n;\n"
-    "    }\n"
-    "    return total;\n"
-    "}\n"
-    "TruncateToByte :: (s: string, c: int) -> string {\n"
-    "    n := IndexByte(s, c);\n"
-    "    if (n < 0) {\n"
-    "        return s;\n"
-    "    }\n"
-    "    return Slice(s, 0, n);\n"
-    "}\n"
-    "EqualFold :: (u: string, v: string) -> bool {\n"
-    "    size := ByteLength(u);\n"
-    "    if (size != ByteLength(v)) {\n"
-    "        return false;\n"
-    "    }\n"
-    "    i: int = 0;\n"
-    "    while (i < size) {\n"
-    "        sr := ByteAt(u, i);\n"
-    "        tr := ByteAt(v, i);\n"
-    "        if (tr < sr) {\n"
-    "            swap := sr;\n"
-    "            sr = tr;\n"
-    "            tr = swap;\n"
-    "        }\n"
-    "        if (tr != sr && !(sr >= 65 && sr <= 90 && tr == sr + 32)) {\n"
-    "            return false;\n"
-    "        }\n"
-    "        i += 1;\n"
-    "    }\n"
-    "    return true;\n"
-    "}\n",
-};
+
 enum
 {
     TEXT_NATIVES_ENTRY = -386181014
@@ -11510,278 +4020,29 @@ enum
  * escaped braces, an embedded NUL and no arguments. Each string's bytes are
  * mixed into Main's result, which wraps. The core:strings functions they
  * search with are TEXT_NATIVES'. */
-static const char *const TEXT_FORMATS[] = {
-    "package scalar\n"
-    "Main :: () -> int {\n"
-    "    t: int = 0;\n"
-    "    t = Mix(t, Sum(ToLower(\"Hello, World!\")));\n"
-    "    t = Mix(t, Sum(ToLower(\"already\")));\n"
-    "    t = Mix(t, Sum(ToUpper(\"chibi 2D/3D \xc3\xa9"
-    "\")));\n"
-    "    t = Mix(t, Sum(Repeat(\"ab\", 5)));\n"
-    "    t = Mix(t, Sum(Repeat(\"x\", 0)));\n"
-    "    t = Mix(t, Sum(Replace(\"a-b-c-d\", \"-\", \"+\", 2)));\n"
-    "    t = Mix(t, Sum(Replace(\"aaa\", \"\", \"|\", -1)));\n"
-    "    t = Mix(t, Sum(ReplaceAll(\"banana\", \"an\", \"AN\")));\n"
-    "    n: number = 2.5;\n"
-    "    d: f64 = -0.125;\n"
-    "    k: i64 = -9000000000;\n"
-    "    u: u8 = 255;\n"
-    "    flag := k < 0;\n"
-    "    t = Mix(t, Sum(format_text(\"{} {} {} {} {}\", n, d, k, u, flag)));\n"
-    "    t = Mix(t, Sum(format_text(\"[{:6.2}] [{:4}] {{}} {:x}\", n, \"ab\", "
-    "int(255))));\n"
-    "    t = Mix(t, Sum(format_text(\"{1}{0}{}\", \"a\", \"b\\u0000c\")));\n"
-    "    t = Mix(t, Sum(format_text(\"no arguments\")));\n"
-    "    return t;\n"
-    "}\n"
-    "Mix :: (t: int, value: int) -> int { return t * 31 + value; }\n"
-    "Sum :: (s: string) -> int {\n"
-    "    total := ByteLength(s);\n"
-    "    i: int = 0;\n"
-    "    while (i < ByteLength(s)) {\n"
-    "        total = total * 7 + ByteAt(s, i);\n"
-    "        i += 1;\n"
-    "    }\n"
-    "    return total;\n"
-    "}\n"
-    "ByteLength :: (value: string) -> int {\n"
-    "    return text_byte_length(value);\n"
-    "}\n"
-    "ByteAt :: (value: string, index: int) -> int {\n"
-    "    return text_byte_at(value, index);\n"
-    "}\n"
-    "Slice :: (value: string, start: int, count: int) -> string {\n"
-    "    return text_slice(value, start, count);\n"
-    "}\n",
-    "ToLower :: (s: string) -> string {\n"
-    "    size := ByteLength(s);\n"
-    "    result: string = \"\";\n"
-    "    start: int = 0;\n"
-    "    i: int = 0;\n"
-    "    while (i < size) {\n"
-    "        c := ByteAt(s, i);\n"
-    "        if (c >= 65 && c <= 90) {\n"
-    "            letter := Slice(\"abcdefghijklmnopqrstuvwxyz\", c - 65, 1);\n"
-    "            result = format_text(\"{}{}{}\", result, Slice(s, start, i - "
-    "start), letter);\n"
-    "            start = i + 1;\n"
-    "        }\n"
-    "        i += 1;\n"
-    "    }\n"
-    "    if (start == 0) {\n"
-    "        return s;\n"
-    "    }\n"
-    "    return format_text(\"{}{}\", result, Slice(s, start, size - start));\n"
-    "}\n"
-    "ToUpper :: (s: string) -> string {\n"
-    "    size := ByteLength(s);\n"
-    "    result: string = \"\";\n"
-    "    start: int = 0;\n"
-    "    i: int = 0;\n"
-    "    while (i < size) {\n"
-    "        c := ByteAt(s, i);\n"
-    "        if (c >= 97 && c <= 122) {\n"
-    "            letter := Slice(\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", c - 97, 1);\n"
-    "            result = format_text(\"{}{}{}\", result, Slice(s, start, i - "
-    "start), letter);\n"
-    "            start = i + 1;\n"
-    "        }\n"
-    "        i += 1;\n"
-    "    }\n"
-    "    if (start == 0) {\n"
-    "        return s;\n"
-    "    }\n"
-    "    return format_text(\"{}{}\", result, Slice(s, start, size - start));\n"
-    "}\n"
-    "Repeat :: (s: string, count: int) -> string {\n"
-    "    if (count < 1) {\n"
-    "        return \"\";\n"
-    "    }\n"
-    "    total: i64 = i64(ByteLength(s)) * i64(count);\n"
-    "    result: string = s;\n"
-    "    while (i64(ByteLength(result)) < total) {\n"
-    "        rest: i64 = total - i64(ByteLength(result));\n"
-    "        result = format_text(\"{}{}\", result, Slice(result, 0, "
-    "int(rest)));\n"
-    "    }\n"
-    "    return result;\n"
-    "}\n"
-    "Replace :: (s: string, old: string, new: string, n: int) -> string {\n"
-    "    if (old == new || n == 0) {\n"
-    "        return s;\n"
-    "    }\n"
-    "    matches := Count(s, old);\n"
-    "    if (matches == 0) {\n"
-    "        return s;\n"
-    "    }\n"
-    "    if (n > 0 && n < matches) {\n"
-    "        matches = n;\n"
-    "    }\n"
-    "    size := ByteLength(s);\n"
-    "    width := ByteLength(old);\n"
-    "    result: string = \"\";\n"
-    "    start: int = 0;\n"
-    "    i: int = 0;\n"
-    "    while (i < matches) {\n"
-    "        j := start;\n"
-    "        if (width == 0) {\n"
-    "            if (i > 0) {\n"
-    "                j += 1;\n"
-    "            }\n"
-    "        } else {\n"
-    "            j += Index(Slice(s, start, size - start), old);\n"
-    "        }\n"
-    "        result = format_text(\"{}{}{}\", result, Slice(s, start, j - "
-    "start), new);\n"
-    "        start = j + width;\n"
-    "        i += 1;\n"
-    "    }\n"
-    "    return format_text(\"{}{}\", result, Slice(s, start, size - start));\n"
-    "}\n"
-    "ReplaceAll :: (s: string, old: string, new: string) -> string {\n"
-    "    return Replace(s, old, new, -1);\n"
-    "}\n",
-};
+
 enum
 {
     TEXT_FORMATS_ENTRY = 1366853637
 };
 /* Why module `name`'s rows on VM b have no IR: the producer's rejection or
  * the consumer's validation error. */
-static void report_rejection(int b, const char *name, pin_value *rows)
-{
-    pin_value error;
-    if (row_int(rows, 1, "kind") == SCALAR_REJECTION_ROW) {
-        const pin_array *array = rows->ptr;
-        error = scalar_field(&array->items[1], "text");
-    } else if (!compiler_fixture_call(
-                   &consumer,
-                   b,
-                   "project:scalar_llvm",
-                   "Validate",
-                   rows,
-                   1,
-                   COMPILE_BUDGET,
-                   &input,
-                   &error
-               )) {
-        error = text("Validate failed");
-    }
-    fprintf(
-        stderr,
-        "scalar case %s: rejected: %.*s\n",
-        name,
-        (int)pin_text(error).length,
-        pin_text(error).bytes
-    );
-}
+
 /* Module `name` is accepted, and its Main gives `entry` on VM b and
  * natively at O0 and O2. */
-static bool module_gives(const char *directory, int b, const char *name, const char *source, int32_t entry)
-{
-    pin_value rows;
-    REQUIRE(collected_rows(b, name, text(source), &rows));
-    char *ir;
-    REQUIRE(emitted_ir(b, &rows, &ir));
-    if (!ir) {
-        report_rejection(b, name, &rows);
-    }
-    REQUIRE(ir);
-    scalar_call calls[MAX_CASE_CALLS];
-    REQUIRE(module_agrees(
-        directory,
-        b,
-        name,
-        (pin_string){ .bytes = source, .length = strlen(source) },
-        &rows,
-        ir,
-        entry,
-        calls
-    ));
-    if (calls[0].values[0] != entry) {
-        fprintf(
-            stderr,
-            "scalar case %s: Main gave %" PRId64 ", not %d\n",
-            name,
-            calls[0].values[0],
-            entry
-        );
-    }
-    REQUIRE(calls[0].values[0] == entry);
-    arena_free(&detached);
-    return true;
-}
+
 /* TEXT_FORMATS, with TEXT_NATIVES' functions but its Main, gives its value
  * on both VMs and natively at O0 and O2, each native call formatting in a
  * context whose heap is freed after it. */
-static bool text_formats_agree(const char *directory)
-{
-    size_t length = 0;
-    for (size_t i = 0; i < sizeof TEXT_FORMATS / sizeof *TEXT_FORMATS; i++) {
-        length += strlen(TEXT_FORMATS[i]);
-    }
-    for (size_t i = 1; i < sizeof TEXT_NATIVES / sizeof *TEXT_NATIVES; i++) {
-        length += strlen(TEXT_NATIVES[i]);
-    }
-    char *source = xmalloc(length + 1);
-    source[0] = 0;
-    for (size_t i = 0; i < sizeof TEXT_FORMATS / sizeof *TEXT_FORMATS; i++) {
-        strcat(source, TEXT_FORMATS[i]);
-    }
-    for (size_t i = 1; i < sizeof TEXT_NATIVES / sizeof *TEXT_NATIVES; i++) {
-        strcat(source, TEXT_NATIVES[i]);
-    }
-    bool gives = module_gives(directory, 0, "text_formats", source, TEXT_FORMATS_ENTRY);
-    free(source);
-    return gives;
-}
+
 /* Each folded source and the text natives' source is accepted, and its Main
  * gives its value on both VMs and natively at O0 and O2. */
-static bool folded_sources_agree(const char *directory)
-{
-    for (int i = 0; i < FOLDED_SOURCE_COUNT && !native_cancelled; i++) {
-        REQUIRE(module_gives(
-            directory,
-            i % 2,
-            FOLDED_SOURCES[i].name,
-            FOLDED_SOURCES[i].source,
-            FOLDED_SOURCES[i].entry
-        ));
-    }
-    size_t length = 0;
-    for (size_t i = 0; i < sizeof TEXT_NATIVES / sizeof *TEXT_NATIVES; i++) {
-        length += strlen(TEXT_NATIVES[i]);
-    }
-    char *source = xmalloc(length + 1);
-    source[0] = 0;
-    for (size_t i = 0; i < sizeof TEXT_NATIVES / sizeof *TEXT_NATIVES; i++) {
-        strcat(source, TEXT_NATIVES[i]);
-    }
-    bool gives = native_cancelled ||
-                 module_gives(directory, FOLDED_SOURCE_COUNT % 2, "text_natives", source, TEXT_NATIVES_ENTRY);
-    free(source);
-    return gives && (native_cancelled || text_formats_agree(directory));
-}
+
 /* A constant that folds outside its type is still a located error. */
-static bool folded_overflow_rejected()
-{
-    static const char SOURCE[] = "package scalar\nMain :: () -> int { return "
-                                 "2147483647 + 1; }\n";
-    pin_value rows;
-    REQUIRE(collected_rows(0, "folded_overflow", text(SOURCE), &rows));
-    const pin_array *array = rows.ptr;
-    REQUIRE(row_count(&rows) == 2 && row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW);
-    const char *message = pin_text(scalar_field(&array->items[1], "text")).bytes;
-    if (!strstr(message, "outside the range of int")) {
-        fprintf(stderr, "scalar case folded_overflow: %s\n", message);
-    }
-    REQUIRE(strstr(message, "outside the range of int"));
-    arena_free(&detached);
-    return true;
-}
+
 /* The integer types, as the width modules declare them: each one's name, the
  * name its functions take, its scalar_facts type, bits and signedness. */
+
 typedef struct scalar_width
 {
     const char *name, *title;
@@ -11808,34 +4069,9 @@ enum
 };
 /* `bits` as a value of `w`: its low bits, sign-extended when `w` is signed,
  * so a uint64 is its bits. */
-static int64_t width_value(const scalar_width *w, uint64_t bits)
-{
-    if (w->bits < 64) {
-        uint64_t mask = (UINT64_C(1) << w->bits) - 1;
-        bits &= mask;
-        if (!w->is_unsigned && bits >> (w->bits - 1)) {
-            bits |= ~mask;
-        }
-    }
-    return (int64_t)bits;
-}
-static int64_t width_least(const scalar_width *w)
-{
-    return w->is_unsigned ? 0 : width_value(w, UINT64_C(1) << (w->bits - 1));
-}
-static int64_t width_greatest(const scalar_width *w)
-{
-    return width_value(w, w->is_unsigned ? UINT64_MAX : (UINT64_C(1) << (w->bits - 1)) - 1);
-}
+
 /* Whether value `a` of `t` is less than value `b` of `u`. */
-static bool width_below(const scalar_width *t, int64_t a, const scalar_width *u, int64_t b)
-{
-    bool a_negative = !t->is_unsigned && a < 0, b_negative = !u->is_unsigned && b < 0;
-    if (a_negative != b_negative) {
-        return a_negative;
-    }
-    return a_negative ? a < b : (uint64_t)a < (uint64_t)b;
-}
+
 /* The operations of a width module: the function, its expression over `a`
  * and `b` of the module's type or the uint shift count `n`, and its arity. */
 enum
@@ -11889,317 +4125,42 @@ static const struct
     [WIDTH_NOT] = { "Not", "~a", 1 },
 };
 /* The far shifts' constant count, which ShiftStep clamps to the type. */
-static const int64_t FAR_COUNT = 300;
+
 /* The language's integer contract for operation `op` on values of `w`:
  * nothing fails, and a shift count is a uint at or past the width. */
-static int64_t width_total(const scalar_width *w, int op, int64_t a, int64_t b)
-{
-    uint64_t x = (uint64_t)a, y = (uint64_t)b;
-    bool sign = !w->is_unsigned;
-    switch (op) {
-        case WIDTH_ADD: return width_value(w, x + y);
-        case WIDTH_SUB: return width_value(w, x - y);
-        case WIDTH_MUL: return width_value(w, x * y);
-        case WIDTH_DIV:
-            return !b              ? 0
-                 : sign && b == -1 ? width_value(w, 0 - x)
-                 : sign            ? a / b
-                                   : (int64_t)(x / y);
-        case WIDTH_MOD:
-            return !b              ? a
-                 : sign && b == -1 ? 0
-                 : sign            ? a % b
-                                   : (int64_t)(x % y);
-        case WIDTH_AND: return a & b;
-        case WIDTH_OR: return a | b;
-        case WIDTH_XOR: return a ^ b;
-        case WIDTH_LT: return width_below(w, a, w, b);
-        case WIDTH_LE: return !width_below(w, b, w, a);
-        case WIDTH_GT: return width_below(w, b, w, a);
-        case WIDTH_GE: return !width_below(w, a, w, b);
-        case WIDTH_EQ: return a == b;
-        case WIDTH_NE: return a != b;
-        case WIDTH_SHL_FAR: y = FAR_COUNT; /* fall through */
-        case WIDTH_SHL:
-            return y >= (uint64_t)w->bits ? 0 : width_value(w, x << y);
-        case WIDTH_SHR_FAR: y = FAR_COUNT; /* fall through */
-        case WIDTH_SHR:
-            if (y >= (uint64_t)w->bits) {
-                return sign && a < 0 ? -1 : 0;
-            }
-            return !sign ? (int64_t)(x >> y) : a < 0 ? ~(~a >> y) : a >> y;
-        case WIDTH_NEG: return width_value(w, 0 - x);
-        default: return width_value(w, ~x);
-    }
-}
+
 /* The boundary values a width module's operations take: the least and
  * greatest, those next to them, 0, 1 and -1, or the top bit unsigned. */
-static int width_samples(const scalar_width *w, int64_t samples[6])
-{
-    uint64_t top = UINT64_C(1) << (w->bits - 1);
-    if (w->is_unsigned) {
-        const int64_t values[6] = { 0,
-                                    1,
-                                    2,
-                                    width_value(w, top),
-                                    width_greatest(w) - 1,
-                                    width_greatest(w) };
-        memcpy(samples, values, sizeof values);
-    } else {
-        const int64_t values[6] = {
-            width_least(w), width_least(w) + 1, -1, 0, 1, width_greatest(w)
-        };
-        memcpy(samples, values, sizeof values);
-    }
-    return 6;
-}
+
 /* The uint shift counts: in range, the width's edges and past it, and past
  * every narrower type's range, which the count's conversion clamps. */
-static int shift_counts(const scalar_width *w, int64_t counts[7])
-{
-    const int64_t values[7] = { 0,           1,   w->bits - 1, w->bits,
-                                w->bits + 1, 255, UINT32_MAX };
-    memcpy(counts, values, sizeof values);
-    return 7;
-}
+
 /* The operations module of `w`: Main, then one function per operation. */
-static void width_operations_source(const scalar_width *w, char source[WIDTH_SOURCE_BYTES])
-{
-    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return int(wrap: Mul(3, 5)); }\n");
-    for (int op = 0; op < WIDTH_OPERATIONS; op++) {
-        const char *result = op >= WIDTH_LT && op <= WIDTH_NE ? "bool" : w->name;
-        char parameters[64];
-        if (WIDTH_OPERATION[op].parameters == 1) {
-            snprintf(parameters, sizeof parameters, "a: %s", w->name);
-        } else if (op == WIDTH_SHL || op == WIDTH_SHR) {
-            snprintf(parameters, sizeof parameters, "a: %s, n: u32", w->name);
-        } else {
-            snprintf(parameters, sizeof parameters, "a: %s, b: %s", w->name, w->name);
-        }
-        n += snprintf(
-            source + n,
-            WIDTH_SOURCE_BYTES - (size_t)n,
-            "%s :: (%s) -> %s { return %s; }\n",
-            WIDTH_OPERATION[op].name,
-            parameters,
-            result,
-            WIDTH_OPERATION[op].expression
-        );
-    }
-    assert(n < WIDTH_SOURCE_BYTES);
-}
+
 /* A call of `function` with `count` arguments that must give `expected`. */
-static scalar_call width_call(const char *function, int count, int64_t a, int64_t b, int64_t expected)
-{
-    return (scalar_call){ .probe = { "widths", function, count, { a, b }, expected } };
-}
+
 /* The entry, then each operation of `w` on every pair of its samples, or
  * each sample with every shift count, or each sample alone. */
-static int width_operation_calls(const scalar_width *w, scalar_call calls[MAX_WIDTH_CALLS])
-{
-    int64_t samples[6], counts[7];
-    int sample_count = width_samples(w, samples),
-        count_count = shift_counts(w, counts), count = 0;
-    calls[count++] = width_call("Main", 0, 0, 0, 15);
-    for (int op = 0; op < WIDTH_OPERATIONS; op++) {
-        bool shift = op == WIDTH_SHL || op == WIDTH_SHR,
-             unary = WIDTH_OPERATION[op].parameters == 1;
-        const int64_t *rights = shift ? counts : samples;
-        int right_count = unary ? 1 : shift ? count_count : sample_count;
-        for (int i = 0; i < sample_count; i++) {
-            for (int j = 0; j < right_count; j++) {
-                int64_t a = samples[i], b = unary ? 0 : rights[j];
-                assert(count < MAX_WIDTH_CALLS);
-                calls[count++] = width_call(
-                    WIDTH_OPERATION[op].name,
-                    WIDTH_OPERATION[op].parameters,
-                    a,
-                    b,
-                    width_total(w, op, a, b)
-                );
-            }
-        }
-    }
-    return count;
-}
+
 /* The values conversions take: each type's edges and those next to them, as
  * an int64 sample or, past it, a uint64 one. */
-static const int64_t CONVERTED[] = { 0,
-                                     1,
-                                     -1,
-                                     42,
-                                     127,
-                                     128,
-                                     -128,
-                                     -129,
-                                     255,
-                                     256,
-                                     298,
-                                     32767,
-                                     32768,
-                                     -32768,
-                                     -32769,
-                                     65535,
-                                     65536,
-                                     INT32_MAX,
-                                     INT32_MAX + INT64_C(1),
-                                     INT32_MIN,
-                                     INT32_MIN - INT64_C(1),
-                                     UINT32_MAX,
-                                     UINT32_MAX + INT64_C(1),
-                                     INT64_MAX,
-                                     INT64_MIN };
-static const int64_t CONVERTED_WORDS[] = { INT64_MIN, -1 };
+
 /* `T(value)` and `T(wrap: value)` for a value of `from` and T `to`. */
-static int64_t clamped(const scalar_width *from, int64_t value, const scalar_width *to)
-{
-    if (width_below(from, value, to, width_least(to))) {
-        return width_least(to);
-    }
-    if (width_below(to, width_greatest(to), from, value)) {
-        return width_greatest(to);
-    }
-    return width_value(to, (uint64_t)value);
-}
+
 /* The conversions module of `to`: Main, then ClampT and WrapT for each type
  * T, which convert their T to `to`. */
-static void width_conversions_source(const scalar_width *to, char source[WIDTH_SOURCE_BYTES])
-{
-    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return int(wrap: WrapInt(298)); }\n");
-    for (int i = 0; i < SCALAR_WIDTHS; i++) {
-        const scalar_width *from = &WIDTHS[i];
-        n += snprintf(
-            source + n,
-            WIDTH_SOURCE_BYTES - (size_t)n,
-            "Clamp%s :: (a: %s) -> %s { return %s(a); }\nWrap%s :: (a: %s) "
-            "-> "
-            "%s { return %s(wrap: a); }\n",
-            from->title,
-            from->name,
-            to->name,
-            to->name,
-            from->title,
-            from->name,
-            to->name,
-            to->name
-        );
-    }
-    assert(n < WIDTH_SOURCE_BYTES);
-}
+
 /* The entry, then both conversions of each type's every sample it holds. */
-static int width_conversion_calls(const scalar_width *to, scalar_call *calls, char names[][32])
-{
-    int count = 0;
-    calls[count++] = width_call(
-        "Main",
-        0,
-        0,
-        0,
-        width_value(&WIDTHS[WIDTH_INT], (uint64_t)width_value(to, 298))
-    );
-    for (int i = 0; i < SCALAR_WIDTHS; i++) {
-        const scalar_width *from = &WIDTHS[i];
-        for (int wrap = 0; wrap < 2; wrap++) {
-            int name = 2 * i + wrap;
-            snprintf(names[name], sizeof names[name], "%s%s", wrap ? "Wrap" : "Clamp", from->title);
-            for (int k = 0; k < (int)(sizeof CONVERTED / sizeof *CONVERTED) + 2; k++) {
-                bool word = k >= (int)(sizeof CONVERTED / sizeof *CONVERTED);
-                const scalar_width *sampled = word ? &WIDTHS[WIDTH_WORD]
-                                                   : &WIDTHS[WIDTH_INT64];
-                int64_t value = word
-                                  ? CONVERTED_WORDS[k - (int)(sizeof CONVERTED / sizeof *CONVERTED)]
-                                  : CONVERTED[k];
-                if (width_below(sampled, value, from, width_least(from)) ||
-                    width_below(from, width_greatest(from), sampled, value)) {
-                    continue;
-                }
-                int64_t expected = wrap ? width_value(to, (uint64_t)value)
-                                        : clamped(from, value, to);
-                assert(count < MAX_WIDTH_CALLS);
-                calls[count++] = width_call(names[name], 1, value, 0, expected);
-            }
-        }
-    }
-    return count;
-}
+
 /* `source`, a width module, is accepted on VM b, and each of its `calls`
  * gives its oracle's value on both VMs and natively at O0 and O2. */
-static bool width_module_agrees(
-    const char *directory,
-    int b,
-    const char *name,
-    const char *source,
-    scalar_call *calls,
-    int count
-)
-{
-    pin_value rows;
-    REQUIRE(collected_rows(b, name, text(source), &rows));
-    char *ir;
-    REQUIRE(emitted_ir(b, &rows, &ir));
-    if (!ir) {
-        const pin_array *array = rows.ptr;
-        fprintf(
-            stderr,
-            "scalar case %s: %s at %d:%d\n",
-            name,
-            pin_text(scalar_field(&array->items[1], "text")).bytes,
-            scalar_field(&array->items[1], "line").i,
-            scalar_field(&array->items[1], "column").i
-        );
-    }
-    REQUIRE(ir);
-    snprintf(calls[0].json, sizeof calls[0].json, "[]");
-    snprintf(calls[0].symbol, sizeof calls[0].symbol, "chibi_scalar");
-    for (int i = 1; i < count; i++) {
-        probe_json(&rows, &calls[i].probe, calls[i].json, sizeof calls[i].json);
-        snprintf(
-            calls[i].symbol,
-            sizeof calls[i].symbol,
-            "probe_%s",
-            calls[i].probe.function
-        );
-    }
-    bool agree = runs_everywhere(
-        directory,
-        b,
-        name,
-        (pin_string){ .bytes = source, .length = strlen(source) },
-        &rows,
-        ir,
-        calls,
-        count
-    );
-    free(ir);
-    arena_free(&detached);
-    REQUIRE(agree);
-    return true;
-}
+
 /* Every integer type's operations and its conversions from every type, at
  * their boundaries, run natively as the integer contract and both VMs give
  * them. */
-static bool widths_agree(const char *directory)
-{
-    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
-    char source[WIDTH_SOURCE_BYTES], name[64], names[2 * SCALAR_WIDTHS][32];
-    bool agreed = true;
-    for (int i = 0; agreed && !native_cancelled && i < SCALAR_WIDTHS; i++) {
-        snprintf(name, sizeof name, "%s_operations", WIDTHS[i].name);
-        width_operations_source(&WIDTHS[i], source);
-        int count = width_operation_calls(&WIDTHS[i], calls);
-        agreed = width_module_agrees(directory, i % 2, name, source, calls, count);
-        snprintf(name, sizeof name, "%s_conversions", WIDTHS[i].name);
-        width_conversions_source(&WIDTHS[i], source);
-        count = width_conversion_calls(&WIDTHS[i], calls, names);
-        agreed = agreed &&
-                 width_module_agrees(directory, (i + 1) % 2, name, source, calls, count);
-    }
-    free(calls);
-    REQUIRE(agreed);
-    return true;
-}
 
 /* The operations float and double take, of WIDTH_OPERATION. */
+
 static const int FLOATING_OPERATIONS[] = { WIDTH_ADD, WIDTH_SUB, WIDTH_MUL,
                                            WIDTH_DIV, WIDTH_LT,  WIDTH_LE,
                                            WIDTH_GT,  WIDTH_GE,  WIDTH_EQ,
@@ -12209,654 +4170,64 @@ enum
     FLOATING_OPERATION_COUNT = (int)(sizeof FLOATING_OPERATIONS / sizeof *FLOATING_OPERATIONS),
     FLOATING_SAMPLES = 9
 };
-static const char *floating_name(int type)
-{
-    return type == SCALAR_FLOAT ? "number" : "f64";
-}
+
 /* The values a floating module's operations take: both zeros, a finite value
  * of each sign, one that rounds, the extremes, both infinities and NaN. */
-static void floating_samples(int type, double samples[FLOATING_SAMPLES])
-{
-    bool narrow = type == SCALAR_FLOAT;
-    const double values[FLOATING_SAMPLES] = { 0.0,
-                                              -0.0,
-                                              1.0,
-                                              narrow ? (double)-0.1f : -0.1,
-                                              narrow ? FLT_MAX : DBL_MAX,
-                                              narrow ? FLT_TRUE_MIN : DBL_TRUE_MIN,
-                                              INFINITY,
-                                              -INFINITY,
-                                              NAN };
-    memcpy(samples, values, sizeof values);
-}
+
 /* IEEE operation `op` on `a` and `b` at the width of `type`, rounding to
  * nearest. Every ordered comparison is false for NaN, and != true. */
-static int64_t floating_total(int type, int op, double a, double b)
-{
-    if (type == SCALAR_FLOAT) {
-        float x = (float)a, y = (float)b;
-        switch (op) {
-            case WIDTH_ADD: return floating_bits(type, x + y);
-            case WIDTH_SUB: return floating_bits(type, x - y);
-            case WIDTH_MUL: return floating_bits(type, x * y);
-            case WIDTH_DIV: return floating_bits(type, x / y);
-            case WIDTH_LT: return x < y;
-            case WIDTH_LE: return x <= y;
-            case WIDTH_GT: return x > y;
-            case WIDTH_GE: return x >= y;
-            case WIDTH_EQ: return x == y;
-            default: return x != y;
-        }
-    }
-    switch (op) {
-        case WIDTH_ADD: return floating_bits(type, a + b);
-        case WIDTH_SUB: return floating_bits(type, a - b);
-        case WIDTH_MUL: return floating_bits(type, a * b);
-        case WIDTH_DIV: return floating_bits(type, a / b);
-        case WIDTH_LT: return a < b;
-        case WIDTH_LE: return a <= b;
-        case WIDTH_GT: return a > b;
-        case WIDTH_GE: return a >= b;
-        case WIDTH_EQ: return a == b;
-        default: return a != b;
-    }
-}
+
 /* The ints a floating module adds to its type: an int becomes a float
  * through double, so 2^24 + 1 rounds to even. */
-static const int64_t MIXED_INTS[] = { 0, -1, 16777217, INT32_MAX, INT32_MIN };
+
 /* The operations module of floating `type`: Main, each operation, then the
  * typing rules around it: literals, an int operand, and for float its
  * widening to double. */
-static void floating_operations_source(int type, char source[WIDTH_SOURCE_BYTES])
-{
-    const char *name = floating_name(type);
-    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return int(Mul(2.5, 3.0)); }\n");
-    for (int i = 0; i < FLOATING_OPERATION_COUNT; i++) {
-        int op = FLOATING_OPERATIONS[i];
-        n += snprintf(
-            source + n,
-            WIDTH_SOURCE_BYTES - (size_t)n,
-            "%s :: (a: %s, b: %s) -> %s { return %s; }\n",
-            WIDTH_OPERATION[op].name,
-            name,
-            name,
-            op >= WIDTH_LT ? "bool" : name,
-            WIDTH_OPERATION[op].expression
-        );
-    }
-    n += snprintf(
-        source + n,
-        WIDTH_SOURCE_BYTES - (size_t)n,
-        "Mixed :: (a: %s, n: int) -> %s { return a + n; }\nSigned :: () -> "
-        "%s "
-        "{ return -1.5; }\nPlus :: () -> %s { return +1.5; }\nRounded :: "
-        "() -> "
-        "%s { return %s; }\nHalf :: (a: %s) -> bool { return a != 0.5; }\n",
-        name,
-        name,
-        name,
-        name,
-        name,
-        type == SCALAR_FLOAT ? "1.0000000596046447753906250000001" : "0.1",
-        name
-    );
-    if (type == SCALAR_FLOAT) {
-        n += snprintf(
-            source + n,
-            WIDTH_SOURCE_BYTES - (size_t)n,
-            "Widen :: (a: number) -> f64 { return a; }\nAddDouble :: (a: "
-            "number, b: f64) -> f64 { return a + b; }\n"
-        );
-    }
-    assert(n < WIDTH_SOURCE_BYTES);
-}
-static scalar_call floating_call(const char *function, int count, int64_t a, int64_t b, int64_t expected)
-{
-    return (scalar_call){ .probe = { "floats", function, count, { a, b }, expected } };
-}
+
 /* The entry, each operation on every pair of samples, and the typing rules'
  * calls. A float literal is the binary32 nearest its binary64, so the
  * literal just past halfway between 1 and the next float rounds to 1. */
-static int floating_operation_calls(int type, scalar_call calls[MAX_WIDTH_CALLS])
-{
-    double samples[FLOATING_SAMPLES];
-    floating_samples(type, samples);
-    int count = 0;
-    assert(count < MAX_WIDTH_CALLS);
-    calls[count++] = floating_call("Main", 0, 0, 0, 7);
-    for (int k = 0; k < FLOATING_OPERATION_COUNT; k++) {
-        int op = FLOATING_OPERATIONS[k];
-        for (int i = 0; i < FLOATING_SAMPLES; i++) {
-            for (int j = 0; j < FLOATING_SAMPLES; j++) {
-                assert(count < MAX_WIDTH_CALLS);
-                calls[count++] = floating_call(
-                    WIDTH_OPERATION[op].name,
-                    2,
-                    floating_bits(type, samples[i]),
-                    floating_bits(type, samples[j]),
-                    floating_total(type, op, samples[i], samples[j])
-                );
-            }
-        }
-    }
-    /* Each function's calls are consecutive, so each gets one adapter. */
-    for (int i = 0; i < FLOATING_SAMPLES; i++) {
-        for (size_t j = 0; j < sizeof MIXED_INTS / sizeof *MIXED_INTS; j++) {
-            double n = (double)MIXED_INTS[j];
-            assert(count < MAX_WIDTH_CALLS);
-            calls[count++] = floating_call(
-                "Mixed",
-                2,
-                floating_bits(type, samples[i]),
-                MIXED_INTS[j],
-                floating_total(type, WIDTH_ADD, samples[i], type == SCALAR_FLOAT ? (float)n : n)
-            );
-        }
-    }
-    for (int i = 0; i < FLOATING_SAMPLES; i++) {
-        assert(count < MAX_WIDTH_CALLS);
-        calls[count++] = floating_call("Half", 1, floating_bits(type, samples[i]), 0, samples[i] != 0.5);
-    }
-    for (int i = 0; type == SCALAR_FLOAT && i < FLOATING_SAMPLES; i++) {
-        int64_t a = floating_bits(type, samples[i]);
-        assert(count < MAX_WIDTH_CALLS);
-        calls[count++] = floating_call("Widen", 1, a, 0, floating_bits(SCALAR_DOUBLE, samples[i]));
-    }
-    for (int i = 0; type == SCALAR_FLOAT && i < FLOATING_SAMPLES; i++) {
-        assert(count < MAX_WIDTH_CALLS);
-        calls[count++] = floating_call(
-            "AddDouble",
-            2,
-            floating_bits(type, samples[i]),
-            floating_bits(SCALAR_DOUBLE, 0.1),
-            floating_bits(SCALAR_DOUBLE, samples[i] + 0.1)
-        );
-    }
-    assert(count < MAX_WIDTH_CALLS);
-    calls[count++] = floating_call("Signed", 0, 0, 0, floating_bits(type, -1.5));
-    assert(count < MAX_WIDTH_CALLS);
-    calls[count++] = floating_call("Plus", 0, 0, 0, floating_bits(type, 1.5));
-    assert(count < MAX_WIDTH_CALLS);
-    calls[count++] = floating_call("Rounded", 0, 0, 0, floating_bits(type, type == SCALAR_FLOAT ? 1.0 : 0.1));
-    return count;
-}
+
 /* The values floats convert to integers from: each integer type's edges,
  * with fractions on either side, past every type, the infinities, NaN and
  * the least subnormals. */
-static const double TRUNCATED[] = { 0.0,
-                                    -0.0,
-                                    0.9,
-                                    -0.9,
-                                    1.5,
-                                    -1.5,
-                                    127.5,
-                                    128.0,
-                                    -128.5,
-                                    -129.0,
-                                    255.5,
-                                    256.0,
-                                    32767.5,
-                                    32768.0,
-                                    -32768.5,
-                                    -32769.0,
-                                    65535.5,
-                                    65536.0,
-                                    2147483647.5,
-                                    2147483648.0,
-                                    -2147483648.5,
-                                    -2147483649.0,
-                                    4294967295.5,
-                                    4294967296.0,
-                                    9223372036854774784.0,
-                                    9223372036854775808.0,
-                                    -9223372036854775808.0,
-                                    -9223372036854777856.0,
-                                    18446744073709549568.0,
-                                    18446744073709551616.0,
-                                    1e30,
-                                    -1e30,
-                                    INFINITY,
-                                    -INFINITY,
-                                    NAN,
-                                    DBL_TRUE_MIN,
-                                    -DBL_TRUE_MIN };
+
 /* `T(value)` for a float or double `value` and integer type `to`: truncated
  * toward zero, saturated at the type's bounds, and 0 for NaN. */
-static int64_t truncated(const scalar_width *to, double value)
-{
-    if (isnan(value)) {
-        return 0;
-    }
-    double whole = trunc(value), limit = ldexp(1, to->bits - !to->is_unsigned);
-    if (whole >= limit) {
-        return width_greatest(to);
-    }
-    if (whole < (to->is_unsigned ? 0 : -limit)) {
-        return width_least(to);
-    }
-    return to->is_unsigned ? (int64_t)(uint64_t)whole : (int64_t)whole;
-}
+
 /* The ints converted to float through double rounding: below 2^53 and 2^24
  * they are exact, and past them each rounds to nearest, with 2^60 + 2^36 +
  * 1 rounding twice. */
-static const int64_t FLOATED[] = { INT64_C(16777217),
-                                   INT64_C(9007199254740993),
-                                   INT64_C(0x1000001000000001) };
+
 /* The integer `value` of `from` as floating `type`: an int becomes a
  * double, then a float. */
-static int64_t floated(int type, const scalar_width *from, int64_t value)
-{
-    double wide = from->is_unsigned ? (double)(uint64_t)value : (double)value;
-    return floating_bits(type, type == SCALAR_FLOAT ? (float)wide : wide);
-}
+
 /* The conversions module of floating `type`: Main, To<T> and From<T>
  * between it and each integer type T, and Narrow from double to float or
  * Widen from float to double. */
-static void floating_conversions_source(int type, char source[WIDTH_SOURCE_BYTES])
-{
-    const char *name = floating_name(type);
-    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return ToInt(-7.5); }\n");
-    for (int i = 0; i < SCALAR_WIDTHS; i++) {
-        const scalar_width *w = &WIDTHS[i];
-        n += snprintf(
-            source + n,
-            WIDTH_SOURCE_BYTES - (size_t)n,
-            "To%s :: (a: %s) -> %s { return %s(a); }\nFrom%s :: (a: %s) -> "
-            "%s "
-            "{ "
-            "return %s(a); }\n",
-            w->title,
-            name,
-            w->name,
-            w->name,
-            w->title,
-            w->name,
-            name,
-            name
-        );
-    }
-    n += snprintf(
-        source + n,
-        WIDTH_SOURCE_BYTES - (size_t)n,
-        type == SCALAR_FLOAT
-            ? "Narrow :: (a: f64) -> number { return number(a); }\n"
-            : "Widen :: (a: number) -> f64 { return f64(a); }\n"
-    );
-    assert(n < WIDTH_SOURCE_BYTES);
-}
+
 /* The entry, each To<T> of every sample as `type` holds it, each From<T> of
  * every integer sample T holds, and Narrow or Widen of every sample. */
-static int floating_conversion_calls(int type, scalar_call *calls, char names[][32])
-{
-    int count = 0, samples = (int)(sizeof TRUNCATED / sizeof *TRUNCATED);
-    assert(count < MAX_WIDTH_CALLS);
-    calls[count++] = floating_call("Main", 0, 0, 0, -7);
-    for (int i = 0; i < SCALAR_WIDTHS; i++) {
-        const scalar_width *w = &WIDTHS[i];
-        snprintf(names[2 * i], sizeof names[2 * i], "To%s", w->title);
-        snprintf(names[2 * i + 1], sizeof names[2 * i + 1], "From%s", w->title);
-        for (int k = 0; k < samples; k++) {
-            int64_t bits = floating_bits(type, TRUNCATED[k]);
-            assert(count < MAX_WIDTH_CALLS);
-            calls[count++] = floating_call(
-                names[2 * i],
-                1,
-                bits,
-                0,
-                truncated(w, floating_value(type, bits))
-            );
-        }
-        int converted = (int)(sizeof CONVERTED / sizeof *CONVERTED),
-            words = (int)(sizeof CONVERTED_WORDS / sizeof *CONVERTED_WORDS),
-            floated_count = (int)(sizeof FLOATED / sizeof *FLOATED);
-        for (int k = 0; k < converted + words + floated_count; k++) {
-            bool word = k >= converted && k < converted + words;
-            const scalar_width *sampled = word ? &WIDTHS[WIDTH_WORD]
-                                               : &WIDTHS[WIDTH_INT64];
-            int64_t value = k < converted ? CONVERTED[k]
-                          : word          ? CONVERTED_WORDS[k - converted]
-                                          : FLOATED[k - converted - words];
-            if (width_below(sampled, value, w, width_least(w)) ||
-                width_below(w, width_greatest(w), sampled, value)) {
-                continue;
-            }
-            assert(count < MAX_WIDTH_CALLS);
-            calls[count++] = floating_call(names[2 * i + 1], 1, value, 0, floated(type, w, value));
-        }
-    }
-    int other = type == SCALAR_FLOAT ? SCALAR_DOUBLE : SCALAR_FLOAT;
-    for (int k = 0; k < samples; k++) {
-        double value = floating_value(other, floating_bits(other, TRUNCATED[k]));
-        assert(count < MAX_WIDTH_CALLS);
-        calls[count++] = floating_call(
-            type == SCALAR_FLOAT ? "Narrow" : "Widen",
-            1,
-            floating_bits(other, value),
-            0,
-            floating_bits(type, value)
-        );
-    }
-    return count;
-}
+
 /* Float and double operations, conversions to and from every integer type
  * and between the two, at their boundaries and IEEE's special values, run
  * natively as C's IEEE arithmetic and both VMs give them. */
-static bool floats_agree(const char *directory)
-{
-    static const int TYPES[] = { SCALAR_FLOAT, SCALAR_DOUBLE };
-    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
-    char source[WIDTH_SOURCE_BYTES], name[64], names[2 * SCALAR_WIDTHS][32];
-    bool agreed = true;
-    for (int i = 0; agreed && !native_cancelled && i < 2; i++) {
-        snprintf(name, sizeof name, "%s_operations", floating_name(TYPES[i]));
-        floating_operations_source(TYPES[i], source);
-        int count = floating_operation_calls(TYPES[i], calls);
-        agreed = width_module_agrees(directory, i, name, source, calls, count);
-        snprintf(name, sizeof name, "%s_conversions", floating_name(TYPES[i]));
-        floating_conversions_source(TYPES[i], source);
-        count = floating_conversion_calls(TYPES[i], calls, names);
-        agreed = agreed &&
-                 width_module_agrees(directory, 1 - i, name, source, calls, count);
-    }
-    free(calls);
-    REQUIRE(agreed);
-    return true;
-}
 
 /* Control flow over every statement form: else-if chains that end or fall
  * through, nested consequences with locals of their own, compound
  * assignments to parameters and to a byte local, every logical form and
  * bool equality. */
-static const char CONTROL_SOURCE
-    [] = "package scalar\n"
-         "Main :: () -> int { return Flow(30, 5) + Grade(85); }\n"
-         "Sign :: (x: int) -> int {\n"
-         "    if (x < 0) {\n"
-         "        return -1;\n"
-         "    } else if (x == 0) {\n"
-         "        return 0;\n"
-         "    } else {\n"
-         "        return 1;\n"
-         "    }\n"
-         "}\n"
-         "Grade :: (x: int) -> int {\n"
-         "    if (x >= 90) {\n"
-         "        return 4;\n"
-         "    } else if (x >= 80) {\n"
-         "        return 3;\n"
-         "    } else if (x >= 70) {\n"
-         "        return 2;\n"
-         "    } else if (x >= 60) {\n"
-         "        return 1;\n"
-         "    }\n"
-         "    return 0;\n"
-         "}\n"
-         "Parity :: (x: int) -> int {\n"
-         "    kind := 0;\n"
-         "    if (x > 0) {\n"
-         "        if (x % 2 == 0) {\n"
-         "            kind = 2;\n"
-         "        } else {\n"
-         "            kind = 1;\n"
-         "        }\n"
-         "    } else {\n"
-         "        offset := 3;\n"
-         "        kind = kind + offset;\n"
-         "    }\n"
-         "    return kind;\n"
-         "}\n"
-         "Flow :: (a: int, b: int) -> int {\n"
-         "    r := 0;\n"
-         "    if (a > b) {\n"
-         "        r = a - b;\n"
-         "    }\n"
-         "    if (a == b) {\n"
-         "        return 100;\n"
-         "    }\n"
-         "    if (r > 10 && a > 0) {\n"
-         "        r = 10;\n"
-         "    } else if (!(r > 0)) {\n"
-         "        r = -1;\n"
-         "    }\n"
-         "    return r;\n"
-         "}\n"
-         "Steps :: (a: int, b: int) -> int {\n"
-         "    a += b;\n"
-         "    a *= 3;\n"
-         "    a -= 1;\n"
-         "    a = a << 2;\n"
-         "    a = a >> 1;\n"
-         "    a /= b;\n"
-         "    a %= 7;\n"
-         "    a ^= b;\n"
-         "    a |= 1;\n"
-         "    a &= 255;\n"
-         "    return a;\n"
-         "}\n"
-         "Low :: (a: u8, b: u8) -> u8 {\n"
-         "    x := a;\n"
-         "    x += b;\n"
-         "    x *= 3;\n"
-         "    x = x >> 1;\n"
-         "    return x;\n"
-         "}\n"
-         "Far :: (a: u8, n: u32) -> u8 {\n"
-         "    x := a;\n"
-         "    x = x << n;\n"
-         "    y := a;\n"
-         "    y = y >> 300;\n"
-         "    return x + y;\n"
-         "}\n"
-         "Shadow :: (x: int) -> int {\n"
-         "    y := x + 1;\n"
-         "    if (x > 0) {\n"
-         "        y := x * 2;\n"
-         "        return y;\n"
-         "    }\n"
-         "    return y;\n"
-         "}\n"
-         "Choose :: (c: bool, a: int, b: int) -> int {\n"
-         "    picked: int = b;\n"
-         "    if (c && a > b || !c && a < b) {\n"
-         "        picked = a;\n"
-         "    }\n"
-         "    return picked;\n"
-         "}\n"
-         "Both :: (a: bool, b: bool) -> bool { return a && b; }\n"
-         "Either :: (a: bool, b: bool) -> bool { return a || b; }\n"
-         "Not :: (a: bool) -> bool { return !a; }\n"
-         "Same :: (a: bool, b: bool) -> bool { return a == b; }\n"
-         "Differ :: (a: bool, b: bool) -> bool { return a != b; }\n"
-         "Mixed :: (a: bool, b: bool, c: bool) -> bool { return a && !b || c; "
-         "}\n"
-         "Nested :: (a: bool, b: bool, c: bool) -> bool { return a || (b && "
-         "!c) || !(a || c); }\n";
-static scalar_call control_call(const char *function, int count, int64_t a, int64_t b, int64_t c, int64_t expected)
-{
-    return (scalar_call){ .probe = { "control", function, count, { a, b, c }, expected } };
-}
+
 /* What CONTROL_SOURCE's integer functions give, as C computes them with the
  * integer contract: nothing fails, and a byte keeps its low bits. */
-static int64_t control_int(const char *function, int64_t a, int64_t b, int64_t c)
-{
-    int32_t x = (int32_t)a, y = (int32_t)b;
-    if (!strcmp(function, "Sign")) {
-        return x < 0 ? -1 : x == 0 ? 0 : 1;
-    }
-    if (!strcmp(function, "Grade")) {
-        return x >= 90 ? 4 : x >= 80 ? 3 : x >= 70 ? 2 : x >= 60 ? 1 : 0;
-    }
-    if (!strcmp(function, "Parity")) {
-        return x > 0 ? (total(11, x, 2) == 0 ? 2 : 1) : 3;
-    }
-    if (!strcmp(function, "Flow")) {
-        int32_t r = x > y ? total(8, x, y) : 0;
-        return x == y ? 100 : r > 10 && x > 0 ? 10 : !(r > 0) ? -1 : r;
-    }
-    if (!strcmp(function, "Steps")) {
-        x = total(7, x, y);
-        x = total(9, x, 3);
-        x = total(8, x, 1);
-        x = total(17, x, 2);
-        x = total(18, x, 1);
-        x = total(10, x, y);
-        x = total(11, x, 7);
-        return ((x ^ y) | 1) & 255;
-    }
-    if (!strcmp(function, "Low")) {
-        uint8_t v = (uint8_t)((uint8_t)(a + b) * 3);
-        return v >> 1;
-    }
-    if (!strcmp(function, "Far")) {
-        /* The count clamps to the byte, and 300 to its largest, 255. */
-        int64_t count = b > 255 ? 255 : b;
-        return count >= 8 ? 0 : (uint8_t)(a << count);
-    }
-    if (!strcmp(function, "Shadow")) {
-        return x > 0 ? total(9, x, 2) : total(7, x, 1);
-    }
-    assert(!strcmp(function, "Choose"));
-    return (a && y > (int32_t)c) || (!a && y < (int32_t)c) ? y : (int32_t)c;
-}
-static int64_t control_bool(const char *function, bool a, bool b, bool c)
-{
-    if (!strcmp(function, "Both")) {
-        return a && b;
-    }
-    if (!strcmp(function, "Either")) {
-        return a || b;
-    }
-    if (!strcmp(function, "Not")) {
-        return !a;
-    }
-    if (!strcmp(function, "Same")) {
-        return a == b;
-    }
-    if (!strcmp(function, "Differ")) {
-        return a != b;
-    }
-    if (!strcmp(function, "Mixed")) {
-        return (a && !b) || c;
-    }
-    assert(!strcmp(function, "Nested"));
-    return a || (b && !c) || !(a || c);
-}
+
 /* The entry, then each integer function on its samples, Far with each byte
  * and count, Choose with each
  * condition and ordered pair, and each bool function with every
  * combination of its arguments. */
-static int control_calls(scalar_call calls[MAX_WIDTH_CALLS])
-{
-    static const char *const INTS[] = { "Sign", "Grade", "Parity", "Shadow" };
-    static const char *const PAIRS_OF[] = { "Flow", "Steps" };
-    static const char *const BOOLS[] = { "Both",   "Either", "Not",   "Same",
-                                         "Differ", "Mixed",  "Nested" };
-    static const int BOOL_ARITY[] = { 2, 2, 1, 2, 2, 3, 3 };
-    static const int64_t SAMPLES[] = { INT32_MIN, -7, -1, 0,   1,
-                                       2,         59, 60, 69,  70,
-                                       80,        89, 90, 100, INT32_MAX };
-    static const int64_t PAIRED[] = { INT32_MIN, -11, -1, 0,        1,
-                                      5,         16,  30, INT32_MAX };
-    static const int64_t BYTES[] = { 0, 1, 85, 127, 128, 200, 255 };
-    static const int64_t COUNTS[] = { 0, 1, 7, 8, 9, 255, 256, UINT32_MAX };
-    int count = 0;
-    calls[count++] = control_call("Main", 0, 0, 0, 0, 13);
-    for (int f = 0; f < 4; f++) {
-        for (int i = 0; i < (int)(sizeof SAMPLES / sizeof *SAMPLES); i++) {
-            assert(count < MAX_WIDTH_CALLS);
-            calls[count++] = control_call(
-                INTS[f],
-                1,
-                SAMPLES[i],
-                0,
-                0,
-                control_int(INTS[f], SAMPLES[i], 0, 0)
-            );
-        }
-    }
-    for (int f = 0; f < 2; f++) {
-        for (int i = 0; i < (int)(sizeof PAIRED / sizeof *PAIRED); i++) {
-            for (int j = 0; j < (int)(sizeof PAIRED / sizeof *PAIRED); j++) {
-                assert(count < MAX_WIDTH_CALLS);
-                calls[count++] = control_call(
-                    PAIRS_OF[f],
-                    2,
-                    PAIRED[i],
-                    PAIRED[j],
-                    0,
-                    control_int(PAIRS_OF[f], PAIRED[i], PAIRED[j], 0)
-                );
-            }
-        }
-    }
-    for (int i = 0; i < (int)(sizeof BYTES / sizeof *BYTES); i++) {
-        for (int j = 0; j < (int)(sizeof BYTES / sizeof *BYTES); j++) {
-            assert(count < MAX_WIDTH_CALLS);
-            calls[count++] = control_call(
-                "Low",
-                2,
-                BYTES[i],
-                BYTES[j],
-                0,
-                control_int("Low", BYTES[i], BYTES[j], 0)
-            );
-        }
-    }
-    for (int i = 0; i < (int)(sizeof BYTES / sizeof *BYTES); i++) {
-        for (int j = 0; j < (int)(sizeof COUNTS / sizeof *COUNTS); j++) {
-            assert(count < MAX_WIDTH_CALLS);
-            calls[count++] = control_call(
-                "Far",
-                2,
-                BYTES[i],
-                COUNTS[j],
-                0,
-                control_int("Far", BYTES[i], COUNTS[j], 0)
-            );
-        }
-    }
-    for (int condition = 0; condition < 2; condition++) {
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                assert(count < MAX_WIDTH_CALLS);
-                calls[count++] = control_call(
-                    "Choose",
-                    3,
-                    condition,
-                    PAIRED[i + 2],
-                    PAIRED[j + 2],
-                    control_int("Choose", condition, PAIRED[i + 2], PAIRED[j + 2])
-                );
-            }
-        }
-    }
-    for (int f = 0; f < (int)(sizeof BOOLS / sizeof *BOOLS); f++) {
-        for (int bits = 0; bits < 1 << BOOL_ARITY[f]; bits++) {
-            bool a = bits & 1, b = bits >> 1 & 1, c = bits >> 2 & 1;
-            assert(count < MAX_WIDTH_CALLS);
-            calls[count++] = control_call(
-                BOOLS[f],
-                BOOL_ARITY[f],
-                a,
-                b,
-                c,
-                control_bool(BOOLS[f], a, b, c)
-            );
-        }
-    }
-    return count;
-}
+
 /* Locals, assignments, nested if statements and logic run natively as C and
  * both VMs give them. */
-static bool control_agrees(const char *directory)
-{
-    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
-    int count = control_calls(calls);
-    bool agreed = width_module_agrees(directory, 0, "control", CONTROL_SOURCE, calls, count);
-    free(calls);
-    REQUIRE(agreed);
-    return true;
-}
 
 /* Every loop form: ranges up and down, inclusive and exclusive, to the ends
  * of int and over byte bounds; a while loop with a condition, an endless one
@@ -12864,423 +4235,30 @@ static bool control_agrees(const char *directory)
  * restart the innermost, and an outer break and continue that pass over an
  * inner loop. Each range folds its indices into a hash, so
  * their order and count both show. */
-static const char LOOP_SOURCE
-    [] = "package scalar\n"
-         "Main :: () -> int { return Up(0, 5) + Nested(3); }\n"
-         "Up :: (a: int, b: int) -> int {\n"
-         "    h := 7;\n"
-         "    for i in a..<b { h = h * 31 + i; }\n"
-         "    return h;\n"
-         "}\n"
-         "Through :: (a: int, b: int) -> int {\n"
-         "    h := 7;\n"
-         "    for i in a..b { h = h * 31 + i; }\n"
-         "    return h;\n"
-         "}\n"
-         "Down :: (a: int, b: int) -> int {\n"
-         "    h := 7;\n"
-         "    for < i in a..<b { h = h * 31 + i; }\n"
-         "    return h;\n"
-         "}\n"
-         "DownThrough :: (a: int, b: int) -> int {\n"
-         "    h := 7;\n"
-         "    for < i in a..b { h = h * 31 + i; }\n"
-         "    return h;\n"
-         "}\n"
-         "Bytes :: (a: u8, b: u8) -> int {\n"
-         "    sum := 0;\n"
-         "    for i in a..<b { sum += i; }\n"
-         "    return sum;\n"
-         "}\n"
-         "Halve :: (n: int) -> int {\n"
-         "    steps := 0;\n"
-         "    while (n > 1) {\n"
-         "        n /= 2;\n"
-         "        steps += 1;\n"
-         "    }\n"
-         "    return steps;\n"
-         "}\n"
-         "Collatz :: (n: int) -> int {\n"
-         "    steps := 0;\n"
-         "    while (true) {\n"
-         "        if (n <= 1) { return steps; }\n"
-         "        if (n % 2 == 0) { n /= 2; } else { n = 3 * n + 1; }\n"
-         "        steps += 1;\n"
-         "    }\n"
-         "}\n"
-         "Outer :: (n: int) -> int {\n"
-         "    h := 0;\n"
-         "    for i in 0..<n {\n"
-         "        if (i % 3 == 0) { continue; }\n"
-         "        if (i > 7) { break; }\n"
-         "        j := 0;\n"
-         "        while (j < i) { j += 1; }\n"
-         "        h = h * 5 + j;\n"
-         "    }\n"
-         "    return h;\n"
-         "}\n"
-         "Nested :: (n: int) -> int {\n"
-         "    h := 0;\n"
-         "    for i in 0..<n {\n"
-         "        if (i == 2) { continue; }\n"
-         "        j := 0;\n"
-         "        while (j < n) {\n"
-         "            j += 1;\n"
-         "            if (j == 3) { continue; }\n"
-         "            if (j > i + 2) { break; }\n"
-         "            h = h * 7 + i * 10 + j;\n"
-         "        }\n"
-         "        if (h > 100000) { break; }\n"
-         "    }\n"
-         "    return h;\n"
-         "}\n";
-static int32_t loop_hash(int32_t h, int64_t i)
-{
-    return (int32_t)((uint32_t)h * 31u + (uint32_t)i);
-}
+
 /* What LOOP_SOURCE's functions give, as C computes them with the integer
  * contract. Indices are int64, so no C loop wraps at an end of int. */
-static int64_t loop_int(const char *function, int64_t a, int64_t b)
-{
-    int32_t x = (int32_t)a, y = (int32_t)b, h = 7;
-    if (!strcmp(function, "Up")) {
-        for (int64_t i = x; i < y; i++) {
-            h = loop_hash(h, i);
-        }
-        return h;
-    }
-    if (!strcmp(function, "Through")) {
-        for (int64_t i = x; i <= y; i++) {
-            h = loop_hash(h, i);
-        }
-        return h;
-    }
-    if (!strcmp(function, "Down")) {
-        for (int64_t i = (int64_t)y - 1; i >= x; i--) {
-            h = loop_hash(h, i);
-        }
-        return h;
-    }
-    if (!strcmp(function, "DownThrough")) {
-        for (int64_t i = y; i >= x; i--) {
-            h = loop_hash(h, i);
-        }
-        return h;
-    }
-    if (!strcmp(function, "Bytes")) {
-        return a < b ? (b - a) * (a + b - 1) / 2 : 0;
-    }
-    int32_t steps = 0;
-    if (!strcmp(function, "Halve")) {
-        for (; x > 1; x /= 2) {
-            steps++;
-        }
-        return steps;
-    }
-    if (!strcmp(function, "Collatz")) {
-        for (; x > 1; steps++) {
-            x = x % 2 == 0 ? x / 2 : total(7, total(9, 3, x), 1);
-        }
-        return steps;
-    }
-    uint32_t hash = 0;
-    if (!strcmp(function, "Outer")) {
-        for (int64_t i = 0; i < x; i++) {
-            if (i % 3 == 0) {
-                continue;
-            }
-            if (i > 7) {
-                break;
-            }
-            hash = hash * 5u + (uint32_t)i;
-        }
-        return (int32_t)hash;
-    }
-    assert(!strcmp(function, "Nested"));
-    for (int64_t i = 0; i < x; i++) {
-        if (i == 2) {
-            continue;
-        }
-        for (int64_t j = 1; j <= x; j++) {
-            if (j == 3) {
-                continue;
-            }
-            if (j > i + 2) {
-                break;
-            }
-            hash = hash * 7u + (uint32_t)(i * 10 + j);
-        }
-        if ((int32_t)hash > 100000) {
-            break;
-        }
-    }
-    return (int32_t)hash;
-}
+
 /* The entry, each range function on every pair of RANGE_ENDS at most 16
  * apart, which includes every empty range, Bytes on every pair of bytes,
  * and the while loops on their samples. */
-static int loop_calls(scalar_call calls[MAX_WIDTH_CALLS])
-{
-    static const char *const RANGES[] = { "Up", "Through", "Down", "DownThrough" };
-    static const int64_t RANGE_ENDS[] = {
-        INT32_MIN, INT32_MIN + 1, INT32_MIN + 3, -3,       -1, 0, 1,
-        5,         INT32_MAX - 3, INT32_MAX - 1, INT32_MAX
-    };
-    static const int64_t BYTES[] = { 0, 1, 85, 127, 128, 200, 255 };
-    static const struct
-    {
-        const char *function;
-        int64_t samples[11];
-    } WHILES[] = {
-        { "Halve", { INT32_MIN, -1, 0, 1, 2, 3, 1024, 1025, INT32_MAX } },
-        { "Collatz", { INT32_MIN, -5, 0, 1, 2, 3, 6, 7, 27, 97, 871 } },
-        { "Nested", { INT32_MIN, -1, 0, 1, 2, 3, 4, 5, 8, 20 } },
-        { "Outer", { INT32_MIN, 0, 1, 2, 4, 5, 8, 9, 12, 100 } },
-    };
-    static const int WHILE_SAMPLES[] = { 9, 11, 10, 10 };
-    int count = 0, ends = (int)(sizeof RANGE_ENDS / sizeof *RANGE_ENDS);
-    calls[count++] = (scalar_call){
-        .probe = { "loop", "Main", 0, { 0 }, loop_int("Up", 0, 5) + loop_int("Nested", 3, 0) }
-    };
-    for (int f = 0; f < 4; f++) {
-        for (int i = 0; i < ends; i++) {
-            for (int j = 0; j < ends; j++) {
-                if (RANGE_ENDS[j] - RANGE_ENDS[i] > 16) {
-                    continue;
-                }
-                int64_t a = RANGE_ENDS[i], b = RANGE_ENDS[j];
-                assert(count < MAX_WIDTH_CALLS);
-                calls[count++] = (scalar_call){
-                    .probe = { "loop", RANGES[f], 2, { a, b }, loop_int(RANGES[f], a, b) }
-                };
-            }
-        }
-    }
-    for (int i = 0; i < (int)(sizeof BYTES / sizeof *BYTES); i++) {
-        for (int j = 0; j < (int)(sizeof BYTES / sizeof *BYTES); j++) {
-            assert(count < MAX_WIDTH_CALLS);
-            calls[count++] = (scalar_call){
-                .probe = { "loop",
-                           "Bytes",
-                           2,
-                           { BYTES[i], BYTES[j] },
-                           loop_int("Bytes", BYTES[i], BYTES[j]) }
-            };
-        }
-    }
-    for (int f = 0; f < (int)(sizeof WHILES / sizeof *WHILES); f++) {
-        for (int i = 0; i < WHILE_SAMPLES[f]; i++) {
-            int64_t n = WHILES[f].samples[i];
-            assert(count < MAX_WIDTH_CALLS);
-            calls[count++] = (scalar_call){
-                .probe = { "loop",
-                           WHILES[f].function,
-                           1,
-                           { n },
-                           loop_int(WHILES[f].function, n, 0) }
-            };
-        }
-    }
-    return count;
-}
+
 /* Loops, break and continue run natively as C and both VMs give them. */
-static bool loops_agree(const char *directory)
-{
-    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
-    int count = loop_calls(calls);
-    bool agreed = width_module_agrees(directory, 1, "loop", LOOP_SOURCE, calls, count);
-    free(calls);
-    REQUIRE(agreed);
-    return true;
-}
+
 /* Switches: arms that all return, a default arm written first that runs
  * last, a byte and an int64 value, arm values that are calls and
  * expressions, one repeated so only its first arm can run, break and
  * continue through a switch to its loop, and a switch nested in an arm. */
-static const char
-    SWITCH_SOURCE[] = "package scalar\n"
-                      "Main :: () -> int { return Grade(85) + Late(2); }\n"
-                      "Grade :: (x: int) -> int {\n"
-                      "    switch x / 10 {\n"
-                      "        case 10: return 5;\n"
-                      "        case 9: return 4;\n"
-                      "        case 8: return 3;\n"
-                      "        case: return 0;\n"
-                      "    }\n"
-                      "}\n"
-                      "Late :: (x: int) -> int {\n"
-                      "    r := 0;\n"
-                      "    switch x {\n"
-                      "        case: r = 100;\n"
-                      "        case 1: r = 1;\n"
-                      "        case 2:\n"
-                      "            y := x * 3;\n"
-                      "            r = y;\n"
-                      "    }\n"
-                      "    return r;\n"
-                      "}\n"
-                      "Narrow :: (b: u8) -> int {\n"
-                      "    switch b {\n"
-                      "        case 0: return 1;\n"
-                      "        case 255: return 2;\n"
-                      "    }\n"
-                      "    return 3;\n"
-                      "}\n"
-                      "Long :: (v: i64) -> int {\n"
-                      "    switch v {\n"
-                      "        case -1: return 1;\n"
-                      "        case 4294967296: return 2;\n"
-                      "    }\n"
-                      "    return 3;\n"
-                      "}\n"
-                      "Twice :: (v: int) -> int { return v * 2; }\n"
-                      "Order :: (x: int) -> int {\n"
-                      "    switch x {\n"
-                      "        case Twice(1): return 10;\n"
-                      "        case 2: return 20;\n"
-                      "        case -x: return 30;\n"
-                      "    }\n"
-                      "    return 40;\n"
-                      "}\n"
-                      "Steps :: (n: int) -> int {\n"
-                      "    h := 0;\n"
-                      "    for i in 0..<n {\n"
-                      "        switch i % 4 {\n"
-                      "            case 0: continue;\n"
-                      "            case 3:\n"
-                      "                if (i > 9) { break; }\n"
-                      "                h += 100;\n"
-                      "            case: h = h * 3 + i;\n"
-                      "        }\n"
-                      "        h += 1;\n"
-                      "    }\n"
-                      "    return h;\n"
-                      "}\n"
-                      "Pair :: (a: int, b: int) -> int {\n"
-                      "    switch a {\n"
-                      "        case 0:\n"
-                      "            switch b {\n"
-                      "                case 0: return 1;\n"
-                      "                case: return 2;\n"
-                      "            }\n"
-                      "        case 1:\n"
-                      "            x := b * 2;\n"
-                      "            return x;\n"
-                      "    }\n"
-                      "    return -1;\n"
-                      "}\n";
+
 /* What SWITCH_SOURCE's functions give, as C computes them with the integer
  * contract. */
-static int64_t switch_int(const char *function, int64_t a, int64_t b)
-{
-    int32_t x = (int32_t)a, y = (int32_t)b;
-    if (!strcmp(function, "Grade")) {
-        int32_t tens = total(10, x, 10);
-        return tens == 10 ? 5 : tens == 9 ? 4 : tens == 8 ? 3 : 0;
-    }
-    if (!strcmp(function, "Late")) {
-        return x == 1 ? 1 : x == 2 ? 6 : 100;
-    }
-    if (!strcmp(function, "Narrow")) {
-        return a == 0 ? 1 : a == 255 ? 2 : 3;
-    }
-    if (!strcmp(function, "Long")) {
-        return a == -1 ? 1 : a == INT64_C(4294967296) ? 2 : 3;
-    }
-    if (!strcmp(function, "Order")) {
-        return x == 2 ? 10 : x == total(12, x, 0) ? 30 : 40;
-    }
-    if (!strcmp(function, "Steps")) {
-        uint32_t h = 0;
-        for (int64_t i = 0; i < x; i++) {
-            if (i % 4 == 0) {
-                continue;
-            }
-            if (i % 4 == 3) {
-                if (i > 9) {
-                    break;
-                }
-                h += 100;
-            } else {
-                h = h * 3u + (uint32_t)i;
-            }
-            h += 1;
-        }
-        return (int32_t)h;
-    }
-    assert(!strcmp(function, "Pair"));
-    return x == 0 ? (y == 0 ? 1 : 2) : x == 1 ? total(9, y, 2) : -1;
-}
+
 /* The entry, then each function on its samples: the int ones at and around
  * their arms' values and at the ends of int, Narrow on every byte, Long at
  * its arms and the ends of int64, and Pair on every pair of its samples. */
-static int switch_calls(scalar_call calls[MAX_WIDTH_CALLS])
-{
-    static const char *const INTS[] = { "Grade", "Late", "Order", "Steps" };
-    static const int64_t SAMPLES[] = { INT32_MIN, -1, 0,   1,   2,
-                                       3,         12, 20,  79,  80,
-                                       89,        99, 100, 109, INT32_MAX };
-    static const int64_t LONGS[] = {
-        INT64_MIN,           -2,       -1, 0, INT64_C(4294967295),
-        INT64_C(4294967296), INT64_MAX
-    };
-    static const int64_t PAIRS[] = { INT32_MIN, -1, 0, 1, 2, INT32_MAX };
-    int count = 0;
-    calls[count++] = (scalar_call){ .probe = { "switch",
-                                               "Main",
-                                               0,
-                                               { 0 },
-                                               switch_int("Grade", 85, 0) +
-                                                   switch_int("Late", 2, 0) } };
-    for (int f = 0; f < 4; f++) {
-        for (int i = 0; i < (int)(sizeof SAMPLES / sizeof *SAMPLES); i++) {
-            /* Steps loops its argument's times, so it takes none past 20. */
-            if (f == 3 && SAMPLES[i] > 20) {
-                continue;
-            }
-            calls[count++] = (scalar_call){
-                .probe = { "switch",
-                           INTS[f],
-                           1,
-                           { SAMPLES[i] },
-                           switch_int(INTS[f], SAMPLES[i], 0) }
-            };
-        }
-    }
-    for (int value = 0; value < 256; value++) {
-        calls[count++] = (scalar_call){
-            .probe = { "switch", "Narrow", 1, { value }, switch_int("Narrow", value, 0) }
-        };
-    }
-    for (int i = 0; i < (int)(sizeof LONGS / sizeof *LONGS); i++) {
-        calls[count++] = (scalar_call){
-            .probe = { "switch", "Long", 1, { LONGS[i] }, switch_int("Long", LONGS[i], 0) }
-        };
-    }
-    for (int i = 0; i < (int)(sizeof PAIRS / sizeof *PAIRS); i++) {
-        for (int j = 0; j < (int)(sizeof PAIRS / sizeof *PAIRS); j++) {
-            calls[count++] = (scalar_call){
-                .probe = { "switch",
-                           "Pair",
-                           2,
-                           { PAIRS[i], PAIRS[j] },
-                           switch_int("Pair", PAIRS[i], PAIRS[j]) }
-            };
-        }
-    }
-    assert(count <= MAX_WIDTH_CALLS);
-    return count;
-}
+
 /* Switches run natively as C and both VMs give them. */
-static bool switches_agree(const char *directory)
-{
-    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
-    int count = switch_calls(calls);
-    bool agreed = width_module_agrees(directory, 0, "switch", SWITCH_SOURCE, calls, count);
-    free(calls);
-    REQUIRE(agreed);
-    return true;
-}
+
 /* A function well past the bounds the facts once had: twelve parameters,
  * WIDE_LOOPS reversed exclusive ranges, then WIDE_CHAINS assignments of a
  * logical chain of five reads, then a return. Short chains keep stage zero's
@@ -13290,279 +4268,39 @@ enum
     WIDE_LOOPS = 40,
     WIDE_CHAINS = 20
 };
-static bool widest_loops_agree(const char *directory)
-{
-    char source[4096];
-    int at = snprintf(
-        source,
-        sizeof source,
-        "package scalar\nMain :: () -> int { return Wide(1, 3, true, 0, 0, 0, "
-        "0, 0, 0, 0, 0, 12); }\n"
-        "Wide :: (a: int, b: int, c: bool, d: int, e: int, f: int, g: int, h: "
-        "int, i: int, j: int, k: int, l: int) -> int {\n"
-    );
-    for (int i = 0; i < WIDE_LOOPS; i++) {
-        at += snprintf(source + at, sizeof source - (size_t)at, "    for < n in a..<b {}\n");
-    }
-    for (int i = 0; i < WIDE_CHAINS; i++) {
-        at += snprintf(source + at, sizeof source - (size_t)at, "    c = c && c && c && c && c;\n");
-    }
-    snprintf(source + at, sizeof source - (size_t)at, "    return a + l;\n}\n");
-    assert(strlen(source) < sizeof source - 1);
-    scalar_call call = { .probe = { "widest", "Main", 0, { 0 }, 13 } };
-    REQUIRE(width_module_agrees(directory, 0, "widest", source, &call, 1));
-    return true;
-}
+
 /* `function`(`argument`) of `source` fails on both VMs with `status`. */
-static bool vms_fail(const char *source, const char *function, int64_t argument, int status)
-{
-    unsigned char *closure;
-    size_t length;
-    REQUIRE(
-        vm_closure(0, (pin_string){ .bytes = source, .length = strlen(source) }, &closure, &length)
-    );
-    char id[128], arguments[32];
-    snprintf(id, sizeof id, "project:scalar:1:%s:callable", function);
-    int n = snprintf(arguments, sizeof arguments, "[%" PRId64 "]", argument);
-    for (int backend = 0; backend < 2; backend++) {
-        REQUIRE(vm_load(closure, length, backend));
-        compiler_host_invoke(
-            host,
-            script_catalog_id("package-symbol", id),
-            arguments,
-            (size_t)n,
-            TARGET_BUDGET,
-            &result
-        );
-        int given = result.flow_status;
-        free(result.json);
-        result = (compiler_host_result){ 0 };
-        compiler_host_free(host);
-        host = NULL;
-        REQUIRE(given == status);
-    }
-    free(closure);
-    arena_free(&detached);
-    return true;
-}
+
 /* How a native call of a function taking one int ends, at O0 and O2, within
  * `seconds`: with `value`, when `error` is CHIBI_PROCESS_OK and `signal` 0;
  * otherwise with `error`, and for CHIBI_PROCESS_OK with `signal`'s status
  * and `report` in its standard error. */
-typedef struct
-{
-    const char *function;
-    int64_t argument, value;
-    chibi_process_error error;
-    int signal;
-    const char *report;
-    double seconds;
-} native_ending;
+
 /* Each of `calls`, of functions of `source`, ends natively as it says. */
-static bool natively_end(
-    const char *directory,
-    const char *name,
-    const char *source,
-    const native_ending *calls,
-    int count
-)
-{
-    pin_value rows;
-    REQUIRE(collected_rows(0, name, text(source), &rows));
-    char *ir, *adapter = xmalloc(1);
-    *adapter = 0;
-    REQUIRE(emitted_ir(0, &rows, &ir));
-    REQUIRE(ir);
-    for (int i = 0; i < count; i++) {
-        char probe[128];
-        snprintf(probe, sizeof probe, "@probe_%s(", calls[i].function);
-        REQUIRE(strstr(adapter, probe) || append_adapter(&rows, calls[i].function, &adapter));
-    }
-    for (int level = 0; level < 2; level++) {
-        char library[PATH_MAX];
-        REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
-        for (int i = 0; i < count; i++) {
-            const native_ending *expected = &calls[i];
-            scalar_call call = {
-                .probe = { name, expected->function, 1, { expected->argument }, 0 }
-            };
-            snprintf(call.symbol, sizeof call.symbol, "probe_%s", expected->function);
-            chibi_process_capture_result
-                ended = library_calls(directory, library, &call, 1, 2, expected->seconds);
-            REQUIRE(ended.error == expected->error);
-            if (expected->error != CHIBI_PROCESS_OK) {
-                continue;
-            }
-            REQUIRE(ended.status == -expected->signal);
-            REQUIRE(expected->signal || call.values[2] == expected->value);
-            REQUIRE(!expected->report || strstr(native_errors, expected->report));
-        }
-    }
-    free(adapter);
-    free(ir);
-    arena_free(&detached);
-    return true;
-}
+
 /* Spin never returns. Both VMs fail its call at their instruction budget.
  * Natively its loop runs unchecked, as Odin's does, and LLVM keeps it at O0
  * and O2, so the call runs until its deadline stops it. */
-static const char SPIN_SOURCE[] = "package scalar\n"
-                                  "Main :: () -> int { return 0; }\n"
-                                  "Spin :: (n: int) -> int {\n"
-                                  "    while (true) { n += 1; }\n"
-                                  "}\n";
-static bool endless_loops_hang(const char *directory)
-{
-    static const native_ending spin = { .function = "Spin",
-                                        .error = CHIBI_PROCESS_TIMEOUT,
-                                        .seconds = SPIN_SECONDS };
-    REQUIRE(vms_fail(SPIN_SOURCE, "Spin", 0, FLOW_ERR_STEP_BUDGET));
-    REQUIRE(natively_end(directory, "spin", SPIN_SOURCE, &spin, 1));
-    return true;
-}
+
 /* Direct, mutual and two-way recursion, recursion through a loop, and a
  * function that only ever calls itself. Forever's subtraction keeps its
  * call from being a tail call, which O2 would turn into an endless loop. */
-static const char RECURSION_SOURCE
-    [] = "package scalar\n"
-         "Main :: () -> int { return Sum(10) + Even(7); }\n"
-         "Sum :: (n: int) -> int {\n"
-         "    if (n > 0) { return n + Sum(n - 1); }\n"
-         "    return 0;\n"
-         "}\n"
-         "Fib :: (n: int) -> int {\n"
-         "    if (n < 2) { return n; }\n"
-         "    return Fib(n - 1) + Fib(n - 2);\n"
-         "}\n"
-         "Even :: (n: int) -> int {\n"
-         "    if (n == 0) { return 1; }\n"
-         "    return Odd(n - 1);\n"
-         "}\n"
-         "Odd :: (n: int) -> int {\n"
-         "    if (n == 0) { return 0; }\n"
-         "    return Even(n - 1);\n"
-         "}\n"
-         "Gcd :: (a: int, b: int) -> int {\n"
-         "    if (b == 0) { return a; }\n"
-         "    return Gcd(b, a % b);\n"
-         "}\n"
-         "Nodes :: (n: int) -> int {\n"
-         "    c := 1;\n"
-         "    for i in 0..<n { c += Nodes(i); }\n"
-         "    return c;\n"
-         "}\n"
-         "Forever :: (n: int) -> int { return Forever(n + 1) - n; }\n";
+
 /* What RECURSION_SOURCE's functions give, as C computes them with the
  * integer contract. */
-static int64_t recursion_int(const char *function, int64_t a, int64_t b)
-{
-    int32_t x = (int32_t)a, y = (int32_t)b;
-    if (!strcmp(function, "Sum")) {
-        return x > 0 ? total(7, x, (int32_t)recursion_int("Sum", x - 1, 0)) : 0;
-    }
-    if (!strcmp(function, "Fib")) {
-        return x < 2 ? x
-                     : total(
-                           7,
-                           (int32_t)recursion_int("Fib", x - 1, 0),
-                           (int32_t)recursion_int("Fib", x - 2, 0)
-                       );
-    }
-    if (!strcmp(function, "Even") || !strcmp(function, "Odd")) {
-        bool even = !strcmp(function, "Even");
-        return x == 0 ? even : recursion_int(even ? "Odd" : "Even", x - 1, 0);
-    }
-    if (!strcmp(function, "Nodes")) {
-        return x > 0 ? INT64_C(1) << x : 1;
-    }
-    assert(!strcmp(function, "Gcd"));
-    return y == 0 ? x : recursion_int("Gcd", y, total(11, x, y));
-}
+
 /* The entry, then each function at the depths every backend runs: Sum, Even
  * and Odd at each depth below stage zero's call depth limit, Fib and Nodes on
  * their first 12, within the VMs' instruction budget, and Gcd on pairs of
  * zero, signs, the ends of int and consecutive Fibonacci numbers, its
  * deepest. */
-static int recursion_calls(scalar_call calls[MAX_WIDTH_CALLS])
-{
-    static const int64_t PAIRS[][2] = { { 0, 0 },
-                                        { 12, 0 },
-                                        { 0, 12 },
-                                        { 12, 18 },
-                                        { -12, 18 },
-                                        { 12, -18 },
-                                        { INT32_MIN, -1 },
-                                        { INT32_MAX, INT32_MIN },
-                                        { 1836311903, 1134903170 } };
-    int count = 0;
-    calls[count++] = (scalar_call){ .probe = { "recursion",
-                                               "Main",
-                                               0,
-                                               { 0 },
-                                               recursion_int("Sum", 10, 0) +
-                                                   recursion_int("Even", 7, 0) } };
-    static const char *const DEEP[] = { "Sum", "Even", "Odd" };
-    for (int f = 0; f < 3; f++) {
-        /* Even and Odd recurse without end below 0, so only Sum takes -1. */
-        for (int n = f ? 0 : -1; n < SCRIPT_CALL_DEPTH_LIMIT; n++) {
-            calls[count++] = (scalar_call){
-                .probe = { "recursion", DEEP[f], 1, { n }, recursion_int(DEEP[f], n, 0) }
-            };
-        }
-    }
-    static const char *const WIDE[] = { "Fib", "Nodes" };
-    for (int f = 0; f < 2; f++) {
-        for (int n = 0; n < 12; n++) {
-            calls[count++] = (scalar_call){
-                .probe = { "recursion", WIDE[f], 1, { n }, recursion_int(WIDE[f], n, 0) }
-            };
-        }
-    }
-    for (int i = 0; i < (int)(sizeof PAIRS / sizeof *PAIRS); i++) {
-        calls[count++] = (scalar_call){
-            .probe = { "recursion",
-                       "Gcd",
-                       2,
-                       { PAIRS[i][0], PAIRS[i][1] },
-                       recursion_int("Gcd", PAIRS[i][0], PAIRS[i][1]) }
-        };
-    }
-    assert(count <= MAX_WIDTH_CALLS);
-    return count;
-}
+
 /* Recursion runs natively as C and both VMs give it. */
-static bool recursion_agrees(const char *directory)
-{
-    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
-    int count = recursion_calls(calls);
-    bool agreed = width_module_agrees(directory, 1, "recursion", RECURSION_SOURCE, calls, count);
-    free(calls);
-    REQUIRE(agreed);
-    return true;
-}
+
 /* Natively recursion is unchecked, as Rust's is: Sum, Even and Odd run 10,000
  * calls deep, far past any VM's limit, and Forever's endless recursion
  * faults in the stack's guard page, which the host reports as a stack
  * overflow before it aborts, at O0 and O2, well before the deadline. */
-static bool recursion_overflows_by_name(const char *directory)
-{
-    enum
-    {
-        DEEP = 10000
-    };
-    /* Sum(DEEP) wraps as the sum of its terms does. */
-    int32_t sum = (int32_t)(uint32_t)((uint64_t)DEEP * (DEEP + 1) / 2);
-    const native_ending calls[] = {
-        { "Sum", DEEP, sum, CHIBI_PROCESS_OK, 0, NULL, CALLS_SECONDS },
-        { "Even", DEEP, 1, CHIBI_PROCESS_OK, 0, NULL, CALLS_SECONDS },
-        { "Odd", DEEP, 0, CHIBI_PROCESS_OK, 0, NULL, CALLS_SECONDS },
-        { "Forever", 0, 0, CHIBI_PROCESS_OK, SIGABRT, "stack overflow", CALLS_SECONDS },
-    };
-    REQUIRE(
-        natively_end(directory, "recursion", RECURSION_SOURCE, calls, (int)(sizeof calls / sizeof *calls))
-    );
-    return true;
-}
 
 /* A function of LONG_LOCALS locals, then LONG_ASSIGNMENTS assignments, then a
  * return, one statement each, well past the bounds the facts once had. */
@@ -13571,23 +4309,7 @@ enum
     LONG_LOCALS = 40,
     LONG_ASSIGNMENTS = 100
 };
-static bool long_functions_agree(const char *directory)
-{
-    char source[4096];
-    int at = snprintf(source, sizeof source, "package scalar\nMain :: () -> int {\n");
-    for (int i = 0; i < LONG_LOCALS; i++) {
-        at += snprintf(source + at, sizeof source - (size_t)at, "    x%d := %d;\n", i, i);
-    }
-    for (int i = 0; i < LONG_ASSIGNMENTS; i++) {
-        at += snprintf(source + at, sizeof source - (size_t)at, "    x0 = x%d + %d;\n", i % LONG_LOCALS, i);
-    }
-    snprintf(source + at, sizeof source - (size_t)at, "    return x0;\n}\n");
-    assert(strlen(source) < sizeof source - 1);
-    /* The last assignment reads x19 and adds 99. */
-    scalar_call call = { .probe = { "long", "Main", 0, { 0 }, 118 } };
-    REQUIRE(width_module_agrees(directory, 0, "long", source, &call, 1));
-    return true;
-}
+
 /* A new directory for the native builds' files. */
 static bool native_directory(char directory[PATH_MAX])
 {
@@ -13701,15 +4423,23 @@ static bool lookup_tables_link(const char *directory)
 }
 /* The SIGSEGV handler a stack_overflow child installs before the report,
  * with SIGUSR1 in its mask: it exits 7 when that mask is in force. */
+
+/* The child of stack_overflow_leaves_other_faults. `mode` is "handled" or
+ * "default", the action SIGSEGV has before the report is installed, then
+ * "-fault" for a write to an unmapped page or "-sent" for raise(SIGSEGV). */
+
+/* The SIGSEGV handler a stack_overflow child installs before the report,
+ * with SIGUSR1 in its mask: it exits 7 when that mask is in force. */
+
+/* The child of stack_overflow_leaves_other_faults. `mode` is "handled" or
+ * "default", the action SIGSEGV has before the report is installed, then
+ * "-fault" for a write to an unmapped page or "-sent" for raise(SIGSEGV). */
 static void handled_fault(int)
 {
     sigset_t blocked;
     sigprocmask(SIG_SETMASK, NULL, &blocked);
     _exit(sigismember(&blocked, SIGUSR1) ? 7 : 8);
 }
-/* The child of stack_overflow_leaves_other_faults. `mode` is "handled" or
- * "default", the action SIGSEGV has before the report is installed, then
- * "-fault" for a write to an unmapped page or "-sent" for raise(SIGSEGV). */
 int test_language_stack_overflow_child(const char *mode)
 {
     struct sigaction before = { .sa_handler = SIG_DFL };
@@ -13749,6 +4479,64 @@ TEST_CASE(stack_overflow_leaves_other_faults)
         REQUIRE(ended.error == CHIBI_PROCESS_OK && ended.status == cases[i].status);
         REQUIRE(!strstr(native_errors, "stack overflow"));
     }
+    return true;
+}
+/* The rows of the library `source`, emitted for Linux x86-64 as LLVM text. */
+static bool library_ir(const char *source, char **ir)
+{
+    pin_value rows;
+    REQUIRE(library_rows(source, &rows));
+    const pin_array *array = rows.ptr;
+    REQUIRE(array->count > 2);
+    REQUIRE(target_ir("LinuxX64", &rows, ir) && *ir);
+    arena_free(&detached);
+    return true;
+}
+/* Edit and Continue on native code: a loop's Frame counts with a retained
+ * local; the loop is edited to count by ten and to add a new retained
+ * bonus; the host moves the count to the edited library and its next Frames
+ * carry on from it, with the new state at its initializer, and Main, which
+ * a library lacks, is never called. */
+TEST_CASE(package_compiler_native_edit_and_continue_keeps_state)
+{
+    static const char before[] = "Loop :: library {\n"
+                                 "    Frame :: () -> int {\n"
+                                 "        count: retain int = 0;\n"
+                                 "        count += 1;\n"
+                                 "        return count;\n"
+                                 "    }\n"
+                                 "}\n",
+                      after[] = "Loop :: library {\n"
+                                "    Frame :: () -> int {\n"
+                                "        count: retain int = 0;\n"
+                                "        bonus: retain int = 100;\n"
+                                "        count += 10;\n"
+                                "        return count + bonus;\n"
+                                "    }\n"
+                                "}\n";
+    REQUIRE(prepare());
+    char directory[PATH_MAX], first[PATH_MAX], second[PATH_MAX], self[PATH_MAX],
+        out[NATIVE_OUTPUT];
+    REQUIRE(native_directory(directory));
+    char *ir;
+    REQUIRE(library_ir(before, &ir));
+    bool built = native_library(directory, "loop-before", ir, "", 0, first);
+    free(ir);
+    REQUIRE(built && library_ir(after, &ir));
+    built = native_library(directory, "loop-after", ir, "", 0, second);
+    free(ir);
+    REQUIRE(built);
+    ssize_t length = readlink("/proc/self/exe", self, sizeof self - 1);
+    REQUIRE(length > 0);
+    self[length] = 0;
+    const char *const argv[] = { self,   "--package-compiler-chibi-native-call",
+                                 first,  "continue",
+                                 second, NULL };
+    chibi_process_capture_result ran = run_native(argv, directory, CALLS_SECONDS, out);
+    REQUIRE(native_passed(ran));
+    /* Three Frames of the first, then the edited one carries the count on. */
+    REQUIRE(!strcmp(out, "1\n2\n3\n113\n123\n"));
+    REQUIRE(remove_native_files(directory));
     return true;
 }
 TEST_CASE(package_compiler_native_runs_are_bounded)
@@ -13802,6 +4590,7 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
 }
 /* A module whose entry returns 0 and whose function k + 1 applies operation
  * k to its parameters. */
+
 static bool total_ir(const char *function, char **ir)
 {
     native_code code[4 + TOTAL_OPERATION_COUNT * 6];
@@ -13842,17 +4631,13 @@ static bool total_ir(const char *function, char **ir)
                         slots,      s,
                         code,       c,
                         NULL,       0 };
-    const pin_union *value;
-    REQUIRE(native_target_emit(0, function, &m, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, 0, NATIVE_PACKAGE, "Result", "Emitted"));
-    pin_string text = pin_text(value->values[0]);
+    char *text;
+    REQUIRE(native_module_ir(function, &m, &text) && text);
     REQUIRE(
-        !contains(text, "label %trap\n  br") && !contains(text, " nsw ") &&
-        !contains(text, " nuw ")
+        !strstr(text, "label %trap\n  br") && !strstr(text, " nsw ") &&
+        !strstr(text, " nuw ")
     );
-    *ir = xmalloc(text.length + 1);
-    memcpy(*ir, text.bytes, text.length);
-    (*ir)[text.length] = 0;
+    *ir = text;
     return true;
 }
 /* The validation-only adapter probe_NAME(ptr) of each operation, which
@@ -13944,10 +4729,6 @@ static bool total_bundled(const char *directory, const char *adapters)
 }
 TEST_CASE(package_compiler_native_arithmetic_is_total)
 {
-    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(
-        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
-    );
     char *ir;
     REQUIRE(total_ir("LinuxX64", &ir));
     char *adapters = total_adapters(), directory[PATH_MAX];
@@ -13994,63 +4775,51 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
 TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
 {
     REQUIRE(prepare());
-    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
-    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(
-        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
-    );
     char directory[PATH_MAX];
     REQUIRE(native_directory(directory));
-    pin_value count;
-    REQUIRE(
-        compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count)
-    );
+    int count;
+    REQUIRE(scalar_host_case_count(&count));
     int ran = 0;
-    for (int index = 0; index < count.i; index++) {
-        int b = index % 2;
-        pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows,
-                  expected;
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
-        );
-        const char *named = pin_text(name).bytes;
-        if (strncmp(named, "array_", strlen("array_")) &&
-            strncmp(named, "union_array", strlen("union_array")) &&
-            strncmp(named, "record_", strlen("record_")) &&
-            strncmp(named, "switch_on", strlen("switch_on"))) {
-            arena_free(&detached);
+    for (int index = 0; index < count; index++) {
+        char *name, *source;
+        pin_value rows;
+        int expected;
+        REQUIRE(scalar_host_case_text(false, index, &name));
+        if (strncmp(name, "array_", strlen("array_")) &&
+            strncmp(name, "union_array", strlen("union_array")) &&
+            strncmp(name, "record_", strlen("record_")) &&
+            strncmp(name, "switch_on", strlen("switch_on"))) {
+            free(name);
             continue;
         }
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
-        );
-        REQUIRE(collected_rows(b, pin_text(name).bytes, source, &rows));
+        REQUIRE(scalar_host_case_text(true, index, &source));
+        REQUIRE(collected_rows(name, source, &rows));
+        free(source);
         if (row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW) {
+            free(name);
             arena_free(&detached);
             continue;
         }
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "ExpectedValue", &ordinal, 1, COMPILE_BUDGET, &detached, &expected)
-        );
+        REQUIRE(scalar_host_case_expected(index, &expected));
         char *ir;
-        REQUIRE(emitted_ir(b, &rows, &ir));
+        REQUIRE(emitted_ir(&rows, &ir));
         REQUIRE(ir);
         scalar_call entry = { .symbol = "chibi_scalar" };
-        REQUIRE(native_values(directory, pin_text(name).bytes, &rows, ir, &entry, 1));
-        if (entry.values[2] != expected.i || entry.values[3] != expected.i) {
+        REQUIRE(native_values(directory, name, &rows, ir, &entry, 1));
+        if (entry.values[2] != expected || entry.values[3] != expected) {
             fprintf(
                 stderr,
                 "native %s gave %" PRId64 " at O0 and %" PRId64
                 " at O2, expected %d\n",
-                pin_text(name).bytes,
+                name,
                 entry.values[2],
                 entry.values[3],
-                expected.i
+                expected
             );
         }
-        REQUIRE(entry.values[2] == expected.i && entry.values[3] == expected.i);
+        REQUIRE(entry.values[2] == expected && entry.values[3] == expected);
         free(ir);
+        free(name);
         ran++;
         arena_free(&detached);
     }
@@ -14070,9 +4839,9 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
     };
     for (int i = 0; i < 2; i++) {
         pin_value rows;
-        REQUIRE(collected_rows(i, "outside", text(OUTSIDE[i]), &rows));
+        REQUIRE(collected_rows("outside", OUTSIDE[i], &rows));
         char *ir;
-        REQUIRE(emitted_ir(i, &rows, &ir));
+        REQUIRE(emitted_ir(&rows, &ir));
         REQUIRE(ir);
         for (int level = 0; level < 2; level++) {
             char library[PATH_MAX];
@@ -14096,1233 +4865,128 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
 TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit)
 {
     REQUIRE(prepare());
-    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
-    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(
-        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
-    );
-    pin_value count;
-    REQUIRE(
-        compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count)
-    );
-    for (int index = 0; index < count.i; index++) {
-        int b = index % 2;
-        pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows, checked;
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
-        );
+    int count;
+    REQUIRE(scalar_host_case_count(&count));
+    for (int index = 0; index < count; index++) {
+        char *name, *source;
+        pin_value rows;
+        int checked;
+        REQUIRE(scalar_host_case_text(false, index, &name));
         // The 64-deep nesting passes the stage-zero fixture's call depth.
-        if (pin_text_equal(pin_text(name), (pin_string){ .bytes = "deep_operands", .length = 13 })) {
-            arena_free(&detached);
+        if (!strcmp(name, "deep_operands")) {
+            free(name);
             continue;
         }
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
-        );
-        pin_value args[SCALAR_ARGUMENTS];
-        REQUIRE(scalar_arguments(b, "Scalar.chibi", source, args));
-        REQUIRE(compiler_fixture_call(
-            &fixture,
-            b,
-            PACKAGE,
-            "CollectScalar",
-            args,
-            SCALAR_ARGUMENTS,
-            COMPILE_BUDGET,
-            &detached,
-            &rows
-        ));
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
-        );
+        REQUIRE(scalar_host_case_text(true, index, &source));
+        REQUIRE(scalar_host_collect("Scalar.chibi", source, &detached, &rows));
+        REQUIRE(scalar_host_case_check(&rows, &checked));
         const pin_array *produced = rows.ptr;
         pin_value *second = &produced->items[1];
         bool rejected = scalar_field(second, "kind").i == SCALAR_REJECTION_ROW;
-        if (checked.i != 1) {
+        if (checked != 1) {
             int from = rejected ? (int)scalar_field(second, "start").i : 0,
                 to = rejected ? (int)scalar_field(second, "end").i : 0;
             fprintf(
                 stderr,
                 "scalar case %s: Check gave %d%s%s at `%.*s`\n",
-                pin_text(name).bytes,
-                checked.i,
+                name,
+                checked,
                 rejected ? ", rejected: " : "",
                 rejected ? pin_text(scalar_field(second, "text")).bytes : "",
                 to > from ? to - from : 0,
-                to > from ? pin_text(source).bytes + from : ""
+                to > from ? source + from : ""
             );
         }
-        // A rejection's message is the parser's, which this fixture's differs
-        // from the recovered compiler's in places; the corpus's native lane and
-        // Run.ps1 check it.
-        REQUIRE(checked.i == 1 || rejected);
-        if (!rejected && !validated(b, &rows, "")) {
-            fprintf(
-                stderr,
-                "scalar case %s: its rows do not validate and emit\n",
-                pin_text(name).bytes
-            );
+        // A rejection's message is the parser's, which the recovered compiler's
+        // differs from in places; the corpus's native lane and Run.ps1 check it.
+        REQUIRE(checked == 1 || rejected);
+        if (!rejected && !validated(&rows, "")) {
+            fprintf(stderr, "scalar case %s: its rows do not validate and emit\n", name);
             return false;
         }
+        free(name);
+        free(source);
         arena_free(&detached);
     }
     return true;
 }
 /* Query tests use the target's canonical Tick(dt: number), while the older
  * behavior fixtures above exercise an event named DeltaSeconds. */
-static script_catalog query_game_catalog()
-{
-    static const script_catalog_parameter dt = { .name = "dt",
-                                                 .type = { .storage = PIN_F32 } };
-    static script_catalog_capability events[sizeof game_capabilities / sizeof *game_capabilities];
-    memcpy(events, game_capabilities, sizeof events);
-    events[0].parameters = &dt;
-    static const script_catalog_relationship targets = { .id = QUERY_TARGETS,
-                                                         .name = "Targets" };
-    script_catalog catalog = game_catalog();
-    catalog.capabilities = events;
-    catalog.relationships = &targets;
-    catalog.relationship_count = 1;
-    return catalog;
-}
-static bool query_compile_result_category(
-    int b,
-    const char *identity,
-    const char *source,
-    bool error_type,
-    compiler_result *out
-)
-{
-    fixture.observe_failures = true;
-    pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
-    REQUIRE(arguments(b, false, NULL, 0, compile));
-    args[0] = text(identity);
-    args[1] = text(source);
-    memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);
-    int first_native = ((pin_array *)args[5].ptr)->count;
-    REQUIRE(behavior_natives(b, &args[5]));
-    REQUIRE(game_arguments(b, first_native, &args[8]));
-    pin_array *events = args[8].ptr, *payloads = args[9].ptr;
-    script_catalog catalog = query_game_catalog();
-    script_catalog_type descriptions[sizeof game_types / sizeof *game_types];
-    memcpy(descriptions, catalog.types, sizeof descriptions);
-    for (int i = 0; i < catalog.type_count; i++) {
-        if (descriptions[i].id == SPOT) {
-            descriptions[i].error = error_type;
-        }
-    }
-    catalog.types = descriptions;
-    pin_value *types = NULL;
-    const pin_array *existing = args[10].ptr;
-    for (int i = 0; i < existing->count; i++) {
-        pin_value type = existing->items[i], id;
-        REQUIRE(get(&type, "id", &id));
-        const script_catalog_type *definition = script_catalog_type_by_id(&catalog, id.u64);
-        REQUIRE(definition);
-        REQUIRE(put_value(
-            &type,
-            "error",
-            flag(script_catalog_type_contains_error(&catalog, definition->type))
-        ));
-        apush(types, type);
-    }
-    pin_value relationship = row(b, "GameType");
-    REQUIRE(put_value(&relationship, "required", flag(false)));
-    REQUIRE(put(&relationship, "underlying", -1));
-    REQUIRE(put_value(&relationship, "name", text("Targets")));
-    REQUIRE(put_value(&relationship, "id", u64(QUERY_TARGETS)));
-    REQUIRE(put_value(&relationship, "layout", u64(0)));
-    REQUIRE(put(&relationship, "storage", PIN_HANDLE));
-    REQUIRE(put(&relationship, "size", sizeof(uint64_t)));
-    REQUIRE(put_value(&relationship, "component", u64(QUERY_TARGETS)));
-    REQUIRE(put(&relationship, "first", 0));
-    REQUIRE(put(&relationship, "count", 0));
-    REQUIRE(put_value(&relationship, "relationship", flag(true)));
-    REQUIRE(put(&relationship, "traits", 0));
-    REQUIRE(put_value(&relationship, "error", flag(false)));
-    apush(types, relationship);
-    args[10] = rows(types, acount(types), PIN_STRUCT, relationship.record);
-    afree(types);
-    REQUIRE(put_value(&payloads->items[0], "name", text("dt")));
-    REQUIRE(put(&payloads->items[0], "storage", PIN_F32));
-    REQUIRE(put_value(
-        &events->items[0],
-        "abi",
-        u64(script_catalog_capability_abi(&catalog, &catalog.capabilities[0]))
-    ));
-    REQUIRE(compiler_call(b, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, out));
-    return true;
-}
-static bool query_compile_result(int b, const char *identity, const char *source, compiler_result *out)
-{
-    return query_compile_result_category(b, identity, source, false, out);
-}
-TEST_CASE(package_compiler_fallible_system_query_keeps_unsupported_boundary)
-{
-    REQUIRE(prepare());
-    for (int b = 0; b < 2; b++) {
-        for (int marked = 0; marked < 2; marked++) {
-            const char
-                source[] = "Fixed :: system(point: Spot, if Ready().value) {\n"
-                           "    Ready :: () -> (value: bool, error: Spot?) { "
-                           "return(true, nil); }\n"
-                           "}\n";
-            compiler_result out;
-            REQUIRE(query_compile_result_category(b, "Fixed", source, marked != 0, &out));
-            if (marked) {
-                if (compiler_succeeded(&out)) {
-                    fprintf(pu_errors(), "Marked system query accepted: %s\n", source);
-                }
-                REQUIRE(!compiler_succeeded(&out));
-                pin_value message, document, line, column;
-                REQUIRE(get(compiler_error(&out), "message", &message));
-                REQUIRE(get(compiler_error(&out), "document", &document));
-                REQUIRE(get(compiler_error(&out), "line", &line));
-                REQUIRE(get(compiler_error(&out), "column", &column));
-                REQUIRE(
-                    !strcmp(pin_text(message).bytes, "Error result checking requires an authored function body in stage one")
-                );
-                REQUIRE(document.i == 0 && line.i == 1 && column.i == 33);
-            } else {
-                if (!compiler_succeeded(&out)) {
-                    pin_value message, line, column;
-                    REQUIRE(get(compiler_error(&out), "message", &message));
-                    REQUIRE(get(compiler_error(&out), "line", &line));
-                    REQUIRE(get(compiler_error(&out), "column", &column));
-                    fprintf(
-                        pu_errors(),
-                        "Ordinary system query rejected: %s at %d:%d\n",
-                        pin_text(message).bytes,
-                        line.i,
-                        column.i
-                    );
-                }
-                REQUIRE(compiler_succeeded(&out));
-            }
-            arena_free(&detached);
-        }
-    }
-    return true;
-}
-static bool query_stage_one_module(int b, const char *identity, const char *source, execution_module **module)
-{
-    *module = NULL;
-    compiler_result out;
-    REQUIRE(query_compile_result(b, identity, source, &out));
-    if (!compiler_succeeded(&out)) {
-        pin_value message = { 0 }, line = { 0 }, column = { 0 };
-        get(compiler_error(&out), "message", &message);
-        get(compiler_error(&out), "line", &line);
-        get(compiler_error(&out), "column", &column);
-        fprintf(
-            stderr,
-            "stage one query %s rejected: %s at %d:%d\n",
-            identity,
-            pin_text(message).bytes,
-            line.i,
-            column.i
-        );
-        arena_free(&detached);
-        return false;
-    }
-    size_t length = 0;
-    unsigned char *bytes = closure_bytes(&out, &length);
-    arena_free(&detached);
-    script_catalog catalog = query_game_catalog();
-    const execution_prepared_linker linker = { .user = &catalog,
-                                               .type = link_game_type,
-                                               .event = link_game_event,
-                                               .host = link_game_host };
-    char error[256] = { 0 };
-    *module = execution_prepared_read(
-        bytes,
-        length,
-        &linker,
-        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-        error,
-        sizeof error
-    );
-    if (!*module) {
-        fprintf(stderr, "stage one query %s load: %s\n", identity, error);
-    }
-    free(bytes);
-    return *module != NULL;
-}
+
 /* Play without the target entity, so a query's rows are the owner and the
  * entities the test adds. */
-static bool query_play(execution_module *module, player *out)
-{
-    REQUIRE(play(module, out));
-    REQUIRE(ecs_world_destroy_entity(out->world, out->target) == ECS_OK);
-    REQUIRE(ecs_world_apply_commands(out->world) == ECS_OK);
-    return true;
-}
-static ecs_entity query_add_spot(player *p, float x)
-{
-    ecs_entity entity = ecs_world_create_entity(p->world);
-    const spot initial = { .x = x, .w = 9 };
-    if (ecs_world_record_add(p->world, entity, SPOT_COMPONENT, &initial, 0) != ECS_OK ||
-        ecs_world_apply_commands(p->world) != ECS_OK) {
-        return (ecs_entity){ 0 };
-    }
-    return entity;
-}
-static bool query_spot_equals(const player *p, ecs_entity entity, float x, float y)
-{
-    const spot *value = ecs_component_data_const(p->world, entity, SPOT_COMPONENT);
-    if (!value || value->x != x || value->y != y) {
-        fprintf(
-            stderr,
-            "query Spot: expected %g,%g, got %g,%g\n",
-            x,
-            y,
-            value ? value->x : -1.0,
-            value ? value->y : -1.0
-        );
-        return false;
-    }
-    return true;
-}
-static bool query_step(player *p, double now, double delta)
-{
-    int status = execution_program_step(p->program, now, delta, 100000);
-    if (status != FLOW_OK) {
-        const execution_program_failure *failure = execution_program_error(p->program);
-        fprintf(
-            stderr,
-            "query step at %g: status %d, %s at %d:%d\n",
-            now,
-            status,
-            failure ? failure->message : "no failure recorded",
-            failure ? failure->line : 0,
-            failure ? failure->column : 0
-        );
-    }
-    return status == FLOW_OK;
-}
-static void query_register_types()
-{
-    static const type_desc *const reflected[] = { &spot_type };
-    static const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
-    type_catalog_set_project(&pack);
-}
-TEST_CASE(package_compiler_query_rows_capture_and_restart)
-{
-    static const char source
-        [] = "Rows :: behavior {\n"
-             "    total: int = 0\n"
-             "    Bump :: (value: number) -> number { total := value; "
-             "total += 1; return total }\n"
-             "    on Tick :: () {\n"
-             "        threshold: number = 3\n"
-             "        matches := query(before: Spot, live: ^Spot, if "
-             "before.x > threshold, amount := Bump(before.x + threshold - 1))\n"
-             "        threshold = 100\n"
-             "        for row in matches {\n"
-             "            total += 1\n"
-             "            row.live.y = row.amount\n"
-             "            copy := row.before\n"
-             "            copy.x += 1\n"
-             "            self.Spot.y += copy.x - row.before.x\n"
-             "            if row.before.x == 5 { continue }\n"
-             "            row.live.x += 10\n"
-             "            self.Spot.y += row.before.x\n"
-             "        }\n"
-             "        for row in matches { total += 100; break }\n"
-             "        for row in matches { total += 1000 }\n"
-             "    }\n"
-             "}\n";
-    REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        execution_module *module = NULL;
-        player p = { 0 };
-        passed = query_stage_one_module(b, "Rows", source, &module) &&
-                 query_play(module, &p);
-        if (passed) {
-            ecs_entity skipped = query_add_spot(&p, 1);
-            ecs_entity continued = query_add_spot(&p, 5);
-            ecs_entity changed = query_add_spot(&p, 9);
-            const pin_value delta = { .type = PIN_F32, .f = .25 };
-            passed = ecs_entity_to_u64(skipped) &&
-                     ecs_entity_to_u64(continued) && ecs_entity_to_u64(changed) &&
-                     execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
-                         FLOW_OK &&
-                     query_spot_equals(&p, p.owner, 0, 11) &&
-                     query_spot_equals(&p, skipped, 1, 0) &&
-                     query_spot_equals(&p, continued, 5, 8) &&
-                     query_spot_equals(&p, changed, 19, 12);
-            const pin_value *total = execution_instance_state(
-                p.instance,
-                script_catalog_id("symbol", "Rows:1:total")
-            );
-            passed = passed && total && total->type == PIN_I32 && total->i == 2102;
-        }
-        stop(&p);
-        execution_module_free(module);
-    }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
-    return true;
-}
-TEST_CASE(package_compiler_query_nested_return_and_empty_iteration)
-{
-    static const char
-        source[] = "Nested :: behavior {\n"
-                   "    First :: () -> number {\n"
-                   "        matches := query(point: Spot, if point.x > 0)\n"
-                   "        for outer in matches {\n"
-                   "            for inner in matches { return outer.point.x + "
-                   "inner.point.x }\n"
-                   "        }\n"
-                   "        return -1\n"
-                   "    }\n"
-                   "    on Tick :: () {\n"
-                   "        self.Spot.y = First()\n"
-                   "        for row in query(point: Spot, if point.x < 0) { "
-                   "self.Spot.y = -100 }\n"
-                   "        for row in query(point: Spot, if point.x > 0) { "
-                   "self.Spot.x += row.point.x }\n"
-                   "    }\n"
-                   "}\n";
-    REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        execution_module *module = NULL;
-        player p = { 0 };
-        passed = query_stage_one_module(b, "Nested", source, &module) &&
-                 query_play(module, &p);
-        if (passed) {
-            ecs_entity other = query_add_spot(&p, 7);
-            const pin_value delta = { .type = PIN_F32, .f = .25 };
-            passed = ecs_entity_to_u64(other) &&
-                     execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
-                         FLOW_OK &&
-                     query_spot_equals(&p, p.owner, 7, 14) &&
-                     query_spot_equals(&p, other, 7, 0);
-        }
-        stop(&p);
-        execution_module_free(module);
-    }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
-    return true;
-}
-TEST_CASE(package_compiler_query_header_constructs_captured_description)
-{
-    static const char source[] =
-        "NestedHeader :: behavior {\n"
-        "    total: int = 0\n"
-        "    on Tick :: () {\n"
-        "        for outer in query(point: Spot, if point.x > 0, "
-        "inner := query(other: Spot, if other.x > point.x)) {\n"
-        "            for row in outer.inner { self.Spot.y += row.other.x }\n"
-        "            for row in outer.inner { total += int(row.other.x) }\n"
-        "        }\n"
-        "    }\n"
-        "}\n";
-    REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        execution_module *module = NULL;
-        player p = { 0 };
-        passed = query_stage_one_module(b, "NestedHeader", source, &module) &&
-                 query_play(module, &p);
-        if (passed) {
-            ecs_entity first = query_add_spot(&p, 2);
-            ecs_entity second = query_add_spot(&p, 7);
-            const pin_value delta = { .type = PIN_F32, .f = .25 };
-            passed = ecs_entity_to_u64(first) && ecs_entity_to_u64(second) &&
-                     execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
-                         FLOW_OK &&
-                     query_spot_equals(&p, p.owner, 0, 7);
-            const pin_value *total = execution_instance_state(
-                p.instance,
-                script_catalog_id("symbol", "NestedHeader:1:total")
-            );
-            passed = passed && total && total->type == PIN_I32 && total->i == 7;
-        }
-        stop(&p);
-        execution_module_free(module);
-    }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
-    return true;
-}
-TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt)
-{
-    static const char
-        source[] = "Apply :: system(before: Spot, live: ^Spot, if before.x > "
-                   "0, amount := number(10 / int(before.x))) {\n"
-                   "    live.x += amount\n"
-                   "    live.y = before.x + number(dt)\n"
-                   "}\n";
-    REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        execution_module *module = NULL;
-        player p = { 0 };
-        passed = query_stage_one_module(b, "Apply", source, &module) &&
-                 query_play(module, &p);
-        if (passed) {
-            ecs_entity first = query_add_spot(&p, 2);
-            ecs_entity second = query_add_spot(&p, 5);
-            passed = module->plan.system_description == 1 &&
-                     ecs_entity_to_u64(first) && ecs_entity_to_u64(second) &&
-                     query_step(&p, 0, .25) && query_spot_equals(&p, p.owner, 0, 0) &&
-                     query_spot_equals(&p, first, 7, 2.25f) &&
-                     query_spot_equals(&p, second, 7, 5.25f);
-        }
-        stop(&p);
-        execution_module_free(module);
-    }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
-    return true;
-}
+
 /* Each source's queries and system header compile into its own module, in
  * whatever position the project lists it: each module matches the one its
  * source compiles to alone, and its queries run. */
 /* Compile `sources` together, then play each query-bearing module alone. A
  * system adds 2 to every row's y; a behavior's rows end at (x, y). */
-static bool query_sources_compose(
-    int b,
-    const char *const *identities,
-    const char *const *sources,
-    int count,
-    float x,
-    float y
-)
-{
-    script_catalog catalog = query_game_catalog();
-    pin_value out;
-    REQUIRE(
-        catalog_compile_sources(b, &catalog, identities, sources, count, "CompileBehaviorsWithCatalog", &out)
-    );
-    const pin_array *array = out.ptr;
-    if (!array || !array->count) {
-        arena_free(&detached);
-        REQUIRE(
-            catalog_compile_sources(b, &catalog, identities, sources, count, "BehaviorRejectionWithCatalog", &out)
-        );
-        fprintf(stderr, "query sources rejected: %s\n", pin_text(out).bytes);
-        arena_free(&detached);
-        return false;
-    }
-    size_t length = (size_t)array->count;
-    unsigned char *bytes = xmalloc(length);
-    for (size_t i = 0; i < length; i++) {
-        bytes[i] = array->items[i].u8;
-    }
-    arena_free(&detached);
-    const execution_prepared_linker linker = { .user = &catalog,
-                                               .type = link_game_type,
-                                               .event = link_game_event,
-                                               .host = link_game_host };
-    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
-    uint64_t root = 0;
-    char error[256] = { 0 };
-    package_collection *packages = compiler_artifact_read(
-        bytes,
-        length,
-        &linker,
-        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-        &remaining,
-        &root,
-        error,
-        sizeof error
-    );
-    free(bytes);
-    if (!packages) {
-        fprintf(stderr, "query sources load: %s\n", error);
-    }
-    REQUIRE(packages && package_collection_count(packages) == count);
-    bool passed = true;
-    for (int i = 0; passed && i < count; i++) {
-        execution_module *alone = NULL;
-        passed = query_stage_one_module(b, identities[i], sources[i], &alone);
-        execution_module *composed = NULL;
-        for (int j = 0; passed && j < count; j++) {
-            execution_module *candidate = package_collection_module(packages, j);
-            if (execution_module_id(candidate) == execution_module_id(alone)) {
-                composed = candidate;
-            }
-        }
-        passed = passed && composed &&
-                 composed->plan.function_count == alone->plan.function_count &&
-                 composed->plan.description_count == alone->plan.description_count &&
-                 composed->plan.system_description == alone->plan.system_description;
-        execution_module_free(alone);
-        if (!passed || !composed->plan.description_count) {
-            continue;
-        }
-        player p = { 0 };
-        passed = query_play(composed, &p);
-        ecs_entity other = passed ? query_add_spot(&p, 4) : (ecs_entity){ 0 };
-        const pin_value delta = { .type = PIN_F32, .f = .25 };
-        passed = passed && ecs_entity_to_u64(other) &&
-                 (composed->plan.system_description
-                      ? query_step(&p, 0, .25) && query_spot_equals(&p, other, 4, 2)
-                      : execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
-                                FLOW_OK &&
-                            query_spot_equals(&p, other, x, y));
-        stop(&p);
-    }
-    package_collection_free(packages);
-    return passed;
-}
-TEST_CASE(package_compiler_queries_compose_in_any_source_order)
-{
-    static const char *const plain = "Plain :: behavior {}\n";
-    static const char *const
-        rows = "Rows :: behavior {\n"
-               "    on Tick :: () {\n"
-               "        matches := query(live: ^Spot)\n"
-               "        for row in matches { row.live.x += 1 }\n"
-               "    }\n"
-               "}\n";
-    static const char *const apply = "Apply :: system(live: ^Spot) {\n"
-                                     "    live.y += 2\n"
-                                     "}\n";
-    static const char *const orders[][2] = {
-        { "Plain", "Rows" },
-        { "Rows", "Plain" },
-        { "Rows", "Apply" },
-        { "Apply", "Rows" },
-    };
-    REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        for (size_t o = 0; passed && o < sizeof orders / sizeof *orders; o++) {
-            const char *sources[2];
-            for (int i = 0; i < 2; i++) {
-                const char *name = orders[o][i];
-                sources[i] = !strcmp(name, "Plain") ? plain
-                           : !strcmp(name, "Rows")  ? rows
-                                                    : apply;
-            }
-            passed = query_sources_compose(b, orders[o], sources, 2, 5, 0);
-        }
-    }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
-    return true;
-}
+
 /* A query captures a local and calls a helper whose loop changes a local
  * that shadows a state. An earlier source whose offsets run past the query's
  * must hide neither from the later one: each scan stays in its own source. */
-TEST_CASE(package_compiler_query_captures_resolve_in_any_source_order)
-{
-    char padded[600];
-    snprintf(padded, sizeof padded, "Padded :: behavior {%512s\n    pad: int = 0\n}\n", "");
-    static const char *const
-        captured = "Captured :: behavior {\n"
-                   "    sum: number = 0\n"
-                   "    Twice :: (value: number) -> number {\n"
-                   "        sum: number = 0\n"
-                   "        count: int = 0\n"
-                   "        while count < 2 { sum += value; count += 1 }\n"
-                   "        return sum\n"
-                   "    }\n"
-                   "    on Tick :: () {\n"
-                   "        threshold: number = 3\n"
-                   "        matches := query(before: Spot, live: ^Spot, if "
-                   "before.x > threshold, "
-                   "amount := Twice(before.x))\n"
-                   "        for row in matches { row.live.y = row.amount }\n"
-                   "    }\n"
-                   "}\n";
-    static const char *const orders[][2] = {
-        { "Padded", "Captured" },
-        { "Captured", "Padded" },
-    };
-    REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        for (size_t o = 0; passed && o < sizeof orders / sizeof *orders; o++) {
-            const char *sources[2];
-            for (int i = 0; i < 2; i++) {
-                sources[i] = !strcmp(orders[o][i], "Padded") ? padded : captured;
-            }
-            passed = query_sources_compose(b, orders[o], sources, 2, 4, 8);
-        }
-    }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
-    return true;
-}
-TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper)
-{
-    static const char source
-        [] = "Accumulate :: system(before: Spot, live: ^Spot, if before.x > 0, "
-             "amount := Bump(before.x)) {\n"
-             "    total: retain int = 0\n"
-             "    Bump :: (value: number) -> number { return value + 1 }\n"
-             "    Add :: (step: number) -> number { total += 1; return step }\n"
-             "    step := Add(number(dt))\n"
-             "    live.y += amount + step\n"
-             "}\n";
-    REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        execution_module *module = NULL;
-        player p = { 0 };
-        passed = query_stage_one_module(b, "Accumulate", source, &module) &&
-                 query_play(module, &p);
-        if (passed) {
-            ecs_entity first = query_add_spot(&p, 2);
-            ecs_entity second = query_add_spot(&p, 5);
-            passed = ecs_entity_to_u64(first) && ecs_entity_to_u64(second) &&
-                     query_step(&p, 0, .25) && query_step(&p, .25, .25) &&
-                     query_spot_equals(&p, first, 2, 6.5f) &&
-                     query_spot_equals(&p, second, 5, 12.5f);
-            const pin_value *total = execution_instance_state(
-                p.instance,
-                script_catalog_id("symbol", "Accumulate:1:total")
-            );
-            passed = passed && total && total->type == PIN_I32 && total->i == 4;
-        }
-        stop(&p);
-        execution_module_free(module);
-    }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
-    return true;
-}
-TEST_CASE(package_compiler_empty_system_runs_only_attached_owner)
-{
-    static const char
-        source[] = "Empty :: system(/* empty */) { self.Spot.x += 1; "
-                   "self.Spot.y += number(dt) }";
-    REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        execution_module *module = NULL;
-        player p = { 0 };
-        passed = query_stage_one_module(b, "Empty", source, &module) &&
-                 module->plan.system_description == 0 &&
-                 module->plan.query == -1 && query_play(module, &p);
-        if (passed) {
-            ecs_entity other = query_add_spot(&p, 7);
-            passed = ecs_entity_to_u64(other) && query_step(&p, 0, .25) &&
-                     query_spot_equals(&p, p.owner, 1, .25f) &&
-                     query_spot_equals(&p, other, 7, 0);
-        }
-        stop(&p);
-        execution_module_free(module);
-    }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
-    return true;
-}
-TEST_CASE(package_compiler_query_generators_bind_target_components)
-{
-    static const char *const sources[] = {
-        "Targets :: system(target: entity in self.Targets, before: Spot from "
-        "target, "
-        "live: ^Spot from target, if before.x > 0) { live.y += before.x }",
-        "Targets :: behavior { on Tick :: () { for row in query("
-        "target: entity in self.Targets, before: Spot from target, "
-        "live: ^Spot from target, if before.x > 0) { row.live.y += "
-        "row.before.x } } }",
-    };
-    REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        for (int sample = 0; passed && sample < 2; sample++) {
-            execution_module *module = NULL;
-            player p = { 0 };
-            passed = query_stage_one_module(b, "Targets", sources[sample], &module) &&
-                     query_play(module, &p);
-            if (passed) {
-                ecs_entity first = query_add_spot(&p, 2);
-                ecs_entity second = query_add_spot(&p, 5);
-                ecs_entity missing = ecs_world_create_entity(p.world);
-                passed = ecs_entity_to_u64(first) && ecs_entity_to_u64(second) &&
-                         ecs_entity_to_u64(missing) &&
-                         ecs_world_record_add_pair(p.world, p.owner, QUERY_TARGETS, first, 0) ==
-                             ECS_OK &&
-                         ecs_world_record_add_pair(p.world, p.owner, QUERY_TARGETS, second, 0) ==
-                             ECS_OK &&
-                         ecs_world_record_add_pair(p.world, p.owner, QUERY_TARGETS, missing, 0) ==
-                             ECS_OK &&
-                         ecs_world_apply_commands(p.world) == ECS_OK;
-                const pin_value delta = { .type = PIN_F32, .f = .25 };
-                int status = FLOW_ERR_UNKNOWN_EVENT;
-                if (passed && sample == 0) {
-                    status = query_step(&p, 0, .25) ? FLOW_OK : FLOW_ERR_STATE;
-                } else if (passed) {
-                    status = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000);
-                }
-                passed = passed && status == FLOW_OK &&
-                         query_spot_equals(&p, p.owner, 0, 0) &&
-                         query_spot_equals(&p, first, 2, 2) &&
-                         query_spot_equals(&p, second, 5, 5);
-            }
-            stop(&p);
-            execution_module_free(module);
-        }
-    }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
-    return true;
-}
-TEST_CASE(package_compiler_query_optional_guards_and_inferred_values)
-{
-    static const char source
-        [] = "Optional :: behavior {\n"
-             "    total: int = 0\n"
-             "    on Tick :: () {\n"
-             "        for row in query(point: ^Spot?, alias := point, if "
-             "all(alias, "
-             "any(alias.x > 0, false)), "
-             "if any(true, 10 / int(alias.x - alias.x) > 0), "
-             "copy := alias^, first := [int(copy.x)][0]) {\n"
-             "            total += row.first\n"
-             "            row.alias.y = row.copy.x\n"
-             "        }\n"
-             "        for row in query(point: Spot?, if point) { total += 100 "
-             "}\n"
-             "    }\n"
-             "}\n";
-    REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        execution_module *module = NULL;
-        player p = { 0 };
-        passed = query_stage_one_module(b, "Optional", source, &module) &&
-                 query_play(module, &p);
-        if (passed) {
-            ecs_entity present = query_add_spot(&p, 7);
-            ecs_entity absent = ecs_world_create_entity(p.world);
-            const pin_value delta = { .type = PIN_F32, .f = .25 };
-            passed = ecs_entity_to_u64(present) && ecs_entity_to_u64(absent) &&
-                     ecs_world_apply_commands(p.world) == ECS_OK &&
-                     execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
-                         FLOW_OK &&
-                     query_spot_equals(&p, present, 7, 7);
-            const pin_value *total = execution_instance_state(
-                p.instance,
-                script_catalog_id("symbol", "Optional:1:total")
-            );
-            passed = passed && total && total->type == PIN_I32 && total->i == 207;
-        }
-        stop(&p);
-        execution_module_free(module);
-    }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
-    return true;
-}
-TEST_CASE(package_compiler_query_rejects_hidden_mutation_and_old_headers)
-{
-    static const char *const sources[] = {
-        "Fixed :: system(point: ^Spot) { Read :: () -> number { return "
-        "number(dt) }; "
-        "point.y = Read() }",
-        "Fixed :: system(target: Missing in self.Targets) {}",
-        "Fixed :: system(amount: Missing = 1) {}",
-        "Fixed :: system(point: Spot, amount := total) { total: retain int = 1 "
-        "}",
-        "Fixed :: system(point: Spot, amount := Read()) { total: retain int = "
-        "1; "
-        "Read :: () -> int { return total } }",
-        "Fixed :: system(inner := query(point: Spot, if point.x > dt)) {}",
-        "Fixed :: behavior { total: int = 1; on Tick :: () { "
-        "matches := query(point: Spot, inner := query(other: Spot, "
-        "if other.x > Read())) } Read :: () -> number { return number(total) } "
-        "}",
-        "Fixed :: behavior { total: int = 1; "
-        "Read :: () -> int { for row in query(p: Spot, "
-        "if p.x > number(total)) { return 1 }; return 0 } "
-        "on Tick :: () { matches := query(point: Spot, amount := Read()) } }",
-        "Fixed :: behavior { on Tick :: () { value := 1; "
-        "matches := query(point: Spot, pointer := &value) } }",
-        "Fixed :: behavior { total: int = 0; Read :: () -> int { return total "
-        "}; "
-        "on Tick :: () { matches := query(point: Spot, amount := Read()) } }",
-        "Fixed :: system(point: Spot, amount := dt) {}",
-        "Fixed :: system(point: Spot, dt := 1) {}",
-        "Fixed :: system(point: ^Spot?, if point.x > 0 && point) {}",
-        "Fixed :: behavior { on Tick :: () { matches := query(point: Spot); "
-        "self.Spot.x = matches.point.x } }",
-        "Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
-        "for other in row {} } } }",
-        "Fixed :: system(point: Spot) on Tick {}",
-        "Fixed :: system(point: Spot) without Frozen {}",
-        "Fixed :: system(point: Spot) where point.x > 0 {}",
-        "Fixed :: system(point: Spot) join target in self.Targets {}",
-        "Fixed :: behavior { on Tick :: () { matches := "
-        "query(point: Spot = self) } }",
-    };
-    REQUIRE(prepare());
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        for (size_t i = 0; passed && i < sizeof sources / sizeof *sources; i++) {
-            compiler_result out;
-            passed = query_compile_result(b, "Fixed", sources[i], &out);
-            if (passed) {
-                passed = !compiler_succeeded(&out);
-                if (!passed) {
-                    fprintf(stderr, "stage one accepted invalid query: %s\n", sources[i]);
-                }
-            }
-            arena_free(&detached);
-        }
-    }
-    REQUIRE(passed);
-    return true;
-}
+
 /* This test-only source joins the compiler fixture's package, so its probe
  * can exercise private scope collection without adding a shipped export. */
-static const char QUERY_SCOPE_PROBE[] =
-    "package package_compiler\n"
-    "import snapshot \"project:source_snapshot\"\n"
-    "import raw \"project:compiler_syntax\"\n"
-    "pub ScopeCaptures :: (source: string, instruction_names: string[], "
-    "target: Target) -> string[] {\n"
-    "    forest: snapshot.SnapshotNode[] = []; root: int = -1;\n"
-    "    switch raw.Parse(source) {\n"
-    "        case .Parsed(nodes, fields, is_named, is_extra, top):\n"
-    "            root = top; index: int = 0;\n"
-    "            while index < length(nodes) {\n"
-    "                forest.append(snapshot.Node(nodes[index], fields[index], "
-    "is_named[index], is_extra[index], 0));\n"
-    "                index += 1;\n"
-    "            }\n"
-    "    }\n"
-    "    document: snapshot.Document = {original_path: \"scope/Main.chibi\", "
-    "path: \"scope/Main.chibi\",\n"
-    "        directory: \"scope\", key: \"scope/Main.chibi\", identity: "
-    "\"project:scope\", text: source, root: 0,\n"
-    "        syntax_root: root, header_start: 0, header_end: 0, header_line: "
-    "0, header_column: 0, header_document: 0,\n"
-    "        node_start: 0, node_count: length(forest), first_import: 0, "
-    "import_count: 0, has_key: true,\n"
-    "        has_syntax: true, has_header: false};\n"
-    "    switch DeclarePackage(forest, [document], [0], 0, \"scope\", [], "
-    "target, [], [], [], [], []) {\n"
-    "        case .Failed(diagnostic): return [format_text(\"ERROR {}\", "
-    "diagnostic.message)];\n"
-    "        case .Collected(callables, params, types, members, constants):\n"
-    "            switch CollectQueries(forest, source, \"project:scope\", 0, "
-    "0, length(forest), types, members, callables, params, [], [], [],\n"
-    "                                  [], 0, target, "
-    "ResolveOps(instruction_names, false)) {\n"
-    "                case .Failed(diagnostic): return [format_text(\"ERROR "
-    "{}\", diagnostic.message)];\n"
-    "                case .Collected(more_types, more_members, more_callables, "
-    "more_params, descriptions):\n"
-    "                    captures: string[] = [];\n"
-    "                    for description in descriptions {\n"
-    "                        index: int = 0;\n"
-    "                        while index < description.capture_count {\n"
-    "                            param := "
-    "more_params[description.first_capture + index];\n"
-    "                            captures.append(format_text(\"{}:{}:{}\", "
-    "param.name, param.storage, param.container));\n"
-    "                            index += 1;\n"
-    "                        }\n"
-    "                        captures.append(\"|\");\n"
-    "                    }\n"
-    "                    return captures;\n"
-    "            }\n"
-    "    }\n"
-    "}\n";
-TEST_CASE(package_compiler_query_captures_lexical_bindings)
+
+/* The consumer's llvm_native.Emit takes its module as JSON tables on every
+ * host: Main calls Pick(7, true, 9), and Pick returns its third argument. */
+TEST_CASE(package_compiler_native_modules_emit_through_the_consumer)
 {
-    static const char source
-        [] = "package scope\n"
-             "Choice :: union { Some(amount: int) | None }\n"
-             "Probe :: () -> int {\n"
-             "    threshold: f64 = 20; payload: f64 = 40;\n"
-             "    for threshold in 0..<2 { captured := query(value := "
-             "threshold); }\n"
-             "    values: f64[] = [3, 7]; alias := values;\n"
-             "    for value, index in alias { captured := query(v := value, n "
-             ":= index); }\n"
-             "    pairs: [string: int] = [\"a\": 3]; pair_alias := pairs;\n"
-             "    for key, value in pair_alias { captured := query(k := key, v "
-             ":= value); }\n"
-             "    matches := query(amount := 1);\n"
-             "    for row in matches { alias_row := row; captured := query(x "
-             ":= row.amount, y := alias_row.amount); }\n"
-             "    choice := Choice.Some(5);\n"
-             "    if choice is .Some(payload) { captured := query(x := "
-             "payload); }\n"
-             "    while choice is .Some(loop_payload) { captured := query(x := "
-             "loop_payload); break; }\n"
-             "    switch choice { case .Some(payload): captured := query(x := "
-             "payload); case .None: {} }\n"
-             "    after := query(x := threshold, y := payload);\n"
-             "    return 0;\n"
-             "}\n";
-    static const char *const expected[] = {
-        "threshold:6:0",
-        "|",
-        "value:11:0",
-        "index:6:0",
-        "|",
-        "key:13:0",
-        "value:6:0",
-        "|",
-        "|",
-        "row:20:0",
-        "alias_row:20:0",
-        "|",
-        "payload:6:0",
-        "|",
-        "loop_payload:6:0",
-        "|",
-        "payload:6:0",
-        "|",
-        "threshold:11:0",
-        "payload:11:0",
-        "|",
-    };
-    const source_package_input sources[] = {
-        PACKAGE_COMPILER_SOURCE_INPUTS,
-        { "package_compiler/ScopeTest.chibi", QUERY_SCOPE_PROBE, sizeof QUERY_SCOPE_PROBE - 1 },
-    };
-    const native_definition_pack packs[] = {
-        COMPILER_JSON_DEFINITION_PACK,
-        COMPILER_SYNTAX_DEFINITION_PACK,
-        CSTRING_PACK,
-    };
-    REQUIRE(
-        compiler_fixture_prepare_packs(&fixture, sources, sizeof sources / sizeof *sources, packs, 3)
-    );
-    for (int b = 0; b < 2; b++) {
-        pin_value compile[ARGUMENTS];
-        REQUIRE(arguments(b, false, NULL, 0, compile));
-        pin_value args[] = { text(source),
-                             compile[TARGET_ARGUMENT + 2],
-                             compile[TARGET_ARGUMENT] };
-        pin_value out = { 0 };
-        REQUIRE(
-            compiler_fixture_call(&fixture, b, PACKAGE, "ScopeCaptures", args, 3, COMPILE_BUDGET, &detached, &out)
-        );
-        const pin_array *captures = out.ptr;
-        if (!captures || captures->count != sizeof expected / sizeof *expected) {
-            fprintf(
-                stderr,
-                "query scope returned %d entries\n",
-                captures ? captures->count : -1
-            );
-            for (int i = 0; captures && i < captures->count; i++) {
-                fprintf(stderr, "  %s\n", pin_text(pin_array_get(captures, i)).bytes);
-            }
-        }
-        REQUIRE(captures && captures->count == sizeof expected / sizeof *expected);
-        for (int i = 0; i < captures->count; i++) {
-            const pin_string found = pin_text(pin_array_get(captures, i));
-            if (found.length != strlen(expected[i]) ||
-                memcmp(found.bytes, expected[i], found.length)) {
-                fprintf(
-                    stderr,
-                    "query scope %d: expected %s, got %s\n",
-                    i,
-                    expected[i],
-                    found.bytes
-                );
-            }
-            REQUIRE(
-                found.length == strlen(expected[i]) &&
-                !memcmp(found.bytes, expected[i], found.length)
-            );
-        }
-        arena_free(&detached);
-    }
-    return true;
-}
-TEST_CASE(package_compiler_query_values_are_readonly)
-{
-    static const char *const sources[] = {
-        "Fixed :: system(point: Spot) { point.x = 2 }",
-        ("Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
-         "row.point.x = 2 } } }"),
-        "Fixed :: system(point: ^Spot, amount := 2) { amount = 3 }",
-        "Fixed :: system(point: ^Spot) { point = null }",
-        "Fixed :: system(point: ^Spot) { point.w = 3 }",
-    };
     REQUIRE(prepare());
-    query_register_types();
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        for (size_t i = 0; passed && i < sizeof sources / sizeof *sources; i++) {
-            compiler_result out;
-            passed = query_compile_result(b, "Fixed", sources[i], &out);
-            if (passed) {
-                pin_value message = { 0 };
-                passed = !compiler_succeeded(&out) &&
-                         get(compiler_error(&out), "message", &message) &&
-                         (strstr(pin_text(message).bytes, "writable") ||
-                          strstr(pin_text(message).bytes, "read-only"));
-                if (!passed) {
-                    fprintf(stderr, "query readonly binding accepted: %s\n", sources[i]);
-                }
-            }
-            arena_free(&detached);
-        }
+    static const native_code code[] = {
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .literal = 7 },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .output = 1, .literal = 1 },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 2, .literal = 9 },
+        { .op = NATIVE_CALL, .type = NATIVE_INT, .output = 3, .left = 1, .target = 3 },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 3 },
+        { .op = NATIVE_RETURN },
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_ARGUMENT, .type = NATIVE_INT, .left = 2 },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+    };
+    static const native_function functions[] = {
+        { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
+        { NATIVE_INT, 0, 3, 4, 1, 7, 4, 3, 0 }
+    };
+    static const int parameters[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT };
+    static const int slots[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT, NATIVE_INT, NATIVE_INT };
+    static const int arguments[] = { 0, 1, 2 };
+    native_module m = { functions, 2,    parameters, 3,         slots,
+                        5,         code, 11,         arguments, 3 };
+    char *ir;
+    REQUIRE(native_module_ir("LinuxX64", &m, &ir) && ir);
+    bool emitted = strstr(ir, "define internal i32 @chibi_scalar.1(") &&
+                   strstr(ir, "call i32 @chibi_scalar.1(");
+    if (!emitted) {
+        fprintf(stderr, "%s\n", ir);
     }
-    type_catalog_set_project(NULL);
-    REQUIRE(passed);
+    free(ir);
+    REQUIRE(emitted);
+    /* A call to a function with another signature is rejected: no text. */
+    native_code changed[11];
+    memcpy(changed, code, sizeof changed);
+    changed[4].left = 2;
+    m.code = changed;
+    REQUIRE(native_module_ir("LinuxX64", &m, &ir) && !ir);
     return true;
-}
-void test_language_package_compiler_chibi()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_compound_diagnostics_match_stage_zero);
-    RUN_TEST_CASE(package_compiler_builds_runnable_packages);
-    RUN_TEST_CASE(package_compiler_asserts_without_native_capability);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_types()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builtin_math_source_contracts);
-    RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages);
-    RUN_TEST_CASE(package_compiler_rejects_invalid_char_conversions);
-    RUN_TEST_CASE(package_compiler_rejects_deferred_char_forms);
-    RUN_TEST_CASE(package_compiler_defers_generic_char_native_results);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_math_native()
-{
-    pu_setup(NULL, cleanup);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_fallible()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_checks_fallible_source_results);
-    RUN_TEST_CASE(package_compiler_checks_fallible_source_results_compiled);
-    RUN_TEST_CASE(package_compiler_fallible_system_query_keeps_unsupported_boundary);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_imports()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages);
-    RUN_TEST_CASE(package_compiler_float_constant_dependency);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_compiled()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_packages_compiled);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_types_compiled()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_collections()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_collection_packages);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_collections_compiled()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_imports_compiled()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled);
-    RUN_TEST_CASE(package_compiler_float_constant_dependency_compiled);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_bootstrap()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_compiles_itself);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_literals()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_reads_float_literals);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_behaviors()
-{
-    pu_setup(NULL, cleanup);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_actions()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_exports_native_actions);
-    RUN_TEST_CASE(package_compiler_keeps_unavailable_native_functions);
-    RUN_TEST_CASE(package_compiler_rejects_nonzero_handle_defaults);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_behaviors_rest()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_keeps_text_state_per_owner);
-    RUN_TEST_CASE(package_compiler_runs_task_sequencing_and_cancellation);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_queries()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_query_rows_capture_and_restart);
-    RUN_TEST_CASE(package_compiler_query_nested_return_and_empty_iteration);
-    RUN_TEST_CASE(package_compiler_query_header_constructs_captured_description);
-    RUN_TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt);
-    RUN_TEST_CASE(package_compiler_queries_compose_in_any_source_order);
-    RUN_TEST_CASE(package_compiler_query_captures_resolve_in_any_source_order);
-    RUN_TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper);
-    RUN_TEST_CASE(package_compiler_empty_system_runs_only_attached_owner);
-    RUN_TEST_CASE(package_compiler_query_optional_guards_and_inferred_values);
-    RUN_TEST_CASE(package_compiler_query_generators_bind_target_components);
-    RUN_TEST_CASE(package_compiler_query_rejects_hidden_mutation_and_old_headers);
-    RUN_TEST_CASE(package_compiler_query_values_are_readonly);
-    RUN_TEST_CASE(package_compiler_query_captures_lexical_bindings);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_sharing()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_shares_its_arguments);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_debug_free()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_omits_debug_info);
-    RUN_TEST_CASE(package_compiler_drops_pushed_items);
-    RUN_TEST_CASE(package_compiler_declares_records_in_linear_steps);
-    pu_clear_setup();
 }
 void test_language_package_compiler_chibi_scalar()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_scalar_rows_span_imported_packages);
-    RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
+    RUN_TEST_CASE(package_compiler_scalar_rows_span_collection_packages);
+    RUN_TEST_CASE(package_compiler_scalar_rejections_lie_in_package_sets);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
+    RUN_TEST_CASE(package_compiler_scalar_retains_library_states);
     RUN_TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit);
+    RUN_TEST_CASE(package_compiler_native_modules_emit_through_the_consumer);
     pu_clear_setup();
+    scalar_host_close();
 }
 #if defined(__linux__) && defined(__x86_64__)
 int test_language_package_compiler_chibi_native_call(int count, char **arguments)
@@ -15338,10 +5002,21 @@ int test_language_stack_overflow_child(const char *)
 {
     abort();
 }
+
+#endif
+#if defined(__linux__) && defined(__x86_64__)
+static void cancel_native(int)
+{
+    native_cancelled = 1;
+}
 #endif
 void test_language_package_compiler_chibi_native()
 {
 #if defined(__linux__) && defined(__x86_64__)
+    if (!getenv("CHIBI_LLVM_BIN")) {
+        fprintf(stderr, "native scalar execution skipped: set CHIBI_LLVM_BIN to the directory of opt, llc, ld.lld and llvm-nm\n");
+        return;
+    }
     /* The supervised children run in their own process groups, so a signal
      * to this one cancels them instead of leaving them running. */
     struct sigaction cancel = { .sa_handler = cancel_native }, interrupt, terminate;
@@ -15354,375 +5029,20 @@ void test_language_package_compiler_chibi_native()
     RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
     RUN_TEST_CASE(package_compiler_native_arithmetic_is_total);
     RUN_TEST_CASE(package_compiler_native_arrays_run_and_check_indexes);
+    RUN_TEST_CASE(package_compiler_native_edit_and_continue_keeps_state);
     pu_clear_setup();
+    scalar_host_close();
     sigaction(SIGINT, &interrupt, NULL);
     sigaction(SIGTERM, &terminate, NULL);
 #else
-    fprintf(stderr, "native scalar execution runs on Linux x86-64; other targets run its bundle\n");
-    abort();
+    fprintf(stderr, "native scalar execution skipped: it runs on Linux x86-64; other targets run its bundle\n");
 #endif
-}
-
-void test_language_package_compiler_chibi_libraries()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_pure_provider_has_no_write);
-    pu_clear_setup();
 }
 
 /* Fixed primitive-native argument association, checked against literal
  * results and the independent stage-zero reference. */
-static const sample native_argument_samples[] = {
-    { .name = "native named CString expression location",
-      .source = "package facts\nRun :: () -> int { return "
-                "cstring_probe(value: "
-                "(\"a\\u0000b\")); }",
-      .c_string_probe = true,
-      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
-      .line = 2,
-      .column = 48 },
-    { .name = "native reordered CString expression location",
-      .source = "package facts\nRun :: () -> int { return "
-                "cstring_pair(value: "
-                "(\"a\\u0000b\"), prefix: 1); }",
-      .c_string_probe = true,
-      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
-      .line = 2,
-      .column = 47 },
-};
-
-TEST_CASE(native_arguments_reference_contract)
-{
-    /* Every valid call supplies all parameters of the existing text natives. */
-    source_package_input inputs[SAMPLE_INPUTS];
-    int count = sample_inputs(&native_argument_samples[0], inputs);
-    native_definition_pack packs[] = { CSTRING_PACK };
-    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
-    for (int i = 0;
-         i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
-         i++) {
-        const sample *s = &native_argument_samples[i];
-        fprintf(stderr, "native arguments reference: %s\n", s->name);
-        if (s->message) {
-            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
-            continue;
-        }
-        unsigned char *bytes = NULL;
-        size_t length = 0;
-        REQUIRE(oracle_closure(s, &bytes, &length));
-        bool passed = run(bytes, length, &s->calls[0], 0) &&
-                      run(bytes, length, &s->calls[0], 1);
-        free(bytes);
-        REQUIRE(passed);
-    }
-    return true;
-}
 
 /* Stage zero picks native.overload's integer or text overload by the
  * argument; an untyped number never converts to text, so it cannot pick the
  * text one. native.kernel's number overload takes literals and typed values
  * other than i64, which takes the f64 one. */
-TEST_CASE(native_overload_reference_contract)
-{
-    static const struct
-    {
-        const char *source;
-        pin_type parameter;
-        const char *message;
-        int column;
-    } cases[] = {
-        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32, NULL, 0 },
-        { "package facts\nRun :: () -> int { return "
-          "native.overload((-(2))); }",
-          PIN_I32,
-          NULL,
-          0 },
-        { "package facts\nRun :: () -> int { return native.overload(2.0); "
-          "}",
-          PIN_I32,
-          NULL,
-          0 },
-        { "package facts\nRun :: () -> int { return native.overload(1e0); "
-          "}",
-          PIN_I32,
-          NULL,
-          0 },
-        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32, NULL, 0 },
-        { "package facts\nRun :: (v: int) -> int { return native.kernel(v "
-          "* "
-          "2); }",
-          PIN_F32,
-          NULL,
-          0 },
-        { "package facts\nRun :: (v: i64) -> int { return native.kernel(v "
-          "* "
-          "2); }",
-          PIN_F64,
-          NULL,
-          0 },
-        { "package facts\nRun :: (v: f64) -> int { return "
-          "native.kernel(v); }",
-          PIN_F64,
-          NULL,
-          0 },
-        { "package facts\nRun :: (v: int) -> int { return "
-          "native.overload(v); "
-          "}",
-          PIN_I32,
-          NULL,
-          0 },
-        { "package facts\nRun :: () -> int { return "
-          "native.overload(\"three\"); }",
-          PIN_STR,
-          NULL,
-          0 },
-        { "package facts\nRun :: () -> int { return native.overload(2.5); "
-          "}",
-          PIN_FLOW,
-          "Numeric literal has a fraction, which int cannot hold",
-          43 },
-        { "package facts\nRun :: () -> int { return "
-          "native.overload(4294967296); }",
-          PIN_FLOW,
-          "Numeric literal is outside the range of int",
-          43 },
-    };
-    native_definition_pack packs[] = { CSTRING_PACK };
-    source_package_input inputs[SAMPLE_INPUTS];
-    sample first = { .source = cases[0].source };
-    int count = sample_inputs(&first, inputs);
-    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
-    const script_catalog *catalog = native_capabilities_catalog(fixture.native);
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        sample s = { .source = cases[i].source };
-        const authoring_package *root;
-        authoring_packages *packages = oracle_packages(&s, &root);
-        if (cases[i].message) {
-            const script_diagnostic *d = root->diagnostic_count
-                                           ? &root->diagnostics[0]
-                                           : NULL;
-            if (d) {
-                fprintf(
-                    stderr,
-                    "native overload %zu: %s at %d:%d\n",
-                    i,
-                    d->message,
-                    d->range.line,
-                    d->range.column
-                );
-            }
-            bool same = d && !strcmp(d->message, cases[i].message) &&
-                        d->range.line == 2 && d->range.column == cases[i].column;
-            authoring_packages_free(packages);
-            REQUIRE(same);
-            continue;
-        }
-        const script_analysis *analysis = root->analysis;
-        int chosen = 0;
-        for (int e = 0; e < analysis->expression_count; e++) {
-            const script_expression *expression = &analysis->expressions[e];
-            const script_catalog_capability *capability = expression->kind == SCRIPT_EXPR_CALL
-                                                            ? script_catalog_capability_by_id(
-                                                                  catalog,
-                                                                  expression->capability
-                                                              )
-                                                            : NULL;
-            if (capability && capability->parameter_count == 1 &&
-                capability->parameters[0].type.storage == cases[i].parameter) {
-                chosen++;
-            }
-        }
-        bool valid = root->valid && chosen == 1;
-        if (!valid) {
-            fprintf(
-                stderr,
-                "native overload %zu: %s\n",
-                i,
-                root->diagnostic_count ? root->diagnostics[0].message : "other overload"
-            );
-        }
-        authoring_packages_free(packages);
-        REQUIRE(valid);
-    }
-    return true;
-}
-TEST_CASE(native_arguments_authored_contract)
-{
-    REQUIRE(prepare());
-    bool all = true;
-    for (int b = 0; b < 2; b++) {
-        for (int i = 0;
-             i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
-             i++) {
-            const sample *s = &native_argument_samples[i];
-            source_package_input inputs[SAMPLE_INPUTS];
-            int count = sample_inputs(s, inputs);
-            compiler_result out;
-            REQUIRE(
-                compile(b, false, s->c_string_probe, false, inputs, count, COMPILE_BUDGET, &out)
-            );
-            bool passed = false;
-            if (!compiler_succeeded(&out)) {
-                pin_value message, line, column;
-                REQUIRE(get(compiler_error(&out), "message", &message));
-                REQUIRE(get(compiler_error(&out), "line", &line));
-                REQUIRE(get(compiler_error(&out), "column", &column));
-                passed = s->message && !strcmp(s->message, pin_text(message).bytes) &&
-                         line.i == s->line && column.i == s->column;
-                fprintf(
-                    stderr,
-                    "native arguments authored %d: %s: %s at %d:%d (%s)\n",
-                    b,
-                    s->name,
-                    pin_text(message).bytes,
-                    line.i,
-                    column.i,
-                    passed ? "expected" : "MISMATCH"
-                );
-            } else {
-                size_t length = 0;
-                unsigned char *bytes = closure_bytes(&out, &length);
-                unsigned char *expected = NULL;
-                size_t expected_length = 0;
-                passed = !s->message &&
-                         (b || (oracle_closure(s, &expected, &expected_length) &&
-                                points_like_oracle(bytes, length, false))) &&
-                         run(bytes, length, &s->calls[0], 0) &&
-                         run(bytes, length, &s->calls[0], 1);
-                free(expected);
-                free(bytes);
-                /* run() leaves a failed invocation for cleanup; continue the
-                 * remaining fixtures without overwriting that ownership. */
-                compiler_host_free(host);
-                host = NULL;
-                free(result.json);
-                result = (compiler_host_result){ 0 };
-                fprintf(
-                    stderr,
-                    "native arguments authored %d: %s: compiled (%s)\n",
-                    b,
-                    s->name,
-                    passed ? "expected" : "MISMATCH"
-                );
-            }
-            arena_free(&detached);
-            all = passed && all;
-        }
-    }
-    REQUIRE(all);
-    return true;
-}
-
-void test_language_package_compiler_chibi_native_arguments_oracle()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(native_arguments_reference_contract);
-    RUN_TEST_CASE(native_overload_reference_contract);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_native_arguments()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(native_arguments_authored_contract);
-    pu_clear_setup();
-}
-
-TEST_CASE(package_compiler_compositional_records)
-{
-    REQUIRE(prepare());
-    /* The sample host names its root package facts. Change only the package
-     * declaration so both stages execute the authored fixture's assertions. */
-    const char *body = strchr(COMPOSITIONAL_RECORDS_SOURCE, '\n');
-    REQUIRE(body);
-    char source[sizeof COMPOSITIONAL_RECORDS_SOURCE + 16];
-    int used = snprintf(source, sizeof source, "package facts\n%s", body + 1);
-    REQUIRE(used > 0 && (size_t)used < sizeof source);
-    const sample s = { .name = "compositional records", .source = source, .game = true };
-    source_package_input inputs[SAMPLE_INPUTS];
-    int count = sample_inputs(&s, inputs);
-    const sample_call call = { .function = "Main", .arguments = "[]", .expected = "[0]" };
-    for (int b = 0; b < 2; b++) {
-        compiler_result out;
-        REQUIRE(compile(b, true, false, false, inputs, count, COMPILE_BUDGET, &out));
-        if (!compiler_succeeded(&out)) {
-            pin_value message, line, column;
-            REQUIRE(get(compiler_error(&out), "message", &message));
-            REQUIRE(get(compiler_error(&out), "line", &line));
-            REQUIRE(get(compiler_error(&out), "column", &column));
-            fprintf(
-                stderr,
-                "compositional stage one: %s at %d:%d\n",
-                pin_text(message).bytes,
-                line.i,
-                column.i
-            );
-        }
-        REQUIRE(compiler_succeeded(&out));
-        size_t length;
-        unsigned char *bytes = closure_bytes(&out, &length);
-        arena_free(&detached);
-        bool passed = true;
-        for (int backend = 0; passed && backend < 2; backend++) {
-            passed = run(bytes, length, &call, backend);
-        }
-        free(bytes);
-        REQUIRE(passed);
-        const source_package_input rejected = {
-            "facts/Main.chibi",
-            COMPOSITIONAL_RECORD_ALIAS_REJECTION,
-            strlen(COMPOSITIONAL_RECORD_ALIAS_REJECTION)
-        };
-        REQUIRE(compile(b, false, false, false, &rejected, 1, COMPILE_BUDGET, &out));
-        REQUIRE(!compiler_succeeded(&out));
-        pin_value message;
-        REQUIRE(get(compiler_error(&out), "message", &message));
-        if (!strstr(pin_text(message).bytes, "Nullable pointer requires a presence guard")) {
-            fprintf(
-                stderr,
-                "compositional stage-one alias rejection: %s\n",
-                pin_text(message).bytes
-            );
-        }
-        REQUIRE(strstr(pin_text(message).bytes, "Nullable pointer requires a presence guard"));
-        arena_free(&detached);
-        char depth_source[4096];
-        for (int arrays = 0; arrays < 2; arrays++) {
-            for (int depth = 16; depth <= 17; depth++) {
-                REQUIRE(
-                    compositional_records_depth_source(depth_source, sizeof depth_source, depth, arrays)
-                );
-                const source_package_input input = { "facts/Main.chibi",
-                                                     depth_source,
-                                                     strlen(depth_source) };
-                REQUIRE(compile(b, false, false, false, &input, 1, COMPILE_BUDGET, &out));
-                bool expected = depth == 16;
-                if (compiler_succeeded(&out) != expected) {
-                    fprintf(stderr, "compositional stage-one depth: backend=%d arrays=%d depth=%d\n", b, arrays, depth);
-                    if (!compiler_succeeded(&out)) {
-                        REQUIRE(get(compiler_error(&out), "message", &message));
-                        fprintf(stderr, "%s\n", pin_text(message).bytes);
-                    }
-                }
-                REQUIRE(compiler_succeeded(&out) == expected);
-                arena_free(&detached);
-            }
-        }
-        REQUIRE(compositional_records_fanout_source(depth_source, sizeof depth_source));
-        const source_package_input fanout = { "facts/Main.chibi",
-                                              depth_source,
-                                              strlen(depth_source) };
-        REQUIRE(compile(b, false, false, false, &fanout, 1, COMPILE_BUDGET, &out));
-        REQUIRE(!compiler_succeeded(&out));
-        REQUIRE(get(compiler_error(&out), "message", &message));
-        REQUIRE(strstr(pin_text(message).bytes, "metadata work"));
-        arena_free(&detached);
-    }
-    return true;
-}
-
-void test_language_package_compiler_chibi_records()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_compositional_records);
-    pu_clear_setup();
-}

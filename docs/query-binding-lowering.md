@@ -51,7 +51,11 @@ The retired intrinsic and its verifier/effect/cost cases are removed. The test
 oracle uses the public context-host ABI solely for differential semantics; it is
 not claimed to reproduce the old value-bank timing path.
 
-## Bounded validation
+## Bounded validation (2026-10-14)
+
+These selectors were deleted with the stage-zero front-end tests
+(`archive/README.md`, "Deleted once replaced"); this section records what they
+covered.
 
 `language-query-program` / `wasm-query-program` add at most 32 tiny definitions,
 384 semantic comparisons, 24 decoded-function calls, 16 control calls, four
@@ -77,7 +81,7 @@ same-context recoveries, inside its existing single compiler child and 128 KiB
 source cap. Tests assert actual native inspection code and generated Wasm entry
 execution, rather than inferring backend coverage from configuration.
 
-All execution uses the `tools/test_policy.py` supervisor.
+All execution used the `tools/test_policy.py` supervisor, since deleted.
 Independent affected-contract review selected the native language group,
 Node Wasm group, generated-C selector and prepared producer/runtime consumer.
 Native correctness uses Clang 19.1.7 Debug with AddressSanitizer and

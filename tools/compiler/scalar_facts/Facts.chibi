@@ -265,10 +265,30 @@ pub TextRow: int : 35;
 pub AssertRow: int : 36;
 pub ArrayRow: int : 37;
 // A call of a C function the source declares in a foreign block, an operand
-// row that consumes its `count` argument operands, numbers or bools. `name`
-// is the C symbol, `type` the number or bool it returns, and `text` the path
-// of the library that provides it, which the native build links.
+// row that consumes its `count` argument operands, numbers, bools or string
+// literals a C function reads as NUL-ended bytes. `name` is the C symbol,
+// `type` the number or bool it returns, and `text` the path of the library
+// that provides it, which the native build links. A `value` of 1 calls through
+// an address instead: the first operand is that address, a 64-bit word, and
+// `name` and `text` are empty.
 pub ForeignRow: int : 38;
+// A call operand that passes the variable `value`, of its `type`, by
+// reference: the callee's reference parameter reads and writes that variable.
+// Passing a reference parameter on gives the caller's variable on.
+pub RefRow: int : 39;
+// The address of a C-ABI function that calls the function `value`, a word, for
+// a foreign function that takes a function: `name` is the function's, `count`
+// is 0 and `type` is the word. The function's parameters and result are
+// numbers or bools and none of its parameters is a reference.
+pub FunctionAddressRow: int : 40;
+// What a RefRow of `type` pushes on a call's operand stack, and so what a
+// reference parameter of `type` takes: ReferenceType plus the type. A
+// parameter row whose literal is 1 is a reference parameter. Its variable is
+// of its `type` for every other row, and reading or writing it reads or
+// writes the caller's variable, so a callee changes its caller's records and
+// arrays in place. No other function holds a reference: the caller's
+// variable outlives the call, and none is the entry or in a library.
+pub ReferenceType: int : 1048576;
 
 // The value types: int and bool, then the other integer types, then the
 // floating ones, then string. The facts carry no compiler storage ordinal.
@@ -349,11 +369,19 @@ pub ArrayWith: int : 12;
 pub ArrayJoin: int : 13;
 // An array of ints, the bytes of the string it consumes, from 0 to 255.
 pub ArrayBytes: int : 14;
+// A string, the bytes of the array of bytes (u8) it consumes.
+pub ArrayText: int : 15;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range
 // follows it, and that Switch reads it.
 pub SwitchSubject: int : 1;
+// A Local row whose `literal` is Retained declares a retained local, a number
+// or bool the function keeps between calls: its one operand is a Literal, the
+// value it starts with, and the variable reads and writes that state, which a
+// native library exports to the host that replaces it. It is named for its
+// function and its `name`, so the state is the same across edits that keep both.
+pub Retained: int : 2;
 
 // A For row's range flags; RangeArray stands alone or with RangeKeyed, which
 // declares the next variable, an int, as the index of the element.

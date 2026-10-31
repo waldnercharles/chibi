@@ -22,3 +22,72 @@ pub NativeToolchainOption :: (argument: string) -> string[] {
     }
     return [];
 }
+
+// The graph options of an SDK reflection build: --build, --jobs and
+// --libclang-root, then after `--` the toolchain definitions Make's SDK
+// consumers pass, as -DNAME=VALUE or -D NAME=VALUE. A definition selects the
+// last occurrence, as CMake does; an explicit --libclang-root wins. error
+// names the first argument the reflection host rejects.
+pub ReflectionOptions :: (arguments: string[]) -> (options: string[], error: string) {
+    options := ["--profile", "release", "--target", "reflect"];
+    libclang := "";
+    definitions := false;
+    split := false;
+    index := 0;
+    while (index < length(arguments)) {
+        argument := arguments[index];
+        index += 1;
+        if (!definitions && argument == "--") {
+            definitions = true;
+            continue;
+        }
+        if (!definitions) {
+            if ((argument != "--build" && argument != "--jobs" && argument != "--libclang-root") ||
+                index == length(arguments) || strings.HasPrefix(arguments[index], "--") || arguments[index] == "") {
+                return (options, format_text("graph: invalid native reflection option '{0}'", argument));
+            }
+            if (argument == "--libclang-root" && libclang == "") {
+                libclang = arguments[index];
+            }
+            options.extend([argument, arguments[index]]);
+            index += 1;
+            continue;
+        }
+        if (argument == "-D" && !split) {
+            split = true;
+            continue;
+        }
+        definition := argument;
+        if (split) {
+            definition = strings.Join(["-D", argument], "");
+            split = false;
+        }
+        mapped := NativeToolchainOption(definition);
+        if (length(mapped) != 2) {
+            return (options, format_text("graph: unsupported native reflection toolchain argument '{0}'", definition));
+        }
+        options = build.concat(mapped, options);
+    }
+    if (split) {
+        return (options, "graph: -D requires a native toolchain definition");
+    }
+    if (libclang != "") {
+        options = build.concat(["--libclang-root", libclang], options);
+    }
+    return (options, "");
+}
+
+// Whether a target was named with --target, or none were, or a named
+// executable needs it.
+pub Selected :: (arguments: string[], target: string) -> bool {
+    named := false;
+    for (i in 0..<length(arguments) - 1) {
+        if (arguments[i] == "--target") {
+            named = true;
+            if (arguments[i + 1] == target || Needed(arguments[i + 1], target)) {
+                return true;
+            }
+        }
+    }
+    return !named;
+}

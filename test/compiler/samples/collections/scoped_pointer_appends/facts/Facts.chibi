@@ -1,0 +1,58 @@
+package facts
+Node :: struct { kind: int; parent: int; }
+Holder :: struct { bytes: u8[]; count: int; }
+Push :: (out: ^(u8[]), value: int) { out.append(u8(wrap: value)); }
+PushTwice :: (out: ^(u8[]), value: int) { Push(out, value); Push(out, value + 1); }
+Grow :: (out: ^(u8[]), more: u8[]) { out.extend(more); }
+PushField :: (h: ^Holder, value: int) { h.bytes.append(u8(wrap: value)); }
+GrowField :: (h: ^Holder, more: u8[]) { h.bytes.extend(more); }
+Add :: (n: ^(Node[]), kind: int) -> int {
+    n.append({kind: kind, parent: length(n^) - 1});
+    return length(n^) - 1;
+}
+// Appends through a reference to a whole local land in the local, also
+// through a reference passed on.
+Appended :: () -> int {
+    bytes: u8[] = [];
+    Push(&bytes, 1);
+    PushTwice(&bytes, 2);
+    Grow(&bytes, [4, 5]);
+    return length(bytes) * 10 + int(bytes[4]);
+}
+// The local's own appends and those through its reference interleave.
+Interleaved :: () -> int {
+    bytes: u8[] = [];
+    bytes.append(1);
+    Push(&bytes, 2);
+    bytes.append(3);
+    Push(&bytes, 4);
+    return length(bytes) * 10 + int(bytes[3]);
+}
+// A copy taken before the appends keeps its own items.
+Copied :: () -> int {
+    bytes: u8[] = [1];
+    kept := bytes;
+    Push(&bytes, 2);
+    Grow(&bytes, [3]);
+    return length(kept) * 10 + length(bytes);
+}
+// An extension by the array itself reads the items it had before.
+SelfExtended :: () -> int {
+    bytes: u8[] = [1, 2];
+    Grow(&bytes, bytes);
+    return length(bytes) * 10 + int(bytes[3]);
+}
+// Records append whole.
+Nodes :: () -> int {
+    nodes: Node[] = [];
+    Add(&nodes, 7);
+    last := Add(&nodes, 8);
+    return last * 100 + nodes[1].kind * 10 + nodes[1].parent;
+}
+// Appends through a reference to a record land in its field.
+Field :: () -> int {
+    holder: Holder = {bytes: [9], count: 0};
+    PushField(&holder, 3);
+    GrowField(&holder, [4]);
+    return length(holder.bytes) * 10 + int(holder.bytes[2]);
+}

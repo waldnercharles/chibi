@@ -166,7 +166,7 @@ switch on a union expression other than a variable are rejected. The
 exported `Main` still takes and returns scalars.
 As in Rust and Odin, nothing bounds a source's size, a module's functions or
 records, or a function's parameters, locals, statements or operands.
-`test/scalar_facts/cases/Cases.chibi` holds the 90-source corpus (53 accepted)
+`test/scalar_facts/cases/Cases.chibi` holds the 91-source corpus (54 accepted)
 with each accepted value and statement trace and each rejection's exact
 message and source excerpt, including functions, operands and sources well
 past the bounds the facts once had.
@@ -273,7 +273,7 @@ the unchanged driver:
 
 ```text
 chibi-build-host --root REPO --source tools/native_aot/Driver.chibi \
-  --core REPO/packages/core --compiler REPO/tools/compiler \
+  --collection native_aot=REPO/tools/native_aot/driver --core REPO/packages/core --compiler REPO/tools/compiler \
   --compiler-core REPO/packages/core --entry Object --timeout-ms 120000 -- \
   ABS_INPUT_LL ABS_FRESH_OUTPUT_DIRECTORY ABS_OPT ABS_LLC 0|2
 ```
@@ -307,7 +307,7 @@ branching on `a < b`.
 `most_operands` and `too_many_operands` nest 64 calls deep, past the
 stage-zero test fixture's call depth limit, so that selector skips them;
 `Run.ps1` runs them on the recovered compiler. With Ubuntu LLVM 18.1.3 the
-other 53 accepted sources build, run and agree at O0 and O2.
+other 54 accepted sources build, run and agree at O0 and O2.
 
 Generated width modules stay out of the corpus, which `Run.ps1` bounds. For
 each integer type, one module declares every operator on that type and

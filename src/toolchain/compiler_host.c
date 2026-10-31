@@ -10,8 +10,6 @@
 #include "support/asset_json.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_artifact.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/record.h"
@@ -54,16 +52,12 @@ static compiler_host *load(
         message(error, error_size, "unsupported compiler host backend");
         return NULL;
     }
-    const native_definition_pack packs[] = { values_only
-                                                 ? NATIVE_TEXT_DEFINITION_PACK
-                                                 : NATIVE_COMPILER_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK };
     compiler_host *host = xcalloc(1, sizeof *host);
     host->backend = backend;
     host->values_only = values_only;
-    host->native = native_capabilities_from_definition_packs(NULL, 0, packs, values_only ? 2 : 4, error, error_size);
+    host->native = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, error_size);
     if (!host->native) {
         compiler_host_free(host);
         return NULL;
@@ -151,21 +145,6 @@ char *compiler_host_values_target_json(size_t *length, char *error, size_t size)
     native_capabilities_free(native);
     return json;
 }
-char *compiler_host_compiler_target_json(size_t *length, char *error, size_t size)
-{
-    const native_definition_pack packs[] = { NATIVE_COMPILER_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK };
-    native_capabilities
-        *native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, size);
-    if (!native) {
-        return NULL;
-    }
-    char *json = compiler_target_json(native_capabilities_catalog(native), length);
-    native_capabilities_free(native);
-    return json;
-}
 void compiler_host_free(compiler_host *host)
 {
     if (!host) {
@@ -195,6 +174,34 @@ static bool string_size(quota *q, const char *text)
     size_t room = (COMPILER_HOST_MAX_BYTES - q->bytes) / 6;
     size_t length = text ? strnlen(text, room + 1) : 0;
     return length <= room && charge(q, length * 6);
+}
+/* Names the shared bound an argument document or a result ran out of and how
+ * far it got, so a caller whose data grew knows which limit to look at. A
+ * negative index means the argument document itself, before any signature. */
+static void quota_diagnostic(
+    char *out,
+    size_t size,
+    const char *failure,
+    const char *part,
+    int index,
+    const quota *q
+)
+{
+    char where[32] = "the document";
+    if (index >= 0) {
+        snprintf(where, sizeof where, "%s %d", part, index);
+    }
+    snprintf(
+        out,
+        size,
+        "%s: %s, %zu of %u values, %zu of %u bytes",
+        failure,
+        where,
+        q->values,
+        (unsigned)COMPILER_HOST_MAX_VALUES,
+        q->bytes,
+        (unsigned)COMPILER_HOST_MAX_BYTES
+    );
 }
 static const yyjson_read_flag READ_FLAGS = COMPILER_HOST_JSON_READ_FLAGS;
 static const yyjson_write_flag WRITE_FLAGS = YYJSON_WRITE_ALLOW_INVALID_UNICODE |
@@ -548,6 +555,9 @@ static bool invoke(
     if (!parsed || !json_quota(yyjson_doc_get_root(parsed), 0, &q) ||
         !yyjson_is_arr(yyjson_doc_get_root(parsed))) {
         failure = "invalid or oversized compiler argument document";
+        if (parsed) {
+            quota_diagnostic(out->diagnostic, sizeof out->diagnostic, failure, "argument", -1, &q);
+        }
         goto done;
     }
     if (yyjson_arr_size(yyjson_doc_get_root(parsed)) != (size_t)argument_count) {
@@ -570,6 +580,7 @@ static bool invoke(
             )) {
             failure = "compiler arguments exceed signature or shared storage "
                       "limits";
+            quota_diagnostic(out->diagnostic, sizeof out->diagnostic, failure, "argument", i, &q);
             goto done;
         }
     }
@@ -678,6 +689,7 @@ static bool invoke(
     for (int i = 0; i < result_count; i++) {
         if (!value_quota(&results[i], 0, &q)) {
             failure = "compiler result exceeds projection limits";
+            quota_diagnostic(out->diagnostic, sizeof out->diagnostic, failure, "result", i, &q);
             goto done;
         }
     }

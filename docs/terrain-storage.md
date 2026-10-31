@@ -71,29 +71,6 @@ contents, then renames it over the attachment. Failed writes preserve the prior
 attachment. This supports explicit save/load across process restarts; it is not
 a promise of recovery from power loss or a multi-file atomic save.
 
-## Controller requests
-
-`chibi_ctl` reads newline-delimited JSON from stdin. Each storage operation opens
-a fresh scene runtime, optionally advances it, performs the operation and reports
-completion. It does not retain the previous request's live world.
-
-```sh
-build/bin/chibi_ctl --project-root test/fixtures/terrain-lab <<'JSON'
-{"contract":1,"operation":"save_terrain","name":"Quarry","entity":"Quarry terrain","identity":"terrain-lab-quarry-v1","save_path":"/tmp/quarry-save.json","frames":0}
-{"contract":1,"operation":"load_terrain","name":"Quarry","entity":"Quarry terrain","identity":"terrain-lab-quarry-v1","save_path":"/tmp/quarry-save.json","frames":0}
-JSON
-```
-
-This pair saves and restores the initial terrain. To capture excavation, supply
-optional per-frame `inputs` or sparse `input_timeline` before the save. `frames`
-defaults to zero and is limited to 120; an explicit `fixed_dt` must equal 1/60.
-`save_path` must be absolute. Omit `kind`, `scenario` and `saved_state`. The result
-includes `completion` with its token/status/error, `physics_ready`, and terrain
-snapshot bytes/hash when available. Check operation success and completion,
-rather than treating a snapshot hash as proof that the write succeeded. Runtime
-scenario operations can also opt into authored durable requests with `save_path`;
-scenario recordings cannot access that path.
-
 ## Snapshot compatibility and failures
 
 The portable version-1 codec is bounded to 256 tiles and 64 MiB per source.

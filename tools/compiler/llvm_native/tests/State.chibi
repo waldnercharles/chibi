@@ -1,0 +1,127 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Frame(state, dt) takes a record of an int and an f64, and an int, and gives
+// the record with its int field advanced by dt. These are emitter semantics:
+// the state manifest a host that swaps generations reads.
+Frame :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Argument, 32, 0, 0, 0, 0, 0),
+            Code(native.Argument, 6, 1, 1, 0, 0, 0),
+            Code(native.Extract, 6, 2, 0, 32, 0, 0),
+            Code(native.Add, 6, 3, 2, 1, 0, 0),
+            Code(native.Insert, 32, 4, 0, 3, 0, 0),
+            Code(native.Publish, 32, 0, 4, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+FrameLibrary :: (names: string[]) -> native.Result {
+    empty: int[] = [];
+    locals: int[] = [];
+    texts: string[] = [];
+    ids: i64[] = [5];
+    return native.EmitLibrary(abi.LinuxX64(), "State", ["Frame"], ids, [Function(32, 2, 0, 5, 0, 8, 0, 0)],
+                              [32, 6], [32, 6, 6, 6, 32], locals, Frame(), empty, [{first: 0, count: 2}], [6, 11],
+                              texts, 1, names);
+}
+// A state function leaves the player's export manifest alone and has a
+// manifest of its own, whose entry builds the record from words and writes the
+// result record's fields as words, under a schema of types and field names.
+@test
+StateFunctionsHaveTheirOwnManifest :: () {
+    text := Emitted(FrameLibrary(["hp", "speed"]));
+    assert(strings.Contains(text, "@chibi_scalar.exports = private constant [0 x %chibi.export] []\n"));
+    assert(strings.Contains(text, "@chibi_state_State = constant %chibi.manifest { i32 1, i32 1, ptr @chibi_scalar.states }\n"));
+    assert(strings.Contains(text, "@chibi_scalar.state.types.0 = private unnamed_addr constant [5 x i8] [i8 1, i8 11, i8 1, i8 1, i8 11]\n"));
+    assert(strings.Contains(text, "@chibi_scalar.state.names.0 = private unnamed_addr constant [21 x i8] c\"hp\\00speed\\00#1\\00hp\\00speed\\00\"\n"));
+    assert(strings.Contains(text, "%chibi.state { ptr @chibi_scalar.state.name.0, i64 5, ptr @chibi_scalar.state.types.0, ptr @chibi_scalar.state.names.0, i32 3, i32 2, ptr @chibi_scalar.state.0 }"));
+}
+@test
+StateEntryBuildsAndWritesRecords :: () {
+    text := Emitted(FrameLibrary(["hp", "speed"]));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.state.0(ptr %ctx, ptr %in, ptr %out) #0 {\nentry:\n"));
+    assert(strings.Contains(text, "%s0 = insertvalue %record0 zeroinitializer, i32 %l0, 0\n"));
+    assert(strings.Contains(text, "%s1 = insertvalue %record0 %s0, double %l1, 1\n"));
+    assert(strings.Contains(text, "%r = call %record0 @chibi_scalar.0(%record0 %s1, i32 %l2)\n"));
+    assert(strings.Contains(text, "%f0 = extractvalue %record0 %r, 0\n"));
+    assert(strings.Contains(text, "%f1 = extractvalue %record0 %r, 1\n"));
+    assert(strings.Contains(text, "store i64 %o1, ptr %o1.at\n"));
+}
+// Without field names, a record has no schema to migrate by, so the library
+// has no state manifest.
+@test
+UnnamedRecordsAreNotState :: () {
+    names: string[] = [];
+    text := Emitted(FrameLibrary(names));
+    assert(!strings.Contains(text, "chibi_state_"));
+}
+// Frame() { count: retain int = 0; count += 1; return count }, as the emitter
+// is given it: the state is loaded into the local, the local is stored back
+// to the state after the write, and the library exports the states.
+Counter :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.StateLoad, 6, 0, 0, 0, 0, 0),
+            Code(native.Save, 6, 0, 0, 0, 0, 0),
+            Code(native.Local, 6, 1, 0, 0, 0, 0),
+            Code(native.Constant, 6, 2, 0, 0, 0, 1),
+            Code(native.Add, 6, 3, 1, 2, 0, 0),
+            Code(native.Save, 6, 0, 3, 0, 0, 0),
+            Code(native.Local, 6, 4, 0, 0, 0, 0),
+            Code(native.StateStore, 6, 0, 4, 0, 0, 0),
+            Code(native.Local, 6, 5, 0, 0, 0, 0),
+            Code(native.Publish, 6, 0, 5, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+CounterLibrary :: (code: native.Instruction[]) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    no_names: string[] = [];
+    ids: i64[] = [7];
+    shape: native.Function = {result: 6, first_parameter: 0, parameters: 0, first_slot: 0, slots: 6, first_local: 0,
+                              locals: 1, first_code: 0, code: 12, first_argument: 0, arguments: 0};
+    return native.EmitLibrary(abi.LinuxX64(), "Counter", ["Frame"], ids, [shape], empty, [6, 6, 6, 6, 6, 6], [6], code,
+                              empty, records, empty, ["Frame.count"], 1, no_names);
+}
+// A retained state is a global that starts at its value, read by a load and
+// written by a store, and a library exports the states' names, types, and an
+// entry to get them and another to set them.
+@test
+RetainedStatesAreGlobalsTheLibraryExports :: () {
+    text := Emitted(CounterLibrary(Counter()));
+    assert(strings.Contains(text, "@chibi_scalar.retained.0 = internal global i32 0\n"));
+    assert(strings.Contains(text, "%v1.stored = load i32, ptr @chibi_scalar.retained.0\n"));
+    assert(strings.Contains(text, "store i32 %a8, ptr @chibi_scalar.retained.0\n"));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.retained.get(ptr %ctx, ptr %in, ptr %out) #0 {\n"));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.retained.set(ptr %ctx, ptr %in, ptr %out) #0 {\n"));
+    assert(strings.Contains(text, "@chibi_scalar.retained.types = private unnamed_addr constant [1 x i8] [i8 1]\n"));
+    assert(strings.Contains(text, "@chibi_scalar.retained.names = private unnamed_addr constant [12 x i8] c\"Frame.count\\00\"\n"));
+    assert(strings.Contains(text, "@chibi_retained_Counter = constant { i32, i32, ptr, ptr, ptr, ptr } { i32 1, i32 1, "));
+}
+@test
+RetainedStoreOfAnotherStateIsRejected :: () {
+    code := Counter();
+    code[8] = Code(native.StateStore, 6, 0, 4, 0, 1, 0);
+    Rejects(CounterLibrary(code), "native retained states differ from their loads");
+}
+@test
+RetainedStateMustStartInItsType :: () {
+    code := Counter();
+    code[1] = Code(native.StateLoad, 6, 0, 0, 0, 0, 1099511627776);
+    Rejects(CounterLibrary(code), "native retained state differs from its operands");
+}
+
+// A host that can call but not read memory finds the library's functions and
+// states through plain C symbols: a wrapper for each function it can call, and
+// the states by index with the hash of each name.
+@test
+HostSymbolsReachFunctionsAndStatesWithoutMemory :: () {
+    text := Emitted(CounterLibrary(Counter()));
+    assert(strings.Contains(text, "define i32 @chibi_host_call_Frame() #0 {\nentry:\n  %r = call i32 @chibi_scalar.0()\n  ret i32 %r\n}\n"));
+    assert(strings.Contains(text, "define i32 @chibi_host_retained_count() #0 {\nentry:\n  ret i32 1\n}\n"));
+    assert(strings.Contains(text, "define i32 @chibi_host_retained_type(i32 %i) #0 {\nentry:\n  switch i32 %i, label %none [i32 0, label %c0]\nc0:\n  ret i32 1\nnone:\n  ret i32 0\n}\n"));
+    assert(strings.Contains(text, "define i64 @chibi_host_retained_hash(i32 %i) #0 {\nentry:\n  switch i32 %i, label %none [i32 0, label %c0]\nc0:\n  ret i64 -9211136534442197545\n"));
+    assert(strings.Contains(text, "define i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  %words = alloca [1 x i64]\n"));
+    assert(strings.Contains(text, "define i32 @chibi_host_retained_set(i32 %i, i64 %v) #0 {\n"));
+}

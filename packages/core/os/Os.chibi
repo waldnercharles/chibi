@@ -1,5 +1,7 @@
 package os
 
+import bytes "core:bytes"
+
 // Files, directories, processes and the environment, as Odin's core:os offers
 // them. Until `foreign import` reaches libc, every operation is the build
 // host's native underneath, so this package compiles only where that host
@@ -88,6 +90,21 @@ pub WriteText :: (path: string, text: string) -> Error? {
         return Failure(Failed);
     }
     return nil;
+}
+
+// The file's bytes, including NUL and malformed UTF-8. O(n) in the VM, where a
+// string is the transport; the libc implementation reads straight into the array.
+pub ReadBytes :: (path: string) -> (data: u8[], error: Error?) {
+    text := ReadText(path);
+    if (text.error != nil) {
+        empty: u8[] = [];
+        return (empty, text.error);
+    }
+    return (bytes.FromString(text.text), nil);
+}
+
+pub WriteBytes :: (path: string, data: u8[]) -> Error? {
+    return WriteText(path, bytes.ToString(data));
 }
 
 pub Copy :: (source: string, destination: string) -> Error? {
@@ -181,13 +198,38 @@ pub Capture :: (command: string[]) -> Result {
     return {status: status, stdout: build.last_stdout(), stderr: build.last_stderr()};
 }
 
-// Starts a program without waiting; Wait returns its exit status.
-pub Spawn :: (command: string[]) -> int {
+// How a started program's standard output and error reach this one, as Zig's
+// Child.StdIo names them: Piped captures them and reports them when the program
+// ends, Inherited makes them this program's own, as they are written.
+pub Piped: int : 0;
+pub Inherited: int : 1;
+
+// What Wait returns for a program that still runs: past any exit status or
+// negative signal number.
+pub StillRunning: int : 65536;
+
+// Starts a program without waiting and returns its process, an id that is
+// never 0; Wait and Kill end it. An unknown program is an exit status of 127
+// when it is waited for, as for Run.
+pub Start :: (command: string[], stdio: int) -> int {
+    if (stdio == Inherited) {
+        return build.spawn(command);
+    }
     return build.start(command);
 }
 
-pub Wait :: (handle: int) -> int {
-    return build.wait(handle);
+// Waits at most timeout_ms (negative: for as long as it takes) for the program
+// to end and returns its exit status, or the negative signal number that
+// stopped it. StillRunning means the time passed first; the program keeps
+// running and Wait or Kill ends it. A process ends once, whatever ended it.
+pub Wait :: (process: int, timeout_ms: int) -> int {
+    return build.wait_for(process, timeout_ms);
+}
+
+// Stops the program and everything it started, waits for it and returns what
+// Wait would: -9 for a program that was running.
+pub Kill :: (process: int) -> int {
+    return build.kill(process);
 }
 
 // The first executable of that name on PATH, "" when none.

@@ -1,0 +1,31 @@
+package testing
+
+// Expected run-time failures, as Odin's core:testing has expect_assert: a test
+// that calls ExpectFailure passes only by ending with that kind of failure.
+// Nothing unwinds or recovers; the failure ends the test as it would anyway.
+
+// The run-time failures the test runner tells apart, in its order.
+pub Failure :: union {
+    IndexOutOfRange
+    | MapKeyAbsent
+    | ViewOutOfRange
+    | AssertionFailed
+    | BudgetExhausted
+    | DepthExceeded
+    | UnwrappedNil
+}
+
+// Makes the running test pass only if it ends with `failure`. Call it right
+// before the call that must fail: a failure before it still fails the test,
+// and returning normally after it fails the test too.
+pub ExpectFailure :: (failure: Failure) {
+    switch failure {
+        case .IndexOutOfRange: test_expect_failure(1);
+        case .MapKeyAbsent: test_expect_failure(2);
+        case .ViewOutOfRange: test_expect_failure(3);
+        case .AssertionFailed: test_expect_failure(4);
+        case .BudgetExhausted: test_expect_failure(5);
+        case .DepthExceeded: test_expect_failure(6);
+        case .UnwrappedNil: test_expect_failure(7);
+    }
+}

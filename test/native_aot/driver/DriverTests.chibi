@@ -1,0 +1,384 @@
+package native_driver_tests
+
+import driver "native_aot:."
+import os "core:os"
+import strings "core:strings"
+
+// The driver's admission, cleanup and publication rules, with
+// fixtures/stage-tool.sh standing in for opt, llc and the linker. Run takes
+// the build host; the publication cases run the driver in a host of their
+// own with an empty PATH, so every tool runs by its absolute path.
+
+Path :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+Read :: (path: string) -> string {
+    read := os.ReadText(path);
+    assert(!read.error, "the file reads");
+    return read.text;
+}
+Write :: (path: string, text: string) {
+    assert(os.WriteText(path, text) == nil, "the file writes");
+}
+Make :: (path: string) {
+    assert(os.MakeDirectory(path) == nil, "the directory");
+}
+Exists :: (path: string) -> bool {
+    return os.Kind(path) != os.KindNone;
+}
+Equals :: (path: string, text: string) -> bool {
+    read := os.ReadText(path);
+    return !read.error && read.text == text;
+}
+Link :: (target: string, path: string) {
+    assert(os.Run(["/bin/ln", "-s", target, path]) == 0, "the link");
+}
+
+Fixture :: struct {
+    root: string;
+    opt: string;
+    llc: string;
+    linker: string;
+    input: string;
+    output: string;
+}
+
+Locate :: (root: string) -> Fixture {
+    fixture: Fixture = {root: root, opt: Path([root, "/opt tool"]), llc: Path([root, "/llc tool"]),
+                        linker: Path([root, "/linker tool"]), input: Path([root, "/input with spaces.ll"]),
+                        output: Path([root, "/output with spaces"])};
+    return fixture;
+}
+
+// A fresh root with executable stand-ins, an "ok" action and the scalar IR.
+Reset :: (scratch: string, name: string) -> Fixture {
+    fixture := Locate(Path([scratch, "/", name]));
+    Make(fixture.root);
+    tool := Read(Path([os.Root(), "/test/native_aot/driver/fixtures/stage-tool.sh"]));
+    for (path in [fixture.opt, fixture.llc, fixture.linker]) {
+        Write(path, tool);
+    }
+    assert(os.Run(["/bin/chmod", "700", fixture.opt, fixture.llc, fixture.linker]) == 0, "the stand-ins run");
+    Write(Path([fixture.root, "/action"]), "ok\n");
+    Write(fixture.input, Read(Path([os.Root(), "/test/native_aot/driver/fixtures/scalar/Main.ll"])));
+    return fixture;
+}
+
+// The optimizer's argv, from the contract rather than the driver: O0
+// verifies, O2 verifies around default<O2>, over the partial's snapshot.
+OptimizerArgumentsMatch :: (fixture: Fixture, mode: int) -> bool {
+    passes := "verify";
+    if (mode == 2) {
+        passes = "verify,default<O2>,verify";
+    }
+    expected := Path(["-S\n-passes=", passes, "\n", fixture.output, ".partial/source.ll\n-o\n", fixture.output, ".partial/module.ll\n"]);
+    return Equals(Path([fixture.root, "/opt tool.argv"]), expected);
+}
+
+ToolAdmissionResolvesAliasesAndRejectsUnusablePaths :: (scratch: string) {
+    fixture := Reset(scratch, "tool admission");
+    linked := Path([fixture.root, "/relocated tool alias"]);
+    missing := Path([fixture.root, "/missing"]);
+    regular := Path([fixture.root, "/not executable"]);
+    Write(regular, "not a tool\n");
+    Link(fixture.opt, linked);
+    Link(missing, Path([fixture.root, "/dangling alias"]));
+    assert(driver.Tool(linked) == fixture.opt, "an alias resolves to its tool");
+    for (path in [missing, regular, Path([fixture.root, "/dangling alias"]), fixture.root, "relative tool", "/tmp/control\npath"]) {
+        assert(driver.Tool(path) == "", "an unusable tool path is rejected");
+    }
+}
+
+CleanupRemovesOnlyOwnedNamesAndPreservesSiblings :: (scratch: string) {
+    fixture := Reset(scratch, "cleanup ownership");
+    partial := Path([fixture.root, "/reserved.partial"]);
+    Make(partial);
+    Make(fixture.output);
+    Write(Path([fixture.output, "/receipt.txt"]), "previous complete output\n");
+    names := ["source.ll", "module.ll", "object.o", "start.ll", "start.o", "libSystem.tbd", "kernel32.def",
+              "kernel32.lib", "program", "program.exe", "receipt.txt"];
+    for (name in names) {
+        Write(Path([partial, "/", name]), "owned bytes\n");
+    }
+    Write(Path([partial, "/prior-owner"]), "keep unknown bytes\n");
+    assert(!driver.Cleanup(partial), "a partial with unknown files stays");
+    assert(Equals(Path([partial, "/prior-owner"]), "keep unknown bytes\n"), "an unknown file is kept");
+    assert(Equals(Path([fixture.output, "/receipt.txt"]), "previous complete output\n"), "the sibling output is kept");
+    for (name in names) {
+        assert(!Exists(Path([partial, "/", name])), "an owned file is removed");
+    }
+    assert(os.Remove(Path([partial, "/prior-owner"])) == nil, "the unknown file removed");
+    assert(driver.Cleanup(partial) && !Exists(partial), "an owned partial is removed");
+}
+
+// Target admits each native_abi target's triple with a layout LLVM gives it,
+// and nothing else: no crossed pair, no unmeasured layout, and exactly one of
+// each line.
+TargetAdmitsEachTripleWithItsOwnLayout :: () {
+    triples := ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"];
+    layouts := ["e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+                "e-m:o-i64:64-i128:128-n32:64-S128",
+                "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"];
+    for (t in 0..<3) {
+        for (l in 0..<3) {
+            text := Path(["target datalayout = \"", layouts[l], "\"\ntarget triple = \"", triples[t], "\"\n"]);
+            assert((driver.Target(text) >= 0) == (t == l), "a triple with its own layout only");
+        }
+    }
+    // LLVM 19's and LLVM 22's arm64 layouts.
+    for (layout in ["e-m:o-i64:64-i128:128-n32:64-S128-Fn32", "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32"]) {
+        assert(driver.Target(Path(["target datalayout = \"", layout, "\"\ntarget triple = \"arm64-apple-macosx11.0.0\"\n"])) == 1, "a later LLVM's arm64 layout");
+    }
+    rejected := [
+        // A big-endian arm64 layout.
+        "target datalayout = \"E-m:o-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"arm64-apple-macosx11.0.0\"\n",
+        "target datalayout = \"e-m:o-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"aarch64-apple-darwin\"\n",
+        "target datalayout = \"e-m:o-i64:64-i128:128-n32:64-S128\"\n",
+        "target triple = \"arm64-apple-macosx11.0.0\"\n",
+        "target datalayout = \"e-m:o-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"arm64-apple-macosx11.0.0\"\ntarget triple = \"arm64-apple-macosx11.0.0\"\n"
+    ];
+    for (text in rejected) {
+        assert(driver.Target(text) == -1, "an unadmitted target");
+    }
+}
+
+// `chibi export --native` finds library sources by their first tokens:
+// comments and whitespace, a name, `::` and the whole word `library`.
+LibraryNamesComeFromTheDeclarationAlone :: () {
+    for (text in ["Mix :: library {\n}\n", "// Mixing.\n/* A * block */\n\tMix::library{}\n", "Mix\n::\nlibrary /* trailing */ {}\n"]) {
+        assert(driver.LibraryName(text) == "Mix", "a library declaration");
+    }
+    for (text in ["Mix :: libraryish {}\n", "Mix :: behavior {}\n", "/* Mix :: library {} */\n", "// Mix :: library {}\n",
+                  "Mix : library {}\n", "Mix ::", ""]) {
+        assert(driver.LibraryName(text) == "", "not a library declaration");
+    }
+    assert(driver.LibraryName("Mixer :: library {}\n") == "Mixer", "another library");
+}
+
+// The stand-in records any pass list, so the argv oracle must reject missing
+// verification or optimization and wrong snapshot paths by itself.
+OptimizerTraceDistinguishesPassesAndSnapshotPaths :: (scratch: string) {
+    fixture := Reset(scratch, "optimizer argv");
+    partial := Path([fixture.output, ".partial"]);
+    Make(partial);
+    snapshot := Path([partial, "/source.ll"]);
+    module := Path([partial, "/module.ll"]);
+    Write(snapshot, "controlled snapshot\n");
+    passes := ["-passes=verify", "-passes=verify,default<O2>,verify", "-passes=", "-passes=default<O2>",
+               "-passes=default<O2>,verify", "-passes=verify,default<O2>", "-passes=verify,verify", "-passes=verify",
+               "-passes=verify"];
+    modes: int[] = [0, 2, 0, 2, 2, 2, 2, 0, 0];
+    sources := [snapshot, snapshot, snapshot, snapshot, snapshot, snapshot, snapshot, fixture.input, snapshot];
+    destinations := [module, module, module, module, module, module, module, module, fixture.output];
+    for (i in 0..<length(passes)) {
+        assert(os.Run([fixture.opt, "-S", passes[i], sources[i], "-o", destinations[i]]) == 0, "the stand-in records");
+        assert(OptimizerArgumentsMatch(fixture, modes[i]) == (i < 2), "the oracle accepts only the contract");
+    }
+}
+
+Modes :: () -> int[] {
+    modes: int[] = [0, 2];
+    return modes;
+}
+
+// Runs the driver in this host: Build with a linker, Object without.
+Drive :: (fixture: Fixture, executable: bool, mode: string) -> int {
+    arguments := [fixture.input, fixture.output, fixture.opt, fixture.llc];
+    if (executable) {
+        arguments.append(fixture.linker);
+    }
+    arguments.append(mode);
+    return driver.Run(arguments, executable, "static");
+}
+Absent :: (fixture: Fixture) -> bool {
+    return !Exists(fixture.output) && !Exists(Path([fixture.output, ".partial"]));
+}
+Receipt :: (fixture: Fixture) -> string {
+    return Read(Path([fixture.output, "/receipt.txt"]));
+}
+
+PublicationPreservesExistingFilesAndStalePartialBytes :: (scratch: string) {
+    for (executable in [false, true]) {
+        name := "object preservation";
+        if (executable) {
+            name = "build preservation";
+        }
+        fixture := Reset(scratch, name);
+        Write(fixture.output, "existing final file\n");
+        assert(Drive(fixture, executable, "0") == 2 && Equals(fixture.output, "existing final file\n"), "an existing output is kept");
+        assert(os.Remove(fixture.output) == nil, "the output removed");
+        partial := Path([fixture.output, ".partial"]);
+        Make(partial);
+        Write(Path([partial, "/object.o"]), "interrupted object\n");
+        Write(Path([partial, "/receipt.txt"]), "incomplete receipt\n");
+        assert(Drive(fixture, executable, "0") == 2 && !Exists(fixture.output), "a stale partial is refused");
+        assert(Equals(Path([partial, "/object.o"]), "interrupted object\n") && Equals(Path([partial, "/receipt.txt"]), "incomplete receipt\n"), "the stale partial is kept");
+        assert(!Exists(Path([fixture.root, "/opt tool.argv"])), "nothing ran");
+    }
+}
+
+ObjectRelocatesToolsWithSpacesWithoutALinkerOrPath :: (scratch: string) {
+    first := Reset(scratch, "relocated object");
+    moved := Path([scratch, "/moved tools and IR"]);
+    assert(os.Rename(first.root, moved) == nil, "the tools and IR move");
+    fixture := Locate(moved);
+    assert(os.Remove(fixture.linker) == nil, "no linker");
+    tool := fixture.opt;
+    linked := Path([moved, "/opt alias"]);
+    Link(tool, linked);
+    fixture.opt = linked;
+    for (mode in Modes()) {
+        fixture.output = Path([moved, format_text("/object O{}", mode)]);
+        assert(Drive(fixture, false, format_text("{}", mode)) == 0, "the object builds");
+        assert(OptimizerArgumentsMatch(fixture, mode), "the optimizer's argv");
+        assert(Equals(Path([fixture.output, "/object.o"]), "controlled object\n"), "the published object");
+        receipt := Receipt(fixture);
+        assert(strings.Contains(receipt, "output-kind object\n") && !strings.Contains(receipt, "linker") &&
+               !strings.Contains(receipt, "stage link\n") && !strings.Contains(receipt, "program-sha256"), "an object receipt");
+        assert(strings.Contains(receipt, Path(["\nopt ", tool, "\n"])) && !strings.Contains(receipt, "opt linked"), "the resolved optimizer");
+        assert(!Exists(Path([fixture.output, "/program"])), "no program");
+        expected := Path([format_text("-filetype=obj\n-O={}\n-relocation-model=pic\n", mode), fixture.output,
+                          ".partial/module.ll\n-o\n", fixture.output, ".partial/object.o\n"]);
+        assert(Equals(Path([moved, "/llc tool.argv"]), expected), "the object's argv");
+    }
+}
+
+// A macOS program links with lld's darwin flavor against a libSystem stub that
+// exports the C functions its module declares, and dyld calls main.
+ExecutableLinksMacOSPrograms :: (scratch: string) {
+    fixture := Reset(scratch, "macos executable");
+    Write(fixture.input, strings.Replace(Read(fixture.input), "target triple = \"x86_64-unknown-linux-gnu\"",
+                                         "target triple = \"arm64-apple-macosx11.0.0\"\ndeclare i32 @abs(i32)", -1));
+    output := fixture.output;
+    assert(Drive(fixture, true, "0") == 0, "the program builds");
+    link := Path(["-flavor\ndarwin\n-arch\narm64\n-platform_version\nmacos\n11.0.0\n11.0.0\n-dead_strip\n-e\n_main\n",
+                  output, ".partial/object.o\n", output, ".partial/start.o\n", output, ".partial/libSystem.tbd\n-o\n", output, ".partial/program\n"]);
+    assert(Equals(Path([fixture.root, "/linker tool.argv"]), link), "the macOS link's argv");
+    stub := Read(Path([output, "/libSystem.tbd"]));
+    assert(strings.Contains(stub, "install-name: '/usr/lib/libSystem.B.dylib'\n"), "the stub names libSystem");
+    assert(strings.Contains(stub, "symbols: [ _abs, _abort, _calloc, _dprintf, _memcpy, _memmove, _memset, dyld_stub_binder ]"), "the stub exports what the program imports");
+    start := Read(Path([output, "/start.ll"]));
+    assert(strings.Contains(start, "target triple = \"arm64-apple-macosx11.0.0\"") && strings.Contains(start, "define i32 @main() {"), "dyld calls main");
+}
+
+ExecutableLinksWithTheNamedLinkerAndStartObject :: (scratch: string) {
+    fixture := Reset(scratch, "linked executable");
+    for (mode in Modes()) {
+        fixture.output = Path([fixture.root, format_text("/program O{}", mode)]);
+        assert(Drive(fixture, true, format_text("{}", mode)) == 0, "the program builds");
+        output := fixture.output;
+        start := Path([format_text("-filetype=obj\n-O={}\n-relocation-model=pic\n", mode), output, ".partial/start.ll\n-o\n", output, ".partial/start.o\n"]);
+        assert(Equals(Path([fixture.root, "/llc tool.start.argv"]), start), "the start object's argv");
+        link := Path(["-flavor\ngnu\n-static\n--gc-sections\n-e\n_start\n", output, ".partial/object.o\n", output, ".partial/start.o\n-o\n", output, ".partial/program\n"]);
+        assert(Equals(Path([fixture.root, "/linker tool.argv"]), link), "the link's argv");
+        assert(Equals(Path([output, "/start.o"]), "controlled start object\n"), "the published start object");
+        receipt := Receipt(fixture);
+        assert(strings.Contains(receipt, "output-kind executable\n") && strings.Contains(receipt, Path(["\nlinker ", fixture.linker, "\n"])), "an executable receipt");
+        assert(strings.Contains(receipt, "\nstart-object-sha256 ") && strings.Contains(receipt, "stage llc-start\n") && strings.Contains(receipt, "stage link\n"), "the receipt's start object and link");
+        assert(os.Run(["/bin/test", "-x", Path([output, "/program"])]) == 0, "an executable program");
+    }
+}
+
+// Real LLVM tools and no C compiler: the program is the emitted object and its
+// start object alone, for the host, which runs it.
+ExecutableLinksLLVMObjectsWithoutACCompiler :: (scratch: string, bin: string) {
+    if (bin == "") {
+        os.Print("native driver: set CHIBI_LLVM_BIN to link real LLVM objects");
+        return;
+    }
+    fixture := Reset(scratch, "llvm executable");
+    fixture.opt = Path([bin, "/opt"]);
+    fixture.llc = Path([bin, "/llc"]);
+    fixture.linker = Path([bin, "/ld.lld"]);
+    if (os.Platform() == "Darwin") {
+        Write(fixture.input, strings.Replace(Read(fixture.input), "x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", -1));
+    }
+    for (mode in Modes()) {
+        fixture.output = Path([fixture.root, format_text("/llvm O{}", mode)]);
+        assert(Drive(fixture, true, format_text("{}", mode)) == 0 && os.Run([Path([fixture.output, "/program"])]) == 42, "the program exits 42");
+    }
+}
+
+MissingToolsRejectBeforeReservingOutput :: (scratch: string) {
+    for (executable in [false, true]) {
+        count := 2;
+        if (executable) {
+            count = 3;
+        }
+        for (slot in 0..<count) {
+            fixture := Reset(scratch, format_text("missing tool {} {}", executable, slot));
+            tools := [fixture.opt, fixture.llc, fixture.linker];
+            assert(os.Remove(tools[slot]) == nil, "a missing tool");
+            assert(Drive(fixture, executable, "0") == 2 && Absent(fixture), "a missing tool is refused before reserving");
+        }
+    }
+}
+
+// Run checks that the driver said "LLVM object emission failed" here.
+FailedSignalledAndMissingObjectsNeverPublish :: (scratch: string) {
+    actions := ["fail", "signal", "missing"];
+    statuses: int[] = [71, -15, 1];
+    for (executable in [false, true]) {
+        for (i in 0..<3) {
+            fixture := Reset(scratch, format_text("object failure {} {}", executable, i));
+            Write(Path([fixture.root, "/action"]), Path([actions[i], "\n"]));
+            assert(Drive(fixture, executable, "0") == statuses[i] && Absent(fixture), "a failed object publishes nothing");
+            assert(!Exists(Path([fixture.root, "/linker tool.argv"])), "nothing links");
+        }
+    }
+}
+
+// Run checks that the driver said "tool identity changed during build" here.
+ChangedToolIdentityPreventsPublicationAfterObjectCreation :: (scratch: string) {
+    actions := ["mutate-opt\n", "mutate-llc\n"];
+    names := ["changed opt", "changed llc"];
+    for (i in 0..<2) {
+        fixture := Reset(scratch, names[i]);
+        Write(Path([fixture.root, "/action"]), actions[i]);
+        assert(Drive(fixture, false, "0") == 1 && Absent(fixture), "a changed tool publishes nothing");
+    }
+}
+
+// The publication cases, under the empty PATH Run gives them.
+pub Publication :: () -> int {
+    arguments := os.Arguments();
+    scratch := arguments[0];
+    PublicationPreservesExistingFilesAndStalePartialBytes(scratch);
+    ObjectRelocatesToolsWithSpacesWithoutALinkerOrPath(scratch);
+    ExecutableLinksWithTheNamedLinkerAndStartObject(scratch);
+    ExecutableLinksMacOSPrograms(scratch);
+    ExecutableLinksLLVMObjectsWithoutACCompiler(scratch, arguments[1]);
+    MissingToolsRejectBeforeReservingOutput(scratch);
+    FailedSignalledAndMissingObjectsNeverPublish(scratch);
+    ChangedToolIdentityPreventsPublicationAfterObjectCreation(scratch);
+    return 0;
+}
+
+// The build host runs this entry with its own path as the one argument.
+pub Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 1, "the build host's path");
+    checkout := os.Root();
+    scratch := Path([checkout, "/.chibi/native-driver"]);
+    assert(os.Run(["/bin/rm", "-rf", scratch]) == 0, "the old scratch removed");
+    Make(scratch);
+    scratch = os.RealPath(scratch);
+    ToolAdmissionResolvesAliasesAndRejectsUnusablePaths(scratch);
+    CleanupRemovesOnlyOwnedNamesAndPreservesSiblings(scratch);
+    TargetAdmitsEachTripleWithItsOwnLayout();
+    LibraryNamesComeFromTheDeclarationAlone();
+    OptimizerTraceDistinguishesPassesAndSnapshotPaths(scratch);
+    result := os.Capture(["/usr/bin/env", "PATH=", Path(["CHIBI_COMPILER_CACHE=", checkout, "/.chibi/compiler-cache"]), arguments[0],
+                          "--compiler", Path([checkout, "/tools/compiler"]), "--compiler-core", Path([checkout, "/packages/core"]),
+                          "--root", checkout, "--source", Path([checkout, "/test/native_aot/driver/DriverTests.chibi"]),
+                          "--core", Path([checkout, "/packages/core"]), "--collection", Path(["native_aot=", checkout, "/tools/native_aot/driver"]),
+                          "--entry", "Publication", "--timeout-ms", "600000", "--", scratch, os.Getenv("CHIBI_LLVM_BIN")]);
+    log := Path([result.stdout, result.stderr]);
+    if (result.status != 0) {
+        os.Print(log);
+    }
+    assert(result.status == 0, "the publication cases");
+    assert(strings.Contains(log, "LLVM object emission failed") && strings.Contains(log, "tool identity changed during build"), "the failures say why");
+    assert(os.Run(["/bin/rm", "-rf", scratch]) == 0, "the scratch cleanup");
+    return 0;
+}

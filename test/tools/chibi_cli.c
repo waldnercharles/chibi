@@ -41,6 +41,22 @@ static void locate_driver(const char *self)
     free(resolved);
 }
 
+/* How long a launcher may take to compile a program nothing has compiled
+ * before: 8 to 10 s for a small one on a workstation, more with several
+ * selectors sharing a CI runner, and 0.5 s from the kept closure. Every wait on
+ * a program's first output, a first compile or a command that runs one uses it;
+ * a passing case takes no longer, a failing one takes this long. */
+#define FIRST_COMPILE_SECONDS 120
+
+/* Runs a command with a bound for a launcher that compiles on first use: about
+ * 8 s for a small package on a workstation, longer on a CI runner; the same
+ * sources start from the kept closure afterwards. A failing case takes as long
+ * as the bound, a passing one does not. */
+static int cli_run(const char *const argv[], const char *cwd, const char *log)
+{
+    return tool_run_within(argv, cwd, log, FIRST_COMPILE_SECONDS);
+}
+
 static void path(char *out, const char *relative)
 {
     int length = snprintf(out, 256, "%s/%s", root, relative);
@@ -79,7 +95,18 @@ static bool copy_resource(const char *binary, const char *name, const char *dest
     int length = snprintf(source, sizeof source, "%.*s/../share/chibi/%s", (int)(slash - binary), binary, name);
     assert(length > 0 && length < (int)sizeof source);
     const char *args[] = { "/bin/cp", "-R", source, destination, NULL };
-    return tool_run(args, root, log_path) == 0;
+    return cli_run(args, root, log_path) == 0;
+}
+
+/* The launcher compiles its application on a first start, which takes longer
+ * than a case may run; start it once, with time to finish, so every case after
+ * it starts from the kept closure. Its status does not matter. */
+static void warm_launcher()
+{
+    const char *version[] = { launcher, "version", NULL };
+    char output[256];
+    path(output, "warm.log");
+    tool_run_within(version, root, output, 300);
 }
 
 static void setup(const char *binary)
@@ -102,7 +129,7 @@ static void setup(const char *binary)
     path(launcher, "bin/chibi");
     path(log_path, "output.log");
     const char *copy[] = { "/bin/cp", binary, launcher, NULL };
-    assert(!tool_run(copy, root, log_path));
+    assert(!cli_run(copy, root, log_path));
     assert(!chmod(launcher, 0700));
     const char *resources[] = { "share", "share/chibi" };
     char destination[256];
@@ -137,6 +164,7 @@ static void setup(const char *binary)
     char program[256];
     path(program, "bin/chibi-compile");
     assert(!chmod(program, 0700));
+    warm_launcher();
 }
 
 /* The text of the file at `relative`, which must exist. */
@@ -156,7 +184,7 @@ TEST_CASE(version_reads_the_build_identity)
     char output[256];
     path(output, "version.log");
     const char *version[] = { launcher, "version", NULL };
-    REQUIRE(tool_run(version, root, output) == 1);
+    REQUIRE(cli_run(version, root, output) == 1);
 
     char directory[256];
     path(directory, "share");
@@ -171,23 +199,23 @@ TEST_CASE(version_reads_the_build_identity)
     char document[512];
     snprintf(document, sizeof document, "{\"sdk_version\": \"9.8.7\", \"project_version\": 25, %s}\n", formats);
     write_file("share/chibi/engine.json", document);
-    REQUIRE(tool_run(version, root, output) == 0);
+    REQUIRE(cli_run(version, root, output) == 0);
     char expected[1024];
     snprintf(expected, sizeof expected, "chibi 9.8.7\nbuild: unpackaged\ncompiler: %s/bin/chibi-compile\nproject format: 25\nartifact formats: execution 15, player 3\n", root);
     REQUIRE(file_is("version.log", expected));
 
     snprintf(document, sizeof document, "{\"manifest_format\": 1, \"build_id\": \"fixture-build\", \"sdk_version\": \"9.8.7\", \"project_version\": 25, %s}\n", formats);
     write_file("share/chibi/engine.json", document);
-    REQUIRE(tool_run(version, root, output) == 0);
+    REQUIRE(cli_run(version, root, output) == 0);
     snprintf(expected, sizeof expected, "chibi 9.8.7\nbuild: fixture-build\ncompiler: %s/bin/chibi-compile\nproject format: 25\nartifact formats: execution 15, player 3\n", root);
     REQUIRE(file_is("version.log", expected));
 
     write_file("share/chibi/engine.json", "{\"sdk_version\": \"9.8.7\", \"project_version\": 25, \"artifact_formats\": {\"execution\": {}}}\n");
-    REQUIRE(tool_run(version, root, output) == 1);
+    REQUIRE(cli_run(version, root, output) == 1);
     const char *help[] = { launcher, "version", "--help", NULL };
-    REQUIRE(tool_run(help, root, output) == 0);
+    REQUIRE(cli_run(help, root, output) == 0);
     const char *extra[] = { launcher, "version", "more", NULL };
-    REQUIRE(tool_run(extra, root, output) == 2);
+    REQUIRE(cli_run(extra, root, output) == 2);
     return true;
 }
 
@@ -197,7 +225,7 @@ TEST_CASE(version_of_the_built_launcher)
     char output[256], expected[64];
     path(output, "built.log");
     const char *version[] = { built, "version", NULL };
-    REQUIRE(tool_run(version, root, output) == 0);
+    REQUIRE(cli_run(version, root, output) == 0);
     char *text = tool_read(output);
     snprintf(expected, sizeof expected, "\nproject format: %d\n", CHIBI_PROJECT_VERSION);
     bool reported = text && !strncmp(text, "chibi ", 6) && strstr(text, expected) &&
@@ -205,6 +233,60 @@ TEST_CASE(version_of_the_built_launcher)
                     strstr(text, " execution ");
     free(text);
     REQUIRE(reported);
+    return true;
+}
+
+/* The number of closures kept under `cache`. */
+static int closures_kept(const char *cache)
+{
+    char folder[512];
+    snprintf(folder, sizeof folder, "%s/closures", cache);
+    DIR *open = opendir(folder);
+    int count = 0;
+    for (struct dirent *entry; open && (entry = readdir(open));) {
+        count += !strncmp(entry->d_name, "closure-", 8);
+    }
+    if (open) {
+        closedir(open);
+    }
+    return count;
+}
+
+static void append_comment(const char *relative)
+{
+    char file[256];
+    path(file, relative);
+    FILE *stream = fopen(file, "a");
+    assert(stream);
+    fputs("// edited\n", stream);
+    fclose(stream);
+}
+
+/* The launcher compiles its application once per set of sources: a second start
+ * reuses the kept closure, and an edit to the application or to a core package
+ * it imports compiles another. */
+TEST_CASE(launcher_keeps_its_compiled_application)
+{
+    char cache[256];
+    path(cache, "closure-cache");
+    const char *previous = getenv("CHIBI_ASSET_CACHE_DIR");
+    char *saved = previous ? xstrdup(previous) : NULL;
+    REQUIRE(!setenv("CHIBI_ASSET_CACHE_DIR", cache, 1));
+    const char *version[] = { launcher, "version", NULL };
+    bool compiled = cli_run(version, root, log_path) == 0 && closures_kept(cache) == 1;
+    bool reused = cli_run(version, root, log_path) == 0 && closures_kept(cache) == 1;
+    append_comment("share/chibi/apps/chibi/Main.chibi");
+    bool application = cli_run(version, root, log_path) == 0 &&
+                       closures_kept(cache) == 2;
+    append_comment("share/chibi/core/strings/Strings.chibi");
+    bool core = cli_run(version, root, log_path) == 0 && closures_kept(cache) == 3;
+    if (saved) {
+        setenv("CHIBI_ASSET_CACHE_DIR", saved, 1);
+    } else {
+        unsetenv("CHIBI_ASSET_CACHE_DIR");
+    }
+    free(saved);
+    REQUIRE(compiled && reused && application && core);
     return true;
 }
 
@@ -257,7 +339,7 @@ static int doctor(const char *extra, const char *programs)
     snprintf(saved, sizeof saved, "%s", previous);
     setenv("PATH", programs, 1);
     const char *args[] = { launcher, "doctor", extra, NULL };
-    int status = tool_run(args, root, output);
+    int status = cli_run(args, root, output);
     setenv("PATH", saved, 1);
     return status;
 }
@@ -312,60 +394,49 @@ TEST_CASE(doctor_of_the_built_launcher)
     char output[256];
     path(output, "built-doctor.log");
     const char *args[] = { built, "doctor", NULL };
-    REQUIRE(tool_run(args, root, output) == 0);
+    REQUIRE(cli_run(args, root, output) == 0);
     REQUIRE(file_has("built-doctor.log", "\ncompiler: supported ("));
     REQUIRE(file_has("built-doctor.log", "\nplatform: supported ("));
     return true;
 }
 
-/* Public tests use the same configured source/session capabilities as normal
- * applications, including when testing the CLI's own authored package. */
 TEST_CASE(test_runs_shared_package_tests)
 {
     char folder[256];
     path(folder, "package-tests");
     REQUIRE(!mkdir(folder, 0700));
-    const char *passing =
-        "package facts\nimport strings \"core:strings\"\n"
-        "@test\nPasses :: () {\n"
-        " args := application.arguments()\n"
-        " assert(length(args) == 1 && strings.HasSuffix(args[0], "
-        "\"/package-tests/Facts.chibi\"), \"test source argv\")\n"
-        " child := program.open(args[0], \"Helper\", [\"nested-test\"])\n"
-        " assert(program.update(child) == 1, \"nested test source prepares\")\n"
-        " called := program.call(child)\n"
-        " assert(called.status == 0 && called.result == 17, \"test program "
-        "service\")\n"
-        " program.close(child)\n}\n"
-        "Helper :: () -> int {\n"
-        " args := application.arguments()\n"
-        " assert(length(args) == 1 && args[0] == \"nested-test\", \"nested "
-        "test argv\")\n"
-        " return 17\n}\n"
-        "@test\nPureOne :: () { assert(2 + 2 == 4, \"addition\") }\n"
-        "@test\nPureTwo :: () { assert(3 * 3 == 9, \"multiplication\") }\n";
+    /* Tests run without a program service (#880): they print, and nothing else. */
+    const char *passing = "package facts\n"
+                          "@test\nPasses :: () {\n"
+                          " print_string(\"a test prints as it runs\")\n"
+                          " two: int = 2\n"
+                          " assert(two + two == 4, \"addition\")\n}\n"
+                          "@test\nPureOne :: () {\n two: int = 2\n assert(two "
+                          "+ two == 4, \"addition\")\n}\n"
+                          "@test\nPureTwo :: () {\n three: int = 3\n "
+                          "assert(three * three == 9, \"multiplication\")\n}\n";
     write_file("package-tests/Facts.chibi", passing);
     const char *named[] = { launcher, "test", "package-tests", NULL };
-    REQUIRE(tool_run(named, root, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS facts.Passes\n"));
+    REQUIRE(cli_run(named, root, log_path) == 0);
+    REQUIRE(file_has("output.log", "PASS project.Passes\n"));
     REQUIRE(file_has("output.log", "3 tests, 0 failed\n"));
     const char *here[] = { launcher, "test", NULL };
-    REQUIRE(tool_run(here, folder, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS facts.Passes\n"));
+    REQUIRE(cli_run(here, folder, log_path) == 0);
+    REQUIRE(file_has("output.log", "PASS project.Passes\n"));
     const char *previous = getenv("CHIBI_TEST_WORKERS");
     char *saved_workers = previous ? xstrdup(previous) : NULL;
     const char *workers[] = { "1", "2" };
     bool worker_settings = true;
     for (int i = 0; i < 2; i++) {
         worker_settings &= !setenv("CHIBI_TEST_WORKERS", workers[i], 1);
-        worker_settings &= tool_run(named, root, log_path) == 0;
-        worker_settings &= file_is("output.log", "PASS facts.Passes\nPASS facts.PureOne\nPASS facts.PureTwo\n3 tests, 0 failed\n");
+        worker_settings &= cli_run(named, root, log_path) == 0;
+        worker_settings &= file_is("output.log", "a test prints as it runs\nPASS project.Passes\nPASS project.PureOne\nPASS project.PureTwo\n3 tests, 0 failed\n");
     }
     worker_settings &= !setenv("CHIBI_TEST_WORKERS", "0", 1);
-    worker_settings &= tool_run(named, root, log_path) == 1;
+    worker_settings &= cli_run(named, root, log_path) == 1;
     worker_settings &= file_has("output.log", "CHIBI_TEST_WORKERS");
     const char *general[] = { launcher, "--help", NULL };
-    worker_settings &= tool_run(general, root, log_path) == 0;
+    worker_settings &= cli_run(general, root, log_path) == 0;
     if (saved_workers) {
         worker_settings &= !setenv("CHIBI_TEST_WORKERS", saved_workers, 1);
     } else {
@@ -374,34 +445,19 @@ TEST_CASE(test_runs_shared_package_tests)
     free(saved_workers);
     REQUIRE(worker_settings);
     write_file("package-tests/Facts.chibi", "package facts\n@test\nFails :: () { assert(false, \"shared test failure\") }\n");
-    REQUIRE(tool_run(named, root, log_path) == 1);
-    REQUIRE(file_has("output.log", "FAIL facts.Fails\n"));
+    REQUIRE(cli_run(named, root, log_path) == 1);
+    REQUIRE(file_has("output.log", "FAIL project.Fails\n"));
     REQUIRE(file_has("output.log", "Facts.chibi:3:"));
     REQUIRE(file_has("output.log", "shared test failure"));
     write_file("package-tests/Facts.chibi", "package facts\n@test\nFails :: () { missing() }\n");
-    REQUIRE(tool_run(named, root, log_path) == 1);
+    REQUIRE(cli_run(named, root, log_path) == 1);
     REQUIRE(file_has("output.log", "Facts.chibi:3:"));
     REQUIRE(file_has("output.log", "missing"));
     write_file("package-tests/Facts.chibi", passing);
     const char *help[] = { launcher, "test", "--help", NULL };
-    REQUIRE(tool_run(help, root, log_path) == 0);
+    REQUIRE(cli_run(help, root, log_path) == 0);
     const char *extra[] = { launcher, "test", "one", "two", NULL };
-    REQUIRE(tool_run(extra, root, log_path) == 2);
-    char application[1024];
-    const char *slash = strrchr(built, '/');
-    REQUIRE(slash);
-    int length = snprintf(
-        application,
-        sizeof application,
-        "%.*s/../share/chibi/apps/chibi",
-        (int)(slash - built),
-        built
-    );
-    REQUIRE(length > 0 && length < (int)sizeof application);
-    const char *self[] = { launcher, "test", application, NULL };
-    REQUIRE(tool_run(self, root, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS chibi_cli.CommandArgumentsKeepProgramArguments\n"));
-    REQUIRE(file_has("output.log", "0 failed\n"));
+    REQUIRE(cli_run(extra, root, log_path) == 2);
     REQUIRE(!exists("package-tests/.chibi"));
     return true;
 }
@@ -438,7 +494,7 @@ TEST_CASE(compiler_test_reports_each_test)
     path(tests, "tests");
     path(output, "tests.log");
     const char *run[] = { compiler, "--project-root", tests, "--test", NULL };
-    REQUIRE(tool_run(run, root, output) == 1);
+    REQUIRE(cli_run(run, root, output) == 1);
     snprintf(
         expected,
         sizeof expected,
@@ -456,7 +512,7 @@ TEST_CASE(compiler_test_reports_each_test)
     const char *workers[] = { "1", "2" };
     for (int i = 0; i < 2; i++) {
         worker_settings &= !setenv("CHIBI_TEST_WORKERS", workers[i], 1);
-        worker_settings &= tool_run(run, root, output) == 1;
+        worker_settings &= cli_run(run, root, output) == 1;
         worker_settings &= file_is("tests.log", expected);
     }
     const char *invalid_workers[] = {
@@ -464,7 +520,7 @@ TEST_CASE(compiler_test_reports_each_test)
     };
     for (size_t i = 0; i < sizeof invalid_workers / sizeof *invalid_workers; i++) {
         worker_settings &= !setenv("CHIBI_TEST_WORKERS", invalid_workers[i], 1);
-        worker_settings &= tool_run(run, root, output) == 1;
+        worker_settings &= cli_run(run, root, output) == 1;
         worker_settings &= file_is("tests.log", "CHIBI_TEST_WORKERS must be an integer from 1 to 32\n");
     }
     if (saved_workers) {
@@ -479,80 +535,38 @@ TEST_CASE(compiler_test_reports_each_test)
     *strstr(passing, "== 4") = '!';
     write_file("tests/facts/Facts.chibi", passing);
     free(passing);
-    REQUIRE(tool_run(run, root, output) == 0);
+    REQUIRE(cli_run(run, root, output) == 0);
     REQUIRE(file_is("tests.log", "PASS facts.Passes\nPASS facts.Fails\n2 tests, 0 failed\n"));
 
-    write_file("broken/facts/Facts.chibi", "package facts\nBroken :: () -> int { return missing; }\n");
+    /* A package is compiled when it declares a test. */
+    write_file("broken/facts/Facts.chibi", "package facts\n@test\nOk :: () {}\nBroken :: () -> int { return missing; }\n");
     char broken[256];
     path(broken, "broken");
     const char *invalid[] = { compiler, "--project-root", broken, "--test", NULL };
-    REQUIRE(tool_run(invalid, root, output) == 1);
-    REQUIRE(file_has("tests.log", "/broken/facts/Facts.chibi:2:"));
+    REQUIRE(cli_run(invalid, root, output) == 1);
+    REQUIRE(file_has("tests.log", "/broken/facts/Facts.chibi:4:"));
 
     write_file("game/sounds/Sounds.chibi", "package sounds\n@test\nQuiet :: () {\n    set_master_volume(0.5);\n}\n");
     char game[256];
     path(game, "game");
     const char *service[] = { compiler, "--project-root", game, "--test", NULL };
-    REQUIRE(tool_run(service, root, output) == 1);
+    REQUIRE(cli_run(service, root, output) == 1);
     REQUIRE(file_has("tests.log", "/game/sounds/Sounds.chibi:4:5: "));
 
     char missing[256];
     path(missing, "missing");
     const char *absent[] = { compiler, "--project-root", missing, "--test", NULL };
-    REQUIRE(tool_run(absent, root, output) == 1);
+    REQUIRE(cli_run(absent, root, output) == 1);
     const char *scene[] = { compiler, "--project-root", tests,
                             "--test", "--scene",        "x",
                             NULL };
-    REQUIRE(tool_run(scene, root, output) == 2);
+    REQUIRE(cli_run(scene, root, output) == 2);
     const char *both[] = { compiler, "--project-root", tests,
                            "--test", "--check",        NULL };
-    REQUIRE(tool_run(both, root, output) == 2);
+    REQUIRE(cli_run(both, root, output) == 2);
     return true;
 }
 
-/* A compiler whose SDK lacks the core collection says so and fails. */
-/* The compiler's own packages read raw syntax and JSON strings through the
- * compiler's bridges, so --test links both. */
-static const char COMPILER_FACTS
-    [] = "package words\n"
-         "\n"
-         "@test\n"
-         "Decodes :: () {\n"
-         "    decoded := compiler_json_string(\"\\\"hi\\\"\");\n"
-         "    assert(decoded.valid && decoded.value == \"hi\", \"decodes\");\n"
-         "}\n"
-         "\n"
-         "@test\n"
-         "Parses :: () {\n"
-         "    tree := compiler_syntax_parse(\"package words\\n\");\n"
-         "    assert(tree.root >= 0, \"parses\");\n"
-         "}\n";
-TEST_CASE(compiler_test_links_the_compiler_bridges)
-{
-    const char *directories[] = { "bridged", "bridged/words" };
-    for (int i = 0; i < 2; i++) {
-        char directory[256];
-        path(directory, directories[i]);
-        REQUIRE(!mkdir(directory, 0700));
-    }
-    write_file("bridged/words/Words.chibi", COMPILER_FACTS);
-    char tests[256], output[256];
-    path(tests, "bridged");
-    path(output, "bridged.log");
-    const char *run[] = { compiler, "--project-root", tests, "--test", NULL };
-    int status = tool_run(run, root, output);
-    if (status) {
-        char *log = contents("bridged.log");
-        fprintf(stderr, "compiler bridges: %s\n", log);
-        free(log);
-    }
-    REQUIRE(status == 0);
-    REQUIRE(file_is("bridged.log", "PASS words.Decodes\nPASS words.Parses\n2 tests, 0 failed\n"));
-    const char *public_run[] = { built, "test", tests, NULL };
-    REQUIRE(tool_run(public_run, root, output) == 0);
-    REQUIRE(file_is("bridged.log", "PASS words.Decodes\nPASS words.Parses\n2 tests, 0 failed\n"));
-    return true;
-}
 TEST_CASE(compiler_runs_cost_explanation_regressions)
 {
     const char *run[] = { compiler,
@@ -560,10 +574,32 @@ TEST_CASE(compiler_runs_cost_explanation_regressions)
                           CHIBI_SOURCE_ROOT "/tools/compiler/cost_explanations",
                           "--test",
                           NULL };
-    REQUIRE(tool_run(run, root, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS cost_explanations.EmptyReport\n"));
-    REQUIRE(file_has("output.log", "PASS cost_explanations.FullWidthIdentifiersAndJsonEscaping\n"));
+    REQUIRE(cli_run(run, root, log_path) == 0);
+    REQUIRE(file_has("output.log", "PASS project.EmptyReport\n"));
+    REQUIRE(file_has("output.log", "PASS project.FullWidthIdentifiersAndJsonEscaping\n"));
     REQUIRE(file_has("output.log", "6 tests, 0 failed\n"));
+    return true;
+}
+
+/* A package that declares `foreign import`, or imports one that does, is native
+ * only: the VM cannot prepare it, so the runner reports it as skipped. */
+TEST_CASE(compiler_test_skips_native_only_packages)
+{
+    const char *run[] = { compiler,
+                          "--project-root",
+                          CHIBI_SOURCE_ROOT "/test/compiler/samples/native",
+                          "--test",
+                          NULL };
+    REQUIRE(cli_run(run, root, log_path) == 0);
+    REQUIRE(file_is(
+        "output.log",
+        "SKIP foreign_declared/facts (native only: foreign import)\n"
+        "SKIP foreign_library/facts (native only: foreign import)\n"
+        "SKIP foreign_posix/facts (native only: foreign import)\n"
+        "SKIP foreign_vendor/facts (native only: foreign import)\n"
+        "PASS plain_package/facts.Calls\n"
+        "1 tests, 0 failed, 4 skipped\n"
+    ));
     return true;
 }
 
@@ -582,10 +618,10 @@ TEST_CASE(compiler_test_needs_the_core_collection)
 #else
     const char *clone[] = { "/bin/cp", "--reflink=auto", compiler, copy, NULL };
 #endif
-    REQUIRE(tool_run(clone, root, log_path) == 0);
+    REQUIRE(cli_run(clone, root, log_path) == 0);
     path(output, "core.log");
     const char *run[] = { copy, "--project-root", root, "--test", NULL };
-    REQUIRE(tool_run(run, root, output) == 1);
+    REQUIRE(cli_run(run, root, output) == 1);
     REQUIRE(file_has("core.log", "The SDK has no core collection at "));
     REQUIRE(!unlink(copy));
     return true;
@@ -630,7 +666,7 @@ TEST_CASE(native_build_forwards_driver_arguments)
                            llvm,
                            package,
                            NULL };
-    REQUIRE(tool_run(args, root, log_path) == 0);
+    REQUIRE(cli_run(args, root, log_path) == 0);
     REQUIRE(file_is("output.log", "native-driver\n"));
     char expected[4096];
     int length = snprintf(
@@ -638,6 +674,7 @@ TEST_CASE(native_build_forwards_driver_arguments)
         sizeof expected,
         "--root\n%s/share/chibi/tools/native_aot\n"
         "--source\n%s/share/chibi/tools/native_aot/Driver.chibi\n"
+        "--collection\nnative_aot=%s/share/chibi/tools/native_aot/driver\n"
         "--core\n%s/share/chibi/core\n--compiler\n%s/share/chibi/compiler\n"
         "--compiler-core\n%s/share/chibi/"
         "core\n--entry\nNative\n--timeout-ms\n900000\n--\n"
@@ -652,13 +689,14 @@ TEST_CASE(native_build_forwards_driver_arguments)
         root,
         root,
         root,
+        root,
         package,
         llvm
     );
     REQUIRE(length > 0 && length < (int)sizeof expected);
     REQUIRE(file_is("native.args", expected));
     write_file("native.fail", "");
-    REQUIRE(tool_run(args, root, log_path) == 37);
+    REQUIRE(cli_run(args, root, log_path) == 37);
     char failure[256];
     path(failure, "native.fail");
     REQUIRE(!unlink(failure));
@@ -687,15 +725,15 @@ TEST_CASE(run_dispatches_standalone_programs)
         { launcher, "standalone dispatch", NULL },
     };
     for (int i = 0; i < 4; i++) {
-        REQUIRE(tool_run(commands[i], root, log_path) == 0);
+        REQUIRE(cli_run(commands[i], root, log_path) == 0);
         REQUIRE(file_is("output.log", "dispatch-main\n"));
         REQUIRE(!exists("standalone dispatch/.chibi"));
     }
     const char *here[] = { launcher, ".", NULL };
-    REQUIRE(tool_run(here, folder, log_path) == 0);
+    REQUIRE(cli_run(here, folder, log_path) == 0);
     REQUIRE(file_is("output.log", "dispatch-main\n"));
     const char *implicit[] = { launcher, "run", NULL };
-    REQUIRE(tool_run(implicit, folder, log_path) == 0);
+    REQUIRE(cli_run(implicit, folder, log_path) == 0);
     REQUIRE(file_is("output.log", "dispatch-main\n"));
 
     const char *watch_commands[][6] = {
@@ -725,16 +763,16 @@ TEST_CASE(run_dispatches_standalone_programs)
         { launcher, "game with spaces", "--watch", NULL },
     };
     for (int i = 0; i < 3; i++) {
-        REQUIRE(tool_run(watch_games[i], root, log_path) == 2);
+        REQUIRE(cli_run(watch_games[i], root, log_path) == 2);
     }
     const char *extra[] = { launcher, "run", source, "--", "extra", NULL };
-    REQUIRE(tool_run(extra, root, log_path) == 0);
+    REQUIRE(cli_run(extra, root, log_path) == 0);
     REQUIRE(file_is("output.log", "dispatch-main\n"));
     const char *unnamed_extra[] = { launcher, source, "extra", NULL };
-    REQUIRE(tool_run(unnamed_extra, root, log_path) == 0);
+    REQUIRE(cli_run(unnamed_extra, root, log_path) == 0);
     REQUIRE(file_is("output.log", "dispatch-main\n"));
     write_file("fail", "");
-    REQUIRE(tool_run(commands[0], root, log_path) == 0);
+    REQUIRE(cli_run(commands[0], root, log_path) == 0);
     REQUIRE(file_is("output.log", "dispatch-main\n"));
     char failure[256];
     path(failure, "fail");
@@ -755,7 +793,7 @@ static const char HELLO_PROGRAM[] = "package hello\n"
 static int run_program(const char *target)
 {
     const char *args[] = { built, "run", target, NULL };
-    return tool_run(args, root, log_path);
+    return cli_run(args, root, log_path);
 }
 
 TEST_CASE(program_main_runs_from_files_and_directories)
@@ -765,28 +803,28 @@ TEST_CASE(program_main_runs_from_files_and_directories)
     REQUIRE(run_program("run-main/Hello.chibi") == 0);
     REQUIRE(file_is("output.log", "Hello, world!\n"));
     const char *file[] = { built, "run-main/Hello.chibi", NULL };
-    REQUIRE(tool_run(file, root, log_path) == 0);
+    REQUIRE(cli_run(file, root, log_path) == 0);
     REQUIRE(file_is("output.log", "Hello, world!\n"));
     REQUIRE(run_program("run-main") == 0);
     REQUIRE(file_is("output.log", "Hello, world!\n"));
     const char *folder[] = { built, "run-main", NULL };
-    REQUIRE(tool_run(folder, root, log_path) == 0);
+    REQUIRE(cli_run(folder, root, log_path) == 0);
     REQUIRE(file_is("output.log", "Hello, world!\n"));
     char cwd[256], source[256];
     path(cwd, "run-main");
     path(source, "run-main/Hello.chibi");
     const char *here[] = { built, ".", NULL };
-    REQUIRE(tool_run(here, cwd, log_path) == 0);
+    REQUIRE(cli_run(here, cwd, log_path) == 0);
     REQUIRE(file_is("output.log", "Hello, world!\n"));
     const char *implicit[] = { built, "run", NULL };
-    REQUIRE(tool_run(implicit, cwd, log_path) == 0);
+    REQUIRE(cli_run(implicit, cwd, log_path) == 0);
     REQUIRE(file_is("output.log", "Hello, world!\n"));
     const char *direct[] = { compiler, "--project-root", source, "--run", NULL };
-    REQUIRE(tool_run(direct, root, log_path) == 2);
+    REQUIRE(cli_run(direct, root, log_path) == 2);
     REQUIRE(!file_has("output.log", "Hello, world!"));
     const char *conflict[] = { compiler, "--project-root", source,
                                "--run",  "--test",         NULL };
-    REQUIRE(tool_run(conflict, root, log_path) == 2);
+    REQUIRE(cli_run(conflict, root, log_path) == 2);
 
     write_file("run-main/Hello.chibi", "package hello\nMain :: () -> int { return 23 }\n");
     REQUIRE(run_program("run-main/Hello.chibi") == 23);
@@ -838,19 +876,19 @@ TEST_CASE(authored_applications_use_independent_program_sessions)
         " source := files.read(args[2])\n"
         " assert(files.write(path, source), \"write valid edit\")\n"
         " assert(program.update(first) == 1, \"first session prepares\")\n"
-        " a = program.call(first); b = program.call(second)\n"
-        " assert(a.status == 0 && a.result == 142, \"retained reload\")\n"
-        " assert(b.status == 0 && b.result == 202, \"independent "
+        " c := program.call(first); d := program.call(second)\n"
+        " assert(c.status == 0 && c.result == 142, \"retained reload\")\n"
+        " assert(d.status == 0 && d.result == 202, \"independent "
         "generation\")\n"
         " assert(files.write(path, \"package counter\\nMain :: () { missing() "
         "}\\n\"), \"write invalid edit\")\n"
         " assert(program.update(first) == -1, \"reject invalid edit\")\n"
         " assert(program.diagnostic(first) != \"\", \"source diagnostic\")\n"
-        " a = program.call(first)\n"
-        " assert(a.status == 0 && a.result == 143, \"last valid state\")\n"
+        " e := program.call(first)\n"
+        " assert(e.status == 0 && e.result == 143, \"last valid state\")\n"
         " program.close(first)\n"
-        " b = program.call(second)\n"
-        " assert(b.status == 0 && b.result == 203, \"other handle remains "
+        " f := program.call(second)\n"
+        " assert(f.status == 0 && f.result == 203, \"other handle remains "
         "alive\")\n"
         " program.close(second)\n"
         " print_string(\"public-programs-ok\")\n}\n"
@@ -861,7 +899,7 @@ TEST_CASE(authored_applications_use_independent_program_sessions)
     const char *args[] = { built,  "public-programs/Controller.chibi",
                            "--",   source,
                            reload, NULL };
-    REQUIRE(tool_run(args, root, log_path) == 0);
+    REQUIRE(cli_run(args, root, log_path) == 0);
     REQUIRE(file_is("output.log", "public-programs-ok\n"));
     REQUIRE(!exists("public-programs/.chibi"));
     return true;
@@ -919,7 +957,7 @@ static bool clone_program_file(const char *source, const char *relative)
 #else
     const char *args[] = { "/bin/cp", "--reflink=auto", source, destination, NULL };
 #endif
-    return tool_run(args, root, log_path) == 0;
+    return cli_run(args, root, log_path) == 0;
 }
 
 TEST_CASE(public_cli_is_a_relocatable_ordinary_application)
@@ -945,33 +983,33 @@ TEST_CASE(public_cli_is_a_relocatable_ordinary_application)
     path(cwd, "unrelated-program-cwd");
     write_file("Hello.chibi", HELLO_PROGRAM);
     const char *args[] = { relocated, source, NULL };
-    REQUIRE(tool_run(args, cwd, log_path) == 0);
+    REQUIRE(cli_run(args, cwd, log_path) == 0);
     REQUIRE(file_is("output.log", "Hello, world!\n"));
     /* The public CLI itself runs through the ordinary source-session API. */
     const char *self[] = { relocated, application, "--", "version", NULL };
-    REQUIRE(tool_run(self, cwd, log_path) == 0);
+    REQUIRE(cli_run(self, cwd, log_path) == 0);
     REQUIRE(file_has("output.log", "chibi "));
     /* Replacing the whole package controls every command without C fallback. */
     tool_remove_tree(application);
     directory("program-sdk/share/chibi/apps/chibi");
     write_file("program-sdk/share/chibi/apps/chibi/Main.chibi", "package chibi\nMain :: () -> int { return 42 }\n");
-    REQUIRE(tool_run(args, cwd, log_path) == 42);
+    REQUIRE(cli_run(args, cwd, log_path) == 42);
     REQUIRE(file_is("output.log", ""));
     const char *version[] = { relocated, "version", NULL };
-    REQUIRE(tool_run(version, cwd, log_path) == 42);
+    REQUIRE(cli_run(version, cwd, log_path) == 42);
     REQUIRE(file_is("output.log", ""));
     tool_remove_tree(application);
-    REQUIRE(tool_run(args, cwd, log_path) == 1);
+    REQUIRE(cli_run(args, cwd, log_path) == 1);
     REQUIRE(file_has("output.log", "apps/chibi"));
     REQUIRE(!file_has("output.log", "Hello, world!"));
     directory("program-sdk/share/chibi/apps/chibi");
     write_file("program-sdk/share/chibi/apps/chibi/Main.chibi", "package chibi\nMain :: ( {\n");
-    REQUIRE(tool_run(args, cwd, log_path) == 1);
+    REQUIRE(cli_run(args, cwd, log_path) == 1);
     REQUIRE(file_has("output.log", "Main.chibi"));
     REQUIRE(!file_has("output.log", "Hello, world!"));
     tool_remove_tree(application);
     REQUIRE(copy_resource(built, "apps", share));
-    REQUIRE(tool_run(args, cwd, log_path) == 0);
+    REQUIRE(cli_run(args, cwd, log_path) == 0);
     REQUIRE(file_is("output.log", "Hello, world!\n"));
     REQUIRE(!exists("program-sdk/.chibi"));
     REQUIRE(!exists("unrelated-program-cwd/.chibi"));
@@ -1010,7 +1048,7 @@ TEST_CASE(program_failures_report_entry_and_source_errors)
     REQUIRE(file_has("output.log", "/run-errors/Hello.chibi:2:"));
     write_file("run-errors/Hello.chibi", "package hello\nMain :: () { runner.snapshot() }\n");
     REQUIRE(run_program("run-errors/Hello.chibi") == 1);
-    REQUIRE(file_has("output.log", "Unknown value 'runner'"));
+    REQUIRE(file_has("output.log", "Unknown function 'runner.snapshot'"));
     write_file("run-errors/Hello.chibi", "Main :: () {}\n");
     REQUIRE(run_program("run-errors/Hello.chibi") == 1);
     REQUIRE(file_has("output.log", "/run-errors/Hello.chibi:1:1:"));
@@ -1054,9 +1092,12 @@ static size_t watch_output_size()
     return length;
 }
 
+/* A watched program compiles before it prints, and again after each edit it
+ * picks up: 8 s for a small one on a workstation, longer on a loaded CI runner,
+ * so its output gets the bound cli_run gives a first compile. */
 static bool watch_output(chibi_process *process, size_t after, const char *expected)
 {
-    double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
+    double deadline = chibi_process_now() + FIRST_COMPILE_SECONDS;
     do {
         char *text = tool_read(log_path);
         bool found = text && strlen(text) >= after && strstr(text + after, expected);
@@ -1341,7 +1382,7 @@ TEST_CASE(program_process_run_stops_children_when_only_parent_is_signalled)
 
 static bool pty_output(chibi_process *process, int master, char *text, size_t capacity, const char *expected)
 {
-    double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
+    double deadline = chibi_process_now() + FIRST_COMPILE_SECONDS;
     do {
         size_t used = strlen(text);
         if (used + 1 == capacity) {
@@ -1850,10 +1891,11 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(version_of_the_built_launcher);
     RUN_TEST_CASE(doctor_reports_each_capability);
     RUN_TEST_CASE(doctor_of_the_built_launcher);
+    RUN_TEST_CASE(launcher_keeps_its_compiled_application);
     RUN_TEST_CASE(test_runs_shared_package_tests);
     RUN_TEST_CASE(compiler_test_reports_each_test);
-    RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
     RUN_TEST_CASE(compiler_runs_cost_explanation_regressions);
+    RUN_TEST_CASE(compiler_test_skips_native_only_packages);
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
     RUN_TEST_CASE(native_build_forwards_driver_arguments);
     RUN_TEST_CASE(run_dispatches_standalone_programs);
@@ -1878,10 +1920,10 @@ TEST_CASE(installed_identity_and_doctor)
     char output[256];
     path(output, "installed.log");
     const char *version[] = { launcher, "version", NULL };
-    REQUIRE(tool_run(version, root, output) == 0);
+    REQUIRE(cli_run(version, root, output) == 0);
     REQUIRE(file_has("installed.log", "chibi ") && !file_has("installed.log", "build: unpackaged"));
     const char *doctor[] = { launcher, "doctor", NULL };
-    REQUIRE(tool_run(doctor, root, output) == 0);
+    REQUIRE(cli_run(doctor, root, output) == 0);
     REQUIRE(file_has("installed.log", "\ncompiler: supported ("));
     return true;
 }
@@ -1897,7 +1939,7 @@ TEST_CASE(installed_package_commands)
     path(tree, "packages");
     path(output, "installed.log");
     const char *run[] = { launcher, "test", tree, NULL };
-    REQUIRE(tool_run(run, root, output) == 1);
+    REQUIRE(cli_run(run, root, output) == 1);
     REQUIRE(file_has("installed.log", "PASS facts.Passes\nFAIL facts.Fails\n"));
     REQUIRE(file_has("installed.log", "Assertion failed: four bytes\n2 tests, 1 failed\n"));
 
@@ -1921,6 +1963,7 @@ static void setup_installed(const char *binary)
     assert(length > 0 && length < (int)sizeof compiler);
     free(program);
     path(log_path, "output.log");
+    warm_launcher();
 }
 
 TEST_CASE(raw_sdk_build_finds_its_application_and_companions)
@@ -1928,7 +1971,7 @@ TEST_CASE(raw_sdk_build_finds_its_application_and_companions)
     char output[256];
     path(output, "raw-sdk.log");
     const char *help[] = { built, "--help", NULL };
-    REQUIRE(tool_run(help, root, output) == 0);
+    REQUIRE(cli_run(help, root, output) == 0);
     REQUIRE(file_has("raw-sdk.log", "Usage:"));
     const char *slash = strrchr(built, '/');
     REQUIRE(slash);
@@ -1957,7 +2000,7 @@ TEST_CASE(raw_sdk_build_finds_its_application_and_companions)
     path(llvm, "raw-llvm");
     const char *native[] = { built, "build", "--native", "--llvm",
                              llvm,  game,    NULL };
-    REQUIRE(tool_run(native, root, output) == 2);
+    REQUIRE(cli_run(native, root, output) == 2);
     REQUIRE(file_has("raw-sdk.log", "must hold LLVM's opt, llc and ld.lld"));
     REQUIRE(!file_has("raw-sdk.log", "Cannot run"));
     return true;

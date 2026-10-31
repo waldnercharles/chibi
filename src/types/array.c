@@ -5,7 +5,6 @@
 #include "support/xalloc.h"
 #include "types/array_internal.h"
 #include "types/catalog.h"
-#include "types/copy_internal.h"
 #include "types/map.h"
 #include "types/pointer.h"
 #include "types/record.h"
@@ -88,11 +87,7 @@ static void trace_backing(const void *data, const void *shape, arena_marker mark
     mark(user, array->schema);
     mark(user, array->buckets);
     /* A shared backing reaches what an unshared payload's items reach. */
-    bool reach = pin_array_items_reach(array);
-    for (int i = 0; reach && i < array->count; i++) {
-        pin_value item = pin_array_get(array, i);
-        pin_value_trace(&item, mark, user);
-    }
+    pin_array_trace_items(array, mark, user);
 }
 bool pin_array_trace_backing(const pin_array *array, arena_marker mark, void *user)
 {
@@ -102,11 +97,19 @@ bool pin_array_trace_backing(const pin_array *array, arena_marker mark, void *us
     mark(user, array->backing->anchor);
     return true;
 }
+bool pin_array_collect_backing(const pin_array *array, arena_collection *collection)
+{
+    return array->backing &&
+           arena_collect_mark_held(collection, array->backing->anchor);
+}
 static void backing_attach(pin_array *array, pin_array_backing *backing)
 {
     array->backing = backing;
     arena_replace_cleanup(array->storage, array, backing_release, backing, backing_bytes(backing));
 }
+/* The collector traces and frees the payload, so it mirrors the header after
+ * every change. The arena counts the payload's bytes and is told only when
+ * they change; the shell's cleanup already names this backing. */
 void pin_array_mutation_end(pin_array *array)
 {
     if (!array || !array->backing) {
@@ -114,10 +117,41 @@ void pin_array_mutation_end(pin_array *array)
     }
     pin_array_backing *backing = array->backing;
     assert(atomic_load_explicit(&backing->refs, memory_order_relaxed) == 1);
+    size_t retained = backing_bytes(backing);
     backing->payload = *array;
     backing->payload.backing = NULL;
-    atomic_fetch_add_explicit(&backing->refs, 1, memory_order_relaxed);
-    backing_attach(array, backing);
+    if (backing_bytes(backing) != retained) {
+        atomic_fetch_add_explicit(&backing->refs, 1, memory_order_relaxed);
+        backing_attach(array, backing);
+    }
+}
+/* Releases the collections boxed items own. A record array's items share one
+ * layout, so a layout without references is found once per run of items
+ * rather than walked for each item. */
+static void release_items(const pin_value *items, int count)
+{
+    /* The last record layout found to hold no references, and its name. */
+    const pin_record *inert = NULL;
+    const char *inert_name = NULL;
+    for (int i = 0; i < count; i++) {
+        const pin_value *item = &items[i];
+        if (!pin_value_may_own_collections(item)) {
+            continue;
+        }
+        if (item->container == PIN_CONTAINER_SINGLE &&
+            item->type == PIN_STRUCT && item->record) {
+            if (item->record == inert && item->type_name == inert_name) {
+                continue;
+            }
+            const type_desc *type = pin_value_type(item);
+            if (type && !type_holds_references(type)) {
+                inert = item->record;
+                inert_name = item->type_name;
+                continue;
+            }
+        }
+        pin_value_collection_release(item);
+    }
 }
 void pin_array_release(pin_array *array)
 {
@@ -127,11 +161,8 @@ void pin_array_release(pin_array *array)
     if (!array->backing) {
         if (array->storage && array->storage->collectable && !array->stride) {
             int count = array->count;
-            pin_value *items = array->items;
             array->count = 0;
-            for (int i = 0; i < count; i++) {
-                pin_value_collection_release(&items[i]);
-            }
+            release_items(array->items, count);
         }
         return;
     }
@@ -139,9 +170,7 @@ void pin_array_release(pin_array *array)
     array->backing = NULL;
     if (atomic_load_explicit(&backing->refs, memory_order_relaxed) == 1 &&
         !array->stride) {
-        for (int i = 0; i < array->count; i++) {
-            pin_value_collection_release(&array->items[i]);
-        }
+        release_items(array->items, array->count);
     }
     array->items = NULL;
     array->data = NULL;
@@ -307,7 +336,6 @@ static bool share_managed_array(pin_value *out, const pin_value *source)
     *out = *source;
     out->type_name = owner->type_name;
     out->record = owner->record;
-    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     return true;
 }
 size_t pin_array_storage_bytes(const pin_array *array)
@@ -481,18 +509,13 @@ void pin_array_swap(pin_array *array, int first, int second)
     pin_array_mutation_end(array);
 }
 
-static char *arena_string(arena *a, const char *s, pin_copy_kind kind)
+static char *arena_string(arena *a, const char *s)
 {
     if (!s) {
         return NULL;
     }
     size_t size = strlen(s) + 1;
-    char *copy = (char *)arena_alloc(a, size);
-    if (copy) {
-        memcpy(copy, s, size);
-        pin_copy_record(kind, size);
-    }
-    return copy;
+    return memcpy(arena_alloc(a, size), s, size);
 }
 
 static int copy_text(arena *storage, pin_value *out, const pin_value *source)
@@ -653,7 +676,6 @@ static int pin_array_insert(pin_array *array, int index, const pin_value *value)
         );
         array->items[index] = copy;
     }
-    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     array->count++;
     return index;
 }
@@ -767,7 +789,7 @@ static int snapshot_fields(arena *a, const type_desc *type, void *data, int dept
                 *(const pin_string **)member = copy.text;
             } else {
                 const char *text = *(const char **)member;
-                *(const char **)member = arena_string(a, text, PIN_COPY_TEXT);
+                *(const char **)member = arena_string(a, text);
             }
         } else if (field->type == PIN_POINTER || field->type == PIN_QUERY) {
             if (field->size != sizeof(void *)) {
@@ -824,7 +846,6 @@ static int snapshot_record(arena *a, pin_value *dst, const pin_value *src, const
     }
     dst->ptr = arena_alloc(a, type->size);
     memcpy(dst->ptr, src->ptr, type->size);
-    pin_copy_record(PIN_COPY_RECORD, type->size);
     return snapshot_struct_fields(a, type, dst->ptr, dst->schema);
 }
 static const pin_record *snapshot_layout(arena *storage, pin_type type, const char *name, const pin_record *record)
@@ -853,10 +874,7 @@ static int snapshot_value(arena *a, pin_value *dst, const pin_value *src)
     if (src->schema) {
         dst->schema = pin_schema_snapshot(a, src->schema);
     }
-    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
-    dst->type_name = src->record
-                       ? NULL
-                       : arena_string(a, src->type_name, PIN_COPY_NOMINAL);
+    dst->type_name = src->record ? NULL : arena_string(a, src->type_name);
     if (src->record) {
         if (!pin_value_type(src)) {
             return -1;
@@ -909,7 +927,7 @@ static int snapshot_value(arena *a, pin_value *dst, const pin_value *src)
         return copy_text(a, dst, src);
     }
     if (src->type == PIN_NAME) {
-        dst->str = arena_string(a, src->str, PIN_COPY_TEXT);
+        dst->str = arena_string(a, src->str);
         return 0;
     }
     if (src->type == PIN_UNION && src->ptr) {
@@ -946,7 +964,7 @@ pin_array *pin_array_snapshot_allocate(arena *a, pin_type type, const char *name
     pin_array *dst = arena_alloc(a, sizeof *dst);
     *dst = (pin_array){
         .element_type = type,
-        .type_name = record ? record->type.name : arena_string(a, name, PIN_COPY_NOMINAL),
+        .type_name = record ? record->type.name : arena_string(a, name),
         .record = record,
         .count = count,
         .capacity = count,
@@ -1023,16 +1041,15 @@ static pin_array *snapshot_like(arena *a, const pin_array *src, int count, bool 
     pin_array *dst;
     if (stride) {
         dst = arena_alloc(a, sizeof *dst);
-        *dst = (pin_array){
-            .element_type = src->element_type,
-            .type_name = record ? name : arena_string(a, name, PIN_COPY_NOMINAL),
-            .record = record,
-            .schema = schema,
-            .count = count,
-            .capacity = count,
-            .stride = stride,
-            .data = count ? arena_alloc(a, (size_t)count * stride) : NULL
-        };
+        *dst = (pin_array){ .element_type = src->element_type,
+                            .type_name = record ? name : arena_string(a, name),
+                            .record = record,
+                            .schema = schema,
+                            .count = count,
+                            .capacity = count,
+                            .stride = stride,
+                            .data = count ? arena_alloc(a, (size_t)count * stride)
+                                          : NULL };
         if (count) {
             memset(dst->data, 0, (size_t)count * stride);
         }
@@ -1108,14 +1125,7 @@ int pin_array_snapshot_set(arena *a, pin_array *array, int index, const pin_valu
         if (!compatible(array, value)) {
             return -1;
         }
-        if (pin_array_set(array, index, value)) {
-            return -1;
-        }
-        pin_copy_record(
-            value->type == PIN_STRUCT ? PIN_COPY_RECORD : PIN_COPY_VALUE_BUFFER,
-            array->stride
-        );
-        return 0;
+        return pin_array_set(array, index, value);
     }
     if (!array->record) {
         return pin_value_snapshot_to_arena(a, &array->items[index], value);
@@ -1146,7 +1156,6 @@ int pin_array_snapshot_copy(arena *a, pin_array *out, int to, const pin_array *i
             owner->buckets = NULL;
             owner->bucket_mask = 0;
             pin_array_mutation_end(owner);
-            pin_copy_record(shape.type == PIN_STRUCT ? PIN_COPY_RECORD : PIN_COPY_VALUE_BUFFER, bytes);
             return 0;
         }
     }
@@ -1193,7 +1202,6 @@ static int snapshot_items(arena *a, const pin_record *record, pin_value *out, co
         copy.record = record;
         copy.schema = pin_schema_snapshot(a, value->schema);
         copy.type_name = record->type.name;
-        pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
         if (snapshot_record(a, &copy, value, &record->type)) {
             return -1;
         }
@@ -1568,17 +1576,15 @@ static int graph_header(arena *storage, pin_value *out, const pin_value *source)
     } else if (source->schema) {
         /* An owned schema already holds the native layout. */
         out->schema = pin_schema_snapshot(storage, source->schema);
-        out->type_name = arena_string(storage, source->type_name, PIN_COPY_NOMINAL);
+        out->type_name = arena_string(storage, source->type_name);
     } else {
         out->record = snapshot_layout(storage, source->type, source->type_name, NULL);
         if (layout_failed(source->type, source->type_name, NULL, out->record)) {
             return -1;
         }
-        out->type_name = out->record
-                           ? out->record->type.name
-                           : arena_string(storage, source->type_name, PIN_COPY_NOMINAL);
+        out->type_name = out->record ? out->record->type.name
+                                     : arena_string(storage, source->type_name);
     }
-    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     return 0;
 }
 static void carry_native_row(const pin_array *array, pin_value *value)
@@ -1629,7 +1635,6 @@ static int graph_array(graph_copy *graph, pin_value *out, const pin_value *sourc
         size_t bytes = (size_t)array->count * copy->stride;
         if (bytes) {
             memcpy(copy->data, array->data, bytes);
-            pin_copy_record(PIN_COPY_VALUE_BUFFER, bytes);
         }
         if (source->container == PIN_CONTAINER_SET) {
             pin_array_index(graph->storage, copy);
@@ -1774,7 +1779,6 @@ static int graph_value_inner(graph_copy *graph, pin_value *out, const pin_value 
         copy.ptr = arena_alloc(graph->storage, type->size);
         memcpy(copy.ptr, source->ptr, type->size);
         graph_remember(graph, source, copy);
-        pin_copy_record(PIN_COPY_RECORD, type->size);
         error = snapshot_struct_fields(graph->storage, type, copy.ptr, copy.schema);
     }
     if (error) {
@@ -2050,6 +2054,40 @@ static void owner_push(owner_stack *stack, pin_value value)
     }
     stack->items[stack->count++] = value;
 }
+/* The nodes an owner walk has reached, so that a node two union payloads
+ * share is walked once. Walks reach few nodes (1.8 on average in the
+ * compiler's self-compile, 2026-10-31), which stay inline; the rest spill to
+ * a hash set. */
+typedef struct
+{
+    struct
+    {
+        const void *ptr;
+        pin_type type;
+    } local[OWNER_LOCAL_WORK];
+    int count;
+    graph_copy spilled;
+} owner_reached;
+/* Whether the walk reached node before; remembers it if not. */
+static bool owner_reach(owner_reached *reached, const pin_value *node)
+{
+    int local = reached->count < OWNER_LOCAL_WORK ? reached->count : OWNER_LOCAL_WORK;
+    for (int i = 0; i < local; i++) {
+        if (reached->local[i].ptr == node->ptr && reached->local[i].type == node->type) {
+            return true;
+        }
+    }
+    if (reached->count < OWNER_LOCAL_WORK) {
+        reached->local[reached->count].ptr = node->ptr;
+        reached->local[reached->count].type = node->type;
+    } else if (graph_find(&reached->spilled, node)) {
+        return true;
+    } else {
+        graph_remember(&reached->spilled, node, *node);
+    }
+    reached->count++;
+    return false;
+}
 static void collection_visit_layout(const type_desc *type, const void *data, owner_stack *pending)
 {
     if (type_alias_layout(type)) {
@@ -2079,18 +2117,13 @@ void pin_value_collection_visit_owners(
     void *user
 )
 {
-    if (!value || !value->ptr) {
+    if (!pin_value_may_own_collections(value)) {
         return;
     }
-    /* Most values are scalars or one collection, which need no work list. */
+    /* One collection is its own only owner and needs no work list. */
     pin_value root = *value;
-    if (root.container == PIN_CONTAINER_ARRAY ||
-        root.container == PIN_CONTAINER_MAP || root.container == PIN_CONTAINER_SET) {
+    if (root.container != PIN_CONTAINER_SINGLE) {
         visit(&root, user);
-        return;
-    }
-    if (root.container != PIN_CONTAINER_SINGLE ||
-        (root.type != PIN_UNION && root.type != PIN_STRUCT)) {
         return;
     }
     if (root.type == PIN_STRUCT && !type_holds_references(pin_value_type(&root))) {
@@ -2098,10 +2131,12 @@ void pin_value_collection_visit_owners(
     }
     owner_stack pending = { .capacity = OWNER_LOCAL_WORK };
     pending.items = pending.local;
-    graph_copy visited = { 0 };
+    owner_reached reached;
+    reached.count = 0;
+    reached.spilled = (graph_copy){ 0 };
     owner_push(&pending, root);
     /* Values form no cycles, so nothing reaches the root again and it needs
-     * no visited entry. */
+     * no reached entry. */
     bool first = true;
     while (pending.count) {
         pin_value next = pending.items[--pending.count];
@@ -2115,11 +2150,8 @@ void pin_value_collection_visit_owners(
         }
         if (next.container != PIN_CONTAINER_SINGLE ||
             (next.type != PIN_UNION && next.type != PIN_STRUCT) ||
-            graph_find(&visited, &next)) {
+            (!first && owner_reach(&reached, &next))) {
             continue;
-        }
-        if (!first) {
-            graph_remember(&visited, &next, next);
         }
         first = false;
         if (next.type == PIN_UNION) {
@@ -2134,7 +2166,7 @@ void pin_value_collection_visit_owners(
     if (pending.items != pending.local) {
         free(pending.items);
     }
-    free(visited.entries);
+    free(reached.spilled.entries);
 }
 
 static void collection_release_owner(const pin_value *value, void *user)
@@ -2214,7 +2246,7 @@ static int collection_copy_layout(arena *storage, const type_desc *type, void *d
         } else if (field->type == PIN_NAME || field->type == PIN_STR) {
             const char *source;
             memcpy(&source, member, sizeof source);
-            const char *copy = arena_string(storage, source, PIN_COPY_TEXT);
+            const char *copy = arena_string(storage, source);
             memcpy(member, &copy, sizeof copy);
         }
     }
@@ -2302,7 +2334,6 @@ static int collection_copy_value(arena *storage, pin_value *out, const pin_value
             }
             copy.ptr = arena_alloc(storage, type->size);
             memcpy(copy.ptr, source->ptr, type->size);
-            pin_copy_record(PIN_COPY_RECORD, type->size);
             if (collection_copy_layout(storage, type, copy.ptr)) {
                 return -1;
             }
@@ -2362,7 +2393,6 @@ pin_array *pin_array_window_copy(arena *storage, const pin_array *source, int st
         size_t bytes = (size_t)count * copy->stride;
         if (bytes) {
             memcpy(copy->data, pin_array_data(source, start), bytes);
-            pin_copy_record(PIN_COPY_VALUE_BUFFER, bytes);
         }
         return copy;
     }
@@ -2436,7 +2466,6 @@ int pin_value_copy(pin_value *dst, const pin_value *src)
         return 0;
     }
     *dst = *src;
-    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     if (src->container == PIN_CONTAINER_MAP) {
         dst->ptr = pin_map_clone(src->ptr);
         return !src->ptr || dst->ptr ? 0 : -1;
@@ -2453,9 +2482,6 @@ int pin_value_copy(pin_value *dst, const pin_value *src)
     }
     if (src->type == PIN_NAME && src->str) {
         dst->str = xstrdup(src->str);
-        if (pin_copy_current) {
-            pin_copy_record(PIN_COPY_TEXT, strlen(src->str) + 1);
-        }
         return 0;
     }
     if (src->type == PIN_STRUCT && src->ptr) {
@@ -2480,7 +2506,6 @@ int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src)
         return pin_value_snapshot_to_arena(a, dst, src);
     }
     *dst = *src;
-    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     if (src->type == PIN_UNION && src->container == PIN_CONTAINER_SINGLE) {
         return pin_value_snapshot_to_arena(a, dst, src);
     }
@@ -2499,7 +2524,7 @@ int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src)
         return copy_text(a, dst, src);
     }
     if (src->type == PIN_NAME && src->str) {
-        dst->str = arena_string(a, src->str, PIN_COPY_TEXT);
+        dst->str = arena_string(a, src->str);
     }
     return 0;
 }

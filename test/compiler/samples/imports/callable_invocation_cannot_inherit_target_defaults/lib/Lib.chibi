@@ -1,0 +1,2 @@
+package lib
+pub Apply :: (function: fn(a: int, b: int) -> int) -> int { return function(b: 5); }

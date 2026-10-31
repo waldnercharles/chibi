@@ -1,6 +1,7 @@
 package package_compiler
 
 import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
 
 SequenceSliceIntrinsic: int : 51;
 SequenceViewIntrinsic: int : 52;
@@ -13,23 +14,23 @@ SequenceBorrowIntrinsic: int : 62;
 // Ranges occur only as an index or a sequence method's argument. They never
 // become runtime values. Existing slice(start, count) calls stay native calls.
 SequenceOperation :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], package: int, node: int) -> int {
-    if (Is(forest, node, "index_expression") && Is(forest, Field(forest, node, "index"), "range_expression")) {
+    if (Is(forest, node, syntax.IndexExpression) && Is(forest, Field(forest, node, syntax.FieldIndex), syntax.RangeExpression)) {
         return 0;
     }
-    if (!Is(forest, node, "call_expression")) {
+    if (!Is(forest, node, syntax.CallExpression)) {
         return -1;
     }
-    callee := Field(forest, node, "function");
-    if (!Is(forest, callee, "member_expression") ||
-        QualifierOf(forest, text, names, package, Field(forest, callee, "object")) >= 0) {
+    callee := Field(forest, node, syntax.FieldFunction);
+    if (!Is(forest, callee, syntax.MemberExpression) ||
+        QualifierOf(forest, text, names, package, Field(forest, callee, syntax.FieldObject)) >= 0) {
         return -1;
     }
-    receiver := Field(forest, callee, "object");
-    if (Is(forest, receiver, "identifier") && Lookup(names, Text(forest, text, receiver)) < 0) {
+    receiver := Field(forest, callee, syntax.FieldObject);
+    if (Is(forest, receiver, syntax.Identifier) && Lookup(names, Text(forest, text, receiver)) < 0) {
         return -1;
     }
-    member := Text(forest, text, Field(forest, callee, "member"));
-    argument := FirstMember(forest, Field(forest, node, "arguments"));
+    member := Text(forest, text, Field(forest, callee, syntax.FieldMember));
+    argument := FirstMember(forest, Field(forest, node, syntax.FieldArguments));
     if (member == "clone" && argument < 0) {
         return 2;
     }
@@ -39,7 +40,7 @@ SequenceOperation :: (forest: snapshot.SnapshotNode[], text: string, names: Name
     if (member == "view") {
         return 1;
     }
-    if (member == "slice" && Is(forest, argument, "range_expression")) {
+    if (member == "slice" && Is(forest, argument, syntax.RangeExpression)) {
         return 0;
     }
     return -1;
@@ -110,15 +111,15 @@ SequenceStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
                  values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     types := table^;
     node := forest[item.node];
-    index := node.kind == "index_expression";
-    receiver := Field(forest, item.node, "object");
-    range := Field(forest, item.node, "index");
+    index := node.kind == syntax.IndexExpression;
+    receiver := Field(forest, item.node, syntax.FieldObject);
+    range := Field(forest, item.node, syntax.FieldIndex);
     operation: int = 0;
     if (!index) {
-        callee := Field(forest, item.node, "function");
-        receiver = Field(forest, callee, "object");
-        range = FirstMember(forest, Field(forest, item.node, "arguments"));
-        member := Text(forest, text, Field(forest, callee, "member"));
+        callee := Field(forest, item.node, syntax.FieldFunction);
+        receiver = Field(forest, callee, syntax.FieldObject);
+        range = FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
+        member := Text(forest, text, Field(forest, callee, syntax.FieldMember));
         if (member == "view") {
             operation = 1;
         } else if (member == "clone") {
@@ -131,15 +132,15 @@ SequenceStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     ranged := operation == 0 || operation == 1;
     if (ranged) {
         count = 3;
-        if (!Is(forest, range, "range_expression") || (!index && NextMember(forest, range) >= 0)) {
+        if (!Is(forest, range, syntax.RangeExpression) || (!index && NextMember(forest, range) >= 0)) {
             return Fail(forest, item.node, document, "sequence slice or view needs one half-open range");
         }
     }
     if (item.phase == 0) {
         next: Work[] = [Visit(receiver)];
         if (ranged) {
-            next.append(Expect(Field(forest, range, "start"), IntStorage, 0, -1));
-            next.append(Expect(Field(forest, range, "end"), IntStorage, 0, -1));
+            next.append(Expect(Field(forest, range, syntax.FieldStart), IntStorage, 0, -1));
+            next.append(Expect(Field(forest, range, syntax.FieldEnd), IntStorage, 0, -1));
         }
         next.append(Resume(item.node, 1, 0, 0));
         return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
@@ -197,19 +198,19 @@ ArrayMutation :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], 
                   ports: ResolvedPort[], package: int, node: int) -> int {
     // A method that changes its array is a statement of its own; the call
     // step rejects one used as a value.
-    if (!Is(forest, node, "call_expression") || !Is(forest, forest[node].parent, "expression_statement")) {
+    if (!Is(forest, node, syntax.CallExpression) || !Is(forest, forest[node].parent, syntax.ExpressionStatement)) {
         return 0;
     }
-    callee := Field(forest, node, "function");
-    if (!Is(forest, callee, "member_expression") ||
-        QualifierOf(forest, text, names, package, Field(forest, callee, "object")) >= 0) {
+    callee := Field(forest, node, syntax.FieldFunction);
+    if (!Is(forest, callee, syntax.MemberExpression) ||
+        QualifierOf(forest, text, names, package, Field(forest, callee, syntax.FieldObject)) >= 0) {
         return 0;
     }
-    receiver := Field(forest, callee, "object");
-    if (Is(forest, receiver, "identifier") && Lookup(names, Text(forest, text, receiver)) < 0) {
+    receiver := Field(forest, callee, syntax.FieldObject);
+    if (Is(forest, receiver, syntax.Identifier) && Lookup(names, Text(forest, text, receiver)) < 0) {
         return 0;
     }
-    method := Text(forest, text, Field(forest, callee, "member"));
+    method := Text(forest, text, Field(forest, callee, syntax.FieldMember));
     native := ArrayMethod(natives, ports, method);
     if (native < 0 || !ArrayChanger(natives, native)) {
         return 0;
@@ -230,8 +231,8 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
                  natives: ResolvedNative[], ports: ResolvedPort[], names: Name[], values: Value[], top: int,
                  item: Work, operation: int, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
-    receiver := Field(forest, Field(forest, item.node, "function"), "object");
-    first := FirstMember(forest, Field(forest, item.node, "arguments"));
+    receiver := Field(forest, Field(forest, item.node, syntax.FieldFunction), syntax.FieldObject);
+    first := FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
     if (item.phase == 0) {
         return Step.Emitted([], [], [], [], [], [], [], [],
                             [PlaceVisit(receiver), Resume(item.node, 1, 0, 0)], 0, NoValue(), NoValue(), []);
@@ -255,18 +256,18 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
         if (operation == 11 && NeedsPointerValue(types, members, element.storage, element.container, element.record)) {
             return Fail(forest, item.node, document, "resize cannot create missing initialized values");
         }
-        native := ArrayMethod(natives, ports, Text(forest, text, Field(forest, Field(forest, item.node, "function"),
-                                                                       "member")));
+        native := ArrayMethod(natives, ports, Text(forest, text, Field(forest, Field(forest, item.node, syntax.FieldFunction),
+                                                                       syntax.FieldMember)));
         while (argument >= 0) {
             // A named argument binds as stage zero binds it; this step takes
             // the arguments in parameter order.
             value := argument;
-            if (Is(forest, argument, "named_argument")) {
-                value = Field(forest, argument, "value");
+            if (Is(forest, argument, syntax.NamedArgument)) {
+                value = Field(forest, argument, syntax.FieldValue);
                 if (value < 0) {
-                    value = Field(forest, argument, "source");
+                    value = Field(forest, argument, syntax.FieldSource);
                 }
-                parameter := NativeParameter(ports, natives[native], Text(forest, text, Field(forest, argument, "name")),
+                parameter := NativeParameter(ports, natives[native], Text(forest, text, Field(forest, argument, syntax.FieldName)),
                                              count + 2);
                 if (parameter != count + 1) {
                     return Fail(forest, argument, document, "name an array update's arguments in parameter order");
@@ -303,7 +304,7 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
         // Stage zero watches a named array, not a pointer it follows, where
         // it evaluates it, before the arguments, which can invoke another body.
         found: int = -1;
-        if (Is(forest, receiver, "identifier")) {
+        if (Is(forest, receiver, syntax.Identifier)) {
             found = Lookup(names, Text(forest, text, receiver));
         }
         if (!ops.debug || found < 0 || (names[found].storage == PointerStorage && names[found].container == 0)) {
@@ -354,7 +355,8 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     operation_code := ConstantCode(ops, IntStorage, u64(operation), operation_slot, node);
     watches.append(operation_code);
     operation_value := Typed(operation_slot, IntStorage, 0, -1);
-    arguments = insert(arguments, 1, operation_value);
+    // slice and extend rather than insert, which the native lane lacks.
+    arguments = extend([arguments[0], operation_value], slice(arguments, 1, length(arguments) - 1));
     shifted: Bases = {pc: at.pc + length(watches), slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
                       call: at.call};
     switch SequenceCallStep(arguments, ArrayMutatePlaceIntrinsic, Typed(-1, BoolStorage, 0, -1), u64(0), false,
@@ -369,18 +371,18 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
 }
 
 ArrayElementAssignment :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> bool {
-    if (!Is(forest, node, "assignment")) {
+    if (!Is(forest, node, syntax.Assignment)) {
         return false;
     }
-    destination := Field(forest, node, "target");
-    if (Is(forest, destination, "index_expression")) {
+    destination := Field(forest, node, syntax.FieldTarget);
+    if (Is(forest, destination, syntax.IndexExpression)) {
         return true;
     }
-    if (!Is(forest, destination, "member_expression")) {
+    if (!Is(forest, destination, syntax.MemberExpression)) {
         return false;
     }
     root := RootOf(forest, destination);
-    if (Is(forest, root, "identifier")) {
+    if (Is(forest, root, syntax.Identifier)) {
         named := Lookup(names, Text(forest, text, root));
         // A name the body may not write reports as stage zero does, and
         // `e.C.f = v` on a handle writes the entity's component instead.
@@ -388,15 +390,15 @@ ArrayElementAssignment :: (forest: snapshot.SnapshotNode[], text: string, names:
                names[named].place != AliasPlace &&
                (names[named].storage != HandleStorage || names[named].container != 0);
     }
-    return Is(forest, root, "dereference_expression");
+    return Is(forest, root, syntax.DereferenceExpression);
 }
 
 ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
                       values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
-    destination := Field(forest, item.node, "target");
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
-    compound := operator != "";
+    destination := Field(forest, item.node, syntax.FieldTarget);
+    operator := CompoundOperator(Operator(forest, item.node));
+    compound := operator != NoOperator;
     if (item.phase == 0) {
         return Step.Emitted([], [], [], [], [], [], [], [],
                             [DestinationVisit(destination), Resume(item.node, 1, 0, 0)],
@@ -404,8 +406,8 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     }
     if (item.phase == 1) {
         place := values[top - 1];
-        next: Work[] = [Expect(Field(forest, item.node, "value"), place.storage, place.container, place.record),
-                        Resume(Field(forest, item.node, "value"), CopyValuePhase, 0, 0),
+        next: Work[] = [Expect(Field(forest, item.node, syntax.FieldValue), place.storage, place.container, place.record),
+                        Resume(Field(forest, item.node, syntax.FieldValue), CopyValuePhase, 0, 0),
                         Resume(item.node, 2, 0, 0)];
         if (place.newkey && compound) {
             // An absent key reads as its value type's zero, so `counts[name] += 1`
@@ -477,7 +479,7 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         }
         // The destination's current value is watched at it, as stage zero
         // does, except an array or view element, which it updates in place.
-        if (ops.debug && (!Is(forest, destination, "index_expression") || place.newkey)) {
+        if (ops.debug && (!Is(forest, destination, syntax.IndexExpression) || place.newkey)) {
             code.append(WatchCode(ops, before.slot, before.storage, before.container, before.record, 0, true,
                                   forest[destination], target));
         }
@@ -590,7 +592,7 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         if (!base.place || base.storage != StructStorage || base.container != 0) {
             return Fail(forest, item.node, document, "field mutation requires a writable record");
         }
-        field := FindField(types, members, base.record, Text(forest, text, Field(forest, item.node, "member")));
+        field := FindField(types, members, base.record, Text(forest, text, Field(forest, item.node, syntax.FieldMember)));
         if (field < 0) {
             return Fail(forest, item.node, document, "Unknown field");
         }
@@ -628,7 +630,7 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
             points = [ExpressionCode(ops, node)];
         }
         return Step.Emitted(points, [], [], [], [], [], [], [],
-                            [Expect(Field(forest, item.node, "index"), storage, 0, -1),
+                            [Expect(Field(forest, item.node, syntax.FieldIndex), storage, 0, -1),
                              Resume(item.node, PlaceIndexDonePhase, 0, 0)],
                             0, NoValue(), NoValue(), []);
     }
@@ -663,13 +665,13 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), AddressSlot(target), DescriptorSlot(target)],
                             [], cells, hosts, [], [], [], [], 2, result, NoValue(), []);
     }
-    if (node.kind == "parenthesized_expression") {
+    if (node.kind == syntax.ParenthesizedExpression) {
         return Step.Emitted([], [], [], [], [], [], [], [],
-                            [PlaceVisit(Field(forest, item.node, "expression"))], 0, NoValue(), NoValue(), []);
+                            [PlaceVisit(Field(forest, item.node, syntax.FieldExpression))], 0, NoValue(), NoValue(), []);
     }
-    if (node.kind == "dereference_expression") {
-        operand := Unparenthesized(forest, Field(forest, item.node, "operand"));
-        if (Is(forest, operand, "identifier")) {
+    if (node.kind == syntax.DereferenceExpression) {
+        operand := Unparenthesized(forest, Field(forest, item.node, syntax.FieldOperand));
+        if (Is(forest, operand, syntax.Identifier)) {
             scoped := Lookup(names, Text(forest, text, operand));
             if (scoped >= 0 && names[scoped].place == ReferencePlace) {
                 return Step.Emitted([], [], [], [], [], [], [], [], [PlaceVisit(operand)],
@@ -678,40 +680,44 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         }
         // Stage zero marks a pointer it follows to reach an element or field.
         points: Code[] = [];
-        if (Is(forest, node.parent, "index_expression") || Is(forest, node.parent, "member_expression")) {
+        if (Is(forest, node.parent, syntax.IndexExpression) || Is(forest, node.parent, syntax.MemberExpression)) {
             points = [ExpressionCode(ops, node)];
         }
         return Step.Emitted(points, [], [], [], [], [], [], [],
-                            [Visit(Field(forest, item.node, "operand")), Resume(item.node, PlacePointerPhase, 0, 0)],
+                            [Visit(Field(forest, item.node, syntax.FieldOperand)), Resume(item.node, PlacePointerPhase, 0, 0)],
                             0, NoValue(), NoValue(), []);
     }
-    if (node.kind == "member_expression") {
+    if (node.kind == syntax.MemberExpression) {
         component := SelfComponent(forest, text, types, names, item.node);
         if (component >= 0) {
             return SequenceComponentPlace(types, component, -1, 0, ops, target, at, node);
         }
-        object := Field(forest, item.node, "object");
+        object := Field(forest, item.node, syntax.FieldObject);
         found: int = -1;
-        if (Is(forest, object, "identifier")) {
+        if (Is(forest, object, syntax.Identifier)) {
             found = Lookup(names, Text(forest, text, object));
         }
-        component = Component(types, Text(forest, text, Field(forest, item.node, "member")));
-        if (component >= 0 && found >= 0 && names[found].storage == HandleStorage) {
-            return Step.Emitted([], [], [], [], [], [], [], [],
-                                [Visit(object), Resume(item.node, PlaceComponentPhase, component, 0)],
-                                0, NoValue(), NoValue(), []);
+        // Only a handle's member can name a component, and finding one scans
+        // every type, so the handle comes first.
+        if (found >= 0 && names[found].storage == HandleStorage) {
+            component = Component(types, Text(forest, text, Field(forest, item.node, syntax.FieldMember)));
+            if (component >= 0) {
+                return Step.Emitted([], [], [], [], [], [], [], [],
+                                    [Visit(object), Resume(item.node, PlaceComponentPhase, component, 0)],
+                                    0, NoValue(), NoValue(), []);
+            }
         }
     }
-    if (node.kind == "member_expression" || node.kind == "index_expression") {
+    if (node.kind == syntax.MemberExpression || node.kind == syntax.IndexExpression) {
         // As stage zero marks a place: each field and element, outermost
         // first, then the name it starts from.
         phase := PlaceFieldPhase;
         points: Code[] = [ExpressionCode(ops, node)];
-        root := PlaceVisit(Field(forest, item.node, "object"));
-        if (node.kind == "index_expression") {
+        root := PlaceVisit(Field(forest, item.node, syntax.FieldObject));
+        if (node.kind == syntax.IndexExpression) {
             phase = PlaceIndexPhase;
         }
-        if (node.kind == "index_expression" && item.b == 1) {
+        if (node.kind == syntax.IndexExpression && item.b == 1) {
             points = [];
             // Stage zero stores an element of a local array in place: it
             // marks the element, and the array's name at the statement.
@@ -724,7 +730,7 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                             0, NoValue(), NoValue(), []);
     }
     found := Lookup(names, Text(forest, text, item.node));
-    if (node.kind != "identifier" || found < 0 || !names[found].writable) {
+    if (node.kind != syntax.Identifier || found < 0 || !names[found].writable) {
         return Fail(forest, item.node, document, "mutation requires a writable place");
     }
     points := NamePoints(forest, text, names, ops, item.node);
@@ -747,10 +753,10 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
 // stage zero stores in place: a plain assignment to a writable local's
 // element, not a parameter's.
 StoresLocalElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> bool {
-    object := Field(forest, node, "object");
+    object := Field(forest, node, syntax.FieldObject);
     statement := forest[node].parent;
-    if (!Is(forest, object, "identifier") || !Is(forest, statement, "assignment") ||
-        CompoundOperator(Text(forest, text, Field(forest, statement, "operator"))) != "") {
+    if (!Is(forest, object, syntax.Identifier) || !Is(forest, statement, syntax.Assignment) ||
+        CompoundOperator(Operator(forest, statement)) != NoOperator) {
         return false;
     }
     found := Lookup(names, Text(forest, text, object));

@@ -1,0 +1,10 @@
+package facts
+
+// compile-time records are built, read and updated
+@test
+Calls :: () {
+    r1: int = Main();
+    // A 16, B 7, C 15, D 0, E 20: 16 * 10000 + 7 * 1000 + 15 * 10 + 0 + 20
+    e1: int = 167170;
+    assert(r1 == e1, "Main call 1");
+}

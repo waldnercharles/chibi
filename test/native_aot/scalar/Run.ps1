@@ -43,12 +43,12 @@ function Entry([string]$symbol) {
     return '0x' + ([uint64]$hash).ToString('x16')
 }
 # Reuse the pinned host's existing 64-item limit. Batch only pure producers/checks;
-# retain every raw-byte CLI crossing. The 96-source matrix needs 406 children,
-# not 466. Keep the same finite total and never give a child more than
-# 120 seconds or what remains.
+# retain every raw-byte CLI crossing. The corpus is bounded at 128 sources
+# (110 on 2026-10-30) and the total deadline scales with it (96 sources had
+# 240 s); never give a child more than 120 seconds or what remains.
 $batchSize = 64
 function Host-Limit([double]$elapsed, [string]$name) {
-    $total = 240000
+    $total = 320000
     if ($elapsed -ge $total) {
         $crossings = if ($evidence.Contains('case_count')) {
             "$($evidence.cases.Count)/$($evidence.case_count * 4)"
@@ -228,8 +228,8 @@ try {
     $compilerHash = Digest $compiler
     if ($recovery['error'] -or $recovery['stages'].AsArray().Count -ne 2 -or
         $runtimeHash -ne $recovery['runtime_sha256'].GetValue[string]() -or
-        $runtime['source_revision'].GetValue[string]() -ne $recovery['runtime_source_revision'].GetValue[string]() -or
-        $runtime['source_tree'].GetValue[string]() -ne $recovery['runtime_source_tree'].GetValue[string]() -or
+        $pin['source_revision'].GetValue[string]() -ne $recovery['runtime_source_revision'].GetValue[string]() -or
+        $pin['source_tree'].GetValue[string]() -ne $recovery['runtime_source_tree'].GetValue[string]() -or
         $compilerHash -ne $recovery['compiler_sha256'].GetValue[string]() -or
         $compilerHash -ne $recovery['stages'][1]['output_compiler_sha256'].GetValue[string]() -or
         (Digest (Join-Path $Proof 'stage1/compiler.chibip')) -ne $compilerHash -or
@@ -343,7 +343,7 @@ try {
     Require-Success $sourcesBytecode
     if ((Digest $sourcesResult.Stdout) -ne (Digest $sourcesBytecode.Stdout)) { throw 'Authored source corpus differs between backends' }
     $sources = (Read-Node $sourcesResult.Stdout)[0].AsArray()
-    if ($sources.Count -le 0 -or $sources.Count -gt 96) { throw 'Authored source corpus exceeds its runner bound' }
+    if ($sources.Count -le 0 -or $sources.Count -gt 128) { throw 'Authored source corpus exceeds its runner bound' }
     $evidence['case_count'] = $sources.Count
     $priorChecked = @{}
     $collectEntry = Entry 'project:package_compiler:1:CollectScalar:callable'

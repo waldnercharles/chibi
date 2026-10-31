@@ -1,6 +1,7 @@
 #ifndef CHIBI_TEST_PACKAGE_COMPILER_CHIBI_SOURCE_H
 #define CHIBI_TEST_PACKAGE_COMPILER_CHIBI_SOURCE_H
 
+#include "json_string_chibi_source.h"
 #include "lexical_binding_chibi_source.h"
 #include "package_core_source.h"
 #include "package_graph_chibi_source.h"
@@ -39,12 +40,12 @@ static const char SCALAR_LLVM_SOURCE[] = { @CHIBI_SCALAR_LLVM_BYTES@ 0 };
 static const char LLVM_NATIVE_SOURCE[] = { @CHIBI_LLVM_NATIVE_BYTES@ 0 };
 static const char NATIVE_ABI_SOURCE[] = { @CHIBI_NATIVE_ABI_BYTES@ 0 };
 static const char SCALAR_CASES_SOURCE[] = { @CHIBI_SCALAR_CASES_BYTES@ 0 };
-@CHIBI_EMITTER_TEST_SOURCES@
 
 #define PACKAGE_COMPILER_SOURCE(PATH, VALUE) { PATH, VALUE, sizeof VALUE - 1 }
 #define PACKAGE_COMPILER_SOURCE_INPUTS \
     PACKAGE_COMPILER_SOURCE("syntax_diagnostics/Diagnostics.chibi", SYNTAX_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("json_string/JsonString.chibi", JSON_STRING_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("source_snapshot/Snapshot.chibi", PACKAGE_SNAPSHOT_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("source_tokenizer/Tokenizer.chibi", SOURCE_TOKENIZER_SOURCE), \
     PACKAGE_COMPILER_SOURCE("source_parser/Tree.chibi", SOURCE_PARSER_TREE_SOURCE), \
@@ -97,8 +98,5 @@ static const char SCALAR_CASES_SOURCE[] = { @CHIBI_SCALAR_CASES_BYTES@ 0 };
     PACKAGE_COMPILER_SOURCE("scalar_facts/Facts.chibi", SCALAR_FACTS_SOURCE), \
     PACKAGE_COMPILER_SOURCE("scalar_cases/Cases.chibi", SCALAR_CASES_SOURCE)
 
-/* Every source file of the test-only authored emitter package. */
-#define EMITTER_TEST_SOURCE_INPUTS \
-@CHIBI_EMITTER_TEST_INPUTS@
 
 #endif

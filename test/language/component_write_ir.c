@@ -11,6 +11,7 @@
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <assert.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -669,93 +670,185 @@ enum
     WIRE_LAYOUT,
     WIRE_FIELDS
 };
+/* One prepared v28 instruction row as read, with where it and its value lie. */
 typedef struct
 {
-    size_t begin, end;
-} wire_span;
-/* Decode candidate records using the public varint helpers. Match the complete
+    size_t begin, end, value_begin, value_end;
+    int op, type, output, left, source, right, target, frame, stack, pin, component;
+    uint64_t fields, node, layout, message;
+    size_t stride;
+    bool indirect;
+} wire_row;
+/* The v28 instruction row at `offset`, if it decodes and its value is the
+ * write's component id. */
+static bool read_row(size_t length, size_t offset, wire_row *row)
+{
+    execution_wire wire = { .data = bytes, .size = length, .offset = offset, .reading = true };
+    *row = (wire_row){ .begin = offset, .stack = -1 };
+    execution_wire_int(&wire, &row->op);
+    execution_wire_int(&wire, &row->type);
+    execution_wire_int(&wire, &row->output);
+    execution_wire_int(&wire, &row->left);
+    execution_wire_int(&wire, &row->source);
+    execution_wire_u64(&wire, &row->fields);
+    if (wire.error || row->fields & ~(uint64_t)INSTRUCTION_FIELDS) {
+        return false;
+    }
+    if (row->fields & INSTRUCTION_RIGHT) {
+        execution_wire_int(&wire, &row->right);
+    }
+    if (row->fields & INSTRUCTION_TARGET) {
+        execution_wire_int(&wire, &row->target);
+    }
+    if (row->fields & INSTRUCTION_OFFSET) {
+        execution_wire_size(&wire, &row->stride);
+    }
+    row->value_begin = row->value_end = wire.offset;
+    if (row->fields & INSTRUCTION_VALUE) {
+        /* A component id travels as an unnamed native u64 value. */
+        int tag = 0, container = 0;
+        size_t name = 0;
+        bool authored = true;
+        uint64_t identity = 0;
+        execution_wire_int(&wire, &tag);
+        execution_wire_int(&wire, &container);
+        execution_wire_size(&wire, &name);
+        execution_wire_bool(&wire, &authored);
+        execution_wire_u64(&wire, &identity);
+        row->value_end = wire.offset;
+        if (tag != PIN_U64 || container != PIN_CONTAINER_SINGLE || name ||
+            authored || identity != WRITE_COMPONENT) {
+            return false;
+        }
+    }
+    if (row->fields & INSTRUCTION_FRAME) {
+        execution_wire_int(&wire, &row->frame);
+    }
+    if (row->fields & INSTRUCTION_STACK) {
+        execution_wire_int(&wire, &row->stack);
+    }
+    if (row->fields & INSTRUCTION_PIN) {
+        execution_wire_int(&wire, &row->pin);
+    }
+    if (row->fields & INSTRUCTION_INDIRECT) {
+        execution_wire_bool(&wire, &row->indirect);
+    }
+    if (row->fields & INSTRUCTION_COMPONENT) {
+        execution_wire_int(&wire, &row->component);
+    }
+    if (row->fields & INSTRUCTION_NODE) {
+        execution_wire_u64(&wire, &row->node);
+    }
+    if (row->fields & INSTRUCTION_LAYOUT) {
+        execution_wire_u64(&wire, &row->layout);
+    }
+    if (row->fields & INSTRUCTION_MESSAGE) {
+        execution_wire_u64(&wire, &row->message);
+    }
+    row->end = wire.offset;
+    return !wire.error && row->value_end > row->value_begin;
+}
+/* Decode candidate rows using the public varint helpers. Match the complete
  * distinctive write metadata rather than assuming table offsets or widths. */
-static bool write_spans(size_t length, wire_span spans[WIRE_FIELDS])
+static bool write_row(size_t length, wire_row *found)
 {
     int matches = 0;
     for (size_t offset = 0; offset < length; offset++) {
-        execution_wire wire = { .data = bytes,
-                                .size = length,
-                                .offset = offset,
-                                .reading = true };
-        int fields[10] = { 0 };
-        execution_wire_int(&wire, &fields[0]);
-        if (wire.error || fields[0] != BF_COMPONENT_WRITE) {
+        wire_row row;
+        if (!read_row(length, offset, &row) || row.op != BF_COMPONENT_WRITE ||
+            row.type != PIN_BOOL || row.left != 0 || row.right != 1 ||
+            row.target != (int)field_offset(PIN_BOOL) || row.pin != WRITE_PIN ||
+            row.stride != sizeof(write_ir_row) || row.indirect || row.component != 0 ||
+            row.node != WRITE_NODE || row.layout != WRITE_LAYOUT) {
             continue;
         }
-        wire_span found[WIRE_FIELDS] = { 0 };
-        for (int j = 1; j < 10; j++) {
-            size_t start = wire.offset;
-            execution_wire_int(&wire, &fields[j]);
-            int selected = j == 1 ? WIRE_TYPE
-                         : j == 4 ? WIRE_RHS
-                         : j == 5 ? WIRE_TARGET
-                                  : -1;
-            if (selected >= 0) {
-                found[selected] = (wire_span){ start, wire.offset };
-            }
-        }
-        size_t stride = 0, name_size = 0;
-        bool indirect = false, authored = false;
-        int component = 0, tag = 0, container = 0;
-        uint64_t node = 0, identity = 0, layout = 0;
-        found[WIRE_STRIDE].begin = wire.offset;
-        execution_wire_size(&wire, &stride);
-        found[WIRE_STRIDE].end = wire.offset;
-        execution_wire_bool(&wire, &indirect);
-        found[WIRE_BINDING].begin = wire.offset;
-        execution_wire_int(&wire, &component);
-        found[WIRE_BINDING].end = wire.offset;
-        execution_wire_u64(&wire, &node);
-        execution_wire_int(&wire, &tag);
-        execution_wire_int(&wire, &container);
-        execution_wire_size(&wire, &name_size);
-        /* Prepared v14 distinguishes authored and native value headers. */
-        execution_wire_bool(&wire, &authored);
-        execution_wire_u64(&wire, &identity);
-        found[WIRE_LAYOUT].begin = wire.offset;
-        execution_wire_u64(&wire, &layout);
-        found[WIRE_LAYOUT].end = wire.offset;
-        if (wire.error || fields[1] != PIN_BOOL || fields[3] != 0 ||
-            fields[4] != 1 || fields[5] != (int)field_offset(PIN_BOOL) ||
-            fields[9] != WRITE_PIN || stride != sizeof(write_ir_row) ||
-            indirect || component != 0 || node != WRITE_NODE ||
-            tag != PIN_U64 || container != PIN_CONTAINER_SINGLE || name_size ||
-            authored || identity != WRITE_COMPONENT || layout != WRITE_LAYOUT) {
-            continue;
-        }
-        memcpy(spans, found, sizeof found);
+        *found = row;
         matches++;
     }
     return matches == 1;
 }
-static bool mutate_field(size_t length, wire_span span, int field)
+/* The prepared bytes with the write row's `field` made invalid, written as
+ * present whether or not it held its default. */
+static bool mutate_field(size_t length, const wire_row *original, int field)
 {
+    wire_row row = *original;
+    uint64_t present = 0;
+    switch (field) {
+        case WIRE_TYPE: row.type = PIN_HANDLE; break;
+        case WIRE_RHS:
+            row.right = INT_MAX;
+            present = INSTRUCTION_RIGHT;
+            break;
+        case WIRE_TARGET:
+            row.target = -1;
+            present = INSTRUCTION_TARGET;
+            break;
+        case WIRE_STRIDE:
+            row.stride = field_offset(PIN_BOOL);
+            present = INSTRUCTION_OFFSET;
+            break;
+        case WIRE_BINDING:
+            row.component = INT_MAX;
+            present = INSTRUCTION_COMPONENT;
+            break;
+        case WIRE_LAYOUT:
+            row.layout = 0;
+            present = INSTRUCTION_LAYOUT;
+            break;
+        default: assert(!"unknown wire field"); break;
+    }
+    row.fields |= present;
     afree(mutation);
-    for (size_t j = 0; j < span.begin; j++) {
+    for (size_t j = 0; j < row.begin; j++) {
         apush(mutation, bytes[j]);
     }
-    execution_wire wire = { .data = mutation, .size = span.begin, .offset = span.begin };
-    if (field == WIRE_STRIDE) {
-        size_t invalid = field_offset(PIN_BOOL);
-        execution_wire_size(&wire, &invalid);
-    } else if (field == WIRE_LAYOUT) {
-        uint64_t invalid = 0;
-        execution_wire_u64(&wire, &invalid);
-    } else {
-        int invalid = field == WIRE_TYPE   ? PIN_HANDLE
-                    : field == WIRE_TARGET ? -1
-                                           : INT_MAX;
-        execution_wire_int(&wire, &invalid);
+    execution_wire wire = { .data = mutation, .size = row.begin, .offset = row.begin };
+    execution_wire_int(&wire, &row.op);
+    execution_wire_int(&wire, &row.type);
+    execution_wire_int(&wire, &row.output);
+    execution_wire_int(&wire, &row.left);
+    execution_wire_int(&wire, &row.source);
+    execution_wire_u64(&wire, &row.fields);
+    if (row.fields & INSTRUCTION_RIGHT) {
+        execution_wire_int(&wire, &row.right);
+    }
+    if (row.fields & INSTRUCTION_TARGET) {
+        execution_wire_int(&wire, &row.target);
+    }
+    if (row.fields & INSTRUCTION_OFFSET) {
+        execution_wire_size(&wire, &row.stride);
+    }
+    for (size_t j = row.value_begin; j < row.value_end; j++) {
+        apush(wire.data, bytes[j]);
+    }
+    wire.size = wire.offset = (size_t)acount(wire.data);
+    if (row.fields & INSTRUCTION_FRAME) {
+        execution_wire_int(&wire, &row.frame);
+    }
+    if (row.fields & INSTRUCTION_STACK) {
+        execution_wire_int(&wire, &row.stack);
+    }
+    if (row.fields & INSTRUCTION_PIN) {
+        execution_wire_int(&wire, &row.pin);
+    }
+    if (row.fields & INSTRUCTION_INDIRECT) {
+        execution_wire_bool(&wire, &row.indirect);
+    }
+    if (row.fields & INSTRUCTION_COMPONENT) {
+        execution_wire_int(&wire, &row.component);
+    }
+    if (row.fields & INSTRUCTION_NODE) {
+        execution_wire_u64(&wire, &row.node);
+    }
+    if (row.fields & INSTRUCTION_LAYOUT) {
+        execution_wire_u64(&wire, &row.layout);
+    }
+    if (row.fields & INSTRUCTION_MESSAGE) {
+        execution_wire_u64(&wire, &row.message);
     }
     mutation = wire.data;
     REQUIRE(!wire.error);
-    for (size_t j = span.end; j < length; j++) {
+    for (size_t j = row.end; j < length; j++) {
         apush(mutation, bytes[j]);
     }
     return true;
@@ -821,8 +914,8 @@ TEST_CASE(component_write_ir_prepared_effects_preflight_and_schema)
     size_t length = 0, repeated = 0;
     REQUIRE(execution_prepared_write(module, &bytes, &length, error, sizeof error));
     REQUIRE(length && length < 16 * 1024);
-    wire_span spans[WIRE_FIELDS];
-    REQUIRE(write_spans(length, spans));
+    wire_row write;
+    REQUIRE(write_row(length, &write));
     loaded = execution_prepared_read(bytes, length, NULL, TEST_COMPILED_BACKEND, error, sizeof error);
     REQUIRE(loaded && execution_module_backend(loaded) == TEST_COMPILED_BACKEND);
     REQUIRE(check_effects(loaded));
@@ -865,7 +958,7 @@ TEST_CASE(component_write_ir_prepared_effects_preflight_and_schema)
     execution_module_free(loaded);
     loaded = NULL;
     for (int field_index = 0; field_index < WIRE_FIELDS; field_index++) {
-        REQUIRE(mutate_field(length, spans[field_index], field_index));
+        REQUIRE(mutate_field(length, &write, field_index));
         loaded = execution_prepared_read(
             mutation,
             (size_t)acount(mutation),

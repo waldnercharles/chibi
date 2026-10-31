@@ -1,6 +1,5 @@
 #include "host/application.h"
 
-#include "authoring/native_bindings.h"
 #include "authoring/program_service.h"
 #include "execution/log.h"
 #include "execution/status.h"
@@ -10,8 +9,6 @@
 #include "runtime/task_pool.h"
 #include "support/array.h"
 #include "support/xalloc.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -112,11 +109,8 @@ int chibi_application_run(
     const native_capability_pack packs[] = { *application_io_natives(),
                                              *application_tools_natives(),
                                              *program_service_pack() };
-    const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
-                                                COMPILER_JSON_DEFINITION_PACK };
     char error[512];
-    native_capabilities *
-        native = host_native_standalone_catalog_new(packs, 3, compiler, 2, error, sizeof error);
+    native_capabilities *native = host_native_standalone_catalog_new(packs, 3, NULL, 0, error, sizeof error);
     execution_log_service log = { .emit = print };
     application_tests tests = { 0 };
     test_executor(&tests);

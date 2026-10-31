@@ -1,0 +1,2 @@
+package lib
+pub Apply :: (value: int, predicate: fn(value: int) -> bool) -> bool { return predicate(value); }

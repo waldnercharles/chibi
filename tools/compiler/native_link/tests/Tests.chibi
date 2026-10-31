@@ -1,0 +1,151 @@
+package native_link_tests
+
+import link "project:native_link"
+import strings "core:strings"
+
+Plan3 :: (triple: string, libraries: string[], libpaths: string[], static: bool) -> link.Plan {
+    plan: link.Plan = {triple: triple, llvm: "/llvm", objects: ["/w/a.o", "/w/b.o"], archives: ["/v/libbox3d.a"],
+                       libraries: libraries, libpaths: libpaths, output: "/w/program", work: "/w/stubs",
+                       libc: "/usr/lib/x86_64-linux-gnu", interpreter: "/lib64/ld-linux-x86-64.so.2",
+                       static: static};
+    return plan;
+}
+
+Plan :: (triple: string, static: bool) -> link.Plan {
+    return Plan3(triple, ["m"], [], static);
+}
+
+Same :: (got: string[], expected: string[]) {
+    assert(length(got) == length(expected), "the argument vector has a different length");
+    for (index in 0..<length(expected)) {
+        assert(got[index] == expected[index]);
+    }
+}
+
+@test
+TriplesNameTheirTargets :: () {
+    assert(link.TargetOf("x86_64-unknown-linux-gnu") == link.LinuxX64, "linux");
+    assert(link.TargetOf("arm64-apple-macosx11.0.0") == link.MacOSArm64, "macos");
+    assert(link.TargetOf("aarch64-apple-darwin") == link.MacOSArm64, "macos by another name");
+    assert(link.TargetOf("x86_64-pc-windows-msvc") == link.WindowsX64, "windows");
+    assert(link.TargetOf("riscv64-unknown-linux-gnu") == -1, "unknown");
+}
+
+@test
+EachTargetHasItsLinker :: () {
+    assert(link.Linker(link.LinuxX64) == "ld.lld", "linux");
+    assert(link.Linker(link.MacOSArm64) == "ld64.lld", "macos");
+    assert(link.Linker(link.WindowsX64) == "lld-link", "windows");
+}
+
+@test
+ObjectsAreLlcOutputPositionIndependent :: () {
+    Same(link.ObjectCommand("/llvm/llc", "m.ll", "m.o", 0),
+         ["/llvm/llc", "-filetype=obj", "-O=0", "-relocation-model=pic", "-o", "m.o", "m.ll"]);
+    Same(link.ObjectCommand("/llvm/llc", "m.ll", "m.o", 2),
+         ["/llvm/llc", "-filetype=obj", "-O=2", "-relocation-model=pic", "-o", "m.o", "m.ll"]);
+}
+
+@test
+LinuxLinksLibcDynamicallyByDefault :: () {
+    Same(link.Command(Plan("x86_64-unknown-linux-gnu", false), "/w/program.partial"),
+         ["/llvm/ld.lld", "--dynamic-linker", "/lib64/ld-linux-x86-64.so.2", "--gc-sections", "-o",
+          "/w/program.partial", "/usr/lib/x86_64-linux-gnu/crt1.o", "/usr/lib/x86_64-linux-gnu/crti.o", "/w/a.o",
+          "/w/b.o", "/v/libbox3d.a", "-L", "/usr/lib/x86_64-linux-gnu", "-lm", "-lc",
+          "/usr/lib/x86_64-linux-gnu/crtn.o"]);
+}
+
+@test
+LinuxStaticLinkTakesNoStartFilesOrLibc :: () {
+    Same(link.Command(Plan("x86_64-unknown-linux-gnu", true), "/w/program.partial"),
+         ["/llvm/ld.lld", "-static", "--gc-sections", "-e", "_start", "-o", "/w/program.partial", "/w/a.o", "/w/b.o",
+          "/v/libbox3d.a", "-lm"]);
+}
+
+@test
+MacOSLinksTextStubsAndLooksUpTheRestWhenItRuns :: () {
+    plan := Plan3("arm64-apple-macosx11.0.0", ["c++", "framework:Cocoa"], [], false);
+    Same(link.Command(plan, "/w/program.partial"),
+         ["/llvm/ld64.lld", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0", "-dead_strip",
+          "-undefined", "dynamic_lookup", "-e", "_main", "-o", "/w/program.partial", "/w/a.o", "/w/b.o",
+          "/v/libbox3d.a", "/w/stubs/System.tbd", "/w/stubs/cpp.tbd", "/w/stubs/framework-Cocoa.tbd"]);
+}
+
+@test
+StubsNameTheLibrariesTheProgramLoads :: () {
+    assert(link.InstallName("c++") == "/usr/lib/libc++.1.dylib", "c++");
+    assert(link.InstallName("z") == "/usr/lib/libz.dylib", "plain");
+    assert(link.InstallName("framework:Cocoa") == "/System/Library/Frameworks/Cocoa.framework/Cocoa", "framework");
+    stub := link.Stub("/usr/lib/libSystem.B.dylib", true);
+    assert(stub == "--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '/usr/lib/libSystem.B.dylib'\nexports:\n  - targets: [ arm64-macos ]\n    symbols: [ dyld_stub_binder ]\n...\n", "libSystem");
+    assert(link.StubPath("/w", "framework:Cocoa") == "/w/framework-Cocoa.tbd", "path");
+    assert(link.StubPath("/w", "c++") == "/w/cpp.tbd", "plus signs");
+}
+
+@test
+WindowsLinksTheCRuntimeFromTheSdkUnlessStatic :: () {
+    plan := Plan3("x86_64-pc-windows-msvc", ["user32.lib"], ["C:/sdk/lib"], false);
+    Same(link.Command(plan, "/w/program.exe.partial"),
+         ["/llvm/lld-link", "/nologo", "/subsystem:console", "/machine:x64", "/opt:ref", "/Brepro", "/out:/w/program.exe.partial",
+          "/libpath:C:/sdk/lib", "/w/a.o", "/w/b.o", "/v/libbox3d.a", "user32.lib"]);
+    plan = Plan3("x86_64-pc-windows-msvc", ["user32.lib"], ["C:/sdk/lib"], true);
+    Same(link.Command(plan, "/w/program.exe.partial"),
+         ["/llvm/lld-link", "/nologo", "/subsystem:console", "/machine:x64", "/opt:ref", "/Brepro", "/out:/w/program.exe.partial",
+          "/nodefaultlib", "/entry:mainCRTStartup", "/libpath:C:/sdk/lib", "/w/a.o", "/w/b.o", "/v/libbox3d.a",
+          "/w/stubs/kernel32.lib", "user32.lib"]);
+}
+
+@test
+StartModulesKeepTheProcessArguments :: () {
+    linux := link.Start("x86_64-unknown-linux-gnu", false, false);
+    assert(strings.Contains(linux, "define i32 @main(i32 %argc, ptr %argv, ptr %envp)"), "libc main");
+    assert(strings.Contains(linux, "store i32 %argc, ptr @chibi_argc"), "argc");
+    assert(strings.Contains(linux, "store ptr %argv, ptr @chibi_argv"), "argv");
+    assert(strings.Contains(linux, "call i32 @chibi_scalar()"), "entry");
+    macos := link.Start("arm64-apple-macosx11.0.0", false, true);
+    assert(strings.Contains(macos, "target triple = \"arm64-apple-macosx11.0.0\""), "macos triple");
+    assert(strings.Contains(macos, "store i32 %argc, ptr @chibi_argc"), "macos argc");
+    assert(strings.Contains(macos, "call i32 @chibi_scalar(ptr @chibi_context)"), "macos context");
+    static := link.Start("x86_64-unknown-linux-gnu", true, false);
+    assert(strings.Contains(static, "module asm \"_start:\""), "static entry");
+    assert(strings.Contains(static, "movl %eax, chibi_argc(%rip)"), "static argc");
+    assert(strings.Contains(static, "movq %rax, chibi_argv(%rip)"), "static argv");
+    assert(strings.Contains(static, "movl $231, %eax"), "exit_group");
+    windows := link.Start("x86_64-pc-windows-msvc", true, false);
+    assert(strings.Contains(windows, "define void @mainCRTStartup()"), "windows entry");
+    assert(strings.Contains(windows, "store ptr %line, ptr @chibi_command_line"), "command line");
+    assert(strings.Contains(windows, "call void @ExitProcess(i32 %status)"), "exit");
+    context := link.Start("x86_64-pc-windows-msvc", true, true);
+    assert(strings.Contains(context, "store ptr %line, ptr @chibi_command_line"), "context command line");
+    assert(strings.Contains(context, "@HeapAlloc"), "context heap");
+}
+
+@test
+NoStartModuleForWhatCannotRun :: () {
+    assert(link.Start("x86_64-unknown-linux-gnu", true, true) == "", "static linux has no context");
+    assert(link.Start("riscv64-unknown-linux-gnu", false, false) == "", "unknown triple");
+}
+
+@test
+Kernel32ExportsWhatTheStartModulesImport :: () {
+    definition := link.Kernel32Definition();
+    for (name in ["ExitProcess", "GetCommandLineW", "GetProcessHeap", "HeapAlloc", "GetStdHandle", "WriteFile"]) {
+        assert(strings.Contains(definition, strings.Concatenate(["    ", name, "\n"])), "an export");
+    }
+}
+
+@test
+EveryStartModuleExportsTheArgumentFunctions :: () {
+    for (triple in ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"]) {
+        module := link.Start(triple, false, false);
+        for (name in ["define i64 @chibi_argument_count()", "define i64 @chibi_argument(i64 %index, ptr %buffer, i64 %size)",
+                      "define ptr @chibi_environment()"]) {
+            assert(strings.Contains(module, name), "an argument function");
+        }
+    }
+    static := link.Start("x86_64-unknown-linux-gnu", true, false);
+    assert(strings.Contains(static, "chibi_envp(%rip)"), "static linux keeps envp");
+    windows := link.Start("x86_64-pc-windows-msvc", true, false);
+    assert(strings.Contains(windows, "define internal i64 @chibi_command_argument("), "windows parses its command line");
+    assert(strings.Contains(link.Start("arm64-apple-macosx11.0.0", false, false), "ptr %envp"), "dyld passes envp");
+}

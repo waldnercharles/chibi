@@ -294,18 +294,13 @@ programs drawn while global illumination is on read the probes, so scenes
 without it compile none of its code, and turning it on compiles their
 materials' programs again.
 
-To compare it, preview the Room scene of `test/fixtures/scene3d`: an
+To compare it, use the Room scene of `test/fixtures/scene3d`: an
 open-topped room with red and green walls, a block and an emissive lamp,
 under the field sky with Medium occlusion and Medium global illumination.
 Setting its Environment's `global_illumination` to `"Off"` gives the baseline
 of direct light, the sky's light and ambient occlusion.
 
-```sh
-echo '{"contract":1,"operation":"preview_scene","kind":"scene","name":"Room","width":640,"height":360,"gpu_warmup_frames":32}' | \
-  SDL_VIDEO_DRIVER=offscreen build/bin/chibi_ctl --render --project-root test/fixtures/scene3d
-```
-
-The probes start dark and settle over about twenty frames, so preview after
+The probes start dark and settle over about twenty frames, so compare after
 warmup frames. On hardware opted into profiling, a performance run's
 `pass_timing` charges each frame's 3D work to "3D setup" (the sky's
 filtering and the scene's uploads), "3D shadow maps", "3D ambient
@@ -421,17 +416,6 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
   the shader catalog change. It cannot read images; use an image sky for
   photographs. The **Star Field** node draws point stars that stay about a
   pixel wide at any field of view; see [shader graphs](shader-graphs.md).
-- **Import**: the `import_sky` controller operation checks that a file decodes
-  as a sky, then copies it into the project's content, by default to
-  `content/skies/` with the file's own name. It never replaces an existing file.
-
-  ```sh
-  printf '%s\n' '{"contract":1,"operation":"import_sky","source":"/downloads/meadow_2k.hdr"}' | \
-    chibi_ctl --project-root "$PWD"
-  ```
-
-  The response's `path` is the key to put in `sky`; `destination` picks another
-  `content/... .hdr` path.
 - **Light**: a sky lights every surface in place of the hemisphere ambient,
   turned by `sky_rotation` and scaled by `sky_exposure` like the sky itself.
   Diffuse light comes from nine spherical-harmonic irradiance terms
@@ -529,19 +513,12 @@ describe, as shapes do.
 
 ## Importing glTF models
 
-The `import_model` controller operation copies a glTF 2.0 model, a `.glb` or a
-`.gltf` beside its buffers and images, into the project's content
-(`assets/model_import.c`):
-
-```sh
-printf '%s\n' '{"contract":1,"operation":"import_model","source":"/downloads/crate.glb"}' | \
-  chibi_ctl --project-root "$PWD"
-```
-
-`name` defaults to the file's name without its extension. It must be an asset
+The glTF importer, archived with the game projects in
+`archive/src/assets/model_import.c`, copies a glTF 2.0 model, a `.glb` or a
+`.gltf` beside its buffers and images, into the project's content. The model's
+name defaults to the file's name without its extension. It must be an asset
 name, a letter and then letters, digits, `-` and `_`, at most 63 bytes, and no
-prototype may already declare it. The response lists the `files` written and
-the `warnings`. An import writes:
+prototype may already declare it. An import writes:
 
 - `content/meshes/<name>.mesh`: the triangles of every mesh node, placed by
   their node transforms, with one material group per glTF material in glTF
@@ -657,185 +634,8 @@ is retired; visual transforms, simulation clocks, math and tasks remain.
 
 ## Tests
 
-`make agent-gpu-test AGENT_SELECTOR=--scene3d` renders a box or a floor in a
-hidden 64x64 app. It checks cameras looking along their Transform3D and from a
-moving body's drawn pose between physics steps, field of
-view and clip distances, the lenses a camera rejects, ground rays at the widest
-clip range, panning dropping a lens, fog concealing rays that miss the ground,
-and ground rays and fog from an eye far from the origin, turned off the axes
-too. It checks ambient, the
-directional light, the one-light limit
-(hidden lights left out), both tone maps, auto
-exposure's geometric mean, background rejection, easing (including slow easing
-finer than a half-float step), snapping and settings checks, and sun shadows: a
-box's shadow, no self-shadowing on lit faces, a solid the camera culls casting
-into the view (collected across workers), the depth pass leaving earlier queued
-draws alone, four cascades across a deep view each keeping a small shadow
-sharp, two cascades side by side when the depths between hold nothing, one
-cascade for a floor that reaches far past a shallow view, and a sun's size
-softening a shadow's edge far from its caster but not at its foot, in every
-cascade, and from a caster just outside the view. Point light shadows are
-checked across a grid of floor against the box between it and each lamp, for
-one lamp in four spots whose shadows cross between faces, and for two lamps
-outranked by a brighter light that casts nothing; five lamps that cast give
-shadows to the four ranked highest; a sphere lit from between three faces
-keeps its light; a long wall casts for a lamp near one end; a slab the camera
-culls casts too; and a sphere drawn into the same face as the box and the floor
-stays in that face. A spot light matches a point light inside its inner
-angle, matches a point light dimmed by the square of the fade partway across
-its edge, and leaves the floor dark past its outer angle. Its shadows are
-checked across the same grid, from a slanted cone and from one pointing
-straight down, and beside a point light's in the same atlas. Every accepted
-outer angle, from 2 degrees with a hard edge to 160, lights the floor below at
-full strength, and angles out of range are rejected. Near the edge of a
-hard-edged cone 160 degrees across, lookups stay on the spot light's face
-rather than reading the shadows of the light before it. Looking along each
-axis, unturned and turned a quarter, every corner of the view shows the sky
-in the direction it looks; a black box hides the sky where it stands and
-leaves it showing around it, and a translucent box blends over it; a quarter
-turn of rotation brings +X ahead; one stop of exposure matches texels twice as
-bright, both in the sky and in the light it casts; and missing skies, exposure
-out of range and rotation that isn't finite are rejected. Under an octant sky,
-unturned and turned a quarter, each face of a white box takes each channel
-from the half of the sky it faces, the hemisphere ambient gives way, and a
-mirror box shows the octant each view ray reflects into; a rough box gathers
-the neighboring octants. A sky brightening toward an axis lights the faces
-along it more than those across it, unturned and turned an eighth, which
-reaches every irradiance term but the xy and yz ones; render-resources checks
-those on the CPU. Unlit color ramps show their color whether their stops start
-the program's ramp table or lie past the first 4 KB of it, and a stop color
-edit shows without a recompile. Imported copies of the unit box, one on the
-floor and one culled from the view, light, shade and cast exactly as the shape
-boxes do. A mesh's top face takes its group's material while the other faces
-inherit the entity's, and an unknown group material fails the frame. Surface
-graphs read a mesh's vertex UVs, its UVs projected from source bounds, its
-part positions and, without part coordinates, its own positions. Picks and
-bounds follow a single triangle rather than its unit box, picks follow one a
-hundred-thousandth that size scaled back up, and a pick through a grid of
-8192 triangles tests only the few near its ray. The unit box mesh made 2e37
-wide around 1.85e38, which its Geometry3D scales back to a box, covers the
-pixels, bounds and picks the shape it replaces did. A republished
-mesh draws its new triangles while the GPU copies of replaced and removed
-meshes are freed. Copies uploaded out of identity order are each found again.
-A translucent mesh whose vertices sit between the eye and a
-translucent box, while its origin lies behind the box, blends over the box as
-a shape in its place does, alone and as one of two copies drawn in one batch.
-The shadow scene's box and a pillar outside the view draw, shade and cast at
-Transform3D poses exactly as they do placed by Transform and elevation, each
-drawn once. A box turned a quarter about x by its Transform3D, and one turned
-by a Transform3D and a Visual Transform within it, match the upright box their
-turns make. A box under a turned Transform3D parent picks and bounds where the
-parent turns it, before any propagation. A box mirrored by its Transform3D,
-as a shape and as the unit box mesh, matches the unmirrored box, as does one
-mirrored at a 1e-16 scale under a Geometry3D as large, or a mesh 2e16 across
-in its own units, and one flattened to zero height disappears. A box mesh
-1e30 long in x in its own units, drawn at a 1e-30 x scale, matches the unit
-box mesh too, though its normals come from cofactors too short to normalize
-directly. A box flattened
-by its parent's Transform3D under turns that leave it a sliver of volume has
-no bounds, as does one 1e-25 wide under a parent scaled 1e-25, whose model
-axis underflows to zero. One scaled to 1e-16 keeps them, as does one turned
-under a parent squashed to 1e-6. A frame whose finite values multiply past
-float range, alone or with a part's position or the Geometry3D's dimensions,
-is an
-authoring error. A model surface picks and bounds at its Transform3D
-pose, with or without a Transform. Fog culls a box
-by the ground under its Transform3D pose, not by its Transform. A mirrored ground
-square's normal maps turn their bitangent with it, and one stretched 1e7 times
-along its normal keeps its authored tangents.
-Normal maps on a ground square tilt toward or away from the sun as its
-tangents say: authored tangents a quarter turn from the UV gradient, mirrored
-UVs, a quarter-turned square, and box-projected UVs that keep their own frame.
-A Normal Map labelled OpenGL tilts toward the top of its image on a mesh with
-generated tangents, and one labelled DirectX toward the bottom.
-A square imported from glTF with base color, metallic-roughness, emission and
-occlusion images shades as one whose factors hold those images' values, and
-swapping roughness and metallic, or reading the base color as linear, shows.
-A glTF normal image tilts toward the top of the image whether the import
-makes the tangents or the model authors them, the square's u runs either way,
-or a node mirrors it, and away with the image upside down or the authored
-bitangents reversed.
-A box's Occlusion dims hemisphere ambient and sky light in proportion and
-leaves a sun's light as it was. Ambient occlusion at Low, Medium and High
-darkens the floor and the box's face where a box meets the floor, under
-uniform ambient light, and leaves open floor and the box's roof within about
-two levels a channel; with only a shadowing sun, the image is the same with it
-on and off. A nearly opaque translucent panel in front of that crease keeps its light,
-and the floor it stands on stays open. A radius of zero, negative or not
-finite and an unknown quality are rejected, and Off accepts a zero radius. A
-masked box cut out entirely occludes nothing, and one that keeps its pixels
-darkens the crease, with no light casting shadows. At Opacity 0.3 over a purple sky, a Blend box
-mixes over it, Opaque and Mask boxes above their cutoff draw whole, and a Mask
-box below its cutoff leaves only the sky; only Blend counts as translucent.
-Opaque and Mask boxes shadow the floor, and a Blend box does not. A box masked
-to one half shades the floor behind that half alone, from the sun, as the unit
-box mesh as well, and from a point light. So does a masked pillar outside the
-view, whose material row arrives through a later worker's buffer. A box masked
-by View Direction shades the floor as the sun and a point light see it, though
-the camera sees it cut. It is a GPU
-check that runs the main build's
-`test/tools/test_tools` after the agent's device preflight, so build it first
-with `chibi build --target test_tools`.
-llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
-llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 95 cases and 83503 assertions in 24.2 seconds on 2026-10-11,
-and in 55 seconds with an empty shader cache.
-
-`make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
-the backend of the web player's WebGL 2 fallback. GLES needs a display rather
-than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 95
-cases and 83503 assertions in 17.9 seconds on 2026-10-11.
-
-`make agent-gpu-test AGENT_SELECTOR=--scene3d-gi` runs global illumination's
-cases in a separate selector that compiles its shaders, including with an empty
-shader cache; `--scene3d-gi-gles`
-runs them on GLES. At Low, a sunlit red floor lights the white box's face that
-the sun misses in red, and an orange emissive box below the view lights the
-floor near it, both black without global illumination. The red floor still does
-so lit by a shadowed point light inside its bulb, within a tenth as brightly
-through a Box Frame around the light as without it, and inside a hollow mesh's
-box; a floor of 144 tiles, whose BVH takes more than a row of its texture,
-gives the same light as one floor box. A red block 1e13 units wide, whose
-volume passes float's range, still lights the face, and one 1e20 units wide
-leaves it the light it has without global illumination. Open ground under a
-blue sky color and a brown ground color keeps its ambient light within four
-levels at every quality, and exactly when every probe lies inside a solid
-around the view, from the frame the solid moves around lit probes as from the
-first. Ground under a roof, which takes its light in two bounces, is dark on
-the first frame and lit after eight; it keeps over half that light through a
-refit of the grid and starts dark again after a frame with global illumination
-off. An unknown quality is rejected, and so are 4104 Box Frame beams, past the
-4096 solids rays trace; a material reading eight images is rejected with global
-illumination on and draws with it off, and one reading seven and a ramp, which
-fill all 16 samplers, draws with it on. Pass timing charges the scene's setup,
-the shadow maps, ambient occlusion and global illumination to passes of their
-own. Debug ASan+UBSan on Vulkan llvmpipe passed its 13 cases and 67 assertions
-in 9.3 seconds on 2026-10-11, and in 5.4 seconds on GLES.
-
-`chibi build test render-resources` checks on the CPU that the
-sky's cube faces follow the GPU's face selection table and hold exact half
-floats; that the irradiance terms give the exact cosine integral of an even
-sky, an octant sky and skies quadratic along three axes; that the split-sum
-table matches a fine numerical integral of the GGX lobe; and that skies
-publish, and are charged, with a prepared generation, and
-`chibi build test sky-files` decodes flat and run-length
-files, rejects malformed ones, prepares skies from mounted content and imports
-them without replacing a file. Both need the in-tree build above.
-`chibi build test mesh-files` checks `.mesh` tangents,
-preparation and refusals the same way, and
-`chibi build test model-import` checks the files a glTF
-import writes, its names, refusals, warnings, left-out vertices and tangent
-frames.
-
-For texture transforms, build `test_tools` with `chibi build --target test_tools`
-and run `make agent-gpu-test AGENT_SELECTOR=--texture-transform`. Pass the same
-`BUILD_DIR` to both commands when using another build folder. This focused
-check draws 21 frames in one hidden 64 x 64 app. It compares each PBR texture
-slot with an equivalent baked-UV model and an unchanged negative control,
-including generated, mirrored and supplied normal tangents. `--model-import`
-also checks transform defaults, malformed fields and overflow, UV-set overrides,
-transactional refusal, glTF/GLB parity and the prepared normal-frame mode.
-
-`test/fixtures/scene3d` is the manual preview scene and enables every feature
-above.
+The renderer's GPU and CPU tests (`--scene3d`, `--scene3d-gles`, `--scene3d-gi`,
+`--texture-transform`, `render-resources`, `sky-files`, `mesh-files` and
+`model-import`) are archived with `src/render` and the player; see
+`archive/README.md`, "Native player, renderer and UI host". Nothing runs them
+until a Chibi renderer replaces it.

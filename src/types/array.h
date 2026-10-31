@@ -52,7 +52,24 @@ void pin_array_mutation_end(pin_array *);
 int pin_array_box_owned(arena *, pin_array *);
 /* Mark the shared payload anchor. Returns false for unbacked legacy storage. */
 bool pin_array_trace_backing(const pin_array *, arena_marker, void *);
+/* Marks the shared payload anchor in a collection and says whether the
+ * collection holds it; then the anchor's tracer walks the payload's items. */
+bool pin_array_collect_backing(const pin_array *, arena_collection *);
 void pin_value_collection_release(const pin_value *);
+/* Whether the owner walk can find a collection in a value: the value is one,
+ * or a record or union whose fields may hold one. Most values that reach the
+ * ownership operations are scalars, so callers test this before the walk. */
+static inline bool pin_value_may_own_collections(const pin_value *value)
+{
+    if (!value || !value->ptr) {
+        return false;
+    }
+    return value->container == PIN_CONTAINER_SINGLE
+             ? value->type == PIN_STRUCT || value->type == PIN_UNION
+             : value->container == PIN_CONTAINER_ARRAY ||
+                   value->container == PIN_CONTAINER_SET ||
+                   value->container == PIN_CONTAINER_MAP;
+}
 void pin_value_collection_visit_owners(
     const pin_value *,
     void (*visit)(const pin_value *, void *),

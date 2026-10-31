@@ -1,0 +1,213 @@
+package native_link_smoke
+
+import host "native_link_host:."
+import link "native_link:."
+import os "core:os"
+import strings "core:strings"
+
+// Links a real program on this machine with only LLVM's tools: a module that
+// calls `add` from a vendored-style archive, built with llc and llvm-ar. It
+// runs from `chibi build test native-link` (tools/tests.tsv, through run.sh,
+// which gives the build host the two packages as collections) with
+// CHIBI_LLVM_BIN naming the folder of llc, llvm-ar and the lld tools; an empty
+// PATH is enough. Without CHIBI_LLVM_BIN it reports that it did not run. The
+// program must exit with status 42.
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+Triple :: () -> string {
+    if (os.Platform() == "Darwin") {
+        return "arm64-apple-macosx11.0.0";
+    }
+    if (os.Platform() == "Windows") {
+        return "x86_64-pc-windows-msvc";
+    }
+    return "x86_64-unknown-linux-gnu";
+}
+
+Add :: (triple: string) -> string {
+    return Join(["target triple = \"", triple, "\"\n",
+                 "define i32 @add(i32 %a, i32 %b) {\n  %c = add i32 %a, %b\n  ret i32 %c\n}\n"]);
+}
+
+// The bytes of a text as an IR constant.
+Constant :: (name: string, text: string) -> string {
+    bytes: string[] = [];
+    for (byte in strings.Bytes(text)) {
+        bytes.append(format_text("i8 {}", byte));
+    }
+    return Join(["@", name, " = private constant [", format_text("{}", length(bytes)), " x i8] [", strings.Join(bytes, ", "),
+                 "]\n"]);
+}
+
+// The arguments the second run passes: one with a space, one with non-ASCII
+// characters (two- and three-byte UTF-8).
+SpacedArgument :: () -> string {
+    return "a b";
+}
+WideArgument :: () -> string {
+    return "héllo €";
+}
+
+// The program's entry, which link.Start's shim calls: 42 when the shim's argument
+// functions work, by way of `add` from the archive. Run with no arguments it checks
+// that the count is 1, the program's name has bytes and an index past the end is -1;
+// run with the two arguments above it checks the count is 3 and that it reads both
+// back byte for byte.
+Entry :: (triple: string) -> string {
+    spaced := SpacedArgument();
+    wide := WideArgument();
+    return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\ndeclare i64 @chibi_argument_count()\n",
+                 "declare i64 @chibi_argument(i64, ptr, i64)\n",
+                 Constant("spaced", spaced), Constant("wide", wide),
+                 "define internal i1 @same(ptr %a, ptr %b, i64 %n) {\nentry:\n  br label %loop\nloop:\n",
+                 "  %i = phi i64 [ 0, %entry ], [ %next, %body ]\n  %done = icmp uge i64 %i, %n\n",
+                 "  br i1 %done, label %yes, label %body\nbody:\n",
+                 "  %pa = getelementptr inbounds i8, ptr %a, i64 %i\n  %pb = getelementptr inbounds i8, ptr %b, i64 %i\n",
+                 "  %ba = load i8, ptr %pa\n  %bb = load i8, ptr %pb\n  %eq = icmp eq i8 %ba, %bb\n",
+                 "  %next = add i64 %i, 1\n  br i1 %eq, label %loop, label %no\nyes:\n  ret i1 true\nno:\n  ret i1 false\n}\n",
+                 "define i32 @chibi_scalar() {\n  %buffer = alloca [64 x i8]\n  %other = alloca [64 x i8]\n",
+                 "  %count = call i64 @chibi_argument_count()\n",
+                 "  %name = call i64 @chibi_argument(i64 0, ptr %buffer, i64 64)\n",
+                 "  %first = call i64 @chibi_argument(i64 1, ptr %buffer, i64 64)\n",
+                 "  %second = call i64 @chibi_argument(i64 2, ptr %other, i64 64)\n",
+                 "  %past = call i64 @chibi_argument(i64 %count, ptr %buffer, i64 64)\n",
+                 "  %same1 = call i1 @same(ptr %buffer, ptr @spaced, i64 ", format_text("{}", strings.ByteLength(spaced)), ")\n",
+                 "  %same2 = call i1 @same(ptr %other, ptr @wide, i64 ", format_text("{}", strings.ByteLength(wide)), ")\n",
+                 "  %one = icmp eq i64 %count, 1\n  %three = icmp eq i64 %count, 3\n",
+                 "  %named = icmp sgt i64 %name, 0\n  %missing = icmp eq i64 %past, -1\n",
+                 "  %len1 = icmp eq i64 %first, ", format_text("{}", strings.ByteLength(spaced)), "\n",
+                 "  %len2 = icmp eq i64 %second, ", format_text("{}", strings.ByteLength(wide)), "\n",
+                 "  %arguments.a = and i1 %len1, %len2\n  %arguments.b = and i1 %same1, %same2\n",
+                 "  %arguments = and i1 %arguments.a, %arguments.b\n  %with = and i1 %three, %arguments\n",
+                 "  %either = or i1 %one, %with\n  %ok.a = and i1 %either, %named\n  %all = and i1 %ok.a, %missing\n",
+                 "  %bit = zext i1 %all to i32\n  %x = call i32 @add(i32 41, i32 %bit)\n  ret i32 %x\n}\n"]);
+}
+
+// Removes the folder and the files in it, which is all a run leaves.
+Clear :: (folder: string) -> bool {
+    if (os.Kind(folder) == os.KindNone) {
+        return true;
+    }
+    listed := os.List(folder);
+    if (listed.error != nil) {
+        return false;
+    }
+    for (name in listed.names) {
+        if (os.Remove(Join([folder, "/", name])) != nil) {
+            return false;
+        }
+    }
+    return os.Remove(folder) == nil;
+}
+
+// Windows programs split their UTF-16 command line with link.CommandLineParser, IR that
+// calls no system function. Parser.ll holds its cases (quotes, backslashes, empty and
+// spaced arguments, non-ASCII and a surrogate pair) and an entry that returns 42 when
+// every one parses as listed; it runs here on any host.
+ParserCases :: (llvm: string, work: string, triple: string, windows: bool) -> int {
+    harness := os.ReadText(Join([os.Root(), "/test/native_aot/link/Parser.ll"]));
+    if (harness.error != nil) {
+        return Fail("cannot read Parser.ll");
+    }
+    module := Join(["target triple = \"", triple, "\"\n", harness.text, link.CommandLineParser()]);
+    suffix := "";
+    if (windows) {
+        suffix = ".exe";
+    }
+    program := Join([work, "/parser", suffix]);
+    if (os.WriteText(Join([work, "/parser.ll"]), module) != nil ||
+        host.Object(llvm, Join([work, "/parser.ll"]), Join([work, "/parser.o"]), 2) != nil) {
+        return Fail("the parser cases do not compile");
+    }
+    plan := link.Program(triple, llvm, [Join([work, "/parser.o"]), Join([work, "/start.o"])], [], [], [], program, "", windows);
+    failure := host.Link(plan);
+    if (failure != nil) {
+        return Fail(format_text("the parser cases did not link, kind {} code {}", failure.kind, failure.code));
+    }
+    status := os.Run([program]);
+    if (status != 42) {
+        return Fail(format_text("the parser cases ended with {}; the code names the case: 100 plus its number is a wrong argument, 200 a short buffer, 300 a missing -1, 400 a wrong count", status));
+    }
+    return 0;
+}
+
+Fail :: (what: string) -> int {
+    os.Print(Join(["native-link: ", what]));
+    return 1;
+}
+
+Run :: () -> int {
+    llvm := os.Getenv("CHIBI_LLVM_BIN");
+    if (llvm == "") {
+        os.Print("native-link: not run: set CHIBI_LLVM_BIN to the folder of llc, llvm-ar and the lld tools");
+        return 0;
+    }
+    triple := Triple();
+    work := Join([os.Root(), "/.chibi/native-link-smoke"]);
+    if (!Clear(work) || os.MakeDirectory(work) != nil) {
+        return Fail("cannot prepare the work folder");
+    }
+    windows := link.TargetOf(triple) == link.WindowsX64;
+    suffix := ".a";
+    program := Join([work, "/program"]);
+    suffix2 := "";
+    if (windows) {
+        suffix = ".lib";
+        suffix2 = ".exe";
+        program = Join([work, "/program.exe"]);
+    }
+    if (os.WriteText(Join([work, "/add.ll"]), Add(triple)) != nil ||
+        os.WriteText(Join([work, "/main.ll"]), Entry(triple)) != nil ||
+        os.WriteText(Join([work, "/start.ll"]), link.Start(triple, windows, false)) != nil) {
+        return Fail("cannot write the modules");
+    }
+    if (host.Object(llvm, Join([work, "/add.ll"]), Join([work, "/add.o"]), 2) != nil ||
+        host.Object(llvm, Join([work, "/main.ll"]), Join([work, "/main.o"]), 2) != nil ||
+        host.Object(llvm, Join([work, "/start.ll"]), Join([work, "/start.o"]), 2) != nil) {
+        return Fail("llc failed");
+    }
+    ar := host.Tool(llvm, "llvm-ar");
+    archive := Join([work, "/libadd", suffix]);
+    if (ar == "" || os.Run([ar, "rcs", archive, Join([work, "/add.o"])]) != 0) {
+        return Fail("llvm-ar failed");
+    }
+    // Two links of the same inputs to different paths give the same bytes, and
+    // each leaves nothing but its program: the work folder is removed.
+    digests: string[] = [];
+    for (name in [program, Join([work, "/again", suffix2])]) {
+        plan := link.Program(triple, llvm, [Join([work, "/main.o"]), Join([work, "/start.o"])], [archive], [], [], name, "",
+                             windows);
+        failure := host.Link(plan);
+        if (failure != nil) {
+            return Fail(format_text("the link failed, kind {} code {}", failure.kind, failure.code));
+        }
+        if (os.Kind(Join([name, ".work"])) != os.KindNone || os.Kind(Join([name, ".partial"])) != os.KindNone) {
+            return Fail("the link left its work folder or partial file");
+        }
+        hashed := os.HashFile(name);
+        if (hashed.error != nil) {
+            return Fail("cannot hash the program");
+        }
+        digests.append(hashed.digest);
+    }
+    if (digests[0] != digests[1]) {
+        return Fail("two links of the same inputs differ");
+    }
+    status := os.Run([program]);
+    if (status != 42) {
+        return Fail(format_text("the program exited with {}, not 42", status));
+    }
+    with := os.Run([program, SpacedArgument(), WideArgument()]);
+    if (with != 42) {
+        return Fail(format_text("the program read its arguments back wrongly (exit {}, not 42)", with));
+    }
+    parsed := ParserCases(llvm, work, triple, windows);
+    if (parsed != 0) {
+        return parsed;
+    }
+    os.Print("native-link: linked and ran a program from an object and an archive; the command-line parser agrees on its cases");
+    return 0;
+}

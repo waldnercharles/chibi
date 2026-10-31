@@ -731,57 +731,178 @@ pin_array *behavior_function_copy_array(behavior_function_context *context, cons
     behavior_function_collection_retain(context, &value);
     return value.ptr;
 }
+/* The collection shells a context owns, in no order, in one allocation. A
+ * frame can own hundreds (452 at most in the compiler's self-compile, whose
+ * 111 M lookups scanned 3.8 G entries, 2026-10-31), while about half of all
+ * lookups see OWNER_SCAN shells or fewer and scan them. Once capacity passes
+ * OWNER_SCAN, the allocation continues past shells[capacity] with an index of
+ * 2 * capacity slots: by linear probing from the shell pointer's hash, each
+ * holds a position + 1, or 0 when empty. */
+struct behavior_collection_owners
+{
+    int count, capacity; /* capacity is OWNER_SCAN times a power of two */
+    pin_value shells[];
+};
+#define OWNER_SCAN 8
+static bool collection_owner_same(pin_value a, pin_value b)
+{
+    return a.ptr == b.ptr && a.container == b.container;
+}
+/* The index slots that follow shells[capacity]: none within OWNER_SCAN. */
+static size_t owner_slot_count(int capacity)
+{
+    return capacity > OWNER_SCAN ? 2 * (size_t)capacity : 0;
+}
+static uint32_t *owner_slots(const behavior_collection_owners *owners)
+{
+    assert(owners->capacity > OWNER_SCAN);
+    return (uint32_t *)(owners->shells + owners->capacity);
+}
+static size_t owner_home(const behavior_collection_owners *owners, const void *shell)
+{
+    uint64_t hash = (uint64_t)(uintptr_t)shell * UINT64_C(0x9E3779B97F4A7C15);
+    return (size_t)(hash >> 32) & (owner_slot_count(owners->capacity) - 1);
+}
+/* The position of shell among owners, or -1. */
+static int owner_find(const behavior_collection_owners *owners, pin_value shell)
+{
+    if (!owners) {
+        return -1;
+    }
+    if (owners->capacity <= OWNER_SCAN) {
+        for (int i = 0; i < owners->count; i++) {
+            if (collection_owner_same(owners->shells[i], shell)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+    const uint32_t *slots = owner_slots(owners);
+    size_t mask = owner_slot_count(owners->capacity) - 1;
+    for (size_t slot = owner_home(owners, shell.ptr); slots[slot];
+         slot = (slot + 1) & mask) {
+        if (collection_owner_same(owners->shells[slots[slot] - 1], shell)) {
+            return (int)slots[slot] - 1;
+        }
+    }
+    return -1;
+}
+/* The index slot that holds position, which is indexed. */
+static size_t owner_slot(const behavior_collection_owners *owners, int position)
+{
+    const uint32_t *slots = owner_slots(owners);
+    size_t mask = owner_slot_count(owners->capacity) - 1;
+    size_t slot = owner_home(owners, owners->shells[position].ptr);
+    while (slots[slot] != (uint32_t)position + 1) {
+        assert(slots[slot]);
+        slot = (slot + 1) & mask;
+    }
+    return slot;
+}
+static void owner_index(behavior_collection_owners *owners, int position)
+{
+    uint32_t *slots = owner_slots(owners);
+    size_t mask = owner_slot_count(owners->capacity) - 1;
+    size_t slot = owner_home(owners, owners->shells[position].ptr);
+    while (slots[slot]) {
+        slot = (slot + 1) & mask;
+    }
+    slots[slot] = (uint32_t)position + 1;
+}
+static void collection_retain(const pin_value *value, void *user)
+{
+    behavior_function_context *context = user;
+    behavior_collection_owners *owners = context->collection_owners;
+    assert(value->ptr);
+    if (owner_find(owners, *value) >= 0) {
+        return;
+    }
+    if (!owners || owners->count == owners->capacity) {
+        int count = owners ? owners->count : 0;
+        int capacity = owners ? 2 * owners->capacity : OWNER_SCAN;
+        assert(capacity > 0 && (size_t)capacity <= UINT32_MAX / 2);
+        size_t index = owner_slot_count(capacity) * sizeof(uint32_t);
+        owners = xrealloc(owners, sizeof *owners + (size_t)capacity * sizeof(pin_value) + index);
+        *owners = (behavior_collection_owners){ count, capacity };
+        if (index) {
+            memset(owner_slots(owners), 0, index);
+            for (int i = 0; i < count; i++) {
+                owner_index(owners, i);
+            }
+        }
+        context->collection_owners = owners;
+    }
+    owners->shells[owners->count] = *value;
+    if (owners->capacity > OWNER_SCAN) {
+        owner_index(owners, owners->count);
+    }
+    owners->count++;
+}
+/* Removes the shell at position and moves the last shell into its place. */
+static void owner_remove(behavior_collection_owners *owners, int position)
+{
+    int last = owners->count - 1;
+    if (owners->capacity > OWNER_SCAN) {
+        /* Backward-shift deletion: a later entry moves into the hole unless
+         * its home lies cyclically within (hole, entry], so every probe
+         * chain stays unbroken without tombstones. */
+        uint32_t *slots = owner_slots(owners);
+        size_t mask = owner_slot_count(owners->capacity) - 1;
+        size_t hole = owner_slot(owners, position);
+        for (size_t next = (hole + 1) & mask; slots[next]; next = (next + 1) & mask) {
+            size_t home = owner_home(owners, owners->shells[slots[next] - 1].ptr);
+            if (((next - home) & mask) >= ((next - hole) & mask)) {
+                slots[hole] = slots[next];
+                hole = next;
+            }
+        }
+        slots[hole] = 0;
+        if (position != last) {
+            slots[owner_slot(owners, last)] = (uint32_t)position + 1;
+        }
+    }
+    owners->shells[position] = owners->shells[last];
+    owners->count = last;
+}
+/* Most values that reach the ownership operations are scalars, which own no
+ * collections and return here rather than in the walk. */
+static void collection_visit(
+    const pin_value *value,
+    void (*visit)(const pin_value *, void *),
+    void *user
+)
+{
+    if (pin_value_may_own_collections(value)) {
+        pin_value_collection_visit_owners(value, visit, user);
+    }
+}
+void behavior_function_collection_retain(behavior_function_context *context, const pin_value *value)
+{
+    collection_visit(value, collection_retain, context);
+}
 typedef struct
 {
     behavior_function_context *from, *to;
     bool drop;
 } collection_transfer;
-static bool collection_owner_same(pin_value a, pin_value b)
-{
-    return a.ptr == b.ptr && a.container == b.container;
-}
-static void collection_retain(const pin_value *value, void *user)
-{
-    behavior_function_context *context = user;
-    if (!value->ptr) {
-        return;
-    }
-    for (int i = 0; i < acount(context->collection_owners); i++) {
-        if (collection_owner_same(context->collection_owners[i], *value)) {
-            return;
-        }
-    }
-    apush(context->collection_owners, *value);
-}
-void behavior_function_collection_retain(behavior_function_context *context, const pin_value *value)
-{
-    pin_value_collection_visit_owners(value, collection_retain, context);
-}
 static void collection_remove(const pin_value *value, void *user)
 {
     collection_transfer *transfer = user;
-    pin_value *owners = transfer->from->collection_owners;
-    for (int i = 0; i < acount(owners); i++) {
-        if (collection_owner_same(owners[i], *value)) {
-            owners[i] = owners[acount(owners) - 1];
-            asetlen(owners, acount(owners) - 1);
-            if (transfer->to) {
-                collection_retain(value, transfer->to);
-            }
-            if (transfer->drop) {
-                pin_value_collection_release(value);
-            }
-            return;
-        }
+    int position = owner_find(transfer->from->collection_owners, *value);
+    if (position >= 0) {
+        owner_remove(transfer->from->collection_owners, position);
     }
     if (transfer->to) {
         collection_retain(value, transfer->to);
+    }
+    if (position >= 0 && transfer->drop) {
+        pin_value_collection_release(value);
     }
 }
 void behavior_function_collection_drop(behavior_function_context *context, const pin_value *value)
 {
     collection_transfer transfer = { .from = context, .drop = true };
-    pin_value_collection_visit_owners(value, collection_remove, &transfer);
+    collection_visit(value, collection_remove, &transfer);
 }
 void behavior_function_collection_transfer(
     behavior_function_context *from,
@@ -790,7 +911,7 @@ void behavior_function_collection_transfer(
 )
 {
     collection_transfer transfer = { .from = from, .to = to };
-    pin_value_collection_visit_owners(value, collection_remove, &transfer);
+    collection_visit(value, collection_remove, &transfer);
 }
 typedef struct
 {
@@ -800,29 +921,46 @@ typedef struct
 static void collection_find(const pin_value *value, void *user)
 {
     collection_held *find = user;
-    for (int i = 0; i < acount(find->context->collection_owners); i++) {
-        find->held |= collection_owner_same(find->context->collection_owners[i], *value);
-    }
+    find->held = find->held ||
+                 owner_find(find->context->collection_owners, *value) >= 0;
 }
 bool behavior_function_collection_holds(const behavior_function_context *context, const pin_value *value)
 {
     collection_held find = { .context = context };
-    pin_value_collection_visit_owners(value, collection_find, &find);
+    collection_visit(value, collection_find, &find);
     return find.held;
+}
+static void collection_check(const pin_value *value, void *user)
+{
+    collection_held *check = user;
+    check->held = check->held &&
+                  owner_find(check->context->collection_owners, *value) >= 0;
+}
+bool behavior_function_collection_owns(const behavior_function_context *context, const pin_value *value)
+{
+    collection_held check = { .context = context, .held = true };
+    collection_visit(value, collection_check, &check);
+    return check.held;
 }
 void behavior_function_collection_empty(behavior_function_context *context)
 {
-    for (int i = 0; i < acount(context->collection_owners); i++) {
-        pin_value_collection_release(&context->collection_owners[i]);
+    behavior_collection_owners *owners = context->collection_owners;
+    if (!owners || !owners->count) {
+        return;
     }
-    if (context->collection_owners) {
-        asetlen(context->collection_owners, 0);
+    for (int i = 0; i < owners->count; i++) {
+        pin_value_collection_release(&owners->shells[i]);
     }
+    if (owners->capacity > OWNER_SCAN) {
+        memset(owner_slots(owners), 0, owner_slot_count(owners->capacity) * sizeof(uint32_t));
+    }
+    owners->count = 0;
 }
 void behavior_function_collection_clear(behavior_function_context *context)
 {
     behavior_function_collection_empty(context);
-    afree(context->collection_owners);
+    free(context->collection_owners);
+    context->collection_owners = NULL;
 }
 void behavior_function_collection_trace(
     const behavior_function_context *context,
@@ -830,9 +968,19 @@ void behavior_function_collection_trace(
     void *user
 )
 {
-    for (int i = 0; i < acount(context->collection_owners); i++) {
-        pin_value_trace(&context->collection_owners[i], mark, user);
+    const behavior_collection_owners *owners = context->collection_owners;
+    for (int i = 0; owners && i < owners->count; i++) {
+        pin_value_trace(&owners->shells[i], mark, user);
     }
+}
+size_t behavior_function_collection_bytes(const behavior_function_context *context)
+{
+    const behavior_collection_owners *owners = context->collection_owners;
+    if (!owners) {
+        return 0;
+    }
+    return sizeof *owners + (size_t)owners->capacity * sizeof(pin_value) +
+           owner_slot_count(owners->capacity) * sizeof(uint32_t);
 }
 /* Set in a scan's `arrays` to stop at the first collection or pointer found. */
 #define MANAGED_SCAN_FIRST 8u
@@ -1669,6 +1817,7 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
     managed_seen local = { 0 };
     managed_seen *seen = collection_seen ? collection_seen : &local;
     managed_push(&pending, (managed_work){ .value = *root });
+    arena_collection *collection = arena_marker_collection(mark, user);
     while (pending.count) {
         managed_work next = managed_pop(&pending);
         pin_value value = next.value;
@@ -1691,6 +1840,12 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
                 (!array->pointer && !pin_array_items_reach(array))) {
                 continue;
             }
+            /* A shared payload whose anchor the collection holds is walked
+             * once, by the anchor's tracer, as a shell in the collection is. */
+            if (collection && !array->pointer &&
+                pin_array_collect_backing(array, collection)) {
+                continue;
+            }
             managed_push_items(&pending, array, false);
         } else if (value.type == PIN_UNION) {
             const pin_union *sum = value.ptr;
@@ -1701,11 +1856,20 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
             const type_desc *layout = pin_value_type(&value);
             for (int i = 0; layout && i < layout->field_count; i++) {
                 const type_field *field = &layout->fields[i];
+                assert(
+                    field->container == PIN_CONTAINER_SINGLE || field->container == PIN_CONTAINER_ARRAY
+                );
                 const void *data = (const char *)value.ptr + field->offset;
                 pin_value member = { .type = field->type,
+                                     .container = field->container,
                                      .type_name = field->type_name,
                                      .schema = value.schema };
-                if (field->type == PIN_STRUCT) {
+                /* An array field holds a pin_array pointer whatever its
+                 * element type; its items are walked as the array's. */
+                if (field->container == PIN_CONTAINER_ARRAY) {
+                    memcpy(&member.ptr, data, sizeof member.ptr);
+                    member.record = field->layout ? field->layout->carrier : NULL;
+                } else if (field->type == PIN_STRUCT) {
                     const type_desc *child = type_field_type(field, value_resolver(&value));
                     assert(child);
                     member.ptr = (void *)data;
@@ -1718,7 +1882,9 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
                 }
                 managed_push(
                     &pending,
-                    (managed_work){ .value = member, .flag = field->type == PIN_STRUCT }
+                    (managed_work){ .value = member,
+                                    .flag = member.container == PIN_CONTAINER_SINGLE &&
+                                            field->type == PIN_STRUCT }
                 );
             }
         }

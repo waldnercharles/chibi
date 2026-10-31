@@ -1,0 +1,17 @@
+package facts
+Box :: struct { name: string; items: string[]; numbers: int[]; count: int; flag: bool; }
+Make :: () -> Box {
+    box: Box = {name: "n", items: [], numbers: [], count: 0, flag: false};
+    return box;
+}
+Fill :: (word: string) -> int {
+    box := Make();
+    box.count = 2;
+    box.flag = true;
+    box.name = "m";
+    items: string[] = [word];
+    box.items = items;
+    numbers: int[] = [1, 2, 3];
+    box.numbers = numbers;
+    return length(box.items) * 10 + length(box.numbers) + box.count;
+}

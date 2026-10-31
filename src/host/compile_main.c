@@ -1,4 +1,3 @@
-#include "authoring/project_compile.h"
 #include "runtime/component_catalog.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
@@ -9,6 +8,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* chibi test (src/host/compile_tests.c): loads every package below root, the
+ * project: collection, with the core collection at core, prepares them for the
+ * natives that need no running game and runs each `@test` function on the
+ * default backend. Pure tests run on the bounded runtime worker pool;
+ * CHIBI_TEST_WORKERS=1 forces serial execution (1..32 selects a hardware-capped
+ * worker budget). Call on the controlling thread, outside a pool submission.
+ * 0 when every test passes, 1 for a failure, invalid package or worker setting. */
+int authoring_project_test(const char *root, const char *core);
 
 /* Explicit final application composition, shared with the prepared player. */
 int type_catalog_pack_count()

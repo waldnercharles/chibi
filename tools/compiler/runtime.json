@@ -1,22 +1,33 @@
 {
-  "format": 1,
+  "format": 2,
   "repository": "waldnercharles/chibi",
-  "tag": "compiler-runtime-prepared27-dddc4c491f68b0232f8b654766a8900dd76f37be",
-  "source_revision": "dddc4c491f68b0232f8b654766a8900dd76f37be",
-  "source_tree": "75b71a9f4a906af80b723f52977e16b4ea55e8c7",
-  "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41052101916",
   "platforms": {
     "macos-arm64": {
+      "tag": "compiler-runtime-prepared28-4ca76753269287a1a0ab793caa3328a09d6dbb6b",
+      "source_revision": "4ca76753269287a1a0ab793caa3328a09d6dbb6b",
+      "source_tree": "112d349cf138b91925fa2751c0cdd815621d7380",
+      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41226162938",
+      "max_artifact_bytes": 67108864,
       "asset": "chibi-compiler-host-macos-arm64",
-      "sha256": "914ebf162b4885085c5a8082b22c5917a768ca44a49083e63339d06ee7685e1a",
-      "bytes": 1381568
+      "sha256": "1ff2a72894aff03dd4d2a775ceee5d3e3ad168515a325d8b051b3b5e36c92a40",
+      "bytes": 1011152
     },
     "linux-x64": {
+      "tag": "compiler-runtime-prepared28-4ca76753269287a1a0ab793caa3328a09d6dbb6b",
+      "source_revision": "4ca76753269287a1a0ab793caa3328a09d6dbb6b",
+      "source_tree": "112d349cf138b91925fa2751c0cdd815621d7380",
+      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41226162938",
+      "max_artifact_bytes": 67108864,
       "asset": "chibi-compiler-host-linux-x64",
-      "sha256": "e27e956937d32cdee0981c3f9b3a149798aaeff6c0540a49d62de771ec840e07",
-      "bytes": 2132368
+      "sha256": "08e615b06721431fa6573e273b8d8fff59b82c4167ee5d1b73a5af5d1ea1bd4f",
+      "bytes": 1459552
     },
     "windows-x64": {
+      "tag": "compiler-runtime-prepared27-dddc4c491f68b0232f8b654766a8900dd76f37be",
+      "source_revision": "dddc4c491f68b0232f8b654766a8900dd76f37be",
+      "source_tree": "75b71a9f4a906af80b723f52977e16b4ea55e8c7",
+      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41052101916",
+      "max_artifact_bytes": 33554432,
       "asset": "chibi-compiler-host-windows-x64.exe",
       "sha256": "cee2eedeb0fb52ed4b36cc261d0ed56719b3332c87c722712ba13a3e4727a418",
       "bytes": 2142208

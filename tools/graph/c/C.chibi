@@ -226,7 +226,7 @@ pub Start :: (tools: Tools, target: Library, flags: string[], source: string) ->
     started.extend(["-MD", "-MF", Join([object, ".d"])]);
     handle := 0;
     if (!os.MakeDirectory(strings.Slice(object, 0, strings.LastIndex(object, "/")))) {
-        handle = os.Spawn(started);
+        handle = os.Start(started, os.Piped);
     }
     return {
         owner: target.name,
@@ -239,7 +239,7 @@ pub Start :: (tools: Tools, target: Library, flags: string[], source: string) ->
 // Waits for a compile and records what built its object; false when it failed,
 // leaving no record so the next run compiles it again.
 pub Finish :: (compile: Running) -> bool {
-    if (compile.handle == 0 || os.Wait(compile.handle) != 0) {
+    if (compile.handle == 0 || os.Wait(compile.handle, -1) != 0) {
         if (os.Remove(Record(compile.object))) {
             os.Print(Join(["graph: removing compile record failed: ", compile.object]));
         }

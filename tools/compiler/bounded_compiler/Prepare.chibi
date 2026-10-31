@@ -82,8 +82,7 @@ Prepare :: (plan: lower.Plan, module: u64, function: u64, name: string,
             for (item in code) {
                 instruction: writer.Instruction = {op: opcodes[item.op], type: item.storage,
                                                    output: item.output, left: item.left, right: item.right, target: item.target,
-                                                   frame: 0, source: item.source, stack: -1, pin: 0, offset: item.offset,
-                                                   indirect: false, component_index: 0, node: 0, value: value_at, layout: 0,
+                                                   source: item.source, offset: item.offset, node: 0, value: value_at,
                                                    message: "", has_message: false};
                 instructions.append(instruction);
                 value_at += 1;

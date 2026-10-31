@@ -1,21 +1,33 @@
 package source_parser_tests
 
 import parser "project:source_parser"
+import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+import strings "core:strings"
 
 // Constructs the repository does not use, from the former Tree-sitter differential
 // corpus (test/language/syntax_corpus), one short source each: the valid ones parse
 // cleanly and the invalid ones are rejected with one diagnostic at the first token
 // the grammar cannot read. Sources stay short because a test has a fixed instruction budget.
 Accepts :: (text: string) {
-    assert(length(parser.Diagnose(text)) == 0, "the parser reads this source");
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            assert(length(nodes) > 0, "the parser reads this source");
+        case .Rejected(diagnostic):
+            assert(false, "the parser reads this source");
+    }
 }
 
 Rejects :: (text: string, line: int, column: int) {
-    d := parser.Diagnose(text);
-    assert(length(d) == 1, "one diagnostic");
-    assert(d[0].line == line, "diagnostic line");
-    assert(d[0].column == column, "diagnostic column");
-    assert(d[0].message != "", "diagnostic message");
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            assert(false, "the parser rejects this source");
+        case .Rejected(diagnostic):
+            assert(diagnostic.line == line, "diagnostic line");
+            assert(diagnostic.column == column, "diagnostic column");
+            assert(diagnostic.start >= 0 && diagnostic.end >= diagnostic.start, "diagnostic range");
+            assert(diagnostic.document == 0 && diagnostic.message != "", "diagnostic message");
+    }
 }
 
 @test
@@ -36,6 +48,31 @@ AcceptsForeignImport :: () {
 @test
 AcceptsForeignBlock :: () {
     Accepts("package p\nforeign import probe \"libprobe.a\"\nforeign probe {\n    chibi_probe_add :: (a: i32, b: i32) -> i32\n    chibi_probe_reset :: ()\n    chibi_probe_open :: (flags: u32) -> rawptr\n}\n");
+}
+
+@test
+AcceptsForceUnwrap :: () {
+    Accepts("package p\nF :: (x: int?, y: int?) -> int {\n    return x! + y!;\n}\n");
+}
+
+@test
+AcceptsOptionalMember :: () {
+    Accepts("package p\nF :: (a: P?) -> int {\n    return a?.b?.c ?? 0;\n}\n");
+}
+
+@test
+KeepsNotAndNotEqualApart :: () {
+    Accepts("package p\nF :: (a: bool, b: bool, c: int) -> bool {\n    return !a && !b || c != 1;\n}\n");
+}
+
+@test
+AcceptsFunctionTypeValues :: () {
+    Accepts("package p\nforeign import libc \"system:c\"\nforeign libc {\n    dlsym :: (handle: rawptr, name: cstring) -> fn(n: i32) -> i32\n}\nF :: (v: i32) -> i32 {\n    g: fn() -> i32 = dlsym(0, \"abs\");\n    return g();\n}\n");
+}
+
+@test
+RejectsASecondRootDeclaration :: () {
+    Rejects("Tools :: library {\n}\nMore :: library {\n}\n", 3, 1);
 }
 
 @test
@@ -121,4 +158,139 @@ RejectsUnterminatedString :: () {
 @test
 AcceptsABodyAfterADereferenceAndALineBreak :: () {
     Accepts("package p\n\nF :: (p: ^bool) -> int {\n    if p^ {}\n    return 8\n}\n");
+}
+
+// The field and kind of every node of a parsed source, as "field:kind", in tree order.
+Shape :: (text: string) -> string[] {
+    shape: string[] = [];
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            index: int = 0;
+            while (index < length(nodes)) {
+                shape.append(format_text("{}:{}", syntax.FieldNames()[fields[index]], parser.KindName(nodes[index].kind)));
+                index += 1;
+            }
+        case .Rejected(diagnostic):
+            assert(false, "the source parses");
+    }
+    return shape;
+}
+
+@test
+KindsFollowTokens :: () {
+    // A token leaf's kind is its token's, so node kinds start past the tokens.
+    assert(syntax.Comment >= tk.KindCount, "node kinds follow the token kinds");
+    assert(length(syntax.KindNames()) == syntax.KindCount - syntax.Comment, "every node kind has a name");
+    assert(length(syntax.FieldNames()) == syntax.FieldCount, "every field has a name");
+}
+
+@test
+KindNamesMatchTheirConstants :: () {
+    // The first and last kind of each group, the renamed words, and tokens.
+    kinds := [tk.OpenParen, tk.Plain, syntax.Comment, syntax.QueryGenerator, syntax.CallableBody,
+              syntax.YieldStatement, syntax.Type, syntax.ParenthesizedType, syntax.SourceFile,
+              syntax.ExitDeclaration, syntax.Fn, syntax.Error];
+    names := ["(", "plain", "comment", "query_generator", "callable_body", "yield_statement", "type",
+              "parenthesized_type", "source_file", "exit_declaration", "fn", "ERROR"];
+    index: int = 0;
+    while (index < length(kinds)) {
+        assert(parser.KindName(kinds[index]) == names[index], "a kind's name");
+        index += 1;
+    }
+    assert(syntax.FieldNames()[syntax.FieldAlias] == "alias" && syntax.FieldNames()[syntax.FieldVisibility] == "visibility",
+           "a field's name");
+}
+
+@test
+ReadsRenamedWords :: () {
+    text := "package p\n\nwhen A {\n}\n\nF :: (v: view int[], s: self Thing) {\n    reduce min(t, v)\n    reduce max(t, v)\n}\n";
+    shape := Shape(text);
+    Has(shape, ":when");
+    Has(shape, "trait:view");
+    Has(shape, "trait:self");
+    Has(shape, "operator:min");
+    Has(shape, "operator:max");
+}
+
+@test
+RejectionKeepsTheDiagnosticRowsBytes :: () {
+    // A long found token is cut to the 191 bytes a diagnostic row holds.
+    text := format_text("package p\n\nF :: () {{\n    a := 1 \"{}\"\n}}\n", strings.Repeat("x", 300));
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            assert(false, "the source is rejected");
+        case .Rejected(diagnostic):
+            assert(strings.ByteLength(diagnostic.message) == 191, "the message is cut");
+            assert(strings.HasPrefix(diagnostic.message, "Expected the end of the statement, found `\"xxx"),
+                   "the message says what was expected and found");
+    }
+}
+
+Has :: (shape: string[], item: string) {
+    found := false;
+    for (row in shape) {
+        if (row == item) {
+            found = true;
+        }
+    }
+    assert(found, "the shape holds the expected node");
+}
+
+Lacks :: (shape: string[], item: string) {
+    for (row in shape) {
+        assert(row != item, "the shape lacks the unexpected node");
+    }
+}
+
+@test
+ReadsCallableParameterType :: () {
+    text := "package p\n\nApply :: (value: int, transform: fn(value: int) -> int) -> int {\n    return transform(value)\n}\n";
+    Accepts(text);
+    shape := Shape(text);
+    Has(shape, ":callable_type");
+    Has(shape, ":fn");
+    Has(shape, "parameters:parameter_list");
+}
+
+@test
+ReadsInlineFunctionWithArrow :: () {
+    text := "package p\n\nF :: (limit: int) -> int {\n    return Apply(3, (value: int) => value > limit)\n}\n";
+    Accepts(text);
+    shape := Shape(text);
+    Has(shape, ":lambda_expression");
+    Has(shape, "body:callable_body");
+    Has(shape, ":=>");
+    Has(shape, "value:binary_expression");
+}
+
+@test
+ReadsInlineFunctionWithBlock :: () {
+    text := "package p\n\nF :: () -> int {\n    return Apply(4, (value: int) { return value * 2 })\n}\n";
+    Accepts(text);
+    Has(Shape(text), ":lambda_expression");
+}
+
+@test
+ReadsInlineFunctionWithFnAndResult :: () {
+    text := "package p\n\nF :: () -> int {\n    return Apply(4, fn(value: int) -> int { return value * 2 })\n}\n";
+    Accepts(text);
+    shape := Shape(text);
+    Has(shape, ":lambda_expression");
+    Has(shape, ":fn");
+}
+
+@test
+ReadsFnAsAName :: () {
+    text := "package p\n\nF :: (x: int) -> int {\n    return fn(x)\n}\n";
+    Accepts(text);
+    shape := Shape(text);
+    Has(shape, "value:call_expression");
+    Lacks(shape, ":lambda_expression");
+}
+
+@test
+ReadsDereferenceAsCondition :: () {
+    text := "package p\n\nF :: (p: ^bool) -> int {\n    if p^ {\n        return 1\n    }\n    return 0\n}\n";
+    Accepts(text);
+    Has(Shape(text), "condition:dereference_expression");
 }

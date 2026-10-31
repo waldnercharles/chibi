@@ -2,6 +2,8 @@ package package_compiler
 
 import snapshot "project:source_snapshot"
 import strings "core:strings"
+import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
 
 // Maps `[K: V]`, lowered to stage zero's map intrinsics: a map is a pointer
 // whose header names its collection type, types[record], a MapDecl. These
@@ -52,10 +54,10 @@ MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDe
     if (item.phase == 0) {
         count: int = 0;
         for (pair in Members(forest, item.node)) {
-            next.append(Expect(Field(forest, pair, "key"), types[map].key, 0, -1));
-            next.append(Expect(Field(forest, pair, "value"), types[map].value_storage, types[map].value_container,
+            next.append(Expect(Field(forest, pair, syntax.FieldKey), types[map].key, 0, -1));
+            next.append(Expect(Field(forest, pair, syntax.FieldValue), types[map].value_storage, types[map].value_container,
                                types[map].value_record));
-            next.append(Resume(Field(forest, pair, "value"), CopyValuePhase, 0, 0));
+            next.append(Resume(Field(forest, pair, syntax.FieldValue), CopyValuePhase, 0, 0));
             count += 2;
         }
         rest := Expect(item.node, item.storage, item.container, map);
@@ -71,10 +73,10 @@ MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDe
         key := values[top - item.a + index];
         value := values[top - item.a + index + 1];
         if (!SameType(types[map].key, 0, -1, key)) {
-            return Fail(forest, Field(forest, pair, "key"), document, "Map key type does not match");
+            return Fail(forest, Field(forest, pair, syntax.FieldKey), document, "Map key type does not match");
         }
         if (!Accepts(types, types[map].value_storage, types[map].value_container, types[map].value_record, value)) {
-            return Fail(forest, Field(forest, pair, "value"), document, "map value differs from the map's type");
+            return Fail(forest, Field(forest, pair, syntax.FieldValue), document, "map value differs from the map's type");
         }
         for (part in [key, value]) {
             cells.append(PartCell(part));
@@ -127,7 +129,7 @@ MapReadStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
     node := forest[index];
     declared := types[map.record];
     if (!SameType(declared.key, 0, -1, key)) {
-        return Fail(forest, Field(forest, index, "index"), document, "Map key type does not match");
+        return Fail(forest, Field(forest, index, syntax.FieldIndex), document, "Map key type does not match");
     }
     item: ValueType = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
     cells: Cell[] = [MapCell(map.record), KeyCell(types, map.record)];
@@ -168,29 +170,25 @@ MapStorePhase: int : 11;
 MapDeletePhase: int : 12;
 // The `c` of a map method's later work, which tells it from a call's.
 MapHasMark: int : -1;
-// Whether a binary operator is `not in`, the only one longer than three bytes.
-NotIn :: (forest: snapshot.SnapshotNode[], node: int, operator: string) -> bool {
-    return strings.ByteLength(operator) > 3 && Is(forest, Field(forest, node, "operator"), "not_in");
-}
 // Whether `node` calls the map method `name`, such as `m.has(k)`: a member
 // of a value, not of a package, as stage zero tells them apart. Every call
 // asks, so the member's length is checked before its text is read.
 MapMethod :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int, name: string) -> bool {
-    if (!Is(forest, node, "call_expression")) {
+    if (!Is(forest, node, syntax.CallExpression)) {
         return false;
     }
-    function := Field(forest, node, "function");
-    member := Field(forest, function, "member");
-    if (!Is(forest, function, "member_expression") ||
+    function := Field(forest, node, syntax.FieldFunction);
+    member := Field(forest, function, syntax.FieldMember);
+    if (!Is(forest, function, syntax.MemberExpression) ||
         forest[member].end - forest[member].start != strings.ByteLength(name) ||
         Text(forest, text, member) != name) {
         return false;
     }
-    root := Field(forest, function, "object");
-    while (Is(forest, root, "member_expression") || Is(forest, root, "index_expression")) {
-        root = Field(forest, root, "object");
+    root := Field(forest, function, syntax.FieldObject);
+    while (Is(forest, root, syntax.MemberExpression) || Is(forest, root, syntax.IndexExpression)) {
+        root = Field(forest, root, syntax.FieldObject);
     }
-    if (!Is(forest, root, "identifier")) {
+    if (!Is(forest, root, syntax.Identifier)) {
         return true;
     }
     found := Lookup(names, Text(forest, text, root));
@@ -199,7 +197,7 @@ MapMethod :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node
 // The local map `node` names, which a store or removal updates in place, as
 // stage zero updates an owned local; -1 for any other.
 LocalMap :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> int {
-    if (!Is(forest, node, "identifier")) {
+    if (!Is(forest, node, syntax.Identifier)) {
         return -1;
     }
     found := Lookup(names, Text(forest, text, node));
@@ -214,16 +212,16 @@ LocalMap :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node:
 // which would make the statement copy its code on every append.
 MapStoreStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], names: Name[],
                  found: int, item: Work, ops: Ops, node: snapshot.SnapshotNode) -> Step {
-    destination := Field(forest, item.node, "target");
-    if (Text(forest, text, Field(forest, item.node, "operator")) != "=") {
+    destination := Field(forest, item.node, syntax.FieldTarget);
+    if (Operator(forest, item.node) != tk.Eq) {
         return Fail(forest, item.node, document, "compound map assignment is not supported yet");
     }
-    if (LocalMap(forest, text, names, Field(forest, destination, "object")) < 0) {
+    if (LocalMap(forest, text, names, Field(forest, destination, syntax.FieldObject)) < 0) {
         return Fail(forest, destination, document, "map assignment needs a local map");
     }
     map := types[names[found].record];
-    next: Work[] = [Expect(Field(forest, destination, "index"), map.key, 0, -1),
-                    Expect(Field(forest, item.node, "value"), map.value_storage, map.value_container, map.value_record),
+    next: Work[] = [Expect(Field(forest, destination, syntax.FieldIndex), map.key, 0, -1),
+                    Expect(Field(forest, item.node, syntax.FieldValue), map.value_storage, map.value_container, map.value_record),
                     Resume(item.node, MapStorePhase, found, 0)];
     code: Code[] = [Instruction(ops.check, 0, 0, 0, 0, 0, node), ExpressionCode(ops, forest[destination])];
     return Step.Emitted(code, [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
@@ -233,14 +231,14 @@ MapStoreStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
 // map's point, the removal's, then the key.
 MapDeleteStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], names: Name[],
                   item: Work, ops: Ops, node: snapshot.SnapshotNode) -> Step {
-    object := Field(forest, Field(forest, item.node, "target"), "object");
-    if (node.kind != "delete_statement") {
+    object := Field(forest, Field(forest, item.node, syntax.FieldTarget), syntax.FieldObject);
+    if (node.kind != syntax.DeleteStatement) {
         removal := FirstMember(forest, item.node);
-        arguments := Members(forest, Field(forest, removal, "arguments"));
+        arguments := Members(forest, Field(forest, removal, syntax.FieldArguments));
         if (length(arguments) != 1) {
             return Fail(forest, removal, document, "Map method requires one key");
         }
-        object = Field(forest, Field(forest, removal, "function"), "object");
+        object = Field(forest, Field(forest, removal, syntax.FieldFunction), syntax.FieldObject);
     }
     return Step.Emitted([Instruction(ops.check, 0, 0, 0, 0, 0, node)], [], [], [], [], [], [], [],
                         [PlaceVisit(object), Resume(item.node, MapDeletePlacePhase, 0, 0)],
@@ -252,10 +250,10 @@ MapDeletePlaceIntrinsic: int : 61;
 MapPlaceDeleteStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], values: Value[],
                        top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
-    key := Field(forest, Field(forest, item.node, "target"), "index");
-    if (node.kind != "delete_statement") {
+    key := Field(forest, Field(forest, item.node, syntax.FieldTarget), syntax.FieldIndex);
+    if (node.kind != syntax.DeleteStatement) {
         removal := FirstMember(forest, item.node);
-        key = FirstMember(forest, Field(forest, removal, "arguments"));
+        key = FirstMember(forest, Field(forest, removal, syntax.FieldArguments));
     }
     if (item.phase == MapDeletePlacePhase) {
         place := values[top - 1];
@@ -342,12 +340,12 @@ MapUpdateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
 MapHasStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], values: Value[],
                top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
-    negated := Is(forest, Field(forest, item.node, "operator"), "not_in");
-    map := Field(forest, item.node, "right");
-    key := Field(forest, item.node, "left");
-    if (node.kind == "call_expression") {
-        map = Field(forest, Field(forest, item.node, "function"), "object");
-        arguments := Members(forest, Field(forest, item.node, "arguments"));
+    negated := Is(forest, Field(forest, item.node, syntax.FieldOperator), syntax.NotIn);
+    map := Field(forest, item.node, syntax.FieldRight);
+    key := Field(forest, item.node, syntax.FieldLeft);
+    if (node.kind == syntax.CallExpression) {
+        map = Field(forest, Field(forest, item.node, syntax.FieldFunction), syntax.FieldObject);
+        arguments := Members(forest, Field(forest, item.node, syntax.FieldArguments));
         if (length(arguments) != 1) {
             return Fail(forest, item.node, document, "Map method requires one key");
         }
@@ -439,7 +437,7 @@ MapItemCells :: (types: TypeDecl[], map: int, key: bool) -> Cell[] {
 MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], held: Value,
                item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
-    if (Field(forest, item.node, "reverse") >= 0) {
+    if (Field(forest, item.node, syntax.FieldReverse) >= 0) {
         return Fail(forest, item.node, document, "for < reverses only ranges and arrays");
     }
     map := types[held.record];
@@ -476,7 +474,7 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
                   {storage: SlotStorage(map.value_storage, map.value_container, target), kind: SlotKind(map.value_storage, map.value_container)}]);
     code.extend(MapItemCode(types, held.record, b + 1, b + 3, false, at.cell, at.host, value - 3, ops, target,
                             node));
-    value_node := Field(forest, item.node, "name");
+    value_node := Field(forest, item.node, syntax.FieldName);
     binding: Name = {owned: false, name: Text(forest, text, value_node), place: LocalPlace, index: at.local + 1,
                      storage: map.value_storage, container: map.value_container, record: map.value_record, writable: false,
                      node: value_node};
@@ -501,7 +499,7 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     }
     bound: Name[] = [binding];
     code.append(SymbolCode(ops, value_node, node));
-    key_node := Field(forest, item.node, "key");
+    key_node := Field(forest, item.node, syntax.FieldKey);
     if (key_node >= 0 && Text(forest, text, key_node) == binding.name) {
         return Fail(forest, value_node, document, format_text("Duplicate declaration '{}'", binding.name));
     }
@@ -521,7 +519,7 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
         bound.append(key);
         code.append(SymbolCode(ops, key_node, node));
     }
-    next: Work[] = [Visit(Field(forest, item.node, "body")), Resume(item.node, 4, 0, 0)];
+    next: Work[] = [Visit(Field(forest, item.node, syntax.FieldBody)), Resume(item.node, 4, 0, 0)];
     return Step.Emitted(code, slots, locals, cells, hosts, roots, [], bound, next, 0, NoValue(), NoValue(),
                         [head, leave]);
 }

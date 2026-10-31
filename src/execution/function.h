@@ -13,6 +13,7 @@
 #include <stdio.h>
 
 typedef struct behavior_function behavior_function;
+typedef struct behavior_collection_owners behavior_collection_owners;
 /* Actual entries through the interpreter/runner/Wasm path, including outlined
  * calls and resumes. Inspected and fallback fields are subsets, not additional
  * entries. Direct generated-C and batch/system calls are outside this measure. */
@@ -261,8 +262,9 @@ typedef struct behavior_function_context
     const pin_value *argument_source; /* Original C bank while value parameters are live. */
     bool owned_host;
     bool owned_data;
-    /* Logical collection owners; borrowed VM headers do not add ownership. */
-    pin_value *collection_owners;
+    /* Logical collection owners; borrowed VM headers do not add ownership.
+     * NULL until the context owns one; emptying keeps the allocation. */
+    behavior_collection_owners *collection_owners;
     /* Return values use the canonical Return node's input pin indices. */
     pin_value *results;
     uint64_t returned_node_id;
@@ -450,10 +452,15 @@ void behavior_function_collection_transfer(
 );
 /* Whether the context owns a collection the value holds. */
 bool behavior_function_collection_holds(const behavior_function_context *, const pin_value *);
+/* Whether the context owns every collection the value reaches. A value that
+ * reaches one it does not own, a lent argument's or a caller's data, is
+ * borrowed: moving it out of the context would free it under its owner. */
+bool behavior_function_collection_owns(const behavior_function_context *, const pin_value *);
 /* Releases the collections the context owns; empty keeps the list's capacity. */
 void behavior_function_collection_empty(behavior_function_context *);
 void behavior_function_collection_clear(behavior_function_context *);
 void behavior_function_collection_trace(const behavior_function_context *, arena_marker, void *);
+size_t behavior_function_collection_bytes(const behavior_function_context *);
 const char *behavior_function_host_action(behavior_function_context *, int target, uint64_t node_id);
 void behavior_function_prepare_host(const behavior_function *function, behavior_function_context *ctx);
 void behavior_function_release_host(behavior_function_context *ctx);

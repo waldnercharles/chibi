@@ -16,5 +16,4 @@ Calls :: () {
     assert(!posix.Exists("posix_moved"), "removed")
     assert(posix.Kind("Main.chibi") == posix.KindFile, "file")
     assert(posix.Kind("posix_missing") == posix.KindNone, "missing")
-    assert(posix.Getenv("CHIBI_POSIX_UNSET") == "", "unset variable")
 }

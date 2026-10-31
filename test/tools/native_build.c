@@ -1081,8 +1081,8 @@ static const char *const LOOP_FIRST = "Loop :: library {\n"
                                       "        count += 1;\n"
                                       "        return 0;\n"
                                       "    }\n"
-                                      "}\n",
-                         LOOP_EDITED = "Loop :: library {\n"
+                                      "}\n";
+static const char *const LOOP_EDITED = "Loop :: library {\n"
                                        "    Main :: () -> int { return 9; }\n"
                                        "    Frame :: () -> int {\n"
                                        "        count: retain int = 0;\n"

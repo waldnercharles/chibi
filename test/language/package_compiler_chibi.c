@@ -1,6 +1,5 @@
 #include "package_compiler_chibi.h"
 
-#include "authoring/native_bindings.h"
 #include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"

@@ -6,8 +6,8 @@ import strings "core:strings"
 
 // The driver's admission, cleanup and publication rules, with
 // fixtures/stage-tool.sh standing in for opt, llc and the linker. Run takes
-// the build host; the publication cases run the driver on Linux in a host of
-// their own with an empty PATH, so every tool runs by its absolute path.
+// the build host; the publication cases run the driver in a host of their
+// own with an empty PATH, so every tool runs by its absolute path.
 
 Path :: (parts: string[]) -> string {
     return strings.Join(parts, "");
@@ -111,9 +111,9 @@ CleanupRemovesOnlyOwnedNamesAndPreservesSiblings :: (scratch: string) {
     assert(driver.Cleanup(partial) && !Exists(partial), "an owned partial is removed");
 }
 
-// Target admits each native_abi target's triple with the layout LLVM 18 gives
-// it, and nothing else: no crossed pair, no other LLVM major's arm64 layout,
-// and exactly one of each line.
+// Target admits each native_abi target's triple with a layout LLVM gives it,
+// and nothing else: no crossed pair, no unmeasured layout, and exactly one of
+// each line.
 TargetAdmitsEachTripleWithItsOwnLayout :: () {
     triples := ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"];
     layouts := ["e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
@@ -125,9 +125,13 @@ TargetAdmitsEachTripleWithItsOwnLayout :: () {
             assert((driver.Target(text) >= 0) == (t == l), "a triple with its own layout only");
         }
     }
+    // LLVM 19's and LLVM 22's arm64 layouts.
+    for (layout in ["e-m:o-i64:64-i128:128-n32:64-S128-Fn32", "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32"]) {
+        assert(driver.Target(Path(["target datalayout = \"", layout, "\"\ntarget triple = \"arm64-apple-macosx11.0.0\"\n"])) == 1, "a later LLVM's arm64 layout");
+    }
     rejected := [
-        // LLVM 19's arm64 layout.
-        "target datalayout = \"e-m:o-i64:64-i128:128-n32:64-S128-Fn32\"\ntarget triple = \"arm64-apple-macosx11.0.0\"\n",
+        // A big-endian arm64 layout.
+        "target datalayout = \"E-m:o-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"arm64-apple-macosx11.0.0\"\n",
         "target datalayout = \"e-m:o-i64:64-i128:128-n32:64-S128\"\ntarget triple = \"aarch64-apple-darwin\"\n",
         "target datalayout = \"e-m:o-i64:64-i128:128-n32:64-S128\"\n",
         "target triple = \"arm64-apple-macosx11.0.0\"\n",
@@ -239,6 +243,24 @@ ObjectRelocatesToolsWithSpacesWithoutALinkerOrPath :: (scratch: string) {
     }
 }
 
+// A macOS program links with lld's darwin flavor against a libSystem stub that
+// exports the C functions its module declares, and dyld calls main.
+ExecutableLinksMacOSPrograms :: (scratch: string) {
+    fixture := Reset(scratch, "macos executable");
+    Write(fixture.input, strings.Replace(Read(fixture.input), "target triple = \"x86_64-unknown-linux-gnu\"",
+                                         "target triple = \"arm64-apple-macosx11.0.0\"\ndeclare i32 @abs(i32)", -1));
+    output := fixture.output;
+    assert(Drive(fixture, true, "0") == 0, "the program builds");
+    link := Path(["-flavor\ndarwin\n-arch\narm64\n-platform_version\nmacos\n11.0.0\n11.0.0\n-dead_strip\n-e\n_main\n",
+                  output, ".partial/object.o\n", output, ".partial/start.o\n", output, ".partial/libSystem.tbd\n-o\n", output, ".partial/program\n"]);
+    assert(Equals(Path([fixture.root, "/linker tool.argv"]), link), "the macOS link's argv");
+    stub := Read(Path([output, "/libSystem.tbd"]));
+    assert(strings.Contains(stub, "install-name: '/usr/lib/libSystem.B.dylib'\n"), "the stub names libSystem");
+    assert(strings.Contains(stub, "symbols: [ _abs, _abort, _calloc, _memcpy, _memmove, _memset, dyld_stub_binder ]"), "the stub exports what the program imports");
+    start := Read(Path([output, "/start.ll"]));
+    assert(strings.Contains(start, "target triple = \"arm64-apple-macosx11.0.0\"") && strings.Contains(start, "define i32 @main() {"), "dyld calls main");
+}
+
 ExecutableLinksWithTheNamedLinkerAndStartObject :: (scratch: string) {
     fixture := Reset(scratch, "linked executable");
     for (mode in Modes()) {
@@ -253,12 +275,12 @@ ExecutableLinksWithTheNamedLinkerAndStartObject :: (scratch: string) {
         receipt := Receipt(fixture);
         assert(strings.Contains(receipt, "output-kind executable\n") && strings.Contains(receipt, Path(["\nlinker ", fixture.linker, "\n"])), "an executable receipt");
         assert(strings.Contains(receipt, "\nstart-object-sha256 ") && strings.Contains(receipt, "stage llc-start\n") && strings.Contains(receipt, "stage link\n"), "the receipt's start object and link");
-        assert(os.Run(["/usr/bin/test", "-x", Path([output, "/program"])]) == 0, "an executable program");
+        assert(os.Run(["/bin/test", "-x", Path([output, "/program"])]) == 0, "an executable program");
     }
 }
 
 // Real LLVM tools and no C compiler: the program is the emitted object and its
-// start object alone.
+// start object alone, for the host, which runs it.
 ExecutableLinksLLVMObjectsWithoutACCompiler :: (scratch: string, bin: string) {
     if (bin == "") {
         os.Print("native driver: set CHIBI_LLVM_BIN to link real LLVM objects");
@@ -268,6 +290,9 @@ ExecutableLinksLLVMObjectsWithoutACCompiler :: (scratch: string, bin: string) {
     fixture.opt = Path([bin, "/opt"]);
     fixture.llc = Path([bin, "/llc"]);
     fixture.linker = Path([bin, "/ld.lld"]);
+    if (os.Platform() == "Darwin") {
+        Write(fixture.input, strings.Replace(Read(fixture.input), "x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", -1));
+    }
     for (mode in Modes()) {
         fixture.output = Path([fixture.root, format_text("/llvm O{}", mode)]);
         assert(Drive(fixture, true, format_text("{}", mode)) == 0 && os.Run([Path([fixture.output, "/program"])]) == 42, "the program exits 42");
@@ -314,13 +339,14 @@ ChangedToolIdentityPreventsPublicationAfterObjectCreation :: (scratch: string) {
     }
 }
 
-// The Linux publication cases, under the empty PATH Run gives them.
+// The publication cases, under the empty PATH Run gives them.
 pub Publication :: () -> int {
     arguments := os.Arguments();
     scratch := arguments[0];
     PublicationPreservesExistingFilesAndStalePartialBytes(scratch);
     ObjectRelocatesToolsWithSpacesWithoutALinkerOrPath(scratch);
     ExecutableLinksWithTheNamedLinkerAndStartObject(scratch);
+    ExecutableLinksMacOSPrograms(scratch);
     ExecutableLinksLLVMObjectsWithoutACCompiler(scratch, arguments[1]);
     MissingToolsRejectBeforeReservingOutput(scratch);
     FailedSignalledAndMissingObjectsNeverPublish(scratch);
@@ -342,21 +368,17 @@ pub Run :: () -> int {
     TargetAdmitsEachTripleWithItsOwnLayout();
     LibraryNamesComeFromTheDeclarationAlone();
     OptimizerTraceDistinguishesPassesAndSnapshotPaths(scratch);
-    if (os.Platform() != "Linux") {
-        os.Print("native driver: the publication cases need Linux");
-    } else {
-        result := os.Capture(["/usr/bin/env", "PATH=", Path(["CHIBI_COMPILER_CACHE=", checkout, "/.chibi/compiler-cache"]), arguments[0],
-                              "--compiler", Path([checkout, "/tools/compiler"]), "--compiler-core", Path([checkout, "/packages/core"]),
-                              "--root", checkout, "--source", Path([checkout, "/test/native_aot/driver/DriverTests.chibi"]),
-                              "--core", Path([checkout, "/packages/core"]), "--collection", Path(["native_aot=", checkout, "/tools/native_aot/driver"]),
-                              "--entry", "Publication", "--timeout-ms", "600000", "--", scratch, os.Getenv("CHIBI_LLVM_BIN")]);
-        log := Path([result.stdout, result.stderr]);
-        if (result.status != 0) {
-            os.Print(log);
-        }
-        assert(result.status == 0, "the publication cases");
-        assert(strings.Contains(log, "LLVM object emission failed") && strings.Contains(log, "tool identity changed during build"), "the failures say why");
+    result := os.Capture(["/usr/bin/env", "PATH=", Path(["CHIBI_COMPILER_CACHE=", checkout, "/.chibi/compiler-cache"]), arguments[0],
+                          "--compiler", Path([checkout, "/tools/compiler"]), "--compiler-core", Path([checkout, "/packages/core"]),
+                          "--root", checkout, "--source", Path([checkout, "/test/native_aot/driver/DriverTests.chibi"]),
+                          "--core", Path([checkout, "/packages/core"]), "--collection", Path(["native_aot=", checkout, "/tools/native_aot/driver"]),
+                          "--entry", "Publication", "--timeout-ms", "600000", "--", scratch, os.Getenv("CHIBI_LLVM_BIN")]);
+    log := Path([result.stdout, result.stderr]);
+    if (result.status != 0) {
+        os.Print(log);
     }
+    assert(result.status == 0, "the publication cases");
+    assert(strings.Contains(log, "LLVM object emission failed") && strings.Contains(log, "tool identity changed during build"), "the failures say why");
     assert(os.Run(["/bin/rm", "-rf", scratch]) == 0, "the scratch cleanup");
     return 0;
 }

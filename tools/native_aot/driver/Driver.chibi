@@ -2,8 +2,8 @@ package driver
 
 import strings "core:strings"
 
-// Bounded LLVM CLI consumer. It runs on Linux x64, and its objects and
-// programs may be for any admitted target. The build host is a transitional
+// Bounded LLVM CLI consumer. It runs on Linux x64 and macOS arm64, and its
+// objects and programs may be for any admitted target. The build host is a transitional
 // capability provider, not part of the emitted executable or a C exemption.
 Join :: (parts: string[]) -> string {
     return strings.Join(parts, "");
@@ -32,18 +32,23 @@ pub Tool :: (path: string) -> string {
     return resolved;
 }
 
-// Each admitted triple, in native_abi's target order, with the canonical
-// data layout LLVM 18 gives it. The arm64 layout changes with the LLVM major,
-// so another major's layout is rejected rather than trusted.
+// Each admitted triple, in native_abi's target order, with each canonical
+// data layout LLVM gives it, as measured. The arm64 layout changed with LLVM
+// 19 (-Fn32) and again by 22 (the x86 address spaces), and each is the same
+// ABI; any other layout is rejected rather than trusted.
 Admitted :: (triple: string, layout: string) -> int {
     triples := ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"];
+    targets: int[] = [0, 1, 1, 1, 2];
     layouts := ["e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
                 "e-m:o-i64:64-i128:128-n32:64-S128",
+                "e-m:o-i64:64-i128:128-n32:64-S128-Fn32",
+                "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32",
                 "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"];
-    for (index in 0..<length(triples)) {
-        if (triple == Join(["target triple = \"", triples[index], "\""]) &&
+    for (index in 0..<length(layouts)) {
+        target := targets[index];
+        if (triple == Join(["target triple = \"", triples[target], "\""]) &&
             layout == Join(["target datalayout = \"", layouts[index], "\""])) {
-            return index;
+            return target;
         }
     }
     return -1;
@@ -106,24 +111,13 @@ Program :: (target: int) -> string {
 //
 // On Linux it is shaped like Odin's no-CRT `_start` and musl's crt1: clear the
 // frame pointer, align the stack down to 16 bytes, call the entry, then exit.
-// On macOS dyld calls `main` and exits with its result, so `main` only calls
-// the entry. On Windows `mainCRTStartup` passes the result to ExitProcess, as
-// rustc's no-CRT programs do, rather than returning while the loader's
-// threads may still run. Windows code that uses floating point references
+// A macOS program always links libSystem, so StartDynamic starts it. On
+// Windows `mainCRTStartup` passes the result to ExitProcess, as rustc's no-CRT
+// programs do, rather than returning while the loader's threads may still run. Windows code that uses floating point references
 // `_fltused` and large frames call `__chkstk`, both of which the C runtime
 // would define. This `__chkstk` is compiler-rt's x86-64 probe: it touches
 // each page from the stack pointer down by RAX bytes and changes no register.
 Start :: (target: int) -> string {
-    if (target == 1) {
-        return Join([
-            "target triple = \"arm64-apple-macosx11.0.0\"\n",
-            "declare i32 @chibi_scalar()\n",
-            "define i32 @main() {\n",
-            "  %status = call i32 @chibi_scalar()\n",
-            "  ret i32 %status\n",
-            "}\n"
-        ]);
-    }
     if (target == 2) {
         return Join([
             "target triple = \"x86_64-pc-windows-msvc\"\n",
@@ -174,13 +168,48 @@ Start :: (target: int) -> string {
     ]);
 }
 
-// The macOS program links libSystem, which dyld requires of every program,
-// and imports nothing from it, so a text stub that names the library stands
-// in for the SDK's. The Windows program imports ExitProcess from kernel32,
-// whose import library lld-link writes from a definition, as rustc writes
-// raw-dylib imports, so no Windows SDK is needed either.
-LibSystem :: () -> string {
-    return "--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '/usr/lib/libSystem.B.dylib'\n...\n";
+// A macOS program links libSystem, which dyld requires of every program and
+// which re-exports the C library. A text stub that names it stands in for the
+// SDK's, as Zig's stubs do, so a program links on any host and with any Xcode:
+// lld reads only the stub formats it knows, and newer SDKs name architectures
+// older lld rejects. The stub exports `symbols`, which dyld then binds in
+// libSystem. The Windows program imports ExitProcess from kernel32, whose
+// import library lld-link writes from a definition, as rustc writes raw-dylib
+// imports, so no Windows SDK is needed either.
+LibSystem :: (symbols: string[]) -> string {
+    return Join(["--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '/usr/lib/libSystem.B.dylib'\n",
+                 "exports:\n  - targets: [ arm64-macos ]\n    symbols: [ ", strings.Join(symbols, ", "), " ]\n...\n"]);
+}
+// The C symbols a macOS program imports, by their Mach-O names: each function
+// the module declares, which its foreign calls name, then what the start
+// object's context calls, the copies llc may lower to calls, and dyld's
+// binder for the lazy stubs lld writes for them.
+Imports :: (module: string) -> string[] {
+    symbols: string[] = [];
+    for (line in strings.SplitLines(module)) {
+        if (!strings.HasPrefix(line, "declare ")) {
+            continue;
+        }
+        at := strings.Index(line, "@");
+        end := strings.Index(line, "(");
+        if (at < 0 || end <= at) {
+            continue;
+        }
+        name := strings.Slice(line, at + 1, end - at - 1);
+        if (!strings.HasPrefix(name, "llvm.")) {
+            symbols.append(Join(["_", name]));
+        }
+    }
+    for (name in ["_abort", "_calloc", "_memcpy", "_memmove", "_memset", "dyld_stub_binder"]) {
+        listed := false;
+        for (symbol in symbols) {
+            listed = listed || symbol == name;
+        }
+        if (!listed) {
+            symbols.append(name);
+        }
+    }
+    return symbols;
 }
 Kernel32 :: () -> string {
     return "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n";
@@ -193,8 +222,11 @@ Kernel32 :: () -> string {
 Link :: (linker: string, target: int, partial: string, object: string, start: string, program: string,
          libraries: string[]) -> string[] {
     if (target == 1) {
-        return [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
-                "-dead_strip", "-e", "_main", object, start, Join([partial, "/libSystem.tbd"]), "-o", program];
+        command := [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
+                    "-dead_strip", "-e", "_main", object, start];
+        command.extend(libraries);
+        command.extend([Join([partial, "/libSystem.tbd"]), "-o", program]);
+        return command;
     }
     if (target == 2) {
         return [linker, "-flavor", "link", "/nologo", "/subsystem:console", "/entry:mainCRTStartup",
@@ -243,13 +275,14 @@ LinkDynamic :: (linker: string, libc: string[], object: string, start: string, p
     return command;
 }
 
-// The module that calls the program's entry from libc's C runtime. An entry
+// The module that calls the program's entry from libc's C runtime, or on
+// macOS from dyld, which calls main and exits with its result. An entry
 // that takes the runtime context gets one whose allocate is libc's calloc and
 // whose index failure aborts; formatting text is not available to a program.
-StartDynamic :: (context: bool) -> string {
+StartDynamic :: (triple: string, context: bool) -> string {
     if (!context) {
         return Join([
-            "target triple = \"x86_64-unknown-linux-gnu\"\n",
+            "target triple = \"", triple, "\"\n",
             "declare i32 @chibi_scalar()\n",
             "define i32 @main() {\n",
             "  %status = call i32 @chibi_scalar()\n",
@@ -258,7 +291,7 @@ StartDynamic :: (context: bool) -> string {
         ]);
     }
     return Join([
-        "target triple = \"x86_64-unknown-linux-gnu\"\n",
+        "target triple = \"", triple, "\"\n",
         "declare ptr @calloc(i64, i64)\n",
         "declare void @abort() noreturn\n",
         "declare i32 @chibi_scalar(ptr)\n",
@@ -353,8 +386,8 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         build.report("native-aot: mode must be 0 or 2");
         return 2;
     }
-    if (build.platform() != "Linux" || !Path(arguments[0]) || !Path(arguments[1])) {
-        build.report("native-aot: Linux and absolute input/output paths are required");
+    if (!Path(arguments[0]) || !Path(arguments[1])) {
+        build.report("native-aot: absolute input/output paths are required");
         return 2;
     }
     input := build.resolve_path(arguments[0]);
@@ -427,14 +460,15 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     }
     program := Join([partial, "/", Program(target)]);
     libraries := LinkedLibraries(text);
-    if (target != 0 && length(libraries) > 0) {
-        return Failed(partial, "foreign libraries link on Linux x86-64 only", 2);
+    if (target == 2 && length(libraries) > 0) {
+        return Failed(partial, "foreign libraries link on Linux and macOS only", 2);
     }
     dynamic := executable && linkage == "dynamic" && target == 0;
     // A program that allocates takes the runtime context, which only a dynamic
-    // link supplies, from libc's allocator.
+    // link supplies, from libc's allocator. A macOS program always links
+    // libSystem dynamically.
     takes_context := strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx)");
-    if (executable && takes_context && !dynamic) {
+    if (executable && takes_context && !dynamic && target != 1) {
         return Failed(partial, "a program that allocates links libc dynamically; omit --static", 2);
     }
     libc: string[] = [];
@@ -461,7 +495,10 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     if (executable) {
         start_text := Start(target);
         if (dynamic) {
-            start_text = StartDynamic(takes_context);
+            start_text = StartDynamic("x86_64-unknown-linux-gnu", takes_context);
+        }
+        if (target == 1) {
+            start_text = StartDynamic("arm64-apple-macosx11.0.0", takes_context);
         }
         if (!build.write_file(start, start_text)) {
             return Failed(partial, "start module", 1);
@@ -473,7 +510,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         if (build.file_kind(start_object) != "file") {
             return Failed(partial, "start object emission", 1);
         }
-        if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem())) {
+        if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem(Imports(build.read_file(module))))) {
             return Failed(partial, "libSystem stub", 1);
         }
         if (target == 2) {

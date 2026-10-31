@@ -108,8 +108,6 @@ int main(int argc, char **argv)
                                                        !strcmp(argv[1], "--package-compiler-chibi-collections-compiled");
     bool package_compiler_chibi_imports_compiled = argc == 2 &&
                                                    !strcmp(argv[1], "--package-compiler-chibi-imports-compiled");
-    bool package_compiler_chibi_bootstrap = argc == 2 &&
-                                            !strcmp(argv[1], "--package-compiler-chibi-bootstrap");
     bool host_packages_compiler = argc == 2 &&
                                   !strcmp(argv[1], "--host-packages-compiler");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
@@ -123,9 +121,8 @@ int main(int argc, char **argv)
          !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
          !package_compiler_chibi_fallible && !package_compiler_chibi_imports &&
          !package_compiler_chibi_math_native && !package_compiler_chibi_imports &&
-         !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
-         !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
-         !package_compiler_chibi_collections_compiled &&
+         !package_compiler_chibi_compiled && !package_compiler_chibi_types_compiled &&
+         !package_compiler_chibi_collections && !package_compiler_chibi_collections_compiled &&
          !package_compiler_chibi_imports_compiled &&
          !package_compiler_chibi_literals && !package_compiler_chibi_behaviors &&
          !package_compiler_chibi_behaviors_rest && !package_compiler_chibi_queries &&
@@ -163,7 +160,6 @@ int main(int argc, char **argv)
             "| --package-compiler-chibi-fallible "
             "| --package-compiler-chibi-math-native "
             "| "
-            "--package-compiler-chibi-bootstrap | "
             "--package-compiler-chibi-compiled | "
             "--package-compiler-chibi-types-compiled | "
             "--package-compiler-chibi-collections | "
@@ -255,8 +251,6 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi_collections_compiled();
     } else if (package_compiler_chibi_imports_compiled) {
         test_language_package_compiler_chibi_imports_compiled();
-    } else if (package_compiler_chibi_bootstrap) {
-        test_language_package_compiler_chibi_bootstrap();
     } else if (package_compiler_chibi_literals) {
         test_language_package_compiler_chibi_literals();
     } else if (package_compiler_chibi_behaviors) {

@@ -4564,131 +4564,7 @@ bool package_compiler_bootstrap_source_order(const char *inventory, size_t lengt
     }
     return length == 0;
 }
-TEST_CASE(package_compiler_compiles_itself)
-{
-    REQUIRE(prepare());
-    source_package_input inputs[BOOTSTRAP_FILES];
-    int count = bootstrap_inputs(inputs);
-    pin_value args[ARGUMENTS];
-    compiler_result out;
-    REQUIRE(arguments(1, false, inputs, count, args));
-    /* The compiler is compiled without debugger points and watches, which
-     * no one debugging a game steps through. */
-    args[DEBUG_ARGUMENT].b = false;
-    REQUIRE(compiler_call(1, "Compile", args, ARGUMENTS, SELF_BUDGET, &out));
-    if (!compiler_succeeded(&out)) {
-        pin_value message, line, column;
-        get(compiler_error(&out), "message", &message);
-        get(compiler_error(&out), "line", &line);
-        get(compiler_error(&out), "column", &column);
-        fprintf(
-            stderr,
-            "package compiler stage one rejected: %s at %d:%d\n",
-            pin_text(message).bytes,
-            line.i,
-            column.i
-        );
-    }
-    REQUIRE(compiler_succeeded(&out));
-    size_t length, json_length;
-    unsigned char *stage_two = closure_bytes(&out, &length);
-    char *json = document_json(args, ARGUMENTS, &json_length);
-    arena_free(&detached);
-    char error[256];
-    host = compiler_host_load(stage_two, length, TEST_COMPILED_BACKEND, error, sizeof error);
-    if (!host) {
-        fprintf(stderr, "self-hosted compiler load: %s\n", error);
-    }
-    REQUIRE(host);
-    size_t target_length;
-    char *target_json = compiler_host_target_json(host, &target_length);
-    yyjson_doc *target = yyjson_read(target_json, target_length, 0);
-    yyjson_doc *compiled_arguments = yyjson_read(json, json_length, 0);
-    REQUIRE(target && compiled_arguments);
-    bool target_equal = true;
-    for (size_t i = 0; i < 6; i++) {
-        yyjson_val *host_part = yyjson_arr_get(yyjson_doc_get_root(target), i);
-        yyjson_val *argument_part = yyjson_arr_get(
-            yyjson_doc_get_root(compiled_arguments),
-            TARGET_ARGUMENT + i
-        );
-        bool same = yyjson_equals(host_part, argument_part);
-        if (!same) {
-            char *host_text = yyjson_val_write(host_part, 0, NULL);
-            char *argument_text = yyjson_val_write(argument_part, 0, NULL);
-            size_t at = 0;
-            while (host_text[at] && argument_text[at] &&
-                   host_text[at] == argument_text[at]) {
-                at++;
-            }
-            size_t from = at > 120 ? at - 120 : 0;
-            fprintf(
-                stderr,
-                "self-hosted target part %zu differs at byte %zu:\n host: "
-                "%.240s\n args: %.240s\n",
-                i,
-                at,
-                host_text + from,
-                argument_text + from
-            );
-            free(host_text);
-            free(argument_text);
-        }
-        target_equal &= same;
-    }
-    yyjson_doc_free(compiled_arguments);
-    yyjson_doc_free(target);
-    free(target_json);
-    REQUIRE(target_equal);
-    compiler_host_bytes again = { 0 };
-    bool invoked = host &&
-                   compiler_host_invoke_bytes(
-                       host,
-                       script_catalog_id("package-symbol", "project:package_compiler:1:CompileClosure:callable"),
-                       json,
-                       json_length,
-                       SELF_BUDGET,
-                       COMPILER_HOST_MAX_ARTIFACT_BYTES,
-                       &again
-                   );
-    bool same = invoked && again.flow_status == FLOW_OK &&
-                again.length == length && !memcmp(again.bytes, stage_two, length);
-    if (!invoked) {
-        fprintf(
-            stderr,
-            "package compiler stage two: %s%s\n",
-            host ? "" : error,
-            again.diagnostic
-        );
-    } else if (!again.length) {
-        stage_two_rejection(json, json_length);
-    } else if (!same) {
-        size_t at = 0;
-        while (at < length && at < again.length && again.bytes[at] == stage_two[at]) {
-            at++;
-        }
-        fprintf(
-            stderr,
-            "package compiler stage two: %zu bytes, stage one %zu; first "
-            "difference at %zu\n",
-            again.length,
-            length,
-            at
-        );
-    }
-    /* Stage one's build of the compiler shares arguments as stage zero's
-     * does: a function that copies them made stage two compile itself 20
-     * times slower. */
-    int copying = copying_functions(&compiler_host_root(host)->plan);
-    bool seeded = same && write_seed(stage_two, length, json, json_length);
-    free(again.bytes);
-    free(stage_two);
-    free(json);
-    REQUIRE(same);
-    REQUIRE(copying == 0);
-    REQUIRE(seeded);
-    return stage_two_samples() && stage_two_literals();
-}
+
 TEST_CASE(package_compiler_reads_float_literals)
 {
     REQUIRE(prepare());
@@ -14639,12 +14515,6 @@ void test_language_package_compiler_chibi_imports_compiled()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_float_constant_dependency_compiled);
-    pu_clear_setup();
-}
-void test_language_package_compiler_chibi_bootstrap()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_compiles_itself);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_literals()

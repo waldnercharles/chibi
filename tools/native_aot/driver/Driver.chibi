@@ -1069,11 +1069,37 @@ Emitter :: (host: string, artifact: string, compiler: string, core: string, work
         build.report(Join(["native: the scalar emitter did not compile: ", build.last_stderr()]));
         return false;
     }
-    if (!build.rename(output, emitter)) {
+    // A copy, published under its name at once, since a cache on another file
+    // system cannot take a rename; builds that compile it at the same time
+    // publish the same bytes.
+    if (!build.copy_file(output, emitter)) {
         build.report(Join(["native: cannot publish the scalar emitter to ", emitter]));
         return false;
     }
     return true;
+}
+
+// Where the compiled scalar emitter is kept. Its key covers everything that
+// decides its bytes, so one copy serves every package folder and checkout on
+// the machine: the compiler cache's, as the build host finds it
+// (CHIBI_COMPILER_CACHE, "off" for none, else chibi/compiler-cache under
+// $XDG_CACHE_HOME or ~/.cache), named like the cache's own entries so its
+// budget counts and evicts it. Without a cache it stays in `folder`.
+EmitterPath :: (folder: string, key: string) -> string {
+    cache := build.environment("CHIBI_COMPILER_CACHE");
+    if (cache == "") {
+        xdg := build.environment("XDG_CACHE_HOME");
+        home := build.environment("HOME");
+        if (xdg != "") {
+            cache = Join([xdg, "/chibi/compiler-cache"]);
+        } else if (home != "") {
+            cache = Join([home, "/.cache/chibi/compiler-cache"]);
+        }
+    }
+    if (cache == "" || cache == "off" || !build.make_directory(cache)) {
+        return Join([folder, "/emitter-", strings.Slice(key, 0, 16), ".chibip"]);
+    }
+    return Join([cache, "/native-emitter-", key, ".bin"]);
 }
 
 // Why a published output does not hold the program its key names, or "". The
@@ -1418,7 +1444,7 @@ pub Native :: () -> int {
     }
     target_json := build.trim(build.read_file(target));
     facts := Elements(target_json);
-    emitter := Join([folder, "/emitter-", strings.Slice(emitter_key, 0, 16), ".chibip"]);
+    emitter := EmitterPath(folder, emitter_key);
     if (length(facts) != 6) {
         build.report(Join(["native: the compiler host gave a malformed target: ", target_json]));
         return Finish(work, 1);
@@ -1796,7 +1822,7 @@ pub Libraries :: () -> int {
     target_json := build.trim(build.read_file(target));
     facts := Elements(target_json);
     emitter_key := EmitterKey(host, artifact, compiler, core);
-    emitter := Join([cache, "/emitter-", strings.Slice(emitter_key, 0, 16), ".chibip"]);
+    emitter := EmitterPath(cache, emitter_key);
     if (length(facts) != 6) {
         build.report(Join(["native: the compiler host gave a malformed target: ", target_json]));
         Unpublished(partial, names);

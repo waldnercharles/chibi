@@ -60,6 +60,52 @@ none for a short-lived process: a build program could run with a bump allocator 
 runner is a good first customer because it is short-lived and single-threaded, so an arena runtime
 with no collection is enough for it, while the compiler needs more.
 
+## Survey: what the producer says about the build programs
+
+Measured 2026-10-31 at main f730e36dd with `test_language --native-census`, which takes
+`CHIBI_CENSUS_PATHS=PREFIX=PATH,...` to run over any files instead of the compiler's (a path that
+is a file adds that file under PREFIX; a directory adds its `.chibi` files except tests; a
+package is a folder; `graph:x` is the folder `graph/x`). Three runs, because the three programs
+share one folder and some names: `Driver.chibi`, `Build.chibi`, and `Graph.chibi` with
+`RuntimeSDK`, `SDK` and `AssetCompiler` and everything under `tools/graph`. Each also read
+`core:os`, `core:bytes` and `core:strings`. 347 functions of the programs themselves.
+
+**As the programs are written** (`build.*` natives unknown to the producer): 154 pass.
+Of the other 193, 101 stop at a text helper (`build.join`, `concat`, `after`, `before`, `lines`,
+`trim`, `replace`, `starts_with`, `hash_text`) and 67 at a file, process or environment native
+(`build.read_file`, `run`, `probe`, `file_kind`, `list_directory`, `report`, ...); the rest are
+the walls below.
+
+**With every `build.*` native given a body** (a stub package with the catalog's signatures, so
+only the callers' own forms are judged): **291 of 347 pass (84%)**: `Driver` 39 of 45, `Build`
+4 of 10, the graph set 248 of 292. The 56 that remain:
+
+| Wall | Functions | What the producer says | Owner today |
+| --- | ---: | --- | --- |
+| Optional record as a result or parameter: `Error?` from `core:os` (`MakeDirectory`, `Remove`, `WriteText`, ...) | 44 | `scalar proof requires number, bool, string, record or union parameters and one ... result` | none: W9 covers optional *fields* only |
+| Record field of optional type: the `error` of a multi-result `(text, error: Error?)` (`ReadText`, `HashFile`, `List`) | 10 | `scalar proof requires ... record fields` | W9, sdk-cmake (ledger row 160) |
+| Two programs defining the same name (`Option` in `Graph.chibi` and `SDK.chibi`) | 2 | `call has the wrong number of arguments` | census artifact, not a wall |
+
+The census gives each function's first blocker only, so a function stopped at `Error?` may hide
+a later wall. In the 291 that pass and the 56 above, no first blocker is a map, a pointer or
+reference (W10 does not appear), a union other than `@error`, or a `switch` on a non-integer.
+Everything under `tools/graph` passes except through `core:os`.
+
+**So the walls, in order of size:**
+
+1. `build.*` text helpers (101 sites): not foreign. `core:strings` already has `Join`, `Replace`,
+   `Trim`, `SplitLines`, `HasPrefix`; `Cut` covers `before` and `after`; SHA-256 is
+   `core:hash/sha256`. This is the runner's step 1 and needs no native work (records).
+2. `build.*` file, process and environment natives (67): `core:os` over `foreign import` (W14,
+   builtin-math; the bodies, portable-libs).
+3. `Error?` results (44) and `Error?` fields (10): optional-of-record values. Unowned for
+   results; the fields are W9. Either `core:os` stops returning `Error?` from its hot signatures
+   (for example returns the `Error` and a `bool`), or the producer admits an optional record as
+   a result. This is a language and producer decision, so it belongs to whoever owns W9.
+
+Not visible to the census, and still needed: the native runtime without C (above), the process
+and thread story for `Spawn`/`Wait`, and a `main` wrapper that passes `argv`.
+
 ## The `core:os` surface
 
 Each `build.*` native, the `core:os` call that replaces it, and the libc it needs. Counts are call

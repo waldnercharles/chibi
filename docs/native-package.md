@@ -32,8 +32,7 @@ runtime targets and the standalone player. It is an intermediate SDK for native
 hosts and player packaging, rather than a game deployment. The player package
 contains its executable and declared runtime resources; it excludes SDK headers
 and archives. Studio packages its own executable and resources against the exact
-SDK manifest captured when it was configured. The controller is a separate
-public-SDK consumer built with `make controller-build`.
+SDK manifest captured when it was configured.
 
 ## Prepare and run a game
 
@@ -88,8 +87,7 @@ project name longer than 1024 bytes needs a shorter `title`.
 `share/chibi/package.json` inventories the deployed files and pins the source
 runtime SDK. The SDK manifest records configured target, format and compiled
 source evidence. The game's `.chibi-engine.json` identifies its copied player
-deployment. Use those records for capability requests; the controller's identity
-describes its own authoring distribution and is not the game's runtime pin.
+deployment. Use those records for capability requests.
 
 ```sh
 make package-player PLAYER_OUTPUT=dist/game-runtime
@@ -112,17 +110,17 @@ Its commands and package layout do not describe the current deployment contract.
 ## Historical combined package workflow
 
 All sections below preserve the earlier combined-checkout workflow. Its
-`projects/arena2d` shipping, mount discovery, `chibi_ctl --engine-info` example,
+`projects/arena2d` shipping, mount discovery,
 launch-time deployment and publishing commands are historical and have no role
 in the current product interfaces above.
 
-`make package-native` builds an optimized static application, the automation
-controller, and Studio resources into `dist/chibi-darwin-arm64` on an Apple
+`make package-native` builds an optimized static application and Studio
+resources into `dist/chibi-darwin-arm64` on an Apple
 Silicon Mac. The directory follows the build machine's OS and architecture;
 `PACKAGE_OUTPUT` selects another location. CMake, a C compiler, and the engine
 checkout are build-time dependencies only.
 
-The package contains `bin/chibi` and `bin/chibi_ctl`. Application libraries and
+The package contains `bin/chibi`. Application libraries and
 fonts are linked into the executables. Shaders, Studio's authored assets, and
 UI documents live in `share/chibi`. OS libraries come from the host. Keep the
 whole package together when moving or distributing it.
@@ -155,9 +153,7 @@ Check the project, or build and run it, with the installed launcher:
 ```
 
 Edit `.chibi` executable source and KDL declarative assets directly or through
-Studio. Format and validate saved content through `bin/chibi_ctl`, then inspect
-or run a bounded scenario. The [asset workflow](runtime-authoring.md) gives
-native request examples. A project must use the selected engine's project
+Studio. A project must use the selected engine's project
 format version; selecting a package does not migrate authored assets.
 
 ## Request an engine capability
@@ -166,7 +162,7 @@ Game work owns scene composition, behavior graphs, shaders, rules, and tuning.
 When the catalog cannot express a behavior, produce a small reproducing
 project rather than changing engine C inside the game workspace. Include:
 
-- The pinned engine build, obtainable from `bin/chibi_ctl --engine-info`.
+- The pinned engine build, which `chibi version` prints.
 - The smallest scene or prototype and scenario that demonstrate the gap.
 - Expected behavior and the observed validation error, snapshot, or preview.
 - The missing reusable operation and why existing nodes cannot express it.
@@ -190,9 +186,7 @@ make web-serve STUDIO_SOURCE=/absolute/path/to/chibi-studio WEB_OUTPUT=/absolute
 ```
 
 The external game owns its `project.kdl` and `content/`. Native Studio opens that
-project directly. The browser workspace owns its imported project files. Use
-`chibi_ctl --project-root` for native inspection and validation, or prepare an
-artifact with `chibi-compile` and run it with the installed `chibi-player`.
+project directly. The browser workspace owns its imported project files.
 
 Engine-owned web deployment is retired and its publisher removed; deployment
 belongs to the extracted Studio product.

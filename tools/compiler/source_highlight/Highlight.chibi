@@ -1,0 +1,336 @@
+package source_highlight
+
+import strings "core:strings"
+import parser "project:compiler_syntax"
+import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+
+// Highlights Chibi source as HTML: the original bytes, escaped, with each
+// classified token in a `<span class="chibi-ROLE">`. Roles come from the parse
+// tree, as a Tree-sitter highlights query reads node kinds and fields, never
+// from a name's spelling; docs/highlighting.md lists them and their theme
+// colors. The documentation site and the formatter playground both render with
+// it. A span never crosses a line break: a comment or string that spans lines
+// is closed at each line's end and reopened on the next, so a caller can split
+// the result into lines.
+
+Ampersand: int : 38;
+Less: int : 60;
+Greater: int : 62;
+Quote: int : 34;
+Newline: int : 10;
+
+// The spellings accepted by script_builtin_type in src/capabilities/catalog.c,
+// considered only inside a single, unqualified type_name. An identifier's
+// spelling or initial capital alone never gives it a syntactic role.
+BuiltinType :: (word: string) -> bool {
+    return word == "void" || word == "bool" || word == "i8" || word == "u8" ||
+           word == "i16" || word == "u16" || word == "int" || word == "i32" ||
+           word == "u32" || word == "i64" || word == "u64" || word == "f32" ||
+           word == "f64" || word == "name" || word == "string" || word == "handle" ||
+           word == "enum" || word == "number" || word == "char" || word == "exec" || word == "flow" ||
+           word == "entity" || word == "task" || word == "any" || word == "Prototype" ||
+           word == "Component" || word == "Relationship" || word == "Cancelled";
+}
+
+// Like a Tree-sitter highlights query, these rules use canonical node kinds
+// and fields, not neighboring spellings or successful semantic resolution.
+IdentifierClass :: (source: string, nodes: syntax.Node[], fields: string[], index: int) -> string {
+    node := nodes[index];
+    parent := node.parent;
+    if (parent < 0) {
+        return "";
+    }
+    kind := nodes[parent].kind;
+    field := fields[index];
+    if (kind == "type_name") {
+        if (node.end < nodes[parent].end) {
+            return "chibi-namespace";
+        }
+        if (node.start == nodes[parent].start &&
+            BuiltinType(strings.Slice(source, node.start, node.end - node.start))) {
+            return "chibi-builtin";
+        }
+        return "chibi-type";
+    }
+    if (kind == "type_binder") {
+        return "chibi-type";
+    }
+    if (kind == "argument_name") {
+        return "chibi-property";
+    }
+    if (kind == "call_expression" && field == "function") {
+        return "chibi-function";
+    }
+    if (kind == "import_declaration" && field == "alias") {
+        return "chibi-namespace";
+    }
+    if (kind == "member_expression" && field == "member") {
+        outer := nodes[parent].parent;
+        if (outer >= 0 &&
+            ((nodes[outer].kind == "call_expression" && fields[parent] == "function") ||
+             (nodes[outer].kind == "handler" && fields[parent] == "name"))) {
+            return "chibi-function";
+        }
+        return "chibi-property";
+    }
+    if (field != "name") {
+        return "";
+    }
+    if (kind == "library" || kind == "package_header") {
+        return "chibi-namespace";
+    }
+    if (kind == "record_declaration" || kind == "union_declaration" ||
+        kind == "component" || kind == "prototype_declaration" ||
+        kind == "relationship_declaration" || kind == "behavior" || kind == "system") {
+        return "chibi-type";
+    }
+    if (kind == "function_declaration" || kind == "macro_declaration" ||
+        kind == "action_declaration" || kind == "event_declaration" || kind == "handler") {
+        return "chibi-function";
+    }
+    if (kind == "constant_declaration" || kind == "union_variant" || kind == "variant_pattern") {
+        return "chibi-constant";
+    }
+    if (kind == "record_field" || kind == "component_field" || kind == "struct_field") {
+        return "chibi-property";
+    }
+    if (kind == "attribute") {
+        return "chibi-attribute";
+    }
+    return "";
+}
+
+Operator :: (kind: string) -> bool {
+    return kind == "::" || kind == ":=" || kind == "=" || kind == "->" || kind == "=>" ||
+           kind == "+" || kind == "-" || kind == "*" || kind == "/" || kind == "%" ||
+           kind == "^" || kind == "&" || kind == "|" || kind == "~" || kind == "!" ||
+           kind == "<" || kind == ">" || kind == "<=" || kind == ">=" || kind == "==" ||
+           kind == "!=" || kind == "<<" || kind == ">>" || kind == "??" || kind == "?" ||
+           kind == ".." || kind == "..<";
+}
+
+TokenClass :: (source: string, nodes: syntax.Node[], fields: string[], named: bool[], index: int) -> string {
+    node := nodes[index];
+    kind := node.kind;
+    if (kind == "comment") {
+        return "chibi-comment";
+    }
+    if (kind == "string" || kind == "character") {
+        return "chibi-string";
+    }
+    if (kind == "number") {
+        return "chibi-number";
+    }
+    if (kind == "boolean" || kind == "nil") {
+        return "chibi-constant";
+    }
+    if (kind == "builtin_reference") {
+        return "chibi-keyword";
+    }
+    if (kind == "identifier") {
+        return IdentifierClass(source, nodes, fields, index);
+    }
+    if (node.parent >= 0 && (nodes[node.parent].kind == "boolean" || nodes[node.parent].kind == "nil")) {
+        return "chibi-constant";
+    }
+    if (!named[index]) {
+        first := strings.ByteAt(kind, 0);
+        if (first >= 97 && first <= 122) {
+            return "chibi-keyword";
+        }
+        if (fields[index] == "operator" || Operator(kind)) {
+            return "chibi-operator";
+        }
+    }
+    return "";
+}
+
+// Every leaf of a parse of `source` that has width, other than `;`, in source
+// order, with its role ("" for none). The leaves are the tokenizer's tokens and comments, so a
+// text with the same tokens, such as a formatted copy, takes the same roles.
+pub Classes :: (source: string, nodes: syntax.Node[], fields: string[], named: bool[]) -> (starts: int[], ends: int[], classes: string[]) {
+    starts: int[] = [];
+    ends: int[] = [];
+    classes: string[] = [];
+    index: int = 0;
+    while (index < length(nodes)) {
+        node := nodes[index];
+        // An explicit `;` has no role, and leaving it out lets a copy whose
+        // semicolons the formatter added or dropped take the same roles.
+        if (node.first_child < 0 && !node.missing && node.end > node.start && node.kind != ";") {
+            starts.append(node.start);
+            ends.append(node.end);
+            classes.append(TokenClass(source, nodes, fields, named, index));
+        }
+        index += 1;
+    }
+    return (starts, ends, classes);
+}
+
+// `text` as HTML element content or attribute value.
+pub Escape :: (text: string) -> string {
+    pieces: string[] = [];
+    size := strings.ByteLength(text);
+    start: int = 0;
+    index: int = 0;
+    while (index < size) {
+        byte := strings.ByteAt(text, index);
+        entity: string = "";
+        if (byte == Ampersand) {
+            entity = "&amp;";
+        } else if (byte == Less) {
+            entity = "&lt;";
+        } else if (byte == Greater) {
+            entity = "&gt;";
+        } else if (byte == Quote) {
+            entity = "&quot;";
+        }
+        if (entity != "") {
+            pieces.append(strings.Slice(text, start, index - start));
+            pieces.append(entity);
+            start = index + 1;
+        }
+        index += 1;
+    }
+    if (start == 0) {
+        return text;
+    }
+    pieces.append(strings.Slice(text, start, size - start));
+    return strings.Join(pieces, "");
+}
+
+// Appends `text` in a span of `role`, closed before each line break and
+// reopened after it.
+Span :: (pieces: ^(string[]), role: string, text: string) {
+    open := format_text("<span class=\"{}\">", role);
+    rest := text;
+    while (true) {
+        newline := strings.IndexByte(rest, Newline);
+        if (newline < 0) {
+            if (rest != "") {
+                pieces.append(open);
+                pieces.append(Escape(rest));
+                pieces.append("</span>");
+            }
+            return;
+        }
+        if (newline > 0) {
+            pieces.append(open);
+            pieces.append(Escape(strings.Slice(rest, 0, newline)));
+            pieces.append("</span>");
+        }
+        pieces.append("\n");
+        rest = strings.Slice(rest, newline + 1, strings.ByteLength(rest) - newline - 1);
+    }
+}
+
+// `source` as HTML, with the token at `starts[i]`..`ends[i]` in a span of
+// `classes[i]`. The ranges are in order and do not overlap.
+pub Render :: (source: string, starts: int[], ends: int[], classes: string[]) -> string {
+    pieces: string[] = [];
+    offset: int = 0;
+    index: int = 0;
+    while (index < length(starts)) {
+        start := starts[index];
+        end := ends[index];
+        if (start > offset) {
+            pieces.append(Escape(strings.Slice(source, offset, start - offset)));
+        }
+        text := strings.Slice(source, start, end - start);
+        if (classes[index] == "") {
+            pieces.append(Escape(text));
+        } else {
+            Span(&pieces, classes[index], text);
+        }
+        offset = end;
+        index += 1;
+    }
+    size := strings.ByteLength(source);
+    pieces.append(Escape(strings.Slice(source, offset, size - offset)));
+    return strings.Join(pieces, "");
+}
+
+// `source`, whose tokens are those `classes` came from in the same order (a
+// formatted copy of a classified text), as HTML. Its own tokenization places
+// the roles; a text whose token count differs renders without them.
+pub Retarget :: (source: string, classes: string[]) -> string {
+    starts: int[] = [];
+    ends: int[] = [];
+    switch tk.Tokenize(source) {
+        case .Scanned(kinds, token_starts, token_ends, rows, columns, errors, error_offsets, error_rows, error_columns):
+            index: int = 0;
+            while (index < length(kinds)) {
+                if (token_ends[index] > token_starts[index] && kinds[index] != tk.Semicolon) {
+                    starts.append(token_starts[index]);
+                    ends.append(token_ends[index]);
+                }
+                index += 1;
+            }
+    }
+    if (length(starts) != length(classes)) {
+        return Escape(source);
+    }
+    return Render(source, starts, ends, classes);
+}
+
+// The classified leaves of a parse of `text`, and whether the parse is clean.
+Classify :: (text: string) -> (starts: int[], ends: int[], classes: string[], clean: bool) {
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, named, extras, root):
+            leaves := Classes(text, nodes, fields, named);
+            return (leaves.starts, leaves.ends, leaves.classes, !nodes[root].has_error);
+    }
+}
+
+// `source` rendered with the leaves that fall inside it, from a text that held
+// it `prefix` bytes in. Only unchanged original bytes render: a leaf crossing
+// a synthetic boundary gives escaped plain text rather than leaking context.
+Place :: (source: string, prefix: int, leaf_starts: int[], leaf_ends: int[], leaf_classes: string[]) -> string {
+    size := strings.ByteLength(source);
+    starts: int[] = [];
+    ends: int[] = [];
+    classes: string[] = [];
+    offset: int = 0;
+    index: int = 0;
+    while (index < length(leaf_starts)) {
+        start := leaf_starts[index] - prefix;
+        end := leaf_ends[index] - prefix;
+        if (end > 0 && start < size) {
+            if (start < offset || end > size) {
+                return Escape(source);
+            }
+            starts.append(start);
+            ends.append(end);
+            classes.append(leaf_classes[index]);
+            offset = end;
+        }
+        index += 1;
+    }
+    return Render(source, starts, ends, classes);
+}
+
+// A documentation fragment as HTML. Full source keeps its raw tree.
+// Declaration fragments, including generated reference signatures, can supply
+// their missing package and callable body: a package header, then also an
+// empty body after it. A context is used only when the parser accepts the
+// whole text; otherwise the raw tree, with its ERROR nodes, is used. At most
+// three parses.
+pub Highlight :: (source: string) -> string {
+    first := Classify(source);
+    if (first.clean) {
+        return Place(source, 0, first.starts, first.ends, first.classes);
+    }
+    header := "package documentation\n";
+    prefix := strings.ByteLength(header);
+    headed := format_text("{}{}", header, source);
+    second := Classify(headed);
+    if (second.clean) {
+        return Place(source, prefix, second.starts, second.ends, second.classes);
+    }
+    third := Classify(format_text("{}\n{}\n", headed, "{}"));
+    if (third.clean) {
+        return Place(source, prefix, third.starts, third.ends, third.classes);
+    }
+    return Place(source, 0, first.starts, first.ends, first.classes);
+}

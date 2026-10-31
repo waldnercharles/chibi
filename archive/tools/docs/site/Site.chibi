@@ -121,6 +121,8 @@ pub Foot :: () -> string[] {
 
 // The contents stay on the right of wide pages. Narrow windows show the
 // same contents in a disclosure above the article. Colours follow the system.
+// The tokens and code colours here are tools/docs/theme.css, which the
+// formatter playground also uses; a revived site should read that file.
 pub Style :: () -> string[] {
     return [
         "/*\n",

@@ -1,0 +1,91 @@
+/*
+Syntax colors and scope mapping from GitHub VS Code Theme 6.3.5
+https://github.com/primer/github-vscode-theme/tree/cd78e5e4e7bcf132a6f428ae0f32264bb1b729cf
+and its pinned dependency Primer primitives 7.10.0
+https://github.com/primer/primitives/tree/f82864eb33c37f8624704bd996bc21b97d3c311b
+
+MIT License
+
+Copyright (c) 2020 Primer
+Copyright (c) 2018 GitHub Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+/* Chibi documentation theme, shared by the documentation site (whose generated
+   style.css starts from these tokens) and the formatter playground. Colors are
+   the site's: Apple-style neutrals and links, and the GitHub Light Default and
+   Dark Default code palette above, with its role mapping in
+   docs/highlighting.md. `color-scheme` picks the light or dark value of every
+   token; it follows the system unless the root sets data-theme to light or dark.
+
+   Fonts: Geist for text and JetBrains Mono for code, both SIL Open Font
+   License, variable, from the Fontsource CDN; an installed copy wins. JetBrains
+   Mono's taller lowercase and open shapes keep 12-14 px code legible and tell
+   0O, 1lI and rn/m apart; Geist is a neutral grotesque sized for interfaces. */
+
+@font-face { font-family: "Geist"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: local("Geist"), url("https://cdn.jsdelivr.net/fontsource/fonts/geist:vf@latest/latin-wght-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: local("JetBrains Mono"), url("https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono:vf@latest/latin-wght-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: italic; font-weight: 100 800; font-display: swap;
+  src: local("JetBrains Mono Italic"), url("https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono:vf@latest/latin-wght-italic.woff2") format("woff2"); }
+
+:root {
+  color-scheme: light dark;
+  --font-text: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-code: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text:   light-dark(#1d1d1f, #f5f5f7);
+  --muted:  light-dark(#6e6e73, #a1a1a6);
+  --page:   light-dark(#ffffff, #1d1d1f);
+  --panel:  light-dark(#f5f5f7, #2c2c2e);
+  --line:   light-dark(#d2d2d7, #48484a);
+  --link:   light-dark(#0066cc, #4da3ff);
+  --code:   light-dark(#c7254e, #ff7eb6);
+  --syntax-namespace:  light-dark(#953800, #ffa657);
+  --syntax-type:       light-dark(#953800, #ffa657);
+  --syntax-builtin:    light-dark(#0550ae, #79c0ff);
+  --syntax-function:   light-dark(#8250df, #d2a8ff);
+  --syntax-property:   light-dark(#1f2328, #e6edf3);
+  --syntax-constant:   light-dark(#0550ae, #79c0ff);
+  --syntax-attribute:  light-dark(#0550ae, #79c0ff);
+  --syntax-keyword:    light-dark(#cf222e, #ff7b72);
+  --syntax-operator:   light-dark(#cf222e, #ff7b72);
+  --syntax-number:     light-dark(#0550ae, #79c0ff);
+  --syntax-string:     light-dark(#0a3069, #a5d6ff);
+  --syntax-comment:    light-dark(#6e7781, #8b949e);
+  --syntax-foreground: light-dark(#1f2328, #e6edf3);
+  --syntax-background: light-dark(#ffffff, #0d1117);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+.chibi-namespace { color: var(--syntax-namespace); }
+.chibi-type { color: var(--syntax-type); }
+.chibi-builtin { color: var(--syntax-builtin); }
+.chibi-function { color: var(--syntax-function); }
+.chibi-property { color: var(--syntax-property); }
+.chibi-constant { color: var(--syntax-constant); }
+.chibi-attribute { color: var(--syntax-attribute); }
+.chibi-keyword { color: var(--syntax-keyword); }
+.chibi-operator { color: var(--syntax-operator); }
+.chibi-number { color: var(--syntax-number); }
+.chibi-string { color: var(--syntax-string); }
+.chibi-comment { color: var(--syntax-comment); }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }

@@ -1,0 +1,44 @@
+package source_highlight_tests
+
+import highlight "project:source_highlight"
+import syntax "project:compiler_syntax"
+
+@test
+ClassifiesByTreeRole :: () {
+    got := highlight.Highlight("package p\n\nAdd :: (a: int) -> int {\n    return a + 1;\n}\n");
+    want := format_text("{}{}{}{}", "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n\n", "<span class=\"chibi-function\">Add</span> <span class=\"chibi-operator\">::</span> (a: <span class=\"chibi-builtin\">int</span>) ", "<span class=\"chibi-operator\">-&gt;</span> <span class=\"chibi-builtin\">int</span> {\n", "    <span class=\"chibi-keyword\">return</span> a <span class=\"chibi-operator\">+</span> <span class=\"chibi-number\">1</span>;\n}\n");
+    assert(got == want, "roles come from the tree");
+}
+
+@test
+ClosesSpansAtLineBreaks :: () {
+    got := highlight.Highlight("package p\n/* one\ntwo */\n");
+    assert(got == format_text("{}{}", "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n", "<span class=\"chibi-comment\">/* one</span>\n<span class=\"chibi-comment\">two */</span>\n"), "a comment's span closes per line");
+}
+
+@test
+EscapesMarkup :: () {
+    assert(highlight.Escape("a < b && c > \"d\"") == "a &lt; b &amp;&amp; c &gt; &quot;d&quot;", "escape");
+    assert(highlight.Escape("plain") == "plain", "no entities");
+}
+
+@test
+HighlightsADeclarationFragment :: () {
+    // A signature alone parses once a package header and a body are supplied;
+    // neither appears in the output.
+    got := highlight.Highlight("F :: (x: int)");
+    assert(got == "<span class=\"chibi-function\">F</span> <span class=\"chibi-operator\">::</span> (x: <span class=\"chibi-builtin\">int</span>)", "fragment");
+}
+
+@test
+RetargetsRolesToAFormattedCopy :: () {
+    source := "package p\nF :: (){x:=1}\n";
+    formatted := "package p\nF :: () {\n    x := 1\n}\n";
+    switch syntax.Parse(source) {
+        case .Parsed(nodes, fields, named, extras, root):
+            leaves := highlight.Classes(source, nodes, fields, named);
+            got := highlight.Retarget(formatted, leaves.classes);
+            assert(got == format_text("{}{}{}", "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n", "<span class=\"chibi-function\">F</span> <span class=\"chibi-operator\">::</span> () {\n", "    x <span class=\"chibi-operator\">:=</span> <span class=\"chibi-number\">1</span>\n}\n"), "same roles on the copy");
+            assert(highlight.Retarget("package p\nx\n", leaves.classes) == "package p\nx\n", "a different text renders plain");
+    }
+}

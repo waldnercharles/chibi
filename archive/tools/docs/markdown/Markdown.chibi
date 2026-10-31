@@ -1,8 +1,7 @@
 package markdown
 
 import strings "core:strings"
-import parser "project:compiler_syntax"
-import syntax "project:syntax_diagnostics"
+import highlight "project:source_highlight"
 
 // Renders the Markdown of one documentation page as HTML. It covers what the
 // public pages use: headings, paragraphs, lists, block quotes, fenced code,
@@ -87,198 +86,6 @@ pub Escape :: (text: string) -> string {
         index += 1;
     }
     return format_text("{}{}", out, From(text, start));
-}
-
-// The spellings accepted by script_builtin_type in src/capabilities/catalog.c,
-// considered only inside a single, unqualified type_name. An identifier's
-// spelling or initial capital alone never gives it a syntactic role.
-BuiltinType :: (word: string) -> bool {
-    return word == "void" || word == "bool" || word == "i8" || word == "u8" ||
-           word == "i16" || word == "u16" || word == "int" || word == "i32" ||
-           word == "u32" || word == "i64" || word == "u64" || word == "f32" ||
-           word == "f64" || word == "name" || word == "string" || word == "handle" ||
-           word == "enum" || word == "number" || word == "char" || word == "exec" || word == "flow" ||
-           word == "entity" || word == "task" || word == "any" || word == "Prototype" ||
-           word == "Component" || word == "Relationship" || word == "Cancelled";
-}
-
-// Like a Tree-sitter highlights query, these rules use canonical node kinds
-// and fields, not neighboring spellings or successful semantic resolution.
-// See docs/highlighting.md for the scope vocabulary and theme mapping.
-IdentifierClass :: (source: string, nodes: syntax.Node[], fields: string[], index: int) -> string {
-    node := nodes[index];
-    parent := node.parent;
-    if (parent < 0) {
-        return "";
-    }
-    kind := nodes[parent].kind;
-    field := fields[index];
-    if (kind == "type_name") {
-        if (node.end < nodes[parent].end) {
-            return "chibi-namespace";
-        }
-        if (node.start == nodes[parent].start &&
-            BuiltinType(strings.Slice(source, node.start, node.end - node.start))) {
-            return "chibi-builtin";
-        }
-        return "chibi-type";
-    }
-    if (kind == "type_binder") {
-        return "chibi-type";
-    }
-    if (kind == "argument_name") {
-        return "chibi-property";
-    }
-    if (kind == "call_expression" && field == "function") {
-        return "chibi-function";
-    }
-    if (kind == "import_declaration" && field == "alias") {
-        return "chibi-namespace";
-    }
-    if (kind == "member_expression" && field == "member") {
-        outer := nodes[parent].parent;
-        if (outer >= 0 &&
-            ((nodes[outer].kind == "call_expression" && fields[parent] == "function") ||
-             (nodes[outer].kind == "handler" && fields[parent] == "name"))) {
-            return "chibi-function";
-        }
-        return "chibi-property";
-    }
-    if (field != "name") {
-        return "";
-    }
-    if (kind == "library" || kind == "package_header") {
-        return "chibi-namespace";
-    }
-    if (kind == "record_declaration" || kind == "union_declaration" ||
-        kind == "component" || kind == "prototype_declaration" ||
-        kind == "relationship_declaration" || kind == "behavior" || kind == "system") {
-        return "chibi-type";
-    }
-    if (kind == "function_declaration" || kind == "macro_declaration" ||
-        kind == "action_declaration" || kind == "event_declaration" || kind == "handler") {
-        return "chibi-function";
-    }
-    if (kind == "constant_declaration" || kind == "union_variant" || kind == "variant_pattern") {
-        return "chibi-constant";
-    }
-    if (kind == "record_field" || kind == "component_field" || kind == "struct_field") {
-        return "chibi-property";
-    }
-    if (kind == "attribute") {
-        return "chibi-attribute";
-    }
-    return "";
-}
-
-Operator :: (kind: string) -> bool {
-    return kind == "::" || kind == ":=" || kind == "=" || kind == "->" || kind == "=>" ||
-           kind == "+" || kind == "-" || kind == "*" || kind == "/" || kind == "%" ||
-           kind == "^" || kind == "&" || kind == "|" || kind == "~" || kind == "!" ||
-           kind == "<" || kind == ">" || kind == "<=" || kind == ">=" || kind == "==" ||
-           kind == "!=" || kind == "<<" || kind == ">>" || kind == "??" || kind == "?" ||
-           kind == ".." || kind == "..<";
-}
-
-TokenClass :: (source: string, nodes: syntax.Node[], fields: string[], named: bool[], index: int) -> string {
-    node := nodes[index];
-    kind := node.kind;
-    if (kind == "comment") {
-        return "chibi-comment";
-    }
-    if (kind == "string" || kind == "character") {
-        return "chibi-string";
-    }
-    if (kind == "number") {
-        return "chibi-number";
-    }
-    if (kind == "boolean" || kind == "nil") {
-        return "chibi-constant";
-    }
-    if (kind == "builtin_reference") {
-        return "chibi-keyword";
-    }
-    if (kind == "identifier") {
-        return IdentifierClass(source, nodes, fields, index);
-    }
-    if (node.parent >= 0 && (nodes[node.parent].kind == "boolean" || nodes[node.parent].kind == "nil")) {
-        return "chibi-constant";
-    }
-    if (!named[index]) {
-        first := At(kind, 0);
-        if (first >= 97 && first <= 122) {
-            return "chibi-keyword";
-        }
-        if (fields[index] == "operator" || Operator(kind)) {
-            return "chibi-operator";
-        }
-    }
-    return "";
-}
-
-ReadSyntax :: (source: string) -> (nodes: syntax.Node[], fields: string[], named: bool[], clean: bool) {
-    switch parser.Parse(source) {
-        case .Parsed(items, roles, is_named, is_extra, root):
-            return (nodes: items, fields: roles, named: is_named, clean: !items[root].has_error);
-    }
-    return (nodes: nodes, fields: fields, named: named, clean: false);
-}
-
-// Full source keeps its raw tree. Declaration fragments, including generated
-// reference signatures, can supply their missing package and callable body.
-// A context is selected only when the canonical parser accepts the whole
-// tree; otherwise retain raw ERROR descendants, without semantic checking.
-Highlight :: (source: string) -> string {
-    size := Size(source);
-    tree := ReadSyntax(source);
-    parsed := source;
-    prefix: int = 0;
-    if (!tree.clean) {
-        header := "package documentation\n";
-        candidate_source := format_text("{}{}", header, source);
-        candidate := ReadSyntax(candidate_source);
-        if (!candidate.clean) {
-            candidate_source = format_text("{}\n{}\n", candidate_source, "{}");
-            candidate = ReadSyntax(candidate_source);
-        }
-        if (candidate.clean) {
-            tree = candidate;
-            parsed = candidate_source;
-            prefix = Size(header);
-        }
-    }
-    pieces: string[] = [];
-    offset: int = 0;
-    index: int = 0;
-    while (index < length(tree.nodes)) {
-        node := tree.nodes[index];
-        if (node.first_child >= 0 || node.missing || node.end == node.start) {
-            index += 1;
-            continue;
-        }
-        if (node.end <= prefix || node.start >= prefix + size) {
-            index += 1;
-            continue;
-        }
-        start := node.start - prefix;
-        end := node.end - prefix;
-        // Render only unchanged original bytes. A leaf crossing a synthetic
-        // boundary falls back rather than leaking context into the output.
-        if (start < offset || end < start || end > size) {
-            return Escape(source);
-        }
-        pieces.append(Escape(strings.Slice(source, offset, start - offset)));
-        text := Escape(strings.Slice(source, start, end - start));
-        style := TokenClass(parsed, tree.nodes, tree.fields, tree.named, index);
-        if (style != "") {
-            text = format_text("<span class=\"{}\">{}</span>", style, text);
-        }
-        pieces.append(text);
-        offset = end;
-        index += 1;
-    }
-    pieces.append(Escape(From(source, offset)));
-    return strings.Join(pieces, "");
 }
 
 // A heading's anchor as GitHub writes it: lowercase letters, digits, hyphens
@@ -582,7 +389,7 @@ Block :: (lines: string[], first: int, page: string, sources: string[],
         }
         source := strings.Join(code, "");
         if (language == "chibi") {
-            html.append(Highlight(source));
+            html.append(highlight.Highlight(source));
         } else {
             html.append(Escape(source));
         }

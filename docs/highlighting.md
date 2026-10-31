@@ -1,8 +1,10 @@
 # Documentation highlighting
 
-Chibi fences are highlighted at build time by `tools/docs/markdown`. The
-renderer consumes source byte ranges, escapes the original text and inserts
-spans; it never reconstructs source from token spellings. Other languages
+Chibi fences are highlighted at build time by `tools/compiler/source_highlight`,
+which the documentation renderer (`tools/docs/markdown`, archived with the site)
+and the formatter playground (`tools/docs/playground`) share. The renderer
+consumes source byte ranges, escapes the original text and inserts spans,
+closed at each line end; it never reconstructs source from token spellings. Other languages
 remain escaped plain text. No browser highlighter, CDN or new grammar is used.
 
 ## Syntax roles

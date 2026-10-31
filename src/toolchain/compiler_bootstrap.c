@@ -1048,6 +1048,38 @@ bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t 
     return valid;
 }
 
+bool compiler_bootstrap_identity(const compiler_bootstrap *b, char *error, size_t size)
+{
+    assert(b->identity);
+    artifact a = { 0 };
+    char *json = NULL;
+    size_t length = 0;
+    int changed = 0;
+    bool known = false;
+    if (inputs(b, &a, &json, &length, &changed, error, size)) {
+        if (!changed) {
+            sha256_hex(a.closure, a.closure_length, b->identity);
+            known = true;
+        } else if (b->cache) {
+            char key[BINARY_CACHE_KEY_BYTES + 1];
+            cache_key(&a, json, length, key);
+            size_t kept_length = 0;
+            unsigned char *kept = binary_cache_read(b->cache, key, COMPILER_HOST_MAX_CLOSURE_BYTES, &kept_length);
+            if (kept) {
+                sha256_hex(kept, kept_length, b->identity);
+                known = true;
+            }
+            free(kept);
+        }
+        if (!known) {
+            snprintf(error, size, "the compiler is not recovered yet");
+        }
+    }
+    free(json);
+    free_artifact(&a);
+    return known;
+}
+
 compiler_host *compiler_bootstrap_load(const compiler_bootstrap *b, char *error, size_t size)
 {
     artifact a = { 0 };

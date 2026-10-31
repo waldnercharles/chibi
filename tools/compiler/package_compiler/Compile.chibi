@@ -1702,6 +1702,20 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             }
         }
     }
+    // `a?.b` yields the optional of b's type, so a project that writes one
+    // declares those optionals for the fields of its records.
+    chained := false;
+    for (syntax_node in forest) {
+        chained = chained || syntax_node.kind == "optional_member_expression";
+    }
+    if (chained) {
+        for (member in members) {
+            if (member.container == 0 && member.storage != 0 && member.storage != PointerStorage && member.read < 0 &&
+                !member.c_string && OptionalElement(types, Typed(-1, member.storage, member.container, member.record)).storage == 0) {
+                EnsureOptional(&types, {storage: member.storage, container: member.container, record: member.record}, package);
+            }
+        }
+    }
     switch ResolveInstances(forest, documents, links, package, types, members, instance_records, instance_files,
                             instance_starts, instance_counts, instance_bound) {
         case .Failed(diagnostic):

@@ -703,7 +703,8 @@ Expression :: (kind: string) -> bool {
            kind == "member_expression" || kind == "index_expression" || kind == "struct_expression" ||
            kind == "array_expression" || kind == "map_expression" || kind == "call_expression" ||
            kind == "unary_expression" || kind == "binary_expression" || kind == "is_expression" ||
-           kind == "address_expression" || kind == "dereference_expression";
+           kind == "address_expression" || kind == "dereference_expression" || kind == "force_unwrap_expression" ||
+           kind == "optional_member_expression";
 }
 // The occurrence of the symbol the node `declared` declares, or `undeclared`
 // for one the source declares nowhere.
@@ -3702,6 +3703,15 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                         "Inline functions may only be passed to a callable parameter"));
         } else if (kind == "function_declaration" || kind == "lambda_expression") {
             step = ParameterStep(params, callable, item, ops, target, at, node);
+        } else if ((kind == "force_unwrap_expression" || kind == "optional_member_expression") && item.phase == 0) {
+            stepped = false;
+            next.append(Visit(Field(forest, item.node, "operand")));
+            next.append(Resume(item.node, 1, 0, 0));
+        } else if (kind == "force_unwrap_expression") {
+            step = ForceUnwrapStep(forest, document, types, values[value_top - 1], item.node, ops, target, at, node);
+        } else if (kind == "optional_member_expression") {
+            step = OptionalMemberStep(forest, text, document, types, members, values[value_top - 1], item.node, ops, target,
+                                      at, node);
         } else if (kind == "is_expression" && item.phase == 0) {
             stepped = false;
             next.append(Visit(Field(forest, item.node, "value")));

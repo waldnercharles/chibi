@@ -3,24 +3,24 @@
   "repository": "waldnercharles/chibi",
   "platforms": {
     "macos-arm64": {
-      "tag": "compiler-runtime-prepared27-dddc4c491f68b0232f8b654766a8900dd76f37be",
-      "source_revision": "dddc4c491f68b0232f8b654766a8900dd76f37be",
-      "source_tree": "75b71a9f4a906af80b723f52977e16b4ea55e8c7",
-      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41052101916",
-      "max_artifact_bytes": 33554432,
+      "tag": "compiler-runtime-prepared27-1262bb96a3aae19a01c4e87e9d9f7e483aa46373",
+      "source_revision": "1262bb96a3aae19a01c4e87e9d9f7e483aa46373",
+      "source_tree": "fdfe427f15e9dde0f78726d406daea880c305b17",
+      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41172254538",
+      "max_artifact_bytes": 67108864,
       "asset": "chibi-compiler-host-macos-arm64",
-      "sha256": "914ebf162b4885085c5a8082b22c5917a768ca44a49083e63339d06ee7685e1a",
-      "bytes": 1381568
+      "sha256": "639ab4eda4e6d0211859bf94de4fb28e7bfed4786140e41ae9da783d1c0f67a7",
+      "bytes": 1028432
     },
     "linux-x64": {
-      "tag": "compiler-runtime-prepared27-dddc4c491f68b0232f8b654766a8900dd76f37be",
-      "source_revision": "dddc4c491f68b0232f8b654766a8900dd76f37be",
-      "source_tree": "75b71a9f4a906af80b723f52977e16b4ea55e8c7",
-      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41052101916",
-      "max_artifact_bytes": 33554432,
+      "tag": "compiler-runtime-prepared27-1262bb96a3aae19a01c4e87e9d9f7e483aa46373",
+      "source_revision": "1262bb96a3aae19a01c4e87e9d9f7e483aa46373",
+      "source_tree": "fdfe427f15e9dde0f78726d406daea880c305b17",
+      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41172254538",
+      "max_artifact_bytes": 67108864,
       "asset": "chibi-compiler-host-linux-x64",
-      "sha256": "e27e956937d32cdee0981c3f9b3a149798aaeff6c0540a49d62de771ec840e07",
-      "bytes": 2132368
+      "sha256": "339f091504e8f924f2a9c1e72fc51a02c34e2907004f9b64a1cff4921e8a7458",
+      "bytes": 1656208
     },
     "windows-x64": {
       "tag": "compiler-runtime-prepared27-dddc4c491f68b0232f8b654766a8900dd76f37be",

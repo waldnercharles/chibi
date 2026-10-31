@@ -101,6 +101,7 @@ tool	wasm-record-compatibility	node	build-wasm-language/test_language.js	--recor
 tool	wasm-package-math	node	build-wasm-language/test_language.js	--package-math
 tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
+timeout	chibi-cli	900
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math
 group	native	native-values	build-graph-link-response	box3d	runtime-scene	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	arena
 group	projects	chibi-cli	native-build

@@ -55,14 +55,14 @@ TestSelectors :: (host: string) {
     listed := Verb(host, "test", ["--list"]);
     log := Output(listed);
     assert(listed.status == 0 && Has(log, "tool chibi-cli") && Has(log, "tool chibi-test-compiler"), "the list");
-    planned := Verb(host, "test", ["--dry-run", "--build", "out", "--release-build", "rel", "chibi-cli", "projects"]);
+    planned := Verb(host, "test", ["--dry-run", "--build", "out", "--release-build", "rel", "chibi-cli", "projects", "types"]);
     log = Output(planned);
-    assert(planned.status == 0 && Has(log, "chibi-cli: sh tools/with-timeout.sh 600 env "), "the default deadline");
+    assert(planned.status == 0 && Has(log, "types (600s): env "), "the default deadline");
     assert(Has(log, "/out/test/tools/test_tools --chibi-cli /") && Has(log, "CHIBI_CLI=") && Has(log, "/rel/sdk/chibi "), "the selector command");
-    bounded := Verb(host, "test", ["--dry-run", "--timeout", "30", "chibi-cli"]);
-    assert(bounded.status == 0 && Has(Output(bounded), "chibi-cli: sh tools/with-timeout.sh 30 env "), "an explicit deadline");
-    heavy := Verb(host, "test", ["--dry-run", "language-package-compiler-chibi-imports"]);
-    assert(heavy.status == 0 && Has(Output(heavy), "language-package-compiler-chibi-imports: sh tools/with-timeout.sh 1200 env "), "a selector's own deadline");
+    bounded := Verb(host, "test", ["--dry-run", "--timeout", "30", "chibi-cli", "types"]);
+    assert(bounded.status == 0 && Has(Output(bounded), "types (30s): env "), "an explicit deadline");
+    heavy := Verb(host, "test", ["--dry-run", "chibi-cli"]);
+    assert(heavy.status == 0 && Has(Output(heavy), "chibi-cli (900s): env "), "a selector's own deadline");
     unknown := Verb(host, "test", ["no-such-selector"]);
     assert(unknown.status != 0 && Has(Output(unknown), "unknown selector 'no-such-selector'"), "an unknown selector");
 }

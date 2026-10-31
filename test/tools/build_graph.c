@@ -670,29 +670,12 @@ void test_build_graph_debug_optimization(const char *host)
     tool_remove_tree(suite);
 }
 
-/* tools/with-timeout.sh stops a hung selector's whole process group at its
- * deadline with status 124, and passes any other status through. */
-TEST_CASE(with_timeout_stops_a_hung_command_and_its_children)
-{
-    const char *const hung[] = { "sh", "tools/with-timeout.sh", "1", "sh",
-                                 "-c", "sleep 30 & sleep 30",   NULL };
-    REQUIRE(tool_run_within(hung, CHIBI_SOURCE_ROOT, log_path, 20) == 124);
-    const char *const failing[] = {
-        "sh", "tools/with-timeout.sh", "20", "sh", "-c", "exit 3", NULL
-    };
-    REQUIRE(tool_run_within(failing, CHIBI_SOURCE_ROOT, log_path, 25) == 3);
-    const char *const passing[] = { "sh", "tools/with-timeout.sh", "20", "true", NULL };
-    REQUIRE(tool_run_within(passing, CHIBI_SOURCE_ROOT, log_path, 25) == 0);
-    return true;
-}
-
 /* A separate route: another commands-only run of the whole graph takes
  * seconds. */
 void test_build_graph_programs(const char *host)
 {
     set_up(host);
     RUN_TEST_CASE(named_programs_build_what_they_run);
-    RUN_TEST_CASE(with_timeout_stops_a_hung_command_and_its_children);
     RUN_TEST_CASE(graph_batch_stops_on_unexpected_result);
     RUN_TEST_CASE(graph_batch_transcripts_are_case_local);
     RUN_TEST_CASE(authored_dependency_files_list_prerequisites);

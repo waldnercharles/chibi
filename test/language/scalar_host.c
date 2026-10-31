@@ -9,8 +9,6 @@
 #include "support/xalloc.h"
 #include "toolchain/compiler_bootstrap.h"
 #include "toolchain/compiler_host.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/record.h"
@@ -129,12 +127,10 @@ bool scalar_host_open()
     if (producer) {
         return true;
     }
-    const native_definition_pack packs[] = { NATIVE_COMPILER_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK };
     char error[512];
-    native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+    native = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, sizeof error);
     REQUIRE(native);
     target_json = compiler_target_json(native_capabilities_catalog(native), &target_length);
     REQUIRE(target_json);

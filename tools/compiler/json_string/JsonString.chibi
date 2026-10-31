@@ -9,10 +9,9 @@ import strings "core:strings"
 // zero length. One scan over the literal's bytes; the result joins slices of it and of
 // the byte tables below.
 //
-// This replaces the compiler_json_string and compiler_json_value_string
-// natives (src/toolchain/compiler_json.c). The compiler's sources may use only
-// the six text natives the bootstrap seed's target lists, and none builds a
-// string from bytes.
+// This replaced the compiler_json_string and compiler_json_value_string
+// natives, which no longer exist. It builds its result from slices, so it
+// needs no native that builds a string from bytes.
 
 Space: int : 32;
 Tab: int : 9;

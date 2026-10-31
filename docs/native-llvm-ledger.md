@@ -251,8 +251,6 @@ needs. Each one says who uses it and what replacing it requires.
 
 | Capability | Code | Callers | Replacement criterion |
 | --- | --- | --- | --- |
-| Tree-sitter parse to snapshot | `src/toolchain/compiler_syntax.c` | compiler host, `Compile`, `CollectScalar` | A native parser or a narrow generated binding that gives the same snapshot. |
-| JSON decoding natives (retired: declarations only, the decoder is `tools/compiler/json_string`) | `src/toolchain/compiler_json.c` | the prepared artifacts' native list | Delete with the next native-list change and seed. |
 | Compiler host invocation | `src/toolchain/compiler_host.c` | `Run.ps1`, build host, C tests | Native compiler entry points (M7). |
 | Bootstrap and closure artifacts | `src/toolchain/compiler_bootstrap.c`, `compiler_artifact.c` | `chibi build bootstrap-artifact`, recovery | Native stage chain with fixed-point evidence (M7). |
 | Target layout facts | `src/toolchain/compiler_target.c` | `Target` argument | Target description owned in Chibi, checked against the platform ABI (M5). |

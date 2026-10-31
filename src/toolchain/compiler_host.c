@@ -10,8 +10,6 @@
 #include "support/asset_json.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_artifact.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/record.h"
@@ -54,16 +52,12 @@ static compiler_host *load(
         message(error, error_size, "unsupported compiler host backend");
         return NULL;
     }
-    const native_definition_pack packs[] = { values_only
-                                                 ? NATIVE_TEXT_DEFINITION_PACK
-                                                 : NATIVE_COMPILER_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK };
     compiler_host *host = xcalloc(1, sizeof *host);
     host->backend = backend;
     host->values_only = values_only;
-    host->native = native_capabilities_from_definition_packs(NULL, 0, packs, values_only ? 2 : 4, error, error_size);
+    host->native = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, error_size);
     if (!host->native) {
         compiler_host_free(host);
         return NULL;
@@ -144,21 +138,6 @@ char *compiler_host_values_target_json(size_t *length, char *error, size_t size)
                                              NATIVE_ARRAY_DEFINITION_PACK };
     native_capabilities
         *native = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, size);
-    if (!native) {
-        return NULL;
-    }
-    char *json = compiler_target_json(native_capabilities_catalog(native), length);
-    native_capabilities_free(native);
-    return json;
-}
-char *compiler_host_compiler_target_json(size_t *length, char *error, size_t size)
-{
-    const native_definition_pack packs[] = { NATIVE_COMPILER_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK };
-    native_capabilities
-        *native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, size);
     if (!native) {
         return NULL;
     }

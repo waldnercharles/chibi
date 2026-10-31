@@ -3,9 +3,8 @@ package graph_tests
 import engine "graph:engine"
 import strings "core:strings"
 
-// The profile options' compile flags and their validation, from
-// test/tools/build_graph.c's debug-optimization cases, which planned 18 graph
-// builds to read the same flags from compile_commands.json.
+// The profile options' compile flags, argument validation and target
+// selection, checked on the engine's functions without running the graph.
 Debug :: (sanitizers: string, frames: bool, optimization: string) -> engine.Profile {
     profile: engine.Profile = {
         compiler: "/unused/clang", cxx_compiler: "/unused/clang++", compiler_id: "Clang", build_type: "Debug",
@@ -139,6 +138,17 @@ ReflectionArgumentsAreValidated :: () {
     assert(Option(options, "--build") == "/out" && Option(options, "--profile") == "release" && Option(options, "--target") == "reflect", "the reflection build");
 }
 
+// Naming test_tools and the launcher builds the programs they run, as CMake's
+// add_dependencies does, and no other program.
+NamedProgramsBuildWhatTheyRun :: () {
+    named := ["--commands-only", "on", "--target", "test_tools", "--target", "chibi"];
+    for (program in ["test_tools", "policy_worker", "chibi-compile", "chibi-build-host", "chibi-compiler-host", "chibi"]) {
+        assert(engine.Selected(named, program), "a program a named program runs");
+    }
+    assert(!engine.Selected(named, "test_host"), "another test driver");
+    assert(engine.Selected(["--commands-only", "on"], "test_host"), "no target names every target");
+}
+
 // The value after the first `--name`, as the graph reads options.
 Option :: (options: string[], name: string) -> string {
     for (i in 0..<length(options) - 1) {
@@ -156,5 +166,6 @@ pub Run :: () -> int {
     DebugOptionsAreValidated();
     ArgumentsAreValidated();
     ReflectionArgumentsAreValidated();
+    NamedProgramsBuildWhatTheyRun();
     return 0;
 }

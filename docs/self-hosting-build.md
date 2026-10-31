@@ -281,8 +281,7 @@ no longer apply there; the graph finds the profile's toolchain on the
 machine. Without a current host, the driver (`tools/toolchain/Driver.chibi`, run as `chibi build` or
 `tools/build.sh`) fetches the pinned first one with `tools/bootstrap.sh` and the graph builds its own. The SDK, web and Studio builds
 still use CMake as below, so a source, define or library CMake gains
-belongs in `tools/graph/engine/Targets.chibi` too: `build-graph` fails until
-the graph's commands equal CMake's again.
+belongs in `tools/graph/engine/Targets.chibi` too.
 
 ### Linux native graph
 
@@ -566,15 +565,10 @@ reruns it only when one changed. `--reflect PATH` runs another reflect
 instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
 includes name. On Linux and macOS `chibi build` builds them with the graph;
-`build-graph` checks that their compile commands agree
-with a configured CMake build's; `build-graph-support` compiles only
-`chibi_support`. Before the dependency-parser and join improvements, building
+`graph-build` rebuilds `chibi_support` incrementally in a copy of the sources.
+Before the dependency-parser and join improvements, building
 everything, `test_tools` included, took about 25 to 32 minutes with sanitizers
 and no compiler cache at a load average of 5.
-`build-graph-archive` compiles a math-header library and the task pool over
-the archive's headers and prebuilt libraries; `build-graph-programs` checks
-that naming `test_tools` also builds the programs it runs, and `build-graph-resources` that the launcher's and `chibi_ctl`'s
-resources equal CMake's.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
 that `cmake/third_party.cmake` loads for the profile: `engine.ThirdParty` reads

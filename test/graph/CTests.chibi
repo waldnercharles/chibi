@@ -4,8 +4,7 @@ import c "graph_c:."
 import os "core:os"
 import strings "core:strings"
 
-// Steps and links of tools/graph/c, from test/tools/build_graph.c's step and
-// link response cases. The compiler and linked programs are real; only the
+// Steps, links and dependency files of tools/graph/c. The compiler and linked programs are real; only the
 // partial-output failure and the argv recorder are controlled drivers.
 
 Path :: (parts: string[]) -> string {

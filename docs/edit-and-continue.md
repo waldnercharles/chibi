@@ -2,8 +2,9 @@
 
 Status: implemented for standalone programs, 2026-10-29. Applies to standalone programs run with `chibi --watch`
 and to the shared program session (`Chibi::program`, `src/authoring/program.c`) that
-Studio can also use. Game projects keep Studio Live, which publishes through
-`src/runtime/behaviors/source_publication.c`; both end in the same
+Studio can also use. Studio Live used to publish through the source registry
+(`src/runtime/behaviors/source_publication.c`, archived 2026-10-30); it moves to the
+program session path when Studio is ported. Both end in the same
 `execution_program_prepare_replace` / `execution_program_commit_replace` pair.
 
 ## What the user sees

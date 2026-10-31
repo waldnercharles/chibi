@@ -196,6 +196,27 @@ static bool string_size(quota *q, const char *text)
     size_t length = text ? strnlen(text, room + 1) : 0;
     return length <= room && charge(q, length * 6);
 }
+/* Names the shared bound an argument document ran out of and how far it got,
+ * so a caller whose inputs grew knows which limit to look at. A negative
+ * argument means the document itself, before any signature. */
+static void quota_diagnostic(char *out, size_t size, const char *failure, int argument, const quota *q)
+{
+    char where[32] = "the document";
+    if (argument >= 0) {
+        snprintf(where, sizeof where, "argument %d", argument);
+    }
+    snprintf(
+        out,
+        size,
+        "%s: %s, %zu of %u values, %zu of %u bytes",
+        failure,
+        where,
+        q->values,
+        (unsigned)COMPILER_HOST_MAX_VALUES,
+        q->bytes,
+        (unsigned)COMPILER_HOST_MAX_BYTES
+    );
+}
 static const yyjson_read_flag READ_FLAGS = COMPILER_HOST_JSON_READ_FLAGS;
 static const yyjson_write_flag WRITE_FLAGS = YYJSON_WRITE_ALLOW_INVALID_UNICODE |
                                              YYJSON_WRITE_ALLOW_INF_AND_NAN;
@@ -548,6 +569,9 @@ static bool invoke(
     if (!parsed || !json_quota(yyjson_doc_get_root(parsed), 0, &q) ||
         !yyjson_is_arr(yyjson_doc_get_root(parsed))) {
         failure = "invalid or oversized compiler argument document";
+        if (parsed) {
+            quota_diagnostic(out->diagnostic, sizeof out->diagnostic, failure, -1, &q);
+        }
         goto done;
     }
     if (yyjson_arr_size(yyjson_doc_get_root(parsed)) != (size_t)argument_count) {
@@ -570,6 +594,7 @@ static bool invoke(
             )) {
             failure = "compiler arguments exceed signature or shared storage "
                       "limits";
+            quota_diagnostic(out->diagnostic, sizeof out->diagnostic, failure, i, &q);
             goto done;
         }
     }

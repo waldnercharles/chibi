@@ -11,7 +11,7 @@
 
 #include <string.h>
 
-#define DOCUMENT_MAX_VALUES 1000000
+#define DOCUMENT_MAX_VALUES 4000000
 #define DOCUMENT_MAX_DEPTH 64
 
 typedef struct

@@ -666,7 +666,7 @@ Example :: library {
 
 A postfix `!` takes an optional's payload and fails when it is `nil`, as Swift's
 `!` does: `scores["Ada"]!` is the value, or a failed run with the message
-"Assertion failed: Unwrapped a nil optional". It must touch its operand, so `a!` unwraps and `a !b`
+"Unwrapped a nil optional". It must touch its operand, so `a!` unwraps and `a !b`
 does not. Use it where absence is a bug; `??`, `if value` and `as T` handle
 absence.
 
@@ -1375,7 +1375,7 @@ A test that must end with a run-time failure says so with `core:testing`,
 as Odin's `expect_assert` does. `testing.ExpectFailure(kind)` makes the
 running test pass only if it then ends with that kind of failure:
 `IndexOutOfRange`, `MapKeyAbsent`, `ViewOutOfRange`, `AssertionFailed`,
-`BudgetExhausted` or `DepthExceeded`. Returning normally, or failing with
+`BudgetExhausted`, `DepthExceeded` or `UnwrappedNil`. Returning normally, or failing with
 another kind, fails the test, and a failure before the call is an ordinary
 failure. Nothing unwinds: the failure ends the test as it otherwise would.
 

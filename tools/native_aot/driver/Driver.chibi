@@ -866,6 +866,18 @@ pub Native :: () -> int {
     }
     source := Join([root, "/", names[0]]);
     text := build.read_file(source);
+    // The other .chibi files below the folder, but its build output, are the
+    // packages the source imports.
+    packages: string[] = [];
+    package_texts: string[] = [];
+    package_state: string[] = [];
+    for (path in Sources(root)) {
+        if (path != names[0] && !strings.HasPrefix(path, "build/")) {
+            packages.append(path);
+            package_texts.append(build.read_file(Join([root, "/", path])));
+            package_state.append(Join([path, ":", build.hash_file(Join([root, "/", path]))]));
+        }
+    }
     emitter_key := EmitterKey(host, artifact, compiler, core);
     // Line tables name the source's directory, so a moved package rebuilds.
     directory := "";
@@ -875,7 +887,8 @@ pub Native :: () -> int {
     key := build.hash_text(strings.Join([
         "chibi-native 1", names[0], build.hash_text(text), emitter_key,
         build.hash_file(Join([build.root(), "/Driver.chibi"])), build.hash_file(opt), build.hash_file(llc),
-        build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root), linkage
+        build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root), linkage,
+        strings.Join(package_state, ",")
     ], "\n"));
     folder := Join([root, "/build/native"]);
     output := Join([folder, "/O", mode, "-", strings.Slice(key, 0, 16)]);
@@ -921,8 +934,16 @@ pub Native :: () -> int {
     module := Join([work, "/module.ll"]);
     request := Join(["[\"/project\",", Quote(names[0]), ",", Quote(text), ",", facts[0], ",", facts[2], ",",
                      facts[3], ",", facts[4], ",", facts[5], "]"]);
+    collector := "0xebbc43e46769862a";
+    if (length(packages) > 0) {
+        // CollectScalarPackages: the entry file first, then the packages.
+        request = Join(["[\"/project\",[],[],", Array(build.concat([names[0]], packages)), ",",
+                        Array(build.concat([text], package_texts)), ",", facts[0], ",", facts[2], ",", facts[3], ",",
+                        facts[4], ",", facts[5], "]"]);
+        collector = "0xe248351e192972a1";
+    }
     if (!build.write_file(collect, request) ||
-        Invoke(host, artifact, "0xebbc43e46769862a", collect, "", "120000") != 0 ||
+        Invoke(host, artifact, collector, collect, "", "120000") != 0 ||
         !build.write_file(rows, build.last_stdout())) {
         build.report(Join(["native: the compiler did not read ", source, ": ", build.last_stderr()]));
         return Finish(work, 1);

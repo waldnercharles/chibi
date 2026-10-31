@@ -12,6 +12,7 @@ literal; they are not calculated by a second string algorithm.
 | `text_cases` | `Text.chibi` | 54 |
 | `replace_cases`, then `split_cases` | `Split.chibi` | 13 replacement, 35 split/partition |
 | `native_text_rejects_unsafe_modifiers_and_bounds_placeholder_indices` in `text_format.c` | `Format.chibi` | 13 invalid modifiers, oversized placeholder, string with integer modifier, 128 literal percent bytes |
+| None: `Join` became a pairwise merge (2026-10-30) | `Join.chibi` | empty, one piece, odd and even counts, empty pieces, 1,000 pieces |
 
 The nth test in each group corresponds to the nth original row. This preserves
 all 174 string input/result pairs, including empty needles, overlapping matches,

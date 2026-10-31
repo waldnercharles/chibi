@@ -1,0 +1,46 @@
+package core_strings
+
+import strings "core:strings"
+
+// Join merges neighbours pairwise; these rows pin its result for every shape
+// of the merge tree: no piece, one, an odd count, and empty pieces and separators.
+
+@test
+JoinOfNothingIsEmpty :: () {
+    empty: string[] = [];
+    assert(strings.Join(empty, ",") == "");
+}
+
+@test
+JoinOfOnePieceIsThePiece :: () {
+    assert(strings.Join(["only"], ",") == "only");
+}
+
+@test
+JoinPlacesTheSeparatorBetweenEachPair :: () {
+    assert(strings.Join(["a", "b"], ", ") == "a, b");
+    assert(strings.Join(["a", "b", "c"], ", ") == "a, b, c");
+    assert(strings.Join(["a", "b", "c", "d", "e"], "-") == "a-b-c-d-e");
+    assert(strings.Join(["a", "b", "c", "d", "e", "f", "g", "h"], "") == "abcdefgh");
+}
+
+@test
+JoinKeepsEmptyPiecesAndSeparators :: () {
+    assert(strings.Join(["", "", ""], "-") == "--");
+    assert(strings.Join(["a", "", "c"], "") == "ac");
+    assert(strings.Concatenate(["x", "y", "z"]) == "xyz");
+}
+
+@test
+JoinKeepsOrderAcrossManyRounds :: () {
+    pieces: string[] = [];
+    i: int = 0;
+    while (i < 1000) {
+        pieces.append(format_text("{}", i % 10));
+        i += 1;
+    }
+    joined := strings.Join(pieces, "");
+    assert(strings.ByteLength(joined) == 1000);
+    assert(strings.Slice(joined, 0, 12) == "012345678901");
+    assert(strings.Slice(joined, 990, 10) == "0123456789");
+}

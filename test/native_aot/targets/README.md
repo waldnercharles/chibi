@@ -10,7 +10,7 @@ directory, it also emits each module it runs for the other targets
   probe adapters as the Linux run;
 - `opt` and `llc` build it at O0 and O2 with the native driver's exact
   arguments, and the optimized module must declare the target's triple and
-  the data layout `tools/native_aot/Driver.chibi` admits for it;
+  the data layout `tools/native_aot/driver/Driver.chibi` admits for it;
 - the object must have no undefined symbol, except `_fltused` and
   `__chkstk` on Windows, which the platform runtime defines: Windows code
   that uses floating point references `_fltused`, and a frame larger than a

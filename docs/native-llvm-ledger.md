@@ -161,7 +161,19 @@ mean native, since `scalar_llvm` and `Driver.Object` must also take the function
 | `insert` on arrays | 1 | open |
 | Producer passes but native emission untested over the closure | unknown | W22 driver: compile the 973 through `Driver.Object` and list the rejections |
 | Maps (W8), `string[]` literals in natives, host catalog calls | open | not yet counted |
-| Driver itself: link the native compiler, run it on the compiler's sources, compare stage three with stage two | none written | core-math |
+| Stage-one driver: `tools/compiler/native_driver/Main.chibi`, a program that compiles a compiler folder to a native executable | none written | core-math |
+| Harness: `chibi build native-self-host --llvm DIR` builds the driver natively, runs stage two and stage three each in a clean folder, compares their SHA-256 and prints each wall time next to the VM-hosted self-build's; CI job `Native self-host` | written | port-lead |
+
+### Stage contract
+
+The harness and the driver agree on this interface. A stage executable is run as
+`STAGE --compiler DIR --core DIR --output FILE --llvm DIR`: it compiles the package folder `DIR`
+and the core packages to the native executable `FILE`, which has the same interface; it may use
+`FILE.work` beside the output and removes it. The exit status is 0 for success, 1 when the native
+lane rejects the sources and 2 for a usage error; on a rejection the first stderr line is
+`native: rejected FUNCTION: MESSAGE`. The output's bytes depend only on the sources, the core
+packages and the LLVM tools, never on a path, a time or a process id, since stage two and stage
+three are built from different folders and compared byte for byte.
 
 ## Features
 

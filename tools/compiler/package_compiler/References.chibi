@@ -527,8 +527,8 @@ PlaceAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: int
         slots.append(DescriptorSlot(target));
         code.append(DescriptorCode(ops, target, binding.index, descriptor, node));
     }
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
-    if (operator != "") {
+    operator := CompoundOperator(Operator(forest, item.node));
+    if (operator != NoOperator) {
         op := BinaryOp(ops, operator);
         if (op < 0 || Comparison(ops, op) || !Numeric(binding.storage) || binding.container != 0 ||
             !Single(stored, binding.storage)) {
@@ -786,7 +786,7 @@ ReferenceFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     reached := base + 3;
     stored := value;
     if (item.c == 1) {
-        op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator))));
+        op := BinaryOp(ops, CompoundOperator(Operator(forest, item.node)));
         if (op < 0 || Comparison(ops, op) || !(Integer(field.storage) || Floating(field.storage)) ||
             !Single(stored, field.storage)) {
             return Fail(forest, item.node, document, "compound assignment needs number operands of its type");

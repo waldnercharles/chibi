@@ -16,12 +16,9 @@ does not establish backend readiness or target performance.
 ## Authoring and binding
 
 Edit saved model, material, prototype and scene KDL in the project, or use
-Studio. Inspect the native capability catalog before choosing nodes; the
-controller's `inspect_graph` and `validate_asset` operations inspect and compile
-saved construction. See the [saved-file workflow](runtime-authoring.md) for
-request syntax. Models need a 3D scene preview; a flat material preview cannot
-represent model surfaces. Use the bounded native scene capture route in
-[agent execution](agent-execution.md).
+Studio. Inspect the native capability catalog before choosing nodes. Models
+need a 3D scene preview; a flat material preview cannot represent model
+surfaces.
 
 Geometry wires carry the compiler-only nominal type `Geometry3D`. They describe
 geometry that can be evaluated at another position. They do not carry a sampled
@@ -38,15 +35,6 @@ parameters, and change instance scale through the visual transform.
 Projects use `CHIBI_PROJECT_VERSION` 24, as created and loaded by
 `src/assets/project.c` using `src/assets/project.h`. The graph document's own serialized
 `version` is a separate format field; do not replace it with the project version.
-After hand-editing assets, canonicalize and check:
-
-```sh
-build/chibi_ctl --project-root <root> --format
-build/chibi_ctl --project-root <root> --format --check
-```
-
-The check verifies canonical serialization. Use native `validate_asset` to compile and
-validate current construction and dependencies.
 
 ## Coordinates and operations
 
@@ -107,8 +95,7 @@ parameter. It validates the proposed parameter snapshot and derived bounds
 before accepting the change. Public uniform changes reuse geometry code;
 structural edits recompile. `Shader.parameters` is a KDL object value in
 a reflected string field. `shape.<name>` and `material.<name>` disambiguate the
-two binding namespaces. Read the public parameter names returned by
-`inspect_graph` rather than inventing flattened instance names.
+two binding namespaces.
 
 `Model Linear Array` places copies at `i * Step`, beginning at index zero.
 `Model Radial Array` rotates copies by `i * Angle Step` around the selected axis
@@ -204,15 +191,6 @@ Retained `build/model-evidence` results are historical evidence. The local HRC r
 approximation still shows aliasing at sharp creases; the relief-disabled control
 isolates that from model geometry.
 
-`inspect_graph` provides `model_parameters`, `model_material_slots`, and `model_compilation`
-report with original source node count across authored graphs, expanded shader
-node count, public/private parameter slots, parts, dependencies, and local bounds.
-`compile_ms` times one compiler call after dependencies are loaded. Inspection
-also validates before collecting metadata, so this is a warmed compiler-call
-measurement, excluding file loading and GPU compilation. Failed inspection
-includes the current diagnostic. Counts and compiler-call time are separate
-from matched rendering-cost results.
-
 Runtime model counters distinguish published CPU source compilations, cached
 render parameter updates, bounds updates, cache hits, and setter validations.
 Setter validation can evaluate bounds before a value is accepted and is counted
@@ -223,21 +201,10 @@ or whole-frame time; report those separately with matched workloads. The
 
 ## Isolated package validation
 
-Prepare authored model/material/scene assets with a pinned installed compiler SDK.
-Deploy its prepared artifact and declared resources alongside a separate verified
-player package:
-
-```text
-make package-player PLAYER_OUTPUT=build/model-evidence/player
-/installed/sdk/bin/chibi-compile --project-root /absolute/project \
-  --output /absolute/output/game.chibip
-build/model-evidence/player/bin/chibi-player /absolute/output/game.chibip \
-  --resource-root /absolute/output
-```
-
-Packaging leaves games untouched. Compiler preparation and package integrity do not establish
-successful rendered model behavior; use affected runtime/GPU checks.
-See [native packages](native-package.md) for product boundaries and exact pins.
+The player, its packaging and `chibi-compile --project-root/--output` are
+archived with game projects (`archive/README.md`),
+so model assets can't be prepared, packaged or rendered until a Chibi renderer
+replaces them.
 
 The evidence below predates the separate SDK/compiler/player contract and
 records the retired combined package. It is historical, rather than acceptance
@@ -256,8 +223,6 @@ Project and package hashes remained unchanged. Retained evidence is in
 The original isolated check used a Python runner:
 
 The former Python validation/benchmark helper for this experiment is retired.
-Use the native controller to validate assets or request previews; see
-[testing](testing.md).
 
 This check relocates the package, copies source and dependencies, validates
 models/materials/scenes, verifies invalid-source rejection and recovery, and
@@ -273,11 +238,9 @@ and two small nameplates sampled from the photo. Silhouette, proportions,
 grooves, and reflections differ from the reference. Fresh script reproduction
 produced byte-identical model source and semantic matches for all 17 assets.
 
-The earlier Release comparisons used these packaged controller resource mounts:
+The earlier Release comparisons used packaged resource mounts.
 
 The former Python validation/benchmark helper for this experiment is retired.
-Use the native controller to validate assets or request previews; see
-[testing](testing.md).
 
 Repeat in reverse scene order into a new output directory, then alternate both
 orders. Apply the same protocol to raw/model sphere and simple/complex controls;
@@ -313,7 +276,7 @@ project and package hashes unchanged. Evidence is
 logs are `package-build-delivery.log`, `package-assemble-delivery.log`, and
 `package-tests-delivery.log`. The earlier 116-asset validation and Release
 benchmark records retain their precise earlier build identity; the later change
-only fixes Studio pointer handling. Final exact-source `make test` reported
+only fixes Studio pointer handling. Final exact-source `make test` (retired) reported
 ALL CHECKS PASSED (266.8 seconds), followed by the whole-function audit
 (1.5 seconds). Native, Web, and actual Chrome authoring/orbit boundary gates
 passed. The separate delivery validation record records these scopes.
@@ -330,27 +293,12 @@ format audit is `final-check-format-complete.log`.
 
 ## Saved-source mesh baking
 
-`bake_model` uses the same saved-project backend as Studio's Bake bundle action.
-Save the model first. The service reads a fresh deterministic catalog, checks
-model/material bindings, prepares one parameter snapshot and extracts a bounded
-triangle approximation. It never replaces a model graph or changes a scene's
-rendering choice. Studio includes checked applied public parameter values;
-public callers can pass `overrides` keyed by `asset`, `scope`, `parameter_id`
-and a component `value` array from `inspect_graph`.
-
-For example, send this native request as one JSON line to
-`build/chibi_ctl --project-root <root>` for a project with a `PolaroidOneStep`
-model:
-
-```json
-{
-  "contract": 1,
-  "operation": "bake_model",
-  "model": "PolaroidOneStep",
-  "destination": "/absolute/existing-parent/new-camera-bundle",
-  "options": { "cell_size": 0.2, "max_triangles": 150000, "max_samples": 8000000, "max_work": 10000000000 }
-}
-```
+Studio's Bake bundle action bakes a saved model. Save the model first. The
+service reads a fresh deterministic catalog, checks model/material bindings,
+prepares one parameter snapshot and extracts a bounded triangle approximation.
+It never replaces a model graph or changes a scene's rendering choice. Studio
+includes checked applied public parameter values. Its budgets are a cell size
+and maximum triangles, samples and work.
 
 The destination must be new and its parent must exist. The backend stages all
 four outputs beside it, validates the engine mesh, then publishes the directory
@@ -409,8 +357,8 @@ budgets and residuals. `max_sampled_residual` measures emitted vertices against
 the source distance field; it is not a global surface error guarantee.
 
 Current focused checks passed CPU sphere/cavity geometry, winding, deterministic
-output, named owner frames, budget failure preservation, saved-source export and
-public controller dispatch/contract discovery. The Metal regression compares
+output, named owner frames, budget failure preservation and saved-source export.
+The Metal regression compares
 live SDF and baked mesh scene/albedo/normal targets at four interior samples
 using two named image materials, asymmetric automatic box UV, a reflected part
 frame and bump detail. That focused fixture passes; the subsequent qualified
@@ -434,7 +382,8 @@ angle test but failed the importer's absolute area floor. Both now use the same
 floor, with a near-grid translated-box bake/actual-import regression.
 
 At cell size 0.2 the default 100,000-triangle budget rejects the camera without
-publishing output. With the explicit example budgets above, final public export
+publishing output. With explicit budgets (cell size 0.2, 150,000 triangles,
+8,000,000 samples and 10,000,000,000 work), final public export
 passes and retains SHA256 hashes for all 194 saved input files. It produces
 108,413 triangles, all 26 nonempty named parts and all ten material references
 and scopes. The grid is 56×45×52; it charges 5,880,177 queries and 6,114,067,124
@@ -461,14 +410,11 @@ its `PolaroidOneStep/` bundle and Blender report,
 [the SDF view](../build/authoring-evidence/bake-camera-parity-fine/ModelPropSdfParity.png)
 with [the fine mesh view](../build/authoring-evidence/bake-camera-parity-fine/ModelPropMeshParity.png).
 The coarse failed-quality images remain in `bake-camera-parity/`. Public sphere
-Release evidence is in `bake-public-release/ModelSphere/`. The exact Release
-controller SHA256 and scope are recorded in
-`release-controller-compact-identity.json`; the focused GPU material test is
-`sdf-material-integration.log`. Full delivery and current native/Web UI gates
+Release evidence is in `bake-public-release/ModelSphere/`. The focused GPU
+material test is `sdf-material-integration.log`. Full delivery and current native/Web UI gates
 are recorded separately in the authoring validation document.
 
 Synchronous offline baking can be expensive, especially in a debug/ASan build
-or with concurrent CPU tasks. The retired MCP timeout settings do not apply to
-the native controller. Keep bake resource options explicit and report the
+or with concurrent CPU tasks. Keep bake resource options explicit and report the
 selected workload and actual result. A failed bake does not lower
 resolution or replace editable source.

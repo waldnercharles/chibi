@@ -1,6 +1,7 @@
 package math_types
 
 import strings "core:strings"
+import tk "project:source_tokenizer"
 
 // These are source math categories, not catalog, storage or bytecode IDs.
 // Callers canonicalize aliases and resolve contextual literals/conversions
@@ -174,12 +175,13 @@ pub Constructor :: (kind: int, arguments: int[], positional: bool) -> string {
 
 // Accepted is the successful payload kind, not an error-result ABI.
 // Scalar math belongs to the numeric checker. This entry checks operations
-// involving at least one built-in vector, quaternion or matrix. The caller
+// involving at least one built-in vector, quaternion or matrix; `operator` is
+// the operator token's source_tokenizer kind, such as tk.Add. The caller
 // must also inspect BinaryRecoverable before constructing the result type.
-pub BinaryRecoverable :: (operator: string, left: int, right: int) -> bool {
-    return operator == "*" && left == Quat && right == Vec3;
+pub BinaryRecoverable :: (operator: int, left: int, right: int) -> bool {
+    return operator == tk.Mul && left == Quat && right == Vec3;
 }
-pub Binary :: (operator: string, left: int, right: int) -> Result {
+pub Binary :: (operator: int, left: int, right: int) -> Result {
     problem := ScalarError(left);
     if (problem == "") {
         problem = ScalarError(right);
@@ -187,19 +189,19 @@ pub Binary :: (operator: string, left: int, right: int) -> Result {
     if (problem != "") {
         return Result.Rejected(problem);
     }
-    if (operator == "==" || operator == "!=") {
+    if (operator == tk.CmpEq || operator == tk.NotEq) {
         if (left == right && (IsVector(left) || IsMatrix(left) || left == Quat)) {
             return Result.Accepted(Boolean);
         }
         return Result.Rejected("math equality requires operands of the same built-in type");
     }
     if (left == Quat || right == Quat) {
-        if (operator == "*" && left == Quat && (right == Quat || right == Vec3)) {
+        if (operator == tk.Mul && left == Quat && (right == Quat || right == Vec3)) {
             return Result.Accepted(right);
         }
         return Result.Rejected("quat supports quaternion composition and quat * vec3 rotation");
     }
-    if (operator != "+" && operator != "-" && operator != "*" && operator != "/") {
+    if (operator != tk.Add && operator != tk.Sub && operator != tk.Mul && operator != tk.Quo) {
         return Result.Rejected("math values support + - * / == and !=; compare components instead");
     }
     if (IsVector(left) && right == Scalar) {
@@ -211,22 +213,22 @@ pub Binary :: (operator: string, left: int, right: int) -> Result {
     if (IsVector(left) && left == right) {
         return Result.Accepted(left);
     }
-    if (IsMatrix(left) && right == Scalar && (operator == "*" || operator == "/")) {
+    if (IsMatrix(left) && right == Scalar && (operator == tk.Mul || operator == tk.Quo)) {
         return Result.Accepted(left);
     }
-    if (left == Scalar && IsMatrix(right) && operator == "*") {
+    if (left == Scalar && IsMatrix(right) && operator == tk.Mul) {
         return Result.Accepted(right);
     }
-    if (IsMatrix(left) && left == right && (operator == "+" || operator == "-" || operator == "*")) {
+    if (IsMatrix(left) && left == right && (operator == tk.Add || operator == tk.Sub || operator == tk.Mul)) {
         return Result.Accepted(left);
     }
-    if (IsMatrix(left) && IsVector(right) && operator == "*" && Width(left) == Width(right)) {
+    if (IsMatrix(left) && IsVector(right) && operator == tk.Mul && Width(left) == Width(right)) {
         return Result.Accepted(right);
     }
-    if (IsVector(left) && IsMatrix(right) && operator == "*") {
+    if (IsVector(left) && IsMatrix(right) && operator == tk.Mul) {
         return Result.Rejected("a matrix multiplies a column vector on its right; write matrix * vector");
     }
-    return Result.Rejected(format_text("cannot apply {} to {} and {}", operator, Name(left), Name(right)));
+    return Result.Rejected(format_text("cannot apply {} to {} and {}", tk.KindNames()[operator], Name(left), Name(right)));
 }
 pub Negate :: (kind: int) -> Result {
     if (IsVector(kind) || IsMatrix(kind)) {

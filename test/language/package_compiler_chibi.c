@@ -32,7 +32,6 @@
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/catalog.h"
-#include "types/copy.h"
 #include "types/map.h"
 #include "types/record.h"
 #include "types/text.h"

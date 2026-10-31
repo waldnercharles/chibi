@@ -228,7 +228,7 @@ QueryGuardTerms :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
                     captured: string[], node: int) -> QueryTerm[] {
     expression := Unparenthesized(forest, node);
     kind := forest[expression].kind;
-    operator := Text(forest, text, Field(forest, expression, syntax.FieldOperator));
+    operator := Operator(forest, expression);
     if (kind == syntax.CallExpression) {
         function := Text(forest, text, Field(forest, expression, syntax.FieldFunction));
         if (function == "has" || function == "all" || function == "any" || function == "not") {
@@ -280,8 +280,8 @@ QueryGuardTerms :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
             return terms;
         }
     }
-    if ((kind == syntax.UnaryExpression && (operator == "!" || operator == "not")) ||
-        (kind == syntax.BinaryExpression && (operator == "&&" || operator == "and" || operator == "||" || operator == "or"))) {
+    if ((kind == syntax.UnaryExpression && (operator == tk.Not || operator == tk.NotKeyword)) ||
+        (kind == syntax.BinaryExpression && (operator == tk.CmpAnd || operator == tk.AndKeyword || operator == tk.CmpOr || operator == tk.OrKeyword))) {
         child := Field(forest, expression, syntax.FieldLeft);
         if (kind == syntax.UnaryExpression) {
             child = Field(forest, expression, syntax.FieldOperand);
@@ -291,7 +291,7 @@ QueryGuardTerms :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
         group.left = length(terms) - 1;
         if (kind == syntax.BinaryExpression) {
             group.kind = 1;
-            if (operator == "||" || operator == "or") {
+            if (operator == tk.CmpOr || operator == tk.OrKeyword) {
                 group.kind = 2;
             }
             right := QueryGuardTerms(forest, text, types, fields, captured, Field(forest, expression, syntax.FieldRight));
@@ -583,8 +583,8 @@ QueryPatternScope :: (forest: snapshot.SnapshotNode[], text: string, pattern: in
             continue;
         }
         if (Is(forest, parent, syntax.BinaryExpression)) {
-            operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
-            if (operator != "&&" && operator != "and") {
+            operator := Operator(forest, parent);
+            if (operator != tk.CmpAnd && operator != tk.AndKeyword) {
                 return false;
             }
             if (Ancestor(forest, Field(forest, parent, syntax.FieldLeft), current) &&
@@ -884,16 +884,16 @@ QueryExcludes :: (forest: snapshot.SnapshotNode[], text: string, condition: int,
         return result;
     }
     if (Is(forest, node, syntax.UnaryExpression)) {
-        operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
-        return (operator == "!" || operator == "not") &&
+        operator := Operator(forest, node);
+        return (operator == tk.Not || operator == tk.NotKeyword) &&
                QueryExcludes(forest, text, Field(forest, node, syntax.FieldOperand), membership, !truth);
     }
     if (!Is(forest, node, syntax.BinaryExpression)) {
         return false;
     }
-    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
-    conjunction := operator == "&&" || operator == "and";
-    disjunction := operator == "||" || operator == "or";
+    operator := Operator(forest, node);
+    conjunction := operator == tk.CmpAnd || operator == tk.AndKeyword;
+    disjunction := operator == tk.CmpOr || operator == tk.OrKeyword;
     if (!conjunction && !disjunction) {
         return false;
     }
@@ -1547,12 +1547,12 @@ QueryBooleanPosition :: (forest: snapshot.SnapshotNode[], text: string, expressi
             }
             return QueryGuardContext(forest, call);
         }
-        operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
+        operator := Operator(forest, parent);
         if (Is(forest, parent, syntax.UnaryExpression)) {
-            return operator == "!" || operator == "not";
+            return operator == tk.Not || operator == tk.NotKeyword;
         }
         return Is(forest, parent, syntax.BinaryExpression) &&
-               (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
+               (operator == tk.CmpAnd || operator == tk.AndKeyword || operator == tk.CmpOr || operator == tk.OrKeyword);
     }
     return false;
 }
@@ -1618,12 +1618,12 @@ QueryPresence :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
     boolean := Is(forest, parent, syntax.QueryGuard) || Is(forest, parent, syntax.IfStatement) ||
                Is(forest, parent, syntax.WhileStatement);
     if (!boolean && Is(forest, parent, syntax.UnaryExpression)) {
-        operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
-        boolean = operator == "!" || operator == "not";
+        operator := Operator(forest, parent);
+        boolean = operator == tk.Not || operator == tk.NotKeyword;
     }
     if (!boolean && Is(forest, parent, syntax.BinaryExpression)) {
-        operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
-        boolean = operator == "&&" || operator == "||" || operator == "and" || operator == "or";
+        operator := Operator(forest, parent);
+        boolean = operator == tk.CmpAnd || operator == tk.CmpOr || operator == tk.AndKeyword || operator == tk.OrKeyword;
     }
     if (!boolean) {
         return -1;

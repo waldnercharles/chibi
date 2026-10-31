@@ -1,5 +1,7 @@
 package math_types
 
+import tk "project:source_tokenizer"
+
 Accepts :: (result: Result, kind: int) {
     switch result {
         case .Accepted(actual):
@@ -77,54 +79,54 @@ QuaternionConstructionIsDistinctFromVectorConstruction :: () {
 }
 @test
 ScalarBroadcastPreservesVectorWidthOnEitherSide :: () {
-    Accepts(Binary("+", Scalar, Vec2), Vec2);
-    Accepts(Binary("-", Scalar, Vec3), Vec3);
-    Accepts(Binary("/", Scalar, Vec4), Vec4);
-    Accepts(Binary("*", Vec2, Scalar), Vec2);
-    Accepts(Binary("-", Vec3, Vec3), Vec3);
-    Rejects(Binary("+", Vec2, Vec3), "cannot apply + to vec2 and vec3");
+    Accepts(Binary(tk.Add, Scalar, Vec2), Vec2);
+    Accepts(Binary(tk.Sub, Scalar, Vec3), Vec3);
+    Accepts(Binary(tk.Quo, Scalar, Vec4), Vec4);
+    Accepts(Binary(tk.Mul, Vec2, Scalar), Vec2);
+    Accepts(Binary(tk.Sub, Vec3, Vec3), Vec3);
+    Rejects(Binary(tk.Add, Vec2, Vec3), "cannot apply + to vec2 and vec3");
 }
 @test
 MatrixProductsUseColumnVectorsOfTheSameDimension :: () {
-    Accepts(Binary("*", Mat2, Vec2), Vec2);
-    Accepts(Binary("*", Mat3, Mat3), Mat3);
-    Accepts(Binary("*", Mat4, Vec4), Vec4);
-    Rejects(Binary("*", Mat3, Vec2), "cannot apply * to mat3 and vec2");
-    Rejects(Binary("*", Vec3, Mat3), "a matrix multiplies a column vector on its right; write matrix * vector");
-    Rejects(Binary("*", Mat4, Mat3), "cannot apply * to mat4 and mat3");
+    Accepts(Binary(tk.Mul, Mat2, Vec2), Vec2);
+    Accepts(Binary(tk.Mul, Mat3, Mat3), Mat3);
+    Accepts(Binary(tk.Mul, Mat4, Vec4), Vec4);
+    Rejects(Binary(tk.Mul, Mat3, Vec2), "cannot apply * to mat3 and vec2");
+    Rejects(Binary(tk.Mul, Vec3, Mat3), "a matrix multiplies a column vector on its right; write matrix * vector");
+    Rejects(Binary(tk.Mul, Mat4, Mat3), "cannot apply * to mat4 and mat3");
 }
 @test
 MatricesScaleButDoNotBroadcastScalarAdditionOrDivision :: () {
-    Accepts(Binary("*", Scalar, Mat2), Mat2);
-    Accepts(Binary("/", Mat3, Scalar), Mat3);
-    Accepts(Binary("+", Mat4, Mat4), Mat4);
-    Rejects(Binary("+", Mat2, Scalar), "cannot apply + to mat2 and number");
-    Rejects(Binary("/", Scalar, Mat2), "cannot apply / to number and mat2");
-    Rejects(Binary("/", Mat3, Mat3), "cannot apply / to mat3 and mat3");
+    Accepts(Binary(tk.Mul, Scalar, Mat2), Mat2);
+    Accepts(Binary(tk.Quo, Mat3, Scalar), Mat3);
+    Accepts(Binary(tk.Add, Mat4, Mat4), Mat4);
+    Rejects(Binary(tk.Add, Mat2, Scalar), "cannot apply + to mat2 and number");
+    Rejects(Binary(tk.Quo, Scalar, Mat2), "cannot apply / to number and mat2");
+    Rejects(Binary(tk.Quo, Mat3, Mat3), "cannot apply / to mat3 and mat3");
 }
 @test
 QuaternionsComposeAndRotateWithoutVectorBroadcast :: () {
-    Accepts(Binary("*", Quat, Quat), Quat);
-    Accepts(Binary("*", Quat, Vec3), Vec3);
-    assert(BinaryRecoverable("*", Quat, Vec3), "rotation must report an invalid quaternion");
-    assert(!BinaryRecoverable("*", Quat, Quat), "composition uses ordinary f32 arithmetic");
-    Rejects(Binary("*", Vec3, Quat), "quat supports quaternion composition and quat * vec3 rotation");
-    Rejects(Binary("+", Quat, Quat), "quat supports quaternion composition and quat * vec3 rotation");
-    Rejects(Binary("*", Quat, Scalar), "quat supports quaternion composition and quat * vec3 rotation");
+    Accepts(Binary(tk.Mul, Quat, Quat), Quat);
+    Accepts(Binary(tk.Mul, Quat, Vec3), Vec3);
+    assert(BinaryRecoverable(tk.Mul, Quat, Vec3), "rotation must report an invalid quaternion");
+    assert(!BinaryRecoverable(tk.Mul, Quat, Quat), "composition uses ordinary f32 arithmetic");
+    Rejects(Binary(tk.Mul, Vec3, Quat), "quat supports quaternion composition and quat * vec3 rotation");
+    Rejects(Binary(tk.Add, Quat, Quat), "quat supports quaternion composition and quat * vec3 rotation");
+    Rejects(Binary(tk.Mul, Quat, Scalar), "quat supports quaternion composition and quat * vec3 rotation");
 }
 @test
 EqualityReturnsBoolAndOrderingNeedsComponents :: () {
-    Accepts(Binary("==", Vec3, Vec3), Boolean);
-    Accepts(Binary("!=", Mat4, Mat4), Boolean);
-    Accepts(Binary("==", Quat, Quat), Boolean);
-    Rejects(Binary("==", Vec3, Vec4), "math equality requires operands of the same built-in type");
-    Rejects(Binary("<", Vec2, Vec2), "math values support + - * / == and !=; compare components instead");
-    Rejects(Binary("%", Vec2, Vec2), "math values support + - * / == and !=; compare components instead");
+    Accepts(Binary(tk.CmpEq, Vec3, Vec3), Boolean);
+    Accepts(Binary(tk.NotEq, Mat4, Mat4), Boolean);
+    Accepts(Binary(tk.CmpEq, Quat, Quat), Boolean);
+    Rejects(Binary(tk.CmpEq, Vec3, Vec4), "math equality requires operands of the same built-in type");
+    Rejects(Binary(tk.Lt, Vec2, Vec2), "math values support + - * / == and !=; compare components instead");
+    Rejects(Binary(tk.Mod, Vec2, Vec2), "math values support + - * / == and !=; compare components instead");
 }
 @test
 DoublePrecisionNeedsAnExplicitConversionBeforeMath :: () {
-    Rejects(Binary("*", Vec3, Double), "math components require explicit f32(value) narrowing from f64");
-    Rejects(Binary("+", Double, Vec4), "math components require explicit f32(value) narrowing from f64");
+    Rejects(Binary(tk.Mul, Vec3, Double), "math components require explicit f32(value) narrowing from f64");
+    Rejects(Binary(tk.Add, Double, Vec4), "math components require explicit f32(value) narrowing from f64");
 }
 @test
 UnaryNegationKeepsVectorAndMatrixTypes :: () {

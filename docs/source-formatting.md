@@ -1,9 +1,14 @@
 # Shared Chibi layout formatting
 
-`Chibi::authoring` exports `authoring/source_format.h`. The existing printer is
+This printer (`archive/src/authoring/source_format*`) is archived with
+`chibi fmt` and the C front end it reads (`archive/README.md`, "Source formatter
+and documentation site"). Nothing builds it; this page records its contract for
+the formatter that replaces it.
+
+`Chibi::authoring` exported `authoring/source_format.h`. The printer is
 one authoritative whitespace-only implementation for native and WebAssembly SDK
 consumers. It needs an immutable `script_syntax` snapshot, not a catalog, graph,
-compiler, controller or editor. All returned source is reparsed and checked for
+compiler or editor. All returned source is reparsed and checked for
 complete CST equivalence, including exact leaf bytes, comments and field names.
 Invalid drafts fail without mutating the input or publishing partial edits.
 

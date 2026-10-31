@@ -1,7 +1,12 @@
 # Allocation and copy explanations
 
-Run `chibi check /path/to/project --explain-costs` to validate a project and
-print its static allocation, copy and retention evidence. Add `--json` for a
+The front end, `chibi check --explain-costs`, was archived with the
+game-project compile path on 2026-10-29 (e8bc71909); the CLI now reports
+`check` as an unknown command. The report is formatted by
+`tools/compiler/cost_explanations`. This page records what the command did.
+
+`chibi check /path/to/project --explain-costs` validated a project and
+printed its static allocation, copy and retention evidence. `--json` gave a
 versioned JSON report on stdout. Invalid projects fail normally and emit no
 report. Project checks do not run game functions, migrate assets or write
 prepared artifacts. The cost formatter disables persistent caching.

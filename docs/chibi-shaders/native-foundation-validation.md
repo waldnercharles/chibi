@@ -41,7 +41,8 @@ clean source, using a freshly built SDK and full drivers. Debug sanitizers were
 
 The real full driver's `--shader-source-debug` separately passes 13 cases/165
 assertions and adjacent `--shader-bake` passes 8/320. Those unchanged focused
-suites also pass under **UBSan only**. Full `make check-format` passes using
+suites also pass under **UBSan only**. The full C format check (then
+`make check-format`, now `chibi build format --check`) passes using
 clang-format 22.1.5. Independent source review found no concrete defect.
 
 Combined ASan/UBSan builds reach the sanitized reflect generator, then this

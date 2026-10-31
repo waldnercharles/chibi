@@ -217,10 +217,11 @@ lane divergence are outside a single material sample.
 
 ## Acceptance for each package
 
-Each package adds pico_unit cases in `test/language` or `test/tools`, runs the
-required groups (`make test-native`, `make test-materials`, `make test-projects`,
-`make test-language-all`, `make test-tools`) and reports unexecuted coverage.
-S4 and later render a real material and compare CPU samples with GPU pixels at
-controlled coordinates (`make agent-gpu-test`), and prove with a second
+Each package adds `@test` functions that `chibi test` runs, or pico_unit cases
+in `test/language` or `test/tools`, runs the required groups
+(`chibi build test short native projects language`) and reports unexecuted
+coverage. S4 and later render a real material and compare CPU samples with GPU
+pixels at controlled coordinates, which waits for a renderer: the GPU selectors
+are archived with `src/render`. They also prove with a second
 material of different content that the path is not specific to the first. S5
 verifies source edits, error ranges, undo and redo in Studio.

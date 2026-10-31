@@ -35,6 +35,7 @@ foreign kernel32 {
     lstrlenW :: (text: rawptr) -> i32
     RtlMoveMemory :: (destination: u16[], source: rawptr, length: u64) -> i32
     GetStdHandle :: (which: i32) -> u64
+    ExitProcess :: (code: u32) -> u32
     SetHandleInformation :: (handle: u64, mask: u32, flags: u32) -> i32
     CreatePipe :: (read: u64[], write: u64[], security: u8[], size: u32) -> i32
     PeekNamedPipe :: (pipe: u64, buffer: rawptr, size: u32, read: rawptr, available: u32[], left: rawptr) -> i32
@@ -202,16 +203,42 @@ pub WriteBytes :: (path: string, data: u8[]) -> bool {
     return done && closed != 0;
 }
 
-// Writes the text to standard output; false when it cannot be written whole.
-pub Print :: (text: string) -> bool {
+// The bytes of the text, a copy.
+Bytes :: (text: string) -> u8[] {
+    data: u8[] = [];
     size := text_byte_length(text);
-    bytes: u8[] = [];
     for index in 0..<size {
-        bytes.append(u8(text_byte_at(text, index)));
+        data.append(u8(text_byte_at(text, index)));
     }
+    return data;
+}
+
+// Writes the line and a newline to standard error, as build reports do; false
+// when it cannot be written whole.
+pub Print :: (line: string) -> bool {
+    data := Bytes(line);
+    data.append(10);
     written: u32[] = [0];
-    done := WriteFile(GetStdHandle(-11), bytes, u32(size), written, 0);
-    return done != 0 && int(written[0]) == size;
+    done := WriteFile(GetStdHandle(-12), data, u32(length(data)), written, 0);
+    return done != 0 && int(written[0]) == length(data);
+}
+
+// Replaces the file with the text; false when it cannot be written whole.
+pub WriteText :: (path: string, text: string) -> bool {
+    return WriteBytes(path, Bytes(text));
+}
+
+pub IsFile :: (path: string) -> bool {
+    return Kind(path) == KindFile;
+}
+
+pub IsDirectory :: (path: string) -> bool {
+    return Kind(path) == KindDirectory;
+}
+
+// Ends the process with the exit status; it does not return.
+pub Exit :: (code: int) -> int {
+    return int(ExitProcess(u32(code)));
 }
 
 // The text of the bytes, which may hold NUL and malformed UTF-8.

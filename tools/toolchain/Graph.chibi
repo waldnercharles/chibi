@@ -50,28 +50,6 @@ Count :: (text: string) -> int {
     return value;
 }
 
-// Every named target must exist, before any discovery or build writes.
-TargetsValid :: (arguments: string[], targets: string[]) -> bool {
-    for (i in 0..<length(arguments)) {
-        if (arguments[i] != "--target") {
-            continue;
-        }
-        if (i + 1 == length(arguments) || strings.HasPrefix(arguments[i + 1], "--")) {
-            os.Print("graph: --target requires a target name");
-            return false;
-        }
-        found := false;
-        for (target in targets) {
-            found = found || arguments[i + 1] == target;
-        }
-        if (!found) {
-            os.Print(format_text("graph: unknown target '{0}'", arguments[i + 1]));
-            return false;
-        }
-    }
-    return true;
-}
-
 // Whether a target was named with --target, or none were, or a named
 // executable needs it (engine.Needed).
 Selected :: (arguments: string[], target: string) -> bool {
@@ -361,7 +339,9 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
 
 BuildLibrariesWithArguments :: (arguments: string[], runtime_sdk: bool) -> int {
     targets := engine.Targets();
-    if (!TargetsValid(arguments, targets)) {
+    unknown := engine.TargetError(arguments, targets);
+    if (unknown != "") {
+        os.Print(unknown);
         return 2;
     }
     build_dir := Option(arguments, "--build", "");

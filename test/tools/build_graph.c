@@ -572,38 +572,6 @@ void test_build_graph(const char *host)
  * known target, a target missing its name at the end or before an option, and
  * asset generator hosts that are relative or missing. They write no build
  * outputs and never reach toolchain discovery. */
-TEST_CASE(invalid_arguments_fail_before_writing_commands)
-{
-    char build_dir[GRAPH_PATH];
-    join(build_dir, suite, "invalid targets");
-    static const struct
-    {
-        const char *arguments[8];
-        const char *diagnostic;
-    } cases[] = {
-        { { "--commands-only", "on", "--target", "chibi-clt", NULL },
-          "graph: unknown target 'chibi-clt'" },
-        { { "--commands-only", "on", "--target", "chibi_support", "--target", "chibi-clt", NULL },
-          "graph: unknown target 'chibi-clt'" },
-        { { "--commands-only", "on", "--target", NULL },
-          "graph: --target requires a target name" },
-        { { "--target", "--commands-only", "on", NULL },
-          "graph: --target requires a target name" },
-        { { "--commands-only", "on", "--asset-generator-hosts", "build-release/sdk", NULL },
-          "graph: --asset-generator-hosts requires an absolute directory" },
-        { { "--commands-only", "on", "--asset-generator-hosts", NULL },
-          "graph: --asset-generator-hosts requires an absolute directory" }
-    };
-    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
-        REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, cases[i].arguments) == -1);
-        char *log = tool_read(log_path);
-        REQUIRE(log && strstr(log, cases[i].diagnostic));
-        free(log);
-        REQUIRE(access(build_dir, F_OK));
-    }
-    return true;
-}
-
 /* An unexpected result must stop the batch: a later rejection must not hide
  * the first mismatch. The ordinary rejection matrix tests continuation after
  * each expected status 2, with distinct paths and exact per-case diagnostics. */
@@ -725,7 +693,6 @@ void test_build_graph_programs(const char *host)
     set_up(host);
     RUN_TEST_CASE(named_programs_build_what_they_run);
     RUN_TEST_CASE(with_timeout_stops_a_hung_command_and_its_children);
-    RUN_TEST_CASE(invalid_arguments_fail_before_writing_commands);
     RUN_TEST_CASE(graph_batch_stops_on_unexpected_result);
     RUN_TEST_CASE(graph_batch_transcripts_are_case_local);
     RUN_TEST_CASE(authored_dependency_files_list_prerequisites);

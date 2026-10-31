@@ -6,8 +6,8 @@ package windows
 //
 // Paths are UTF-8 strings. The calls take UTF-16, so each path is converted
 // with MultiByteToWideChar, which keeps every path the file system can hold.
-// A call that fails returns false; the error code is not read yet. Getenv,
-// List and Arguments, which build strings from UTF-16, wait for text built
+// A call that fails returns false; the error code is not read yet. Exit, which
+// calls a foreign function for no result, and Getenv, List and Arguments, which build strings from UTF-16, wait for text built
 // from bytes to run natively.
 
 foreign import kernel32 "system:kernel32"
@@ -23,7 +23,6 @@ foreign kernel32 {
     ReadFile :: (handle: u64, buffer: u8[], count: u32, read: u32[], overlapped: rawptr) -> i32
     WriteFile :: (handle: u64, buffer: u8[], count: u32, written: u32[], overlapped: rawptr) -> i32
     CloseHandle :: (handle: u64) -> i32
-    ExitProcess :: (code: u32)
 }
 
 pub KindNone: int : 0;
@@ -51,7 +50,8 @@ Wide :: (text: string) -> u16[] {
     for (index in 0..<int(size)) {
         wide.append(0);
     }
-    MultiByteToWideChar(Utf8, 0, text, -1, wide, size);
+    converted := MultiByteToWideChar(Utf8, 0, text, -1, wide, size);
+    assert(converted == size, "the path converts");
     return wide;
 }
 
@@ -97,22 +97,23 @@ pub Rename :: (source: string, destination: string) -> bool {
     return MoveFileExW(Wide(source), Wide(destination), ReplaceExisting) != 0;
 }
 
-// The file's bytes, or false when it cannot be opened or read.
-pub ReadBytes :: (path: string) -> (data: u8[], ok: bool) {
+// The file's bytes; empty when it cannot be opened or read, so a caller that
+// must tell an empty file from a failure asks Kind first. A result of several
+// values holding an array waits for native multiple results of arrays.
+pub ReadBytes :: (path: string) -> u8[] {
     contents: u8[] = [];
     handle := CreateFileW(Wide(path), ReadAccess, ShareAll, 0, OpenExisting, 0, 0);
     if (~handle == 0) {
-        return (contents, false);
+        return contents;
     }
     chunk: u8[] = [];
     for (index in 0..<ReadChunk) {
         chunk.append(0);
     }
     read: u32[] = [0];
-    good := true;
     while (true) {
         if (ReadFile(handle, chunk, u32(ReadChunk), read, 0) == 0) {
-            good = false;
+            contents = [];
             break;
         }
         count := int(read[0]);
@@ -123,8 +124,8 @@ pub ReadBytes :: (path: string) -> (data: u8[], ok: bool) {
             contents.append(chunk[index]);
         }
     }
-    CloseHandle(handle);
-    return (contents, good);
+    closed := CloseHandle(handle);
+    return contents;
 }
 
 // Writes the bytes to the path, replacing a file already there.
@@ -138,11 +139,6 @@ pub WriteBytes :: (path: string, data: u8[]) -> bool {
     if (length(data) > 0) {
         done = WriteFile(handle, data, u32(length(data)), written, 0) != 0 && int(written[0]) == length(data);
     }
-    CloseHandle(handle);
-    return done;
-}
-
-// Ends the program with the exit status.
-pub Exit :: (status: int) {
-    ExitProcess(u32(status));
+    closed := CloseHandle(handle);
+    return done && closed != 0;
 }

@@ -934,25 +934,16 @@ EmitterCoreSources :: () -> string[] {
     return ["strings/Strings.chibi"];
 }
 
+// A request quotes every source it carries, about 2 MB for the compiler, so
+// each byte costs only integer tests; text between escapes is copied in runs.
 Quote :: (text: string) -> string {
     parts := ["\""];
     start := 0;
     index := 0;
     for (value in strings.Bytes(text)) {
-        escape := "";
-        if (value == 34) {
-            escape = "\\\"";
-        } else if (value == 92) {
-            escape = "\\\\";
-        } else if (value == 10) {
-            escape = "\\n";
-        } else if (value < 32) {
-            digits := "0123456789abcdef";
-            escape = Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
-        }
-        if (escape != "") {
+        if (value < 32 || value == 34 || value == 92) {
             parts.append(strings.Slice(text, start, index - start));
-            parts.append(escape);
+            parts.append(Escape(value));
             start = index + 1;
         }
         index += 1;
@@ -960,6 +951,20 @@ Quote :: (text: string) -> string {
     parts.append(strings.Slice(text, start, index - start));
     parts.append("\"");
     return Join(parts);
+}
+// The JSON escape of a quote, a backslash or a control byte.
+Escape :: (value: int) -> string {
+    if (value == 34) {
+        return "\\\"";
+    }
+    if (value == 92) {
+        return "\\\\";
+    }
+    if (value == 10) {
+        return "\\n";
+    }
+    digits := "0123456789abcdef";
+    return Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
 }
 
 Array :: (values: string[]) -> string {

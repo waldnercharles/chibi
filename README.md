@@ -23,7 +23,7 @@ The default install directory is `~/.local`. Use `chibi build install --prefix /
 to select another directory. The SDK includes the `chibi` command, compiler,
 player, headers and libraries.
 
-For a development build, use `tools/build.sh build` (once a `chibi` exists, `chibi build` inside the checkout does the same). Run the command as `build/sdk/chibi`. From a cold tree it first builds the Release hosts in `build-release` (about three minutes) so the asset compiler is generated quickly, then the Debug build; the whole run takes about ten minutes on an Apple M-series machine.
+For a development build, use `tools/build.sh build` (once a `chibi` exists, `chibi build` inside the checkout does the same). It builds everything: the launcher, the compiler, the private hosts and the test drivers; `--target chibi` builds one product. Run the command as `build/sdk/chibi`. From a cold tree it first builds the Release hosts in `build-release` so the asset compiler is generated quickly, then the Debug build. A cold Release build of everything took 238 seconds on a 10-core Apple M-series machine (`--release` builds `build-release`).
 
 ## Hello World
 

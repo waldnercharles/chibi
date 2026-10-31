@@ -1,0 +1,40 @@
+package sysos
+
+import posix "core:sys/posix"
+
+// The call set the native compiler uses for files, directories, programs and
+// the environment, over core:sys/posix. A native build resolves `core:sys/os`
+// to the destination's platform package, core:sys/windows for a Windows
+// target, so a package imports this name and compiles for either; this file
+// is the POSIX one, and what the VM and tooling see. Failures are `false`, an
+// empty value or -1, with no error tuples (a tuple holding an array does not
+// compile natively).
+
+pub KindNone: int : posix.KindNone;
+pub KindFile: int : posix.KindFile;
+pub KindDirectory: int : posix.KindDirectory;
+pub KindLink: int : posix.KindLink;
+pub KindOther: int : posix.KindOther;
+
+
+pub Kind :: (path: string) -> int { return posix.Kind(path); }
+pub Exists :: (path: string) -> bool { return posix.Exists(path); }
+pub IsFile :: (path: string) -> bool { return posix.IsFile(path); }
+pub IsDirectory :: (path: string) -> bool { return posix.IsDirectory(path); }
+pub FileSize :: (path: string) -> int { return posix.FileSize(path); }
+pub ReadBytes :: (path: string) -> u8[] { return posix.ReadBytes(path); }
+pub WriteBytes :: (path: string, data: u8[]) -> bool { return posix.WriteBytes(path, data); }
+pub ReadText :: (path: string) -> string { return posix.ReadText(path); }
+pub WriteText :: (path: string, text: string) -> bool { return posix.WriteText(path, text); }
+pub Rename :: (source: string, destination: string) -> bool { return posix.Rename(source, destination); }
+pub Remove :: (path: string) -> bool { return posix.Remove(path); }
+pub MakeDirectory :: (path: string) -> bool { return posix.MakeDirectory(path); }
+pub List :: (path: string) -> string[] { return posix.List(path); }
+pub Run :: (command: string[]) -> int { return posix.Run(command); }
+pub Capture :: (command: string[]) -> posix.Result { return posix.Capture(command); }
+pub Spawn :: (command: string[]) -> int { return posix.Spawn(command); }
+pub Wait :: (process: int) -> int { return posix.Wait(process); }
+pub Getenv :: (name: string) -> string { return posix.Getenv(name); }
+pub Arguments :: () -> string[] { return posix.Arguments(); }
+pub Print :: (line: string) -> bool { return posix.Print(line); }
+pub Exit :: (code: int) -> int { return posix.Exit(code); }

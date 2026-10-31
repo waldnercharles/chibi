@@ -1,7 +1,7 @@
 package native_link_host
 
 import link "project:native_link"
-import os "core:os"
+import os "core:sys/os"
 import strings "core:strings"
 
 // The effects of the link step: finding the LLVM tools and the C library's
@@ -73,7 +73,7 @@ pub Discover :: (plan: link.Plan) -> link.Plan {
 }
 
 Write :: (path: string, text: string) -> bool {
-    return os.WriteText(path, text) == nil;
+    return os.WriteText(path, text);
 }
 
 // The link itself, with the stubs written into plan.work.
@@ -107,19 +107,19 @@ Build :: (plan: link.Plan) -> link.Error? {
         }
     }
     partial := link.Partial(ready);
-    if (os.Remove(partial) != nil) {
+    if (os.Exists(partial) && !os.Remove(partial)) {
         return Fail(link.CannotWrite, 0);
     }
     command := link.Command(ready, partial);
     command[0] = Tool(plan.llvm, link.Linker(target));
     status := os.Run(command);
     if (status != 0) {
-        if (os.Remove(partial) != nil) {
+        if (os.Exists(partial) && !os.Remove(partial)) {
             return Fail(link.CannotWrite, 0);
         }
         return Fail(link.ToolFailed, status);
     }
-    if (os.Rename(partial, plan.output) != nil) {
+    if (!os.Rename(partial, plan.output)) {
         return Fail(link.CannotWrite, 0);
     }
     return nil;
@@ -149,7 +149,7 @@ pub Link :: (plan: link.Plan) -> link.Error? {
         own = true;
     }
     if (os.Kind(ready.work) == os.KindNone) {
-        if (os.MakeDirectory(ready.work) != nil) {
+        if (!os.MakeDirectory(ready.work)) {
             return Fail(link.CannotWrite, 0);
         }
     } else {
@@ -158,10 +158,10 @@ pub Link :: (plan: link.Plan) -> link.Error? {
     failure := Build(ready);
     cleaned := true;
     for (path in Leftovers(ready)) {
-        cleaned = cleaned && os.Remove(path) == nil;
+        cleaned = cleaned && (!os.Exists(path) || os.Remove(path));
     }
     if (own) {
-        cleaned = cleaned && os.Remove(ready.work) == nil;
+        cleaned = cleaned && (!os.Exists(ready.work) || os.Remove(ready.work));
     }
     if (failure != nil) {
         return failure;

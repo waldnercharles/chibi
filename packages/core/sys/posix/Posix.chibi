@@ -40,6 +40,8 @@ foreign libc {
     pipe :: (descriptors: u8[]) -> i32
     read :: (descriptor: i32, buffer: u8[], count: u64) -> i64
     close :: (descriptor: i32) -> i32
+    write :: (descriptor: i32, buffer: u8[], count: u64) -> i64
+    _exit :: (code: i32) -> i32
     poll :: (descriptors: u8[], count: u64, timeout: i32) -> i32
     waitpid :: (pid: i32, status: u8[], options: i32) -> i32
     posix_spawnp :: (pid: u8[], file: cstring, actions: u8[], attributes: rawptr, arguments: u8[], environment: rawptr) -> i32
@@ -447,4 +449,41 @@ pub Arguments :: () -> string[] {
         arguments.append(text_from_bytes(bytes));
     }
     return arguments;
+}
+
+pub IsFile :: (path: string) -> bool {
+    return Kind(path) == KindFile;
+}
+
+pub IsDirectory :: (path: string) -> bool {
+    return Kind(path) == KindDirectory;
+}
+
+// The bytes of the text, a copy.
+Bytes :: (text: string) -> u8[] {
+    data: u8[] = [];
+    size := text_byte_length(text);
+    for index in 0..<size {
+        data.append(u8(text_byte_at(text, index)));
+    }
+    return data;
+}
+
+// Replaces the file with the text; false when it cannot be written whole.
+pub WriteText :: (path: string, text: string) -> bool {
+    return WriteBytes(path, Bytes(text));
+}
+
+// Writes the line and a newline to standard error, as build reports do; false
+// when it cannot be written whole.
+pub Print :: (line: string) -> bool {
+    data := Bytes(line);
+    data.append(10);
+    written := write(2, data, u64(length(data)));
+    return int(written) == length(data);
+}
+
+// Ends the process with the exit status; it does not return.
+pub Exit :: (code: int) -> int {
+    return int(_exit(i32(code)));
 }

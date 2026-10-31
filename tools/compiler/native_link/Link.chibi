@@ -178,11 +178,93 @@ pub ImportName :: (value: string) -> bool {
 // as (library, symbol) pairs first, so no library's list is copied as it
 // grows; a module names a few libraries, so each pair searches them in turn
 // and each library's symbols are one pass over the pairs.
+// The indices of `keys` in key order, equal keys in index order: a bottom-up
+// merge sort that appends and never shifts, so it needs no array insert. A
+// macOS program imports thousands of symbols, so duplicates are found by sorting
+// and searching, not by scanning, and the order of first appearance is kept.
+Ordered :: (keys: string[]) -> int[] {
+    count := length(keys);
+    from: int[] = [];
+    for (index in 0..<count) {
+        from.append(index);
+    }
+    width := 1;
+    while (width < count) {
+        to: int[] = [];
+        start := 0;
+        while (start < count) {
+            middle := start + width;
+            if (middle > count) {
+                middle = count;
+            }
+            end := middle + width;
+            if (end > count) {
+                end = count;
+            }
+            left := start;
+            right := middle;
+            while (left < middle || right < end) {
+                if (right >= end || (left < middle && strings.Compare(keys[from[left]], keys[from[right]]) <= 0)) {
+                    to.append(from[left]);
+                    left += 1;
+                } else {
+                    to.append(from[right]);
+                    right += 1;
+                }
+            }
+            start = end;
+        }
+        from = to;
+        width *= 2;
+    }
+    return from;
+}
+
+// Whether each of `keys` is the first of its value in `keys`.
+Firsts :: (keys: string[]) -> bool[] {
+    order := Ordered(keys);
+    first := resize([false], length(keys));
+    for (at in 0..<length(order)) {
+        if (at == 0 || keys[order[at - 1]] != keys[order[at]]) {
+            first[order[at]] = true;
+        }
+    }
+    return first;
+}
+
+// `keys` in key order.
+Sorted :: (keys: string[]) -> string[] {
+    sorted: string[] = [];
+    for (index in Ordered(keys)) {
+        sorted.append(keys[index]);
+    }
+    return sorted;
+}
+
+// Whether `key` is in `sorted`, by binary search.
+Has :: (sorted: string[], key: string) -> bool {
+    low := 0;
+    high := length(sorted);
+    while (low < high) {
+        middle := low + (high - low) / 2;
+        order := strings.Compare(sorted[middle], key);
+        if (order == 0) {
+            return true;
+        }
+        if (order < 0) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    return false;
+}
+
 pub SystemImports :: (lines: string[]) -> Import[] {
     names: string[] = [];
-    owners: int[] = [];
-    symbols: string[] = [];
-    seen: [string: bool] = [:];
+    candidate_owners: int[] = [];
+    candidate_symbols: string[] = [];
+    candidate_keys: string[] = [];
     named := "; chibi-library system:";
     imports := "; chibi-import system:";
     for (line in lines) {
@@ -215,10 +297,20 @@ pub SystemImports :: (lines: string[]) -> Import[] {
             at = length(names) - 1;
         }
         key := Join([library_name, " ", symbol]);
-        if (symbol != "" && !seen.has(key)) {
-            seen[key] = true;
-            owners.append(at);
-            symbols.append(symbol);
+        if (symbol != "") {
+            candidate_owners.append(at);
+            candidate_symbols.append(symbol);
+            candidate_keys.append(key);
+        }
+    }
+    // Each (library, symbol) once, at its first appearance.
+    owners: int[] = [];
+    symbols: string[] = [];
+    firsts := Firsts(candidate_keys);
+    for (index in 0..<length(candidate_keys)) {
+        if (firsts[index]) {
+            owners.append(candidate_owners[index]);
+            symbols.append(candidate_symbols[index]);
         }
     }
     found: Import[] = [];
@@ -269,14 +361,23 @@ pub Imports :: (plan: Plan) -> Import[] {
     } else {
         return found;
     }
-    // A macOS program may import thousands of symbols, so duplicates are found
-    // by key.
-    seen: [string: bool] = [:];
-    for (listed in found) {
-        for (symbol in listed.symbols) {
-            seen[Join([listed.name, " ", symbol])] = true;
+    // Duplicates are found by key: against the symbols already there, then
+    // among the plan's own, in order.
+    held_keys: string[] = [];
+    for (known in found) {
+        for (symbol in known.symbols) {
+            held_keys.append(Join([known.name, " ", symbol]));
         }
     }
+    held_keys = Sorted(held_keys);
+    plan_keys: string[] = [];
+    for (imported in plan.imports) {
+        for (symbol in imported.symbols) {
+            plan_keys.append(Join([imported.name, " ", symbol]));
+        }
+    }
+    plan_firsts := Firsts(plan_keys);
+    position := 0;
     for (imported in plan.imports) {
         at := Find(found, imported.name);
         if (at < 0) {
@@ -287,11 +388,10 @@ pub Imports :: (plan: Plan) -> Import[] {
         changed := found[at];
         symbols := changed.symbols;
         for (symbol in imported.symbols) {
-            key := Join([imported.name, " ", symbol]);
-            if (!seen.has(key)) {
-                seen[key] = true;
+            if (plan_firsts[position] && !Has(held_keys, plan_keys[position])) {
                 symbols.append(symbol);
             }
+            position += 1;
         }
         changed.symbols = symbols;
         found[at] = changed;

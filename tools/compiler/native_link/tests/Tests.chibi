@@ -222,3 +222,22 @@ EveryStartModuleExportsTheArgumentFunctions :: () {
     assert(strings.Contains(windows, "define internal i64 @chibi_command_argument("), "windows parses its command line");
     assert(strings.Contains(link.Start("arm64-apple-macosx11.0.0", false, false), "ptr %envp"), "dyld passes envp");
 }
+
+@test
+SystemImportsKeepFirstAppearancesOfManyUnsortedSymbols :: () {
+    lines: string[] = ["; chibi-library system:user32"];
+    expected: string[] = [];
+    // 37 shares no factor with 300, so these visit each of 0..<300 once, out of order.
+    for (index in 0..<300) {
+        name := format_text("S{}", (index * 37) % 300);
+        lines.append(strings.Concatenate(["; chibi-import system:user32 ", name]));
+        expected.append(name);
+    }
+    // Then every one again, reversed.
+    for (index in 0..<300) {
+        lines.append(strings.Concatenate(["; chibi-import system:user32 ", format_text("S{}", 299 - index)]));
+    }
+    found := link.SystemImports(lines);
+    assert(length(found) == 1 && found[0].name == "user32", "one library");
+    Same(found[0].symbols, expected);
+}

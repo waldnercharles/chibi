@@ -9,7 +9,7 @@ import strings "core:strings"
 // (tools/build.sh before a chibi exists).
 //
 //   build [--release|--debug|--profile NAME] [--build DIR] [--release-build DIR]
-//         [--target NAME]... [--all] [--jobs N]
+//         [--target NAME]... [--all] [--jobs N (default: every processor)]
 //         [--host PATH] [--libclang-root DIR] [--reflect PATH]
 //         [--asset-generator-hosts DIR] [--debug-optimization 0|1]
 //         [--debug-frame-pointers on|off] [--dry-run]
@@ -118,6 +118,21 @@ Program :: (host: string, source: string, function: string, collections: string[
     return build.concat(command, ["--entry", function, "--timeout-ms", timeout, "--"])
 }
 
+// The --jobs a build runs its steps with: the option, else every processor
+// online, so compiles use the whole machine by default. 8 when getconf can't say.
+Jobs :: (arguments: string[]) -> string {
+    jobs := Option(arguments, "--jobs", "")
+    if (jobs != "") {
+        return jobs
+    }
+    online := os.Capture(["getconf", "_NPROCESSORS_ONLN"])
+    count := build.trim(online.stdout)
+    if (online.status != 0 || Count(count) < 1) {
+        return "8"
+    }
+    return count
+}
+
 // Builds a profile, first the Release hosts a non-Release graph borrows to
 // generate the asset compiler, which a Debug host cannot do from a cold tree
 // within its deadline.
@@ -125,7 +140,7 @@ Build :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     profile := Profile(arguments)
     directory := Option(arguments, "--build", DefaultDirectory(profile))
-    jobs := Option(arguments, "--jobs", "8")
+    jobs := Jobs(arguments)
     releases := Option(arguments, "--release-build", "build-release")
     host := Absolute(Option(arguments, "--host", Join([directory, "/sdk/chibi-build-host"])))
     if (!HostUsable(host)) {
@@ -487,7 +502,7 @@ GraphStep :: (name: string, host: string, source: string, function: string, tail
 // The Release hosts and tools an install or a release-only verb needs.
 ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
     nested := ["--release", "--release-build", Option(arguments, "--release-build", "build-release"),
-               "--jobs", Option(arguments, "--jobs", "8")]
+               "--jobs", Jobs(arguments)]
     for (name in ["--host", "--libclang-root", "--reflect"]) {
         value := Option(arguments, name, "")
         if (value != "") {
@@ -527,7 +542,7 @@ SdkReflect :: (arguments: string[]) -> int {
     if (host == "") {
         return 1
     }
-    tail := ["--build", Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "--jobs", Option(arguments, "--jobs", "8")]
+    tail := ["--build", Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "--jobs", Jobs(arguments)]
     tail = build.concat(tail, Libclang(arguments))
     return GraphStep("sdk-reflect", host, "tools/toolchain/Graph.chibi", "SDKReflect", build.concat(tail, build.concat(["--"], Rest(arguments))), dry)
 }
@@ -551,7 +566,7 @@ RuntimeSdk :: (arguments: string[], package: bool) -> int {
     tail := [
         "--build", constructed, "--reflect",
         Join([Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "/reflect"]), "--jobs",
-        Option(arguments, "--jobs", "8")
+        Jobs(arguments)
     ]
     tail = build.concat(tail, Libclang(arguments))
     flags := Rest(arguments)

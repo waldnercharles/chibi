@@ -173,8 +173,10 @@ owned generation and write no artifact into the SDK.
 
 The recovered compiler is kept in a cache so that only the first start after a
 compiler-source change pays for the recovery, as Zig keeps its global cache. The
-build host stores it in `.chibi/compiler-cache` below `--root`, or in the
+build host stores it in `chibi/compiler-cache` under `$XDG_CACHE_HOME`, else
+`~/.cache`, so every checkout and worktree on the machine shares it, or in the
 directory `CHIBI_COMPILER_CACHE` names; `CHIBI_COMPILER_CACHE=off` disables it.
+Past 2 GiB the oldest entries are removed first.
 An entry is named by the SHA-256 of what decides its bytes: the seed's closure,
 Compile's arguments (every compiler and core source's path and text, and the
 target description) and the prepared format. The host is not part of the key:

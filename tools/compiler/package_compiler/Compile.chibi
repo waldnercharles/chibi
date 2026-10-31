@@ -347,6 +347,29 @@ ForeignStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> 
     }
     return storage;
 }
+// The element storage of the type `node` when it spells `T[]` for a number `T`,
+// 0 otherwise. A foreign parameter of this type is the pointer to the
+// array's elements, which the callee may write; the length is a parameter of
+// its own, as in C.
+ForeignArray :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    if (node < 0 || !Is(forest, node, "type") || Field(forest, node, "name") < 0 || HasToken(forest, node, "?") ||
+        Field(forest, node, "trait") >= 0) {
+        return 0;
+    }
+    brackets: int = 0;
+    child := forest[node].first_child;
+    while (child >= 0) {
+        if (!forest[child].is_extra && forest[child].kind == "[") {
+            brackets += 1;
+        }
+        child = forest[child].next_sibling;
+    }
+    storage := ScalarStorage(Text(forest, text, Field(forest, node, "name")));
+    if (brackets != 1 || (!Integer(storage) && !Floating(storage))) {
+        return 0;
+    }
+    return storage;
+}
 // The type `node` spells as a foreign result, 0 when it may not: a cstring
 // names bytes the callee owns, which no value here can hold.
 ForeignResultStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
@@ -484,19 +507,26 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                     for (parameter in Members(forest, Field(forest, declaration, "parameters"))) {
                         kind := Field(forest, parameter, "type");
                         storage := 0;
+                        container := 0;
+                        marker := "";
                         if (kind >= 0) {
                             storage = ForeignStorage(forest, text, kind);
+                            if (ForeignArray(forest, text, kind) != 0) {
+                                storage = ForeignArray(forest, text, kind);
+                                container = ArrayContainer;
+                                marker = "[]";
+                            }
                         }
                         if (storage == 0) {
                             return ForeignRows.Failed(Diagnose(forest, parameter, file,
-                                                               "A foreign parameter is an integer, float, bool, rawptr, cstring or function type"));
+                                                               "A foreign parameter is an integer, float, bool, rawptr, cstring, function type or array of numbers"));
                         }
                         port: ResolvedPort = {name: Text(forest, text, Field(forest, parameter, "name")),
-                                              storage: storage, container: 0, c_string: false, record: -1,
+                                              storage: storage, container: container, c_string: false, record: -1,
                                               has_default: false, default_owner: false, default_supported: false,
                                               default_bits: 0, default_text: ""};
                         ports.append(port);
-                        signature = format_text("{}{},", signature, storage);
+                        signature = format_text("{}{}{},", signature, storage, marker);
                         parameters += 1;
                     }
                     results: int = 0;
@@ -3583,7 +3613,21 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     row: writer.Root = {bank: 0, index: root.slot, shape: length(values) - 1};
                     roots.append(row);
                 }
-                // Instructions, each with its own value row and source at pc + 1.
+                // Instructions, each with its own value row and its origin's source row.
+                // The instructions of one expression share its origin, so each
+                // run of equal origins is one source row: in a self-compile
+                // about three instructions in four repeat the previous origin.
+                // origins[pc] is the instruction's row, counted from 1; row 0
+                // is the empty origin.
+                origins: int[] = [];
+                rows: int = 0;
+                for (code, at in body_code) {
+                    if (at == 0 || code.start != body_code[at - 1].start || code.end != body_code[at - 1].end ||
+                        code.line != body_code[at - 1].line || code.column != body_code[at - 1].column) {
+                        rows += 1;
+                    }
+                    origins.append(rows);
+                }
                 spans.append(Range(length(instructions), length(body_code)));
                 pc: int = 0;
                 for (body_instruction in body_code) {
@@ -3611,7 +3655,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     }
                     values.append(value);
                     row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
-                                               left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
+                                               left: code.left, right: code.right, target: code.target, frame: 0, source: origins[pc],
                                                stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: node_id,
                                                value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
                     instructions.append(row);
@@ -3637,18 +3681,20 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 frame: writer.Frame = {source: length(sources) - 1, depth: 0, resume: 0, source_index: 0, stack: -1};
                 spans.append(Range(length(frames), 1));
                 frames.append(frame);
-                spans.append(Range(length(sources), length(body_code) + 1));
+                spans.append(Range(length(sources), rows + 1));
                 sources.append(NoSource());
                 asset := documents[callable.document].key;
-                for (code in body_code) {
-                    source := NoSource();
-                    source.asset = asset;
-                    source.has_asset = true;
-                    source.start = code.start;
-                    source.end = code.end;
-                    source.line = code.line;
-                    source.column = code.column;
-                    sources.append(source);
+                for (code, at in body_code) {
+                    if (at == 0 || origins[at] != origins[at - 1]) {
+                        source := NoSource();
+                        source.asset = asset;
+                        source.has_asset = true;
+                        source.start = code.start;
+                        source.end = code.end;
+                        source.line = code.line;
+                        source.column = code.column;
+                        sources.append(source);
+                    }
                 }
                 spans.append(Range(0, 0));
                 spans.append(Range(0, 0));

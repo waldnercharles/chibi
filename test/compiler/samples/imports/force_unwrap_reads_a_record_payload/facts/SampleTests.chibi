@@ -1,5 +1,7 @@
 package facts
 
+import testing "core:testing"
+
 // a postfix ! on an optional record reads its fields
 @test
 Calls :: () {
@@ -8,8 +10,8 @@ Calls :: () {
     assert(r1 == e1, "Main call 1");
 }
 
-// fails: Unwrapped a nil optional
 @test
 MissingFails :: () {
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
     Missing();
 }

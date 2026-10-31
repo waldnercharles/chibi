@@ -1,5 +1,7 @@
 package facts
 
+import testing "core:testing"
+
 // maps
 @test
 Calls :: () {
@@ -36,8 +38,8 @@ Calls :: () {
     assert(r10 == e10, "Copies call 10");
 }
 
-// fails: Map key is absent or invalid
 @test
 MissingKeyFails :: () {
+    testing.ExpectFailure(testing.Failure.MapKeyAbsent);
     Y("b");
 }

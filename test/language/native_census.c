@@ -271,9 +271,11 @@ static bool starts(const char *text, const char *prefix)
 {
     return !strncmp(text, prefix, strlen(prefix));
 }
-/* The package an import path names: `project:x` is the folder x and
- * `core:x` the core collection's; -1 for another collection. */
-static int imported_package(const char *path)
+/* The package an import path names: `project:x` is the folder x, `core:x`
+ * the core collection's, and a path without a collection is relative to the
+ * importer's folder, `dir/` as directory() writes it; -1 for another
+ * collection. */
+static int imported_package(const char *importer, const char *path)
 {
     char dir[256];
     if (starts(path, "project:")) {
@@ -284,7 +286,24 @@ static int imported_package(const char *path)
         snprintf(dir, sizeof dir, "/sdk/core/%s/", path + 5);
         return package_of(dir);
     }
-    return -1;
+    if (strchr(path, ':')) {
+        return -1;
+    }
+    size_t used = (size_t)snprintf(dir, sizeof dir, "%s", importer);
+    for (const char *segment = path; *segment;) {
+        size_t size = strcspn(segment, "/");
+        if (size == 2 && !strncmp(segment, "..", 2)) {
+            used -= used > 0;
+            while (used && dir[used - 1] != '/') {
+                used--;
+            }
+        } else if (size && !(size == 1 && *segment == '.')) {
+            used += (size_t)snprintf(dir + used, sizeof dir - used, "%.*s/", (int)size, segment);
+        }
+        segment += size + (segment[size] == '/');
+    }
+    dir[used] = 0;
+    return package_of(dir);
 }
 /* A package's name in qualified census names: its folder's last part. */
 static const char *package_name(int package)
@@ -337,7 +356,7 @@ static bool read_source(int source)
             REQUIRE(!ts_node_is_null(alias));
             char *quoted = node_text(source, path);
             quoted[strlen(quoted) - 1] = 0;
-            int package = imported_package(quoted + 1);
+            int package = imported_package(packages[sources[source].package], quoted + 1);
             free(quoted);
             REQUIRE(package >= 0);
             apush(sources[source].aliases, (census_alias){ node_text(source, alias), package });

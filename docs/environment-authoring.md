@@ -41,7 +41,7 @@ candidate, not a merged or deployed editor feature.
   Failed or cancelled work cannot replace the previous result. Image pixels
   remain borrowed and immutable for the job lifetime. Nested derivative sampling
   uses job-owned scratch storage without per-sample allocation.
-- [`bake_material`](material-baking.md) exposes the same evaluator through the
+- `bake_material` exposes the same evaluator through the
   controller. It resolves linked shader libraries and root-owned parameters,
   including local function parameters, and returns channel data, typed semantics,
   resolved inputs and dependency fingerprints. It bounds dimensions, evaluation

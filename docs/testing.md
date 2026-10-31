@@ -121,28 +121,23 @@ frame-pointer settings. Graph frame pointers are a separate Debug-only opt-in
 
 ## Run the checks
 
-The engine build compiles the full test drivers, `test_tools` and
-`test_language`, with every native, compiler and renderer package. CI runs each
-group below on every push to `main` and every pull request into it that changes
-more than documentation, and `chibi build` links `chibi`, `chibi-compile` and
-`chibi-player` in the same tree.
+The engine build compiles the test drivers, `test_tools` and `test_language`.
+CI runs the groups below on every push to `main` and every pull request into it
+that changes more than documentation.
 
 ```sh
-make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # native CPU selectors
-make test-materials      # material simulation selectors
-make test-projects       # project, asset import and chibi_ctl selectors
-make test-language-all   # native language group
-make test-bootstrap      # stage one compiles itself, stage two matches it (Release build)
-chibi build bootstrap-artifact  # rewrite the checked-in recovery artifact from stage two (Release build)
-chibi build bootstrap-recover   # recover the compiler from that artifact and the sources on disk
-make test-recovery       # recover the compiler from that artifact and HEAD's sources
-make test-tools          # tooling and process integrations, separate build-tools/
-make test-full           # tooling, native, materials, projects and language; no GPU
-make test-render         # render checks requiring a display and GPU; excludes Studio
-make test-compiler-parity # Release package-compiler routes, including bootstrap
-make benchmark          # native C benchmark selectors
-make agent-test AGENT_SELECTOR=--source-edit
+# Unsanitized Release tools in build-release/
+chibi build --release --target chibi --target chibi-compile --target chibi-compiler-host --target test_tools
+# Both test drivers in build/ (ASan and UBSan by default)
+chibi build --target chibi --target chibi-compile --target test_tools --target test_language
+chibi build test --list            # every row of tools/tests.tsv
+chibi build test short             # test_tools' default cases
+chibi build test native            # native CPU selectors
+chibi build test projects          # the Release chibi launcher and its native builds
+chibi build test language          # language group, including stage-one bootstrap and recovery
+chibi build test benchmarks        # opt-in benchmark selectors
+chibi build bootstrap-artifact     # rewrite the checked-in recovery artifact from stage two (Release build)
+chibi build bootstrap-recover      # recover the compiler from that artifact and the sources on disk
 ```
 
 `chibi build test` (tools/toolchain/Driver.chibi) runs the selectors and groups
@@ -162,52 +157,28 @@ tree and reported as `FAIL NAME (timed out after Ns)`; the others still run.
 CI runs the `projects language` invocation with `--jobs 3` on Linux (4 cores,
 16 GB) and `--jobs 2` on macOS (3 cores, 7 GB).
 
-`make test-projects` also builds an unsanitized Release `chibi_ctl` and `chibi`
-launcher, with its `chibi-compile` and `chibi-player`, in `build-release/`:
-`chibi_ctl` for `validate-project`, `prototype-expansion`, `controller` and
-`render-fixture`, `chibi-compile` for `published-docs`, and the launcher for
-`chibi-cli`. `validate-project` starts `chibi_ctl` dozens of times; each
-start builds the authoring catalog. The separate project group and Release tools
-keep that repeated startup work out of the native runtime checks.
+The `projects` group runs `chibi-cli` and `native-build` against the Release
+`chibi` launcher in `build-release/sdk/`, with its `chibi-compile` beside it.
+`native-build` links real programs only when `CHIBI_LLVM_BIN` names the LLVM
+tools; without it, LLVM stand-ins cover the process contract.
 
-`chibi-cli` runs seventeen launcher cases: each command over a fake sibling
-compiler and player, the launcher's own `version` and `doctor`, and the real
-`chibi-compile`'s `--check`, `--test` and `--format` on fixture projects and
-package trees. Its `doc` case checks forwarding to the compiler; the real
-compiler's documentation cases run under `published-docs`.
+`chibi-cli` runs twenty-three launcher cases: `version` and `doctor`, over a
+fake sibling and the built launcher; `chibi test` through the real
+`chibi-compile` beside it; `build --native` argument forwarding; and programs
+run from files and directories, with `--watch`, cancellation and child
+processes.
 
-`chibi build test language-docs-markdown` checks the authored
-renderer on both bytecode and the compiled backend, including grammar-derived
-highlighting, incomplete-fragment recovery, exact source slices, escaping,
-whitespace, UTF-8, and the GitHub Light/Dark Default token colors and contrast.
-Those presentation checks are separate from the original-snippet validation
-above, which cannot access the generator's private parser native.
+`chibi build test <name>` runs one selector against the drivers in `build/` and
+the Release tools in `build-release/`; `--build`, `--release-build` and
+`--build-host` select other builds. Some selectors run separately from the
+groups; `chibi build test --list` shows every selector and group.
 
-`chibi build test <name>` runs one mapped selector against
-the drivers `make test-build` produced and those Release tools; set
-`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CLI` or
-`CHIBI_COMPILE` to use another build.
+Add a case to the selector that owns its area; add a selector to its group's
+row in `tools/tests.tsv` so the group, and therefore CI, runs it. Studio's
+checks live in `chibi-studio`.
 
-`chibi build test fixture-format` checks the fixed thirteen
-checked-in fixture projects with Release `chibi_ctl --format --check`.
-It refuses outdated manifests before launching any child, because opening an
-old project can migrate it. Some selectors run separately from the aggregate
-groups; use `make test-list` for the current inventory.
-
-`make language-build` builds a standalone, faster `test_language` in
-`build-language/` for the `test-language*` targets. Add a case to the selector
-that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
-group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
-`radiance`, `radiance-depth`, `radiance-surface`, `radiance-horizons4`,
-`radiance-horizons8`, `material-pixels`, `material-sampling`, `scene2d`,
-`scene3d`, `scene3d-gles`, `scene3d-gi`, `scene3d-gi-gles`, `material-ramps`,
-`shader-parity`, `shader-programs`, `material-cameras`, `mesh-materials`,
-`sdf-quality`, `scene3d-post` and `scene3d-shapes` render through a hidden
-window, which needs a display and a GPU driver the CI job does not set up, so
-they stay out of the group; run them with
-`chibi build test <name>`.
-
-CI runs the build, the four groups and `make test-tools` on Linux and macOS.
+CI runs the build, the `short` selector and the `native`, `projects` and
+`language` groups on Linux and macOS.
 The general Windows engine and Studio jobs are paused pending desktop archives.
 The independent `Compiler self-build` workflow runs nonadvisory macOS, Linux and
 Windows proofs on every PR into `main` and push to `main`. Each downloads a
@@ -557,25 +528,6 @@ The 13-case program selector now passes 1,689 assertions in 0.884 seconds with
 ASan/UBSan on VM and SLJIT. Its new fixed case checks exact signed/unsigned 64-bit
 limits, values above 2^53, contextual nominal enums and five out-of-range rejects.
 
-`chibi build test controller` runs five C command-response cases
-against `build-release/bin/chibi_ctl`, also included in `make test-projects`.
-Set `CHIBI_CTL` and `CHIBI_TOOLS_BUILD_DIR` to select isolated builds. The workload
-uses seven tiny generated files per case, two scene entities, thirteen owned
-child processes capped at ten seconds each, and twenty total fixed simulation
-steps. Each fixture is formatted
-through `chibi_ctl --format`, and its files are removed after the case.
-
-The cases check canonical definitions and references, exact rename edits without
-file mutation, origin/location round-trips, invalid-draft diagnostics, graph and
-system inspection, pin/layout flags, and prepared execution backends. Runtime
-profiles match sample generation IDs to registered modules and check per-handler
-entries, a delayed resume, owner identities, source ranges, and measured frame
-accounting. They cover profiling disabled, zero warmup, and zero measured frames
-after warmup. Sampling starts only at the first measured frame. Module IDs are
-compared within one response; they are not cross-process identity guarantees.
-These CPU command checks do not exercise Studio, rendered graph gestures, GPU
-profiling, or performance thresholds.
-
 `chibi build test runtime-scene` runs two public SDK consumer
 cases with four entities/two scene instances, owned component payloads, deferred
 Begin, rollback and cancellation. The normal Debug runtime-only consumer passed
@@ -833,45 +785,6 @@ The original thirteen cases passed 3,308 assertions in 0.36 seconds with
 ASan/UBSan; these historical measurements do not cover the seven added cases.
 All twenty passed 3,648 assertions in 2.4 seconds with ASan/UBSan on
 2026-10-16.
-
-After `make test-build` and `chibi build --release --target chibi_ctl`,
-`chibi build test validate-project` runs its cases against
-`build-release/bin/chibi_ctl`. Each scaffolds a temporary
-project with `new_project` and checks the `validate_project` reply: a new
-project is valid; a UI style error is listed under its asset; a start scene
-outside the scene assets is parsed and checked for its prototypes; a broken
-start scene inside them is reported once; a UI document named by the
-manifest or a scene must exist, and markup that is a folder or a link is
-refused; a scene's missing prototype or behavior, and each syntax error in a
-source, is one error; a project saved by an earlier build is reported, not
-upgraded, and one from a newer build needs that build; the application icon must decode as a PNG and a long project name
-needs a title; a prototype that includes another validates, runs in a scene
-and keeps its include through `--format`, while a missing include is
-reported and the included prototype's behaviors stay its own references; a
-prototype is found by the name it declares, even when another file bears that
-name or the name could not name a file, `new_asset` refuses a declared name,
-two declarations of one name are a conflict, and a file the search cannot read,
-or one declaring a name longer than the player takes, fails it; a scene runs as
-a scenario in a project that has a material; a scene requested by its file name
-runs, and reloads, under its own name; a scenario's controls hold the input
-map's actions; a scenario and validation accept a real
-Ogg Vorbis sound, but refuse copies whose headers or audio packets players
-cannot decode; sounds that fit the player's resource count alone, but not with
-the project's other resources, fail validation as they fail compiling; and in a
-project whose manifest names another content folder, assets are scaffolded,
-validated, run, formatted, found and reported there under their `content/`
-paths, and `status` names that folder even once the project is too old to open.
-In a compiler build, `import_model` names a model for its file, writes files
-that validate and that `--format --check` keeps, and refuses a name that is
-no asset name or that a prototype already declares, and a model it cannot
-read, writing nothing.
-A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
-
-`chibi build test prototype-expansion` runs, the same way, the
-two cases whose projects read past the prototype expansion budget that
-preparation shares: a project's prototypes, each under its own load's limit,
-and a scene's instances of one prototype tree. Each reads tens of thousands of
-small prototype documents, so they have their own selector.
 
 `--source-edit` runs nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
@@ -1164,11 +1077,6 @@ The language follow-up adds these focused C checks:
   selector returns failure.
   The default tooling group retains it. No separate executable, frames or GPU work
   are introduced.
-- `tool unit-validation` runs the existing single controller unit-diagnostic
-  case with its original setup/cleanup. Tiny component/system sources cover
-  project/source errors and same-layout unit changes in one retained controller.
-  Its original child deadlines remain unchanged;
-  it runs no gameplay frames or GPU work.
 - `tool unit-fixtures` checks six fixed measured sources from
   `declared-components` and `feature-coverage` against their native and declared
   component catalogs. It limits each executable source to 16 KiB, their total
@@ -1261,36 +1169,20 @@ The execution-storage and row-worker follow-up adds these reviewed bounds:
   fixture checks the singleton row hook and keeps multi-system work on its
   existing executor path.
 
-Configure/build separately and report that time separately from test execution:
+Build with `chibi build` and report that time separately from test execution.
+The groups of `tools/tests.tsv`:
 
-```sh
-make tools-build
-make test
-make test-build
-make test-native
-make test-list
-```
-
-| Command | Current coverage |
+| Group | Current coverage |
 | --- | --- |
-| `test`, `test-short` | Six pure C execution-policy unit cases. |
-| `test-tools` | Complete C tooling and process integration group. |
-| `test-native` | Other CPU `test_tools` selectors with checked-in inputs. |
-| `test-materials` | The CPU material simulation selectors. |
-| `test-projects` | The project, asset import and Release `chibi_ctl` selectors. |
-| `test-language-all` | The native language group; standalone selectors are listed separately by `make test-list`. |
-| `test-bootstrap` | Stage one compiles the compiler, its six target values match the production host, and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; test-only natives stay in their explicit samples. See `docs/package-compiler.md`. |
-| `test-recovery` | The Release compiler host recovers the compiler from the artifact `chibi build bootstrap-artifact` wrote, with sources exported from HEAD; see `docs/self-hosting-build.md`. |
-| `agent-test` | One CPU selector routed by `tools/agent.py`; use `agent-gpu-test` for GPU selectors. |
-| `test-list`, `agent-list` | Command and selector inventory without test execution. |
-| `test-fast` | Build standalone tooling and run `TEST_BINARY` with tokenized `TEST_ARGS`, without shell interpretation. |
-| `test-full`, `test-slow` | Tooling, native, material, project and language groups; excludes GPU checks. |
-| `test-render` | Render selectors requiring a display and GPU; excludes Studio. |
-| `test-compiler-parity` | All Release package-compiler routes, including bootstrap. |
-| `benchmark` | The mapped native benchmark selectors. |
+| `native` | CPU `test_tools` and build-graph selectors with checked-in inputs. |
+| `projects` | The Release `chibi` launcher (`chibi-cli`) and its native builds (`native-build`). |
+| `language` | `test_language` selectors, `chibi test` over the compiler, `core` and the compiler samples, and stage-one bootstrap and recovery. |
+| `compiler` | The scalar package-compiler route. |
+| `wasm` | The browser `test_language` build under Node. |
+| `benchmarks` | The ECS query, native workload and scheduler benchmarks. |
 
 The `language` and `wasm` groups list their members explicitly in
-`tools/test_policy.py`; they do not include every standalone selector. Both
+`tools/tests.tsv`; they do not include every standalone selector. Both
 include the six-case row-array construction, alias, rejection, collection and
 in-place local array regression (200,000 appends, 100,000 record appends,
 aliasing through copies, borrowed arguments, `for` over arrays, record items and
@@ -1301,7 +1193,7 @@ specimen: twelve-field policy over owned synthetic inputs, filtering/windows,
 full-width keys and detached ownership. Its two mechanical text bindings are
 test-local; it is not live Studio integration or a production text API.
 Other focused record routes remain standalone, as does the dedicated Wasm
-formatter route. Use `make test-list` to inspect the groups
+formatter route. Use `chibi build test --list` to inspect the groups
 and standalone routes; registering a route alone does not add it to a group.
 
 The Chrome C driver also includes counted-row construction and Outliner
@@ -2847,14 +2739,12 @@ lower `FieldShapes.chibi` into a graph library and link `MaterialIslands.kdl`
 against it, retain a radius parameter default of 40 in a call that samples -40
 at its center, and publish library edits to a live preview. The field relinks
 while its valid or invalid unsaved draft stays intact. A library that drops the
-called function is refused while the field keeps its revision, value and draft. `--validate-project` checks that
-`validate_project` and `preview_field` link a field against a `.chibi` library.
+called function is refused while the field keeps its revision, value and draft.
 
 
 ## Terrain Lab save and restart
 
-`chibi build test terrain-playable`, also part of `make
-test-projects`, drives the authored controls of `test/fixtures/terrain-lab` on
+`chibi build test terrain-playable` drives the authored controls of `test/fixtures/terrain-lab` on
 the VM and SLJIT. For each backend a writer process digs across a 128-cell chunk
 seam and saves; a fresh reader process checks pristine terrain, then loads and
 checks the restored cells, their collision holes and an unchanged reference

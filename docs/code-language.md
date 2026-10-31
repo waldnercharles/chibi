@@ -666,7 +666,7 @@ Example :: library {
 
 A postfix `!` takes an optional's payload and fails when it is `nil`, as Swift's
 `!` does: `scores["Ada"]!` is the value, or a failed run with the message
-"Unwrapped a nil optional". It must touch its operand, so `a!` unwraps and `a !b`
+"Assertion failed: Unwrapped a nil optional". It must touch its operand, so `a!` unwraps and `a !b`
 does not. Use it where absence is a bug; `??`, `if value` and `as T` handle
 absence.
 
@@ -749,6 +749,11 @@ cost is one small copy, visible in the declaration, with no heap allocation. A
 string of 4096 bytes or more, or one that holds a NUL byte, traps instead of
 being truncated. A result cannot be a `cstring`.
 
+An array of numbers, such as `u8[]`, is passed as the pointer to its elements,
+which the callee may write. The length is a parameter of its own, as in C, so
+`read(fd, buffer, u64(length(buffer)))` fills `buffer` in place. The array is
+lent for the call: nothing copies it, and C must not keep the pointer.
+
 A foreign function is a native whose identity names the library path and the
 symbol, so a target that does not link the library cannot load a program that
 calls it; the VM never runs foreign code. Names are global like other natives,
@@ -785,9 +790,8 @@ runtime address cannot yet be passed to an authored function's `fn` parameter;
 call it where the local is. An authored function cannot yet be turned into a
 function value for C to call.
 
-Planned after that: a `u8[]` passed as a data pointer with its length given
-separately, `@variadic` with the number of fixed arguments for variadic C
-functions, foreign functions without a result, and data symbols.
+Planned after that: `@variadic` with the number of fixed arguments for
+variadic C functions, foreign functions without a result, and data symbols.
 
 ## Generics and compile-time values
 
@@ -815,12 +819,40 @@ Example :: library {
 }
 ```
 
-Compile-time execution supports scalar and type values, authored calls, locals,
-assignment, `if` and `while`. It does not support arrays, `for`, closures or
-native calls. Each evaluation has a 65,536-step budget and a 128-call limit.
+Compile-time execution supports integer and bool values, arrays of them,
+authored calls, locals, assignment, `if`, `while`, `for`, `break`, `continue`
+and `return`. It does not support records, floats, closures or native calls.
+Each evaluation has a 65,536-step budget and a 128-call limit.
 A constant initializer may call such a function, `Size :: Factorial(5)`, and
 may combine calls with arithmetic and conversions; a `when` condition may not
 call functions yet.
+
+Arrays are local values: an array literal, `values: int[] = []`, `append`,
+`length`, `values[i]` to read, and `values[i] = x` or `values[i] += x` to
+change an element. Assigning or passing an array copies it. A function may
+take and return arrays, and an index outside the array is a compilation error.
+`for i in 0..<n`, `for i in 0..n`, `for < i in ...` (reverse), `for value in
+array` and `for index, value in array` loop over a range or an array; loops
+iterate by value, so a `for` over a `ref` is rejected.
+
+```chibi
+Example :: library {
+    Squares :: (count: int) -> int[] {
+        values: int[] = []
+        for i in 0..<count { values.append(i * i) }
+        return values
+    }
+
+    Sum :: (values: int[]) -> int {
+        total := 0
+        for value in values { total += value }
+        return total
+    }
+
+    Total :: Sum(Squares(5))  // 30
+    Third :: Squares(6)[3]    // 9
+}
+```
 
 ### Choosing declarations per platform
 

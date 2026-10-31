@@ -2,6 +2,7 @@ package package_compiler
 
 import snapshot "project:source_snapshot"
 import binding "project:lexical_binding"
+import syntax "project:syntax_diagnostics"
 
 // These are the existing persistent command identities from execution/task.h.
 TaskCommandBase: u64 : 0x4348494900000100;
@@ -25,10 +26,10 @@ WaitingBody :: (forest: snapshot.SnapshotNode[], body: int) -> bool {
     while (top > 0) {
         top -= 1;
         node := pending[top];
-        if (Is(forest, node, "yield_statement") || Is(forest, node, "await_expression")) {
+        if (Is(forest, node, syntax.YieldStatement) || Is(forest, node, syntax.AwaitExpression)) {
             return true;
         }
-        if (node != body && (Is(forest, node, "function_declaration") || Is(forest, node, "macro_declaration"))) {
+        if (node != body && (Is(forest, node, syntax.FunctionDeclaration) || Is(forest, node, syntax.MacroDeclaration))) {
             continue;
         }
         child := forest[node].first_child;
@@ -50,7 +51,7 @@ WaitingCallables :: (forest: snapshot.SnapshotNode[], callables: Callable[]) -> 
     while (index < length(marked)) {
         row := marked[index];
         // Query evaluators are expressions, not declarations, and never wait.
-        body := Field(forest, row.node, "body");
+        body := Field(forest, row.node, syntax.FieldBody);
         if (body >= 0) {
             row.waits = WaitingBody(forest, body);
         }
@@ -64,11 +65,11 @@ WaitingCallables :: (forest: snapshot.SnapshotNode[], callables: Callable[]) -> 
 ImmediatelyAwaited :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     at := node;
     parent := forest[at].parent;
-    while (Is(forest, parent, "parenthesized_expression")) {
+    while (Is(forest, parent, syntax.ParenthesizedExpression)) {
         at = parent;
         parent = forest[at].parent;
     }
-    return Is(forest, parent, "await_expression") && Field(forest, parent, "value") == at;
+    return Is(forest, parent, syntax.AwaitExpression) && Field(forest, parent, syntax.FieldValue) == at;
 }
 // An instruction that names a command node. One literal holds the u64:
 // storing it into a local record's field would make every caller copy its
@@ -155,7 +156,7 @@ TaskCommandStep :: (forest: snapshot.SnapshotNode[], document: int, values: Valu
         code.append(CommandCode(ops.suspend, 0, command_node, node));
     }
     produced := NoValue();
-    if (Is(forest, item.node, "await_expression")) {
+    if (Is(forest, item.node, syntax.AwaitExpression)) {
         produced = Typed(-1, -1, 0, -1);
     }
     if (result_count != 0) {
@@ -188,14 +189,14 @@ TaskStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
              values: Value[], top: int,
              item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     kind := forest[item.node].kind;
-    if (kind == "yield_statement") {
+    if (kind == syntax.YieldStatement) {
         return TaskCommandStep(forest, document, values, top, item, YieldCommand, 0, NoValue(), ops, target, at);
     }
     if (item.phase == 0) {
         next: Work[] = [];
-        if (kind == "cancel_statement") {
-            next.append(Visit(Field(forest, item.node, "value")));
-            duration := Field(forest, item.node, "duration");
+        if (kind == syntax.CancelStatement) {
+            next.append(Visit(Field(forest, item.node, syntax.FieldValue)));
+            duration := Field(forest, item.node, syntax.FieldDuration);
             phase: int = 1;
             if (duration >= 0) {
                 next.append(Expect(duration, DoubleStorage, 0, -1));
@@ -203,11 +204,11 @@ TaskStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             }
             next.append(Resume(item.node, phase, 0, 0));
         } else {
-            value := Unparenthesized(forest, Field(forest, item.node, "value"));
-            if (Is(forest, value, "call_expression") && CalledFunction(forest, text, callables, natives, names, package, value) < 0) {
-                callee := Field(forest, value, "function");
-                if (Is(forest, callee, "identifier") && NameMatches(Text(forest, text, callee), "Delay")) {
-                    arguments := Members(forest, Field(forest, value, "arguments"));
+            value := Unparenthesized(forest, Field(forest, item.node, syntax.FieldValue));
+            if (Is(forest, value, syntax.CallExpression) && CalledFunction(forest, text, callables, natives, names, package, value) < 0) {
+                callee := Field(forest, value, syntax.FieldFunction);
+                if (Is(forest, callee, syntax.Identifier) && NameMatches(Text(forest, text, callee), "Delay")) {
+                    arguments := Members(forest, Field(forest, value, syntax.FieldArguments));
                     if (length(arguments) != 1) {
                         return Fail(forest, value, document, "Delay requires one duration");
                     }
@@ -222,7 +223,7 @@ TaskStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
         return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
     }
-    if (kind == "cancel_statement") {
+    if (kind == syntax.CancelStatement) {
         command := CancelCommand;
         if (item.phase == 2) {
             command = CancelAfterCommand;
@@ -232,9 +233,9 @@ TaskStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     if (item.phase == 3) {
         return TaskCommandStep(forest, document, values, top, item, DelayCommand, 0, NoValue(), ops, target, at);
     }
-    awaited := Unparenthesized(forest, Field(forest, item.node, "value"));
+    awaited := Unparenthesized(forest, Field(forest, item.node, syntax.FieldValue));
     value := values[top - 1];
-    if (Is(forest, awaited, "call_expression") && CalledFunction(forest, text, callables, natives, names, package, awaited) >= 0) {
+    if (Is(forest, awaited, syntax.CallExpression) && CalledFunction(forest, text, callables, natives, names, package, awaited) >= 0) {
         return Step.Emitted([], [], [], [], [], [], [], [], [], 1, value, NoValue(), []);
     }
     if (!Single(value, TaskStorage) || value.record < 0 || value.record >= length(callables)) {

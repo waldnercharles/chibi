@@ -28,7 +28,7 @@ RetainedTree :: (documents: snapshot.Document[], forest: snapshot.SnapshotNode[]
         return DocumentTree.Missing;
     }
     nodes: syntax.Node[] = [];
-    fields: string[] = [];
+    fields: int[] = [];
     named_flags: bool[] = [];
     extra_flags: bool[] = [];
     index: int = 0;
@@ -38,8 +38,7 @@ RetainedTree :: (documents: snapshot.Document[], forest: snapshot.SnapshotNode[]
             kind: item.kind, start: item.start, end: item.end, row: item.row, column: item.column,
             parent: LocalLink(item.parent, document.node_start),
             first_child: LocalLink(item.first_child, document.node_start),
-            next_sibling: LocalLink(item.next_sibling, document.node_start),
-            error: item.error, missing: item.missing, has_error: item.has_error
+            next_sibling: LocalLink(item.next_sibling, document.node_start)
         };
         nodes.append(node);
         fields.append(item.field);

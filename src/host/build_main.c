@@ -157,8 +157,10 @@ static char *read_source(const char *path, double deadline)
     }
 }
 /* Where recovered compilers are kept: the directory CHIBI_COMPILER_CACHE
- * names, none when it is "off", else .chibi/compiler-cache below the root. */
-static char *compiler_cache(const char *root)
+ * names, none when it is "off", else chibi/compiler-cache in the user's cache
+ * directory ($XDG_CACHE_HOME, else ~/.cache), as Zig keeps ~/.cache/zig. Entries
+ * are keyed by content, so every checkout on the machine shares them. */
+static char *compiler_cache()
 {
     const char *named = getenv("CHIBI_COMPILER_CACHE");
     if (named && !strcmp(named, "off")) {
@@ -167,15 +169,16 @@ static char *compiler_cache(const char *root)
     if (named && *named) {
         return xstrdup(named);
     }
-    static const char SUFFIX[] = "/.chibi/compiler-cache";
-    char *base = realpath(root, NULL);
-    if (!base) {
+    const char *xdg = getenv("XDG_CACHE_HOME"), *home = getenv("HOME");
+    const char *base = xdg && *xdg ? xdg : home;
+    if (!base || !*base) {
         return NULL;
     }
-    size_t size = strlen(base) + sizeof SUFFIX;
+    const char *suffix = xdg && *xdg ? "/chibi/compiler-cache"
+                                     : "/.cache/chibi/compiler-cache";
+    size_t size = strlen(base) + strlen(suffix) + 1;
     char *directory = xmalloc(size);
-    snprintf(directory, size, "%s%s", base, SUFFIX);
-    free(base);
+    snprintf(directory, size, "%s%s", base, suffix);
     return directory;
 }
 /* path, from root unless it is absolute. */
@@ -328,7 +331,7 @@ int main(int argc, char **argv)
                       "found";
     double loading = timings ? chibi_build_now() : 0;
     build_timing_write(timings, "startup", 0, started, loading, 0, 0);
-    char *cache = compiler_cache(root);
+    char *cache = compiler_cache();
     chibi_build_compiler *compiler = sources && compiler_collection
                                        ? chibi_build_compiler_load(
                                              sources,

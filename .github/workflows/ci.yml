@@ -47,6 +47,9 @@ env:
   # roots, shares the cached recovered compilers; an entry's key covers all
   # its inputs, so sharing is safe (docs/self-hosting-build.md).
   CHIBI_COMPILER_CACHE: ${{ github.workspace }}/.chibi/compiler-cache
+  # The asset compiler's products live per machine by default; a job keeps them in
+  # the workspace so the cache steps below can save and restore them.
+  CHIBI_ASSET_COMPILER_CACHE: ${{ github.workspace }}/.chibi/asset-compiler-cache
 
 jobs:
   native:
@@ -116,7 +119,7 @@ jobs:
       - name: Graph and native driver programs
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-discovery graph-c graph-sdk native-aot-driver
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-discovery graph-asset-cache graph-c graph-sdk native-aot-driver
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Build timing host regressions (ready drivers)
         env:

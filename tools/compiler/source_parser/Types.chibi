@@ -1,6 +1,7 @@
 package source_parser
 
 import tk "project:source_tokenizer"
+import syntax "project:syntax_diagnostics"
 
 // type: a single type or a union of them. A union is a `type` holding one
 // `union_type`, whose members are `type` nodes.
@@ -9,39 +10,44 @@ ParseType :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (c.token != tk.Or) {
         return first;
     }
-    joined := New(n, "union_type");
-    Add(n, joined, first, "member");
+    joined := New(n, syntax.UnionType);
+    Add(n, joined, first, syntax.FieldMember);
     while (!c.failed && c.token == tk.Or) {
-        Take(c, n, joined, "");
-        Add(n, joined, ParseSingleType(c, n), "member");
+        Take(c, n, joined, syntax.FieldNone);
+        Add(n, joined, ParseSingleType(c, n), syntax.FieldMember);
     }
-    outer := New(n, "type");
-    Add(n, outer, joined, "");
+    outer := New(n, syntax.Type);
+    Add(n, outer, joined, syntax.FieldNone);
     return outer;
 }
 
 // Traits, one primary, then `[]` and `?` suffixes, all children of one `type`.
 ParseSingleType :: (c: ^Cursor, n: ^(Node[])) -> int {
-    t := New(n, "type");
+    t := New(n, syntax.Type);
     while (!c.failed && IsTrait(c, n)) {
         if (c.token == tk.Wildcard) {
-            Take(c, n, t, "trait");
-            Expect(c, n, t, tk.OpenParen, "trait");
-            Expect(c, n, t, tk.Integer, "trait");
-            Expect(c, n, t, tk.CloseParen, "trait");
+            Take(c, n, t, syntax.FieldTrait);
+            Expect(c, n, t, tk.OpenParen, syntax.FieldTrait);
+            Expect(c, n, t, tk.Integer, syntax.FieldTrait);
+            Expect(c, n, t, tk.CloseParen, syntax.FieldTrait);
         } else {
-            word := Take(c, n, t, "trait");
-            n^[word].kind = Slice(c.text, n^[word].start, n^[word].end);
+            word := Take(c, n, t, syntax.FieldTrait);
+            // `view` and `self` are words; plain, service and setting keep their token kinds.
+            if (IsWordAt(c, n, word, "view")) {
+                n^[word].kind = syntax.View;
+            } else if (IsWordAt(c, n, word, "self")) {
+                n^[word].kind = syntax.Self;
+            }
             n^[word].named = false;
         }
     }
     ParseTypePrimary(c, n, t);
     while (!c.failed) {
         if (c.token == tk.OpenBracket && Peek(c, n, 1) == tk.CloseBracket) {
-            Take(c, n, t, "");
-            Take(c, n, t, "");
+            Take(c, n, t, syntax.FieldNone);
+            Take(c, n, t, syntax.FieldNone);
         } else if (c.token == tk.Question) {
-            Take(c, n, t, "");
+            Take(c, n, t, syntax.FieldNone);
         } else {
             break;
         }
@@ -73,41 +79,41 @@ StartsType :: (token: int) -> bool {
 ParseTypePrimary :: (c: ^Cursor, n: ^(Node[]), t: int) {
     token := c.token;
     if (token == tk.Dollar) {
-        binder := New(n, "type_binder");
-        Take(c, n, binder, "");
-        TakeName(c, n, binder, "name");
-        Add(n, t, binder, "name");
+        binder := New(n, syntax.TypeBinder);
+        Take(c, n, binder, syntax.FieldNone);
+        TakeName(c, n, binder, syntax.FieldName);
+        Add(n, t, binder, syntax.FieldName);
         return;
     }
     if (token == tk.Xor) {
-        pointer := New(n, "pointer_type");
-        Take(c, n, pointer, "");
-        target := New(n, "type");
+        pointer := New(n, syntax.PointerType);
+        Take(c, n, pointer, syntax.FieldNone);
+        target := New(n, syntax.Type);
         ParseTypePrimary(c, n, target);
-        Add(n, pointer, target, "target");
-        Add(n, t, pointer, "");
+        Add(n, pointer, target, syntax.FieldTarget);
+        Add(n, t, pointer, syntax.FieldNone);
         return;
     }
     if (token == tk.OpenBracket) {
-        map := New(n, "map_type");
-        Take(c, n, map, "");
-        Add(n, map, ParseType(c, n), "key");
-        Expect(c, n, map, tk.Colon, "");
-        Add(n, map, ParseType(c, n), "value");
-        Expect(c, n, map, tk.CloseBracket, "");
-        Add(n, t, map, "map");
+        map := New(n, syntax.MapType);
+        Take(c, n, map, syntax.FieldNone);
+        Add(n, map, ParseType(c, n), syntax.FieldKey);
+        Expect(c, n, map, tk.Colon, syntax.FieldNone);
+        Add(n, map, ParseType(c, n), syntax.FieldValue);
+        Expect(c, n, map, tk.CloseBracket, syntax.FieldNone);
+        Add(n, t, map, syntax.FieldMap);
         return;
     }
     if (token == tk.OpenParen) {
-        group := New(n, "parenthesized_type");
-        Take(c, n, group, "");
-        Add(n, group, ParseType(c, n), "type");
-        Expect(c, n, group, tk.CloseParen, "");
-        Add(n, t, group, "");
+        group := New(n, syntax.ParenthesizedType);
+        Take(c, n, group, syntax.FieldNone);
+        Add(n, group, ParseType(c, n), syntax.FieldType);
+        Expect(c, n, group, tk.CloseParen, syntax.FieldNone);
+        Add(n, t, group, syntax.FieldNone);
         return;
     }
     if (StartsFn(c, n, c.pos)) {
-        Add(n, t, ParseCallableType(c, n), "");
+        Add(n, t, ParseCallableType(c, n), syntax.FieldNone);
         return;
     }
     name := ParseTypeName(c, n);
@@ -115,35 +121,35 @@ ParseTypePrimary :: (c: ^Cursor, n: ^(Node[]), t: int) {
         return;
     }
     if (c.token == tk.OpenParen) {
-        application := New(n, "type_application");
-        Add(n, application, name, "function");
-        Add(n, application, ParseArguments(c, n), "arguments");
-        Add(n, t, application, "");
+        application := New(n, syntax.TypeApplication);
+        Add(n, application, name, syntax.FieldFunction);
+        Add(n, application, ParseArguments(c, n), syntax.FieldArguments);
+        Add(n, t, application, syntax.FieldNone);
         return;
     }
-    Add(n, t, name, "name");
+    Add(n, t, name, syntax.FieldName);
 }
 
 // Whether `fn (` starts at token `at`: the word that makes a callable type or
 // an inline function. Construct marks the leaf `fn`; reading it as a name
 // (TakeName) makes it an identifier again.
 StartsFn :: (c: ^Cursor, n: ^(Node[]), at: int) -> bool {
-    return n^[at].kind == "fn" && n^[at + 1].token == tk.OpenParen;
+    return n^[at].kind == syntax.Fn && n^[at + 1].token == tk.OpenParen;
 }
 
 // `fn (parameters) [-> result]`, a function a parameter takes.
 ParseCallableType :: (c: ^Cursor, n: ^(Node[])) -> int {
-    callable := New(n, "callable_type");
-    word := Take(c, n, callable, "");
-    n^[word].kind = "fn";
+    callable := New(n, syntax.CallableType);
+    word := Take(c, n, callable, syntax.FieldNone);
+    n^[word].kind = syntax.Fn;
     n^[word].named = false;
-    Add(n, callable, ParseParameters(c, n), "parameters");
-    if (Accept(c, n, callable, tk.ArrowRight, "")) {
+    Add(n, callable, ParseParameters(c, n), syntax.FieldParameters);
+    if (Accept(c, n, callable, tk.ArrowRight, syntax.FieldNone)) {
         if (c.token == tk.OpenParen && (Peek(c, n, 1) == tk.CloseParen ||
                                           (IsName(Peek(c, n, 1)) && Peek(c, n, 2) == tk.Colon))) {
-            Add(n, callable, ParseParameters(c, n), "results");
+            Add(n, callable, ParseParameters(c, n), syntax.FieldResults);
         } else {
-            Add(n, callable, ParseType(c, n), "results");
+            Add(n, callable, ParseType(c, n), syntax.FieldResults);
         }
     }
     return callable;
@@ -151,11 +157,11 @@ ParseCallableType :: (c: ^Cursor, n: ^(Node[])) -> int {
 
 // type_name: a name, then `.name` parts.
 ParseTypeName :: (c: ^Cursor, n: ^(Node[])) -> int {
-    name := New(n, "type_name");
-    TakeName(c, n, name, "");
+    name := New(n, syntax.TypeName);
+    TakeName(c, n, name, syntax.FieldNone);
     while (!c.failed && c.token == tk.Period && IsName(Peek(c, n, 1))) {
-        Take(c, n, name, "");
-        TakeName(c, n, name, "");
+        Take(c, n, name, syntax.FieldNone);
+        TakeName(c, n, name, syntax.FieldNone);
     }
     return name;
 }
@@ -212,7 +218,7 @@ SkipTypePrimary :: (n: ^(Node[]), at: int, final: int) -> int {
         }
         return value + 1;
     }
-    if (n^[at].kind == "fn" && n^[at + 1].token == tk.OpenParen) {
+    if (n^[at].kind == syntax.Fn && n^[at + 1].token == tk.OpenParen) {
         return SkipCallableType(n, at + 1, final);
     }
     if (token == tk.OpenParen) {
@@ -280,19 +286,19 @@ SkipBrackets :: (n: ^(Node[]), at: int, final: int) -> int {
 
 // A unit: terms with optional `^N` powers, joined by `/`.
 ParseUnit :: (c: ^Cursor, n: ^(Node[])) -> int {
-    unit := New(n, "unit");
+    unit := New(n, syntax.Unit);
     ParseUnitTerm(c, n, unit);
     while (!c.failed && c.token == tk.Quo) {
-        Take(c, n, unit, "");
+        Take(c, n, unit, syntax.FieldNone);
         ParseUnitTerm(c, n, unit);
     }
     return unit;
 }
 
 ParseUnitTerm :: (c: ^Cursor, n: ^(Node[]), unit: int) {
-    Expect(c, n, unit, tk.Ident, "");
-    if (Accept(c, n, unit, tk.Xor, "")) {
-        Expect(c, n, unit, tk.Integer, "");
+    Expect(c, n, unit, tk.Ident, syntax.FieldNone);
+    if (Accept(c, n, unit, tk.Xor, syntax.FieldNone)) {
+        Expect(c, n, unit, tk.Integer, syntax.FieldNone);
     }
 }
 
@@ -310,9 +316,9 @@ ParseSignatureType :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (c.failed || c.token != tk.Ident) {
         return base;
     }
-    measured := New(n, "measured_type");
-    Add(n, measured, base, "base");
-    Add(n, measured, ParseUnit(c, n), "unit");
+    measured := New(n, syntax.MeasuredType);
+    Add(n, measured, base, syntax.FieldBase);
+    Add(n, measured, ParseUnit(c, n), syntax.FieldUnit);
     return measured;
 }
 
@@ -321,20 +327,20 @@ ParseSignatureType :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseFieldType :: (c: ^Cursor, n: ^(Node[])) -> int {
     token := c.token;
     if (token == tk.Integer || token == tk.Float || token == tk.Sub) {
-        measure := New(n, "measure");
-        span := New(n, "range_type");
-        Add(n, span, ParseBound(c, n), "min");
-        Expect(c, n, span, tk.Ellipsis, "");
-        Add(n, span, ParseBound(c, n), "max");
-        Add(n, measure, span, "range");
+        measure := New(n, syntax.Measure);
+        span := New(n, syntax.RangeType);
+        Add(n, span, ParseBound(c, n), syntax.FieldMin);
+        Expect(c, n, span, tk.Ellipsis, syntax.FieldNone);
+        Add(n, span, ParseBound(c, n), syntax.FieldMax);
+        Add(n, measure, span, syntax.FieldRange);
         if (c.token == tk.Ident) {
-            Add(n, measure, ParseUnit(c, n), "unit");
+            Add(n, measure, ParseUnit(c, n), syntax.FieldUnit);
         }
         return measure;
     }
     if (StartsUnit(c, n)) {
-        alone := New(n, "measure");
-        Add(n, alone, ParseUnit(c, n), "unit");
+        alone := New(n, syntax.Measure);
+        Add(n, alone, ParseUnit(c, n), syntax.FieldUnit);
         return alone;
     }
     return ParseSignatureType(c, n);
@@ -343,10 +349,10 @@ ParseFieldType :: (c: ^Cursor, n: ^(Node[])) -> int {
 // A number, or a number with a minus sign.
 ParseBound :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (c.token == tk.Sub) {
-        negative := New(n, "unary_expression");
-        Take(c, n, negative, "operator");
-        Take(c, n, negative, "operand");
+        negative := New(n, syntax.UnaryExpression);
+        Take(c, n, negative, syntax.FieldOperator);
+        Take(c, n, negative, syntax.FieldOperand);
         return negative;
     }
-    return Take(c, n, -1, "");
+    return Take(c, n, -1, syntax.FieldNone);
 }

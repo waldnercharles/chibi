@@ -97,17 +97,38 @@ ForeignCallThroughAnAddress :: () {
 }
 @test
 IndirectCallNeedsAWordAddress :: () {
-    Rejects(IndirectModule(Indirects(), [6, 6, 6, 6], [""]), ForeignMismatch);
+    code := Indirects();
+    code[1] = Code(native.Constant, 6, 0, 0, 0, 0, 4096);
+    Rejects(IndirectModule(code, [6, 6, 6, 6], [""]), ForeignMismatch());
 }
 @test
 IndirectCallNamesNoSymbol :: () {
-    Rejects(IndirectModule(Indirects(), [9, 6, 6, 6], ["chibi_probe_add"]), ForeignMismatch);
+    Rejects(IndirectModule(Indirects(), [9, 6, 6, 6], ["chibi_probe_add"]), ForeignMismatch());
 }
 @test
 IndirectCallNeedsItsAddress :: () {
     code := Indirects();
     code[4] = Code(native.ForeignCall, 6, 3, 1, 0, 0, 0);
-    Rejects(IndirectModule(code, [9, 6, 6, 6], [""]), ForeignMismatch);
+    Rejects(IndirectModule(code, [9, 6, 6, 6], [""]), ForeignMismatch());
+}
+// An array of numbers passes as the pointer to its elements, which the callee
+// may write.
+@test
+ForeignArrayArgumentIsItsElementPointer :: () {
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, 1027, 0, 0, 0, 0, 0),
+             Code(native.ForeignCall, 6, 1, 0, 0, 1, 0),
+             Code(native.Publish, 6, 0, 1, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    text := Emitted(native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 2, 0, 5, 0, 1)], empty, [1027, 6], empty, code, [0],
+                                records, empty, ["chibi_probe_fill"], source, names, empty, empty, false, 1));
+    assert(strings.Contains(text, "declare i32 @chibi_probe_fill(ptr)\n"));
+    assert(strings.Contains(text, "%c2_0.data = extractvalue { i32, i32, ptr } %c2_0, 2\n"));
+    assert(strings.Contains(text, "%v2 = call i32 @chibi_probe_fill(ptr %c2_0.data)\n"));
 }
 // A string is copied with its NUL to a stack buffer the callee reads as a C string.
 @test

@@ -40,12 +40,12 @@ pub Result :: union {
     | Rejected(diagnostic: syntax.Diagnostic)
 }
 
-// Field names align with raw nodes and describe each node's edge from its
+// Fields align with raw nodes and describe each node's edge from its
 // parent. Package headers and imports use direct visible field edges.
-FindField :: (nodes: syntax.Node[], fields: string[], node: int, name: string) -> int {
+FindField :: (nodes: syntax.Node[], fields: int[], node: int, field: int) -> int {
     child := nodes[node].first_child;
     while (child >= 0) {
-        if (fields[child] == name) {
+        if (fields[child] == field) {
             return child;
         }
         child = nodes[child].next_sibling;
@@ -53,14 +53,10 @@ FindField :: (nodes: syntax.Node[], fields: string[], node: int, name: string) -
     return -1;
 }
 
-pub Extract :: (nodes: syntax.Node[], fields: string[], text: string,
+// The header and imports of a parsed file; the parser has rejected syntax errors.
+pub Extract :: (nodes: syntax.Node[], fields: int[], text: string,
                 root: int, file: int, path: string, directory: string) -> Result {
-    diagnostics := syntax.Diagnose(nodes, root);
-    if (length(diagnostics) > 0) {
-        return Result.Rejected(diagnostics[0]);
-    }
-
-    header := FindField(nodes, fields, root, "package");
+    header := FindField(nodes, fields, root, syntax.FieldPackage);
     if (header < 0) {
         node := nodes[root];
         diagnostic: syntax.Diagnostic = {
@@ -71,7 +67,7 @@ pub Extract :: (nodes: syntax.Node[], fields: string[], text: string,
         return Result.Rejected(diagnostic);
     }
 
-    nameNode := nodes[FindField(nodes, fields, header, "name")];
+    nameNode := nodes[FindField(nodes, fields, header, syntax.FieldName)];
     name := strings.Slice(text, nameNode.start, nameNode.end - nameNode.start);
     if (name == "_") {
         diagnostic: syntax.Diagnostic = {
@@ -92,9 +88,9 @@ pub Extract :: (nodes: syntax.Node[], fields: string[], text: string,
     current := nodes[root].first_child;
     while (current >= 0) {
         node := nodes[current];
-        if (node.kind == "import_declaration") {
-            pathNode := nodes[FindField(nodes, fields, current, "path")];
-            alias := FindField(nodes, fields, current, "alias");
+        if (node.kind == syntax.ImportDeclaration) {
+            pathNode := nodes[FindField(nodes, fields, current, syntax.FieldPath)];
+            alias := FindField(nodes, fields, current, syntax.FieldAlias);
             aliasName := "";
             aliasStart: int = 0;
             aliasEnd: int = 0;

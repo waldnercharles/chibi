@@ -28,7 +28,7 @@ pub Targets :: () -> string[] {
         "chibi_native_types", "chibi_native_bindings", "chibi_visual_catalog",
         "chibi_language_syntax",
         "chibi_ui_authoring", "chibi_task_pool_runtime", "chibi_host_native_default",
-        "chibi_language", "chibi_compiler", "chibi_authoring",
+
         "chibi_source_catalog", "chibi_program", "chibi_build_host", "chibi-build-host", "chibi_compiler_host",
         "chibi-compiler-host", "chibi_asset_compiler_host", "chibi_application", "chibi", "chibi_compiler_syntax", "chibi_compiler_json"
     ];
@@ -269,42 +269,8 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_host_native_default") {
         return ["src/host/native_default.c"];
     }
-    if (target == "chibi_language") {
-        return [
-            "src/language/semantic.c", "src/language/semantic_context.c", "src/language/identity.c",
-            "src/language/component.c", "src/language/semantic_expression.c", "src/language/semantic_calls.c",
-            "src/language/semantic_statement.c", "src/language/semantic_declaration.c",
-            "src/language/semantic_effects.c", "src/language/semantic_units.c",
-            "src/language/semantic_results.c",
-            "src/language/semantic_recovery.c", "src/language/semantic_union.c",
-            "src/language/semantic_record.c", "src/language/semantic_constant.c",
-            "src/language/constant_proof.c", "src/language/scalar_constant.c", "src/language/numeric.c",
-            "src/language/lexical_binding.c", "src/language/nominal_binding.c", "src/language/named_binding.c",
-            "src/language/type_constructors.c", "src/language/unit_algebra.c",
-            "src/language/signature_reader.c", "src/language/callable_headers.c",
-            "src/language/unit_analysis.c", "src/language/union_members.c", "src/language/effect_analysis.c",
-            "src/language/record_members.c", "src/language/semantic_package.c",
-            "src/language/semantic_generic.c", "src/language/semantic_comptime.c",
-            "src/language/semantic_math.c", "src/language/math_types.c"
-        ];
-    }
-    if (target == "chibi_compiler") {
-        return ["src/language/lower.c"];
-    }
-    if (target == "chibi_authoring") {
-        return [
-            "src/authoring/native_bindings.c", "src/authoring/source_link.c"
-        ];
-    }
     if (target == "chibi_source_catalog") {
-        return [
-            "src/authoring/source_catalog_snapshot.c",
-            "src/authoring/source_packages.c",
-            "src/authoring/source_package_syntax.c", "src/authoring/source_package_paths.c",
-            "src/authoring/source_package_routes.c", "src/authoring/source_package_snapshot.c",
-            "src/authoring/source_package_files.c", "src/authoring/source_package_exports.c",
-            "src/authoring/source_package_prepare.c", "src/authoring/package_tests.c"
-        ];
+        return ["src/authoring/source_package_files.c", "src/authoring/package_tests.c"];
     }
     if (target == "chibi_build_host") {
         return [
@@ -648,27 +614,8 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_host_native_default") {
         return ["host/native_default.h"];
     }
-    if (target == "chibi_language") {
-        return ["language/component.h", "language/identity.h", "language/semantic.h", "language/math_types.h"];
-    }
-    if (target == "chibi_compiler") {
-        return ["language/lower.h"];
-    }
-    if (target == "chibi_authoring") {
-        return [
-            "authoring/native_bindings.h",
-            "authoring/source_link.h"
-
-
-        ];
-    }
     if (target == "chibi_source_catalog") {
-        return [
-            "authoring/package_tests.h",
-            "authoring/source_package_exports.h", "authoring/source_package_files.h", "authoring/source_package_io.h",
-            "authoring/source_package_prepare.h", "authoring/source_package_snapshot.h",
-            "authoring/source_packages.h", "authoring/project_compile.h"
-        ];
+        return ["authoring/package_tests.h", "authoring/source_package_io.h", "authoring/project_compile.h"];
     }
     if (target == "chibi_program") {
         return ["authoring/program.h", "authoring/program_service.h"];
@@ -718,27 +665,6 @@ pub PrivateHeaders :: (target: string) -> string[] {
         // Shared by the graph model, authoring and compilation libraries.
         return [
             "runtime/models/model_bounds.h", "runtime/models/model_program_internal.h"
-        ];
-    }
-    if (target == "chibi_authoring") {
-        return [];
-    }
-    if (target == "chibi_source_catalog") {
-        return [
-            "authoring/source_catalog_snapshot.h", "authoring/source_package_paths.h",
-            "authoring/source_package_routes.h", "authoring/source_package_syntax.h",
-            "capabilities/catalog_index.h"
-        ];
-    }
-    if (target == "chibi_language") {
-        return [
-            "language/callable_headers.h", "language/constant_proof.h",
-            "language/effect_analysis.h", "language/lexical_binding.h", "language/named_binding.h",
-            "language/nominal_binding.h", "language/numeric.h", "language/record_members.h",
-            "language/scalar_constant.h",
-            "language/semantic_internal.h", "language/signature_reader.h",
-            "language/type_constructors.h", "language/union_members.h", "language/unit_algebra.h",
-            "language/unit_analysis.h"
         ];
     }
     if (target == "chibi_build-host") {
@@ -794,9 +720,6 @@ HeadersIn :: (directory: string) -> string[] {
 // BUILD/sdk/private: the language's sit in its CMake subdirectory's binary
 // directory.
 pub PrivateDirectory :: (target: string) -> string {
-    if (target == "chibi_language") {
-        return "build/sdk/language/private";
-    }
     if (target == "chibi_host_tests") {
         return "build/testing/host/include";
     }
@@ -810,7 +733,7 @@ pub PrivateDirectory :: (target: string) -> string {
 }
 
 // The tooling tests' SDK contract consumers, object libraries that compile
-// against staged SDK headers and pico_unit alone, as test/tools/CMakeLists.txt
+// against staged SDK headers and pico_unit alone, as test/tools/CMakeLists.tx
 // declares them, so a header that leaks a private include fails here.
 ToolConsumers :: () -> string[] {
     return [
@@ -862,8 +785,8 @@ pub Renames :: (target: string) -> string[] {
 pub Includes :: (target: string) -> string[] {
     if (target == "chibi_program_consumer") {
         return [
-            "build/test/tools/testing/include", "public/program", "public/source_catalog", "public/authoring",
-            "public/compiler", "public/language", "public/language_syntax", "public/support",
+            "build/test/tools/testing/include", "public/program", "public/source_catalog",
+            "public/language_syntax", "public/support",
             "public/capabilities", "public/types", "public/execution", "public/execution_contract",
             "public/ecs", "public/tasks", "public/native_capabilities", "public/input_action", "public/asset_values",
             "public/scene_runtime", "public/behavior_runtime", "public/events",
@@ -872,8 +795,8 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_program") {
         return [
-            "public/program", "public/source_catalog", "public/authoring", "public/compiler",
-            "public/language", "public/language_syntax", "public/support", "public/capabilities",
+            "public/program", "public/source_catalog",
+            "public/language_syntax", "public/support", "public/capabilities",
             "public/types", "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
             "public/native_capabilities", "public/input_action",
             "public/asset_values",
@@ -1117,31 +1040,10 @@ pub Includes :: (target: string) -> string[] {
             "public/input_action"
         ];
     }
-    if (target == "chibi_language") {
-        return [
-            "public/language", "third_party/yyjson", "build/sdk/language/private", "public/language_syntax",
-            "public/support", "public/capabilities", "public/types", "public/json"
-        ];
-    }
-    if (target == "chibi_compiler") {
-        return [
-            "public/compiler", "public/language", "public/language_syntax", "public/support",
-            "public/capabilities", "public/types", "public/execution",
-            "public/execution_contract", "public/ecs", "public/tasks"
-        ];
-    }
-    if (target == "chibi_authoring") {
-        return [
-            "public/authoring", "private/authoring", "third_party/yyjson", "public/compiler",
-            "public/language", "public/language_syntax", "public/support",
-            "public/capabilities", "public/types", "public/execution", "public/execution_contract",
-            "public/ecs", "public/tasks", "public/native_capabilities", "public/json", "public/asset_values", "public/input_action"
-        ];
-    }
     if (target == "chibi_source_catalog") {
         return [
-            "public/source_catalog", "private/source_catalog", "third_party/yyjson", "public/authoring",
-            "public/compiler", "public/language", "public/language_syntax", "public/support",
+            "public/source_catalog", "private/source_catalog", "third_party/yyjson",
+            "public/language_syntax", "public/support",
             "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
             "public/input_action",
@@ -1185,7 +1087,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_application") {
         return [
             "private/launcher", "third_party/yyjson", "public/program", "public/source_catalog",
-            "public/authoring", "public/compiler", "public/language", "public/language_syntax",
+            "public/language_syntax",
             "public/support", "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
             "public/input_action",
@@ -1198,8 +1100,8 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi") {
         return [
-            "private/launcher", "public/program", "public/source_catalog", "public/authoring",
-            "public/compiler", "public/language", "public/language_syntax", "public/support",
+            "private/launcher", "public/program", "public/source_catalog",
+            "public/language_syntax", "public/support",
             "public/capabilities", "public/types", "public/execution", "public/execution_contract",
             "public/ecs", "public/tasks", "public/native_capabilities", "public/input_action", "public/asset_values",
             "public/scene_runtime", "public/behavior_runtime", "public/events",
@@ -1224,7 +1126,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi-compile") {
         return [
             "private/compiler-target", "public/source_catalog",
-            "public/authoring", "public/compiler", "public/language", "public/language_syntax",
+            "public/language_syntax",
             "public/support", "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
             "public/input_action",
@@ -1257,8 +1159,8 @@ pub Includes :: (target: string) -> string[] {
         return [
             "build/test/language/testing/include", "public/host_clock", "public/native_capabilities",
             "public/capabilities", "public/types", "public/support", "public/execution_contract",
-            "public/tasks", "public/program", "public/source_catalog", "public/authoring", "public/compiler",
-            "public/language", "public/language_syntax", "public/execution", "public/ecs",
+            "public/tasks", "public/program", "public/source_catalog",
+            "public/language_syntax", "public/execution", "public/ecs",
             "public/input_action",
             "public/asset_values", "public/scene_runtime", "public/behavior_runtime",
             "public/events", "public/task_pool_runtime", "public/conversion_capabilities", "public/json",
@@ -1295,8 +1197,8 @@ pub Includes :: (target: string) -> string[] {
             "public/input_action",
             "public/comparison_capabilities",
             "public/conversion_capabilities", "public/host_native_default",
-            "public/host_native_catalog", "public/source_catalog", "public/authoring",
-            "public/compiler", "public/language", "public/language_syntax",
+            "public/host_native_catalog", "public/source_catalog",
+            "public/language_syntax",
             "public/native_prepared",
             "public/visual_catalog", "public/shader_runtime",
             "public/model_runtime", "public/image_catalog"
@@ -1316,8 +1218,8 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_source_runtime_consumer") {
         return [
-            "build/test/tools/testing/include", "public/authoring", "public/compiler",
-            "public/language", "public/language_syntax", "public/support",
+            "build/test/tools/testing/include",
+            "public/language_syntax", "public/support",
             "public/capabilities", "public/types", "public/execution", "public/execution_contract",
             "public/ecs", "public/tasks", "public/native_capabilities", "public/asset_values",
             "public/scene_runtime", "public/behavior_runtime", "public/events",
@@ -1327,8 +1229,8 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_source_features_consumer") {
         return [
-            "build/test/tools/testing/include", "public/source_catalog", "public/authoring",
-            "public/compiler", "public/language", "public/language_syntax", "public/support",
+            "build/test/tools/testing/include", "public/source_catalog",
+            "public/language_syntax", "public/support",
             "public/capabilities", "public/types", "public/execution",
             "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
             "public/input_action",
@@ -1348,7 +1250,7 @@ pub Includes :: (target: string) -> string[] {
             "public/behavior_runtime", "public/execution", "public/types", "public/support",
             "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
             "public/scene_runtime", "public/value_document", "public/asset_values", "public/program",
-            "public/source_catalog", "public/authoring", "public/compiler", "public/language",
+            "public/source_catalog",
             "public/language_syntax", "public/native_capabilities", "public/input_action",
             "public/core_capabilities", "private/build-host", "public/compiler_host", "public/shader_runtime",
             "public/array_capabilities", "public/native_types", "public/scheduling", "public/mesh_runtime",
@@ -1472,18 +1374,6 @@ CommonSystemIncludes :: (target: string) -> string[] {
     if (target == "chibi_task_pool_runtime") {
         return ["third-party/include/chibi/vendor/enkits/1"];
     }
-    if (target == "chibi_language") {
-        return ["third-party/include/chibi/vendor/tree_sitter/1"];
-    }
-    if (target == "chibi_compiler") {
-        return ["third-party/include/chibi/vendor/tree_sitter/1"];
-    }
-    if (target == "chibi_authoring") {
-        return ["third-party/include/chibi/vendor/tree_sitter/1"];
-    }
-    if (target == "chibi_source_catalog") {
-        return ["third-party/include/chibi/vendor/tree_sitter/1"];
-    }
     if (target == "chibi_compiler_host") {
         return ["third-party/include/chibi/vendor/tree_sitter/1"];
     }
@@ -1554,7 +1444,7 @@ pub Defines :: (target: string) -> string[] {
 }
 
 // Options a target adds after the profile's flags. The graph drives Clang
-// and GCC, which both take them: fields and math keep floating-point
+// and GCC, which both take them: fields and math keep floating-poin
 // contraction off so their results match on every backend, vendored C
 // compiles without warnings, and on Linux execution puts each function and
 // object in its own section, so the compiler host's link can discard the
@@ -1684,7 +1574,7 @@ pub CxxStandard :: (target: string) -> string {
 }
 
 // The name a target's headers are staged under, its CMake EXPORT_NAME when
-// that is not the target's name without chibi_, and the target an export
+// that is not the target's name without chibi_, and the target an expor
 // name stages.
 pub ExportName :: (target: string) -> string {
     return "";
@@ -1860,7 +1750,7 @@ pub ProgramDirectory :: (target: string) -> string {
     return "";
 }
 
-// Files a target installs into the build tree, `DESTINATION=SOURCE`, as root
+// Files a target installs into the build tree, `DESTINATION=SOURCE`, as roo
 // CMakeLists.txt configures them: a directory SOURCE copies every file below
 // it. The launcher's players, `chibi version`, `chibi test` and `chibi doc`
 // read ../share/chibi as installed ones do.
@@ -2035,7 +1925,7 @@ pub Links :: (target: string) -> string[] {
             "chibi_scheduling",
             "chibi_visual_catalog",
             "chibi_model_runtime",
-            "chibi_authoring", "chibi_compiler", "chibi_language",
+
             "chibi_ui_authoring", "chibi_ui_document", "chibi_text_source",
             "chibi_text_search", "chibi_ui_document_values",
             "chibi_builtin_fonts",
@@ -2089,8 +1979,8 @@ pub Links :: (target: string) -> string[] {
             "chibi_array_capabilities", "chibi_core_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities", "chibi_comparison_capabilities",
             "chibi_conversion_capabilities", "chibi_vector_capabilities", "chibi_math_capabilities",
             "chibi_arithmetic_capabilities", "chibi_value_document", "chibi_text_source", "chibi_text_search",
-            "chibi_authoring", "chibi_compiler",
-            "chibi_language", "chibi_json", "chibi_language_syntax",
+
+            "chibi_json", "chibi_language_syntax",
             "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a",
             "chibi_behavior_runtime", "chibi_events",
             "chibi_native_capabilities", "chibi_asset_values", "chibi_execution",
@@ -2104,7 +1994,7 @@ pub Links :: (target: string) -> string[] {
             "chibi_language_syntax", "chibi_asset_json", "chibi_native_prepared", "chibi_compiler_host",
             "chibi_asset_compiler_host", "chibi_native_prepared", "chibi_math_capabilities",
             "chibi_value_document",
-            "chibi_array_capabilities", "chibi_authoring", "chibi_source_catalog",
+            "chibi_array_capabilities", "chibi_source_catalog",
             "chibi_behavior_runtime", "chibi_ui_authoring", "chibi_ui_document", "chibi_text_capabilities",
             "chibi_arithmetic_capabilities", "chibi_core_capabilities",
             "chibi_mesh_runtime",
@@ -2113,8 +2003,8 @@ pub Links :: (target: string) -> string[] {
             "chibi_scheduling", "chibi_visual_catalog", "chibi_host_native_default", "chibi_host_native_catalog", "chibi_native_bindings", "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a",
             "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
             "chibi_mesh_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a",
-            "chibi_authoring",
-            "chibi_compiler", "chibi_language",
+
+
             "chibi_scene_runtime", "chibi_ui_document", "chibi_ui_document_values", "chibi_conversion_capabilities", "chibi_math_capabilities",
             "chibi_value_document", "chibi_array_capabilities", "chibi_text_capabilities", "chibi_fmt",
             "chibi_arithmetic_capabilities", "chibi_core_capabilities",
@@ -2132,14 +2022,14 @@ pub Links :: (target: string) -> string[] {
     if (target == "test_tools" && os.Platform() == "Darwin") {
         return [
             "chibi_behavior_runtime", "chibi_scene_runtime", "chibi_value_document", "chibi_program",
-            "chibi_core_capabilities", "chibi_compiler_host", "chibi_shader_runtime", "chibi_authoring",
-            "chibi_execution", "chibi_array_capabilities", "chibi_source_catalog", "chibi_authoring",
+            "chibi_core_capabilities", "chibi_compiler_host", "chibi_shader_runtime",
+            "chibi_execution", "chibi_array_capabilities", "chibi_source_catalog",
             "chibi_comparison_capabilities",
             "chibi_conversion_capabilities", "chibi_host_native_default", "chibi_task_pool_runtime",
             "chibi_mesh_runtime", "chibi_shader_runtime", "chibi_asset_json",
             "chibi_ui_document", "chibi_fmt", "chibi_text_source", "chibi_mesh_runtime", "chibi_mesh_runtime",
             "chibi_native_types",
-            "chibi_authoring", "chibi_arithmetic_capabilities",
+            "chibi_arithmetic_capabilities",
             "chibi_task_pool_runtime", "chibi_math_capabilities", "chibi_vector_capabilities",
             "chibi_native_types",
             "third-party/lib/chibi-vendor/libchibi_vendor_cute.a", "-framework", "IOKit", "-framework",
@@ -2163,7 +2053,7 @@ pub Links :: (target: string) -> string[] {
             "chibi_asset_json", "chibi_ui_authoring", "chibi_ui_document", "chibi_ui_document_values",
             "chibi_builtin_fonts",
             "chibi_compiler_syntax", "chibi_compiler_json",
-            "chibi_scene_runtime", "chibi_behavior_runtime", "chibi_authoring", "chibi_compiler", "chibi_language",
+            "chibi_scene_runtime", "chibi_behavior_runtime",
             "chibi_language_syntax", "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a",
             "chibi_text_source", "chibi_text_search", "chibi_json", "chibi_native_types", "chibi_value_document", "chibi_core_capabilities", "chibi_array_capabilities",
             "chibi_comparison_capabilities", "chibi_conversion_capabilities",

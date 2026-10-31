@@ -38,15 +38,11 @@ processes, timing loops, network, rendering or GPU work.
 
 ### Authored emitter regressions
 
-The ordinary `language-package-compiler-chibi-scalar` selector discovers every
-`@test` in `test/native_aot/emitter_calls/*.chibi`. CMake embeds all matching
-files in `test_language`, including the same-run binary used by manual language
-shards; no runtime source staging, bootstrap manifest or seed changes are needed.
-The generic `compiler_fixture_tests` adapter runs each prepared owner on its
-matching bytecode/SLJIT backend and fails on empty discovery, unavailable backend
-or any failed test. Results remain in source order. `CHIBI_TEST_WORKERS=1..32`
-can bound the authored pool explicitly; absent means the normal automatic pool.
-Unknown or impure host closures remain serial barriers.
+`chibi-test-compiler` (`chibi test tools/compiler`) runs every `@test` in
+`tools/compiler/llvm_native/tests/*.chibi` and `tools/compiler/native_abi/tests`
+on the host's backend; no C selector, runtime source staging or seed change is
+involved. It fails on a rejected diagnostic, a malformed module that emits, or any
+failed test, and results keep source order.
 
 The first eighteen authored tests preserve call definitions/argument order,
 eleven malformed call plans, exact float and NaN payload encodings, unordered

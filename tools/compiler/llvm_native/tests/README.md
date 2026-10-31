@@ -1,12 +1,10 @@
 # Automatically scheduled emitter contracts
 
-These are authored `@test` regressions of `llvm_native.Emit`, not native execution
-or ABI tests. All `.chibi` files here are embedded automatically by
-`test/language/package_compiler_chibi.cmake`; the existing scalar selector runs
-all discovered tests on independently prepared bytecode and SLJIT owners through
-`compiler_fixture_tests`. Add a test or file without adding a C selector.
+These are authored `@test` regressions of `llvm_native.Emit` and `EmitLibrary`, not
+native execution or ABI tests. `chibi test tools/compiler` (the `chibi-test-compiler`
+selector) discovers every file here. Add a test or file without adding a C selector.
 
-Coverage equivalence to `test/language/package_compiler_chibi.c`:
+Coverage equivalence to the retired C cases of `test/language/package_compiler_chibi.c`:
 
 | C semantic helper | Authored replacement |
 | --- | --- |

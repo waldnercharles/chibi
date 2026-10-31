@@ -143,7 +143,7 @@ which int cannot hold" for `count * 0.5` and "convert with int(value)" for
 a floating value stored in an integer. Stage one still rejects an untyped
 local such as `i := 0`, though its type is now settled.
 
-The stage-zero formatter widens the gap. `chibi_ctl --format` rewrites
+The stage-zero formatter widened the gap. Its project formatting rewrote
 behavior state `steps: int = 0` as `steps := 0`, which stage one rejects with
 "state needs a number type". The Counter and Controls stories therefore keep
 their declarations as written (#565). gofmt and rustfmt never remove a type
@@ -1299,15 +1299,6 @@ an arbitrary-byte fallback string without persisting it. This limitation belongs
 to the save format, not to the `string` invariant. Lossless binary saved values
 need a separately reviewed encoding/API contract; no replacement or truncation
 is performed at the existing boundary.
-
-### Preview diagnostic JSON still requires UTF-8
-
-Runtime boundary checkpoint (2026-10-21). Execution logs and preview log storage
-retain explicit byte lengths, including embedded NUL. The existing controller
-JSON transport can escape NUL but still cannot serialize malformed UTF-8 as a
-JSON string. Serialization failure remains explicit; bytes are not replaced or
-silently truncated. A lossless transport encoding needs its own response-contract
-review and is not implied by the runtime string invariant.
 
 ### Record construction repeats some string copies
 

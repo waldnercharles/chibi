@@ -212,8 +212,8 @@ service exposes `save_terrain`, `load_terrain` and `terrain_storage_result` to
 `.chibi`: requests enqueue work, and positive request tokens must be polled for
 completion. It permits one pending request per world and uses native binary
 attachments in the host's save namespace. Browser attachments are unavailable.
-See [Terrain storage](terrain-storage.md) for player `--save`, controller
-`save_path`, completion/failure behavior and the Terrain Lab example.
+See [Terrain storage](terrain-storage.md) for player `--save`,
+completion/failure behavior and the Terrain Lab example.
 
 The versioned portable format stores canonical tile addresses, grids, occupancy,
 signed distances and accumulated partial damage. Finite snapshots cover every
@@ -279,22 +279,11 @@ bytecode for its vector expression.
 
 ## Authoring and checks
 
-Edit field KDL and system/library `.chibi` files directly, or use Studio. Use
-native `inspect_graph`, `inspect_system` and `validate_asset` requests for saved
-content; request examples are in the [asset workflow](runtime-authoring.md).
-Native `preview_field` produces a deterministic CPU PNG, range and hash without
-a graphics context. For example:
-
-```sh
-printf '%s\n' '{"contract":1,"operation":"preview_field","kind":"field","name":"MaterialIslands","width":256,"height":256}' | \
-  build/bin/chibi_ctl --project-root test/fixtures/environment-authoring
-```
-
+Edit field KDL and system/library `.chibi` files directly, or use Studio.
 The editor lists fields, filters their palette, exposes pure scalar library
 calls, and provides seed/cell-size controls and a field preview in Details.
 The fixture start scene is `scenes/MaterialStudy.kdl`; `scenes/SeamStudy.kdl`
 is its separate collision specimen.
 
-Build with `chibi build`. Select affected-contract checks using `make agent-list` and
-`make agent-test AGENT_SELECTOR=--<selector>`; see the
-[testing instructions](testing.md).
+Build with `chibi build` and select affected-contract checks with
+`chibi build test`; see the [testing instructions](testing.md).

@@ -101,39 +101,3 @@ interactions. Debugger-source-history covers invalid drafts and undo/redo agains
 a retained paused generation. Valid live-generation replacement and broader
 graph gestures remain outside those cases. The
 [test inventory](test-inventory.md) describes how to report selected and unrun coverage.
-
-## Controller integration status
-
-`read_asset` and `analyze_code` source assistance use canonical declaration
-snapshots, analysis, navigation and intelligence. Results include diagnostics,
-source byte ranges, completion, hover and resolved references/calls. A rename
-request proposes exact project edits and candidate source after validation,
-without writing files. Expression locations refer to semantic presentation
-origins.
-
-Executable `inspect_graph` and `inspect_system` use canonical preparation and
-presentation; catalog source validation and reference indexing consume a shared
-prepared collection. Native shader, field and model graphs retain their own
-inspection path and the graph-only expression display helper. Source inspection
-selects canonical graph IDs or names, reports resolved pins and source ranges,
-and applies optional layout filtering to the retained presentation snapshot.
-
-Scenario setup now delegates to the canonical project loader and checks retained
-source module registrations. `execution_status` reports the published module
-backend; runtime service requirements are checked when the host registers it.
-Executable `validate_asset` also uses canonical preparation. Profiling reports actual
-registered source modules, backends and instance counts. Optional source samples
-report actual function activation entries and resumes, excluding wait polls,
-with retained generation IDs and source ranges. CPU time is inclusive process
-time; nested samples overlap and synchronous outlined calls stay within their
-parent sample. Sampling excludes warmup and caps retained rows at 256, reporting
-dropped samples.
-
-The [publication cases](../test/language/publication.c) cover retained origins,
-activation/resume accounting and registered backends at the registry boundary.
-The [project-validation cases](../test/tools/validate_project.c) cover prototype
-includes, declared names and child expansion. The [controller cases](../test/tools/controller.c)
-exercise actual command responses for source ranges, generations, diagnostics,
-rename preview non-mutation and profiling warmup/accounting. Final execution
-evidence for the combined candidate belongs in the integration PR. These cases
-do not establish broader CLI compatibility or full Studio gesture/debugger coverage.

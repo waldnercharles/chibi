@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>Chibi Format</title>
+<title>Formatter · Chibi</title>
+<link rel="stylesheet" href="theme.css">
 <link rel="stylesheet" href="app.css">
 <script>
   // Set the theme before first paint so a dark page does not flash light.
@@ -13,26 +13,27 @@
 </head>
 <body>
 <div class="app" id="app" data-files="open" data-options="open">
-  <header class="topbar">
-    <button class="icon-button panel-toggle" id="toggle-files" type="button" aria-controls="files" aria-expanded="true">Files</button>
-    <div class="brand">Chibi Format</div>
-    <div class="crumb" id="crumb" title="">Scratch</div>
-    <div class="status" id="status" role="status" aria-live="polite"><span class="spinner" hidden></span><span id="status-text"></span></div>
+  <header class="bar">
+    <button class="button panel-toggle" id="toggle-files" type="button" aria-controls="files" aria-expanded="true">Files</button>
+    <span class="site">Chibi</span>
+    <span class="context">Formatter</span>
+    <span class="crumb" id="crumb">Scratch</span>
+    <span class="status" id="status" role="status" aria-live="polite"><span class="spinner" hidden></span><span id="status-text"></span></span>
     <div class="segmented" role="radiogroup" aria-label="Theme" id="theme">
-      <button type="button" role="radio" data-value="system" aria-checked="true">System</button>
+      <button type="button" role="radio" data-value="system" aria-checked="true">Auto</button>
       <button type="button" role="radio" data-value="light" aria-checked="false">Light</button>
       <button type="button" role="radio" data-value="dark" aria-checked="false">Dark</button>
     </div>
-    <button class="icon-button panel-toggle" id="toggle-options" type="button" aria-controls="options" aria-expanded="true">Options</button>
+    <button class="button panel-toggle" id="toggle-options" type="button" aria-controls="options" aria-expanded="true">Options</button>
   </header>
 
-  <aside class="files" id="files" aria-label="Source files">
+  <nav class="files" id="files" aria-label="Source files">
     <div class="files-head">
       <input id="filter" type="search" placeholder="Filter files" aria-label="Filter files" autocomplete="off" spellcheck="false">
       <div class="files-count" id="count"></div>
     </div>
     <div class="tree" id="tree" role="tree" aria-label="Repository"></div>
-  </aside>
+  </nav>
 
   <main class="code" id="code">
     <div class="code-head">
@@ -42,18 +43,19 @@
         <button type="button" role="radio" data-value="original" aria-checked="false">Original</button>
       </div>
       <div class="changes-nav" id="changes-nav" hidden>
-        <button type="button" id="prev-change" aria-label="Previous change" title="Previous change (p)">Prev</button>
+        <button class="button" type="button" id="prev-change" title="Previous change (p)">Previous</button>
         <span id="change-position"></span>
-        <button type="button" id="next-change" aria-label="Next change" title="Next change (n)">Next</button>
+        <button class="button" type="button" id="next-change" title="Next change (n)">Next</button>
       </div>
       <div class="code-tools">
-        <label class="check"><input type="checkbox" id="whitespace"> Show whitespace</label>
-        <button type="button" id="edit" aria-pressed="false">Edit</button>
-        <button type="button" id="copy">Copy formatted</button>
+        <label class="check"><input type="checkbox" id="whitespace"> Whitespace</label>
+        <button class="button" type="button" id="edit" aria-pressed="false">Edit</button>
+        <button class="button" type="button" id="copy">Copy</button>
       </div>
     </div>
     <div class="viewport" id="viewport" tabindex="0" aria-label="Source"></div>
-    <textarea class="editor" id="editor" spellcheck="false" aria-label="Original source, editable" hidden></textarea>
+    <textarea class="editor" id="editor" spellcheck="false" aria-label="Original source, editable" hidden
+      placeholder="Paste Chibi source here, then choose Done to see it formatted."></textarea>
     <div class="code-foot" id="foot"></div>
   </main>
 
@@ -63,17 +65,19 @@
       <button type="button" id="reset" class="link-button">Reset</button>
     </div>
     <div id="options-body"></div>
-    <details class="options-json">
-      <summary>Options as JSON</summary>
-      <pre id="options-json"></pre>
-      <button type="button" id="copy-options">Copy</button>
-    </details>
-    <p class="options-note">These options apply in this page. <code>chibi fmt</code> uses the defaults until it reads a project configuration.</p>
+    <section class="config">
+      <div class="config-head">
+        <h3>.chibi-format</h3>
+        <button class="button" type="button" id="copy-config">Copy</button>
+      </div>
+      <pre id="config" aria-label="Options that differ from the defaults, as a .chibi-format file"></pre>
+      <p class="note">chibi fmt reads this file at the repository root, then <code>--option NAME=VALUE</code> flags. Code between <code>// chibi fmt: off</code> and <code>// chibi fmt: on</code> keeps its spacing.</p>
+    </section>
   </aside>
   <div class="scrim" id="scrim" hidden></div>
+  <div class="tip" id="tip" role="tooltip" hidden></div>
 </div>
 <script src="diff.js"></script>
-<script src="highlight.js"></script>
 <script src="options.js"></script>
 <script src="tree.js"></script>
 <script src="app.js"></script>

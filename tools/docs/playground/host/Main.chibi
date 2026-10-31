@@ -1,0 +1,87 @@
+package playground_host
+
+import strings "core:strings"
+import syntax "project:compiler_syntax"
+import format "project:source_format"
+import highlight "project:source_highlight"
+
+// The resident formatter behind tools/docs/playground/serve.py, run as
+// `chibi run DIR -- MAILBOX` from a directory that serve.py assembles from this
+// file and the packages it imports. It is not chibi fmt: a program's closure
+// may take only so many compile instructions, and the formatter, parser and
+// highlighter together leave no room for the command line's own code.
+//
+// A request is the file MAILBOX/request: a first line `ID`, a second of
+// NAME=VALUE option pairs (source_format.ParseOptions), then the source. The
+// answer is MAILBOX/response: a first line `ID`, a second `ok` or `error`, a
+// third with the byte lengths of three parts that follow, and a last line
+// `--end--` so a reader knows the write is whole. The parts are the formatted
+// source (or the error message), the original as highlighted HTML and the
+// formatted source as highlighted HTML; one parse serves the highlighting and
+// the formatting. This is a local interface, not a stable one. The loop ends
+// after ServeBytes of source, so its heap stays bounded (garbage is collected
+// only between runs), with status 3 for serve.py to start it again.
+ServeBytes: int : 1500000;
+
+Respond :: (directory: string, id: string, status: string, parts: string[]) {
+    sizes := format_text("{} {} {}", text_byte_length(parts[0]), text_byte_length(parts[1]), text_byte_length(parts[2]));
+    files.write(format_text("{}/response", directory),
+                strings.Join([id, "\n", status, "\n", sizes, "\n", parts[0], parts[1], parts[2], "\n--end--"], ""));
+}
+
+// Formats and highlights one request's source.
+Answer :: (directory: string, id: string, options: format.Options, source: string) {
+    switch syntax.Parse(source) {
+        case .Parsed(rows, fields, named, extras, root):
+            leaves := highlight.Classes(source, rows, fields, named);
+            original := highlight.Render(source, leaves.starts, leaves.ends, leaves.classes);
+            switch format.FormatParsed(source, rows, fields, named, root, options) {
+                case .Rejected(message):
+                    Respond(directory, id, "error", [message, original, ""]);
+                case .Formatted(formatted):
+                    Respond(directory, id, "ok", [formatted, original, highlight.Retarget(formatted, leaves.classes)]);
+            }
+    }
+}
+
+Main :: () -> int {
+    arguments := application.arguments();
+    if (length(arguments) != 2 || files.kind(arguments[1]) != 2) {
+        application.stderr("usage: chibi run HOST -- MAILBOX\n");
+        return 2;
+    }
+    directory := files.resolve(arguments[1]);
+    path := format_text("{}/request", directory);
+    served: int = 0;
+    while (!application.stopped()) {
+        if (files.kind(path) != 1) {
+            application.wait(30);
+            continue;
+        }
+        text := files.read(path);
+        files.remove(path);
+        first := strings.IndexByte(text, 10);
+        if (first < 0) {
+            continue;
+        }
+        id := strings.Slice(text, 0, first);
+        rest := strings.Slice(text, first + 1, strings.ByteLength(text) - first - 1);
+        second := strings.IndexByte(rest, 10);
+        if (second < 0) {
+            Respond(directory, id, "error", ["Invalid request", "", ""]);
+            continue;
+        }
+        parsed := format.ParseOptions(format.Defaults(), strings.Slice(rest, 0, second));
+        source := strings.Slice(rest, second + 1, strings.ByteLength(rest) - second - 1);
+        if (parsed.error != "") {
+            Respond(directory, id, "error", [parsed.error, highlight.Escape(source), ""]);
+        } else {
+            Answer(directory, id, parsed.options, source);
+        }
+        served += strings.ByteLength(source);
+        if (served > ServeBytes) {
+            return 3;
+        }
+    }
+    return 0;
+}

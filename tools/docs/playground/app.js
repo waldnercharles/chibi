@@ -1,7 +1,8 @@
 // The playground: browse the repository's Chibi sources, set the formatter's options, and read the
-// result as formatted code, as a diff against the original, or as the original. The page reaches
-// its host through the three calls of `host` at the bottom, so a WebAssembly formatter can replace
-// the local development server without a change here.
+// result as formatted code, as the changes against the original, or as the original. Highlighting
+// comes from the host, which runs source_highlight on the same parse it formats, so the page colors
+// code exactly as the documentation site does. The page reaches its host through the three calls of
+// `host` at the bottom, so a WebAssembly formatter can replace the local server without a change here.
 'use strict';
 
 const $ = (id) => document.getElementById(id);
@@ -10,21 +11,22 @@ const els = {
   filter: $('filter'), count: $('count'), tree: $('tree'), view: $('view'), theme: $('theme'),
   viewport: $('viewport'), editor: $('editor'), foot: $('foot'), edit: $('edit'), copy: $('copy'), whitespace: $('whitespace'),
   changesNav: $('changes-nav'), changePosition: $('change-position'), prev: $('prev-change'), next: $('next-change'),
-  optionsBody: $('options-body'), optionsJson: $('options-json'), reset: $('reset'), copyOptions: $('copy-options'),
-  scrim: $('scrim'), toggleFiles: $('toggle-files'), toggleOptions: $('toggle-options'),
+  optionsBody: $('options-body'), config: $('config'), reset: $('reset'), copyConfig: $('copy-config'),
+  scrim: $('scrim'), tip: $('tip'), toggleFiles: $('toggle-files'), toggleOptions: $('toggle-options'),
 };
 
 const CHUNK_LINES = 120;     // lines per block, so the browser can skip blocks that are off screen
 const CONTEXT_LINES = 3;     // unchanged lines kept around a change in the Changes view
 const SLOW_MS = 1500;        // after this long, say that the formatter may be starting
+const TIP_DELAY_MS = 450;    // before the first tooltip; later ones while one is open show at once
 const WIDE = window.matchMedia('(min-width: 1100px)');   // side panels sit beside the code; narrower, they slide over it
 
 const state = {
   files: [], current: '', original: '', formatted: '', error: '', ok: false,
   view: 'formatted', editing: true, whitespace: false,
   options: loadOptions(),
-  lines: { original: [], formatted: [] },      // the text of each side, split into lines
-  html: { original: [], formatted: [] },       // the same lines, highlighted
+  lines: { original: [], formatted: [] },      // each side's text, split into lines
+  html: { original: [], formatted: [] },       // the same lines as highlighted HTML from the host
   diff: null, ops: null, hunks: [], hunk: -1,
   expanded: new Set(), request: 0, timer: 0, slow: 0,
 };
@@ -34,19 +36,19 @@ const state = {
 function loadOptions() {
   const options = defaultOptions();
   try {
-    const saved = JSON.parse(localStorage.getItem('chibi-format-options') || '{}');
+    const saved = JSON.parse(localStorage.getItem('chibi-format-options-2') || '{}');
     for (const key of Object.keys(options)) if (key in saved && typeof saved[key] === typeof options[key]) options[key] = saved[key];
   } catch (_) { /* a corrupt value falls back to the defaults */ }
   return options;
 }
 
 function saveOptions() {
-  try { localStorage.setItem('chibi-format-options', JSON.stringify(state.options)); } catch (_) { /* private mode */ }
+  try { localStorage.setItem('chibi-format-options-2', JSON.stringify(state.options)); } catch (_) { /* private mode */ }
 }
 
 // ---------------------------------------------------------------- small widgets
 
-// A row of buttons of which one is on, as in a native radio group: arrows move and select.
+// A row of buttons of which one is on, as a native radio group: arrows move and select.
 function wireSegmented(element, onChange) {
   const buttons = () => [...element.querySelectorAll('[role=radio]')];
   const choose = (button, focus) => {
@@ -57,9 +59,8 @@ function wireSegmented(element, onChange) {
   element.addEventListener('click', (event) => { const button = event.target.closest('[role=radio]'); if (button && !button.disabled) choose(button, false); });
   element.addEventListener('keydown', (event) => {
     const all = buttons(), at = all.indexOf(document.activeElement);
-    if (at < 0) return;
     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
-    if (!step) return;
+    if (at < 0 || !step) return;
     event.preventDefault();
     choose(all[(at + step + all.length) % all.length], true);
   });
@@ -80,11 +81,14 @@ function setStatus(text, kind, busy) {
   els.spinner.hidden = !busy;
 }
 
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // ---------------------------------------------------------------- theme and panels
 
 function initTheme() {
-  const saved = document.documentElement.dataset.theme || 'system';
-  setSegmented(els.theme, saved);
+  setSegmented(els.theme, document.documentElement.dataset.theme || 'system');
   wireSegmented(els.theme, (value) => {
     document.documentElement.dataset.theme = value;
     try { localStorage.setItem('chibi-format-theme', value); } catch (_) { /* private mode */ }
@@ -112,18 +116,77 @@ function initPanels() {
     setPanel('options', open);
   });
   els.scrim.addEventListener('click', () => { setPanel('files', false); setPanel('options', false); });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !WIDE.matches) { setPanel('files', false); setPanel('options', false); }
+  });
+}
+
+// ---------------------------------------------------------------- tooltips
+
+// One tooltip for the options pane. It waits before the first one, so passing over the pane does
+// not flash it, then follows the pointer or focus from option to option without the wait.
+const tip = { timer: 0, open: false, closed: 0 };
+
+function showTip(label) {
+  const item = optionByKey(label.closest('.option').dataset.key);
+  clearTimeout(tip.timer);
+  const reveal = () => {
+    els.tip.replaceChildren(document.createTextNode(item.help));
+    if (item.also) {
+      const also = document.createElement('span');
+      also.className = 'also';
+      also.textContent = `Like ${item.also}`;
+      els.tip.appendChild(also);
+    }
+    const instant = tip.open || performance.now() - tip.closed < 300;
+    els.tip.toggleAttribute('data-instant', instant);
+    els.tip.hidden = false;
+    const box = label.getBoundingClientRect(), pane = els.optionsBody.getBoundingClientRect();
+    const width = els.tip.offsetWidth, height = els.tip.offsetHeight;
+    // To the left of the pane, level with the option; under it when the pane is a drawer at the edge.
+    let left = pane.left - width - 12, top = box.top + box.height / 2 - height / 2;
+    els.tip.style.transformOrigin = 'right center';
+    if (left < 8) { left = Math.max(8, pane.left + 12); top = box.bottom + 6; els.tip.style.transformOrigin = 'top left'; }
+    els.tip.style.left = `${left}px`;
+    els.tip.style.top = `${Math.max(8, Math.min(top, window.innerHeight - height - 8))}px`;
+    requestAnimationFrame(() => els.tip.removeAttribute('data-hidden'));
+    tip.open = true;
+  };
+  if (tip.open || performance.now() - tip.closed < 300) reveal();
+  else tip.timer = setTimeout(reveal, TIP_DELAY_MS);
+}
+
+function hideTip() {
+  clearTimeout(tip.timer);
+  if (!tip.open) return;
+  tip.open = false;
+  tip.closed = performance.now();
+  els.tip.setAttribute('data-hidden', '');
+  setTimeout(() => { if (!tip.open) els.tip.hidden = true; }, 140);
 }
 
 // ---------------------------------------------------------------- options pane
 
 function optionControl(item) {
-  const wrap = document.createElement('div');
-  wrap.className = 'control';
+  if (item.planned) {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = 'Planned';
+    return tag;
+  }
+  if (item.kind === 'bool') {
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = state.options[item.key];
+    box.setAttribute('aria-labelledby', `label-${item.key}`);
+    box.addEventListener('change', () => setOption(item.key, box.checked));
+    return box;
+  }
   if (item.kind === 'choice') {
     const group = document.createElement('div');
     group.className = 'segmented';
     group.setAttribute('role', 'radiogroup');
-    group.setAttribute('aria-label', item.label);
+    group.setAttribute('aria-labelledby', `label-${item.key}`);
     for (const choice of item.choices) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -133,47 +196,49 @@ function optionControl(item) {
       group.appendChild(button);
     }
     setSegmented(group, state.options[item.key]);
-    wireSegmented(group, (value) => {
-      const match = item.choices.find((choice) => String(choice.value) === value);
-      setOption(item.key, match.value);
-    });
-    wrap.appendChild(group);
-  } else {
-    const stepper = document.createElement('div');
-    stepper.className = 'stepper';
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.min = String(item.min);
-    input.max = String(item.max);
-    input.value = String(state.options[item.key]);
-    input.setAttribute('aria-label', item.label);
-    input.disabled = !!item.planned;
-    const step = (delta) => {
-      const value = Math.min(item.max, Math.max(item.min, (parseInt(input.value, 10) || item.default) + delta));
-      input.value = String(value);
-      setOption(item.key, value);
-    };
-    const minus = document.createElement('button'), plus = document.createElement('button');
-    minus.type = plus.type = 'button';
-    minus.textContent = '-';
-    plus.textContent = '+';
-    minus.setAttribute('aria-label', `Decrease ${item.label}`);
-    plus.setAttribute('aria-label', `Increase ${item.label}`);
-    minus.disabled = plus.disabled = !!item.planned;
-    minus.addEventListener('click', () => step(-1));
-    plus.addEventListener('click', () => step(1));
-    input.addEventListener('change', () => step(0));
-    stepper.append(minus, input, plus);
-    wrap.appendChild(stepper);
+    wireSegmented(group, (value) => setOption(item.key, item.choices.find((choice) => String(choice.value) === value).value));
+    return group;
   }
-  return wrap;
+  const stepper = document.createElement('div');
+  stepper.className = 'stepper';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'numeric';
+  input.setAttribute('aria-labelledby', `label-${item.key}`);
+  const show = () => { input.value = state.options[item.key] === 0 && item.zero ? item.zero : String(state.options[item.key]); };
+  const step = (delta) => {
+    const typed = parseInt(input.value, 10);
+    let value = Number.isNaN(typed) ? (input.value === item.zero ? 0 : item.default) : typed;
+    value += delta * (item.step || 1);
+    // A width below 20 is not a width: stepping down from 20 turns wrapping off, stepping up from off starts at 80.
+    if (item.key === 'preferred_width') value = delta < 0 && value < 20 ? 0 : delta > 0 && state.options[item.key] === 0 ? 80 : value;
+    value = Math.min(item.max, Math.max(item.min, value));
+    if (item.key === 'preferred_width' && value > 0 && value < 20) value = 20;
+    setOption(item.key, value);
+    show();
+  };
+  const minus = document.createElement('button'), plus = document.createElement('button');
+  minus.type = plus.type = 'button';
+  minus.textContent = '−';
+  plus.textContent = '+';
+  minus.setAttribute('aria-label', `Decrease ${item.label}`);
+  plus.setAttribute('aria-label', `Increase ${item.label}`);
+  minus.addEventListener('click', () => step(-1));
+  plus.addEventListener('click', () => step(1));
+  input.addEventListener('change', () => step(0));
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); step(event.key === 'ArrowUp' ? 1 : -1); }
+  });
+  show();
+  stepper.append(minus, input, plus);
+  return stepper;
 }
 
 function renderOptions() {
   const fragment = document.createDocumentFragment();
   for (const group of OPTION_GROUPS) {
     const section = document.createElement('section');
-    section.className = 'option-group';
+    section.className = 'group';
     const heading = document.createElement('h3');
     heading.textContent = group.name;
     section.appendChild(heading);
@@ -181,67 +246,64 @@ function renderOptions() {
       const row = document.createElement('div');
       row.className = 'option' + (item.planned ? ' planned' : '');
       row.dataset.key = item.key;
-      const top = document.createElement('div');
-      top.className = 'option-top';
       const label = document.createElement('span');
       label.className = 'option-label';
+      label.id = `label-${item.key}`;
       label.textContent = item.label;
-      top.appendChild(label);
-      if (item.planned) {
-        const tag = document.createElement('span');
-        tag.className = 'tag';
-        tag.textContent = 'Not implemented';
-        top.appendChild(tag);
-      }
-      top.appendChild(optionControl(item));
-      const help = document.createElement('p');
-      help.className = 'option-help';
-      help.textContent = item.help;
-      const changed = document.createElement('p');
-      changed.className = 'option-default';
-      row.append(top, help, changed);
+      label.tabIndex = 0;
+      // The explanation is for screen readers too, not only for the pointer.
+      const description = document.createElement('span');
+      description.id = `help-${item.key}`;
+      description.hidden = true;
+      description.textContent = item.help;
+      label.setAttribute('aria-describedby', description.id);
+      row.append(label, optionControl(item), description);
       section.appendChild(row);
     }
     fragment.appendChild(section);
   }
   els.optionsBody.replaceChildren(fragment);
-  refreshOptionLabels();
+  refreshOptions();
 }
 
-// Shows which options differ from their defaults, and the JSON for the current ones.
-function refreshOptionLabels() {
+// Marks the options that differ from their defaults and shows them as a .chibi-format file.
+function refreshOptions() {
   for (const row of els.optionsBody.querySelectorAll('.option')) {
     const item = optionByKey(row.dataset.key);
-    const different = state.options[item.key] !== item.default && !item.planned;
-    row.classList.toggle('modified', different);
-    const note = row.querySelector('.option-default');
-    const shown = item.choices ? item.choices.find((choice) => choice.value === item.default).label : String(item.default);
-    note.textContent = different ? `Changed from the default, ${shown}` : '';
-    note.hidden = !different;
+    row.classList.toggle('modified', !item.planned && state.options[item.key] !== item.default);
   }
-  els.optionsJson.textContent = JSON.stringify(formatterOptions(state.options), null, 2);
-  els.reset.disabled = JSON.stringify(state.options) === JSON.stringify(defaultOptions());
+  const text = configText(state.options);
+  els.config.textContent = text;
+  els.reset.disabled = text === '';
+  els.copyConfig.disabled = text === '';
   document.documentElement.style.setProperty('--tab-size', String(state.options.indent_width));
 }
 
 function setOption(key, value) {
   state.options[key] = value;
   saveOptions();
-  refreshOptionLabels();
+  refreshOptions();
   scheduleReformat(120);
 }
 
 // ---------------------------------------------------------------- formatting
 
-function splitLines(text) {
-  const lines = text.replace(/\r\n/g, '\n').split('\n');
+function splitText(text) {
+  if (text === '') return [];
+  const lines = text.split('\n').map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line));
   if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
-  return text === '' ? [] : lines;
+  return lines;
 }
 
 function scheduleReformat(delay) {
   clearTimeout(state.timer);
   state.timer = setTimeout(reformat, delay);
+}
+
+function setOriginal(text) {
+  state.original = text;
+  state.lines.original = splitText(text);
+  state.html.original = state.lines.original.map(escapeHtml);
 }
 
 async function reformat() {
@@ -250,35 +312,38 @@ async function reformat() {
   clearTimeout(state.slow);
   if (source.trim() === '') {
     Object.assign(state, { formatted: '', error: '', ok: false, diff: null, ops: null });
-    state.lines.formatted = []; state.html.formatted = [];
+    state.lines.formatted = [];
+    state.html.formatted = [];
     setStatus('', '', false);
     render();
     return;
   }
   setStatus('Formatting', '', true);
-  state.slow = setTimeout(() => { if (id === state.request) setStatus('Starting the formatter. The first request takes about 25 seconds.', '', true); }, SLOW_MS);
+  state.slow = setTimeout(() => {
+    if (id === state.request) setStatus('Starting the formatter, about 30 seconds', '', true);
+  }, SLOW_MS);
   try {
-    const result = await host.format(source, formatterOptions(state.options));
+    const result = await host.format(source, state.options);
     if (id !== state.request) return;
     clearTimeout(state.slow);
+    if (result.original_html !== undefined && result.original_html !== '') state.html.original = splitText(result.original_html);
     if (!result.ok) {
       Object.assign(state, { formatted: '', error: result.error, ok: false, diff: null, ops: null });
-      state.lines.formatted = []; state.html.formatted = [];
+      state.lines.formatted = [];
+      state.html.formatted = [];
       setStatus(result.error, 'error', false);
     } else {
-      state.formatted = result.text;
-      state.error = '';
-      state.ok = true;
-      state.lines.formatted = splitLines(result.text);
-      state.html.formatted = highlightChibi(result.text);
+      Object.assign(state, { formatted: result.text, error: '', ok: true });
+      state.lines.formatted = splitText(result.text);
+      state.html.formatted = splitText(result.formatted_html);
       state.diff = diffLines(state.lines.original, state.lines.formatted);
       state.ops = state.diff ? diffOps(state.lines.original, state.lines.formatted, state.diff) : null;
       state.expanded.clear();
-      const changed = state.diff ? state.diff.b.size : -1;
+      const changed = state.diff ? state.diff.b.size + state.diff.a.size : -1;
       if (state.original === result.text) setStatus('Already formatted', 'good', false);
-      else if (changed === 0) setStatus('Only line endings change', '', false);
-      else if (changed < 0) setStatus('Formatted, with too many changes to compare', '', false);
-      else setStatus(`${changed.toLocaleString()} ${changed === 1 ? 'line' : 'lines'} would change`, 'warn', false);
+      else if (changed === 0) setStatus('Only line endings or the final newline change', 'warn', false);
+      else if (changed < 0) setStatus('Formatted; too many changes to compare', 'warn', false);
+      else setStatus(`${state.diff.b.size.toLocaleString()} new, ${state.diff.a.size.toLocaleString()} removed lines`, 'warn', false);
     }
     render();
   } catch (error) {
@@ -288,17 +353,12 @@ async function reformat() {
   }
 }
 
-function setOriginal(text) {
-  state.original = text;
-  state.lines.original = splitLines(text);
-  state.html.original = highlightChibi(text);
-}
-
 // ---------------------------------------------------------------- code view
 
 function lineHtml(html) {
-  const text = html === '' ? '&#8203;' : html;
-  return state.whitespace ? showIndentation(text) : text;
+  if (html === '' || html === undefined) return '​';
+  if (!state.whitespace) return html;
+  return html.replace(/^[ \t]+/, (run) => `<span class="ws">${run.replace(/ /g, '·').replace(/\t/g, '→')}</span>`);
 }
 
 function chunked(rows) {
@@ -307,7 +367,7 @@ function chunked(rows) {
   return parts.join('');
 }
 
-// Groups of consecutive changed line indexes, as the index of each group's first line.
+// The first line of each run of consecutive changed lines.
 function groupStarts(changed, count) {
   const starts = [];
   for (let i = 0; i < count; i++) if (changed.has(i) && !changed.has(i - 1)) starts.push(i);
@@ -317,8 +377,9 @@ function groupStarts(changed, count) {
 function plainView(side) {
   const html = state.html[side];
   const changed = state.diff ? (side === 'formatted' ? state.diff.b : state.diff.a) : new Set();
+  const mark = side === 'formatted' ? ' chg' : ' gone';
   const rows = html.map((line, i) =>
-    `<div class="ln${changed.has(i) ? ' chg' : ''}" id="L${i}"><span class="no">${i + 1}</span><span class="tx">${lineHtml(line)}</span></div>`);
+    `<div class="ln${changed.has(i) ? mark : ''}" id="L${i}"><span class="no">${i + 1}</span><span class="tx">${lineHtml(line)}</span></div>`);
   state.hunks = groupStarts(changed, html.length).map((i) => `L${i}`);
   return chunked(rows);
 }
@@ -336,41 +397,42 @@ function diffView() {
   while (i < ops.length) {
     if (!show[i] && !state.expanded.has(i)) {
       let end = i;
-      while (end < ops.length && !show[end]) end++;
-      rows.push(`<button type="button" class="fold" data-fold="${i}" data-end="${end}">Show ${(end - i).toLocaleString()} unchanged ${end - i === 1 ? 'line' : 'lines'}</button>`);
+      while (end < ops.length && !show[end] && !state.expanded.has(end)) end++;
+      const n = end - i;
+      rows.push(`<button type="button" class="fold" data-fold="${i}" data-end="${end}">${n.toLocaleString()} unchanged ${n === 1 ? 'line' : 'lines'}</button>`);
       i = end;
       continue;
     }
-    const op = ops[i];
-    const previous = ops[i - 1];
+    const op = ops[i], previous = ops[i - 1];
     const id = op.kind !== '=' && (!previous || previous.kind === '=') ? `H${state.hunks.length}` : '';
     if (id) state.hunks.push(id);
     const html = op.kind === '-' ? state.html.original[op.a] : state.html.formatted[op.b];
-    const mark = op.kind === '=' ? '' : op.kind;
-    rows.push(`<div class="ln ${op.kind === '+' ? 'add' : op.kind === '-' ? 'del' : 'ctx'}"${id ? ` id="${id}"` : ''}>` +
-      `<span class="no">${op.a >= 0 ? op.a + 1 : ''}</span><span class="no">${op.b >= 0 ? op.b + 1 : ''}</span>` +
-      `<span class="mk">${mark}</span><span class="tx">${lineHtml(html)}</span></div>`);
+    const kind = op.kind === '+' ? 'add' : op.kind === '-' ? 'del' : 'ctx';
+    rows.push(`<div class="ln ${kind}"${id ? ` id="${id}"` : ''}><span class="no">${op.a >= 0 ? op.a + 1 : ''}</span>` +
+      `<span class="no">${op.b >= 0 ? op.b + 1 : ''}</span><span class="mk">${op.kind === '=' ? '' : op.kind === '-' ? '−' : '+'}</span>` +
+      `<span class="tx">${lineHtml(html)}</span></div>`);
     i++;
   }
   return chunked(rows);
 }
 
 function render() {
-  const showEditor = state.editing;
-  els.editor.hidden = !showEditor;
-  els.viewport.hidden = showEditor;
-  els.edit.setAttribute('aria-pressed', String(showEditor));
-  els.edit.textContent = showEditor ? 'Done' : 'Edit';
+  els.editor.hidden = !state.editing;
+  els.viewport.hidden = state.editing;
+  els.edit.setAttribute('aria-pressed', String(state.editing));
+  els.edit.textContent = state.editing ? 'Done' : 'Edit';
   els.copy.disabled = !state.ok;
-  const hasContent = state.original.trim() !== '';
-  let html = '';
-  if (!showEditor) {
-    if (!hasContent) html = '<div class="notice">Choose a file on the left, or open Scratch and paste a source.</div>';
+  state.hunks = [];
+  if (!state.editing) {
+    let html;
+    if (state.original.trim() === '') html = '<div class="notice">Choose a file, or open Scratch and paste a source.</div>';
     else if (state.view === 'original') html = plainView('original');
-    else if (!state.ok) html = `<div class="notice error"><strong>Cannot format this source.</strong> ${escapeHtml(state.error || 'Waiting for the formatter.')}</div>` + (state.error ? plainView('original') : '');
+    else if (!state.ok && state.error) {
+      html = `<div class="notice error"><strong>Cannot format this source.</strong> ${escapeHtml(state.error)}</div>` + plainView('original');
+      state.hunks = [];
+    } else if (!state.ok) html = '<div class="notice">Formatting…</div>';
     else html = state.view === 'diff' ? diffView() : plainView('formatted');
     els.viewport.innerHTML = html;
-    if (state.view !== 'original' && !state.ok) state.hunks = [];
   }
   state.hunk = -1;
   updateChangeNav();
@@ -398,9 +460,10 @@ function goToChange(step) {
 }
 
 function updateFoot() {
-  const lines = state.lines.original.length;
+  if (state.original === '') { els.foot.textContent = ''; return; }
   const bytes = new TextEncoder().encode(state.original).length;
-  els.foot.textContent = state.original === '' ? '' : `${lines.toLocaleString()} lines, ${bytes.toLocaleString()} bytes`;
+  const after = state.ok ? `, formatted ${state.lines.formatted.length.toLocaleString()} lines` : '';
+  els.foot.textContent = `${state.lines.original.length.toLocaleString()} lines, ${bytes.toLocaleString()} bytes${after}`;
 }
 
 // ---------------------------------------------------------------- files
@@ -411,10 +474,11 @@ async function openFile(path) {
     const text = await host.read(path);
     state.current = path;
     state.editing = false;
+    state.ok = false;
+    state.error = '';
     setOriginal(text);
     els.editor.value = text;
     els.crumb.textContent = path;
-    els.crumb.title = path;
     history.replaceState(null, '', '#' + encodeURIComponent(path));
     tree.select(path);
     els.viewport.scrollTop = 0;
@@ -431,7 +495,6 @@ function openScratch() {
   state.editing = true;
   setOriginal(els.editor.value);
   els.crumb.textContent = 'Scratch';
-  els.crumb.title = '';
   history.replaceState(null, '', location.pathname);
   tree.select('');
   render();
@@ -444,7 +507,11 @@ const tree = new FileTree(els.tree, els.count, (path) => (path === '' ? openScra
 // ---------------------------------------------------------------- events
 
 function initEvents() {
-  wireSegmented(els.view, (value) => { state.view = value; state.editing = false; render(); });
+  wireSegmented(els.view, (value) => {
+    state.view = value;
+    if (state.editing) { setOriginal(els.editor.value); state.editing = false; scheduleReformat(0); }
+    render();
+  });
   els.filter.addEventListener('input', () => tree.setFilter(els.filter.value));
   els.whitespace.addEventListener('change', () => { state.whitespace = els.whitespace.checked; render(); });
   els.edit.addEventListener('click', () => {
@@ -461,7 +528,7 @@ function initEvents() {
     }
   });
   els.editor.addEventListener('input', () => {
-    if (state.current !== '') { state.current = ''; els.crumb.textContent = 'Scratch (edited)'; tree.select(''); }
+    if (state.current !== '') { state.current = ''; els.crumb.textContent = 'Scratch, edited'; tree.select(''); }
     setOriginal(els.editor.value);
     updateFoot();
     scheduleReformat(400);
@@ -484,10 +551,19 @@ function initEvents() {
   els.copy.addEventListener('click', async () => {
     await navigator.clipboard.writeText(state.formatted);
     els.copy.textContent = 'Copied';
-    setTimeout(() => { els.copy.textContent = 'Copy formatted'; }, 1200);
+    setTimeout(() => { els.copy.textContent = 'Copy'; }, 1200);
+  });
+  els.copyConfig.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(els.config.textContent + '\n');
+    els.copyConfig.textContent = 'Copied';
+    setTimeout(() => { els.copyConfig.textContent = 'Copy'; }, 1200);
   });
   els.reset.addEventListener('click', () => { state.options = defaultOptions(); saveOptions(); renderOptions(); scheduleReformat(0); });
-  els.copyOptions.addEventListener('click', () => navigator.clipboard.writeText(els.optionsJson.textContent));
+  els.optionsBody.addEventListener('pointerover', (event) => { const label = event.target.closest('.option-label'); if (label) showTip(label); });
+  els.optionsBody.addEventListener('pointerout', (event) => { if (event.target.closest('.option-label')) hideTip(); });
+  els.optionsBody.addEventListener('focusin', (event) => { const label = event.target.closest('.option-label'); if (label) showTip(label); });
+  els.optionsBody.addEventListener('focusout', hideTip);
+  els.options.addEventListener('scroll', hideTip, { passive: true });
 }
 
 // ---------------------------------------------------------------- host
@@ -505,16 +581,18 @@ const host = {
     if (!response.ok) throw new Error(`Cannot read ${path}`);
     return response.text();
   },
+  // Resolves to {ok, text | error, original_html, formatted_html}.
   async format(source, options) {
     const response = await fetch('/api/format', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ source, ...options }),
+      body: JSON.stringify({ source, options }),
     });
     return response.json();
   },
 };
 
 (async function start() {
+  els.options = $('options');
   initTheme();
   initPanels();
   renderOptions();

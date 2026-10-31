@@ -1862,12 +1862,12 @@ ScalarDiscarded :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         }
         return found;
     }
-    foreign := ScalarForeignDeclaration(forest, text, call);
-    if (foreign < 0 || ScalarTypeOf(ScalarForeignResult(forest, text, foreign)) == 0) {
+    imported := ScalarForeignDeclaration(forest, text, call);
+    if (imported < 0 || ScalarTypeOf(ScalarForeignResult(forest, text, imported)) == 0) {
         return none;
     }
-    found: ValueType = {storage: ScalarForeignResult(forest, text, foreign), container: 0, record: -1};
-    return found;
+    returned: ValueType = {storage: ScalarForeignResult(forest, text, imported), container: 0, record: -1};
+    return returned;
 }
 // The condition of `statement` when it is an assert, as the call step finds
 // one: a call of `assert` that names no function of the package, its

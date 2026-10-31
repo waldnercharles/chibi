@@ -951,51 +951,6 @@ TEST_CASE(native_build_reports_a_failed_assert)
     return true;
 }
 
-<<<<<<< HEAD
-static const char *const LOOP_FIRST = "Loop :: library {\n"
-                                      "    Main :: () -> int { return 0; }\n"
-                                      "    Frame :: () -> int {\n"
-                                      "        count: retain int = 0;\n"
-                                      "        count += 1;\n"
-                                      "        return 0;\n"
-                                      "    }\n"
-                                      "}\n",
-                         LOOP_EDITED = "Loop :: library {\n"
-                                       "    Main :: () -> int { return 9; }\n"
-                                       "    Frame :: () -> int {\n"
-                                       "        count: retain int = 0;\n"
-                                       "        flag: retain int = 7;\n"
-                                       "        count += 1;\n"
-                                       "        if count < 3 { return 3; }\n"
-                                       "        return flag;\n"
-                                       "    }\n"
-                                       "}\n";
-
-/* Builds the library `source` as a generation and copies it to `destination`. */
-static bool generation(const char *llvm, const char *name, const char *source, const char *destination)
-{
-    char in_place[1024], library[1024];
-    path(in_place, built, "sdk/chibi");
-    const char *options[] = { "-O0", "--shared", NULL };
-    reset(name, source);
-    real_tools(llvm);
-    REQUIRE(build_with(in_place, options, tools) == 0 && printed(library));
-    const char *copying[] = { "/bin/cp", library, destination, NULL };
-    char log[1024];
-    path(log, suite, "copy.log");
-    REQUIRE(!tool_run(copying, suite, log));
-    return true;
-}
-
-/* Edit and Continue on native code, end to end: a loop host written in Chibi
- * and built natively runs the first generation of a library, Frame after
- * Frame. The library is edited and rebuilt while the host runs, and published
- * as next.so; the host swaps it in at its next Frame. The edited Frame returns
- * the exit status 7 only when the count it had survived (count < 3 gives 3, a
- * restarted count) and its new state started at its initializer, and the
- * edited Main, which would return 9, never runs. */
-TEST_CASE(native_build_swaps_a_running_loop_keeping_state)
-=======
 /* A sample's test source as a native program takes it: the @test mark goes,
  * and Calls returns 0, since an authored native function has a result. */
 static char *as_program(const char *source)
@@ -1069,14 +1024,103 @@ static bool copy_sample(const char *from, const char *to)
  * `chibi build --native` and runs, and its asserts hold when the program exits
  * 0. libc is the foreign library. */
 TEST_CASE(native_build_runs_the_foreign_samples)
->>>>>>> origin/main
 {
     const char *bin = getenv("CHIBI_LLVM_BIN");
     if (!bin || !*bin) {
         fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
         return true;
     }
-<<<<<<< HEAD
+    static const char *const SAMPLES[] = { "foreign_declared", "foreign_library" };
+    char in_place[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", NULL };
+    for (size_t i = 0; i < sizeof SAMPLES / sizeof *SAMPLES; i++) {
+        char from[1100], target[1100], facts[1100], main_text[512];
+        snprintf(from, sizeof from, "%s/test/compiler/samples/native/%s", CHIBI_SOURCE_ROOT, SAMPLES[i]);
+        reset(SAMPLES[i], "package main\n");
+        path(target, game, SAMPLES[i]);
+        REQUIRE(!mkdir(target, 0700) && copy_sample(from, target));
+        path(facts, target, "facts");
+        write_at(facts, "Native.chibi", "package facts\npub Native :: () -> int {\n    return Calls();\n}\n");
+        snprintf(
+            main_text,
+            sizeof main_text,
+            "package main\nimport facts \"project:%s/facts\"\nMain :: () -> "
+            "int {\n    return facts.Native();\n}\n",
+            SAMPLES[i]
+        );
+        write_at(game, "Main.chibi", main_text);
+        real_tools(bin);
+        REQUIRE(build_with(in_place, options, tools) == 0);
+        char program[1024];
+        REQUIRE(printed(program));
+        const char *argv[] = { program, NULL };
+        const char *envp[] = { NULL };
+        chibi_process_output out = { 0 }, err = { 0 };
+        chibi_process_capture_result ran = chibi_process_capture(
+            program,
+            argv,
+            game,
+            envp,
+            chibi_process_now() + 10,
+            NULL,
+            &out,
+            &err
+        );
+        REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 0);
+    }
+    return true;
+}
+
+static const char *const LOOP_FIRST = "Loop :: library {\n"
+                                      "    Main :: () -> int { return 0; }\n"
+                                      "    Frame :: () -> int {\n"
+                                      "        count: retain int = 0;\n"
+                                      "        count += 1;\n"
+                                      "        return 0;\n"
+                                      "    }\n"
+                                      "}\n",
+                         LOOP_EDITED = "Loop :: library {\n"
+                                       "    Main :: () -> int { return 9; }\n"
+                                       "    Frame :: () -> int {\n"
+                                       "        count: retain int = 0;\n"
+                                       "        flag: retain int = 7;\n"
+                                       "        count += 1;\n"
+                                       "        if count < 3 { return 3; }\n"
+                                       "        return flag;\n"
+                                       "    }\n"
+                                       "}\n";
+
+/* Builds the library `source` as a generation and copies it to `destination`. */
+static bool generation(const char *llvm, const char *name, const char *source, const char *destination)
+{
+    char in_place[1024], library[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", "--shared", NULL };
+    reset(name, source);
+    real_tools(llvm);
+    REQUIRE(build_with(in_place, options, tools) == 0 && printed(library));
+    const char *copying[] = { "/bin/cp", library, destination, NULL };
+    char log[1024];
+    path(log, suite, "copy.log");
+    REQUIRE(!tool_run(copying, suite, log));
+    return true;
+}
+
+/* Edit and Continue on native code, end to end: a loop host written in Chibi
+ * and built natively runs the first generation of a library, Frame after
+ * Frame. The library is edited and rebuilt while the host runs, and published
+ * as next.so; the host swaps it in at its next Frame. The edited Frame returns
+ * the exit status 7 only when the count it had survived (count < 3 gives 3, a
+ * restarted count) and its new state started at its initializer, and the
+ * edited Main, which would return 9, never runs. */
+TEST_CASE(native_build_swaps_a_running_loop_keeping_state)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
     char in_place[1024], host[1024], run[1024], live[1024], pending[1024],
         next[1024], source[1024];
     path(in_place, built, "sdk/chibi");
@@ -1134,47 +1178,6 @@ TEST_CASE(native_build_runs_the_foreign_samples)
         host_errors
     );
     REQUIRE(ended.error == CHIBI_PROCESS_OK && ended.status == 7);
-=======
-    static const char *const SAMPLES[] = { "foreign_declared", "foreign_library" };
-    char in_place[1024];
-    path(in_place, built, "sdk/chibi");
-    const char *options[] = { "-O0", NULL };
-    for (size_t i = 0; i < sizeof SAMPLES / sizeof *SAMPLES; i++) {
-        char from[1100], target[1100], facts[1100], main_text[512];
-        snprintf(from, sizeof from, "%s/test/compiler/samples/native/%s", CHIBI_SOURCE_ROOT, SAMPLES[i]);
-        reset(SAMPLES[i], "package main\n");
-        path(target, game, SAMPLES[i]);
-        REQUIRE(!mkdir(target, 0700) && copy_sample(from, target));
-        path(facts, target, "facts");
-        write_at(facts, "Native.chibi", "package facts\npub Native :: () -> int {\n    return Calls();\n}\n");
-        snprintf(
-            main_text,
-            sizeof main_text,
-            "package main\nimport facts \"project:%s/facts\"\nMain :: () -> "
-            "int {\n    return facts.Native();\n}\n",
-            SAMPLES[i]
-        );
-        write_at(game, "Main.chibi", main_text);
-        real_tools(bin);
-        REQUIRE(build_with(in_place, options, tools) == 0);
-        char program[1024];
-        REQUIRE(printed(program));
-        const char *argv[] = { program, NULL };
-        const char *envp[] = { NULL };
-        chibi_process_output out = { 0 }, err = { 0 };
-        chibi_process_capture_result ran = chibi_process_capture(
-            program,
-            argv,
-            game,
-            envp,
-            chibi_process_now() + 10,
-            NULL,
-            &out,
-            &err
-        );
-        REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 0);
-    }
->>>>>>> origin/main
     return true;
 }
 
@@ -1447,6 +1450,7 @@ TEST_CASE(native_build_runs_the_cases_in_parallel)
         "native_build_links_a_vendored_archive",
         "native_build_calls_through_a_function_pointer",
         "native_build_passes_a_byte_array_to_c",
+        "native_build_swaps_a_running_loop_keeping_state",
         "native_build_reports_a_failed_assert",
         "native_build_runs_the_foreign_samples",
         "native_build_gives_c_an_authored_function",
@@ -1464,6 +1468,7 @@ TEST_CASE(native_build_runs_the_cases_in_parallel)
         native_build_links_a_vendored_archive,
         native_build_calls_through_a_function_pointer,
         native_build_passes_a_byte_array_to_c,
+        native_build_swaps_a_running_loop_keeping_state,
         native_build_reports_a_failed_assert,
         native_build_runs_the_foreign_samples,
         native_build_gives_c_an_authored_function,
@@ -1494,24 +1499,7 @@ void test_native_build(const char *binary)
     /* The first case recovers the compiler into the shared cache; the rest run
      * after it, in parallel, and reuse that recovery. */
     RUN_TEST_CASE(native_build_links_a_program_and_reuses_it);
-<<<<<<< HEAD
-    RUN_TEST_CASE(native_build_links_statically_on_request);
-    RUN_TEST_CASE(native_build_adds_line_tables_with_g);
-    RUN_TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back);
-    RUN_TEST_CASE(native_build_rejects_missing_and_failing_tools);
-    RUN_TEST_CASE(native_build_links_macos_and_windows_programs);
-    RUN_TEST_CASE(native_build_refuses_what_an_interrupted_build_left);
-    RUN_TEST_CASE(native_build_refuses_an_incomplete_output);
-    RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
-    RUN_TEST_CASE(native_build_links_a_vendored_archive);
-    RUN_TEST_CASE(native_build_calls_through_a_function_pointer);
-    RUN_TEST_CASE(native_build_passes_a_byte_array_to_c);
-    RUN_TEST_CASE(native_build_swaps_a_running_loop_keeping_state);
-    RUN_TEST_CASE(native_build_reports_a_failed_assert);
-    RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
-=======
     RUN_TEST_CASE(native_build_runs_the_cases_in_parallel);
->>>>>>> origin/main
     free(stage_tool);
     tool_remove_tree(suite);
 #else

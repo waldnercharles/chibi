@@ -66,8 +66,25 @@ ParseRun :: (arguments: string[], first: int) -> Options {
         options.help = true
         return options
     }
-    if index < length(arguments) && arguments[index] == "--watch" {
-        options.watch = true
+    while index < length(arguments) {
+        argument := arguments[index]
+        if argument == "--watch" && !options.watch {
+            options.watch = true
+        } else if argument == "--native" && !options.native {
+            options.native = true
+        } else if options.native && (argument == "-O0" || argument == "-O2") {
+            options.mode = strings.Slice(argument, 2, 1)
+        } else if options.native && (argument == "--llvm" || argument == "--target") && index + 1 < length(arguments) &&
+                  arguments[index + 1] != "" {
+            index += 1
+            if argument == "--llvm" {
+                options.llvm = arguments[index]
+            } else {
+                options.target = arguments[index]
+            }
+        } else {
+            break
+        }
         index += 1
     }
     if index < length(arguments) && arguments[index] != "--" && !Option(arguments[index]) {
@@ -218,6 +235,9 @@ CommandArgumentsSelectNativeOptions :: () {
     assert(sharing.valid && sharing.shared && !sharing.static_link)
     assert(!Parse(["chibi", "build", "--native", "--shared", "--static", "source"]).valid)
     assert(!Parse(["chibi", "build", "--shared"]).valid)
+    running := Parse(["chibi", "run", "--native", "--watch", "-O0", "--llvm", "/tools", "loop", "--", "one"])
+    assert(running.valid && running.native && running.watch && running.mode == "0" && running.llvm == "/tools")
+    assert(running.path == "loop" && running.tail_first == 9)
 }
 
 @test

@@ -386,10 +386,9 @@ Files :: (target: string) -> string[] {
             "test/language/text_format.c", "test/language/host_packages_compiler.c",
             "test/language/program_session.c",
             "test/language/syntax_corpus.c",
-            "test/language/compiler_fixture.c",
             "test/language/package_compiler_chibi.c",
             "src/host/native_libraries.c", "src/host/process.c", "src/host/stack_overflow.c",
-            "test/language/native_census.c",
+            "test/language/native_census.c", "test/language/scalar_host.c",
             "test/language/execution_scope.c",
             "test/parallel.c", "test/language/parallel.c"
         ];
@@ -1643,7 +1642,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/component_write_ir.c",
         "test/language/execution.c", "test/language/execution_scope.c",
         "test/language/host_packages_compiler.c",
-        "test/language/native_census.c",
+        "test/language/native_census.c", "test/language/scalar_host.c",
         "test/language/package_compiler_chibi.c",
         "test/language/ranges.c",
         "test/language/record_prepared.c"
@@ -1658,7 +1657,8 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
         return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
     }
     if (target == "test_language" &&
-        (file == "test/language/host_packages_compiler.c" || file == "test/language/native_census.c")) {
+        (file == "test/language/host_packages_compiler.c" || file == "test/language/native_census.c" ||
+         file == "test/language/scalar_host.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     if (target == "test_tools" && file == "test/tools/native_build.c") {

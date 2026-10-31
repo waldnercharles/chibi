@@ -5767,6 +5767,34 @@ static bool lookup_tables_link(const char *directory)
  * "default", the action SIGSEGV has before the report is installed, then
  * "-fault" for a write to an unmapped page or "-sent" for raise(SIGSEGV). */
 
+/* The SIGSEGV handler a stack_overflow child installs before the report,
+ * with SIGUSR1 in its mask: it exits 7 when that mask is in force. */
+static void handled_fault(int)
+{
+    sigset_t blocked;
+    sigprocmask(SIG_SETMASK, NULL, &blocked);
+    _exit(sigismember(&blocked, SIGUSR1) ? 7 : 8);
+}
+/* The child of stack_overflow_leaves_other_faults. `mode` is "handled" or
+ * "default", the action SIGSEGV has before the report is installed, then
+ * "-fault" for a write to an unmapped page or "-sent" for raise(SIGSEGV). */
+int test_language_stack_overflow_child(const char *mode)
+{
+    struct sigaction before = { .sa_handler = SIG_DFL };
+    sigemptyset(&before.sa_mask);
+    if (!strncmp(mode, "handled", strlen("handled"))) {
+        before.sa_handler = handled_fault;
+        sigaddset(&before.sa_mask, SIGUSR1);
+    }
+    sigaction(SIGSEGV, &before, NULL);
+    stack_overflow_init();
+    if (strstr(mode, "-fault")) {
+        *(volatile int *)(uintptr_t)16 = 0;
+    } else {
+        raise(SIGSEGV);
+    }
+    return 1;
+}
 /* A SIGSEGV that is not a stack overflow, a fault or a sent signal, goes to
  * the action installed before the report, with that action's mask. */
 TEST_CASE(stack_overflow_leaves_other_faults)
@@ -6315,6 +6343,10 @@ int test_language_package_compiler_chibi_native_call(int count, char **arguments
 }
 #else
 int test_language_package_compiler_chibi_native_call(int, char **)
+{
+    abort();
+}
+int test_language_stack_overflow_child(const char *)
 {
     abort();
 }

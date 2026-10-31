@@ -216,6 +216,10 @@ ScalarParam :: (types: TypeDecl[], param: Param) -> bool {
 ScalarView :: union {
     Viewed(callables: Callable[], types: TypeDecl[], members: TypeMember[])
 }
+// Whether `callable`, as the ordinary compiler sees it, has no result.
+ScalarVoid :: (callable: Callable) -> bool {
+    return callable.result == 0 && callable.result_container == 0 && callable.results == 0;
+}
 ScalarResults :: (callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[]) -> ScalarView {
     seen: Callable[] = [];
     records := types;
@@ -244,6 +248,10 @@ ScalarResults :: (callables: Callable[], params: Param[], types: TypeDecl[], mem
             viewed.result_container = 0;
             viewed.result_record = length(records);
             records.append(declared);
+        }
+        if (ScalarVoid(callable)) {
+            // A function with no result gives int 0, which no call reads.
+            viewed.result = IntStorage;
         }
         seen.append(viewed);
     }
@@ -1596,6 +1604,10 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (condition >= 0) {
         return ScalarPlan.Converted(condition, BoolStorage, BoolStorage);
     }
+    called := ScalarCalledStatement(forest, text, callables, names, callable, statement);
+    if (called >= 0) {
+        return ScalarPlan.Converted(FirstMember(forest, statement), callables[called].result, callables[called].result);
+    }
     if (!Is(forest, statement, "local_declaration") && !Is(forest, statement, "state_declaration")) {
         return ScalarPlan.Failed(Diagnose(forest, statement, 0,
                                           "scalar proof supports only locals, assignments, asserts, if statements, switches, loops and returns"));
@@ -1622,6 +1634,20 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarPlan.Converted(value, ConstantExpressionStorage(forest, text, value), storage);
     }
     return ScalarPlan.Converted(value, storage, storage);
+}
+// The function a call statement calls, whose number or bool result nothing
+// reads, or -1: it runs for its effects on its reference parameters.
+ScalarCalledStatement :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                          callable: Callable, statement: int) -> int {
+    call := FirstMember(forest, statement);
+    if (!Is(forest, statement, "expression_statement") || !Is(forest, call, "call_expression")) {
+        return -1;
+    }
+    callee := CalledFunction(forest, text, callables, [], names, callable.package, call);
+    if (callee < 0 || ScalarTypeOf(callables[callee].result) == 0 || callables[callee].result_container != 0) {
+        return -1;
+    }
+    return callee;
 }
 // The condition of `statement` when it is an assert, as the call step finds
 // one: a call of `assert` that names no function of the package, its
@@ -1665,6 +1691,8 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         }
         rows.append(parameter);
     }
+    // A function with no result, whose view returns int 0.
+    nothing := callable.results == 0 && Field(forest, callable.node, "results") < 0;
     // Named results are locals after the parameters, each starting at its
     // zero, as the prologue binds them.
     for (index in 0..<callable.results) {
@@ -1799,6 +1827,11 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 }
             }
             work.extend(ScalarBlock(forest, Field(forest, statement, "body"), item.mark));
+            continue;
+        }
+        if (nothing && Is(forest, statement, "return_statement")) {
+            rows.append(ScalarAt(forest, statement, facts.ReturnRow, 0, 0, 1, ""));
+            rows.append(ScalarLiteral(forest, statement, facts.IntType, 0));
             continue;
         }
         if (callable.results > 0 && Is(forest, statement, "return_statement")) {
@@ -2005,6 +2038,11 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             binding := ScalarVariable(names, Text(forest, text, appended));
             row = ScalarAt(forest, statement, facts.AssignRow, ScalarValueType(types, binding.storage, binding.container, binding.record),
                            binding.index, count, "");
+        } else if (ScalarCalledStatement(forest, text, callables, names, callable, statement) >= 0) {
+            // The call's result goes to a local nothing reads.
+            callee := ScalarCalledStatement(forest, text, callables, names, callable, statement);
+            row = ScalarAt(forest, statement, facts.LocalRow, ScalarTypeOf(callables[callee].result), variables, count, "_");
+            variables += 1;
         } else if (Is(forest, statement, "expression_statement")) {
             // As the assert step checks it, with its call's range.
             row = ScalarAt(forest, FirstMember(forest, statement), facts.AssertRow, 0, 0, count, "");
@@ -2049,6 +2087,13 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         }
     }
     if (ScalarEnds(forest, text, body)) {
+        return ScalarOperands.Built(rows);
+    }
+    // A function with no result returns 0 at its end.
+    if (nothing) {
+        closing := ScalarClosing(forest, body);
+        rows.append(ScalarAt(forest, closing, facts.ReturnRow, 0, 0, 1, ""));
+        rows.append(ScalarLiteral(forest, closing, facts.IntType, 0));
         return ScalarOperands.Built(rows);
     }
     // A function with named results returns them at its end.

@@ -1,11 +1,13 @@
 package syntax_diagnostics
 
-import strings "core:strings"
+// A syntax tree's rows, their vocabulary, and the diagnostics compiler passes
+// report. source_parser builds trees; compiler packages read them.
 
-// Raw Tree-sitter facts form one complete rooted tree, including unnamed
-// children. Links use -1 for absence; offsets and positions count source bytes.
+// One row of a syntax tree, with every token a leaf. Links are row indices,
+// -1 when absent; offsets count bytes of the document's text, and rows and
+// columns count from zero.
 pub Node :: struct {
-    kind: string;
+    kind: int;
     start: int;
     end: int;
     row: int;
@@ -13,9 +15,6 @@ pub Node :: struct {
     parent: int;
     first_child: int;
     next_sibling: int;
-    error: bool;
-    missing: bool;
-    has_error: bool;
 }
 
 @error
@@ -28,54 +27,236 @@ pub Diagnostic :: struct {
     message: string;
 }
 
-pub Diagnose :: (nodes: Node[], root: int) -> Diagnostic[] {
-    diagnostics: Diagnostic[] = [];
-    current := root;
-    while (true) {
-        node := nodes[current];
-        hidden := !node.error && !node.missing && node.has_error;
-        child := node.first_child;
-        while (hidden && child >= 0) {
-            if (nodes[child].has_error) {
-                hidden = false;
-            }
-            child = nodes[child].next_sibling;
-        }
+// Node kinds, the one definition of the tree's vocabulary; KindNames spells
+// them as the grammar does. A leaf of an anonymous token keeps its
+// source_tokenizer kind, so `(` is tk.OpenParen and every kind below Comment
+// is a token's: Comment leaves room past the tokenizer's KindCount, which
+// source_parser's tests check. Each kind is the one before it plus one, so a
+// new kind goes anywhere with its name at the same place in KindNames.
+// Kind 0, tk.Invalid, is no node's.
+// Comments, then expressions and their parts.
+pub Comment: int : 128;
+pub Character: int : Comment + 1;
+pub ParenthesizedExpression: int : Character + 1;
+pub Number: int : ParenthesizedExpression + 1;
+pub Boolean: int : Number + 1;
+pub String: int : Boolean + 1;
+pub Nil: int : String + 1;
+pub Identifier: int : Nil + 1;
+pub MemberExpression: int : Identifier + 1;
+pub IndexExpression: int : MemberExpression + 1;
+pub StructExpression: int : IndexExpression + 1;
+pub ArrayExpression: int : StructExpression + 1;
+pub MapExpression: int : ArrayExpression + 1;
+pub CallExpression: int : MapExpression + 1;
+pub UnaryExpression: int : CallExpression + 1;
+pub BinaryExpression: int : UnaryExpression + 1;
+pub IsExpression: int : BinaryExpression + 1;
+pub AddressExpression: int : IsExpression + 1;
+pub DereferenceExpression: int : AddressExpression + 1;
+pub OptionalMemberExpression: int : DereferenceExpression + 1;
+pub ForceUnwrapExpression: int : OptionalMemberExpression + 1;
+pub AsExpression: int : ForceUnwrapExpression + 1;
+pub AwaitExpression: int : AsExpression + 1;
+pub EmitExpression: int : AwaitExpression + 1;
+pub LambdaExpression: int : EmitExpression + 1;
+pub RangeExpression: int : LambdaExpression + 1;
+pub QueryExpression: int : RangeExpression + 1;
+pub BuiltinReference: int : QueryExpression + 1;
+pub NotIn: int : BuiltinReference + 1;
+pub ArgumentList: int : NotIn + 1;
+pub ArgumentName: int : ArgumentList + 1;
+pub NamedArgument: int : ArgumentName + 1;
+pub TypedArgument: int : NamedArgument + 1;
+pub StructField: int : TypedArgument + 1;
+pub MapEntry: int : StructField + 1;
+pub Measure: int : MapEntry + 1;
+pub Unit: int : Measure + 1;
+pub VariantPattern: int : Unit + 1;
+pub PatternBindings: int : VariantPattern + 1;
+pub QueryList: int : PatternBindings + 1;
+pub QueryBinding: int : QueryList + 1;
+pub QueryGuard: int : QueryBinding + 1;
+pub QueryGenerator: int : QueryGuard + 1;
+// Statements and their parts.
+pub CallableBody: int : QueryGenerator + 1;
+pub Block: int : CallableBody + 1;
+pub IfStatement: int : Block + 1;
+pub WhileStatement: int : IfStatement + 1;
+pub ForStatement: int : WhileStatement + 1;
+pub SwitchStatement: int : ForStatement + 1;
+pub BreakStatement: int : SwitchStatement + 1;
+pub ContinueStatement: int : BreakStatement + 1;
+pub LocalDeclaration: int : ContinueStatement + 1;
+pub Assignment: int : LocalDeclaration + 1;
+pub ExpressionStatement: int : Assignment + 1;
+pub ReturnStatement: int : ExpressionStatement + 1;
+pub DeleteStatement: int : ReturnStatement + 1;
+pub SwitchArm: int : DeleteStatement + 1;
+pub SystemBody: int : SwitchArm + 1;
+pub BranchStatement: int : SystemBody + 1;
+pub CancelStatement: int : BranchStatement + 1;
+pub GotoStatement: int : CancelStatement + 1;
+pub LabelStatement: int : GotoStatement + 1;
+pub ReduceStatement: int : LabelStatement + 1;
+pub SequenceStatement: int : ReduceStatement + 1;
+pub YieldStatement: int : SequenceStatement + 1;
+// Types.
+pub Type: int : YieldStatement + 1;
+pub TypeName: int : Type + 1;
+pub TypeApplication: int : TypeName + 1;
+pub TypeBinder: int : TypeApplication + 1;
+pub PointerType: int : TypeBinder + 1;
+pub MapType: int : PointerType + 1;
+pub UnionType: int : MapType + 1;
+pub CallableType: int : UnionType + 1;
+pub MeasuredType: int : CallableType + 1;
+pub RangeType: int : MeasuredType + 1;
+pub ParenthesizedType: int : RangeType + 1;
+// Declarations.
+pub SourceFile: int : ParenthesizedType + 1;
+pub PackageHeader: int : SourceFile + 1;
+pub ImportDeclaration: int : PackageHeader + 1;
+pub ForeignImportDeclaration: int : ImportDeclaration + 1;
+pub ForeignBlock: int : ForeignImportDeclaration + 1;
+pub ForeignFunction: int : ForeignBlock + 1;
+pub FunctionDeclaration: int : ForeignFunction + 1;
+pub ConstantDeclaration: int : FunctionDeclaration + 1;
+pub StateDeclaration: int : ConstantDeclaration + 1;
+pub RecordDeclaration: int : StateDeclaration + 1;
+pub RecordBody: int : RecordDeclaration + 1;
+pub RecordField: int : RecordBody + 1;
+pub UnionDeclaration: int : RecordField + 1;
+pub UnionVariant: int : UnionDeclaration + 1;
+pub MacroDeclaration: int : UnionVariant + 1;
+pub WhenDeclaration: int : MacroDeclaration + 1;
+pub DeclarationBlock: int : WhenDeclaration + 1;
+pub DeclarationBody: int : DeclarationBlock + 1;
+pub Attribute: int : DeclarationBody + 1;
+pub Parameter: int : Attribute + 1;
+pub ParameterList: int : Parameter + 1;
+pub Handler: int : ParameterList + 1;
+pub Behavior: int : Handler + 1;
+pub System: int : Behavior + 1;
+pub Library: int : System + 1;
+pub Component: int : Library + 1;
+pub ComponentBody: int : Component + 1;
+pub ComponentField: int : ComponentBody + 1;
+pub PrototypeDeclaration: int : ComponentField + 1;
+pub PrototypeBody: int : PrototypeDeclaration + 1;
+pub PrototypeBases: int : PrototypeBody + 1;
+pub PrototypeComponent: int : PrototypeBases + 1;
+pub RelationshipDeclaration: int : PrototypeComponent + 1;
+pub ActionDeclaration: int : RelationshipDeclaration + 1;
+pub EventDeclaration: int : ActionDeclaration + 1;
+pub EventsDeclaration: int : EventDeclaration + 1;
+pub BindDeclaration: int : EventsDeclaration + 1;
+pub EntryDeclaration: int : BindDeclaration + 1;
+pub ExitDeclaration: int : EntryDeclaration + 1;
+// Words the parser renames, and the placeholder of a parse that failed,
+// which no tree holds.
+pub Fn: int : ExitDeclaration + 1;
+pub When: int : Fn + 1;
+pub View: int : When + 1;
+pub Self: int : View + 1;
+pub Min: int : Self + 1;
+pub Max: int : Min + 1;
+pub Error: int : Max + 1;
+pub KindCount: int : Error + 1;
 
-        if (node.error || node.missing || hidden) {
-            message := "Unexpected syntax";
-            if (node.missing) {
-                message = format_text("Expected {}", node.kind);
-            } else if (!node.error) {
-                // Recovery can hide a missing terminator beneath this node.
-                message = format_text("Missing syntax inside {}", node.kind);
-            } else if (node.kind != "ERROR") {
-                // The authored parser names what it expected in the node's kind.
-                message = node.kind;
-            }
-            diagnostic: Diagnostic = {
-                start: node.start,
-                end: node.end,
-                line: node.row + 1,
-                column: node.column + 1,
-                document: 0,
-                message: strings.Slice(message, 0, 191)
-            };
-            diagnostics.append(diagnostic);
-        }
+// The grammar's names of the kinds from Comment on, in order.
+pub KindNames :: () -> string[] {
+    return ["comment", "character", "parenthesized_expression", "number", "boolean", "string", "nil",
+            "identifier", "member_expression", "index_expression", "struct_expression", "array_expression",
+            "map_expression", "call_expression", "unary_expression", "binary_expression", "is_expression",
+            "address_expression", "dereference_expression", "optional_member_expression",
+            "force_unwrap_expression", "as_expression", "await_expression", "emit_expression",
+            "lambda_expression", "range_expression", "query_expression", "builtin_reference", "not_in",
+            "argument_list", "argument_name", "named_argument", "typed_argument", "struct_field", "map_entry",
+            "measure", "unit", "variant_pattern", "pattern_bindings", "query_list", "query_binding",
+            "query_guard", "query_generator", "callable_body", "block", "if_statement", "while_statement",
+            "for_statement", "switch_statement", "break_statement", "continue_statement", "local_declaration",
+            "assignment", "expression_statement", "return_statement", "delete_statement", "switch_arm",
+            "system_body", "branch_statement", "cancel_statement", "goto_statement", "label_statement",
+            "reduce_statement", "sequence_statement", "yield_statement", "type", "type_name",
+            "type_application", "type_binder", "pointer_type", "map_type", "union_type", "callable_type",
+            "measured_type", "range_type", "parenthesized_type", "source_file", "package_header",
+            "import_declaration", "foreign_import_declaration", "foreign_block", "foreign_function",
+            "function_declaration", "constant_declaration", "state_declaration", "record_declaration",
+            "record_body", "record_field", "union_declaration", "union_variant", "macro_declaration",
+            "when_declaration", "declaration_block", "declaration_body", "attribute", "parameter",
+            "parameter_list", "handler", "behavior", "system", "library", "component", "component_body",
+            "component_field", "prototype_declaration", "prototype_body", "prototype_bases",
+            "prototype_component", "relationship_declaration", "action_declaration", "event_declaration",
+            "events_declaration", "bind_declaration", "entry_declaration", "exit_declaration", "fn", "when",
+            "view", "self", "min", "max", "ERROR"];
+}
 
-        // An ERROR already describes its descendants. Otherwise walk children
-        // before siblings, climbing through parent links when a branch ends.
-        if (!node.error && node.first_child >= 0) {
-            current = node.first_child;
-            continue;
-        }
-        while (nodes[current].next_sibling < 0) {
-            current = nodes[current].parent;
-            if (current < 0) {
-                return diagnostics;
-            }
-        }
-        current = nodes[current].next_sibling;
-    }
+// Fields: the edge from a row to its parent, FieldNone for none. A new field
+// goes anywhere with its name at the same place in FieldNames.
+pub FieldNone: int : 0;
+pub FieldAlias: int : FieldNone + 1;
+pub FieldAlternative: int : FieldAlias + 1;
+pub FieldArguments: int : FieldAlternative + 1;
+pub FieldAttribute: int : FieldArguments + 1;
+pub FieldBase: int : FieldAttribute + 1;
+pub FieldBases: int : FieldBase + 1;
+pub FieldBinding: int : FieldBases + 1;
+pub FieldBindings: int : FieldBinding + 1;
+pub FieldBody: int : FieldBindings + 1;
+pub FieldBound: int : FieldBody + 1;
+pub FieldComptime: int : FieldBound + 1;
+pub FieldCondition: int : FieldComptime + 1;
+pub FieldConsequence: int : FieldCondition + 1;
+pub FieldDuration: int : FieldConsequence + 1;
+pub FieldEnd: int : FieldDuration + 1;
+pub FieldEvent: int : FieldEnd + 1;
+pub FieldExpression: int : FieldEvent + 1;
+pub FieldFirst: int : FieldExpression + 1;
+pub FieldFunction: int : FieldFirst + 1;
+pub FieldIndex: int : FieldFunction + 1;
+pub FieldKey: int : FieldIndex + 1;
+pub FieldKind: int : FieldKey + 1;
+pub FieldLast: int : FieldKind + 1;
+pub FieldLeft: int : FieldLast + 1;
+pub FieldLibrary: int : FieldLeft + 1;
+pub FieldLiteral: int : FieldLibrary + 1;
+pub FieldMap: int : FieldLiteral + 1;
+pub FieldMax: int : FieldMap + 1;
+pub FieldMember: int : FieldMax + 1;
+pub FieldMin: int : FieldMember + 1;
+pub FieldName: int : FieldMin + 1;
+pub FieldNegated: int : FieldName + 1;
+pub FieldObject: int : FieldNegated + 1;
+pub FieldOperand: int : FieldObject + 1;
+pub FieldOperator: int : FieldOperand + 1;
+pub FieldOrdering: int : FieldOperator + 1;
+pub FieldOutcome: int : FieldOrdering + 1;
+pub FieldPackage: int : FieldOutcome + 1;
+pub FieldParameters: int : FieldPackage + 1;
+pub FieldPath: int : FieldParameters + 1;
+pub FieldRange: int : FieldPath + 1;
+pub FieldReference: int : FieldRange + 1;
+pub FieldResults: int : FieldReference + 1;
+pub FieldReverse: int : FieldResults + 1;
+pub FieldRight: int : FieldReverse + 1;
+pub FieldSource: int : FieldRight + 1;
+pub FieldStart: int : FieldSource + 1;
+pub FieldStorage: int : FieldStart + 1;
+pub FieldTarget: int : FieldStorage + 1;
+pub FieldTrait: int : FieldTarget + 1;
+pub FieldType: int : FieldTrait + 1;
+pub FieldUnit: int : FieldType + 1;
+pub FieldValue: int : FieldUnit + 1;
+pub FieldVisibility: int : FieldValue + 1;
+pub FieldCount: int : FieldVisibility + 1;
+
+// The grammar's names of the fields, in order.
+pub FieldNames :: () -> string[] {
+    return ["", "alias", "alternative", "arguments", "attribute", "base", "bases", "binding", "bindings",
+            "body", "bound", "comptime", "condition", "consequence", "duration", "end", "event", "expression",
+            "first", "function", "index", "key", "kind", "last", "left", "library", "literal", "map", "max",
+            "member", "min", "name", "negated", "object", "operand", "operator", "ordering", "outcome",
+            "package", "parameters", "path", "range", "reference", "results", "reverse", "right", "source",
+            "start", "storage", "target", "trait", "type", "unit", "value", "visibility"];
 }

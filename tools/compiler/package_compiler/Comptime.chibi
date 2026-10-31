@@ -62,16 +62,16 @@ FindMemo :: (constants: ConstDecl[], node: int) -> int {
 // it names none.
 CtCallee :: (forest: snapshot.SnapshotNode[], text: string, links: graph.Binding[], callables: Callable[],
              package: int, file: int, call: int) -> int {
-    function := Field(forest, call, "function");
-    if (Is(forest, function, "identifier")) {
+    function := Field(forest, call, syntax.FieldFunction);
+    if (Is(forest, function, syntax.Identifier)) {
         return FindCallable(callables, package, Text(forest, text, function));
     }
-    if (Is(forest, function, "member_expression")) {
-        home := QualifierOf(forest, text, Aliases(links, file), package, Field(forest, function, "object"));
+    if (Is(forest, function, syntax.MemberExpression)) {
+        home := QualifierOf(forest, text, Aliases(links, file), package, Field(forest, function, syntax.FieldObject));
         if (home < 0) {
             return -1;
         }
-        return FindCallable(callables, home, Text(forest, text, Field(forest, function, "member")));
+        return FindCallable(callables, home, Text(forest, text, Field(forest, function, syntax.FieldMember)));
     }
     return -1;
 }
@@ -82,7 +82,7 @@ CtCollect :: (forest: snapshot.SnapshotNode[], text: string, links: graph.Bindin
     if (node < 0) {
         return;
     }
-    if (Is(forest, node, "call_expression") && CtCallee(forest, text, links, callables, package, file, node) >= 0) {
+    if (Is(forest, node, syntax.CallExpression) && CtCallee(forest, text, links, callables, package, file, node) >= 0) {
         out.append(node);
         return;
     }
@@ -95,21 +95,21 @@ CtCollect :: (forest: snapshot.SnapshotNode[], text: string, links: graph.Bindin
 CtBoolean :: (forest: snapshot.SnapshotNode[], text: string, scope: ConstDecl[], aliases: Name[], package: int,
               node: int) -> bool {
     value := Unparenthesized(forest, node);
-    if (Is(forest, value, "boolean")) {
+    if (Is(forest, value, syntax.Boolean)) {
         return true;
     }
     named := ConstantOf(forest, text, scope, aliases, package, value);
     if (named >= 0) {
         return scope[named].storage == BoolStorage;
     }
-    if (Is(forest, value, "call_expression")) {
-        return Text(forest, text, Field(forest, value, "function")) == "not";
+    if (Is(forest, value, syntax.CallExpression)) {
+        return Text(forest, text, Field(forest, value, syntax.FieldFunction)) == "not";
     }
-    operator := Text(forest, text, Field(forest, value, "operator"));
-    if (Is(forest, value, "unary_expression")) {
+    operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
+    if (Is(forest, value, syntax.UnaryExpression)) {
         return operator == "not" || operator == "!";
     }
-    if (Is(forest, value, "binary_expression")) {
+    if (Is(forest, value, syntax.BinaryExpression)) {
         return ComparisonOperator(operator) || operator == "and" || operator == "&&" || operator == "or" ||
                operator == "||";
     }
@@ -184,7 +184,7 @@ CtCall :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], link
     if (depth >= CtDepth) {
         return CtResult.Failed(CtFail(forest, call, file, "compile-time evaluation exceeded 128 nested calls"));
     }
-    arguments := Members(forest, Field(forest, call, "arguments"));
+    arguments := Members(forest, Field(forest, call, syntax.FieldArguments));
     if (length(arguments) != callable.count) {
         return CtResult.Failed(CtFail(forest, call, file, "compile-time call needs every argument"));
     }
@@ -194,7 +194,7 @@ CtCall :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], link
     while (index < length(arguments)) {
         param := params[callable.first + index];
         if ((!Integer(param.storage) && param.storage != BoolStorage) || param.container != 0 || param.reference ||
-            Is(forest, arguments[index], "named_argument")) {
+            Is(forest, arguments[index], syntax.NamedArgument)) {
             return CtResult.Failed(CtFail(forest, arguments[index], file,
                                           "compile-time calls take integer and bool arguments by position"));
         }
@@ -241,7 +241,7 @@ CtRun :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], links
     }
     bits := arg_bits;
     storages := arg_storages;
-    body := Field(forest, callable.node, "body");
+    body := Field(forest, callable.node, syntax.FieldBody);
     switch CtBlock(forest, documents, links, callables, params, constants, callable.package, file, &names, &bits,
                    &storages, steps, depth, callable.result, Members(forest, body)) {
         case .Failed(diagnostic):
@@ -333,8 +333,8 @@ CtStatement :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
                 names: ^(string[]), bits: ^(u64[]), storages: ^(int[]), steps: ^int, depth: int, result: int,
                 statement: int) -> CtFlow {
     text := documents[file].text;
-    if (Is(forest, statement, "return_statement")) {
-        value := Field(forest, statement, "value");
+    if (Is(forest, statement, syntax.ReturnStatement)) {
+        value := Field(forest, statement, syntax.FieldValue);
         if (value < 0) {
             return CtFlow.Failed(CtFail(forest, statement, file, "return needs a value"));
         }
@@ -351,15 +351,15 @@ CtStatement :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
                 return CtFlow.Returned(CtWidened(returned, storage, result), result);
         }
     }
-    if (Is(forest, statement, "break_statement")) {
+    if (Is(forest, statement, syntax.BreakStatement)) {
         return CtFlow.Broke;
     }
-    if (Is(forest, statement, "continue_statement")) {
+    if (Is(forest, statement, syntax.ContinueStatement)) {
         return CtFlow.Continued;
     }
-    if (Is(forest, statement, "local_declaration")) {
+    if (Is(forest, statement, syntax.LocalDeclaration)) {
         want: int = 0;
-        declared := Field(forest, statement, "type");
+        declared := Field(forest, statement, syntax.FieldType);
         if (declared >= 0) {
             want = ScalarStorage(Text(forest, text, declared));
             if (want == 0 || (!Integer(want) && want != BoolStorage)) {
@@ -367,7 +367,7 @@ CtStatement :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
                                             "compile-time locals are integers or bool"));
             }
         }
-        value := Field(forest, statement, "value");
+        value := Field(forest, statement, syntax.FieldValue);
         if (value < 0) {
             return CtFlow.Failed(CtFail(forest, statement, file, "a compile-time local needs a value"));
         }
@@ -384,25 +384,25 @@ CtStatement :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
                 if (want == 0) {
                     want = storage;
                 }
-                names.append(Text(forest, text, Field(forest, statement, "name")));
+                names.append(Text(forest, text, Field(forest, statement, syntax.FieldName)));
                 bits.append(CtWidened(initial, storage, want));
                 storages.append(want);
                 return CtFlow.Normal;
         }
     }
-    if (Is(forest, statement, "assignment")) {
-        target := Field(forest, statement, "target");
+    if (Is(forest, statement, syntax.Assignment)) {
+        target := Field(forest, statement, syntax.FieldTarget);
         at := -1;
-        if (Is(forest, target, "identifier")) {
+        if (Is(forest, target, syntax.Identifier)) {
             at = CtLookup(names^, Text(forest, text, target));
         }
         if (at < 0) {
             return CtFlow.Failed(CtFail(forest, statement, file, "compile-time assignment needs a local"));
         }
         local := storages^[at];
-        operator := CompoundOperator(Text(forest, text, Field(forest, statement, "operator")));
+        operator := CompoundOperator(Text(forest, text, Field(forest, statement, syntax.FieldOperator)));
         switch CtEval(forest, documents, links, callables, params, constants, package, file, names, bits, storages,
-                      steps, depth, Field(forest, statement, "value"), local) {
+                      steps, depth, Field(forest, statement, syntax.FieldValue), local) {
             case .Failed(diagnostic):
                 return CtFlow.Failed(diagnostic);
             case .Waiting:
@@ -431,25 +431,25 @@ CtStatement :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
                 return CtFlow.Normal;
         }
     }
-    if (Is(forest, statement, "if_statement")) {
+    if (Is(forest, statement, syntax.IfStatement)) {
         switch CtEval(forest, documents, links, callables, params, constants, package, file, names, bits, storages,
-                      steps, depth, Field(forest, statement, "condition"), BoolStorage) {
+                      steps, depth, Field(forest, statement, syntax.FieldCondition), BoolStorage) {
             case .Failed(diagnostic):
                 return CtFlow.Failed(diagnostic);
             case .Waiting:
                 return CtFlow.Waiting;
             case .Value(taken, storage):
                 if (storage != BoolStorage) {
-                    return CtFlow.Failed(CtFail(forest, Field(forest, statement, "condition"), file,
+                    return CtFlow.Failed(CtFail(forest, Field(forest, statement, syntax.FieldCondition), file,
                                                 "an if condition must be a bool"));
                 }
                 if (taken != 0) {
                     return CtBlock(forest, documents, links, callables, params, constants, package, file, names, bits,
                                    storages, steps, depth, result,
-                                   Members(forest, Field(forest, statement, "consequence")));
+                                   Members(forest, Field(forest, statement, syntax.FieldConsequence)));
                 }
-                alternative := Field(forest, statement, "alternative");
-                if (Is(forest, alternative, "if_statement")) {
+                alternative := Field(forest, statement, syntax.FieldAlternative);
+                if (Is(forest, alternative, syntax.IfStatement)) {
                     return CtStatement(forest, documents, links, callables, params, constants, package, file, names,
                                        bits, storages, steps, depth, result, alternative);
                 }
@@ -460,21 +460,21 @@ CtStatement :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
                 return CtFlow.Normal;
         }
     }
-    if (Is(forest, statement, "while_statement")) {
+    if (Is(forest, statement, syntax.WhileStatement)) {
         while (true) {
             steps^ += 1;
             if (steps^ > CtSteps) {
                 return CtFlow.Failed(CtFail(forest, statement, file, "compile-time evaluation exceeded 65536 steps"));
             }
             switch CtEval(forest, documents, links, callables, params, constants, package, file, names, bits,
-                          storages, steps, depth, Field(forest, statement, "condition"), BoolStorage) {
+                          storages, steps, depth, Field(forest, statement, syntax.FieldCondition), BoolStorage) {
                 case .Failed(diagnostic):
                     return CtFlow.Failed(diagnostic);
                 case .Waiting:
                     return CtFlow.Waiting;
                 case .Value(taken, storage):
                     if (storage != BoolStorage) {
-                        return CtFlow.Failed(CtFail(forest, Field(forest, statement, "condition"), file,
+                        return CtFlow.Failed(CtFail(forest, Field(forest, statement, syntax.FieldCondition), file,
                                                     "a while condition must be a bool"));
                     }
                     if (taken == 0) {
@@ -482,7 +482,7 @@ CtStatement :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
                     }
             }
             switch CtBlock(forest, documents, links, callables, params, constants, package, file, names, bits,
-                           storages, steps, depth, result, Members(forest, Field(forest, statement, "body"))) {
+                           storages, steps, depth, result, Members(forest, Field(forest, statement, syntax.FieldBody))) {
                 case .Failed(diagnostic):
                     return CtFlow.Failed(diagnostic);
                 case .Waiting:

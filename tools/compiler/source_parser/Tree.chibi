@@ -6,10 +6,11 @@ import syntax "project:syntax_diagnostics"
 // A node of the tree under construction. The first rows are the tokens, in
 // order, and the parser appends interior rows after them. Links use -1 for
 // absence; `last` is the newest child, so adding a child is constant time.
-// Offsets count bytes, as Tree-sitter's do.
+// Offsets count bytes, as Tree-sitter's do. `kind` and `field` are
+// syntax_diagnostics kinds and fields.
 Node :: struct {
-    kind: string;
-    field: string;
+    kind: int;
+    field: int;
     token: int;
     start: int;
     end: int;
@@ -39,27 +40,29 @@ Cursor :: struct {
     column: int;
 }
 
-// The parts of a tree Parse returns: Tree-sitter's raw facts, as
-// compiler_syntax.Parse returns them.
+// What Parse returns: the rows of a tree with each row's field and named and
+// extra flags, as compiler_syntax.Parse returns them, or the diagnostic of
+// the first token the grammar cannot read.
 pub Tree :: union {
-    Parsed(nodes: syntax.Node[], fields: string[], is_named: bool[], is_extra: bool[], root: int)
+    Parsed(nodes: syntax.Node[], fields: int[], is_named: bool[], is_extra: bool[], root: int)
+    | Rejected(diagnostic: syntax.Diagnostic)
 }
 
-NewNode :: (kind: string, named: bool) -> Node {
-    return {kind: kind, field: "", token: -1, start: -1, end: -1, row: 0, column: 0,
+NewNode :: (kind: int, named: bool) -> Node {
+    return {kind: kind, field: syntax.FieldNone, token: -1, start: -1, end: -1, row: 0, column: 0,
             parent: -1, first: -1, last: -1, next: -1, named: named, hidden: false,
             extra: false};
 }
 
 // An interior node of `kind`, empty until children are added.
-New :: (n: ^(Node[]), kind: string) -> int {
+New :: (n: ^(Node[]), kind: int) -> int {
     n.append(NewNode(kind, true));
     return length(n^) - 1;
 }
 
-// `child` becomes the newest child of `parent`, under `field` ("" for none).
+// `child` becomes the newest child of `parent`, under `field` (FieldNone for none).
 // The parent's range covers its children, zero-width terminators included.
-Add :: (n: ^(Node[]), parent: int, child: int, field: string) {
+Add :: (n: ^(Node[]), parent: int, child: int, field: int) {
     n^[child].parent = parent;
     n^[child].field = field;
     if (n^[parent].last < 0) {
@@ -97,7 +100,7 @@ Fail :: (c: ^Cursor, n: ^(Node[]), message: string) {
 }
 
 // Moves the current token under `parent`, keeping its own kind.
-Take :: (c: ^Cursor, n: ^(Node[]), parent: int, field: string) -> int {
+Take :: (c: ^Cursor, n: ^(Node[]), parent: int, field: int) -> int {
     at := c.pos;
     if (at < c.final) {
         c.pos += 1;
@@ -110,7 +113,7 @@ Take :: (c: ^Cursor, n: ^(Node[]), parent: int, field: string) -> int {
 }
 
 // Takes the current token if it has `token` kind, else fails.
-Expect :: (c: ^Cursor, n: ^(Node[]), parent: int, token: int, field: string) -> int {
+Expect :: (c: ^Cursor, n: ^(Node[]), parent: int, token: int, field: int) -> int {
     if (c.token != token) {
         Fail(c, n, format_text("{}{}", Expected(c, n, Describe(token)), Opener(c, n, token)));
         return -1;
@@ -119,7 +122,7 @@ Expect :: (c: ^Cursor, n: ^(Node[]), parent: int, token: int, field: string) -> 
 }
 
 // Takes the current token if it has `token` kind and says whether it did.
-Accept :: (c: ^Cursor, n: ^(Node[]), parent: int, token: int, field: string) -> bool {
+Accept :: (c: ^Cursor, n: ^(Node[]), parent: int, token: int, field: int) -> bool {
     if (c.token != token) {
         return false;
     }
@@ -128,25 +131,25 @@ Accept :: (c: ^Cursor, n: ^(Node[]), parent: int, token: int, field: string) -> 
 }
 
 // Takes the current token as an identifier, which a contextual word may be.
-TakeName :: (c: ^Cursor, n: ^(Node[]), parent: int, field: string) -> int {
+TakeName :: (c: ^Cursor, n: ^(Node[]), parent: int, field: int) -> int {
     if (!IsName(c.token)) {
         Fail(c, n, Expected(c, n, "a name"));
         return -1;
     }
     at := Take(c, n, parent, field);
-    n^[at].kind = "identifier";
+    n^[at].kind = syntax.Identifier;
     n^[at].named = true;
     return at;
 }
 
 // Takes the current token as an identifier after a dot: any word will do.
-TakeMember :: (c: ^Cursor, n: ^(Node[]), parent: int, field: string) -> int {
+TakeMember :: (c: ^Cursor, n: ^(Node[]), parent: int, field: int) -> int {
     if (!IsMember(c.token)) {
         Fail(c, n, Expected(c, n, "a member name"));
         return -1;
     }
     at := Take(c, n, parent, field);
-    n^[at].kind = "identifier";
+    n^[at].kind = syntax.Identifier;
     n^[at].named = true;
     return at;
 }
@@ -189,36 +192,45 @@ End :: (c: ^Cursor, n: ^(Node[]), parent: int) {
         Fail(c, n, Expected(c, n, "the end of the statement"));
         return;
     }
-    Take(c, n, parent, "");
+    Take(c, n, parent, syntax.FieldNone);
 }
 
 // The tokens' leaf rows. Comments are not leaves of the tree under
 // construction; the tree takes them afterwards.
-Leaf :: (kind: string, token: int, start: int, end: int, row: int, column: int) -> Node {
-    return {kind: kind, field: "", token: token, start: start, end: end, row: row, column: column,
+Leaf :: (kind: int, token: int, start: int, end: int, row: int, column: int) -> Node {
+    return {kind: kind, field: syntax.FieldNone, token: token, start: start, end: end, row: row, column: column,
             parent: -1, first: -1, last: -1, next: -1,
             named: token == tk.Ident || token == tk.Integer || token == tk.Float ||
                    token == tk.String || token == tk.Char,
             hidden: token == tk.Semicolon && start == end, extra: false};
 }
 
-LeafKind :: (names: string[], token: int) -> string {
+// A kind as the grammar spells it: a token's text, or a node's type.
+pub KindName :: (kind: int) -> string {
+    if (kind < syntax.Comment) {
+        return tk.KindNames()[kind];
+    }
+    return syntax.KindNames()[kind - syntax.Comment];
+}
+
+// A leaf's kind: a named token's node kind, or an anonymous token's own kind.
+LeafKind :: (token: int) -> int {
     if (token == tk.Ident) {
-        return "identifier";
+        return syntax.Identifier;
     }
     if (token == tk.Integer || token == tk.Float) {
-        return "number";
+        return syntax.Number;
     }
     if (token == tk.String) {
-        return "string";
+        return syntax.String;
     }
     if (token == tk.Char) {
-        return "character";
+        return syntax.Character;
     }
     if (token == tk.Comment) {
-        return "comment";
+        return syntax.Comment;
     }
-    return names[token];
+    return token;
 }
 
 // "Expected X, found Y": what the grammar needed, and the text it met instead.

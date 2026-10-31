@@ -78,7 +78,7 @@ ReadSignature :: (environment: reader.Environment, tree: reader.Tree, node: int,
     // Preserve the real annotation reader's diagnostics and type semantics.
     // Reject unsupported shape before invoking it, so arbitrary constructor
     // declarations never expand this deliberately scalar source contract.
-    if (!reader.Kind(tree, node, "type") ||
+    if (!reader.Kind(tree, node, syntax.Type) ||
         (reader.Text(tree, node) != "int" && reader.Text(tree, node) != "bool")) {
         return ScalarSignature.Rejected(reader.Diagnostic(tree, node, document, "bounded compiler requires one ordinary int or bool result"));
     }
@@ -102,16 +102,16 @@ ReadSignature :: (environment: reader.Environment, tree: reader.Tree, node: int,
 CompileFunction :: (tree: reader.Tree, function: int, document: int,
                     identity: string, keys: string[], abi: lower.Target,
                     prepared_abi: u64, opcodes: int[]) -> Result {
-    name_node := reader.Field(tree, function, "name");
+    name_node := reader.Field(tree, function, syntax.FieldName);
     name := reader.Text(tree, name_node);
-    if (!reader.Kind(tree, name_node, "identifier") || name == "_" || strings.ByteLength(name) > 240) {
+    if (!reader.Kind(tree, name_node, syntax.Identifier) || name == "_" || strings.ByteLength(name) > 240) {
         return SourceFailure(tree, name_node, document, "bounded compiler requires an identifier-named function");
     }
     // int(value) is a conversion here; a function of that name would be a call.
     if (name == "int" || name == "bool") {
         return SourceFailure(tree, name_node, document, "bounded compiler reserves int and bool for conversions");
     }
-    parameters := reader.Field(tree, function, "parameters");
+    parameters := reader.Field(tree, function, syntax.FieldParameters);
     if (parameters < 0 || FirstMember(tree, parameters) >= 0) {
         return SourceFailure(tree, function, document, "bounded compiler supports zero-argument functions only");
     }
@@ -137,7 +137,7 @@ CompileFunction :: (tree: reader.Tree, function: int, document: int,
     }
     environment := SignatureEnvironment(lexical, identity, pointer_size);
     result_storage: int = 0;
-    signature := reader.Field(tree, function, "results");
+    signature := reader.Field(tree, function, syntax.FieldResults);
     if (signature < 0) {
         return SourceFailure(tree, function, document, "bounded compiler requires one ordinary int or bool result");
     }
@@ -147,13 +147,13 @@ CompileFunction :: (tree: reader.Tree, function: int, document: int,
         case .Accepted(storage):
             result_storage = storage;
     }
-    body := reader.Field(tree, function, "body");
+    body := reader.Field(tree, function, syntax.FieldBody);
     statement := FirstMember(tree, body);
-    if (statement < 0 || !reader.Kind(tree, statement, "return_statement") ||
-        FollowingMember(tree, statement) >= 0 || reader.Field(tree, statement, "outcome") >= 0) {
+    if (statement < 0 || !reader.Kind(tree, statement, syntax.ReturnStatement) ||
+        FollowingMember(tree, statement) >= 0 || reader.Field(tree, statement, syntax.FieldOutcome) >= 0) {
         return SourceFailure(tree, body, document, "bounded function body needs exactly one ordinary return");
     }
-    expression := reader.Field(tree, statement, "value");
+    expression := reader.Field(tree, statement, syntax.FieldValue);
     if (expression < 0) {
         return SourceFailure(tree, statement, document, "bounded return requires a scalar expression");
     }
@@ -235,8 +235,8 @@ CompileSnapshot :: (source: snapshot.Result, abi: lower.Target,
                             case .Parsed(tree, root):
                                 child := FirstMember(tree, root);
                                 while (child >= 0) {
-                                    if (!reader.Kind(tree, child, "package_header")) {
-                                        if (!reader.Kind(tree, child, "function_declaration")) {
+                                    if (!reader.Kind(tree, child, syntax.PackageHeader)) {
+                                        if (!reader.Kind(tree, child, syntax.FunctionDeclaration)) {
                                             return SourceFailure(tree, child, source_file, "unsupported declaration in bounded package");
                                         }
                                         if (function >= 0) {

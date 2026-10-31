@@ -3,6 +3,7 @@ package package_compiler
 import snapshot "project:source_snapshot"
 import binding "project:lexical_binding"
 import writer "project:prepared_writer"
+import syntax "project:syntax_diagnostics"
 
 // An optional sequence is physically a union. Its synthetic declaration keeps
 // the success type, so an empty sequence remains distinct from an absent one.
@@ -19,12 +20,12 @@ OptionalWrapPhase: int : 78;
 OptionalConditionPosition :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     at := node;
     parent := forest[at].parent;
-    while Is(forest, parent, "parenthesized_expression") {
+    while Is(forest, parent, syntax.ParenthesizedExpression) {
         at = parent;
         parent = forest[at].parent;
     }
-    return (Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) &&
-           Field(forest, parent, "condition") == at;
+    return (Is(forest, parent, syntax.IfStatement) || Is(forest, parent, syntax.WhileStatement)) &&
+           Field(forest, parent, syntax.FieldCondition) == at;
 }
 OptionalStepProduced :: (types: TypeDecl[], step: Step) -> bool {
     switch step {
@@ -537,12 +538,12 @@ PayloadPlaceAfter :: (types: TypeDecl[], step: Step, element: ValueType, ops: Op
 OptionalConditionNames :: (types: TypeDecl[], names: Name[], forest: snapshot.SnapshotNode[], text: string,
                            condition: int, value: Value) -> Name[] {
     subject := condition;
-    while (Is(forest, subject, "parenthesized_expression")) {
-        subject = Field(forest, subject, "expression");
+    while (Is(forest, subject, syntax.ParenthesizedExpression)) {
+        subject = Field(forest, subject, syntax.FieldExpression);
     }
     element := OptionalElement(types, value);
     found: int = -1;
-    if (Is(forest, subject, "identifier")) {
+    if (Is(forest, subject, syntax.Identifier)) {
         found = Lookup(names, Text(forest, text, subject));
     }
     if (element.storage == 0 || found < 0) {
@@ -566,13 +567,13 @@ OptionalProofChanged :: (forest: snapshot.SnapshotNode[], text: string, root: in
         node := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
         if forest[node].start >= start && forest[node].end <= finish {
-            if aliased && (Is(forest, node, "call_expression") || Is(forest, node, "await_expression") ||
-                           Is(forest, node, "yield_statement")) {
+            if aliased && (Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.AwaitExpression) ||
+                           Is(forest, node, syntax.YieldStatement)) {
                 return true;
             }
-            if Is(forest, node, "assignment") {
+            if Is(forest, node, syntax.Assignment) {
                 destination := Unparenthesized(forest, StatementTarget(forest, node));
-                if aliased || (Is(forest, destination, "identifier") && Text(forest, text, destination) == name) {
+                if aliased || (Is(forest, destination, syntax.Identifier) && Text(forest, text, destination) == name) {
                     return true;
                 }
             }
@@ -585,41 +586,41 @@ OptionalBranchExits :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     if node < 0 {
         return false;
     }
-    if Is(forest, node, "return_statement") || Is(forest, node, "break_statement") ||
-       Is(forest, node, "continue_statement") {
+    if Is(forest, node, syntax.ReturnStatement) || Is(forest, node, syntax.BreakStatement) ||
+       Is(forest, node, syntax.ContinueStatement) {
         return true;
     }
-    if Is(forest, node, "block") || Is(forest, node, "callable_body") {
+    if Is(forest, node, syntax.Block) || Is(forest, node, syntax.CallableBody) {
         children := Members(forest, node);
         return length(children) > 0 && OptionalBranchExits(forest, children[length(children) - 1]);
     }
-    return Is(forest, node, "if_statement") &&
-           OptionalBranchExits(forest, Field(forest, node, "consequence")) &&
-           OptionalBranchExits(forest, Field(forest, node, "alternative"));
+    return Is(forest, node, syntax.IfStatement) &&
+           OptionalBranchExits(forest, Field(forest, node, syntax.FieldConsequence)) &&
+           OptionalBranchExits(forest, Field(forest, node, syntax.FieldAlternative));
 }
 // The latest optional read that establishes this condition's presence proof.
 // Invalidation starts at that read, including any later condition operands.
 OptionalGuardEnd :: (forest: snapshot.SnapshotNode[], text: string, condition: int, name: string, truth: bool) -> int {
     node := Unparenthesized(forest, condition);
-    if Is(forest, node, "identifier") || Is(forest, node, "member_expression") {
+    if Is(forest, node, syntax.Identifier) || Is(forest, node, syntax.MemberExpression) {
         if truth && Text(forest, text, node) == name {
             return forest[node].end;
         }
         return -1;
     }
-    if Is(forest, node, "unary_expression") {
-        operator := Text(forest, text, Field(forest, node, "operator"));
+    if Is(forest, node, syntax.UnaryExpression) {
+        operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
         if operator == "!" || operator == "not" {
-            return OptionalGuardEnd(forest, text, Field(forest, node, "operand"), name, !truth);
+            return OptionalGuardEnd(forest, text, Field(forest, node, syntax.FieldOperand), name, !truth);
         }
         return -1;
     }
-    if Is(forest, node, "call_expression") {
+    if Is(forest, node, syntax.CallExpression) {
         if !QueryGuardContext(forest, node) {
             return -1;
         }
-        function := Text(forest, text, Field(forest, node, "function"));
-        arguments := Members(forest, Field(forest, node, "arguments"));
+        function := Text(forest, text, Field(forest, node, syntax.FieldFunction));
+        arguments := Members(forest, Field(forest, node, syntax.FieldArguments));
         if function == "has" && length(arguments) == 1 {
             return OptionalGuardEnd(forest, text, arguments[0], name, truth);
         }
@@ -637,12 +638,12 @@ OptionalGuardEnd :: (forest: snapshot.SnapshotNode[], text: string, condition: i
         }
         return latest;
     }
-    if !Is(forest, node, "binary_expression") {
+    if !Is(forest, node, syntax.BinaryExpression) {
         return -1;
     }
-    operator := Text(forest, text, Field(forest, node, "operator"));
-    left := Field(forest, node, "left");
-    right := Field(forest, node, "right");
+    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
+    left := Field(forest, node, syntax.FieldLeft);
+    right := Field(forest, node, syntax.FieldRight);
     if (truth && (operator == "&&" || operator == "and")) ||
        (!truth && (operator == "||" || operator == "or")) {
         // Both operands run on this edge. A fresh later test can
@@ -655,13 +656,13 @@ OptionalGuardEnd :: (forest: snapshot.SnapshotNode[], text: string, condition: i
     }
     left = Unparenthesized(forest, left);
     right = Unparenthesized(forest, right);
-    if Is(forest, left, "nil") {
+    if Is(forest, left, syntax.Nil) {
         swapped := left;
         left = right;
         right = swapped;
     }
-    if (!Is(forest, left, "identifier") && !Is(forest, left, "member_expression")) ||
-       !Is(forest, right, "nil") || Text(forest, text, left) != name {
+    if (!Is(forest, left, syntax.Identifier) && !Is(forest, left, syntax.MemberExpression)) ||
+       !Is(forest, right, syntax.Nil) || Text(forest, text, left) != name {
         return -1;
     }
     if (truth && operator == "!=") || (!truth && operator == "==") {
@@ -671,24 +672,24 @@ OptionalGuardEnd :: (forest: snapshot.SnapshotNode[], text: string, condition: i
 }
 OptionalPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name, node: int) -> bool {
     function := node;
-    while function >= 0 && !Is(forest, function, "function_declaration") && !Is(forest, function, "handler") &&
-          !Is(forest, function, "system") {
+    while function >= 0 && !Is(forest, function, syntax.FunctionDeclaration) && !Is(forest, function, syntax.Handler) &&
+          !Is(forest, function, syntax.System) {
         function = forest[function].parent;
     }
     if function < 0 {
         return false;
     }
-    body := Field(forest, function, "body");
+    body := Field(forest, function, syntax.FieldBody);
     aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body, []), binding.name);
     child := node;
     parent := forest[child].parent;
     crossed_for := false;
     while parent >= 0 && parent != function {
-        if Is(forest, parent, "binary_expression") && Ancestor(forest, Field(forest, parent, "right"), node) {
-            operator := Text(forest, text, Field(forest, parent, "operator"));
+        if Is(forest, parent, syntax.BinaryExpression) && Ancestor(forest, Field(forest, parent, syntax.FieldRight), node) {
+            operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
             truth := operator == "&&" || operator == "and";
             if truth || operator == "||" || operator == "or" {
-                condition := Field(forest, parent, "left");
+                condition := Field(forest, parent, syntax.FieldLeft);
                 proof := OptionalGuardEnd(forest, text, condition, binding.name, truth);
                 if proof >= 0 && (binding.node < 0 || forest[binding.node].start < forest[condition].start) &&
                    !OptionalProofChanged(forest, text, parent, proof, forest[node].start, binding.name, aliased) {
@@ -696,9 +697,9 @@ OptionalPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name
                 }
             }
         }
-        if Is(forest, parent, "argument_list") {
+        if Is(forest, parent, syntax.ArgumentList) {
             call := forest[parent].parent;
-            spelling := Text(forest, text, Field(forest, call, "function"));
+            spelling := Text(forest, text, Field(forest, call, syntax.FieldFunction));
             if (spelling == "all" || spelling == "any") && QueryGuardContext(forest, call) {
                 for argument in Members(forest, parent) {
                     if Ancestor(forest, argument, node) {
@@ -712,15 +713,15 @@ OptionalPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name
                 }
             }
         }
-        if Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement") {
-            condition := Field(forest, parent, "condition");
-            consequence := Field(forest, parent, "consequence");
-            if Is(forest, parent, "while_statement") {
-                consequence = Field(forest, parent, "body");
+        if Is(forest, parent, syntax.IfStatement) || Is(forest, parent, syntax.WhileStatement) {
+            condition := Field(forest, parent, syntax.FieldCondition);
+            consequence := Field(forest, parent, syntax.FieldConsequence);
+            if Is(forest, parent, syntax.WhileStatement) {
+                consequence = Field(forest, parent, syntax.FieldBody);
             }
             truth := consequence >= 0 && forest[child].start >= forest[consequence].start &&
                      forest[child].end <= forest[consequence].end;
-            alternative := Field(forest, parent, "alternative");
+            alternative := Field(forest, parent, syntax.FieldAlternative);
             other := alternative >= 0 && forest[child].start >= forest[alternative].start &&
                      forest[child].end <= forest[alternative].end;
             proof := OptionalGuardEnd(forest, text, condition, binding.name, truth);
@@ -731,26 +732,26 @@ OptionalPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name
                 return true;
             }
         }
-        if Is(forest, parent, "while_statement") {
+        if Is(forest, parent, syntax.WhileStatement) {
             return false;
         }
-        if Is(forest, parent, "for_statement") {
+        if Is(forest, parent, syntax.ForStatement) {
             crossed_for = true;
         }
-        if !crossed_for && (Is(forest, parent, "block") || Is(forest, parent, "callable_body")) {
+        if !crossed_for && (Is(forest, parent, syntax.Block) || Is(forest, parent, syntax.CallableBody)) {
             for statement in Members(forest, parent) {
                 if forest[statement].end > forest[child].start {
                     break;
                 }
-                if !Is(forest, statement, "if_statement") {
+                if !Is(forest, statement, syntax.IfStatement) {
                     continue;
                 }
-                condition := Field(forest, statement, "condition");
+                condition := Field(forest, statement, syntax.FieldCondition);
                 if binding.node >= 0 && forest[binding.node].start >= forest[condition].start {
                     continue;
                 }
-                consequence := Field(forest, statement, "consequence");
-                alternative := Field(forest, statement, "alternative");
+                consequence := Field(forest, statement, syntax.FieldConsequence);
+                alternative := Field(forest, statement, syntax.FieldAlternative);
                 proof: int = -1;
                 if OptionalBranchExits(forest, consequence) {
                     proof = OptionalGuardEnd(forest, text, condition, binding.name, false);
@@ -776,14 +777,14 @@ OptionalPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name
 // beside an error. The existing mutation-aware guard proof is shared here.
 OptionalNarrowStep :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], expression: int,
                        step: Step, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
-    if !Is(forest, expression, "identifier") && !Is(forest, expression, "member_expression") {
+    if !Is(forest, expression, syntax.Identifier) && !Is(forest, expression, syntax.MemberExpression) {
         return step;
     }
     parent := forest[expression].parent;
-    if Is(forest, parent, "binary_expression") {
-        left := Field(forest, parent, "left");
-        right := Field(forest, parent, "right");
-        if Is(forest, left, "nil") || Is(forest, right, "nil") {
+    if Is(forest, parent, syntax.BinaryExpression) {
+        left := Field(forest, parent, syntax.FieldLeft);
+        right := Field(forest, parent, syntax.FieldRight);
+        if Is(forest, left, syntax.Nil) || Is(forest, right, syntax.Nil) {
             return step;
         }
     }
@@ -805,7 +806,7 @@ OptionalNarrowStep :: (forest: snapshot.SnapshotNode[], text: string, types: Typ
                 // The path must refer to the same lexical root as its guard.
                 // Repeated calls have no stable root whose proof can be reused.
                 root := RootOf(forest, expression);
-                if !Is(forest, root, "identifier") {
+                if !Is(forest, root, syntax.Identifier) {
                     return step;
                 }
                 source := Lookup(names, Text(forest, text, root));

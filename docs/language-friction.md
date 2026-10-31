@@ -1037,8 +1037,28 @@ can end a statement, is a `bool[]` filled from a list.
   X-macros for the names; C# `Enum.GetName`; TypeScript numeric enums with
   reverse mapping; Python `enum.Enum`.
 
+The syntax tree's 120 node kinds and 55 fields in `syntax_diagnostics`
+(INT-KINDS-PR) are constants chained one to the next, `Character: int : Comment + 1;`,
+so inserting one renumbers nothing, with `KindNames` and `FieldNames` kept in
+the same order by hand. A token leaf keeps its token kind, so the node kinds
+start at a hand-picked 128, past the tokenizer's 117, and a test checks the
+gap. Zig's `std.zig.Ast.Node.Tag` is an enum with `@tagName`.
+
 Suggestion: Odin's `enum`, enumerated arrays and `bit_set`, with a name for
 each value.
+
+### Records have no stated size
+
+Language. Each high-count record should carry a byte budget pinned at compile
+time, but Chibi has neither `size_of` nor a compile-time assert, so
+`SnapshotNode`'s 40 bytes per row (INT-KINDS-PR) are a comment.
+
+- Odin has `#assert(size_of(T) == N)`; Zig `comptime { assert(@sizeOf(T) == N); }`;
+  C `_Static_assert(sizeof(T) == N, "")`; Rust
+  `const _: () = assert!(size_of::<T>() == N);`.
+
+Suggestion: `size_of(T)` as a constant expression and an `#assert` that
+fails compilation.
 
 ### A switch arm takes one value
 

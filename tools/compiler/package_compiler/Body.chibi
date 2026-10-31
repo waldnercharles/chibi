@@ -5,6 +5,7 @@ import syntax "project:syntax_diagnostics"
 import parser "project:source_parser"
 import binding "project:lexical_binding"
 import strings "core:strings"
+import tk "project:source_tokenizer"
 
 // One function body, emitted in one pass. A work stack visits statements and
 // expressions in evaluation order; each expression pushes its typed value.
@@ -1263,7 +1264,7 @@ ParseNumber :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Lit
     digits := node;
     negative := false;
     if (Is(forest, node, syntax.UnaryExpression)) {
-        if (Text(forest, text, Field(forest, node, syntax.FieldOperator)) != "-") {
+        if (Operator(forest, node) != tk.Sub) {
             return invalid;
         }
         digits = Field(forest, node, syntax.FieldOperand);
@@ -1451,53 +1452,53 @@ Floating :: (storage: int) -> bool {
     return storage == FloatStorage || storage == DoubleStorage;
 }
 // The instruction a binary operator lowers to; -1 for logic and unknown ones.
-BinaryOp :: (ops: Ops, operator: string) -> int {
-    if (operator == "+") {
+BinaryOp :: (ops: Ops, operator: int) -> int {
+    if (operator == tk.Add) {
         return ops.add;
     }
-    if (operator == "-") {
+    if (operator == tk.Sub) {
         return ops.sub;
     }
-    if (operator == "*") {
+    if (operator == tk.Mul) {
         return ops.mul;
     }
-    if (operator == "/") {
+    if (operator == tk.Quo) {
         return ops.div;
     }
-    if (operator == "%") {
+    if (operator == tk.Mod) {
         return ops.mod;
     }
-    if (operator == "&") {
+    if (operator == tk.And) {
         return ops.bit_and;
     }
-    if (operator == "|") {
+    if (operator == tk.Or) {
         return ops.bit_or;
     }
-    if (operator == "^") {
+    if (operator == tk.Xor) {
         return ops.bit_xor;
     }
-    if (operator == "<<") {
+    if (operator == tk.Shl) {
         return ops.shl;
     }
-    if (operator == ">>") {
+    if (operator == tk.Shr) {
         return ops.shr;
     }
-    if (operator == "<") {
+    if (operator == tk.Lt) {
         return ops.lt;
     }
-    if (operator == "<=") {
+    if (operator == tk.LtEq) {
         return ops.le;
     }
-    if (operator == ">") {
+    if (operator == tk.Gt) {
         return ops.gt;
     }
-    if (operator == ">=") {
+    if (operator == tk.GtEq) {
         return ops.ge;
     }
-    if (operator == "==") {
+    if (operator == tk.CmpEq) {
         return ops.eq;
     }
-    if (operator == "!=") {
+    if (operator == tk.NotEq) {
         return ops.ne;
     }
     return -1;
@@ -1505,12 +1506,34 @@ BinaryOp :: (ops: Ops, operator: string) -> int {
 Comparison :: (ops: Ops, op: int) -> bool {
     return op == ops.lt || op == ops.le || op == ops.gt || op == ops.ge || op == ops.eq || op == ops.ne;
 }
-// The operator of a compound assignment, "" for plain assignment.
-CompoundOperator :: (text: string) -> string {
-    if (text == "=") {
-        return "";
+// The operator a compound assignment applies, such as tk.Add for `+=`;
+// NoOperator for a plain `=`.
+CompoundOperator :: (assignment: int) -> int {
+    if (assignment == tk.AddEq) {
+        return tk.Add;
     }
-    return strings.Slice(text, 0, strings.ByteLength(text) - 1);
+    if (assignment == tk.SubEq) {
+        return tk.Sub;
+    }
+    if (assignment == tk.MulEq) {
+        return tk.Mul;
+    }
+    if (assignment == tk.QuoEq) {
+        return tk.Quo;
+    }
+    if (assignment == tk.ModEq) {
+        return tk.Mod;
+    }
+    if (assignment == tk.AndEq) {
+        return tk.And;
+    }
+    if (assignment == tk.OrEq) {
+        return tk.Or;
+    }
+    if (assignment == tk.XorEq) {
+        return tk.Xor;
+    }
+    return NoOperator;
 }
 // The function of `package` named `name`, -1 when none.
 FindCallable :: (callables: Callable[], package: int, name: string) -> int {
@@ -1942,8 +1965,8 @@ BindingCondition :: (forest: snapshot.SnapshotNode[], text: string, node: int) -
             return Field(forest, parent, syntax.FieldCondition) == at;
         }
         if (Is(forest, parent, syntax.BinaryExpression)) {
-            operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
-            if (operator != "&&" && operator != "and") {
+            operator := Operator(forest, parent);
+            if (operator != tk.CmpAnd && operator != tk.AndKeyword) {
                 return false;
             }
         } else if (!Is(forest, parent, syntax.ParenthesizedExpression)) {
@@ -2944,12 +2967,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         // A record or array to copy into a fresh cell; the copy is produced.
         retained := NoValue();
         optional_boolean: bool = false;
-        operator := Text(forest, text, Field(forest, item.node, syntax.FieldOperator));
+        operator := Operator(forest, item.node);
         logic := kind == syntax.BinaryExpression &&
-                 (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
+                 (operator == tk.CmpAnd || operator == tk.AndKeyword || operator == tk.CmpOr || operator == tk.OrKeyword);
         // Stage zero reads `-1` as one literal.
         negated := kind == syntax.Number && Is(forest, node.parent, syntax.UnaryExpression) &&
-                   Text(forest, text, Field(forest, node.parent, syntax.FieldOperator)) == "-";
+                   Operator(forest, node.parent) == tk.Sub;
         if (ops.debug && !constant_element && item.phase == 0 &&
             (item.capture || kind == syntax.Nil ||
              !IsBoxedOptional(types, {storage: item.storage, container: item.container, record: item.record}))) {
@@ -3500,7 +3523,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             } else {
                 code.append(Instruction(ops.jump, 0, 0, 0, 0, loop.head, node));
             }
-        } else if (kind == syntax.BinaryExpression && operator == "??") {
+        } else if (kind == syntax.BinaryExpression && operator == tk.Coalesce) {
             stepped = false;
             if (item.phase == 0) {
                 next.append(Visit(Field(forest, item.node, syntax.FieldLeft)));
@@ -3595,7 +3618,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 answer := length(locals) - 1;
                 code.append(Instruction(ops.save, BoolStorage, 0, left.slot, 0, answer, node));
                 escape := length(code);
-                if (operator == "&&" || operator == "and") {
+                if (operator == tk.CmpAnd || operator == tk.AndKeyword) {
                     code.append(Instruction(ops.branch_if, 0, 0, left.slot, 0, length(code) + 2, node));
                     escape = length(code);
                     code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
@@ -3672,17 +3695,17 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = LiteralStep(forest, text, document, table, members, values, value_top, built, item, ops, target, at);
         } else if (kind == syntax.MapExpression) {
             step = MapLiteralStep(forest, document, types, values, value_top, item, ops, target, at);
-        } else if ((kind == syntax.BinaryExpression && (operator == "in" || NotIn(forest, item.node, operator))) ||
+        } else if ((kind == syntax.BinaryExpression && (operator == tk.In || operator == syntax.NotIn)) ||
                    (kind == syntax.CallExpression &&
                     (item.c == MapHasMark || (item.phase == 0 && MapMethod(forest, text, names, item.node, "has"))))) {
             step = MapHasStep(forest, text, document, types, values, value_top, item, ops, target, at);
         } else if (kind == syntax.CallExpression) {
             step = CallStep(forest, text, document, callables, params, table, members, constants, natives, ports, makes,
                             make_fields, names, callable.package, values, value_top, built, item, ops, target, at);
-        } else if (kind == syntax.UnaryExpression && item.phase == 1 && operator == "!" &&
+        } else if (kind == syntax.UnaryExpression && item.phase == 1 && operator == tk.Not &&
                    OptionalElement(types, values[value_top - 1]).storage != 0) {
             step = OptionalPresentStep(values[value_top - 1], true, 1, ops, target, at, node);
-        } else if (kind == syntax.BinaryExpression && item.phase == 1 && (operator == "==" || operator == "!=") &&
+        } else if (kind == syntax.BinaryExpression && item.phase == 1 && (operator == tk.CmpEq || operator == tk.NotEq) &&
                    ((Is(forest, Unparenthesized(forest, Field(forest, item.node, syntax.FieldRight)), syntax.Nil) &&
                      OptionalElement(types, values[value_top - 2]).storage != 0) ||
                     (Is(forest, Unparenthesized(forest, Field(forest, item.node, syntax.FieldLeft)), syntax.Nil) &&
@@ -3691,7 +3714,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             if (OptionalElement(types, optional).storage == 0) {
                 optional = values[value_top - 1];
             }
-            step = OptionalPresentStep(optional, operator == "==", 2, ops, target, at, node);
+            step = OptionalPresentStep(optional, operator == tk.CmpEq, 2, ops, target, at, node);
         } else if (kind == syntax.UnaryExpression || kind == syntax.BinaryExpression) {
             if (math_enabled && item.phase == 0 && kind == syntax.BinaryExpression &&
                 MathBinaryCapture(forest, text, types, members, callables, natives, ports, names, callable.package, item.node)) {

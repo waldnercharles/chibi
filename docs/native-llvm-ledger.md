@@ -159,7 +159,6 @@ mean native, since `scalar_llvm` and `Driver.Object` must also take the function
 | W14 `compiler_json_value_string`, `compiler_json_string` | 33 | landed (#1126, Chibi `json_string`), census not rerun |
 | W9 optionals and record fields of map, pointer or optional type | 7 | sdk-cmake |
 | `insert` on arrays | 1 | open |
-| Package-scope `when target.Os` (and `core:target` imports) in native packages: the scalar producer folds it, with the destination's `core:target` from the driver; `core:sys/posix` can return to it from `uname` | 1 package | producer done; posix open |
 | Producer passes but native emission untested over the closure | unknown | W22 driver: compile the 973 through `Driver.Object` and list the rejections |
 | Maps (W8), `string[]` literals in natives, host catalog calls | open | not yet counted |
 | Stage-one driver: `tools/compiler/native_driver/Main.chibi`, a program that compiles a compiler folder to a native executable | none written | core-math |

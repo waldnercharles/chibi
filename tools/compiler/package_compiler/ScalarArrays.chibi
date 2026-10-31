@@ -36,7 +36,7 @@ ScalarArrayElement :: (storage: int) -> bool {
 }
 // The array the literal `node` is, from its first element when that names its
 // own storage: a string, a bool, a number conversion such as `u8(0)`, a call of
-// a function of the source, or a variable or a record's field that holds one number, bool or string.
+// a function of the source, or a variable, a record's field or an array's element that holds one number, bool, string, record or union.
 // An element of another form, such as a bare number, has storage 0.
 ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                        names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> ValueType {
@@ -70,6 +70,13 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
         if (field >= 0 && members[field].container == 0) {
             storage = members[field].storage;
             record = members[field].record;
+        }
+    } else if (Is(forest, first, syntax.IndexExpression)) {
+        // An element of an array of numbers, bool, strings, records or unions.
+        held := ScalarArrayShape(forest, text, callables, params, names, types, members, package, Field(forest, first, syntax.FieldObject));
+        if (held.container == ArrayContainer) {
+            storage = held.storage;
+            record = held.record;
         }
     }
     if (!ScalarArrayElement(storage)) {

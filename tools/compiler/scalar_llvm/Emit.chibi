@@ -509,7 +509,8 @@ ArrayChanges :: (operator: int) -> bool {
 // Whether the Array row at `row` of the operands of the statement at `at`,
 // which end before `last`, reads operands of its types from `stack`, none
 // below `floor`. A change of an array is the last operand of an Assign to the
-// variable its first operand reads.
+// variable its first operand reads, or the second last, before the Update of
+// the array's field of that variable's record.
 ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, operand: facts.Row, stack: int[],
                floor: int) -> string {
     consumed := ArrayOperands(operand);
@@ -595,11 +596,20 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         return "";
     }
     first := rows[at + 1];
-    if (rows[at].kind != facts.AssignRow || base != 0 || row != last - 1 || first.kind != facts.ReadRow ||
-        first.value != rows[at].value) {
+    if (rows[at].kind != facts.AssignRow || first.kind != facts.ReadRow || first.value != rows[at].value) {
         return "scalar array change is not the assignment of its array";
     }
-    return "";
+    if (base == 0 && row == last - 1) {
+        return "";
+    }
+    // An array field of the variable's record: the record's read, a second read
+    // and the field, then the change, and the record's Update of that field.
+    if (base == 1 && row == last - 2 && rows[at + 2].kind == facts.ReadRow && rows[at + 2].value == first.value &&
+        rows[at + 3].kind == facts.FieldRow && rows[row + 1].kind == facts.UpdateRow &&
+        rows[row + 1].value == rows[at + 3].value) {
+        return "";
+    }
+    return "scalar array change is not the assignment of its array";
 }
 // The operands after the statement row at `at`, as a typed evaluation stack:
 // each operand pushes one value; a comparison or binary arithmetic pops two

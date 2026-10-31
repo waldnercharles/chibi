@@ -1469,9 +1469,10 @@ BuiltBy :: (chibi: string, flags: string[], mode: string, target: string, llvm: 
 // launcher, HOST_SOURCE, ROOT, the LLVM folder, 0|2, the target, WORK and
 // watch|once, all absolute paths.
 pub Watch :: () -> int {
-    arguments := build.arguments();
+    // The compiler host, the compiler and the core come first, as for Native.
+    arguments := slice(build.arguments(), 3, length(build.arguments()) - 3);
     if (length(arguments) != 8) {
-        build.report("usage: CHIBI HOST_SOURCE ROOT LLVM 0|2 TARGET WORK watch|once (absolute paths)");
+        build.report("usage: COMPILER_HOST COMPILER CORE CHIBI HOST_SOURCE ROOT LLVM 0|2 TARGET WORK watch|once (absolute paths)");
         return 2;
     }
     chibi := arguments[0];

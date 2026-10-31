@@ -7,6 +7,7 @@ import target "core:target"
 // the call's stack buffer (see "Foreign libraries" in docs/code-language.md),
 // so a path of 4096 bytes or more traps. A call that fails returns its libc
 // result unchanged: 0 for success, -1 for failure; errno is not read yet.
+// Getenv, which builds a string from C bytes, waits for allocating text natively.
 //
 // The stat layout below is Linux x86-64's, and Darwin's when the compile
 // supplies it.
@@ -21,9 +22,12 @@ foreign libc {
     rename :: (source: cstring, destination: cstring) -> i32
     stat :: (path: cstring, buffer: u8[]) -> i32
     lstat :: (path: cstring, buffer: u8[]) -> i32
-    getenv :: (name: cstring) -> rawptr
-    strlen :: (text: rawptr) -> u64
-    memcpy :: (destination: u8[], source: rawptr, count: u64) -> rawptr
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fread :: (buffer: u8[], size: u64, count: u64, stream: rawptr) -> u64
+    fwrite :: (buffer: u8[], size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+    fseek :: (stream: rawptr, offset: i64, whence: i32) -> i32
+    ftell :: (stream: rawptr) -> i64
 }
 
 pub KindNone: int : 0;
@@ -105,17 +109,49 @@ pub Rename :: (source: string, destination: string) -> bool {
     return rename(source, destination) == 0;
 }
 
-// The environment variable's value, "" when it is unset.
-pub Getenv :: (name: string) -> string {
-    value := getenv(name);
-    if value == 0 {
-        return "";
+// The file's size in bytes, -1 when it cannot be opened.
+pub FileSize :: (path: string) -> int {
+    stream := fopen(path, "rb");
+    if stream == 0 {
+        return -1;
     }
-    size := strlen(value);
+    status := fseek(stream, 0, 2);
+    size := ftell(stream);
+    status = fclose(stream);
+    return int(size);
+}
+
+// The file's bytes, including NUL and malformed UTF-8; no bytes when it cannot
+// be read (FileSize tells that from an empty file). Opens through stdio, which
+// takes no variadic arguments, so it is the same call on every platform.
+pub ReadFile :: (path: string) -> u8[] {
     buffer: u8[] = [];
-    for index in 0..<int(size) {
+    stream := fopen(path, "rb");
+    if stream == 0 {
+        return buffer;
+    }
+    status := fseek(stream, 0, 2);
+    size := int(ftell(stream));
+    status = fseek(stream, 0, 0);
+    for index in 0..<size {
         buffer.append(0);
     }
-    memcpy(buffer, value, size);
-    return text_from_bytes(buffer);
+    read := fread(buffer, 1, u64(size), stream);
+    status = fclose(stream);
+    if int(read) != size {
+        empty: u8[] = [];
+        return empty;
+    }
+    return buffer;
+}
+
+// Replaces the file with the bytes; false when it cannot be written whole.
+pub WriteFile :: (path: string, data: u8[]) -> bool {
+    stream := fopen(path, "wb");
+    if stream == 0 {
+        return false;
+    }
+    written := fwrite(data, 1, u64(length(data)), stream);
+    closed := fclose(stream);
+    return int(written) == length(data) && closed == 0;
 }

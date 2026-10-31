@@ -95,8 +95,8 @@ CleanupRemovesOnlyOwnedNamesAndPreservesSiblings :: (scratch: string) {
     Make(partial);
     Make(fixture.output);
     Write(Path([fixture.output, "/receipt.txt"]), "previous complete output\n");
-    names := ["source.ll", "module.ll", "object.o", "start.ll", "start.o", "libSystem.tbd", "kernel32.def",
-              "kernel32.lib", "program", "program.exe", "receipt.txt"];
+    names := ["source.ll", "module.ll", "object.o", "start.ll", "start.o", "System.tbd", "kernel32.def",
+              "kernel32.lib", "a.out", "a.exe", "program", "program.exe", "receipt.txt"];
     for (name in names) {
         Write(Path([partial, "/", name]), "owned bytes\n");
     }
@@ -251,12 +251,13 @@ ExecutableLinksMacOSPrograms :: (scratch: string) {
                                          "target triple = \"arm64-apple-macosx11.0.0\"\ndeclare i32 @abs(i32)", -1));
     output := fixture.output;
     assert(Drive(fixture, true, "0") == 0, "the program builds");
-    link := Path(["-flavor\ndarwin\n-arch\narm64\n-platform_version\nmacos\n11.0.0\n11.0.0\n-dead_strip\n-e\n_main\n",
-                  output, ".partial/object.o\n", output, ".partial/start.o\n", output, ".partial/libSystem.tbd\n-o\n", output, ".partial/program\n"]);
+    link := Path(["-flavor\ndarwin\n-arch\narm64\n-platform_version\nmacos\n11.0.0\n11.0.0\n-dead_strip\n-undefined\n",
+                  "dynamic_lookup\n-e\n_main\n-o\n", output, ".partial/a.out\n", output, ".partial/object.o\n", output,
+                  ".partial/start.o\n", output, ".partial/System.tbd\n"]);
     assert(Equals(Path([fixture.root, "/linker tool.argv"]), link), "the macOS link's argv");
-    stub := Read(Path([output, "/libSystem.tbd"]));
+    stub := Read(Path([output, "/System.tbd"]));
     assert(strings.Contains(stub, "install-name: '/usr/lib/libSystem.B.dylib'\n"), "the stub names libSystem");
-    assert(strings.Contains(stub, "symbols: [ _abs, _memcpy, _memmove, _memset, dyld_stub_binder ]"), "the stub exports what the program imports");
+    assert(strings.Contains(stub, "symbols: [ dyld_stub_binder, _abs, _memcpy, _memmove, _memset ]"), "the stub exports what the program imports");
     start := Read(Path([output, "/start.ll"]));
     assert(strings.Contains(start, "target triple = \"arm64-apple-macosx11.0.0\"") && strings.Contains(start, "define i32 @main(i32 %argc, ptr %argv, ptr %envp) {"), "dyld calls main");
 }
@@ -269,7 +270,8 @@ ExecutableLinksWithTheNamedLinkerAndStartObject :: (scratch: string) {
         output := fixture.output;
         start := Path([format_text("-filetype=obj\n-O={}\n-relocation-model=pic\n", mode), output, ".partial/start.ll\n-o\n", output, ".partial/start.o\n"]);
         assert(Equals(Path([fixture.root, "/llc tool.start.argv"]), start), "the start object's argv");
-        link := Path(["-flavor\ngnu\n-static\n--gc-sections\n-e\n_start\n", output, ".partial/object.o\n", output, ".partial/start.o\n-o\n", output, ".partial/program\n"]);
+        link := Path(["-flavor\ngnu\n-static\n--gc-sections\n-e\n_start\n-o\n", output, ".partial/a.out\n", output,
+                      ".partial/object.o\n", output, ".partial/start.o\n"]);
         assert(Equals(Path([fixture.root, "/linker tool.argv"]), link), "the link's argv");
         assert(Equals(Path([output, "/start.o"]), "controlled start object\n"), "the published start object");
         receipt := Receipt(fixture);

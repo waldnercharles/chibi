@@ -265,9 +265,12 @@ pub TextRow: int : 35;
 pub AssertRow: int : 36;
 pub ArrayRow: int : 37;
 // A call of a C function the source declares in a foreign block, an operand
-// row that consumes its `count` argument operands, numbers or bools. `name`
-// is the C symbol, `type` the number or bool it returns, and `text` the path
-// of the library that provides it, which the native build links.
+// row that consumes its `count` argument operands, numbers, bools or string
+// literals a C function reads as NUL-ended bytes. `name` is the C symbol,
+// `type` the number or bool it returns, and `text` the path of the library
+// that provides it, which the native build links. A `value` of 1 calls through
+// an address instead: the first operand is that address, a 64-bit word, and
+// `name` and `text` are empty.
 pub ForeignRow: int : 38;
 // A call operand that passes the variable `value`, of its `type`, by
 // reference: the callee's reference parameter reads and writes that variable.

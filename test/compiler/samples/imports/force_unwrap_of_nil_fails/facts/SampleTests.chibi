@@ -1,0 +1,8 @@
+package facts
+
+// a postfix ! on nil fails at run time
+// fails: Unwrapped a nil optional
+@test
+Calls :: () {
+    Main();
+}

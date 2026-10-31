@@ -112,11 +112,11 @@ jobs:
         run: |
           set -o pipefail
           sh tools/build.sh build --build build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root /usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
-      # The graph's profile flags and argument checks, on the Release helper.
-      - name: Graph engine
+      # The authored graph and native-driver tests, on the Release helper.
+      - name: Graph and native driver programs
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-discovery graph-c graph-sdk native-aot-driver
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Build timing host regressions (ready drivers)
         env:

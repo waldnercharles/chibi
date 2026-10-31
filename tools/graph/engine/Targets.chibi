@@ -433,7 +433,6 @@ Files :: (target: string) -> string[] {
     if (target == "test_tools") {
         return [
             "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
-            "test/tools/graph_dispatch.c",
             "test/tools/fixture.c", "test/tools/execution_policy.c",
             "test/tools/chibi_cli.c", "test/tools/native_build.c", "test/tools/native_workloads.c",
             "test/tools/collab.c",
@@ -441,7 +440,7 @@ Files :: (target: string) -> string[] {
             "test/tools/wasm_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/native_aot_driver.c", "test/tools/build_process.c",
-            "test/tools/build_sdk.c", "test/tools/runtime_sdk.c",
+            "test/tools/build_sdk.c",
             "test/tools/compiler_bootstrap.c",
             "src/host/native_libraries.c", "test/support/fmt.c", "test/tools/box3d.c", "test/runtime/reference_cave.c"
         ];

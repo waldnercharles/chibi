@@ -201,6 +201,10 @@ Cases :: () -> Case[] {
         // A literal led by a record's field is an array of that field's type: the
         // loop adds 3 and 4, then 5 and 6 are the second pair.
         Accepted("array_literal_fields", "package scalar\nPair :: struct { a: int; b: int; }\nMain :: () -> int {\n    p: Pair = {a: 3, b: 4};\n    total: int = 0;\n    for (v in [p.a, p.b]) { total += v; }\n    return total * 100 + length(resize([p.b], 5));\n}\n", 705, "Main", ""),
+        // A scoped parameter the callee writes is the caller's variable: Bump moves
+        // the point to (6, 7), Twice passes the parameter on for two more, (8, 9),
+        // Fill appends 0, 1, 2 to the caller's array and Add raises its total by 4.
+        Accepted("reference_parameters", "package scalar\nPoint :: struct { x: int; y: int; }\nMain :: () -> int {\n    p: Point = {x: 1, y: 2};\n    items: int[] = [];\n    total: int = 0;\n    a := Bump(&p, 5);\n    b := Twice(&p);\n    c := Fill(&items, 3);\n    d := Add(&total, 4);\n    return p.x * 100 + p.y * 10 + length(items) + total + a + b + c + d;\n}\nBump :: (point: ^Point, by: int) -> int {\n    point.x += by;\n    point.y = point.y + by;\n    return 1;\n}\nTwice :: (point: ^Point) -> int {\n    a := Bump(point, 1);\n    b := Bump(point, 1);\n    return a + b;\n}\nFill :: (items: ^(int[]), n: int) -> int {\n    for (i in 0..<n) { items.append(i); }\n    return n;\n}\nAdd :: (sum: ^int, by: int) -> int {\n    sum^ += by;\n    return 0;\n}\n", 903, "Main,Bump,Twice,Fill,Add", ""),
         // Assigning an array copies it: b changes alone, then a alone. a ends
         // as [1, 2, 3, 4] and b as [10, 2, 3].
         Accepted("array_copy_independence", "package scalar\nMain :: () -> int {\n    a: int[] = [1, 2, 3];\n    b := a;\n    b[0] = 10;\n    a.append(4);\n    return a[0] * 100 + b[0] + length(a) * 1000 + length(b) * 10000;\n}\n", 34110, "Main", ""),

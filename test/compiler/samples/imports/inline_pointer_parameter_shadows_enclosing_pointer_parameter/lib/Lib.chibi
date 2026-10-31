@@ -1,0 +1,2 @@
+package lib
+pub Apply :: (input: ^int, function: fn(value: ^int) -> int) -> int { return function(input); }

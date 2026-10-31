@@ -236,6 +236,25 @@ static bool rejected_as_expected(
 {
     size_t length;
     const char *expected = expected_error(file, &length);
+    /* The diagnostic may be in another package, named from the folder that
+     * holds this one, when its file only fails as this package uses it. */
+    char failing[4096];
+    snprintf(failing, sizeof failing, "%s", file->path);
+    const char *colon = memchr(expected, ':', length);
+    if (colon && (expected[0] < '0' || expected[0] > '9')) {
+        char *package = strrchr(failing, '/');
+        *package = 0;
+        char *parent = strrchr(failing, '/');
+        snprintf(
+            parent + 1,
+            sizeof failing - (size_t)(parent + 1 - failing),
+            "%.*s",
+            (int)(colon - expected),
+            expected
+        );
+        length -= (size_t)(colon + 1 - expected);
+        expected = colon + 1;
+    }
     char actual[sizeof error->message + 32];
     snprintf(
         actual,
@@ -245,11 +264,11 @@ static bool rejected_as_expected(
         error->column,
         error->message
     );
-    bool passed = !packages && !strcmp(error->path, file->path) &&
+    bool passed = !packages && !strcmp(error->path, failing) &&
                   strlen(actual) == length && !memcmp(actual, expected, length);
     printf("%s %s.compile_error\n", passed ? "PASS" : "FAIL", tested);
     if (!passed) {
-        printf("  %s: expected %.*s, ", file->path, (int)length, expected);
+        printf("  %s: expected %.*s, ", failing, (int)length, expected);
         if (packages) {
             printf("but it compiled\n");
         } else {

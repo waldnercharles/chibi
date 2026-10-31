@@ -1,0 +1,18 @@
+package facts
+
+// non-escaping callable algorithms
+@test
+Calls :: () {
+    r1: int = Named();
+    e1: int = 3123;
+    assert(r1 == e1, "Named call 1");
+    r2: int = Inline();
+    e2: int = 321;
+    assert(r2 == e2, "Inline call 2");
+    r3: number = ShaderHelper();
+    e3: number = 0.5;
+    assert(r3 == e3, "ShaderHelper call 3");
+    r4: int = LoopShadow();
+    e4: int = 12;
+    assert(r4 == e4, "LoopShadow call 4");
+}

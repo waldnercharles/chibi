@@ -1,0 +1,6 @@
+package facts
+offset :: 1;
+import lib "project:callable_capture_respects_lexical_scopes/lib"
+Main :: (offset: int) -> int { return lib.Remap(3, (value: int) { if false { offset := 9; } return value + offset; }); }
+
+// error: 4:108: Inline functions cannot capture enclosing locals

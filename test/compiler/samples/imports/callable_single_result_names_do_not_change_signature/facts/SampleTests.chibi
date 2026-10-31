@@ -1,0 +1,12 @@
+package facts
+
+// callable single result names do not change signature
+@test
+Calls :: () {
+    r1: int = Main();
+    e1: int = 711;
+    assert(r1 == e1, "Main call 1");
+    r2: int = Inline();
+    e2: int = 120;
+    assert(r2 == e2, "Inline call 2");
+}

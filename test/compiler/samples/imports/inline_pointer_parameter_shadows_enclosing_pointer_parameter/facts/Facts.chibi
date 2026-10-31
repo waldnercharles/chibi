@@ -1,0 +1,8 @@
+package facts
+import lib "project:inline_pointer_parameter_shadows_enclosing_pointer_parameter/lib"
+Bump :: (value: ^int) -> int { value^ += 1; return value^; }
+Held :: (value: ^int) -> int { pointer := value; pointer^ += 2; return pointer^; }
+Observe :: (value: ^int) -> int { other := 7; observed := lib.Apply(&other, (value: ^int) -> int { value^ += 2; return value^; }); return value^ * 100 + observed * 10 + other; }
+Main :: () -> int { original := 3; observed := Observe(&original); return observed * 10 + original; }
+Scoped :: () -> int { original := 3; observed := lib.Apply(&original, Bump); return observed * 10 + original; }
+Managed :: () -> int { original := 3; observed := lib.Apply(&original, Held); return observed * 10 + original; }

@@ -1,0 +1,15 @@
+package facts
+
+// forwarded callback labels survive erased and reordered arguments
+@test
+Calls :: () {
+    r1: int = Positional();
+    e1: int = 306;
+    assert(r1 == e1, "Positional call 1");
+    r2: int = Named();
+    e2: int = 12306;
+    assert(r2 == e2, "Named call 2");
+    r3: int = Inline();
+    e3: int = 36;
+    assert(r3 == e3, "Inline call 3");
+}

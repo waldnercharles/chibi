@@ -494,6 +494,15 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "cleanup-probe")) {
         return cleanup_probe(argv[2]);
     }
+    if (!strcmp(argv[1], "cat")) {
+        assert(argc == 3);
+        FILE *file = fopen(argv[2], "rb");
+        assert(file);
+        char bytes[4096];
+        size_t size = fread(bytes, 1, sizeof bytes, file);
+        assert(fwrite(bytes, 1, size, stdout) == size && !fclose(file));
+        return 0;
+    }
     if (!strcmp(argv[1], "exit")) {
         return atoi(argv[2]);
     }

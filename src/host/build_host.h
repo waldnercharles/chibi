@@ -55,6 +55,9 @@ typedef struct
     void (*prepared)();
     /* Optional private TSV timing sink, borrowed. NULL skips trace IO/clocks. */
     FILE *timings;
+    /* Optional output sinks, borrowed, set together. build.report text and
+     * reported step output go there as they happen instead of into the result. */
+    FILE *stdout_sink, *stderr_sink;
 } chibi_build_options;
 
 typedef struct

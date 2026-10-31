@@ -1,5 +1,7 @@
 package facts
 
+import testing "core:testing"
+
 // boxed elements
 @test
 Calls :: () {
@@ -32,29 +34,29 @@ Records :: () {
     assert(PackedPoints([a, b], 1) == 306, "PackedPoints");
 }
 
-// fails: array index out of range
 @test
 BoxedWordPastTheEndFails :: () {
     words: string[] = ["a"];
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
     BoxedWord(words, 1);
 }
 
-// fails: array index out of range
 @test
 BoxedWordBeforeTheStartFails :: () {
     words: string[] = ["a"];
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
     BoxedWord(words, -1);
 }
 
-// fails: array index out of range
 @test
 BoxedNotesPastTheEndFails :: () {
     note: Note = {text: "x", count: 1};
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
     BoxedNotes([note], 1);
 }
 
-// fails: array index out of range
 @test
 BoxedShapesPastTheEndFails :: () {
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
     BoxedShapes(3);
 }

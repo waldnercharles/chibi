@@ -1,5 +1,7 @@
 package facts
 
+import testing "core:testing"
+
 // bounds
 @test
 Calls :: () {
@@ -10,16 +12,16 @@ Calls :: () {
     assert(r1 == e1, "Pick call 1");
 }
 
-// fails: array index out of range
 @test
 PickBeforeTheStartFails :: () {
     xs: int[] = [1, 2];
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
     Pick(xs, -1);
 }
 
-// fails: array index out of range
 @test
 PickFromEmptyFails :: () {
     xs: int[] = [];
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
     Pick(xs, 0);
 }

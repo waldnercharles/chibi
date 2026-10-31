@@ -147,16 +147,12 @@ static int build_with(const char *program, const char *const *options, const cha
         (int)status.error,
         status.status
     );
+    /* A failed build, expected or not, leaves the child's stderr in the log,
+     * so a CI failure says why without a rerun. */
+    if (status.error != CHIBI_PROCESS_OK || status.status) {
+        fprintf(stderr, "native build: stderr:\n%s\n", errors);
+    }
     if (status.error != CHIBI_PROCESS_OK) {
-        /* An environment failure, such as the 120 s deadline: report it with
-         * the child's stderr so the log says where the build was. */
-        fprintf(
-            stderr,
-            "native build: process error %d (status %d); stderr:\n%s\n",
-            (int)status.error,
-            status.status,
-            errors
-        );
         return -1;
     }
     return status.status;

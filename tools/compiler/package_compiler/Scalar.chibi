@@ -2910,12 +2910,14 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
 // fields, and each union.
 ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[]) -> ScalarOperands {
     rows: facts.Row[] = [];
+    position: int = -1;
     for (declared in types) {
+        position += 1;
         if (!ScalarDeclares(types, declared)) {
             continue;
         }
         if (declared.kind == OptionalDecl) {
-            rows.extend(ScalarOptionalRows(forest, types, declared));
+            rows.extend(ScalarOptionalRows(forest, types, declared, position));
             continue;
         }
         if (declared.kind == UnionDecl) {
@@ -2949,9 +2951,10 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
 }
 // The rows of an optional's union, located at the document: the variants Nil,
 // ordinal 0, and Some, ordinal 1, which holds the payload `value`.
-ScalarOptionalRows :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], declared: TypeDecl) -> facts.Row[] {
+ScalarOptionalRows :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], declared: TypeDecl,
+                       ordinal: int) -> facts.Row[] {
     payload := ScalarValueType(types, declared.value_storage, declared.value_container, declared.value_record);
-    return [ScalarAt(forest, 0, facts.UnionRow, 0, 0, 2, "optional"), ScalarAt(forest, 0, facts.VariantRow, 0, 0, 0, "Nil"),
+    return [ScalarAt(forest, 0, facts.UnionRow, 0, 0, 2, format_text("optional{}", ordinal)), ScalarAt(forest, 0, facts.VariantRow, 0, 0, 0, "Nil"),
             ScalarAt(forest, 0, facts.VariantRow, 0, 1, 1, "Some"),
             ScalarAt(forest, 0, facts.MemberRow, payload, 0, 0, "value")];
 }

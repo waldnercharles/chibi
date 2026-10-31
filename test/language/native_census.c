@@ -27,6 +27,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <yyjson.h>
 
 /* W21's census: the first feature that keeps each function of the
@@ -183,6 +185,7 @@ typedef struct
     char *message, *excerpt;
     int category;
     bool imports, constants;
+    int decl, callee_decl; /* Into decls; -1 when there is no callee. */
 } census_row;
 
 static compiler_host *compiler;
@@ -1041,7 +1044,9 @@ static bool census_function(int function)
                        .path = files[decls[function].source].path,
                        .category = CENSUS_NATIVE,
                        .imports = build.imports,
-                       .constants = build.constants };
+                       .constants = build.constants,
+                       .decl = function,
+                       .callee_decl = -1 };
     if (!accepted) {
         int in = owner(&build, start);
         const census_place *place = in >= 0 ? &build.functions[in] : NULL;
@@ -1064,6 +1069,7 @@ static bool census_function(int function)
         row.message = message;
         row.excerpt = excerpt(build.text, start, end);
         row.callee = in > 0 ? decls[place->decl].name : NULL;
+        row.callee_decl = in > 0 ? place->decl : -1;
         int span = span_of(place, start);
         row.category = category(message, build.text, start, end, span);
     }
@@ -1416,16 +1422,146 @@ TEST_CASE(native_census_follows_calls_into_their_blockers)
     forget_rows();
     return true;
 }
+/* Each function's census is independent of the others, so after the compiler
+ * loads, the census forks workers that share it copy-on-write: worker k takes
+ * every jobs-th function from k and sends its rows back through a file. The
+ * report sorts rows into source order, so it doesn't depend on the workers.
+ * CHIBI_CENSUS_JOBS sets the count; the default is the processors online, up
+ * to 8, since each worker holds about 1.3 GB at its peak. */
+enum
+{
+    CENSUS_MAX_JOBS = 64
+};
+static int census_jobs()
+{
+    const char *named = getenv("CHIBI_CENSUS_JOBS");
+    long jobs = named && *named ? strtol(named, NULL, 10)
+                                : sysconf(_SC_NPROCESSORS_ONLN);
+    if (!named || !*named) {
+        jobs = jobs > 8 ? 8 : jobs;
+    }
+    return jobs < 1 ? 1 : jobs > CENSUS_MAX_JOBS ? CENSUS_MAX_JOBS : (int)jobs;
+}
+static bool write_text(FILE *out, const char *text)
+{
+    uint32_t length = text ? (uint32_t)strlen(text) : UINT32_MAX;
+    return fwrite(&length, sizeof length, 1, out) == 1 &&
+           (!text || fwrite(text, 1, length, out) == length);
+}
+static bool read_text(FILE *in, char **text)
+{
+    uint32_t length;
+    *text = NULL;
+    if (fread(&length, sizeof length, 1, in) != 1) {
+        return false;
+    }
+    if (length == UINT32_MAX) {
+        return true;
+    }
+    *text = xmalloc((size_t)length + 1);
+    (*text)[length] = 0;
+    return fread(*text, 1, length, in) == length;
+}
+/* Writes the rows a worker made; the parent reads them with read_rows. */
+static bool write_rows(const char *path)
+{
+    FILE *out = fopen(path, "wb");
+    bool ok = out != NULL;
+    for (int i = 0; ok && i < acount(rows); i++) {
+        const census_row *r = &rows[i];
+        int32_t head[5] = { r->decl, r->callee_decl, r->category, r->imports, r->constants };
+        ok = fwrite(head, sizeof head, 1, out) == 1 &&
+             write_text(out, r->message) && write_text(out, r->excerpt);
+    }
+    return out && !fclose(out) && ok;
+}
+static bool read_rows(const char *path)
+{
+    FILE *in = fopen(path, "rb");
+    if (!in) {
+        return false;
+    }
+    int32_t head[5];
+    bool ok = true;
+    while (ok && fread(head, sizeof head, 1, in) == 1) {
+        ok = head[0] >= 0 && head[0] < acount(decls) && head[1] >= -1 &&
+             head[1] < acount(decls);
+        census_row row = { 0 };
+        if (ok) {
+            row = (census_row){ .function = decls[head[0]].name,
+                                .path = files[decls[head[0]].source].path,
+                                .callee = head[1] >= 0 ? decls[head[1]].name : NULL,
+                                .category = head[2],
+                                .imports = head[3],
+                                .constants = head[4],
+                                .decl = head[0],
+                                .callee_decl = head[1] };
+            ok = read_text(in, &row.message) && read_text(in, &row.excerpt);
+        }
+        if (ok) {
+            apush(rows, row);
+        } else {
+            free(row.message);
+            free(row.excerpt);
+        }
+    }
+    return !fclose(in) && ok;
+}
+static int row_order(const void *a, const void *b)
+{
+    return ((const census_row *)a)->decl - ((const census_row *)b)->decl;
+}
+/* Runs the census of `count` functions over `jobs` forked workers. */
+static bool census_parallel(const int *functions, int count, int jobs)
+{
+    pid_t workers[CENSUS_MAX_JOBS];
+    char paths[CENSUS_MAX_JOBS][64];
+    fflush(stdout);
+    fflush(stderr);
+    for (int k = 0; k < jobs; k++) {
+        snprintf(paths[k], sizeof paths[k], "/tmp/chibi-census-%d-%d", (int)getpid(), k);
+        workers[k] = fork();
+        REQUIRE(workers[k] >= 0);
+        if (!workers[k]) {
+            for (int i = k; i < count; i += jobs) {
+                if (!census_function(functions[i])) {
+                    _exit(1);
+                }
+            }
+            fflush(stderr);
+            _exit(write_rows(paths[k]) ? 0 : 1);
+        }
+    }
+    bool ok = true;
+    for (int k = 0; k < jobs; k++) {
+        int status = 0;
+        ok &= waitpid(workers[k], &status, 0) == workers[k] &&
+              WIFEXITED(status) && !WEXITSTATUS(status) && read_rows(paths[k]);
+        unlink(paths[k]);
+    }
+    qsort(rows, (size_t)acount(rows), sizeof *rows, row_order);
+    return ok;
+}
+
 TEST_CASE(native_census_covers_every_compiler_function)
 {
     REQUIRE(prepare() && load(SOURCES, SOURCE_COUNT));
-    int functions = 0;
+    int *wanted = NULL;
     for (int i = 0; i < acount(decls); i++) {
         if (decls[i].kind == DECL_FUNCTION) {
-            REQUIRE(census_function(i));
-            functions++;
+            apush(wanted, i);
         }
     }
+    int functions = acount(wanted), jobs = census_jobs();
+    bool counted = true;
+    if (jobs > 1) {
+        counted = census_parallel(wanted, functions, jobs);
+    }
+    for (int i = 0; jobs == 1 && counted && i < functions; i++) {
+        counted = census_function(wanted[i]);
+    }
+    afree(wanted);
+    REQUIRE(counted);
     if (acount(rows) != functions || count_of(CENSUS_NATIVE) == 0) {
         fprintf(
             stderr,

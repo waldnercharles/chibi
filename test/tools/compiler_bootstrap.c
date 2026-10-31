@@ -463,7 +463,12 @@ TEST_CASE(bootstrap_load_reads_closures_up_to_the_artifact_bound)
         write_binary("api-bootstrap/compiler.chibip", "", 0);
         REQUIRE(!truncate(file, (off_t)lengths[i]));
         REQUIRE(!load(api_folder));
-        snprintf(expected, sizeof expected, "compiler.chibip, %zu bytes", i == 3 ? 0 : lengths[i]);
+        if (i == 3) {
+            /* Past the bound nothing is read, so the folder holds no closure. */
+            REQUIRE(strstr(api_error, "holds no compiler.chibip"));
+            continue;
+        }
+        snprintf(expected, sizeof expected, "compiler.chibip, %zu bytes", lengths[i]);
         REQUIRE(strstr(api_error, expected));
         REQUIRE(strstr(api_error, "is not the closure bootstrap.json records"));
     }
@@ -506,10 +511,11 @@ TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness)
     REQUIRE(strstr(api_error, "api/Extra.chibi is in the package of a compiler source but"));
     REQUIRE(strstr(api_error, "does not list it"));
     /* Listed, the new file is a changed source like any other: it needs no new
-     * artifact, only a compiler that can compile it, which this fixture lacks. */
+     * artifact, only a compiler that can compile it: the seed's rejects this one. */
+    write_file("compiler/api/Extra.chibi", "package \n");
     write_file("compiler/asset_compiler/CompilerSources.txt", "api/Fixture.chibi\n/sdk/core/API.chibi\napi/Extra.chibi\n");
     REQUIRE(!load(api_folder));
-    REQUIRE(strstr(api_error, "the compiler failed:"));
+    REQUIRE(strstr(api_error, "the compiler rejected the sources:"));
     write_file("compiler/asset_compiler/CompilerSources.txt", "api/Fixture.chibi\n/sdk/core/API.chibi\n");
     char file[PATH_MAX];
     path(file, "compiler/api/Extra.chibi");
@@ -528,8 +534,8 @@ TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness)
 }
 
 /* Hashing must compare current bytes on every load, for compiler and core
- * sources. This fixture cannot recover, so any changed source must reject
- * through CompileClosure, then load successfully once restored. */
+ * sources. The seed compiles them, so a source it rejects must fail the load,
+ * which succeeds again once the source is restored. */
 TEST_CASE(bootstrap_load_does_not_cache_source_hashes)
 {
     REQUIRE(api_target && api_bytes && api_folder[0]);
@@ -538,10 +544,10 @@ TEST_CASE(bootstrap_load_does_not_cache_source_hashes)
     for (int i = 0; i < 2; i++) {
         char changed[32];
         snprintf(changed, sizeof changed, "%s", sources[i]);
-        changed[8] ^= 1;
+        changed[8] = '`'; /* an illegal character in the package name */
         write_file(files[i], changed);
         REQUIRE(!load(api_folder));
-        REQUIRE(strstr(api_error, "the compiler failed:"));
+        REQUIRE(strstr(api_error, "the compiler rejected the sources:"));
         write_file(files[i], sources[i]);
         REQUIRE(load(api_folder));
         cleanup_load();

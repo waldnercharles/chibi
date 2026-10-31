@@ -682,12 +682,14 @@ TEST_CASE(native_build_forwards_driver_arguments)
         sizeof expected,
         "--root\n%s/share/chibi/tools/native_aot\n"
         "--source\n%s/share/chibi/tools/native_aot/Driver.chibi\n"
+        "--collection\nnative_aot=%s/share/chibi/tools/native_aot/driver\n"
         "--core\n%s/share/chibi/core\n--compiler\n%s/share/chibi/compiler\n"
         "--compiler-core\n%s/share/chibi/"
         "core\n--entry\nNative\n--timeout-ms\n900000\n--\n"
         "%s/bin/../libexec/chibi/chibi-compiler-host\n%s/share/chibi/"
         "compiler\n%s/share/chibi/core\n"
         "%s\n%s\n0\nlines\narm64-apple-darwin\n",
+        root,
         root,
         root,
         root,
@@ -1098,9 +1100,12 @@ static size_t watch_output_size()
     return length;
 }
 
+/* A watched program compiles before it prints, and again after each edit it
+ * picks up: 8 s for a small one on a workstation, longer on a loaded CI runner,
+ * so its output gets the bound cli_run gives a first compile. */
 static bool watch_output(chibi_process *process, size_t after, const char *expected)
 {
-    double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
+    double deadline = chibi_process_now() + 120;
     do {
         char *text = tool_read(log_path);
         bool found = text && strlen(text) >= after && strstr(text + after, expected);

@@ -628,8 +628,9 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             floor = depths[length(depths) - 1];
         }
         operand := rows[row];
-        // Only a string literal has text.
-        texted := operand.kind == facts.LiteralRow && operand.type == facts.StringType;
+        // Only a string literal has text, and a foreign call the library it links.
+        texted := (operand.kind == facts.LiteralRow && operand.type == facts.StringType) ||
+                  operand.kind == facts.ForeignRow;
         if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
             !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
             return "invalid scalar operand row";
@@ -723,13 +724,18 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ForeignRow) {
             base := length(stack) - operand.count;
-            if (operand.name == "" || operand.text == "" || operand.value != 0 || !Scalar(operand.type) ||
+            indirect := operand.value == 1;
+            if ((operand.value != 0 && !indirect) || (indirect && (operand.name != "" || operand.text != "" || operand.count < 1)) ||
+                (!indirect && (operand.name == "" || operand.text == "")) || !Scalar(operand.type) ||
                 operand.count < 0 || base < floor) {
                 return "scalar foreign call differs from its operands";
             }
+            if (indirect && stack[base] != facts.WordType) {
+                return "scalar foreign call through an address needs a word";
+            }
             for (argument in 0..<operand.count) {
-                if (!Scalar(stack[base + argument])) {
-                    return "scalar foreign call takes numbers and bools";
+                if (!Scalar(stack[base + argument]) && stack[base + argument] != facts.StringType) {
+                    return "scalar foreign call takes numbers, bools and strings";
                 }
             }
             stack = slice(stack, 0, base);
@@ -1590,7 +1596,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ForeignRow) {
-                    item = Op(native.ForeignCall, type, slot, 0, shape.arguments, operand.count);
+                    item = Op(native.ForeignCall, type, slot, operand.value, shape.arguments, operand.count);
                     item.literal = i64(length(texts));
                     texts.append(operand.name);
                     base := length(stack) - operand.count;
@@ -1899,7 +1905,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
 Linked :: (text: string, rows: facts.Row[]) -> string {
     paths: string[] = [];
     for (row in rows) {
-        if (row.kind == facts.ForeignRow && !paths.contains(row.text)) {
+        if (row.kind == facts.ForeignRow && row.text != "" && !paths.contains(row.text)) {
             paths.append(row.text);
         }
     }

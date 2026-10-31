@@ -1,0 +1,15 @@
+package facts
+
+// a postfix ! on an optional record reads its fields
+@test
+Calls :: () {
+    r1: int = Main();
+    e1: int = 45;
+    assert(r1 == e1, "Main call 1");
+}
+
+// fails: Unwrapped a nil optional
+@test
+MissingFails :: () {
+    Missing();
+}

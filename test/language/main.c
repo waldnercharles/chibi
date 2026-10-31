@@ -71,11 +71,10 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
          !record_compatibility && !program && !program_session && !ranges &&
-         !asset_compiler_host &&
-         !package_compiler_chibi_scalar && !package_compiler_chibi_native &&
-         !native_census && !native_census_flattening && !host_packages_compiler &&
-         !component_write && !component_write_layout && !text_format &&
-         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !asset_compiler_host && !package_compiler_chibi_scalar &&
+         !package_compiler_chibi_native && !native_census && !native_census_flattening &&
+         !host_packages_compiler && !component_write && !component_write_layout &&
+         !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "

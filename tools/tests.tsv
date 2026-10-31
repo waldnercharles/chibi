@@ -2,6 +2,7 @@
 # @build@ and @release@ are the --build and --release-build directories and @host@
 # the --build-host path, all made absolute; other paths are relative to the checkout. `group` rows list a group's selectors.
 # `timeout NAME SECONDS` rows give a selector a deadline other than the runner's.
+# `exclusive NAME` rows run a selector alone under --jobs: it starts its own workers or shares files.
 # Generated from the retired tools/test_policy.py tables; edit it by hand now.
 tool	types	@build@/test/tools/test_tools	--types
 tool	execution-scope	@build@/test/language/test_language	--execution-scope
@@ -97,6 +98,7 @@ tool	wasm-package-math	node	build-wasm-language/test_language.js	--package-math
 tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 timeout	chibi-cli	900
+exclusive	language-test-parallel
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math
 group	native	native-values	graph-c	box3d	runtime-scene	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	arena
 group	projects	chibi-cli	native-build

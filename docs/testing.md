@@ -162,56 +162,22 @@ make benchmark          # native C benchmark selectors
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
-Groups automatically overlap source-audited independent selectors in separate
-processes, initially up to two workers (bounded by available CPU affinity and a
-conservative 2 GiB available-memory admission reserve per worker). Linux checks MemAvailable
-and visible cgroup limits; macOS checks free/inactive/speculative pages. Missing
-or uninspectable capacity selects serial execution.
-No CI sharding or flags are required: `make test-language-all` takes this route.
-The initial allowlist contains the heavy scalar, behavior, packaging, asset-host,
-compiler-bootstrap and Linux scalar-native selectors. Other selectors remain
-exclusive barriers until their resources are audited; they are not omitted.
-`make -j1` still protects cross-target fixtures. `make test-language-all
-TEST_JOBS=1` or `chibi build test language` preserves
-the original fully serial group route. `--jobs N` / `TEST_JOBS=N` explicitly
-selects a worker limit; it does not make unaudited selectors parallel-safe.
+`chibi build test` (tools/toolchain/Driver.chibi) runs the selectors and groups
+of `tools/tests.tsv` in table order, up to `--jobs N` at a time (default 1). Each
+selector is a separate process. It prints `RUN` when a selector starts, then
+`PASS` or `FAIL` when it ends. A short selector frees its slot while a long one
+still runs. With `--jobs` above 1, each selector's output is captured and printed
+when it ends, so concurrent selectors don't interleave. With `--jobs 1`, a
+selector writes to the terminal as it runs.
 
-Each worker owns its supervisor/process group, temporary root and disk-backed
-log. Logs are emitted without interleaving in manifest order. Failure stops new
-work, cancels owned workers, prints their partial logs and reports queued selectors
-as not run. The optional group deadline still covers the whole group, including
-queueing; existing in-test child budgets are unchanged. Scratch is removed after
-worker cleanup, including on SIGINT/SIGTERM. Absolute source paths are not
-isolated by changing TMPDIR; the retired resource audit recorded why each enabled selector was safe.
-
-The runner writes `Test policy: {...}` JSON diagnostics to stderr, separate from
-program stdout: selected automatic/explicit worker count and admission reason,
-CPU/memory probe availability and reserve, then manifest-ordered selector
-supervisor start/observed-finish timestamps and statuses, observed peak live
-workers and group wall time. Timestamps use the monotonic clock; intervals include
-supervisor startup/cleanup and are not CPU time or a speedup measurement. Exits
-are polled afresh before admission. These receipts distinguish actual scheduled
-overlap from a serial capacity fallback in ordinary CI logs without CI flags.
-The preserved legacy serial route explicitly reports `unobserved-serial` and a
-null peak: it does not invent per-selector intervals or claim observed overlap.
-
-This is selector-level parallelism, not individual pico_unit cases or threads.
-The initial two-worker cap is a conservative rollout policy, not a measured
-memory bound or a promise to use every core. Peak-memory and matched serial /
-parallel wall-time measurements are required before increasing the automatic
-cap; native compiler/linker children can themselves use threads. The memory
-reserve is an admission heuristic, not a measured peak-RSS limit; `--jobs N`
-overrides automatic admission when the caller has better capacity evidence.
-Finer-grained discovery should serve the Chibi-first test API rather than making C coverage
-the language's testing foundation.
-
-The runner has no default global timeout.
-`make test-fast TEST_ARGS='--test-runner'` runs a selected standalone tooling
-case; set `TEST_BINARY` to use another driver. The arguments are tokenized and
-passed directly to the program. For an arbitrary driver invocation, use
-`python3 tools/test_policy.py native /absolute/path/to/test_binary --selector`.
-An optional timeout precedes the action, for example
-`chibi build test language-program`.
+An `exclusive NAME` row runs that selector alone: nothing else runs while it
+does. Mark a selector exclusive when it starts its own worker pool
+(`language-test-parallel`) or shares files with other selectors. Each selector
+has a deadline, set by `--timeout SECONDS` (600 by default) or by a
+`timeout NAME SECONDS` row. A selector that passes it is killed with its process
+tree and reported as `FAIL NAME (timed out after Ns)`; the others still run.
+CI runs the `projects language` invocation with `--jobs 3` on Linux (4 cores,
+16 GB) and `--jobs 2` on macOS (3 cores, 7 GB).
 
 `make test-projects` also builds an unsanitized Release `chibi_ctl` and `chibi`
 launcher, with its `chibi-compile` and `chibi-player`, in `build-release/`:

@@ -62,8 +62,10 @@ static const char *const environment_names[] = {
     "DEVELOPER_DIR",
     "CHIBI_BUILD_WORKER",
     "CHIBI_BUILD_TIMINGS",
-    /* Nested build hosts reuse the recovered compilers the caller keeps. */
+    /* Nested build hosts reuse the recovered compilers the caller keeps, by
+     * default under $XDG_CACHE_HOME or ~/.cache. */
     "CHIBI_COMPILER_CACHE",
+    "XDG_CACHE_HOME",
     /* bootstrap-artifact's check leaves stage two and its arguments here. */
     "CHIBI_BOOTSTRAP_SEED",
     /* The LLVM tools the native driver links with, as test/native_aot reads. */

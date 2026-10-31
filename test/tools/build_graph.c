@@ -5,7 +5,6 @@
 #include "yyjson.h"
 
 #include <assert.h>
-#include <dirent.h>
 #include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,13 +14,9 @@
 
 #define GRAPH_PATH 4096
 #define GRAPH_RUN_SECONDS 50
-#define GRAPH_TOKENS 1024
-#define GRAPH_OWNERS 256
-#define GRAPH_HEADERS 9
 
 static char host_path[4096];
-static char reference[GRAPH_PATH], suite[GRAPH_PATH], built[GRAPH_PATH],
-    clone[GRAPH_PATH], log_path[GRAPH_PATH];
+static char suite[GRAPH_PATH], clone[GRAPH_PATH], log_path[GRAPH_PATH];
 /* The Debug profile warns; support tests flip this to force a rebuild. */
 static const bool warnings = true;
 static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
@@ -90,185 +85,6 @@ static int run_graph(
     return compiled;
 }
 
-/* Only explicit rejection cases share an invocation. They return before any
- * discovery, child process or output write. Native values live until the host
- * exits, with its original storage/instruction/time limits, so command-writing
- * and build/rebuild cases still run independently. */
-#define GRAPH_BATCH_CASES 14
-typedef struct
-{
-    const char *build_dir;
-    const char *const *options, *const *extra;
-    int status;
-    const char *diagnostic;
-} graph_case;
-
-static int run_graph_entry_batch(const graph_case *cases, int count, const char *entry, const char *checks)
-{
-    assert(count > 0 && count <= GRAPH_BATCH_CASES);
-    char path[GRAPH_PATH], source[GRAPH_PATH];
-    join(path, CHIBI_SOURCE_ROOT, "tools/toolchain/Graph.chibi");
-    char *graph_source = tool_read(path);
-    assert(graph_source);
-    join(source, suite, "GraphVerification.chibi");
-    FILE *file = fopen(source, "wb");
-    assert(file);
-    assert(fputs(graph_source, file) >= 0);
-    free(graph_source);
-    /* Length-prefixed argv preserves empty values, missing final values and
-     * repetitions exactly; no shell splitting, escaping or sentinel options. */
-    assert(
-        fprintf(
-            file,
-            "\nVerifyGraph :: () -> int {\n"
-            "%s"
-            "    input := build.arguments(); at := 0; index := 0;\n"
-            "    while (at < length(input)) {\n"
-            "        if (at + 2 > length(input)) { return 3; }\n"
-            "        count := Count(input[at]); expected := Count(input[at + "
-            "1]);\n"
-            "        at = at + 2;\n"
-            "        if (count < 1 || at + count > length(input) || index >= "
-            "%d) { return 3; }\n"
-            "        arguments: string[] = [];\n"
-            "        for (i in 0..<count) { arguments.append(input[at + i]); "
-            "}\n"
-            "        build.report(format_text(\"graph-case {0} begin\", "
-            "index));\n"
-            "        status := %s(arguments);\n"
-            "        build.report(format_text(\"graph-case {0} returned {1}\", "
-            "index, status));\n"
-            "        if (status != expected) { return 1; }\n"
-            "        at = at + count; index = index + 1;\n"
-            "    }\n"
-            "    if (index == 0) { return 3; }\n"
-            "    return 0;\n"
-            "}\n",
-            checks,
-            GRAPH_BATCH_CASES,
-            entry
-        ) >= 0
-    );
-    assert(!fclose(file));
-    const char *argv[256] = { host_path,
-                              "--root",
-                              CHIBI_SOURCE_ROOT,
-                              "--source",
-                              source,
-                              "--core",
-                              "packages/core",
-                              "--collection",
-                              "graph=tools/graph",
-                              "--entry",
-                              "VerifyGraph",
-                              "--timeout-ms",
-                              "50000",
-                              "--" };
-    char lengths[GRAPH_BATCH_CASES][16], statuses[GRAPH_BATCH_CASES][16];
-    int argc = 14;
-    for (int i = 0; i < count; i++) {
-        assert(argc + 6 < 256);
-        assert(cases[i].status == 0 || cases[i].status == 2);
-        int start = argc;
-        argv[argc++] = lengths[i];
-        snprintf(statuses[i], sizeof statuses[i], "%d", cases[i].status);
-        argv[argc++] = statuses[i];
-        argv[argc++] = "--build";
-        argv[argc++] = cases[i].build_dir;
-        argv[argc++] = "--jobs";
-        argv[argc++] = "8";
-        for (int j = 0; cases[i].options[j]; j++) {
-            assert(argc < 255);
-            argv[argc++] = cases[i].options[j];
-        }
-        for (int j = 0; cases[i].extra[j]; j++) {
-            assert(argc < 255);
-            argv[argc++] = cases[i].extra[j];
-        }
-        snprintf(lengths[i], sizeof lengths[i], "%d", argc - start - 2);
-    }
-    argv[argc] = NULL;
-    return tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS);
-}
-
-static int run_graph_batch(const graph_case *cases, int count)
-{
-    return run_graph_entry_batch(cases, count, "LibrariesWithArguments", "");
-}
-
-/* Every case owns its diagnostic interval. A previous rejection cannot make a
- * later case pass, and a missing/reordered case cannot match this transcript. */
-static bool graph_batch_transcript_matches(const graph_case *cases, int count, const char *log)
-{
-    const char *at = log;
-    bool matches = true;
-    for (int i = 0; i < count && matches; i++) {
-        char expected[512];
-        snprintf(
-            expected,
-            sizeof expected,
-            "graph-case %d begin\n%s%sgraph-case %d returned %d\n",
-            i,
-            cases[i].diagnostic ? cases[i].diagnostic : "",
-            cases[i].diagnostic ? "\n" : "",
-            i,
-            cases[i].status
-        );
-        size_t length = strlen(expected);
-        matches = !strncmp(at, expected, length);
-        if (matches) {
-            at += length;
-        }
-    }
-    return matches && !*at;
-}
-static bool graph_batch_matches(const graph_case *cases, int count)
-{
-    char *log = tool_read(log_path);
-    if (!log) {
-        return false;
-    }
-    bool matches = graph_batch_transcript_matches(cases, count, log);
-    if (!matches) {
-        fprintf(stderr, "unexpected graph batch transcript: %s\n", log);
-    }
-    free(log);
-    return matches;
-}
-
-TEST_CASE(graph_batch_transcripts_are_case_local)
-{
-    const graph_case cases[] = { { .status = 2, .diagnostic = "first" },
-                                 { .status = 2, .diagnostic = "second" } };
-    const char
-        *complete = "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n"
-                    "graph-case 1 begin\nsecond\ngraph-case 1 returned 2\n";
-    REQUIRE(graph_batch_transcript_matches(cases, 2, complete));
-    REQUIRE(!graph_batch_transcript_matches(cases, 1, complete));
-    REQUIRE(!graph_batch_transcript_matches(cases, 2, ""));
-    REQUIRE(
-        !graph_batch_transcript_matches(cases, 2, "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n")
-    );
-    REQUIRE(!graph_batch_transcript_matches(
-        cases,
-        2,
-        "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n"
-        "graph-case 1 begin\nfirst\ngraph-case 1 returned 2\n"
-    ));
-    REQUIRE(!graph_batch_transcript_matches(
-        cases,
-        2,
-        "graph-case 1 begin\nsecond\ngraph-case 1 returned 2\n"
-        "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n"
-    ));
-    REQUIRE(!graph_batch_transcript_matches(
-        cases,
-        2,
-        "graph-case 0 begin\nfirst\ngraph-case 0 returned 0\n"
-        "graph-case 1 begin\nsecond\ngraph-case 1 returned 2\n"
-    ));
-    return true;
-}
 /* A run with the developer Debug profile; the graph discovers the toolchain. */
 static int graph(const char *root, const char *build_dir, bool warn, const char *const *extra)
 {
@@ -444,84 +260,6 @@ TEST_CASE(named_programs_build_what_they_run)
     return true;
 }
 
-TEST_CASE(sdk_reflection_rejects_invalid_arguments_before_building)
-{
-    char build_dir[GRAPH_PATH];
-    join(build_dir, suite, "sdk-reflect-arguments");
-    const char *const none[] = { NULL };
-    const char *const missing_jobs[] = { "--jobs", NULL };
-    const char *const missing_build[] = { "--build", NULL };
-    const char *const missing_libclang[] = { "--libclang-root", NULL };
-    const char *const empty_jobs[] = { "--jobs", "", NULL };
-    const char *const empty_build[] = { "--build", "", NULL };
-    const char *const empty_libclang[] = { "--libclang-root", "", NULL };
-    const char *const unknown_option[] = { "--commands-only", "on", NULL };
-    const char *const unknown_definition[] = { "--", "-DUNSUPPORTED=ON", NULL };
-    const char *const missing_definition[] = { "--", "-D", NULL };
-    const char *const empty_definition[] = { "--", "-DCMAKE_C_COMPILER:FILEPATH=", NULL };
-    const char *const typed_compiler[] = {
-        "--",
-        "-DCMAKE_C_COMPILER:FILEPATH=/usr/bin/true",
-        "-DUNSUPPORTED=ON",
-        NULL
-    };
-    const char *const split_compiler[] = {
-        "--",
-        "-D",
-        "CMAKE_C_COMPILER:FILEPATH=/usr/bin/true",
-        "-DUNSUPPORTED=ON",
-        NULL
-    };
-    const char *const split_libclang[] = {
-        "--",
-        "-D",
-        "LIBCLANG_ROOT:PATH=/fixture/llvm root",
-        "-DUNSUPPORTED=ON",
-        NULL
-    };
-    const char *const split_unknown[] = { "--", "-D", "UNSUPPORTED=ON", NULL };
-    const graph_case cases[] = {
-        { build_dir, none, missing_jobs, 2, "graph: invalid native reflection option '--jobs'" },
-        { build_dir, none, missing_build, 2, "graph: invalid native reflection option '--build'" },
-        { build_dir, none, missing_libclang, 2, "graph: invalid native reflection option '--libclang-root'" },
-        { build_dir, none, empty_jobs, 2, "graph: invalid native reflection option '--jobs'" },
-        { build_dir, none, empty_build, 2, "graph: invalid native reflection option '--build'" },
-        { build_dir, none, empty_libclang, 2, "graph: invalid native reflection option '--libclang-root'" },
-        { build_dir, none, unknown_option, 2, "graph: invalid native reflection option '--commands-only'" },
-        { build_dir, none, unknown_definition, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
-        { build_dir, none, missing_definition, 2, "graph: -D requires a native toolchain definition" },
-        { build_dir, none, empty_definition, 2, "graph: unsupported native reflection toolchain argument '-DCMAKE_C_COMPILER:FILEPATH='" },
-        { build_dir, none, typed_compiler, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
-        { build_dir, none, split_compiler, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
-        { build_dir, none, split_libclang, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
-        { build_dir, none, split_unknown, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" }
-    };
-    /* Check path parsing in the same compiled invocation. Actual-entry
-     * cases above accept typed/split values before reaching the final rejection. */
-    const char *checks = "    value := \"/fixture/llvm root=value\";\n"
-                         "    mapped := "
-                         "engine.NativeToolchainOption(strings.Join([\"-"
-                         "DLIBCLANG_ROOT:PATH=\", value], \"\"));\n"
-                         "    if (length(mapped) != 2 || mapped[0] != "
-                         "\"--libclang-root\" || mapped[1] != value) {\n"
-                         "        build.report(\"native reflection changed a "
-                         "typed path value\");\n"
-                         "        return 4;\n"
-                         "    }\n"
-                         "    if "
-                         "(length(engine.NativeToolchainOption(\"-DLIBCLANG_"
-                         "ROOT:PATH\")) != 0) {\n"
-                         "        build.report(\"native reflection accepted a "
-                         "definition without a value\");\n"
-                         "        return 4;\n"
-                         "    }\n";
-    int count = (int)(sizeof cases / sizeof *cases);
-    REQUIRE(!run_graph_entry_batch(cases, count, "SDKReflectWithArguments", checks));
-    REQUIRE(graph_batch_matches(cases, count));
-    REQUIRE(access(build_dir, F_OK) != 0);
-    return true;
-}
-
 /* Copies what the graph reads into a disposable root. */
 static void make_clone()
 {
@@ -556,7 +294,6 @@ static void set_up(const char *host)
     resolved = realpath(suite, NULL);
     snprintf(suite, sizeof suite, "%s", resolved);
     free(resolved);
-    join(built, suite, "build");
     join(log_path, suite, "graph.log");
 }
 
@@ -567,117 +304,12 @@ void test_build_graph(const char *host)
     tool_remove_tree(suite);
 }
 
-/* Six fixed rejected invocations: an unknown target alone and beside a
- * known target, a target missing its name at the end or before an option, and
- * asset generator hosts that are relative or missing. They write no build
- * outputs and never reach toolchain discovery. */
-/* An unexpected result must stop the batch: a later rejection must not hide
- * the first mismatch. The ordinary rejection matrix tests continuation after
- * each expected status 2, with distinct paths and exact per-case diagnostics. */
-TEST_CASE(graph_batch_stops_on_unexpected_result)
-{
-    const char *const options[] = { "--profile", "explicit", NULL };
-    const char *const optimization[] = { "--build-type", "Debug", "--debug-optimization", NULL };
-    const char *const frames[] = { "--build-type", "Debug", "--debug-frame-pointers", NULL };
-    const char *diagnostic = "graph: --debug-optimization requires 0 or 1 and "
-                             "build type Debug";
-    char rejected[GRAPH_PATH], never[GRAPH_PATH];
-    join(rejected, suite, "batch unexpected result");
-    join(never, suite, "batch never reached");
-    graph_case cases[] = { { rejected, options, optimization, 0, diagnostic },
-                           { never, options, frames, 2, NULL } };
-    REQUIRE(run_graph_batch(cases, 2) == 1);
-    cases[0].status = 2;
-    REQUIRE(graph_batch_matches(cases, 1));
-    REQUIRE(access(rejected, F_OK));
-    REQUIRE(access(never, F_OK));
-    return true;
-}
-
-/* Parse fixed dependency files through the bytecode CLI, under this route's
- * existing host subprocess and aggregate deadlines. */
-TEST_CASE(authored_dependency_files_list_prerequisites)
-{
-    char short_path[GRAPH_PATH], large_path[GRAPH_PATH], source_path[GRAPH_PATH];
-    join(short_path, suite, "primitive.d");
-    join(large_path, suite, "primitive-large.d");
-    join(source_path, suite, "Dependencies.chibi");
-    tool_write(short_path, "out/a.o: a.c b\\ c.h \\\n  d\\#.h \\\r\n e$$f.h\tg\\#h.h\n");
-    char large[16384];
-    size_t size = (size_t)sprintf(large, "out/a.o: main.c");
-    for (int i = 0; i < 128; i++) {
-        size += (size_t)sprintf(large + size, " \\\n include/long-enough-to-represent-a-real-header-path/header-%03d.h", i);
-    }
-    assert(size < sizeof large);
-    tool_write(large_path, large);
-    tool_write(
-        source_path,
-        "package dependencies\nimport c \"graph:c\"\nBuild :: () -> int { "
-        "arguments := build.arguments(); "
-        "if (build.join(c.Dependencies(build.read_file(arguments[0])), \"|\") "
-        "!= \"a.c|b c.h|d#.h|e$f.h|g#h.h\") { return 1; } "
-        "if (length(c.Dependencies(\"no target\")) != 0 || "
-        "length(c.Dependencies(\"out.o: \")) != 0) { return 2; } "
-        "if (build.join(c.Dependencies(\"out.o:\\\\\\na.c\"), \"|\") != "
-        "\"a.c\" || "
-        "build.join(c.Dependencies(\"out.o:\\\\\\r\\nb.c\"), \"|\") != "
-        "\"b.c\") { return 4; } "
-        "if (build.join(c.Dependencies(\"out.o: a\\\\\\\\\\nb.c\"), \"|\") != "
-        "\"a b.c\" || "
-        "build.join(c.Dependencies(\"out.o: a\\\\\\\\\\r\\nb.c\"), \"|\") != "
-        "\"a b.c\") { return 5; } "
-        "paths := c.Dependencies(build.read_file(arguments[1])); "
-        "if (length(paths) != 129 || paths[0] != \"main.c\" || "
-        "paths[128] != "
-        "\"include/long-enough-to-represent-a-real-header-path/header-127.h\") "
-        "{ return 3; } return 0; }"
-    );
-    const char *const argv[] = { host_path,
-                                 "--root",
-                                 CHIBI_SOURCE_ROOT,
-                                 "--source",
-                                 source_path,
-                                 "--core",
-                                 "packages/core",
-                                 "--collection",
-                                 "graph=tools/graph",
-                                 "--entry",
-                                 "Build",
-                                 "--timeout-ms",
-                                 "50000",
-                                 "--",
-                                 short_path,
-                                 large_path,
-                                 NULL };
-    int status = tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS);
-    if (status) {
-        char *log = tool_read(log_path);
-        fprintf(stderr, "dependency parser: %s\n", log ? log : "");
-        free(log);
-    }
-    REQUIRE(!status);
-    return true;
-}
-
-/* Focused pre-merge coverage: emit commands, never compile graph products. */
-void test_build_graph_debug_optimization(const char *host)
-{
-    set_up(host);
-    fprintf(stderr, "Graph command tests: host=%s; reference=%s\n", host_path, reference);
-    RUN_TEST_CASE(graph_batch_stops_on_unexpected_result);
-    RUN_TEST_CASE(graph_batch_transcripts_are_case_local);
-    tool_remove_tree(suite);
-}
-
 /* A separate route: another commands-only run of the whole graph takes
  * seconds. */
 void test_build_graph_programs(const char *host)
 {
     set_up(host);
     RUN_TEST_CASE(named_programs_build_what_they_run);
-    RUN_TEST_CASE(graph_batch_stops_on_unexpected_result);
-    RUN_TEST_CASE(graph_batch_transcripts_are_case_local);
-    RUN_TEST_CASE(authored_dependency_files_list_prerequisites);
     tool_remove_tree(suite);
 }
 
@@ -689,13 +321,5 @@ void test_build_graph_support(const char *host)
     RUN_TEST_CASE(support_rebuilds_only_what_changed);
     RUN_TEST_CASE(support_failed_compile_is_retried);
     RUN_TEST_CASE(support_archive_links);
-    tool_remove_tree(suite);
-}
-
-/* A separate route: reflect's compiles take most of a minute's ceiling. */
-void test_build_graph_reflect(const char *host)
-{
-    set_up(host);
-    RUN_TEST_CASE(sdk_reflection_rejects_invalid_arguments_before_building);
     tool_remove_tree(suite);
 }

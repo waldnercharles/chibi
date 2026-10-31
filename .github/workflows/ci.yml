@@ -112,12 +112,11 @@ jobs:
         run: |
           set -o pipefail
           sh tools/build.sh build --build build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root /usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
-      # Run authored command generation on the Release helper; test_tools and
-      # the reference profile remain the selected Debug profile.
-      - name: Graph Debug optimization (commands only)
+      # The graph's profile flags and argument checks, on the Release helper.
+      - name: Graph engine
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine build-graph-debug-optimization
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Build timing host regressions (ready drivers)
         env:

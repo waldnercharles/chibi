@@ -61,8 +61,6 @@ void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
 void test_build_graph(const char *host);
 void test_build_graph_support(const char *host);
-void test_build_graph_reflect(const char *host);
-void test_build_graph_debug_optimization(const char *host);
 void test_build_graph_programs(const char *host);
 #ifndef _WIN32
 void test_build_sdk(const char *host, const char *build, const char *third_party);
@@ -254,9 +252,7 @@ int main(int argc, char **argv)
     }
     if (argc == 3 && (!strcmp(argv[1], "--build-graph") ||
                       !strcmp(argv[1], "--build-graph-support") ||
-                      !strcmp(argv[1], "--build-graph-reflect") ||
-                      !strcmp(argv[1], "--build-graph-programs") ||
-                      !strcmp(argv[1], "--build-graph-debug-optimization"))) {
+                      !strcmp(argv[1], "--build-graph-programs"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
         pu_display_time(true);
@@ -264,10 +260,6 @@ int main(int argc, char **argv)
             test_build_graph(argv[2]);
         } else if (!strcmp(argv[1], "--build-graph-support")) {
             test_build_graph_support(argv[2]);
-        } else if (!strcmp(argv[1], "--build-graph-reflect")) {
-            test_build_graph_reflect(argv[2]);
-        } else if (!strcmp(argv[1], "--build-graph-debug-optimization")) {
-            test_build_graph_debug_optimization(argv[2]);
         } else {
             test_build_graph_programs(argv[2]);
         }

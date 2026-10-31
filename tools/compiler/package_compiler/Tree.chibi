@@ -74,3 +74,4 @@ Diagnose :: (forest: snapshot.SnapshotNode[], node: int, document: int, message:
     return {start: item.start, end: item.end, line: item.row + 1, column: item.column + 1,
             document: document, message: message};
 }
+// probe

@@ -57,6 +57,25 @@ LinkEntriesKeepEveryArgument :: () {
     assert(text == "{\"output\": \"out put\", \"arguments\": [\"cc\", \"\", \"a\\\"b\\\\c\"]}", "a link entry");
 }
 
+Prerequisites :: (text: string) -> string {
+    return strings.Join(c.Dependencies(text), "|");
+}
+
+// Make dependency files: escaped spaces, hashes and dollars, continuations
+// with either line ending, and a long list.
+DependencyFilesListPrerequisites :: () {
+    assert(Prerequisites("out/a.o: a.c b\\ c.h \\\n  d\\#.h \\\r\n e$$f.h\tg\\#h.h\n") == "a.c|b c.h|d#.h|e$f.h|g#h.h", "escaped prerequisites");
+    assert(length(c.Dependencies("no target")) == 0 && length(c.Dependencies("out.o: ")) == 0, "no prerequisites");
+    assert(Prerequisites("out.o:\\\na.c") == "a.c" && Prerequisites("out.o:\\\r\nb.c") == "b.c", "a continuation after the target");
+    assert(Prerequisites("out.o: a\\\\\nb.c") == "a b.c" && Prerequisites("out.o: a\\\\\r\nb.c") == "a b.c", "an escaped backslash before a line end");
+    long := "out/a.o: main.c";
+    for (i in 0..<128) {
+        long = format_text("{0} \\\n include/long-enough-to-represent-a-real-header-path/header-{1}.h", long, i);
+    }
+    paths := c.Dependencies(long);
+    assert(length(paths) == 129 && paths[0] == "main.c" && paths[128] == "include/long-enough-to-represent-a-real-header-path/header-127.h", "a long list");
+}
+
 // The recorder writes each argument the driver received on a line.
 TransportMatches :: (root: string, command: string[], empties: int) -> bool {
     actual := strings.SplitLines(strings.TrimSuffix(Read(Path([root, "/transport-argv"])), "\n"));
@@ -249,6 +268,7 @@ pub Run :: () -> int {
     scratch := Path([os.Root(), "/.chibi/graph-c"]);
     assert(os.Run(["rm", "-rf", scratch]) == 0 && Make(scratch), "the scratch directory");
     LinkEntriesKeepEveryArgument();
+    DependencyFilesListPrerequisites();
     FailedStepNamesOnlyTheOutput(arguments[0], scratch);
     LinkResponses(scratch);
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch cleanup");

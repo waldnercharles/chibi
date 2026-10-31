@@ -10,7 +10,6 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_host.h"
-#include "toolchain/compiler_json.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -570,7 +569,7 @@ TEST_CASE(values_host_target_facts_and_entry_queries_match_profile)
     );
     REQUIRE(full);
     actual = compiler_host_target_json(full, &actual_size);
-    expected = compiler_host_compiler_target_json(&expected_size, error, sizeof error);
+    expected = compiler_host_values_target_json(&expected_size, error, sizeof error);
     same = actual && expected && actual_size == expected_size &&
            !strcmp(actual, expected) &&
            compiler_host_storage_bytes(full) >= compiler_host_storage_bytes(value_host);
@@ -601,67 +600,6 @@ TEST_CASE(values_host_byte_entry_query_requires_exact_arity)
     REQUIRE(compiler_host_accepts_byte_entry(value_host, 881002, 1, error, sizeof error));
     REQUIRE(!compiler_host_accepts_byte_entry(value_host, 881002, 0, error, sizeof error));
     REQUIRE(!compiler_host_accepts_byte_entry(value_host, 881002, 2, error, sizeof error));
-    return true;
-}
-TEST_CASE(values_host_rejects_foreign_compiler_bridge)
-{
-    char error[256];
-    value_native = native_capabilities_from_definition_packs(
-        NULL,
-        0,
-        &COMPILER_JSON_DEFINITION_PACK,
-        1,
-        error,
-        sizeof error
-    );
-    REQUIRE(value_native);
-    uint64_t id = script_catalog_id("capability", "Compiler JSON String");
-    const native_capability_binding *binding = native_capabilities_find(value_native, id, 0);
-    REQUIRE(binding && binding->call && binding->access && binding->abi);
-    behavior_function_builder *b = behavior_function_builder_new();
-    pin_value number = { .type = PIN_I32 }, input = { .type = PIN_STR };
-    pin_value outputs[] = { { .type = PIN_BOOL }, { .type = PIN_STR }, { .type = PIN_I32 } };
-    behavior_function_builder_signature(b, NULL, 0, &number, 1, NULL, 0);
-    int call = behavior_function_builder_host(b, binding->call, binding->access, &input, 1, outputs, 3);
-    REQUIRE(
-        behavior_function_builder_host_identity(b, call, binding->id, binding->abi)
-    );
-    int slot = behavior_function_builder_slot(b, PIN_I32);
-    behavior_function_builder_emit(
-        b,
-        (behavior_function_instruction){ .op = BF_HOST_CALL,
-                                         .target = call,
-                                         .left = BEHAVIOR_FUNCTION_HOST_DATA }
-    );
-    behavior_function_builder_emit(
-        b,
-        (behavior_function_instruction){ .op = BF_CONSTANT,
-                                         .type = PIN_I32,
-                                         .output = slot,
-                                         .value = { .type = PIN_I32, .i = 7 } }
-    );
-    behavior_function_builder_emit(
-        b,
-        (behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = slot }
-    );
-    behavior_function_builder_emit(b, (behavior_function_instruction){ .op = BF_RETURN });
-    behavior_function_builder_emit(b, (behavior_function_instruction){ .op = BF_END });
-    behavior_function *body = finish(b);
-    REQUIRE(body && package_value_body(body, NULL));
-    value_host = compiler_host_load(value_artifact, value_artifact_size, BEHAVIOR_BYTECODE, error, sizeof error);
-    REQUIRE(value_host);
-    REQUIRE(compiler_host_invoke(value_host, 881002, "[]", 2, 32, &value_result));
-    REQUIRE(value_result.json && !strcmp(value_result.json, "[7]"));
-    clear_value_result();
-    compiler_host_free(value_host);
-    value_host = compiler_host_load_values(
-        value_artifact,
-        value_artifact_size,
-        BEHAVIOR_BYTECODE,
-        error,
-        sizeof error
-    );
-    REQUIRE(!value_host && strstr(error, "missing or incompatible host capability"));
     return true;
 }
 TEST_CASE(scoped_pure_rejects_task_before_suspension)
@@ -761,7 +699,6 @@ void test_language_execution_scope()
     RUN_TEST_CASE(values_host_preserves_pure_outer_budget_and_cancellation);
     RUN_TEST_CASE(values_host_target_facts_and_entry_queries_match_profile);
     RUN_TEST_CASE(values_host_byte_entry_query_requires_exact_arity);
-    RUN_TEST_CASE(values_host_rejects_foreign_compiler_bridge);
     RUN_TEST_CASE(scoped_pure_rejects_task_before_suspension);
     pu_clear_setup();
 }

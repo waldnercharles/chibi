@@ -33,16 +33,3 @@ const native_definition_pack NATIVE_TEXT_DEFINITION_PACK = {
     .bindings = BINDINGS,
     .binding_count = NATIVE_COUNT(BINDINGS),
 };
-
-#define COUNT(KEY, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC) +1
-enum
-{
-    COMPILER_TEXT_COUNT = 0 NATIVE_COMPILER_TEXT_OPERATIONS(COUNT)
-};
-#undef COUNT
-const native_definition_pack NATIVE_COMPILER_TEXT_DEFINITION_PACK = {
-    .definitions = DEFINITIONS,
-    .definition_count = COMPILER_TEXT_COUNT,
-    .bindings = BINDINGS,
-    .binding_count = COMPILER_TEXT_COUNT,
-};

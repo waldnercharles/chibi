@@ -306,7 +306,7 @@ to be removed again.
 
 ## Stage one parses with Tree-sitter
 
-`compiler_syntax_parse` is the C Tree-sitter parser. #420's grammar renames
+The retired `compiler_syntax_parse` was the C Tree-sitter parser; `tools/compiler/source_parser` replaced it. #420's grammar renames
 the node kinds that `Tree.chibi`, `Compile.chibi`, `Body.chibi` and
 `Steps.chibi` read by name.
 

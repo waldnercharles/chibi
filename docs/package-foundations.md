@@ -216,9 +216,7 @@ reported as implemented.
 
 [json_string](../tools/compiler/json_string/JsonString.chibi) keeps strict Unicode
 decoding for metadata in `Metadata` and permits arbitrary literal bytes in `Value`;
-both return explicit lengths. (The C natives `compiler_json_string` and
-`compiler_json_value_string` stay declared and implemented only until the next
-bootstrap seed no longer calls them.) Conversely,
+both return explicit lengths. Conversely,
 [source_package_snapshot.c](../src/authoring/source_package_snapshot.c)
 deliberately rejects source NUL. Preserve explicit source-language rejection
 while runtime values support NUL; do not let parser input truncate or

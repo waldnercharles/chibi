@@ -388,10 +388,6 @@ TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back)
     REQUIRE(build(launcher, "-O0", tools) == 1);
     snprintf(expected, sizeof expected, "%s/Main.chibi:a native program cannot call the runtime", game);
     REQUIRE(strstr(errors, expected));
-    /* So does an assert, which reports its failure through it. */
-    write_at(game, "Main.chibi", "package scalar\nMain :: () -> int {\n    assert(true);\n    return 1;\n}\n");
-    REQUIRE(build(launcher, "-O0", tools) == 1);
-    REQUIRE(strstr(errors, expected));
     char *after = tool_read(receipt);
     bool kept = after && !strcmp(before, after);
     free(after);
@@ -842,6 +838,54 @@ TEST_CASE(native_build_passes_a_byte_array_to_c)
     return true;
 }
 
+static const char *const ASSERT_SOURCE = "package scalar\n"
+                                         "Main :: () -> int {\n"
+                                         "    assert(true, \"fine\");\n"
+                                         "    assert(false, \"broken\");\n"
+                                         "    return 7;\n"
+                                         "}\n";
+
+/* A failed assert ends the program early: main reports where on stderr and
+ * exits with status 134, and a passing assert changes nothing. */
+TEST_CASE(native_build_reports_a_failed_assert)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", NULL };
+    for (int failing = 0; failing < 2; failing++) {
+        reset(failing ? "assert-fails" : "assert-holds", ASSERT_SOURCE);
+        if (!failing) {
+            write_at(game, "Main.chibi", "package scalar\nMain :: () -> int {\n    assert(true, \"fine\");\n    return 7;\n}\n");
+        }
+        real_tools(bin);
+        REQUIRE(build_with(in_place, options, tools) == 0);
+        char program[1024], report[512] = "";
+        REQUIRE(printed(program));
+        const char *argv[] = { program, NULL };
+        const char *envp[] = { NULL };
+        chibi_process_output out = { 0 },
+                             err = { .data = report, .capacity = sizeof report };
+        chibi_process_capture_result ran = chibi_process_capture(
+            program,
+            argv,
+            game,
+            envp,
+            chibi_process_now() + 10,
+            NULL,
+            &out,
+            &err
+        );
+        REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == (failing ? 134 : 7));
+        REQUIRE(!failing || strstr(report, "assertion failed in function"));
+    }
+    return true;
+}
+
 /* The other targets' bundle directories and program names, in the
  * driver's target order after Linux. */
 static const struct
@@ -1061,6 +1105,7 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_links_a_vendored_archive);
     RUN_TEST_CASE(native_build_calls_through_a_function_pointer);
     RUN_TEST_CASE(native_build_passes_a_byte_array_to_c);
+    RUN_TEST_CASE(native_build_reports_a_failed_assert);
     RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
     free(stage_tool);
     tool_remove_tree(suite);

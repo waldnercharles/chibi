@@ -396,6 +396,9 @@ and `m.delete(k)` on a local map, `k in m`, `k not in m`, `m.has(k)`, and
 - maps of arrays, unions or maps;
 - `m[k] op= v`;
 - a store or removal through a parameter, a record field or a state.
+- `length(m)`, which reports "argument differs from its parameter type";
+  `test/graph/SDKInstallTests.chibi` counts its manifest's records beside the
+  map instead. Odin's `len`, Go's `len` and Rust's `len()` all take a map.
 
 The compiler's own name lookups still scan parallel arrays, and the tokenizer
 builds Odin's keyword table by hand from an `int[]` (#518).
@@ -442,8 +445,14 @@ in `Tokenize` (#518).
 - Odin and Go fold constant expressions; Odin also has constant arrays. Zig
   evaluates `comptime` code, C++ `constexpr` and Rust `const` items.
 
-Suggestion: stage one folds constant arrays such as `Steps :: [1, 3, 6]`,
-then calls stage zero runs at compile time.
+Stage one also rejects a string constant: `Contained :: "sdk: ..."` in
+`test/graph/SDKInstallTests.chibi` failed with "constant value must be an
+integer expression", so the diagnostic it matches and the manifest's name
+became functions that return the text. Odin, Go, Zig and Rust all have
+string constants.
+
+Suggestion: stage one folds constant arrays such as `Steps :: [1, 3, 6]`
+and string constants, then calls stage zero runs at compile time.
 
 ## From the core:strings port
 
@@ -913,6 +922,11 @@ The build identity's version reader named a parameter `macro`; the graph
 failed with only "Unexpected syntax", and `chibi fmt --check` only said the
 file had syntax errors, until bisecting copies of the file found it; it
 became `define` (#650).
+
+The build graph's ported tests named a parameter and a local `entry` twice
+more (`test/graph/DiscoveryTests.chibi`, `CTests.chibi`); the build host now
+says where ("Expected a name, found `entry`"), so it took a rename, not a
+bisection.
 
 The 2026-10-22 flat-query change removes the `join`, `without` and query
 `where` clauses and their keyword reservations. The other examples above

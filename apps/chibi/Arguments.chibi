@@ -16,13 +16,14 @@ Options :: struct {
     native: bool
     debug: bool
     static_link: bool
+    shared: bool
 }
 
 NewOptions :: (command: string) -> Options {
     return {command: command, path: "", llvm: "",
             target: "", mode: "2", error: "",
             tail_first: 0, valid: true, help: false, watch: false,
-            native: false, debug: false, static_link: false}
+            native: false, debug: false, static_link: false, shared: false}
 }
 
 Tail :: (arguments: string[], first: int) -> string[] {
@@ -160,8 +161,10 @@ Parse :: (arguments: string[]) -> Options {
             optimized = true
         } else if command == "build" && options.native && argument == "-g" && !options.debug {
             options.debug = true
-        } else if command == "build" && options.native && argument == "--static" && !options.static_link {
+        } else if command == "build" && options.native && argument == "--static" && !options.static_link && !options.shared {
             options.static_link = true
+        } else if command == "build" && options.native && argument == "--shared" && !options.shared && !options.static_link {
+            options.shared = true
         } else if !Option(argument) && !rooted && command != "doctor" {
             options.path = argument
             rooted = true
@@ -211,6 +214,10 @@ CommandArgumentsSelectNativeOptions :: () {
     linked := Parse(["chibi", "build", "--native", "--static", "source"])
     assert(linked.valid && linked.static_link && !native.static_link)
     assert(!Parse(["chibi", "build", "--static"]).valid)
+    sharing := Parse(["chibi", "build", "--native", "--shared", "source"])
+    assert(sharing.valid && sharing.shared && !sharing.static_link)
+    assert(!Parse(["chibi", "build", "--native", "--shared", "--static", "source"]).valid)
+    assert(!Parse(["chibi", "build", "--shared"]).valid)
 }
 
 @test

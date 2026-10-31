@@ -2451,7 +2451,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             }
             work.extend(ScalarBlock(forest, Field(forest, statement, syntax.FieldConsequence), mark));
         } else if (appended >= 0) {
-            binding := ScalarVariable(names, Text(forest, text, appended));
+            binding := ScalarVariable(names, Text(forest, text, RootOf(forest, appended)));
             row = ScalarAt(forest, statement, facts.AssignRow, ScalarValueType(types, binding.storage, binding.container, binding.record),
                            binding.index, count, "");
         } else if (ScalarDiscarded(forest, text, callables, names, types, callable, statement).storage != 0) {

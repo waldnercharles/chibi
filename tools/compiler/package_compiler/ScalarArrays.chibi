@@ -210,8 +210,9 @@ ScalarLengthOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     }
     return -1;
 }
-// The array variable that `statement`, an expression statement, changes, or
-// -1: its call is `a.append(x)`, `a.extend(b)` or `a.remove_index(i)` on it.
+// The array that `statement`, an expression statement, changes, or -1: its
+// call is `a.append(x)`, `a.extend(b)` or `a.remove_index(i)` on a variable
+// `a`, or on an array field `r.f` of a record variable `r`.
 ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, statement: int) -> int {
     call := FirstMember(forest, statement);
@@ -225,7 +226,10 @@ ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         return -1;
     }
     object := Unparenthesized(forest, Field(forest, function, syntax.FieldObject));
-    if (Is(forest, object, syntax.Identifier) &&
+    if ((Is(forest, object, syntax.Identifier) ||
+         (Is(forest, object, syntax.MemberExpression) &&
+          Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.Identifier) &&
+          ScalarMember(forest, text, callables, params, names, types, members, package, object) >= 0)) &&
         ScalarArrayShape(forest, text, callables, params, names, types, members, package, object).storage != 0) {
         return object;
     }
@@ -520,7 +524,8 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
 // The operand rows of the statement `a.append(x)`, `a.extend(b)` or
 // `a.remove_index(i)` of array variable `object`, after `rows`: a read of the
 // array, the argument, an element, another array or an int, then the Array
-// row of `operator`.
+// row of `operator`. For an array field `r.f`, the array is r's field read
+// under a read of r, and the record's Update of f follows the Array row.
 ScalarChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
                   constants: ConstDecl[], statement: int, object: int, operator: int,
@@ -532,8 +537,24 @@ ScalarChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarOperands.Failed(Diagnose(forest, call, 0, "scalar proof supports only arrays of numbers, bool, strings, records and unions"));
     }
     output := rows;
-    output.append(ScalarAt(forest, object, facts.ReadRow, array, ScalarVariable(names, Text(forest, text, object)).index,
-                           0, ""));
+    // An array field of a record variable: the record, then the record again
+    // and its field, which the Array row changes and the record's Update takes
+    // back.
+    fielded := Is(forest, object, syntax.MemberExpression);
+    variable := object;
+    field := -1;
+    record := -1;
+    if (fielded) {
+        variable = Unparenthesized(forest, Field(forest, object, syntax.FieldObject));
+        field = ScalarMember(forest, text, callables, params, names, types, members, callable.package, object);
+        record = ScalarRecordOf(forest, text, callables, params, names, types, members, callable.package, variable);
+        ordinal := ScalarVariable(names, Text(forest, text, variable)).index;
+        read := ScalarAt(forest, variable, facts.ReadRow, ScalarRecordType(types, record), ordinal, 0, "");
+        output.extend([read, read, ScalarAt(forest, object, facts.FieldRow, array, field - types[record].first, 1, "")]);
+    } else {
+        output.append(ScalarAt(forest, object, facts.ReadRow, array, ScalarVariable(names, Text(forest, text, object)).index,
+                               0, ""));
+    }
     value := FirstMember(forest, Field(forest, call, syntax.FieldArguments));
     switch ScalarArrayArgument(forest, text, callables, params, callable, names, types, members, constants, value, shape,
                                operator, output) {
@@ -543,6 +564,10 @@ ScalarChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             output = built;
     }
     output.append(ScalarAt(forest, call, facts.ArrayRow, array, operator, 2, ""));
+    if (fielded) {
+        output.append(ScalarAt(forest, object, facts.UpdateRow, ScalarRecordType(types, record), field - types[record].first,
+                               2, ""));
+    }
     return ScalarOperands.Built(output);
 }
 // The rows of `node`, the argument of the array native `operator` on arrays of

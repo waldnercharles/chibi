@@ -191,7 +191,10 @@ package scalar_facts
 // they consume, so each is the last operand of an Assign to a variable of the
 // array's type whose first operand reads that variable: `a[i] = x` is the
 // Assign of `a` with operands that read `a`, then `i`, then `x`, then
-// ArraySet, and `a.append(x)` reads `a`, then `x`, then ArrayPush. ArrayWith
+// ArraySet, and `a.append(x)` reads `a`, then `x`, then ArrayPush. For an array
+// field `r.f` of a record variable `r` the Assign is of `r`: it reads `r`,
+// then `r` and its Field `f`, then the element, then ArrayPush, then the Update
+// of `f`, with ArrayPush before it, so the record takes back the changed array. ArrayWith
 // consumes an array and an element, and ArrayJoin two arrays of one type, to
 // give a new array of the first's elements and then the second's; neither
 // changes what it consumes, as `append(a, x)` and `extend(a, b)` do not. A For row with

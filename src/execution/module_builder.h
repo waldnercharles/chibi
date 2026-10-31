@@ -162,10 +162,6 @@ typedef struct execution_module_plan
     int type_count;
     execution_module_event_declaration *events;
     int event_count;
-    /* The prepared format a read module came in, so re-encoding it for an
-     * import fingerprint reproduces its bytes; 0 for a module built here,
-     * which is written in EXECUTION_PREPARED_VERSION. */
-    int prepared_version;
 } execution_module_plan;
 execution_module_plan *execution_module_plan_new();
 void execution_module_plan_free(execution_module_plan *);

@@ -34,6 +34,7 @@ tool	build-graph-reflect	@build@/test/tools/test_tools	--build-graph-reflect	@ho
 tool	build-graph-generated	@build@/test/tools/test_tools	--build-graph-generated	@host@
 tool	build-graph-debug-optimization	@build@/test/tools/test_tools	--build-graph-debug-optimization	@host@
 tool	graph-engine	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/EngineTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000
+tool	graph-driver	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/DriverTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	600000	--	@host@
 tool	build-graph-programs	@build@/test/tools/test_tools	--build-graph-programs	@host@
 tool	build-sdk	@build@/test/tools/test_tools	--build-sdk	@host@	@release@	
 tool	runtime-sdk	@build@/test/tools/test_tools	--runtime-sdk	@host@

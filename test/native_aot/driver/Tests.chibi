@@ -6,10 +6,15 @@ Join :: (parts: string[]) -> string {
     return strings.Join(parts, "");
 }
 
+// The driver's library sits in driver/ beside its entry file.
+Collection :: (driver: string) -> string {
+    return Join(["native_aot=", strings.Slice(driver, 0, strings.LastIndex(driver, "/")), "/driver"]);
+}
+
 Invoke :: (settings: string[], input: string, output: string,
            opt: string, llc: string, linker: string, mode: string) -> int {
     return build.probe([
-        settings[0], "--root", build.root(), "--source", settings[1],
+        settings[0], "--root", build.root(), "--source", settings[1], "--collection", Collection(settings[1]),
         "--core", settings[3], "--compiler", settings[2], "--compiler-core", settings[3],
         "--entry", "Build", "--timeout-ms", "30000", "--",
         input, output, opt, llc, linker, mode
@@ -144,7 +149,7 @@ Tests :: () -> int {
 InvokeObject :: (settings: string[], input: string, output: string,
                  opt: string, llc: string, mode: string) -> int {
     return build.probe([
-        settings[0], "--root", build.root(), "--source", settings[1],
+        settings[0], "--root", build.root(), "--source", settings[1], "--collection", Collection(settings[1]),
         "--core", settings[3], "--compiler", settings[2], "--compiler-core", settings[3],
         "--entry", "Object", "--timeout-ms", "30000", "--",
         input, output, opt, llc, mode

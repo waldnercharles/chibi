@@ -1,0 +1,87 @@
+package asset_compiler_cache_tests
+
+import cache "asset_generator:."
+import os "core:os"
+import strings "core:strings"
+
+// The asset compiler's machine-wide product cache: where it lives, how stamps
+// read, and which products go when the directory outgrows its budget.
+
+Fresh :: () -> string {
+    made := os.Capture(["mktemp", "-d"]);
+    assert(made.status == 0, "a scratch directory");
+    return strings.TrimSpace(made.stdout);
+}
+
+Clean :: (directory: string) {
+    assert(os.Capture(["rm", "-rf", directory]).status == 0, "cleanup");
+}
+
+Product :: (directory: string, name: string, size: int) {
+    assert(os.WriteText(format_text("{}/{}", directory, name), strings.Repeat("x", size)) == nil, "a product");
+}
+
+LocationPrefersTheOverrideThenTheMachineCache :: () {
+    assert(cache.Location("/tmp/mine", "/xdg", "/home/me", "/checkout") == "/tmp/mine", "the override");
+    assert(cache.Location("", "/xdg", "/home/me", "/checkout") == "/xdg/chibi/asset-compiler-cache", "XDG_CACHE_HOME");
+    assert(cache.Location("", "", "/home/me", "/checkout") == "/home/me/.cache/chibi/asset-compiler-cache", "HOME");
+    assert(cache.Location("", "", "", "/checkout") == "/checkout/.chibi/asset-compiler-cache", "the checkout");
+    assert(cache.Location("off", "/xdg", "/home/me", "/checkout") == "", "off keeps nothing");
+}
+
+StampsReadSizeAndModifiedTime :: () {
+    stamp := "16777232:123:4096:100644:1700000000.000000007:1700000001.000000000";
+    assert(cache.StampSize(stamp) == 4096, "size");
+    assert(cache.StampModified(stamp) == 1700000000000000007, "modified nanoseconds");
+    assert(cache.StampSize("") == 0 && cache.StampModified("not a stamp") == 0, "malformed stamps read as zero");
+}
+
+// With 400 bytes held and 250 allowed, the oldest unkept products go until 250
+// remain: b then c, never the kept a, never the newest d.
+EvictionRemovesTheOldestUnkeptFirst :: () {
+    directory := Fresh();
+    for (name in ["a", "b", "c", "d"]) {
+        Product(directory, name, 100);
+        os.Capture(["sleep", "0.05"]);
+    }
+    Product(directory, "e.new", 500);
+    left := cache.Evict(directory, 250, ["a"]);
+    assert(left == 200, "bytes left");
+    assert(os.Exists(format_text("{}/a", directory)), "a is kept");
+    assert(!os.Exists(format_text("{}/b", directory)) && !os.Exists(format_text("{}/c", directory)), "b and c are gone");
+    assert(os.Exists(format_text("{}/d", directory)), "d is newest");
+    assert(os.Exists(format_text("{}/e.new", directory)), "a half-written file is left alone");
+    Clean(directory);
+}
+
+EvictionStopsWhenOnlyKeptProductsRemain :: () {
+    directory := Fresh();
+    Product(directory, "a", 100);
+    Product(directory, "b", 100);
+    left := cache.Evict(directory, 10, ["a", "b"]);
+    assert(left == 200 && os.Exists(format_text("{}/a", directory)) && os.Exists(format_text("{}/b", directory)), "kept products stay over budget");
+    assert(cache.Evict(format_text("{}/missing", directory), 10, []) == 0, "a missing directory holds nothing");
+    Clean(directory);
+}
+
+RefreshRewritesAnOldProductOnly :: () {
+    directory := Fresh();
+    Product(directory, "a", 100);
+    path := format_text("{}/a", directory);
+    before := os.Stamp(path);
+    cache.Refresh(path, 0);
+    assert(os.Stamp(path) == before, "a recent product is left alone");
+    cache.Refresh(path, 4000000000);
+    assert(os.Stamp(path) != before && cache.StampSize(os.Stamp(path)) == 100, "an old product is rewritten");
+    assert(!os.Exists(format_text("{}.refresh", path)), "no temporary file remains");
+    Clean(directory);
+}
+
+pub Run :: () -> int {
+    LocationPrefersTheOverrideThenTheMachineCache();
+    StampsReadSizeAndModifiedTime();
+    EvictionRemovesTheOldestUnkeptFirst();
+    EvictionStopsWhenOnlyKeptProductsRemain();
+    RefreshRewritesAnOldProductOnly();
+    return 0;
+}

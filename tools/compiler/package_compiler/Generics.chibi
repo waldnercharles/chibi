@@ -804,7 +804,8 @@ SpecializePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             definition_aliases.extend(names);
                             switch FunctionSignature(forest, source.text, source.key, SolidOffsets(source.text), table,
                                                      definition_aliases, definition.package, definition.document,
-                                                     definition.node, format_text("__generic_{}", id), length(params), NoScopes()) {
+                                                     definition.node, format_text("__generic_{}", id), length(params),
+                                                     SiblingScopes(forest, source.text, definition.node)) {
                                 case .Failed(diagnostic):
                                     return GenericPlan.Failed(diagnostic);
                                 case .Read(concrete, added):

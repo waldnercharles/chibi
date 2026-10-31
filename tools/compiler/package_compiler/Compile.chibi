@@ -1939,16 +1939,16 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
     // Which pointer parameters are scoped depends on the functions they are
     // passed to, in any file of the package, so the package decides it at once.
     declared_functions: int[] = [];
-    declared_files: int[] = [];
+    declared_texts: string[] = [];
     for (file in files) {
         for (member in ChosenMembers(selected, selected_starts, selected_counts, files, file)) {
             if (Is(forest, member, syntax.FunctionDeclaration)) {
                 declared_functions.append(member);
-                declared_files.append(file);
+                declared_texts.append(documents[file].text);
             }
         }
     }
-    scopes := ScopedParameters(forest, documents, declared_functions, declared_files);
+    scopes := ScopedParameters(forest, declared_texts, declared_functions);
     for (file in files) {
         text := documents[file].text;
         solid := SolidOffsets(text);
@@ -2625,14 +2625,11 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
         pointer := PointerAnnotation(forest, type_node);
         reference := false;
         if (pointer >= 0) {
-            // The package's table decides when it lists the parameter; a lone
-            // function checks its own uses.
+            // The table lists the pointer parameters of declared functions. A
+            // signature without a body, such as a callable parameter's, has no
+            // uses that could make its pointer managed.
             verdict := ScopedVerdict(scopes, parameter);
-            if (verdict >= 0) {
-                reference = verdict == 1;
-            } else {
-                reference = ScopedPointer(forest, text, member, parameter, []);
-            }
+            reference = verdict == 1 || (verdict < 0 && Field(forest, member, syntax.FieldBody) < 0);
         }
         if (reference) {
             type_node = Field(forest, pointer, syntax.FieldTarget);

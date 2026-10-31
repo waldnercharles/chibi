@@ -118,3 +118,14 @@ outright (git history keeps them):
 ## Stage-zero oracle cases removed from package_compiler_chibi.c
 
 `test/language/package_compiler_chibi.c` no longer includes `language/lower.h` or `language/semantic.h`. Removed (deleted, not archived; the authored compiler has no stage-zero to compare against): `oracle_packages` and the cases that compared authored compilation with stage-zero analysis or lowering: compound diagnostics vs stage zero, runnable package/typed/collection/importing sample tables (plain and `_compiled`), fallible source results, builtin math source contracts, invalid/deferred char conversion rejections, generic char native results, `native_overload_reference_contract` and `native_arguments_reference_contract`, and the `--package-compiler-chibi-native-arguments-oracle` selector. Authored `@test` suites and the remaining bootstrap/native lanes cover the authored side only. `compositional_records.c` lost an unused `language/lower.h` include.
+
+## Stage-zero authored-program tests archived (test/language)
+
+Each compiled authored sources with stage zero (`source_package_prepare`, `authoring_packages_prepare`, `compiler_fixture`) and ran them. `chibi test` and `host_packages_compiler.c` (authored compile path) cover the authored side; what is not re-covered:
+
+- `package_imports.c`: transitive-call execution on each backend, alias scoping, record/union/aggregate-constant imports, input-order and root-relocation id stability, incremental reuse and cached closures, generic export and request scoping.
+- `package_files.c`: snapshot loading from disk (canonical roots, NUL/oversize rejection, junction/UNC handling on Windows, relocation and reload invalidation).
+- `package_math.c` (+ `--package-math-benchmark`): shipped `core:math` authored tests, IEEE/precision import checks, domain rejection, explicit f64 narrowing, catalog retirement of native math names, invocation benchmark.
+- `integer_semantics.c` (+ `--integer-shift-counts-authored`): width-by-width integer pinning and shift counts through stage zero.
+- `host_packages.c`: import aliases and shadowing, private-kernel precedence, member rejection, unavailable target, host:clock grant transport, sample retention, imported-wrapper effects, distinct domains, platform monotonic samples, `core:time` authored tests.
+- `build_workflow.c` (+ its source header): configure/build order, failure propagation and missing-binding rejection for the authored build workflow service.

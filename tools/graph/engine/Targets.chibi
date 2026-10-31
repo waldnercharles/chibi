@@ -375,7 +375,6 @@ Files :: (target: string) -> string[] {
     if (target == "test_language") {
         return [
             "test/language/main.c",
-            "test/language/build_workflow.c",
             "test/language/record_compatibility.c",
             "test/language/record_document.c",
             "test/language/compositional_records.c",
@@ -385,16 +384,14 @@ Files :: (target: string) -> string[] {
             "test/language/capture.c",
             "test/language/ranges.c",
             "test/language/component_write_ir.c",
-            "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
-            "test/language/package_imports.c", "test/language/package_files.c",
-            "test/language/package_math.c",
+            "test/language/text_format.c", "test/language/host_packages_compiler.c",
             "test/language/program_session.c",
             "test/language/syntax_corpus.c",
             "test/language/compiler_fixture.c",
             "test/language/package_compiler_chibi.c",
             "src/host/native_libraries.c", "src/host/process.c", "src/host/stack_overflow.c",
             "test/language/native_census.c",
-            "test/language/execution_scope.c", "test/language/integer_semantics.c",
+            "test/language/execution_scope.c",
             "test/parallel.c", "test/language/parallel.c"
         ];
     }
@@ -1647,7 +1644,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/capture.c",
         "test/language/component_write_ir.c",
         "test/language/execution.c", "test/language/execution_scope.c",
-        "test/language/integer_semantics.c", "test/language/host_packages_compiler.c",
+        "test/language/host_packages_compiler.c",
         "test/language/native_census.c",
         "test/language/package_compiler_chibi.c",
         "test/language/ranges.c",
@@ -1660,14 +1657,10 @@ LanguageTestsOverSource :: () -> string[] {
 // source property adds them; Expand fills {source_root}, {build_type},
 // {sha256:PATH} and {program:NAME}.
 pub SourceDefines :: (target: string, file: string) -> string[] {
-    if (target == "test_language" && file == "test/language/package_math.c") {
-        return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\"", "CHIBI_SOURCE_ROOT=\"{source_root}\""];
-    }
     if (target == "test_language" && file == "test/language/package_compiler_chibi.c") {
         return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
     }
-    if (target == "test_language" &&
-        (file == "test/language/integer_semantics.c" || file == "test/language/host_packages_compiler.c")) {
+    if (target == "test_language" && file == "test/language/host_packages_compiler.c") {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     if (target == "test_tools" && file == "test/tools/native_build.c") {
@@ -1734,7 +1727,6 @@ pub Configures :: (target: string) -> string[] {
             "package_snapshot_chibi_source.h=test/language/package_snapshot_chibi_source.h.in",
             "lexical_binding_chibi_source.h=test/language/lexical_binding_chibi_source.h.in",
             "compositional_records_source.h=test/language/compositional_records_source.h.in",
-            "build_workflow_source.h=test/language/build_workflow_source.h.in",
             "prepared_writer_chibi_source.h=test/language/prepared_writer_chibi_source.h.in",
             "package_compiler_chibi_source.h=test/language/package_compiler_chibi_source.h.in"
         ];

@@ -740,7 +740,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             base := length(stack) - operand.count;
             indirect := operand.value == 1;
             if ((operand.value != 0 && !indirect) || (indirect && (operand.name != "" || operand.text != "" || operand.count < 1)) ||
-                (!indirect && (operand.name == "" || operand.text == "")) || !Scalar(operand.type) ||
+                (!indirect && operand.name == "") || !Scalar(operand.type) ||
                 operand.count < 0 || base < floor) {
                 return "scalar foreign call differs from its operands";
             }
@@ -1921,7 +1921,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
 // once, for the driver to link: `; chibi-library PATH`, the path as the source
 // spells it. A system library also gets a `; chibi-import PATH SYMBOL` comment
 // per symbol the module calls, which a Windows link needs to write the library's
-// import definition.
+// import definition. A foreign block with no library declares symbols of the
+// program's own objects, such as its start module: each gets `; chibi-self
+// SYMBOL`, and no stub or import library lists it.
 Linked :: (text: string, rows: facts.Row[]) -> string {
     paths: string[] = [];
     imports: string[] = [];
@@ -1931,6 +1933,12 @@ Linked :: (text: string, rows: facts.Row[]) -> string {
         }
         if (row.kind == facts.ForeignRow && strings.HasPrefix(row.text, "system:")) {
             line := format_text("; chibi-import {} {}\n", row.text, row.name);
+            if (!imports.contains(line)) {
+                imports.append(line);
+            }
+        }
+        if (row.kind == facts.ForeignRow && row.text == "" && row.name != "") {
+            line := format_text("; chibi-self {}\n", row.name);
             if (!imports.contains(line)) {
                 imports.append(line);
             }

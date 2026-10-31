@@ -289,6 +289,12 @@ LibSystem :: (symbols: string[]) -> string {
 // binder for the lazy stubs lld writes for them.
 Imports :: (module: string) -> string[] {
     symbols: string[] = [];
+    own: string[] = [];
+    for (line in strings.SplitLines(module)) {
+        if (strings.HasPrefix(line, "; chibi-self ")) {
+            own.append(strings.Slice(line, 13, strings.ByteLength(line) - 13));
+        }
+    }
     for (line in strings.SplitLines(module)) {
         if (!strings.HasPrefix(line, "declare ")) {
             continue;
@@ -299,7 +305,7 @@ Imports :: (module: string) -> string[] {
             continue;
         }
         name := strings.Slice(line, at + 1, end - at - 1);
-        if (!strings.HasPrefix(name, "llvm.")) {
+        if (!strings.HasPrefix(name, "llvm.") && !own.contains(name)) {
             symbols.append(Join(["_", name]));
         }
     }

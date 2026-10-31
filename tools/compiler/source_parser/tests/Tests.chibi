@@ -51,6 +51,11 @@ AcceptsForeignBlock :: () {
 }
 
 @test
+AcceptsForeignBlockWithoutLibrary :: () {
+    Accepts("package p\nforeign {\n    chibi_argument_count :: () -> i32\n}\n");
+}
+
+@test
 AcceptsForceUnwrap :: () {
     Accepts("package p\nF :: (x: int?, y: int?) -> int {\n    return x! + y!;\n}\n");
 }

@@ -128,9 +128,27 @@ static int build_with(const char *program, const char *const *options, const cha
     argv[at++] = "--llvm";
     argv[at++] = llvm;
     argv[at] = game;
-    const char *envp[] = { "PATH=", NULL };
+    /* The build host recovers the compiler from source when its sources differ
+     * from the seed's, which takes minutes; the CI cache holds that recovery. */
+    char cache[1100] = "";
+    const char *configured = getenv("CHIBI_COMPILER_CACHE");
+    if (configured && *configured) {
+        snprintf(cache, sizeof cache, "CHIBI_COMPILER_CACHE=%s", configured);
+    }
+    const char *envp[] = { "PATH=", cache[0] ? cache : NULL, NULL };
     status = chibi_process_capture(program, argv, suite, envp, chibi_process_now() + 120, NULL, &out, &err);
-    assert(status.error == CHIBI_PROCESS_OK);
+    if (status.error != CHIBI_PROCESS_OK) {
+        /* An environment failure, such as the 120 s deadline: report it with
+         * the child's stderr so the log says where the build was. */
+        fprintf(
+            stderr,
+            "native build: process error %d (status %d); stderr:\n%s\n",
+            (int)status.error,
+            status.status,
+            errors
+        );
+        return -1;
+    }
     return status.status;
 }
 
@@ -909,27 +927,29 @@ static bool object_holds(const char *out, const char *bytes, size_t size)
 static bool driver_build(const char *ir, const char *out)
 {
     char host[1024], share[1024], driver[1024], source[1024], core[1024],
-        compiler[1024], opt[1024], llc[1024], lld[1024];
+        compiler[1024], opt[1024], llc[1024], lld[1024], collection[1100];
     path(host, sdk, "libexec/chibi/chibi-build-host");
     path(share, sdk, "share/chibi");
     path(driver, share, "tools/native_aot");
     path(source, driver, "Driver.chibi");
+    snprintf(collection, sizeof collection, "native_aot=%s/driver", driver);
     path(core, share, "core");
     path(compiler, share, "compiler");
     path(opt, tools, "opt");
     path(llc, tools, "llc");
     path(lld, tools, "ld.lld");
-    const char *argv[] = { host,     "--root",
-                           driver,   "--source",
-                           source,   "--core",
-                           core,     "--compiler",
-                           compiler, "--compiler-core",
-                           core,     "--entry",
-                           "Build",  "--timeout-ms",
-                           "120000", "--",
-                           ir,       out,
-                           opt,      llc,
-                           lld,      "2",
+    const char *argv[] = { host,       "--root",
+                           driver,     "--source",
+                           source,     "--collection",
+                           collection, "--core",
+                           core,       "--compiler",
+                           compiler,   "--compiler-core",
+                           core,       "--entry",
+                           "Build",    "--timeout-ms",
+                           "120000",   "--",
+                           ir,         out,
+                           opt,        llc,
+                           lld,        "2",
                            NULL };
     const char *envp[] = { "PATH=", NULL };
     chibi_process_output out_text = { .data = output, .capacity = sizeof output };

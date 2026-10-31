@@ -664,6 +664,18 @@ Example :: library {
 }
 ```
 
+A postfix `!` takes an optional's payload and fails when it is `nil`, as Swift's
+`!` does: `scores["Ada"]!` is the value, or a failed run with the message
+"Unwrapped a nil optional". It must touch its operand, so `a!` unwraps and `a !b`
+does not. Use it where absence is a bug; `??`, `if value` and `as T` handle
+absence.
+
+`value?.field` reads a field of an optional record: `nil` when the record is
+`nil`, otherwise the field as an optional, so `(p?.x ?? 0) + 1` has a default.
+`value!.field` unwraps first and fails on `nil`. Like `!`, `?.` must touch its
+operand. It reads authored record fields only: not a call, not a field that
+holds a record, and not an assignment target.
+
 ## Packages and visibility
 
 A package is a folder of `.chibi` files with the same `package` header.

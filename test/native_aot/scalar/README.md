@@ -273,7 +273,7 @@ the unchanged driver:
 
 ```text
 chibi-build-host --root REPO --source tools/native_aot/Driver.chibi \
-  --core REPO/packages/core --compiler REPO/tools/compiler \
+  --collection native_aot=REPO/tools/native_aot/driver --core REPO/packages/core --compiler REPO/tools/compiler \
   --compiler-core REPO/packages/core --entry Object --timeout-ms 120000 -- \
   ABS_INPUT_LL ABS_FRESH_OUTPUT_DIRECTORY ABS_OPT ABS_LLC 0|2
 ```

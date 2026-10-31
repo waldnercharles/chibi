@@ -53,7 +53,7 @@ archive was downloaded into a task-local cache; installed Emscripten was reused.
 
 At checkpoint `422c6569a96a790c7d08d08cdea99028723ec583`, all ten selectors
 below passed after formatting and restoring mutation controls.
-Each ran through `tools/test_policy.py --timeout 60 tool <selector>` with the
+Each ran through the since-deleted `tools/test_policy.py --timeout 60 tool <selector>` with the
 language, tooling, or Wasm build directory selected by its documented environment
 variable.
 
@@ -181,8 +181,8 @@ cases, 1015 assertions). Exact local configuration:
 - `test_policy.py --timeout 120 tool build-graph`, using the cached tooling
   driver, the configure-only LLVM reference, and the two-job Graph host wrapper.
 
-This toolchain is already selected by the Makefile's native default and the
-Mac CI workflow. Explicit SDK agreement matters: without shared `SDKROOT`, this
+This toolchain was then selected by the retired Makefile's native default and
+the Mac CI workflow. Explicit SDK agreement matters: without shared `SDKROOT`, this
 installed LLVM selected the Command Line Tools SDK while the reference selected
 Xcode's SDK, correctly failing the comparator. No arguments were normalized or
 ignored. The successful check took 6.42 seconds with maximum child RSS
@@ -197,12 +197,13 @@ build was reported and left unstarted. A repeated `ninja -n test_tools` and
 `test/tools/test_tools` executable, not an all-target build. No claim is made
 for local native-catalog fixture execution.
 
-Hosted coverage is defined in `.github/workflows/ci.yml`: both `native`
-(ubuntu-24.04) and `native-macos` (macos-15) run `make test-native`, which builds
-the full native drivers and dispatches `tools/test_policy.py group native`.
-That group includes `native-catalog`, mapped to
-`build/test/tools/test_tools --native-catalog`; the full native build enables
-`CHIBI_TEST_NATIVE_RUNTIME`, and the dispatcher calls
+Hosted coverage was then defined in `.github/workflows/ci.yml`: both `native`
+(ubuntu-24.04) and `native-macos` (macos-15) ran the retired `make test-native`,
+which built the full native drivers and dispatched `tools/test_policy.py group
+native` (today `chibi build test native`; `native-catalog` was archived with
+the game runtime). That group included `native-catalog`, mapped to
+`build/test/tools/test_tools --native-catalog`; the full native build enabled
+`CHIBI_TEST_NATIVE_RUNTIME`, and the dispatcher called
 `test_tool_native_catalog()`. Workflow dispatch can validate the recovery branch;
 its actual run head and results must be checked separately. Windows engine and
 Windows Studio jobs are disabled in the existing CI definition; paired Studio

@@ -1390,12 +1390,10 @@ PickPastTheEnd :: () {
 }
 ```
 
-Run tests and format source with the command line tools.
+Run tests with the command line tool.
 
 ```sh
 chibi test path/to/packages
-chibi fmt path/to/project
-chibi check path/to/project
 ```
 
 Independent tests run in parallel by default, with private execution state and

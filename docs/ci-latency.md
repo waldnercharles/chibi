@@ -1,6 +1,10 @@
 # Native CI build planning, 2026-10-24
 
-The Linux and macOS native jobs now invoke the four existing test-group targets
+Historical record. The Makefile was retired in e4aa7b4e2 and the C
+`--test-runner` regression in 84ca9d25c. CI now runs the groups with
+`chibi build test` (`tools/build.sh test`), which builds nothing itself.
+
+The Linux and macOS native jobs then invoked the four existing test-group targets
 in one sequential Make process. Their shared `test-build` prerequisite runs once
 instead of four times. The project group's Release build still runs, as do the
 initial sanitizer build, product build, Release product build and tooling tests.
@@ -9,7 +13,7 @@ limit. Linux retains `UBSAN_OPTIONS=halt_on_error=1`, now for all four groups.
 
 No selector, dependency identity, persistent cache or cross-run artifact policy
 changes. Every invocation still checks the normal build dependencies. This uses
-the same shared-prerequisite behavior already used by `make test-full`.
+the same shared-prerequisite behavior the Makefile's `test-full` target used.
 
 ## Hosted baseline
 
@@ -51,25 +55,14 @@ seconds. Every measured graph invocation reported `compiled 0 sources`; SHA-256
 hashes of all 150 object, archive and build-host files stayed identical.
 
 This is a bounded measurement of graph re-entry, not a full test-driver build or
-a prediction based on local machine speed. To reproduce without a full engine
-build, create a scratch Makefile containing:
-
-```make
-.PHONY: latency-a latency-b latency-c latency-d
-latency-a latency-b latency-c latency-d: build-release
-```
-
-Prime with `make build-release RELEASE_BUILD_DIR=build-latency
-BUILD_TARGET=chibi_support JOBS=2`. Then time four separate commands and one
-combined command using `make -j1 -f Makefile -f /path/to/scratch.mk
-RELEASE_BUILD_DIR=build-latency BUILD_TARGET=chibi_support JOBS=2 VERBOSE=1`, with
-the four goals above. Remove the scratch output directories after measuring.
+a prediction based on local machine speed. Its reproduction recipe used a
+scratch Makefile beside the retired root Makefile and no longer runs.
 
 ## Regression and validation
 
-The existing `--test-runner` C dispatcher reads both native jobs' group commands
-from the workflow and executes them through the actual Makefile. Recording
-children replace compilation and test execution. Assertions require one build,
+The `--test-runner` C dispatcher read both native jobs' group commands
+from the workflow and executed them through the actual Makefile. Recording
+children replaced compilation and test execution. Assertions required one build,
 all four groups in order, the intervening Release build, and nonzero Make exit
 with no later work after failure at each of those six boundaries.
 

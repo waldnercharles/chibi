@@ -335,7 +335,7 @@ validate this base.
 The normal scratch artifact writer and recovery also passed against that
 checkpoint in 110.30 and 144.02 seconds, reproducing the same compiler bytes.
 The accepted native/runtime and fixture updates were then integrated at recorded
-boundaries. A fresh normal `make test-build` with default sanitizers and asset
+boundaries. A fresh normal `make test-build` (since retired) with default sanitizers and asset
 compilation failed after 890.00 seconds on base `dafe746411182c3320281c0b1fe4e75e7b9b6456`
 and source patch `d4a2700dbf774bf3ba78d0c53d29d5059e7577de0535b1b2d5a70a04ec91641a`.
 Bootstrap reuse succeeded, then the 41-source facade compile reached its

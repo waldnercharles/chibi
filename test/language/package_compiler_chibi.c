@@ -2591,7 +2591,7 @@ static bool native_module_ir(const char *target, const native_module *m, char **
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 89
+    SCALAR_ACCEPTED_CASES = 90
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on

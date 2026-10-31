@@ -42,7 +42,6 @@ Entries :: (root: string, build_dir: string, third_party: string) -> string[] {
         Join(["share/chibi/licenses/fmt/LICENSE=", root, "/third_party/fmt/LICENSE"]),
         Join(["share/chibi/licenses/fmt/README.md=", root, "/third_party/fmt/README.md"]),
         Join(["share/chibi/licenses/yyjson/LICENSE=", root, "/third_party/yyjson/LICENSE"]),
-        Join(["share/chibi/licenses/vendor/tree_sitter/LICENSE=", third_party, "/share/chibi/licenses/vendor/tree_sitter/LICENSE"]),
         Join(["share/chibi/licenses/vendor/sljit/LICENSE=", third_party, "/share/chibi/licenses/vendor/sljit/LICENSE"])
     ];
 }
@@ -130,7 +129,7 @@ CompilerTools :: () -> int {
     }
     for (host in ["chibi-build-host", "chibi-compiler-host"]) {
         record := build.read_file(Join([build_dir, "/sdk/", host, ".chibi-record"]));
-        for (library_name in ["tree_sitter", "sljit"]) {
+        for (library_name in ["sljit"]) {
             archive := Join([third_party, "/lib/chibi-vendor/libchibi_vendor_", library_name, ".a"]);
             found := false;
             for (line in build.lines(record)) {

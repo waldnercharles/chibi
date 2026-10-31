@@ -6,7 +6,9 @@ import graph "project:package_graph"
 import syntax "project:syntax_diagnostics"
 import binding "project:lexical_binding"
 import writer "project:prepared_writer"
+import json "project:json_string"
 import strings "core:strings"
+import tk "project:source_tokenizer"
 
 // Compiles a behavior asset to the prepared module of the game a target
 // describes: its retained states, and its event handlers, which read and
@@ -286,9 +288,9 @@ PayloadParams :: (forest: snapshot.SnapshotNode[], source: string, handler: int,
         listed.append(int(-1));
         at += 1;
     }
-    parameter := FirstMember(forest, Field(forest, handler, "parameters"));
+    parameter := FirstMember(forest, Field(forest, handler, syntax.FieldParameters));
     while (parameter >= 0) {
-        name := Field(forest, parameter, "name");
+        name := Field(forest, parameter, syntax.FieldName);
         spelled := Text(forest, source, name);
         at = 0;
         while (at < declared.count && !NameMatches(event_fields[declared.first + at].name, spelled)) {
@@ -323,17 +325,17 @@ PayloadParams :: (forest: snapshot.SnapshotNode[], source: string, handler: int,
 // minus stays attached for the literal readers. Other unary operators are
 // expressions, not numeric literal defaults.
 StateNumberNode :: (forest: snapshot.SnapshotNode[], source: string, node: int) -> int {
-    if (Is(forest, node, "number")) {
+    if (Is(forest, node, syntax.Number)) {
         return node;
     }
-    if (!Is(forest, node, "unary_expression")) {
+    if (!Is(forest, node, syntax.UnaryExpression)) {
         return -1;
     }
-    operand := Field(forest, node, "operand");
-    if (!Is(forest, operand, "number")) {
+    operand := Field(forest, node, syntax.FieldOperand);
+    if (!Is(forest, operand, syntax.Number)) {
         return -1;
     }
-    operator := Text(forest, source, Field(forest, node, "operator"));
+    operator := Text(forest, source, Field(forest, node, syntax.FieldOperator));
     if (operator == "+") {
         return operand;
     }
@@ -346,8 +348,8 @@ StateNumberNode :: (forest: snapshot.SnapshotNode[], source: string, node: int) 
 // is a digit; only decimal points and exponents select number storage.
 StateNumberStorage :: (forest: snapshot.SnapshotNode[], source: string, node: int) -> int {
     digits := node;
-    if (Is(forest, node, "unary_expression")) {
-        digits = Field(forest, node, "operand");
+    if (Is(forest, node, syntax.UnaryExpression)) {
+        digits = Field(forest, node, syntax.FieldOperand);
     }
     spelling := Text(forest, source, digits);
     hexadecimal := strings.ByteLength(spelling) > 1 && strings.ByteAt(spelling, 0) == 48 &&
@@ -384,7 +386,7 @@ StateRead :: union {
 // local) before the state's own name.
 DeclaredState :: (forest: snapshot.SnapshotNode[], source: string, table: ^(TypeDecl[]), entity: u64, member: int,
                   document: int, identity: string, qualifier: string, ops: Ops) -> StateRead {
-    name := Text(forest, source, Field(forest, member, "name"));
+    name := Text(forest, source, Field(forest, member, syntax.FieldName));
     declared := StateType(forest, source, table, entity, member);
     if ((!Numeric(declared.storage) && declared.storage != BoolStorage && declared.storage != TextStorage &&
          declared.storage != HandleStorage) || declared.container != 0 ||
@@ -394,7 +396,7 @@ DeclaredState :: (forest: snapshot.SnapshotNode[], source: string, table: ^(Type
     }
     bits: u64 = 0;
     initial := "";
-    switch StateDefault(forest, source, name, declared.storage, Field(forest, member, "value"), ops) {
+    switch StateDefault(forest, source, name, declared.storage, Field(forest, member, syntax.FieldValue), ops) {
         case .Failed(diagnostic):
             return StateRead.Failed(snapshot.Stamp(diagnostic, document));
         case .Read(default_bits, default_text):
@@ -403,7 +405,7 @@ DeclaredState :: (forest: snapshot.SnapshotNode[], source: string, table: ^(Type
     }
     kept: StateDecl = {name: name, id: binding.ID("symbol", format_text("{}:1:{}{}", identity, qualifier, name)),
                        storage: declared.storage, record: declared.record, bits: bits, text: initial,
-                       node: Field(forest, member, "name")};
+                       node: Field(forest, member, syntax.FieldName)};
     return StateRead.Read(kept);
 }
 // A function's retained locals are states of its package's module, which
@@ -423,18 +425,18 @@ RetainedLocals :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
         document := documents[at];
         for (offset in 0..<document.node_count) {
             member := document.node_start + offset;
-            if (!Is(forest, member, "state_declaration")) {
+            if (!Is(forest, member, syntax.StateDeclaration)) {
                 continue;
             }
             function := forest[member].parent;
-            while (function >= 0 && !Is(forest, function, "function_declaration")) {
+            while (function >= 0 && !Is(forest, function, syntax.FunctionDeclaration)) {
                 function = forest[function].parent;
             }
             for (index in 0..<length(callables)) {
                 if (function < 0 || callables[index].node != function) {
                     continue;
                 }
-                name := Text(forest, document.text, Field(forest, member, "name"));
+                name := Text(forest, document.text, Field(forest, member, syntax.FieldName));
                 for (position in 0..<length(states)) {
                     if (states[position].name == name && owners[position] == index) {
                         return Retained.Failed(Diagnose(forest, member, at, format_text("Duplicate declaration '{}'", name)));
@@ -486,13 +488,13 @@ RetainedNames :: (states: StateDecl[], owners: int[], callables: Callable[], pac
 // The written scalar type, or a literal initializer's natural type.
 StateType :: (forest: snapshot.SnapshotNode[], source: string, types: ^(TypeDecl[]), entity: u64,
               member: int) -> ValueType {
-    written := Field(forest, member, "type");
-    value := Field(forest, member, "value");
+    written := Field(forest, member, syntax.FieldType);
+    value := Field(forest, member, syntax.FieldValue);
     if (written < 0) {
-        if (Is(forest, value, "boolean")) {
+        if (Is(forest, value, syntax.Boolean)) {
             return {storage: BoolStorage, container: 0, record: -1};
         }
-        if (Is(forest, value, "string")) {
+        if (Is(forest, value, syntax.String)) {
             return {storage: TextStorage, container: 0, record: -1};
         }
         literal := StateNumberNode(forest, source, value);
@@ -501,10 +503,10 @@ StateType :: (forest: snapshot.SnapshotNode[], source: string, types: ^(TypeDecl
         }
         return {storage: 0, container: 0, record: -1};
     }
-    spelled := Text(forest, source, Field(forest, written, "name"));
-    if ((spelled == "entity" || spelled == "number") && Field(forest, written, "trait") < 0 &&
-        Field(forest, written, "arguments") < 0 && !HasToken(forest, written, "?") &&
-        !HasToken(forest, written, "[")) {
+    spelled := Text(forest, source, Field(forest, written, syntax.FieldName));
+    if ((spelled == "entity" || spelled == "number") && Field(forest, written, syntax.FieldTrait) < 0 &&
+        Field(forest, written, syntax.FieldArguments) < 0 && !HasToken(forest, written, tk.Question) &&
+        !HasToken(forest, written, tk.OpenBracket)) {
         if (spelled == "number") {
             return {storage: FloatStorage, container: 0, record: -1};
         }
@@ -524,7 +526,7 @@ StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, 
         return Default.Failed({start: 0, end: 0, line: 1, column: 1, document: 0,
                                message: format_text("'{}' requires a default value", name)});
     }
-    if (Is(forest, value, "nil") && Text(forest, source, value) == "null") {
+    if (Is(forest, value, syntax.Nil) && Text(forest, source, value) == "null") {
         return Default.Read(0, "");
     }
     literal := StateNumberNode(forest, source, value);
@@ -539,15 +541,15 @@ StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, 
         }
         return Default.Failed(Diagnose(forest, value, 0, "entity default requires null or zero"));
     }
-    if (storage == BoolStorage && Is(forest, value, "boolean")) {
+    if (storage == BoolStorage && Is(forest, value, syntax.Boolean)) {
         bits: u64 = 0;
         if (Text(forest, source, value) == "true") {
             bits = 1;
         }
         return Default.Read(bits, "");
     }
-    if (storage == TextStorage && Is(forest, value, "string")) {
-        decoded := compiler_json_value_string(Text(forest, source, value));
+    if (storage == TextStorage && Is(forest, value, syntax.String)) {
+        decoded := json.Value(Text(forest, source, value));
         if (!decoded.valid) {
             return Default.Failed(Diagnose(forest, value, 0, "Invalid string literal"));
         }
@@ -623,34 +625,34 @@ PromoteRecords :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
     while (file < length(documents)) {
         root := roots[file];
         source := documents[file].text;
-        if (Is(forest, root, "library")) {
-            namespace_name := Text(forest, source, Field(forest, root, "name"));
-            member := FirstMember(forest, Field(forest, root, "body"));
+        if (Is(forest, root, syntax.Library)) {
+            namespace_name := Text(forest, source, Field(forest, root, syntax.FieldName));
+            member := FirstMember(forest, Field(forest, root, syntax.FieldBody));
             while (member >= 0) {
-                if (Is(forest, member, "record_declaration")) {
+                if (Is(forest, member, syntax.RecordDeclaration)) {
                     attributes := DeclarationAttributes(forest, source, file, member, "error");
                     if length(attributes) > 0 {
                         return SourceTypes.Failed(attributes[0]);
                     }
-                    name := Text(forest, source, Field(forest, member, "name"));
+                    name := Text(forest, source, Field(forest, member, syntax.FieldName));
                     id := binding.ID("symbol", format_text("{}:1:{}", documents[file].identity, name));
                     found := TypeWithId(types, id);
                     if (found < 0 || types[found].type_name != format_text("{}.{}", namespace_name, name) ||
                         types[found].kind != NativeDecl || types[found].storage != StructStorage ||
-                        Field(forest, member, "parameters") >= 0 ||
+                        Field(forest, member, syntax.FieldParameters) >= 0 ||
                         types[found].error != ErrorMarked(forest, source, member)) {
                         return SourceTypes.Failed(Diagnose(forest, member, file, "library record differs from the declaration catalog"));
                     }
                     declared := types[found];
-                    item := FirstMember(forest, Field(forest, member, "body"));
+                    item := FirstMember(forest, Field(forest, member, syntax.FieldBody));
                     count: int = 0;
                     while (item >= 0) {
-                        storage := ScalarStorage(Text(forest, source, Field(forest, item, "type")));
-                        if (count >= declared.count || storage == 0 || Field(forest, item, "value") >= 0) {
+                        storage := ScalarStorage(Text(forest, source, Field(forest, item, syntax.FieldType)));
+                        if (count >= declared.count || storage == 0 || Field(forest, item, syntax.FieldValue) >= 0) {
                             return SourceTypes.Failed(Diagnose(forest, item, file, "library record needs scalar fields without defaults"));
                         }
                         field := members[declared.first + count];
-                        if (field.name != Text(forest, source, Field(forest, item, "name")) ||
+                        if (field.name != Text(forest, source, Field(forest, item, syntax.FieldName)) ||
                             field.storage != storage || field.record >= 0) {
                             return SourceTypes.Failed(Diagnose(forest, item, file, "library record differs from the declaration catalog"));
                         }
@@ -687,26 +689,26 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
     source := document.text;
     identity := document.identity;
     solid := SolidOffsets(source);
-    is_library := Is(forest, declaration, "library");
-    is_system := Is(forest, declaration, "system");
+    is_library := Is(forest, declaration, syntax.Library);
+    is_system := Is(forest, declaration, syntax.System);
     kept_states: StateDecl[] = [];
     handled: int[] = [];
-    member := FirstMember(forest, Field(forest, declaration, "body"));
+    member := FirstMember(forest, Field(forest, declaration, syntax.FieldBody));
     if (is_system) {
         tick := FindEvent(game_events, "Tick");
         if (tick < 0 || game_events[tick].count != 1 || event_fields[game_events[tick].first].name != "dt") {
             return SourceMembers.Failed(Diagnose(forest, declaration, package,
                                                  "systems require Tick(dt) in the target event catalog"));
         }
-        callable: Callable = {name: Text(forest, source, Field(forest, declaration, "name")), package: package,
+        callable: Callable = {name: Text(forest, source, Field(forest, declaration, syntax.FieldName)), package: package,
                               document: package, node: declaration, first: length(params), count: 0, result: 0,
                               result_container: 0, result_record: -1, results: 0, waits: false, identity: 0, owner_package: package};
         callables.append(callable);
         handled.append(tick);
     }
     while (member >= 0) {
-        if (!is_library && Is(forest, member, "state_declaration")) {
-            name := Text(forest, source, Field(forest, member, "name"));
+        if (!is_library && Is(forest, member, syntax.StateDeclaration)) {
+            name := Text(forest, source, Field(forest, member, syntax.FieldName));
             for (kept in kept_states) {
                 if (kept.name == name) {
                     return SourceMembers.Failed(Diagnose(forest, member, package, format_text("Duplicate declaration '{}'", name)));
@@ -718,12 +720,12 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
                 case .Read(kept):
                     kept_states.append(kept);
             }
-        } else if (!is_library && Is(forest, member, "handler")) {
-            if (Text(forest, source, Field(forest, member, "kind")) != "on" || Field(forest, member, "alias") >= 0 ||
-                !Is(forest, Field(forest, member, "name"), "identifier")) {
+        } else if (!is_library && Is(forest, member, syntax.Handler)) {
+            if (Text(forest, source, Field(forest, member, syntax.FieldKind)) != "on" || Field(forest, member, syntax.FieldAlias) >= 0 ||
+                !Is(forest, Field(forest, member, syntax.FieldName), syntax.Identifier)) {
                 return SourceMembers.Failed(Diagnose(forest, member, package, "only `on Event` handlers are supported yet"));
             }
-            name := Text(forest, source, Field(forest, member, "name"));
+            name := Text(forest, source, Field(forest, member, syntax.FieldName));
             found := FindEvent(game_events, name);
             if (found < 0) {
                 return SourceMembers.Failed(Diagnose(forest, member, package, format_text("Unknown event '{}'", name)));
@@ -743,8 +745,8 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
                                   results: 0, waits: false, identity: 0, owner_package: package};
             callables.append(callable);
             handled.append(found);
-        } else if (Is(forest, member, "function_declaration")) {
-            name := Text(forest, source, Field(forest, member, "name"));
+        } else if (Is(forest, member, syntax.FunctionDeclaration)) {
+            name := Text(forest, source, Field(forest, member, syntax.FieldName));
             if (FindCallable(callables, package, name) >= 0 || FindType(table^, package, name) >= 0) {
                 return SourceMembers.Failed(Diagnose(forest, member, package, format_text("Duplicate declaration '{}'", name)));
             }
@@ -757,7 +759,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
                     callables.append(procedure);
                     handled.append(int(-1));
             }
-        } else if (!is_system && (!is_library || !Is(forest, member, "record_declaration"))) {
+        } else if (!is_system && (!is_library || !Is(forest, member, syntax.RecordDeclaration))) {
             return SourceMembers.Failed(Diagnose(forest, member, package, "unsupported executable source member"));
         }
         member = NextMember(forest, member);
@@ -779,7 +781,7 @@ SourceNames :: (forest: snapshot.SnapshotNode[], root: int, game: Game, types: T
             return BehaviorNames([], globals, TypeWithId(types, owner));
         case .Behavior(kept, handlers, declared_events, payloads, owner, operators, globals, makes, fields):
             names = BehaviorNames(kept, globals, TypeWithId(types, owner));
-            if (Is(forest, root, "system")) {
+            if (Is(forest, root, syntax.System)) {
                 tick := declared_events[FindEvent(declared_events, "Tick")];
                 names.append(SystemStepName(target, payloads[tick.first].storage));
             }
@@ -791,13 +793,13 @@ SystemNames :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
                 query_specs: QuerySpec[], callable: Callable, game_events: GameEvent[],
                 event_fields: GameEventField[], target: Target) -> Name[] {
     names: Name[] = [];
-    if (Is(forest, callable.node, "system")) {
+    if (Is(forest, callable.node, syntax.System)) {
         tick := game_events[FindEvent(game_events, "Tick")];
         names.append(SystemStepName(target, event_fields[tick.first].storage));
     }
     for (described in query_specs) {
-        if (Is(forest, described.node, "system") &&
-            (callable.node == described.node || Ancestor(forest, Field(forest, described.node, "body"), callable.node))) {
+        if (Is(forest, described.node, syntax.System) &&
+            (callable.node == described.node || Ancestor(forest, Field(forest, described.node, syntax.FieldBody), callable.node))) {
             names.extend(QueryNames(forest, text, types, members, described));
         }
     }
@@ -861,11 +863,9 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
         top: int = -1;
         first := length(forest);
         switch raw.Parse(sources[index]) {
+            case .Rejected(diagnostic):
+                return Result.Rejected(snapshot.Stamp(diagnostic, index));
             case .Parsed(nodes, fields, is_named, is_extra, root):
-                errors := syntax.Diagnose(nodes, root);
-                if (length(errors) > 0) {
-                    return Result.Rejected(snapshot.Stamp(errors[0], index));
-                }
                 at: int = 0;
                 while (at < length(nodes)) {
                     forest.append(snapshot.Node(nodes[at], fields[at], is_named[at], is_extra[at], first));
@@ -874,12 +874,12 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 top = root + first;
         }
         root := FirstMember(forest, top);
-        if ((!Is(forest, root, "behavior") && !Is(forest, root, "system") && !Is(forest, root, "library")) ||
+        if ((!Is(forest, root, syntax.Behavior) && !Is(forest, root, syntax.System) && !Is(forest, root, syntax.Library)) ||
             NextMember(forest, root) >= 0) {
             return InputFailure(index, "an executable asset needs one behavior, system or library declaration");
         }
-        if (Is(forest, root, "library")) {
-            name := Text(forest, sources[index], Field(forest, root, "name"));
+        if (Is(forest, root, syntax.Library)) {
+            name := Text(forest, sources[index], Field(forest, root, syntax.FieldName));
             for (link in links) {
                 if (link.name == name) {
                     return InputFailure(index, "duplicate library declaration");
@@ -925,15 +925,15 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
     has_queries := false;
     index = 0;
     while (index < length(documents)) {
-        if (!Is(forest, roots[index], "library")) {
+        if (!Is(forest, roots[index], syntax.Library)) {
             declared_types = DeclarePointers(forest, sources[index], declared_types, Aliases(namespaces, index),
                                              index, roots[index]);
         }
         node := documents[index].node_start;
         while (node < documents[index].node_start + documents[index].node_count) {
-            if (Is(forest, node, "query_expression") ||
-                (Is(forest, node, "system") && length(Members(forest, Field(forest, node, "parameters"))) > 0)) {
-                if (Is(forest, roots[index], "library")) {
+            if (Is(forest, node, syntax.QueryExpression) ||
+                (Is(forest, node, syntax.System) && length(Members(forest, Field(forest, node, syntax.FieldParameters))) > 0)) {
+                if (Is(forest, roots[index], syntax.Library)) {
                     return Result.Rejected(Diagnose(forest, node, index, "queries need a behavior or system source"));
                 }
                 has_queries = true;
@@ -962,7 +962,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 params = parameters;
         }
         // A source's evaluators follow its callables, which its module owns.
-        if (has_queries && !Is(forest, roots[index], "library")) {
+        if (has_queries && !Is(forest, roots[index], syntax.Library)) {
             first := documents[index].node_start;
             switch CollectQueries(forest, sources[index], identities[index], index, first,
                                   first + documents[index].node_count, declared_types, members, callables, params,
@@ -1026,9 +1026,9 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                         behaving = BehaviorNames(kept, globals, TypeWithId(declared_types, owner));
                 }
                 meaning := binding.ID("symbol", format_text("{}:1:{}:callable", identities[callable.package], callable.name));
-                if (Is(forest, callable.node, "handler")) {
+                if (Is(forest, callable.node, syntax.Handler)) {
                     meaning = game_events[FindEvent(game_events, callable.name)].id;
-                } else if (Is(forest, callable.node, "system")) {
+                } else if (Is(forest, callable.node, syntax.System)) {
                     meaning = game_events[FindEvent(game_events, "Tick")].id;
                 }
                 if (QueryEvaluator(query_specs, index) < 0) {

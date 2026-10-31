@@ -12,6 +12,7 @@ pub Failure :: union {
     | AssertionFailed
     | BudgetExhausted
     | DepthExceeded
+    | UnwrappedNil
 }
 
 // Makes the running test pass only if it ends with `failure`. Call it right
@@ -25,5 +26,6 @@ pub ExpectFailure :: (failure: Failure) {
         case .AssertionFailed: test_expect_failure(4);
         case .BudgetExhausted: test_expect_failure(5);
         case .DepthExceeded: test_expect_failure(6);
+        case .UnwrappedNil: test_expect_failure(7);
     }
 }

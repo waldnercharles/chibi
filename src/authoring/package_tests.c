@@ -91,6 +91,7 @@ static const struct
     [PACKAGE_TEST_FAILURE_ASSERTION_FAILED] = { "Assertion failed", true },
     [PACKAGE_TEST_FAILURE_BUDGET_EXHAUSTED] = { "instruction budget exhausted", false },
     [PACKAGE_TEST_FAILURE_DEPTH_EXCEEDED] = { "call depth exceeded", false },
+    [PACKAGE_TEST_FAILURE_UNWRAPPED_NIL] = { "Unwrapped a nil optional", false },
 };
 static const char *const FAILURE_NAMES[PACKAGE_TEST_FAILURE_COUNT] = {
     [PACKAGE_TEST_FAILURE_INDEX_OUT_OF_RANGE] = "IndexOutOfRange",
@@ -99,6 +100,7 @@ static const char *const FAILURE_NAMES[PACKAGE_TEST_FAILURE_COUNT] = {
     [PACKAGE_TEST_FAILURE_ASSERTION_FAILED] = "AssertionFailed",
     [PACKAGE_TEST_FAILURE_BUDGET_EXHAUSTED] = "BudgetExhausted",
     [PACKAGE_TEST_FAILURE_DEPTH_EXCEEDED] = "DepthExceeded",
+    [PACKAGE_TEST_FAILURE_UNWRAPPED_NIL] = "UnwrappedNil",
 };
 
 /* The kind of a failure's message, or NONE when it is none of them. */
@@ -216,9 +218,12 @@ bool package_test_run(
     if (resumable) {
         behavior_function_activation_init(test->body, &activation);
     }
-    /* Each run owns its heap, so parallel tests never share one. */
+    /* Each run owns its heap, so parallel tests never share one. The test is
+     * the heap's one root call, so it collects while it runs, as the build
+     * and compiler hosts do. */
     behavior_managed_heap managed;
     behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     behavior_function_context context = { .managed_heap = &managed,
                                           .activation = resumable ? &activation : NULL,
                                           .budget = budget,

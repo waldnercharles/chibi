@@ -21,6 +21,7 @@ package_compiler/ScalarArrays.chibi
 package_compiler/Math.chibi
 syntax_diagnostics/Diagnostics.chibi
 /sdk/core/strings/Strings.chibi
+json_string/JsonString.chibi
 source_snapshot/Snapshot.chibi
 source_tokenizer/Tokenizer.chibi
 source_parser/Tree.chibi

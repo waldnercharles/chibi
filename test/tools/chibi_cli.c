@@ -41,13 +41,20 @@ static void locate_driver(const char *self)
     free(resolved);
 }
 
+/* How long a launcher may take to compile a program nothing has compiled
+ * before: 8 to 10 s for a small one on a workstation, more with several
+ * selectors sharing a CI runner, and 0.5 s from the kept closure. Every wait on
+ * a program's first output, a first compile or a command that runs one uses it;
+ * a passing case takes no longer, a failing one takes this long. */
+#define FIRST_COMPILE_SECONDS 120
+
 /* Runs a command with a bound for a launcher that compiles on first use: about
  * 8 s for a small package on a workstation, longer on a CI runner; the same
  * sources start from the kept closure afterwards. A failing case takes as long
  * as the bound, a passing one does not. */
 static int cli_run(const char *const argv[], const char *cwd, const char *log)
 {
-    return tool_run_within(argv, cwd, log, 120);
+    return tool_run_within(argv, cwd, log, FIRST_COMPILE_SECONDS);
 }
 
 static void path(char *out, const char *relative)
@@ -611,6 +618,26 @@ TEST_CASE(compiler_runs_cost_explanation_regressions)
     return true;
 }
 
+/* A package that declares `foreign import`, or imports one that does, is native
+ * only: the VM cannot prepare it, so the runner reports it as skipped. */
+TEST_CASE(compiler_test_skips_native_only_packages)
+{
+    const char *run[] = { compiler,
+                          "--project-root",
+                          CHIBI_SOURCE_ROOT "/test/compiler/samples/native",
+                          "--test",
+                          NULL };
+    REQUIRE(cli_run(run, root, log_path) == 0);
+    REQUIRE(file_is(
+        "output.log",
+        "SKIP foreign_declared/facts (native only: foreign import)\n"
+        "SKIP foreign_library/facts (native only: foreign import)\n"
+        "PASS plain_package/facts.Calls\n"
+        "1 tests, 0 failed, 2 skipped\n"
+    ));
+    return true;
+}
+
 TEST_CASE(compiler_test_needs_the_core_collection)
 {
     const char *directories[] = { "sdk", "sdk/bin" };
@@ -682,12 +709,14 @@ TEST_CASE(native_build_forwards_driver_arguments)
         sizeof expected,
         "--root\n%s/share/chibi/tools/native_aot\n"
         "--source\n%s/share/chibi/tools/native_aot/Driver.chibi\n"
+        "--collection\nnative_aot=%s/share/chibi/tools/native_aot/driver\n"
         "--core\n%s/share/chibi/core\n--compiler\n%s/share/chibi/compiler\n"
         "--compiler-core\n%s/share/chibi/"
         "core\n--entry\nNative\n--timeout-ms\n900000\n--\n"
         "%s/bin/../libexec/chibi/chibi-compiler-host\n%s/share/chibi/"
         "compiler\n%s/share/chibi/core\n"
         "%s\n%s\n0\nlines\narm64-apple-darwin\n",
+        root,
         root,
         root,
         root,
@@ -1098,9 +1127,12 @@ static size_t watch_output_size()
     return length;
 }
 
+/* A watched program compiles before it prints, and again after each edit it
+ * picks up: 8 s for a small one on a workstation, longer on a loaded CI runner,
+ * so its output gets the bound cli_run gives a first compile. */
 static bool watch_output(chibi_process *process, size_t after, const char *expected)
 {
-    double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
+    double deadline = chibi_process_now() + FIRST_COMPILE_SECONDS;
     do {
         char *text = tool_read(log_path);
         bool found = text && strlen(text) >= after && strstr(text + after, expected);
@@ -1385,7 +1417,7 @@ TEST_CASE(program_process_run_stops_children_when_only_parent_is_signalled)
 
 static bool pty_output(chibi_process *process, int master, char *text, size_t capacity, const char *expected)
 {
-    double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
+    double deadline = chibi_process_now() + FIRST_COMPILE_SECONDS;
     do {
         size_t used = strlen(text);
         if (used + 1 == capacity) {
@@ -1899,6 +1931,7 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(compiler_test_reports_each_test);
     RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
     RUN_TEST_CASE(compiler_runs_cost_explanation_regressions);
+    RUN_TEST_CASE(compiler_test_skips_native_only_packages);
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
     RUN_TEST_CASE(native_build_forwards_driver_arguments);
     RUN_TEST_CASE(run_dispatches_standalone_programs);

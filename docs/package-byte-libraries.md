@@ -91,7 +91,7 @@ Captured source bytes still participate in the final consistency check. The
 asset compiler's existing `ExplainCosts` facade from
 [#788](https://github.com/waldnercharles/chibi/pull/788) is preserved.
 
-[`Driver.chibi`](../tools/native_aot/Driver.chibi) compiles the private scalar
+[`Driver.chibi`](../tools/native_aot/driver/Driver.chibi) compiles the private scalar
 emitter with its four compiler packages and `core:strings`. Compilation and
 emitter cache identity share the same explicit core source list. Documentation
 generation prepares the complete public core with the standalone catalog; its

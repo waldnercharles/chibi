@@ -1,6 +1,7 @@
 package package_compiler
 
 import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
 
 // A query cursor is an invocation-owned pointer, with provenance distinct
 // from a numeric word, a managed pointer and a component reference.
@@ -20,13 +21,13 @@ QueryIteratorStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     if (!Single(description, QueryStorage) || description.record < 0 || types[description.record].kind != QueryDescriptorDecl) {
         return Fail(forest, item.node, document, "for requires a query description");
     }
-    if (Field(forest, item.node, "reverse") >= 0) {
+    if (Field(forest, item.node, syntax.FieldReverse) >= 0) {
         return Fail(forest, item.node, document, "Query iteration does not support reverse order");
     }
-    if (Field(forest, item.node, "key") >= 0) {
+    if (Field(forest, item.node, syntax.FieldKey) >= 0) {
         return Fail(forest, item.node, document, "Query iteration binds one row name");
     }
-    name_node := Field(forest, item.node, "name");
+    name_node := Field(forest, item.node, syntax.FieldName);
     row_type := types[description.record].parent;
     name := Text(forest, text, name_node);
     if (name == "") {
@@ -95,7 +96,7 @@ QueryIteratorStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     code.append(SymbolCode(ops, name_node, node));
     bound: Name[] = [{owned: false, name: name, place: LocalPlace, index: at.local + 1, storage: QueryStorage,
                       container: 0, record: row_type, writable: false, node: name_node}];
-    next: Work[] = [Visit(Field(forest, item.node, "body")), Resume(item.node, QueryIteratorEndPhase, 0, 0)];
+    next: Work[] = [Visit(Field(forest, item.node, syntax.FieldBody)), Resume(item.node, QueryIteratorEndPhase, 0, 0)];
     return Step.Emitted(code, slots, locals, cells, hosts, roots, [], bound, next, 0, NoValue(), NoValue(),
                         [head, leave, at.local, at.local + 1]);
 }

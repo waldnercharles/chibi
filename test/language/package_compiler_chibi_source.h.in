@@ -1,6 +1,7 @@
 #ifndef CHIBI_TEST_PACKAGE_COMPILER_CHIBI_SOURCE_H
 #define CHIBI_TEST_PACKAGE_COMPILER_CHIBI_SOURCE_H
 
+#include "json_string_chibi_source.h"
 #include "lexical_binding_chibi_source.h"
 #include "package_core_source.h"
 #include "package_graph_chibi_source.h"
@@ -44,6 +45,7 @@ static const char SCALAR_CASES_SOURCE[] = { @CHIBI_SCALAR_CASES_BYTES@ 0 };
 #define PACKAGE_COMPILER_SOURCE_INPUTS \
     PACKAGE_COMPILER_SOURCE("syntax_diagnostics/Diagnostics.chibi", SYNTAX_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("json_string/JsonString.chibi", JSON_STRING_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("source_snapshot/Snapshot.chibi", PACKAGE_SNAPSHOT_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("source_tokenizer/Tokenizer.chibi", SOURCE_TOKENIZER_SOURCE), \
     PACKAGE_COMPILER_SOURCE("source_parser/Tree.chibi", SOURCE_PARSER_TREE_SOURCE), \

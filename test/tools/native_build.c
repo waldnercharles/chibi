@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #if defined(__linux__) && defined(__x86_64__)
@@ -128,9 +129,32 @@ static int build_with(const char *program, const char *const *options, const cha
     argv[at++] = "--llvm";
     argv[at++] = llvm;
     argv[at] = game;
-    const char *envp[] = { "PATH=", NULL };
+    /* The build host recovers the compiler from source when its sources differ
+     * from the seed's, which takes minutes; the CI cache holds that recovery. */
+    char cache[1100] = "";
+    const char *configured = getenv("CHIBI_COMPILER_CACHE");
+    if (configured && *configured) {
+        snprintf(cache, sizeof cache, "CHIBI_COMPILER_CACHE=%s", configured);
+    }
+    const char *envp[] = { "PATH=", cache[0] ? cache : NULL, NULL };
+    time_t began = time(NULL);
     status = chibi_process_capture(program, argv, suite, envp, chibi_process_now() + 120, NULL, &out, &err);
-    assert(status.error == CHIBI_PROCESS_OK);
+    fprintf(
+        stderr,
+        "native build: %s took %ds (error %d, status %d)\n",
+        game,
+        (int)(time(NULL) - began),
+        (int)status.error,
+        status.status
+    );
+    /* A failed build, expected or not, leaves the child's stderr in the log,
+     * so a CI failure says why without a rerun. */
+    if (status.error != CHIBI_PROCESS_OK || status.status) {
+        fprintf(stderr, "native build: stderr:\n%s\n", errors);
+    }
+    if (status.error != CHIBI_PROCESS_OK) {
+        return -1;
+    }
     return status.status;
 }
 
@@ -725,6 +749,99 @@ TEST_CASE(native_build_links_a_vendored_archive)
     return true;
 }
 
+static const char *const
+    PROC_SOURCE = "package scalar\n"
+                  "foreign import libc \"system:c\"\n"
+                  "foreign libc {\n"
+                  "    dlsym :: (handle: rawptr, name: cstring) -> rawptr\n"
+                  "}\n"
+                  "Main :: () -> int {\n"
+                  "    absolute: fn(n: i32) -> i32 = dlsym(0, \"abs\");\n"
+                  "    return absolute(-42) + 1;\n"
+                  "}\n";
+
+/* A program calls a C function through an address: dlsym finds libc's abs, a
+ * local of function type holds it, and the call goes through the address. libc
+ * is linked dynamically by default, which is where dlsym lives. */
+TEST_CASE(native_build_calls_through_a_function_pointer)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", NULL };
+    reset("procedure", PROC_SOURCE);
+    real_tools(bin);
+    REQUIRE(build_with(in_place, options, tools) == 0);
+    char program[1024];
+    REQUIRE(printed(program));
+    const char *argv[] = { program, NULL };
+    const char *envp[] = { NULL };
+    chibi_process_output out = { 0 }, err = { 0 };
+    chibi_process_capture_result ran = chibi_process_capture(
+        program,
+        argv,
+        game,
+        envp,
+        chibi_process_now() + 10,
+        NULL,
+        &out,
+        &err
+    );
+    REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 43);
+    return true;
+}
+
+static const char *const BYTES_SOURCE = "package scalar\n"
+                                        "foreign import libc \"system:c\"\n"
+                                        "foreign libc {\n"
+                                        "    memset :: (buffer: u8[], value: "
+                                        "i32, count: u64) -> rawptr\n"
+                                        "}\n"
+                                        "Main :: () -> int {\n"
+                                        "    buffer: u8[] = [1, 2, 3, 4];\n"
+                                        "    done := memset(buffer, 7, 3);\n"
+                                        "    return int(buffer[0]) + "
+                                        "int(buffer[2]) + int(buffer[3]);\n"
+                                        "}\n";
+
+/* An array of bytes passes to C as the pointer to its elements, and the callee
+ * writes through it: libc's memset fills the first three of four bytes. */
+TEST_CASE(native_build_passes_a_byte_array_to_c)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", NULL };
+    reset("bytes", BYTES_SOURCE);
+    real_tools(bin);
+    REQUIRE(build_with(in_place, options, tools) == 0);
+    char program[1024];
+    REQUIRE(printed(program));
+    const char *argv[] = { program, NULL };
+    const char *envp[] = { NULL };
+    chibi_process_output out = { 0 }, err = { 0 };
+    chibi_process_capture_result ran = chibi_process_capture(
+        program,
+        argv,
+        game,
+        envp,
+        chibi_process_now() + 10,
+        NULL,
+        &out,
+        &err
+    );
+    REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 18);
+    return true;
+}
+
 /* The other targets' bundle directories and program names, in the
  * driver's target order after Linux. */
 static const struct
@@ -816,27 +933,29 @@ static bool object_holds(const char *out, const char *bytes, size_t size)
 static bool driver_build(const char *ir, const char *out)
 {
     char host[1024], share[1024], driver[1024], source[1024], core[1024],
-        compiler[1024], opt[1024], llc[1024], lld[1024];
+        compiler[1024], opt[1024], llc[1024], lld[1024], collection[1100];
     path(host, sdk, "libexec/chibi/chibi-build-host");
     path(share, sdk, "share/chibi");
     path(driver, share, "tools/native_aot");
     path(source, driver, "Driver.chibi");
+    snprintf(collection, sizeof collection, "native_aot=%s/driver", driver);
     path(core, share, "core");
     path(compiler, share, "compiler");
     path(opt, tools, "opt");
     path(llc, tools, "llc");
     path(lld, tools, "ld.lld");
-    const char *argv[] = { host,     "--root",
-                           driver,   "--source",
-                           source,   "--core",
-                           core,     "--compiler",
-                           compiler, "--compiler-core",
-                           core,     "--entry",
-                           "Build",  "--timeout-ms",
-                           "120000", "--",
-                           ir,       out,
-                           opt,      llc,
-                           lld,      "2",
+    const char *argv[] = { host,       "--root",
+                           driver,     "--source",
+                           source,     "--collection",
+                           collection, "--core",
+                           core,       "--compiler",
+                           compiler,   "--compiler-core",
+                           core,       "--entry",
+                           "Build",    "--timeout-ms",
+                           "120000",   "--",
+                           ir,         out,
+                           opt,        llc,
+                           lld,        "2",
                            NULL };
     const char *envp[] = { "PATH=", NULL };
     chibi_process_output out_text = { .data = output, .capacity = sizeof output };
@@ -918,6 +1037,9 @@ TEST_CASE(native_build_links_other_targets_with_llvm)
 void test_native_build(const char *binary)
 {
 #if defined(__linux__) && defined(__x86_64__)
+    /* A timeout kills this process; unbuffered output keeps the progress it made. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
     strcpy(suite, "/tmp/chibi-native-build-XXXXXX");
     assert(mkdtemp(suite));
     char *resolved = realpath(suite, NULL);
@@ -937,6 +1059,8 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_refuses_an_incomplete_output);
     RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
     RUN_TEST_CASE(native_build_links_a_vendored_archive);
+    RUN_TEST_CASE(native_build_calls_through_a_function_pointer);
+    RUN_TEST_CASE(native_build_passes_a_byte_array_to_c);
     RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
     free(stage_tool);
     tool_remove_tree(suite);

@@ -5,6 +5,7 @@ import graph "project:package_graph"
 import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 import strings "core:strings"
+import tk "project:source_tokenizer"
 
 // Type binders and resolved call sites belong to one concrete function.
 // They are compile-time names; neither becomes a runtime value or ABI port.
@@ -38,7 +39,7 @@ GenericArguments :: union {
     Failed(diagnostic: syntax.Diagnostic) | Bound(names: Name[])
 }
 GenericBinder :: (forest: snapshot.SnapshotNode[], node: int) -> int {
-    if (node < 0 || Is(forest, node, "type_binder")) {
+    if (node < 0 || Is(forest, node, syntax.TypeBinder)) {
         return node;
     }
     for (child in Members(forest, node)) {
@@ -50,32 +51,32 @@ GenericBinder :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     return -1;
 }
 GenericTemplate :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
-    parameters := Field(forest, node, "parameters");
+    parameters := Field(forest, node, syntax.FieldParameters);
     if (GenericBinder(forest, parameters) >= 0) {
         return true;
     }
     for (parameter in Members(forest, parameters)) {
-        if (Field(forest, parameter, "comptime") >= 0 ||
-            GenericCallableType(forest, Field(forest, parameter, "type")) >= 0) {
+        if (Field(forest, parameter, syntax.FieldComptime) >= 0 ||
+            GenericCallableType(forest, Field(forest, parameter, syntax.FieldType)) >= 0) {
             return true;
         }
     }
     return false;
 }
 GenericCallableType :: (forest: snapshot.SnapshotNode[], node: int) -> int {
-    if (node < 0 || Is(forest, node, "callable_type")) {
+    if (node < 0 || Is(forest, node, syntax.CallableType)) {
         return node;
     }
-    if (!Is(forest, node, "type") || HasToken(forest, node, "[") || HasToken(forest, node, "?") ||
-        Field(forest, node, "trait") >= 0) {
+    if (!Is(forest, node, syntax.Type) || HasToken(forest, node, tk.OpenBracket) || HasToken(forest, node, tk.Question) ||
+        Field(forest, node, syntax.FieldTrait) >= 0) {
         return -1;
     }
     for (child in Members(forest, node)) {
-        if (Is(forest, child, "callable_type")) {
+        if (Is(forest, child, syntax.CallableType)) {
             return child;
         }
-        if (Is(forest, child, "parenthesized_type")) {
-            return GenericCallableType(forest, Field(forest, child, "type"));
+        if (Is(forest, child, syntax.ParenthesizedType)) {
+            return GenericCallableType(forest, Field(forest, child, syntax.FieldType));
         }
     }
     return -1;
@@ -92,26 +93,26 @@ GenericOmitted :: (names: Name[], node: int) -> bool {
 // are never runtime parameters; each instance appends its own typed signature.
 GenericParameters :: (forest: snapshot.SnapshotNode[], text: string, declaration: int) -> Param[] {
     params: Param[] = [];
-    for (parameter in Members(forest, Field(forest, declaration, "parameters"))) {
+    for (parameter in Members(forest, Field(forest, declaration, syntax.FieldParameters))) {
         storage: int = 0;
-        if (GenericCallableType(forest, Field(forest, parameter, "type")) >= 0) {
+        if (GenericCallableType(forest, Field(forest, parameter, syntax.FieldType)) >= 0) {
             storage = GenericFunctionStorage;
         }
-        params.append({name: Text(forest, text, Field(forest, parameter, "name")), storage: storage,
+        params.append({name: Text(forest, text, Field(forest, parameter, syntax.FieldName)), storage: storage,
                        container: 0, record: -1, has_default: false, default_bits: 0, default_text: "",
-                       default_occurrence: 0, reference: false, written: false, node: Field(forest, parameter, "name")});
+                       default_occurrence: 0, reference: false, written: false, node: Field(forest, parameter, syntax.FieldName)});
     }
     return params;
 }
 GenericArgumentValue :: (forest: snapshot.SnapshotNode[], argument: int) -> int {
-    if (Is(forest, argument, "named_argument")) { return Field(forest, argument, "value"); }
+    if (Is(forest, argument, syntax.NamedArgument)) { return Field(forest, argument, syntax.FieldValue); }
     return argument;
 }
 GenericSourceParameter :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], definition: Callable,
                            argument: int, position: int) -> int {
-    if (!Is(forest, argument, "named_argument")) { return position; }
-    label := Text(forest, text, Field(forest, argument, "name"));
-    count := length(Members(forest, Field(forest, definition.node, "parameters")));
+    if (!Is(forest, argument, syntax.NamedArgument)) { return position; }
+    label := Text(forest, text, Field(forest, argument, syntax.FieldName));
+    count := length(Members(forest, Field(forest, definition.node, syntax.FieldParameters)));
     index: int = 0;
     while (index < count) {
         if (params[definition.first + index].name == label) { return index; }
@@ -127,8 +128,8 @@ GenericResolvedCall :: (names: Name[], call: int) -> bool {
 }
 GenericCallParameter :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                          names: Name[], called: int, call: int, argument: int, ordinal: int) -> int {
-    if (GenericResolvedCall(names, call) && Is(forest, argument, "named_argument")) {
-        label := Text(forest, text, Field(forest, argument, "name"));
+    if (GenericResolvedCall(names, call) && Is(forest, argument, syntax.NamedArgument)) {
+        label := Text(forest, text, Field(forest, argument, syntax.FieldName));
         index: int = 0;
         while (called >= 0 && index < callables[called].count) {
             if (params[callables[called].first + index].name == label) { return index; }
@@ -143,10 +144,10 @@ GenericCallParameter :: (forest: snapshot.SnapshotNode[], text: string, callable
 GenericFunctionTarget :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[],
                           natives: ResolvedNative[], names: Name[], package: int, node: int) -> int {
     value := Unparenthesized(forest, node);
-    if (Is(forest, value, "lambda_expression")) {
+    if (Is(forest, value, syntax.LambdaExpression)) {
         return -2;
     }
-    if (Is(forest, value, "identifier")) {
+    if (Is(forest, value, syntax.Identifier)) {
         name := Text(forest, text, value);
         local := Lookup(names, name);
         if (local >= 0 && !Alias(names[local].place)) {
@@ -157,18 +158,18 @@ GenericFunctionTarget :: (forest: snapshot.SnapshotNode[], text: string, callabl
         }
         return SourceCallable(callables, natives, names, package, name);
     }
-    if (Is(forest, value, "member_expression")) {
-        home := QualifierOf(forest, text, names, package, Field(forest, value, "object"));
+    if (Is(forest, value, syntax.MemberExpression)) {
+        home := QualifierOf(forest, text, names, package, Field(forest, value, syntax.FieldObject));
         if (home >= 0) {
-            return QualifiedCallable(callables, natives, names, home, Text(forest, text, Field(forest, value, "member")),
+            return QualifiedCallable(callables, natives, names, home, Text(forest, text, Field(forest, value, syntax.FieldMember)),
                                      Text(forest, text, value));
         }
     }
     return -1;
 }
 GenericCallbackSignature :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], call: int) -> int {
-    callee := Field(forest, call, "function");
-    if (!Is(forest, callee, "identifier")) {
+    callee := Field(forest, call, syntax.FieldFunction);
+    if (!Is(forest, callee, syntax.Identifier)) {
         return -1;
     }
     found := Lookup(names, Text(forest, text, callee));
@@ -179,14 +180,14 @@ GenericCallbackSignature :: (forest: snapshot.SnapshotNode[], text: string, name
 }
 GenericCallbackParameter :: (forest: snapshot.SnapshotNode[], text: string, signature: int,
                              argument: int, ordinal: int) -> int {
-    if (signature < 0 || !Is(forest, argument, "named_argument")) {
+    if (signature < 0 || !Is(forest, argument, syntax.NamedArgument)) {
         return ordinal;
     }
-    label := Text(forest, text, Field(forest, argument, "name"));
-    parameters := Members(forest, Field(forest, signature, "parameters"));
+    label := Text(forest, text, Field(forest, argument, syntax.FieldName));
+    parameters := Members(forest, Field(forest, signature, syntax.FieldParameters));
     index: int = 0;
     while (index < length(parameters)) {
-        if (Text(forest, text, Field(forest, parameters[index], "name")) == label) {
+        if (Text(forest, text, Field(forest, parameters[index], syntax.FieldName)) == label) {
             return index;
         }
         index += 1;
@@ -200,9 +201,9 @@ GenericPatternName :: (forest: snapshot.SnapshotNode[], text: string, condition:
     while (length(pending) > 0) {
         node := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
-        if (Is(forest, node, "is_expression") && QueryPatternScope(forest, text, node, read)) {
-            pattern := Field(forest, node, "type");
-            for (bound in Members(forest, Field(forest, pattern, "bindings"))) {
+        if (Is(forest, node, syntax.IsExpression) && QueryPatternScope(forest, text, node, read)) {
+            pattern := Field(forest, node, syntax.FieldType);
+            for (bound in Members(forest, Field(forest, pattern, syntax.FieldBindings))) {
                 if (Text(forest, text, bound) == name) {
                     return true;
                 }
@@ -213,41 +214,41 @@ GenericPatternName :: (forest: snapshot.SnapshotNode[], text: string, condition:
     return false;
 }
 GenericLambdaOwnName :: (forest: snapshot.SnapshotNode[], text: string, lambda: int, read: int, name: string) -> bool {
-    for (param in Members(forest, Field(forest, lambda, "parameters"))) {
-        if (Text(forest, text, Field(forest, param, "name")) == name) {
+    for (param in Members(forest, Field(forest, lambda, syntax.FieldParameters))) {
+        if (Text(forest, text, Field(forest, param, syntax.FieldName)) == name) {
             return true;
         }
     }
-    for (result in Members(forest, Field(forest, lambda, "results"))) {
-        if (Text(forest, text, Field(forest, result, "name")) == name) {
+    for (result in Members(forest, Field(forest, lambda, syntax.FieldResults))) {
+        if (Text(forest, text, Field(forest, result, syntax.FieldName)) == name) {
             return true;
         }
     }
     ancestor := forest[read].parent;
     while (ancestor >= 0 && ancestor != lambda) {
-        if (Is(forest, ancestor, "block") || Is(forest, ancestor, "callable_body")) {
+        if (Is(forest, ancestor, syntax.Block) || Is(forest, ancestor, syntax.CallableBody)) {
             for (statement in Members(forest, ancestor)) {
-                if (Is(forest, statement, "local_declaration") && forest[statement].end <= forest[read].start &&
-                    Text(forest, text, Field(forest, statement, "name")) == name) {
+                if (Is(forest, statement, syntax.LocalDeclaration) && forest[statement].end <= forest[read].start &&
+                    Text(forest, text, Field(forest, statement, syntax.FieldName)) == name) {
                     return true;
                 }
             }
         }
-        if (Is(forest, ancestor, "for_statement") && Ancestor(forest, Field(forest, ancestor, "body"), read) &&
-            (Text(forest, text, Field(forest, ancestor, "name")) == name ||
-             Text(forest, text, Field(forest, ancestor, "key")) == name)) {
+        if (Is(forest, ancestor, syntax.ForStatement) && Ancestor(forest, Field(forest, ancestor, syntax.FieldBody), read) &&
+            (Text(forest, text, Field(forest, ancestor, syntax.FieldName)) == name ||
+             Text(forest, text, Field(forest, ancestor, syntax.FieldKey)) == name)) {
             return true;
         }
-        if (Is(forest, ancestor, "switch_arm") && Ancestor(forest, Field(forest, ancestor, "body"), read)) {
-            pattern := Field(forest, ancestor, "value");
-            for (bound in Members(forest, Field(forest, pattern, "bindings"))) {
+        if (Is(forest, ancestor, syntax.SwitchArm) && Ancestor(forest, Field(forest, ancestor, syntax.FieldBody), read)) {
+            pattern := Field(forest, ancestor, syntax.FieldValue);
+            for (bound in Members(forest, Field(forest, pattern, syntax.FieldBindings))) {
                 if (Text(forest, text, bound) == name) {
                     return true;
                 }
             }
         }
-        if ((Is(forest, ancestor, "if_statement") || Is(forest, ancestor, "while_statement")) &&
-            GenericPatternName(forest, text, Field(forest, ancestor, "condition"), read, name)) {
+        if ((Is(forest, ancestor, syntax.IfStatement) || Is(forest, ancestor, syntax.WhileStatement)) &&
+            GenericPatternName(forest, text, Field(forest, ancestor, syntax.FieldCondition), read, name)) {
             return true;
         }
         ancestor = forest[ancestor].parent;
@@ -255,18 +256,18 @@ GenericLambdaOwnName :: (forest: snapshot.SnapshotNode[], text: string, lambda: 
     return false;
 }
 GenericLambdaCapture :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], lambda: int) -> int {
-    pending: int[] = [Field(forest, lambda, "body")];
+    pending: int[] = [Field(forest, lambda, syntax.FieldBody)];
     while (length(pending) > 0) {
         node := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
-        if (Is(forest, node, "lambda_expression") || Is(forest, node, "function_declaration")) {
+        if (Is(forest, node, syntax.LambdaExpression) || Is(forest, node, syntax.FunctionDeclaration)) {
             continue;
         }
-        if (Is(forest, node, "identifier")) {
+        if (Is(forest, node, syntax.Identifier)) {
             parent := forest[node].parent;
-            declaration := Field(forest, parent, "member") == node || Field(forest, parent, "name") == node ||
-                           Is(forest, parent, "pattern_bindings") ||
-                           (Is(forest, parent, "for_statement") && Field(forest, parent, "key") == node);
+            declaration := Field(forest, parent, syntax.FieldMember) == node || Field(forest, parent, syntax.FieldName) == node ||
+                           Is(forest, parent, syntax.PatternBindings) ||
+                           (Is(forest, parent, syntax.ForStatement) && Field(forest, parent, syntax.FieldKey) == node);
             if (!declaration) {
                 name := Text(forest, text, node);
                 outer := Lookup(names, name);
@@ -336,7 +337,7 @@ GenericConstants :: (forest: snapshot.SnapshotNode[], constants: ConstDecl[], bi
 GenericElement :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[]), annotation: int,
                    argument: ValueType, package: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
-    if (!Is(forest, annotation, "type") || argument.storage <= 0) {
+    if (!Is(forest, annotation, syntax.Type) || argument.storage <= 0) {
         return none;
     }
     value := argument;
@@ -347,7 +348,7 @@ GenericElement :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeD
     suffixes: int[] = [];
     child := forest[annotation].first_child;
     while (child >= 0) {
-        if (!forest[child].is_extra && (forest[child].kind == "[" || forest[child].kind == "?")) {
+        if (!forest[child].is_extra && (forest[child].kind == tk.OpenBracket || forest[child].kind == tk.Question)) {
             suffixes.append(child);
         }
         child = forest[child].next_sibling;
@@ -355,7 +356,7 @@ GenericElement :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeD
     at := length(suffixes) - 1;
     while (at >= 0) {
         token := forest[suffixes[at]].kind;
-        if (token == "[") {
+        if (token == tk.OpenBracket) {
             expected := ArrayContainer;
             if (view) { expected = ViewContainer; }
             if (value.container != expected) { return none; }
@@ -382,7 +383,7 @@ GenericElement :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeD
             return none;
         }
         element := PointerElement(table^, Typed(-1, value.storage, value.container, value.record));
-        return GenericElement(forest, text, table, Field(forest, pointer, "target"), element, package);
+        return GenericElement(forest, text, table, Field(forest, pointer, syntax.FieldTarget), element, package);
     }
     grouped := TypeGroupNode(forest, annotation);
     if (grouped >= 0) {
@@ -393,7 +394,7 @@ GenericElement :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeD
 GenericNames :: (forest: snapshot.SnapshotNode[], text: string, document: int, callable: Callable,
                  table: ^(TypeDecl[]), arguments: ValueType[]) -> GenericArguments {
     names: Name[] = [];
-    parameters := Members(forest, Field(forest, callable.node, "parameters"));
+    parameters := Members(forest, Field(forest, callable.node, syntax.FieldParameters));
     if (length(parameters) != length(arguments)) {
         return GenericArguments.Failed(Diagnose(forest, callable.node, document,
                                                 "generic call needs one value per parameter"));
@@ -401,11 +402,11 @@ GenericNames :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
     at: int = 0;
     while (at < length(parameters)) {
         parameter := parameters[at];
-        if (Field(forest, parameter, "comptime") >= 0) {
+        if (Field(forest, parameter, syntax.FieldComptime) >= 0) {
             at += 1;
             continue;
         }
-        annotation := Field(forest, parameter, "type");
+        annotation := Field(forest, parameter, syntax.FieldType);
         binder := GenericBinder(forest, annotation);
         if (GenericCallableType(forest, annotation) >= 0) {
             at += 1;
@@ -418,7 +419,7 @@ GenericNames :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
                 return GenericArguments.Failed(Diagnose(forest, parameter, document,
                                                         "generic argument does not match its collection type"));
             }
-            name := Text(forest, text, Field(forest, binder, "name"));
+            name := Text(forest, text, Field(forest, binder, syntax.FieldName));
             previous := Lookup(names, name);
             if (previous >= 0) {
                 bound := names[previous];
@@ -488,7 +489,7 @@ GenericConstantValue :: (forest: snapshot.SnapshotNode[], text: string, document
         return FoldConstant(forest, text, document, constants, aliases, package, node, storage);
     }
     value := Unparenthesized(forest, node);
-    if (Is(forest, value, "boolean")) {
+    if (Is(forest, value, syntax.Boolean)) {
         if (Text(forest, text, value) == "true") {
             return Folding.Folded(1);
         }
@@ -532,21 +533,21 @@ GenericFunctionArguments :: (forest: snapshot.SnapshotNode[], documents: snapsho
     document := documents[caller.document];
     aliases := Aliases(links, definition.document);
     aliases.extend(names);
-    parameters := Members(forest, Field(forest, definition.node, "parameters"));
-    supplied := Members(forest, Field(forest, call, "arguments"));
+    parameters := Members(forest, Field(forest, definition.node, syntax.FieldParameters));
+    supplied := Members(forest, Field(forest, call, syntax.FieldArguments));
     values := supplied;
     position: int = 0;
     for (argument in supplied) {
         parameter := GenericSourceParameter(forest, document.text, params, definition, argument, position);
         values[parameter] = argument;
-        if (!Is(forest, argument, "named_argument")) { position += 1; }
+        if (!Is(forest, argument, syntax.NamedArgument)) { position += 1; }
     }
     ordinal: int = 0;
     while (ordinal < length(parameters)) {
         parameter := parameters[ordinal];
-        signature := GenericCallableType(forest, Field(forest, parameter, "type"));
-        if (Field(forest, parameter, "comptime") >= 0) {
-            declared := ReadType(forest, source.text, table, aliases, definition.package, Field(forest, parameter, "type"));
+        signature := GenericCallableType(forest, Field(forest, parameter, syntax.FieldType));
+        if (Field(forest, parameter, syntax.FieldComptime) >= 0) {
+            declared := ReadType(forest, source.text, table, aliases, definition.package, Field(forest, parameter, syntax.FieldType));
             if (declared.container != 0 || declared.record >= 0 ||
                 (!Integer(declared.storage) && !Floating(declared.storage) && declared.storage != BoolStorage)) {
                 return GenericFunctions.Failed(Diagnose(forest, parameter, definition.document,
@@ -565,10 +566,10 @@ GenericFunctionArguments :: (forest: snapshot.SnapshotNode[], documents: snapsho
                 case .Folded(value):
                     bits = value;
             }
-            name := Text(forest, source.text, Field(forest, parameter, "name"));
+            name := Text(forest, source.text, Field(forest, parameter, syntax.FieldName));
             constant: GenericBinding = {owner: -1, name: name, place: GenericConstantPlace, index: 0,
                                         storage: declared.storage, container: 0, record: -1,
-                                        node: Field(forest, parameter, "name"), bits: bits};
+                                        node: Field(forest, parameter, syntax.FieldName), bits: bits};
             key: Name = {owned: false, name: name, place: GenericConstantPlace, index: length(bindings), storage: declared.storage,
                          container: 0, record: -1, writable: false, node: constant.node};
             names.append(key);
@@ -583,12 +584,12 @@ GenericFunctionArguments :: (forest: snapshot.SnapshotNode[], documents: snapsho
             ordinal += 1;
             continue;
         }
-        if (Field(forest, parameter, "value") >= 0 || Field(forest, parameter, "source") >= 0) {
+        if (Field(forest, parameter, syntax.FieldValue) >= 0 || Field(forest, parameter, syntax.FieldSource) >= 0) {
             return GenericFunctions.Failed(Diagnose(forest, parameter, definition.document,
                                                     "Callable parameters cannot have defaults or source qualifiers"));
         }
-        for (input in Members(forest, Field(forest, signature, "parameters"))) {
-            if (Field(forest, input, "value") >= 0 || Field(forest, input, "source") >= 0) {
+        for (input in Members(forest, Field(forest, signature, syntax.FieldParameters))) {
+            if (Field(forest, input, syntax.FieldValue) >= 0 || Field(forest, input, syntax.FieldSource) >= 0) {
                 return GenericFunctions.Failed(Diagnose(forest, input, definition.document,
                                                         "Callable signature parameters cannot have defaults or source qualifiers"));
             }
@@ -635,11 +636,11 @@ GenericFunctionArguments :: (forest: snapshot.SnapshotNode[], documents: snapsho
                     case .Read(found, added):
                         result: ValueType = {storage: found.result, container: found.result_container,
                                              record: found.result_record};
-                        if (Field(forest, lambda, "results") < 0) {
+                        if (Field(forest, lambda, syntax.FieldResults) < 0) {
                             result = {storage: GenericInferStorage, container: 0, record: -1};
                         }
                         concrete := GenericCallable(found, id, caller.owner_package,
-                                                    WaitingBody(forest, Field(forest, lambda, "body")), result);
+                                                    WaitingBody(forest, Field(forest, lambda, syntax.FieldBody)), result);
                         target = length(callables);
                         callables.append(concrete);
                         params.extend(added);
@@ -670,9 +671,9 @@ GenericFunctionArguments :: (forest: snapshot.SnapshotNode[], documents: snapsho
             return GenericFunctions.Failed(Diagnose(forest, values[ordinal], caller.document,
                                                     "Function argument does not match the callable parameter signature"));
         }
-        function_name: Name = {owned: false, name: Text(forest, source.text, Field(forest, parameter, "name")), place: GenericFunctionPlace,
+        function_name: Name = {owned: false, name: Text(forest, source.text, Field(forest, parameter, syntax.FieldName)), place: GenericFunctionPlace,
                                index: target, storage: GenericFunctionStorage, container: 0, record: signature,
-                               writable: false, node: Field(forest, parameter, "name")};
+                               writable: false, node: Field(forest, parameter, syntax.FieldName)};
         names.append(function_name);
         omitted_binding: GenericBinding = {owner: owner, name: "", place: GenericOmittedPlace, index: 0,
                                            storage: 0, container: 0, record: -1, node: values[ordinal], bits: 0};
@@ -992,7 +993,7 @@ DocumentOf :: (documents: snapshot.Document[], node: int) -> int {
 ArgumentType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], package: int,
                  argument: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
-    if (Is(forest, argument, "identifier") || Is(forest, argument, "type_name")) {
+    if (Is(forest, argument, syntax.Identifier) || Is(forest, argument, syntax.TypeName)) {
         name := Text(forest, text, argument);
         scalar := ScalarStorage(name);
         if (scalar != 0) {
@@ -1013,7 +1014,7 @@ ArgumentType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[
         }
         return none;
     }
-    if (Is(forest, argument, "call_expression") || Is(forest, argument, "type_application")) {
+    if (Is(forest, argument, syntax.CallExpression) || Is(forest, argument, syntax.TypeApplication)) {
         found := FindType(types, package, ApplicationName(forest, text, types, package, argument));
         if (found < 0) {
             return none;
@@ -1025,15 +1026,15 @@ ArgumentType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[
 // Whether the parameter node of a template takes a type rather than a value.
 TypeParameter :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], parameter: int) -> bool {
     document := DocumentOf(documents, parameter);
-    return document >= 0 && Text(forest, documents[document].text, Field(forest, parameter, "type")) == "Type";
+    return document >= 0 && Text(forest, documents[document].text, Field(forest, parameter, syntax.FieldType)) == "Type";
 }
 // The child of type node `node` that applies a template, -1 for none.
 ApplicationNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
-    if (Is(forest, node, "type_application")) {
+    if (Is(forest, node, syntax.TypeApplication)) {
         return node;
     }
     for (child in Members(forest, node)) {
-        if (Is(forest, child, "type_application")) {
+        if (Is(forest, child, syntax.TypeApplication)) {
             return child;
         }
     }
@@ -1043,12 +1044,12 @@ ApplicationNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 // type for a `Type` parameter, a number for any other.
 ApplicationFits :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], types: TypeDecl[],
                     package: int, text: string, application: int) -> bool {
-    template := FindType(types, package, Text(forest, text, Field(forest, application, "function")));
-    parameters := Members(forest, Field(forest, types[template].node, "parameters"));
-    arguments := Members(forest, Field(forest, application, "arguments"));
+    template := FindType(types, package, Text(forest, text, Field(forest, application, syntax.FieldFunction)));
+    parameters := Members(forest, Field(forest, types[template].node, syntax.FieldParameters));
+    arguments := Members(forest, Field(forest, application, syntax.FieldArguments));
     index: int = 0;
     while (index < length(arguments)) {
-        if (Is(forest, arguments[index], "number") == TypeParameter(forest, documents, parameters[index])) {
+        if (Is(forest, arguments[index], syntax.Number) == TypeParameter(forest, documents, parameters[index])) {
             return false;
         }
         index += 1;
@@ -1060,7 +1061,7 @@ ApplicationFits :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
 // or an argument does not fit its parameter.
 ApplicationName :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], package: int,
                     application: int) -> string {
-    function := Field(forest, application, "function");
+    function := Field(forest, application, syntax.FieldFunction);
     if (function < 0) {
         return "";
     }
@@ -1069,8 +1070,8 @@ ApplicationName :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
     if (template < 0 || types[template].kind != TemplateDecl) {
         return "";
     }
-    parameters := Members(forest, Field(forest, types[template].node, "parameters"));
-    arguments := Members(forest, Field(forest, application, "arguments"));
+    parameters := Members(forest, Field(forest, types[template].node, syntax.FieldParameters));
+    arguments := Members(forest, Field(forest, application, syntax.FieldArguments));
     if (length(parameters) != length(arguments)) {
         return "";
     }
@@ -1079,7 +1080,7 @@ ApplicationName :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
     while (index < length(arguments)) {
         argument := arguments[index];
         piece := "";
-        if (Is(forest, argument, "number")) {
+        if (Is(forest, argument, syntax.Number)) {
             piece = Text(forest, text, argument);
         } else {
             resolved := ArgumentType(forest, text, types, package, argument);
@@ -1105,15 +1106,15 @@ ApplicationName :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
 ApplicationBindings :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], text: string,
                         types: TypeDecl[], package: int, application: int) -> Name[] {
     bound: Name[] = [];
-    template := FindType(types, package, Text(forest, text, Field(forest, application, "function")));
-    parameters := Members(forest, Field(forest, types[template].node, "parameters"));
-    arguments := Members(forest, Field(forest, application, "arguments"));
+    template := FindType(types, package, Text(forest, text, Field(forest, application, syntax.FieldFunction)));
+    parameters := Members(forest, Field(forest, types[template].node, syntax.FieldParameters));
+    arguments := Members(forest, Field(forest, application, syntax.FieldArguments));
     index: int = 0;
     while (index < length(parameters)) {
         if (TypeParameter(forest, documents, parameters[index])) {
             resolved := ArgumentType(forest, text, types, package, arguments[index]);
             document := DocumentOf(documents, parameters[index]);
-            type_name: Name = {owned: false, name: Text(forest, documents[document].text, Field(forest, parameters[index], "name")),
+            type_name: Name = {owned: false, name: Text(forest, documents[document].text, Field(forest, parameters[index], syntax.FieldName)),
                                place: GenericTypePlace, index: 0, storage: resolved.storage,
                                container: resolved.container, record: resolved.record, writable: false, node: -1};
             bound.append(type_name);
@@ -1159,13 +1160,13 @@ InstantiateRecords :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             node := documents[file].node_start;
             end := node + documents[file].node_count;
             while (node < end) {
-                if (Is(forest, node, "type_application") || Is(forest, node, "call_expression")) {
+                if (Is(forest, node, syntax.TypeApplication) || Is(forest, node, syntax.CallExpression)) {
                     canonical := ApplicationName(forest, text, types, package, node);
                     if (canonical != "" && FindType(types, package, canonical) < 0) {
                         if (!ApplicationFits(forest, documents, types, package, text, node)) {
                             return Instantiated.Failed(Diagnose(forest, node, file, "generic argument does not fit its parameter"));
                         }
-                        template := FindType(types, package, Text(forest, text, Field(forest, node, "function")));
+                        template := FindType(types, package, Text(forest, text, Field(forest, node, syntax.FieldFunction)));
                         bound := ApplicationBindings(forest, documents, text, types, package, node);
                         declared: TypeDecl = {name: canonical, type_name: format_text("{}.{}", package_name, canonical),
                                               package: package, node: types[template].node, kind: RecordDecl,
@@ -1173,10 +1174,10 @@ InstantiateRecords :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                               id: binding.ID("package-symbol", format_text("{}:{}:{}", identity, TypeKind, canonical)),
                                               layout: 0, component: 0, key: 0, value_storage: 0, value_container: 0,
                                               value_record: -1, error: false};
-                        body := Field(forest, types[template].node, "body");
+                        body := Field(forest, types[template].node, syntax.FieldBody);
                         template_document := DocumentOf(documents, types[template].node);
                         for (item in Members(forest, body)) {
-                            field: TypeMember = {name: Text(forest, documents[template_document].text, Field(forest, item, "name")),
+                            field: TypeMember = {name: Text(forest, documents[template_document].text, Field(forest, item, syntax.FieldName)),
                                                  storage: 0, container: 0, record: -1, offset: 0, writable: true,
                                                  c_string: false, constant: false, read: -1, read_key: ""};
                             members.append(field);
@@ -1215,8 +1216,8 @@ ResolveInstances :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docume
         names := Aliases(links, file);
         names.extend(slice(bound, starts[at], counts[at]));
         index := types[record].first;
-        for (field_node in Members(forest, Field(forest, types[record].node, "body"))) {
-            resolved := ReadType(forest, documents[file].text, &types, names, package, Field(forest, field_node, "type"));
+        for (field_node in Members(forest, Field(forest, types[record].node, syntax.FieldBody))) {
+            resolved := ReadType(forest, documents[file].text, &types, names, package, Field(forest, field_node, syntax.FieldType));
             if (!RecordFieldType(types, resolved)) {
                 return Resolved.Failed(Diagnose(forest, field_node, file,
                                                 "record fields require a scalar, pointer, record, union or array of those types"));

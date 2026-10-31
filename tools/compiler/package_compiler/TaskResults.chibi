@@ -1,6 +1,7 @@
 package package_compiler
 
 import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
 
 // A task join returns the native structural union T | Cancelled. These
 // declarations carry semantic tags, rather than source union variant names.
@@ -96,8 +97,8 @@ TaskResultDeclarations :: (callables: Callable[], params: Param[], input_types: 
     return TaskDeclarations.Collected(types, members);
 }
 TaskResultPattern :: (forest: snapshot.SnapshotNode[], text: string, condition: int) -> bool {
-    pattern := Field(forest, condition, "type");
-    return Text(forest, text, pattern) == "Cancelled" && Field(forest, condition, "binding") < 0;
+    pattern := Field(forest, condition, syntax.FieldType);
+    return Text(forest, text, pattern) == "Cancelled" && Field(forest, condition, syntax.FieldBinding) < 0;
 }
 TaskResultIsStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
                      members: TypeMember[], names: Name[], scope: int, values: Value[], top: int,
@@ -108,7 +109,7 @@ TaskResultIsStep :: (forest: snapshot.SnapshotNode[], text: string, document: in
     }
     variant := FindVariant(types, value.record, "Cancelled");
     return MatchStep(forest, text, document, types, members, names, scope, -1, value.slot, variant, -1,
-                     false, Field(forest, item.node, "negated") >= 0, -1, -1, ops, target, at, forest[item.node]);
+                     false, Field(forest, item.node, syntax.FieldNegated) >= 0, -1, -1, ops, target, at, forest[item.node]);
 }
 // A proof applies only within the tested branch and until a write or call
 // could change the binding. Loop back edges do not preserve an outer proof.
@@ -117,44 +118,44 @@ TaskResultPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Na
     // enclosing branch has already proved the success case.
     subject := node;
     test := forest[subject].parent;
-    while (Is(forest, test, "parenthesized_expression")) {
+    while (Is(forest, test, syntax.ParenthesizedExpression)) {
         subject = test;
         test = forest[subject].parent;
     }
-    if (Is(forest, test, "is_expression") && Field(forest, test, "value") == subject) {
+    if (Is(forest, test, syntax.IsExpression) && Field(forest, test, syntax.FieldValue) == subject) {
         return false;
     }
     function := node;
-    while (function >= 0 && !Is(forest, function, "function_declaration") && !Is(forest, function, "handler")) {
+    while (function >= 0 && !Is(forest, function, syntax.FunctionDeclaration) && !Is(forest, function, syntax.Handler)) {
         function = forest[function].parent;
     }
     if (function < 0) {
         return false;
     }
-    body := Field(forest, function, "body");
+    body := Field(forest, function, syntax.FieldBody);
     aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body, []), binding.name);
     child := node;
     parent := forest[node].parent;
     while (parent >= 0 && parent != function) {
-        if (Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) {
-            condition := Unparenthesized(forest, Field(forest, parent, "condition"));
-            consequence := Field(forest, parent, "consequence");
-            if (Is(forest, parent, "while_statement")) {
-                consequence = Field(forest, parent, "body");
+        if (Is(forest, parent, syntax.IfStatement) || Is(forest, parent, syntax.WhileStatement)) {
+            condition := Unparenthesized(forest, Field(forest, parent, syntax.FieldCondition));
+            consequence := Field(forest, parent, syntax.FieldConsequence);
+            if (Is(forest, parent, syntax.WhileStatement)) {
+                consequence = Field(forest, parent, syntax.FieldBody);
             }
             truth := consequence >= 0 && forest[child].start >= forest[consequence].start && forest[child].end <= forest[consequence].end;
-            alternative := Field(forest, parent, "alternative");
+            alternative := Field(forest, parent, syntax.FieldAlternative);
             false_branch := alternative >= 0 && forest[child].start >= forest[alternative].start &&
                             forest[child].end <= forest[alternative].end;
-            subject := Unparenthesized(forest, Field(forest, condition, "value"));
-            negated := Field(forest, condition, "negated") >= 0;
-            if (Is(forest, condition, "is_expression") && TaskResultPattern(forest, text, condition) &&
-                Is(forest, subject, "identifier") && Text(forest, text, subject) == binding.name &&
+            subject := Unparenthesized(forest, Field(forest, condition, syntax.FieldValue));
+            negated := Field(forest, condition, syntax.FieldNegated) >= 0;
+            if (Is(forest, condition, syntax.IsExpression) && TaskResultPattern(forest, text, condition) &&
+                Is(forest, subject, syntax.Identifier) && Text(forest, text, subject) == binding.name &&
                 (truth || false_branch) && truth == negated && (binding.node < 0 || forest[binding.node].start < forest[condition].start)) {
                 return !PointerProofChanged(forest, text, parent, forest[condition].end, forest[node].start,
                                             binding.name, aliased);
             }
-            if (Is(forest, parent, "while_statement")) {
+            if (Is(forest, parent, syntax.WhileStatement)) {
                 return false;
             }
         }

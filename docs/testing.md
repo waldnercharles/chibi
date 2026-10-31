@@ -185,7 +185,7 @@ above, which cannot access the generator's private parser native.
 
 `chibi build test <name>` runs one mapped selector against
 the drivers `make test-build` produced and those Release tools; set
-`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CTL`, `CHIBI_CLI` or
+`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CLI` or
 `CHIBI_COMPILE` to use another build.
 
 `chibi build test fixture-format` checks the fixed thirteen
@@ -936,16 +936,6 @@ assertions in 1.351 seconds. The room-border rules and player spawn remain
 project-owned scenario coverage.
 The tilemap case executes both tilemap functions on VM and SLJIT using one
 two-cell map, then edits its cells and checks the next dispatch sees the change.
-
-`chibi build test language-headless` selects two independently
-reviewed public SDK consumer cases on VM and SLJIT. Each owns one entity and
-scalar component, runs five explicit steps, and checks registration ownership,
-Begin, Tick, named payloads, bindings, destruction and removal. Preparation uses
-`Chibi::authoring`; its source snapshot is freed before execution. The second case
-round-trips prepared bytes, retires the producer module, and frees the bytes before
-execution. The consumer compiles with only `Chibi::behavior_runtime`. There are no
-files, processes or GPU work. Debug Clang 23.1.1 with ASan/UBSan passed two
-cases and 106 assertions in 0.635 seconds on 2026-10-07.
 
 `chibi build test language-prepared` starts the existing C tooling
 dispatcher with an exact compiler-test producer path. One producer process exports
@@ -2071,16 +2061,23 @@ accepted reads still fail the unchanged checksum check, then the original
 valid artifact loads again. Ordinary byte-output and asset-source bounds remain 16 MiB;
 only bootstrap closures and existing CLI file outputs use the artifact bound.
 
-`chibi build test bootstrap-recovery` (`make test-recovery`)
-selects two cases. It exports HEAD's `tools/compiler` and `packages/core` with
+`chibi build test bootstrap-recovery`, in the `language` group, selects two
+cases. `--validate` admits the checked-in `tools/compiler/bootstrap` for the
+working tree without recovering, and refuses a closure its manifest does not
+record. Then the case exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and has the unsanitized Release host recover the compiler from
-the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
-`CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact. The API recovery case
-adds a marker to the exported compiler source, recovers to a fixed point,
-executes the new export and verifies that the load API writes no output file.
-Interned strings keep the compiler near 9 MB and package sources are capped at
-8 MiB, so this case cannot cross 16 MiB; the sparse cases above cover the
-artifact bound. The instruction budgets and child deadlines are unchanged.
+the artifact.
+
+`chibi build test bootstrap-load` loads the compiler in process from a Release
+`test_tools`, since one recovery takes about 70 s there on an M5 and about 30
+minutes in a Debug build. CI runs it in its own Linux step. Its one case adds a
+marker to an exported compiler source and a new source file. The unlisted file
+is refused, naming `CompilerSources.txt`; once listed, one recovery compiles
+both. The load writes no output file, and the shared cache drops the oldest of
+two sparse 1 GiB entries to fit its 2 GiB budget. A second load reads the cached
+compiler without recovering. Interned strings keep the compiler near 23 MB, and
+package sources are capped at 8 MiB, so this case can't cross the artifact
+bound; the sparse cases above cover it.
 
 ## Compiler artifact runtime checks
 

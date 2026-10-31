@@ -50,11 +50,11 @@ void test_native_build(const char *binary);
 void test_native_workload_benchmark(const char *binary);
 void test_tool_chibi_cli_export(const char *binary);
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
-void test_tool_compiler_bootstrap(const char *producer, const char *host);
+void test_tool_compiler_bootstrap(const char *host);
 void test_tool_bootstrap_recovery(const char *host, const char *artifact);
+void test_tool_bootstrap_load(const char *artifact);
 #endif
 #ifdef CHIBI_TEST_BUILD_PROCESS
-void test_native_aot_driver(const char *source);
 void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
@@ -188,23 +188,11 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
-    if (argc == 3 && !strcmp(argv[1], "--native-aot-driver")) {
-#ifdef CHIBI_TEST_BUILD_PROCESS
-        tool_init();
-        pu_display_time(true);
-        test_native_aot_driver(argv[2]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-#else
-        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
-        return 2;
-#endif
-    }
-    if (argc == 4 && !strcmp(argv[1], "--compiler-bootstrap")) {
+    if (argc == 3 && !strcmp(argv[1], "--compiler-bootstrap")) {
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
         tool_init();
         pu_display_time(true);
-        test_tool_compiler_bootstrap(argv[2], argv[3]);
+        test_tool_compiler_bootstrap(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else
@@ -217,6 +205,18 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_tool_bootstrap_recovery(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private compiler artifact host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 3 && !strcmp(argv[1], "--bootstrap-load")) {
+#ifdef CHIBI_TEST_COMPILER_ARTIFACT
+        tool_init();
+        pu_display_time(true);
+        test_tool_bootstrap_load(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

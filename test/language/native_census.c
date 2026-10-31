@@ -1,4 +1,5 @@
 #include "authoring/source_package_io.h"
+#include "census_tree.h"
 #include "compiler_cache.h"
 #include "execution/function.h"
 #include "execution/instruction.h"
@@ -22,14 +23,14 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <tree_sitter/api.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <yyjson.h>
-
-const TSLanguage *tree_sitter_chibi(void);
 
 /* W21's census: the first feature that keeps each function of the
  * self-hosted compiler from the native path. Every function of the bootstrap
@@ -48,6 +49,7 @@ const TSLanguage *tree_sitter_chibi(void);
 enum
 {
     CENSUS_BUDGET = 20000000,
+    PARSE_BUDGET = 2000000000,
     CENSUS_EXCERPT = 60
 };
 enum
@@ -57,11 +59,20 @@ enum
     DECL_CONSTANT
 };
 static const char
+    PARSE_SOURCE[] = "project:package_compiler:1:ParseSyntax:callable";
+/* The tree's kinds and fields are integers; the compiler names them once. */
+static const char
+    KIND_NAME[] = "project:package_compiler:1:SyntaxKindName:callable";
+static const char
+    FIELD_NAMES[] = "project:package_compiler:1:SyntaxFieldNames:callable";
+static const char
     COLLECT_SCALAR[] = "project:package_compiler:1:CollectScalar:callable";
 /* The producer's own rejections and the ordinary compiler's rejection of a
  * call it cannot resolve. */
 static const char PRODUCER[] = "scalar proof ";
 static const char UNKNOWN[] = "Unknown function '";
+static const char SIGNATURE[] = "scalar proof requires number, bool, string, "
+                                "record or union parameters";
 enum
 {
     REJECTION_ROW = 1 /* scalar_facts.RejectionRow */
@@ -72,7 +83,6 @@ enum
 {
     SOURCE_COUNT = (int)(sizeof SOURCES / sizeof *SOURCES)
 };
-const TSLanguage *tree_sitter_chibi();
 
 typedef struct
 {
@@ -81,14 +91,14 @@ typedef struct
 } census_alias;
 typedef struct
 {
-    TSTree *tree;
+    census_tree *tree;
     int package;
     census_alias *aliases;
 } census_source;
 typedef struct
 {
     int source, kind, package;
-    TSNode node;
+    census_node node;
     char *name;
 } census_decl;
 /* A reference to declaration `decl` that replaces source bytes [start, end). */
@@ -177,24 +187,25 @@ typedef struct
     char *native; /* What scalar_llvm said of an accepted function, or NULL. */
     int category;
     bool imports, constants;
+    int decl, callee_decl; /* Into decls; -1 when there is no callee. */
 } census_row;
 
 static compiler_host *compiler;
 static native_capabilities *native; /* What the census sources may call. */
 static char *target_json;           /* The JSON array of its target parts. */
 static size_t target_length;
-static TSParser *parser;
 static const source_package_input *files; /* The sources the census reads. */
 static census_source *sources;
 static char **packages; /* The directory that names each package. */
 static census_decl *decls;
 static census_row *rows;
 
+static void free_tree(census_tree *tree);
 /* Forgets the sources the census read. */
 static void unload()
 {
     for (int i = 0; i < acount(sources); i++) {
-        ts_tree_delete(sources[i].tree);
+        free_tree(sources[i].tree);
         for (int a = 0; a < acount(sources[i].aliases); a++) {
             free(sources[i].aliases[a].alias);
         }
@@ -231,24 +242,22 @@ static void cleanup()
     free(target_json);
     target_json = NULL;
     forget_rows();
-    ts_parser_delete(parser);
-    parser = NULL;
 }
-static char *node_text(int source, TSNode node)
+static char *node_text(int source, census_node node)
 {
-    uint32_t start = ts_node_start_byte(node), end = ts_node_end_byte(node);
+    uint32_t start = census_node_start(node), end = census_node_end(node);
     char *text = xmalloc(end - start + 1);
     memcpy(text, files[source].text + start, end - start);
     text[end - start] = 0;
     return text;
 }
-static bool node_is(TSNode node, const char *type)
+static bool node_is(census_node node, const char *type)
 {
-    return !ts_node_is_null(node) && !strcmp(ts_node_type(node), type);
+    return !census_node_is_null(node) && !strcmp(census_node_type(node), type);
 }
-static bool text_is(int source, TSNode node, const char *text)
+static bool text_is(int source, census_node node, const char *text)
 {
-    uint32_t start = ts_node_start_byte(node), length = ts_node_end_byte(node) - start;
+    uint32_t start = census_node_start(node), length = census_node_end(node) - start;
     return strlen(text) == length && !memcmp(files[source].text + start, text, length);
 }
 /* The directory of a source path, which identifies its package. */
@@ -303,7 +312,7 @@ static const char *package_name(int package)
     snprintf(name, sizeof name, "%.*s", (int)(end - start), start);
     return name;
 }
-static int find_decl(int package, int source, TSNode name)
+static int find_decl(int package, int source, census_node name)
 {
     for (int i = 0; i < acount(decls); i++) {
         if (decls[i].package == package && text_is(source, name, decls[i].name)) {
@@ -312,7 +321,7 @@ static int find_decl(int package, int source, TSNode name)
     }
     return -1;
 }
-static int find_alias(int source, TSNode name)
+static int find_alias(int source, census_node name)
 {
     for (int a = 0; a < acount(sources[source].aliases); a++) {
         if (text_is(source, name, sources[source].aliases[a].alias)) {
@@ -321,24 +330,183 @@ static int find_alias(int source, TSNode name)
     }
     return -1;
 }
+static void free_tree(census_tree *tree)
+{
+    if (!tree) {
+        return;
+    }
+    for (int i = 0; i < tree->count; i++) {
+        free(tree->kinds[i]);
+        free(tree->fields[i]);
+    }
+    free(tree->kinds);
+    free(tree->fields);
+    free(tree->starts);
+    free(tree->ends);
+    free(tree->parents);
+    free(tree->first_children);
+    free(tree->next_siblings);
+    free(tree->named);
+    free(tree->has_errors);
+    free(tree);
+}
+/* Names of the kinds and fields seen so far, owned for the process, filled
+ * from the compiler on first use. Kinds stay below 512: tokens, then the node
+ * kinds from syntax_diagnostics.Comment = 128. */
+enum
+{
+    CENSUS_KINDS = 512
+};
+static char *kind_names[CENSUS_KINDS];
+static char **field_names;
+static int field_count;
+/* The JSON result of `entry` with `arguments`, or NULL with a report. */
+static yyjson_doc *census_call(const char *entry, const char *arguments)
+{
+    compiler_host_result result = { 0 };
+    bool called = compiler_host_invoke(
+        compiler,
+        compiler_host_entry(entry),
+        arguments,
+        strlen(arguments),
+        PARSE_BUDGET,
+        &result
+    );
+    if (!called) {
+        fprintf(stderr, "native census %s: %s\n", entry, result.diagnostic);
+        return NULL;
+    }
+    yyjson_doc *doc = yyjson_read(result.json, result.length, COMPILER_HOST_JSON_READ_FLAGS);
+    free(result.json);
+    return doc;
+}
+static const char *kind_name(int64_t kind)
+{
+    assert(kind >= 0 && kind < CENSUS_KINDS);
+    if (!kind_names[kind]) {
+        char arguments[32];
+        snprintf(arguments, sizeof arguments, "[%lld]", (long long)kind);
+        yyjson_doc *doc = census_call(KIND_NAME, arguments);
+        const char *name = doc
+                             ? yyjson_get_str(yyjson_arr_get(yyjson_doc_get_root(doc), 0))
+                             : NULL;
+        kind_names[kind] = xstrdup(name ? name : "");
+        yyjson_doc_free(doc);
+    }
+    return kind_names[kind];
+}
+static const char *field_name(int64_t field)
+{
+    if (!field_names) {
+        yyjson_doc *doc = census_call(FIELD_NAMES, "[]");
+        yyjson_val *names = doc ? yyjson_arr_get(yyjson_doc_get_root(doc), 0) : NULL;
+        field_count = (int)yyjson_arr_size(names);
+        field_names = xcalloc((size_t)field_count + 1, sizeof *field_names);
+        for (int i = 0; i < field_count; i++) {
+            const char *name = yyjson_get_str(yyjson_arr_get(names, (size_t)i));
+            field_names[i] = xstrdup(name ? name : "");
+        }
+        yyjson_doc_free(doc);
+    }
+    return field >= 0 && field < field_count ? field_names[field] : "";
+}
+/* The tree compiler_syntax.Parse reads `text` into: the loaded compiler runs
+ * the authored parser, whose rows are the tree. NULL with a report when it
+ * rejects the text or answers in another shape. */
+static census_tree *parse_source(const char *text, size_t size)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *arguments = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, arguments);
+    yyjson_mut_arr_add_strncpy(doc, arguments, text, size);
+    size_t length;
+    char *json = yyjson_mut_write(doc, 0, &length);
+    yyjson_mut_doc_free(doc);
+    if (!json || !compiler) {
+        free(json);
+        return NULL;
+    }
+    compiler_host_result result = { 0 };
+    bool called = compiler_host_invoke(
+        compiler,
+        compiler_host_entry(PARSE_SOURCE),
+        json,
+        length,
+        PARSE_BUDGET,
+        &result
+    );
+    free(json);
+    if (!called) {
+        fprintf(stderr, "native census parse: %s\n", result.diagnostic);
+        return NULL;
+    }
+    yyjson_doc *produced = yyjson_read(result.json, result.length, COMPILER_HOST_JSON_READ_FLAGS);
+    yyjson_val *tree_json = produced
+                              ? yyjson_arr_get(yyjson_doc_get_root(produced), 0)
+                              : NULL;
+    yyjson_val *values = tree_json ? yyjson_obj_get(tree_json, "values") : NULL;
+    yyjson_val *nodes = values ? yyjson_arr_get(values, 0) : NULL;
+    yyjson_val *fields = values ? yyjson_arr_get(values, 1) : NULL;
+    yyjson_val *named = values ? yyjson_arr_get(values, 2) : NULL;
+    census_tree *tree = NULL;
+    size_t count = yyjson_arr_size(nodes);
+    if (count && yyjson_arr_size(fields) == count && yyjson_arr_size(named) == count) {
+        tree = xcalloc(1, sizeof *tree);
+        tree->count = (int)count;
+        tree->kinds = xcalloc(count, sizeof *tree->kinds);
+        tree->fields = xcalloc(count, sizeof *tree->fields);
+        tree->starts = xcalloc(count, sizeof *tree->starts);
+        tree->ends = xcalloc(count, sizeof *tree->ends);
+        tree->parents = xcalloc(count, sizeof *tree->parents);
+        tree->first_children = xcalloc(count, sizeof *tree->first_children);
+        tree->next_siblings = xcalloc(count, sizeof *tree->next_siblings);
+        tree->named = xcalloc(count, sizeof *tree->named);
+        tree->has_errors = xcalloc(count, sizeof *tree->has_errors);
+        for (size_t i = 0; i < count; i++) {
+            yyjson_val *row = yyjson_arr_get(nodes, i);
+            tree->kinds[i] = xstrdup(
+                kind_name(yyjson_get_int(yyjson_obj_get(row, "kind")))
+            );
+            tree->fields[i] = xstrdup(
+                field_name(yyjson_get_int(yyjson_arr_get(fields, i)))
+            );
+            tree->starts[i] = (int)yyjson_get_int(yyjson_obj_get(row, "start"));
+            tree->ends[i] = (int)yyjson_get_int(yyjson_obj_get(row, "end"));
+            tree->parents[i] = (int)yyjson_get_int(yyjson_obj_get(row, "parent"));
+            tree->first_children[i] = (int)yyjson_get_int(yyjson_obj_get(row, "first_child"));
+            tree->next_siblings[i] = (int)yyjson_get_int(yyjson_obj_get(row, "next_sibling"));
+            tree->named[i] = yyjson_get_bool(yyjson_arr_get(named, i));
+            tree->has_errors[i] = yyjson_get_bool(yyjson_obj_get(row, "has_error"));
+        }
+    } else {
+        fprintf(
+            stderr,
+            "native census parse: unexpected result %.400s\n",
+            result.json
+        );
+    }
+    yyjson_doc_free(produced);
+    free(result.json);
+    return tree;
+}
 static bool read_source(int source)
 {
     const source_package_input *file = &files[source];
-    TSTree
-        *tree = ts_parser_parse_string(parser, NULL, file->text, (uint32_t)file->size);
+    census_tree *tree = parse_source(file->text, file->size);
+    REQUIRE(tree);
     apush(sources, (census_source){ .tree = tree });
-    TSNode root = ts_tree_root_node(tree);
-    REQUIRE(!ts_node_has_error(root));
+    census_node root = census_node_at(tree, 0);
+    REQUIRE(!census_node_has_error(root));
     char *dir = directory(file->path);
     sources[source].package = package_of(dir);
     free(dir);
-    for (uint32_t i = 0; i < ts_node_named_child_count(root); i++) {
-        TSNode member = ts_node_named_child(root, i);
-        const char *type = ts_node_type(member);
+    for (uint32_t i = 0; i < census_node_named_children(root); i++) {
+        census_node member = census_node_named_child(root, i);
+        const char *type = census_node_type(member);
         if (!strcmp(type, "import_declaration")) {
-            TSNode alias = ts_node_child_by_field_name(member, "alias", 5);
-            TSNode path = ts_node_child_by_field_name(member, "path", 4);
-            REQUIRE(!ts_node_is_null(alias));
+            census_node alias = census_node_field(member, "alias");
+            census_node path = census_node_field(member, "path");
+            REQUIRE(!census_node_is_null(alias));
             char *quoted = node_text(source, path);
             quoted[strlen(quoted) - 1] = 0;
             int package = imported_package(quoted + 1);
@@ -357,7 +525,7 @@ static bool read_source(int source)
             REQUIRE(!strcmp(type, "package_header") || !strcmp(type, "comment"));
             continue;
         }
-        TSNode name = ts_node_child_by_field_name(member, "name", 4);
+        census_node name = census_node_field(member, "name");
         apush(
             decls,
             (census_decl){ .source = source,
@@ -377,7 +545,7 @@ static bool read_source(int source)
  * statement scopes do. */
 static char **bound;
 
-static bool is_bound(int source, TSNode name)
+static bool is_bound(int source, census_node name)
 {
     for (int i = 0; i < acount(bound); i++) {
         if (text_is(source, name, bound[i])) {
@@ -386,10 +554,10 @@ static bool is_bound(int source, TSNode name)
     }
     return false;
 }
-static void bind(int source, TSNode node, const char *field)
+static void bind(int source, census_node node, const char *field)
 {
-    TSNode name = ts_node_child_by_field_name(node, field, (uint32_t)strlen(field));
-    if (!ts_node_is_null(name)) {
+    census_node name = census_node_field(node, field);
+    if (!census_node_is_null(name)) {
         apush(bound, node_text(source, name));
     }
 }
@@ -399,38 +567,38 @@ static void unbind(int depth)
         free(apop(bound));
     }
 }
-static bool scopes(TSNode node)
+static bool scopes(census_node node)
 {
     return node_is(node, "block") || node_is(node, "for_statement") ||
            node_is(node, "if_statement") || node_is(node, "while_statement") ||
            node_is(node, "switch_arm");
 }
 /* The declaration `node` names from its place in `source`, or -1. */
-static int reference(int source, TSNode node, const char *field)
+static int reference(int source, census_node node, const char *field)
 {
-    const char *type = ts_node_type(node);
+    const char *type = census_node_type(node);
     if (!strcmp(type, "member_expression")) {
-        TSNode object = ts_node_child_by_field_name(node, "object", 6);
+        census_node object = census_node_field(node, "object");
         int package = node_is(object, "identifier") && !is_bound(source, object)
                         ? find_alias(source, object)
                         : -1;
         return package < 0
                  ? -1
-                 : find_decl(package, source, ts_node_child_by_field_name(node, "member", 6));
+                 : find_decl(package, source, census_node_field(node, "member"));
     }
     if (!strcmp(type, "type_name")) {
-        uint32_t parts = ts_node_named_child_count(node);
+        uint32_t parts = census_node_named_children(node);
         if (parts == 2) {
-            int package = find_alias(source, ts_node_named_child(node, 0));
+            int package = find_alias(source, census_node_named_child(node, 0));
             return package < 0
                      ? -1
-                     : find_decl(package, source, ts_node_named_child(node, 1));
+                     : find_decl(package, source, census_node_named_child(node, 1));
         }
         return parts == 1
-                 ? find_decl(sources[source].package, source, ts_node_named_child(node, 0))
+                 ? find_decl(sources[source].package, source, census_node_named_child(node, 0))
                  : -1;
     }
-    TSNode parent = ts_node_parent(node);
+    census_node parent = census_node_parent(node);
     if (strcmp(type, "identifier") || node_is(parent, "pattern_bindings") ||
         node_is(parent, "argument_name") ||
         (field && (!strcmp(field, "name") || !strcmp(field, "member") ||
@@ -443,26 +611,27 @@ static int reference(int source, TSNode node, const char *field)
 }
 /* The references under `node`, in source order, with the names in scope at
  * each. A qualified name is one reference; its parts are not visited. */
-static void references(int source, TSNode node, const char *field, census_edit **edits)
+static void references(int source, census_node node, const char *field, census_edit **edits)
 {
     int decl = reference(source, node, field);
     if (decl >= 0) {
-        apush(*edits, (census_edit){ ts_node_start_byte(node), ts_node_end_byte(node), decl });
+        apush(*edits, (census_edit){ census_node_start(node), census_node_end(node), decl });
         return;
     }
     if (node_is(node, "type_name")) {
         return;
     }
-    if (node_is(node, "identifier") && (node_is(ts_node_parent(node), "pattern_bindings") ||
-                                        (field && !strcmp(field, "binding")))) {
+    if (node_is(node, "identifier") &&
+        (node_is(census_node_parent(node), "pattern_bindings") ||
+         (field && !strcmp(field, "binding")))) {
         apush(bound, node_text(source, node));
         return;
     }
     int depth = acount(bound);
-    TSTreeCursor cursor = ts_tree_cursor_new(node);
-    if (ts_tree_cursor_goto_first_child(&cursor)) {
+    census_cursor cursor = census_cursor_new(node);
+    if (census_cursor_first_child(&cursor)) {
         do {
-            const char *name = ts_tree_cursor_current_field_name(&cursor);
+            const char *name = census_cursor_field(&cursor);
             if (node_is(node, "for_statement") && name && !strcmp(name, "body")) {
                 bind(source, node, "key");
                 bind(source, node, "name");
@@ -470,10 +639,9 @@ static void references(int source, TSNode node, const char *field, census_edit *
             if (node_is(node, "if_statement") && name && !strcmp(name, "alternative")) {
                 unbind(depth);
             }
-            references(source, ts_tree_cursor_current_node(&cursor), name, edits);
-        } while (ts_tree_cursor_goto_next_sibling(&cursor));
+            references(source, census_cursor_node(&cursor), name, edits);
+        } while (census_cursor_next_sibling(&cursor));
     }
-    ts_tree_cursor_delete(&cursor);
     if (scopes(node)) {
         unbind(depth);
     }
@@ -505,11 +673,11 @@ static bool listed(const int *items, int item)
     }
     return false;
 }
-static TSNode field_of(TSNode node, const char *name)
+static census_node field_of(census_node node, const char *name)
 {
-    return ts_node_child_by_field_name(node, name, (uint32_t)strlen(name));
+    return census_node_field(node, name);
 }
-static void emit_node(census_build *build, int package, int source, TSNode node);
+static void emit_node(census_build *build, int package, int source, census_node node);
 /* Writes a reference to `decl` as the census source names it: a function,
  * record or union by its census name, a constant as its value. */
 static void emit_reference(census_build *build, int package, int decl)
@@ -517,8 +685,8 @@ static void emit_reference(census_build *build, int package, int decl)
     build->imports |= decls[decl].package != package;
     if (decls[decl].kind == DECL_CONSTANT) {
         build->constants = true;
-        TSNode type = field_of(decls[decl].node, "type");
-        if (!ts_node_is_null(type)) {
+        census_node type = field_of(decls[decl].node, "type");
+        if (!census_node_is_null(type)) {
             emit_node(build, package, decls[decl].source, type);
         }
         append(&build->text, "(", 1);
@@ -554,12 +722,12 @@ static void emit_range(
     }
     append(&build->text, text + from, to - from);
 }
-static void emit_node(census_build *build, int package, int source, TSNode node)
+static void emit_node(census_build *build, int package, int source, census_node node)
 {
     census_edit *edits = NULL;
     references(source, node, NULL, &edits);
     int next = 0;
-    emit_range(build, package, source, ts_node_start_byte(node), ts_node_end_byte(node), edits, &next);
+    emit_range(build, package, source, census_node_start(node), census_node_end(node), edits, &next);
     afree(edits);
 }
 /* Appends declaration `decl` under its census name. For a function, records
@@ -568,32 +736,33 @@ static void emit_node(census_build *build, int package, int source, TSNode node)
 static void emit_decl(census_build *build, int package, int decl, census_place *place)
 {
     const census_decl *d = &decls[decl];
-    TSNode name = field_of(d->node, "name");
+    census_node name = field_of(d->node, "name");
     census_edit *edits = NULL;
     references(d->source, d->node, NULL, &edits);
     unbind(0);
     afree(bound);
     uint32_t start = (uint32_t)acount(build->text);
     int next = 0;
-    emit_range(build, package, d->source, ts_node_start_byte(d->node), ts_node_start_byte(name), edits, &next);
+    emit_range(build, package, d->source, census_node_start(d->node), census_node_start(name), edits, &next);
     append_name(&build->text, package, decl);
-    uint32_t from = ts_node_end_byte(name);
+    uint32_t from = census_node_end(name);
     if (place) {
-        TSNode results = field_of(d->node, "results");
-        TSNode after = ts_node_is_null(results) ? field_of(d->node, "body") : results;
-        uint32_t cuts[] = { ts_node_start_byte(field_of(d->node, "parameters")),
-                            ts_node_start_byte(after) };
+        census_node results = field_of(d->node, "results");
+        census_node after = census_node_is_null(results) ? field_of(d->node, "body")
+                                                         : results;
+        uint32_t cuts[] = { census_node_start(field_of(d->node, "parameters")),
+                            census_node_start(after) };
         uint32_t *marks[] = { &place->parameters, &place->results };
         *place = (census_place){ .decl = decl,
                                  .start = start,
-                                 .result = !ts_node_is_null(results) };
+                                 .result = !census_node_is_null(results) };
         for (int i = 0; i < 2; i++) {
             emit_range(build, package, d->source, from, cuts[i], edits, &next);
             *marks[i] = (uint32_t)acount(build->text);
             from = cuts[i];
         }
     }
-    emit_range(build, package, d->source, from, ts_node_end_byte(d->node), edits, &next);
+    emit_range(build, package, d->source, from, census_node_end(d->node), edits, &next);
     if (place) {
         place->end = (uint32_t)acount(build->text);
     }
@@ -893,6 +1062,12 @@ static bool census_function(int function)
         int missing = accepted || starts(message, PRODUCER)
                         ? -1
                         : omitted_call(&build, functions, start, end);
+        /* A pointer parameter is scoped only when its body passes it on to
+         * functions that use it so, which the census has to include to see: a
+         * signature the producer rejects follows every call omitted so far. */
+        if (!accepted && missing < 0 && starts(message, SIGNATURE)) {
+            missing = omitted_call(&build, functions, 0, INT_MAX);
+        }
         if (missing < 0) {
             break;
         }
@@ -901,12 +1076,22 @@ static bool census_function(int function)
         message = NULL;
         build_free(&build);
     }
+    if (getenv("CHIBI_CENSUS_SOURCE")) {
+        fprintf(
+            stderr,
+            "census source of %s:\n%s\n",
+            decls[function].name,
+            build.text
+        );
+    }
     census_row row = { .native = native_message,
                        .function = decls[function].name,
                        .path = files[decls[function].source].path,
                        .category = CENSUS_NATIVE,
                        .imports = build.imports,
-                       .constants = build.constants };
+                       .constants = build.constants,
+                       .decl = function,
+                       .callee_decl = -1 };
     if (!accepted) {
         int in = owner(&build, start);
         const census_place *place = in >= 0 ? &build.functions[in] : NULL;
@@ -929,6 +1114,7 @@ static bool census_function(int function)
         row.message = message;
         row.excerpt = excerpt(build.text, start, end);
         row.callee = in > 0 ? decls[place->decl].name : NULL;
+        row.callee_decl = in > 0 ? place->decl : -1;
         int span = span_of(place, start);
         row.category = category(message, build.text, start, end, span);
     }
@@ -965,17 +1151,19 @@ static bool prepare()
         fprintf(stderr, "native census bootstrap: %s\n", error);
     }
     REQUIRE(compiler);
+    /* The workers share the consumer, so compile it before they fork. */
     REQUIRE(scalar_host_open());
+    yyjson_mut_doc *warm = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(warm, yyjson_mut_arr(warm));
+    yyjson_doc *warmed;
+    REQUIRE(scalar_host_consumer("TextType", warm, &warmed));
+    yyjson_doc_free(warmed);
     return true;
 }
 /* Reads the `count` sources of `in`, which outlive the census of them. */
 static bool load(const source_package_input *in, int count)
 {
     unload();
-    if (!parser) {
-        parser = ts_parser_new();
-        REQUIRE(parser && ts_parser_set_language(parser, tree_sitter_chibi()));
-    }
     files = in;
     for (int i = 0; i < count; i++) {
         REQUIRE(read_source(i));
@@ -1232,7 +1420,7 @@ static const census_build *census_of(const char *first, const char *second)
 
 TEST_CASE(native_census_flattens_imports_and_constants)
 {
-    REQUIRE(load(SAMPLE, 2));
+    REQUIRE(prepare() && load(SAMPLE, 2));
     const census_build *build = census_of("Twice", "Sum");
     REQUIRE(!strcmp(
         build->text,
@@ -1313,16 +1501,148 @@ TEST_CASE(native_census_follows_calls_into_their_blockers)
     forget_rows();
     return true;
 }
+/* Each function's census is independent of the others, so after the compiler
+ * loads, the census forks workers that share it copy-on-write: worker k takes
+ * every jobs-th function from k and sends its rows back through a file. The
+ * report sorts rows into source order, so it doesn't depend on the workers.
+ * CHIBI_CENSUS_JOBS sets the count; the default is the processors online, up
+ * to 8, since each worker holds about 1.3 GB at its peak. */
+enum
+{
+    CENSUS_MAX_JOBS = 64
+};
+static int census_jobs()
+{
+    const char *named = getenv("CHIBI_CENSUS_JOBS");
+    long jobs = named && *named ? strtol(named, NULL, 10)
+                                : sysconf(_SC_NPROCESSORS_ONLN);
+    if (!named || !*named) {
+        jobs = jobs > 8 ? 8 : jobs;
+    }
+    return jobs < 1 ? 1 : jobs > CENSUS_MAX_JOBS ? CENSUS_MAX_JOBS : (int)jobs;
+}
+static bool write_text(FILE *out, const char *text)
+{
+    uint32_t length = text ? (uint32_t)strlen(text) : UINT32_MAX;
+    return fwrite(&length, sizeof length, 1, out) == 1 &&
+           (!text || fwrite(text, 1, length, out) == length);
+}
+static bool read_text(FILE *in, char **text)
+{
+    uint32_t length;
+    *text = NULL;
+    if (fread(&length, sizeof length, 1, in) != 1) {
+        return false;
+    }
+    if (length == UINT32_MAX) {
+        return true;
+    }
+    *text = xmalloc((size_t)length + 1);
+    (*text)[length] = 0;
+    return fread(*text, 1, length, in) == length;
+}
+/* Writes the rows a worker made; the parent reads them with read_rows. */
+static bool write_rows(const char *path)
+{
+    FILE *out = fopen(path, "wb");
+    bool ok = out != NULL;
+    for (int i = 0; ok && i < acount(rows); i++) {
+        const census_row *r = &rows[i];
+        int32_t head[5] = { r->decl, r->callee_decl, r->category, r->imports, r->constants };
+        ok = fwrite(head, sizeof head, 1, out) == 1 && write_text(out, r->message) &&
+             write_text(out, r->excerpt) && write_text(out, r->native);
+    }
+    return out && !fclose(out) && ok;
+}
+static bool read_rows(const char *path)
+{
+    FILE *in = fopen(path, "rb");
+    if (!in) {
+        return false;
+    }
+    int32_t head[5];
+    bool ok = true;
+    while (ok && fread(head, sizeof head, 1, in) == 1) {
+        ok = head[0] >= 0 && head[0] < acount(decls) && head[1] >= -1 &&
+             head[1] < acount(decls);
+        census_row row = { 0 };
+        if (ok) {
+            row = (census_row){ .function = decls[head[0]].name,
+                                .path = files[decls[head[0]].source].path,
+                                .callee = head[1] >= 0 ? decls[head[1]].name : NULL,
+                                .category = head[2],
+                                .imports = head[3],
+                                .constants = head[4],
+                                .decl = head[0],
+                                .callee_decl = head[1] };
+            ok = read_text(in, &row.message) && read_text(in, &row.excerpt) &&
+                 read_text(in, &row.native);
+        }
+        if (ok) {
+            apush(rows, row);
+        } else {
+            free(row.message);
+            free(row.excerpt);
+            free(row.native);
+        }
+    }
+    return !fclose(in) && ok;
+}
+static int row_order(const void *a, const void *b)
+{
+    return ((const census_row *)a)->decl - ((const census_row *)b)->decl;
+}
+/* Runs the census of `count` functions over `jobs` forked workers. */
+static bool census_parallel(const int *functions, int count, int jobs)
+{
+    pid_t workers[CENSUS_MAX_JOBS];
+    char paths[CENSUS_MAX_JOBS][64];
+    fflush(stdout);
+    fflush(stderr);
+    for (int k = 0; k < jobs; k++) {
+        snprintf(paths[k], sizeof paths[k], "/tmp/chibi-census-%d-%d", (int)getpid(), k);
+        workers[k] = fork();
+        REQUIRE(workers[k] >= 0);
+        if (!workers[k]) {
+            for (int i = k; i < count; i += jobs) {
+                if (!census_function(functions[i])) {
+                    _exit(1);
+                }
+            }
+            fflush(stderr);
+            _exit(write_rows(paths[k]) ? 0 : 1);
+        }
+    }
+    bool ok = true;
+    for (int k = 0; k < jobs; k++) {
+        int status = 0;
+        ok &= waitpid(workers[k], &status, 0) == workers[k] &&
+              WIFEXITED(status) && !WEXITSTATUS(status) && read_rows(paths[k]);
+        unlink(paths[k]);
+    }
+    qsort(rows, (size_t)acount(rows), sizeof *rows, row_order);
+    return ok;
+}
+
 TEST_CASE(native_census_covers_every_compiler_function)
 {
     REQUIRE(prepare() && load(SOURCES, SOURCE_COUNT));
-    int functions = 0;
+    int *wanted = NULL;
     for (int i = 0; i < acount(decls); i++) {
         if (decls[i].kind == DECL_FUNCTION) {
-            REQUIRE(census_function(i));
-            functions++;
+            apush(wanted, i);
         }
     }
+    int functions = acount(wanted), jobs = census_jobs();
+    bool counted = true;
+    if (jobs > 1) {
+        counted = census_parallel(wanted, functions, jobs);
+    }
+    for (int i = 0; jobs == 1 && counted && i < functions; i++) {
+        counted = census_function(wanted[i]);
+    }
+    afree(wanted);
+    REQUIRE(counted);
     if (acount(rows) != functions || count_of(CENSUS_NATIVE) == 0) {
         fprintf(
             stderr,
@@ -1349,9 +1669,41 @@ void test_language_native_census_flattening()
     RUN_TEST_CASE(native_census_flattens_imports_and_constants);
     cleanup();
 }
+/* CHIBI_CENSUS_ONLY=Name[,Name...] runs the census over those functions alone
+ * and prints each row's message; with CHIBI_CENSUS_SOURCE it prints the source
+ * the producer read. A way to see why one function stops. */
+static bool census_only(const char *names)
+{
+    REQUIRE(prepare() && load(SOURCES, SOURCE_COUNT));
+    char *list = strdup(names);
+    for (char *name = strtok(list, ","); name; name = strtok(NULL, ",")) {
+        int declared = decl_named(name);
+        if (declared < 0) {
+            fprintf(stderr, "no declaration named %s among %d\n", name, acount(decls));
+            continue;
+        }
+        REQUIRE(census_function(declared));
+        const census_row *r = &rows[acount(rows) - 1];
+        fprintf(
+            stderr,
+            "%s: %s | %s\n",
+            r->function,
+            r->message ? r->message : "passes",
+            r->excerpt ? r->excerpt : ""
+        );
+    }
+    free(list);
+    forget_rows();
+    return true;
+}
 void test_language_native_census(const char *report)
 {
     report_path = report;
+    if (getenv("CHIBI_CENSUS_ONLY")) {
+        census_only(getenv("CHIBI_CENSUS_ONLY"));
+        cleanup();
+        return;
+    }
     RUN_TEST_CASE(native_census_flattens_imports_and_constants);
     RUN_TEST_CASE(native_census_follows_calls_into_their_blockers);
     RUN_TEST_CASE(native_census_covers_every_compiler_function);

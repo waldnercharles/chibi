@@ -30,8 +30,8 @@ jobs:
             arch: ARM64
           - os: ubuntu-24.04
             arch: X64
-          - os: windows-2022
-            arch: X64
+          # Windows keeps its pinned runtime: the graph that builds the
+          # runtime does not run there (tools/compiler/runtime.json format 2).
     defaults:
       run:
         shell: pwsh
@@ -88,14 +88,13 @@ jobs:
           & (Join-Path $bin 'pip') install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           if ($LASTEXITCODE) { throw 'Installing the pinned native build tools failed' }
           $bin >> $env:GITHUB_PATH
-      # Windows has no graph build host yet, so its seed cannot be refreshed.
+      # Windows is not in this matrix: it has no graph build host yet.
       - name: Build the native runtime
         id: build
         env:
           GH_TOKEN: ${{ github.token }}
           LIBCLANG_ROOT: ${{ env.LLVM }}
         run: |
-          if ($IsWindows) { throw 'The graph does not run on Windows yet; the Windows runtime seed cannot be refreshed' }
           $timer = [Diagnostics.Stopwatch]::StartNew()
           if ($env:CC) { $env:NATIVE_TOOLCHAIN_FLAGS = "-DCMAKE_C_COMPILER=$env:CC -DCMAKE_CXX_COMPILER=$env:CXX" }
           sh tools/build.sh build --release --target chibi-compiler-host
@@ -228,12 +227,12 @@ jobs:
         with:
           pattern: compiler-recovery-*
           path: recovered
-      - name: Require identical compiler bytes on all three platforms
+      - name: Require identical compiler bytes on every refreshed platform
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $digests = @()
-          foreach ($platform in @('macos-15', 'ubuntu-24.04', 'windows-2022')) {
+          foreach ($platform in @('macos-15', 'ubuntu-24.04')) {
             $artifact = "recovered/compiler-recovery-$platform/compiler.chibip"
             $digest = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
             $recorded = (Get-Content "$artifact.sha256").Split(' ')[0]
@@ -277,7 +276,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           out="$RUNNER_TEMP/release"
           mkdir "$out"
-          for pair in linux-x64:ubuntu-24.04 macos-arm64:macos-15 windows-x64:windows-2022; do
+          for pair in linux-x64:ubuntu-24.04 macos-arm64:macos-15; do
             platform=${pair%%:*}
             dir="recovered/compiler-recovery-${pair#*:}"
             cp "$dir"/chibi-compiler-host-"$platform"* "$out/"
@@ -292,44 +291,46 @@ jobs:
           git archive --format=tar.gz --prefix="chibi-$short/" -o "$out/chibi-source-$short.tar.gz" HEAD
           pin() { awk -v name="$1" '$1 == "chibi_third_party(" name { getline; sub(/\)$/, "", $1); print $1 }' archive/third_party/CMakeLists.txt; }
           sljit=$(pin sljit)
-          tree_sitter=$(pin tree_sitter)
-          [[ $sljit =~ ^[0-9a-f]{40}$ && $tree_sitter =~ ^[0-9a-f]{40}$ ]]
+          [[ $sljit =~ ^[0-9a-f]{40}$ ]]
           curl -fsSL -o "$out/sljit-$sljit.tar.gz" "https://github.com/zherczeg/sljit/archive/$sljit.tar.gz"
-          curl -fsSL -o "$out/tree-sitter-$tree_sitter.tar.gz" "https://github.com/tree-sitter/tree-sitter/archive/$tree_sitter.tar.gz"
           notices="$RUNNER_TEMP/chibi-runtime-notices"
           mkdir -p "$notices/chibi/docs" "$notices/fmt" "$notices/yyjson"
           cp COPYING COPYING.EXAMPLES COPYING.LESSER LICENSE.md "$notices/chibi/"
           cp docs/distribution-licensing.md "$notices/chibi/docs/"
           cp third_party/fmt/LICENSE third_party/fmt/README.md "$notices/fmt/"
           cp third_party/yyjson/LICENSE "$notices/yyjson/"
-          mkdir "$notices/sljit" "$notices/tree-sitter"
+          mkdir "$notices/sljit"
           tar -xzf "$out/sljit-$sljit.tar.gz" -C "$notices/sljit" --strip-components=1 --wildcards --no-wildcards-match-slash '*/LICENSE'
-          tar -xzf "$out/tree-sitter-$tree_sitter.tar.gz" -C "$notices/tree-sitter" --strip-components=1 \
-            --wildcards --no-wildcards-match-slash '*/LICENSE' '*/lib/src/unicode/ICU_SHA' '*/lib/src/unicode/LICENSE' '*/lib/src/unicode/README.md'
           tar -czf "$out/chibi-runtime-notices.tar.gz" -C "$RUNNER_TEMP" chibi-runtime-notices
 
-          # The pin, checked against each platform's recovery evidence.
+          # The pin, checked against each platform's recovery evidence. Format 2
+          # pins each platform on its own: refreshed platforms take this run's
+          # release, and the others keep the checked-out entry.
           RELEASE="$out" TAG="$tag" SOURCE_TREE=$(git rev-parse 'HEAD^{tree}') python3 - <<'PY'
-          import hashlib, json, os
+          import hashlib, json, os, re
           out = os.environ["RELEASE"]
-          platforms = {}
-          for platform, suffix in (("macos-arm64", ""), ("linux-x64", ""), ("windows-x64", ".exe")):
-              asset = f"chibi-compiler-host-{platform}{suffix}"
+          current = json.load(open("tools/compiler/runtime.json"))
+          assert current["format"] == 2
+          header = open("src/toolchain/compiler_host.h").read()
+          bound = re.search(r"#define COMPILER_HOST_MAX_ARTIFACT_BYTES \(([0-9]+)u \* 1024u \* 1024u\)", header)
+          assert bound, "COMPILER_HOST_MAX_ARTIFACT_BYTES"
+          platforms = dict(current["platforms"])
+          for platform in ("macos-arm64", "linux-x64"):
+              asset = f"chibi-compiler-host-{platform}"
               data = open(os.path.join(out, asset), "rb").read()
               digest = hashlib.sha256(data).hexdigest()
               evidence = json.load(open(os.path.join(out, f"seed-evidence-{platform}.json")))
               assert evidence["revision"] == os.environ["GITHUB_SHA"], platform
               assert evidence["runtime_sha256"] == digest, platform
-              platforms[platform] = {"asset": asset, "sha256": digest, "bytes": len(data)}
-          manifest = {
-              "format": 1,
-              "repository": os.environ["GITHUB_REPOSITORY"],
-              "tag": os.environ["TAG"],
-              "source_revision": os.environ["GITHUB_SHA"],
-              "source_tree": os.environ["SOURCE_TREE"],
-              "run_url": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
-              "platforms": platforms,
-          }
+              platforms[platform] = {
+                  "tag": os.environ["TAG"],
+                  "source_revision": os.environ["GITHUB_SHA"],
+                  "source_tree": os.environ["SOURCE_TREE"],
+                  "run_url": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+                  "max_artifact_bytes": int(bound.group(1)) * 1024 * 1024,
+                  "asset": asset, "sha256": digest, "bytes": len(data),
+              }
+          manifest = {"format": 2, "repository": os.environ["GITHUB_REPOSITORY"], "platforms": platforms}
           with open(os.path.join(out, "runtime.json"), "w") as f:
               json.dump(manifest, f, indent=2)
               f.write("\n")
@@ -351,9 +352,9 @@ jobs:
             test "$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)" = "$GITHUB_SHA"
           fi
           cat > "$RUNNER_TEMP/notes.md" <<EOF
-          Prepared$VERSION compiler runtime seeds built from \`$GITHUB_SHA\` and recovered on macOS ARM64, Linux x64 and Windows x64 in [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). All three recovered identical compiler bytes.
+          Prepared$VERSION compiler runtime seeds built from \`$GITHUB_SHA\` and recovered on macOS ARM64 and Linux x64 in [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID), which recovered identical compiler bytes. Windows keeps its pinned runtime.
 
-          Verify each executable against \`runtime.json\` or \`SHA256SUMS\`. \`seed-evidence-*.json\` holds each recovery's inputs, environment and timings, and \`native-imports-*.txt\` the libraries each seed loads. The corresponding source is this commit (\`chibi-source-*.tar.gz\`), the SLJIT and Tree-sitter sources it pins (SLJIT with \`third_party/sljit/arm64-immediate-negation.patch\` applied once), and their notices (\`chibi-runtime-notices.tar.gz\`).
+          Verify each executable against \`runtime.json\` or \`SHA256SUMS\`. \`seed-evidence-*.json\` holds each recovery's inputs, environment and timings, and \`native-imports-*.txt\` the libraries each seed loads. The corresponding source is this commit (\`chibi-source-*.tar.gz\`), the SLJIT source it pins (SLJIT with \`third_party/sljit/arm64-immediate-negation.patch\` applied once), and their notices (\`chibi-runtime-notices.tar.gz\`).
 
           Commit-specific prerelease, not latest.
           EOF
@@ -400,21 +401,26 @@ jobs:
           for name, digest in checksums.items():
               assert hashlib.sha256((assets / name).read_bytes()).hexdigest() == digest, name
           manifest = json.loads((assets / 'runtime.json').read_text())
-          assert manifest['format'] == 1
+          current = json.loads(Path('tools/compiler/runtime.json').read_text())
+          assert manifest['format'] == 2
           assert manifest['repository'] == os.environ['GITHUB_REPOSITORY']
-          assert manifest['tag'] == os.environ['TAG']
-          assert manifest['source_revision'] == os.environ['GITHUB_SHA']
-          assert manifest['source_tree'] == os.environ['SOURCE_TREE']
-          platforms = {'linux-x64': '', 'macos-arm64': '', 'windows-x64': '.exe'}
-          assert set(manifest['platforms']) == set(platforms)
+          platforms = {'linux-x64': '', 'macos-arm64': ''}
+          assert set(manifest['platforms']) == set(current['platforms'])
+          for platform, pin in manifest['platforms'].items():
+              if platform not in platforms:
+                  assert pin == current['platforms'][platform], 'a kept platform pin changed'
           closures = set()
           for platform, suffix in platforms.items():
               name = 'chibi-compiler-host-' + platform + suffix
               pin = manifest['platforms'][platform]
-              assert pin == {'asset': name, 'sha256': checksums[name], 'bytes': (assets / name).stat().st_size}
+              assert pin['tag'] == os.environ['TAG']
+              assert pin['source_revision'] == os.environ['GITHUB_SHA']
+              assert pin['source_tree'] == os.environ['SOURCE_TREE']
+              assert pin['max_artifact_bytes'] > 0
+              assert (pin['asset'], pin['sha256'], pin['bytes']) == (name, checksums[name], (assets / name).stat().st_size)
               evidence = json.loads((assets / ('seed-evidence-' + platform + '.json')).read_text())
               assert evidence['revision'] == os.environ['GITHUB_SHA']
-              expected_runner = {'linux-x64': ('Linux', 'X64'), 'macos-arm64': ('macOS', 'ARM64'), 'windows-x64': ('Windows', 'X64')}[platform]
+              expected_runner = {'linux-x64': ('Linux', 'X64'), 'macos-arm64': ('macOS', 'ARM64')}[platform]
               assert (evidence['runner_os'], evidence['runner_arch']) == expected_runner, 'wrong recovery platform'
               assert evidence['runtime_sha256'] == checksums[name]
               assert evidence['proof_exit_code'] == 0 and evidence['compiler_bytes'] > 0
@@ -426,7 +432,7 @@ jobs:
           assert len(closures) == 1, 'recovered compiler bytes differ'
           # Source archives must still name the exact source and pinned dependencies.
           for name in expected:
-              if name.startswith(('chibi-source-', 'sljit-', 'tree-sitter-')):
+              if name.startswith(('chibi-source-', 'sljit-')):
                   assert (assets / name).read_bytes() == (root / 'release' / name).read_bytes(), name
           PY_VERIFY
       # Transfer only the manifest just verified, rather than downloading an

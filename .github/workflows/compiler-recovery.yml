@@ -54,16 +54,23 @@ jobs:
           $runtime = $manifest.platforms.'${{ matrix.platform }}'
           $suffix = if ($IsWindows) { '.exe' } else { '' }
           $asset = 'chibi-compiler-host-${{ matrix.platform }}' + $suffix
-          if ($manifest.format -ne 1 -or !$manifest.repository -or !$manifest.tag -or
-              $manifest.source_revision -notmatch '^[a-f0-9]{40}$' -or
-              $manifest.source_tree -notmatch '^[a-f0-9]{40}$' -or
+          if ($manifest.format -ne 2 -or !$manifest.repository -or !$runtime.tag -or
+              $runtime.source_revision -notmatch '^[a-f0-9]{40}$' -or
+              $runtime.source_tree -notmatch '^[a-f0-9]{40}$' -or
+              $runtime.max_artifact_bytes -le 0 -or
               $runtime.asset -ne $asset -or $runtime.bytes -le 0 -or
               $runtime.sha256 -notmatch '^[a-f0-9]{64}$') {
             throw 'The native runtime manifest has no complete pin for this platform'
           }
+          # A runtime reads compiler closures up to the bound it was built with;
+          # a seed past it cannot load, so say so instead of failing opaquely.
+          $seedBytes = (Get-Item tools/compiler/bootstrap/compiler.chibip).Length
+          if ($seedBytes -gt $runtime.max_artifact_bytes) {
+            throw "The ${{ matrix.platform }} runtime ($($runtime.tag)) reads compiler closures up to $($runtime.max_artifact_bytes) bytes, but the seed is $seedBytes bytes. Refresh this platform's runtime pin or shrink the closure."
+          }
           $download = Join-Path $env:RUNNER_TEMP 'compiler-runtime-download'
           New-Item -ItemType Directory -Path $download | Out-Null
-          gh release download $manifest.tag --repo $manifest.repository --pattern $asset --dir $download
+          gh release download $runtime.tag --repo $manifest.repository --pattern $asset --dir $download
           if ($LASTEXITCODE) { throw 'Downloading the native runtime seed failed' }
           $file = Get-Item (Join-Path $download $asset)
           $digest = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -104,9 +111,9 @@ jobs:
             $runtimeDigest = (Get-FileHash $hostPath -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($runtimeDigest -ne $runtime.sha256) { throw 'The isolated runtime differs from its pin' }
             $evidence['runtime_sha256'] = $runtimeDigest
-            $evidence['runtime_source_revision'] = $runtimeManifest.source_revision
-            $evidence['runtime_source_tree'] = $runtimeManifest.source_tree
-            $evidence['runtime_release'] = "$($runtimeManifest.repository)/$($runtimeManifest.tag)"
+            $evidence['runtime_source_revision'] = $runtime.source_revision
+            $evidence['runtime_source_tree'] = $runtime.source_tree
+            $evidence['runtime_release'] = "$($runtimeManifest.repository)/$($runtime.tag)"
             $evidence['input_files'] = @(Get-ChildItem $proof -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($proof, $_.FullName).Replace('\', '/') } | Sort-Object)
             function Recover-Stage($name, $bootstrap, $output) {
               $record = [ordered]@{
@@ -146,7 +153,13 @@ jobs:
               if ($err) { Write-Host $err }
               $record['exit_code'] = $process.ExitCode
               $record['elapsed_total_seconds'] = $timer.Elapsed.TotalSeconds
-              if ($process.ExitCode) { throw "$name failed with exit code $($process.ExitCode)" }
+              if ($process.ExitCode) {
+                $bound = $runtime.max_artifact_bytes
+                if ($err -match 'exceeds type, shape or storage limits|artifact bound') {
+                  throw "$name failed: a compiler closure passed the ${{ matrix.platform }} runtime's $bound-byte bound ($($runtime.tag)). Refresh this platform's runtime pin or shrink the closure."
+                }
+                throw "$name failed with exit code $($process.ExitCode)"
+              }
               $artifact = Get-Item $output
               if (!$artifact.Length) { throw "$name produced an empty compiler" }
               $record['output_bytes'] = $artifact.Length

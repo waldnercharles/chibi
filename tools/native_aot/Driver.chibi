@@ -625,6 +625,10 @@ Sources :: (folder: string) -> string[] {
         }
         path := Join([folder, "/", name]);
         if (build.file_kind(path) == "directory") {
+            // A package's tests sit beside it and are not part of the emitter.
+            if (name == "tests") {
+                continue;
+            }
             for (nested in Sources(path)) {
                 paths.append(Join([name, "/", nested]));
             }

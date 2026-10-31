@@ -156,7 +156,7 @@ mean native, since `scalar_llvm` and `Driver.Object` must also take the function
 | --- | ---: | --- |
 | W10 pointers: read-only by value (#1084), writes by reference (#1084 slice 2) | 178 | landed, census not rerun |
 | W2 functions without a result (most pointer writers are void) | 13 | sdk-cmake |
-| W14 `compiler_json_value_string`, `compiler_json_string` | 33 | builtin-math, `foreign import` |
+| W14 `compiler_json_value_string`, `compiler_json_string` | 33 | landed (#1126, Chibi `json_string`), census not rerun |
 | W9 optionals and record fields of map, pointer or optional type | 7 | sdk-cmake |
 | `insert` on arrays | 1 | open |
 | Producer passes but native emission untested over the closure | unknown | W22 driver: compile the 973 through `Driver.Object` and list the rejections |
@@ -252,7 +252,7 @@ needs. Each one says who uses it and what replacing it requires.
 | Capability | Code | Callers | Replacement criterion |
 | --- | --- | --- | --- |
 | Tree-sitter parse to snapshot | `src/toolchain/compiler_syntax.c` | compiler host, `Compile`, `CollectScalar` | A native parser or a narrow generated binding that gives the same snapshot. |
-| JSON decoding natives | `src/toolchain/compiler_json.c` | package compiler, host transport | Chibi decoder with the same results, or a generated binding. |
+| JSON decoding natives (retired: declarations only, the decoder is `tools/compiler/json_string`) | `src/toolchain/compiler_json.c` | the prepared artifacts' native list | Delete with the next native-list change and seed. |
 | Compiler host invocation | `src/toolchain/compiler_host.c` | `Run.ps1`, build host, C tests | Native compiler entry points (M7). |
 | Bootstrap and closure artifacts | `src/toolchain/compiler_bootstrap.c`, `compiler_artifact.c` | `chibi build bootstrap-artifact`, recovery | Native stage chain with fixed-point evidence (M7). |
 | Target layout facts | `src/toolchain/compiler_target.c` | `Target` argument | Target description owned in Chibi, checked against the platform ABI (M5). |

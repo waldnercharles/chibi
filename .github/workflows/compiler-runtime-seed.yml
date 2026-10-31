@@ -80,14 +80,6 @@ jobs:
             'CC=clang-18' >> $env:GITHUB_ENV
             'CXX=clang++-18' >> $env:GITHUB_ENV
           }
-          $python = if ($IsWindows) { 'python' } else { 'python3' }
-          $venv = Join-Path $env:RUNNER_TEMP 'compiler-recovery-build-tools'
-          & $python -m venv $venv
-          if ($LASTEXITCODE) { throw 'Creating the native build-tools environment failed' }
-          $bin = Join-Path $venv $(if ($IsWindows) { 'Scripts' } else { 'bin' })
-          & (Join-Path $bin 'pip') install --only-binary=:all: --require-hashes -r .github/build-tools.txt
-          if ($LASTEXITCODE) { throw 'Installing the pinned native build tools failed' }
-          $bin >> $env:GITHUB_PATH
       # Windows is not in this matrix: it has no graph build host yet.
       - name: Build the native runtime
         id: build

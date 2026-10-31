@@ -38,9 +38,6 @@ jobs:
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
-          python3 -m venv /tmp/cmake
-          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
-          echo /tmp/cmake/bin >> "$GITHUB_PATH"
       - name: Prove native stage two and stage three are identical
         env:
           GH_TOKEN: ${{ github.token }}

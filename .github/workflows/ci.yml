@@ -66,9 +66,6 @@ jobs:
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
-          python3 -m venv /tmp/cmake
-          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
-          echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
       - name: Configure compiler cache
         id: ccache-config
@@ -122,7 +119,7 @@ jobs:
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
         run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-discovery graph-asset-cache graph-os graph-c graph-sdk native-aot-driver
-      # After make build, whose build/reflect the reflection identity cases run.
+      # After `chibi build`, which builds the test drivers this step runs.
       - name: Build timing host regressions (ready drivers)
         env:
           CHIBI_TOOLS_BUILD_DIR: build/test/tools
@@ -239,9 +236,6 @@ jobs:
           echo "CHIBI_LLVM_BIN=$RUNNER_TEMP/llvm-bin" >> "$GITHUB_ENV"
           echo "CC=$LLVM/bin/clang" >> "$GITHUB_ENV"
           echo "CXX=$LLVM/bin/clang++" >> "$GITHUB_ENV"
-          python3 -m venv /tmp/cmake
-          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
-          echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
       - name: Configure compiler cache
         id: ccache-config
@@ -301,7 +295,7 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
-      # After make build, whose build/reflect the reflection identity cases run.
+      # After `chibi build`, which builds the test drivers this step runs.
       - name: Build timing host regressions (ready drivers)
         env:
           CHIBI_TOOLS_BUILD_DIR: build/test/tools
@@ -472,13 +466,10 @@ jobs:
       - name: Install graph build dependencies
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends \
-            clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev ccache python3-venv \
+            clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev ccache \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
-          python3 -m venv "$RUNNER_TEMP/graph-sdk-build-tools"
-          "$RUNNER_TEMP/graph-sdk-build-tools/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
-          echo "$RUNNER_TEMP/graph-sdk-build-tools/bin" >> "$GITHUB_PATH"
           install -d -m 700 "$XDG_RUNTIME_DIR"
       - name: Restore the compiled asset compiler
         uses: actions/cache/restore@v4
@@ -525,10 +516,8 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: No Make, CMake or Python build files outside archive/
-        run: |
-          found=$(git ls-files | grep -Ev '^(archive|third_party)/' | grep -E '(^|/)(CMakeLists\.txt|Makefile)$|\.cmake$|\.py$' || true)
-          test -z "$found" || { printf '%s\n' "$found"; exit 1; }
+      - name: No Make, CMake or Python build files outside archive/, and the C that remains
+        run: sh tools/build.sh census
       - name: Install LLVM and the platform libraries
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends \

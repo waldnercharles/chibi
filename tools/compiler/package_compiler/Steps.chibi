@@ -1434,6 +1434,13 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         slots.append(slot);
         code.append(ConstantCode(ops, declared.storage, declared.bits, at.slot, node));
         produced = Typed(at.slot, declared.storage, 0, -1);
+    } else if (kind == syntax.Identifier && item.phase == CallbackPhase) {
+        // The address of an authored function a foreign call takes. A foreign
+        // call is native only, and the native lane makes the address, so this
+        // is a word nothing reads.
+        slots.append({storage: WordStorage, kind: ValueKind});
+        code.append(ConstantCode(ops, WordStorage, 0, at.slot, node));
+        produced = Typed(at.slot, WordStorage, 0, -1);
     } else if (kind == syntax.Identifier && item.phase == NarrowedReadPhase) {
         // The payload of the optional a narrowed name just read, which stage
         // zero marks again as the payload.
@@ -2719,6 +2726,25 @@ CharConversionCall: int : 8; // char(x), checked
 MathCall: int : 90; // a built-in math constructor
 MathFunctionCall: int : 91; // a built-in math function
 ProcCall: int : 92; // a call through a procedure value's address
+// The phase of an authored function's name a foreign call takes as a function value.
+CallbackPhase: int : 95;
+// Whether the argument `argument`, at `position` of the call `call`, is the name
+// of an authored function that a foreign parameter of function type takes.
+CallbackArgument :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[], package: int,
+                     call: int, position: int, argument: int) -> bool {
+    node := Unparenthesized(forest, argument);
+    if (!Is(forest, node, syntax.Identifier) || Lookup(names, Text(forest, text, node)) >= 0) {
+        return false;
+    }
+    declaration := ScalarForeignDeclaration(forest, text, call);
+    if (declaration < 0) {
+        return false;
+    }
+    parameters := Members(forest, Field(forest, declaration, syntax.FieldParameters));
+    return position >= 0 && position < length(parameters) &&
+           GenericCallableType(forest, Field(forest, parameters[position], syntax.FieldType)) >= 0 &&
+           FindCallable(callables, package, Text(forest, text, node)) >= 0;
+}
 // Calls of the package's functions and of natives. Arguments go to fresh data
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
@@ -3141,6 +3167,11 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                         expected := Visit(argument.node);
                         if (port.storage > 0) {
                             expected = Expect(argument.node, port.storage, port.container, port.record);
+                        }
+                        if (CallbackArgument(forest, text, callables, names, package, item.node, argument.parameter,
+                                             argument.node)) {
+                            expected = Visit(Unparenthesized(forest, argument.node));
+                            expected.phase = CallbackPhase;
                         }
                         next.append(expected);
                         next.extend(NativeArgumentWork(forest, text, names, item.node, argument.node));

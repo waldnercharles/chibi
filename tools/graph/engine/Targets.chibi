@@ -326,11 +326,11 @@ Files :: (target: string) -> string[] {
     if (target == "test_tools") {
         return [
             "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
-            "test/tools/fixture.c", "test/tools/execution_policy.c",
+            "test/tools/fixture.c",
             "test/tools/chibi_cli.c", "test/tools/native_build.c", "test/tools/native_workloads.c",
             "test/tools/collab.c",
             "test/tools/web_storage.c", "test/tools/browser.c",
-            "test/tools/wasm_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
+            "test/tools/wasm_browser.c", "test/support/arena.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/build_process.c",
             "test/tools/compiler_bootstrap.c",
@@ -915,7 +915,7 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_compiler_json") {
         return [
-            "private/compiler-json", "public/json", "public/native_capabilities", "public/capabilities",
+            "private/compiler-json", "public/native_capabilities", "public/capabilities",
             "public/types", "public/support", "public/execution_contract"
         ];
     }
@@ -1161,12 +1161,8 @@ pub Defines :: (target: string) -> string[] {
             "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC",
             "CHIBI_POLICY_WORKER_PATH=\"{program:policy_worker}\"",
             "CHIBI_SOURCE_ROOT=\"{source_root}\"", "CHIBI_TEST_ASSET_VALUES=1",
-            "CHIBI_TEST_AUTHORING_DOCUMENTS=1", "CHIBI_TEST_BOX3D=1",
-            "CHIBI_TEST_BUILD_PROCESS=1", "CHIBI_TEST_COMPILER_ARTIFACT=1", "CHIBI_TEST_C_EXPORT=1",
-            "CHIBI_TEST_FMT=1", "CHIBI_TEST_NATIVE_RUNTIME=1",
-            "CHIBI_TEST_PNG_ENCODING=1", "CHIBI_TEST_PREVIEW=1",
-            "CHIBI_TEST_PREVIEW_COMPONENTS=1", "CHIBI_TEST_PROGRAM=1",
-            "CHIBI_TEST_SCENE_SNAPSHOT_READ=1",
+            "CHIBI_TEST_BOX3D=1", "CHIBI_TEST_BUILD_PROCESS=1", "CHIBI_TEST_COMPILER_ARTIFACT=1",
+            "CHIBI_TEST_FMT=1", "CHIBI_TEST_NATIVE_RUNTIME=1", "CHIBI_TEST_PROGRAM=1",
             "CHIBI_TEST_SOURCE_FEATURES=1",
             "CHIBI_TEST_SOURCE_RUNTIME=1",
             "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int", "_DARWIN_C_SOURCE", "_DEFAULT_SOURCE",

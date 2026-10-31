@@ -113,7 +113,7 @@ ArraySetValueMustBeDefined :: () {
 @test
 UnsupportedArrayInstructionIsRejected :: () {
     code := Arrays();
-    code[8] = Code(native.Poke + 1, 1030, 7, 4, 0, 0, 0);
+    code[8] = Code(native.InstructionCount, 1030, 7, 4, 0, 0, 0);
     Rejects(ArrayModule(code), "unsupported native scalar instruction");
 }
 @test

@@ -1,0 +1,8 @@
+package facts
+
+// record array fields survive collections
+@test
+Calls :: () {
+    assert(Garbage() == 1048576, "Garbage");
+    assert(Survive(4, 128) == 3456, "Survive");
+}

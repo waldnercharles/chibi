@@ -2526,10 +2526,103 @@ RetainedManifest :: (text: string, name: string, code: Instruction[], texts: str
     return format_text("{}@chibi_retained_{} = constant { i32, i32, ptr, ptr, ptr, ptr } { i32 1, i32 {}, ptr @chibi_scalar.retained.types, ptr @chibi_scalar.retained.names, ptr @chibi_scalar.retained.get, ptr @chibi_scalar.retained.set }\n",
                        out, name, length(states));
 }
-// A library module: each function is internal, and the one symbol it exports
-// is its manifest, `chibi_natives_<library>`, a constant execution_native_manifest
+// FNV-1a over the bytes of `name`, which a host compares in place of the name
+// it cannot read.
+NameHash :: (name: string) -> i64 {
+    hash: u64 = 0xcbf29ce484222325;
+    prime: u64 = 1099511628211;
+    for (byte in strings.Bytes(name)) {
+        hash = (hash ^ u64(byte)) * prime;
+    }
+    return i64(wrap: hash);
+}
+// Whether a host calls function `shape` through a plain C-ABI wrapper: up to
+// eight parameters and a result that are each a 32- or 64-bit integer, a float
+// or a double.
+HostCallable :: (shape: Function, parameters: int[]) -> bool {
+    if (shape.parameters > abi.ExportParameters) {
+        return false;
+    }
+    types: int[] = [shape.result];
+    for (index in 0..<shape.parameters) {
+        types.append(parameters[shape.first_parameter + index]);
+    }
+    for (type in types) {
+        if (abi.Floating(type) || (Integer(type) && abi.IntegerBits(type) >= 32)) {
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+// A function of the state accessors that `switch`es on its index argument to a
+// constant `result` of `type` for each state, and gives 0 for an index outside them.
+HostTable :: (symbol: string, type: string, results: string[]) -> string {
+    cases: string[] = [];
+    arms := "";
+    for (index in 0..<length(results)) {
+        cases.append(format_text("i32 {}, label %c{}", index, index));
+        arms = format_text("{}c{}:\n  ret {} {}\n", arms, index, type, results[index]);
+    }
+    out := format_text("define {} @{}(i32 %i) #0 {\nentry:\n  switch i32 %i, label %none [{}]\n", type, symbol,
+                       strings.Join(cases, " "));
+    return format_text("{}{}none:\n  ret {} 0\n}\n", out, arms, type);
+}
+// Plain C-ABI symbols for a host that can call but cannot read memory, such
+// as a program in a language with foreign calls only, which cannot walk a
+// manifest. `chibi_host_call_<Function>` calls a function whose types
+// HostCallable admits, in a library that calls no runtime. The state accessors
+// of a library with retained states are `chibi_host_retained_count`, `_type`
+// and `_hash` (NameHash of the name) by index, and `_get` and `_set`, which move
+// one state as its word, `_set` giving 1 for an index that names a state.
+HostSymbols :: (text: string, names: string[], functions: Function[], parameters: int[], code: Instruction[],
+                texts: string[], runtime: bool) -> string {
+    out := text;
+    for (function in 0..<length(functions)) {
+        shape := functions[function];
+        if (runtime || !HostCallable(shape, parameters)) {
+            continue;
+        }
+        listed: string[] = [];
+        passed: string[] = [];
+        for (index in 0..<shape.parameters) {
+            type := TypeName(parameters[shape.first_parameter + index]);
+            listed.append(format_text("{} %a{}", type, index));
+            passed.append(format_text("{} %a{}", type, index));
+        }
+        out = format_text("{}\ndefine {} @chibi_host_call_{}({}) #0 {\nentry:\n  %r = call {} @{}({})\n  ret {} %r\n}\n", out,
+                          TypeName(shape.result), names[function], strings.Join(listed, ", "), TypeName(shape.result),
+                          Symbol(function, NoEntry), strings.Join(passed, ", "), TypeName(shape.result));
+    }
+    states := RetainedStates(code);
+    if (length(states) == 0) {
+        return out;
+    }
+    types: string[] = [];
+    hashes: string[] = [];
+    for (item in states) {
+        types.append(format_text("{}", abi.ExportType(item.type)));
+        hashes.append(format_text("{}", NameHash(texts[item.right])));
+    }
+    count := length(states);
+    out = format_text("{}\ndefine i32 @chibi_host_retained_count() #0 {\nentry:\n  ret i32 {}\n}\n", out, count);
+    out = format_text("{}\n{}\n{}", out, HostTable("chibi_host_retained_type", "i32", types),
+                      HostTable("chibi_host_retained_hash", "i64", hashes));
+    out = format_text("{}\ndefine i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  %words = alloca [{} x i64]\n", out, count);
+    out = format_text("{}  call void @chibi_scalar.retained.get(ptr null, ptr null, ptr %words)\n  %ok = icmp ult i32 %i, {}\n", out, count);
+    out = format_text("{}  br i1 %ok, label %read, label %none\nread:\n  %at = getelementptr inbounds i64, ptr %words, i32 %i\n", out);
+    out = format_text("{}  %w = load i64, ptr %at\n  ret i64 %w\nnone:\n  ret i64 0\n}\n", out);
+    out = format_text("{}\ndefine i32 @chibi_host_retained_set(i32 %i, i64 %v) #0 {\nentry:\n  %words = alloca [{} x i64]\n", out, count);
+    out = format_text("{}  %ok = icmp ult i32 %i, {}\n  br i1 %ok, label %write, label %none\nwrite:\n", out, count);
+    out = format_text("{}  call void @chibi_scalar.retained.get(ptr null, ptr null, ptr %words)\n", out);
+    out = format_text("{}  %at = getelementptr inbounds i64, ptr %words, i32 %i\n  store i64 %v, ptr %at\n", out);
+    return format_text("{}  call void @chibi_scalar.retained.set(ptr null, ptr %words, ptr null)\n  ret i32 1\nnone:\n  ret i32 0\n}\n", out);
+}
+// A library module: each function is internal, and the symbols it exports are
+// its manifest, `chibi_natives_<library>`, a constant execution_native_manifest
 // (src/execution/native.h) listing an entry for each function whose
-// parameters and result words carry, under its name and stable ID.
+// parameters and result words carry, under its name and stable ID, and the
+// plain C-ABI symbols of HostSymbols.
 pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                     parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                     records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[]) -> Result {
@@ -2584,5 +2677,6 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     out = format_text("{}@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",
                       out, name, abi.ExportAbi, length(exports));
     out = StateManifest(out, name, names, ids, functions, parameters, records, fields, field_names, runtime);
-    return Result.Emitted(RetainedManifest(out, name, code, texts));
+    out = RetainedManifest(out, name, code, texts);
+    return Result.Emitted(HostSymbols(out, names, functions, parameters, code, texts, runtime));
 }

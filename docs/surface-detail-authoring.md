@@ -11,19 +11,7 @@ example projects on 2026-10-17 ([examples](examples.md)). Edit a project's
 model, material, prototype and scene KDL directly, or use Studio. The former
 `author-detail.mjs` recipe and MCP transport are retired as well.
 
-Format and validate saved assets with the native controller:
-
-```sh
-build/chibi_ctl --project-root <root> --format
-printf '%s\n' '{"contract":1,"operation":"validate_asset","kind":"model","name":"PolaroidSurfaceDetail"}' | \
-  build/chibi_ctl --project-root <root>
-printf '%s\n' '{"contract":1,"operation":"inspect_graph","kind":"model","name":"PolaroidSurfaceDetail"}' | \
-  build/chibi_ctl --project-root <root>
-```
-
-Use the bounded hidden-window scene preview route in
-[agent execution](agent-execution.md) for visual evidence. Previewing a material
-alone cannot verify model geometry. The reports under `build/model-evidence`
+Previewing a material alone cannot verify model geometry. The reports under `build/model-evidence`
 record earlier captures; they are not results of the current migration.
 
 ## Nodes and coordinates

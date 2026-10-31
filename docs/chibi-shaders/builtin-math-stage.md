@@ -277,7 +277,7 @@ and constant/layout evaluators stay outside that bootstrap source inventory.
 
 Validation on the provisional branch:
 
-- The module candidate built through `make build`, with debug configuration,
+- The module candidate built through the since-retired `make build`, with debug configuration,
   warnings and ccache enabled and sanitizers disabled. Configuration took 8.7 s,
   recovery host 11.5 s, dependencies 7.5 s and the graph build 439.7 s.
 - The source compiler libraries and language driver build through CMake with

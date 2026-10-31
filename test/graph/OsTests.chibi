@@ -1,0 +1,34 @@
+package os_tests
+
+import bytes "core:bytes"
+import os "core:os"
+import strings "core:strings"
+
+// core:os over the build host's natives: bytes cross files unchanged.
+
+BytesRoundTripIncludingNulAndInvalidUtf8 :: () {
+    made := os.Capture(["mktemp", "-d"]);
+    assert(made.status == 0, "a scratch directory");
+    directory := strings.TrimSpace(made.stdout);
+    path := format_text("{}/data", directory);
+    data: u8[] = [0, 255, 10, 13, 128, 0, 65];
+    assert(os.WriteBytes(path, data) == nil, "bytes are written");
+    read := os.ReadBytes(path);
+    assert(read.error == nil && bytes.Equal(read.data, data), "bytes read back unchanged");
+    empty: u8[] = [];
+    assert(os.WriteBytes(path, empty) == nil, "an empty file is written");
+    again := os.ReadBytes(path);
+    assert(again.error == nil && length(again.data) == 0, "an empty file reads as no bytes");
+    assert(os.Capture(["rm", "-rf", directory]).status == 0, "cleanup");
+}
+
+MissingFileReportsNotFound :: () {
+    read := os.ReadBytes("/definitely/missing/file");
+    assert(read.error != nil && length(read.data) == 0, "no bytes for a missing file");
+}
+
+pub Run :: () -> int {
+    BytesRoundTripIncludingNulAndInvalidUtf8();
+    MissingFileReportsNotFound();
+    return 0;
+}

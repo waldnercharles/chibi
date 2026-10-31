@@ -109,6 +109,8 @@ text is read once with `text_bytes`.
 
 ## Tests
 
-`chibi build test language-source-tokenizer-chibi` compares the
-tokens of every `.chibi` file below `packages/`, `test/` and `tools/` with
-Tree-sitter's; see `docs/testing.md`.
+`chibi test tools/compiler` (`chibi build test chibi-test-compiler`) runs the
+tokenizer's `@test`s in `tools/compiler/source_tokenizer/tests`. The C
+differential that compared every `.chibi` file's tokens with Tree-sitter's was
+deleted once those tests covered it (`archive/README.md`, "Deleted once
+replaced").

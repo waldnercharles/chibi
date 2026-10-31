@@ -10,7 +10,6 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
-#include "types/copy_internal.h"
 #include "types/map.h"
 #include "types/pointer.h"
 #include "types/query.h"
@@ -423,7 +422,6 @@ static void deliver(const execution_task *t, task_waiter waiter)
         *borrowed = (pin_union){ .tag = waiter.tag, .count = t->result_count };
         if (bytes) {
             memcpy(borrowed->values, t->results, bytes);
-            pin_copy_record(PIN_COPY_VALUE_BUFFER, bytes);
         }
         result = (pin_value){ .type = PIN_UNION, .ptr = borrowed };
     }

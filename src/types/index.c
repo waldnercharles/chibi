@@ -1,6 +1,5 @@
 #include "support/arena.h"
 #include "types/array.h"
-#include "types/copy_internal.h"
 #include "types/record.h"
 #include "types/text.h"
 #include "types/trace.h"
@@ -236,12 +235,6 @@ int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
         pin_array_mutation_end(array);
         pin_value_collection_release(&retained);
         return -1;
-    }
-    if (array->stride) {
-        pin_copy_record(
-            retained.type == PIN_STRUCT ? PIN_COPY_RECORD : PIN_COPY_VALUE_BUFFER,
-            array->stride
-        );
     }
     if (!rebuild) {
         array->buckets = index;

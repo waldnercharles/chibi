@@ -1,0 +1,102 @@
+package facts
+// Node and the Span it nests hold no references, so their arrays keep each row
+// as its bytes while they change in place. Tagged holds a string.
+Span :: struct { start: int; end: int; }
+Node :: struct { kind: int; parent: int; span: Span; named: bool; }
+Tagged :: struct { name: string; id: int; }
+Holder :: struct { nodes: Node[]; count: int; }
+At :: (kind: int, parent: int) -> Node {
+    return {kind: kind, parent: parent, span: {start: kind, end: kind + parent}, named: kind % 2 == 0};
+}
+Push :: (out: ^(Node[]), kind: int, parent: int) { out.append(At(kind, parent)); }
+PushField :: (h: ^Holder, kind: int) { h.nodes.append(At(kind, 1)); }
+// Whether row i holds At(i * 3, i), field by field.
+Holds :: (nodes: Node[], i: int) -> bool {
+    n := nodes[i];
+    return n.kind == i * 3 && n.parent == i && n.span.start == i * 3 && n.span.end == i * 4 &&
+           n.named == ((i * 3) % 2 == 0);
+}
+// Appends, local and through a pointer, keep every field of every row across
+// several growths.
+Appended :: (count: int) -> bool {
+    local: Node[] = [];
+    through: Node[] = [];
+    i: int = 0;
+    while (i < count) {
+        local.append({kind: i * 3, parent: i, span: {start: i * 3, end: i * 4}, named: (i * 3) % 2 == 0});
+        Push(&through, i * 3, i);
+        i += 1;
+    }
+    if (length(local) != count || length(through) != count) { return false; }
+    i = 0;
+    while (i < count) {
+        if (!Holds(local, i) || !Holds(through, i)) { return false; }
+        i += 1;
+    }
+    return true;
+}
+// Copies taken between appends keep their rows: each append, local or
+// through a pointer, detaches the shared rows first, then keeps growing.
+Shared :: () -> int {
+    nodes: Node[] = [At(1, 0), At(2, 1)];
+    kept := nodes;
+    nodes.append(At(3, 2));
+    more := nodes;
+    Push(&nodes, 4, 3);
+    i: int = 0;
+    while (i < 40) { nodes.append(At(i, 0)); i += 1; }
+    return length(kept) * 10000 + length(more) * 100 + length(nodes);
+}
+// Stores into a row, whole or one field, leave the copies taken before them.
+SharedRows :: () -> int {
+    nodes: Node[] = [At(1, 0), At(2, 1)];
+    kept := nodes;
+    nodes.append(At(3, 2));
+    more := nodes;
+    Push(&nodes, 4, 3);
+    nodes[0] = At(7, 7);
+    nodes[2].parent = 9;
+    return kept[0].kind * 10000 + more[2].parent * 1000 + nodes[0].span.end * 100 + nodes[2].parent * 10 +
+           nodes[3].kind;
+}
+// A row read into a local is its own copy: appends that grow the array, and a
+// store into the row it came from, leave it as it was.
+Held :: () -> int {
+    nodes: Node[] = [At(5, 1)];
+    first := nodes[0];
+    i: int = 0;
+    while (i < 100) { nodes.append(At(i, 2)); i += 1; }
+    nodes[0] = At(6, 6);
+    return first.kind * 100 + first.span.end * 10 + nodes[0].kind;
+}
+// Extending by another array and by itself keeps the rows in order.
+Extended :: () -> int {
+    nodes: Node[] = [At(1, 1)];
+    other: Node[] = [At(2, 2), At(3, 3)];
+    nodes.extend(other);
+    nodes.extend(nodes);
+    nodes[1] = At(9, 9);
+    return length(nodes) * 1000 + nodes[1].kind * 100 + nodes[3].kind * 10 + other[0].kind;
+}
+// A loop over the array it appends to walks the rows the array had.
+Walked :: () -> int {
+    nodes: Node[] = [At(1, 0), At(2, 0)];
+    for (node in nodes) { nodes.append(At(node.kind * 10, 0)); }
+    return length(nodes) * 100 + nodes[2].kind + nodes[3].kind;
+}
+// Appends to a record's field leave a copy of the record as it was.
+Field :: () -> int {
+    holder: Holder = {nodes: [At(1, 1)], count: 0};
+    kept := holder;
+    holder.nodes.append(At(2, 2));
+    PushField(&holder, 3);
+    return length(kept.nodes) * 100 + length(holder.nodes) * 10 + holder.nodes[2].kind;
+}
+// Rows that hold a string change in place the same way.
+Boxed :: () -> int {
+    tags: Tagged[] = [{name: "a", id: 1}];
+    kept := tags;
+    tags.append({name: "b", id: 2});
+    tags[0] = {name: "c", id: 3};
+    return tags[1].id * 1000 + length(kept) * 100 + kept[0].id * 10 + tags[0].id;
+}

@@ -439,17 +439,25 @@ const char *execution_prepared_instruction_name(int ordinal)
     assert(ordinal >= 0 && ordinal <= BF_END);
     return instruction_names[ordinal];
 }
-static void header(execution_wire *w)
+static void header(prepared_context *c)
 {
+    execution_wire *w = &c->wire;
     uint64_t expected_abi = execution_prepared_abi();
-    uint64_t magic = PREPARED_MAGIC, version = EXECUTION_PREPARED_VERSION,
+    int written = c->plan->prepared_version ? c->plan->prepared_version
+                                            : EXECUTION_PREPARED_VERSION;
+    uint64_t magic = PREPARED_MAGIC, version = (uint64_t)written,
              pointer_size = sizeof(void *), abi = expected_abi;
     U64(magic);
     U64(version);
     U64(pointer_size);
     U64(abi);
-    if (magic != PREPARED_MAGIC || version != EXECUTION_PREPARED_VERSION) {
+    if (magic != PREPARED_MAGIC || version < EXECUTION_PREPARED_OLDEST_VERSION ||
+        version > EXECUTION_PREPARED_VERSION) {
         w->error = "unknown prepared format version; rebuild prepared code";
+    }
+    c->version = (int)version;
+    if (w->reading) {
+        c->plan->prepared_version = (int)version;
     }
     if (pointer_size != sizeof(void *) || abi != expected_abi) {
         w->error = "prepared target ABI differs";
@@ -824,7 +832,7 @@ static bool write_depth(
         add_function(&c, c.plan->queries[i].predicate, 0);
     }
     execution_wire *w = &c.wire;
-    header(w);
+    header(&c);
     execution_wire_strings_begin(w);
     U64(c.plan->id);
     U64(c.plan->owner_type);
@@ -1009,7 +1017,7 @@ execution_module *execution_prepared_read_budget(
     if (length > EXECUTION_WIRE_MAX_BYTES) {
         w->error = "prepared file exceeds byte budget";
     }
-    header(w);
+    header(&c);
     execution_wire_strings_begin(w);
     U64(c.plan->id);
     U64(c.plan->owner_type);

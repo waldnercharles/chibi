@@ -111,3 +111,17 @@ RetainedStateMustStartInItsType :: () {
     code[1] = Code(native.StateLoad, 6, 0, 0, 0, 0, 1099511627776);
     Rejects(CounterLibrary(code), "native retained state differs from its operands");
 }
+
+// A host that can call but not read memory finds the library's functions and
+// states through plain C symbols: a wrapper for each function it can call, and
+// the states by index with the hash of each name.
+@test
+HostSymbolsReachFunctionsAndStatesWithoutMemory :: () {
+    text := Emitted(CounterLibrary(Counter()));
+    assert(strings.Contains(text, "define i32 @chibi_host_call_Frame() #0 {\nentry:\n  %r = call i32 @chibi_scalar.0()\n  ret i32 %r\n}\n"));
+    assert(strings.Contains(text, "define i32 @chibi_host_retained_count() #0 {\nentry:\n  ret i32 1\n}\n"));
+    assert(strings.Contains(text, "define i32 @chibi_host_retained_type(i32 %i) #0 {\nentry:\n  switch i32 %i, label %none [i32 0, label %c0]\nc0:\n  ret i32 1\nnone:\n  ret i32 0\n}\n"));
+    assert(strings.Contains(text, "define i64 @chibi_host_retained_hash(i32 %i) #0 {\nentry:\n  switch i32 %i, label %none [i32 0, label %c0]\nc0:\n  ret i64 -9211136534442197545\n"));
+    assert(strings.Contains(text, "define i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  %words = alloca [1 x i64]\n"));
+    assert(strings.Contains(text, "define i32 @chibi_host_retained_set(i32 %i, i64 %v) #0 {\n"));
+}

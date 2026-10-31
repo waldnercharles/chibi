@@ -789,6 +789,53 @@ TEST_CASE(native_build_calls_through_a_function_pointer)
     return true;
 }
 
+static const char *const BYTES_SOURCE = "package scalar\n"
+                                        "foreign import libc \"system:c\"\n"
+                                        "foreign libc {\n"
+                                        "    memset :: (buffer: u8[], value: "
+                                        "i32, count: u64) -> rawptr\n"
+                                        "}\n"
+                                        "Main :: () -> int {\n"
+                                        "    buffer: u8[] = [1, 2, 3, 4];\n"
+                                        "    done := memset(buffer, 7, 3);\n"
+                                        "    return int(buffer[0]) + "
+                                        "int(buffer[2]) + int(buffer[3]);\n"
+                                        "}\n";
+
+/* An array of bytes passes to C as the pointer to its elements, and the callee
+ * writes through it: libc's memset fills the first three of four bytes. */
+TEST_CASE(native_build_passes_a_byte_array_to_c)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", NULL };
+    reset("bytes", BYTES_SOURCE);
+    real_tools(bin);
+    REQUIRE(build_with(in_place, options, tools) == 0);
+    char program[1024];
+    REQUIRE(printed(program));
+    const char *argv[] = { program, NULL };
+    const char *envp[] = { NULL };
+    chibi_process_output out = { 0 }, err = { 0 };
+    chibi_process_capture_result ran = chibi_process_capture(
+        program,
+        argv,
+        game,
+        envp,
+        chibi_process_now() + 10,
+        NULL,
+        &out,
+        &err
+    );
+    REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 18);
+    return true;
+}
+
 /* The other targets' bundle directories and program names, in the
  * driver's target order after Linux. */
 static const struct
@@ -1004,6 +1051,7 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
     RUN_TEST_CASE(native_build_links_a_vendored_archive);
     RUN_TEST_CASE(native_build_calls_through_a_function_pointer);
+    RUN_TEST_CASE(native_build_passes_a_byte_array_to_c);
     RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
     free(stage_tool);
     tool_remove_tree(suite);

@@ -734,8 +734,10 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar foreign call through an address needs a word";
             }
             for (argument in 0..<operand.count) {
-                if (!Scalar(stack[base + argument]) && stack[base + argument] != facts.StringType) {
-                    return "scalar foreign call takes numbers, bools and strings";
+                given := stack[base + argument];
+                if (!Scalar(given) && given != facts.StringType &&
+                    !(given >= facts.ArrayType && Scalar(Element(records, given)) && Element(records, given) != facts.BoolType)) {
+                    return "scalar foreign call takes numbers, bools, strings and arrays of numbers";
                 }
             }
             stack = slice(stack, 0, base);

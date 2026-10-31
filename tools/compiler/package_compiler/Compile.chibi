@@ -347,6 +347,29 @@ ForeignStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> 
     }
     return storage;
 }
+// The element storage of the type `node` when it spells `T[]` for a number `T`,
+// 0 otherwise. A foreign parameter of this type is the pointer to the
+// array's elements, which the callee may write; the length is a parameter of
+// its own, as in C.
+ForeignArray :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    if (node < 0 || !Is(forest, node, "type") || Field(forest, node, "name") < 0 || HasToken(forest, node, "?") ||
+        Field(forest, node, "trait") >= 0) {
+        return 0;
+    }
+    brackets: int = 0;
+    child := forest[node].first_child;
+    while (child >= 0) {
+        if (!forest[child].is_extra && forest[child].kind == "[") {
+            brackets += 1;
+        }
+        child = forest[child].next_sibling;
+    }
+    storage := ScalarStorage(Text(forest, text, Field(forest, node, "name")));
+    if (brackets != 1 || (!Integer(storage) && !Floating(storage))) {
+        return 0;
+    }
+    return storage;
+}
 // The type `node` spells as a foreign result, 0 when it may not: a cstring
 // names bytes the callee owns, which no value here can hold.
 ForeignResultStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
@@ -484,19 +507,26 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                     for (parameter in Members(forest, Field(forest, declaration, "parameters"))) {
                         kind := Field(forest, parameter, "type");
                         storage := 0;
+                        container := 0;
+                        marker := "";
                         if (kind >= 0) {
                             storage = ForeignStorage(forest, text, kind);
+                            if (ForeignArray(forest, text, kind) != 0) {
+                                storage = ForeignArray(forest, text, kind);
+                                container = ArrayContainer;
+                                marker = "[]";
+                            }
                         }
                         if (storage == 0) {
                             return ForeignRows.Failed(Diagnose(forest, parameter, file,
-                                                               "A foreign parameter is an integer, float, bool, rawptr, cstring or function type"));
+                                                               "A foreign parameter is an integer, float, bool, rawptr, cstring, function type or array of numbers"));
                         }
                         port: ResolvedPort = {name: Text(forest, text, Field(forest, parameter, "name")),
-                                              storage: storage, container: 0, c_string: false, record: -1,
+                                              storage: storage, container: container, c_string: false, record: -1,
                                               has_default: false, default_owner: false, default_supported: false,
                                               default_bits: 0, default_text: ""};
                         ports.append(port);
-                        signature = format_text("{}{},", signature, storage);
+                        signature = format_text("{}{}{},", signature, storage, marker);
                         parameters += 1;
                     }
                     results: int = 0;

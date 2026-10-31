@@ -1478,12 +1478,12 @@ CExtension :: (type: int) -> string {
 // Whether an argument of a foreign call is a number, a bool or a string, whose
 // data pointer the callee reads.
 ForeignArgument :: (type: int) -> bool {
-    return abi.ScalarType(type) != "" || type == abi.TextStorage;
+    return abi.ScalarType(type) != "" || type == abi.TextStorage || type >= ArrayType;
 }
 // The type of an argument in a foreign declaration or call: a string is the
 // pointer to its bytes.
 ForeignType :: (type: int) -> string {
-    if (type == abi.TextStorage) {
+    if (type == abi.TextStorage || type >= ArrayType) {
         return "ptr";
     }
     return format_text("{}{}", TypeName(type), CExtension(type));
@@ -1604,6 +1604,11 @@ ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], item: In
             // A missing symbol is a null address, which traps instead of jumping to 0.
             out = format_text("{}  %null{} = icmp eq ptr {}, null\n  br i1 %null{}, label %trap, label %call{}\ncall{}:\n", out, pc,
                               callee, pc, pc, pc);
+            continue;
+        }
+        if (type >= ArrayType) {
+            out = format_text("{}  %{}.data = extractvalue {} %{}, 2\n", out, name, TypeName(type), name);
+            listed.append(format_text("ptr %{}.data", name));
             continue;
         }
         if (type == abi.TextStorage) {

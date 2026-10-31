@@ -91,7 +91,8 @@ ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
         return ParseSequence(c, n);
     }
     if (token == tk.Reduce) {
-        return ParseReduce(c, n);
+        Archived(c, n, "reduce statements");
+        return New(n, syntax.Error);
     }
     if (declarations && StartsBodyDeclaration(c, n)) {
         return ParseDeclaration(c, n);
@@ -360,28 +361,3 @@ ParseSequence :: (c: ^Cursor, n: ^(Node[])) -> int {
     return chain;
 }
 
-// `reduction [unordered] target += value` or `reduction min(target, value)`.
-ParseReduce :: (c: ^Cursor, n: ^(Node[])) -> int {
-    reduction := New(n, syntax.ReduceStatement);
-    Take(c, n, reduction, syntax.FieldNone);
-    if (IsWord(c, n, "min") || IsWord(c, n, "max")) {
-        word := Take(c, n, reduction, syntax.FieldOperator);
-        n^[word].kind = syntax.Min;
-        if (IsWordAt(c, n, word, "max")) {
-            n^[word].kind = syntax.Max;
-        }
-        n^[word].named = false;
-        Expect(c, n, reduction, tk.OpenParen, syntax.FieldNone);
-        Add(n, reduction, ParseBinary(c, n, OrPower), syntax.FieldTarget);
-        Expect(c, n, reduction, tk.Comma, syntax.FieldNone);
-        Add(n, reduction, ParseBinary(c, n, OrPower), syntax.FieldValue);
-        Expect(c, n, reduction, tk.CloseParen, syntax.FieldNone);
-    } else {
-        Accept(c, n, reduction, tk.Unordered, syntax.FieldOrdering);
-        Add(n, reduction, ParseBinary(c, n, OrPower), syntax.FieldTarget);
-        Expect(c, n, reduction, tk.AddEq, syntax.FieldOperator);
-        Add(n, reduction, ParseBinary(c, n, OrPower), syntax.FieldValue);
-    }
-    End(c, n, reduction);
-    return reduction;
-}

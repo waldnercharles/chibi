@@ -284,7 +284,8 @@ ParsePrimary :: (c: ^Cursor, n: ^(Node[])) -> int {
         return builtin;
     }
     if (token == tk.Emit) {
-        return ParseEmit(c, n);
+        Archived(c, n, "emit expressions");
+        return New(n, syntax.Error);
     }
     if (token == tk.OpenParen) {
         group := New(n, syntax.ParenthesizedExpression);
@@ -300,10 +301,8 @@ ParsePrimary :: (c: ^Cursor, n: ^(Node[])) -> int {
         return ParseStructLiteral(c, n);
     }
     if (token == tk.Query) {
-        search := New(n, syntax.QueryExpression);
-        Take(c, n, search, syntax.FieldNone);
-        Add(n, search, ParseQueryList(c, n), syntax.FieldParameters);
-        return search;
+        Archived(c, n, "query expressions");
+        return New(n, syntax.Error);
     }
     Fail(c, n, "Expected an expression");
     return New(n, syntax.Error);
@@ -357,25 +356,6 @@ ParseLambda :: (c: ^Cursor, n: ^(Node[])) -> int {
     return lambda;
 }
 
-// `emit target.Event(payload)` and `emit Event(target, payload)`.
-ParseEmit :: (c: ^Cursor, n: ^(Node[])) -> int {
-    emission := New(n, syntax.EmitExpression);
-    Take(c, n, emission, syntax.FieldNone);
-    first := Take(c, n, -1, syntax.FieldNone);
-    n^[first].kind = syntax.Identifier;
-    n^[first].named = true;
-    target := first;
-    while (!c.failed && c.token == tk.Period) {
-        member := New(n, syntax.MemberExpression);
-        Add(n, member, target, syntax.FieldObject);
-        Take(c, n, member, syntax.FieldNone);
-        TakeMember(c, n, member, syntax.FieldMember);
-        target = member;
-    }
-    Add(n, emission, target, syntax.FieldEvent);
-    Add(n, emission, ParseArguments(c, n), syntax.FieldArguments);
-    return emission;
-}
 
 // An array `[a, b]`, a map `["k": v]` or an empty map `[:]`.
 ParseCollection :: (c: ^Cursor, n: ^(Node[])) -> int {

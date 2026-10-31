@@ -351,10 +351,6 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                           item.node);
     if (item.phase == 0) {
         code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
-        if (kind == syntax.Assignment && QueryReadonlyDestination(forest, text, types, members, names,
-                                                             StatementTarget(forest, item.node))) {
-            return Fail(forest, item.node, document, "Query value bindings are read-only; use a component pointer to modify storage");
-        }
         value := Field(forest, item.node, syntax.FieldValue);
         if (kind == syntax.ExpressionStatement) {
             value = FirstMember(forest, item.node);
@@ -1486,19 +1482,6 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return Step.Emitted(code, slots, [], [], [], [], [], [], [], 0,
                                 Typed(at.slot + length(slots) - 1, binding.storage, 0, -1), NoValue(), []);
         }
-        if (binding.place == QuerySnapshotPlace) {
-            return QuerySnapshotReadStep(binding, names, ops, target, at, node);
-        }
-        if (binding.place == QueryFieldPlace) {
-            read := QueryFieldReadStep(binding, QueryFieldRow(types, members, binding.node),
-                                       values, top, item, ops, target, at, node);
-            if (item.phase != 0 && binding.storage == PointerStorage && binding.record >= 0 &&
-                types[binding.record].key != 0 && QueryAccessPresent(forest, text, types, names, item.node)) {
-                element := PointerElement(types, Typed(-1, PointerStorage, 0, binding.record));
-                return PointerNarrow(read, FindPointer(types, element, false));
-            }
-            return read;
-        }
         if (binding.place == LocalPlace && binding.storage == UnionStorage && binding.container == 0 &&
             binding.record >= 0 && types[binding.record].kind == TaskResultDecl &&
             TaskResultPresent(forest, text, binding, item.node)) {
@@ -1508,7 +1491,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         if (Single(Typed(-1, binding.storage, binding.container, binding.record), PointerStorage) &&
             binding.record >= 0 && types[binding.record].key != 0 &&
             !PointerNilOperand(forest, text, item.node) &&
-            (PointerPresent(forest, text, binding, item.node) || QueryAccessPresent(forest, text, types, names, item.node))) {
+            PointerPresent(forest, text, binding, item.node)) {
             element := PointerElement(types, Typed(-1, PointerStorage, 0, binding.record));
             narrowed = FindPointer(types, element, false);
         }
@@ -1672,31 +1655,6 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         popped = 1;
         object := values[top - 1];
         member := Text(forest, text, Field(forest, item.node, syntax.FieldMember));
-        if (Single(object, QueryStorage) && object.record >= 0) {
-            if (types[object.record].kind != QueryDecl) {
-                return Fail(forest, item.node, document, "Query description fields are available through iteration");
-            }
-            field := FindField(types, members, object.record, member);
-            if (field < 0) {
-                return Fail(forest, item.node, document, format_text("Unknown query row field '{}'", member));
-            }
-            declared := members[field];
-            read := QueryGetStep(object, field - types[object.record].first,
-                                 {storage: declared.storage, container: declared.container, record: declared.record},
-                                 1, ops, target, at, node);
-            if (declared.storage == PointerStorage && declared.record >= 0 && types[declared.record].key != 0 &&
-                !PointerNilOperand(forest, text, item.node) && QueryAccessPresent(forest, text, types, names, item.node)) {
-                element := PointerElement(types, Typed(-1, PointerStorage, 0, declared.record));
-                return PointerNarrow(read, FindPointer(types, element, false));
-            }
-            return read;
-        }
-        if (Single(object, StructStorage) && object.record >= 0 && types[object.record].kind == OptionalComponentDecl) {
-            if (!QueryAccessPresent(forest, text, types, names, Field(forest, item.node, syntax.FieldObject))) {
-                return Fail(forest, item.node, document, "Optional component requires a presence guard before field access");
-            }
-            object.record = types[object.record].parent;
-        }
         if (member == "") {
             return Fail(forest, Field(forest, item.node, syntax.FieldMember), document, "Invalid string or embedded NUL");
         }
@@ -5179,7 +5137,7 @@ Canonical :: (types: TypeDecl[], record: int) -> int {
     at := record;
     steps: int = 0;
     while (at >= 0 && at < length(types) && steps < length(types)) {
-        if ((types[at].kind != NativeDecl && types[at].kind != OptionalComponentDecl) || types[at].parent < 0) {
+        if (types[at].kind != NativeDecl || types[at].parent < 0) {
             return at;
         }
         at = types[at].parent;

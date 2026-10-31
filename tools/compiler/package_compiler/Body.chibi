@@ -2173,7 +2173,7 @@ Start :: union {
 }
 Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable, aliases: Name[],
              key: string, solid: int[], meaning: u64, referenced: string[], mutated: string[], addressed: string[],
-             ops: Ops, target: Target, evaluating: bool) -> Start {
+             ops: Ops, target: Target) -> Start {
     declaration := forest[callable.node];
     // Import aliases are the outermost names; every local may hide one.
     names := aliases;
@@ -2186,9 +2186,6 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
     // other form. Calls lend their arguments, so written pointer parameters
     // get local copies before the body runs.
     work: Work[] = [Visit(Field(forest, callable.node, syntax.FieldBody))];
-    if (evaluating) {
-        work = [Visit(callable.node)];
-    }
     index: int = 0;
     while (index < callable.count) {
         param := params[callable.first + index];
@@ -2229,10 +2226,9 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
     }
     // Named results reserve consecutive locals. A record local holds its
     // stable cell's header address, while its name reads the cell's payload.
-    // A query evaluator returns its row instead.
     named := length(locals);
     index = 0;
-    while (!evaluating && index < callable.results) {
+    while (index < callable.results) {
         result := params[callable.first + callable.count + index];
         place := LocalPlace;
         location := length(locals);
@@ -2423,97 +2419,6 @@ StartRange :: (forest: snapshot.SnapshotNode[], text: string, document: int, bou
     return RangeHead.Ready(code, slots, locals, binding, loop);
 }
 
-QueryGuardCallPhase: int : 71;
-GuardCall :: union {
-    Failed(diagnostic: syntax.Diagnostic)
-    | Scheduled(code: Code[], slots: Slot[], locals: Slot[], next: Work[], popped: int, produced: Value)
-}
-// Each argument stores the result before its early exit. Pending branches
-// link through their targets until the last argument patches the whole chain.
-QueryGuardCall :: (forest: snapshot.SnapshotNode[], text: string, document: int,
-                   values: Value[], top: int, item: Work, ops: Ops,
-                   input_code: Code[], input_slots: Slot[], input_locals: Slot[]) -> GuardCall {
-    code := input_code;
-    slots := input_slots;
-    locals := input_locals;
-    node := forest[item.node];
-    function := Text(forest, text, Field(forest, item.node, syntax.FieldFunction));
-    if (function != "all" && function != "any" && function != "not") {
-        return GuardCall.Failed(Diagnose(forest, item.node, document, "unknown query guard call"));
-    }
-    if (item.phase == 0) {
-        first := FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
-        if (function == "not" && (first < 0 || NextMember(forest, first) >= 0)) {
-            return GuardCall.Failed(Diagnose(forest, item.node, document, "not needs exactly one Boolean argument"));
-        }
-        argument := first;
-        while (argument >= 0) {
-            if (Is(forest, argument, syntax.NamedArgument) || Is(forest, argument, syntax.TypedArgument)) {
-                return GuardCall.Failed(Diagnose(forest, argument, document, "query guards need positional Boolean arguments"));
-            }
-            argument = NextMember(forest, argument);
-        }
-        locals.append(ValueLocal(BoolStorage));
-        held := length(locals) - 1;
-        if (first < 0) {
-            identity: u64 = 0;
-            if (function == "all") {
-                identity = 1;
-            }
-            slots.append(ValueLocal(BoolStorage));
-            output := length(slots) - 1;
-            code.append(ConstantCode(ops, BoolStorage, identity, output, node));
-            code.append(Instruction(ops.save, BoolStorage, 0, output, 0, held, node));
-            return GuardCall.Scheduled(code, slots, locals, [], 0, Typed(output, BoolStorage, 0, -1));
-        }
-        resume := Resume(item.node, QueryGuardCallPhase, first, held);
-        resume.c = -1;
-        return GuardCall.Scheduled(code, slots, locals, [Visit(first), resume], 0, NoValue());
-    }
-    if (top <= 0 || values[top - 1].storage != BoolStorage || values[top - 1].container != 0) {
-        return GuardCall.Failed(Diagnose(forest, item.a, document, "query guard arguments need Boolean values"));
-    }
-    value := values[top - 1];
-    result := value.slot;
-    if (function == "not") {
-        slots.append(ValueLocal(BoolStorage));
-        zero := length(slots) - 1;
-        code.append(ConstantCode(ops, BoolStorage, 0, zero, node));
-        slots.append(ValueLocal(BoolStorage));
-        result = length(slots) - 1;
-        code.append(Instruction(ops.eq, BoolStorage, result, value.slot, zero, -1, node));
-    }
-    code.append(Instruction(ops.save, BoolStorage, 0, result, 0, item.b, node));
-    argument := NextMember(forest, item.a);
-    if (argument >= 0) {
-        condition := value.slot;
-        if (function == "all") {
-            slots.append(ValueLocal(BoolStorage));
-            zero := length(slots) - 1;
-            code.append(ConstantCode(ops, BoolStorage, 0, zero, node));
-            slots.append(ValueLocal(BoolStorage));
-            condition = length(slots) - 1;
-            code.append(Instruction(ops.eq, BoolStorage, condition, value.slot, zero, -1, node));
-        }
-        jump := length(code);
-        code.append(Instruction(ops.branch_if, 0, 0, condition, 0, item.c, node));
-        resume := Resume(item.node, QueryGuardCallPhase, argument, item.b);
-        resume.c = jump;
-        return GuardCall.Scheduled(code, slots, locals, [Visit(argument), resume], 1, NoValue());
-    }
-    pending := item.c;
-    while (pending >= 0) {
-        patched := code[pending];
-        prior := patched.target;
-        patched.target = length(code);
-        code[pending] = patched;
-        pending = prior;
-    }
-    slots.append(ValueLocal(BoolStorage));
-    output := length(slots) - 1;
-    code.append(Instruction(ops.local, BoolStorage, output, item.b, 0, 0, node));
-    return GuardCall.Scheduled(code, slots, locals, [], 1, Typed(output, BoolStorage, 0, -1));
-}
 
 OwnerCodes :: union {
     Failed(diagnostic: syntax.Diagnostic) | Read(code: Code[])
@@ -2691,7 +2596,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
              solid: int[], undeclared: u64, meaning: u64, function: int, referenced: string[],
              mutated: string[], built: int[], context: BodyContext, generic_updates: int[],
-             ops: Ops, target: Target, query_specs: QuerySpec[]) -> Body {
+             ops: Ops, target: Target) -> Body {
     types := table^;
     // Whether the table holds a math type. MathKind is nonzero only for a math
     // row, a base native row named as one, or an alias or optional component
@@ -2721,19 +2626,15 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     work: Work[] = [];
     points: SourcePoint[] = [];
     named: int = 0;
-    evaluating := QueryEvaluator(query_specs, function);
     address_root := Field(forest, callable.node, syntax.FieldBody);
     if (inferring) {
         address_root = callable.node;
-    }
-    if (evaluating >= 0) {
-        address_root = Field(forest, callable.node, syntax.FieldParameters);
     }
     addressed := AddressedNames(forest, text, address_root,
                                 ScopedArguments(forest, text, callables, params, natives, aliases, callable.package,
                                                 address_root));
     begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, addressed, ops,
-                      target, evaluating >= 0);
+                      target);
     switch begun {
         case .Begun(begun_work, begun_names, begun_slots, begun_locals, begun_cells, begun_hosts, begun_code,
                     begun_points, begun_named):
@@ -3010,15 +2911,6 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
                      host: length(hosts), call: length(calls)};
         step := Fail(forest, item.node, document, "");
-        query_handled := false;
-        switch QueryStep(forest, text, document, types, members, params, query_specs, evaluating, names, values,
-                         value_top, item, ops, target, at) {
-            case .Handled(emitted):
-                step = emitted;
-                query_handled = true;
-            case .Ordinary:
-                query_handled = false;
-        }
         if (item.phase == OptionalWrapPhase) {
             step = OptionalWrapStep(forest, document, types, values[value_top - 1], item.record, ops, target, at, node);
         } else if (item.phase == 0 && !item.capture && kind != syntax.Nil &&
@@ -3029,7 +2921,6 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = Step.Emitted([], [], [], [], [], [], [], [],
                                 [Expect(item.node, payload.storage, payload.container, payload.record), finish],
                                 0, NoValue(), NoValue(), []);
-        } else if (query_handled) {
         } else if (item.phase == MathCapturePhase) {
             step = MathCaptureStep(forest, document, types, members, values[value_top - 1], ops, target, at, node);
         } else if ((item.phase >= MathAssignBegin && item.phase <= MathAssignWrite) ||
@@ -3044,26 +2935,10 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if ((item.phase >= PlacePhase && item.phase <= PlacePointerPhase) || item.phase == PlaceComponentPhase) {
             step = SequencePlaceStep(forest, text, document, types, members, names, values, value_top,
                                      item, ops, target, at);
-        } else if (QueryGuardFunction(forest, text, item.node)) {
+        } else if (kind == syntax.StateDeclaration) {
+            // A retained local is a state of its module with its initializer.
             stepped = false;
-            switch QueryGuardCall(forest, text, document, values, value_top, item, ops, code, slots, locals) {
-                case .Failed(diagnostic):
-                    return Body.Failed(diagnostic);
-                case .Scheduled(full_code, full_slots, full_locals, scheduled, popped, value):
-                    code = full_code;
-                    slots = full_slots;
-                    locals = full_locals;
-                    next = scheduled;
-                    value_top -= popped;
-                    produced = value;
-            }
-        } else if (kind == syntax.StateDeclaration ||
-                   ((kind == syntax.FunctionDeclaration || kind == syntax.Handler) &&
-                    Is(forest, forest[item.node].parent, syntax.SystemBody))) {
-            // A system's declarations share the behavior collector, and a retained local is a
-            // state of its module with its initializer; only statements execute per row.
-            stepped = false;
-        } else if (kind == syntax.CallableBody || kind == syntax.Block || kind == syntax.SystemBody) {
+        } else if (kind == syntax.CallableBody || kind == syntax.Block) {
             stepped = false;
             if (item.phase == 0) {
                 child := FirstMember(forest, item.node);
@@ -3189,17 +3064,6 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     next.append(Visit(Field(forest, item.node, syntax.FieldValue)));
                     next.append(Resume(item.node, 1, 0, 0));
                 }
-            } else if (item.phase == QueryIteratorEndPhase) {
-                loop := loops[length(loops) - 1];
-                switch QueryFinishLoop(code, breaks, continues, loop, ops, target, at, node) {
-                    case .Finished(finished_code, finished_breaks, finished_continues, tail_step):
-                        code = finished_code;
-                        breaks = finished_breaks;
-                        continues = finished_continues;
-                        step = tail_step;
-                }
-                names = slice(names, 0, loop.mark);
-                loops = slice(loops, 0, length(loops) - 1);
             } else if (item.phase == 5) {
                 stepped = false;
                 value_top -= 2;
@@ -3223,10 +3087,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 value_top -= 1;
                 array := values[value_top];
                 iterable := Unparenthesized(forest, Field(forest, item.node, syntax.FieldValue));
-                if (array.storage == QueryStorage && array.container == 0) {
-                    stepped = true;
-                    step = QueryIteratorStep(forest, text, document, types, array, item, ops, target, at);
-                } else if (array.container != ArrayContainer && array.container != ViewContainer && !IsMap(array)) {
+                if (array.container != ArrayContainer && array.container != ViewContainer && !IsMap(array)) {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, syntax.FieldValue), document, "for needs an array"));
                 } else if (array.container == ArrayContainer && FixedArray(forest, text, names, referenced, mutated, addressed,
                                                                            iterable)) {
@@ -3247,9 +3108,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                             Typed(-1, array.storage, ArrayContainer, array.record),
                                             u64(0), false, 0, ops, target, at, node);
                 }
-                if (array.storage != QueryStorage) {
-                    next.append(Resume(item.node, 2, 0, 0));
-                }
+                next.append(Resume(item.node, 2, 0, 0));
             } else if (item.phase == 2) {
                 // The array or its copy is in the last cell; the step loads each element.
                 value_top -= 1;
@@ -3778,10 +3637,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 if (pass == 0 && kind == syntax.ReturnStatement) {
                     step = DropBeforeFinish(step, names, natives, ports, ops, target, at, node);
                 }
-                if (kind == syntax.ReturnStatement) {
-                    step = QueryCleanReturn(step, loops, ops, target, at, node);
-                }
-                if (pass == 0 && !item.capture && QueryBooleanPosition(forest, text, item.node)) {
+                if (pass == 0 && !item.capture && BooleanPosition(forest, text, item.node)) {
                     // An earlier presence guard makes bool? read its bool
                     // payload, including in another condition. A fresh
                     // optional still asks about presence below.
@@ -3803,7 +3659,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     // Direct conditions keep main's scoped payload-place binding.
                     optional_boolean = OptionalStepProduced(types, step) && !OptionalConditionPosition(forest, item.node);
                     if (!OptionalStepProduced(types, step) || optional_boolean) {
-                        step = QueryBooleanStep(types, step, ops, target, at, node);
+                        step = PresenceStep(types, step, ops, target, at, node);
                     }
                 } else if (pass == 0 && !item.capture && item.phase != OptionalWrapPhase &&
                            item.phase != NarrowedOriginalPhase && item.phase != NarrowedReadPhase &&
@@ -3978,7 +3834,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             at_next -= 1;
         }
     }
-    return FinishBody(forest, document, callable, declaration, inferring, evaluating, values, value_top,
+    return FinishBody(forest, document, callable, declaration, inferring, values, value_top,
                       key, solid, undeclared, meaning, document_hash, params, named, names, natives, ports,
                       ops, target, slots, locals, cells, code, calls, hosts, roots, points, watches,
                       semantic_effects, direct_write, facts, retargets, retarget_starts);
@@ -3987,7 +3843,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
 // Complete the body after dispatch, keeping cleanup and result publication
 // separate so dispatch fits each backend's function definition budget.
 FinishBody :: (forest: snapshot.SnapshotNode[], document: int, callable: Callable,
-               declaration: snapshot.SnapshotNode, inferring: bool, evaluating: int, values: Value[], value_top: int,
+               declaration: snapshot.SnapshotNode, inferring: bool, values: Value[], value_top: int,
                key: string, solid: int[], undeclared: u64, meaning: u64, document_hash: u64,
                params: Param[], named: int, names: Name[], natives: ResolvedNative[], ports: ResolvedPort[],
                ops: Ops, target: Target, input_slots: Slot[], input_locals: Slot[], input_cells: Cell[],
@@ -4028,7 +3884,7 @@ FinishBody :: (forest: snapshot.SnapshotNode[], document: int, callable: Callabl
     }
     points.append(PointAt(key, solid, FunctionRecord, meaning, true, declaration, declaration));
     code.append(PointCode(ops, length(points) - 1, declaration));
-    if (callable.results > 0 && evaluating < 0) {
+    if (callable.results > 0) {
         at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
                      host: length(hosts), call: length(calls)};
         switch NamedResultsStep([], ops, target, params, callable, named, at, declaration) {

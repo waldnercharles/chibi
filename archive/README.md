@@ -179,3 +179,13 @@ Archived because no toolchain program (`chibi`, `chibi-compile`, `chibi-build-ho
   rows) and `unit_analysis` (unit-of-measure checks over `unit_algebra`). Nothing outside their own folders imported
   them; they were Chibi ports of analyzers whose C callers were archived with the renderer and the game runtime.
   `unit_algebra` stays: `signature_reader` uses it.
+
+## ECS forms and their Chibi emitters (2026-10-31)
+
+Behaviors (`behavior`, `on`/`after` handlers, `bind`, `self`), `component` and `system` declarations, `query` expressions and loops, `emit` and `reduce` are no longer part of the language. `tools/compiler/source_parser` rejects each with "<form> are archived: behaviors, components, systems and queries have left the language"; the source parser `@test`s check the rejection. `library` blocks, tasks and functions stay.
+
+- Removed from `tools/compiler/package_compiler`: `Queries.chibi`, `QueryLoops.chibi`, and the behavior, system, query and optional-component branches of `Behavior`, `Body`, `Steps`, `Compile`, `Optional`, `Pointers`, `Math`, `Generics`, `Fallible`, `References`, `Tasks` and `TaskResults`. The prepared writer still emits empty component and query tables; its format is unchanged.
+- Kept and renamed out of `Queries.chibi` because other forms use them: `Ancestor`, `PatternScope`, `BooleanPosition`, `PresenceStep`, `ConstantCell`, `IntrinsicCallStep`.
+- `test/fixtures/{content,declared-components,environment-authoring,feature-coverage,language,material-contracts,studio,studio-workspace,systems,terrain-lab}`: the game-project fixtures (behaviors, systems, components, prototypes, relationships and the libraries beside them). No retained test read them. `test/fixtures/{graph,native-abi,portable-byte-asset}` stay.
+- `docs/code-language.md` sections "Behaviors and state", "Components and systems" and "Input and named entities" moved to `archive/docs/code-language-behaviors.md`.
+- Still in the tree, not yet archived: the prototype, relationship and template declarations and the action, event and macro declarations; the C ECS runtime (step two).

@@ -973,7 +973,7 @@ FallibleOutcome :: (forest: snapshot.SnapshotNode[], text: string, callable: Cal
 // Resolved call facts come from emission, including calls into imported source
 // packages. No native source analyzer or spelling-based error inference runs.
 FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[],
-                 params: Param[], types: TypeDecl[], callable: Callable, facts: SemanticFact[], generated_query: bool) -> syntax.Diagnostic[] {
+                 params: Param[], types: TypeDecl[], callable: Callable, facts: SemanticFact[]) -> syntax.Diagnostic[] {
     sources: SemanticFact[] = [];
     for (fact in facts) {
         if (fact.kind == CallFact && Is(forest, fact.node, syntax.CallExpression) &&
@@ -999,7 +999,7 @@ FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     }
     // A generated system-query evaluator retains the system's source node,
     // but executes its header rather than that node's authored body.
-    if (generated_query || Field(forest, callable.node, syntax.FieldBody) < 0) {
+    if (Field(forest, callable.node, syntax.FieldBody) < 0) {
         return [Diagnose(forest, sources[0].node, callable.document,
                          "Error result checking requires an authored function body in stage one")];
     }

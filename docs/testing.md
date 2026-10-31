@@ -462,11 +462,6 @@ and `doctor`, `chibi test` on package trees, including one that imports the
 installed `core:` collection, and programs run from files and directories, with
 `--watch`, cancellation and child processes.
 
-`graph-sdk` runs `test/graph/SDKTests.chibi`'s runtime SDK checks: canonical
-JSON against fixed vectors from Python's `json.dumps`, and on macOS the
-installer's verify, replace and rollback paths plus graph record, tool and
-configuration evidence over synthetic records. No engine library, SDK or package is built.
-
 `build-process` and `chibi-cli-installed` are in no group; run them by name.
 Windows does not build or select the private host.
 

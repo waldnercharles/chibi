@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* A test's entry name starts with this marker in a prepared package. */
+#define TEST_PREFIX "@test "
+
 static int by_package_position(const void *a, const void *b)
 {
     const package_test *left = a, *right = b;

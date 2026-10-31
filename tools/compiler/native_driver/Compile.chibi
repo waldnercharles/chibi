@@ -39,6 +39,24 @@ FunctionAt :: (text: string, at: int) -> string {
     return "(entry)";
 }
 
+// The file and line byte `at` of the joined sources lies in; each source is
+// followed by a newline when it lacks one, as the producer joins them.
+Where :: (paths: string[], sources: string[], at: int) -> string {
+    offset := 0;
+    for (index in 0..<length(paths)) {
+        size := strings.ByteLength(sources[index]);
+        if (!strings.HasSuffix(sources[index], "\n")) {
+            size += 1;
+        }
+        if (at < offset + size) {
+            line := strings.Count(strings.Slice(sources[index], 0, at - offset), "\n") + 1;
+            return format_text("{}:{}", paths[index], line);
+        }
+        offset += size;
+    }
+    return "?";
+}
+
 // `paths[0]` and `sources[0]` are the entry file, the others its closure: project
 // packages by project-relative path and core packages by path under `core`.
 // A rejection message reads `rejected FUNCTION: MESSAGE`.
@@ -48,7 +66,7 @@ pub Module :: (core: string, paths: string[], sources: string[], triple: string)
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
         rejected := rows[length(rows) - 1];
         return Output.Rejected(strings.Concatenate(["rejected ", FunctionAt(rows[0].text, rejected.start), ": ",
-                                                    rejected.text]));
+                                                    rejected.text, " (", Where(paths, sources, rejected.start), ")"]));
     }
     module := scalar.EmitBytesFor(Target(triple), rows);
     if (length(module) == 0) {

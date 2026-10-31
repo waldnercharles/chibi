@@ -2183,6 +2183,32 @@ TEST_CASE(package_compiler_scalar_rows_span_collection_packages)
     REQUIRE(spans);
     return true;
 }
+/* A rejection inside an imported package lies in the joined source its rows
+ * hold, at the declaration that caused it. */
+TEST_CASE(package_compiler_scalar_rejections_lie_in_package_sets)
+{
+    REQUIRE(prepare());
+    static const source_package_input packages[] = {
+        { .path = "Main.chibi",
+          .text = "package main\nimport lib \"project:lib\"\n"
+                  "Main :: () -> int { return lib.Add(1, 2); }\n" },
+        { .path = "lib/Lib.chibi",
+          .text = "package lib\npub Add :: (a: int, b: int) -> int { return a "
+                  "+ b; }\n"
+                  "pub Table :: struct { m: [int: int]; }\n" },
+    };
+    pin_value produced;
+    REQUIRE(scalar_host_collect_packages(packages, 2, &detached, &produced));
+    const pin_array *rows = produced.ptr;
+    REQUIRE(rows->count == 2);
+    REQUIRE(scalar_field(&rows->items[1], "kind").i == SCALAR_REJECTION_ROW);
+    const char *joined = pin_text(scalar_field(&rows->items[0], "text")).bytes;
+    int start = (int)scalar_field(&rows->items[1], "start").i;
+    int end = (int)scalar_field(&rows->items[1], "end").i;
+    REQUIRE(start > (int)strlen(packages[0].text) && end <= (int)strlen(joined));
+    REQUIRE(!strncmp(joined + start, "m: [int: int];", (size_t)(end - start)));
+    return true;
+}
 /* llvm_native's call and float contracts: definitions, argument order,
  * floating encodings and conversions, and the malformed or cyclic plans it
  * rejects before writing IR. */
@@ -4955,6 +4981,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_scalar_rows_span_imported_packages);
     RUN_TEST_CASE(package_compiler_scalar_rows_span_collection_packages);
+    RUN_TEST_CASE(package_compiler_scalar_rejections_lie_in_package_sets);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
     RUN_TEST_CASE(package_compiler_scalar_retains_library_states);

@@ -218,6 +218,36 @@ ScalarFailure :: (path: string, text: string, diagnostic: syntax.Diagnostic) -> 
                             column: diagnostic.column};
     return [ScalarSource(path, text), rejection];
 }
+// The failure of a package set: its source is the documents joined as the
+// rows of an accepted set have them, and a diagnostic in another document
+// than the first moves to its place in them.
+ScalarFailedIn :: (path: string, documents: snapshot.Document[], diagnostic: syntax.Diagnostic) -> facts.Row[] {
+    shifted := diagnostic;
+    offset: int = 0;
+    row: int = 0;
+    for (index in 0..<length(documents)) {
+        if (index == diagnostic.document) {
+            shifted.start += offset;
+            shifted.end += offset;
+            shifted.line += row;
+        }
+        offset += strings.ByteLength(documents[index].text);
+        row += strings.Count(documents[index].text, "\n");
+        if (!strings.HasSuffix(documents[index].text, "\n")) {
+            offset += 1;
+            row += 1;
+        }
+    }
+    return ScalarFailure(path, ScalarJoined(documents), shifted);
+}
+// ScalarFailure, or for a package set ScalarFailedIn.
+ScalarFailed :: (packaged: bool, path: string, text: string, documents: snapshot.Document[],
+                 diagnostic: syntax.Diagnostic) -> facts.Row[] {
+    if (packaged) {
+        return ScalarFailedIn(path, documents, diagnostic);
+    }
+    return ScalarFailure(path, text, diagnostic);
+}
 ScalarAt :: (forest: snapshot.SnapshotNode[], node: int, kind: int, type: int, value: int, count: int,
              name: string) -> facts.Row {
     item := forest[node];
@@ -3002,35 +3032,42 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return ScalarFailure(path, text, diagnostic);
         case .Accepted(roots, documents, nodes, imports, built):
+            // A package set's diagnostics lie in its documents joined, as its rows do.
+            shown_nodes := nodes;
+            shown_text := text;
+            if (packaged) {
+                shown_nodes = ScalarJoinedNodes(nodes, documents);
+                shown_text = ScalarJoined(documents);
+            }
             document := documents[0];
             switch built {
                 case .Rejected(error, cycle):
-                    return ScalarFailure(path, text,
-                                         Diagnose(nodes, document.syntax_root, 0, "scalar proof requires an accepted package graph"));
+                    return ScalarFailure(path, shown_text,
+                                         Diagnose(shown_nodes, document.syntax_root, 0, "scalar proof requires an accepted package graph"));
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
                     if (!packaged) {
-                        unsupported := ScalarMembers(nodes, document.syntax_root, false);
+                        unsupported := ScalarMembers(shown_nodes, document.syntax_root, false);
                         if (unsupported.message != "") {
-                            return ScalarFailure(path, text, unsupported);
+                            return ScalarFailure(path, shown_text, unsupported);
                         }
                     }
                     if (packaged) {
                         for (candidate in documents) {
                             if (!strings.HasPrefix(candidate.identity, "project:") &&
                                 !strings.HasPrefix(candidate.identity, "core:")) {
-                                return ScalarFailure(path, text,
-                                                     Diagnose(nodes, candidate.syntax_root, 0,
+                                return ScalarFailure(path, shown_text,
+                                                     Diagnose(shown_nodes, candidate.syntax_root, 0,
                                                               "scalar proof imports only project and core packages"));
                             }
-                            member_gap := ScalarMembers(nodes, candidate.syntax_root, true);
+                            member_gap := ScalarMembers(shown_nodes, candidate.syntax_root, true);
                             if (member_gap.message != "") {
-                                return ScalarFailure(path, text, member_gap);
+                                return ScalarFailure(path, shown_text, member_gap);
                             }
                         }
                     }
                     if (!packaged && (length(packages) != 1 || length(imports) != 0)) {
-                        return ScalarFailure(path, text,
-                                             Diagnose(nodes, document.syntax_root, 0, "scalar proof requires one package without imports"));
+                        return ScalarFailure(path, shown_text,
+                                             Diagnose(shown_nodes, document.syntax_root, 0, "scalar proof requires one package without imports"));
                     }
                     active := order;
                     roots_named: string[] = [document.identity];
@@ -3048,7 +3085,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                     switch ForeignNatives(nodes, documents, text_natives, text_ports, text_identities,
                                           resize([int(0)], text_count)) {
                         case .Failed(diagnostic):
-                            return ScalarFailure(path, text, diagnostic);
+                            return ScalarFailed(packaged, path, text, documents, diagnostic);
                         case .Declared(declared_natives, declared_ports, declared_identities, declared_effects):
                             text_natives = declared_natives;
                             text_ports = declared_ports;
@@ -3061,7 +3098,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                     }
                     switch Declare(nodes, documents, packages, files_of, active, imports, links, target) {
                         case .Failed(diagnostic):
-                            return ScalarFailure(path, text, diagnostic);
+                            return ScalarFailed(packaged, path, text, documents, diagnostic);
                         case .Collected(callables, params, types, members, constants):
                             // Use the ordinary compiler's concrete functions and bindings. The
                             // scalar pass then checks its existing pure numeric domain.
@@ -3072,12 +3109,12 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                                       constants, text_natives, text_ports, text_identities,
                                                       BodyContext.Known(effects), ops, target) {
                                 case .Failed(diagnostic):
-                                    return ScalarFailure(path, text, diagnostic);
+                                    return ScalarFailed(packaged, path, text, documents, diagnostic);
                                 case .Ready(concrete, concrete_params, bindings):
                                     entered := concrete;
                                     if (packaged && length(concrete) > 0 && concrete[0].document != 0) {
                                         if (length(bindings) > 0) {
-                                            return ScalarFailure(path, text, Diagnose(nodes, document.syntax_root, 0,
+                                            return ScalarFailure(path, shown_text, Diagnose(shown_nodes, document.syntax_root, 0,
                                                 "scalar proof cannot order generic functions across packages"));
                                         }
                                         entered = ScalarEntryFirst(concrete);
@@ -3104,7 +3141,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                                         members, constants, ops, target, text_natives, text_ports, text_identities,
                                                         false, bindings, scalar_documents, module_links) {
                                         case .Failed(diagnostic):
-                                            return ScalarFailure(path, text, diagnostic);
+                                            return ScalarFailed(packaged, path, text, documents, diagnostic);
                                         case .Built(rows):
                                             head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
                                                                literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0,

@@ -21,7 +21,8 @@ LinuxOnly :: () -> string { return "native libraries are Linux x86-64 only"; }
 LibraryExportsWordsAndManifest :: () {
     ids: i64[] = [11, -5];
     text := Emitted(Library(abi.LinuxX64(), "Lib", ["Main", "Pick"], ids));
-    assert(!strings.Contains(text, "define i32"));
+    // The entry is no exported symbol; a function is reached through the manifest or its host wrapper.
+    assert(!strings.Contains(text, "define i32 @chibi_scalar"));
     assert(strings.Contains(text, "define internal i32 @chibi_scalar.0() #0 {"));
     assert(strings.Contains(text, "define internal void @chibi_scalar.export.1(ptr %ctx, ptr %in, ptr %out) #0 {"));
     assert(strings.Contains(text, "@chibi_scalar.export.types.1 = private unnamed_addr constant [4 x i8] [i8 1, i8 2, i8 1, i8 1]"));

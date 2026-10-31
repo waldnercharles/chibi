@@ -1256,3 +1256,24 @@ once per nonempty invocation. This remains linear, but same-owner retention
 could remove redundant copies.
 Review it with shared slices and escaped-value lifetimes; keeping an arbitrary
 borrowed pointer would not preserve the ownership contract.
+
+## A program that imports the parser nears the compile budget
+
+Toolchain. `chibi fmt` is a program whose closure holds the stage-one
+tokenizer, parser and formatter, about 7,000 lines. Compiling it takes about
+26 s and close to the 4 billion interpreted instructions a package closure may
+use (`CLOSURE_COMPILE_BUDGET`, `src/authoring/asset_compiler_host.c`): roughly
+500,000 instructions per line, paid on every run because programs are not
+cached. Adding the 330-line `source_highlight` package exceeded the budget
+("shared instruction budget exhausted"), so the formatter playground runs a
+second program for highlighting, and every `chibi fmt` invocation, including
+the pre-commit hook and each batch of a whole-tree check, waits for the compile
+(2026-10-30, `cwaldner/chibi-formatter`).
+
+- Go compiles and caches each package once (`GOCACHE`); `gofmt` starts in
+  milliseconds. Zig caches compiled units by content hash, Rust incrementally
+  by query, and Odin compiles a whole program in well under a second.
+
+Suggestion: cache a program's prepared closure by the hash of its sources, so a
+second `chibi fmt` starts at once, and profile where stage one spends its
+instructions per line.

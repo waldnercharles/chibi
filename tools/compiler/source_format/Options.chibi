@@ -1,0 +1,225 @@
+package source_format
+
+import strings "core:strings"
+
+// The largest source the formatter accepts, in bytes.
+pub MaxBytes: int : 8388608;
+
+// Options.semicolons and Options.empty_blocks; Keep leaves what the author wrote.
+pub Keep: int : 0;
+pub Omit: int : 1;
+pub Always: int : 2;
+pub Collapse: int : 1;
+pub Expand: int : 2;
+
+pub Options :: struct {
+    // Columns per indentation level, 1 to 16; with tabs, the width a tab counts
+    // for when aligning.
+    indent_width: int;
+    // One tab per level; alignment past the levels still uses spaces.
+    use_tabs: bool;
+    // Extra columns for a continued line that is not aligned, 0 to 16; 0 is one
+    // indentation level.
+    continuation_indent: int;
+    // A line continued inside a bracket aligns with the bracket's first item
+    // when that item follows the bracket; off, it is indented by the
+    // continuation instead.
+    align_after_open_bracket: bool;
+    // A continued operand of a binary expression aligns with the first operand;
+    // off, it is indented by the continuation.
+    align_operands: bool;
+    // `case` labels are one level inside their `switch`; off, they line up with it.
+    indent_case_labels: bool;
+    // `{ a: 1 }` instead of `{a: 1}` for struct literals.
+    space_in_braces: bool;
+    // `( a, b )` inside call, parameter and grouping parentheses.
+    space_in_parens: bool;
+    // `[ 1, 2 ]` inside array literals.
+    space_in_brackets: bool;
+    // Spaces between code and a comment that ends its line, 1 to 4.
+    spaces_before_trailing_comment: int;
+    // Trailing comments on consecutive lines start in the same column.
+    align_trailing_comments: bool;
+    // The `=`, `:=` or compound operator of assignments and declarations on
+    // consecutive lines lines up.
+    align_assignments: bool;
+    // Field types of consecutive record and component fields line up.
+    align_field_types: bool;
+    // Types of consecutive typed constants `Name: T : value` line up.
+    align_constants: bool;
+    // Values of consecutive fields of a struct literal written one per line line up.
+    align_struct_literal_values: bool;
+    // The most blank lines kept between two lines, 0 to 3; longer runs shrink.
+    max_blank_lines: int;
+    // The fewest blank lines between top-level declarations when either spans
+    // lines, 0 to 3; 0 adds none. A comment directly above a declaration belongs to it.
+    blank_lines_between_declarations: int;
+    // Blank lines just inside a block's braces stay (up to max_blank_lines); off, they go.
+    keep_blank_lines_at_block_edges: bool;
+    // An empty block `{}`: Keep as written, Collapse to `{}` or Expand to two lines.
+    empty_blocks: int;
+    // A block the author wrote on one line stays on one line.
+    keep_one_line_blocks: bool;
+    // The column wrapping aims for, 0 or 20 to 400; 0 keeps the author's line
+    // breaks inside brackets. Groups that fit stay on one line; others break
+    // after the bracket, after each comma and before the closing bracket.
+    preferred_width: int;
+    // With wrapping, a group whose last item has a trailing comma always breaks.
+    magic_trailing_comma: bool;
+    // Explicit `;` at the end of statements: Keep, Omit where a line break ends
+    // the statement anyway, or Always write them.
+    semicolons: int;
+    // CRLF between lines instead of LF. Comment and string bytes are copied exactly.
+    crlf: bool;
+    // The text ends with a line break.
+    final_newline: bool;
+}
+
+pub Defaults :: () -> Options {
+    return {indent_width: 4, use_tabs: false, continuation_indent: 0, align_after_open_bracket: true,
+            align_operands: true, indent_case_labels: true, space_in_braces: false,
+            space_in_parens: false, space_in_brackets: false, spaces_before_trailing_comment: 1,
+            align_trailing_comments: false, align_assignments: false, align_field_types: false,
+            align_constants: false, align_struct_literal_values: false,
+            max_blank_lines: 1, blank_lines_between_declarations: 0,
+            keep_blank_lines_at_block_edges: true, empty_blocks: Keep, keep_one_line_blocks: false,
+            preferred_width: 0, magic_trailing_comma: true, semicolons: Keep, crlf: false,
+            final_newline: true};
+}
+
+// Why `options` are invalid, or "" when they are valid.
+pub Validate :: (options: Options) -> string {
+    if (options.indent_width < 1 || options.indent_width > 16) {
+        return "Invalid formatter options: indent_width must be 1..16";
+    }
+    if (options.continuation_indent < 0 || options.continuation_indent > 16) {
+        return "Invalid formatter options: continuation_indent must be 0..16";
+    }
+    if (options.spaces_before_trailing_comment < 1 || options.spaces_before_trailing_comment > 4) {
+        return "Invalid formatter options: spaces_before_trailing_comment must be 1..4";
+    }
+    if (options.max_blank_lines < 0 || options.max_blank_lines > 3) {
+        return "Invalid formatter options: max_blank_lines must be 0..3";
+    }
+    if (options.blank_lines_between_declarations < 0 || options.blank_lines_between_declarations > 3) {
+        return "Invalid formatter options: blank_lines_between_declarations must be 0..3";
+    }
+    if (options.empty_blocks < Keep || options.empty_blocks > Expand) {
+        return "Invalid formatter options: empty_blocks must be keep, collapse or expand";
+    }
+    if (options.preferred_width != 0 && (options.preferred_width < 20 || options.preferred_width > 400)) {
+        return "Invalid formatter options: preferred_width must be 0 or 20..400";
+    }
+    if (options.semicolons < Keep || options.semicolons > Always) {
+        return "Invalid formatter options: semicolons must be keep, omit or always";
+    }
+    return "";
+}
+
+// `text` as a non-negative decimal integer, or -1.
+Number :: (text: string) -> int {
+    if (text == "") {
+        return -1;
+    }
+    value: int = 0;
+    index: int = 0;
+    while (index < strings.ByteLength(text)) {
+        digit := strings.ByteAt(text, index) - 48;
+        if (digit < 0 || digit > 9) {
+            return -1;
+        }
+        value = value * 10 + digit;
+        index += 1;
+    }
+    return value;
+}
+
+// `text`'s NAME=VALUE pairs, separated by spaces or line breaks, applied over
+// `base`. A `#` starts a comment that runs to the line's end. `error` names the
+// first pair that is not an option or not one of its values.
+pub ParseOptions :: (base: Options, text: string) -> (options: Options, error: string) {
+    options := base;
+    for (line in strings.SplitLines(text)) {
+        content := line;
+        hash := strings.IndexByte(line, 35);
+        if (hash >= 0) {
+            content = strings.Slice(line, 0, hash);
+        }
+        for (pair in strings.Fields(content)) {
+            equals := strings.IndexByte(pair, 61);
+            if (equals <= 0) {
+                return (options, format_text("Invalid formatter option {}; write NAME=VALUE", pair));
+            }
+            name := strings.Slice(pair, 0, equals);
+            value := strings.Slice(pair, equals + 1, text_byte_length(pair) - equals - 1);
+            number := Number(value);
+            flag := value == "true";
+            known := value == "true" || value == "false";
+            if (name == "indent_width" && number >= 0) {
+                options.indent_width = number;
+            } else if (name == "continuation_indent" && number >= 0) {
+                options.continuation_indent = number;
+            } else if (name == "spaces_before_trailing_comment" && number >= 0) {
+                options.spaces_before_trailing_comment = number;
+            } else if (name == "max_blank_lines" && number >= 0) {
+                options.max_blank_lines = number;
+            } else if (name == "blank_lines_between_declarations" && number >= 0) {
+                options.blank_lines_between_declarations = number;
+            } else if (name == "preferred_width" && number >= 0) {
+                options.preferred_width = number;
+            } else if (name == "use_tabs" && known) {
+                options.use_tabs = flag;
+            } else if (name == "align_after_open_bracket" && known) {
+                options.align_after_open_bracket = flag;
+            } else if (name == "align_operands" && known) {
+                options.align_operands = flag;
+            } else if (name == "indent_case_labels" && known) {
+                options.indent_case_labels = flag;
+            } else if (name == "space_in_braces" && known) {
+                options.space_in_braces = flag;
+            } else if (name == "space_in_parens" && known) {
+                options.space_in_parens = flag;
+            } else if (name == "space_in_brackets" && known) {
+                options.space_in_brackets = flag;
+            } else if (name == "align_trailing_comments" && known) {
+                options.align_trailing_comments = flag;
+            } else if (name == "align_assignments" && known) {
+                options.align_assignments = flag;
+            } else if (name == "align_field_types" && known) {
+                options.align_field_types = flag;
+            } else if (name == "align_constants" && known) {
+                options.align_constants = flag;
+            } else if (name == "align_struct_literal_values" && known) {
+                options.align_struct_literal_values = flag;
+            } else if (name == "keep_blank_lines_at_block_edges" && known) {
+                options.keep_blank_lines_at_block_edges = flag;
+            } else if (name == "keep_one_line_blocks" && known) {
+                options.keep_one_line_blocks = flag;
+            } else if (name == "magic_trailing_comma" && known) {
+                options.magic_trailing_comma = flag;
+            } else if (name == "final_newline" && known) {
+                options.final_newline = flag;
+            } else if (name == "line_ending" && (value == "lf" || value == "crlf")) {
+                options.crlf = value == "crlf";
+            } else if (name == "empty_blocks" && (value == "keep" || value == "collapse" || value == "expand")) {
+                options.empty_blocks = Keep;
+                if (value == "collapse") {
+                    options.empty_blocks = Collapse;
+                } else if (value == "expand") {
+                    options.empty_blocks = Expand;
+                }
+            } else if (name == "semicolons" && (value == "keep" || value == "omit" || value == "always")) {
+                options.semicolons = Keep;
+                if (value == "omit") {
+                    options.semicolons = Omit;
+                } else if (value == "always") {
+                    options.semicolons = Always;
+                }
+            } else {
+                return (options, format_text("Invalid formatter option {}", pair));
+            }
+        }
+    }
+    invalid := Validate(options);
+    return (options, invalid);
+}

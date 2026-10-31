@@ -71,9 +71,11 @@ HangsAnArgumentListThatEndsItsLine :: () {
 @test
 UsesTheIndentWidthOrTabs :: () {
     source := "package p\nA :: () {\nx := 1\n}\n";
-    two: format.Options = {indent_width: 2, use_tabs: false, max_blank_lines: 1, crlf: false};
+    two := format.Defaults();
+    two.indent_width = 2;
     assert(Run(source, two) == "package p\nA :: () {\n  x := 1\n}\n", "two spaces per level");
-    tabs: format.Options = {indent_width: 4, use_tabs: true, max_blank_lines: 1, crlf: false};
+    tabs := format.Defaults();
+    tabs.use_tabs = true;
     assert(Run(source, tabs) == "package p\nA :: () {\n\tx := 1\n}\n", "one tab per level");
 }
 
@@ -90,8 +92,10 @@ RejectsSourceTheGrammarCannotRead :: () {
 
 @test
 RejectsInvalidOptions :: () {
-    zero: format.Options = {indent_width: 0, use_tabs: false, max_blank_lines: 1, crlf: false};
-    wide: format.Options = {indent_width: 17, use_tabs: false, max_blank_lines: 1, crlf: false};
+    zero := format.Defaults();
+    zero.indent_width = 0;
+    wide := format.Defaults();
+    wide.indent_width = 17;
     message := "Invalid formatter options: indent_width must be 1..16";
     assert(Run("package p\n", zero) == message, "zero width");
     assert(Run("package p\n", wide) == message, "width past sixteen");
@@ -124,23 +128,27 @@ BreaksStatementsAfterABraceOnOneLine :: () {
 @test
 LimitsBlankLinesByTheOption :: () {
     source := "package p\n\n\n\nA :: () {\n}\n\n\n\nB :: () {\n}\n";
-    none: format.Options = {indent_width: 4, use_tabs: false, max_blank_lines: 0, crlf: false};
+    none := format.Defaults();
+    none.max_blank_lines = 0;
     assert(Run(source, none) == "package p\nA :: () {\n}\nB :: () {\n}\n", "no blank lines");
-    two: format.Options = {indent_width: 4, use_tabs: false, max_blank_lines: 2, crlf: false};
+    two := format.Defaults();
+    two.max_blank_lines = 2;
     assert(Run(source, two) == "package p\n\n\nA :: () {\n}\n\n\nB :: () {\n}\n", "two blank lines");
     assert(Run("package p\n\nA :: () {\n}\n", two) == "package p\n\nA :: () {\n}\n", "a shorter run stays");
 }
 
 @test
 WritesTheRequestedLineEnding :: () {
-    crlf: format.Options = {indent_width: 4, use_tabs: false, max_blank_lines: 1, crlf: true};
+    crlf := format.Defaults();
+    crlf.crlf = true;
     assert(Run("package p\n\nA :: () {\nx := 1\n}\n", crlf) == "package p\r\n\r\nA :: () {\r\n    x := 1\r\n}\r\n", "CRLF");
     assert(Run("package p\r\n\r\nA :: () {\r\n    x := 1\r\n}\r\n", crlf) == "package p\r\n\r\nA :: () {\r\n    x := 1\r\n}\r\n", "CRLF is a fixed point");
 }
 
 @test
 RejectsTooManyBlankLines :: () {
-    many: format.Options = {indent_width: 4, use_tabs: false, max_blank_lines: 4, crlf: false};
+    many := format.Defaults();
+    many.max_blank_lines = 4;
     assert(Run("package p\n", many) == "Invalid formatter options: max_blank_lines must be 0..3", "four blank lines");
 }
 
@@ -148,4 +156,173 @@ RejectsTooManyBlankLines :: () {
 ClosesASwitchArmWhenNoSemicolonEndsIt :: () {
     Case("package p\n\nA :: (outcome: Outcome) -> int {\n    switch outcome {\n        case .Built(nodes):\n            return 1\n        case .Rejected(message):\n            return 2\n    }\n}\n\nB :: () {\n    x := 1\n}\n",
          "package p\n\nA :: (outcome: Outcome) -> int {\n    switch outcome {\n        case .Built(nodes):\n            return 1\n        case .Rejected(message):\n            return 2\n    }\n}\n\nB :: () {\n    x := 1\n}\n");
+}
+
+@test
+BreaksAfterABlockWhoseConditionIsADereference :: () {
+    Case("package p\n\nF :: (p: ^bool) -> int { if p^ {} return 8; }\n",
+         "package p\n\nF :: (p: ^bool) -> int {\n    if p^ {}\n    return 8;\n}\n");
+}
+
+// One row of an option table: `input` formats to `expected` under `options`,
+// and `expected` is a fixed point under them.
+With :: (options: format.Options, input: string, expected: string) {
+    assert(Run(input, options) == expected, "input formats to the expected layout");
+    assert(Run(expected, options) == expected, "the expected layout is a fixed point");
+}
+
+@test
+ContinuationIndentSetsTheHang :: () {
+    o := format.Defaults();
+    o.continuation_indent = 8;
+    With(o, "package p\n\nA :: () {\n    Call(\nfirst,\nsecond\n)\n}\n",
+         "package p\n\nA :: () {\n    Call(\n            first,\n            second\n    )\n}\n");
+}
+
+@test
+UnalignedBracketsHangByTheContinuation :: () {
+    o := format.Defaults();
+    o.align_after_open_bracket = false;
+    With(o, "package p\n\nA :: () {\n    Call(first,\nsecond)\n}\n",
+         "package p\n\nA :: () {\n    Call(first,\n        second)\n}\n");
+}
+
+@test
+UnalignedOperandsHangByTheContinuation :: () {
+    o := format.Defaults();
+    o.align_operands = false;
+    With(o, "package p\n\nA :: () {\n    x := first +\nsecond\n}\n",
+         "package p\n\nA :: () {\n    x := first +\n        second\n}\n");
+}
+
+@test
+CaseLabelsCanLineUpWithTheSwitch :: () {
+    o := format.Defaults();
+    o.indent_case_labels = false;
+    With(o, "package p\n\nA :: (outcome: Outcome) {\nswitch outcome {\ncase .Built(nodes):\nreturn;\n}\n}\n",
+         "package p\n\nA :: (outcome: Outcome) {\n    switch outcome {\n    case .Built(nodes):\n        return;\n    }\n}\n");
+}
+
+@test
+SpacesInsideBracketsAreOptions :: () {
+    o := format.Defaults();
+    o.space_in_braces = true;
+    o.space_in_parens = true;
+    o.space_in_brackets = true;
+    With(o, "package p\n\nA :: (a: int) {\n    p: P = {x: 1, y: 2}\n    q: P = {}\n    Call(a, [1, 2], [])\n    Call()\n}\n",
+         "package p\n\nA :: ( a: int ) {\n    p: P = { x: 1, y: 2 }\n    q: P = {}\n    Call( a, [ 1, 2 ], [] )\n    Call()\n}\n");
+}
+
+@test
+TrailingCommentsTakeTheirSpacingAndAlign :: () {
+    o := format.Defaults();
+    o.spaces_before_trailing_comment = 2;
+    o.align_trailing_comments = true;
+    With(o, "package p\n\nA :: () {\n    x := 1 // one\n    longer := 2 // two\n\n    y := 3 // alone\n}\n",
+         "package p\n\nA :: () {\n    x := 1       // one\n    longer := 2  // two\n\n    y := 3  // alone\n}\n");
+}
+
+@test
+AssignmentsAlignOnConsecutiveLines :: () {
+    o := format.Defaults();
+    o.align_assignments = true;
+    With(o, "package p\n\nA :: () {\n    x := 1\n    longer := 2\n    x = 3\n    if x > 0 {\n        y := 4\n    }\n}\n",
+         "package p\n\nA :: () {\n    x      := 1\n    longer := 2\n    x      = 3\n    if x > 0 {\n        y := 4\n    }\n}\n");
+}
+
+@test
+FieldTypesConstantsAndLiteralValuesAlign :: () {
+    o := format.Defaults();
+    o.align_field_types = true;
+    o.align_constants = true;
+    o.align_struct_literal_values = true;
+    With(o, "package p\n\nA: int : 1;\nLonger: int : 2;\n\nR :: struct {\n    a: int;\n    longer: string;\n}\n\nF :: () {\n    r: R = {\n        a: 1,\n        longer: \"x\"\n    }\n}\n",
+         "package p\n\nA:      int : 1;\nLonger: int : 2;\n\nR :: struct {\n    a:      int;\n    longer: string;\n}\n\nF :: () {\n    r: R = {\n        a:      1,\n        longer: \"x\"\n    }\n}\n");
+}
+
+@test
+DeclarationsTakeTheirBlankLines :: () {
+    o := format.Defaults();
+    o.blank_lines_between_declarations = 1;
+    With(o, "package p\nimport a \"project:a\"\nA: int : 1;\nB: int : 2;\n// About F.\nF :: () {\n}\nG :: () {\n}\n",
+         "package p\nimport a \"project:a\"\nA: int : 1;\nB: int : 2;\n\n// About F.\nF :: () {\n}\n\nG :: () {\n}\n");
+}
+
+@test
+BlankLinesAtBlockEdgesCanGo :: () {
+    o := format.Defaults();
+    o.keep_blank_lines_at_block_edges = false;
+    With(o, "package p\n\nA :: () {\n\n    x := 1\n\n    y := 2\n\n}\n",
+         "package p\n\nA :: () {\n    x := 1\n\n    y := 2\n}\n");
+}
+
+@test
+EmptyBlocksCollapseOrExpand :: () {
+    collapse := format.Defaults();
+    collapse.empty_blocks = format.Collapse;
+    With(collapse, "package p\n\nA :: () {\n}\n\nB :: () {}\n", "package p\n\nA :: () {}\n\nB :: () {}\n");
+    expand := format.Defaults();
+    expand.empty_blocks = format.Expand;
+    With(expand, "package p\n\nA :: () {\n}\n\nB :: () {}\n", "package p\n\nA :: () {\n}\n\nB :: () {\n}\n");
+}
+
+@test
+OneLineBlocksCanStay :: () {
+    o := format.Defaults();
+    o.keep_one_line_blocks = true;
+    With(o, "package p\n\nA :: (x: int) -> int {\n    if (x > 0) { return 1; }\n    if (x < 0) {\n        return 2;\n    }\n    return 0;\n}\n",
+         "package p\n\nA :: (x: int) -> int {\n    if (x > 0) { return 1; }\n    if (x < 0) {\n        return 2;\n    }\n    return 0;\n}\n");
+}
+
+@test
+WrapsGroupsPastThePreferredWidth :: () {
+    o := format.Defaults();
+    o.preferred_width = 40;
+    With(o, "package p\n\nA :: () {\n    Call(alpha, beta, gamma, delta, epsilon)\n    Call(a,\n         b)\n}\n",
+         "package p\n\nA :: () {\n    Call(\n        alpha,\n        beta,\n        gamma,\n        delta,\n        epsilon\n    )\n    Call(a, b)\n}\n");
+}
+
+@test
+SemicolonsCanBeOmitted :: () {
+    omit := format.Defaults();
+    omit.semicolons = format.Omit;
+    With(omit, "package p\n\nA :: () {\n    x := 1;\n}\n", "package p\n\nA :: () {\n    x := 1\n}\n");
+    With(omit, "package p\n\nR :: struct {\n    x: int;\n}\n", "package p\n\nR :: struct {\n    x: int\n}\n");
+    With(omit, "package p\n\nA :: () {\n    return;\n}\n", "package p\n\nA :: () {\n    return\n}\n");
+    With(omit, "package p\nimport a \"project:a\"\n\nR :: struct {\n    x: int;\n}\n\nA :: () {\n    x := 1;\n    if x > 0 { y := 2; z := 3; }\n    return;\n}\n",
+         "package p\nimport a \"project:a\"\n\nR :: struct {\n    x: int\n}\n\nA :: () {\n    x := 1\n    if x > 0 {\n        y := 2\n        z := 3\n    }\n    return\n}\n");
+}
+
+@test
+SemicolonsCanBeWritten :: () {
+    always := format.Defaults();
+    always.semicolons = format.Always;
+    With(always, "package p\nimport a \"project:a\"\n\nR :: struct {\n    x: int\n}\n\nA :: () {\n    x := 1\n    if x > 0 {\n        y := 2\n    }\n    return\n}\n",
+         "package p\nimport a \"project:a\"\n\nR :: struct {\n    x: int;\n}\n\nA :: () {\n    x := 1;\n    if x > 0 {\n        y := 2;\n    }\n    return;\n}\n");
+}
+
+@test
+TheFinalNewlineIsAnOption :: () {
+    o := format.Defaults();
+    o.final_newline = false;
+    With(o, "package p\n\nA :: () {\n}\n", "package p\n\nA :: () {\n}");
+}
+
+@test
+FormatOffKeepsARegionAsWritten :: () {
+    Case("package p\n\n// chibi fmt: off\nTable :: [1,   2,\n          30,  4];\n// chibi fmt: on\nA :: () {\nx:=1\n}\n",
+         "package p\n\n// chibi fmt: off\nTable :: [1,   2,\n          30,  4];\n// chibi fmt: on\nA :: () {\n    x := 1\n}\n");
+}
+
+@test
+RejectsOptionsOutOfRange :: () {
+    o := format.Defaults();
+    o.preferred_width = 10;
+    assert(Run("package p\n", o) == "Invalid formatter options: preferred_width must be 0 or 20..400", "width");
+    o = format.Defaults();
+    o.semicolons = 3;
+    assert(Run("package p\n", o) == "Invalid formatter options: semicolons must be keep, omit or always", "semicolons");
+    o = format.Defaults();
+    o.spaces_before_trailing_comment = 0;
+    assert(Run("package p\n", o) == "Invalid formatter options: spaces_before_trailing_comment must be 1..4", "comment spacing");
 }

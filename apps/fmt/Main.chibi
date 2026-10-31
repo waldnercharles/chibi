@@ -3,8 +3,10 @@ package fmt_cli
 import format "project:source_format"
 import strings "core:strings"
 
-// chibi fmt [--check | --staged] [PATH...]: formats Chibi sources in place with
-// source_format's defaults. A PATH is a .chibi file or a directory, whose
+// chibi fmt [--check | --staged] [--option NAME=VALUE]... [PATH...]: formats
+// Chibi sources in place. Options come from source_format's defaults, then the
+// repository's .chibi-format file (NAME=VALUE lines; # starts a comment), then
+// --option flags. A PATH is a .chibi file or a directory, whose
 // files are the ones git tracks below it; without one, the working directory.
 // --check writes nothing and fails when a file would change. --staged formats
 // the files staged for commit and stages the result, for the pre-commit hook.
@@ -57,14 +59,15 @@ Request :: struct {
     error: string
     help: bool
     batch: bool
-    serve: string
     report: string
+    // The --option NAME=VALUE pairs, separated by spaces.
+    options: string
 }
 
 // The flags among `arguments`, which hold the program path first; FormatPaths
 // lists the rest.
 ParseRequest :: (arguments: string[]) -> Request {
-    request: Request = {check: false, staged: false, error: "", help: false, batch: false, serve: "", report: ""}
+    request: Request = {check: false, staged: false, error: "", help: false, batch: false, report: "", options: ""}
     paths := 0
     index := 1
     while index < length(arguments) {
@@ -73,12 +76,12 @@ ParseRequest :: (arguments: string[]) -> Request {
             request.help = true
         } else if argument == "--check" && !request.check {
             request.check = true
-        } else if argument == "--serve" && request.serve == "" && index + 1 < length(arguments) {
-            index += 1
-            request.serve = arguments[index]
         } else if argument == "--report" && request.report == "" && index + 1 < length(arguments) {
             index += 1
             request.report = arguments[index]
+        } else if argument == "--option" && index + 1 < length(arguments) {
+            index += 1
+            request.options = Join([request.options, " ", arguments[index]])
         } else if argument == "--batch" && !request.batch {
             request.batch = true
         } else if argument == "--staged" && !request.staged {
@@ -92,9 +95,6 @@ ParseRequest :: (arguments: string[]) -> Request {
         }
         index += 1
     }
-    if request.serve != "" && (request.check || request.staged || paths > 0) {
-        request.error = "fmt --serve takes only a directory; use --help."
-    }
     if request.error == "" && request.staged && (request.check || paths > 0) {
         request.error = "fmt --staged takes no paths and no --check; use --help."
     }
@@ -105,7 +105,7 @@ FormatPaths :: (arguments: string[]) -> string[] {
     paths: string[] = []
     index := 1
     while index < length(arguments) {
-        if arguments[index] == "--serve" || arguments[index] == "--report" {
+        if arguments[index] == "--report" || arguments[index] == "--option" {
             index += 1
         } else if !strings.HasPrefix(arguments[index], "-") {
             paths = append(paths, arguments[index])
@@ -116,7 +116,22 @@ FormatPaths :: (arguments: string[]) -> string[] {
 }
 
 Usage :: () -> string {
-    return "Usage: chibi fmt [--check | --staged] [PATH...]\nfmt formats .chibi sources in place. A PATH is a file or a directory, which has\nthe files git tracks below it; none means the working directory. --check\nwrites nothing and fails when a file would change. --staged formats the staged\nfiles and stages the result.\n"
+    return "Usage: chibi fmt [--check | --staged] [--option NAME=VALUE]... [PATH...]\nfmt formats .chibi sources in place. A PATH is a file or a directory, which has\nthe files git tracks below it; none means the working directory. --check\nwrites nothing and fails when a file would change. --staged formats the staged\nfiles and stages the result. Options come from the defaults, then the\nrepository's .chibi-format file of NAME=VALUE lines, then --option; see\ndocs/source-formatting.md for the names.\n"
+}
+
+// The options for this run: the defaults, the repository's .chibi-format
+// file, then the request's --option pairs.
+LoadOptions :: (request: Request) -> (options: format.Options, error: string) {
+    configured := ""
+    top := process.capture(["git", "rev-parse", "--show-toplevel"])
+    if top.error == 0 && top.status == 0 {
+        file := Join([strings.TrimSpace(top.output), "/.chibi-format"])
+        if files.kind(file) == 1 {
+            configured = files.read(file)
+        }
+    }
+    parsed := format.ParseOptions(format.Defaults(), Join([configured, "\n", request.options]))
+    return (parsed.options, parsed.error)
 }
 
 // The lines `git` prints for `arguments` run in `directory`; `failed` is set
@@ -153,9 +168,9 @@ TrackedSources :: (directory: string, found: ^(string[])) -> bool {
 
 // Formats one file. Returns 1 when it changed (or would), 0 when unchanged,
 // -1 when it cannot be formatted.
-FormatFile :: (path: string, check: bool) -> int {
+FormatFile :: (path: string, check: bool, options: format.Options) -> int {
     text := files.read(path)
-    switch format.Format(text, format.Defaults()) {
+    switch format.Format(text, options) {
         case .Rejected(message):
             Error(format_text("{}: {}", path, message))
             return -1
@@ -204,11 +219,11 @@ Counts :: struct {
     rejected: int
 }
 
-FormatBatch :: (sources: string[], from: int, to: int, check: bool) -> Counts {
+FormatBatch :: (sources: string[], from: int, to: int, check: bool, options: format.Options) -> Counts {
     counts: Counts = {changed: 0, rejected: 0}
     index := from
     while index < to {
-        verdict := FormatFile(sources[index], check)
+        verdict := FormatFile(sources[index], check, options)
         if verdict > 0 {
             counts.changed += 1
         } else if verdict < 0 {
@@ -230,6 +245,10 @@ RunBatch :: (program: string, request: Request, batch: string[], report: string)
     if request.check {
         command = append(command, "--check")
     }
+    for pair in strings.Fields(request.options) {
+        command = append(command, "--option")
+        command = append(command, pair)
+    }
     files.remove(report)
     process.run(Concat(command, batch))
     counts: Counts = {changed: 0, rejected: length(batch)}
@@ -243,14 +262,14 @@ RunBatch :: (program: string, request: Request, batch: string[], report: string)
     return counts
 }
 
-FormatTree :: (request: Request, arguments: string[]) -> int {
+FormatTree :: (request: Request, arguments: string[], options: format.Options) -> int {
     found := SourcePaths(request, arguments)
     if !found.ok {
         return 2
     }
     sources := found.sources
     if request.batch {
-        counts := FormatBatch(sources, 0, length(sources), request.check)
+        counts := FormatBatch(sources, 0, length(sources), request.check, options)
         if request.report != "" {
             files.write(request.report, format_text("{} {}", counts.changed, counts.rejected))
         }
@@ -275,7 +294,7 @@ FormatTree :: (request: Request, arguments: string[]) -> int {
         }
         counts: Counts = {changed: 0, rejected: 0}
         if start == 0 {
-            counts = FormatBatch(sources, start, end, request.check)
+            counts = FormatBatch(sources, start, end, request.check, options)
         } else {
             if scratch == "" {
                 scratch = files.temporary("chibi-fmt")
@@ -309,7 +328,7 @@ Slice :: (values: string[], from: int, to: int) -> string[] {
 
 // The pre-commit step. A file with unstaged edits is left alone, because
 // staging its formatted text would stage those edits too.
-FormatStaged :: () -> int {
+FormatStaged :: (options: format.Options) -> int {
     here := files.resolve(".")
     top := GitLines(here, ["rev-parse", "--show-toplevel"])
     if top.failed || length(top.lines) == 0 {
@@ -328,12 +347,12 @@ FormatStaged :: () -> int {
         path := Join([top.lines[0], "/", name])
         if Contains(partial.lines, name) {
             Error(format_text("{}: has unstaged edits; run chibi fmt on it, stage it, and commit again", name))
-            if FormatFile(path, true) != 0 {
+            if FormatFile(path, true, options) != 0 {
                 status = 1
             }
             continue
         }
-        verdict := FormatFile(path, false)
+        verdict := FormatFile(path, false, options)
         if verdict < 0 {
             status = 1
         } else if verdict > 0 && process.run(["git", "-C", top.lines[0], "add", "--", name]) != 0 {
@@ -344,16 +363,11 @@ FormatStaged :: () -> int {
     return status
 }
 
-// A request is the file DIR/request: a first line `ID INDENT_WIDTH TABS
-// MAX_BLANK_LINES CRLF` (TABS and CRLF are 0 or 1), then the source. The answer is the file DIR/response: a first
-// line `ID`, a second `ok` or `error`, then the formatted source or the
-// message, and a last line `--end--` so a reader knows the write is whole.
-// A local playground drives this; it is not a stable interface. The loop ends
-// after ServeBytes of source, so its heap stays bounded, with status 3 for the
-// driver to start it again.
-ServeBytes: int : 1500000;
-
+// `text` as a non-negative decimal integer, or -1.
 Number :: (text: string) -> int {
+    if text == "" {
+        return -1
+    }
     value := 0
     index := 0
     while index < text_byte_length(text) {
@@ -367,51 +381,6 @@ Number :: (text: string) -> int {
     return value
 }
 
-Respond :: (directory: string, id: string, status: string, body: string) {
-    files.write(Join([directory, "/response"]), Join([id, "\n", status, "\n", body, "\n--end--"]))
-}
-
-Serve :: (directory: string) -> int {
-    if files.kind(directory) != 2 {
-        Error(format_text("fmt: cannot find {}", directory))
-        return 2
-    }
-    path := Join([files.resolve(directory), "/request"])
-    served := 0
-    while !application.stopped() {
-        if files.kind(path) != 1 {
-            application.wait(40)
-            continue
-        }
-        text := files.read(path)
-        files.remove(path)
-        newline := strings.IndexByte(text, 10)
-        if newline < 0 {
-            continue
-        }
-        header := strings.Split(strings.Slice(text, 0, newline), " ")
-        source := strings.Slice(text, newline + 1, text_byte_length(text))
-        directory_path := files.resolve(directory)
-        if length(header) != 5 || Number(header[1]) < 1 || Number(header[3]) < 0 {
-            Respond(directory_path, header[0], "error", "Invalid request header")
-            continue
-        }
-        options: format.Options = {indent_width: Number(header[1]), use_tabs: header[2] == "1",
-                                   max_blank_lines: Number(header[3]), crlf: header[4] == "1"}
-        switch format.Format(source, options) {
-            case .Rejected(message):
-                Respond(directory_path, header[0], "error", message)
-            case .Formatted(formatted):
-                Respond(directory_path, header[0], "ok", formatted)
-        }
-        served += text_byte_length(source)
-        if served > ServeBytes {
-            return 3
-        }
-    }
-    return 0
-}
-
 Main :: () -> int {
     arguments := application.arguments()
     request := ParseRequest(arguments)
@@ -423,11 +392,13 @@ Main :: () -> int {
         Error(request.error)
         return 2
     }
-    if request.serve != "" {
-        return Serve(request.serve)
+    loaded := LoadOptions(request)
+    if loaded.error != "" {
+        Error(format_text("fmt: {}", loaded.error))
+        return 2
     }
     if request.staged {
-        return FormatStaged()
+        return FormatStaged(loaded.options)
     }
-    return FormatTree(request, arguments)
+    return FormatTree(request, arguments, loaded.options)
 }

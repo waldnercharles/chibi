@@ -1298,6 +1298,7 @@ execution_module_event_field_info execution_module_event_field_at(
 static execution_module *finish(
     execution_module_plan **owned,
     behavior_backend backend,
+    size_t effect_budget,
     char *error,
     size_t size,
     bool decoded
@@ -1307,8 +1308,13 @@ static execution_module *finish(
     if (publish(*owned, backend, error, size, decoded) != FLOW_OK) {
         return NULL;
     }
-    if (execution_module_effects_bytes(*owned) == SIZE_MAX) {
+    size_t effect_bytes = execution_module_effects_bytes(*owned);
+    if (effect_bytes == SIZE_MAX) {
         snprintf(error, size, "%s", "module effect closure exceeds bounded record limit");
+        return NULL;
+    }
+    if (effect_bytes > effect_budget) {
+        snprintf(error, size, "%s", "prepared effects exceed allocation budget");
         return NULL;
     }
     execution_module *module = xcalloc(1, sizeof *module);
@@ -1316,9 +1322,7 @@ static execution_module *finish(
     module->backend = backend;
     module->references = 1;
     module->retained_tasks = retained_tasks(&module->plan);
-    bool effects_ready = execution_module_build_effects(module);
-    assert(effects_ready);
-    (void)effects_ready;
+    execution_module_build_effects(module, effect_bytes);
     free(*owned);
     *owned = NULL;
     return module;
@@ -1330,16 +1334,17 @@ execution_module *execution_module_finish(
     size_t size
 )
 {
-    return finish(owned, backend, error, size, false);
+    return finish(owned, backend, SIZE_MAX, error, size, false);
 }
 execution_module *execution_module_finish_decoded(
     execution_module_plan **owned,
     behavior_backend backend,
+    size_t effect_budget,
     char *error,
     size_t size
 )
 {
-    return finish(owned, backend, error, size, true);
+    return finish(owned, backend, effect_budget, error, size, true);
 }
 uint64_t execution_module_id(const execution_module *m)
 {

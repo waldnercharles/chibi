@@ -1,5 +1,4 @@
 #include "execution/function_builder.h"
-#include "execution/module_effects.h"
 #include "execution/preparation_budget.h"
 #include "execution/prepared_internal.h"
 #include "execution/storage.h"
@@ -72,19 +71,12 @@ void prepared_vector(execution_wire *w, void **values, int count, size_t item_si
     header->cookie = DYNA_COOKIE;
     *values = header + 1;
 }
-typedef struct prepared_dependency
-{
-    const execution_module *module;
-    uint64_t fingerprint;
-    bool visiting;
-} prepared_dependency;
 static bool write_depth(
     const execution_module *,
     unsigned char **,
     size_t *,
     const char **,
     unsigned,
-    prepared_dependency **,
     size_t *,
     uint64_t *,
     execution_wire *,
@@ -108,35 +100,17 @@ static bool scratch_growth(execution_wire *budget, const void *values, size_t it
     }
     return true;
 }
-static bool dependency_fingerprint(
-    prepared_context *c,
-    const execution_module *module,
-    unsigned depth,
-    uint64_t *out
-)
+/* An import's fingerprint, found once per generation: a decoded module keeps
+ * the hash of the bytes it was read from, and an in-memory one is encoded the
+ * first time an importer needs it, under that importer's budgets. A module
+ * imports only finished modules, so imports form a DAG; the depth limit bounds
+ * a forged cycle. */
+static bool dependency_fingerprint(prepared_context *c, execution_module *module, unsigned depth, uint64_t *out)
 {
-    prepared_dependency **cache = c->dependencies;
-    for (int i = 0; i < acount(*cache); i++) {
-        if ((*cache)[i].module != module) {
-            continue;
-        }
-        if ((*cache)[i].visiting) {
-            c->wire.error = "cyclic prepared imports";
-            return false;
-        }
-        *out = (*cache)[i].fingerprint;
+    if (module->fingerprint) {
+        *out = module->fingerprint;
         return true;
     }
-    if (acount(*cache) >= EXECUTION_WIRE_MAX_RECORDS) {
-        c->wire.error = "too many imported modules";
-        return false;
-    }
-    if (!scratch_growth(c->fingerprint_budget, *cache, sizeof **cache, NULL)) {
-        c->wire.error = c->fingerprint_budget->error;
-        return false;
-    }
-    int at = acount(*cache);
-    apush(*cache, ((prepared_dependency){ .module = module, .visiting = true }));
     uint64_t hash = UINT64_C(14695981039346656037);
     size_t length = 0;
     const char *error = NULL;
@@ -146,7 +120,6 @@ static bool dependency_fingerprint(
             &length,
             &error,
             depth,
-            cache,
             c->dependency_bytes,
             &hash,
             c->fingerprint_budget,
@@ -161,9 +134,7 @@ static bool dependency_fingerprint(
         return false;
     }
     *c->dependency_bytes += length;
-    *out = hash ? hash : 1;
-    (*cache)[at].fingerprint = *out;
-    (*cache)[at].visiting = false;
+    module->fingerprint = *out = hash ? hash : 1;
     return true;
 }
 static bool add_function(prepared_context *c, behavior_function *f, unsigned depth)
@@ -784,7 +755,6 @@ static bool write_depth(
     size_t *length,
     const char **error,
     unsigned depth,
-    prepared_dependency **cache,
     size_t *dependency_bytes,
     uint64_t *hash,
     execution_wire *budget,
@@ -797,7 +767,6 @@ static bool write_depth(
         return false;
     }
     prepared_context c = { .plan = (execution_module_plan *)&m->plan,
-                           .dependencies = cache,
                            .dependency_bytes = dependency_bytes,
                            .fingerprint_budget = budget,
                            .shared_record_work = record_work,
@@ -872,12 +841,10 @@ bool execution_prepared_write(
     *data = NULL;
     *length = 0;
     const char *reason = NULL;
-    prepared_dependency *cache = NULL;
     size_t bytes = 0;
     size_t remaining = EXECUTION_WIRE_MAX_BYTES, record_work = 0;
     execution_wire budget = { .storage_budget = &remaining };
-    bool success = write_depth(m, data, length, &reason, 0, &cache, &bytes, NULL, &budget, &record_work, 0);
-    afree(cache);
+    bool success = write_depth(m, data, length, &reason, 0, &bytes, NULL, &budget, &record_work, 0);
     if (size) {
         snprintf(error, size, "%s", reason ? reason : "");
     }
@@ -893,13 +860,11 @@ bool execution_prepared_measure(
 {
     *length = 0;
     const char *reason = NULL;
-    prepared_dependency *cache = NULL;
     size_t bytes = 0;
     size_t remaining = EXECUTION_WIRE_MAX_BYTES, record_work = 0;
     execution_wire budget = { .storage_budget = &remaining };
     uint64_t hash = UINT64_C(14695981039346656037);
-    bool success = write_depth(m, NULL, length, &reason, 0, &cache, &bytes, &hash, &budget, &record_work, 0);
-    afree(cache);
+    bool success = write_depth(m, NULL, length, &reason, 0, &bytes, &hash, &budget, &record_work, 0);
     *fingerprint = success ? hash : 0;
     if (size) {
         snprintf(error, size, "%s", reason ? reason : "");
@@ -909,13 +874,9 @@ bool execution_prepared_measure(
 static bool preparation_budget(prepared_context *c)
 {
     execution_wire *w = &c->wire;
+    /* The effect table is counted once, after publication, and checked
+     * against the budget left then (execution_module_finish_decoded). */
     size_t bytes = execution_module_preparation_bytes(c->plan);
-    size_t effects = execution_module_effects_bytes(c->plan);
-    if (effects > SIZE_MAX - bytes) {
-        w->error = "prepared effects exceed allocation budget";
-        return false;
-    }
-    bytes += effects;
     if (bytes == SIZE_MAX) {
         w->error = "prepared module closure exceeds preparation limit";
         return false;
@@ -988,11 +949,9 @@ execution_module *execution_prepared_read_budget(
         }
         return NULL;
     }
-    prepared_dependency *cache = NULL;
     size_t dependency_bytes = 0;
     prepared_context c = { .linker = linker,
                            .plan = execution_module_plan_new(),
-                           .dependencies = &cache,
                            .dependency_bytes = &dependency_bytes,
                            .record_work_limit = linker ? linker->layout_work : 0 };
     c.wire = (execution_wire){ .data = (unsigned char *)data,
@@ -1066,7 +1025,7 @@ execution_module *execution_prepared_read_budget(
     execution_module *m = NULL;
     if (!w->error) {
         c.plan->valid = true;
-        m = execution_module_finish_decoded(&c.plan, backend, error, size);
+        m = execution_module_finish_decoded(&c.plan, backend, *remaining, error, size);
     }
     if (m) {
         size_t bytes = execution_module_storage_bytes(m);
@@ -1077,6 +1036,13 @@ execution_module *execution_prepared_read_budget(
             w->error = "finalized canonical storage exceeds aggregate budget";
         } else {
             *remaining = available - bytes;
+            /* The writer gave importers the FNV-1a of these exact bytes. */
+            uint64_t hash = UINT64_C(14695981039346656037);
+            for (size_t i = 0; i < length; i++) {
+                hash = (hash ^ ((const unsigned char *)data)[i]) *
+                       UINT64_C(1099511628211);
+            }
+            m->fingerprint = hash ? hash : 1;
         }
     }
     if (!m) {
@@ -1091,7 +1057,6 @@ execution_module *execution_prepared_read_budget(
     }
     free(c.records);
     afree(c.functions);
-    afree(cache);
     return m;
 }
 execution_module *execution_prepared_read(

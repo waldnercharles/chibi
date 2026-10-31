@@ -1284,7 +1284,10 @@ TEST_CASE(execution_costs_verify_intrinsics_and_follow_recursive_calls)
                                             .body = function };
         execution_module module = { .plan = { .functions = &entry,
                                               .function_count = 1 } };
-        REQUIRE(execution_module_build_effects(&module));
+        execution_module_build_effects(
+            &module,
+            execution_module_effects_bytes(&module.plan)
+        );
         execution_effect_summary effects = execution_module_effects(&module);
         REQUIRE(effects.declared && effects.parallel_safe && effects.deterministic);
         REQUIRE(!effects.structural && !effects.host_sink && !effects.world_read);
@@ -2101,6 +2104,48 @@ TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection)
     return true;
 }
 
+/* Effect analysis compares intrinsic kinds, so each call it names must
+ * reverse-map to the kind of the same name. */
+TEST_CASE(execution_intrinsic_calls_map_to_their_kinds)
+{
+    static const struct
+    {
+        const node_host_call *call;
+        execution_intrinsic kind;
+    } cases[] = {
+        { &EXECUTION_component_has_call, EXECUTION_INTRINSIC_COMPONENT_HAS },
+        { &EXECUTION_component_pointer_call, EXECUTION_INTRINSIC_COMPONENT_POINTER },
+        { &EXECUTION_component_snapshot_call, EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT },
+        { &EXECUTION_local_release_call, EXECUTION_INTRINSIC_LOCAL_RELEASE },
+        { &EXECUTION_pointer_field_call, EXECUTION_INTRINSIC_POINTER_FIELD },
+        { &EXECUTION_pointer_read_call, EXECUTION_INTRINSIC_POINTER_READ },
+        { &EXECUTION_pointer_reference_call, EXECUTION_INTRINSIC_POINTER_REFERENCE },
+        { &EXECUTION_pointer_write_call, EXECUTION_INTRINSIC_POINTER_WRITE },
+        { &EXECUTION_query_current_row_call, EXECUTION_INTRINSIC_QUERY_CURRENT_ROW },
+        { &EXECUTION_query_make_call, EXECUTION_INTRINSIC_QUERY_MAKE },
+        { &EXECUTION_query_row_get_call, EXECUTION_INTRINSIC_QUERY_ROW_GET },
+        { &EXECUTION_query_source_call, EXECUTION_INTRINSIC_QUERY_SOURCE },
+        { &EXECUTION_query_target_call, EXECUTION_INTRINSIC_QUERY_TARGET },
+        { &EXECUTION_query_test_call, EXECUTION_INTRINSIC_QUERY_TEST },
+        { &EXECUTION_reference_field_call, EXECUTION_INTRINSIC_REFERENCE_FIELD },
+        { &EXECUTION_reference_make_call, EXECUTION_INTRINSIC_REFERENCE_MAKE },
+        { &EXECUTION_reference_read_call, EXECUTION_INTRINSIC_REFERENCE_READ },
+        { &EXECUTION_reference_reduce_call, EXECUTION_INTRINSIC_REFERENCE_REDUCE },
+        { &EXECUTION_reference_union_call, EXECUTION_INTRINSIC_REFERENCE_UNION },
+        { &EXECUTION_reference_write_call, EXECUTION_INTRINSIC_REFERENCE_WRITE },
+        { &EXECUTION_snapshot_call, EXECUTION_INTRINSIC_SNAPSHOT },
+        { &EXECUTION_union_get_call, EXECUTION_INTRINSIC_UNION_GET },
+        { &EXECUTION_union_test_call, EXECUTION_INTRINSIC_UNION_TEST },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        REQUIRE(
+            execution_intrinsic_kind(execution_intrinsic_id(cases[i].call)) ==
+            cases[i].kind
+        );
+        REQUIRE(execution_intrinsic_call(cases[i].kind) == cases[i].call);
+    }
+    return true;
+}
 /* The result bit runs eligible intrinsics in caller storage. Union payloads
  * remain independent values, including repeated sources and nested unions. */
 TEST_CASE(execution_intrinsics_build_in_result_storage)
@@ -2632,16 +2677,9 @@ static execution_module *resolve_imported(void *, uint64_t id, uint64_t)
     execution_module_retain(imported_module);
     return imported_module;
 }
-/* The prepared bytes of a module of `count` definitions of `additions` each,
- * importing imported_module when `imports` is set. */
-static bool linked_module(
-    uint64_t id,
-    int count,
-    int additions,
-    bool imports,
-    unsigned char **bytes,
-    size_t *length
-)
+/* Finishes a module of `count` definitions of `additions` each into
+ * prepared_module, importing imported_module when `imports` is set. */
+static bool finished_module(uint64_t id, int count, int additions, bool imports)
 {
     char error[192] = { 0 };
     prepared_plan = execution_module_plan_new();
@@ -2666,7 +2704,20 @@ static bool linked_module(
         prepared_plan->import_count = 1;
     }
     prepared_module = execution_module_finish(&prepared_plan, BEHAVIOR_BYTECODE, error, sizeof error);
-    bool written = prepared_module &&
+    return prepared_module != NULL;
+}
+/* The prepared bytes of finished_module's module. */
+static bool linked_module(
+    uint64_t id,
+    int count,
+    int additions,
+    bool imports,
+    unsigned char **bytes,
+    size_t *length
+)
+{
+    char error[192] = { 0 };
+    bool written = finished_module(id, count, additions, imports) &&
                    execution_prepared_write(prepared_module, bytes, length, error, sizeof error);
     execution_module_free(prepared_module);
     prepared_module = NULL;
@@ -2718,11 +2769,10 @@ static execution_module *record_bounded_read(
                strstr(error, "limit");
     return m;
 }
-/* An import's fingerprint re-encodes the dependency under the importer's
- * linker bound, so a bound raised past the default admits a dependency
- * above it. A small importer of a larger dependency needs the dependency's
- * records, not only its own. */
-TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit)
+/* A decoded dependency keeps the fingerprint of the bytes it was read from,
+ * so an importer's read neither re-encodes it nor needs its records: the
+ * importer needs one record more than the same module alone, its import row. */
+TEST_CASE(execution_import_fingerprint_keeps_the_decoded_bytes_hash)
 {
     unsigned char *dependency = NULL, *alone = NULL, *importer = NULL;
     size_t dependency_length = 0, alone_length = 0, importer_length = 0;
@@ -2744,7 +2794,7 @@ TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit)
            linked = least_record_limit(importer, importer_length);
     free(dependency);
     free(alone);
-    REQUIRE(small < own && linked >= own);
+    REQUIRE(small < own && linked == small + 1);
     /* The search's bound loads the importer, and one record fewer refuses
      * it with the record diagnostic and no charge. */
     bool refused = false;
@@ -2756,6 +2806,46 @@ TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit)
     execution_module_free(m);
     free(importer);
     REQUIRE(loaded && refused_below);
+    return true;
+}
+/* An in-memory dependency is encoded for its fingerprint the first time an
+ * importer's read needs it, under that importer's linker bound, and keeps the
+ * result: a later read under the bound the encoding exceeded loads. */
+TEST_CASE(execution_import_fingerprint_encodes_an_in_memory_dependency_once)
+{
+    unsigned char *dependency = NULL, *alone = NULL, *importer = NULL;
+    size_t dependency_length = 0, alone_length = 0, importer_length = 0;
+    REQUIRE(linked_module(2, 8, 64, false, &dependency, &dependency_length));
+    REQUIRE(linked_module(3, 1, 1, false, &alone, &alone_length));
+    size_t own = least_record_limit(dependency, dependency_length),
+           small = least_record_limit(alone, alone_length);
+    free(dependency);
+    free(alone);
+    /* The importer's own records, with its import row. */
+    size_t importer_own = small + 1;
+    REQUIRE(importer_own < own);
+    /* Writing the importer finds the fingerprint of one generation; reads
+     * resolve a second, equal one that no importer has encoded yet. */
+    REQUIRE(finished_module(2, 8, 64, false));
+    imported_module = prepared_module;
+    prepared_module = NULL;
+    REQUIRE(linked_module(3, 1, 1, true, &importer, &importer_length));
+    execution_module_free(imported_module);
+    REQUIRE(finished_module(2, 8, 64, false));
+    imported_module = prepared_module;
+    prepared_module = NULL;
+    bool refused = false;
+    execution_module *m = record_bounded_read(importer, importer_length, importer_own, &refused);
+    bool refused_first = !m && refused;
+    execution_module_free(m);
+    m = record_bounded_read(importer, importer_length, EXECUTION_WIRE_MAX_RECORDS, &refused);
+    bool loaded = m != NULL;
+    execution_module_free(m);
+    m = record_bounded_read(importer, importer_length, importer_own, &refused);
+    bool kept = m != NULL;
+    execution_module_free(m);
+    free(importer);
+    REQUIRE(refused_first && loaded && kept);
     return true;
 }
 TEST_CASE(execution_preparation_reserves_one_definitions_scratch)
@@ -4303,7 +4393,10 @@ TEST_CASE(execution_managed_pointer_access_is_not_query_or_parallel_safe)
                                             .body = function };
         execution_module module = { .plan = { .functions = &entry,
                                               .function_count = 1 } };
-        REQUIRE(execution_module_build_effects(&module));
+        execution_module_build_effects(
+            &module,
+            execution_module_effects_bytes(&module.plan)
+        );
         REQUIRE(!execution_module_effects(&module).parallel_safe);
         free(module.effect_ids);
         if (i) {
@@ -6728,6 +6821,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_managed_pointer_access_is_not_query_or_parallel_safe);
     RUN_TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles);
     RUN_TEST_CASE(execution_union_extraction_checks_dynamic_payload_type);
+    RUN_TEST_CASE(execution_intrinsic_calls_map_to_their_kinds);
     RUN_TEST_CASE(execution_intrinsics_build_in_result_storage);
     RUN_TEST_CASE(execution_branches_state_and_host_calls);
     RUN_TEST_CASE(execution_runs_without_authored_calls_count_as_running);
@@ -6761,7 +6855,8 @@ void test_language_execution()
     RUN_TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase);
     RUN_TEST_CASE(execution_preparation_reserves_one_definitions_scratch);
     RUN_TEST_CASE(execution_preparation_reserves_the_runtime_code_it_keeps);
-    RUN_TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit);
+    RUN_TEST_CASE(execution_import_fingerprint_keeps_the_decoded_bytes_hash);
+    RUN_TEST_CASE(execution_import_fingerprint_encodes_an_in_memory_dependency_once);
     RUN_TEST_CASE(execution_verifier_admits_a_large_compiler_function);
     RUN_TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots);
     RUN_TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets);

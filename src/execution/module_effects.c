@@ -290,12 +290,12 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
         if (crossing) {
             return none;
         }
-        uint64_t id = intrinsic(call);
-        if (id == execution_intrinsic_id(&EXECUTION_query_current_row_call)) {
+        execution_intrinsic kind = execution_intrinsic_kind(intrinsic(call));
+        if (kind == EXECUTION_INTRINSIC_QUERY_CURRENT_ROW) {
             origin context = bank_origin(f, j, call->first, depth + 1, steps);
             return (origin){ .row = context.context };
         }
-        if (id == execution_intrinsic_id(&EXECUTION_query_row_get_call)) {
+        if (kind == EXECUTION_INTRINSIC_QUERY_ROW_GET) {
             origin row = bank_origin(f, j, call->first, depth + 1, steps);
             origin field = bank_origin(f, j, call->first + 1, depth + 1, steps);
             if (!row.row || !field.constant || field.bits >= INT_MAX) {
@@ -309,8 +309,8 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
                                          value.container != PIN_CONTAINER_SINGLE,
                              .extent = type && type_is_plain(type) ? type->size : 0 };
         }
-        if (id == execution_intrinsic_id(&EXECUTION_component_pointer_call) ||
-            id == execution_intrinsic_id(&EXECUTION_component_snapshot_call)) {
+        if (kind == EXECUTION_INTRINSIC_COMPONENT_POINTER ||
+            kind == EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT) {
             origin context = bank_origin(f, j, call->first, depth + 1, steps);
             origin entity = bank_origin(f, j, call->first + 1, depth + 1, steps);
             origin component = bank_origin(f, j, call->first + 2, depth + 1, steps);
@@ -326,7 +326,7 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
             }
             return none;
         }
-        if (id == execution_intrinsic_id(&EXECUTION_reference_make_call)) {
+        if (kind == EXECUTION_INTRINSIC_REFERENCE_MAKE) {
             origin kind = bank_origin(f, j, call->first + 2, depth + 1, steps);
             origin entity = bank_origin(f, j, call->first + 5, depth + 1, steps);
             origin component = bank_origin(f, j, call->first + 6, depth + 1, steps);
@@ -355,14 +355,14 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
             }
             return none;
         }
-        if (id == execution_intrinsic_id(&EXECUTION_reference_field_call) ||
-            id == execution_intrinsic_id(&EXECUTION_reference_union_call) ||
-            id == execution_intrinsic_id(&EXECUTION_pointer_reference_call) ||
-            id == execution_intrinsic_id(&EXECUTION_pointer_field_call) ||
-            id == execution_intrinsic_id(&EXECUTION_snapshot_call)) {
+        if (kind == EXECUTION_INTRINSIC_REFERENCE_FIELD ||
+            kind == EXECUTION_INTRINSIC_REFERENCE_UNION ||
+            kind == EXECUTION_INTRINSIC_POINTER_REFERENCE ||
+            kind == EXECUTION_INTRINSIC_POINTER_FIELD ||
+            kind == EXECUTION_INTRINSIC_SNAPSHOT) {
             origin source = bank_origin(f, j, call->first, depth + 1, steps);
             pin_value value = f->data_values[bank].initial;
-            if (id == execution_intrinsic_id(&EXECUTION_pointer_field_call)) {
+            if (kind == EXECUTION_INTRINSIC_POINTER_FIELD) {
                 pin_value field = f->data_values[call->first + 1].initial;
                 const type_desc *type = field.type == PIN_STRUCT
                                           ? pin_value_type(&field)
@@ -370,7 +370,7 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
                 source.extent = type ? type->size : behavior_scalar_size(field.type);
                 source.offset = 0;
             }
-            if (id == execution_intrinsic_id(&EXECUTION_snapshot_call) &&
+            if (kind == EXECUTION_INTRINSIC_SNAPSHOT &&
                 (value.type == PIN_STRUCT || value.container != PIN_CONTAINER_SINGLE)) {
                 source.readable = true;
                 source.owned_payload = value.container != PIN_CONTAINER_SINGLE &&
@@ -379,8 +379,8 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
             }
             return source;
         }
-        if (id == execution_intrinsic_id(&EXECUTION_reference_read_call) ||
-            id == execution_intrinsic_id(&EXECUTION_pointer_read_call)) {
+        if (kind == EXECUTION_INTRINSIC_REFERENCE_READ ||
+            kind == EXECUTION_INTRINSIC_POINTER_READ) {
             origin target = bank_origin(f, j, call->first, depth + 1, steps);
             pin_value value = f->data_values[bank].initial;
             const type_desc *type = value.type == PIN_STRUCT &&
@@ -655,17 +655,16 @@ static bool context_bank(const behavior_function *f, int bank)
         if (bank < host->first || bank >= host->result_first + host->result_count) {
             continue;
         }
-        uint64_t id = intrinsic(host);
-        if (bank != host->first ||
-            (id != execution_intrinsic_id(&EXECUTION_reference_make_call) &&
-             id != execution_intrinsic_id(&EXECUTION_query_source_call) &&
-             id != execution_intrinsic_id(&EXECUTION_query_target_call) &&
-             id != execution_intrinsic_id(&EXECUTION_component_has_call) &&
-             id != execution_intrinsic_id(&EXECUTION_component_pointer_call) &&
-             id != execution_intrinsic_id(&EXECUTION_component_snapshot_call) &&
-             id != execution_intrinsic_id(&EXECUTION_query_test_call) &&
-             id != execution_intrinsic_id(&EXECUTION_query_current_row_call) &&
-             id != execution_intrinsic_id(&EXECUTION_query_make_call))) {
+        execution_intrinsic kind = execution_intrinsic_kind(intrinsic(host));
+        if (bank != host->first || (kind != EXECUTION_INTRINSIC_REFERENCE_MAKE &&
+                                    kind != EXECUTION_INTRINSIC_QUERY_SOURCE &&
+                                    kind != EXECUTION_INTRINSIC_QUERY_TARGET &&
+                                    kind != EXECUTION_INTRINSIC_COMPONENT_HAS &&
+                                    kind != EXECUTION_INTRINSIC_COMPONENT_POINTER &&
+                                    kind != EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT &&
+                                    kind != EXECUTION_INTRINSIC_QUERY_TEST &&
+                                    kind != EXECUTION_INTRINSIC_QUERY_CURRENT_ROW &&
+                                    kind != EXECUTION_INTRINSIC_QUERY_MAKE)) {
             return false;
         }
         found = true;
@@ -863,7 +862,7 @@ static bool owned_collection(const behavior_function *f, origin target, int *ste
             const behavior_function_host_call *host = &f->host_calls[i->target];
             if (bank >= host->result_first &&
                 bank < host->result_first + host->result_count &&
-                (intrinsic(host) != execution_intrinsic_id(&EXECUTION_snapshot_call) ||
+                (execution_intrinsic_kind(intrinsic(host)) != EXECUTION_INTRINSIC_SNAPSHOT ||
                  i->right == BF_HOST_BORROW_ARRAY ||
                  !collection_header_fixed(f, host->first, 0, steps))) {
                 return false;
@@ -1141,8 +1140,8 @@ static bool function_reduces(const behavior_function *f, int depth, int *steps)
         if (--*steps < 0) {
             return false;
         }
-        if (intrinsic(&f->host_calls[i]) ==
-            execution_intrinsic_id(&EXECUTION_reference_reduce_call)) {
+        if (execution_intrinsic_kind(intrinsic(&f->host_calls[i])) ==
+            EXECUTION_INTRINSIC_REFERENCE_REDUCE) {
             return true;
         }
     }
@@ -1195,8 +1194,9 @@ static bool scalar_helper(scalar_helpers *proof, const behavior_function *f, int
     /* Lowered writable scalar locals reserve private banks through snapshot
      * descriptors. Executing a host call is still excluded below. */
     for (int i = 0; i < acount(f->host_calls); i++) {
-        if (--proof->steps < 0 || intrinsic(&f->host_calls[i]) !=
-                                      execution_intrinsic_id(&EXECUTION_snapshot_call)) {
+        if (--proof->steps < 0 ||
+            execution_intrinsic_kind(intrinsic(&f->host_calls[i])) !=
+                EXECUTION_INTRINSIC_SNAPSHOT) {
             return false;
         }
     }
@@ -1477,29 +1477,30 @@ static void function(effects *e, const behavior_function *f, int depth)
                 const behavior_function_host_call *call = &f->host_calls[i->target];
                 e->capability = call->capability_id;
                 uint64_t id = intrinsic(call);
-                if (id == execution_intrinsic_id(&EXECUTION_component_snapshot_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_component_pointer_call)) {
+                execution_intrinsic kind = execution_intrinsic_kind(id);
+                if (kind == EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT ||
+                    kind == EXECUTION_INTRINSIC_COMPONENT_POINTER) {
                     int steps = EFFECT_STEPS;
                     origin source = bank_origin(f, pc + 1, call->result_first, 0, &steps);
                     if (!source.component) {
                         unknown(e);
-                    } else if (id == execution_intrinsic_id(&EXECUTION_component_snapshot_call)) {
+                    } else if (kind == EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT) {
                         add(e, false, source.component);
                     }
                     /* Scheduled row evaluators run serially before workers.
                      * Creating component cells in a body mutates their shared
                      * managed heap and cannot run on row workers. */
                     if (!e->counting && !e->predicate &&
-                        id == execution_intrinsic_id(&EXECUTION_component_pointer_call)) {
+                        kind == EXECUTION_INTRINSIC_COMPONENT_POINTER) {
                         e->summary->parallel_safe = false;
                     }
                     break;
                 }
-                if (id == execution_intrinsic_id(&EXECUTION_query_current_row_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_query_row_get_call)) {
+                if (kind == EXECUTION_INTRINSIC_QUERY_CURRENT_ROW ||
+                    kind == EXECUTION_INTRINSIC_QUERY_ROW_GET) {
                     int steps = EFFECT_STEPS;
                     origin source = bank_origin(f, pc + 1, call->result_first, 0, &steps);
-                    if (id == execution_intrinsic_id(&EXECUTION_query_current_row_call)) {
+                    if (kind == EXECUTION_INTRINSIC_QUERY_CURRENT_ROW) {
                         if (!source.row || !e->plan->system_description) {
                             unknown(e);
                         }
@@ -1508,55 +1509,49 @@ static void function(effects *e, const behavior_function *f, int depth)
                     }
                     break;
                 }
-                if (id == execution_intrinsic_id(&EXECUTION_reference_make_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_query_source_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_component_has_call)) {
+                if (kind == EXECUTION_INTRINSIC_REFERENCE_MAKE ||
+                    kind == EXECUTION_INTRINSIC_QUERY_SOURCE ||
+                    kind == EXECUTION_INTRINSIC_COMPONENT_HAS) {
                     int steps = EFFECT_STEPS;
-                    if (id == execution_intrinsic_id(&EXECUTION_reference_make_call) &&
+                    if (kind == EXECUTION_INTRINSIC_REFERENCE_MAKE &&
                         bank_origin(f, pc + 1, call->result_first, 0, &steps).local_reference) {
                         break;
                     }
-                    int ordinal = id == execution_intrinsic_id(&EXECUTION_reference_make_call)
-                                    ? 6
-                                    : 2;
+                    int ordinal = kind == EXECUTION_INTRINSIC_REFERENCE_MAKE ? 6 : 2;
                     origin component = bank_origin(f, pc, call->first + ordinal, 0, &steps);
                     if (component.constant && component.bits) {
-                        if (!e->reducing &&
-                            id == execution_intrinsic_id(&EXECUTION_reference_make_call)) {
+                        if (!e->reducing && kind == EXECUTION_INTRINSIC_REFERENCE_MAKE) {
                             add(e, false, component.bits);
                         }
                     } else {
                         unknown(e);
                     }
                 }
-                if (id == execution_intrinsic_id(&EXECUTION_local_release_call)) {
+                if (kind == EXECUTION_INTRINSIC_LOCAL_RELEASE) {
                     int steps = EFFECT_STEPS;
                     if (!bank_origin(f, pc, call->first, 0, &steps).local_reference) {
                         unknown(e);
                     }
                     break;
                 }
-                if (id == execution_intrinsic_id(&EXECUTION_query_source_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_query_target_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_component_has_call)) {
+                if (kind == EXECUTION_INTRINSIC_QUERY_SOURCE ||
+                    kind == EXECUTION_INTRINSIC_QUERY_TARGET ||
+                    kind == EXECUTION_INTRINSIC_COMPONENT_HAS) {
                     int steps = EFFECT_STEPS;
-                    int ordinal = id == execution_intrinsic_id(&EXECUTION_query_source_call)
-                                    ? 3
-                                    : 2;
+                    int ordinal = kind == EXECUTION_INTRINSIC_QUERY_SOURCE ? 3 : 2;
                     origin relationship = bank_origin(f, pc, call->first + ordinal, 0, &steps);
-                    if (id != execution_intrinsic_id(&EXECUTION_component_has_call) &&
+                    if (kind != EXECUTION_INTRINSIC_COMPONENT_HAS &&
                         relationship.constant && relationship.bits) {
                         add(e, false, relationship.bits);
                     }
                     bool membership = e->predicate &&
-                                      id == execution_intrinsic_id(&EXECUTION_component_has_call);
-                    if (e->predicate &&
-                        id == execution_intrinsic_id(&EXECUTION_query_source_call)) {
+                                      kind == EXECUTION_INTRINSIC_COMPONENT_HAS;
+                    if (e->predicate && kind == EXECUTION_INTRINSIC_QUERY_SOURCE) {
                         origin traversal = bank_origin(f, pc, call->first + 4, 0, &steps);
                         membership = relationship.constant && !relationship.bits &&
                                      traversal.constant && !traversal.bits;
                     }
-                    if (id != execution_intrinsic_id(&EXECUTION_query_target_call) &&
+                    if (kind != EXECUTION_INTRINSIC_QUERY_TARGET &&
                         (!e->reducing || !membership)) {
                         origin component = bank_origin(f, pc, call->first + 2, 0, &steps);
                         if (component.constant && component.bits) {
@@ -1574,17 +1569,17 @@ static void function(effects *e, const behavior_function *f, int depth)
                     }
                     break;
                 }
-                if (id == execution_intrinsic_id(&EXECUTION_reference_make_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_reference_field_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_reference_union_call)) {
+                if (kind == EXECUTION_INTRINSIC_REFERENCE_MAKE ||
+                    kind == EXECUTION_INTRINSIC_REFERENCE_FIELD ||
+                    kind == EXECUTION_INTRINSIC_REFERENCE_UNION) {
                     break;
                 }
-                if (id == execution_intrinsic_id(&EXECUTION_union_test_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_union_get_call)) {
+                if (kind == EXECUTION_INTRINSIC_UNION_TEST ||
+                    kind == EXECUTION_INTRINSIC_UNION_GET) {
                     payload_read(e, f, pc, call->first);
                     break;
                 }
-                if (id == execution_intrinsic_id(&EXECUTION_reference_reduce_call)) {
+                if (kind == EXECUTION_INTRINSIC_REFERENCE_REDUCE) {
                     int steps = EFFECT_STEPS;
                     origin target = effect_origin(e, bank_origin(f, pc, call->first, 0, &steps));
                     origin op = bank_origin(f, pc, call->first + 2, 0, &steps);
@@ -1602,17 +1597,12 @@ static void function(effects *e, const behavior_function *f, int depth)
                     }
                     break;
                 }
-                execution_intrinsic kind = execution_intrinsic_kind(id);
                 bool place_write = kind == EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE ||
                                    kind == EXECUTION_INTRINSIC_MAP_DELETE_PLACE;
-                if (id == execution_intrinsic_id(&EXECUTION_reference_read_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_reference_write_call) ||
-                    place_write) {
+                if (kind == EXECUTION_INTRINSIC_REFERENCE_READ ||
+                    kind == EXECUTION_INTRINSIC_REFERENCE_WRITE || place_write) {
                     if (e->counting) {
-                        add(e,
-                            place_write ||
-                                id == execution_intrinsic_id(&EXECUTION_reference_write_call),
-                            0);
+                        add(e, place_write || kind == EXECUTION_INTRINSIC_REFERENCE_WRITE, 0);
                         if (place_write) {
                             add(e, false, 0);
                         }
@@ -1621,7 +1611,7 @@ static void function(effects *e, const behavior_function *f, int depth)
                     int steps = EFFECT_STEPS;
                     origin target = effect_origin(e, bank_origin(f, pc, call->first, 0, &steps));
                     bool write = place_write ||
-                                 id == execution_intrinsic_id(&EXECUTION_reference_write_call);
+                                 kind == EXECUTION_INTRINSIC_REFERENCE_WRITE;
                     if (place_write && target.private && target.bank) {
                         if (local_places < 0) {
                             local_places = share_local(f, false, NULL);
@@ -1644,7 +1634,7 @@ static void function(effects *e, const behavior_function *f, int depth)
                     }
                     break;
                 }
-                if (id == execution_intrinsic_id(&EXECUTION_snapshot_call)) {
+                if (kind == EXECUTION_INTRINSIC_SNAPSHOT) {
                     pin_value value = f->data_values[call->result_first].initial;
                     if (value.container == PIN_CONTAINER_SINGLE &&
                         (value.type == PIN_POINTER || value.type == PIN_QUERY ||
@@ -1659,14 +1649,14 @@ static void function(effects *e, const behavior_function *f, int depth)
                     }
                     break;
                 }
-                if (id == execution_intrinsic_id(&EXECUTION_pointer_read_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_pointer_write_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_pointer_reference_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_pointer_field_call)) {
+                if (kind == EXECUTION_INTRINSIC_POINTER_READ ||
+                    kind == EXECUTION_INTRINSIC_POINTER_WRITE ||
+                    kind == EXECUTION_INTRINSIC_POINTER_REFERENCE ||
+                    kind == EXECUTION_INTRINSIC_POINTER_FIELD) {
                     int steps = EFFECT_STEPS;
                     origin target = effect_origin(e, bank_origin(f, pc, call->first, 0, &steps));
-                    bool read = id == execution_intrinsic_id(&EXECUTION_pointer_read_call);
-                    bool write = id == execution_intrinsic_id(&EXECUTION_pointer_write_call);
+                    bool read = kind == EXECUTION_INTRINSIC_POINTER_READ;
+                    bool write = kind == EXECUTION_INTRINSIC_POINTER_WRITE;
                     pin_value value = f->data_values[write ? call->first + 1 : call->result_first]
                                           .initial;
                     if (!target.component || ((read || write) && !plain(value))) {
@@ -1677,8 +1667,7 @@ static void function(effects *e, const behavior_function *f, int depth)
                     }
                     if (!e->counting &&
                         ((!target.owner && (!e->reducing || write)) ||
-                         (!e->predicate &&
-                          id == execution_intrinsic_id(&EXECUTION_pointer_field_call)))) {
+                         (!e->predicate && kind == EXECUTION_INTRINSIC_POINTER_FIELD))) {
                         e->summary->parallel_safe = false;
                     }
                     break;
@@ -1967,12 +1956,9 @@ size_t execution_module_effects_bytes(const execution_module_plan *p)
              ? SIZE_MAX
              : e.capacity * 3 * sizeof(uint64_t);
 }
-bool execution_module_build_effects(execution_module *m)
+void execution_module_build_effects(execution_module *m, size_t bytes)
 {
-    size_t bytes = execution_module_effects_bytes(&m->plan);
-    if (bytes == SIZE_MAX) {
-        return false;
-    }
+    assert(bytes != SIZE_MAX);
     m->effect_ids = bytes ? xcalloc(1, bytes) : NULL;
     m->effect_bytes = bytes;
     size_t capacity = bytes / (3 * sizeof(uint64_t));
@@ -1994,6 +1980,7 @@ bool execution_module_build_effects(execution_module *m)
                   .reducing = plan_reduces(&m->plan) };
     scalar_plan(&e, &m->plan);
     plan(&e, &m->plan);
+    assert(e.valid); /* The fill repeats the walk that counted. */
     if (e.reducing) {
         /* Rows may alias through generators or arbitrary target handles. Only
          * private contributions, never ordinary writes, permit this proof. */
@@ -2010,7 +1997,6 @@ bool execution_module_build_effects(execution_module *m)
             }
         }
     }
-    return e.valid;
 }
 execution_effect_summary execution_module_effects(const execution_module *m)
 {

@@ -11,7 +11,6 @@ typedef struct
     const execution_prepared_linker *linker;
     behavior_function **functions;
     execution_module_plan *plan;
-    struct prepared_dependency **dependencies;
     size_t *dependency_bytes;
     execution_wire *fingerprint_budget;
     size_t function_bytes;

@@ -174,47 +174,63 @@ pub ImportName :: (value: string) -> bool {
 
 // The system libraries a module's IR imports from, other than libc, once each
 // in order: `; chibi-library system:NAME` names one and
-// `; chibi-import system:NAME SYMBOL` a symbol of it. A module names a few
-// libraries, so each line searches them in turn.
+// `; chibi-import system:NAME SYMBOL` a symbol of it. The symbols are gathered
+// as (library, symbol) pairs first, so no library's list is copied as it
+// grows; a module names a few libraries, so each pair searches them in turn
+// and each library's symbols are one pass over the pairs.
 pub SystemImports :: (lines: string[]) -> Import[] {
-    found: Import[] = [];
+    names: string[] = [];
+    owners: int[] = [];
+    symbols: string[] = [];
     seen: [string: bool] = [:];
     named := "; chibi-library system:";
     imports := "; chibi-import system:";
     for (line in lines) {
         library_name := "";
-        rest := "";
+        symbol := "";
         if (strings.HasPrefix(line, named)) {
             library_name = strings.TrimPrefix(line, named);
         } else if (strings.HasPrefix(line, imports)) {
-            rest = strings.TrimPrefix(line, imports);
+            rest := strings.TrimPrefix(line, imports);
             space := strings.Index(rest, " ");
             if (space < 0) {
                 continue;
             }
             library_name = strings.Slice(rest, 0, space);
-            rest = strings.Slice(rest, space + 1, strings.ByteLength(rest) - space - 1);
+            symbol = strings.Slice(rest, space + 1, strings.ByteLength(rest) - space - 1);
         } else {
             continue;
         }
         if (library_name == "c") {
             continue;
         }
-        at := Find(found, library_name);
+        at := -1;
+        for (index in 0..<length(names)) {
+            if (names[index] == library_name) {
+                at = index;
+            }
+        }
         if (at < 0) {
-            added: Import = {name: library_name, symbols: []};
-            found.append(added);
-            at = length(found) - 1;
+            names.append(library_name);
+            at = length(names) - 1;
         }
-        key := Join([library_name, " ", rest]);
-        if (rest != "" && !seen.has(key)) {
+        key := Join([library_name, " ", symbol]);
+        if (symbol != "" && !seen.has(key)) {
             seen[key] = true;
-            changed := found[at];
-            symbols := changed.symbols;
-            symbols.append(rest);
-            changed.symbols = symbols;
-            found[at] = changed;
+            owners.append(at);
+            symbols.append(symbol);
         }
+    }
+    found: Import[] = [];
+    for (index in 0..<length(names)) {
+        listed: string[] = [];
+        for (pair in 0..<length(owners)) {
+            if (owners[pair] == index) {
+                listed.append(symbols[pair]);
+            }
+        }
+        imported: Import = {name: names[index], symbols: listed};
+        found.append(imported);
     }
     return found;
 }

@@ -286,6 +286,24 @@ ScalarParam :: (types: TypeDecl[], param: Param) -> bool {
 ScalarView :: union {
     Viewed(callables: Callable[], types: TypeDecl[], members: TypeMember[])
 }
+// Whether a return statement under `node` gives a value; a function with an
+// inferred result and none has no result.
+ScalarReturnsValue :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    pending: int[] = [node];
+    while (length(pending) > 0) {
+        at := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (Is(forest, at, "return_statement") && Field(forest, at, "value") >= 0) {
+            return true;
+        }
+        child := forest[at].first_child;
+        while (child >= 0) {
+            pending.append(child);
+            child = forest[child].next_sibling;
+        }
+    }
+    return false;
+}
 // Whether `callable`, as the ordinary compiler sees it, has no result.
 ScalarVoid :: (callable: Callable) -> bool {
     return callable.result == 0 && callable.result_container == 0 && callable.results == 0;
@@ -1772,7 +1790,8 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         rows.append(parameter);
     }
     // A function with no result, whose view returns int 0.
-    nothing := callable.results == 0 && Field(forest, callable.node, "results") < 0;
+    nothing := callable.results == 0 && Field(forest, callable.node, "results") < 0 &&
+               !ScalarReturnsValue(forest, Field(forest, callable.node, "body"));
     // Named results are locals after the parameters, each starting at its
     // zero, as the prologue binds them.
     for (index in 0..<callable.results) {
@@ -2557,9 +2576,12 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, "parameters"), 0,
                                               "scalar proof requires its first function to take no parameters"));
     }
-    if (!is_library && (first.result != IntStorage || first.result_container != 0)) {
-        return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, "results"), 0,
-                                              "scalar proof requires its first function to return int"));
+    if (!is_library && (first.result != IntStorage || first.result_container != 0 || ScalarVoid(callables[0]))) {
+        at := Field(forest, first.node, "results");
+        if (at < 0) {
+            at = first.node;
+        }
+        return ScalarOperands.Failed(Diagnose(forest, at, 0, "scalar proof requires its first function to return int"));
     }
     solid := SolidOffsets(text);
     rows: facts.Row[] = [];

@@ -33,6 +33,8 @@ pub Import :: struct {
     alias_line: int;
     alias_column: int;
     alias_document: int;
+    // Inside a `when` branch, so it binds only if the branch is kept.
+    conditional: bool;
 }
 
 pub Result :: union {
@@ -85,10 +87,21 @@ pub Extract :: (nodes: syntax.Node[], fields: int[], text: string,
         header_document: 0
     };
     imports: Import[] = [];
-    current := nodes[root].first_child;
+    Imports(nodes, fields, text, file, root, false, &imports);
+    return Result.Accepted(descriptor, imports);
+}
+
+// Appends the imports among `parent`'s children in source order, with those
+// inside each `when` declaration's branches, all of which are conditional:
+// the compiler keeps the ones of the branch the condition selects.
+Imports :: (nodes: syntax.Node[], fields: int[], text: string, file: int, parent: int, conditional: bool,
+            imports: ^(Import[])) {
+    current := nodes[parent].first_child;
     while (current >= 0) {
         node := nodes[current];
-        if (node.kind == syntax.ImportDeclaration) {
+        if (node.kind == syntax.WhenDeclaration || node.kind == syntax.DeclarationBlock) {
+            Imports(nodes, fields, text, file, current, true, imports);
+        } else if (node.kind == syntax.ImportDeclaration) {
             pathNode := nodes[FindField(nodes, fields, current, syntax.FieldPath)];
             alias := FindField(nodes, fields, current, syntax.FieldAlias);
             aliasName := "";
@@ -114,11 +127,10 @@ pub Extract :: (nodes: syntax.Node[], fields: int[], text: string,
                 path_document: 0,
                 alias_start: aliasStart, alias_end: aliasEnd,
                 alias_line: aliasLine, alias_column: aliasColumn,
-                alias_document: 0
+                alias_document: 0, conditional: conditional
             };
             imports.append(imported);
         }
         current = nodes[current].next_sibling;
     }
-    return Result.Accepted(descriptor, imports);
 }

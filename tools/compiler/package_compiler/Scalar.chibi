@@ -3319,7 +3319,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
     for (index in 0..<length(paths)) {
         source := sources[index];
         if (os != 0 && TargetPackagePath(collection_names, collection_paths, paths[index])) {
-            source = TargetPackageText(os, arch, target.pointer_size * 8);
+            source = TargetPackageText(os, arch, target.pointer_size * 8, 1);
         }
         input: snapshot.Input = {path: paths[index], text: source, has_path: true, has_text: true};
         inputs.append(input);
@@ -3369,10 +3369,8 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                         return ScalarFailure(path, shown_text,
                                              Diagnose(shown_nodes, document.syntax_root, 0, "scalar proof requires one package without imports"));
                     }
-                    active := order;
                     roots_named: string[] = [document.identity];
                     if (packaged) {
-                        active = ActivePackageOrder(documents, packages, files_of, order, edges, file_packages[0]);
                         roots_named = [];
                         for (listed in packages) {
                             roots_named.append(documents[files_of[listed.member_start]].identity);
@@ -3396,15 +3394,16 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                         quiet.effects = 0;
                         text_natives[index] = quiet;
                     }
-                    switch Declare(nodes, documents, packages, files_of, active, imports, links, target) {
+                    switch Declare(nodes, documents, packages, files_of, order, edges, file_packages[0], imports, links,
+                                   target) {
                         case .Failed(diagnostic):
                             return ScalarFailed(packaged, path, text, documents, diagnostic);
-                        case .Collected(callables, params, types, members, constants):
+                        case .Declared(callables, params, types, members, constants, active, bound, kept):
                             // Use the ordinary compiler's concrete functions and bindings. The
                             // scalar pass then checks its existing pure numeric domain.
                             table := types;
                             effects := resize([int(0)], length(text_natives));
-                            switch SpecializePackages(nodes, documents, active, links, roots_named,
+                            switch SpecializePackages(nodes, documents, active, bound, roots_named,
                                                       WaitingCallables(nodes, callables), params, &table, members,
                                                       constants, text_natives, text_ports, text_identities,
                                                       BodyContext.Known(effects), ops, target) {
@@ -3422,7 +3421,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                     // Import aliases name a package set's qualified calls; a lone source has none.
                                     module_links: graph.Binding[] = [];
                                     if (packaged) {
-                                        module_links = links;
+                                        module_links = bound;
                                     }
                                     scalar_nodes := nodes;
                                     scalar_text := text;

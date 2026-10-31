@@ -1,0 +1,13 @@
+package facts
+
+when true {
+    import text "core:strings"
+}
+when true {
+    import text "core:bytes"
+}
+
+Width :: () -> int {
+    return text.ByteLength("abc")
+}
+// error: 7:5: Duplicate file-local import binding

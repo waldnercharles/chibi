@@ -16,6 +16,62 @@ import strings "core:strings"
 // the closure and emitting each function group can run on worker threads once
 // core:thread exists; the order of everything it writes is the source order.
 
+// The entry comes first: a package set's entry is its first file's first function.
+Main :: () -> int {
+    arguments := os.Arguments();
+    project := Option(arguments, "--compiler", "");
+    core := Option(arguments, "--core", "");
+    output := Option(arguments, "--output", "");
+    llvm := Option(arguments, "--llvm", "");
+    package := Option(arguments, "--package", "native_driver");
+    triple := Option(arguments, "--target", "x86_64-unknown-linux-gnu");
+    if (project == "" || core == "" || output == "" || llvm == "") {
+        os.Print("usage: --compiler DIR --core DIR --output FILE --llvm DIR [--package NAME] [--target TRIPLE]");
+        return 2;
+    }
+    gathered := Gather(project, core, package);
+    if (gathered.problem != "") {
+        os.Print(strings.Concatenate(["native: ", gathered.problem]));
+        return 2;
+    }
+    switch Module(core, gathered.paths, gathered.sources, triple) {
+        case .Rejected(message):
+            os.Print(strings.Concatenate(["native: ", message]));
+            return 1;
+        case .Emitted(module):
+            if (os.WriteBytes(strings.Concatenate([output, ".ll"]), module) != nil) {
+                os.Print(strings.Concatenate(["native: cannot write ", output, ".ll"]));
+                return 2;
+            }
+    }
+    // A Linux or Windows program runs with nothing but its own objects; macOS
+    // links libSystem, as its programs always have.
+    static := !strings.HasPrefix(triple, "aarch64-apple");
+    objects := [strings.Concatenate([output, ".o"])];
+    if (host.Object(llvm, strings.Concatenate([output, ".ll"]), objects[0], 2) != nil) {
+        os.Print("native: llc could not emit the object");
+        return 2;
+    }
+    start := link.Start(triple, static, false);
+    if (start != "") {
+        if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil ||
+            host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), 2) != nil) {
+            os.Print("native: cannot emit the start object");
+            return 2;
+        }
+        objects.append(strings.Concatenate([output, ".start.o"]));
+    }
+    plan := link.Program(triple, llvm, objects, [], [], [], output, "", static);
+    if (host.Link(plan) != nil) {
+        os.Print("native: the link failed");
+        return 2;
+    }
+    for (name in [".ll", ".o", ".start.ll", ".start.o"]) {
+        os.Remove(strings.Concatenate([output, name]));
+    }
+    return 0;
+}
+
 Option :: (arguments: string[], name: string, fallback: string) -> string {
     for (index in 0..<length(arguments) - 1) {
         if (arguments[index] == name) {
@@ -115,59 +171,4 @@ Gather :: (project: string, core: string, package: string) -> Inputs {
         next += 1;
     }
     return found;
-}
-
-Main :: () -> int {
-    arguments := os.Arguments();
-    project := Option(arguments, "--compiler", "");
-    core := Option(arguments, "--core", "");
-    output := Option(arguments, "--output", "");
-    llvm := Option(arguments, "--llvm", "");
-    package := Option(arguments, "--package", "native_driver");
-    triple := Option(arguments, "--target", "x86_64-unknown-linux-gnu");
-    if (project == "" || core == "" || output == "" || llvm == "") {
-        os.Print("usage: --compiler DIR --core DIR --output FILE --llvm DIR [--package NAME] [--target TRIPLE]");
-        return 2;
-    }
-    gathered := Gather(project, core, package);
-    if (gathered.problem != "") {
-        os.Print(strings.Concatenate(["native: ", gathered.problem]));
-        return 2;
-    }
-    switch Module(core, gathered.paths, gathered.sources, triple) {
-        case .Rejected(message):
-            os.Print(strings.Concatenate(["native: ", message]));
-            return 1;
-        case .Emitted(module):
-            if (os.WriteBytes(strings.Concatenate([output, ".ll"]), module) != nil) {
-                os.Print(strings.Concatenate(["native: cannot write ", output, ".ll"]));
-                return 2;
-            }
-    }
-    // A Linux or Windows program runs with nothing but its own objects; macOS
-    // links libSystem, as its programs always have.
-    static := !strings.HasPrefix(triple, "aarch64-apple");
-    objects := [strings.Concatenate([output, ".o"])];
-    if (host.Object(llvm, strings.Concatenate([output, ".ll"]), objects[0], 2) != nil) {
-        os.Print("native: llc could not emit the object");
-        return 2;
-    }
-    start := link.Start(triple, static, false);
-    if (start != "") {
-        if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil ||
-            host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), 2) != nil) {
-            os.Print("native: cannot emit the start object");
-            return 2;
-        }
-        objects.append(strings.Concatenate([output, ".start.o"]));
-    }
-    plan := link.Program(triple, llvm, objects, [], [], [], output, "", static);
-    if (host.Link(plan) != nil) {
-        os.Print("native: the link failed");
-        return 2;
-    }
-    for (name in [".ll", ".o", ".start.ll", ".start.o"]) {
-        os.Remove(strings.Concatenate([output, name]));
-    }
-    return 0;
 }

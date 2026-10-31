@@ -597,7 +597,8 @@ GenericFunctionArguments :: (forest: snapshot.SnapshotNode[], documents: snapsho
         expected: Callable = caller;
         expected_params: Param[] = [];
         switch FunctionSignature(forest, source.text, source.key, SolidOffsets(source.text), table, aliases,
-                                 definition.package, definition.document, signature, "__callable_signature", 0) {
+                                 definition.package, definition.document, signature, "__callable_signature", 0,
+                                 NoScopes()) {
             case .Failed(diagnostic):
                 return GenericFunctions.Failed(diagnostic);
             case .Read(found, added):
@@ -630,7 +631,7 @@ GenericFunctionArguments :: (forest: snapshot.SnapshotNode[], documents: snapsho
                 switch FunctionSignature(forest, document.text, document.key, SolidOffsets(document.text), table,
                                          caller_names,
                                          caller.package, caller.document, lambda,
-                                         format_text("__lambda_{}", id), length(params)) {
+                                         format_text("__lambda_{}", id), length(params), NoScopes()) {
                     case .Failed(diagnostic):
                         return GenericFunctions.Failed(diagnostic);
                     case .Read(found, added):
@@ -803,7 +804,7 @@ SpecializePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             definition_aliases.extend(names);
                             switch FunctionSignature(forest, source.text, source.key, SolidOffsets(source.text), table,
                                                      definition_aliases, definition.package, definition.document,
-                                                     definition.node, format_text("__generic_{}", id), length(params)) {
+                                                     definition.node, format_text("__generic_{}", id), length(params), NoScopes()) {
                                 case .Failed(diagnostic):
                                     return GenericPlan.Failed(diagnostic);
                                 case .Read(concrete, added):
@@ -888,7 +889,7 @@ GenericCallableResults :: (forest: snapshot.SnapshotNode[], documents: snapshot.
         }
         aliases := GenericAliases(Aliases(links, file), bindings, bound.owner);
         switch FunctionSignature(forest, document.text, document.key, SolidOffsets(document.text), table, aliases,
-                                 package, file, bound.record, "__callable_signature", 0) {
+                                 package, file, bound.record, "__callable_signature", 0, NoScopes()) {
             case .Failed(diagnostic):
                 return GenericCheck.Failed(diagnostic);
             case .Read(expected, added):

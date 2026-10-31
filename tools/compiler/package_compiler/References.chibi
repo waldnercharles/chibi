@@ -388,6 +388,233 @@ ScopedPointer :: (forest: snapshot.SnapshotNode[], text: string, declaration: in
     return body < 0 || ScopedUses(forest, text, declaration, body,
                                   Text(forest, text, Field(forest, parameter, syntax.FieldName)), append(visiting, parameter));
 }
+// The scoped pointer parameters of a package's functions, decided together.
+// `nodes` lists their parameter nodes in ascending order, each with a verdict in
+// `scoped`. A table without nodes decides nothing, and the callers fall back to
+// the one function's own analysis.
+ScopeTable :: struct {
+    nodes: int[];
+    scoped: bool[];
+}
+NoScopes :: () -> ScopeTable {
+    return {nodes: [], scoped: []};
+}
+// What `ScopedWalk` finds in the uses of a parameter: whether one makes it
+// managed, and each use that hands its address to a call.
+ScopeWalk :: struct {
+    escapes: bool;
+    forwards: int[];
+}
+// The same walk as ScopedUses, but recording the forwarded uses for a package-wide
+// pass instead of following each into its callee.
+ScopedWalk :: (forest: snapshot.SnapshotNode[], text: string, body: int, name: string) -> ScopeWalk {
+    found: ScopeWalk = {escapes: false, forwards: []};
+    pending: int[] = [body];
+    while (length(pending) > 0) {
+        at := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (CallableDeclaration(forest, at)) {
+            continue;
+        }
+        if (!Is(forest, at, syntax.Identifier) || Text(forest, text, at) != name) {
+            for (child in Members(forest, at)) {
+                pending.append(child);
+            }
+            continue;
+        }
+        parent := forest[at].parent;
+        if (SpellsName(forest, parent, at)) {
+            if (BindingForm(forest, parent)) {
+                found.escapes = true;
+                return found;
+            }
+            continue;
+        }
+        if (!Is(forest, parent, syntax.DereferenceExpression) && !Is(forest, parent, syntax.MemberExpression)) {
+            found.forwards.append(at);
+            continue;
+        }
+        place := parent;
+        while (Is(forest, forest[place].parent, syntax.DereferenceExpression) ||
+               Is(forest, forest[place].parent, syntax.ParenthesizedExpression) ||
+               (Is(forest, forest[place].parent, syntax.MemberExpression) &&
+                Field(forest, forest[place].parent, syntax.FieldObject) == place)) {
+            place = forest[place].parent;
+        }
+        outer := forest[place].parent;
+        if (Is(forest, outer, syntax.AddressExpression)) {
+            found.forwards.append(outer);
+        }
+    }
+    return found;
+}
+// The functions of a package that have a pointer parameter: their names, the
+// text of their documents, their declarations, and the index in the package's
+// parameter list of each one's first parameter.
+ScopeFunctions :: struct {
+    names: string[];
+    texts: string[];
+    declarations: int[];
+    first: int[];
+}
+// The index, in the package's parameter list, of the pointer parameter that the
+// call `argument` is an argument of passes to, or -1 when it passes to anything
+// else: a function without a pointer there, or one of another package.
+ScopedTarget :: (forest: snapshot.SnapshotNode[], text: string, functions: ScopeFunctions, argument: int) -> int {
+    at := argument;
+    list := forest[at].parent;
+    while (Is(forest, list, syntax.ParenthesizedExpression)) {
+        at = list;
+        list = forest[list].parent;
+    }
+    label: int = -1;
+    if (Is(forest, list, syntax.NamedArgument) ||
+        (Is(forest, list, syntax.TypedArgument) && Field(forest, list, syntax.FieldValue) == at)) {
+        label = Field(forest, list, syntax.FieldName);
+        at = list;
+        list = forest[list].parent;
+    }
+    if (!Is(forest, list, syntax.ArgumentList) || !Is(forest, forest[list].parent, syntax.CallExpression)) {
+        return -1;
+    }
+    called := Field(forest, forest[list].parent, syntax.FieldFunction);
+    if (!Is(forest, called, syntax.Identifier)) {
+        return -1;
+    }
+    spelled := Text(forest, text, called);
+    function: int = -1;
+    for (index in 0..<length(functions.names)) {
+        if (functions.names[index] == spelled) {
+            function = index;
+            break;
+        }
+    }
+    if (function < 0) {
+        return -1;
+    }
+    position: int = 0;
+    for (current in Members(forest, list)) {
+        if (current == at) {
+            break;
+        }
+        if (!Is(forest, current, syntax.NamedArgument) && !Is(forest, current, syntax.TypedArgument)) {
+            position += 1;
+        }
+    }
+    slot: int = 0;
+    for (parameter in Members(forest, Field(forest, functions.declarations[function], syntax.FieldParameters))) {
+        if ((label < 0 && slot == position) ||
+            (label >= 0 && Text(forest, text, label) == Text(forest, functions.texts[function],
+                                                              Field(forest, parameter, syntax.FieldName)))) {
+            if (PointerAnnotation(forest, Field(forest, parameter, syntax.FieldType)) < 0) {
+                return -1;
+            }
+            return functions.first[function] + slot;
+        }
+        slot += 1;
+    }
+    return -1;
+}
+// Which pointer parameters of `declarations`, the function declarations of a
+// package in ascending node order, take a reference to the caller's location:
+// those whose uses only dereference them, read fields through them, or pass
+// them on to such a parameter. The decision is the greatest fixed point of
+// the passing edges, one pass over every function instead of a search into
+// each callee from each use. `files` holds the document of each declaration.
+ScopedParameters :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], declarations: int[],
+                     files: int[]) -> ScopeTable {
+    nodes: int[] = [];
+    names: string[] = [];
+    pointers: bool[] = [];
+    owners: int[] = [];
+    functions: ScopeFunctions = {names: [], texts: [], declarations: [], first: []};
+    previous: int = -1;
+    for (at in 0..<length(declarations)) {
+        declaration := declarations[at];
+        if (declaration <= previous) {
+            return NoScopes();
+        }
+        previous = declaration;
+        text := documents[files[at]].text;
+        any := false;
+        for (parameter in Members(forest, Field(forest, declaration, syntax.FieldParameters))) {
+            if (PointerAnnotation(forest, Field(forest, parameter, syntax.FieldType)) >= 0) {
+                any = true;
+            }
+        }
+        if (!any) {
+            continue;
+        }
+        owner := length(functions.names);
+        functions.names.append(Text(forest, text, Field(forest, declaration, syntax.FieldName)));
+        functions.texts.append(text);
+        functions.declarations.append(declaration);
+        functions.first.append(length(nodes));
+        for (parameter in Members(forest, Field(forest, declaration, syntax.FieldParameters))) {
+            nodes.append(parameter);
+            names.append(Text(forest, text, Field(forest, parameter, syntax.FieldName)));
+            pointers.append(PointerAnnotation(forest, Field(forest, parameter, syntax.FieldType)) >= 0);
+            owners.append(owner);
+        }
+    }
+    scoped: bool[] = [];
+    edge_from: int[] = [];
+    edge_to: int[] = [];
+    for (index in 0..<length(nodes)) {
+        verdict := pointers[index];
+        if (verdict) {
+            owner := owners[index];
+            body := Field(forest, functions.declarations[owner], syntax.FieldBody);
+            if (body >= 0) {
+                text := functions.texts[owner];
+                walked := ScopedWalk(forest, text, body, names[index]);
+                verdict = !walked.escapes;
+                for (use in walked.forwards) {
+                    target := ScopedTarget(forest, text, functions, use);
+                    if (target < 0) {
+                        verdict = false;
+                    } else if (target != index) {
+                        edge_from.append(index);
+                        edge_to.append(target);
+                    }
+                }
+            }
+        }
+        scoped.append(verdict);
+    }
+    changed := true;
+    while (changed) {
+        changed = false;
+        for (edge in 0..<length(edge_from)) {
+            if (scoped[edge_from[edge]] && !scoped[edge_to[edge]]) {
+                scoped[edge_from[edge]] = false;
+                changed = true;
+            }
+        }
+    }
+    return {nodes: nodes, scoped: scoped};
+}
+// 1 when the table decides that `parameter` is scoped, 0 when it decides it is
+// managed, and -1 when the table does not list it.
+ScopedVerdict :: (table: ScopeTable, parameter: int) -> int {
+    low: int = 0;
+    high: int = length(table.nodes);
+    while (low < high) {
+        middle := (low + high) / 2;
+        if (table.nodes[middle] < parameter) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    if (low == length(table.nodes) || table.nodes[low] != parameter) {
+        return -1;
+    }
+    if (table.scoped[low]) {
+        return 1;
+    }
+    return 0;
+}
 // Whether `names` holds `name`.
 Holds :: (names: string[], name: string) -> bool {
     for (each in names) {

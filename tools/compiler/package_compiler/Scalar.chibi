@@ -3084,7 +3084,7 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
         if (FindCallable(callables, 0, name) >= 0) {
             return ScalarFailure(path, text, Diagnose(forest, member, 0, format_text("Duplicate declaration '{}'", name)));
         }
-        switch FunctionSignature(forest, text, path, solid, &empty_types, aliases, 0, 0, member, name, length(params)) {
+        switch FunctionSignature(forest, text, path, solid, &empty_types, aliases, 0, 0, member, name, length(params), NoScopes()) {
             case .Failed(diagnostic):
                 return ScalarFailure(path, text, diagnostic);
             case .Read(callable, added):

@@ -35,6 +35,7 @@ foreign kernel32 {
     lstrlenW :: (text: rawptr) -> i32
     RtlMoveMemory :: (destination: u16[], source: rawptr, length: u64) -> i32
     GetStdHandle :: (which: i32) -> u64
+    SetHandleInformation :: (handle: u64, mask: u32, flags: u32) -> i32
     CreatePipe :: (read: u64[], write: u64[], security: u8[], size: u32) -> i32
     PeekNamedPipe :: (pipe: u64, buffer: rawptr, size: u32, read: rawptr, available: u32[], left: rawptr) -> i32
     CreateProcessW :: (application: rawptr, command: u16[], process: rawptr, thread: rawptr, inherit: i32, flags: u32, environment: rawptr, directory: rawptr, startup: u8[], information: u8[]) -> i32
@@ -199,6 +200,18 @@ pub WriteBytes :: (path: string, data: u8[]) -> bool {
     }
     closed := CloseHandle(handle);
     return done && closed != 0;
+}
+
+// Writes the text to standard output; false when it cannot be written whole.
+pub Print :: (text: string) -> bool {
+    size := text_byte_length(text);
+    bytes: u8[] = [];
+    for index in 0..<size {
+        bytes.append(u8(text_byte_at(text, index)));
+    }
+    written: u32[] = [0];
+    done := WriteFile(GetStdHandle(-11), bytes, u32(size), written, 0);
+    return done != 0 && int(written[0]) == size;
 }
 
 // The text of the bytes, which may hold NUL and malformed UTF-8.
@@ -428,6 +441,19 @@ Put64 :: (bytes: u8[], at: int, value: u64) {
     }
 }
 
+// A standard handle made inheritable, or 0 when this process has none, so a
+// child can be given it.
+Shared :: (handle: u64) -> u64 {
+    if handle == 0 || ~handle == 0 {
+        return 0;
+    }
+    marked := SetHandleInformation(handle, 1, 1);
+    if marked == 0 {
+        return 0;
+    }
+    return handle;
+}
+
 // Starts the program with `command`'s arguments, its standard streams being
 // `input`, `output` and `errors` when they are not zero, and returns its
 // process handle; -1 when it cannot be started.
@@ -437,7 +463,7 @@ Start :: (command: string[], input: u64, output: u64, errors: u64) -> int {
     }
     startup := Block(104);
     startup[0] = 104;
-    startup[60] = 1;
+    startup[61] = 1;
     Put64(startup, 80, input);
     Put64(startup, 88, output);
     Put64(startup, 96, errors);
@@ -455,7 +481,7 @@ Start :: (command: string[], input: u64, output: u64, errors: u64) -> int {
 // standard streams, and returns its process handle; -1 when it cannot be
 // started.
 pub Spawn :: (command: string[]) -> int {
-    return Start(command, GetStdHandle(-10), GetStdHandle(-11), GetStdHandle(-12));
+    return Start(command, Shared(GetStdHandle(-10)), Shared(GetStdHandle(-11)), Shared(GetStdHandle(-12)));
 }
 
 // Waits for the process, closes its handle and returns its exit status.
@@ -521,7 +547,7 @@ pub Capture :: (command: string[]) -> Result {
     if made == 0 {
         return result;
     }
-    process := Start(command, GetStdHandle(-10), out_write[0], err_write[0]);
+    process := Start(command, Shared(GetStdHandle(-10)), out_write[0], err_write[0]);
     closed := CloseHandle(out_write[0]);
     closed = CloseHandle(err_write[0]);
     standard: u8[] = [];

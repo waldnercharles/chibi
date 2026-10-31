@@ -44,16 +44,15 @@ pub Object :: (llvm: string, module: string, object: string, level: int) -> link
 // The folder with the C library's start files and development library, and
 // the dynamic linker's path, on a Linux system; empty strings when it has none.
 pub Libc :: () -> (folder: string, interpreter: string) {
-    for (folder in ["/usr/lib/x86_64-linux-gnu", "/usr/lib64", "/lib/x86_64-linux-gnu", "/usr/lib"]) {
+    for (folder in link.LibcFolders()) {
         complete := true;
-        for (name in ["crt1.o", "crti.o", "crtn.o", "libc.so"]) {
+        for (name in link.LibcFiles()) {
             complete = complete && os.IsFile(Join([folder, "/", name]));
         }
         if (!complete) {
             continue;
         }
-        for (interpreter in ["/lib64/ld-linux-x86-64.so.2", "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
-                             "/usr/lib64/ld-linux-x86-64.so.2"]) {
+        for (interpreter in link.Interpreters()) {
             if (os.Exists(interpreter)) {
                 return (folder, interpreter);
             }
@@ -93,34 +92,21 @@ Build :: (plan: link.Plan) -> link.Error? {
     if (target == link.LinuxX64 && !plan.static && ready.libc == "") {
         return Fail(link.MissingLibc, 0);
     }
-    if (target == link.MacOSArm64) {
-        if (!Write(link.StubPath(plan.work, "System"), link.Stub(link.InstallName("System"), true))) {
+    // The stubs, and on Windows the import libraries lld-link writes from them.
+    for (stub in link.Imports(ready)) {
+        if (!Write(link.ImportPath(ready, stub.name), link.ImportText(ready, stub))) {
             return Fail(link.CannotWrite, 0);
         }
-        for (dependency in plan.libraries) {
-            if (!Write(link.StubPath(plan.work, dependency), link.Stub(link.InstallName(dependency), false))) {
-                return Fail(link.CannotWrite, 0);
+        made := link.ImportCommand(ready, stub.name);
+        if (length(made) > 0) {
+            made[0] = Tool(plan.llvm, "lld-link");
+            written := os.Run(made);
+            if (written != 0) {
+                return Fail(link.ToolFailed, written);
             }
         }
     }
-    if (target == link.WindowsX64 && plan.static) {
-        if (!Write(Join([plan.work, "/kernel32.def"]), link.Kernel32Definition())) {
-            return Fail(link.CannotWrite, 0);
-        }
-        dependency := Tool(plan.llvm, "lld-link");
-        made := os.Run([dependency, "/lib", "/nologo", Join(["/def:", plan.work, "/kernel32.def"]), "/machine:x64",
-                        Join(["/out:", plan.work, "/kernel32.lib"])]);
-        if (made != 0) {
-            return Fail(link.ToolFailed, made);
-        }
-    }
-    // The linker's output has the same name whatever the program is called: a
-    // macOS ad-hoc signature carries it, and two links of the same inputs must
-    // give the same bytes.
-    partial := Join([plan.work, "/a.out"]);
-    if (target == link.WindowsX64) {
-        partial = Join([plan.work, "/a.exe"]);
-    }
+    partial := link.Partial(ready);
     if (os.Remove(partial) != nil) {
         return Fail(link.CannotWrite, 0);
     }
@@ -141,11 +127,12 @@ Build :: (plan: link.Plan) -> link.Error? {
 
 // The files Build leaves in the work folder.
 Leftovers :: (plan: link.Plan) -> string[] {
-    names: string[] = [link.StubPath(plan.work, "System"), Join([plan.work, "/kernel32.def"]),
-                       Join([plan.work, "/kernel32.lib"]), Join([plan.work, "/a.out"]),
-                       Join([plan.work, "/a.exe"])];
-    for (dependency in plan.libraries) {
-        names.append(link.StubPath(plan.work, dependency));
+    names: string[] = [link.Partial(plan)];
+    for (stub in link.Imports(plan)) {
+        names.append(link.ImportPath(plan, stub.name));
+        if (length(link.ImportCommand(plan, stub.name)) > 0) {
+            names.append(link.ImportLibrary(plan, stub.name));
+        }
     }
     return names;
 }

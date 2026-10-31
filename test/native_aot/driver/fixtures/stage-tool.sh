@@ -44,28 +44,17 @@ case "$name" in
         esac
         ;;
     linker*|ld.lld*)
+        # native_link's vectors name their flavor and the output: -o OUT, or
+        # lld-link's /out:OUT.
         test "$1" = -flavor || exit 64
-        case "$2:$#" in
-            gnu:10)
-                test "$3" = -static && test "$5" = -e && test "$9" = -o || exit 64
-                out=${10}
-                ;;
-            gnu:*)
-                # The default dynamic link: interpreter, crt objects and -lc.
-                test "$3" = --dynamic-linker && test "$5" = --gc-sections && test "$6" = -o || exit 64
-                out=$7
-                ;;
-            darwin:16)
-                test "$3" = -arch && test "${15}" = -o || exit 64
-                out=${16}
-                ;;
-            link:7 | link:11)
-                for argument in "$@"; do
-                    case "$argument" in /out:*) out=${argument#/out:} ;; esac
-                done
-                ;;
-            *) exit 64 ;;
-        esac
+        out=
+        previous=
+        for argument in "$@"; do
+            test "$previous" != -o || out=$argument
+            case "$argument" in /out:*) out=${argument#/out:} ;; esac
+            previous=$argument
+        done
+        test -n "$out" || exit 64
         printf '#!/bin/sh\nexit 42\n' > "$out"
         /bin/chmod 700 "$out"
         ;;

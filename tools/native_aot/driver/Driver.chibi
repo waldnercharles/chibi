@@ -105,8 +105,8 @@ TargetIn :: (lines: string[]) -> int {
 // exclusively reserved. Timeout/cancellation can leave an unpublished partial.
 pub Cleanup :: (partial: string) -> bool {
     ok := true;
-    for (name in ["source.ll", "module.ll", "object.o", "start.ll", "start.o", "libSystem.tbd", "kernel32.def",
-                  "kernel32.lib", "program", "program.exe", "receipt.txt"]) {
+    for (name in ["source.ll", "module.ll", "object.o", "start.ll", "start.o", "System.tbd", "kernel32.def",
+                  "kernel32.lib", "a.out", "a.exe", "program", "program.exe", "receipt.txt"]) {
         ok = build.remove(Join([partial, "/", name])) && ok;
     }
     return build.remove(partial) && ok;
@@ -128,23 +128,11 @@ Program :: (target: int) -> string {
     return "program";
 }
 
-// A macOS program links libSystem, which dyld requires of every program and
-// which re-exports the C library. A text stub that names it stands in for the
-// SDK's, as Zig's stubs do, so a program links on any host and with any Xcode:
-// lld reads only the stub formats it knows, and newer SDKs name architectures
-// older lld rejects. The stub exports `symbols`, which dyld then binds in
-// libSystem. The Windows program imports ExitProcess from kernel32, whose
-// import library lld-link writes from a definition, as rustc writes raw-dylib
-// imports, so no Windows SDK is needed either.
-LibSystem :: (symbols: string[]) -> string {
-    return Join(["--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '/usr/lib/libSystem.B.dylib'\n",
-                 "exports:\n  - targets: [ arm64-macos ]\n    symbols: [ ", strings.Join(symbols, ", "), " ]\n...\n"]);
-}
-// The C symbols a macOS program imports, by their Mach-O names: each function
-// the module and its start module declare but neither defines, which the
-// foreign calls and the start's context name, then the copies llc may lower
-// to calls, and dyld's binder for the lazy stubs lld writes for them. `lines`
-// are both modules' Markers.
+// The C symbols a macOS program imports from libSystem, by their Mach-O
+// names, for its stub to export: each function the module and its start
+// module declare but neither defines, which the foreign calls and the start's
+// context name, then the copies llc may lower to calls. `lines` are both
+// modules' Markers.
 Imports :: (lines: string[]) -> string[] {
     // A module holds thousands of definitions, so both sets are maps.
     own: [string: bool] = [:];
@@ -173,132 +161,27 @@ Imports :: (lines: string[]) -> string[] {
             listed[symbol] = true;
         }
     }
-    for (name in ["_memcpy", "_memmove", "_memset", "dyld_stub_binder"]) {
+    for (name in ["_memcpy", "_memmove", "_memset"]) {
         if (!listed.has(name)) {
             symbols.append(name);
         }
     }
     return symbols;
 }
-// The functions a Windows start module imports from kernel32, in its order:
-// each `declare dllimport ... @NAME(`.
-DllImports :: (start: string) -> string[] {
-    names: string[] = [];
-    for (line in strings.SplitLines(start)) {
-        at := strings.Index(line, "@");
-        end := strings.Index(line, "(");
-        if (strings.HasPrefix(line, "declare dllimport ") && at >= 0 && end > at) {
-            names.append(strings.Slice(line, at + 1, end - at - 1));
-        }
-    }
-    return names;
-}
-// The import definition of the DLL `name`: lld-link writes its import library
-// from it, as it does for the program's own ExitProcess.
-ImportDefinition :: (name: string, symbols: string[]) -> string {
-    lines: string[] = [Join(["LIBRARY ", name, ".dll\nEXPORTS\n"])];
-    for (symbol in symbols) {
-        lines.append(Join(["    ", symbol, "\n"]));
-    }
-    return Join(lines);
-}
-
-// lld-link's command for the import library of the DLL `name`, from the
-// definition beside it.
-ImportLibrary :: (linker: string, partial: string, name: string) -> string[] {
-    return [linker, "-flavor", "link", "/lib", "/nologo", Join(["/def:", partial, "/", name, ".def"]), "/machine:x64",
-            Join(["/out:", partial, "/", name, ".lib"])];
-}
-
-// The system libraries a module's IR names, other than libc: the NAME of each
-// `; chibi-library system:NAME`, once, in order.
-SystemLibraries :: (lines: string[]) -> string[] {
-    names: string[] = [];
-    prefix := "; chibi-library system:";
-    for (line in lines) {
-        if (strings.HasPrefix(line, prefix)) {
-            name := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
-            if (name != "c" && !names.contains(name)) {
-                names.append(name);
-            }
-        }
-    }
-    return names;
-}
-
-// The symbols the module imports from the system library `name`, once, in
-// order: `; chibi-import system:NAME SYMBOL`.
-SystemSymbols :: (lines: string[], name: string) -> string[] {
-    symbols: string[] = [];
-    prefix := Join(["; chibi-import system:", name, " "]);
-    for (line in lines) {
-        if (strings.HasPrefix(line, prefix)) {
-            symbol := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
-            if (!symbols.contains(symbol)) {
-                symbols.append(symbol);
-            }
-        }
-    }
-    return symbols;
-}
-
-// Whether `value` spells a library or symbol name a definition file can hold.
-ImportName :: (value: string) -> bool {
-    if (value == "") {
-        return false;
-    }
-    for (byte in strings.Bytes(value)) {
-        if (!Word(byte) && byte != 46 && byte != 45 && byte != 64 && byte != 36) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// lld's link of target's program from the module's object and the start
-// object, with the platform's library stub in `partial`. The resolved linker
-// may be lld's generic driver, which reads its flavor from its name unless
-// told.
-Link :: (linker: string, target: int, partial: string, object: string, start: string, program: string,
-         libraries: string[]) -> string[] {
-    if (target == 1) {
-        command := [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
-                    "-dead_strip", "-e", "_main", object, start];
-        if (length(libraries) > 0) {
-            // An archive's own C imports are not in the stub, which names only
-            // what the module declares; dyld binds them in libSystem at launch.
-            command.extend(["-undefined", "dynamic_lookup"]);
-        }
-        command.extend(libraries);
-        command.extend([Join([partial, "/libSystem.tbd"]), "-o", program]);
-        return command;
-    }
-    if (target == 2) {
-        return [linker, "-flavor", "link", "/nologo", "/subsystem:console", "/entry:mainCRTStartup",
-                "/nodefaultlib", "/opt:ref", Join(["/out:", program]), object, start,
-                Join([partial, "/kernel32.lib"])];
-    }
-    command := [linker, "-flavor", "gnu", "-static", "--gc-sections", "-e", "_start", object, start];
-    command.extend(libraries);
-    command.extend(["-o", program]);
-    return command;
-}
-
 // Where the C library's development files are: the folder holding crt1.o, crti.o,
 // crtn.o and libc.so, then the dynamic linker's path, or none. A program links
 // libc dynamically by default, as Odin's does, and --static links none.
 Libc :: () -> string[] {
     found: string[] = [];
-    for (folder in ["/usr/lib/x86_64-linux-gnu", "/usr/lib64", "/lib/x86_64-linux-gnu", "/usr/lib"]) {
+    for (folder in native_link.LibcFolders()) {
         complete := true;
-        for (name in ["crt1.o", "crti.o", "crtn.o", "libc.so"]) {
+        for (name in native_link.LibcFiles()) {
             complete = complete && build.file_kind(Join([folder, "/", name])) == "file";
         }
         if (!complete) {
             continue;
         }
-        for (interpreter in ["/lib64/ld-linux-x86-64.so.2", "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
-                             "/usr/lib64/ld-linux-x86-64.so.2"]) {
+        for (interpreter in native_link.Interpreters()) {
             if (build.file_kind(interpreter) != "") {
                 found.append(folder);
                 found.append(interpreter);
@@ -307,17 +190,6 @@ Libc :: () -> string[] {
         }
     }
     return found;
-}
-
-// lld's dynamic link of a Linux program against libc, whose C runtime starts
-// it and calls the start module's main.
-LinkDynamic :: (linker: string, libc: string[], object: string, start: string, program: string,
-                libraries: string[]) -> string[] {
-    command := [linker, "-flavor", "gnu", "--dynamic-linker", libc[1], "--gc-sections", "-o", program,
-                Join([libc[0], "/crt1.o"]), Join([libc[0], "/crti.o"]), object, start];
-    command.extend(libraries);
-    command.extend(["-L", libc[0], "-lc", Join([libc[0], "/crtn.o"])]);
-    return command;
 }
 
 // The absolute library paths a module's IR names with `; link PATH` comments,
@@ -532,17 +404,17 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     }
     markers := Markers(text);
     libraries := LinkedLibraries(markers);
-    imported := SystemLibraries(markers);
+    imported := native_link.SystemImports(markers);
     if (target != 2 && length(imported) > 0) {
-        return Failed(partial, Join(["system library ", imported[0], " links on Windows only; link a prebuilt archive instead"]), 2);
+        return Failed(partial, Join(["system library ", imported[0].name, " links on Windows only; link a prebuilt archive instead"]), 2);
     }
-    for (name in imported) {
-        if (!ImportName(name)) {
-            return Failed(partial, Join(["invalid system library name ", name]), 2);
+    for (dll in imported) {
+        if (!native_link.ImportName(dll.name)) {
+            return Failed(partial, Join(["invalid system library name ", dll.name]), 2);
         }
-        for (symbol in SystemSymbols(markers, name)) {
-            if (!ImportName(symbol)) {
-                return Failed(partial, Join(["invalid symbol name ", symbol, " imported from ", name]), 2);
+        for (symbol in dll.symbols) {
+            if (!native_link.ImportName(symbol)) {
+                return Failed(partial, Join(["invalid symbol name ", symbol, " imported from ", dll.name]), 2);
             }
         }
     }
@@ -567,43 +439,38 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
             return Failed(partial, "libc development files (crt1.o, crti.o, crtn.o, libc.so) not found; use --static", 2);
         }
     }
-    link := Link(linker, target, partial, object, start_object, program, libraries);
-    if (dynamic) {
-        link = LinkDynamic(linker, libc, object, start_object, program, libraries);
-    }
-    // kernel32 is always linked, for the program's ExitProcess.
-    windows_libraries: string[] = ["kernel32"];
-    for (name in imported) {
-        if (!windows_libraries.contains(name)) {
-            windows_libraries.append(name);
-        }
-    }
     // native_link's start module calls the entry and defines the process
     // arguments: `_start` for a static Linux program, `main` under libc and
     // dyld, `mainCRTStartup` on Windows, which runs without the C runtime.
+    triples := Triples();
     start_text := "";
     if (executable && !shared) {
-        triples := Triples();
         start_text = native_link.Start(triples[target], target == 2 || (target == 0 && !dynamic), takes_context);
     }
-    // kernel32 exports what the start module imports, then the module's own.
-    kernel32 := DllImports(start_text);
-    for (symbol in SystemSymbols(markers, "kernel32")) {
-        if (!kernel32.contains(symbol)) {
-            kernel32.append(symbol);
-        }
-    }
-    if (target == 2) {
-        for (name in windows_libraries) {
-            if (name != "kernel32") {
-                link.append(Join([partial, "/", name, ".lib"]));
-            }
-        }
-        link.extend(libraries);
+    // native_link's link of the two objects and the archives, with the stubs
+    // it names written into the partial folder. The linker runs in place of
+    // the plan's, whose vectors name their flavor.
+    plan := native_link.Program(triples[target], "", [object, start_object], libraries, [], [], program, partial, !dynamic);
+    if (dynamic) {
+        plan.libc = libc[0];
+        plan.interpreter = libc[1];
     }
     if (shared) {
-        link = [linker, "-flavor", "gnu", "-shared", "--gc-sections", object, "-o", program];
+        plan.objects = [object];
+        plan.shared = true;
     }
+    if (target == 2) {
+        plan.imports = imported;
+    }
+    // The libSystem stub exports what the module and the start module import,
+    // which dyld binds there.
+    if (executable && target == 1) {
+        libsystem: native_link.Import = {name: "System", symbols: Imports(build.concat(optimized, Markers(start_text)))};
+        plan.imports = [libsystem];
+    }
+    stubs := native_link.Imports(plan);
+    link := native_link.Command(plan, native_link.Partial(plan));
+    link[0] = linker;
     status = build.run(compile);
     if (status != 0) {
         return Failed(partial, "LLVM object emission", status);
@@ -622,27 +489,25 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         if (build.file_kind(start_object) != "file") {
             return Failed(partial, "start object emission", 1);
         }
-        if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem(Imports(build.concat(optimized, Markers(start_text)))))) {
-            return Failed(partial, "libSystem stub", 1);
-        }
-        if (target == 2) {
-            for (name in windows_libraries) {
-                symbols := kernel32;
-                if (name != "kernel32") {
-                    symbols = SystemSymbols(markers, name);
-                }
-                if (!build.write_file(Join([partial, "/", name, ".def"]), ImportDefinition(name, symbols))) {
-                    return Failed(partial, Join([name, " definition"]), 1);
-                }
-                status = build.run(ImportLibrary(linker, partial, name));
+        for (stub in stubs) {
+            if (!build.write_file(native_link.ImportPath(plan, stub.name), native_link.ImportText(plan, stub))) {
+                return Failed(partial, Join([stub.name, " stub"]), 1);
+            }
+            made := native_link.ImportCommand(plan, stub.name);
+            if (length(made) > 0) {
+                made[0] = linker;
+                status = build.run(made);
                 if (status != 0) {
-                    return Failed(partial, Join([name, " import library"]), status);
+                    return Failed(partial, Join([stub.name, " import library"]), status);
                 }
             }
         }
         status = build.run(link);
         if (status != 0) {
             return Failed(partial, "native link", status);
+        }
+        if (!build.rename(native_link.Partial(plan), program)) {
+            return Failed(partial, "native link", 1);
         }
         if (build.file_kind(program) != "file" || build.find_executable(program) == "") {
             return Failed(partial, "native link", 1);
@@ -693,9 +558,11 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         receipt = Join([receipt, "linkage ", kind_of_link, "\nstart-object-sha256 ", start_hash, "\nlinker ", linker,
                         "\nlinker-sha256 ", linker_hash, "\nprogram-sha256 ", program_hash, "\n",
                         Command("llc-start", compile_start)]);
-        if (target == 2) {
-            for (name in windows_libraries) {
-                receipt = Join([receipt, Command("import-library", ImportLibrary(linker, partial, name))]);
+        for (stub in stubs) {
+            made := native_link.ImportCommand(plan, stub.name);
+            if (length(made) > 0) {
+                made[0] = linker;
+                receipt = Join([receipt, Command("import-library", made)]);
             }
         }
         for (archive in libraries) {

@@ -1339,11 +1339,31 @@ Width :: (storage: int) -> int {
     return 64;
 }
 TypeName :: (storage: int) -> string {
-    if (!Integer(storage)) {
-        return "";
+    if (storage == Int8Storage) {
+        return "i8";
     }
-    names: string[] = ["i8", "u8", "i16", "u16", "int", "u32", "i64", "u64"];
-    return names[storage - Int8Storage];
+    if (storage == ByteStorage) {
+        return "u8";
+    }
+    if (storage == Int16Storage) {
+        return "i16";
+    }
+    if (storage == Uint16Storage) {
+        return "u16";
+    }
+    if (storage == IntStorage) {
+        return "int";
+    }
+    if (storage == UintStorage) {
+        return "u32";
+    }
+    if (storage == Int64Storage) {
+        return "i64";
+    }
+    if (storage == WordStorage) {
+        return "u64";
+    }
+    return "";
 }
 // Whether a literal's value fits an integer type.
 Fits :: (negative: bool, magnitude: u64, storage: int) -> bool {

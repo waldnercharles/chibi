@@ -94,10 +94,10 @@ the result and CLI. A probe's output is data only: compiler reports and tool
 queries stay out of the build's output and leave room for its diagnostics.
 
 `build.start(arguments: string[]) -> int` begins a reported step and returns
-its handle at once; `build.wait(handle: int) -> int` waits for that step and
-gives its status as `build.run` would. `build.wait_for(handle: int,
-milliseconds: int) -> int` waits at most that long (a negative limit waits
-without one) and returns 65536 when the step still runs, leaving it running;
+its handle at once; `build.wait_for(handle: int, milliseconds: int) -> int`
+waits at most that long for that step (a negative limit waits without one) and
+gives its status as `build.run` would, or 65536 when the step still runs, which
+is left running;
 `build.kill(handle: int) -> int` stops a step and everything it started, reaps
 it and returns its status, the negative signal number for a killed step.
 `build.spawn(arguments: string[]) -> int` starts a step like `build.start` whose
@@ -464,7 +464,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   library's headers, then starts the compiles that changed across all of them,
   up to `jobs` at once, then archives each. A compile needs only staged
   headers, so no library waits for another's archive. The graph executes the
-  compiles itself through `build.start` and `build.wait`, as Zig's build
+  compiles itself through `build.start` and `build.wait_for`, as Zig's build
   runner does, with no Ninja.
 - Every run first writes `BUILD/compile_commands.json` in the `arguments` form,
   as CMake exports its own; `--commands-only on` stops there. `--target NAME`,
@@ -572,10 +572,8 @@ with a configured CMake build's; `build-graph-support` compiles only
 everything, `test_tools` included, took about 25 to 32 minutes with sanitizers
 and no compiler cache at a load average of 5.
 `build-graph-archive` compiles a math-header library and the task pool over
-the archive's headers and prebuilt libraries; `build-graph-generated`
-generates the native type sources and rewrites the codec headers,
-`build-graph-programs` checks that naming `test_tools` also builds the programs
-it runs, and `build-graph-resources` that the launcher's and `chibi_ctl`'s
+the archive's headers and prebuilt libraries; `build-graph-programs` checks
+that naming `test_tools` also builds the programs it runs, and `build-graph-resources` that the launcher's and `chibi_ctl`'s
 resources equal CMake's.
 
 A `third-party/` path in the tables is below the unpacked third-party archive
@@ -817,14 +815,13 @@ queue behind a regenerated artifact.
 `chibi build bootstrap-artifact` rewrites it (`BOOTSTRAP_ARTIFACT` names another
 folder). It runs in two steps:
 
-1. The Release bootstrap check (`make test-bootstrap`) prepares stage one with
-   stage zero, compiles the compiler sources to stage two and has the compiler
-   host compile them again with stage two, to the same bytes. With
-   `CHIBI_BOOTSTRAP_SEED` naming a folder, it leaves stage two and Compile's
-   arguments there as `compiler.chibip` and `compile.json`. The compiler is
-   compiled without debugger points and watches: its `debug` argument is
-   false, and the seed must say so. The target
-   leaves the seed in `build-release/bootstrap.seed` and removes it after.
+1. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
+   packages/core --recover SEED/compiler.chibip --arguments SEED/compile.json`
+   recovers the compiler from the current seed: it compiles the sources on
+   disk to stage one, stage one compiles them to stage two, and stage two must
+   compile them to itself. It writes that fixed point and Compile's arguments
+   (with `debug` false) to the seed folder, `build-release/bootstrap.artifact`,
+   which the target removes after.
 2. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
    packages/core --seed SEED --revision REV` checks three things: that the
    sources the seed compiled are the ones on disk, with every file of their

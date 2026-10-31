@@ -31,9 +31,9 @@ RecordModule :: (code: native.Instruction[], records: native.Record[], fields: i
                        [32], [32, 6, 32, 10, 32, 32, 6, 32], empty, code, [4],
                        records, fields, texts, source, texts, empty, empty, false, 1);
 }
-RecordWrite: string : "native field write differs from its record";
-RecordRead: string : "native field read differs from its record";
-RecordLayout: string : "native records differ from their field table";
+RecordWrite :: () -> string { return "native field write differs from its record"; }
+RecordRead :: () -> string { return "native field read differs from its record"; }
+RecordLayout :: () -> string { return "native records differ from their field table"; }
 ChangedRecord :: (index: int, item: native.Instruction, message: string) {
     code := RecordCode();
     code[index] = item;
@@ -53,27 +53,27 @@ RecordsKeepFieldsAndInternalValueCalls :: () {
 }
 @test
 RecordWriteMustMatchFieldType :: () {
-    ChangedRecord(3, Code(native.Insert, 32, 2, 0, 1, 0, 1), RecordWrite);
+    ChangedRecord(3, Code(native.Insert, 32, 2, 0, 1, 0, 1), RecordWrite());
 }
 @test
 RecordWritePastFieldsIsRejected :: () {
-    ChangedRecord(3, Code(native.Insert, 32, 2, 0, 1, 0, 2), RecordWrite);
+    ChangedRecord(3, Code(native.Insert, 32, 2, 0, 1, 0, 2), RecordWrite());
 }
 @test
 RecordWriteNeedsRecordSlot :: () {
-    ChangedRecord(3, Code(native.Insert, 32, 2, 1, 1, 0, 0), RecordWrite);
+    ChangedRecord(3, Code(native.Insert, 32, 2, 1, 1, 0, 0), RecordWrite());
 }
 @test
 RecordReadMustMatchFieldType :: () {
-    ChangedRecord(7, Code(native.Extract, 6, 6, 5, 32, 0, 1), RecordRead);
+    ChangedRecord(7, Code(native.Extract, 6, 6, 5, 32, 0, 1), RecordRead());
 }
 @test
 RecordReadNeedsRecordType :: () {
-    ChangedRecord(7, Code(native.Extract, 6, 6, 5, 6, 0, 0), RecordRead);
+    ChangedRecord(7, Code(native.Extract, 6, 6, 5, 6, 0, 0), RecordRead());
 }
 @test
 RecordReadNeedsRecordSlot :: () {
-    ChangedRecord(7, Code(native.Extract, 6, 6, 1, 32, 0, 0), RecordRead);
+    ChangedRecord(7, Code(native.Extract, 6, 6, 1, 32, 0, 0), RecordRead());
 }
 @test
 RecordConstantMustBeZero :: () {
@@ -81,7 +81,7 @@ RecordConstantMustBeZero :: () {
 }
 @test
 UndeclaredRecordOutputIsRejected :: () {
-    ChangedRecord(1, Code(native.Constant, 33, 0, 0, 0, 0, 0), Output);
+    ChangedRecord(1, Code(native.Constant, 33, 0, 0, 0, 0, 0), Output());
 }
 @test
 ExportedRecordSignatureIsRejected :: () {
@@ -97,15 +97,15 @@ ExportedRecordSignatureIsRejected :: () {
 }
 @test
 RecordFieldsCannotOverrunTable :: () {
-    Rejects(RecordModule(RecordCode(), [{first: 0, count: 3}], [6, 10]), RecordLayout);
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 3}], [6, 10]), RecordLayout());
 }
 @test
 RecordCannotHoldItself :: () {
-    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2}], [6, 32]), RecordLayout);
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2}], [6, 32]), RecordLayout());
 }
 @test
 RecordsCannotHoldEachOther :: () {
-    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2}, {first: 2, count: 1}], [6, 33, 32]), RecordLayout);
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2}, {first: 2, count: 1}], [6, 33, 32]), RecordLayout());
 }
 // A record holds another by value, and an array and a string beside it.
 @test
@@ -118,5 +118,5 @@ WrappedRecordFieldCountsAreRejected :: () {
     // The sum wraps to the field table's length, but none of these ranges fits.
     Rejects(RecordModule(RecordCode(), [{first: 0, count: 2147483647},
                                         {first: 2147483647, count: 2147483647},
-                                        {first: -2, count: 4}], [6, 10]), RecordLayout);
+                                        {first: -2, count: 4}], [6, 10]), RecordLayout());
 }

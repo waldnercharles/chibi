@@ -38,8 +38,8 @@ DebugCallModule :: (target: abi.Target, names: string[], lines: int[], columns: 
                        [6, 1, 6], [6, 1, 6, 6, 6], empty, Calls(), [0, 1, 2], records,
                        empty, texts, source, names, lines, columns, false, 1);
 }
-LineTableMismatch: string : "native line table differs from its module";
-LinuxLineTablesOnly: string : "native line tables are Linux x86-64 only";
+LineTableMismatch :: () -> string { return "native line table differs from its module"; }
+LinuxLineTablesOnly :: () -> string { return "native line tables are Linux x86-64 only"; }
 @test
 NoSourceFileOmitsDebugMetadata :: () {
     text := Emitted(CallModule(Calls(), [0, 1, 2]));
@@ -72,26 +72,26 @@ SourceLinesDescribeFunctionsAndEveryInstruction :: () {
 }
 @test
 MacOSLineTablesAreRejected :: () {
-    Rejects(DebugCallModule(abi.MacOSArm64(), ["Main", "Pick"], CallLines(), CallColumns()), LinuxLineTablesOnly);
+    Rejects(DebugCallModule(abi.MacOSArm64(), ["Main", "Pick"], CallLines(), CallColumns()), LinuxLineTablesOnly());
 }
 @test
 WindowsLineTablesAreRejected :: () {
-    Rejects(DebugCallModule(abi.WindowsX64(), ["Main", "Pick"], CallLines(), CallColumns()), LinuxLineTablesOnly);
+    Rejects(DebugCallModule(abi.WindowsX64(), ["Main", "Pick"], CallLines(), CallColumns()), LinuxLineTablesOnly());
 }
 @test
 UnnamedFunctionHasNoLineTable :: () {
-    Rejects(DebugCallModule(abi.LinuxX64(), ["Main", ""], CallLines(), CallColumns()), LineTableMismatch);
+    Rejects(DebugCallModule(abi.LinuxX64(), ["Main", ""], CallLines(), CallColumns()), LineTableMismatch());
 }
 @test
 NegativeSourceLineIsRejected :: () {
-    before := [2, 3, 3, 3, 3, 3, 3, 6, -1, 7, 7];
-    Rejects(DebugCallModule(abi.LinuxX64(), ["Main", "Pick"], before, CallColumns()), LineTableMismatch);
+    before: int[] = [2, 3, 3, 3, 3, 3, 3, 6, -1, 7, 7];
+    Rejects(DebugCallModule(abi.LinuxX64(), ["Main", "Pick"], before, CallColumns()), LineTableMismatch());
 }
 @test
 NegativeSourceColumnIsRejected :: () {
     // Preserve the original malformed column vector, not just its negative row.
-    before := [2, 3, 3, 3, 3, 3, 3, 6, -1, 7, 7];
-    Rejects(DebugCallModule(abi.LinuxX64(), ["Main", "Pick"], CallLines(), before), LineTableMismatch);
+    before: int[] = [2, 3, 3, 3, 3, 3, 3, 6, -1, 7, 7];
+    Rejects(DebugCallModule(abi.LinuxX64(), ["Main", "Pick"], CallLines(), before), LineTableMismatch());
 }
 @test
 TextComparisonHelperHasArtificialLocation :: () {
@@ -104,7 +104,7 @@ TextComparisonHelperHasArtificialLocation :: () {
     empty: int[] = [];
     records: native.Record[] = [];
     source: native.Source = {file: "Main.chibi", directory: "/game"};
-    positions := [1, 2, 2, 2, 2, 2];
+    positions: int[] = [1, 2, 2, 2, 2, 2];
     text := Emitted(native.Emit(abi.LinuxX64(), [Function(1, 0, 0, 3, 0, 6, 0, 0)],
                                 empty, [13, 13, 1], empty, code, empty, records, empty,
                                 ["a\"\\\né", ""], source, ["Main"], positions, positions, false, 1));

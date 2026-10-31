@@ -1755,8 +1755,6 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_CORE_TIME_BYTES=bytes:packages/core/time/Time.chibi",
             "CHIBI_CORE_TIME_TEST_BYTES=bytes:test/standard_library/time/TimeTests.chibi",
             "CHIBI_HOST_CLOCK_BYTES=bytes:packages/host/clock/Clock.chibi",
-            "CHIBI_EMITTER_TEST_SOURCES=test-sources:EMITTER_TEST_SOURCE:llvm_native_calls:test/native_aot/emitter_calls",
-            "CHIBI_EMITTER_TEST_INPUTS=test-inputs:EMITTER_TEST_SOURCE:llvm_native_calls:test/native_aot/emitter_calls",
             "CHIBI_LEXICAL_BINDING_BYTES=bytes:tools/compiler/lexical_binding/Binding.chibi",
             "CHIBI_LLVM_NATIVE_BYTES=bytes:tools/compiler/llvm_native/Emit.chibi",
             "CHIBI_NATIVE_ABI_BYTES=bytes:tools/compiler/native_abi/Abi.chibi",

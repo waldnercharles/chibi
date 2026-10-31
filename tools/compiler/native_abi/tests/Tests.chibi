@@ -1,4 +1,4 @@
-package llvm_native_tests
+package native_abi_tests
 
 import native "project:llvm_native"
 
@@ -15,7 +15,11 @@ Single :: (parameters: int[], result: int, slots: int[], locals: int[], code: na
                               slots: length(slots), first_local: 0, locals: length(locals), first_code: 0,
                               code: length(code), first_argument: 0, arguments: 0};
     empty: int[] = [];
-    return native.Emit(abi.LinuxX64(), [shape], parameters, slots, locals, code, empty, main, budget);
+    records: native.Record[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(), [shape], parameters, slots, locals, code, empty, records, empty, texts, source,
+                       texts, empty, empty, main, budget);
 }
 Accepted :: (slots: int[], locals: int[], code: native.Instruction[]) -> bool {
     parameters: int[] = [];
@@ -28,7 +32,8 @@ Accepted :: (slots: int[], locals: int[], code: native.Instruction[]) -> bool {
     }
 }
 
-pub Tests :: () -> int {
+// The emitter groups, zero when all pass and 1 to 6 for the first that fails.
+Tests :: () -> int {
     if (!ScalarBodyEmitsWithoutRuntime()) {
         return 1;
     }
@@ -158,4 +163,9 @@ RecursionProbesTheStack :: () -> bool {
                    strings.Contains(text, "attributes #0 = { \"probe-stack\"=\"inline-asm\" }") &&
                    !strings.Contains(text, "depth");
     }
+}
+
+@test
+Emitter :: () {
+    assert(Tests() == 0, "an emitter group failed");
 }

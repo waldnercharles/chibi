@@ -171,6 +171,10 @@ Executable :: (path: string) -> bool {
 Exit :: (program: string) -> int {
     return os.Run(["/usr/bin/env", "-i", program]);
 }
+// The command that runs `program` in `folder` with an empty environment.
+In :: (folder: string, program: string) -> string[] {
+    return ["/usr/bin/env", "-i", "/bin/sh", "-c", "cd \"$0\" && exec \"$1\"", folder, program];
+}
 
 Source :: () -> string {
     return "package scalar\nMain :: () -> int {\n    return Twice(21);\n}\nTwice :: (x: int) -> int {\n    return x * 2;\n}\n";
@@ -541,7 +545,7 @@ CopySample :: (from: string, to: string) {
 // `chibi build --native` and runs, and its asserts hold when the program exits
 // 0. libc is the foreign library.
 RunsTheForeignSamples :: (suite: Suite) {
-    for (sample in ["foreign_declared", "foreign_library"]) {
+    for (sample in ["foreign_declared", "foreign_library", "foreign_posix"]) {
         built := Reset(suite, sample, "package main\n");
         target := Path([built.game, "/", sample]);
         Make(target);
@@ -553,7 +557,7 @@ RunsTheForeignSamples :: (suite: Suite) {
         if (result.status != 0) {
             os.Print(result.log);
         }
-        assert(result.status == 0 && Exit(Printed(result)) == 0, "the sample's asserts hold natively");
+        assert(result.status == 0 && os.Run(In(built.game, Printed(result))) == 0, "the sample's asserts hold natively");
     }
 }
 
@@ -685,6 +689,132 @@ GivesCAnAuthoredFunction :: (suite: Suite) {
     assert(RunNative(suite, "callback", Path([source, worker, word])) == 42, "C runs the authored function");
 }
 
+LoopFirst :: () -> string {
+    return "Loop :: library {\n    Main :: () -> int { return 0; }\n    Frame :: () -> int {\n        count: retain int = 0;\n        count += 1;\n        return 0;\n    }\n}\n";
+}
+LoopEdited :: () -> string {
+    return "Loop :: library {\n    Main :: () -> int { return 9; }\n    Frame :: () -> int {\n        count: retain int = 0;\n        flag: retain int = 7;\n        count += 1;\n        if count < 3 { return 3; }\n        return flag;\n    }\n}\n";
+}
+
+// Builds the library `source` as a generation and copies it to `destination`.
+Generation :: (suite: Suite, name: string, source: string, destination: string) {
+    built := Reset(suite, name, source);
+    RealTools(suite, built);
+    result := Build(suite, suite.built, built, ["-O0", "--shared"]);
+    assert(result.status == 0, "the generation builds");
+    Clone(Printed(result), destination);
+}
+
+// Waits up to `ms` milliseconds for `process`; StillRunning when it runs on.
+Waited :: (process: int, ms: int) -> int {
+    return os.Wait(process, ms);
+}
+
+// Edit and Continue on native code, end to end: a loop host written in Chibi
+// and built natively runs the first generation of a library, Frame after
+// Frame. The library is edited and rebuilt while the host runs, and published
+// as next.so; the host swaps it in at its next Frame. The edited Frame returns
+// the exit status 7 only when the count it had survived (count < 3 gives 3, a
+// restarted count) and its new state started at its initializer, and the
+// edited Main, which would return 9, never runs. Shared libraries are Linux
+// x86-64 only so far.
+SwapsARunningLoopKeepingState :: (suite: Suite) {
+    if (os.Platform() != "Linux") {
+        return;
+    }
+    built := Reset(suite, "watch-host", Read(Path([os.Root(), "/apps/host/Host.chibi"])));
+    RealTools(suite, built);
+    result := Build(suite, suite.built, built, ["-O0"]);
+    assert(result.status == 0, "the loop host builds");
+    host := Printed(result);
+    run := Path([suite.folder, "/watch-run"]);
+    Make(run);
+    Generation(suite, "watch-first", LoopFirst(), Path([run, "/live-0.so"]));
+    process := os.Start(In(run, host), os.Inherited);
+    // The first generation runs on its own for a while.
+    assert(Waited(process, 50) == os.StillRunning, "the host runs the first generation");
+    Generation(suite, "watch-edited", LoopEdited(), Path([run, "/pending.so"]));
+    assert(os.Rename(Path([run, "/pending.so"]), Path([run, "/next.so"])) == nil, "the next generation is published");
+    status := Waited(process, 90000);
+    if (status == os.StillRunning) {
+        status = os.Kill(process);
+    }
+    assert(status == 7, "the swapped Frame kept its state");
+}
+
+// `chibi run --native --watch`: the CLI builds the loop host and the first
+// generation of the source, runs the host, and when the source is saved while
+// the loop runs, rebuilds it and publishes the next generation, which the host
+// swaps in between two Frames. The edited Frame's exit status 7 proves the
+// count survived the swap and the new state started at its initializer; its
+// Main, which would return 9, never runs.
+WatchesAndSwapsARunningLoop :: (suite: Suite) {
+    if (os.Platform() != "Linux") {
+        return;
+    }
+    built := Reset(suite, "native-run", LoopFirst());
+    RealTools(suite, built);
+    live := Path([built.game, "/build/native/run/live-0.so"]);
+    process := os.Start(["/usr/bin/env", "-i", "PATH=", suite.cache, suite.built, "run", "--native", "--watch", "-O0", "--target",
+                         "x86_64-unknown-linux-gnu", "--llvm", built.tools, built.game], os.Inherited);
+    // The first generation is live once the work folder holds it; the host
+    // runs it on its own for a moment before the edit is saved.
+    waited := 0;
+    while (!Exists(live) && waited < 600000) {
+        assert(Waited(process, 100) == os.StillRunning, "the watch runs");
+        waited += 100;
+    }
+    assert(Waited(process, 150) == os.StillRunning, "the first generation runs");
+    Write(Path([built.game, "/Main.chibi"]), LoopEdited());
+    status := Waited(process, 600000);
+    if (status == os.StillRunning) {
+        status = os.Kill(process);
+    }
+    assert(status == 7, "the watched loop swapped with its state");
+}
+
+// A Windows program imports from a system library its source names: the
+// driver writes the library's import definition from the symbols the program
+// calls and lld-link makes the import library from it, so no Windows SDK is
+// needed. The import table of the PE file names each symbol. Other targets
+// refuse a system library. With CHIBI_NATIVE_BUNDLE set, the program goes
+// into the bundle that CI's native-targets job runs on Windows.
+ImportsFromAWindowsSystemLibrary :: (suite: Suite) {
+    source := "package scalar\nforeign import k32 \"system:kernel32\"\nforeign k32 {\n    GetCurrentProcessId :: () -> u32\n    GetTickCount :: () -> u32\n}\nMain :: () -> int {\n    if (int(GetCurrentProcessId()) > 0 && int(GetTickCount()) >= 0) { return 42; }\n    return 1;\n}\n";
+    built := Reset(suite, "windows-imports", source);
+    RealTools(suite, built);
+    result := Build(suite, suite.built, built, ["-O0", "--target", "x86_64-pc-windows-msvc"]);
+    assert(result.status == 0, "the Windows program builds");
+    program := Printed(result);
+    windows := CrossTargets()[1];
+    assert(strings.Contains(os.Capture(["file", "-b", program]).stdout, windows.kind), "a Windows program");
+    folder := strings.TrimSuffix(program, "/program.exe");
+    assert(Holds(Path([folder, "/kernel32.def"]), "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCurrentProcessId\n    GetTickCount\n"), "the import definition");
+    assert(Holds(program, "GetCurrentProcessId") && Holds(program, "GetTickCount"), "the import table");
+    BundleProgram(program, windows, "windows-imports.exe");
+    result = Build(suite, suite.built, built, ["-O0"]);
+    assert(result.status != 0 && Says(result, "system library kernel32 links on Windows only"), "other targets refuse kernel32");
+}
+
+// A Windows program that allocates links no C library: its start module
+// allocates with HeapAlloc and reports a failed assert with WriteFile, so the
+// program imports only kernel32. With CHIBI_NATIVE_BUNDLE set, the program
+// goes into the bundle that CI's native-targets job runs on Windows.
+AllocatesOnWindowsWithoutLibc :: (suite: Suite) {
+    built := Reset(suite, "windows-heap", "package scalar\nMain :: () -> int {\n    values: int[] = [40, 1, 1];\n    return values[0] + values[1] + values[2];\n}\n");
+    RealTools(suite, built);
+    result := Build(suite, suite.built, built, ["-O0", "--target", "x86_64-pc-windows-msvc"]);
+    assert(result.status == 0, "the Windows program builds");
+    program := Printed(result);
+    windows := CrossTargets()[1];
+    assert(strings.Contains(os.Capture(["file", "-b", program]).stdout, windows.kind), "a Windows program");
+    folder := strings.TrimSuffix(program, "/program.exe");
+    assert(Holds(Path([folder, "/start.ll"]), "call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)"), "the start module allocates");
+    assert(Holds(Path([folder, "/kernel32.def"]), "    GetProcessHeap\n    HeapAlloc\n    GetStdHandle\n    WriteFile\n"), "the kernel32 imports");
+    assert(Holds(program, "HeapAlloc") && !Holds(program, "msvcrt") && !Holds(program, "ucrtbase"), "no C library");
+    BundleProgram(program, windows, "windows-heap.exe");
+}
+
 // Each case by name, so Run can give each a build host of its own.
 Cases :: (llvm: bool) -> string[] {
     names := ["LinksStaticallyOnRequest", "AddsLineTablesWithG", "KeepsPriorProgramsAndNeverFallsBack",
@@ -692,8 +822,9 @@ Cases :: (llvm: bool) -> string[] {
               "RefusesAnIncompleteOutput"];
     if (llvm) {
         names.extend(["RunsWithLLVMAndNoCCompiler", "LinksAVendoredArchive", "CallsThroughAFunctionPointer",
-                      "PassesAByteArrayToC", "ReportsAFailedAssert", "RunsTheForeignSamples", "GivesCAnAuthoredFunction",
-                      "LinksOtherTargetsWithLLVM"]);
+                      "PassesAByteArrayToC", "SwapsARunningLoopKeepingState", "WatchesAndSwapsARunningLoop",
+                      "ReportsAFailedAssert", "RunsTheForeignSamples", "GivesCAnAuthoredFunction", "LinksOtherTargetsWithLLVM",
+                      "ImportsFromAWindowsSystemLibrary", "AllocatesOnWindowsWithoutLibc"]);
     }
     return names;
 }
@@ -730,6 +861,14 @@ RunCase :: (suite: Suite, name: string) {
         GivesCAnAuthoredFunction(suite);
     } else if (name == "LinksOtherTargetsWithLLVM") {
         LinksOtherTargetsWithLLVM(suite);
+    } else if (name == "SwapsARunningLoopKeepingState") {
+        SwapsARunningLoopKeepingState(suite);
+    } else if (name == "WatchesAndSwapsARunningLoop") {
+        WatchesAndSwapsARunningLoop(suite);
+    } else if (name == "ImportsFromAWindowsSystemLibrary") {
+        ImportsFromAWindowsSystemLibrary(suite);
+    } else if (name == "AllocatesOnWindowsWithoutLibc") {
+        AllocatesOnWindowsWithoutLibc(suite);
     } else {
         assert(false, "a known case");
     }

@@ -126,6 +126,9 @@ pub Root :: struct {
     index: int;
     shape: int;
 }
+// An instruction. Its frame, stack (-1), pin, indirect flag, component index
+// and layout always hold their defaults in what the compiler writes, so they
+// are not fields here and their bits stay clear in the row's mask.
 pub Instruction :: struct {
     op: int;
     type: int;
@@ -133,16 +136,10 @@ pub Instruction :: struct {
     left: int;
     right: int;
     target: int;
-    frame: int;
     source: int;
-    stack: int;
-    pin: int;
     offset: int;
-    indirect: bool;
-    component_index: int;
     node: int;
     value: int;
-    layout: int;
     message: string;
     has_message: bool;
 }
@@ -525,18 +522,13 @@ PointBytes :: (out: ^(u8[]), v: Point, wide: u64[]) {
 // An instruction's fields that mostly hold their default follow a mask of the
 // ones that differ from it, in this bit order, as prepared_function.c reads
 // them. A value is default when it encodes as five zero bytes: a single flow
-// value without a name.
+// value without a name. Bits 16 to 256 and 1024 (frame, stack, pin, indirect,
+// component, layout) are never set.
 InstructionRight: int : 1;
 InstructionTarget: int : 2;
 InstructionOffset: int : 4;
 InstructionValue: int : 8;
-InstructionFrame: int : 16;
-InstructionStack: int : 32;
-InstructionPin: int : 64;
-InstructionIndirect: int : 128;
-InstructionComponent: int : 256;
 InstructionNode: int : 512;
-InstructionLayout: int : 1024;
 InstructionMessage: int : 2048;
 // An instruction with its value, layout and message.
 InstructionBytes :: (out: ^(u8[]), v: Instruction, wide: u64[], pool: u8[], starts: int[], sizes: int[],
@@ -562,26 +554,8 @@ InstructionBytes :: (out: ^(u8[]), v: Instruction, wide: u64[], pool: u8[], star
     if (!empty) {
         fields = fields | InstructionValue;
     }
-    if (v.frame != 0) {
-        fields = fields | InstructionFrame;
-    }
-    if (v.stack != -1) {
-        fields = fields | InstructionStack;
-    }
-    if (v.pin != 0) {
-        fields = fields | InstructionPin;
-    }
-    if (v.indirect) {
-        fields = fields | InstructionIndirect;
-    }
-    if (v.component_index != 0) {
-        fields = fields | InstructionComponent;
-    }
     if (wide[v.node] != 0) {
         fields = fields | InstructionNode;
-    }
-    if (wide[v.layout] != 0) {
-        fields = fields | InstructionLayout;
     }
     if (v.has_message) {
         fields = fields | InstructionMessage;
@@ -599,26 +573,8 @@ InstructionBytes :: (out: ^(u8[]), v: Instruction, wide: u64[], pool: u8[], star
     if ((fields & InstructionValue) != 0) {
         out.extend(slice(pool, value, sizes[v.value]));
     }
-    if ((fields & InstructionFrame) != 0) {
-        Int(out, v.frame);
-    }
-    if ((fields & InstructionStack) != 0) {
-        Int(out, v.stack);
-    }
-    if ((fields & InstructionPin) != 0) {
-        Int(out, v.pin);
-    }
-    if ((fields & InstructionIndirect) != 0) {
-        Flag(out, true);
-    }
-    if ((fields & InstructionComponent) != 0) {
-        Int(out, v.component_index);
-    }
     if ((fields & InstructionNode) != 0) {
         Varint(out, wide[v.node]);
-    }
-    if ((fields & InstructionLayout) != 0) {
-        Varint(out, wide[v.layout]);
     }
     if ((fields & InstructionMessage) != 0) {
         Text(out, v.message, true, items, slots);

@@ -31,13 +31,19 @@ PrivateProgram :: (name: string) -> string {
 }
 
 NativeDriver :: (share: string, callable: string, arguments: string[]) -> string[] {
+    return NativeDriverFor(share, callable, "900000", arguments)
+}
+
+// The driver's entry `callable` under a build host that stops it after
+// `timeout` milliseconds.
+NativeDriverFor :: (share: string, callable: string, timeout: string, arguments: string[]) -> string[] {
     driver := Join([share, "/tools/native_aot"])
     compiler := Join([share, "/compiler"])
     core := Join([share, "/core"])
     return Concat([PrivateProgram("chibi-build-host"), "--root", driver,
                    "--source", Join([driver, "/Driver.chibi"]), "--collection", Join(["native_aot=", driver, "/driver"]), "--core", core,
                    "--compiler", compiler, "--compiler-core", core,
-                   "--entry", callable, "--timeout-ms", "900000", "--",
+                   "--entry", callable, "--timeout-ms", timeout, "--",
                    PrivateProgram("chibi-compiler-host"), compiler, core], arguments)
 }
 
@@ -90,5 +96,39 @@ BuildNative :: (options: Options) -> int {
     if options.static_link {
         driver = append(driver, "static")
     }
+    if options.shared {
+        driver = append(driver, "shared")
+    }
     return process.run(NativeDriver(share, "Native", driver))
+}
+
+// `chibi run --native PATH`: the library source in PATH's folder runs under the
+// native loop host, which with --watch swaps in each saved edit between Frames
+// keeping the state (docs/edit-and-continue.md, "Native code"). The result is
+// the status the loop's Frame stops with.
+RunNative :: (options: Options, source: string) -> int {
+    llvm := LLVM(options.llvm)
+    if llvm == "" {
+        Error(Join(["run --native needs LLVM: ", NeedsLLVM()]))
+        return 2
+    }
+    root := files.resolve(source)
+    share := files.resolve(Join([application.bin(), "/../share/chibi"]))
+    tools := files.resolve(llvm)
+    if root == "" || share == "" || tools == "" {
+        Error("run --native: cannot find the source, the SDK's share/chibi or the LLVM folder")
+        return 2
+    }
+    if files.kind(root) != 2 {
+        root = Parent(root)
+    }
+    watching := "once"
+    if options.watch {
+        watching = "watch"
+    }
+    launcher := Join([application.bin(), "/chibi", sdk.executable_suffix()])
+    driver := [launcher, Join([share, "/apps/host/Host.chibi"]), root, tools, options.mode,
+               Default(options.target, HostTarget()), Join([root, "/build/native/run"]), watching]
+    // A loop runs until its Frame stops it or the user does.
+    return process.run(NativeDriverFor(share, "Watch", "86400000", driver))
 }

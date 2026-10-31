@@ -121,6 +121,30 @@ TestScheduling :: (host: string) {
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed");
 }
 
+// `census` fails on build tooling outside archive/ and counts the C that
+// remains, in a scratch repository of its own.
+Census :: (host: string) {
+    source := os.Root()
+    scratch := format_text("{}/.chibi/graph-census", source)
+    assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(scratch) == nil, "the scratch root")
+    assert(os.MakeDirectory(format_text("{}/archive", scratch)) == nil, "the archive directory")
+    assert(os.WriteText(format_text("{}/a.c", scratch), "int a;\nint b;\n") == nil, "a C file")
+    assert(os.WriteText(format_text("{}/b.mm", scratch), "x\n") == nil, "a shim")
+    assert(os.WriteText(format_text("{}/archive/CMakeLists.txt", scratch), "x\n") == nil, "archived tooling")
+    assert(os.Run(["git", "-C", scratch, "init", "-q"]) == 0 && os.Run(["git", "-C", scratch, "add", "-A"]) == 0, "the scratch repository")
+    command := [host, "--compiler", format_text("{}/tools/compiler", source), "--compiler-core", format_text("{}/packages/core", source),
+                "--root", scratch, "--source", format_text("{}/tools/toolchain/Driver.chibi", source),
+                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "50000", "--", "build", "census"]
+    result := os.Capture(command)
+    log := Output(result)
+    assert(result.status == 0 && Has(log, "census: shim 1 b.mm\n") && Has(log, "1 first-party C files, 2 lines, 1 C++/Objective-C shims, 0 build tooling files"), "archived tooling is allowed");
+    assert(os.WriteText(format_text("{}/Makefile", scratch), "all:\n") == nil && os.Run(["git", "-C", scratch, "add", "-A"]) == 0, "a Makefile");
+    result = os.Capture(command)
+    log = Output(result)
+    assert(result.status != 0 && Has(log, "census: build tooling outside archive/: Makefile\n"), "a Makefile fails the census");
+    assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed");
+}
+
 // The other verbs plan their own commands.
 OtherVerbs :: (host: string) {
     install := Verb(host, "install", ["--dry-run", "--prefix", "/prefix"]);
@@ -153,6 +177,7 @@ pub Run :: () -> int {
     BuildJobs(host);
     TestSelectors(host);
     TestScheduling(host);
+    Census(host);
     OtherVerbs(host);
     return 0;
 }

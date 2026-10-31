@@ -17,3 +17,6 @@ Native :: () -> int {
 Libraries :: () -> int {
     return driver.Libraries();
 }
+Watch :: () -> int {
+    return driver.Watch();
+}

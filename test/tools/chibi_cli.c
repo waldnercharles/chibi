@@ -595,8 +595,10 @@ TEST_CASE(compiler_test_skips_native_only_packages)
         "output.log",
         "SKIP foreign_declared/facts (native only: foreign import)\n"
         "SKIP foreign_library/facts (native only: foreign import)\n"
+        "SKIP foreign_posix/facts (native only: foreign import)\n"
+        "SKIP foreign_vendor/facts (native only: foreign import)\n"
         "PASS plain_package/facts.Calls\n"
-        "1 tests, 0 failed, 2 skipped\n"
+        "1 tests, 0 failed, 4 skipped\n"
     ));
     return true;
 }

@@ -1,0 +1,35 @@
+package facts
+
+foreign import freetype "vendor:freetype"
+
+// FreeType's C API from the SDK's prebuilt libchibi_vendor_freetype.a. A handle
+// is an opaque 64-bit word, so it is a u64, and an out-pointer is a one-element
+// array, which a call lends to C as the pointer to its element.
+foreign freetype {
+    FT_Init_FreeType :: (library: u64[]) -> i32
+    // The C function returns void; the declared result is never read.
+    FT_Library_Version :: (library: u64, major: i32[], minor: i32[], patch: i32[]) -> i32
+    FT_New_Face :: (library: u64, path: cstring, index: i64, face: u64[]) -> i32
+    FT_Get_Char_Index :: (face: u64, code: u64) -> u32
+    FT_Done_Face :: (face: u64) -> i32
+    FT_Done_FreeType :: (library: u64) -> i32
+}
+
+// The VM skips this sample as native only; native_build_runs_the_foreign_samples
+// runs it, with third_party/fonts/inter/Inter.ttf beside the program as Inter.ttf.
+@test
+Calls :: () {
+    library: u64[] = [0]
+    assert(FT_Init_FreeType(library) == 0, "init")
+    assert(library[0] != 0, "a library handle")
+    major: i32[] = [0]
+    minor: i32[] = [0]
+    patch: i32[] = [0]
+    FT_Library_Version(library[0], major, minor, patch)
+    assert(major[0] == 2, "FreeType 2")
+    face: u64[] = [0]
+    assert(FT_New_Face(library[0], "Inter.ttf", 0, face) == 0, "open the font")
+    assert(FT_Get_Char_Index(face[0], 65) != 0, "the font has an A")
+    assert(FT_Done_Face(face[0]) == 0, "done face")
+    assert(FT_Done_FreeType(library[0]) == 0, "done library")
+}

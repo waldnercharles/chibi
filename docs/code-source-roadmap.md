@@ -25,7 +25,7 @@ diagnostics and cannot replace an applied executable generation.
 
 The [language reference](code-language.md) records supported source forms.
 [Authoring navigation](authoring-navigation.md) records shared language services
-and editor/controller integration. The compiler lowers resolved source directly
+and editor integration. The compiler lowers resolved source directly
 into verified execution modules. Graphs do not mediate behavior execution.
 
 ## Native boundaries

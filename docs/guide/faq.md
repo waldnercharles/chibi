@@ -4,41 +4,31 @@
 
 [Install the SDK](../../README.md#install), then read the
 [language guide](../code-language.md). Use the [examples](../examples.md) to try
-common game programming tasks.
+common programming tasks.
 
 ## Do I need Studio?
 
-No. Edit project files with any text editor:
+No. Edit `.chibi` files with any text editor and run them:
 
 ```sh
-chibi fmt /path/to/game
-chibi check /path/to/game
-chibi run /path/to/game
+chibi run /path/to/program
 ```
 
-Studio edits the same files.
+Game projects are archived for now; see
+[Game projects](toolchain.md#game-projects).
 
 ## How do I check my changes?
-
-For a game project:
-
-```sh
-chibi check /path/to/game
-chibi fmt --check /path/to/game
-```
-
-For packages:
 
 ```sh
 chibi test /path/to/packages
 ```
 
-Each command returns a nonzero status when it finds a problem.
+The command returns a nonzero status when a test fails.
 
 ## Can I ship to the web?
 
-Yes. `chibi export --web PLAYER` creates a static site. See
-[Export for browsers](toolchain.md#export-for-browsers) for the build commands.
+Not now. `chibi export` and `chibi web` are archived with the player; see
+[Export a game](toolchain.md#export-a-game).
 
 ## Why does a test report "Expected package header"?
 

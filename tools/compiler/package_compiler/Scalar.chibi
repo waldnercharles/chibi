@@ -10,6 +10,7 @@ import routes "project:package_routes"
 import graph "project:package_graph"
 import json "project:json_string"
 import strings "core:strings"
+import tk "project:source_tokenizer"
 
 // Opt-in internal producer of a scalar_facts module. The snapshot,
 // declarations, bodies, literal ranges, bindings, scopes and callees are the
@@ -96,6 +97,35 @@ ScalarForeignLibrary :: (forest: snapshot.SnapshotNode[], text: string, declarat
     }
     return "";
 }
+// The row of the address of the authored function `argument` names, for a foreign
+// parameter of function type `signature`: the function's parameters and result
+// are the type's, and C calls it through an adapter.
+ScalarCallbackAddress :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                          callable: Callable, argument: int, signature: int, rows: facts.Row[]) -> ScalarOperands {
+    node := Unparenthesized(forest, argument);
+    found := -1;
+    if (Is(forest, node, syntax.Identifier)) {
+        found = FindCallable(callables, callable.package, Text(forest, text, node));
+    }
+    if (found < 0) {
+        return ScalarOperands.Failed(Diagnose(forest, argument, 0, "a function value passed to C is the name of a function"));
+    }
+    target := callables[found];
+    shape := ProcShape(forest, text, signature);
+    matches := target.count == length(shape) - 1 && target.result == shape[length(shape) - 1] && target.result_container == 0;
+    for (index in 0..<target.count) {
+        if (index < length(shape) - 1) {
+            given := params[target.first + index];
+            matches = matches && given.storage == shape[index] && given.container == 0 && !given.reference;
+        }
+    }
+    if (!matches) {
+        return ScalarOperands.Failed(Diagnose(forest, argument, 0, "the function differs from the parameter's function type"));
+    }
+    output := rows;
+    output.append(ScalarAt(forest, node, facts.FunctionAddressRow, facts.WordType, found, 0, target.name));
+    return ScalarOperands.Built(output);
+}
 // The rows of a call of a foreign function: each argument converted to its
 // parameter, then one Foreign row naming the symbol and the library.
 ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
@@ -114,6 +144,16 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
     }
     output := rows;
     for (index in 0..<length(arguments)) {
+        callback := GenericCallableType(forest, Field(forest, parameters[index], syntax.FieldType));
+        if (callback >= 0) {
+            switch ScalarCallbackAddress(forest, text, callables, params, callable, arguments[index], callback, output) {
+                case .Failed(diagnostic):
+                    return ScalarOperands.Failed(diagnostic);
+                case .Built(built):
+                    output = built;
+            }
+            continue;
+        }
         element := ForeignArray(forest, text, Field(forest, parameters[index], syntax.FieldType));
         if (element != 0 && !Is(forest, arguments[index], syntax.NamedArgument) && !Is(forest, arguments[index], syntax.TypedArgument)) {
             // An array is lent: the callee gets the pointer to its own elements.
@@ -216,6 +256,36 @@ ScalarFailure :: (path: string, text: string, diagnostic: syntax.Diagnostic) -> 
                             start: diagnostic.start, end: diagnostic.end, line: diagnostic.line,
                             column: diagnostic.column};
     return [ScalarSource(path, text), rejection];
+}
+// The failure of a package set: its source is the documents joined as the
+// rows of an accepted set have them, and a diagnostic in another document
+// than the first moves to its place in them.
+ScalarFailedIn :: (path: string, documents: snapshot.Document[], diagnostic: syntax.Diagnostic) -> facts.Row[] {
+    shifted := diagnostic;
+    offset: int = 0;
+    row: int = 0;
+    for (index in 0..<length(documents)) {
+        if (index == diagnostic.document) {
+            shifted.start += offset;
+            shifted.end += offset;
+            shifted.line += row;
+        }
+        offset += strings.ByteLength(documents[index].text);
+        row += strings.Count(documents[index].text, "\n");
+        if (!strings.HasSuffix(documents[index].text, "\n")) {
+            offset += 1;
+            row += 1;
+        }
+    }
+    return ScalarFailure(path, ScalarJoined(documents), shifted);
+}
+// ScalarFailure, or for a package set ScalarFailedIn.
+ScalarFailed :: (packaged: bool, path: string, text: string, documents: snapshot.Document[],
+                 diagnostic: syntax.Diagnostic) -> facts.Row[] {
+    if (packaged) {
+        return ScalarFailedIn(path, documents, diagnostic);
+    }
+    return ScalarFailure(path, text, diagnostic);
 }
 ScalarAt :: (forest: snapshot.SnapshotNode[], node: int, kind: int, type: int, value: int, count: int,
              name: string) -> facts.Row {
@@ -502,29 +572,59 @@ ScalarMember :: (forest: snapshot.SnapshotNode[], text: string, callables: Calla
     }
     return FindField(types, members, record, Text(forest, text, Field(forest, node, syntax.FieldMember)));
 }
-// The facts operator of a comparison's source operator, 0 for any other. The
-// spellings are in the order of facts.Less through facts.NotEqual.
-ScalarComparison :: (operator: string) -> int {
-    spellings := ["<", "<=", ">", ">=", "==", "!="];
-    for (index in 0..<length(spellings)) {
-        if (spellings[index] == operator) {
-            return facts.Less + index;
-        }
+// The facts operator of a comparison's source operator, 0 for any other,
+// in the order of facts.Less through facts.NotEqual.
+ScalarComparison :: (operator: int) -> int {
+    if (operator == tk.Lt) {
+        return facts.Less;
+    }
+    if (operator == tk.LtEq) {
+        return facts.Less + 1;
+    }
+    if (operator == tk.Gt) {
+        return facts.Less + 2;
+    }
+    if (operator == tk.GtEq) {
+        return facts.Less + 3;
+    }
+    if (operator == tk.CmpEq) {
+        return facts.Less + 4;
+    }
+    if (operator == tk.NotEq) {
+        return facts.Less + 5;
     }
     return 0;
 }
 ScalarCompares :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     return Is(forest, node, syntax.BinaryExpression) &&
-           ScalarComparison(Text(forest, text, Field(forest, node, syntax.FieldOperator))) != 0;
+           ScalarComparison(Operator(forest, node)) != 0;
 }
-// The facts operator of a binary arithmetic source operator, 0 for any other.
-// The spellings are in the order of facts.Add through facts.Xor.
-ScalarArithmetic :: (operator: string) -> int {
-    spellings := ["+", "-", "*", "/", "%", "&", "|", "^"];
-    for (index in 0..<length(spellings)) {
-        if (spellings[index] == operator) {
-            return facts.Add + index;
-        }
+// The facts operator of a binary arithmetic source operator, 0 for any other,
+// in the order of facts.Add through facts.Xor.
+ScalarArithmetic :: (operator: int) -> int {
+    if (operator == tk.Add) {
+        return facts.Add;
+    }
+    if (operator == tk.Sub) {
+        return facts.Add + 1;
+    }
+    if (operator == tk.Mul) {
+        return facts.Add + 2;
+    }
+    if (operator == tk.Quo) {
+        return facts.Add + 3;
+    }
+    if (operator == tk.Mod) {
+        return facts.Add + 4;
+    }
+    if (operator == tk.And) {
+        return facts.Add + 5;
+    }
+    if (operator == tk.Or) {
+        return facts.Add + 6;
+    }
+    if (operator == tk.Xor) {
+        return facts.Add + 7;
     }
     return 0;
 }
@@ -532,16 +632,16 @@ ScalarArithmetic :: (operator: string) -> int {
 // complement that is not itself a signed literal.
 ScalarComputes :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     if (Is(forest, node, syntax.BinaryExpression)) {
-        return ScalarArithmetic(Text(forest, text, Field(forest, node, syntax.FieldOperator))) != 0;
+        return ScalarArithmetic(Operator(forest, node)) != 0;
     }
     if (!Is(forest, node, syntax.UnaryExpression)) {
         return false;
     }
-    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
-    return (operator == "~" || operator == "-") && InferredNumberStorage(forest, text, node) == 0;
+    operator := Operator(forest, node);
+    return (operator == tk.Complement || operator == tk.Sub) && InferredNumberStorage(forest, text, node) == 0;
 }
 ScalarShifts :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    return Is(forest, node, syntax.BinaryExpression) && Shift(Text(forest, text, Field(forest, node, syntax.FieldOperator)));
+    return Is(forest, node, syntax.BinaryExpression) && Shift(Operator(forest, node));
 }
 // The storage two operands of storages `left` and `right` meet at, as
 // OperatorStep converts them: an untyped one, 0, takes the other's, an
@@ -574,7 +674,7 @@ ScalarSpelled :: (left: int, right: int) -> int {
 ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, context: int) -> int {
     node := ScalarTarget(forest, operand);
-    if (Is(forest, node, syntax.UnaryExpression) && Text(forest, text, Field(forest, node, syntax.FieldOperator)) == "+") {
+    if (Is(forest, node, syntax.UnaryExpression) && Operator(forest, node) == tk.Add) {
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand),
                                     context);
     }
@@ -696,7 +796,7 @@ ScalarTarget :: (forest: snapshot.SnapshotNode[], operand: int) -> int {
 ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, expected: int, rows: facts.Row[]) -> ScalarOperands {
     node := ScalarTarget(forest, operand);
-    if (Is(forest, node, syntax.UnaryExpression) && Text(forest, text, Field(forest, node, syntax.FieldOperator)) == "+") {
+    if (Is(forest, node, syntax.UnaryExpression) && Operator(forest, node) == tk.Add) {
         return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand),
                              expected, rows);
     }
@@ -867,7 +967,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             contexts = [InferredNumberStorage(forest, text, sides[0]), InferredNumberStorage(forest, text, sides[1])];
             compared = ScalarSpelled(contexts[0], contexts[1]);
         }
-        operator := ScalarComparison(Text(forest, text, Field(forest, node, syntax.FieldOperator)));
+        operator := ScalarComparison(Operator(forest, node));
         equality := operator == facts.Equal || operator == facts.NotEqual;
         if (!Integer(compared) && !Floating(compared) &&
             !((compared == BoolStorage || compared == TextStorage) && equality)) {
@@ -877,10 +977,10 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarSides(forest, text, callables, params, callable, names, types, members, constants, node, sides, contexts, compared, compare,
                            output);
     }
-    if (Is(forest, node, syntax.BinaryExpression) && ScalarLogic(Text(forest, text, Field(forest, node, syntax.FieldOperator))) != 0) {
+    if (Is(forest, node, syntax.BinaryExpression) && ScalarLogic(Operator(forest, node)) != 0) {
         return ScalarLogical(forest, text, callables, params, callable, names, types, members, constants, node, output);
     }
-    if (Is(forest, node, syntax.UnaryExpression) && ScalarNegated(Text(forest, text, Field(forest, node, syntax.FieldOperator)))) {
+    if (Is(forest, node, syntax.UnaryExpression) && ScalarNegated(Operator(forest, node))) {
         row := ScalarAt(forest, node, facts.UnaryRow, facts.BoolType, facts.Not, 1, "");
         return ScalarSides(forest, text, callables, params, callable, names, types, members, constants, node, [Field(forest, node, syntax.FieldOperand)],
                            [BoolStorage], BoolStorage, row, output);
@@ -1279,7 +1379,7 @@ ScalarShifted :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
     }
     operator := facts.ShiftLeft;
-    if (Text(forest, text, Field(forest, node, syntax.FieldOperator)) == ">>") {
+    if (Operator(forest, node) == tk.Shr) {
         operator = facts.ShiftRight;
     }
     output.append(ScalarAt(forest, node, facts.ArithmeticRow, ScalarTypeOf(storage), operator, 2, ""));
@@ -1295,10 +1395,10 @@ ScalarComputed :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         return ScalarOperands.Failed(Diagnose(forest, node, 0, "scalar proof does arithmetic only on numbers"));
     }
     type := ScalarTypeOf(storage);
-    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
+    operator := Operator(forest, node);
     if (Is(forest, node, syntax.UnaryExpression)) {
         value := facts.Negate;
-        if (operator == "~") {
+        if (operator == tk.Complement) {
             value = facts.Complement;
         }
         row := ScalarAt(forest, node, facts.UnaryRow, type, value, 1, "");
@@ -1311,17 +1411,17 @@ ScalarComputed :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
                        rows);
 }
 // The facts operator of a logical source operator, 0 for any other.
-ScalarLogic :: (operator: string) -> int {
-    if (operator == "&&" || operator == "and") {
+ScalarLogic :: (operator: int) -> int {
+    if (operator == tk.CmpAnd || operator == tk.AndKeyword) {
         return facts.LogicalAnd;
     }
-    if (operator == "||" || operator == "or") {
+    if (operator == tk.CmpOr || operator == tk.OrKeyword) {
         return facts.LogicalOr;
     }
     return 0;
 }
-ScalarNegated :: (operator: string) -> bool {
-    return operator == "!" || operator == "not";
+ScalarNegated :: (operator: int) -> bool {
+    return operator == tk.Not || operator == tk.NotKeyword;
 }
 // The rows of `node`, `left && right` or `left || right`, after `rows`: its
 // left operand, its Logical row, then its right operand's rows, which the
@@ -1336,7 +1436,7 @@ ScalarLogical :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         case .Built(built):
             output = built;
     }
-    operator := ScalarLogic(Text(forest, text, Field(forest, node, syntax.FieldOperator)));
+    operator := ScalarLogic(Operator(forest, node));
     output.append(ScalarAt(forest, node, facts.LogicalRow, facts.BoolType, operator, 0, ""));
     at := length(output) - 1;
     switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldRight), BoolStorage,
@@ -1536,7 +1636,7 @@ ScalarFieldAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables
     storage := members[field].storage;
     read := [ScalarAt(forest, object, facts.ReadRow, type, ordinal, 0, "")];
     update := [ScalarAt(forest, destination, facts.UpdateRow, type, place, 2, "")];
-    operator := ScalarArithmetic(CompoundOperator(Text(forest, text, Field(forest, node, syntax.FieldOperator))));
+    operator := ScalarArithmetic(CompoundOperator(Operator(forest, node)));
     if (operator != 0) {
         read = [read[0], read[0], ScalarAt(forest, destination, facts.FieldRow, ScalarTypeOf(storage), place, 1, "")];
         update = [ScalarAt(forest, node, facts.ArithmeticRow, ScalarTypeOf(storage), operator, 2, ""), update[0]];
@@ -1573,7 +1673,7 @@ ScalarAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         case .Built(built):
             output = built;
     }
-    operator := ScalarArithmetic(CompoundOperator(Text(forest, text, Field(forest, node, syntax.FieldOperator))));
+    operator := ScalarArithmetic(CompoundOperator(Operator(forest, node)));
     output.append(ScalarAt(forest, node, facts.ArithmeticRow, type, operator, 2, ""));
     return ScalarOperands.Built(output);
 }
@@ -1682,7 +1782,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         if (binding.container == ArrayContainer) {
             assigned: ValueType = {storage: binding.storage, container: ArrayContainer, record: binding.record};
             if (ScalarArrayType(types, binding.storage, binding.record) == 0 ||
-                CompoundOperator(Text(forest, text, Field(forest, statement, syntax.FieldOperator))) != "") {
+                CompoundOperator(Operator(forest, statement)) != NoOperator) {
                 return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof assigns arrays only by ="));
             }
             return ScalarPlan.Array(value, assigned, true);
@@ -1691,7 +1791,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             return ScalarPlan.Record(value, binding.record);
         }
         storage := binding.storage;
-        if (CompoundOperator(Text(forest, text, Field(forest, statement, syntax.FieldOperator))) != "") {
+        if (CompoundOperator(Operator(forest, statement)) != NoOperator) {
             return ScalarPlan.Compound(storage);
         }
         return ScalarPlan.Converted(value, storage, storage);
@@ -2971,34 +3071,42 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return ScalarFailure(path, text, diagnostic);
         case .Accepted(roots, documents, nodes, imports, built):
+            // A package set's diagnostics lie in its documents joined, as its rows do.
+            shown_nodes := nodes;
+            shown_text := text;
+            if (packaged) {
+                shown_nodes = ScalarJoinedNodes(nodes, documents);
+                shown_text = ScalarJoined(documents);
+            }
             document := documents[0];
             switch built {
                 case .Rejected(error, cycle):
-                    return ScalarFailure(path, text,
-                                         Diagnose(nodes, document.syntax_root, 0, "scalar proof requires an accepted package graph"));
+                    return ScalarFailure(path, shown_text,
+                                         Diagnose(shown_nodes, document.syntax_root, 0, "scalar proof requires an accepted package graph"));
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
                     if (!packaged) {
-                        unsupported := ScalarMembers(nodes, document.syntax_root, false);
+                        unsupported := ScalarMembers(shown_nodes, document.syntax_root, false);
                         if (unsupported.message != "") {
-                            return ScalarFailure(path, text, unsupported);
+                            return ScalarFailure(path, shown_text, unsupported);
                         }
                     }
                     if (packaged) {
                         for (candidate in documents) {
-                            if (!strings.HasPrefix(candidate.identity, "project:")) {
-                                return ScalarFailure(path, text,
-                                                     Diagnose(nodes, candidate.syntax_root, 0,
-                                                              "scalar proof imports only project packages"));
+                            if (!strings.HasPrefix(candidate.identity, "project:") &&
+                                !strings.HasPrefix(candidate.identity, "core:")) {
+                                return ScalarFailure(path, shown_text,
+                                                     Diagnose(shown_nodes, candidate.syntax_root, 0,
+                                                              "scalar proof imports only project and core packages"));
                             }
-                            member_gap := ScalarMembers(nodes, candidate.syntax_root, true);
+                            member_gap := ScalarMembers(shown_nodes, candidate.syntax_root, true);
                             if (member_gap.message != "") {
-                                return ScalarFailure(path, text, member_gap);
+                                return ScalarFailure(path, shown_text, member_gap);
                             }
                         }
                     }
                     if (!packaged && (length(packages) != 1 || length(imports) != 0)) {
-                        return ScalarFailure(path, text,
-                                             Diagnose(nodes, document.syntax_root, 0, "scalar proof requires one package without imports"));
+                        return ScalarFailure(path, shown_text,
+                                             Diagnose(shown_nodes, document.syntax_root, 0, "scalar proof requires one package without imports"));
                     }
                     active := order;
                     roots_named: string[] = [document.identity];
@@ -3016,7 +3124,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                     switch ForeignNatives(nodes, documents, text_natives, text_ports, text_identities,
                                           resize([int(0)], text_count)) {
                         case .Failed(diagnostic):
-                            return ScalarFailure(path, text, diagnostic);
+                            return ScalarFailed(packaged, path, text, documents, diagnostic);
                         case .Declared(declared_natives, declared_ports, declared_identities, declared_effects):
                             text_natives = declared_natives;
                             text_ports = declared_ports;
@@ -3029,7 +3137,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                     }
                     switch Declare(nodes, documents, packages, files_of, active, imports, links, target) {
                         case .Failed(diagnostic):
-                            return ScalarFailure(path, text, diagnostic);
+                            return ScalarFailed(packaged, path, text, documents, diagnostic);
                         case .Collected(callables, params, types, members, constants):
                             // Use the ordinary compiler's concrete functions and bindings. The
                             // scalar pass then checks its existing pure numeric domain.
@@ -3040,12 +3148,12 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                                       constants, text_natives, text_ports, text_identities,
                                                       BodyContext.Known(effects), ops, target) {
                                 case .Failed(diagnostic):
-                                    return ScalarFailure(path, text, diagnostic);
+                                    return ScalarFailed(packaged, path, text, documents, diagnostic);
                                 case .Ready(concrete, concrete_params, bindings):
                                     entered := concrete;
                                     if (packaged && length(concrete) > 0 && concrete[0].document != 0) {
                                         if (length(bindings) > 0) {
-                                            return ScalarFailure(path, text, Diagnose(nodes, document.syntax_root, 0,
+                                            return ScalarFailure(path, shown_text, Diagnose(shown_nodes, document.syntax_root, 0,
                                                 "scalar proof cannot order generic functions across packages"));
                                         }
                                         entered = ScalarEntryFirst(concrete);
@@ -3072,7 +3180,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                                         members, constants, ops, target, text_natives, text_ports, text_identities,
                                                         false, bindings, scalar_documents, module_links) {
                                         case .Failed(diagnostic):
-                                            return ScalarFailure(path, text, diagnostic);
+                                            return ScalarFailed(packaged, path, text, documents, diagnostic);
                                         case .Built(rows):
                                             head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
                                                                literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0,

@@ -4,8 +4,9 @@ import writer "project:prepared_writer"
 
 // A module with a row in every table the writer encodes, and values of every
 // shape: a scalar, present and absent structs, unions and arrays, text and a
-// name. The expected length and fingerprint are those the writer gave when it
-// built each row as its own array, before it appended rows to one buffer.
+// name. The expected length and fingerprint are those of format v28, which
+// leaves out the instructions' fields that hold their defaults (822 bytes and
+// 0xA60FD83F1F2A4EDA in v27).
 Val :: (tag: int, container: int, type_name: string, authored: bool, wide: int, text: string, present: bool,
         first: int, count: int) -> writer.Value {
     return {tag: tag, container: container, type_name: type_name, has_type_name: type_name != "",
@@ -119,6 +120,6 @@ Sample :: () -> writer.Module {
 @test
 EveryTableKeepsItsBytes :: () {
     bytes := writer.Write(Sample());
-    assert(length(bytes) == 822);
-    assert(writer.Fingerprint(bytes) == 0xA60FD83F1F2A4EDA);
+    assert(length(bytes) == 816);
+    assert(writer.Fingerprint(bytes) == 0x4A05A313928F3547);
 }

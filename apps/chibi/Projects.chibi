@@ -49,6 +49,18 @@ NeedsLLVM :: () -> string {
     return "pass --llvm DIR, the folder of opt, llc and ld.lld, or set CHIBI_LLVM_BIN"
 }
 
+// The target a native build makes by default: the host's, by rustc's name.
+HostTarget :: () -> string {
+    host := sdk.platform()
+    if host.system == "Darwin" && host.machine == "arm64" {
+        return "aarch64-apple-darwin"
+    }
+    if host.system == "Windows" {
+        return "x86_64-pc-windows-msvc"
+    }
+    return "x86_64-unknown-linux-gnu"
+}
+
 BuildNative :: (options: Options) -> int {
     llvm := LLVM(options.llvm)
     if llvm == "" {
@@ -74,7 +86,7 @@ BuildNative :: (options: Options) -> int {
     if options.debug {
         debug = "lines"
     }
-    driver := [root, tools, options.mode, debug, options.target]
+    driver := [root, tools, options.mode, debug, Default(options.target, HostTarget())]
     if options.static_link {
         driver = append(driver, "static")
     }

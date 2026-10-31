@@ -169,3 +169,41 @@ ForeignStringArgumentIsCopiedWithItsNul :: () {
     assert(strings.Contains(text, "%v2 = call i32 @chibi_probe_length(ptr %cstr0)\n"));
     assert(strings.Contains(text, "define internal i1 @chibi_scalar.cstring("));
 }
+// Main passes the address of Identity, a function of one int, to a foreign
+// function that takes a word.
+Callbacks :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.FunctionAddress, 9, 0, 1, 0, 0, 0),
+            Code(native.ForeignCall, 6, 1, 0, 0, 1, 0),
+            Code(native.Publish, 6, 0, 1, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0),
+            Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Argument, 6, 0, 0, 0, 0, 0),
+            Code(native.Publish, 6, 0, 0, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+CallbackModule :: (code: native.Instruction[]) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 2, 0, 5, 0, 1), Function(6, 1, 2, 1, 5, 4, 1, 0)], [6],
+                       [9, 6, 6], empty, code, [0], records, empty, ["chibi_probe_call"], source, names, empty, empty,
+                       false, 1);
+}
+// A function address is the address of an adapter with C's calling convention,
+// which calls the function.
+@test
+FunctionAddressIsItsAdapter :: () {
+    text := Emitted(CallbackModule(Callbacks()));
+    assert(strings.Contains(text, "%v1 = ptrtoint ptr @chibi_callback.1 to i64\n"));
+    assert(strings.Contains(text, "define internal i32 @chibi_callback.1(i32 %a0) #0 {\n"));
+    assert(strings.Contains(text, "%result = call i32 @chibi_scalar.1(i32 %a0)\n"));
+    assert(strings.Contains(text, "declare i32 @chibi_probe_call(i64)\n"));
+}
+@test
+FunctionAddressNamesAFunctionOfTheModule :: () {
+    code := Callbacks();
+    code[1] = Code(native.FunctionAddress, 9, 0, 2, 0, 0, 0);
+    Rejects(CallbackModule(code), "native function address differs from its function");
+}

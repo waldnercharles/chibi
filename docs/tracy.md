@@ -1,47 +1,27 @@
 # Profiling explicit products
 
 The separate Studio repository owns its native Tracy and browser User Timing
-options. Profiling must use the same installed SDK, project assets, worker budget,
-and scenario for both measurements. Instrumented timings are separate from
-normal performance measurements.
+options and the commands that build with them. The engine's `studio-build`,
+`studio-run`, `web-profile` and `web-threads` Make targets were deleted with
+Studio and web packaging (7b97ecf7c). Profiling must use the same installed
+SDK, project assets, worker budget, and scenario for both measurements.
+Instrumented timings are separate from normal performance measurements.
 
 ## Native Studio
 
-Use a packaged desktop SDK and a Tracy installation discoverable by
-`find_package(Tracy CONFIG)`. Configure the external Studio consumer explicitly:
-
-```sh
-make studio-build STUDIO_SOURCE=/path/to/chibi-studio \
-  STUDIO_SDK_PREFIX=/path/to/installed/sdk \
-  STUDIO_BUILD_DIR=build-studio-profile \
-  STUDIO_CMAKE_FLAGS='-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_STUDIO_TRACY=ON'
-make studio-run STUDIO_SOURCE=/path/to/chibi-studio \
-  STUDIO_SDK_PREFIX=/path/to/installed/sdk PROJECT_ROOT=/path/to/game \
-  STUDIO_BUILD_DIR=build-studio-profile \
-  STUDIO_CMAKE_FLAGS='-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_STUDIO_TRACY=ON'
-```
-
-This instruments Studio's compiled scopes. It does not enable instrumentation
-in previously installed SDK archives. Connect the Tracy profiler to the
-application to collect those scopes. The former root `build-tracy` and
-`run-tracy` products have been removed.
+Configure Studio with `-DCHIBI_STUDIO_TRACY=ON` (RelWithDebInfo) against a
+packaged desktop SDK and a Tracy installation discoverable by
+`find_package(Tracy CONFIG)`. This instruments Studio's compiled scopes. It
+does not enable instrumentation in previously installed SDK archives. Connect
+the Tracy profiler to the application to collect those scopes. The former root
+`build-tracy` and `run-tracy` products have been removed.
 
 ## Browser Studio
 
-```sh
-make web-profile STUDIO_SOURCE=/path/to/chibi-studio
-```
-
-The external consumer enables `CHIBI_STUDIO_WEB_TRACE`, which records its
-scopes as browser User Timing measures. Use the browser Performance panel.
-The SDK has its own compilation identity; this option does not recompile SDK
-archives with instrumentation.
-
-`make web-threads` builds separate SDK and consumer directories. The installed
-SDK exports the thread mode and configured worker budget; `WEB_WORKERS=4` is
-the default. `make web-threads-serve` uses the external static server with
-COOP/COEP headers. Browser build and execution acceptance for this extraction
-remain pending. Publishing is not integrated into the current Make interface.
+Studio's `CHIBI_STUDIO_WEB_TRACE` option records its scopes as browser User
+Timing measures. Use the browser Performance panel. The SDK has its own
+compilation identity; this option does not recompile SDK archives with
+instrumentation.
 
 The former graph behavior Wasm compiler and root browser bundle are retired.
 Historical frame-summary and graph-region profiling results do not validate

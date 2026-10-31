@@ -276,6 +276,11 @@ pub ForeignRow: int : 38;
 // reference: the callee's reference parameter reads and writes that variable.
 // Passing a reference parameter on gives the caller's variable on.
 pub RefRow: int : 39;
+// The address of a C-ABI function that calls the function `value`, a word, for
+// a foreign function that takes a function: `name` is the function's, `count`
+// is 0 and `type` is the word. The function's parameters and result are
+// numbers or bools and none of its parameters is a reference.
+pub FunctionAddressRow: int : 40;
 // What a RefRow of `type` pushes on a call's operand stack, and so what a
 // reference parameter of `type` takes: ReferenceType plus the type. A
 // parameter row whose literal is 1 is a reference parameter. Its variable is

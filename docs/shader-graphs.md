@@ -326,5 +326,4 @@ settings, and rendered material behavior across multiple image sets.
 Speed drive Mapping; Image Texture feeds a charcoal/cyan Color Ramp; Intensity
 controls Emission. Tiling sets repetition. The 128-pixel grayscale source is
 `content/textures/EnergyCells.png`. Open `ShaderImageDemo` to see the material on a
-box, prism and sphere with independent instance parameters, or run
-`make play PROJECT=. SCENE=scenes/ShaderImageDemo.kdl`.
+box, prism and sphere with independent instance parameters.

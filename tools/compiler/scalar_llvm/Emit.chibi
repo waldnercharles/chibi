@@ -701,6 +701,20 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar conversion is not one the runtime implements";
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.FunctionAddressRow) {
+            if (operand.value < 0 || operand.value >= length(heads)) {
+                return "scalar function address names no function of the module";
+            }
+            taken := rows[heads[operand.value]];
+            if (operand.name != taken.name || operand.count != 0 || operand.type != facts.WordType || !Scalar(taken.type)) {
+                return "scalar function address differs from its function";
+            }
+            for (argument in 0..<taken.count) {
+                parameter := rows[heads[operand.value] + 1 + argument];
+                if (!Scalar(parameter.type) || parameter.literal == 1) {
+                    return "scalar function address needs a function of numbers and bools";
+                }
+            }
         } else if (operand.kind == facts.CallRow) {
             if (operand.value < 0 || operand.value >= length(heads)) {
                 return "scalar call names no function of the module";
@@ -1589,6 +1603,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     item = Op(native.Convert, type, slot, stack[base], slots[shape.first_slot + stack[base]], 0);
                     item.literal = i64(operand.value);
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.FunctionAddressRow) {
+                    item = Op(native.FunctionAddress, type, slot, operand.value, 0, 0);
                 } else if (operand.kind == facts.CallRow) {
                     item = Op(native.Call, type, slot, operand.value, shape.arguments, operand.count);
                     base := length(stack) - operand.count;

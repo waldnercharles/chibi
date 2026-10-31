@@ -23,11 +23,13 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <yyjson.h>
@@ -295,6 +297,21 @@ static int imported_package(const char *path)
     }
     if (starts(path, "core:")) {
         snprintf(dir, sizeof dir, "/sdk/core/%s/", path + 5);
+        return package_of(dir);
+    }
+    /* Another collection's package, `graph:x`, is the folder graph/x, and
+     * `graph:.` its root, as CHIBI_CENSUS_PATHS lays them out. */
+    const char *colon = strchr(path, ':');
+    if (colon && colon != path) {
+        snprintf(
+            dir,
+            sizeof dir,
+            "%.*s/%s%s",
+            (int)(colon - path),
+            path,
+            strcmp(colon + 1, ".") ? colon + 1 : "",
+            strcmp(colon + 1, ".") ? "/" : ""
+        );
         return package_of(dir);
     }
     return -1;
@@ -1624,9 +1641,10 @@ static bool census_parallel(const int *functions, int count, int jobs)
     return ok;
 }
 
-TEST_CASE(native_census_covers_every_compiler_function)
+/* The census of every function in `in`. A folder census may pass none. */
+static bool census_all(const source_package_input *in, int count, bool require_native)
 {
-    REQUIRE(prepare() && load(SOURCES, SOURCE_COUNT));
+    REQUIRE(prepare() && load(in, count));
     int *wanted = NULL;
     for (int i = 0; i < acount(decls); i++) {
         if (decls[i].kind == DECL_FUNCTION) {
@@ -1643,7 +1661,7 @@ TEST_CASE(native_census_covers_every_compiler_function)
     }
     afree(wanted);
     REQUIRE(counted);
-    if (acount(rows) != functions || count_of(CENSUS_NATIVE) == 0) {
+    if (acount(rows) != functions || (require_native && count_of(CENSUS_NATIVE) == 0)) {
         fprintf(
             stderr,
             "census: %d rows for %d functions, %d pass\n",
@@ -1652,7 +1670,7 @@ TEST_CASE(native_census_covers_every_compiler_function)
             count_of(CENSUS_NATIVE)
         );
     }
-    REQUIRE(acount(rows) == functions && count_of(CENSUS_NATIVE) > 0);
+    REQUIRE(acount(rows) == functions && (!require_native || count_of(CENSUS_NATIVE) > 0));
     write_summary(stdout);
     if (report_path) {
         FILE *out = fopen(report_path, "w");
@@ -1661,6 +1679,11 @@ TEST_CASE(native_census_covers_every_compiler_function)
         REQUIRE(!fclose(out));
     }
     forget_rows();
+    return true;
+}
+TEST_CASE(native_census_covers_every_compiler_function)
+{
+    REQUIRE(census_all(SOURCES, SOURCE_COUNT, true));
     return true;
 }
 
@@ -1696,9 +1719,101 @@ static bool census_only(const char *names)
     forget_rows();
     return true;
 }
+/* CHIBI_CENSUS_PATHS=PREFIX=DIRECTORY[,PREFIX=DIRECTORY...] takes the census
+ * over the .chibi files below each directory instead of the compiler's: a file's
+ * path is PREFIX and its path below the directory, and a package is its folder.
+ * A directory that is a file adds that file under the path PREFIX. For the
+ * build programs: `tools/toolchain/Driver.chibi=tools/toolchain/Driver.chibi,
+ * /sdk/core/os/Os.chibi=packages/core/os/Os.chibi`. Test folders and files
+ * are left out. */
+static source_package_input *folder_files;
+static int folder_name_order(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+/* Reads one file as the census source with the path `virtual`. */
+static bool folder_file(const char *real, const char *virtual)
+{
+    FILE *in = fopen(real, "rb");
+    REQUIRE(in);
+    char *text = NULL;
+    size_t size = 0, got;
+    do {
+        text = xrealloc(text, size + 65537);
+        got = fread(text + size, 1, 65536, in);
+        size += got;
+    } while (got == 65536);
+    fclose(in);
+    text[size] = 0;
+    apush(folder_files, ((source_package_input){ xstrdup(virtual), text, size }));
+    return true;
+}
+static bool is_chibi_source(const char *name)
+{
+    size_t length = strlen(name);
+    return length > 6 && !strcmp(name + length - 6, ".chibi") &&
+           (length < 12 || strcmp(name + length - 12, "Tests.chibi"));
+}
+static bool folder_add(const char *prefix, const char *directory, const char *relative)
+{
+    char path[PATH_MAX];
+    snprintf(path, sizeof path, "%s/%s", directory, relative);
+    DIR *dir = opendir(path);
+    REQUIRE(dir);
+    char **names = NULL;
+    for (struct dirent *entry; (entry = readdir(dir));) {
+        if (entry->d_name[0] != '.') {
+            apush(names, xstrdup(entry->d_name));
+        }
+    }
+    closedir(dir);
+    qsort(names, (size_t)acount(names), sizeof *names, folder_name_order);
+    bool ok = true;
+    for (int i = 0; ok && i < acount(names); i++) {
+        char child[PATH_MAX], below[PATH_MAX], virtual[PATH_MAX];
+        snprintf(child, sizeof child, "%s/%s", path, names[i]);
+        snprintf(below, sizeof below, "%s%s%s", relative, *relative ? "/" : "", names[i]);
+        struct stat info;
+        ok = !stat(child, &info);
+        if (ok && S_ISDIR(info.st_mode)) {
+            ok = !strcmp(names[i], "tests") || folder_add(prefix, directory, below);
+        } else if (ok && is_chibi_source(names[i])) {
+            snprintf(virtual, sizeof virtual, "%s%s", prefix, below);
+            ok = folder_file(child, virtual);
+        }
+        free(names[i]);
+    }
+    afree(names);
+    return ok;
+}
+static bool census_folders(const char *spec)
+{
+    char *list = xstrdup(spec);
+    for (char *pair = strtok(list, ","); pair; pair = strtok(NULL, ",")) {
+        char *equals = strchr(pair, '=');
+        REQUIRE(equals);
+        *equals = 0;
+        struct stat info;
+        REQUIRE(!stat(equals + 1, &info));
+        if (S_ISREG(info.st_mode)) {
+            /* One file; its name is the end of PREFIX, which names the folder. */
+            REQUIRE(folder_file(equals + 1, pair));
+        } else {
+            REQUIRE(folder_add(pair, equals + 1, ""));
+        }
+    }
+    free(list);
+    REQUIRE(acount(folder_files) > 0);
+    return census_all(folder_files, acount(folder_files), false);
+}
 void test_language_native_census(const char *report)
 {
     report_path = report;
+    if (getenv("CHIBI_CENSUS_PATHS")) {
+        census_folders(getenv("CHIBI_CENSUS_PATHS"));
+        cleanup();
+        return;
+    }
     if (getenv("CHIBI_CENSUS_ONLY")) {
         census_only(getenv("CHIBI_CENSUS_ONLY"));
         cleanup();

@@ -1613,32 +1613,28 @@ QueryPresence :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
     if (!Is(forest, owner, "identifier")) {
         return -1;
     }
+    // The dispatcher asks for every member expression, so the cheap tests come
+    // first: a Boolean position, then a handle owner, and only then the
+    // component, which scans every type.
+    parent := forest[node].parent;
+    boolean := Is(forest, parent, "query_guard") || Is(forest, parent, "if_statement") ||
+               Is(forest, parent, "while_statement");
+    if (!boolean && Is(forest, parent, "unary_expression")) {
+        operator := Text(forest, text, Field(forest, parent, "operator"));
+        boolean = operator == "!" || operator == "not";
+    }
+    if (!boolean && Is(forest, parent, "binary_expression")) {
+        operator := Text(forest, text, Field(forest, parent, "operator"));
+        boolean = operator == "&&" || operator == "||" || operator == "and" || operator == "or";
+    }
+    if (!boolean) {
+        return -1;
+    }
     found := Lookup(names, Text(forest, text, owner));
     if (found < 0 || names[found].storage != HandleStorage) {
         return -1;
     }
-    // Finding the component scans every type, so the handle comes first.
-    component := Component(types, Text(forest, text, Field(forest, node, "member")));
-    if (component < 0) {
-        return -1;
-    }
-    parent := forest[node].parent;
-    if (Is(forest, parent, "query_guard") || Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) {
-        return component;
-    }
-    if (Is(forest, parent, "unary_expression")) {
-        operator := Text(forest, text, Field(forest, parent, "operator"));
-        if (operator == "!" || operator == "not") {
-            return component;
-        }
-    }
-    if (Is(forest, parent, "binary_expression")) {
-        operator := Text(forest, text, Field(forest, parent, "operator"));
-        if (operator == "&&" || operator == "||" || operator == "and" || operator == "or") {
-            return component;
-        }
-    }
-    return -1;
+    return Component(types, Text(forest, text, Field(forest, node, "member")));
 }
 QueryPresenceStep :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], component: int, values: Value[], top: int,
                       item: Work, ops: Ops, target: Target, at: Bases) -> Step {

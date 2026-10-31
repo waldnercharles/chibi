@@ -377,7 +377,6 @@ Files :: (target: string) -> string[] {
             "test/language/main.c",
             "test/language/record_compatibility.c",
             "test/language/record_document.c",
-            "test/language/compositional_records.c",
             "test/language/record_values.c",
             "test/language/record_prepared.c",
             "test/language/syntax.c", "test/language/execution.c",
@@ -1648,8 +1647,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/native_census.c",
         "test/language/package_compiler_chibi.c",
         "test/language/ranges.c",
-        "test/language/record_prepared.c",
-        "test/language/compositional_records.c"
+        "test/language/record_prepared.c"
     ];
 }
 
@@ -1727,7 +1725,6 @@ pub Configures :: (target: string) -> string[] {
             "package_routes_chibi_source.h=test/language/package_routes_chibi_source.h.in",
             "package_snapshot_chibi_source.h=test/language/package_snapshot_chibi_source.h.in",
             "lexical_binding_chibi_source.h=test/language/lexical_binding_chibi_source.h.in",
-            "compositional_records_source.h=test/language/compositional_records_source.h.in",
             "prepared_writer_chibi_source.h=test/language/prepared_writer_chibi_source.h.in",
             "package_compiler_chibi_source.h=test/language/package_compiler_chibi_source.h.in"
         ];
@@ -1793,7 +1790,6 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_SNAPSHOT_BYTES=bytes:tools/compiler/source_snapshot/Snapshot.chibi",
             "CHIBI_PACKAGE_SYNTAX_BYTES=bytes:tools/compiler/package_syntax/Extract.chibi",
             "CHIBI_PREPARED_WRITER_BYTES=bytes:tools/compiler/prepared_writer/Writer.chibi",
-            "CHIBI_COMPOSITIONAL_RECORDS_BYTES=bytes:test/language/fixtures/compositional_records/Values.chibi",
             "CHIBI_SCALAR_CASES_BYTES=bytes:test/scalar_facts/cases/Cases.chibi",
             "CHIBI_SCALAR_FACTS_BYTES=bytes:tools/compiler/scalar_facts/Facts.chibi",
             "CHIBI_SCALAR_LLVM_BYTES=bytes:tools/compiler/scalar_llvm/Emit.chibi",

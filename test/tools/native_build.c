@@ -1373,6 +1373,59 @@ TEST_CASE(native_build_allocates_on_windows_without_libc)
     return true;
 }
 
+static const char *const WINDOWS_OS_SOURCE =
+    "package scalar\n"
+    "import windows \"core:sys/windows\"\n"
+    "Main :: () -> int {\n"
+    "    assert(windows.MakeDirectory(\"chibi_win_probe\"), \"make\");\n"
+    "    assert(windows.Exists(\"chibi_win_probe\"), \"exists\");\n"
+    "    assert(windows.Kind(\"chibi_win_probe\") == windows.KindDirectory, "
+    "\"directory\");\n"
+    "    data: u8[] = [104, 105];\n"
+    "    assert(windows.WriteBytes(\"chibi_win_probe\\\\a.txt\", data), "
+    "\"write\");\n"
+    "    back := windows.ReadBytes(\"chibi_win_probe\\\\a.txt\");\n"
+    "    assert(back.ok && length(back.data) == 2 && back.data[0] == 104, "
+    "\"read\");\n"
+    "    names := windows.List(\"chibi_win_probe\");\n"
+    "    assert(length(names) == 1 && names[0] == \"a.txt\", \"list\");\n"
+    "    assert(windows.Rename(\"chibi_win_probe\\\\a.txt\", "
+    "\"chibi_win_probe\\\\b.txt\"), \"rename\");\n"
+    "    assert(windows.Remove(\"chibi_win_probe\\\\b.txt\") && "
+    "windows.Remove(\"chibi_win_probe\"), \"remove\");\n"
+    "    assert(!windows.Exists(\"chibi_win_probe\"), \"removed\");\n"
+    "    assert(windows.Getenv(\"CHIBI_WINDOWS_UNSET\") == \"\", \"unset "
+    "variable\");\n"
+    "    assert(length(windows.Arguments()) >= 1, \"program name\");\n"
+    "    return 42;\n"
+    "}\n";
+
+/* core:sys/windows over kernel32: files, directories, environment and the
+ * command line, in a program with no C library. It links on Linux and macOS;
+ * with CHIBI_NATIVE_BUNDLE set, CI's native-targets job runs it on Windows. */
+TEST_CASE(native_build_links_core_sys_windows)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link Windows programs with real LLVM tools\n");
+        return true;
+    }
+    reset("windows-os", WINDOWS_OS_SOURCE);
+    real_tools(bin);
+    char in_place[1024], program[1024], folder[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *windows[] = { "-O0", "--target", "x86_64-pc-windows-msvc", NULL };
+    REQUIRE(build_with(in_place, windows, tools) == 0 && printed(program));
+    REQUIRE(executable_for(program, 1));
+    size_t length = strlen(program) - strlen("/program.exe");
+    memcpy(folder, program, length);
+    folder[length] = 0;
+    REQUIRE(holds(folder, "kernel32.def", "    CreateFileW\n"));
+    REQUIRE(!file_holds(program, "msvcrt") && !file_holds(program, "ucrtbase"));
+    bundle_program(program, 1, "windows-os.exe");
+    return true;
+}
+
 /* Each case reads and writes the file-scope fixture state above, so it runs
  * in its own forked process: the parent keeps no state a case changes. */
 static bool run_forked(const char *const names[], bool (*const cases[])(void), int count, int workers)
@@ -1453,6 +1506,7 @@ TEST_CASE(native_build_runs_the_cases_in_parallel)
         "native_build_links_other_targets_with_llvm",
         "native_build_imports_from_a_windows_system_library",
         "native_build_allocates_on_windows_without_libc",
+        "native_build_links_core_sys_windows",
     };
     static bool (*const cases[])(void) = {
         native_build_links_statically_on_request,
@@ -1472,6 +1526,7 @@ TEST_CASE(native_build_runs_the_cases_in_parallel)
         native_build_links_other_targets_with_llvm,
         native_build_imports_from_a_windows_system_library,
         native_build_allocates_on_windows_without_libc,
+        native_build_links_core_sys_windows,
     };
     long cores = sysconf(_SC_NPROCESSORS_ONLN);
     int workers = cores < 1 ? 1 : cores > 4 ? 4 : (int)cores;

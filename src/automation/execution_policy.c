@@ -88,22 +88,6 @@ static void deadline(int)
 }
 #endif
 
-void chibi_render_deadline(void)
-{
-    if (chibi_execution_hardware()) {
-        return;
-    }
-    int seconds = chibi_execution_is("mp4") ? 120 : 30;
-#ifdef _WIN32
-    HANDLE timer;
-    bool armed = CreateTimerQueueTimer(&timer, NULL, deadline, NULL, (DWORD)seconds * 1000, 0, WT_EXECUTEONLYONCE);
-    assert(armed);
-#else
-    signal(SIGALRM, deadline);
-    alarm((unsigned)seconds);
-#endif
-}
-
 bool chibi_preview_hidden(int render_frames)
 {
     return !chibi_execution_hardware() || render_frames <= 2;

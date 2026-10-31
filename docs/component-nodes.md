@@ -142,8 +142,7 @@ This is the test registry, which adds a few test-only nodes to the application's
   - Its Properties panel can offer the Component or Type setting through `ed_pin_choices`. The choices are a name catalog, so the selected item compares `editor_choice.name` with the pin's string, and the choice commits with `graph_set_pin_default`.
   - Write toggles call `component_node_show_field` and `component_node_split_value`.
 - **Saved source:** edit component access in `.chibi` behavior/system source,
-  or declarative KDL where the asset uses a graph. Format and validate the saved
-  asset through the [native controller](runtime-authoring.md). The former MCP
-  `add_node`, `split_pin`, and `remove_pin` transport is retired.
+  or declarative KDL where the asset uses a graph. The former MCP `add_node`,
+  `split_pin`, and `remove_pin` transport is retired.
 
 Inline vector constructors in the editor still create `Make_vec2` and its relatives directly, as does Behavior Expression lowering; both render like Make Struct.

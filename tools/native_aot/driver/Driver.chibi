@@ -200,7 +200,7 @@ Imports :: (module: string) -> string[] {
             symbols.append(Join(["_", name]));
         }
     }
-    for (name in ["_abort", "_calloc", "_memcpy", "_memmove", "_memset", "dyld_stub_binder"]) {
+    for (name in ["_abort", "_calloc", "_dprintf", "_memcpy", "_memmove", "_memset", "dyld_stub_binder"]) {
         listed := false;
         for (symbol in symbols) {
             listed = listed || symbol == name;
@@ -279,6 +279,8 @@ LinkDynamic :: (linker: string, libc: string[], object: string, start: string, p
 // macOS from dyld, which calls main and exits with its result. An entry
 // that takes the runtime context gets one whose allocate is libc's calloc and
 // whose index failure aborts; formatting text is not available to a program.
+// A failed assert ends the entry early with its failure in the context, which
+// main reports on stderr before it exits with status 134.
 StartDynamic :: (triple: string, context: bool) -> string {
     if (!context) {
         return Join([
@@ -294,6 +296,9 @@ StartDynamic :: (triple: string, context: bool) -> string {
         "target triple = \"", triple, "\"\n",
         "declare ptr @calloc(i64, i64)\n",
         "declare void @abort() noreturn\n",
+        "declare i32 @dprintf(i32, ptr, ...)\n",
+        "@chibi_report = private unnamed_addr constant [59 x i8] ",
+        "c\"assertion failed in function %lu at source bytes %d to %d\\0A\\00\"\n",
         "declare i32 @chibi_scalar(ptr)\n",
         "define internal void @chibi_format_text(ptr %ctx, ptr %values, i32 %count, ptr %result) {\n",
         "  call void @abort()\n",
@@ -311,6 +316,19 @@ StartDynamic :: (triple: string, context: bool) -> string {
         "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
         "define i32 @main() {\n",
         "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
+        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
+        "  %failure = load ptr, ptr %failure.at\n",
+        "  %failed = icmp ne ptr %failure, null\n",
+        "  br i1 %failed, label %report, label %done\n",
+        "report:\n",
+        "  %function = load i64, ptr %failure\n",
+        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
+        "  %start = load i32, ptr %start.at\n",
+        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
+        "  %end = load i32, ptr %end.at\n",
+        "  call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @chibi_report, i64 %function, i32 %start, i32 %end)\n",
+        "  ret i32 134\n",
+        "done:\n",
         "  ret i32 %status\n",
         "}\n"
     ]);
@@ -885,6 +903,18 @@ pub Native :: () -> int {
     }
     source := Join([root, "/", names[0]]);
     text := build.read_file(source);
+    // The other .chibi files below the folder, but its build output, are the
+    // packages the source imports.
+    packages: string[] = [];
+    package_texts: string[] = [];
+    package_state: string[] = [];
+    for (path in Sources(root)) {
+        if (path != names[0] && !strings.HasPrefix(path, "build/")) {
+            packages.append(path);
+            package_texts.append(build.read_file(Join([root, "/", path])));
+            package_state.append(Join([path, ":", build.hash_file(Join([root, "/", path]))]));
+        }
+    }
     emitter_key := EmitterKey(host, artifact, compiler, core);
     // Line tables name the source's directory, so a moved package rebuilds.
     directory := "";
@@ -894,7 +924,8 @@ pub Native :: () -> int {
     key := build.hash_text(strings.Join([
         "chibi-native 1", names[0], build.hash_text(text), emitter_key,
         build.hash_file(Join([build.root(), "/Driver.chibi"])), build.hash_file(opt), build.hash_file(llc),
-        build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root), linkage
+        build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root), linkage,
+        strings.Join(package_state, ",")
     ], "\n"));
     folder := Join([root, "/build/native"]);
     output := Join([folder, "/O", mode, "-", strings.Slice(key, 0, 16)]);
@@ -940,8 +971,16 @@ pub Native :: () -> int {
     module := Join([work, "/module.ll"]);
     request := Join(["[\"/project\",", Quote(names[0]), ",", Quote(text), ",", facts[0], ",", facts[2], ",",
                      facts[3], ",", facts[4], ",", facts[5], "]"]);
+    collector := "0xebbc43e46769862a";
+    if (length(packages) > 0) {
+        // CollectScalarPackages: the entry file first, then the packages.
+        request = Join(["[\"/project\",[],[],", Array(build.concat([names[0]], packages)), ",",
+                        Array(build.concat([text], package_texts)), ",", facts[0], ",", facts[2], ",", facts[3], ",",
+                        facts[4], ",", facts[5], "]"]);
+        collector = "0xe248351e192972a1";
+    }
     if (!build.write_file(collect, request) ||
-        Invoke(host, artifact, "0xebbc43e46769862a", collect, "", "120000") != 0 ||
+        Invoke(host, artifact, collector, collect, "", "120000") != 0 ||
         !build.write_file(rows, build.last_stdout())) {
         build.report(Join(["native: the compiler did not read ", source, ": ", build.last_stderr()]));
         return Finish(work, 1);

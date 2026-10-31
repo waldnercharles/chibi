@@ -1,57 +1,30 @@
 # Author a game with Chibi
 
 The game's `project.kdl` selects its `content` directory and starting scene.
-`chibi-compile` and `chibi_ctl` both read assets from that directory.
-Project format 10 uses `.chibi` executable source for behaviors, callable
-libraries, and systems. Scenes, prototypes, shaders, models, and other declarative
-assets use KDL. Studio, text editors, and AI agents edit these same asset files.
+Game projects are archived on `main` (e8bc71909): `chibi-compile` and
+`chibi run` refuse them while the compiler moves to Chibi. Project format 10
+uses `.chibi` executable source for behaviors, callable libraries, and systems.
+Scenes, prototypes, shaders, models, and other declarative assets use KDL.
+Studio, text editors, and AI agents edit these same asset files.
 The copied player deployment lives in the game's ignored `.chibi/runtime` directory.
-The compiler, Studio, and controller are separate authoring tools; they do not
-ship inside the game runtime.
+The compiler and Studio are separate authoring tools; they do not ship inside
+the game runtime.
 
 Each game lives in its own repository. Studio owns its starter and shell assets
 in `chibi-studio`; [examples](examples.md) lists the checked-in projects to learn
 from. Pass the project root to an installed authoring tool rather than mounting a
 game under the engine checkout.
 
-## Start a project
-
-Scaffold files with the controller instead of copying another project. `new_project`
-writes `project.kdl` and an empty `content/scenes/Start.kdl`; `new_asset` writes an
-empty asset of one kind in its content folder, the same form Studio's New menu
-starts from, and never overwrites a file. A taken name fails with `asset_conflict`,
-a bad name or path with `invalid_request`, and a disk that refuses the write with
-`io_error`:
-
-```sh
-printf '%s\n' '{"contract":1,"operation":"new_project","path":"tetris","name":"Tetris"}' | chibi_ctl
-printf '%s\n' '{"contract":1,"operation":"new_asset","kind":"behavior","name":"Board"}' | \
-  chibi_ctl --project-root tetris
-```
+## Project content
 
 [`test/fixtures/terrain-lab`](../test/fixtures/terrain-lab/README.md) is a small
-playable game made this way.
+playable game.
 
-Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
-`material`, `shape`, `field`, `shader-library` and `model`. Before running content,
-`validate_project` checks the manifest, its start scene, its application title
-and icon, and every asset. Markup in `content/ui` must be a regular file:
-`chibi_ctl` never follows a link, so a linked document is refused. The reply's
-`problems` list only the assets with errors or warnings, each diagnostic naming
-what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
-model and a shape share a name there is no catalog, so it lists no asset
-problems until one is renamed. Once nothing else is wrong, it prepares the
-project as `chibi-compile` does and lists what preparation refuses, such as
-resources that together pass the player's 4,096 records or 64 MiB, so a valid
-project compiles. It never changes files. A project saved at another version
-fails to open: this build opens only `CHIBI_PROJECT_VERSION`.
+Asset kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
+`material`, `shape`, `field`, `shader-library` and `model`.
 A prototype is the `name` it declares, whatever its file is called: scenes and
-other prototypes' `(array)includes` find it by that name in the player and in
-`chibi_ctl` alike, and two prototypes that declare one name, or a name over
-1024 bytes, are refused.
-`new_asset` names a new prototype's file after it. `--format` checks a
-prototype with includes but keeps its text as written instead of folding the
-included components in.
+other prototypes' `(array)includes` find it by that name, and two prototypes
+that declare one name, or a name over 1024 bytes, are refused.
 
 ## Tilemap layers
 
@@ -183,7 +156,6 @@ authorizes arithmetic optimizations.
 Prototypes, scenes, behaviors and systems then use `Charge` like an engine
 component. A name may not reuse an engine type. The compiler stores the
 declarations in the prepared artifact, so the player needs no source.
-`chibi_ctl` formats, validates, describes and runs them like engine components.
 
 ## Authored prototypes and relationships
 
@@ -509,73 +481,6 @@ components {
 }
 ```
 
-## Edit and verify
-
-1. Read the existing asset and its dependencies. Use the shared SDK's reflected
-   components, functions, and types to choose available capabilities.
-2. Edit the saved `.chibi` or KDL source. Keep game rules, scene composition,
-   visual choices, and tuning in the game project.
-3. Format the project and validate changed assets with the native controller.
-   Resolve loader/compiler diagnostics before running the content.
-4. Inspect saved content or run a bounded deterministic scenario. For visual
-   changes, use the hidden-window capture route in [agent execution](agent-execution.md).
-
-Use `chibi-compile` from a pinned installed SDK and `chibi-studio` from the
-corresponding Studio distribution. The native controller is a separate authoring
-tool; when it is supplied on `PATH`, formatting and inspection use `chibi_ctl`.
-It is not part of the deployed player package.
-
-From the game root:
-
-```sh
-chibi_ctl --project-root "$PWD" --format
-chibi_ctl --project-root "$PWD" --format --check
-chibi-compile --project-root "$PWD" --output game.chibip
-./.chibi/runtime/bin/chibi-player game.chibip --resource-root "$PWD"
-```
-
-Keep `game.chibip.resources.json` and all declared resources with the prepared
-artifact. Compilation resolves authored source and dependencies before deployment;
-the player loads the prepared artifact and its declared resource closure. The
-installed compiler and deployed player must satisfy the same format and native
-capability requirements. Package integrity and installed-consumer linking alone
-do not establish rendered player, Studio interaction or browser acceptance;
-validate each affected consumer and report the workload actually exercised.
-
-The controller accepts one plain JSON request per stdin line and produces one
-JSON response per line. Requests use `contract: 1`, an `operation`, and the
-operation's fields at the top level. For example, validate a saved behavior:
-
-```sh
-printf '%s\n' '{"contract":1,"operation":"validate_asset","path":"content/behaviors/Projectile.chibi"}' | \
-  chibi_ctl --project-root "$PWD"
-```
-
-Asset paths in requests and replies start with `content/`, which stands for the
-folder `project.kdl` selects: `content/behaviors/Projectile.chibi` is
-`behaviors/Projectile.chibi` there.
-
-Change the path to an asset in your project. A request failure returns a nonzero
-exit status. Inspect the response's diagnostics as well as its status. Retained
-operations include `read_asset`, `validate_asset`, `validate_project`,
-`new_project`, `new_asset`, `catalog`, `inspect_graph`,
-`inspect_system`, `inspect_ui`, `find_references`, `call_hierarchy`,
-`run_scenario`, and `runtime_snapshot`. The native contract definitions in
-`src/automation/controller.c` describe each operation's fields. The controller
-and shared SDK supply inspection, validation, and execution; asset changes are
-file edits. There is no MCP server or agent graph-mutation transport.
-
-A short deterministic scene run uses saved content:
-
-```sh
-printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"Main","frames":1}' | \
-  chibi_ctl --project-root "$PWD"
-```
-
-Inspect `behavior_failures` and the deterministic state evidence in the response.
-Choose affected-contract checks using the [testing instructions](testing.md).
-A short sample run does not establish full runtime or rendering coverage.
-
 ## Switch scenes
 
 Scripts start another scene with `load_scene(Scene: "Level2")`, restart the
@@ -666,9 +571,6 @@ step. It is inactive outside that image, when input is unfocused or captured by
 UI, and in hosts without a 3D pointer. Authored hit testing can intersect the
 ray with a plane or pass it to `raycast_3d`. Input recordings retain the ray;
 scenario keys can store `pointer { origin x=0 y=0 z=10; direction x=0 y=0 z=-1; }`.
-Controller `input_timeline` entries accept the same `pointer` object with
-`origin` and `direction` objects containing `x`, `y`, `z`. Omitting `pointer`
-holds the previous ray; setting it to JSON `null` clears it.
 
 ## GPU particle fields
 
@@ -857,8 +759,7 @@ retire an older combined runtime only after verifying its complete known file
 inventory. Modified or unmanaged directories are preserved. New launches use the
 new package; restart an existing game after delivery. Delivery leaves game source
 and Codex configuration unchanged. Inspect the local pin and copied manifest to
-identify the deployed runtime; the authoring controller's engine identity belongs
-to its own distribution.
+identify the deployed runtime.
 
 When the SDK cannot express a behavior, prepare a capability request containing
 the build ID, a minimal scene or scenario, expected and actual behavior, and

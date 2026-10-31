@@ -388,10 +388,6 @@ TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back)
     REQUIRE(build(launcher, "-O0", tools) == 1);
     snprintf(expected, sizeof expected, "%s/Main.chibi:a native program cannot call the runtime", game);
     REQUIRE(strstr(errors, expected));
-    /* So does an assert, which reports its failure through it. */
-    write_at(game, "Main.chibi", "package scalar\nMain :: () -> int {\n    assert(true);\n    return 1;\n}\n");
-    REQUIRE(build(launcher, "-O0", tools) == 1);
-    REQUIRE(strstr(errors, expected));
     char *after = tool_read(receipt);
     bool kept = after && !strcmp(before, after);
     free(after);
@@ -842,6 +838,175 @@ TEST_CASE(native_build_passes_a_byte_array_to_c)
     return true;
 }
 
+static const char *const ASSERT_SOURCE = "package scalar\n"
+                                         "Main :: () -> int {\n"
+                                         "    assert(true, \"fine\");\n"
+                                         "    assert(false, \"broken\");\n"
+                                         "    return 7;\n"
+                                         "}\n";
+
+/* A failed assert ends the program early: main reports where on stderr and
+ * exits with status 134, and a passing assert changes nothing. */
+TEST_CASE(native_build_reports_a_failed_assert)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", NULL };
+    for (int failing = 0; failing < 2; failing++) {
+        reset(failing ? "assert-fails" : "assert-holds", ASSERT_SOURCE);
+        if (!failing) {
+            write_at(game, "Main.chibi", "package scalar\nMain :: () -> int {\n    assert(true, \"fine\");\n    return 7;\n}\n");
+        }
+        real_tools(bin);
+        REQUIRE(build_with(in_place, options, tools) == 0);
+        char program[1024], report[512] = "";
+        REQUIRE(printed(program));
+        const char *argv[] = { program, NULL };
+        const char *envp[] = { NULL };
+        chibi_process_output out = { 0 },
+                             err = { .data = report, .capacity = sizeof report };
+        chibi_process_capture_result ran = chibi_process_capture(
+            program,
+            argv,
+            game,
+            envp,
+            chibi_process_now() + 10,
+            NULL,
+            &out,
+            &err
+        );
+        REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == (failing ? 134 : 7));
+        REQUIRE(!failing || strstr(report, "assertion failed in function"));
+    }
+    return true;
+}
+
+/* A sample's test source as a native program takes it: the @test mark goes,
+ * and Calls returns 0, since an authored native function has a result. */
+static char *as_program(const char *source)
+{
+    size_t size = strlen(source);
+    char *kept = xmalloc(size + 1);
+    size_t at = 0;
+    for (const char *line = source; *line;) {
+        const char *end = strchr(line, '\n');
+        size_t length = end ? (size_t)(end - line) + 1 : strlen(line);
+        bool mark = length >= 5 && !strncmp(line, "@test", 5) &&
+                    (length == 5 || line[5] == '\n');
+        if (!mark) {
+            memcpy(kept + at, line, length);
+            at += length;
+        }
+        line += length;
+    }
+    kept[at] = 0;
+    const char *head = strstr(kept, "Calls :: () {");
+    char *last = strrchr(kept, '}');
+    if (!head || !last) {
+        return kept;
+    }
+    char *program = xmalloc(size + 64);
+    snprintf(
+        program,
+        size + 64,
+        "%.*sCalls :: () -> int {%.*s    return 0;\n}\n",
+        (int)(head - kept),
+        kept,
+        (int)(last - (head + strlen("Calls :: () {"))),
+        head + strlen("Calls :: () {")
+    );
+    free(kept);
+    return program;
+}
+
+/* Copies a sample's package folders into a project, each source as a program. */
+static bool copy_sample(const char *from, const char *to)
+{
+    DIR *directory = opendir(from);
+    REQUIRE(directory);
+    struct dirent *entry;
+    while ((entry = readdir(directory))) {
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+        char source[1100], target[1100];
+        path(source, from, entry->d_name);
+        path(target, to, entry->d_name);
+        struct stat info;
+        REQUIRE(!stat(source, &info));
+        if (S_ISDIR(info.st_mode)) {
+            REQUIRE(!mkdir(target, 0700) && copy_sample(source, target));
+            continue;
+        }
+        char *text = tool_read(source);
+        REQUIRE(text);
+        char *program = as_program(text);
+        write_at(to, entry->d_name, program);
+        free(program);
+        free(text);
+    }
+    closedir(directory);
+    return true;
+}
+
+/* The foreign samples, which the VM skips as native only, run natively: each
+ * becomes a project whose Main calls the sample's Calls, builds with
+ * `chibi build --native` and runs, and its asserts hold when the program exits
+ * 0. libc is the foreign library. */
+TEST_CASE(native_build_runs_the_foreign_samples)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    static const char *const SAMPLES[] = { "foreign_declared", "foreign_library" };
+    char in_place[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", NULL };
+    for (size_t i = 0; i < sizeof SAMPLES / sizeof *SAMPLES; i++) {
+        char from[1100], target[1100], facts[1100], main_text[512];
+        snprintf(from, sizeof from, "%s/test/compiler/samples/native/%s", CHIBI_SOURCE_ROOT, SAMPLES[i]);
+        reset(SAMPLES[i], "package main\n");
+        path(target, game, SAMPLES[i]);
+        REQUIRE(!mkdir(target, 0700) && copy_sample(from, target));
+        path(facts, target, "facts");
+        write_at(facts, "Native.chibi", "package facts\npub Native :: () -> int {\n    return Calls();\n}\n");
+        snprintf(
+            main_text,
+            sizeof main_text,
+            "package main\nimport facts \"project:%s/facts\"\nMain :: () -> "
+            "int {\n    return facts.Native();\n}\n",
+            SAMPLES[i]
+        );
+        write_at(game, "Main.chibi", main_text);
+        real_tools(bin);
+        REQUIRE(build_with(in_place, options, tools) == 0);
+        char program[1024];
+        REQUIRE(printed(program));
+        const char *argv[] = { program, NULL };
+        const char *envp[] = { NULL };
+        chibi_process_output out = { 0 }, err = { 0 };
+        chibi_process_capture_result ran = chibi_process_capture(
+            program,
+            argv,
+            game,
+            envp,
+            chibi_process_now() + 10,
+            NULL,
+            &out,
+            &err
+        );
+        REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 0);
+    }
+    return true;
+}
+
 /* The other targets' bundle directories and program names, in the
  * driver's target order after Linux. */
 static const struct
@@ -1061,6 +1226,8 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_links_a_vendored_archive);
     RUN_TEST_CASE(native_build_calls_through_a_function_pointer);
     RUN_TEST_CASE(native_build_passes_a_byte_array_to_c);
+    RUN_TEST_CASE(native_build_reports_a_failed_assert);
+    RUN_TEST_CASE(native_build_runs_the_foreign_samples);
     RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
     free(stage_tool);
     tool_remove_tree(suite);

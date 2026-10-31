@@ -180,7 +180,6 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
   - `make test`
   - `CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 make test-render`
   - `chibi build format --check`
-  - `build/chibi_ctl --project-root <root> --format` after hand-editing assets
   - `make web`, then check it in the browser
 - Serve the extracted Studio product with `make web-serve STUDIO_SOURCE=<studio repository> WEB_PORT=<port>` and stop that server process explicitly.
 - In the hidden browser pane:

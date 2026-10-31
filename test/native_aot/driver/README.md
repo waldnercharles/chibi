@@ -146,7 +146,7 @@ The other targets need no SDK of their own system:
   with libSystem's `calloc`. The program links against `libSystem.tbd`, a text
   stub that names `/usr/lib/libSystem.B.dylib`, as Zig's stubs stand in for the
   SDK. It exports the functions the module declares, which its foreign calls
-  name, with `abort`, `calloc`, the copies `llc` may call and
+  name, with `abort`, `calloc`, `dprintf`, the copies `llc` may call and
   `dyld_stub_binder`, and dyld binds them in libSystem, which re-exports the C
   library. The SDK's own stub is not used: newer SDKs name architectures that
   older lld rejects. Every macOS process loads `libSystem`, and lld signs

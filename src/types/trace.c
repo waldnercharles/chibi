@@ -68,7 +68,8 @@ void pin_value_trace(const pin_value *value, arena_marker mark, void *user)
     }
 }
 /* Packed arrays hold only scalars and pointers; records with text or arrays
- * are boxed, so the compiler's record arrays are traced item by item. Marking
+ * are boxed, so the compiler's arrays of such records are traced item by
+ * item, and its plain record arrays, which stay packed, not at all. Marking
  * the items' shared header once per run measured no gain on its self-compile
  * (2026-10-30), so each item is traced as it would be alone. */
 void pin_array_trace_items(const pin_array *array, arena_marker mark, void *user)

@@ -177,10 +177,10 @@ import them only when their actual changes are needed and eligible.
 
 ## Verification
 
-Follow the [testing instructions](testing.md) and report build/configure time
-separately. Use the owning C/pico_unit dispatchers:
-`test/language/package_core.c`, `package_imports.c`, `packages.c` and
-`package_compiler_chibi.c`, plus runtime tests where representation changes.
+Follow the [testing instructions](testing.md) and report build time
+separately. Write a package's tests as `@test` functions beside it and run them
+with `chibi test` (`chibi build test chibi-test-core` for `packages/core`).
+`test/language/package_compiler_chibi.c` keeps the native and scalar lanes.
 
 For each selected package or prerequisite:
 
@@ -221,13 +221,9 @@ The final current-source checks passed under the production test supervisor:
 | Argument sharing | 11 | 2.962 s |
 | Current-source compiler bootstrap and sample parity | 9,759 | 21.656 s |
 
-Run from the worktree root:
-
-```sh
-chibi build test language-package-compiler-chibi-imports
-chibi build test language-package-compiler-chibi-imports-compiled
-CHIBI_LANGUAGE_BUILD_DIR=build-release/test/language chibi build test language-package-compiler-chibi-sharing
-```
+Those selectors (`--package-compiler-chibi-imports`, its `-compiled` twin and
+`-sharing`) compared the authored compiler with stage zero and were deleted
+with it; `archive/README.md` lists them.
 
 Independent review found no remaining actionable issues. C formatting and
 `git diff --check` passed. These results apply to the local changes on the

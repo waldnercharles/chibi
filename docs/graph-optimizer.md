@@ -96,14 +96,9 @@ The separate output-promotion regression also exposed reversed Get/Set wiring.
 Explicit output promotion now connects the output to a Set Variable input; the
 automatic optimizer does not use this API.
 
-Useful checks:
-
-```text
-chibi build
-make test
-build/test_suite --graph-optimize
-build/test_suite --ui-optimizer
-```
+The optimizer (`archive/src/graph/authoring/optimize*`) and its
+`--graph-optimize` and `--ui-optimizer` checks are archived; nothing builds or
+runs them.
 
 The Set Variable and explicit Self follow-up passed a native Release build, 230
 focused optimizer and binding checks, rendered editor interaction, and MCP checks.

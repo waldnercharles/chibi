@@ -2900,6 +2900,13 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
 pub ParseSyntax :: (text: string) -> parser.Tree {
     return raw.Parse(text);
 }
+// The grammar's names for ParseSyntax's integer kinds and fields.
+pub SyntaxKindName :: (kind: int) -> string {
+    return parser.KindName(kind);
+}
+pub SyntaxFieldNames :: () -> string[] {
+    return syntax.FieldNames();
+}
 // The facts rows of the project packages `paths` hold, as CollectScalar gives
 // one source's: the first function of the first file is the entry, the other
 // files are packages it imports, and a call may name an import's function. The

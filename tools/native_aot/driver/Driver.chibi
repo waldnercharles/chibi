@@ -1155,6 +1155,117 @@ pub Native :: () -> int {
     return Finish(work, status);
 }
 
+// The path a `chibi build --native` printed, as "native: PATH", with any
+// "is up to date" after it, or "".
+Printed :: (report: string) -> string {
+    for (line in strings.SplitLines(report)) {
+        if (strings.HasPrefix(line, "native: /")) {
+            path := strings.Slice(line, 8, strings.ByteLength(line) - 8);
+            marker := " is up to date";
+            if (strings.HasSuffix(path, marker)) {
+                path = strings.Slice(path, 0, strings.ByteLength(path) - strings.ByteLength(marker));
+            }
+            return path;
+        }
+    }
+    return "";
+}
+
+// `chibi build --native` of `folder` with `flags` through the launcher, the
+// path it built or "" after reporting why not.
+BuiltBy :: (chibi: string, flags: string[], mode: string, target: string, llvm: string, folder: string) -> string {
+    command := [chibi, "build", "--native", Join(["-O", mode]), "--target", target, "--llvm", llvm];
+    command.extend(flags);
+    command.append(folder);
+    if (build.probe(command) != 0) {
+        build.report(build.last_stderr());
+        return "";
+    }
+    return Printed(build.last_stderr());
+}
+
+// `chibi run --native`: the loop host (Host.chibi) runs generation after
+// generation of the library source in ROOT, which it never restarts. The host
+// is built from HOST_SOURCE, started in WORK with the first generation as
+// live-0.so, and its exit status is the result. With `watch`, each saved
+// change to the source is built as the next generation and published to the
+// host as next.so, which swaps it in between two Frames, keeping the
+// retained states the generations share. A change that does not build is
+// reported and the running generation continues. The arguments are the
+// launcher, HOST_SOURCE, ROOT, the LLVM folder, 0|2, the target, WORK and
+// watch|once, all absolute paths.
+pub Watch :: () -> int {
+    arguments := build.arguments();
+    if (length(arguments) != 8) {
+        build.report("usage: CHIBI HOST_SOURCE ROOT LLVM 0|2 TARGET WORK watch|once (absolute paths)");
+        return 2;
+    }
+    chibi := arguments[0];
+    root := arguments[2];
+    work := arguments[6];
+    watching := arguments[7] == "watch";
+    source := "";
+    for (name in build.list_directory(root)) {
+        if (strings.HasSuffix(name, ".chibi") && build.file_kind(Join([root, "/", name])) == "file") {
+            if (source != "") {
+                build.report(Join(["native: ", root, " must hold exactly one .chibi source"]));
+                return 2;
+            }
+            source = Join([root, "/", name]);
+        }
+    }
+    if (source == "" || !Path(chibi) || !Path(arguments[1]) || !Path(work) || (arguments[7] != "watch" && arguments[7] != "once")) {
+        build.report("native: a launcher, a host source, a folder holding one library source, a work folder, and watch or once are required");
+        return 2;
+    }
+    host_folder := Join([work, "/host"]);
+    if (!build.make_directory(Join([root, "/build"])) || !build.make_directory(Join([root, "/build/native"])) ||
+        !build.make_directory(work) || !build.make_directory(host_folder)) {
+        build.report(Join(["native: cannot make ", work]));
+        return 1;
+    }
+    for (stale in ["live-0.so", "live-1.so", "next.so", "pending.so", "rejected.so", "host/Main.chibi"]) {
+        build.remove(Join([work, "/", stale]));
+    }
+    if (!build.copy_file(arguments[1], Join([host_folder, "/Main.chibi"]))) {
+        build.report("native: cannot copy the host source");
+        return 1;
+    }
+    program := BuiltBy(chibi, [], arguments[4], arguments[5], arguments[3], host_folder);
+    generation := BuiltBy(chibi, ["--shared"], arguments[4], arguments[5], arguments[3], root);
+    if (program == "" || generation == "" || !build.copy_file(generation, Join([work, "/live-0.so"]))) {
+        return 1;
+    }
+    process := build.spawn(["/bin/sh", "-c", Join(["cd '", work, "' && exec '", program, "'"])]);
+    stamp := build.file_stamp(source);
+    while (true) {
+        status := build.wait_for(process, 250);
+        if (status != 65536) {
+            return status;
+        }
+        changed := build.file_stamp(source);
+        if (!watching || changed == stamp) {
+            continue;
+        }
+        stamp = changed;
+        built := BuiltBy(chibi, ["--shared"], arguments[4], arguments[5], arguments[3], root);
+        if (built == "") {
+            continue;
+        }
+        pending := Join([work, "/pending.so"]);
+        build.remove(pending);
+        if (!build.copy_file(built, pending)) {
+            build.report("native: cannot stage the new generation");
+            continue;
+        }
+        // The host takes one generation at a time.
+        while (build.file_kind(Join([work, "/next.so"])) != "" && build.wait_for(process, 50) == 65536) {
+        }
+        build.rename(pending, Join([work, "/next.so"]));
+    }
+    return 0;
+}
+
 // Whether `value` is a byte of an identifier, as the grammar spells one.
 Word :: (value: int) -> bool {
     return value == 95 || (value >= 48 && value <= 57) || (value >= 65 && value <= 90) || (value >= 97 && value <= 122);

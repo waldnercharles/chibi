@@ -108,6 +108,9 @@ static void backing_attach(pin_array *array, pin_array_backing *backing)
     array->backing = backing;
     arena_replace_cleanup(array->storage, array, backing_release, backing, backing_bytes(backing));
 }
+/* The collector traces and frees the payload, so it mirrors the header after
+ * every change. The arena counts the payload's bytes and is told only when
+ * they change; the shell's cleanup already names this backing. */
 void pin_array_mutation_end(pin_array *array)
 {
     if (!array || !array->backing) {
@@ -115,10 +118,13 @@ void pin_array_mutation_end(pin_array *array)
     }
     pin_array_backing *backing = array->backing;
     assert(atomic_load_explicit(&backing->refs, memory_order_relaxed) == 1);
+    size_t retained = backing_bytes(backing);
     backing->payload = *array;
     backing->payload.backing = NULL;
-    atomic_fetch_add_explicit(&backing->refs, 1, memory_order_relaxed);
-    backing_attach(array, backing);
+    if (backing_bytes(backing) != retained) {
+        atomic_fetch_add_explicit(&backing->refs, 1, memory_order_relaxed);
+        backing_attach(array, backing);
+    }
 }
 /* Releases the collections boxed items own. A record array's items share one
  * layout, so a layout without references is found once per run of items

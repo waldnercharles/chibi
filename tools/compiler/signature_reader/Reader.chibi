@@ -11,7 +11,7 @@ import strings "core:strings"
 // Complete raw tree, including anonymous children and extras. Fields describe
 // incoming edges. Node indices and byte ranges retain parser invariants.
 pub Tree :: union {
-    Raw(nodes: syntax.Node[], fields: string[], is_named: bool[], is_extra: bool[], text: string)
+    Raw(nodes: syntax.Node[], fields: int[], is_named: bool[], is_extra: bool[], text: string)
 }
 // The constructor definitions and named merged entries share catalog row order.
 // Each publication appends one row to both views; original raw slots stay stable.
@@ -38,7 +38,7 @@ pub Empty :: (environment: Environment, value: named.Value) -> Reading {
     publications: constructors.Plan[] = [];
     return Reading.Read(value, false, "", environment, diagnostics, uses, publications, 0);
 }
-pub Field :: (tree: Tree, node: int, name: string) -> int {
+pub Field :: (tree: Tree, node: int, field: int) -> int {
     if (node < 0) {
         return -1;
     }
@@ -46,7 +46,7 @@ pub Field :: (tree: Tree, node: int, name: string) -> int {
         case .Raw(nodes, fields, named_flags, extra_flags, text):
             child := nodes[node].first_child;
             while (child >= 0) {
-                if (fields[child] == name) {
+                if (fields[child] == field) {
                     return child;
                 }
                 child = nodes[child].next_sibling;
@@ -54,13 +54,13 @@ pub Field :: (tree: Tree, node: int, name: string) -> int {
             return -1;
     }
 }
-pub Kind :: (tree: Tree, node: int, name: string) -> bool {
+pub Kind :: (tree: Tree, node: int, kind: int) -> bool {
     if (node < 0) {
         return false;
     }
     switch tree {
         case .Raw(nodes, fields, named_flags, extra_flags, text):
-            return nodes[node].kind == name;
+            return nodes[node].kind == kind;
     }
 }
 pub Text :: (tree: Tree, node: int) -> string {
@@ -438,12 +438,12 @@ FinishTask :: (reading: Reading, tree: Tree, node: int, document: int) -> Readin
 TaskResult :: (tree: Tree, application: int) -> int {
     switch tree {
         case .Raw(nodes, fields, named_flags, extra_flags, source):
-            if (Text(tree, Field(tree, application, "function")) != "task") {
+            if (Text(tree, Field(tree, application, syntax.FieldFunction)) != "task") {
                 return -1;
             }
             result: int = -1;
             count: int = 0;
-            child := nodes[Field(tree, application, "arguments")].first_child;
+            child := nodes[Field(tree, application, syntax.FieldArguments)].first_child;
             while (child >= 0) {
                 if (named_flags[child] && !extra_flags[child]) {
                     result = child;
@@ -451,7 +451,7 @@ TaskResult :: (tree: Tree, application: int) -> int {
                 }
                 child = nodes[child].next_sibling;
             }
-            if (count != 1 || Kind(tree, result, "named_argument") || Kind(tree, result, "typed_argument")) {
+            if (count != 1 || Kind(tree, result, syntax.NamedArgument) || Kind(tree, result, syntax.TypedArgument)) {
                 return -1;
             }
             return result;
@@ -548,7 +548,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                                 member_collections.append(collection);
                         }
                         frames.append(WorkValue(work.node, 7, -1, work.member_start));
-                        position = Field(tree, work.node, "value");
+                        position = Field(tree, work.node, syntax.FieldValue);
                         ready = false;
                         continue;
                     }
@@ -594,11 +594,11 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                 }
                 switch reading {
                     case .Read(old_value, has_unit, unit, live, diagnostics, uses, publications, collection):
-                        if (Kind(tree, position, "type")) {
+                        if (Kind(tree, position, syntax.Type)) {
                             union_child: int = -1;
                             child := nodes[position].first_child;
                             while (child >= 0 && union_child < 0) {
-                                if (named_flags[child] && Kind(tree, child, "union_type")) {
+                                if (named_flags[child] && Kind(tree, child, syntax.UnionType)) {
                                     union_child = child;
                                 }
                                 child = nodes[child].next_sibling;
@@ -610,7 +610,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                             application: int = -1;
                             child = nodes[position].first_child;
                             while (child >= 0) {
-                                if (named_flags[child] && Kind(tree, child, "type_application")) {
+                                if (named_flags[child] && Kind(tree, child, syntax.TypeApplication)) {
                                     application = child;
                                 }
                                 child = nodes[child].next_sibling;
@@ -631,25 +631,25 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                             wrapper: int = -1;
                             child = nodes[position].first_child;
                             while (child >= 0 && wrapper < 0) {
-                                if (named_flags[child] && (Kind(tree, child, "pointer_type") || Kind(tree, child, "parenthesized_type") || Kind(tree, child, "map_type"))) {
+                                if (named_flags[child] && (Kind(tree, child, syntax.PointerType) || Kind(tree, child, syntax.ParenthesizedType) || Kind(tree, child, syntax.MapType))) {
                                     wrapper = child;
                                 }
                                 child = nodes[child].next_sibling;
                             }
                             if (wrapper >= 0) {
-                                if (Kind(tree, wrapper, "pointer_type")) {
+                                if (Kind(tree, wrapper, syntax.PointerType)) {
                                     frames.append(WorkValue(position, 4, -1, 0));
-                                    position = Field(tree, wrapper, "target");
-                                } else if (Kind(tree, wrapper, "map_type")) {
+                                    position = Field(tree, wrapper, syntax.FieldTarget);
+                                } else if (Kind(tree, wrapper, syntax.MapType)) {
                                     frames.append(WorkValue(position, 5, -1, 0));
                                     position = wrapper;
                                 } else {
                                     frames.append(WorkValue(position, 5, -1, 0));
-                                    position = Field(tree, wrapper, "type");
+                                    position = Field(tree, wrapper, syntax.FieldType);
                                 }
                                 continue;
                             }
-                            name_node := Field(tree, position, "name");
+                            name_node := Field(tree, position, syntax.FieldName);
                             switch Name(tree, name_node, document) {
                                 case .Name(name, prefix):
                                     // The name's own diagnostics come before its resolution's.
@@ -668,12 +668,12 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                                     continue;
                             }
                         }
-                        if (Kind(tree, position, "map_type")) {
+                        if (Kind(tree, position, syntax.MapType)) {
                             frames.append(WorkValue(position, 6, -1, length(members)));
-                            position = Field(tree, position, "key");
+                            position = Field(tree, position, syntax.FieldKey);
                             continue;
                         }
-                        if (Kind(tree, position, "union_type")) {
+                        if (Kind(tree, position, syntax.UnionType)) {
                             first := NextMember(tree, nodes[position].first_child);
                             if (first < 0) {
                                 empty_members: named.Value[] = [];
@@ -722,7 +722,7 @@ ReadUnit :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                 while (child >= 0) {
                     if (!extra_flags[child]) {
                         part := Text(tree, child);
-                        if (Kind(tree, child, "identifier")) {
+                        if (Kind(tree, child, syntax.Identifier)) {
                             type_name := !named.Bad(named.Builtin(part));
                             if (!type_name) {
                                 switch environment {
@@ -774,8 +774,8 @@ MeasuredValue :: (environment: Environment, tree: Tree, base: int, scope: int, d
         case .Raw(nodes, fields, named_flags, extra_flags, source):
             child := nodes[base].first_child;
             while (child >= 0) {
-                if (Kind(tree, child, "pointer_type")) {
-                    switch Type(environment, tree, Field(tree, child, "target"), scope, document) {
+                if (Kind(tree, child, syntax.PointerType)) {
+                    switch Type(environment, tree, Field(tree, child, syntax.FieldTarget), scope, document) {
                         case .Read(target, has_unit, unit, updated, diagnostics, uses, publications, collection):
                             return target;
                     }
@@ -786,23 +786,23 @@ MeasuredValue :: (environment: Environment, tree: Tree, base: int, scope: int, d
     return value;
 }
 pub Signature :: (environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
-    if (Kind(tree, node, "unit")) {
+    if (Kind(tree, node, syntax.Unit)) {
         return WithUnit(Empty(environment, named.Builtin("number")), tree, node, scope, document);
     }
-    if (Kind(tree, node, "measured_type")) {
-        reading := Type(environment, tree, Field(tree, node, "base"), scope, document);
-        reading = WithUnit(reading, tree, Field(tree, node, "unit"), scope, document);
+    if (Kind(tree, node, syntax.MeasuredType)) {
+        reading := Type(environment, tree, Field(tree, node, syntax.FieldBase), scope, document);
+        reading = WithUnit(reading, tree, Field(tree, node, syntax.FieldUnit), scope, document);
         switch reading {
             case .Read(value, has_unit, unit, updated, diagnostics, uses, publications, collection):
                 all_diagnostics := diagnostics;
-                if (!Numeric(MeasuredValue(environment, tree, Field(tree, node, "base"), scope, document, value))) {
+                if (!Numeric(MeasuredValue(environment, tree, Field(tree, node, syntax.FieldBase), scope, document, value))) {
                     all_diagnostics.append(Diagnostic(tree, node, document, "A measured signature requires a numeric storage type"));
                 }
                 return Reading.Read(value, has_unit, unit, updated, all_diagnostics, uses, publications, collection);
         }
     }
-    if (Kind(tree, node, "type")) {
-        switch Name(tree, Field(tree, node, "name"), document) {
+    if (Kind(tree, node, syntax.Type)) {
+        switch Name(tree, Field(tree, node, syntax.FieldName), document) {
             case .Name(name, prefix):
                 named_type := false;
                 found: int = -1;

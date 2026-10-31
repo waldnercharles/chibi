@@ -1135,7 +1135,7 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
 PackageFiles :: (folder: string) -> string[] {
     files: string[] = [];
     for (name in build.list_directory(folder)) {
-        if (strings.HasSuffix(name, ".chibi") && build.file_kind(Join([folder, "/", name])) == "file") {
+        if (strings.HasSuffix(name, ".chibi") && !strings.HasSuffix(name, "Tests.chibi") && build.file_kind(Join([folder, "/", name])) == "file") {
             files.append(name);
         }
     }

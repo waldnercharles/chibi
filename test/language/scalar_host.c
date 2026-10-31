@@ -1,5 +1,6 @@
 #include "scalar_host.h"
 
+#include "compiler_cache.h"
 #include "execution/status.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
@@ -137,7 +138,8 @@ bool scalar_host_open()
     const compiler_bootstrap options = {
         .folder = CHIBI_SOURCE_ROOT "/tools/compiler/bootstrap",
         .compiler = CHIBI_SOURCE_ROOT "/tools/compiler",
-        .core = CHIBI_SOURCE_ROOT "/packages/core"
+        .core = CHIBI_SOURCE_ROOT "/packages/core",
+        .cache = test_compiler_cache()
     };
     producer = compiler_bootstrap_load(&options, error, sizeof error);
     if (!producer) {

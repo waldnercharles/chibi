@@ -1,7 +1,6 @@
 #ifndef CHIBI_AUTHORING_PACKAGE_TESTS_H
 #define CHIBI_AUTHORING_PACKAGE_TESTS_H
 
-#include "authoring/source_package_prepare.h"
 #include "runtime/behaviors/package.h"
 #include "runtime/native_definitions.h"
 
@@ -51,12 +50,6 @@ typedef struct
     package_test_failure failure;
 } package_test_result;
 
-/* The tests of the valid project: packages, ordered by file and position;
- * collection packages such as core: contribute none. An array to afree(). */
-package_test *package_tests_find(const authoring_packages *);
-/* Explicit collection tests, ordered by file and position. collection is a
- * collection name such as "core", without a colon. An array to afree(). */
-package_test *package_tests_find_collection(const authoring_packages *, const char *collection);
 /* The tests of the packages of the project: collection compiled by the authored
  * compiler, ordered by package, file and position. A package exports each test
  * as "@test NAME". An array to afree(). */

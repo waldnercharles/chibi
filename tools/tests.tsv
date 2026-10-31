@@ -22,11 +22,11 @@ tool	chibi-cli	@build@/test/tools/test_tools	--chibi-cli	@release@/sdk/chibi
 tool	native-build	@build@/test/tools/test_tools	--native-build	@release@/sdk/chibi
 tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
 tool	chibi-cli-installed	@build@/test/tools/test_tools	--chibi-cli-installed	dist/sdk/bin/chibi
-tool	native-aot-driver	@build@/test/tools/test_tools	--native-aot-driver	tools/native_aot/Driver.chibi
+tool	native-aot-driver	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/native_aot/driver/DriverTests.chibi	--core	packages/core	--collection	native_aot=tools/native_aot/driver	--entry	Run	--timeout-ms	600000	--	@host@
 tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/tools/policy_worker	@host@
 tool	build-timings	@build@/test/tools/test_tools	--build-timings	@build@/test/tools/policy_worker	@host@
 tool	build-process-files	@build@/test/tools/test_tools	--build-process-files	@build@/test/tools/policy_worker	@host@
-tool	compiler-bootstrap	@build@/test/tools/test_tools	--compiler-bootstrap	@build@/test/language/test_language	@build@/sdk/chibi-compiler-host
+tool	compiler-bootstrap	@build@/test/tools/test_tools	--compiler-bootstrap	@build@/sdk/chibi-compiler-host
 tool	bootstrap-recovery	@build@/test/tools/test_tools	--bootstrap-recovery	@release@/sdk/chibi-compiler-host	tools/compiler/bootstrap
 tool	graph-engine	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/EngineTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000
 tool	graph-driver	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/DriverTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	600000	--	@host@
@@ -43,10 +43,7 @@ tool	whole-math	@build@/test/tools/test_tools	--whole-math
 tool	native-values	@build@/test/tools/test_tools	--native-values
 tool	text-format	@build@/test/language/test_language	--text-format
 tool	box3d	@build@/test/tools/test_tools	--box3d
-tool	runtime-scene	@build@/test/tools/test_tools	--scene
 tool	asset-values	@build@/test/tools/test_tools	--asset-values
-tool	ui-document	@build@/test/tools/test_tools	--ui-document
-tool	text-files	@build@/test/tools/test_tools	--text-files
 tool	fmt	@build@/test/tools/test_tools	--fmt
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
 tool	scheduler-benchmark	@build@/test/tools/test_tools	--scheduler-benchmark
@@ -98,7 +95,7 @@ timeout	chibi-cli	900
 timeout	graph-sdk-install	1200
 exclusive	language-test-parallel
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math
-group	native	native-values	graph-c	box3d	runtime-scene	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	arena
+group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	fmt	arena
 group	projects	chibi-cli	native-build
 group	language	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
 group	compiler	language-package-compiler-chibi-scalar

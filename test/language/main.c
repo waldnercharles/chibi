@@ -150,12 +150,7 @@ int main(int argc, char **argv)
             ""
             "--record-values | "
             "--record-document | "
-            "--record-compatibility | "
-            ""
-            ""
-            "--compiler-artifact-write "
-            "directory  "
-            "directory\n",
+            "--record-compatibility\n",
             argv[0]
         );
         return 2;

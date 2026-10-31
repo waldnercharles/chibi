@@ -1,4 +1,5 @@
 #include "authoring/program_service.h"
+#include "compiler_cache.h"
 #include "execution/service.h"
 #include "execution/status.h"
 #include "host/clock_package.h"
@@ -70,10 +71,10 @@ static const char NOW_APP[] =
     "if (error.code != code) { return 6; } return 0; } return 4; }\n"
     "Reading :: (nanoseconds: i64, domain: u64, kind: int, code: int) -> int { "
     "r := watch.Now(); "
-    "if (kind != 0) { if (r.instant.nanoseconds != 0 || r.instant.domain != 0) "
-    "{ return 7; } "
+    "if (r.error) { if (kind == 0) { return 1; } "
+    "if (r.instant.nanoseconds != 0 || r.instant.domain != 0) { return 7; } "
     "return Failure(r.error, kind, code); } "
-    "if (r.error) { return 1; } "
+    "if (kind != 0) { return 8; } "
     "if (r.instant.nanoseconds != nanoseconds) { return 2; } "
     "if (r.instant.domain != domain) { return 3; } return 0; }\n"
     "Elapsed :: (expected: i64) -> int { "
@@ -85,8 +86,9 @@ static const char NOW_APP[] =
     "x: time.Instant = {nanoseconds: 5, domain: 1}; "
     "y: time.Instant = {nanoseconds: 9, domain: 2}; "
     "d := watch.Between(x, y); "
-    "if (time.Nanoseconds(d.duration) != 0) { return 7; } "
-    "return Failure(d.error, 4, 0); }\n";
+    "if (d.error) { if (time.Nanoseconds(d.duration) != 0) { return 7; } "
+    "return Failure(d.error, 4, 0); } "
+    "return 8; }\n";
 static const char MIXED_APP
     [] = "package app\nimport watch \"host:clock\"\nimport time \"core:time\"\n"
          "Private :: (expected: i64, domain: u64) -> int { s := watch.Read(); "
@@ -194,6 +196,7 @@ static bool load_compiler()
         .folder = CHIBI_HOST_PACKAGES_COMPILER_ROOT "/bootstrap",
         .compiler = CHIBI_HOST_PACKAGES_COMPILER_ROOT,
         .core = CHIBI_HOST_PACKAGES_CORE_ROOT,
+        .cache = test_compiler_cache(),
     };
     compiler = compiler_bootstrap_load(&options, error, sizeof error);
     if (!compiler) {
@@ -320,7 +323,35 @@ static bool compile_package(const char *app, const char *clock, const native_cap
     );
     free(input);
     if (!called || !closure.length) {
-        fprintf(stderr, "host packages compiler closure: %s\n", closure.diagnostic);
+        fprintf(
+            stderr,
+            "host packages compiler closure: called=%d status=%d length=%zu %s "
+            "(%s:%d:%d)\n",
+            called,
+            closure.flow_status,
+            closure.length,
+            closure.diagnostic,
+            closure.source.asset,
+            closure.source.line,
+            closure.source.column
+        );
+    }
+    if (called && !closure.length) {
+        /* The closure entry gives empty bytes for a rejection; the plain compile gives its diagnostic. */
+        input = compile_input(app, clock, "/host/clock/Clock.chibi", target, &length);
+        compiler_host_result why = { 0 };
+        if (compiler_host_invoke(
+                compiler,
+                compiler_host_entry("project:package_compiler:1:CompileWithEffects:callable"),
+                input,
+                length,
+                COMPILE_BUDGET,
+                &why
+            )) {
+            fprintf(stderr, "compile gave: %.*s\n", (int)(why.length > 1500 ? 1500 : why.length), why.json);
+        }
+        free(why.json);
+        free(input);
     }
     REQUIRE(called && closure.flow_status == FLOW_OK && closure.length);
     REQUIRE(closure.counts.sljit_entries && !closure.counts.bytecode_entries);
@@ -380,7 +411,8 @@ static bool call(const char *name, const pin_value *arguments, int count, host_c
             function = item;
         }
     }
-    REQUIRE(function.body && (function.effects & SCRIPT_EFFECT_HOST));
+    /* A call that reads the clock has the host effect; a pure one (a Between mismatch) has none. */
+    REQUIRE(function.body && (!grant || (function.effects & SCRIPT_EFFECT_HOST)));
     if (grant) {
         apush(services, ((service_binding){ HOST_CLOCK_SERVICE, grant }));
     }
@@ -652,6 +684,7 @@ TEST_CASE(host_packages_catalog_handle_types_reach_package_signatures)
         .folder = CHIBI_HOST_PACKAGES_COMPILER_ROOT "/bootstrap",
         .compiler = CHIBI_HOST_PACKAGES_COMPILER_ROOT,
         .core = CHIBI_HOST_PACKAGES_CORE_ROOT,
+        .cache = test_compiler_cache(),
     };
     compiler = compiler_bootstrap_load(&options, error, sizeof error);
     REQUIRE(compiler);
@@ -665,20 +698,21 @@ TEST_CASE(host_packages_catalog_handle_types_reach_package_signatures)
         !*message
     );
     /* The program natives take and return the handle type. */
-    REQUIRE(
-        catalog_compile(
-            "package app\n"
-            "Open :: (path: string, entry: string, arguments: string[]) -> "
-            "Program { return program.open(path, "
-            "entry, arguments); }\n"
-            "Close :: (handle: Program) { program.close(handle); }\n"
-            "Has :: (handle: Program, name: string) -> bool { return "
-            "program.has(handle, name); }\n",
-            message,
-            sizeof message
-        ) &&
-        !*message
+    bool handles = catalog_compile(
+        "package app\n"
+        "Open :: (path: string, symbol: string, arguments: string[]) -> "
+        "Program { return program.open(path, "
+        "symbol, arguments); }\n"
+        "Close :: (handle: Program) { program.close(handle); }\n"
+        "Has :: (handle: Program, name: string) -> bool { return "
+        "program.has(handle, name); }\n",
+        message,
+        sizeof message
     );
+    if (!handles || *message) {
+        fprintf(stderr, "program handle sources: %s\n", message);
+    }
+    REQUIRE(handles && !*message);
     /* format_text's optional untyped tail needs no argument. */
     REQUIRE(
         catalog_compile("package app\nPlain :: () -> string { return format_text(\"plain\"); }\n", message, sizeof message) &&

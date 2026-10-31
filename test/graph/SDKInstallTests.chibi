@@ -502,7 +502,7 @@ CompilerToolsPackageAndRunAfterRelocation :: (fixture: Fixture) {
     commands.extend(profile);
     result = Bare(commands);
     assert(result.status == 0, "the installed graph writes commands");
-    assert(length(sdk.JsonItems(Read(Path([graph_build, "/compile_commands.json"])))) == 5, "chibi_support's five compiles");
+    assert(length(sdk.JsonItems(Read(Path([graph_build, "/compile_commands.json"])))) == 3, "chibi_support's three compiles");
 
     // An explicit profile rejects an omitted archiver even when PATH has an ar:
     // no machine default enters it.

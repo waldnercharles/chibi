@@ -157,3 +157,18 @@ The authored emitter `@test`s moved from `test/native_aot/emitter_calls` and `te
 ## Tree-sitter (2026-10-31)
 
 The compiler reads syntax with `tools/compiler/source_parser`, so the generated parser and everything that linked it are archived: `src/language` (`grammar.js`, `src/parser.c`, `src/scanner.c`, `syntax.c`, `tree-sitter.json`), `test/language/syntax.c` with its corpus (`syntax_corpus.c`, `syntax_corpus.h`, `syntax_corpus/`) and the `language` tool selector. The Tree-sitter vendor library stays in the pinned third-party archives but nothing links it; the SDK no longer exports `Chibi::syntax_runtime` or ships its license. The native census (`test/language/native_census.c`) reads syntax through the loaded compiler's `compiler_syntax.Parse` and `test/language/census_tree.h`. Lost: the differential of the authored parser against Tree-sitter (already replaced by the parser `@test`s) and the incremental-edit tests of the old syntax wrapper. `compiler_syntax_parse` stays declared in the native list, as a stub that always fails, until the next change to that list (a new runtime, build host and seed).
+
+## Visual catalogs, UI documents and text editing (second engine tranche)
+
+Archived because no toolchain program (`chibi`, `chibi-compile`, `chibi-build-host`, `chibi-compiler-host`) or retained test links them, and the editor that used them is separate:
+
+- `src/runtime/{shaders,models,images,geometry,scenes}`: shader programs and detail/effects/volume/image inspection, model bounds/hits/frames/parameters/lifecycle/inspection/finite checks, the image and sky catalogs, mesh assets and picking, scene instantiation and snapshots. Lost: running or inspecting any of these from C; the matching prepared artifact formats (`parts`, `image`, `sky`, `shader_values`) no longer appear in the build identity.
+- `src/render` (`scene3d_parts`, `shader_catalog`, `shader_values`): the render-side catalogs.
+- `src/assets/ui_document`, `ui_events`, `src/ui`: UI document composition, bindings and events.
+- `src/support/{rcss,rcss_map,text_edit,text_overlay,text_search,text_file,file_watch}`: RCSS expansion, editor text edits and unsaved-text overlay, text search and file reads, and the polling file watcher (hot reload watches files from Chibi instead).
+- Tests: `test/runtime/ui_document.c`, `test/support/{rcss,text_overlay,file_watch}.c` and `test/tools/scene.c`, with selectors `--ui-document`, `--text-files` and `--scene`.
+- Graph targets `chibi_visual_catalog`, `chibi_shader_runtime`, `chibi_model_runtime`, `chibi_image_catalog`, `chibi_mesh_runtime`, `chibi_scene_runtime`, `chibi_ui_document`, `chibi_ui_document_values`, `chibi_ui_authoring`, `chibi_text_source`, `chibi_text_search` and the `chibi_scene_consumer` and `chibi_ui_document_consumer` programs.
+
+## The source registry runtime (src/runtime/behaviors)
+
+`source.[ch]`, `source_internal.h`, `source_publication.c` and `source_profile.c` (the registry that attached stage-zero-era behavior modules to entities, ran their systems and published edits for Studio Live), `package_stage`/`package_stage_budget`/`package_load` in `package.[ch]`, and `test/language/headless_consumer.[ch]` with its `test_behavior_consumer` target are archived. Kept: `package.c`'s read side (`package_read_budget`, `package_collection`), `module_set.c` and `event_catalog.c`. Not re-covered: registration ownership, Begin/Tick/Destroy payload dispatch and removal through the registry (the headless consumer's two cases). Edit and Continue is proven through `authoring/program.c` (`execution_program_prepare_replace`), not through the registry.

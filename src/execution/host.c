@@ -80,7 +80,7 @@ size_t behavior_function_host_storage_bytes(const behavior_function_context *ctx
     ((values) ? sizeof(dyna_hdr) + (size_t)acap(values) * sizeof *(values) : 0)
     bytes += VECTOR(ctx->queries) + VECTOR(ctx->commands) +
              VECTOR(ctx->command_arguments) + VECTOR(ctx->command_results) +
-             VECTOR(ctx->collection_owners);
+             behavior_function_collection_bytes(ctx);
 #undef VECTOR
     for (int i = 0; i < acount(ctx->queries); i++) {
         bytes += (size_t)ctx->queries[i].snapshot.capacity * sizeof(pin_value);

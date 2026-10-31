@@ -7,9 +7,9 @@
 
 /* The shared budget of one JSON invocation, its arguments and its result. A
  * JSON value costs 128 bytes of it, so 64 MiB stopped at about 785,000 values:
- * the parse rows of tools/compiler's largest source (Steps.chibi, 348 KB) and
- * the scalar lane's whole-module EmitModule outgrew it on 2026-10-31. 256 MiB
- * and 4,000,000 values leave about twice that. */
+ * the parse rows of tools/compiler's largest source (Steps.chibi, 348 KB)
+ * outgrew it on 2026-10-31. 256 MiB and 4,000,000 values leave about twice
+ * that. */
 #define COMPILER_HOST_MAX_BYTES (256u * 1024u * 1024u)
 /* A compiler's own closure is a large program, in and out. The package
  * compiler's module keeps about 200 MB, peaks at about 372 MiB while the

@@ -24,10 +24,9 @@ SemanticTag :: (types: TypeDecl[], value: ValueType) -> u64 {
 FindPointer :: (types: TypeDecl[], value: ValueType, nullable: bool) -> int {
     index: int = 0;
     while (index < length(types)) {
-        declared := types[index];
-        if (declared.kind == PointerDecl && declared.value_storage == value.storage &&
-            declared.value_container == value.container && declared.value_record == value.record &&
-            (declared.key != 0) == nullable) {
+        if (types[index].kind == PointerDecl && types[index].value_storage == value.storage &&
+            types[index].value_container == value.container && types[index].value_record == value.record &&
+            (types[index].key != 0) == nullable) {
             return index;
         }
         index += 1;

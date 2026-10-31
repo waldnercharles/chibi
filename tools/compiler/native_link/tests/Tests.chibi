@@ -98,7 +98,7 @@ WindowsLinksTheCRuntimeFromTheSdkUnlessStatic :: () {
 @test
 StartModulesKeepTheProcessArguments :: () {
     linux := link.Start("x86_64-unknown-linux-gnu", false, false);
-    assert(strings.Contains(linux, "define i32 @main(i32 %argc, ptr %argv)"), "libc main");
+    assert(strings.Contains(linux, "define i32 @main(i32 %argc, ptr %argv, ptr %envp)"), "libc main");
     assert(strings.Contains(linux, "store i32 %argc, ptr @chibi_argc"), "argc");
     assert(strings.Contains(linux, "store ptr %argv, ptr @chibi_argv"), "argv");
     assert(strings.Contains(linux, "call i32 @chibi_scalar()"), "entry");
@@ -132,4 +132,20 @@ Kernel32ExportsWhatTheStartModulesImport :: () {
     for (name in ["ExitProcess", "GetCommandLineW", "GetProcessHeap", "HeapAlloc", "GetStdHandle", "WriteFile"]) {
         assert(strings.Contains(definition, strings.Concatenate(["    ", name, "\n"])), "an export");
     }
+}
+
+@test
+EveryStartModuleExportsTheArgumentFunctions :: () {
+    for (triple in ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"]) {
+        module := link.Start(triple, false, false);
+        for (name in ["define i64 @chibi_argument_count()", "define i64 @chibi_argument(i64 %index, ptr %buffer, i64 %size)",
+                      "define ptr @chibi_environment()"]) {
+            assert(strings.Contains(module, name), "an argument function");
+        }
+    }
+    static := link.Start("x86_64-unknown-linux-gnu", true, false);
+    assert(strings.Contains(static, "chibi_envp(%rip)"), "static linux keeps envp");
+    windows := link.Start("x86_64-pc-windows-msvc", true, false);
+    assert(strings.Contains(windows, "define internal i64 @chibi_command_argument("), "windows parses its command line");
+    assert(strings.Contains(link.Start("arm64-apple-macosx11.0.0", false, false), "ptr %envp"), "dyld passes envp");
 }

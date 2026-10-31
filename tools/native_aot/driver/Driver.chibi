@@ -486,31 +486,33 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     if (build.file_kind(object) != "file") {
         return Failed(partial, "LLVM object emission", 1);
     }
-    if (executable && !shared) {
-        start_text := Start(target);
-        if (dynamic) {
-            start_text = StartDynamic(takes_context);
-        }
-        if (!build.write_file(start, start_text)) {
-            return Failed(partial, "start module", 1);
-        }
-        status = build.run(compile_start);
-        if (status != 0) {
-            return Failed(partial, "start object emission", status);
-        }
-        if (build.file_kind(start_object) != "file") {
-            return Failed(partial, "start object emission", 1);
-        }
-        if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem())) {
-            return Failed(partial, "libSystem stub", 1);
-        }
-        if (target == 2) {
-            if (!build.write_file(stub, Kernel32())) {
-                return Failed(partial, "kernel32 definition", 1);
+    if (executable) {
+        if (!shared) {
+            start_text := Start(target);
+            if (dynamic) {
+                start_text = StartDynamic(takes_context);
             }
-            status = build.run(imports);
+            if (!build.write_file(start, start_text)) {
+                return Failed(partial, "start module", 1);
+            }
+            status = build.run(compile_start);
             if (status != 0) {
-                return Failed(partial, "kernel32 import library", status);
+                return Failed(partial, "start object emission", status);
+            }
+            if (build.file_kind(start_object) != "file") {
+                return Failed(partial, "start object emission", 1);
+            }
+            if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem())) {
+                return Failed(partial, "libSystem stub", 1);
+            }
+            if (target == 2) {
+                if (!build.write_file(stub, Kernel32())) {
+                    return Failed(partial, "kernel32 definition", 1);
+                }
+                status = build.run(imports);
+                if (status != 0) {
+                    return Failed(partial, "kernel32 import library", status);
+                }
             }
         }
         status = build.run(link);

@@ -214,8 +214,8 @@ CommandArgumentsSelectNativeOptions :: () {
     linked := Parse(["chibi", "build", "--native", "--static", "source"])
     assert(linked.valid && linked.static_link && !native.static_link)
     assert(!Parse(["chibi", "build", "--static"]).valid)
-    library := Parse(["chibi", "build", "--native", "--shared", "source"])
-    assert(library.valid && library.shared && !library.static_link)
+    sharing := Parse(["chibi", "build", "--native", "--shared", "source"])
+    assert(sharing.valid && sharing.shared && !sharing.static_link)
     assert(!Parse(["chibi", "build", "--native", "--shared", "--static", "source"]).valid)
     assert(!Parse(["chibi", "build", "--shared"]).valid)
 }

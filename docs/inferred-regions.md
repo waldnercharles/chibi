@@ -288,7 +288,7 @@ stage-one Chibi, and none of it is added to stage zero.
 The cost report records, per function, the first piece of evidence for each of
 three kinds (allocation, copy, escape) at each certainty
 (`execution_cost_summary` in `src/execution/function.h`, formatted by
-`tools/compiler/cost_explanations/Explain.chibi`). Its front end,
+`archive/tools/compiler/cost_explanations/Explain.chibi`). Its front end,
 `chibi check --explain-costs`, went to `archive/` with the game-project compile
 path on 2026-10-29 (e8bc71909), and the CLI now reports `check` as an unknown
 command. The report belongs to whatever `check`

@@ -16,7 +16,6 @@ program only to exercise a C host (a process runner, a loader, a limit) is C.
 | `test/language/native_census.c` | 7 | port later | Subject is `CollectScalar` over the compiler's own functions; the harness is C only for tree-sitter-free flattening and report writing. Port once the target-facts native exists and the flattening moves to a Chibi tool. |
 | `test/language/scalar_host.c` | 0 | keep | The JSON bridge the two files above use; goes when they do. |
 | `test/language/host_packages_compiler.c` | 6 | keep | Subject is the `host:clock` native boundary, grants and the compiler host's compile entry (C); `core:time` contracts already run as authored tests. |
-| `test/language/asset_compiler_host.c` | 16 | keep | The C API that packages and runs the asset compiler: limits, ownership, failure paths. |
 | `test/language/program_session.c` | 22 | keep | `authoring/program.c`, the C session API Studio and `--watch` share. |
 | `test/language/execution.c`, `execution_scope.c` | 156, 18 | keep | The C VM: verifier, costs, scopes, intrinsics. No case compiles Chibi source any more. |
 | `test/language/capture.c`, `ranges.c`, `component_write_ir.c` | 12, 14, 15 | keep | Hand-built `behavior_function`s: C VM and ECS. |

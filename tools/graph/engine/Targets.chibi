@@ -439,7 +439,7 @@ Files :: (target: string) -> string[] {
             "test/tools/web_storage.c", "test/tools/browser.c",
             "test/tools/wasm_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
-            "test/tools/native_aot_driver.c", "test/tools/build_process.c",
+            "test/tools/build_process.c",
             "test/tools/compiler_bootstrap.c",
             "src/host/native_libraries.c", "test/support/fmt.c", "test/tools/box3d.c", "test/runtime/reference_cave.c"
         ];

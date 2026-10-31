@@ -318,8 +318,8 @@ jobs:
           set -e
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native native-aot-driver
-          CHIBI_LLVM_BIN= sh tools/build.sh test --build-host build-release/sdk/chibi-build-host --jobs 2 projects language
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native native-aot-driver native-build
+          CHIBI_LLVM_BIN= sh tools/build.sh test --build-host build-release/sdk/chibi-build-host --jobs 2 chibi-cli language
       - name: Preserve build logs and timings
         if: always()
         uses: actions/upload-artifact@v4

@@ -53,7 +53,7 @@ pub Supported :: (target: Target) -> bool {
 // Current compiler storage ordinals, not byte widths or foreign type IDs.
 pub BoolStorage: int : 1;
 Int8Storage: int : 2;
-ByteStorage: int : 3;
+pub ByteStorage: int : 3;
 Int16Storage: int : 4;
 Uint16Storage: int : 5;
 pub IntStorage: int : 6;

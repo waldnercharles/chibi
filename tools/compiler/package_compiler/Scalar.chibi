@@ -763,6 +763,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (native.operator == facts.ArrayContains) {
             return BoolStorage;
         }
+        if (native.operator == facts.ArrayText) {
+            return TextStorage;
+        }
         if (native.operator != 0) {
             return ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, node).storage;
         }
@@ -1946,9 +1949,16 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (condition >= 0) {
         return ScalarPlan.Converted(condition, BoolStorage, BoolStorage);
     }
-    called := ScalarCalledStatement(forest, text, callables, names, callable, statement);
-    if (called >= 0) {
-        return ScalarPlan.Converted(FirstMember(forest, statement), callables[called].result, callables[called].result);
+    discarded := ScalarDiscarded(forest, text, callables, names, types, callable, statement);
+    if (discarded.storage != 0) {
+        // A fresh result: an array of it is no copy of a variable's.
+        if (discarded.container == ArrayContainer) {
+            return ScalarPlan.Array(FirstMember(forest, statement), discarded, false);
+        }
+        if (discarded.storage == StructStorage) {
+            return ScalarPlan.Record(FirstMember(forest, statement), discarded.record);
+        }
+        return ScalarPlan.Converted(FirstMember(forest, statement), discarded.storage, discarded.storage);
     }
     if (!Is(forest, statement, syntax.LocalDeclaration) && !Is(forest, statement, syntax.StateDeclaration)) {
         return ScalarPlan.Failed(Diagnose(forest, statement, 0,
@@ -1981,19 +1991,32 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     return ScalarPlan.Converted(value, storage, storage);
 }
-// The function a call statement calls, whose number or bool result nothing
-// reads, or -1: it runs for its effects on its reference parameters.
-ScalarCalledStatement :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
-                          callable: Callable, statement: int) -> int {
+// The type a call statement's result has, which nothing reads: a call of a
+// function of the source, whatever it gives (a record of several results
+// included), or of a foreign function that gives a number or bool. Its storage
+// is 0 for any other statement.
+ScalarDiscarded :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                    types: TypeDecl[], callable: Callable, statement: int) -> ValueType {
+    none: ValueType = {storage: 0, container: 0, record: -1};
     call := FirstMember(forest, statement);
     if (!Is(forest, statement, syntax.ExpressionStatement) || !Is(forest, call, syntax.CallExpression)) {
-        return -1;
+        return none;
     }
     callee := CalledFunction(forest, text, callables, [], names, callable.package, call);
-    if (callee < 0 || ScalarTypeOf(callables[callee].result) == 0 || callables[callee].result_container != 0) {
-        return -1;
+    if (callee >= 0) {
+        target := callables[callee];
+        found: ValueType = {storage: target.result, container: target.result_container, record: target.result_record};
+        if (ScalarValueType(types, found.storage, found.container, found.record) == 0) {
+            return none;
+        }
+        return found;
     }
-    return callee;
+    imported := ScalarForeignDeclaration(forest, text, call);
+    if (imported < 0 || ScalarTypeOf(ScalarForeignResult(forest, text, imported)) == 0) {
+        return none;
+    }
+    returned: ValueType = {storage: ScalarForeignResult(forest, text, imported), container: 0, record: -1};
+    return returned;
 }
 // The condition of `statement` when it is an assert, as the call step finds
 // one: a call of `assert` that names no function of the package, its
@@ -2387,10 +2410,11 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             binding := ScalarVariable(names, Text(forest, text, appended));
             row = ScalarAt(forest, statement, facts.AssignRow, ScalarValueType(types, binding.storage, binding.container, binding.record),
                            binding.index, count, "");
-        } else if (ScalarCalledStatement(forest, text, callables, names, callable, statement) >= 0) {
+        } else if (ScalarDiscarded(forest, text, callables, names, types, callable, statement).storage != 0) {
             // The call's result goes to a local nothing reads.
-            callee := ScalarCalledStatement(forest, text, callables, names, callable, statement);
-            row = ScalarAt(forest, statement, facts.LocalRow, ScalarTypeOf(callables[callee].result), variables, count, "_");
+            result := ScalarDiscarded(forest, text, callables, names, types, callable, statement);
+            row = ScalarAt(forest, statement, facts.LocalRow,
+                           ScalarValueType(types, result.storage, result.container, result.record), variables, count, "_");
             variables += 1;
         } else if (Is(forest, statement, syntax.ExpressionStatement)) {
             // As the assert step checks it, with its call's range.
@@ -2542,7 +2566,7 @@ ScalarTextNative :: (native: ResolvedNative) -> bool {
            NativeNameMatches(native, "extend") || NativeNameMatches(native, "slice") ||
            NativeNameMatches(native, "resize") || NativeNameMatches(native, "contains") ||
            NativeNameMatches(native, "remove_index") ||
-           NativeNameMatches(native, "text_bytes");
+           NativeNameMatches(native, "text_bytes") || NativeNameMatches(native, "text_from_bytes");
 }
 // The text natives of `natives`, each with its ports at their place among
 // ScalarTextPorts's.

@@ -1,8 +1,8 @@
 # Source tokenizer
 
 `tools/compiler/source_tokenizer` is the first step of a Chibi-written front
-end for the compiler and for a future Chibi language server. Tree-sitter, the
-parser behind `compiler_syntax_parse`, stays for now; the differential test
+end for the compiler and for a future Chibi language server. The
+Tree-sitter parser stays for now; the differential test
 keeps the tokenizer and `src/language/grammar.js` in agreement. The tokenizer
 is a near one-to-one port of Odin's `core:odin/tokenizer` (`tokenizer.odin`
 and `token.odin`); [the source parser](source-parser.md) reads its tokens.

@@ -32,16 +32,36 @@ Add :: (triple: string) -> string {
                  "define i32 @add(i32 %a, i32 %b) {\n  %c = add i32 %a, %b\n  ret i32 %c\n}\n"]);
 }
 
-// The program's entry: main for the C library or dyld, and on Windows the
-// static no-CRT entry, which exits through kernel32.
-Main :: (triple: string) -> string {
+// The program's entry, which link.Start's shim calls: 42 when the shim kept the
+// process arguments (argc is 1 with none, or on Windows the command line is
+// set), by way of `add` from the archive.
+Entry :: (triple: string) -> string {
     if (link.TargetOf(triple) == link.WindowsX64) {
-        return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\ndeclare void @ExitProcess(i32)\n",
-                     "define i32 @mainCRTStartup() {\n  %x = call i32 @add(i32 40, i32 2)\n",
-                     "  call void @ExitProcess(i32 %x)\n  unreachable\n}\n"]);
+        return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\n@chibi_command_line = external global ptr\n",
+                     "define i32 @chibi_scalar() {\n  %line = load ptr, ptr @chibi_command_line\n",
+                     "  %set = icmp ne ptr %line, null\n  %one = zext i1 %set to i32\n",
+                     "  %x = call i32 @add(i32 41, i32 %one)\n  ret i32 %x\n}\n"]);
     }
-    return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\n",
-                 "define i32 @main() {\n  %x = call i32 @add(i32 40, i32 2)\n  ret i32 %x\n}\n"]);
+    return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\n@chibi_argc = external global i32\n",
+                 "define i32 @chibi_scalar() {\n  %argc = load i32, ptr @chibi_argc\n",
+                 "  %x = call i32 @add(i32 41, i32 %argc)\n  ret i32 %x\n}\n"]);
+}
+
+// Removes the folder and the files in it, which is all a run leaves.
+Clear :: (folder: string) -> bool {
+    if (os.Kind(folder) == os.KindNone) {
+        return true;
+    }
+    listed := os.List(folder);
+    if (listed.error != nil) {
+        return false;
+    }
+    for (name in listed.names) {
+        if (os.Remove(Join([folder, "/", name])) != nil) {
+            return false;
+        }
+    }
+    return os.Remove(folder) == nil;
 }
 
 Fail :: (what: string) -> int {
@@ -57,21 +77,26 @@ Run :: () -> int {
     }
     triple := Triple();
     work := Join([os.Root(), "/.chibi/native-link-smoke"]);
-    if (os.Remove(work) != nil || os.MakeDirectory(work) != nil) {
+    if (!Clear(work) || os.MakeDirectory(work) != nil) {
         return Fail("cannot prepare the work folder");
     }
+    windows := link.TargetOf(triple) == link.WindowsX64;
     suffix := ".a";
     program := Join([work, "/program"]);
-    if (link.TargetOf(triple) == link.WindowsX64) {
+    suffix2 := "";
+    if (windows) {
         suffix = ".lib";
+        suffix2 = ".exe";
         program = Join([work, "/program.exe"]);
     }
     if (os.WriteText(Join([work, "/add.ll"]), Add(triple)) != nil ||
-        os.WriteText(Join([work, "/main.ll"]), Main(triple)) != nil) {
+        os.WriteText(Join([work, "/main.ll"]), Entry(triple)) != nil ||
+        os.WriteText(Join([work, "/start.ll"]), link.Start(triple, windows, false)) != nil) {
         return Fail("cannot write the modules");
     }
     if (host.Object(llvm, Join([work, "/add.ll"]), Join([work, "/add.o"]), 2) != nil ||
-        host.Object(llvm, Join([work, "/main.ll"]), Join([work, "/main.o"]), 2) != nil) {
+        host.Object(llvm, Join([work, "/main.ll"]), Join([work, "/main.o"]), 2) != nil ||
+        host.Object(llvm, Join([work, "/start.ll"]), Join([work, "/start.o"]), 2) != nil) {
         return Fail("llc failed");
     }
     ar := host.Tool(llvm, "llvm-ar");
@@ -79,11 +104,27 @@ Run :: () -> int {
     if (ar == "" || os.Run([ar, "rcs", archive, Join([work, "/add.o"])]) != 0) {
         return Fail("llvm-ar failed");
     }
-    plan := link.Program(triple, llvm, [Join([work, "/main.o"])], [archive], [], [], program, work,
-                         link.TargetOf(triple) == link.WindowsX64);
-    failure := host.Link(plan);
-    if (failure != nil) {
-        return Fail(format_text("the link failed, kind {} code {}", failure.kind, failure.code));
+    // Two links of the same inputs to different paths give the same bytes, and
+    // each leaves nothing but its program: the work folder is removed.
+    digests: string[] = [];
+    for (name in [program, Join([work, "/again", suffix2])]) {
+        plan := link.Program(triple, llvm, [Join([work, "/main.o"]), Join([work, "/start.o"])], [archive], [], [], name, "",
+                             windows);
+        failure := host.Link(plan);
+        if (failure != nil) {
+            return Fail(format_text("the link failed, kind {} code {}", failure.kind, failure.code));
+        }
+        if (os.Kind(Join([name, ".work"])) != os.KindNone || os.Kind(Join([name, ".partial"])) != os.KindNone) {
+            return Fail("the link left its work folder or partial file");
+        }
+        hashed := os.HashFile(name);
+        if (hashed.error != nil) {
+            return Fail("cannot hash the program");
+        }
+        digests.append(hashed.digest);
+    }
+    if (digests[0] != digests[1]) {
+        return Fail("two links of the same inputs differ");
     }
     status := os.Run([program]);
     if (status != 42) {

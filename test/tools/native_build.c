@@ -7,10 +7,12 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -21,6 +23,10 @@
 static char suite[256], built[1024], sdk[1024], launcher[1024], game[1024],
     tools[1024], output[65536], errors[65536];
 static char *stage_tool;
+/* The whole selector's deadline, in chibi_process_now() seconds. Every build
+ * may run until then, so contention between parallel cases cannot fail one
+ * case on its own clock. */
+static double deadline;
 static chibi_process_capture_result status;
 
 static void path(char out[1024], const char *base, const char *name)
@@ -138,7 +144,7 @@ static int build_with(const char *program, const char *const *options, const cha
     }
     const char *envp[] = { "PATH=", cache[0] ? cache : NULL, NULL };
     time_t began = time(NULL);
-    status = chibi_process_capture(program, argv, suite, envp, chibi_process_now() + 120, NULL, &out, &err);
+    status = chibi_process_capture(program, argv, suite, envp, deadline, NULL, &out, &err);
     fprintf(
         stderr,
         "native build: %s took %ds (error %d, status %d)\n",
@@ -756,6 +762,65 @@ static const char *const
                   "    return absolute(-42) + 1;\n"
                   "}\n";
 
+static const char *const
+    CALLBACK_SOURCE = "package scalar\n"
+                      "foreign import libc \"system:c\"\n"
+                      "foreign libc {\n"
+                      "    thrd_create :: (thread: u8[], start: fn(argument: "
+                      "u64) -> i32, argument: u64) -> i32\n"
+                      "    thrd_join :: (thread: u64, result: u8[]) -> i32\n"
+                      "}\n"
+                      "Main :: () -> int {\n"
+                      "    thread: u8[] = [0, 0, 0, 0, 0, 0, 0, 0];\n"
+                      "    result: u8[] = [0, 0, 0, 0];\n"
+                      "    started := thrd_create(thread, Worker, 41);\n"
+                      "    id: u64 = u64(thread[0]) | (u64(thread[1]) << 8) | "
+                      "(u64(thread[2]) << 16) | (u64(thread[3]) << 24) |\n"
+                      "              (u64(thread[4]) << 32) | (u64(thread[5]) "
+                      "<< 40) | (u64(thread[6]) << 48) | (u64(thread[7]) << "
+                      "56);\n"
+                      "    joined := thrd_join(id, result);\n"
+                      "    return int(result[0]) + started + joined;\n"
+                      "}\n"
+                      "Worker :: (argument: u64) -> i32 {\n"
+                      "    return i32(argument) + 1;\n"
+                      "}\n";
+
+/* C calls an authored function (Main is first: the scalar proof reads the
+ * first function): thrd_create starts a thread that runs Worker
+ * through the adapter the compiler makes, thrd_join collects its result. */
+TEST_CASE(native_build_gives_c_an_authored_function)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *options[] = { "-O0", NULL };
+    reset("callback", CALLBACK_SOURCE);
+    real_tools(bin);
+    REQUIRE(build_with(in_place, options, tools) == 0);
+    char program[1024];
+    REQUIRE(printed(program));
+    const char *argv[] = { program, NULL };
+    const char *envp[] = { NULL };
+    chibi_process_output out = { 0 }, err = { 0 };
+    chibi_process_capture_result ran = chibi_process_capture(
+        program,
+        argv,
+        game,
+        envp,
+        chibi_process_now() + 10,
+        NULL,
+        &out,
+        &err
+    );
+    REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 42);
+    return true;
+}
+
 /* A program calls a C function through an address: dlsym finds libc's abs, a
  * local of function type holds it, and the call goes through the address. libc
  * is linked dynamically by default, which is where dlsym lives. */
@@ -1109,6 +1174,10 @@ static bool driver_build(const char *ir, const char *out)
     path(opt, tools, "opt");
     path(llc, tools, "llc");
     path(lld, tools, "ld.lld");
+    /* The driver compiles from source, which contention from the other cases
+     * slows; it may use what remains of the selector's deadline. */
+    char budget[32];
+    snprintf(budget, sizeof budget, "%d", (int)((deadline - chibi_process_now()) * 1000));
     const char *argv[] = { host,       "--root",
                            driver,     "--source",
                            source,     "--collection",
@@ -1117,7 +1186,7 @@ static bool driver_build(const char *ir, const char *out)
                            compiler,   "--compiler-core",
                            core,       "--entry",
                            "Build",    "--timeout-ms",
-                           "120000",   "--",
+                           budget,     "--",
                            ir,         out,
                            opt,        llc,
                            lld,        "2",
@@ -1125,7 +1194,7 @@ static bool driver_build(const char *ir, const char *out)
     const char *envp[] = { "PATH=", NULL };
     chibi_process_output out_text = { .data = output, .capacity = sizeof output };
     chibi_process_output err = { .data = errors, .capacity = sizeof errors };
-    status = chibi_process_capture(host, argv, suite, envp, chibi_process_now() + 180, NULL, &out_text, &err);
+    status = chibi_process_capture(host, argv, suite, envp, deadline, NULL, &out_text, &err);
     return status.error == CHIBI_PROCESS_OK && !status.status;
 }
 
@@ -1197,6 +1266,107 @@ TEST_CASE(native_build_links_other_targets_with_llvm)
     }
     return true;
 }
+
+/* Each case reads and writes the file-scope fixture state above, so it runs
+ * in its own forked process: the parent keeps no state a case changes. */
+static bool run_forked(const char *const names[], bool (*const cases[])(void), int count, int workers)
+{
+    pid_t running[16];
+    int slot_case[16];
+    bool passed[16] = { false };
+    int started = 0, active = 0, finished = 0;
+    assert(count <= 16 && workers <= 16);
+    memset(running, 0, sizeof running);
+    while (finished < count) {
+        for (int slot = 0; slot < workers && started < count && active < workers;
+             slot++) {
+            if (running[slot]) {
+                continue;
+            }
+            fprintf(stderr, "native build: starting %s\n", names[started]);
+            pid_t pid = fork();
+            assert(pid >= 0);
+            if (!pid) {
+                _exit(cases[started]() ? 0 : 1);
+            }
+            running[slot] = pid;
+            slot_case[slot] = started++;
+            active++;
+        }
+        int wstatus;
+        pid_t done = waitpid(-1, &wstatus, WNOHANG);
+        if (done > 0) {
+            for (int slot = 0; slot < workers; slot++) {
+                if (running[slot] == done) {
+                    passed[slot_case[slot]] = WIFEXITED(wstatus) &&
+                                              !WEXITSTATUS(wstatus);
+                    running[slot] = 0;
+                    active--;
+                    finished++;
+                }
+            }
+        } else if (chibi_process_now() > deadline + 5) {
+            /* Builds stop at the deadline themselves; this catches a hung case. */
+            for (int slot = 0; slot < workers; slot++) {
+                if (running[slot]) {
+                    kill(running[slot], SIGKILL);
+                }
+            }
+            while (waitpid(-1, &wstatus, 0) > 0) {
+            }
+            break;
+        } else {
+            usleep(20000);
+        }
+    }
+    bool ok = true;
+    for (int i = 0; i < count; i++) {
+        fprintf(stderr, "native build: %s %s\n", names[i], passed[i] ? "passed" : "FAILED");
+        ok = ok && passed[i];
+    }
+    return ok;
+}
+
+TEST_CASE(native_build_runs_the_cases_in_parallel)
+{
+    static const char *const names[] = {
+        "native_build_links_statically_on_request",
+        "native_build_adds_line_tables_with_g",
+        "native_build_keeps_prior_programs_and_never_falls_back",
+        "native_build_rejects_missing_and_failing_tools",
+        "native_build_links_macos_and_windows_programs",
+        "native_build_refuses_what_an_interrupted_build_left",
+        "native_build_refuses_an_incomplete_output",
+        "native_build_runs_with_llvm_and_no_c_compiler",
+        "native_build_links_a_vendored_archive",
+        "native_build_calls_through_a_function_pointer",
+        "native_build_passes_a_byte_array_to_c",
+        "native_build_reports_a_failed_assert",
+        "native_build_runs_the_foreign_samples",
+        "native_build_gives_c_an_authored_function",
+        "native_build_links_other_targets_with_llvm",
+    };
+    static bool (*const cases[])(void) = {
+        native_build_links_statically_on_request,
+        native_build_adds_line_tables_with_g,
+        native_build_keeps_prior_programs_and_never_falls_back,
+        native_build_rejects_missing_and_failing_tools,
+        native_build_links_macos_and_windows_programs,
+        native_build_refuses_what_an_interrupted_build_left,
+        native_build_refuses_an_incomplete_output,
+        native_build_runs_with_llvm_and_no_c_compiler,
+        native_build_links_a_vendored_archive,
+        native_build_calls_through_a_function_pointer,
+        native_build_passes_a_byte_array_to_c,
+        native_build_reports_a_failed_assert,
+        native_build_runs_the_foreign_samples,
+        native_build_gives_c_an_authored_function,
+        native_build_links_other_targets_with_llvm,
+    };
+    long cores = sysconf(_SC_NPROCESSORS_ONLN);
+    int workers = cores < 1 ? 1 : cores > 4 ? 4 : (int)cores;
+    return run_forked(names, cases, (int)(sizeof cases / sizeof cases[0]), workers);
+}
 #endif
 
 void test_native_build(const char *binary)
@@ -1214,21 +1384,11 @@ void test_native_build(const char *binary)
     stage_tool = tool_read(CHIBI_SOURCE_ROOT "/test/native_aot/driver/fixtures/stage-tool.sh");
     assert(stage_tool);
     relocate(binary);
+    deadline = chibi_process_now() + 1200;
+    /* The first case recovers the compiler into the shared cache; the rest run
+     * after it, in parallel, and reuse that recovery. */
     RUN_TEST_CASE(native_build_links_a_program_and_reuses_it);
-    RUN_TEST_CASE(native_build_links_statically_on_request);
-    RUN_TEST_CASE(native_build_adds_line_tables_with_g);
-    RUN_TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back);
-    RUN_TEST_CASE(native_build_rejects_missing_and_failing_tools);
-    RUN_TEST_CASE(native_build_links_macos_and_windows_programs);
-    RUN_TEST_CASE(native_build_refuses_what_an_interrupted_build_left);
-    RUN_TEST_CASE(native_build_refuses_an_incomplete_output);
-    RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
-    RUN_TEST_CASE(native_build_links_a_vendored_archive);
-    RUN_TEST_CASE(native_build_calls_through_a_function_pointer);
-    RUN_TEST_CASE(native_build_passes_a_byte_array_to_c);
-    RUN_TEST_CASE(native_build_reports_a_failed_assert);
-    RUN_TEST_CASE(native_build_runs_the_foreign_samples);
-    RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
+    RUN_TEST_CASE(native_build_runs_the_cases_in_parallel);
     free(stage_tool);
     tool_remove_tree(suite);
 #else

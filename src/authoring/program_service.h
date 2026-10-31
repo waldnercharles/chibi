@@ -9,10 +9,10 @@
 typedef struct program_service program_service;
 /* A program compiled ahead of time that the host embeds, as the launcher
  * embeds its CLI and formatter: `name` opens it, and `closure` holds `length`
- * bytes of its closure, compiled for the host's catalog. `source` is the root
- * of its files in diagnostics: the package's directory in the engine checkout,
- * such as apps/fmt, below which the SDK build laid out the packages it
- * imports from elsewhere (tools/compiler/source_parser as source_parser). */
+ * bytes of its closure, compiled for the host's catalog. `source`, the
+ * package's directory in the engine checkout, such as apps/fmt, names its own
+ * files in diagnostics; a file of a collection other than core keeps its
+ * label, such as compiler:source_parser/Parser.chibi. */
 typedef struct
 {
     const char *name, *source;

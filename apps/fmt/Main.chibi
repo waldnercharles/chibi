@@ -1,6 +1,6 @@
 package fmt_cli
 
-import format "project:source_format"
+import format "compiler:source_format"
 import strings "core:strings"
 
 // chibi fmt [--check | --staged] [--option NAME=VALUE]... [PATH...]: formats
@@ -10,8 +10,9 @@ import strings "core:strings"
 // files are the ones git tracks below it; without one, the working directory.
 // --check writes nothing and fails when a file would change. --staged formats
 // the files staged for commit and stages the result, for the pre-commit hook.
-// The SDK build compiles this package and the launcher embeds it; `chibi fmt`
-// runs it as a separate program so that the other commands do not load it.
+// The SDK build compiles this package, with the `compiler` collection of
+// tools/compiler, and the launcher embeds it; `chibi fmt` runs it as a separate
+// program so that the other commands do not load it.
 //
 // A program's garbage is collected only between runs, and parsing costs about
 // 3 KB of heap per source byte, so one process formats at most BatchBytes of

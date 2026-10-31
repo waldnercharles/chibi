@@ -1274,6 +1274,36 @@ could remove redundant copies.
 Review it with shared slices and escaped-value lifetimes; keeping an arbitrary
 borrowed pointer would not preserve the ownership contract.
 
+## A package shared between programs cannot import its siblings by `project:`
+
+Toolchain. `project:NAME` names a package below the root program's directory,
+not below the tree the importing package belongs to. The stage-one parser and
+the formatter (`tools/compiler/source_parser`, `source_format` and their
+siblings) imported each other as `project:`, which resolves only while
+`tools/compiler` is the root, so `chibi fmt` and the formatter playground copied
+them beside their own `Main` (2026-10-31, `cwaldner/embedded-cli-programs`).
+The compiler has resolved relative imports such as `"../source_tokenizer"`
+since 2026-10-17, but the launcher's import scan (`src/authoring/package_compile.c`),
+which picks the files a compile receives, followed only `COLLECTION:PATH`, and a
+program the launcher runs can name no collection besides `core`.
+
+- Odin imports by collection (`core:`, `vendor:`, `-collection:name=path`) or
+  by a path relative to the importing file, so a library's imports never
+  depend on the program that uses it.
+- Rust's `crate::` is anchored to the crate that holds the code, not to the
+  final binary. Zig imports files relatively and named modules that `build.zig`
+  declares; Go imports by module path.
+
+Status (2026-10-31): the launcher's scan follows relative imports, the shared
+compiler packages import their siblings relatively, and the SDK build compiles
+`fmt` with a `compiler` collection of `tools/compiler`. `chibi run` still
+cannot name a collection, so the playground's host still copies the packages
+beside it, and `fmt` changes reach `chibi fmt` only through the SDK build.
+
+Suggestion: a `--collection NAME=DIRECTORY` option for `chibi run` and `chibi
+test`, as Odin's `-collection`, and relative imports in every package meant to
+be imported from more than one root.
+
 ## A program that imports the parser nears the compile budget
 
 Toolchain. `chibi fmt` is a program whose closure holds the stage-one

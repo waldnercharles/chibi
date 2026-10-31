@@ -1,9 +1,11 @@
 package source_format
 
+// Sibling packages are imported relatively, so programs outside tools/compiler,
+// such as chibi fmt, can import this one from a collection of that directory.
 import strings "core:strings"
-import syntax "project:compiler_syntax"
-import diag "project:syntax_diagnostics"
-import tk "project:source_tokenizer"
+import syntax "../compiler_syntax"
+import diag "../syntax_diagnostics"
+import tk "../source_tokenizer"
 
 // Layout formatting for Chibi source: a pass over the tokens of the parser's
 // tree that rewrites the gaps between them. Line breaks the author wrote stay,

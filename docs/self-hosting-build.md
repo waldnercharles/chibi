@@ -636,16 +636,17 @@ ROOT by absolute path, byte-sorted, as
 reads.
 
 Building the launcher first compiles the programs it embeds, so that no command
-compiles Chibi source when it starts. `EmbeddedPrograms` names them: `chibi`,
-the CLI (`apps/chibi`), which the launcher opens by that name, and `fmt`;
-`ProgramSources` lays out each package, as `fmt`'s Main imports the formatter
-and the stage-one parser as `project:` packages beside it. `EmbedPrograms`
-stages each package below `BUILD/sdk/generated/programs`, runs
-`chibi-program-request`, which links what the launcher links, to write the
-request the launcher's package compile would send for it, compiles that once on
-the asset compiler with the compiler host on SLJIT, writes the closure as a C
-array, and writes `embedded_programs.c`, the table the launcher reads, which
-includes the arrays. The closure is the same
+compiles Chibi source when it starts. `EmbeddedPrograms` names them and their
+packages: `chibi`, the CLI (`apps/chibi`), which the launcher opens by that
+name, and `fmt` (`apps/fmt`); `ProgramCollections` adds the collections a
+program imports from besides core, as `fmt` imports the formatter and the
+stage-one parser from `tools/compiler` as `compiler:source_format`. For each,
+`EmbedPrograms` runs `chibi-program-request`, which links what the launcher
+links, to write below `BUILD/sdk/generated/programs` the request the
+launcher's package compile would send for it, compiles that once on the asset
+compiler with the compiler host on SLJIT, writes the closure as a C array, and
+writes `embedded_programs.c`, the table the launcher reads, which includes the
+arrays. The closure is the same
 bytes `asset_compiler_compile_closure` returns for the package at run time; it
 is recompiled only when the request or the asset compiler changes, keyed by
 their SHA-256 as the launcher keys the closures it keeps. Compiling the

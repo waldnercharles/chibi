@@ -1575,30 +1575,25 @@ pub LinksLikeLauncher :: (target: string) -> bool {
 }
 
 // The programs the launcher embeds, compiled when the SDK is built so that no
-// command compiles Chibi source when it starts: the CLI, which the launcher
-// opens as "chibi", and the commands it runs as programs of their own
-// (program.embedded). ProgramSources lays out each one's package.
+// command compiles Chibi source when it starts, as `NAME=PACKAGE`: the CLI,
+// which the launcher opens as "chibi", and the commands it runs as programs of
+// their own (program.embedded).
 pub EmbeddedPrograms :: () -> string[] {
-    return ["chibi", "fmt"];
+    return ["chibi=apps/chibi", "fmt=apps/fmt"];
 }
 
-
-// An embedded program's package as `DIRECTORY=SOURCE` below the package root,
-// the root package's own SOURCE first: `chibi fmt` imports the formatter and
-// the stage-one parser as `project:` packages beside its Main.
-pub ProgramSources :: (program: string) -> string[] {
-    if (program == "chibi") {
-        return ["=apps/chibi"];
-    }
+// The collections an embedded program imports from besides core, as
+// `NAME=DIRECTORY`: chibi fmt imports the formatter and the stage-one parser
+// from the compiler's directory. The request reads every source below a
+// collection, at most 256 files and 8 MiB with the program's own and core's;
+// tools/compiler holds 111 files and 2.9 MB (2026-10-31).
+pub ProgramCollections :: (program: string) -> string[] {
     if (program == "fmt") {
-        return [
-            "=apps/fmt", "compiler_syntax=tools/compiler/compiler_syntax", "source_format=tools/compiler/source_format",
-            "source_parser=tools/compiler/source_parser", "source_tokenizer=tools/compiler/source_tokenizer",
-            "syntax_diagnostics=tools/compiler/syntax_diagnostics"
-        ];
+        return ["compiler=tools/compiler"];
     }
     return [];
 }
+
 
 // The programs an executable runs, built with it as CMake's add_dependencies
 // builds them: test_tools runs the workers and tools whose paths it compiles

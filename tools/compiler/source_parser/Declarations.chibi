@@ -1,6 +1,6 @@
 package source_parser
 
-import tk "project:source_tokenizer"
+import tk "../source_tokenizer"
 
 // source_file: a package, or one behavior-like declaration.
 ParseSourceFile :: (c: ^Cursor, n: ^(Node[])) -> int {

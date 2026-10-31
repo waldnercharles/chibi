@@ -1,6 +1,6 @@
 package source_parser
 
-import tk "project:source_tokenizer"
+import tk "../source_tokenizer"
 
 // block: `{` statements `}`.
 ParseBlock :: (c: ^Cursor, n: ^(Node[])) -> int {

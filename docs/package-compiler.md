@@ -175,8 +175,12 @@ import:
   integer operators. Every intermediate value must fit the constant's type,
   so stage zero's wrapping never shows, and a u64 constant is a literal. A
   use is the value itself; a local hides a constant of the same name;
-- imports of `project:` and collection packages such as `core:strings`:
-  `alias.F(...)` calls an imported function, `alias.C` reads an imported
+- imports of `project:` and collection packages such as `core:strings`, and
+  relative imports such as `"../source_tokenizer"`, which name a directory
+  below the importing package's and may not leave its root: a package that
+  imports its siblings relatively compiles under any root, as the stage-one
+  parser does in `chibi fmt` from a `compiler` collection. `alias.F(...)` calls
+  an imported function, `alias.C` reads an imported
   constant, and `alias.T` names an imported record or union in types,
   literals and `alias.U.V` variants. Imported declarations must be `pub`.
   Private helpers remain usable throughout their own package, including across

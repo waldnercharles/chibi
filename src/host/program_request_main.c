@@ -1,29 +1,44 @@
 #include "authoring/package_compile.h"
 #include "host/application.h"
+#include "support/xalloc.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-/* chibi-program-request PACKAGE CORE OUTPUT writes the request the launcher's
- * package compile sends for the application package in PACKAGE, with the core
- * collection CORE, to OUTPUT. The SDK build compiles it once on the prepared
- * compiler and embeds the closure in the launcher, so the launcher compiles
- * nothing when it starts. It links what the launcher links, so the request
- * names the launcher's catalog. PACKAGE and CORE are absolute. */
+/* chibi-program-request PACKAGE OUTPUT NAME=DIRECTORY... writes the request
+ * the launcher's package compile sends for the application package in
+ * PACKAGE, with those collections, core among them, to OUTPUT. The SDK build
+ * compiles it once on the prepared compiler and embeds the closure in the
+ * launcher, so the launcher compiles nothing when it starts. It links what the
+ * launcher links, so the request names the launcher's catalog. Directories
+ * are absolute. */
 int main(int argc, char **argv)
 {
-    if (argc != 4) {
-        fprintf(stderr, "Usage: chibi-program-request PACKAGE CORE OUTPUT\n");
+    if (argc < 4) {
+        fprintf(stderr, "Usage: chibi-program-request PACKAGE OUTPUT NAME=DIRECTORY...\n");
         return 2;
+    }
+    int count = argc - 3;
+    source_package_collection *collections = xmalloc((size_t)count * sizeof *collections);
+    for (int i = 0; i < count; i++) {
+        char *equals = strchr(argv[3 + i], '=');
+        if (!equals) {
+            fprintf(stderr, "%s: a collection is NAME=DIRECTORY\n", argv[3 + i]);
+            free(collections);
+            return 2;
+        }
+        *equals = 0;
+        collections[i] = (source_package_collection){ argv[3 + i], equals + 1 };
     }
     char error[512];
     native_capabilities *native = chibi_application_catalog_new(error, sizeof error);
     if (!native) {
         fprintf(stderr, "Cannot prepare application capabilities: %s\n", error);
+        free(collections);
         return 1;
     }
-    const source_package_collection core = { "core", argv[2] };
-    const source_package_disk_options disk = { argv[1], &core, 1 };
+    const source_package_disk_options disk = { argv[1], collections, count };
     source_package_snapshot_options inputs = { 0 };
     source_package_load_error load = { 0 };
     int status = 1;
@@ -33,21 +48,22 @@ int main(int argc, char **argv)
         package_compile_error failure;
         size_t length = 0;
         char *request = package_compile_request(&inputs, native, &length, &failure);
-        FILE *output = request ? fopen(argv[3], "wb") : NULL;
+        FILE *output = request ? fopen(argv[2], "wb") : NULL;
         if (!request) {
             fprintf(stderr, "%s: %s\n", argv[1], failure.message);
         } else if (!output) {
-            perror(argv[3]);
+            perror(argv[2]);
         } else {
             bool written = fwrite(request, 1, length, output) == length;
             status = fclose(output) || !written;
             if (status) {
-                fprintf(stderr, "%s: cannot write the request\n", argv[3]);
+                fprintf(stderr, "%s: cannot write the request\n", argv[2]);
             }
         }
         free(request);
         source_package_files_release(&inputs);
     }
     native_capabilities_free(native);
+    free(collections);
     return status;
 }

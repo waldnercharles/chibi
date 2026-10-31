@@ -70,8 +70,9 @@ package_collection *package_compile_read(
 }
 
 /* A package is the files of one directory. A compile reads only the packages
- * the root package reaches through `import NAME "COLLECTION:PATH"` lines, as
- * every file of a snapshot costs the compiler parsing and graph work. */
+ * the root package reaches through `import NAME "COLLECTION:PATH"` lines and
+ * relative `import NAME "PATH"` lines, as every file of a snapshot costs the
+ * compiler parsing and graph work. */
 static char *directory_of(const char *path)
 {
     const char *slash = strrchr(path, '/');
@@ -92,17 +93,52 @@ static bool contains(char *const *directories, const char *directory)
     return false;
 }
 
-/* The directory a `COLLECTION:PATH` import names, or NULL for an unknown
- * collection, which the compiler then rejects. Malloc-owned. */
+/* `path` (`length` bytes) below the directory `base`, its `.` and `..`
+ * segments resolved lexically, as the compiler resolves an import; a
+ * directory reads as directory_of writes it. NULL when `..` climbs above the
+ * first segment, which the compiler rejects too. Malloc-owned. */
+static char *resolve_directory(const char *base, const char *path, size_t length)
+{
+    size_t used = strlen(base);
+    /* Each segment appends at most its bytes and one slash. */
+    char *directory = xmalloc(used + length + 2);
+    memcpy(directory, base, used);
+    for (const char *segment = path, *end = path + length; segment < end;) {
+        const char *slash = memchr(segment, '/', (size_t)(end - segment));
+        size_t size = (size_t)((slash ? slash : end) - segment);
+        if (size == 2 && segment[0] == '.' && segment[1] == '.') {
+            while (used && directory[used - 1] != '/') {
+                used--;
+            }
+            if (!used) {
+                free(directory);
+                return NULL;
+            }
+            used--;
+        } else if (size && !(size == 1 && segment[0] == '.')) {
+            directory[used++] = '/';
+            memcpy(directory + used, segment, size);
+            used += size;
+        }
+        segment = slash ? slash + 1 : end;
+    }
+    directory[used] = 0;
+    return directory;
+}
+
+/* The directory an import names: `COLLECTION:PATH` below that collection's
+ * root, or a relative PATH below the importing package's directory. NULL for
+ * an unknown collection, which the compiler then rejects. Malloc-owned. */
 static char *imported_directory(
     const source_package_snapshot_options *inputs,
+    const char *importer,
     const char *target,
     size_t length
 )
 {
     const char *colon = memchr(target, ':', length);
     if (!colon) {
-        return NULL;
+        return resolve_directory(importer, target, length);
     }
     size_t name_length = (size_t)(colon - target);
     const char *root = NULL;
@@ -115,25 +151,14 @@ static char *imported_directory(
             root = inputs->collections[i].root;
         }
     }
-    if (!root) {
-        return NULL;
-    }
-    const char *path = colon + 1;
-    size_t path_length = length - name_length - 1;
-    if (!path_length || (path_length == 1 && *path == '.')) {
-        return xstrdup(root);
-    }
-    size_t root_length = strlen(root);
-    char *directory = xmalloc(root_length + 1 + path_length + 1);
-    memcpy(directory, root, root_length);
-    directory[root_length] = '/';
-    memcpy(directory + root_length + 1, path, path_length);
-    directory[root_length + 1 + path_length] = 0;
-    return directory;
+    return root ? resolve_directory(root, colon + 1, length - name_length - 1) : NULL;
 }
 
+/* Adds the directories the imports of `text`, a file of the package in
+ * `importer`, name. */
 static void reach_imports(
     const source_package_snapshot_options *inputs,
+    const char *importer,
     const char *text,
     size_t size,
     char ***reached
@@ -153,9 +178,13 @@ static void reach_imports(
             const char *close = open
                                   ? memchr(open + 1, '"', (size_t)(stop - open - 1))
                                   : NULL;
-            char *directory = close
-                                ? imported_directory(inputs, open + 1, (size_t)(close - open - 1))
-                                : NULL;
+            char *directory = close ? imported_directory(
+                                          inputs,
+                                          importer,
+                                          open + 1,
+                                          (size_t)(close - open - 1)
+                                      )
+                                    : NULL;
             if (directory && !contains(*reached, directory)) {
                 apush(*reached, directory);
             } else {
@@ -181,12 +210,20 @@ static bool *reachable_files(
     char **reached = NULL;
     apush(reached, xstrdup(root_directory));
     if (first_text) {
-        reach_imports(inputs, first_text, strlen(first_text), &reached);
+        reach_imports(inputs, root_directory, first_text, strlen(first_text), &reached);
     }
     for (int at = 0; at < acount(reached); at++) {
+        /* Appending may move the array, never the directory strings. */
+        const char *importer = reached[at];
         for (int i = 0; i < inputs->file_count; i++) {
-            if (!strcmp(directories[i], reached[at])) {
-                reach_imports(inputs, inputs->files[i].text, inputs->files[i].size, &reached);
+            if (!strcmp(directories[i], importer)) {
+                reach_imports(
+                    inputs,
+                    importer,
+                    inputs->files[i].text,
+                    inputs->files[i].size,
+                    &reached
+                );
             }
         }
     }

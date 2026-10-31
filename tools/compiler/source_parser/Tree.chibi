@@ -1,7 +1,7 @@
 package source_parser
 
-import tk "project:source_tokenizer"
-import syntax "project:syntax_diagnostics"
+import tk "../source_tokenizer"
+import syntax "../syntax_diagnostics"
 
 // A node of the tree under construction. The first rows are the tokens, in
 // order, and the parser appends interior rows after them. Links use -1 for

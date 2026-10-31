@@ -1,6 +1,6 @@
 package source_parser
 
-import tk "project:source_tokenizer"
+import tk "../source_tokenizer"
 
 // Tree-sitter's binding powers (src/language/grammar.js, P).
 OrPower: int : 1;

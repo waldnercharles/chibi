@@ -231,6 +231,44 @@ TEST_CASE(session_collection_reachability_preserves_entry_and_source_diagnostics
     return true;
 }
 
+/* A relative import names a package below the importing package's directory,
+ * in the project or in a collection, and the compile reaches it as it reaches
+ * a `COLLECTION:PATH` import. */
+TEST_CASE(session_reaches_relative_imports_in_the_project_and_collections)
+{
+    REQUIRE(catalog());
+    const char *outer = "package outer\nimport inner \"../inner\"\npub Value "
+                        ":: () -> int { return inner.Value() + 1 "
+                        "}\n";
+    const char *inner = "package inner\npub Value :: () -> int { return 40 }\n";
+    const char *main = "package app\nimport outer \"core:outer\"\nimport near "
+                       "\"near\"\nMain :: () -> int { "
+                       "return outer.Value() + near.Value() }\n";
+    const char *near = "package near\npub Value :: () -> int { return 1 }\n";
+    const source_package_input files[] = {
+        { "/aaa-core/inner/Inner.chibi", inner, strlen(inner) },
+        { "/aaa-core/outer/Outer.chibi", outer, strlen(outer) },
+        { "/program-session/Main.chibi", main, strlen(main) },
+        { "/program-session/near/Near.chibi", near, strlen(near) }
+    };
+    const source_package_collection collection = { "core", "/aaa-core" };
+    const source_package_snapshot_options inputs = {
+        .project_root = "/program-session",
+        .files = files,
+        .file_count = 4,
+        .collections = &collection,
+        .collection_count = 1
+    };
+    authoring_program_options configuration = options(TEST_COMPILED_BACKEND);
+    sessions[0] = authoring_program_new(&configuration);
+    REQUIRE(authoring_program_compile(sessions[0], &inputs));
+    REQUIRE(authoring_program_prepare(sessions[0], "Main", false));
+    REQUIRE(authoring_program_commit(sessions[0]));
+    int result = 0;
+    REQUIRE(authoring_program_call(sessions[0], NULL, &result) == FLOW_OK && result == 42);
+    return true;
+}
+
 TEST_CASE(session_patches_frame_calls_by_name_without_restarting_state)
 {
     REQUIRE(catalog());
@@ -664,6 +702,7 @@ void test_language_program_session()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(session_collection_reachability_preserves_entry_and_source_diagnostics);
+    RUN_TEST_CASE(session_reaches_relative_imports_in_the_project_and_collections);
     RUN_TEST_CASE(session_candidates_preserve_package_and_import_state);
     RUN_TEST_CASE(session_patches_frame_calls_by_name_without_restarting_state);
     RUN_TEST_CASE(session_rejected_source_and_entry_keep_the_accepted_runtime);

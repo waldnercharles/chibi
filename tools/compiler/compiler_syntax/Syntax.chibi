@@ -1,6 +1,8 @@
 package compiler_syntax
 
-import parser "project:source_parser"
+// Sibling packages are imported relatively, so programs outside tools/compiler,
+// such as chibi fmt, can import this one from a collection of that directory.
+import parser "../source_parser"
 
 // The raw syntax tree of `text`: every token a leaf, with the fields, named
 // and extra flags and byte ranges of src/language/grammar.js. The authored

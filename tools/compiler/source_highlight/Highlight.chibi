@@ -1,9 +1,11 @@
 package source_highlight
 
+// Sibling packages are imported relatively, so programs outside tools/compiler,
+// such as chibi fmt, can import this one from a collection of that directory.
 import strings "core:strings"
-import parser "project:compiler_syntax"
-import syntax "project:syntax_diagnostics"
-import tk "project:source_tokenizer"
+import parser "../compiler_syntax"
+import syntax "../syntax_diagnostics"
+import tk "../source_tokenizer"
 
 // Highlights Chibi source as HTML: the original bytes, escaped, with each
 // classified token in a `<span class="chibi-ROLE">`. Roles come from the parse

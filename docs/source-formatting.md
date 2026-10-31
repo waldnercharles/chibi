@@ -95,8 +95,9 @@ would stage those edits. `.githooks/pre-commit` runs it with the `chibi` it
 finds in `build/sdk`, `build-release/sdk` or `PATH`, so enable the hooks once
 with `git config core.hooksPath .githooks`.
 
-The SDK build compiles `apps/fmt`, with the formatter's packages beside it,
-and the launcher embeds the closure; the command runs it as a program of its
+The SDK build compiles `apps/fmt`, which imports the formatter from
+`tools/compiler` as the `compiler` collection, and the launcher embeds the
+closure; the command runs it as a program of its
 own (`program.embedded`), so that no other command loads it. Costs on this
 checkout (Apple M-series, release SDK, measured 2026-10-30 at a load average
 of about 35 on 14 cores):

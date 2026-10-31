@@ -1,6 +1,6 @@
 package source_parser
 
-import tk "project:source_tokenizer"
+import tk "../source_tokenizer"
 
 // type: a single type or a union of them. A union is a `type` holding one
 // `union_type`, whose members are `type` nodes.

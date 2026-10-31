@@ -256,9 +256,9 @@ ExecutableLinksMacOSPrograms :: (scratch: string) {
     assert(Equals(Path([fixture.root, "/linker tool.argv"]), link), "the macOS link's argv");
     stub := Read(Path([output, "/libSystem.tbd"]));
     assert(strings.Contains(stub, "install-name: '/usr/lib/libSystem.B.dylib'\n"), "the stub names libSystem");
-    assert(strings.Contains(stub, "symbols: [ _abs, _abort, _calloc, _dprintf, _memcpy, _memmove, _memset, dyld_stub_binder ]"), "the stub exports what the program imports");
+    assert(strings.Contains(stub, "symbols: [ _abs, _memcpy, _memmove, _memset, dyld_stub_binder ]"), "the stub exports what the program imports");
     start := Read(Path([output, "/start.ll"]));
-    assert(strings.Contains(start, "target triple = \"arm64-apple-macosx11.0.0\"") && strings.Contains(start, "define i32 @main() {"), "dyld calls main");
+    assert(strings.Contains(start, "target triple = \"arm64-apple-macosx11.0.0\"") && strings.Contains(start, "define i32 @main(i32 %argc, ptr %argv, ptr %envp) {"), "dyld calls main");
 }
 
 ExecutableLinksWithTheNamedLinkerAndStartObject :: (scratch: string) {
@@ -372,6 +372,7 @@ pub Run :: () -> int {
                           "--compiler", Path([checkout, "/tools/compiler"]), "--compiler-core", Path([checkout, "/packages/core"]),
                           "--root", checkout, "--source", Path([checkout, "/test/native_aot/driver/DriverTests.chibi"]),
                           "--core", Path([checkout, "/packages/core"]), "--collection", Path(["native_aot=", checkout, "/tools/native_aot/driver"]),
+                          "--collection", Path(["native_link=", checkout, "/tools/compiler/native_link"]),
                           "--entry", "Publication", "--timeout-ms", "600000", "--", scratch, os.Getenv("CHIBI_LLVM_BIN")]);
     log := Path([result.stdout, result.stderr]);
     if (result.status != 0) {

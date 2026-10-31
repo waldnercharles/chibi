@@ -14,7 +14,7 @@ Collection :: (driver: string) -> string {
 Invoke :: (settings: string[], input: string, output: string,
            opt: string, llc: string, linker: string, mode: string) -> int {
     return build.probe([
-        settings[0], "--root", build.root(), "--source", settings[1], "--collection", Collection(settings[1]),
+        settings[0], "--root", build.root(), "--source", settings[1], "--collection", Collection(settings[1]), "--collection", Join(["native_link=", settings[2], "/native_link"]),
         "--core", settings[3], "--compiler", settings[2], "--compiler-core", settings[3],
         "--entry", "Build", "--timeout-ms", "30000", "--",
         input, output, opt, llc, linker, mode
@@ -149,7 +149,7 @@ Tests :: () -> int {
 InvokeObject :: (settings: string[], input: string, output: string,
                  opt: string, llc: string, mode: string) -> int {
     return build.probe([
-        settings[0], "--root", build.root(), "--source", settings[1], "--collection", Collection(settings[1]),
+        settings[0], "--root", build.root(), "--source", settings[1], "--collection", Collection(settings[1]), "--collection", Join(["native_link=", settings[2], "/native_link"]),
         "--core", settings[3], "--compiler", settings[2], "--compiler-core", settings[3],
         "--entry", "Object", "--timeout-ms", "30000", "--",
         input, output, opt, llc, mode

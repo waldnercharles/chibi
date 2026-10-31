@@ -757,7 +757,8 @@ NativeSelfHost :: (arguments: string[]) -> int {
     tools := Absolute("tools/native_aot")
     build_one := [
         Join([releases, "/sdk/chibi-build-host"]), "--root", tools, "--source", Join([tools, "/Driver.chibi"]),
-        "--collection", Join(["native_aot=", tools, "/driver"]), "--core", Absolute("packages/core"), "--compiler", Absolute("tools/compiler"), "--compiler-core",
+        "--collection", Join(["native_aot=", tools, "/driver"]),
+        "--collection", Join(["native_link=", Absolute("tools/compiler"), "/native_link"]), "--core", Absolute("packages/core"), "--compiler", Absolute("tools/compiler"), "--compiler-core",
         Absolute("packages/core"), "--entry", "Native", "--timeout-ms", "3600000", "--", compiler_host,
         Absolute("tools/compiler"), Absolute("packages/core"), driver, llvm, "2", "none", target
     ]

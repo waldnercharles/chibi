@@ -342,7 +342,7 @@ LinksMacOSAndWindowsPrograms :: (suite: Suite) {
     assert(Read(Path([built.tools, "/ld.lld.argv"])) == link, "the macOS link");
     assert(Holds(Path([folder, "/libSystem.tbd"]), "install-name: '/usr/lib/libSystem.B.dylib'\n"), "the libSystem stub");
     assert(Holds(Path([folder, "/start.ll"]), "target triple = \"arm64-apple-macosx11.0.0\""), "the macOS start module");
-    assert(Holds(Path([folder, "/start.ll"]), "define i32 @main() {\n  %status = call i32 @chibi_scalar()"), "dyld calls main");
+    assert(Holds(Path([folder, "/start.ll"]), "define i32 @main(i32 %argc, ptr %argv, ptr %envp) {"), "dyld calls main with the arguments");
     assert(Holds(Path([folder, "/source.ll"]), "target triple = \"arm64-apple-macosx11.0.0\""), "the macOS module");
     assert(Says(Build(suite, suite.launcher, built, mac), "/program is up to date"), "an unchanged macOS build");
 
@@ -587,7 +587,12 @@ RunsTheForeignSamples :: (suite: Suite) {
         if (result.status != 0) {
             os.Print(result.log);
         }
-        assert(result.status == 0 && os.Run(In(built.game, Printed(result))) == 0, "the sample's asserts hold natively");
+        assert(result.status == 0, "the sample builds natively");
+        ran := os.Capture(In(built.game, Printed(result)));
+        if (ran.status != 0) {
+            os.Print(format_text("native build: the {} sample exits {}: {}{}", sample, ran.status, ran.stdout, ran.stderr));
+        }
+        assert(ran.status == 0, "the sample's asserts hold natively");
         // The receipt records the vendor archive by hash.
         program := Printed(result);
         assert(sample != "foreign_vendor" ||
@@ -600,25 +605,59 @@ CrossTarget :: struct {
     triple: string;
     directory: string;
     program: string;
-    // What `file` says the program is.
-    kind: string;
     // The start of the frame module's IR.
     module: string;
     probe: string;
-    // What the frame's object holds when its probes survive O2.
+    // What the frame's object holds when its probes survive O2: arm64's page
+    // step and one of the four-byte accesses in `touches` that LLVM uses to
+    // touch the page, or Windows' symbol.
     probes: u8[];
+    touches: u8[];
+}
+
+// Whether `program` is the target's executable: a 64-bit arm64 Mach-O
+// MH_EXECUTE file, or a PE32+ x86-64 console program, read from its header
+// rather than from `file`, whose words differ across systems.
+ExecutableFor :: (program: string, target: CrossTarget) -> bool {
+    header := bytes.FromString(Read(program));
+    if (length(header) < 512) {
+        return false;
+    }
+    if (target.program == "program") {
+        magic: u8[] = [u8(207), u8(250), u8(237), u8(254), u8(12), u8(0), u8(0), u8(1)];
+        return bytes.HasPrefix(header, magic) && header[12] == u8(2);
+    }
+    pe := int(header[60]) + int(header[61]) * 256;
+    return header[0] == u8(77) && header[1] == u8(90) && pe + 24 + 69 < 512 && header[pe] == u8(80) &&
+           header[pe + 1] == u8(69) && header[pe + 2] == u8(0) && header[pe + 3] == u8(0) && header[pe + 4] == u8(100) &&
+           header[pe + 5] == u8(134) && header[pe + 24] == u8(11) && header[pe + 25] == u8(2) && header[pe + 24 + 68] == u8(3);
+}
+// Whether the object at `path` holds the target's probes.
+Probed :: (path: string, target: CrossTarget) -> bool {
+    data := bytes.FromString(Read(path));
+    if (!bytes.Contains(data, target.probes)) {
+        return false;
+    }
+    touched := length(target.touches) == 0;
+    for (at in 0..<length(target.touches) / 4) {
+        touched = touched || bytes.Contains(data, slice(target.touches, at * 4, 4));
+    }
+    return touched;
 }
 
 // The targets other than the host, in the driver's order after Linux, and on
 // macOS the host's own, whose programs also run.
 CrossTargets :: () -> CrossTarget[] {
-    // arm64's inline probe loop: `sub sp, sp, #1, lsl #12`, `cmp sp, x9` and `str xzr, [sp]`.
-    mac: CrossTarget = {triple: "aarch64-apple-darwin", directory: "macos-arm64", program: "program", kind: "Mach-O 64-bit executable arm64",
+    // arm64's inline probe loop steps a page, `sub sp, sp, #1, lsl #12`, and
+    // touches it: `str xzr, [sp]` to LLVM 22, `ldr xzr, [sp]` from LLVM 23.
+    touches: u8[] = [u8(255), u8(3), u8(0), u8(249), u8(255), u8(3), u8(64), u8(249)];
+    none: u8[] = [];
+    mac: CrossTarget = {triple: "aarch64-apple-darwin", directory: "macos-arm64", program: "program",
                         module: "target triple = \"arm64-apple-macosx11.0.0\"\n", probe: "inline-asm",
-                        probes: [u8(255), u8(7), u8(64), u8(209), u8(255), u8(99), u8(41), u8(235), u8(255), u8(3), u8(0), u8(249)]};
-    windows: CrossTarget = {triple: "x86_64-pc-windows-msvc", directory: "windows-x64", program: "program.exe", kind: "PE32+ executable",
+                        probes: [u8(255), u8(7), u8(64), u8(209)], touches: touches};
+    windows: CrossTarget = {triple: "x86_64-pc-windows-msvc", directory: "windows-x64", program: "program.exe",
                             module: "target triple = \"x86_64-pc-windows-msvc\"\n", probe: "__chkstk",
-                            probes: bytes.FromString("__chkstk")};
+                            probes: bytes.FromString("__chkstk"), touches: none};
     targets: CrossTarget[] = [mac, windows];
     return targets;
 }
@@ -663,7 +702,10 @@ LinksOtherTargetsWithLLVM :: (suite: Suite) {
             result := Build(suite, suite.built, built, [mode, "--target", target.triple]);
             assert(result.status == 0, "the program builds");
             program := Printed(result);
-            assert(strings.Contains(os.Capture(["file", "-b", program]).stdout, target.kind), "a program for the target");
+            if (!ExecutableFor(program, target)) {
+                os.Print(Path(["native build: ", program, " is not a ", target.triple, " program"]));
+            }
+            assert(ExecutableFor(program, target), "a program for the target");
             assert(!runs || target.program != "program" || Exit(program) == 42, "the host's program runs");
             name := Path(["twice", strings.TrimPrefix(mode, "-")]);
             if (target.program == "program.exe") {
@@ -678,9 +720,12 @@ LinksOtherTargetsWithLLVM :: (suite: Suite) {
                         "  store volatile i32 42, ptr %at\n  %value = load volatile i32, ptr %at\n  ret i32 %value\n}\n",
                         "attributes #0 = { \"probe-stack\"=\"", target.probe, "\" }\n"]));
         DriverBuild(suite, built, ir, out);
-        assert(bytes.Contains(bytes.FromString(Read(Path([out, "/object.o"]))), target.probes), "the frame's probes");
+        if (!Probed(Path([out, "/object.o"]), target)) {
+            os.Print(Path(["native build: the ", target.triple, " frame object has no stack probes"]));
+        }
+        assert(Probed(Path([out, "/object.o"]), target), "the frame's probes");
         program := Path([out, "/", target.program]);
-        assert(strings.Contains(os.Capture(["file", "-b", program]).stdout, target.kind), "a frame program for the target");
+        assert(ExecutableFor(program, target), "a frame program for the target");
         assert(!runs || target.program != "program" || Exit(program) == 42, "the host's frame program runs");
         frame := "frame-O2";
         if (target.program == "program.exe") {
@@ -698,6 +743,7 @@ DriverBuild :: (suite: Suite, built: Case, ir: string, out: string) {
     driver := Path([share, "/tools/native_aot"]);
     ran := os.Capture(["/usr/bin/env", "-i", "PATH=", suite.cache, Path([sdk, "/libexec/chibi/chibi-build-host"]), "--root", driver,
                        "--source", Path([driver, "/Driver.chibi"]), "--collection", Path(["native_aot=", driver, "/driver"]),
+                       "--collection", Path(["native_link=", share, "/compiler/native_link"]),
                        "--core", Path([share, "/core"]), "--compiler", Path([share, "/compiler"]), "--compiler-core", Path([share, "/core"]),
                        "--entry", "Build", "--timeout-ms", "120000", "--", ir, out, Path([built.tools, "/opt"]), Path([built.tools, "/llc"]),
                        Path([built.tools, "/ld.lld"]), "2"]);
@@ -822,9 +868,9 @@ ImportsFromAWindowsSystemLibrary :: (suite: Suite) {
     assert(result.status == 0, "the Windows program builds");
     program := Printed(result);
     windows := CrossTargets()[1];
-    assert(strings.Contains(os.Capture(["file", "-b", program]).stdout, windows.kind), "a Windows program");
+    assert(ExecutableFor(program, windows), "a Windows program");
     folder := strings.TrimSuffix(program, "/program.exe");
-    assert(Holds(Path([folder, "/kernel32.def"]), "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCurrentProcessId\n    GetTickCount\n"), "the import definition");
+    assert(Holds(Path([folder, "/kernel32.def"]), "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCommandLineW\n    GetCurrentProcessId\n    GetTickCount\n"), "the import definition");
     assert(Holds(program, "GetCurrentProcessId") && Holds(program, "GetTickCount"), "the import table");
     BundleProgram(program, windows, "windows-imports.exe");
     result = Build(suite, suite.built, built, ["-O0"]);
@@ -842,7 +888,7 @@ AllocatesOnWindowsWithoutLibc :: (suite: Suite) {
     assert(result.status == 0, "the Windows program builds");
     program := Printed(result);
     windows := CrossTargets()[1];
-    assert(strings.Contains(os.Capture(["file", "-b", program]).stdout, windows.kind), "a Windows program");
+    assert(ExecutableFor(program, windows), "a Windows program");
     folder := strings.TrimSuffix(program, "/program.exe");
     assert(Holds(Path([folder, "/start.ll"]), "call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)"), "the start module allocates");
     assert(Holds(Path([folder, "/kernel32.def"]), "    GetProcessHeap\n    HeapAlloc\n    GetStdHandle\n    WriteFile\n"), "the kernel32 imports");
@@ -864,7 +910,7 @@ LinksCoreSysWindows :: (suite: Suite) {
     assert(result.status == 0, "the Windows program builds");
     program := Printed(result);
     windows := CrossTargets()[1];
-    assert(strings.Contains(os.Capture(["file", "-b", program]).stdout, windows.kind), "a Windows program");
+    assert(ExecutableFor(program, windows), "a Windows program");
     folder := strings.TrimSuffix(program, "/program.exe");
     assert(Holds(Path([folder, "/kernel32.def"]), "    CreateFileW\n"), "kernel32's file calls");
     assert(!Holds(program, "msvcrt") && !Holds(program, "ucrtbase"), "no C library");

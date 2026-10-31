@@ -18,11 +18,6 @@ chibi test tools/compiler                                # one package's @test f
 reports a timeout as a failure, never a pass. [Testing](testing.md) describes
 the groups CI runs.
 
-`CHIBI_EXECUTION_PROFILE` (default `iteration`) and `CHIBI_ALLOW_FULL_GPU`
-select the execution budget in `src/automation/execution_policy.c`.
-`hardware` permits underlying hardware operations but does not prove a
-physical GPU is present.
-
 ## Reviewed checks and truthful handoff
 
 `chibi build test unit` runs the fast C execution-policy cases.

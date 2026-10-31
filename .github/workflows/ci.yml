@@ -122,7 +122,7 @@ jobs:
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
         run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-discovery graph-asset-cache graph-os graph-c graph-sdk native-aot-driver
-      # After make build, whose build/reflect the reflection identity cases run.
+      # After `chibi build`, which builds the test drivers this step runs.
       - name: Build timing host regressions (ready drivers)
         env:
           CHIBI_TOOLS_BUILD_DIR: build/test/tools
@@ -301,7 +301,7 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
-      # After make build, whose build/reflect the reflection identity cases run.
+      # After `chibi build`, which builds the test drivers this step runs.
       - name: Build timing host regressions (ready drivers)
         env:
           CHIBI_TOOLS_BUILD_DIR: build/test/tools

@@ -228,8 +228,8 @@ try {
     $compilerHash = Digest $compiler
     if ($recovery['error'] -or $recovery['stages'].AsArray().Count -ne 2 -or
         $runtimeHash -ne $recovery['runtime_sha256'].GetValue[string]() -or
-        $runtime['source_revision'].GetValue[string]() -ne $recovery['runtime_source_revision'].GetValue[string]() -or
-        $runtime['source_tree'].GetValue[string]() -ne $recovery['runtime_source_tree'].GetValue[string]() -or
+        $pin['source_revision'].GetValue[string]() -ne $recovery['runtime_source_revision'].GetValue[string]() -or
+        $pin['source_tree'].GetValue[string]() -ne $recovery['runtime_source_tree'].GetValue[string]() -or
         $compilerHash -ne $recovery['compiler_sha256'].GetValue[string]() -or
         $compilerHash -ne $recovery['stages'][1]['output_compiler_sha256'].GetValue[string]() -or
         (Digest (Join-Path $Proof 'stage1/compiler.chibip')) -ne $compilerHash -or

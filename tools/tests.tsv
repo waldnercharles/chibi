@@ -22,7 +22,7 @@ tool	chibi-cli	@build@/test/tools/test_tools	--chibi-cli	@release@/sdk/chibi
 tool	native-build	@build@/test/tools/test_tools	--native-build	@release@/sdk/chibi
 tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
 tool	chibi-cli-installed	@build@/test/tools/test_tools	--chibi-cli-installed	dist/sdk/bin/chibi
-tool	native-aot-driver	@build@/test/tools/test_tools	--native-aot-driver	tools/native_aot/Driver.chibi
+tool	native-aot-driver	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/native_aot/driver/DriverTests.chibi	--core	packages/core	--collection	native_aot=tools/native_aot/driver	--entry	Run	--timeout-ms	600000	--	@host@
 tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/tools/policy_worker	@host@
 tool	build-timings	@build@/test/tools/test_tools	--build-timings	@build@/test/tools/policy_worker	@host@
 tool	build-process-files	@build@/test/tools/test_tools	--build-process-files	@build@/test/tools/policy_worker	@host@
@@ -98,6 +98,6 @@ exclusive	language-test-parallel
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math
 group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	fmt	arena
 group	projects	chibi-cli	native-build
-group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
+group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host	language-scalar-native
 group	compiler	language-package-compiler-chibi-scalar
 group	benchmarks	ecs-query-benchmark	native-workload-benchmark	scheduler-benchmark

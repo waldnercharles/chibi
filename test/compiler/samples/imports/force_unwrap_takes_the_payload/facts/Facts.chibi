@@ -1,0 +1,8 @@
+package facts
+
+Main :: () -> int {
+    x: int? = 7;
+    y: int? = 35;
+    word: string? = "four";
+    return x! + y! + text_byte_length(word!) - 4;
+}

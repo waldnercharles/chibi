@@ -1504,6 +1504,23 @@ static const char *array_mutate_place(arena *storage, const pin_value *args, int
     }
     language_reference resolved,
         *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &resolved);
+    /* `out.append(x)` and `out.extend(xs)` through a reference to a whole
+     * local array change the local's header in its slot, as the local's own
+     * push and extend do. Resolving a path, detaching the owner and storing
+     * a persistent root back are for fields, state and components. */
+    execution_array_mutation operation = (execution_array_mutation)args[1].i;
+    if (ref->kind == LANGUAGE_REFERENCE_VALUE && !ref->path && count == 3 &&
+        ref->root.container == PIN_CONTAINER_ARRAY &&
+        (operation == EXECUTION_ARRAY_APPEND ||
+         (operation == EXECUTION_ARRAY_EXTEND && sequence_array(args[2])))) {
+        if (!root_matches(ref, *ref->value)) {
+            return "Array mutation owner differs from its reference";
+        }
+        pin_value local[] = { { .u64 = (uintptr_t)ref->value }, args[2] };
+        return operation == EXECUTION_ARRAY_APPEND
+                 ? array_push(storage, local, 2, out)
+                 : array_extend(storage, local, 2, out);
+    }
     pin_value root = reference_root(ref), target = root;
     if (!root_matches(ref, root)) {
         return "Array mutation owner differs from its reference";

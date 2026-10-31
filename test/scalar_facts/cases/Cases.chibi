@@ -196,6 +196,9 @@ Cases :: () -> Case[] {
         // the string has three bytes and an empty one none, and the second byte
         // is 98.
         Accepted("array_text_bytes", "package scalar\nMain :: () -> int {\n    bytes := text_bytes(\"AbZ\");\n    total: int = 0;\n    for (b in bytes) { total += b; }\n    empty := text_bytes(\"\");\n    return total + length(bytes) * 1000 + length(empty) * 100000 + bytes[1];\n}\n", 3351, "Main", ""),
+        // A literal led by a record's field is an array of that field's type: the
+        // loop adds 3 and 4, then 5 and 6 are the second pair.
+        Accepted("array_literal_fields", "package scalar\nPair :: struct { a: int; b: int; }\nMain :: () -> int {\n    p: Pair = {a: 3, b: 4};\n    total: int = 0;\n    for (v in [p.a, p.b]) { total += v; }\n    return total * 100 + length(resize([p.b], 5));\n}\n", 705, "Main", ""),
         // Assigning an array copies it: b changes alone, then a alone. a ends
         // as [1, 2, 3, 4] and b as [10, 2, 3].
         Accepted("array_copy_independence", "package scalar\nMain :: () -> int {\n    a: int[] = [1, 2, 3];\n    b := a;\n    b[0] = 10;\n    a.append(4);\n    return a[0] * 100 + b[0] + length(a) * 1000 + length(b) * 10000;\n}\n", 34110, "Main", ""),

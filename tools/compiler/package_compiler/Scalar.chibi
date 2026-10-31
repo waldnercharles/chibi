@@ -3,6 +3,7 @@ package package_compiler
 import facts "project:scalar_facts"
 import snapshot "project:source_snapshot"
 import raw "project:compiler_syntax"
+import parser "project:source_parser"
 import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 import routes "project:package_routes"
@@ -2814,6 +2815,11 @@ ScalarEntryFirst :: (callables: Callable[]) -> Callable[] {
 pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[], natives: Native[],
                       ports: Port[], identities: u64[]) -> facts.Row[] {
     return ScalarCollect(project, [], [], [path], [text], target, names, natives, ports, identities, false);
+}
+// The authored parser's tree for `text`, for tools that read syntax outside the
+// compiler's passes: the native census reads its sources through it.
+pub ParseSyntax :: (text: string) -> parser.Tree {
+    return raw.Parse(text);
 }
 // The facts rows of the project packages `paths` hold, as CollectScalar gives
 // one source's: the first function of the first file is the entry, the other

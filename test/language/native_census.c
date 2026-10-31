@@ -54,7 +54,8 @@ enum
     DECL_TYPE,
     DECL_CONSTANT
 };
-static const char PARSE_SOURCE[] = "project:compiler_syntax:1:Parse:callable";
+static const char
+    PARSE_SOURCE[] = "project:package_compiler:1:ParseSyntax:callable";
 static const char
     COLLECT_SCALAR[] = "project:package_compiler:1:CollectScalar:callable";
 /* The producer's own rejections and the ordinary compiler's rejection of a
@@ -186,6 +187,7 @@ static char **packages; /* The directory that names each package. */
 static census_decl *decls;
 static census_row *rows;
 
+static void free_tree(census_tree *tree);
 /* Forgets the sources the census read. */
 static void unload()
 {

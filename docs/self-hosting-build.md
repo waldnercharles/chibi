@@ -572,10 +572,8 @@ with a configured CMake build's; `build-graph-support` compiles only
 everything, `test_tools` included, took about 25 to 32 minutes with sanitizers
 and no compiler cache at a load average of 5.
 `build-graph-archive` compiles a math-header library and the task pool over
-the archive's headers and prebuilt libraries; `build-graph-generated`
-generates the native type sources and rewrites the codec headers,
-`build-graph-programs` checks that naming `test_tools` also builds the programs
-it runs, and `build-graph-resources` that the launcher's and `chibi_ctl`'s
+the archive's headers and prebuilt libraries; `build-graph-programs` checks
+that naming `test_tools` also builds the programs it runs, and `build-graph-resources` that the launcher's and `chibi_ctl`'s
 resources equal CMake's.
 
 A `third-party/` path in the tables is below the unpacked third-party archive

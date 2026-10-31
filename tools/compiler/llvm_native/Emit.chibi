@@ -181,6 +181,20 @@ pub ForeignCall: int : 49;
 // of its type.
 pub StateLoad: int : 50;
 pub StateStore: int : 51;
+// A reference type is RefType plus the type it refers to, a pointer to a
+// local of the caller that a function reads and writes in place, as a C++
+// reference or an Odin `^T` parameter does. Only a parameter, a local and a
+// slot hold one: the callee's references point at locals of its callers, so
+// none outlives its call, and no field, array element or result is one.
+pub RefType: int : 1048576;
+// output = the address of the local `left`, a reference to its type; type is
+// the reference type.
+pub LocalAddress: int : 52;
+// output = the value the left slot's reference refers to; type is the value's.
+pub Deref: int : 53;
+// Writes the right slot's value to where the left slot's reference points;
+// type is the value's. It gives nothing.
+pub Poke: int : 54;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -189,7 +203,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) ||
+    return op <= Local || op == LocalAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) ||
            op == ForeignCall || op == StateLoad;
 }
 Comparison :: (op: int) -> bool {
@@ -200,7 +214,7 @@ Unary :: (op: int) -> bool {
 }
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
-           (op >= ArrayLength && op <= ArrayBytes) || op == StateStore;
+           (op >= ArrayLength && op <= ArrayBytes) || op == StateStore || op == Deref || op == Poke;
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -229,7 +243,7 @@ Fits :: (literal: i64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
-    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || (op >= TextByte && op <= TextTake) ||
+    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
            ArrayReadsRight(op);
 }
 // Whether an array instruction reads a right slot: an index, an element,
@@ -261,6 +275,14 @@ ElementType :: (records: Record[], type: int) -> int {
     }
     return element;
 }
+// Whether a parameter, local or slot holds `type`: a value, or a reference to
+// one.
+Held :: (records: Record[], type: int) -> bool {
+    if (type >= RefType) {
+        return Valued(records, type - RefType);
+    }
+    return Valued(records, type);
+}
 // Whether `type` is a scalar, a string, one of the module's records or an
 // array of one of them.
 Valued :: (records: Record[], type: int) -> bool {
@@ -271,6 +293,9 @@ Valued :: (records: Record[], type: int) -> bool {
 }
 // The LLVM type of a scalar, string, record or array type the module holds.
 TypeName :: (type: int) -> string {
+    if (type >= RefType) {
+        return "ptr";
+    }
     if (type >= ArrayType) {
         return abi.ArrayType();
     }
@@ -473,6 +498,17 @@ StateValid :: (slots: int[], texts: string[], item: Instruction) -> bool {
     }
     return Fits(item.literal, item.type) && Index(item.right, length(texts));
 }
+// Whether a reference instruction names a local of the type its reference
+// type refers to, a reference slot, or a reference slot and a value slot.
+ReferenceValid :: (slots: int[], locals: int[], item: Instruction) -> bool {
+    if (item.op == LocalAddress) {
+        return item.type > RefType && Typed(locals, item.left, item.type - RefType);
+    }
+    if (item.op == Deref) {
+        return item.type < RefType && Typed(slots, item.left, RefType + item.type);
+    }
+    return item.type < RefType && Typed(slots, item.left, RefType + item.type) && Typed(slots, item.right, item.type);
+}
 // A call names another function of the module, with its result type and one
 // argument slot of each parameter's type.
 CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments: int[], item: Instruction) -> bool {
@@ -509,17 +545,17 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         return Result.Rejected(-1, "unsupported native scalar signature or table size");
     }
     for (type in parameters) {
-        if (!Valued(records, type) || (exported && abi.ScalarType(type) == "")) {
+        if (!Held(records, type) || (exported && abi.ScalarType(type) == "")) {
             return Result.Rejected(-1, "unsupported native scalar parameter");
         }
     }
     for (type in slots) {
-        if (!Valued(records, type)) {
+        if (!Held(records, type)) {
             return Result.Rejected(-1, "native scalar slot cannot hold a managed value or pointer");
         }
     }
     for (type in locals) {
-        if (!Valued(records, type)) {
+        if (!Held(records, type)) {
             return Result.Rejected(-1, "native scalar local cannot hold a managed value or pointer");
         }
     }
@@ -531,7 +567,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > StateStore) {
+        if (item.op < Constant || item.op > Poke) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -557,6 +593,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (item.op == Local && !Typed(locals, item.left, item.type)) {
             return Result.Rejected(base + pc, "native local read has an invalid type");
+        }
+        if ((item.op == LocalAddress || item.op == Deref || item.op == Poke) &&
+            !ReferenceValid(slots, locals, item)) {
+            return Result.Rejected(base + pc, "native reference differs from its operands");
         }
         if (item.op == Save && (!Typed(slots, item.left, item.type) ||
                                 !Typed(locals, item.target, item.type))) {
@@ -963,6 +1003,16 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}  %v{} = extractvalue {} %a{}, {}\n", out, pc, TypeName(item.right), pc, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == LocalAddress) {
+        out = format_text("{}{}", out, Store(format_text("%l{}", item.left), item.type, "s", item.output));
+    } else if (item.op == Deref) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), RefType + item.type, "s", item.left));
+        out = format_text("{}  %v{} = load {}, ptr %a{}\n", out, pc, type, pc);
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == Poke) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), RefType + item.type, "s", item.left));
+        out = format_text("{}{}", out, Load(format_text("b{}", pc), item.type, "s", item.right));
+        out = format_text("{}  store {} %b{}, ptr %a{}\n", out, type, pc, pc);
     } else if (item.op == StateLoad) {
         out = format_text("{}{}", out, StateRead(item, pc));
     } else if (item.op == StateStore) {

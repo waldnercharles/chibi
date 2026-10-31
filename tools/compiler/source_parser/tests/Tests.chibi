@@ -118,3 +118,7 @@ RejectsUnterminatedString :: () {
     Rejects("package demo\n\nMain :: () {\n    s := \"open\n}\n", 4, 10);
 }
 
+@test
+AcceptsABodyAfterADereferenceAndALineBreak :: () {
+    Accepts("package p\n\nF :: (p: ^bool) -> int {\n    if p^ {}\n    return 8\n}\n");
+}

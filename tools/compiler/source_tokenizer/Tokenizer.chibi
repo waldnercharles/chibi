@@ -221,6 +221,9 @@ pub Tokenize :: (text: string) -> Tokens {
     valued := false;
     // A `:: prototype` declaration whose body has not opened yet.
     prototyping := false;
+    // Whether the last token other than a comment is a postfix dereference,
+    // which ends an expression although its kind is the binary `^`.
+    dereferenced := false;
     while (true) {
         // Odin's skip_whitespace, counting rows. Calls cost more than the
         // scanning, so the hot paths read class tables inline.
@@ -248,6 +251,7 @@ pub Tokenize :: (text: string) -> Tokens {
             label = false;
             annotating = false;
             valued = false;
+            dereferenced = false;
             kept = false;
         }
         insert = false;
@@ -327,7 +331,13 @@ pub Tokenize :: (text: string) -> Tokens {
         if (kind == OpenParen || kind == OpenBracket) {
             opened = Group;
         } else if (kind == OpenBrace) {
-            opened = BraceHolds(top, previous, valued, prototyping);
+            // After `p^` a brace opens a body, as after `p` or `p)`; only a
+            // binary `^` leaves a value to follow.
+            last := previous;
+            if (dereferenced) {
+                last = CloseParen;
+            }
+            opened = BraceHolds(top, last, valued, prototyping);
             prototyping = false;
         }
         if (opened >= 0) {
@@ -362,6 +372,7 @@ pub Tokenize :: (text: string) -> Tokens {
                     (previous == Invalid || previous == Semicolon || previous == Colon ||
                      previous == OpenBrace || previous == CloseBrace);
             prototyping = prototyping || (kind == Prototype && previous == ColonColon);
+            dereferenced = dereference;
             before = previous;
             previous = kind;
         }

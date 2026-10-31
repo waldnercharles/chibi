@@ -59,88 +59,6 @@ selectors; each needs the installed products named in `tools/agent.py`. CPU chec
 use existing sanitizer settings without suppressing assertions or leak checks.
 Timeouts are failures/blocked results, never passes.
 
-## One output image and explicit MP4
-
-Use `chibi_ctl --render` requests for bounded scene and shader captures.
-For a scene, defaults are one output frame after one GPU warmup frame, 640x360,
-and a 30-second deadline. Shader previews draw one frame at their existing 256x256
-default. Set scene `gpu_warmup_frames` explicitly (0..32) when history needs it;
-these frames count toward actual work and appear in the response. Initial CPU
-simulation `frames` is limited to 60. The preview pixel limit is 230400, with
-neither side above 640. Lower resolution is useful for iteration but can hide
-fine detail and representative memory pressure. One output cannot prove history
-convergence, motion or temporal stability.
-
-On Linux, bounded previews and MP4 capture prefer SDL's existing **offscreen**
-video backend when the caller has not selected a driver. The native controller
-checks that the SDL build includes that backend before selecting it, saves the
-output, then exits. This needs no monitor, desktop changes, or Xvfb. The underlying
-preview window remains hidden; no new renderer or Studio process is involved.
-Both shader and scene previews use this selection. Headless rendering is not
-simulation-only: it still consumes graphics memory and GPU work (or software
-renderer CPU). Explicitly selected windowed backends may need a display context.
-The native response reports `window_hidden` and the actual SDL `video_driver`.
-The wrapper and native controller also report the native graphics backend and selected device from
-renderer logs, not an assumption based on discovery. Software rendering keeps
-exactly the same conservative budgets; offscreen does not imply hardware GPU use.
-
-Explicit `SDL_VIDEO_DRIVER` and legacy `SDL_VIDEODRIVER` choices, including an
-explicit empty value, are preserved. Other platforms and explicit full-hardware
-profiles keep platform/caller selection. `make run`, `make play`, `make dev`, and
-editor/UI tests are unaffected: selection occurs only in `chibi_ctl --render`
-(and `--render-request`) for bounded profiles. A compiled-in offscreen driver can
-still fail Vulkan/device initialization; report that failure with the requested
-driver and SDL detail. No automatic fallback or extra render is attempted.
-
-If offscreen is unavailable for a particular SDL/backend build, the caller may
-explicitly choose the existing bounded Xvfb fallback. `CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb`
-selects SDL X11 only when no driver was explicitly configured and reports the
-actual runtime device, which may be software rendering:
-
-```sh
-xvfb-run -a env CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb python3 tools/agent.py preview preview.json --project-root projects/your-game --output /tmp/preview-result.json
-```
-
-The same prefix works for `mp4`; the renderer's frame, resolution, RSS and time
-budgets remain active. Xvfb supplies a virtual display, not a GPU or a free render.
-If Xvfb/display initialization is unavailable, report the failure instead of
-launching Studio or retrying an unbounded renderer. Explicit full-profile
-performance runs retain their existing window mode; editor/UI tests are unchanged.
-
-Example `preview.json`:
-
-```json
-{"operation":"preview_scene","kind":"scene","name":"YourScene","width":320,"height":180,"gpu_warmup_frames":2}
-```
-
-```sh
-python3 tools/agent.py preview preview.json --project-root projects/your-game --output /tmp/preview-result.json
-# Only when an MP4 is explicitly wanted (60 fps, 1 second here):
-python3 tools/agent.py mp4 preview.json --project-root projects/your-game --frames 60 --output /tmp/preview.mp4
-```
-
-The preview file preserves the native JSON response and encoded PNG. The MP4
-command reuses scene capture, verifies exact raw byte count, then runs ffmpeg.
-It requires ffmpeg/libx264 and never falls back to a performance run. MP4 budgets:
-3..180 output frames (up to 3 seconds at 60 fps), 0..32 warmup frames, 640x360 pixel
-budget, at most 256 MiB raw capture bytes, 120 seconds rendering plus 30 seconds
-encoding. Partial captures are temporary and are not published as success.
-Native fixed-reference performance runs retain their original 240 warmup frames
-and 16 excluded measurement frames under the full profile.
-
-The Linux agent wrapper enforces a 2048 MiB renderer RSS limit.
-RSS is sampled, so this is a stop budget, not a reservation or an exact GPU-memory
-cap. Native render entry points independently enforce request/frame/byte/time
-budgets; direct `chibi_ctl` callers do not get the wrapper's RSS monitoring.
-The wrapper refuses bounded rendering on hosts without Linux `/proc`; use `chibi_ctl --render`
-with the native limits or explicitly opted-in hardware there. Sanitizer virtual
-address reservations are not capped as though they were physical memory.
-
-Do not reconstruct a GPU suite as repeated preview calls. Each preview should
-answer a specific visual question; it does not satisfy a test selector. GPU
-smoke suites require full opt-in even though they consist of individual previews.
-There is deliberately no cross-process scheduler or global frame quota.
-
 ## Reviewed checks and truthful handoff
 
 `make test` runs the fast C execution-policy unit checks. `make test-tools`
@@ -239,8 +157,7 @@ full-hardware preservation. A deliberately unavailable explicit driver fails
 with native SDL context rather than silently switching routes.
 
 The parent has separately verified SDL offscreen on Fedora RTX 4080 SUPER/NVK
-through `make play`; a bounded validation of this controller route on that
-hardware remains pending. No driver or desktop configuration is changed here.
+through `make play`. No driver or desktop configuration is changed here.
 
 
 ## Review corrections for PR171

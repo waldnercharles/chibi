@@ -294,18 +294,13 @@ programs drawn while global illumination is on read the probes, so scenes
 without it compile none of its code, and turning it on compiles their
 materials' programs again.
 
-To compare it, preview the Room scene of `test/fixtures/scene3d`: an
+To compare it, use the Room scene of `test/fixtures/scene3d`: an
 open-topped room with red and green walls, a block and an emissive lamp,
 under the field sky with Medium occlusion and Medium global illumination.
 Setting its Environment's `global_illumination` to `"Off"` gives the baseline
 of direct light, the sky's light and ambient occlusion.
 
-```sh
-echo '{"contract":1,"operation":"preview_scene","kind":"scene","name":"Room","width":640,"height":360,"gpu_warmup_frames":32}' | \
-  SDL_VIDEO_DRIVER=offscreen build/bin/chibi_ctl --render --project-root test/fixtures/scene3d
-```
-
-The probes start dark and settle over about twenty frames, so preview after
+The probes start dark and settle over about twenty frames, so compare after
 warmup frames. On hardware opted into profiling, a performance run's
 `pass_timing` charges each frame's 3D work to "3D setup" (the sky's
 filtering and the scene's uploads), "3D shadow maps", "3D ambient
@@ -421,17 +416,6 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
   the shader catalog change. It cannot read images; use an image sky for
   photographs. The **Star Field** node draws point stars that stay about a
   pixel wide at any field of view; see [shader graphs](shader-graphs.md).
-- **Import**: the `import_sky` controller operation checks that a file decodes
-  as a sky, then copies it into the project's content, by default to
-  `content/skies/` with the file's own name. It never replaces an existing file.
-
-  ```sh
-  printf '%s\n' '{"contract":1,"operation":"import_sky","source":"/downloads/meadow_2k.hdr"}' | \
-    chibi_ctl --project-root "$PWD"
-  ```
-
-  The response's `path` is the key to put in `sky`; `destination` picks another
-  `content/... .hdr` path.
 - **Light**: a sky lights every surface in place of the hemisphere ambient,
   turned by `sky_rotation` and scaled by `sky_exposure` like the sky itself.
   Diffuse light comes from nine spherical-harmonic irradiance terms
@@ -529,19 +513,12 @@ describe, as shapes do.
 
 ## Importing glTF models
 
-The `import_model` controller operation copies a glTF 2.0 model, a `.glb` or a
-`.gltf` beside its buffers and images, into the project's content
-(`assets/model_import.c`):
-
-```sh
-printf '%s\n' '{"contract":1,"operation":"import_model","source":"/downloads/crate.glb"}' | \
-  chibi_ctl --project-root "$PWD"
-```
-
-`name` defaults to the file's name without its extension. It must be an asset
+The glTF importer, archived with the game projects in
+`archive/src/assets/model_import.c`, copies a glTF 2.0 model, a `.glb` or a
+`.gltf` beside its buffers and images, into the project's content. The model's
+name defaults to the file's name without its extension. It must be an asset
 name, a letter and then letters, digits, `-` and `_`, at most 63 bytes, and no
-prototype may already declare it. The response lists the `files` written and
-the `warnings`. An import writes:
+prototype may already declare it. An import writes:
 
 - `content/meshes/<name>.mesh`: the triangles of every mesh node, placed by
   their node transforms, with one material group per glTF material in glTF

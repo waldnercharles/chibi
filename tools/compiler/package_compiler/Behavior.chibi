@@ -81,7 +81,7 @@ pub GameGlobal :: struct {
 // binary operator: natives[native].
 pub NumericOperator :: struct {
     native: int;
-    operator: string;
+    operator: int;
 }
 // A behavior's retained state, with its nominal type and initial value.
 StateDecl :: struct {
@@ -335,11 +335,11 @@ StateNumberNode :: (forest: snapshot.SnapshotNode[], source: string, node: int) 
     if (!Is(forest, operand, syntax.Number)) {
         return -1;
     }
-    operator := Text(forest, source, Field(forest, node, syntax.FieldOperator));
-    if (operator == "+") {
+    operator := Operator(forest, node);
+    if (operator == tk.Add) {
         return operand;
     }
-    if (operator == "-") {
+    if (operator == tk.Sub) {
         return node;
     }
     return -1;

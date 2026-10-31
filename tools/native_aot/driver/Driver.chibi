@@ -312,7 +312,7 @@ StartDynamic :: (triple: string, context: bool) -> string {
         "  call void @abort()\n",
         "  unreachable\n",
         "}\n",
-        "@chibi_context = internal global { ptr, ptr, ptr, ptr } ",
+        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
         "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
         "define i32 @main() {\n",
         "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
@@ -847,6 +847,72 @@ Requested :: (name: string) -> int {
     return -1;
 }
 
+// The names an import line of `text` takes from `collection`: each
+// `import alias "collection:name"`.
+ImportedFrom :: (text: string, collection: string) -> string[] {
+    found: string[] = [];
+    prefix := Join([collection, ":"]);
+    for (line in build.lines(text)) {
+        if (!strings.HasPrefix(line, "import ")) {
+            continue;
+        }
+        parts := strings.Split(line, "\"");
+        if (length(parts) >= 3 && strings.HasPrefix(parts[1], prefix)) {
+            found.append(strings.TrimPrefix(parts[1], prefix));
+        }
+    }
+    return found;
+}
+
+// The .chibi files directly in package folder `folder`.
+PackageFiles :: (folder: string) -> string[] {
+    files: string[] = [];
+    for (name in build.list_directory(folder)) {
+        if (strings.HasSuffix(name, ".chibi") && build.file_kind(Join([folder, "/", name])) == "file") {
+            files.append(name);
+        }
+    }
+    return files;
+}
+
+// The packages the sources import beyond the ones already held, followed
+// transitively, in the order found. A project package lies in `base`'s folder
+// of its name, a core package in `core`'s. Each is the folder's files, as
+// `<name>/<file>` for a project package and `<core>/<name>/<file>` for core.
+Reach :: (base: string, core: string, texts: string[], held: string[]) -> string[] {
+    files: string[] = [];
+    seen: string[] = held;
+    pending := texts;
+    while (length(pending) > 0) {
+        text := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        for (kind in ["project", "core"]) {
+            for (name in ImportedFrom(text, kind)) {
+                key := Join([kind, ":", name]);
+                known := false;
+                for (other in seen) {
+                    known = known || other == key;
+                }
+                if (known) {
+                    continue;
+                }
+                seen.append(key);
+                folder := Join([base, "/", name]);
+                prefix := Join([name, "/"]);
+                if (kind == "core") {
+                    folder = Join([core, "/", name]);
+                    prefix = Join([core, "/", name, "/"]);
+                }
+                for (file in PackageFiles(folder)) {
+                    files.append(Join([prefix, file]));
+                    pending.append(build.read_file(Join([folder, "/", file])));
+                }
+            }
+        }
+    }
+    return files;
+}
+
 pub Native :: () -> int {
     arguments := build.arguments();
     if (length(arguments) != 8 && length(arguments) != 9) {
@@ -915,6 +981,39 @@ pub Native :: () -> int {
             package_state.append(Join([path, ":", build.hash_file(Join([root, "/", path]))]));
         }
     }
+    // A project package that is not below the folder but beside it, as the
+    // compiler's packages are beside native_driver, makes the folder's parent
+    // the project: the entry's path then starts with the folder's name.
+    base := root;
+    entry_path := names[0];
+    if (length(packages) == 0) {
+        parent := strings.TrimSuffix(root, Join(["/", strings.BaseName(root)]));
+        for (name in ImportedFrom(text, "project")) {
+            if (build.file_kind(Join([root, "/", name])) != "directory" &&
+                build.file_kind(Join([parent, "/", name])) == "directory") {
+                base = parent;
+                entry_path = Join([strings.BaseName(root), "/", names[0]]);
+            }
+        }
+    }
+    // The packages the sources import from the project beside them and from
+    // core are inputs too.
+    held: string[] = [];
+    for (path in packages) {
+        top := strings.Split(path, "/");
+        if (length(top) > 1) {
+            held.append(Join(["project:", top[0]]));
+        }
+    }
+    for (path in Reach(base, core, build.concat([text], package_texts), held)) {
+        packages.append(path);
+        location := path;
+        if (!strings.HasPrefix(path, Join([core, "/"]))) {
+            location = Join([base, "/", path]);
+        }
+        package_texts.append(build.read_file(location));
+        package_state.append(Join([path, ":", build.hash_file(location)]));
+    }
     emitter_key := EmitterKey(host, artifact, compiler, core);
     // Line tables name the source's directory, so a moved package rebuilds.
     directory := "";
@@ -922,7 +1021,7 @@ pub Native :: () -> int {
         directory = root;
     }
     key := build.hash_text(strings.Join([
-        "chibi-native 1", names[0], build.hash_text(text), emitter_key,
+        "chibi-native 1", entry_path, build.hash_text(text), emitter_key,
         build.hash_file(Join([build.root(), "/Driver.chibi"])), build.hash_file(opt), build.hash_file(llc),
         build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root), linkage,
         strings.Join(package_state, ",")
@@ -973,8 +1072,9 @@ pub Native :: () -> int {
                      facts[3], ",", facts[4], ",", facts[5], "]"]);
     collector := "0xebbc43e46769862a";
     if (length(packages) > 0) {
-        // CollectScalarPackages: the entry file first, then the packages.
-        request = Join(["[\"/project\",[],[],", Array(build.concat([names[0]], packages)), ",",
+        // CollectScalarPackages: the entry file first, then the packages, with
+        // core as the collection whose files lie at its own path.
+        request = Join(["[\"/project\",[\"core\"],", Array([core]), ",", Array(build.concat([entry_path], packages)), ",",
                         Array(build.concat([text], package_texts)), ",", facts[0], ",", facts[2], ",", facts[3], ",",
                         facts[4], ",", facts[5], "]"]);
         collector = "0xe248351e192972a1";

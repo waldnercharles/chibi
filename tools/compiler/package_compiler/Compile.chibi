@@ -1334,9 +1334,9 @@ Selected :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Chosen(nodes: int[])
 }
-ComparisonOperator :: (operator: string) -> bool {
-    return operator == "==" || operator == "!=" || operator == "<" || operator == "<=" || operator == ">" ||
-           operator == ">=";
+ComparisonOperator :: (operator: int) -> bool {
+    return operator == tk.CmpEq || operator == tk.NotEq || operator == tk.Lt || operator == tk.LtEq || operator == tk.Gt ||
+           operator == tk.GtEq;
 }
 FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
                   package: int, node: int) -> Decided {
@@ -1357,14 +1357,14 @@ FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
         }
         return Decided.No;
     }
-    operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
+    operator := Operator(forest, value);
     // `not (condition)` reads as a call of `not`, as the grammar keeps both.
     negated := Is(forest, value, syntax.CallExpression) && Text(forest, text, Field(forest, value, syntax.FieldFunction)) == "not";
     operand := Field(forest, value, syntax.FieldOperand);
     if (negated) {
         operand = FirstMember(forest, Field(forest, value, syntax.FieldArguments));
     }
-    if (negated || (Is(forest, value, syntax.UnaryExpression) && (operator == "not" || operator == "!"))) {
+    if (negated || (Is(forest, value, syntax.UnaryExpression) && (operator == tk.NotKeyword || operator == tk.Not))) {
         switch FoldCondition(forest, text, file, constants, aliases, package, operand) {
             case .Failed(diagnostic):
                 return Decided.Failed(diagnostic);
@@ -1379,8 +1379,8 @@ FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
     if (!Is(forest, value, syntax.BinaryExpression)) {
         return Decided.Failed(Diagnose(forest, node, file, "a when condition must be constant"));
     }
-    if (operator == "and" || operator == "&&" || operator == "or" || operator == "||") {
-        conjunction := operator == "and" || operator == "&&";
+    if (operator == tk.AndKeyword || operator == tk.CmpAnd || operator == tk.OrKeyword || operator == tk.CmpOr) {
+        conjunction := operator == tk.AndKeyword || operator == tk.CmpAnd;
         switch FoldCondition(forest, text, file, constants, aliases, package, Field(forest, value, syntax.FieldLeft)) {
             case .Failed(diagnostic):
                 return Decided.Failed(diagnostic);
@@ -1421,15 +1421,15 @@ FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
     same := left == right;
     ordered := i64(wrap: left) < i64(wrap: right);
     taken := false;
-    if (operator == "==") {
+    if (operator == tk.CmpEq) {
         taken = same;
-    } else if (operator == "!=") {
+    } else if (operator == tk.NotEq) {
         taken = !same;
-    } else if (operator == "<") {
+    } else if (operator == tk.Lt) {
         taken = ordered;
-    } else if (operator == "<=") {
+    } else if (operator == tk.LtEq) {
         taken = ordered || same;
-    } else if (operator == ">") {
+    } else if (operator == tk.Gt) {
         taken = !ordered && !same;
     } else {
         taken = !ordered;
@@ -2071,12 +2071,12 @@ ConversionType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> 
     }
     return storage;
 }
-Arithmetic :: (operator: string) -> bool {
-    return operator == "+" || operator == "-" || operator == "*" || operator == "/" || operator == "%" ||
-           operator == "&" || operator == "|" || operator == "^";
+Arithmetic :: (operator: int) -> bool {
+    return operator == tk.Add || operator == tk.Sub || operator == tk.Mul || operator == tk.Quo || operator == tk.Mod ||
+           operator == tk.And || operator == tk.Or || operator == tk.Xor;
 }
-Shift :: (operator: string) -> bool {
-    return operator == "<<" || operator == ">>";
+Shift :: (operator: int) -> bool {
+    return operator == tk.Shl || operator == tk.Shr;
 }
 // Whether `node` is a constant integer expression: integer literals, the
 // package's constants and an import's, parentheses, conversions to integer
@@ -2103,9 +2103,9 @@ ConstantExpression :: (forest: snapshot.SnapshotNode[], text: string, constants:
         }
         return ConstantExpression(forest, text, constants, aliases, package, argument);
     }
-    operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
+    operator := Operator(forest, value);
     if (Is(forest, value, syntax.UnaryExpression)) {
-        return (operator == "+" || operator == "-" || operator == "~") &&
+        return (operator == tk.Add || operator == tk.Sub || operator == tk.Complement) &&
                ConstantExpression(forest, text, constants, aliases, package, Field(forest, value, syntax.FieldOperand));
     }
     return Is(forest, value, syntax.BinaryExpression) && (Arithmetic(operator) || Shift(operator)) &&
@@ -2140,7 +2140,7 @@ ConstantType :: (forest: snapshot.SnapshotNode[], text: string, constants: Const
         return 0;
     }
     left := ConstantType(forest, text, constants, aliases, package, Field(forest, value, syntax.FieldLeft));
-    if (left != 0 || Shift(Text(forest, text, Field(forest, value, syntax.FieldOperator)))) {
+    if (left != 0 || Shift(Operator(forest, value))) {
         return left;
     }
     return ConstantType(forest, text, constants, aliases, package, Field(forest, value, syntax.FieldRight));
@@ -2151,8 +2151,7 @@ ConstantType :: (forest: snapshot.SnapshotNode[], text: string, constants: Const
 UntypedStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     literal := Unparenthesized(forest, node);
     while (Is(forest, literal, syntax.UnaryExpression) &&
-           (Text(forest, text, Field(forest, literal, syntax.FieldOperator)) == "+" ||
-            Text(forest, text, Field(forest, literal, syntax.FieldOperator)) == "-")) {
+           (Operator(forest, literal) == tk.Add || Operator(forest, literal) == tk.Sub)) {
         literal = Unparenthesized(forest, Field(forest, literal, syntax.FieldOperand));
     }
     if (Is(forest, literal, syntax.Number) && Floating(InferredNumberStorage(forest, text, literal))) {
@@ -2279,8 +2278,8 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
                     return Folding.Folded(FloatingBits(FloatingBits(bits, inner, converted), converted, storage));
             }
         }
-        operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
-        if (Is(forest, value, syntax.UnaryExpression) && (operator == "+" || operator == "-")) {
+        operator := Operator(forest, value);
+        if (Is(forest, value, syntax.UnaryExpression) && (operator == tk.Add || operator == tk.Sub)) {
             switch FoldConstant(forest, text, file, constants, aliases, package,
                                 Field(forest, value, syntax.FieldOperand), storage) {
                 case .Failed(diagnostic):
@@ -2288,7 +2287,7 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
                 case .Waiting:
                     return Folding.Waiting;
                 case .Folded(bits):
-                    if (operator == "-") {
+                    if (operator == tk.Sub) {
                         sign: u64 = 0x8000000000000000;
                         if (storage == FloatStorage) {
                             sign = 0x80000000;
@@ -2325,7 +2324,7 @@ Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants
     }
     // A literal, `-` on one included, so the most negative value is one.
     signed_literal := Is(forest, node, syntax.UnaryExpression) &&
-                      Text(forest, text, Field(forest, node, syntax.FieldOperator)) == "-" &&
+                      Operator(forest, node) == tk.Sub &&
                       Is(forest, Field(forest, node, syntax.FieldOperand), syntax.Number);
     if (Is(forest, node, syntax.Number) || signed_literal) {
         switch ParseNumber(forest, text, node) {
@@ -2360,15 +2359,16 @@ Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants
     if (!unary && !Is(forest, node, syntax.BinaryExpression)) {
         return Evaluated.Failed(Diagnose(forest, node, file, "constant value must be an integer expression"));
     }
-    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
+    operator := Operator(forest, node);
     if (!unary && Shift(operator)) {
         return EvaluateShift(forest, text, file, constants, aliases, package, node, storage);
     }
-    if ((unary && operator != "+" && operator != "-" && operator != "~") || (!unary && !Arithmetic(operator))) {
+    if ((unary && operator != tk.Add && operator != tk.Sub && operator != tk.Complement) || (!unary && !Arithmetic(operator))) {
         return Evaluated.Failed(Diagnose(forest, node, file,
-                                         format_text("constant operator '{}' is not supported yet", operator)));
+                                         format_text("constant operator '{}' is not supported yet",
+                                                     Text(forest, text, Field(forest, node, syntax.FieldOperator)))));
     }
-    if (unary && operator == "-" && !Signed(storage)) {
+    if (unary && operator == tk.Sub && !Signed(storage)) {
         return Evaluated.Failed(Diagnose(forest, node, file, "Cannot negate an unsigned constant"));
     }
     operands: int[] = [Field(forest, node, syntax.FieldOperand)];
@@ -2398,25 +2398,25 @@ Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants
                 }
         }
     }
-    if (unary && operator == "-") {
+    if (unary && operator == tk.Sub) {
         value = ExactNegate(value);
-    } else if (unary && operator == "~" && Signed(storage)) {
+    } else if (unary && operator == tk.Complement && Signed(storage)) {
         value = ExactSubtract(ExactNegate(value), ExactOf(false, 1));
-    } else if (unary && operator == "~") {
+    } else if (unary && operator == tk.Complement) {
         // An unsigned type's complement is its largest value less this one.
         value = ExactSubtract(ExactMax(storage), value);
-    } else if (!unary && operator == "+") {
+    } else if (!unary && operator == tk.Add) {
         // A unary plus keeps its operand.
         value = ExactAdd(value, right);
-    } else if (operator == "-") {
+    } else if (operator == tk.Sub) {
         value = ExactSubtract(value, right);
-    } else if (operator == "*") {
+    } else if (operator == tk.Mul) {
         value = ExactMultiply(value, right);
-    } else if (operator == "/" || operator == "%") {
+    } else if (operator == tk.Quo || operator == tk.Mod) {
         if (ExactZero(right)) {
             return Evaluated.Failed(Diagnose(forest, node, file, "Constant division by zero"));
         }
-        value = ExactDivide(value, right, operator == "%");
+        value = ExactDivide(value, right, operator == tk.Mod);
     } else if (!unary) {
         value = ExactBitwise(operator, value, right);
     }
@@ -2467,7 +2467,7 @@ EvaluateShift :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
         return Evaluated.Failed(Diagnose(forest, count, file, "Constant shift count is too large"));
     }
     bits := int(LowBits(Magnitude(shift)));
-    if (Text(forest, text, Field(forest, node, syntax.FieldOperator)) == ">>") {
+    if (Operator(forest, node) == tk.Shr) {
         return Evaluated.Value(ExactShiftRight(value, bits));
     }
     shifted := ExactShiftLeft(value, bits);

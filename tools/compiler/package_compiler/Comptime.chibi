@@ -3,6 +3,7 @@ package package_compiler
 import snapshot "project:source_snapshot"
 import graph "project:package_graph"
 import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
 
 // Compile-time execution of authored functions. A constant initializer may
 // call a function of any package whose parameters and result are integers,
@@ -166,13 +167,13 @@ CtBoolean :: (forest: snapshot.SnapshotNode[], text: string, scope: ConstDecl[],
         return Text(forest, text, Field(forest, value, syntax.FieldFunction)) == "not";
     }
     if (Is(forest, value, syntax.UnaryExpression)) {
-        operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
-        return operator == "not" || operator == "!";
+        operator := Operator(forest, value);
+        return operator == tk.NotKeyword || operator == tk.Not;
     }
     if (Is(forest, value, syntax.BinaryExpression)) {
-        operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
-        return ComparisonOperator(operator) || operator == "and" || operator == "&&" || operator == "or" ||
-               operator == "||";
+        operator := Operator(forest, value);
+        return ComparisonOperator(operator) || operator == tk.AndKeyword || operator == tk.CmpAnd || operator == tk.OrKeyword ||
+               operator == tk.CmpOr;
     }
     return false;
 }
@@ -577,18 +578,18 @@ CtRun :: (context: ^CtContext, callee: int, frame: ^CtFrame, depth: int) -> CtRe
     }
 }
 // `left op right` over exact values.
-CtApply :: (operator: string, left: u64[], right: u64[]) -> u64[] {
-    if (operator == "+") {
+CtApply :: (operator: int, left: u64[], right: u64[]) -> u64[] {
+    if (operator == tk.Add) {
         return ExactAdd(left, right);
     }
-    if (operator == "-") {
+    if (operator == tk.Sub) {
         return ExactSubtract(left, right);
     }
-    if (operator == "*") {
+    if (operator == tk.Mul) {
         return ExactMultiply(left, right);
     }
-    if (operator == "/" || operator == "%") {
-        return ExactDivide(left, right, operator == "%");
+    if (operator == tk.Quo || operator == tk.Mod) {
+        return ExactDivide(left, right, operator == tk.Mod);
     }
     return ExactBitwise(operator, left, right);
 }
@@ -812,7 +813,7 @@ CtAssignment :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, 
     forest := context.forest;
     text := context.documents[file].text;
     target := Field(forest, statement, syntax.FieldTarget);
-    operator := CompoundOperator(Text(forest, text, Field(forest, statement, syntax.FieldOperator)));
+    operator := CompoundOperator(Operator(forest, statement));
     value := Field(forest, statement, syntax.FieldValue);
     element: int = -1;
     named: int = -1;
@@ -834,7 +835,7 @@ CtAssignment :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, 
     }
     local := frame.storages[at];
     if (element < 0 && named < 0 && local < 0) {
-        if (operator != "") {
+        if (operator != NoOperator) {
             return CtFlow.Failed(CtFail(context, statement, file, "compound assignment needs integer operands"));
         }
         switch CtEvalArray(context, package, file, frame, depth, value, -local) {
@@ -906,12 +907,12 @@ CtAssignment :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, 
                 current = frame.bits[at];
             }
             result := CtWidened(assigned, storage, kind);
-            if (operator != "") {
+            if (operator != NoOperator) {
                 if (!Integer(kind)) {
                     return CtFlow.Failed(CtFail(context, statement, file, "compound assignment needs integer operands"));
                 }
                 operand := ExactStored(result, kind);
-                if ((operator == "/" || operator == "%") && ExactZero(operand)) {
+                if ((operator == tk.Quo || operator == tk.Mod) && ExactZero(operand)) {
                     return CtFlow.Failed(CtFail(context, statement, file, "Constant division by zero"));
                 }
                 combined := CtApply(operator, ExactStored(current, kind), operand);

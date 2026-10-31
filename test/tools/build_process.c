@@ -1157,6 +1157,47 @@ TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values)
     return true;
 }
 
+/* The command-line host passes stdout and stderr, so a hanging step still
+ * shows the reports and step output before it. */
+TEST_CASE(private_sinks_receive_reports_and_step_output_as_they_happen)
+{
+    REQUIRE(!setenv("CHIBI_BUILD_WORKER", worker_path, 1));
+    static const char *source = "package sinks\nBuild :: () -> int { "
+                                "build.report(\"streamed\"); "
+                                "return "
+                                "build.run([build.environment(\"CHIBI_BUILD_"
+                                "WORKER\"),\"cat\",\"sink-stderr\"]); }";
+    char out_path[4096], err_path[4096];
+    snprintf(out_path, sizeof out_path, "%s/sink-stdout", root);
+    snprintf(err_path, sizeof err_path, "%s/sink-stderr", root);
+    FILE *out = fopen(out_path, "w+"), *err = fopen(err_path, "w+");
+    REQUIRE(out && err);
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    options.stdout_sink = out;
+    options.stderr_sink = err;
+    chibi_build_result result;
+    bool invoked = chibi_build_invoke(&options, &result);
+    if (!invoked) {
+        fprintf(stderr, "build sinks: %s\n", result.diagnostic);
+    }
+    REQUIRE(invoked && result.value == 0 && result.steps == 1);
+    REQUIRE(!result.stdout_size && !result.stderr_size);
+    char text[64];
+    rewind(out);
+    size_t size = fread(text, 1, sizeof text - 1, out);
+    text[size] = 0;
+    REQUIRE(!strcmp(text, "streamed\n"));
+    rewind(err);
+    size = fread(text, 1, sizeof text - 1, err);
+    text[size] = 0;
+    REQUIRE(!strcmp(text, "streamed\n"));
+    REQUIRE(!fclose(out) && !fclose(err) && !unlink(out_path) && !unlink(err_path));
+    options.stderr_sink = NULL;
+    REQUIRE(!chibi_build_invoke(&options, &result));
+    REQUIRE(strstr(result.diagnostic, "invalid build host options"));
+    return true;
+}
+
 TEST_CASE(private_natives_resolve_only_under_the_build_namespace)
 {
     static const char *sources[] = {
@@ -2769,6 +2810,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(steps_take_up_to_1023_arguments);
     RUN_TEST_CASE(private_values_and_process_snapshots_survive_later_calls);
     RUN_TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values);
+    RUN_TEST_CASE(private_sinks_receive_reports_and_step_output_as_they_happen);
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
     RUN_TEST_CASE(private_core_bytes_survive_native_result_bank_reuse);
     RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);

@@ -180,6 +180,14 @@ static const char *build_report(void *service, const pin_value *arguments, pin_v
         return "invalid build string arguments";
     }
     pin_string text = pin_text(arguments[0]);
+    results[0].i = 0;
+    if (host->options->stderr_sink) {
+        FILE *sink = host->options->stderr_sink;
+        fwrite(text.bytes, 1, text.length, sink);
+        fputc('\n', sink);
+        fflush(sink);
+        return NULL;
+    }
     chibi_build_result *result = host->result;
     size_t size = text.length;
     size_t remaining = sizeof(result->stderr_text) - result->stderr_size - 1;
@@ -192,7 +200,6 @@ static const char *build_report(void *service, const pin_value *arguments, pin_v
     }
     result->stderr_text[result->stderr_size] = 0;
     result->stderr_truncated |= copy != size || !remaining;
-    results[0].i = 0;
     return NULL;
 }
 static const char *build_file_kind(void *service, const pin_value *arguments, pin_value *results)

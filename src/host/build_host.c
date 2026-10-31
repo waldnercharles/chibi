@@ -287,8 +287,16 @@ static const char *process_failure(chibi_process_error error)
     }
     return "build process host failure";
 }
+static void write_sink(FILE *sink, const chibi_process_output *output)
+{
+    fwrite(output->data, 1, output->size, sink);
+    if (output->truncated) {
+        fprintf(sink, "build step output truncated\n");
+    }
+    fflush(sink);
+}
 /* A finished step's output becomes build.last_stdout and build.last_stderr;
- * a reported step also adds it to the invocation's result. */
+ * a reported step also goes to the sinks, or else to the invocation's result. */
 static void finish_output(
     build_host *host,
     const chibi_process_output *out,
@@ -297,7 +305,10 @@ static void finish_output(
 )
 {
     chibi_build_result *result = host->result;
-    if (reported) {
+    if (reported && host->options->stdout_sink) {
+        write_sink(host->options->stdout_sink, out);
+        write_sink(host->options->stderr_sink, err);
+    } else if (reported) {
         size_t out_remaining = sizeof(result->stdout_text) - result->stdout_size - 1;
         size_t err_remaining = sizeof(result->stderr_text) - result->stderr_size - 1;
         size_t out_copy = out->size < out_remaining ? out->size : out_remaining;
@@ -888,6 +899,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         options->collection_count > CHIBI_BUILD_MAX_COLLECTIONS ||
         (options->collection_count && !options->collections) ||
         (options->argument_count && !options->arguments) ||
+        !options->stdout_sink != !options->stderr_sink ||
         !isfinite(options->deadline) || options->deadline <= 0 ||
         (options->backend != BEHAVIOR_BYTECODE && options->backend != BEHAVIOR_SLJIT) ||
         !behavior_backend_available(options->backend)) {

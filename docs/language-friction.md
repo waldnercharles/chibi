@@ -54,10 +54,13 @@ operations from remaining limits.
   record fields remain rejected by the language's address-taking rules. Flat
   authored records and recursive links through pointer fields are supported.
 - Stage one's body emitter receives a fixed type catalog. Its address prepass
-  conservatively constructs pointer layers using the number of address
-  expressions, including unused combinations. Before pointer-heavy packages
-  grow, replace this with demand-driven constructor publication or a type
-  inference pass; measure compile time and catalog size when doing so.
+  conservatively declares a pointer to every declared type, and one to each
+  of those, for each package that takes an address, including unused
+  combinations. Until 2026-10-30 it added a layer for each file with an
+  address, so the package compiler's module carried 14,350 pointer types; it
+  now carries 1,695. Demand-driven constructor publication or a type
+  inference pass would declare only the pointers addresses use; measure
+  compile time and catalog size when doing so.
 - Delayed continuations currently describe all parent local banks as captures.
   Those banks must stay alive until action completion, when references are
   materialized. More precise capture metadata could reduce retained memory;
@@ -165,6 +168,12 @@ The build graph's `c.Library` (M6) cannot hold its sources or flags, so every
 graph function takes them as two arrays beside the record, and a library's
 description is three functions (`Support`, `SupportSources`, `SupportFlags`)
 instead of one value.
+Stage one now accepts array and record fields, but until 2026-10-30 a live
+record holding an array of records crashed the collector, which walked the
+field as a record stored inline. #1073's `AddressPointers { types: TypeDecl[];
+addresses: bool; }` shipped as a one-variant union for that reason. A field
+still cannot be an array of unions, although the diagnostic says "union or
+array of those types".
 
 - C, C++, Rust, Odin, Zig, C#, F#, TypeScript, Python and Ruby all let a
   struct, record or object hold any value type.
@@ -393,6 +402,9 @@ and `m.delete(k)` on a local map, `k in m`, `k not in m`, `m.has(k)`, and
 - maps of arrays, unions or maps;
 - `m[k] op= v`;
 - a store or removal through a parameter, a record field or a state.
+- `length(m)`, which reports "argument differs from its parameter type";
+  `test/graph/SDKInstallTests.chibi` counts its manifest's records beside the
+  map instead. Odin's `len`, Go's `len` and Rust's `len()` all take a map.
 
 The compiler's own name lookups still scan parallel arrays, and the tokenizer
 builds Odin's keyword table by hand from an `int[]` (#518).
@@ -439,8 +451,14 @@ in `Tokenize` (#518).
 - Odin and Go fold constant expressions; Odin also has constant arrays. Zig
   evaluates `comptime` code, C++ `constexpr` and Rust `const` items.
 
-Suggestion: stage one folds constant arrays such as `Steps :: [1, 3, 6]`,
-then calls stage zero runs at compile time.
+Stage one also rejects a string constant: `Contained :: "sdk: ..."` in
+`test/graph/SDKInstallTests.chibi` failed with "constant value must be an
+integer expression", so the diagnostic it matches and the manifest's name
+became functions that return the text. Odin, Go, Zig and Rust all have
+string constants.
+
+Suggestion: stage one folds constant arrays such as `Steps :: [1, 3, 6]`
+and string constants, then calls stage zero runs at compile time.
 
 ## From the core:strings port
 
@@ -911,6 +929,11 @@ failed with only "Unexpected syntax", and `chibi fmt --check` only said the
 file had syntax errors, until bisecting copies of the file found it; it
 became `define` (#650).
 
+The build graph's ported tests named a parameter and a local `entry` twice
+more (`test/graph/DiscoveryTests.chibi`, `CTests.chibi`); the build host now
+says where ("Expected a name, found `entry`"), so it took a rename, not a
+bisection.
+
 The 2026-10-22 flat-query change removes the `join`, `without` and query
 `where` clauses and their keyword reservations. The other examples above
 remain separate parser and diagnostic concerns.
@@ -930,7 +953,9 @@ syntax errors the parser's position and token.
 Language. In the build graph's `c` package, `array_add(running, {source: s,
 handle: h})` fails with "Struct literal needs an explicit record or reflected
 type", although `running` is a `Running[]`. The literal needs a typed local
-first: `compile: Running = {source: s, handle: h};`.
+first: `compile: Running = {source: s, handle: h};`. The same holds for any
+array native's item (#1109): `set_array_elem(wrappers, 1, {holder: h, tag: 4})`
+on a `Wrapper[]` needs `replacement: Wrapper = {...}` first.
 
 - Odin infers a compound literal's type from its parameter or element type;
   Zig's `.{ ... }` coerces to the parameter's type; C# 9 has target-typed
@@ -938,6 +963,24 @@ first: `compile: Running = {source: s, handle: h};`.
 
 Suggestion: type a struct literal from the parameter, element or return type it
 fills, as Odin does.
+
+## A failed assert can't show the values it compared
+
+Stage one (#1109). `assert`'s message must be a string literal ("assert's
+message is a string constant"), and `core:testing` has no equality check, so
+`assert(Remove() == 112, "Remove")` reports only "Assertion failed: Remove".
+Finding the actual value took a second test that returned it, a rebuild and a
+rerun.
+
+- Rust's `assert_eq!(left, right)` prints both values, and `assert!(c, "{}",
+  x)` formats its message only on failure.
+- Zig's `std.testing.expectEqual(expected, actual)` prints both; Go's
+  `t.Errorf` formats; Odin's `testing.expect_value(t, value, expected)` prints
+  both.
+
+Suggestion: `testing.ExpectEqual(expected, actual)` that names both values on
+failure, as Zig and Odin do. It needs no message formatting in `assert` and
+keeps a passing assert free of string building.
 
 ## Stage one cannot negate a float
 
@@ -1020,8 +1063,28 @@ can end a statement, is a `bool[]` filled from a list.
   X-macros for the names; C# `Enum.GetName`; TypeScript numeric enums with
   reverse mapping; Python `enum.Enum`.
 
+The syntax tree's 122 node kinds and 55 fields in `syntax_diagnostics`
+(#1114) are constants chained one to the next, `Character: int : Comment + 1;`,
+so inserting one renumbers nothing, with `KindNames` and `FieldNames` kept in
+the same order by hand. A token leaf keeps its token kind, so the node kinds
+start at a hand-picked 128, past the tokenizer's 117, and a test checks the
+gap. Zig's `std.zig.Ast.Node.Tag` is an enum with `@tagName`.
+
 Suggestion: Odin's `enum`, enumerated arrays and `bit_set`, with a name for
 each value.
+
+### Records have no stated size
+
+Language. Each high-count record should carry a byte budget pinned at compile
+time, but Chibi has neither `size_of` nor a compile-time assert, so
+`SnapshotNode`'s 40 bytes per row (#1114) are a comment.
+
+- Odin has `#assert(size_of(T) == N)`; Zig `comptime { assert(@sizeOf(T) == N); }`;
+  C `_Static_assert(sizeof(T) == N, "")`; Rust
+  `const _: () = assert!(size_of::<T>() == N);`.
+
+Suggestion: `size_of(T)` as a constant expression and an `#assert` that
+fails compilation.
 
 ### A switch arm takes one value
 

@@ -62,10 +62,16 @@ static const char *const environment_names[] = {
     "DEVELOPER_DIR",
     "CHIBI_BUILD_WORKER",
     "CHIBI_BUILD_TIMINGS",
-    /* Nested build hosts reuse the recovered compilers the caller keeps. */
+    /* Nested build hosts reuse the recovered compilers the caller keeps, by
+     * default under $XDG_CACHE_HOME or ~/.cache. */
     "CHIBI_COMPILER_CACHE",
+    /* Where the asset compiler keeps its products, shared by every checkout. */
+    "CHIBI_ASSET_COMPILER_CACHE",
+    "XDG_CACHE_HOME",
     /* bootstrap-artifact's check leaves stage two and its arguments here. */
     "CHIBI_BOOTSTRAP_SEED",
+    /* The LLVM tools the native driver links with, as test/native_aot reads. */
+    "CHIBI_LLVM_BIN",
     "CC",
     "CXX",
     "CFLAGS",
@@ -99,7 +105,6 @@ static const char *const environment_names[] = {
     "PKG_CONFIG_SYSROOT_DIR",
     "CMAKE_TOOLCHAIN_FILE",
     "EMMAKEN_CMAKE_TOOLCHAIN",
-    "XDG_CACHE_HOME",
     "GH_TOKEN",
     "CMAKE_BUILD_PARALLEL_LEVEL",
     "MallocNanoZone",
@@ -379,8 +384,8 @@ const char *build_host_run_probe(void *service, const pin_value *arguments, pin_
     return run_step(service, arguments, results, false);
 }
 /* build.start begins a reported step and returns its handle at once;
- * build.wait(handle) waits for it while every other started step keeps
- * running, then gives its status as build.run does. build.spawn starts one
+ * build.wait_for(handle, milliseconds) waits for it while every other started
+ * step keeps running, then gives its status as build.run does. build.spawn starts one
  * whose output is the build's own, as it is written, instead of captured. */
 static const char *start_step(void *service, const pin_value *arguments, pin_value *results, bool inherit)
 {
@@ -514,22 +519,6 @@ static const char *job_finish(build_host *host, int slot, pin_value *results)
     host->job_handles[slot] = 0;
     results[0].i = child.status;
     return process_failure(child.error);
-}
-
-const char *build_host_wait(void *service, const pin_value *arguments, pin_value *results)
-{
-    build_host *host = service;
-    if (!host) {
-        return "build host service is unavailable";
-    }
-    int slot = job_slot(host, arguments[0].i);
-    if (slot == BUILD_MAX_JOBS) {
-        return "unknown build job";
-    }
-    while (chibi_process_running(&host->jobs[slot])) {
-        service_jobs(host);
-    }
-    return job_finish(host, slot, results);
 }
 
 /* build.wait_for(handle, milliseconds): the step's status once it has ended,

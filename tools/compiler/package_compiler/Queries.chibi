@@ -5,6 +5,7 @@ import syntax "project:syntax_diagnostics"
 import binding "project:lexical_binding"
 import writer "project:prepared_writer"
 import strings "core:strings"
+import tk "project:source_tokenizer"
 
 // A query description and its rows have one runtime representation. Their
 // nominal declaration keeps row fields typed without inventing a record ABI.
@@ -79,14 +80,14 @@ QuerySource :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
         return provider;
     }
     name := Text(forest, text, source);
-    if (Is(forest, source, "identifier")) {
+    if (Is(forest, source, syntax.Identifier)) {
         previous := QueryFieldIndex(fields, name);
         if (previous >= 0 && fields[previous].variable != 0) {
             provider.variable = fields[previous].variable;
             return provider;
         }
-    } else if (Is(forest, source, "member_expression")) {
-        owner := Text(forest, text, Field(forest, source, "object"));
+    } else if (Is(forest, source, syntax.MemberExpression)) {
+        owner := Text(forest, text, Field(forest, source, syntax.FieldObject));
         if (owner != "self") {
             previous := QueryFieldIndex(fields, owner);
             if (previous < 0 || fields[previous].variable == 0) {
@@ -95,14 +96,14 @@ QuerySource :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
             }
             provider.variable = fields[previous].variable;
         }
-        name = Text(forest, text, Field(forest, source, "member"));
-    } else if (Is(forest, source, "call_expression")) {
-        function := Text(forest, text, Field(forest, source, "function"));
+        name = Text(forest, text, Field(forest, source, syntax.FieldMember));
+    } else if (Is(forest, source, syntax.CallExpression)) {
+        function := Text(forest, text, Field(forest, source, syntax.FieldFunction));
         if (function != "ancestor" && function != "self_or_ancestor") {
             provider.valid = false;
             return provider;
         }
-        argument := FirstMember(forest, Field(forest, source, "arguments"));
+        argument := FirstMember(forest, Field(forest, source, syntax.FieldArguments));
         if (argument < 0 || NextMember(forest, argument) >= 0) {
             provider.valid = false;
             return provider;
@@ -150,25 +151,25 @@ QueryStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
               item: Work, ops: Ops, target: Target, at: Bases) -> QueryDispatch {
     node := forest[item.node];
     kind := node.kind;
-    if (evaluating >= 0 && (item.node == queries[evaluating].node || kind == "query_binding" ||
-                            kind == "query_guard" || kind == "query_generator" || kind == "parameter" ||
+    if (evaluating >= 0 && (item.node == queries[evaluating].node || kind == syntax.QueryBinding ||
+                            kind == syntax.QueryGuard || kind == syntax.QueryGenerator || kind == syntax.Parameter ||
                             item.phase == QueryReturnPhase)) {
         return QueryDispatch.Handled(QueryEvaluateStep(forest, text, document, types, queries, queries[evaluating],
                                                        members, names, values, top, item, ops, target, at));
     }
-    if (kind == "query_expression") {
+    if (kind == syntax.QueryExpression) {
         return QueryDispatch.Handled(QueryExpressionStep(forest, document, params, queries, values, top, item, ops, target, at));
     }
     if (!item.capture && evaluating >= 0 && (item.phase == QueryMembershipPhase ||
-                                             ((kind == "identifier" || kind == "member_expression" ||
-                                               (kind == "call_expression" && Text(forest, text, Field(forest, item.node, "function")) == "has")) &&
+                                             ((kind == syntax.Identifier || kind == syntax.MemberExpression ||
+                                               (kind == syntax.CallExpression && Text(forest, text, Field(forest, item.node, syntax.FieldFunction)) == "has")) &&
                                               QueryBooleanPosition(forest, text, item.node)))) {
         term := QueryMembership(forest, text, types, members, params, queries[evaluating], item.node);
         if (term.kind >= 0) {
             return QueryDispatch.Handled(QueryMembershipStep(term, values, top, item, ops, target, at, node));
         }
     }
-    if (!item.capture && kind == "member_expression" &&
+    if (!item.capture && kind == syntax.MemberExpression &&
         (item.phase == QueryPresencePhase || QueryPresence(forest, text, types, names, item.node) >= 0)) {
         component := item.a;
         if (item.phase == 0) {
@@ -176,7 +177,7 @@ QueryStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         }
         return QueryDispatch.Handled(QueryPresenceStep(forest, types, component, values, top, item, ops, target, at));
     }
-    if (kind == "call_expression" && Text(forest, text, Field(forest, item.node, "function")) == "changed") {
+    if (kind == syntax.CallExpression && Text(forest, text, Field(forest, item.node, syntax.FieldFunction)) == "changed") {
         return QueryDispatch.Handled(QueryChangedStep(forest, text, document, types, members, params, queries, item, ops, target, at));
     }
     return QueryDispatch.Ordinary;
@@ -196,11 +197,11 @@ QueryFields :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
         component: int = -1;
         variable: int = 0;
         provider: QueryProvider = {variable: member.offset, relation: 0, traversal: 0, valid: true};
-        if (Is(forest, member.read, "query_generator")) {
+        if (Is(forest, member.read, syntax.QueryGenerator)) {
             variables += 1;
             variable = variables;
-        } else if (Is(forest, member.read, "parameter")) {
-            provider = QuerySource(forest, text, types, fields, Field(forest, member.read, "source"));
+        } else if (Is(forest, member.read, syntax.Parameter)) {
+            provider = QuerySource(forest, text, types, fields, Field(forest, member.read, syntax.FieldSource));
             component = member.record;
             if (member.storage == PointerStorage) {
                 component = PointerElement(types, Typed(-1, PointerStorage, 0, member.record)).record;
@@ -227,11 +228,11 @@ QueryGuardTerms :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
                     captured: string[], node: int) -> QueryTerm[] {
     expression := Unparenthesized(forest, node);
     kind := forest[expression].kind;
-    operator := Text(forest, text, Field(forest, expression, "operator"));
-    if (kind == "call_expression") {
-        function := Text(forest, text, Field(forest, expression, "function"));
+    operator := Text(forest, text, Field(forest, expression, syntax.FieldOperator));
+    if (kind == syntax.CallExpression) {
+        function := Text(forest, text, Field(forest, expression, syntax.FieldFunction));
         if (function == "has" || function == "all" || function == "any" || function == "not") {
-            arguments := Members(forest, Field(forest, expression, "arguments"));
+            arguments := Members(forest, Field(forest, expression, syntax.FieldArguments));
             if ((function == "has" || function == "not") && length(arguments) != 1) {
                 return [QueryLeaf(6, 0, 0, 0, 0, 0, expression)];
             }
@@ -279,21 +280,21 @@ QueryGuardTerms :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
             return terms;
         }
     }
-    if ((kind == "unary_expression" && (operator == "!" || operator == "not")) ||
-        (kind == "binary_expression" && (operator == "&&" || operator == "and" || operator == "||" || operator == "or"))) {
-        child := Field(forest, expression, "left");
-        if (kind == "unary_expression") {
-            child = Field(forest, expression, "operand");
+    if ((kind == syntax.UnaryExpression && (operator == "!" || operator == "not")) ||
+        (kind == syntax.BinaryExpression && (operator == "&&" || operator == "and" || operator == "||" || operator == "or"))) {
+        child := Field(forest, expression, syntax.FieldLeft);
+        if (kind == syntax.UnaryExpression) {
+            child = Field(forest, expression, syntax.FieldOperand);
         }
         terms := QueryGuardTerms(forest, text, types, fields, captured, child);
         group := QueryLeaf(3, 0, 0, 0, 0, 0, expression);
         group.left = length(terms) - 1;
-        if (kind == "binary_expression") {
+        if (kind == syntax.BinaryExpression) {
             group.kind = 1;
             if (operator == "||" || operator == "or") {
                 group.kind = 2;
             }
-            right := QueryGuardTerms(forest, text, types, fields, captured, Field(forest, expression, "right"));
+            right := QueryGuardTerms(forest, text, types, fields, captured, Field(forest, expression, syntax.FieldRight));
             offset := length(terms);
             for (original in right) {
                 moved := original;
@@ -310,15 +311,15 @@ QueryGuardTerms :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
         terms.append(group);
         return terms;
     }
-    changed := kind == "call_expression" && Text(forest, text, Field(forest, expression, "function")) == "changed";
+    changed := kind == syntax.CallExpression && Text(forest, text, Field(forest, expression, syntax.FieldFunction)) == "changed";
     tested := expression;
     if (changed) {
-        tested = FirstMember(forest, Field(forest, expression, "arguments"));
+        tested = FirstMember(forest, Field(forest, expression, syntax.FieldArguments));
     }
     component: int = -1;
     relation: int = -1;
     provider: QueryProvider = {variable: 0, relation: 0, traversal: 0, valid: true};
-    if (Is(forest, tested, "identifier")) {
+    if (Is(forest, tested, syntax.Identifier)) {
         name := Text(forest, text, tested);
         field := QueryFieldIndex(fields, name);
         if (field >= 0) {
@@ -328,13 +329,13 @@ QueryGuardTerms :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
         } else if (!Holds(captured, name)) {
             component = Component(types, name);
         }
-    } else if (Is(forest, tested, "member_expression")) {
-        name := Text(forest, text, Field(forest, tested, "member"));
+    } else if (Is(forest, tested, syntax.MemberExpression)) {
+        name := Text(forest, text, Field(forest, tested, syntax.FieldMember));
         component = Component(types, name);
         relation = Relationship(types, name);
-        object := Field(forest, tested, "object");
+        object := Field(forest, tested, syntax.FieldObject);
         provider = QuerySource(forest, text, types, fields, object);
-        if (Is(forest, object, "identifier") && Holds(captured, Text(forest, text, object))) {
+        if (Is(forest, object, syntax.Identifier) && Holds(captured, Text(forest, text, object))) {
             provider.valid = false;
         }
     }
@@ -362,9 +363,9 @@ QueryTerms :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[],
     }
     fields := QueryFields(forest, text, types, members, described);
     prior: QueryField[] = [];
-    for (clause in Members(forest, Field(forest, described.node, "parameters"))) {
-        if (Is(forest, clause, "query_guard")) {
-            guards := QueryGuardTerms(forest, text, types, prior, captured, Field(forest, clause, "condition"));
+    for (clause in Members(forest, Field(forest, described.node, syntax.FieldParameters))) {
+        if (Is(forest, clause, syntax.QueryGuard)) {
+            guards := QueryGuardTerms(forest, text, types, prior, captured, Field(forest, clause, syntax.FieldCondition));
             offset := length(terms);
             index: int = 0;
             for (original in guards) {
@@ -384,8 +385,8 @@ QueryTerms :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[],
         field := fields[length(prior)];
         prior.append(field);
         if (field.variable != 0) {
-            source := Field(forest, field.node, "source");
-            relation := Relationship(types, Text(forest, text, Field(forest, source, "member")));
+            source := Field(forest, field.node, syntax.FieldSource);
+            relation := Relationship(types, Text(forest, text, Field(forest, source, syntax.FieldMember)));
             term := QueryLeaf(5, types[relation].component, field.source, field.variable, 0, 0, field.node);
             term.root = true;
             terms.append(term);
@@ -395,7 +396,7 @@ QueryTerms :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[],
             term.root = true;
             term.required = true;
             terms.append(term);
-        } else if (Is(forest, field.node, "query_binding")) {
+        } else if (Is(forest, field.node, syntax.QueryBinding)) {
             // Computation stays in the ordered evaluator; this marker keeps
             // later membership tests from being hoisted ahead of it.
             term := QueryLeaf(6, 0, 0, 0, 0, 0, field.node);
@@ -505,8 +506,8 @@ QueryType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], 
     if (Text(forest, text, node) == "s") {
         return {storage: FloatStorage, container: 0, record: -1};
     }
-    if (TypePointerNode(forest, node) < 0 && HasToken(forest, node, "?")) {
-        component := Component(types, Text(forest, text, Field(forest, node, "name")));
+    if (TypePointerNode(forest, node) < 0 && HasToken(forest, node, tk.Question)) {
+        component := Component(types, Text(forest, text, Field(forest, node, syntax.FieldName)));
         index: int = 0;
         while (index < length(types)) {
             if (types[index].kind == OptionalComponentDecl && types[index].parent == component) {
@@ -528,14 +529,14 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     if (node < 0) {
         return none;
     }
-    if (Is(forest, node, "query_expression")) {
+    if (Is(forest, node, syntax.QueryExpression)) {
         found := FindQuery(queries, node);
         if (found >= 0) {
             return {storage: QueryStorage, container: 0, record: queries[found].description};
         }
         return none;
     }
-    if (Is(forest, node, "number")) {
+    if (Is(forest, node, syntax.Number)) {
         return {storage: StateNumberStorage(forest, text, node), container: 0, record: -1};
     }
     expression: Callable = {name: "", package: document, document: document, node: node, first: 0, count: 0,
@@ -571,36 +572,36 @@ QueryScopeName :: (forest: snapshot.SnapshotNode[], text: string, node: int, val
 // A positive payload pattern is visible in its matching body and in the
 // right side of && after the pattern has matched. It never enters an else.
 QueryPatternScope :: (forest: snapshot.SnapshotNode[], text: string, pattern: int, node: int) -> bool {
-    if (Field(forest, pattern, "negated") >= 0) {
+    if (Field(forest, pattern, syntax.FieldNegated) >= 0) {
         return false;
     }
     current := pattern;
     while (forest[current].parent >= 0) {
         parent := forest[current].parent;
-        if (Is(forest, parent, "parenthesized_expression")) {
+        if (Is(forest, parent, syntax.ParenthesizedExpression)) {
             current = parent;
             continue;
         }
-        if (Is(forest, parent, "binary_expression")) {
-            operator := Text(forest, text, Field(forest, parent, "operator"));
+        if (Is(forest, parent, syntax.BinaryExpression)) {
+            operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
             if (operator != "&&" && operator != "and") {
                 return false;
             }
-            if (Ancestor(forest, Field(forest, parent, "left"), current) &&
-                Ancestor(forest, Field(forest, parent, "right"), node)) {
+            if (Ancestor(forest, Field(forest, parent, syntax.FieldLeft), current) &&
+                Ancestor(forest, Field(forest, parent, syntax.FieldRight), node)) {
                 return true;
             }
             current = parent;
             continue;
         }
-        if (Field(forest, parent, "condition") != current) {
+        if (Field(forest, parent, syntax.FieldCondition) != current) {
             return false;
         }
-        if (Is(forest, parent, "if_statement")) {
-            return Ancestor(forest, Field(forest, parent, "consequence"), node);
+        if (Is(forest, parent, syntax.IfStatement)) {
+            return Ancestor(forest, Field(forest, parent, syntax.FieldConsequence), node);
         }
-        if (Is(forest, parent, "while_statement")) {
-            return Ancestor(forest, Field(forest, parent, "body"), node);
+        if (Is(forest, parent, syntax.WhileStatement)) {
+            return Ancestor(forest, Field(forest, parent, syntax.FieldBody), node);
         }
         return false;
     }
@@ -609,16 +610,16 @@ QueryPatternScope :: (forest: snapshot.SnapshotNode[], text: string, pattern: in
 QueryPatternNames :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
                       names: Name[], subject: ValueType, pattern: int) -> Name[] {
     if (subject.storage != UnionStorage || subject.container != 0 || subject.record < 0 ||
-        !Is(forest, pattern, "variant_pattern")) {
+        !Is(forest, pattern, syntax.VariantPattern)) {
         return names;
     }
-    variant := FindVariant(types, subject.record, Text(forest, text, Field(forest, pattern, "name")));
+    variant := FindVariant(types, subject.record, Text(forest, text, Field(forest, pattern, syntax.FieldName)));
     if (variant < 0) {
         return names;
     }
     scoped := names;
     index: int = 0;
-    for (binding_node in Members(forest, Field(forest, pattern, "bindings"))) {
+    for (binding_node in Members(forest, Field(forest, pattern, syntax.FieldBindings))) {
         if (index >= types[variant].count) {
             break;
         }
@@ -646,7 +647,7 @@ QueryScope :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
                globals: Name[], entity: u64, node: int, ops: Ops, target: Target) -> Name[] {
     names := globals;
     for (callable in callables) {
-        if (!Ancestor(forest, Field(forest, callable.node, "body"), node)) {
+        if (!Ancestor(forest, Field(forest, callable.node, syntax.FieldBody), node)) {
             continue;
         }
         index: int = 0;
@@ -659,7 +660,7 @@ QueryScope :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
         }
     }
     for (described in queries) {
-        if (!Is(forest, described.node, "system") || !Ancestor(forest, Field(forest, described.node, "body"), node)) {
+        if (!Is(forest, described.node, syntax.System) || !Ancestor(forest, Field(forest, described.node, syntax.FieldBody), node)) {
             continue;
         }
         for (field in QueryFields(forest, text, types, members, described)) {
@@ -670,53 +671,53 @@ QueryScope :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     }
     index := QuerySourceRoot(forest, node);
     while (index < length(forest) && forest[index].start < forest[node].start) {
-        if (Is(forest, index, "local_declaration") && !Ancestor(forest, index, node)) {
+        if (Is(forest, index, syntax.LocalDeclaration) && !Ancestor(forest, index, node)) {
             if (Ancestor(forest, forest[index].parent, node)) {
-                value := QueryType(forest, text, types, names, entity, Field(forest, index, "type"));
+                value := QueryType(forest, text, types, names, entity, Field(forest, index, syntax.FieldType));
                 if (value.storage == 0) {
                     value = QueryValueType(forest, text, document, types, members, callables, params, natives, ports, queries, names,
-                                           entity, Field(forest, index, "value"), ops, target);
+                                           entity, Field(forest, index, syntax.FieldValue), ops, target);
                 }
-                names.append(QueryScopeName(forest, text, Field(forest, index, "name"), value));
+                names.append(QueryScopeName(forest, text, Field(forest, index, syntax.FieldName), value));
             }
-        } else if (Is(forest, index, "for_statement") && Ancestor(forest, Field(forest, index, "body"), node)) {
-            if (Field(forest, index, "first") >= 0) {
-                names.append(QueryScopeName(forest, text, Field(forest, index, "name"),
+        } else if (Is(forest, index, syntax.ForStatement) && Ancestor(forest, Field(forest, index, syntax.FieldBody), node)) {
+            if (Field(forest, index, syntax.FieldFirst) >= 0) {
+                names.append(QueryScopeName(forest, text, Field(forest, index, syntax.FieldName),
                                             {storage: IntStorage, container: 0, record: -1}));
             } else {
                 iterable := QueryValueType(forest, text, document, types, members, callables, params, natives, ports, queries,
-                                           names, entity, Field(forest, index, "value"), ops, target);
+                                           names, entity, Field(forest, index, syntax.FieldValue), ops, target);
                 if (iterable.container == MapContainer && iterable.record >= 0) {
                     map := types[iterable.record];
-                    names.append(QueryScopeName(forest, text, Field(forest, index, "name"),
+                    names.append(QueryScopeName(forest, text, Field(forest, index, syntax.FieldName),
                                                 {storage: map.value_storage, container: map.value_container, record: map.value_record}));
-                    if (Field(forest, index, "key") >= 0) {
-                        names.append(QueryScopeName(forest, text, Field(forest, index, "key"),
+                    if (Field(forest, index, syntax.FieldKey) >= 0) {
+                        names.append(QueryScopeName(forest, text, Field(forest, index, syntax.FieldKey),
                                                     {storage: map.key, container: 0, record: -1}));
                     }
                 } else if (iterable.container == ArrayContainer) {
                     names.append(QueryScopeName(forest, text, ItemField(forest, index),
                                                 {storage: iterable.storage, container: 0, record: iterable.record}));
-                    if (Field(forest, index, "key") >= 0) {
-                        names.append(QueryScopeName(forest, text, Field(forest, index, "name"),
+                    if (Field(forest, index, syntax.FieldKey) >= 0) {
+                        names.append(QueryScopeName(forest, text, Field(forest, index, syntax.FieldName),
                                                     {storage: IntStorage, container: 0, record: -1}));
                     }
                 } else if (Single(Typed(-1, iterable.storage, iterable.container, iterable.record), QueryStorage)) {
                     if (iterable.record >= 0 && types[iterable.record].kind == QueryDescriptorDecl) {
                         iterable.record = types[iterable.record].parent;
                     }
-                    names.append(QueryScopeName(forest, text, Field(forest, index, "name"), iterable));
+                    names.append(QueryScopeName(forest, text, Field(forest, index, syntax.FieldName), iterable));
                 }
             }
-        } else if (Is(forest, index, "is_expression") && QueryPatternScope(forest, text, index, node)) {
+        } else if (Is(forest, index, syntax.IsExpression) && QueryPatternScope(forest, text, index, node)) {
             subject := QueryValueType(forest, text, document, types, members, callables, params, natives, ports, queries, names,
-                                      entity, Field(forest, index, "value"), ops, target);
-            names = QueryPatternNames(forest, text, types, members, names, subject, Field(forest, index, "type"));
-        } else if (Is(forest, index, "switch_arm") && Ancestor(forest, Field(forest, index, "body"), node)) {
+                                      entity, Field(forest, index, syntax.FieldValue), ops, target);
+            names = QueryPatternNames(forest, text, types, members, names, subject, Field(forest, index, syntax.FieldType));
+        } else if (Is(forest, index, syntax.SwitchArm) && Ancestor(forest, Field(forest, index, syntax.FieldBody), node)) {
             selection := forest[index].parent;
             subject := QueryValueType(forest, text, document, types, members, callables, params, natives, ports, queries, names,
-                                      entity, Field(forest, selection, "value"), ops, target);
-            names = QueryPatternNames(forest, text, types, members, names, subject, Field(forest, index, "value"));
+                                      entity, Field(forest, selection, syntax.FieldValue), ops, target);
+            names = QueryPatternNames(forest, text, types, members, names, subject, Field(forest, index, syntax.FieldValue));
         }
         index += 1;
     }
@@ -731,7 +732,7 @@ QueryHelperLocal :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     owner: int = -1;
     index: int = 0;
     for (callable in callables) {
-        if (Ancestor(forest, Field(forest, callable.node, "body"), node) &&
+        if (Ancestor(forest, Field(forest, callable.node, syntax.FieldBody), node) &&
             (owner < 0 || forest[callable.node].start > forest[callables[owner].node].start)) {
             owner = index;
         }
@@ -750,13 +751,13 @@ QueryHelperLocal :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     enclosing := forest[node].parent;
     while (enclosing >= 0) {
-        if (Is(forest, enclosing, "query_expression")) {
+        if (Is(forest, enclosing, syntax.QueryExpression)) {
             if (name == "self") {
                 return true;
             }
-            for (clause in Members(forest, Field(forest, enclosing, "parameters"))) {
+            for (clause in Members(forest, Field(forest, enclosing, syntax.FieldParameters))) {
                 if (forest[clause].end <= forest[node].start &&
-                    Text(forest, text, Field(forest, clause, "name")) == name) {
+                    Text(forest, text, Field(forest, clause, syntax.FieldName)) == name) {
                     return true;
                 }
             }
@@ -765,15 +766,15 @@ QueryHelperLocal :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     index = QuerySourceRoot(forest, node);
     while (index < length(forest) && forest[index].start < forest[node].start) {
-        if (Is(forest, index, "local_declaration") &&
-            Ancestor(forest, Field(forest, callable.node, "body"), index) &&
+        if (Is(forest, index, syntax.LocalDeclaration) &&
+            Ancestor(forest, Field(forest, callable.node, syntax.FieldBody), index) &&
             Ancestor(forest, forest[index].parent, node) && !Ancestor(forest, index, node) &&
-            Text(forest, text, Field(forest, index, "name")) == name) {
+            Text(forest, text, Field(forest, index, syntax.FieldName)) == name) {
             return true;
         }
-        if (Is(forest, index, "for_statement") && Ancestor(forest, Field(forest, index, "body"), node) &&
-            (Text(forest, text, Field(forest, index, "name")) == name ||
-             Text(forest, text, Field(forest, index, "key")) == name)) {
+        if (Is(forest, index, syntax.ForStatement) && Ancestor(forest, Field(forest, index, syntax.FieldBody), node) &&
+            (Text(forest, text, Field(forest, index, syntax.FieldName)) == name ||
+             Text(forest, text, Field(forest, index, syntax.FieldKey)) == name)) {
             return true;
         }
         index += 1;
@@ -790,11 +791,11 @@ QueryImpure :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
         if (node < 0) {
             continue;
         }
-        if (Is(forest, node, "type") || Is(forest, node, "argument_name")) {
+        if (Is(forest, node, syntax.Type) || Is(forest, node, syntax.ArgumentName)) {
             continue;
         }
-        if (Is(forest, node, "identifier") && !Ancestor(forest, root, node) &&
-            forest[node].field != "member" && forest[node].field != "function" && forest[node].field != "name") {
+        if (Is(forest, node, syntax.Identifier) && !Ancestor(forest, root, node) &&
+            forest[node].field != syntax.FieldMember && forest[node].field != syntax.FieldFunction && forest[node].field != syntax.FieldName) {
             spelling := Text(forest, text, node);
             found := Lookup(names, spelling);
             if (found >= 0 && names[found].place != AliasPlace &&
@@ -802,7 +803,7 @@ QueryImpure :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
                 return node;
             }
         }
-        if (Is(forest, node, "assignment")) {
+        if (Is(forest, node, syntax.Assignment)) {
             destination := StatementTarget(forest, node);
             base := RootOf(forest, destination);
             name := Text(forest, text, base);
@@ -812,7 +813,7 @@ QueryImpure :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
                 return node;
             }
             for (callable in callables) {
-                if (!Ancestor(forest, Field(forest, callable.node, "body"), node)) {
+                if (!Ancestor(forest, Field(forest, callable.node, syntax.FieldBody), node)) {
                     continue;
                 }
                 index: int = 0;
@@ -825,16 +826,13 @@ QueryImpure :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
                 }
             }
         }
-        if (Is(forest, node, "reference_argument")) {
-            return node;
-        }
         // Literal nested headers validate independently. A helper's nested
         // description can still hide reads, so follow its captures here.
-        if (Is(forest, node, "query_expression") && Ancestor(forest, root, node)) {
+        if (Is(forest, node, syntax.QueryExpression) && Ancestor(forest, root, node)) {
             continue;
         }
-        if (Is(forest, node, "call_expression")) {
-            spelling := Text(forest, text, Field(forest, node, "function"));
+        if (Is(forest, node, syntax.CallExpression)) {
+            spelling := Text(forest, text, Field(forest, node, syntax.FieldFunction));
             for (native in natives) {
                 if (NameMatches(native.name, spelling) &&
                     ((native.effects & 62) != 0 || (system_header && (native.effects & 64) != 0))) {
@@ -845,7 +843,7 @@ QueryImpure :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
             for (callable in callables) {
                 if (callable.name == spelling && Position(visited, index) < 0) {
                     visited.append(index);
-                    pending.append(Field(forest, callable.node, "body"));
+                    pending.append(Field(forest, callable.node, syntax.FieldBody));
                 }
                 index += 1;
             }
@@ -858,12 +856,12 @@ QueryImpure :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
 }
 QueryExcludes :: (forest: snapshot.SnapshotNode[], text: string, condition: int, membership: string, truth: bool) -> bool {
     node := Unparenthesized(forest, condition);
-    if (Is(forest, node, "member_expression")) {
+    if (Is(forest, node, syntax.MemberExpression)) {
         return !truth && Text(forest, text, node) == membership;
     }
-    if (Is(forest, node, "call_expression")) {
-        function := Text(forest, text, Field(forest, node, "function"));
-        arguments := Members(forest, Field(forest, node, "arguments"));
+    if (Is(forest, node, syntax.CallExpression)) {
+        function := Text(forest, text, Field(forest, node, syntax.FieldFunction));
+        arguments := Members(forest, Field(forest, node, syntax.FieldArguments));
         if (function == "has" && length(arguments) == 1) {
             return QueryExcludes(forest, text, arguments[0], membership, truth);
         }
@@ -885,22 +883,22 @@ QueryExcludes :: (forest: snapshot.SnapshotNode[], text: string, condition: int,
         }
         return result;
     }
-    if (Is(forest, node, "unary_expression")) {
-        operator := Text(forest, text, Field(forest, node, "operator"));
+    if (Is(forest, node, syntax.UnaryExpression)) {
+        operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
         return (operator == "!" || operator == "not") &&
-               QueryExcludes(forest, text, Field(forest, node, "operand"), membership, !truth);
+               QueryExcludes(forest, text, Field(forest, node, syntax.FieldOperand), membership, !truth);
     }
-    if (!Is(forest, node, "binary_expression")) {
+    if (!Is(forest, node, syntax.BinaryExpression)) {
         return false;
     }
-    operator := Text(forest, text, Field(forest, node, "operator"));
+    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
     conjunction := operator == "&&" || operator == "and";
     disjunction := operator == "||" || operator == "or";
     if (!conjunction && !disjunction) {
         return false;
     }
-    left := QueryExcludes(forest, text, Field(forest, node, "left"), membership, truth);
-    right := QueryExcludes(forest, text, Field(forest, node, "right"), membership, truth);
+    left := QueryExcludes(forest, text, Field(forest, node, syntax.FieldLeft), membership, truth);
+    right := QueryExcludes(forest, text, Field(forest, node, syntax.FieldRight), membership, truth);
     if ((truth && conjunction) || (!truth && disjunction)) {
         return left || right;
     }
@@ -929,23 +927,23 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
     fields: QueryField[] = [];
     captures: int[] = [];
     variables: int = 0;
-    list := Field(forest, node, "parameters");
+    list := Field(forest, node, syntax.FieldParameters);
     for (clause in Members(forest, list)) {
-        expression := Field(forest, clause, "value");
-        if (Is(forest, clause, "query_guard")) {
-            expression = Field(forest, clause, "condition");
+        expression := Field(forest, clause, syntax.FieldValue);
+        if (Is(forest, clause, syntax.QueryGuard)) {
+            expression = Field(forest, clause, syntax.FieldCondition);
         }
         if (expression >= 0) {
             pending: int[] = [expression];
             while (length(pending) > 0) {
                 nested := pending[length(pending) - 1];
                 pending = slice(pending, 0, length(pending) - 1);
-                if (Is(forest, nested, "query_expression")) {
+                if (Is(forest, nested, syntax.QueryExpression)) {
                     scope := enclosing;
                     for (field in fields) {
                         named: Name = {owned: false, name: field.name, place: LocalPlace, index: 0,
                                        storage: field.storage, container: field.container, record: field.record,
-                                       writable: false, node: Field(forest, field.node, "name")};
+                                       writable: false, node: Field(forest, field.node, syntax.FieldName)};
                         scope.append(named);
                     }
                     switch CollectQuery(forest, text, identity, document, types, members, callables, params, natives, ports,
@@ -976,21 +974,21 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
             while (length(pending) > 0) {
                 part := pending[length(pending) - 1];
                 pending = slice(pending, 0, length(pending) - 1);
-                if (Is(forest, part, "query_expression")) {
+                if (Is(forest, part, syntax.QueryExpression)) {
                     continue;
                 }
-                if (!Is(forest, node, "system") && Is(forest, part, "call_expression") &&
-                    Text(forest, text, Field(forest, part, "function")) == "changed") {
+                if (!Is(forest, node, syntax.System) && Is(forest, part, syntax.CallExpression) &&
+                    Text(forest, text, Field(forest, part, syntax.FieldFunction)) == "changed") {
                     return QueryDeclarations.Failed(Diagnose(forest, part, document,
                                                              "changed is only available in scheduled system queries"));
                 }
-                if (Is(forest, part, "address_expression")) {
-                    operand := Unparenthesized(forest, Field(forest, part, "operand"));
+                if (Is(forest, part, syntax.AddressExpression)) {
+                    operand := Unparenthesized(forest, Field(forest, part, syntax.FieldOperand));
                     base := RootOf(forest, operand);
-                    if (Is(forest, base, "identifier")) {
+                    if (Is(forest, base, syntax.Identifier)) {
                         found := Lookup(names, Text(forest, text, base));
                         if (found >= 0 && (names[found].storage != PointerStorage ||
-                                           !Is(forest, operand, "member_expression")) &&
+                                           !Is(forest, operand, syntax.MemberExpression)) &&
                             QueryFieldIndex(fields, names[found].name) < 0) {
                             return QueryDeclarations.Failed(Diagnose(forest, part, document,
                                                                      "Captured query values are read-only; capture an existing pointer instead"));
@@ -1002,7 +1000,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                 }
             }
         }
-        if (Is(forest, clause, "query_guard")) {
+        if (Is(forest, clause, syntax.QueryGuard)) {
             for (field in fields) {
                 if (field.component < 0 || field.optional || field.source_relationship != 0) {
                     continue;
@@ -1021,16 +1019,16 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
             }
             continue;
         }
-        name_node := Field(forest, clause, "name");
+        name_node := Field(forest, clause, syntax.FieldName);
         name := Text(forest, text, name_node);
-        if (Is(forest, node, "system") && name == "dt") {
+        if (Is(forest, node, syntax.System) && name == "dt") {
             return QueryDeclarations.Failed(Diagnose(forest, name_node, document,
                                                      "'dt' is the implicit system step and cannot be a query binding"));
         }
         if (QueryFieldIndex(fields, name) >= 0) {
             return QueryDeclarations.Failed(Diagnose(forest, name_node, document, format_text("Duplicate query binding '{}'", name)));
         }
-        annotation := Field(forest, clause, "type");
+        annotation := Field(forest, clause, syntax.FieldType);
         typed := QueryType(forest, text, types, names, entity, annotation);
         if (annotation >= 0 && typed.storage == 0) {
             return QueryDeclarations.Failed(Diagnose(forest, annotation, document,
@@ -1040,20 +1038,20 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
         variable: int = 0;
         source: int = 0;
         provider: QueryProvider = {variable: 0, relation: 0, traversal: 0, valid: true};
-        if (Is(forest, clause, "query_generator")) {
+        if (Is(forest, clause, syntax.QueryGenerator)) {
             if (typed.storage != 0 && (typed.storage != HandleStorage || typed.record != TypeWithId(types, entity))) {
                 return QueryDeclarations.Failed(Diagnose(forest, clause, document, "Relationship generator type must be entity"));
             }
             typed = {storage: HandleStorage, container: 0, record: TypeWithId(types, entity)};
-            from := Field(forest, clause, "source");
-            if (!Is(forest, from, "member_expression")) {
+            from := Field(forest, clause, syntax.FieldSource);
+            if (!Is(forest, from, syntax.MemberExpression)) {
                 return QueryDeclarations.Failed(Diagnose(forest, from, document, "Relationship generator requires entity.Relationship"));
             }
-            relation := Relationship(types, Text(forest, text, Field(forest, from, "member")));
+            relation := Relationship(types, Text(forest, text, Field(forest, from, syntax.FieldMember)));
             if (relation < 0) {
                 return QueryDeclarations.Failed(Diagnose(forest, from, document, "Unknown relation type"));
             }
-            root_name := Text(forest, text, Field(forest, from, "object"));
+            root_name := Text(forest, text, Field(forest, from, syntax.FieldObject));
             if (root_name != "self") {
                 previous := QueryFieldIndex(fields, root_name);
                 if (previous < 0 || fields[previous].variable == 0) {
@@ -1066,8 +1064,8 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                 return QueryDeclarations.Failed(Diagnose(forest, clause, document, "Query supports at most eight relation variables"));
             }
             variable = variables;
-        } else if (Is(forest, clause, "query_binding")) {
-            value := Field(forest, clause, "value");
+        } else if (Is(forest, clause, syntax.QueryBinding)) {
+            value := Field(forest, clause, syntax.FieldValue);
             inferred := QueryValueType(forest, text, document, types, members, callables, params, natives, ports, queries, names, entity, value, ops, target);
             if (typed.storage == 0) {
                 typed = inferred;
@@ -1084,7 +1082,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
             if (pointee.storage != StructStorage || component < 0 || types[component].component == 0) {
                 return QueryDeclarations.Failed(Diagnose(forest, clause, document, "Query binding requires a component type"));
             }
-            from := Field(forest, clause, "source");
+            from := Field(forest, clause, syntax.FieldSource);
             provider = QuerySource(forest, text, types, fields, from);
             if (!provider.valid) {
                 return QueryDeclarations.Failed(Diagnose(forest, from, document,
@@ -1098,7 +1096,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
         field: QueryField = {name: name, node: clause, storage: typed.storage, container: typed.container,
                              record: typed.record, component: component, variable: variable, source: source,
                              source_relationship: provider.relation, source_traversal: provider.traversal,
-                             optional: Field(forest, clause, "type") >= 0 && HasToken(forest, Field(forest, clause, "type"), "?")};
+                             optional: Field(forest, clause, syntax.FieldType) >= 0 && HasToken(forest, Field(forest, clause, syntax.FieldType), tk.Question)};
         fields.append(field);
         local: Name = {owned: false, name: name, place: LocalPlace, index: length(fields) - 1, storage: typed.storage,
                        container: typed.container, record: typed.record, writable: false, node: name_node};
@@ -1109,12 +1107,12 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
     local_names: string[] = ["self"];
     captured_names: string[] = [];
     for (clause in Members(forest, list)) {
-        expression := Field(forest, clause, "value");
-        if (Is(forest, clause, "query_guard")) {
-            expression = Field(forest, clause, "condition");
+        expression := Field(forest, clause, syntax.FieldValue);
+        if (Is(forest, clause, syntax.QueryGuard)) {
+            expression = Field(forest, clause, syntax.FieldCondition);
         }
         if (expression < 0) {
-            expression = Field(forest, clause, "source");
+            expression = Field(forest, clause, syntax.FieldSource);
         }
         pending: int[] = [];
         if (expression >= 0) {
@@ -1123,10 +1121,10 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
         while (length(pending) > 0) {
             item := pending[length(pending) - 1];
             pending = slice(pending, 0, length(pending) - 1);
-            if (Is(forest, item, "type") || Is(forest, item, "argument_name")) {
+            if (Is(forest, item, syntax.Type) || Is(forest, item, syntax.ArgumentName)) {
                 continue;
             }
-            if (Is(forest, item, "query_expression")) {
+            if (Is(forest, item, syntax.QueryExpression)) {
                 nested := FindQuery(queries, item);
                 index: int = 0;
                 while (nested >= 0 && index < queries[nested].capture_count) {
@@ -1135,8 +1133,8 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                 }
                 continue;
             }
-            if (Is(forest, item, "identifier") && forest[item].field != "member" &&
-                forest[item].field != "function" && forest[item].field != "name") {
+            if (Is(forest, item, syntax.Identifier) && forest[item].field != syntax.FieldMember &&
+                forest[item].field != syntax.FieldFunction && forest[item].field != syntax.FieldName) {
                 spelling := Text(forest, text, item);
                 if (!Holds(local_names, spelling) && !Holds(captured_names, spelling)) {
                     found := Lookup(creation_names, spelling);
@@ -1154,7 +1152,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                 pending.append(child);
             }
         }
-        declared_name := Field(forest, clause, "name");
+        declared_name := Field(forest, clause, syntax.FieldName);
         if (declared_name >= 0) {
             local_names.append(Text(forest, text, declared_name));
         }
@@ -1187,16 +1185,16 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
         named := creation_names[found];
         param: Param = {name: named.name, storage: named.storage, container: named.container, record: named.record,
                         has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
-                        reference: false, node: capture};
+                        reference: false, written: false, node: capture};
         params.append(param);
     }
     accepted: Param = {name: "", storage: BoolStorage, container: 0, record: -1, has_default: false,
-                       default_bits: 0, default_text: "", default_occurrence: 0, reference: false, node: node};
+                       default_bits: 0, default_text: "", default_occurrence: 0, reference: false, written: false, node: node};
     params.append(accepted);
     for (field in fields) {
         result: Param = {name: "", storage: field.storage, container: field.container, record: field.record,
                          has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
-                         reference: false, node: field.node};
+                         reference: false, written: false, node: field.node};
         params.append(result);
     }
     evaluator := length(callables);
@@ -1229,10 +1227,10 @@ CollectQueries :: (forest: snapshot.SnapshotNode[], text: string, identity: stri
     queries := input_queries;
     node := node_start;
     while (node < node_end) {
-        if (forest[node].is_named && (Is(forest, node, "query_expression") ||
-                                      (Is(forest, node, "system") && length(Members(forest, Field(forest, node, "parameters"))) > 0))) {
+        if (forest[node].is_named && (Is(forest, node, syntax.QueryExpression) ||
+                                      (Is(forest, node, syntax.System) && length(Members(forest, Field(forest, node, syntax.FieldParameters))) > 0))) {
             switch CollectQuery(forest, text, identity, document, types, members, callables, params, natives, ports,
-                                queries, globals, [], entity, node, Is(forest, node, "system"), target, ops) {
+                                queries, globals, [], entity, node, Is(forest, node, syntax.System), target, ops) {
                 case .Failed(diagnostic):
                     return QueryDeclarations.Failed(diagnostic);
                 case .Collected(next_types, next_members, next_callables, next_params, next_queries):
@@ -1353,11 +1351,11 @@ QueryReadonlyDestination :: (forest: snapshot.SnapshotNode[], text: string, type
                              names: Name[], destination: int) -> bool {
     root := destination;
     first: int = -1;
-    while (Is(forest, root, "member_expression")) {
+    while (Is(forest, root, syntax.MemberExpression)) {
         first = root;
-        root = Field(forest, root, "object");
+        root = Field(forest, root, syntax.FieldObject);
     }
-    if (!Is(forest, root, "identifier")) {
+    if (!Is(forest, root, syntax.Identifier)) {
         return false;
     }
     found := Lookup(names, Text(forest, text, root));
@@ -1374,7 +1372,7 @@ QueryReadonlyDestination :: (forest: snapshot.SnapshotNode[], text: string, type
     if (first < 0) {
         return true;
     }
-    field := FindField(types, members, bound.record, Text(forest, text, Field(forest, first, "member")));
+    field := FindField(types, members, bound.record, Text(forest, text, Field(forest, first, syntax.FieldMember)));
     if (field < 0) {
         return false;
     }
@@ -1390,23 +1388,23 @@ QueryAccessPresent :: (forest: snapshot.SnapshotNode[], text: string, types: Typ
     }
     declaration := expression;
     field_name := spelling;
-    if (Is(forest, expression, "member_expression")) {
-        object := Field(forest, expression, "object");
-        if (Is(forest, object, "identifier")) {
+    if (Is(forest, expression, syntax.MemberExpression)) {
+        object := Field(forest, expression, syntax.FieldObject);
+        if (Is(forest, object, syntax.Identifier)) {
             found := Lookup(names, Text(forest, text, object));
             if (found >= 0 && names[found].storage == QueryStorage && names[found].record >= 0) {
                 declaration = types[names[found].record].node;
-                field_name = Text(forest, text, Field(forest, expression, "member"));
+                field_name = Text(forest, text, Field(forest, expression, syntax.FieldMember));
             }
         }
     }
     at := declaration;
     while (at >= 0) {
-        if (Is(forest, at, "query_expression") || Is(forest, at, "system")) {
-            for (clause in Members(forest, Field(forest, at, "parameters"))) {
-                if (Is(forest, clause, "query_guard") &&
+        if (Is(forest, at, syntax.QueryExpression) || Is(forest, at, syntax.System)) {
+            for (clause in Members(forest, Field(forest, at, syntax.FieldParameters))) {
+                if (Is(forest, clause, syntax.QueryGuard) &&
                     (declaration != expression || forest[clause].end <= forest[expression].start) &&
-                    PointerGuard(forest, text, Field(forest, clause, "condition"), field_name, true)) {
+                    PointerGuard(forest, text, Field(forest, clause, syntax.FieldCondition), field_name, true)) {
                     return true;
                 }
             }
@@ -1460,11 +1458,11 @@ QueryPresencePhase: int : 68;
 QueryGuardContext :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     at := node;
     while (at >= 0) {
-        if (Is(forest, at, "query_guard")) {
+        if (Is(forest, at, syntax.QueryGuard)) {
             return true;
         }
-        if (Is(forest, at, "query_binding") || Is(forest, at, "block") ||
-            Is(forest, at, "callable_body") || Is(forest, at, "system_body")) {
+        if (Is(forest, at, syntax.QueryBinding) || Is(forest, at, syntax.Block) ||
+            Is(forest, at, syntax.CallableBody) || Is(forest, at, syntax.SystemBody)) {
             return false;
         }
         at = forest[at].parent;
@@ -1472,10 +1470,10 @@ QueryGuardContext :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     return false;
 }
 QueryGuardFunction :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    if (!Is(forest, node, "call_expression") || !QueryGuardContext(forest, node)) {
+    if (!Is(forest, node, syntax.CallExpression) || !QueryGuardContext(forest, node)) {
         return false;
     }
-    function := Text(forest, text, Field(forest, node, "function"));
+    function := Text(forest, text, Field(forest, node, syntax.FieldFunction));
     return function == "all" || function == "any" || function == "not";
 }
 QueryMembership :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
@@ -1533,27 +1531,27 @@ QueryBooleanPosition :: (forest: snapshot.SnapshotNode[], text: string, expressi
     node := expression;
     while (node >= 0 && forest[node].parent >= 0) {
         parent := forest[node].parent;
-        if (Is(forest, parent, "parenthesized_expression")) {
+        if (Is(forest, parent, syntax.ParenthesizedExpression)) {
             node = parent;
             continue;
         }
-        if (Is(forest, parent, "query_guard") || Is(forest, parent, "if_statement") ||
-            Is(forest, parent, "while_statement")) {
-            return Field(forest, parent, "condition") == node;
+        if (Is(forest, parent, syntax.QueryGuard) || Is(forest, parent, syntax.IfStatement) ||
+            Is(forest, parent, syntax.WhileStatement)) {
+            return Field(forest, parent, syntax.FieldCondition) == node;
         }
-        if (Is(forest, parent, "argument_list")) {
+        if (Is(forest, parent, syntax.ArgumentList)) {
             call := forest[parent].parent;
-            function := Text(forest, text, Field(forest, call, "function"));
+            function := Text(forest, text, Field(forest, call, syntax.FieldFunction));
             if (function != "has" && function != "all" && function != "any" && function != "not") {
                 return false;
             }
             return QueryGuardContext(forest, call);
         }
-        operator := Text(forest, text, Field(forest, parent, "operator"));
-        if (Is(forest, parent, "unary_expression")) {
+        operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
+        if (Is(forest, parent, syntax.UnaryExpression)) {
             return operator == "!" || operator == "not";
         }
-        return Is(forest, parent, "binary_expression") &&
+        return Is(forest, parent, syntax.BinaryExpression) &&
                (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
     }
     return false;
@@ -1606,45 +1604,41 @@ QueryBooleanStep :: (types: TypeDecl[], step: Step, ops: Ops, target: Target, at
 // A component name in a Boolean position is a membership test. Selecting a
 // field of the component still reads its value and may require a prior guard.
 QueryPresence :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], node: int) -> int {
-    if (!Is(forest, node, "member_expression")) {
+    if (!Is(forest, node, syntax.MemberExpression)) {
         return -1;
     }
-    owner := Field(forest, node, "object");
-    if (!Is(forest, owner, "identifier")) {
+    owner := Field(forest, node, syntax.FieldObject);
+    if (!Is(forest, owner, syntax.Identifier)) {
+        return -1;
+    }
+    // The dispatcher asks for every member expression, so the cheap tests come
+    // first: a Boolean position, then a handle owner, and only then the
+    // component, which scans every type.
+    parent := forest[node].parent;
+    boolean := Is(forest, parent, syntax.QueryGuard) || Is(forest, parent, syntax.IfStatement) ||
+               Is(forest, parent, syntax.WhileStatement);
+    if (!boolean && Is(forest, parent, syntax.UnaryExpression)) {
+        operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
+        boolean = operator == "!" || operator == "not";
+    }
+    if (!boolean && Is(forest, parent, syntax.BinaryExpression)) {
+        operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
+        boolean = operator == "&&" || operator == "||" || operator == "and" || operator == "or";
+    }
+    if (!boolean) {
         return -1;
     }
     found := Lookup(names, Text(forest, text, owner));
     if (found < 0 || names[found].storage != HandleStorage) {
         return -1;
     }
-    // Finding the component scans every type, so the handle comes first.
-    component := Component(types, Text(forest, text, Field(forest, node, "member")));
-    if (component < 0) {
-        return -1;
-    }
-    parent := forest[node].parent;
-    if (Is(forest, parent, "query_guard") || Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) {
-        return component;
-    }
-    if (Is(forest, parent, "unary_expression")) {
-        operator := Text(forest, text, Field(forest, parent, "operator"));
-        if (operator == "!" || operator == "not") {
-            return component;
-        }
-    }
-    if (Is(forest, parent, "binary_expression")) {
-        operator := Text(forest, text, Field(forest, parent, "operator"));
-        if (operator == "&&" || operator == "||" || operator == "and" || operator == "or") {
-            return component;
-        }
-    }
-    return -1;
+    return Component(types, Text(forest, text, Field(forest, node, syntax.FieldMember)));
 }
 QueryPresenceStep :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], component: int, values: Value[], top: int,
                       item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     if (item.phase == 0) {
         return Step.Emitted([], [], [], [], [], [], [], [],
-                            [Visit(Field(forest, item.node, "object")), Resume(item.node, QueryPresencePhase, component, 0)],
+                            [Visit(Field(forest, item.node, syntax.FieldObject)), Resume(item.node, QueryPresencePhase, component, 0)],
                             0, NoValue(), NoValue(), []);
     }
     return QueryCallStep(9,
@@ -1753,7 +1747,7 @@ QueryEvaluateStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     kind := node.kind;
     if (item.node == described.node && item.phase == 0) {
         next: Work[] = [];
-        for (clause in Members(forest, Field(forest, item.node, "parameters"))) {
+        for (clause in Members(forest, Field(forest, item.node, syntax.FieldParameters))) {
             next.append(Visit(clause));
         }
         next.append(Resume(item.node, QueryFinishPhase, 0, 0));
@@ -1765,7 +1759,7 @@ QueryEvaluateStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         next: Work[] = [];
         index: int = 0;
         for (field in QueryFields(forest, text, types, members, described)) {
-            next.append(Visit(Field(forest, field.node, "name")));
+            next.append(Visit(Field(forest, field.node, syntax.FieldName)));
             next.append(Resume(field.node, QueryReturnPhase, index + 1, 0));
             index += 1;
         }
@@ -1785,7 +1779,7 @@ QueryEvaluateStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         code: Code[] = [];
         slots: Slot[] = [];
         if (Pointer(value.storage, value.container)) {
-            name := Text(forest, text, Field(forest, item.node, "name"));
+            name := Text(forest, text, Field(forest, item.node, syntax.FieldName));
             header := QuerySnapshotHeader(names, name);
             slots.append(AddressSlot(target));
             code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot, header, 0, 0, node));
@@ -1831,10 +1825,10 @@ QueryEvaluateStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         }
         return Step.Emitted(code, slots, [], [], [], [], [], [], [], 1, NoValue(), NoValue(), []);
     }
-    if (kind == "query_guard") {
+    if (kind == syntax.QueryGuard) {
         if (item.phase == 0) {
             return Step.Emitted([], [], [], [], [], [], [], [],
-                                [Expect(Field(forest, item.node, "condition"), BoolStorage, 0, -1),
+                                [Expect(Field(forest, item.node, syntax.FieldCondition), BoolStorage, 0, -1),
                                  Resume(item.node, QueryGuardPhase, 0, 0)], 0, NoValue(), NoValue(), []);
         }
         condition := values[top - 1];
@@ -1848,18 +1842,18 @@ QueryEvaluateStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         return Step.Emitted(code, [ValueLocal(BoolStorage)], [], [], [], [], [], [], [], 1, NoValue(), NoValue(), []);
     }
     fields := QueryFields(forest, text, types, members, described);
-    index := QueryFieldIndex(fields, Text(forest, text, Field(forest, item.node, "name")));
+    index := QueryFieldIndex(fields, Text(forest, text, Field(forest, item.node, syntax.FieldName)));
     if (index < 0) {
         return Fail(forest, item.node, document, "Unknown query field");
     }
     field := fields[index];
     if (item.phase == 0) {
-        if (kind == "query_binding") {
+        if (kind == syntax.QueryBinding) {
             return Step.Emitted([], [], [], [], [], [], [], [],
-                                [Expect(Field(forest, item.node, "value"), field.storage, field.container, field.record),
+                                [Expect(Field(forest, item.node, syntax.FieldValue), field.storage, field.container, field.record),
                                  Resume(item.node, QueryBindPhase, 0, 0)], 0, NoValue(), NoValue(), []);
         }
-        if (kind == "query_generator") {
+        if (kind == syntax.QueryGenerator) {
             variable := Instruction(ops.query_variable, HandleStorage, at.slot, 0, 0, field.variable, node);
             return Step.Emitted([variable], [ValueLocal(HandleStorage)], [], [], [], [], [], [],
                                 [Resume(item.node, QueryBindPhase, 0, 0)], 0,
@@ -1882,7 +1876,7 @@ QueryEvaluateStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     }
     bound: Name = {owned: false, name: field.name, place: LocalPlace, index: at.local, storage: field.storage,
                    container: field.container, record: field.record, writable: false,
-                   node: Field(forest, item.node, "name")};
+                   node: Field(forest, item.node, syntax.FieldName)};
     if (Pointer(field.storage, field.container)) {
         header := bound;
         header.place = QuerySnapshotHeaderPlace;

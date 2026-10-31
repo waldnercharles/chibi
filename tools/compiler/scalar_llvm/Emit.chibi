@@ -226,6 +226,14 @@ Arrayed :: (row: facts.Row) -> bool {
 Keyed :: (row: facts.Row) -> bool {
     return row.kind == facts.ForRow && row.literal == i64(facts.RangeArray + facts.RangeKeyed);
 }
+// Whether the variable `variable` of the function whose Function row is
+// rows[head] is a reference parameter.
+Referenced :: (rows: facts.Row[], head: int, variable: int) -> bool {
+    if (variable >= rows[head].count) {
+        return false;
+    }
+    return rows[head + 1 + variable].literal == 1;
+}
 // The row after the declaration at `at`: a Record row and its members, or a
 // Union row and its variants, each with its members; -1 when a count is
 // empty or negative, runs past `rows`, or a union's variant row is missing.
@@ -620,8 +628,9 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             floor = depths[length(depths) - 1];
         }
         operand := rows[row];
-        // Only a string literal has text.
-        texted := operand.kind == facts.LiteralRow && operand.type == facts.StringType;
+        // Only a string literal has text, and a foreign call the library it links.
+        texted := (operand.kind == facts.LiteralRow && operand.type == facts.StringType) ||
+                  operand.kind == facts.ForeignRow;
         if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
             !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
             return "invalid scalar operand row";
@@ -636,6 +645,13 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 variables[operand.value] != operand.type) {
                 return "scalar read differs from its variable";
             }
+        } else if (operand.kind == facts.RefRow) {
+            if (operand.name != "" || operand.count != 0 || !Holds(visible, operand.value) ||
+                variables[operand.value] != operand.type) {
+                return "scalar reference differs from its variable";
+            }
+            stack.append(facts.ReferenceType + operand.type);
+            continue;
         } else if (operand.kind == facts.LogicalRow) {
             base := length(stack) - 1;
             if (operand.count < 1 || operand.count > last - row - 1) {
@@ -696,20 +712,32 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar call differs from its callee's signature";
             }
             for (argument in 0..<operand.count) {
-                if (stack[base + argument] != rows[heads[operand.value] + 1 + argument].type) {
+                parameter := rows[heads[operand.value] + 1 + argument];
+                wanted := parameter.type;
+                if (parameter.literal == 1) {
+                    wanted += facts.ReferenceType;
+                }
+                if (stack[base + argument] != wanted) {
                     return "scalar call argument differs from its parameter";
                 }
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ForeignRow) {
             base := length(stack) - operand.count;
-            if (operand.name == "" || operand.text == "" || operand.value != 0 || !Scalar(operand.type) ||
+            indirect := operand.value == 1;
+            if ((operand.value != 0 && !indirect) || (indirect && (operand.name != "" || operand.text != "" || operand.count < 1)) ||
+                (!indirect && (operand.name == "" || operand.text == "")) || !Scalar(operand.type) ||
                 operand.count < 0 || base < floor) {
                 return "scalar foreign call differs from its operands";
             }
+            if (indirect && stack[base] != facts.WordType) {
+                return "scalar foreign call through an address needs a word";
+            }
             for (argument in 0..<operand.count) {
-                if (!Scalar(stack[base + argument])) {
-                    return "scalar foreign call takes numbers and bools";
+                given := stack[base + argument];
+                if (!Scalar(given) && given != facts.StringType &&
+                    !(given >= facts.ArrayType && Scalar(Element(records, given)) && Element(records, given) != facts.BoolType)) {
+                    return "scalar foreign call takes numbers, bools, strings and arrays of numbers";
                 }
             }
             stack = slice(stack, 0, base);
@@ -856,7 +884,8 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
     for (index in 0..<declaration.count) {
         param := rows[head + 1 + index];
         if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Valued(records, param.type) ||
-            param.value != index || param.count != 0 || param.literal != 0 || !Located(param, starts, size) ||
+            param.value != index || param.count != 0 || (param.literal != 0 && param.literal != 1) ||
+            (param.literal == 1 && (is_library || function == 0)) || !Located(param, starts, size) ||
             !Within(param, declaration)) {
             return "invalid scalar parameter row";
         }
@@ -1288,6 +1317,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         local: int = 0;
         for (index in 0..<declaration.count) {
             type := NativeType(rows[head + 1 + index].type);
+            if (Referenced(rows, head, index)) {
+                type += native.RefType;
+            }
             parameters.append(type);
             slots.append(type);
             locals.append(type);
@@ -1522,6 +1554,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     if (item.literal == i64(length(texts))) {
                         texts.append(operand.text);
                     }
+                } else if (operand.kind == facts.ReadRow && Referenced(rows, head, operand.value)) {
+                    // The reference is read from its local, then what it
+                    // refers to.
+                    slots[length(slots) - 1] = native.RefType + type;
+                    body.append(Op(native.Local, native.RefType + type, slot, places[operand.value], 0, 0));
+                    slots.append(type);
+                    item = Op(native.Deref, type, slot + 1, slot, 0, 0);
+                    slot += 1;
+                } else if (operand.kind == facts.RefRow) {
+                    slots[length(slots) - 1] = native.RefType + type;
+                    if (Referenced(rows, head, operand.value)) {
+                        item = Op(native.Local, native.RefType + type, slot, places[operand.value], 0, 0);
+                    } else {
+                        item = Op(native.LocalAddress, native.RefType + type, slot, places[operand.value], 0, 0);
+                    }
                 } else if (operand.kind == facts.ReadRow) {
                     item = Op(native.Local, type, slot, places[operand.value], 0, 0);
                 } else if (operand.kind == facts.CompareRow) {
@@ -1551,7 +1598,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ForeignRow) {
-                    item = Op(native.ForeignCall, type, slot, 0, shape.arguments, operand.count);
+                    item = Op(native.ForeignCall, type, slot, operand.value, shape.arguments, operand.count);
                     item.literal = i64(length(texts));
                     texts.append(operand.name);
                     base := length(stack) - operand.count;
@@ -1767,6 +1814,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 places.append(local);
                 body.append(Op(native.Save, type, 0, value, 0, local));
                 local += 1;
+            } else if (row.kind == facts.AssignRow && Referenced(rows, head, row.value)) {
+                // The value goes where the reference points.
+                type := NativeType(row.type);
+                slots.append(native.RefType + type);
+                body.extend([Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0),
+                             Op(native.Poke, type, 0, slot, value, 0)]);
+                slot += 1;
             } else if (row.kind == facts.AssignRow) {
                 type := NativeType(row.type);
                 body.append(Op(native.Save, type, 0, value, 0, places[row.value]));
@@ -1853,7 +1907,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
 Linked :: (text: string, rows: facts.Row[]) -> string {
     paths: string[] = [];
     for (row in rows) {
-        if (row.kind == facts.ForeignRow && !paths.contains(row.text)) {
+        if (row.kind == facts.ForeignRow && row.text != "" && !paths.contains(row.text)) {
             paths.append(row.text);
         }
     }

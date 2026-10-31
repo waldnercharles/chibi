@@ -1,0 +1,173 @@
+package graph_build_tests
+
+import os "core:os"
+import strings "core:strings"
+
+// Graph builds with the discovered Debug toolchain. The support cases build
+// chibi_support in a copy of the sources, so edits stay out of the checkout.
+
+Path :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+Read :: (path: string) -> string {
+    read := os.ReadText(path);
+    assert(!read.error, "the file reads");
+    return read.text;
+}
+Write :: (path: string, text: string) -> bool {
+    return os.WriteText(path, text) == nil;
+}
+Append :: (path: string, text: string) {
+    assert(Write(path, Path([Read(path), text])), "the edit");
+}
+
+Graph :: struct {
+    host: string;
+    // The checkout, whose compiler and compiler cache every run uses.
+    source: string;
+    root: string;
+    build_dir: string;
+}
+
+// Runs the graph's Libraries entry: the number of sources it compiled, or -1
+// when it failed.
+Build :: (graph: Graph, options: string[]) -> int {
+    command := ["env", Path(["CHIBI_COMPILER_CACHE=", graph.source, "/.chibi/compiler-cache"]), graph.host,
+                "--compiler", Path([graph.source, "/tools/compiler"]), "--compiler-core", Path([graph.source, "/packages/core"]),
+                "--root", graph.root, "--source", "tools/toolchain/Graph.chibi", "--core", "packages/core",
+                "--collection", "graph=tools/graph", "--entry", "Libraries", "--timeout-ms", "300000", "--",
+                "--build", graph.build_dir, "--jobs", "8"];
+    command.extend(options);
+    result := os.Capture(command);
+    log := Path([result.stdout, result.stderr]);
+    if (result.status != 0) {
+        return -1;
+    }
+    at := strings.Index(log, "compiled ");
+    if (at < 0) {
+        return 0;
+    }
+    count := 0;
+    for (byte in strings.Bytes(strings.Slice(log, at + 9, strings.ByteLength(log) - at - 9))) {
+        if (byte < 48 || byte > 57) {
+            break;
+        }
+        count = count * 10 + byte - 48;
+    }
+    return count;
+}
+
+// A Debug build of chibi_support; warnings on or off makes every command differ.
+Support :: (graph: Graph, warnings: bool) -> int {
+    warn := "on";
+    if (!warnings) {
+        warn = "off";
+    }
+    return Build(graph, ["--profile", "debug", "--warnings", warn, "--target", "chibi_support"]);
+}
+
+SupportSources :: () -> string[] {
+    return ["arena", "file_io", "xalloc"];
+}
+Record :: (graph: Graph, source: string) -> string {
+    return Path([graph.build_dir, "/objects/chibi_support/src/support/", source, ".c.o.chibi-record"]);
+}
+// How many chibi_support objects the records say include a staged header.
+Including :: (graph: Graph, header: string) -> int {
+    count := 0;
+    for (source in SupportSources()) {
+        record := os.ReadText(Record(graph, source));
+        if (!record.error && strings.Contains(record.text, header)) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+// Only what changed rebuilds: a source, a header its dependents include, a
+// deleted object, and other flags.
+SupportRebuildsOnlyWhatChanged :: (graph: Graph) {
+    all := length(SupportSources());
+    assert(Support(graph, true) == all, "the first build compiles every source");
+    assert(Support(graph, true) == 0, "an unchanged build compiles nothing");
+    Append(Path([graph.root, "/src/support/xalloc.c"]), "/* changed */\n");
+    assert(Support(graph, true) == 1, "a changed source recompiles alone");
+    dependents := Including(graph, "sdk/public/support/support/arena.h");
+    assert(dependents >= 1 && dependents < all, "some sources include arena.h");
+    Append(Path([graph.root, "/src/support/arena.h"]), "/* changed */\n");
+    assert(Support(graph, true) == dependents, "a changed header recompiles its dependents");
+    assert(os.Remove(Path([graph.build_dir, "/objects/chibi_support/src/support/arena.c.o"])) == nil, "a deleted object");
+    // A header nothing publishes leaves the staged include root.
+    stale := Path([graph.build_dir, "/sdk/public/support/support/moved.h"]);
+    assert(Write(stale, "#error moved\n"), "a stale staged header");
+    assert(Support(graph, true) == 1, "a deleted object recompiles");
+    assert(!os.Exists(stale), "the stale header is removed");
+    assert(Support(graph, false) == all, "other flags recompile everything");
+}
+
+// A source that fails to compile fails the graph and keeps no record, so the
+// next run retries it alone.
+SupportFailedCompileIsRetried :: (graph: Graph) {
+    assert(Support(graph, false) == 0, "the build is current");
+    path := Path([graph.root, "/src/support/xalloc.c"]);
+    original := Read(path);
+    Append(path, "this is not C;\n");
+    assert(Support(graph, false) == -1, "a broken source fails the build");
+    assert(!os.Exists(Record(graph, "xalloc")) && os.Exists(Record(graph, "arena")), "only the failed source loses its record");
+    assert(Write(path, original), "the source restored");
+    assert(Support(graph, false) == 1, "the retry compiles it alone");
+}
+
+// A program that calls into the graph's archive links and runs.
+SupportArchiveLinks :: (graph: Graph, scratch: string) {
+    program := Path([scratch, "/main.c"]);
+    binary := Path([scratch, "/main"]);
+    assert(Write(program, "#include \"support/xalloc.h\"\n#include <stdlib.h>\nint main(void) { char *p = xmalloc(8); p[0] = 0; free(p); return p == NULL; }\n"), "the program");
+    compiler := os.Getenv("CC");
+    if (compiler == "") {
+        compiler = "cc";
+    }
+    assert(os.Run([compiler, "-std=gnu23", Path(["-I", graph.build_dir, "/sdk/public/support"]), program,
+                   Path([graph.build_dir, "/lib/libchibi_support.a"]), "-o", binary]) == 0, "the program links");
+    assert(os.Run([binary]) == 0, "the program runs");
+}
+
+// An executable publishes no headers, so building one leaves every header its
+// libraries staged in place. A compiler that always fails stops the run after
+// staging.
+ExecutablesStageNoHeaders :: (graph: Graph) {
+    assert(Build(graph, ["--profile", "debug", "--compiler", "/usr/bin/false", "--target", "chibi"]) == -1, "the build fails");
+    assert(os.IsFile(Path([graph.build_dir, "/sdk/public/support/support/arena.h"])), "the staged header stays");
+}
+
+// Copies what the graph reads into a disposable root.
+Clone :: (source: string, root: string) {
+    for (part in ["src/support", "tools/graph", "tools/toolchain", "packages/core"]) {
+        to := Path([root, "/", part]);
+        assert(os.MakeDirectory(strings.Slice(to, 0, strings.LastIndex(to, "/"))) == nil, "the clone's directories");
+        copy := ["cp", "-R", "--reflink=auto", Path([source, "/", part]), to];
+        if (os.Platform() == "Darwin") {
+            copy = ["cp", "-cR", Path([source, "/", part]), to];
+        }
+        assert(os.Run(copy) == 0, "the clone");
+    }
+}
+
+// The build host runs this entry with its own path as the one argument.
+pub Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 1, "the build host's path");
+    source := os.Root();
+    scratch := Path([source, "/.chibi/graph-build"]);
+    assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(scratch) == nil, "the scratch directory");
+    launcher: Graph = {host: arguments[0], source: source, root: source, build_dir: Path([scratch, "/launcher"])};
+    ExecutablesStageNoHeaders(launcher);
+    clone := Path([scratch, "/source"]);
+    Clone(source, clone);
+    support: Graph = {host: arguments[0], source: source, root: clone, build_dir: Path([scratch, "/incremental"])};
+    SupportRebuildsOnlyWhatChanged(support);
+    SupportFailedCompileIsRetried(support);
+    SupportArchiveLinks(support, scratch);
+    assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch cleanup");
+    return 0;
+}

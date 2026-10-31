@@ -50,46 +50,6 @@ Count :: (text: string) -> int {
     return value;
 }
 
-// Every named target must exist, before any discovery or build writes.
-TargetsValid :: (arguments: string[], targets: string[]) -> bool {
-    for (i in 0..<length(arguments)) {
-        if (arguments[i] != "--target") {
-            continue;
-        }
-        if (i + 1 == length(arguments) || strings.HasPrefix(arguments[i + 1], "--")) {
-            os.Print("graph: --target requires a target name");
-            return false;
-        }
-        found := false;
-        for (target in targets) {
-            found = found || arguments[i + 1] == target;
-        }
-        if (!found) {
-            os.Print(format_text("graph: unknown target '{0}'", arguments[i + 1]));
-            return false;
-        }
-    }
-    return true;
-}
-
-// Whether a target was named with --target, or none were, or a named
-// executable needs it (engine.Needed).
-Selected :: (arguments: string[], target: string) -> bool {
-    named := false;
-    for (i in 0..<length(arguments) - 1) {
-        if (arguments[i] == "--target") {
-            named = true;
-            if (arguments[i + 1] == target) {
-                return true;
-            }
-            if (engine.Needed(arguments[i + 1], target)) {
-                return true;
-            }
-        }
-    }
-    return !named;
-}
-
 Libraries :: () -> int {
     return LibrariesWithArguments(os.Arguments());
 }
@@ -97,56 +57,12 @@ Libraries :: () -> int {
 // The SDK's native reflection host uses the same graph as ordinary builds.
 // Translate the retained Make toolchain definitions at this one boundary.
 SDKReflect :: () -> int {
-    return SDKReflectWithArguments(os.Arguments());
-}
-
-SDKReflectWithArguments :: (arguments: string[]) -> int {
-    options := ["--profile", "release", "--target", "reflect"];
-    preferred_libclang := Option(arguments, "--libclang-root", "");
-    definitions := false;
-    split := false;
-    index := 0;
-    while (index < length(arguments)) {
-        argument := arguments[index];
-        index += 1;
-        if (!definitions && argument == "--") {
-            definitions = true;
-            continue;
-        }
-        if (!definitions) {
-            if ((argument != "--build" && argument != "--jobs" && argument != "--libclang-root") ||
-                index == length(arguments) || strings.HasPrefix(arguments[index], "--") || arguments[index] == "") {
-                os.Print(format_text("graph: invalid native reflection option '{0}'", argument));
-                return 2;
-            }
-            options.extend([argument, arguments[index]]);
-            index += 1;
-            continue;
-        }
-        if (argument == "-D" && !split) {
-            split = true;
-            continue;
-        }
-        definition := argument;
-        if (split) {
-            definition = strings.Join(["-D", argument], "");
-            split = false;
-        }
-        mapped := engine.NativeToolchainOption(definition);
-        if (length(mapped) != 2) {
-            os.Print(format_text("graph: unsupported native reflection toolchain argument '{0}'", definition));
-            return 2;
-        }
-        // CMake definitions select the last occurrence.
-        options = build.concat(mapped, options);
-    }
-    if (split) {
-        os.Print("graph: -D requires a native toolchain definition");
+    reflection := engine.ReflectionOptions(os.Arguments());
+    if (reflection.error != "") {
+        os.Print(reflection.error);
         return 2;
     }
-    if (preferred_libclang != "") {
-        options = build.concat(["--libclang-root", preferred_libclang], options);
-    }
+    options := reflection.options;
     for (name in ["--compiler", "--cxx-compiler", "--archiver", "--ranlib"]) {
         chosen := Option(options, name, "");
         if (chosen == "") {
@@ -361,7 +277,9 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
 
 BuildLibrariesWithArguments :: (arguments: string[], runtime_sdk: bool) -> int {
     targets := engine.Targets();
-    if (!TargetsValid(arguments, targets)) {
+    unknown := engine.TargetError(arguments, targets);
+    if (unknown != "") {
+        os.Print(unknown);
         return 2;
     }
     build_dir := Option(arguments, "--build", "");
@@ -454,12 +372,12 @@ BuildLibrariesWithArguments :: (arguments: string[], runtime_sdk: bool) -> int {
     }
     selected: string[] = [];
     for (target in targets) {
-        if (Selected(arguments, target)) {
+        if (engine.Selected(arguments, target)) {
             selected.append(target);
         }
     }
     if (Option(arguments, "--commands-only", "") != "on" &&
-        Selected(arguments, "reflect") && profile.reflect == "" &&
+        engine.Selected(arguments, "reflect") && profile.reflect == "" &&
         (!os.Exists(strings.Join([profile.libclang_include, "/clang-c/Index.h"], "")) ||
          !os.Exists(profile.libclang_library) ||
          !os.Exists(strings.Join([profile.clang_resource_include, "/stdbool.h"], "")))) {

@@ -664,6 +664,18 @@ Example :: library {
 }
 ```
 
+A postfix `!` takes an optional's payload and fails when it is `nil`, as Swift's
+`!` does: `scores["Ada"]!` is the value, or a failed run with the message
+"Assertion failed: Unwrapped a nil optional". It must touch its operand, so `a!` unwraps and `a !b`
+does not. Use it where absence is a bug; `??`, `if value` and `as T` handle
+absence.
+
+`value?.field` reads a field of an optional record: `nil` when the record is
+`nil`, otherwise the field as an optional, so `(p?.x ?? 0) + 1` has a default.
+`value!.field` unwraps first and fails on `nil`. Like `!`, `?.` must touch its
+operand. It reads authored record fields only: not a call, not a field that
+holds a record, and not an assignment target.
+
 ## Packages and visibility
 
 A package is a folder of `.chibi` files with the same `package` header.
@@ -722,21 +734,64 @@ foreign libc {
 }
 ```
 
-`foreign import alias "path"` names the library. A `system:` path asks the
-linker for a system library; any other path is a prebuilt archive, relative to
-the importing package. `foreign alias { ... }` declares the library's functions
-by signature alone. A function's name is its C symbol.
+`foreign import alias "path"` names the library. `system:c` is libc, which a
+native build links dynamically by default (`chibi build --native --static`
+links none); another `system:` path is not linked yet. Any other path is a
+prebuilt archive, relative to the importing package, that the native build adds
+to the link line and records by hash in its receipt. `foreign alias { ... }`
+declares the library's functions by signature alone. A function's name is its
+C symbol.
 
-Status: the compiler declares each foreign function as a native the target
-must link. Its identity names the library path and the symbol, so a target that
-does not link the library cannot load a program that calls it; the VM never
-runs foreign code. Parameters and results are integers, floats, `bool` and
-`rawptr`, an opaque 64-bit word. Calls through the native backend and linking
-the archive are the next steps. Names are global like other natives, so two
-foreign functions cannot share one. Planned after that: a `u8[]` passed as a
-data pointer with its length given separately, text for `const char *` when it
-is NUL-terminated, and `@variadic` with the number of fixed arguments for
-variadic C functions.
+Parameters and results are integers, floats, `bool` and `rawptr`, an opaque
+64-bit word. A parameter may also be `cstring`, which takes any string. The call
+copies it with a NUL into a 4096-byte stack buffer and passes the buffer, so the
+cost is one small copy, visible in the declaration, with no heap allocation. A
+string of 4096 bytes or more, or one that holds a NUL byte, traps instead of
+being truncated. A result cannot be a `cstring`.
+
+An array of numbers, such as `u8[]`, is passed as the pointer to its elements,
+which the callee may write. The length is a parameter of its own, as in C, so
+`read(fd, buffer, u64(length(buffer)))` fills `buffer` in place. The array is
+lent for the call: nothing copies it, and C must not keep the pointer.
+
+A foreign function is a native whose identity names the library path and the
+symbol, so a target that does not link the library cannot load a program that
+calls it; the VM never runs foreign code. Names are global like other natives,
+so two foreign functions cannot share one.
+
+### Function values from C
+
+A C function's address has a function type, spelled like the callback types in
+[passing functions](#passing-functions): `fn(n: i32) -> i32`. In a callback
+parameter of an authored function it names a function the compiler knows, and
+the algorithm is specialized for it. A function type that types a local, or a
+foreign function's parameter or result, holds the address itself: a 64-bit
+word, and a call through it is a C-ABI call.
+
+```chibi
+foreign import libc "system:c"
+
+foreign libc {
+    dlsym :: (handle: rawptr, name: cstring) -> rawptr
+}
+
+Main :: () -> int {
+    absolute: fn(n: i32) -> i32 = dlsym(0, "abs")
+    return absolute(-42)
+}
+```
+
+A call through a null address traps. A foreign function may return a function type directly,
+`dlsym :: (handle: rawptr, name: cstring) -> fn(n: i32) -> i32`, so
+`absolute := dlsym(0, "abs")` takes its type from the result. A `rawptr` converts
+to a function type without a cast, which is how one `dlsym` declaration serves
+every signature. The parameters and result follow the foreign rules above. A
+runtime address cannot yet be passed to an authored function's `fn` parameter;
+call it where the local is. An authored function cannot yet be turned into a
+function value for C to call.
+
+Planned after that: `@variadic` with the number of fixed arguments for
+variadic C functions, foreign functions without a result, and data symbols.
 
 ## Generics and compile-time values
 

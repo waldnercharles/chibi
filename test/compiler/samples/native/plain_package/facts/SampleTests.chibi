@@ -1,0 +1,7 @@
+package facts
+
+@test
+Calls :: () {
+    two: int = 2
+    assert(two + two == 4, "addition")
+}

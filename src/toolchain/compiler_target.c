@@ -550,36 +550,6 @@ static void add_globals(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_
         );
     }
 }
-char *compiler_behavior_catalog_input_json(
-    const script_catalog *catalog,
-    const native_capabilities *bindings,
-    const char *const *identities,
-    const char *const *sources,
-    int count,
-    size_t *length
-)
-{
-    target_input input = input_new(catalog, bindings, true);
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_arr(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_val *named = yyjson_mut_arr_add_arr(doc, root);
-    yyjson_mut_val *texts = yyjson_mut_arr_add_arr(doc, root);
-    for (int i = 0; i < count; i++) {
-        yyjson_mut_arr_add_str(doc, named, identities[i]);
-        yyjson_mut_arr_add_str(doc, texts, sources[i]);
-    }
-    add_target(doc, root, &input);
-    add_events(doc, root, catalog);
-    add_types(doc, root, &input);
-    yyjson_mut_arr_add_uint(doc, root, catalog->entity_type);
-    add_operators(doc, root, &input);
-    add_globals(doc, root, catalog);
-    add_makes(doc, root, &input);
-    add_effects(doc, yyjson_mut_arr_add_arr(doc, root), &input);
-    afree(input.natives);
-    return written(doc, length, true);
-}
 
 /* The platform core:target describes: os 1 Linux, 2 Darwin, 3 Windows; arch 1
  * x86-64, 2 Arm64. This host is the target of its own compiles. */

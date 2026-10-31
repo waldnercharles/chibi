@@ -17,36 +17,19 @@ pixel, renderer, backend and authored-workflow assertions until a focused test
 covers their contract. A short unit result does not satisfy unrelated integration
 requirements or clear a PR hold. The broad suites below still need migration.
 
-Compiler fixtures normally prepare independent bytecode and compiled owners.
-The package-compiler sample selectors request only their compiler backend;
-their stage-zero oracle prepares only the bytecode owner it serializes. The
-generated sample closures still run on both target backends, with the existing
-output, diagnostic, debug metadata and execution-counter assertions. Each
-preparation owns a fresh source snapshot and native catalog; preparation is not
-cached across fixture lifetimes. Scalar producer/consumer lifetime tests retain
-their original preparation of both backends.
-
-`language-compiler-fixture` retains two native ownership cases: six single-backend
-preparations and one default dual-backend preparation of a one-function source,
-with eight calls at budget 100. It checks absent unrequested owners, independent
-snapshots, mutation of the original source, concurrent fixtures, detached text
-after teardown, changed source on re-preparation, and both execution backends.
-Native adapter cases additionally check selected and dual-backend authored
-execution, ordered failure reporting and continuation, missing tests, invalid
-worker settings, exact collection selection, custom budgets and replacement-module bodies. They add no
-processes, timing loops, network, rendering or GPU work.
+The scalar lane (`language-package-compiler-chibi-scalar`) runs the authored
+compiler, as `compiler_bootstrap_load` recovers it, through `test/language/scalar_host.c`:
+`CollectScalar` produces rows, and a closure of the consumer packages (`scalar_llvm`,
+`llvm_native`, `native_abi`, the `scalar_cases` corpus) validates and emits them.
+Nothing is prepared with stage zero.
 
 ### Authored emitter regressions
 
-The ordinary `language-package-compiler-chibi-scalar` selector discovers every
-`@test` in `test/native_aot/emitter_calls/*.chibi`. CMake embeds all matching
-files in `test_language`, including the same-run binary used by manual language
-shards; no runtime source staging, bootstrap manifest or seed changes are needed.
-The generic `compiler_fixture_tests` adapter runs each prepared owner on its
-matching bytecode/SLJIT backend and fails on empty discovery, unavailable backend
-or any failed test. Results remain in source order. `CHIBI_TEST_WORKERS=1..32`
-can bound the authored pool explicitly; absent means the normal automatic pool.
-Unknown or impure host closures remain serial barriers.
+`chibi-test-compiler` (`chibi test tools/compiler`) runs every `@test` in
+`tools/compiler/llvm_native/tests/*.chibi` and `tools/compiler/native_abi/tests`
+on the host's backend; no C selector, runtime source staging or seed change is
+involved. It fails on a rejected diagnostic, a malformed module that emits, or any
+failed test, and results keep source order.
 
 The first eighteen authored tests preserve call definitions/argument order,
 eleven malformed call plans, exact float and NaN payload encodings, unordered
@@ -162,56 +145,22 @@ make benchmark          # native C benchmark selectors
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
-Groups automatically overlap source-audited independent selectors in separate
-processes, initially up to two workers (bounded by available CPU affinity and a
-conservative 2 GiB available-memory admission reserve per worker). Linux checks MemAvailable
-and visible cgroup limits; macOS checks free/inactive/speculative pages. Missing
-or uninspectable capacity selects serial execution.
-No CI sharding or flags are required: `make test-language-all` takes this route.
-The initial allowlist contains the heavy scalar, behavior, packaging, asset-host,
-compiler-bootstrap and Linux scalar-native selectors. Other selectors remain
-exclusive barriers until their resources are audited; they are not omitted.
-`make -j1` still protects cross-target fixtures. `make test-language-all
-TEST_JOBS=1` or `chibi build test language` preserves
-the original fully serial group route. `--jobs N` / `TEST_JOBS=N` explicitly
-selects a worker limit; it does not make unaudited selectors parallel-safe.
+`chibi build test` (tools/toolchain/Driver.chibi) runs the selectors and groups
+of `tools/tests.tsv` in table order, up to `--jobs N` at a time (default 1). Each
+selector is a separate process. It prints `RUN` when a selector starts, then
+`PASS` or `FAIL` when it ends. A short selector frees its slot while a long one
+still runs. With `--jobs` above 1, each selector's output is captured and printed
+when it ends, so concurrent selectors don't interleave. With `--jobs 1`, a
+selector writes to the terminal as it runs.
 
-Each worker owns its supervisor/process group, temporary root and disk-backed
-log. Logs are emitted without interleaving in manifest order. Failure stops new
-work, cancels owned workers, prints their partial logs and reports queued selectors
-as not run. The optional group deadline still covers the whole group, including
-queueing; existing in-test child budgets are unchanged. Scratch is removed after
-worker cleanup, including on SIGINT/SIGTERM. Absolute source paths are not
-isolated by changing TMPDIR; the retired resource audit recorded why each enabled selector was safe.
-
-The runner writes `Test policy: {...}` JSON diagnostics to stderr, separate from
-program stdout: selected automatic/explicit worker count and admission reason,
-CPU/memory probe availability and reserve, then manifest-ordered selector
-supervisor start/observed-finish timestamps and statuses, observed peak live
-workers and group wall time. Timestamps use the monotonic clock; intervals include
-supervisor startup/cleanup and are not CPU time or a speedup measurement. Exits
-are polled afresh before admission. These receipts distinguish actual scheduled
-overlap from a serial capacity fallback in ordinary CI logs without CI flags.
-The preserved legacy serial route explicitly reports `unobserved-serial` and a
-null peak: it does not invent per-selector intervals or claim observed overlap.
-
-This is selector-level parallelism, not individual pico_unit cases or threads.
-The initial two-worker cap is a conservative rollout policy, not a measured
-memory bound or a promise to use every core. Peak-memory and matched serial /
-parallel wall-time measurements are required before increasing the automatic
-cap; native compiler/linker children can themselves use threads. The memory
-reserve is an admission heuristic, not a measured peak-RSS limit; `--jobs N`
-overrides automatic admission when the caller has better capacity evidence.
-Finer-grained discovery should serve the Chibi-first test API rather than making C coverage
-the language's testing foundation.
-
-The runner has no default global timeout.
-`make test-fast TEST_ARGS='--test-runner'` runs a selected standalone tooling
-case; set `TEST_BINARY` to use another driver. The arguments are tokenized and
-passed directly to the program. For an arbitrary driver invocation, use
-`python3 tools/test_policy.py native /absolute/path/to/test_binary --selector`.
-An optional timeout precedes the action, for example
-`chibi build test language-program`.
+An `exclusive NAME` row runs that selector alone: nothing else runs while it
+does. Mark a selector exclusive when it starts its own worker pool
+(`language-test-parallel`) or shares files with other selectors. Each selector
+has a deadline, set by `--timeout SECONDS` (600 by default) or by a
+`timeout NAME SECONDS` row. A selector that passes it is killed with its process
+tree and reported as `FAIL NAME (timed out after Ns)`; the others still run.
+CI runs the `projects language` invocation with `--jobs 3` on Linux (4 cores,
+16 GB) and `--jobs 2` on macOS (3 cores, 7 GB).
 
 `make test-projects` also builds an unsanitized Release `chibi_ctl` and `chibi`
 launcher, with its `chibi-compile` and `chibi-player`, in `build-release/`:
@@ -235,9 +184,7 @@ Those presentation checks are separate from the original-snippet validation
 above, which cannot access the generator's private parser native.
 
 `chibi build test <name>` runs one mapped selector against
-the drivers `make test-build` produced and those Release tools, except
-`language-package-compiler-chibi-bootstrap`, which runs the Release
-`test_language` that `make test-bootstrap` builds; set
+the drivers `make test-build` produced and those Release tools; set
 `CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CTL`, `CHIBI_CLI` or
 `CHIBI_COMPILE` to use another build.
 
@@ -989,16 +936,6 @@ assertions in 1.351 seconds. The room-border rules and player spawn remain
 project-owned scenario coverage.
 The tilemap case executes both tilemap functions on VM and SLJIT using one
 two-cell map, then edits its cells and checks the next dispatch sees the change.
-
-`chibi build test language-headless` selects two independently
-reviewed public SDK consumer cases on VM and SLJIT. Each owns one entity and
-scalar component, runs five explicit steps, and checks registration ownership,
-Begin, Tick, named payloads, bindings, destruction and removal. Preparation uses
-`Chibi::authoring`; its source snapshot is freed before execution. The second case
-round-trips prepared bytes, retires the producer module, and frees the bytes before
-execution. The consumer compiles with only `Chibi::behavior_runtime`. There are no
-files, processes or GPU work. Debug Clang 23.1.1 with ASan/UBSan passed two
-cases and 106 assertions in 0.635 seconds on 2026-10-07.
 
 `chibi build test language-prepared` starts the existing C tooling
 dispatcher with an exact compiler-test producer path. One producer process exports
@@ -2343,116 +2280,15 @@ transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
-`chibi build test build-graph` runs one C case for the Chibi
-build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against a
-configured CMake build: on macOS, where `chibi build` uses the graph, the one
-`make graph-reference` configures in `build-cmake`, elsewhere `build`;
-`CHIBI_GRAPH_REFERENCE` names another. Every build-graph route takes it. It reads that build's profile from
-`CMakeCache.txt` and CMake's compiler files. With `--commands-only` and only
-that profile's name, with CMake's compiler as `CC` and no `CXX` (and the
-debug directory, which depends on where a build is), the graph finds the
-rest of its profile on the machine and writes the compile commands of every
-target it owns, including the third-party archive's sources and include
-directories, the options of single sources and C++ and Objective-C sources,
-and each of them (1061 on macOS) must equal `compile_commands.json`'s for the same source
-in the same target, split as the shell splits it, apart from the object path
-and with the temporary build directory standing for CMake's. A second case
-requires each link command it writes in `link_commands.json` (thirteen on macOS,
-eight elsewhere), found in `build.ninja` by its linker rule, to equal its executable's `build.ninja` statement, with the
-C++ compiler for an executable CMake links as C++, apart from where objects, the
-output and archives sit. A third builds the `chibi` launcher with a compiler
-that always fails: the headers its libraries staged stay in place, since an
-executable stages none. Only `reflect` is linked by a test; the other links
-are compared, and a manual full build links and runs them. About 25 s.
-
-`chibi build test build-graph-debug-optimization` is the narrow
-Linux CI route after the existing sanitized products and Release helper builds.
-It uses sanitized `build/test/tools/test_tools` and the Debug CMake reference,
-not the standalone runtime-only `build-tools` driver. CI explicitly selects
-`CHIBI_BUILD_HOST=build-release/sdk/chibi-build-host` only for this route: the
-Release helper executes authored command generation, while the emitted profiles
-retain Debug assertions and ASan/UBSan. The default focused CLI still uses the
-Debug host unless this override is supplied. The initial Debug-host CI attempt
-hit each existing 50-second child ceiling before useful output; Release-helper
-coverage does not establish sanitized-host execution speed or correctness. Three C cases compare reference-profile compile
-commands with CMake, verify default/O0/O1 Debug instrumentation and assertions,
-and reject malformed or non-Debug optimization requests before output creation.
-The eleven authored-host invocations only emit commands or reject arguments;
-they never compile graph products. Existing 50-second child limits and the CI
-job budget remain unchanged. The full graph/program routes retain their cases;
-this focused route is not a full Graph suite or an O1 performance measurement.
-It preserves CMake's exact compiler paths; compiler discovery remains covered
-only by the separate `build-graph` route. Normal macOS CI does not execute the
-new O1 cases; macOS O1 runtime validation remains unrun pending a later experiment.
-
-`chibi build test build-graph-programs` runs the graph with
-`--commands-only on --target test_tools --target chibi`: its link commands
-name them and the programs they run (`policy_worker`, `chibi_ctl`,
-`chibi-compile`, `chibi-player`, the build and compiler hosts), where CMake
-writes them, and no other test driver (macOS only). A second case names `chibi_support`:
-its compile database lists only that library's compiles, and with
-`--all-commands on` every target's, on macOS as many as CMake's. A third case
-rejects four fixed invalid target requests before discovery or output creation:
-an unknown target, a valid and unknown pair, a missing value, and another option
-instead of a value. A fourth case calls the authored `graph:c.Dependencies`
-parser through the bytecode CLI, with one short escaped-path fixture containing
-LF and CRLF continuations, two empty or targetless texts, and one fixed
-128-header file below 16 KiB. It checks exact paths and counts without compiler
-children, frames or GPU work. At most eight host subprocesses retain the existing
-50-second child limit.
-
-`chibi build test build-graph-resources` runs the graph for
-the launcher and `chibi_ctl` with a compiler that always fails: before any
-compile it writes `share/chibi` and `controller_resources`, all 213 files equal
-to CMake's (the build identity `engine.json` and the core and documentation
-sources) or, for the shaders, which CMake copies to `controller_resources`
-only when it configures, to `src/render/shaders`; an unchanged run leaves
-the identity's stamps. A second case runs it for `test_language`, whose
-`corpus.txt` must equal CMake's. macOS only. About 32 s.
-
-`chibi build test build-graph-support` runs three cases in a
-copy of the sources: about ten runs that build only `chibi_support` check
-that an unchanged build compiles nothing, that changing a source, a header or
-the flags or deleting an object recompiles exactly what depends on it, that a
-staged header nothing publishes is removed, and that a source that fails to
-compile keeps no record and is retried alone. The archive must link a program
-that runs. It compiles about thirty C files with the profile's sanitizers,
-about 36 s at a load average of 9.
-
-`chibi build test build-graph-reflect` builds and links
-`reflect` from the graph (27 C files with the profile's sanitizers), requires
-its link command to equal CMake's `build.ninja` statement apart from where
-objects, the output and archives sit, and runs it as CMake does, over the Cute
-math headers the graph staged from the third-party archive: its
-`native_types.c` and `native_capabilities.c` must equal CMake's byte for byte.
-About 42 s at a load average of 11; with other builds running, its first graph
-run can exceed its 50 s share.
-
-`chibi build test build-graph-archive` builds
-`chibi_vector_capabilities` over the Cute math headers of the third-party
-archive CMake configured with, which the graph stages, and the task pool over
-the archive's prebuilt enkiTS: three C files with the profile's sanitizers. A
-second run compiles nothing, and the staged `cute_math.h` and the shared
-`private/physics` headers equal CMake's; a run naming an archive that is not
-unpacked, or one naming the UI host's C++ sources with no C++ compiler, fails
-before compiling and says so. About 12 s.
-
-`chibi build test build-graph-generated` covers sources and
-headers the graph writes. One case builds `chibi_native_types` with the
-configured build's `reflect` (`--reflect`): the graph stages the math headers,
-runs reflect as CMake does and compiles the one source; both written sources
-equal CMake's byte for byte, an unchanged run neither reruns reflect nor
-compiles, and losing an output reruns it. Another builds
-`chibi_image_preparation`, whose codec headers the graph rewrites from Cute's
-with private symbols: they equal CMake's, staging keeps them, and an
-unchanged run compiles nothing and leaves their stamps. On macOS a third
-builds `test_behavior_consumer`, which writes the language tests' configured
-headers (byte initializers, C string lines and copies); they equal CMake's
-and keep their stamps when unchanged. A fourth builds
-`chibi_prepared_consumer`, which writes the tooling tests' copied fixtures
-and `export_compiler.h`, the profile's compiler and C flags; they equal
-CMake's and keep their stamps when unchanged. About 34 s at a load
-average of 4.
+`graph-engine`, `graph-driver`, `graph-discovery`, `graph-c` and `graph-build`
+run the authored programs in `test/graph` under the build host: the profile's
+flags, argument checks and target selection; the driver's plans; toolchain
+discovery against fixture installations; `tools/graph/c`'s steps,
+response-file links and dependency files; and, in `graph-build`, Debug builds
+of `chibi_support` in a copy of the sources that rebuild only what changed,
+retry a failed compile alone and link an archive that runs, plus a launcher
+build whose failing compiler leaves the staged headers in place. `graph-build`
+compiles about fifteen C files and takes about 2.5 minutes.
 
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover
@@ -2461,8 +2297,7 @@ average of 4.
 two-page site with the installed generator. It takes about three seconds and starts no
 player.
 
-`chibi build test runtime-sdk` takes the private build host and selects the
-authored runtime SDK checks: canonical JSON against the Python manifest encoder, and on
+`graph-sdk` runs `test/graph/SDKTests.chibi`'s runtime SDK checks: canonical JSON against the Python manifest encoder, and on
 macOS the installer's verify, replace and rollback paths plus graph record, tool and
 configuration evidence over synthetic records. No engine library, SDK or package is built.
 
@@ -2591,7 +2426,6 @@ the `language-` prefix.
 
 | Selector | Cases / assertions |
 | --- | ---: |
-| `compiler-fixture` | 2 / 201 |
 | `bounded-compiler-chibi` | 1 / 37,599 |
 | `prepared-writer-chibi` | 2 / 1,112 |
 | `package-compiler-chibi` | 3 / 20,139 |
@@ -2605,7 +2439,6 @@ the `language-` prefix.
 | `package-compiler-chibi-debug-free` | 1 / 2,452 |
 | `package-compiler-chibi-behaviors-rest` | 2 / 5,730 |
 | `package-compiler-chibi-libraries` | 13 / 17,393 |
-| `package-compiler-chibi-native-arguments-oracle` | 1 / 178 |
 | `package-compiler-chibi-native-arguments` | 1 / 11,664 |
 
 The new fixture regression also failed under a temporary eager-preparation

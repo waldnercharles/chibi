@@ -30,8 +30,12 @@ Range :: struct {
     column: int;
     document: int;
 }
+// A syntax row of the snapshot's forest: links are forest indices, -1 when
+// absent. `kind` and `field` are syntax_diagnostics kinds and fields, so a
+// forest holds no references the collector traces. 40 bytes, nine i32 and two
+// bools, about 20 MB for the compiler's 507,710 rows.
 pub SnapshotNode :: struct {
-    kind: string;
+    kind: int;
     start: int;
     end: int;
     row: int;
@@ -39,10 +43,7 @@ pub SnapshotNode :: struct {
     parent: int;
     first_child: int;
     next_sibling: int;
-    error: bool;
-    missing: bool;
-    has_error: bool;
-    field: string;
+    field: int;
     is_named: bool;
     is_extra: bool;
 }
@@ -200,11 +201,10 @@ Rebase :: (link: int, offset: int) -> int {
     }
     return link + offset;
 }
-pub Node :: (node: syntax.Node, field: string, is_named: bool, is_extra: bool, offset: int) -> SnapshotNode {
+pub Node :: (node: syntax.Node, field: int, is_named: bool, is_extra: bool, offset: int) -> SnapshotNode {
     return {kind: node.kind, start: node.start, end: node.end, row: node.row, column: node.column,
             parent: Rebase(node.parent, offset), first_child: Rebase(node.first_child, offset),
-            next_sibling: Rebase(node.next_sibling, offset), error: node.error,
-            missing: node.missing, has_error: node.has_error, field: field,
+            next_sibling: Rebase(node.next_sibling, offset), field: field,
             is_named: is_named, is_extra: is_extra};
 }
 Resolved :: (imported: extract.Import, directory: string) -> ResolvedImport {
@@ -324,6 +324,8 @@ pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[
         }
         tree := raw.Parse(input.text);
         switch tree {
+            case .Rejected(diagnostic):
+                return Reject(Stamp(diagnostic, file), documents, nodes, imports);
             case .Parsed(localNodes, fields, is_named, is_extra, root):
                 document.node_start = length(nodes);
                 document.node_count = length(localNodes);

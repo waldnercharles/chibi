@@ -9,7 +9,7 @@ import strings "core:strings"
 // (tools/build.sh before a chibi exists).
 //
 //   build [--release|--debug|--profile NAME] [--build DIR] [--release-build DIR]
-//         [--target NAME]... [--all] [--jobs N]
+//         [--target NAME]... [--all] [--jobs N (default: every processor)]
 //         [--host PATH] [--libclang-root DIR] [--reflect PATH]
 //         [--asset-generator-hosts DIR] [--debug-optimization 0|1]
 //         [--debug-frame-pointers on|off] [--dry-run]
@@ -19,8 +19,8 @@ import strings "core:strings"
 // and chibi_ctl; --all builds every target. --dry-run prints the
 // commands instead of running them. The other verbs are `test`, `install`,
 // `format`, `clean`, `sdk-reflect`, `runtime-sdk`, `package-runtime-sdk`,
-// `bootstrap-artifact`, `bootstrap-refresh`, `bootstrap-recover`,
-// `publish-seed` and `native-census`; Usage lists them.
+// `bootstrap-artifact`, `bootstrap-recover`,
+// `publish-seed`, `native-census` and `native-self-host`; Usage lists them.
 
 Join :: (parts: string[]) -> string {
     return build.join(parts, "")
@@ -118,6 +118,21 @@ Program :: (host: string, source: string, function: string, collections: string[
     return build.concat(command, ["--entry", function, "--timeout-ms", timeout, "--"])
 }
 
+// The --jobs a build runs its steps with: the option, else every processor
+// online, so compiles use the whole machine by default. 8 when getconf can't say.
+Jobs :: (arguments: string[]) -> string {
+    jobs := Option(arguments, "--jobs", "")
+    if (jobs != "") {
+        return jobs
+    }
+    online := os.Capture(["getconf", "_NPROCESSORS_ONLN"])
+    count := build.trim(online.stdout)
+    if (online.status != 0 || Count(count) < 1) {
+        return "8"
+    }
+    return count
+}
+
 // Builds a profile, first the Release hosts a non-Release graph borrows to
 // generate the asset compiler, which a Debug host cannot do from a cold tree
 // within its deadline.
@@ -125,7 +140,7 @@ Build :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     profile := Profile(arguments)
     directory := Option(arguments, "--build", DefaultDirectory(profile))
-    jobs := Option(arguments, "--jobs", "8")
+    jobs := Jobs(arguments)
     releases := Option(arguments, "--release-build", "build-release")
     host := Absolute(Option(arguments, "--host", Join([directory, "/sdk/chibi-build-host"])))
     if (!HostUsable(host)) {
@@ -301,10 +316,9 @@ Deadline :: (rows: string[], name: string, fallback: string) -> string {
 
 // The command one selector runs: its row's words with the build directories
 // filled in, under the environment the test drivers read.
-TestCommand :: (row: string, directory: string, releases: string, host: string, seconds: string) -> string[] {
+TestCommand :: (row: string, directory: string, releases: string, host: string) -> string[] {
     fields := Fields(row)
     command := [
-        "sh", "tools/with-timeout.sh", seconds,
         "env",
         Join(["CHIBI_TOOLS_BUILD_DIR=", Absolute(directory), "/test/tools"]),
         Join(["CHIBI_LANGUAGE_BUILD_DIR=", Absolute(directory), "/test/language"]),
@@ -323,11 +337,29 @@ TestCommand :: (row: string, directory: string, releases: string, host: string, 
     return command
 }
 
+// A selector `build test` has started and not yet reported.
+Running :: struct {
+    index: int; // into the selection
+    process: int;
+    // Milliseconds spent waiting while it ran: a lower bound on its age.
+    waited: int;
+}
+
+// How long `build test` waits on its oldest selector before polling the rest.
+TestSlice: int : 250
+
+// Whether tools/tests.tsv has an `exclusive NAME` row: the selector runs alone,
+// because it starts its own workers or shares files with others.
+Exclusive :: (rows: string[], name: string) -> bool {
+    return Row(rows, "exclusive", name) != ""
+}
+
 // Runs the named selectors or groups of tools/tests.tsv against the built test
-// drivers, up to --jobs at a time, and fails when any fails.
+// drivers, up to --jobs at a time (an `exclusive` row runs one alone), and fails
+// when any fails.
 //   build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...
-// Each selector gets --timeout seconds (600 by default; a `timeout NAME SECONDS` row of tools/tests.tsv sets one selector's); a hung one fails alone
-// with status 124 and the rest still run.
+// Each selector gets --timeout seconds (600 by default; a `timeout NAME SECONDS` row of tools/tests.tsv sets one selector's); a hung one is killed
+// and reported as timed out, and the rest still run.
 Test :: (arguments: string[]) -> int {
     rows := Rows()
     if (Flag(arguments, "--list")) {
@@ -357,33 +389,59 @@ Test :: (arguments: string[]) -> int {
     }
     if (Flag(arguments, "--dry-run")) {
         for (name in selected) {
-            command := TestCommand(Row(rows, "tool", name), directory, releases, host, Deadline(rows, name, seconds))
-            os.Print(Join([name, ": ", strings.Join(command, " ")]))
+            command := TestCommand(Row(rows, "tool", name), directory, releases, host)
+            os.Print(format_text("{} ({}s): {}", name, Deadline(rows, name, seconds), strings.Join(command, " ")))
         }
         return 0
     }
-    handles: int[] = []
-    started := 0
-    waited := 0
+    // Piped output keeps each selector's lines together when several run.
+    stdio := os.Inherited
+    if (jobs > 1) {
+        stdio = os.Piped
+    }
+    running: Running[] = []
+    next := 0
     failed := 0
-    while (waited < length(selected)) {
-        while (started < length(selected) && started - waited < jobs) {
-            os.Print(format_text("RUN {}", selected[started]))
-            handles.append(os.Spawn(TestCommand(Row(rows, "tool", selected[started]), directory, releases, host, Deadline(rows, selected[started], seconds))))
-            started += 1
+    while (next < length(selected) || length(running) > 0) {
+        while (next < length(selected) && length(running) < jobs &&
+               (length(running) == 0 || (!Exclusive(rows, selected[next]) && !Exclusive(rows, selected[running[0].index])))) {
+            os.Print(format_text("RUN {}", selected[next]))
+            command := TestCommand(Row(rows, "tool", selected[next]), directory, releases, host)
+            started: Running = {index: next, process: os.Start(command, stdio), waited: 0}
+            running.append(started)
+            next += 1
         }
-        status := os.Wait(handles[waited])
-        if (status == 0) {
-            os.Print(format_text("PASS {}", selected[waited]))
-        } else {
-            reason := ""
-            if (status == 124) {
-                reason = Join([", timed out after ", Deadline(rows, selected[waited], seconds), "s"])
+        // Wait a slice for the oldest, then poll the rest, so a short selector
+        // frees its slot while a long one runs. Only a slice that passes in
+        // full counts toward the running deadlines, so none stops early.
+        status := os.Wait(running[0].process, TestSlice)
+        passed := 0
+        if (status == os.StillRunning) {
+            passed = TestSlice
+        }
+        left: Running[] = []
+        for (i in 0..<length(running)) {
+            job := running[i]
+            if (i > 0) {
+                status = os.Wait(job.process, 0)
             }
-            os.Print(format_text("FAIL {} (status {}{})", selected[waited], status, reason))
-            failed += 1
+            job.waited += passed
+            name := selected[job.index]
+            limit := Count(Deadline(rows, name, seconds))
+            if (status == os.StillRunning && job.waited >= limit * 1000) {
+                os.Kill(job.process)
+                os.Print(format_text("FAIL {} (timed out after {}s)", name, limit))
+                failed += 1
+            } else if (status == os.StillRunning) {
+                left.append(job)
+            } else if (status == 0) {
+                os.Print(format_text("PASS {}", name))
+            } else {
+                os.Print(format_text("FAIL {} (status {})", name, status))
+                failed += 1
+            }
         }
-        waited += 1
+        running = left
     }
     os.Print(format_text("{} tests, {} failed", length(selected), failed))
     if (failed > 0) {
@@ -444,7 +502,7 @@ GraphStep :: (name: string, host: string, source: string, function: string, tail
 // The Release hosts and tools an install or a release-only verb needs.
 ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
     nested := ["--release", "--release-build", Option(arguments, "--release-build", "build-release"),
-               "--jobs", Option(arguments, "--jobs", "8")]
+               "--jobs", Jobs(arguments)]
     for (name in ["--host", "--libclang-root", "--reflect"]) {
         value := Option(arguments, name, "")
         if (value != "") {
@@ -484,7 +542,7 @@ SdkReflect :: (arguments: string[]) -> int {
     if (host == "") {
         return 1
     }
-    tail := ["--build", Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "--jobs", Option(arguments, "--jobs", "8")]
+    tail := ["--build", Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "--jobs", Jobs(arguments)]
     tail = build.concat(tail, Libclang(arguments))
     return GraphStep("sdk-reflect", host, "tools/toolchain/Graph.chibi", "SDKReflect", build.concat(tail, build.concat(["--"], Rest(arguments))), dry)
 }
@@ -508,7 +566,7 @@ RuntimeSdk :: (arguments: string[], package: bool) -> int {
     tail := [
         "--build", constructed, "--reflect",
         Join([Absolute(Option(arguments, "--reflect-build", "build-sdk-reflect")), "/reflect"]), "--jobs",
-        Option(arguments, "--jobs", "8")
+        Jobs(arguments)
     ]
     tail = build.concat(tail, Libclang(arguments))
     flags := Rest(arguments)
@@ -535,21 +593,18 @@ Revision :: () -> string {
     return build.trim(described.stdout)
 }
 
-// Rewrites tools/compiler/bootstrap: the bootstrap check leaves stage two and
-// its arguments in a seed folder, and the host writes the artifact once stage
-// two compiles the sources to themselves. With `refresh` the seed folder is
-// recovery's fixed point instead, without the check's sample runs.
+// Rewrites tools/compiler/bootstrap: recovery compiles the sources on disk
+// with the current seed to stage one and stage two, the fixed point, and
+// leaves it with its Compile arguments in a seed folder; the host writes the
+// artifact once that seed compiles the sources to itself. `recover` only
+// checks that recovery succeeds.
 Bootstrap :: (arguments: string[], mode: string) -> int {
     dry := Flag(arguments, "--dry-run")
     releases := Option(arguments, "--release-build", "build-release")
     host := CompilerHost(arguments)
     artifact := Option(arguments, "--artifact", "tools/compiler/bootstrap")
     base := ["--bootstrap", artifact, "--compiler", "tools/compiler", "--core", "packages/core"]
-    targets := ["chibi-compiler-host"]
-    if (mode == "artifact") {
-        targets = build.concat(targets, ["test_language"])
-    }
-    status := ReleaseBuild(arguments, targets, dry)
+    status := ReleaseBuild(arguments, ["chibi-compiler-host"], dry)
     if (status != 0) {
         return status
     }
@@ -561,20 +616,11 @@ Bootstrap :: (arguments: string[], mode: string) -> int {
     if (status != 0) {
         return status
     }
-    if (mode == "artifact") {
-        status = Step(
-            "bootstrap-check",
-            ["env", Join(["CHIBI_BOOTSTRAP_SEED=", seed]), "sh", "tools/build.sh", "test", "--release-build", releases,
-             "language-package-compiler-chibi-bootstrap"],
-            dry
-        )
-    } else {
-        status = Step(
-            "recover",
-            build.concat(build.concat([host], base), ["--recover", Join([seed, "/compiler.chibip"]), "--arguments", Join([seed, "/compile.json"])]),
-            dry
-        )
-    }
+    status = Step(
+        "recover",
+        build.concat(build.concat([host], base), ["--recover", Join([seed, "/compiler.chibip"]), "--arguments", Join([seed, "/compile.json"])]),
+        dry
+    )
     if (status != 0) {
         return status
     }
@@ -607,6 +653,167 @@ NativeCensus :: (arguments: string[]) -> int {
     )
 }
 
+// Whole seconds from date(1); the build host has no clock.
+Clock :: () -> int {
+    seconds := 0
+    for (byte in strings.Bytes(build.trim(os.Capture(["date", "+%s"]).stdout))) {
+        seconds = seconds * 10 + byte - 48
+    }
+    return seconds
+}
+
+// The first function the committed census says the native lane rejects, or "".
+FirstRejection :: () -> string {
+    census := os.ReadText("docs/native-compiler-census.md")
+    if (census.error) {
+        return ""
+    }
+    for (line in build.lines(census.text)) {
+        if (!strings.HasPrefix(line, "| `")) {
+            continue
+        }
+        // | Source | Function | Package | Through | Also | Rejected | Message |
+        cells := strings.Split(line, "|")
+        if (length(cells) == 9 && strings.TrimSpace(cells[3]) != "none") {
+            return format_text("{} in {}: {}", strings.TrimSpace(cells[2]), strings.TrimSpace(cells[1]), strings.TrimSpace(cells[7]))
+        }
+    }
+    return ""
+}
+
+// The program the native build driver's last `native: PATH` report names, or "".
+NativeProgram :: (report: string) -> string {
+    program := ""
+    for (line in build.lines(report)) {
+        if (strings.HasPrefix(line, "native: /")) {
+            program = strings.TrimSuffix(strings.TrimPrefix(line, "native: "), " is up to date")
+        }
+    }
+    return program
+}
+
+// The file's SHA-256, or "" when it cannot be read.
+Digest :: (path: string) -> string {
+    hashed := os.HashFile(path)
+    if (hashed.error) {
+        return ""
+    }
+    return hashed.digest
+}
+
+// Runs one stage compiler in a clean directory and prints its wall time.
+// The stage contract (docs/native-llvm-ledger.md, W22): `STAGE --compiler DIR
+// --core DIR --output FILE --llvm DIR` writes a native executable with the same
+// interface; exit 1 means the native lane rejected the sources, and the first
+// stderr line then names the first rejected function.
+NativeStage :: (name: string, stage: string, directory: string, llvm: string, dry: bool) -> int {
+    status := Step(name, ["sh", "-c", Join(["rm -rf '", directory, "' && mkdir -p '", directory, "'"])], dry)
+    if (status != 0) {
+        return status
+    }
+    command := [stage, "--compiler", Absolute("tools/compiler"), "--core", Absolute("packages/core"), "--output", Join([directory, "/chibi"]), "--llvm", llvm]
+    began := Clock()
+    if (dry) {
+        return Step(name, command, dry)
+    }
+    ran := os.Capture(command)
+    os.Print(format_text("{}: {} s, exit {}", name, Clock() - began, ran.status))
+    if (ran.status != 0) {
+        os.Print(Join([name, " rejected: ", build.trim(ran.stderr)]))
+    }
+    return ran.status
+}
+
+// Proves goal item 1: the native stage one compiles tools/compiler to stage
+// two, stage two compiles it to stage three, and the two are byte-identical.
+// Prints each stage's wall time and, for item 9, the VM-hosted self-build's
+// (the recovery's seed to stage one to stage two) unless --skip-vm. Stage one is
+// the package tools/compiler/native_driver, built by tools/native_aot/Driver.chibi,
+// or the program --stage-one names; without either the verb fails with the first
+// rejected function of the census.
+NativeSelfHost :: (arguments: string[]) -> int {
+    dry := Flag(arguments, "--dry-run")
+    llvm := Option(arguments, "--llvm", "")
+    work := Absolute(Option(arguments, "--work", "build-native-self-host"))
+    driver := Absolute("tools/compiler/native_driver")
+    if (llvm == "") {
+        os.Print("native-self-host: pass --llvm DIR, the folder of opt, llc and ld.lld")
+        return 2
+    }
+    prebuilt := Option(arguments, "--stage-one", "")
+    if (prebuilt == "" && !dry && !os.Exists(Join([driver, "/Main.chibi"]))) {
+        os.Print("native-self-host: stage one has no driver yet (tools/compiler/native_driver/Main.chibi)")
+        os.Print(Join(["native-self-host: first function the native lane rejects: ", FirstRejection()]))
+        return 1
+    }
+    status := ReleaseBuild(arguments, ["chibi-build-host", "chibi-compiler-host"], dry)
+    if (status != 0) {
+        return status
+    }
+    releases := Absolute(Option(arguments, "--release-build", "build-release"))
+    compiler_host := Join([releases, "/sdk/chibi-compiler-host"])
+    target := "x86_64-unknown-linux-gnu"
+    if (os.Platform() == "Darwin") {
+        target = "aarch64-apple-darwin"
+    }
+    tools := Absolute("tools/native_aot")
+    build_one := [
+        Join([releases, "/sdk/chibi-build-host"]), "--root", tools, "--source", Join([tools, "/Driver.chibi"]),
+        "--core", Absolute("packages/core"), "--compiler", Absolute("tools/compiler"), "--compiler-core",
+        Absolute("packages/core"), "--entry", "Native", "--timeout-ms", "3600000", "--", compiler_host,
+        Absolute("tools/compiler"), Absolute("packages/core"), driver, llvm, "2", "none", target
+    ]
+    stage_one := Join([driver, "/build/native/stage-one"])
+    if (prebuilt != "") {
+        stage_one = Absolute(prebuilt)
+    } else if (dry) {
+        Step("stage-one", build_one, dry)
+    } else {
+        began := Clock()
+        built := os.Capture(build_one)
+        os.Print(format_text("stage-one build: {} s, exit {}", Clock() - began, built.status))
+        stage_one = NativeProgram(built.stderr)
+        if (built.status != 0 || stage_one == "") {
+            os.Print(Join(["native-self-host: stage one did not build: ", build.trim(built.stderr)]))
+            return 1
+        }
+    }
+    two := Join([work, "/stage2"])
+    three := Join([work, "/stage3"])
+    status = NativeStage("stage-two", stage_one, two, llvm, dry)
+    if (status != 0) {
+        return status
+    }
+    status = NativeStage("stage-three", Join([two, "/chibi"]), three, llvm, dry)
+    if (status != 0) {
+        return status
+    }
+    if (!dry) {
+        digest_two := Digest(Join([two, "/chibi"]))
+        digest_three := Digest(Join([three, "/chibi"]))
+        os.Print(Join(["stage two sha256 ", digest_two]))
+        os.Print(Join(["stage three sha256 ", digest_three]))
+        if (digest_two == "" || digest_two != digest_three) {
+            os.Print("native-self-host: stage two and stage three differ")
+            return 1
+        }
+    }
+    if (!Flag(arguments, "--skip-vm")) {
+        began := Clock()
+        status = Step("vm-hosted-self-build", [compiler_host, "--bootstrap", "tools/compiler/bootstrap", "--compiler", "tools/compiler", "--core", "packages/core"], dry)
+        if (status != 0) {
+            return status
+        }
+        if (!dry) {
+            os.Print(format_text("vm-hosted-self-build (seed, stage one, stage two): {} s", Clock() - began))
+        }
+    }
+    if (!dry) {
+        os.Print("native-self-host: stage two and stage three are byte-identical")
+    }
+    return 0
+}
+
 // Whether a registered worktree lives under `directory`.
 HoldsWorktree :: (directory: string) -> bool {
     listed := os.Capture(["git", "worktree", "list", "--porcelain"])
@@ -636,7 +843,8 @@ Usage :: () -> int {
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
     os.Print("       build format [--check] | clean | publish-seed | native-census")
-    os.Print("       build bootstrap-artifact | bootstrap-refresh | bootstrap-recover [--release-build DIR]")
+    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--work DIR] [--release-build DIR] [--skip-vm] [--dry-run]")
+    os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
     os.Print("       build sdk-reflect | runtime-sdk | package-runtime-sdk [--reflect-build DIR] [--runtime-build DIR] [--output DIR] [-- NATIVE ARGUMENTS]")
     return 2
 }
@@ -676,9 +884,6 @@ Main :: () -> int {
     if (verb == "bootstrap-artifact") {
         return Bootstrap(arguments, "artifact")
     }
-    if (verb == "bootstrap-refresh") {
-        return Bootstrap(arguments, "refresh")
-    }
     if (verb == "bootstrap-recover") {
         return Bootstrap(arguments, "recover")
     }
@@ -687,6 +892,9 @@ Main :: () -> int {
     }
     if (verb == "native-census") {
         return NativeCensus(arguments)
+    }
+    if (verb == "native-self-host") {
+        return NativeSelfHost(arguments)
     }
     if (verb != "") {
         return Usage()

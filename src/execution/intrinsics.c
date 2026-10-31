@@ -246,12 +246,21 @@ static pin_array *owned_array(arena *storage, pin_value *header)
         header && (header->container == PIN_CONTAINER_ARRAY ||
                    header->container == PIN_CONTAINER_VIEW)
     );
-    pin_value retained;
-    if (pin_value_array_promote(storage, &retained, header)) {
-        return NULL;
-    }
-    *header = retained;
+    assert(storage && storage->collectable);
     pin_array *array = header->ptr;
+    /* A managed array is already its own retained value: promotion would
+     * only read its element names back into the header. */
+    if (array && !array->pointer && array->storage) {
+        header->type_name = array->type_name;
+        header->record = array->record;
+    } else {
+        pin_value retained;
+        if (pin_value_array_promote(storage, &retained, header)) {
+            return NULL;
+        }
+        *header = retained;
+        array = header->ptr;
+    }
     if (!array || !pin_array_view_valid(array)) {
         return NULL;
     }
@@ -290,7 +299,23 @@ static bool array_item_matches(const pin_array *array, pin_value item)
 static void array_drop_range(pin_array *, int first, int end);
 static const char *append_item(arena *storage, pin_array *array, const pin_value *item)
 {
-    assert(array->count < array->capacity);
+    assert(!array->pointer && array->count < array->capacity);
+    /* A scalar of a packed scalar array's own type is its own copy and fits
+     * as its bytes, so it needs no item check, copy or layout test. */
+    if (array->stride && item->type == array->element_type &&
+        inline_scalar(item->type) && item->container == PIN_CONTAINER_SINGLE &&
+        !item->record) {
+        memcpy(
+            (char *)array->data + (size_t)array->count * array->stride,
+            &item->d,
+            array->stride
+        );
+        array->count++;
+        array->buckets = NULL;
+        array->bucket_mask = 0;
+        pin_array_mutation_end(array);
+        return NULL;
+    }
     if (!array_item_matches(array, *item)) {
         return "Array item differs from its element type";
     }
@@ -1504,6 +1529,23 @@ static const char *array_mutate_place(arena *storage, const pin_value *args, int
     }
     language_reference resolved,
         *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &resolved);
+    /* `out.append(x)` and `out.extend(xs)` through a reference to a whole
+     * local array change the local's header in its slot, as the local's own
+     * push and extend do. Resolving a path, detaching the owner and storing
+     * a persistent root back are for fields, state and components. */
+    execution_array_mutation operation = (execution_array_mutation)args[1].i;
+    if (ref->kind == LANGUAGE_REFERENCE_VALUE && !ref->path && count == 3 &&
+        ref->root.container == PIN_CONTAINER_ARRAY &&
+        (operation == EXECUTION_ARRAY_APPEND ||
+         (operation == EXECUTION_ARRAY_EXTEND && sequence_array(args[2])))) {
+        if (!root_matches(ref, *ref->value)) {
+            return "Array mutation owner differs from its reference";
+        }
+        pin_value local[] = { { .u64 = (uintptr_t)ref->value }, args[2] };
+        return operation == EXECUTION_ARRAY_APPEND
+                 ? array_push(storage, local, 2, out)
+                 : array_extend(storage, local, 2, out);
+    }
     pin_value root = reference_root(ref), target = root;
     if (!root_matches(ref, root)) {
         return "Array mutation owner differs from its reference";

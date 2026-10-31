@@ -188,7 +188,7 @@ Eligible :: union {
     Declaration(symbol: int, value: named.Value, diagnostics: syntax.Diagnostic[])
 }
 EligibleUnion :: (environment: Environment, tree: reader.Tree, node: int, scope: int, document: int) -> Eligible {
-    token := reader.Field(tree, node, "name");
+    token := reader.Field(tree, node, syntax.FieldName);
     switch reader.Name(tree, token, document) {
         case .Name(name, diagnostics):
             switch environment {
@@ -457,12 +457,12 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
             union_id = nominal;
     }
     switch tree {
-        case .Raw(nodes, field_names, named_flags, extra_flags, source):
+        case .Raw(nodes, row_fields, named_flags, extra_flags, source):
             child := nodes[node].first_child;
             while (child >= 0) {
-                if (named_flags[child] && reader.Kind(tree, child, "union_variant")) {
-                    literal_node := reader.Field(tree, child, "literal");
-                    name_node := reader.Field(tree, child, "name");
+                if (named_flags[child] && reader.Kind(tree, child, syntax.UnionVariant)) {
+                    literal_node := reader.Field(tree, child, syntax.FieldLiteral);
+                    name_node := reader.Field(tree, child, syntax.FieldName);
                     if (literal_node >= 0) {
                         name_node = literal_node;
                     }
@@ -490,12 +490,12 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
                                 }
                             }
                             first_field := length(fields);
-                            parameters := reader.Field(tree, child, "parameters");
+                            parameters := reader.Field(tree, child, syntax.FieldParameters);
                             if (parameters >= 0) {
                                 parameter_node := nodes[parameters].first_child;
                                 while (parameter_node >= 0) {
                                     if (named_flags[parameter_node] && !extra_flags[parameter_node]) {
-                                        token := reader.Field(tree, parameter_node, "name");
+                                        token := reader.Field(tree, parameter_node, syntax.FieldName);
                                         switch reader.Name(tree, token, document) {
                                             case .Name(field_name, field_errors):
                                                 current = Errors(current, field_errors);
@@ -505,7 +505,7 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
                                                     case .Built(environment, updates, diagnostics, uses):
                                                         switch environment {
                                                             case .Tables(reading, graph_types, graph_ids, definitions, graph_variants, graph_fields, capabilities, capability_fields):
-                                                                result := reader.Type(reading, tree, reader.Field(tree, parameter_node, "type"), scope, document);
+                                                                result := reader.Type(reading, tree, reader.Field(tree, parameter_node, syntax.FieldType), scope, document);
                                                                 switch result {
                                                                     case .Read(resolved, has_unit, unit, updated, type_errors, type_uses, publications, collection):
                                                                         value = resolved;
@@ -572,10 +572,10 @@ pub Build :: (environment: Environment, tree: reader.Tree, body: int, scope: int
         return current;
     }
     switch tree {
-        case .Raw(nodes, field_names, named_flags, extra_flags, source):
+        case .Raw(nodes, row_fields, named_flags, extra_flags, source):
             child := nodes[body].first_child;
             while (child >= 0) {
-                if (named_flags[child] && reader.Kind(tree, child, "union_declaration")) {
+                if (named_flags[child] && reader.Kind(tree, child, syntax.UnionDeclaration)) {
                     switch current {
                         case .Built(live, current_updates, current_diagnostics, current_uses):
                             switch EligibleUnion(live, tree, child, scope, document) {
@@ -599,7 +599,7 @@ pub Build :: (environment: Environment, tree: reader.Tree, body: int, scope: int
             }
             child = nodes[body].first_child;
             while (child >= 0) {
-                if (named_flags[child] && reader.Kind(tree, child, "union_declaration")) {
+                if (named_flags[child] && reader.Kind(tree, child, syntax.UnionDeclaration)) {
                     switch current {
                         case .Built(live, current_updates, current_diagnostics, current_uses):
                             switch EligibleUnion(live, tree, child, scope, document) {

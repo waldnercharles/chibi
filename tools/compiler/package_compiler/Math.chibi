@@ -148,7 +148,7 @@ MathRequested :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
     for (document in documents) {
         index := document.node_start;
         while (index < document.node_start + document.node_count) {
-            if ((forest[index].kind == "identifier" || forest[index].kind == "type") &&
+            if ((forest[index].kind == syntax.Identifier || forest[index].kind == syntax.Type) &&
                 MathName(Text(forest, document.text, index)) != 0) {
                 return true;
             }
@@ -1208,14 +1208,14 @@ MathFunctionStep :: (forest: snapshot.SnapshotNode[], text: string, document: in
 MathNativeType :: (forest: snapshot.SnapshotNode[], text: string, natives: ResolvedNative[],
                    ports: ResolvedPort[], names: Name[], package: int, node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
-    callee := Field(forest, node, "function");
-    if (Is(forest, callee, "member_expression")) {
-        prefix := Field(forest, callee, "object");
-        if (!Is(forest, prefix, "identifier") || Lookup(names, Text(forest, text, prefix)) >= 0 ||
+    callee := Field(forest, node, syntax.FieldFunction);
+    if (Is(forest, callee, syntax.MemberExpression)) {
+        prefix := Field(forest, callee, syntax.FieldObject);
+        if (!Is(forest, prefix, syntax.Identifier) || Lookup(names, Text(forest, text, prefix)) >= 0 ||
             QualifierOf(forest, text, names, package, prefix) >= 0) {
             return none;
         }
-    } else if (!Is(forest, callee, "identifier") || Lookup(names, Text(forest, text, callee)) >= 0) {
+    } else if (!Is(forest, callee, syntax.Identifier) || Lookup(names, Text(forest, text, callee)) >= 0) {
         return none;
     }
     found := FindNativeKind(natives, NativeCallName(forest, text, node), NativeFunctionKind);
@@ -1235,24 +1235,24 @@ MathPlaceType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
                   package: int, node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     at := Unparenthesized(forest, node);
-    if (Is(forest, at, "identifier")) {
+    if (Is(forest, at, syntax.Identifier)) {
         found := Lookup(names, Text(forest, text, at));
         if (found >= 0) {
             return {storage: names[found].storage, container: names[found].container, record: names[found].record};
         }
         return none;
     }
-    if (Is(forest, at, "number")) {
+    if (Is(forest, at, syntax.Number)) {
         return {storage: InferredNumberStorage(forest, text, at), container: 0, record: -1};
     }
-    if (Is(forest, at, "binary_expression")) {
+    if (Is(forest, at, syntax.BinaryExpression)) {
         left := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package,
-                              Field(forest, at, "left"));
+                              Field(forest, at, syntax.FieldLeft));
         right := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package,
-                               Field(forest, at, "right"));
+                               Field(forest, at, syntax.FieldRight));
         if ((left.storage == StructStorage && MathKind(types, left.record) != 0) ||
             (right.storage == StructStorage && MathKind(types, right.record) != 0)) {
-            switch math.Binary(Text(forest, text, Field(forest, at, "operator")),
+            switch math.Binary(Text(forest, text, Field(forest, at, syntax.FieldOperator)),
                                MathStaticKind(types, left), MathStaticKind(types, right)) {
                 case .Rejected(message):
                     return none;
@@ -1262,11 +1262,11 @@ MathPlaceType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
         }
         return none;
     }
-    if (Is(forest, at, "unary_expression")) {
+    if (Is(forest, at, syntax.UnaryExpression)) {
         return MathPlaceType(forest, text, types, members, callables, natives, ports, names, package,
-                             Field(forest, at, "operand"));
+                             Field(forest, at, syntax.FieldOperand));
     }
-    if (Is(forest, at, "call_expression")) {
+    if (Is(forest, at, syntax.CallExpression)) {
         called := CalledFunction(forest, text, callables, natives, names, package, at);
         if (called >= 0) {
             if (callables[called].results != 0) {
@@ -1275,8 +1275,8 @@ MathPlaceType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
             return {storage: callables[called].result, container: callables[called].result_container,
                     record: callables[called].result_record};
         }
-        callee := Field(forest, at, "function");
-        if (Is(forest, callee, "identifier")) {
+        callee := Field(forest, at, syntax.FieldFunction);
+        if (Is(forest, callee, syntax.Identifier)) {
             name := Text(forest, text, callee);
             kind := MathName(name);
             if (kind != 0) {
@@ -1284,7 +1284,7 @@ MathPlaceType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
             }
             if (MathFunctionName(name)) {
                 arguments: int[] = [];
-                for (argument in Members(forest, Field(forest, at, "arguments"))) {
+                for (argument in Members(forest, Field(forest, at, syntax.FieldArguments))) {
                     arguments.append(MathStaticKind(types,
                                                     MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, argument)));
                 }
@@ -1298,16 +1298,16 @@ MathPlaceType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
         }
         return MathNativeType(forest, text, natives, ports, names, package, at);
     }
-    object := Field(forest, at, "object");
-    if (Is(forest, at, "dereference_expression")) {
-        object = Field(forest, at, "operand");
+    object := Field(forest, at, syntax.FieldObject);
+    if (Is(forest, at, syntax.DereferenceExpression)) {
+        object = Field(forest, at, syntax.FieldOperand);
     }
     if (object < 0) {
         return none;
     }
     base := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, object);
-    if (Is(forest, at, "dereference_expression")) {
-        if (Is(forest, object, "identifier")) {
+    if (Is(forest, at, syntax.DereferenceExpression)) {
+        if (Is(forest, object, syntax.Identifier)) {
             found := Lookup(names, Text(forest, text, object));
             if (found >= 0 && names[found].place == ReferencePlace) {
                 return base;
@@ -1315,7 +1315,7 @@ MathPlaceType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
         }
         return PointerElement(types, Typed(-1, base.storage, base.container, base.record));
     }
-    if (Is(forest, at, "index_expression")) {
+    if (Is(forest, at, syntax.IndexExpression)) {
         if (base.container == ArrayContainer || base.container == ViewContainer) {
             return SequenceElement(types, base);
         }
@@ -1326,10 +1326,10 @@ MathPlaceType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
         }
         return none;
     }
-    if (!Is(forest, at, "member_expression")) {
+    if (!Is(forest, at, syntax.MemberExpression)) {
         return none;
     }
-    member := Text(forest, text, Field(forest, at, "member"));
+    member := Text(forest, text, Field(forest, at, syntax.FieldMember));
     if (base.storage == HandleStorage && base.container == 0) {
         component := Component(types, member);
         if (component >= 0) {
@@ -1375,7 +1375,7 @@ MathStaticType :: (types: TypeDecl[], kind: int) -> ValueType {
 MathArguments :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
                   callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[], names: Name[],
                   package: int, call: int) -> bool {
-    for (argument in Members(forest, Field(forest, call, "arguments"))) {
+    for (argument in Members(forest, Field(forest, call, syntax.FieldArguments))) {
         type := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, argument);
         if (type.storage == StructStorage && type.container == 0 && MathKind(types, type.record) != 0) {
             return true;
@@ -1387,16 +1387,16 @@ MathBinaryCapture :: (forest: snapshot.SnapshotNode[], text: string, types: Type
                       callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[], names: Name[],
                       package: int, node: int) -> bool {
     left := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package,
-                          Field(forest, node, "left"));
+                          Field(forest, node, syntax.FieldLeft));
     return left.storage == StructStorage && left.container == 0 && MathKind(types, left.record) != 0;
 }
 MathBinaryStart :: (forest: snapshot.SnapshotNode[], item: Work) -> Step {
-    left := Field(forest, item.node, "left");
+    left := Field(forest, item.node, syntax.FieldLeft);
     finish := Expect(item.node, item.storage, item.container, item.record);
     finish.phase = 1;
     return Step.Emitted([], [], [], [], [], [], [], [],
                         [Visit(left), Resume(left, MathCapturePhase, 0, 0),
-                         Visit(Field(forest, item.node, "right")), finish],
+                         Visit(Field(forest, item.node, syntax.FieldRight)), finish],
                         0, NoValue(), NoValue(), []);
 }
 // Source effects follow the logical location, before swizzles become one
@@ -1410,10 +1410,10 @@ MathLocationEffects :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
         if ((type.storage == PointerStorage && type.container == 0) || type.container == ViewContainer) {
             return ReadEffect | WriteEffect;
         }
-        if (Is(forest, at, "dereference_expression")) {
-            operand := Unparenthesized(forest, Field(forest, at, "operand"));
+        if (Is(forest, at, syntax.DereferenceExpression)) {
+            operand := Unparenthesized(forest, Field(forest, at, syntax.FieldOperand));
             found := Lookup(names, Text(forest, text, operand));
-            if (Is(forest, operand, "identifier") && found >= 0 && names[found].place == ReferencePlace) {
+            if (Is(forest, operand, syntax.Identifier) && found >= 0 && names[found].place == ReferencePlace) {
                 return WriteEffect;
             }
             return ReadEffect | WriteEffect;
@@ -1422,7 +1422,7 @@ MathLocationEffects :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
             EntityComponent(forest, text, types, members, names, at) >= 0) {
             return ReadEffect | WriteEffect;
         }
-        if (Is(forest, at, "identifier")) {
+        if (Is(forest, at, syntax.Identifier)) {
             found := Lookup(names, Text(forest, text, at));
             if (found >= 0 && names[found].place == ReferencePlace) {
                 return WriteEffect;
@@ -1432,24 +1432,24 @@ MathLocationEffects :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
             }
             return 0;
         }
-        if (!Is(forest, at, "member_expression") && !Is(forest, at, "index_expression")) {
+        if (!Is(forest, at, syntax.MemberExpression) && !Is(forest, at, syntax.IndexExpression)) {
             return 0;
         }
-        at = Unparenthesized(forest, Field(forest, at, "object"));
+        at = Unparenthesized(forest, Field(forest, at, syntax.FieldObject));
     }
     return 0;
 }
 MathAssignment :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
                    callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[], names: Name[],
                    package: int, node: int) -> bool {
-    if (!Is(forest, node, "assignment")) {
+    if (!Is(forest, node, syntax.Assignment)) {
         return false;
     }
     destination := StatementTarget(forest, node);
     receiver := destination;
-    if (Is(forest, destination, "member_expression")) {
-        receiver = Field(forest, destination, "object");
-    } else if (CompoundOperator(Text(forest, text, Field(forest, node, "operator"))) == "") {
+    if (Is(forest, destination, syntax.MemberExpression)) {
+        receiver = Field(forest, destination, syntax.FieldObject);
+    } else if (CompoundOperator(Text(forest, text, Field(forest, node, syntax.FieldOperator))) == "") {
         return false;
     }
     type := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, receiver);
@@ -1489,8 +1489,8 @@ MathDestinationPlan :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
                         callables: Callable[], natives: ResolvedNative[], ports: ResolvedPort[], names: Name[],
                         package: int, destination: int) -> MathDestination {
     at := Unparenthesized(forest, destination);
-    if (Is(forest, at, "member_expression")) {
-        receiver := Field(forest, at, "object");
+    if (Is(forest, at, syntax.MemberExpression)) {
+        receiver := Field(forest, at, syntax.FieldObject);
         base := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, receiver);
         if (base.storage == PointerStorage && base.container == 0) {
             base = PointerElement(types, Typed(-1, base.storage, base.container, base.record));
@@ -1500,12 +1500,12 @@ MathDestinationPlan :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
             kind = MathKind(types, base.record);
         }
         if (kind != 0) {
-            member := Text(forest, text, Field(forest, at, "member"));
+            member := Text(forest, text, Field(forest, at, syntax.FieldMember));
             // Intermediate projections are reads. Repeated intermediate
             // components are valid if the final destinations are distinct.
             switch MathSelection(kind, member, false) {
                 case .Rejected(message):
-                    return MathDestination.Rejected(Field(forest, at, "member"), message);
+                    return MathDestination.Rejected(Field(forest, at, syntax.FieldMember), message);
                 case .Accepted(selected, indices):
                     switch MathDestinationPlan(forest, text, types, members, callables, natives, ports,
                                                names, package, receiver) {
@@ -1570,7 +1570,7 @@ MathAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     if (!MathDistinctDestinations(selection)) {
         return Fail(forest, destination, document, "a writable swizzle cannot repeat a destination component");
     }
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
     if (item.phase == 0) {
         if (QueryReadonlyDestination(forest, text, types, members, names, destination)) {
             return Fail(forest, destination, document, "Query value bindings are read-only; use a component pointer to modify storage");
@@ -1614,9 +1614,9 @@ MathAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     if (item.phase == MathAssignSnapshot) {
         current := values[top - 1];
         next: Work[] = [];
-        expected := Visit(Field(forest, item.node, "value"));
+        expected := Visit(Field(forest, item.node, syntax.FieldValue));
         if (item.a == math.Scalar) {
-            expected = Expect(Field(forest, item.node, "value"), FloatStorage, 0, -1);
+            expected = Expect(Field(forest, item.node, syntax.FieldValue), FloatStorage, 0, -1);
         }
         next.extend([expected, Resume(item.node, MathAssignValue, 0, 0)]);
         if (operator == "") {

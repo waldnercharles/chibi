@@ -114,3 +114,57 @@ outright (git history keeps them):
 - unreferenced C from the dead-code sweep;
 - the KDL value layer, ckdl, the unread KDL fixtures, the KDL game-equivalence stories and the player
   packaging license check.
+
+## Stage-zero oracle cases removed from package_compiler_chibi.c
+
+`test/language/package_compiler_chibi.c` no longer includes `language/lower.h` or `language/semantic.h`. Removed (deleted, not archived; the authored compiler has no stage-zero to compare against): `oracle_packages` and the cases that compared authored compilation with stage-zero analysis or lowering: compound diagnostics vs stage zero, runnable package/typed/collection/importing sample tables (plain and `_compiled`), fallible source results, builtin math source contracts, invalid/deferred char conversion rejections, generic char native results, `native_overload_reference_contract` and `native_arguments_reference_contract`, and the `--package-compiler-chibi-native-arguments-oracle` selector. Authored `@test` suites and the remaining bootstrap/native lanes cover the authored side only. `compositional_records.c` lost an unused `language/lower.h` include.
+
+## Stage-zero authored-program tests archived (test/language)
+
+Each compiled authored sources with stage zero (`source_package_prepare`, `authoring_packages_prepare`, `compiler_fixture`) and ran them. `chibi test` and `host_packages_compiler.c` (authored compile path) cover the authored side; what is not re-covered:
+
+- `package_imports.c`: transitive-call execution on each backend, alias scoping, record/union/aggregate-constant imports, input-order and root-relocation id stability, incremental reuse and cached closures, generic export and request scoping.
+- `package_files.c`: snapshot loading from disk (canonical roots, NUL/oversize rejection, junction/UNC handling on Windows, relocation and reload invalidation).
+- `package_math.c` (+ `--package-math-benchmark`): shipped `core:math` authored tests, IEEE/precision import checks, domain rejection, explicit f64 narrowing, catalog retirement of native math names, invocation benchmark.
+- `integer_semantics.c` (+ `--integer-shift-counts-authored`): width-by-width integer pinning and shift counts through stage zero.
+- `host_packages.c`: import aliases and shadowing, private-kernel precedence, member rejection, unavailable target, host:clock grant transport, sample retention, imported-wrapper effects, distinct domains, platform monotonic samples, `core:time` authored tests.
+- `build_workflow.c` (+ its source header): configure/build order, failure propagation and missing-binding rejection for the authored build workflow service.
+
+## Fixture-compiled sequence cases removed from execution.c
+
+`test/language/execution.c` no longer includes `compiler_fixture.h` or `authoring/source_package_prepare.h`. Seven cases compiled `project:sequences` sources through stage zero and called them on each backend: sequence values copying at ownership boundaries, scoped lent locals, strict sequence ranges, pointer views following rebinding, sequence-place evaluation order, calls lending arguments (callees copying writes), and lent records copying nothing. Deleted; the hand-built-module cases in the file remain.
+
+## native_census.c no longer uses compiler_fixture
+
+The census loads the compiler with `compiler_bootstrap_load` (the sources on disk, recovered from the checked-in seed) and runs `CollectScalar` through `compiler_host_invoke` with the target taken from `compiler_target_json`, instead of preparing the compiler with stage zero. Report format and flattening are unchanged. Not run locally when it landed (all heavy slots were held); the first run of `--native-census-flattening` verifies it.
+
+## Stage-zero bootstrap lane removed (package_compiler_chibi.c)
+
+`package_compiler_compiles_itself` (`--package-compiler-chibi-bootstrap`, `make test-bootstrap`) had stage zero prepare stage one, compile the compiler sources to stage two, and compare stage one and stage two byte for byte on every sample. `chibi build bootstrap-artifact` now writes the seed from recovery's fixed point (seed -> stage one -> stage two, `--recover`), which checks the same fixed point without stage zero. Not re-covered: stage one against stage zero on the samples.
+
+## package_compiler_chibi.c reduced to the native and scalar lanes
+
+Deleted (stage zero prepared the compiler, then each lane compared the authored compiler with stage zero or ran its output): the plain, `_compiled`, `_types`, `_types_compiled`, `_collections`, `_collections_compiled`, `_imports`, `_imports_compiled`, `_fallible`, `_literals`, `_behaviors`, `_behaviors_rest`, `_actions`, `_queries`, `_libraries`, `_sharing`, `_debug_free` and `_math_native` selectors, and the `_records` lane with `compositional_records.c` (archived, with its source header and `Values.chibi`). The authored `@test` suites under `tools/compiler` and `chibi test` cover the compiler's own behavior; not re-covered: authored-compiler output executing on both backends against the same sample tables. Kept for now, still on `compiler_fixture`: `--package-compiler-chibi-scalar`, `--package-compiler-chibi-native` (+ `-native-call`) and `--package-compiler-chibi-native-arguments`.
+
+## Emitter regressions now run under chibi-test-compiler
+
+The authored emitter `@test`s moved from `test/native_aot/emitter_calls` and `test/native_aot/emitter` to `tools/compiler/llvm_native/tests` and `tools/compiler/native_abi/tests`, so `chibi test tools/compiler` (`chibi-test-compiler`) runs them; before, only the stage-zero `compiler_fixture_tests` ran them (and the orphaned `Tests() -> int` group ran nowhere), so they had drifted and were fixed (typed string constants became functions, `Emit`'s arity). The two C emitter cases `native_libraries_export_words` and `native_strings_emit` became `Libraries.chibi` and `Strings.chibi` there. The C lane `--package-compiler-chibi-native-arguments` was deleted: `test/compiler/samples/native_arguments` (`chibi-test-samples-native-arguments`) covers the authored side; the stage-zero reference comparison is gone.
+
+## compiler_fixture and the stage-zero scalar lane
+
+`test/language/compiler_fixture.[ch]` (stage-zero preparation of authored packages, `pin_value` calls, record shapes read from `authoring_packages` metadata, its ownership self-tests and `--compiler-fixture`) are archived. The kept lanes in `package_compiler_chibi.c` now go through `test/language/scalar_host.c`: the producer is the compiler `compiler_bootstrap_load` recovers (the same one the census uses), the consumer packages compile to one closure behind a small root package, and rows cross as JSON, read back as `scalar_facts.Row` records. Each lane runs on the host's one backend rather than on bytecode and SLJIT alternately. Changes in coverage: the two-libraries-in-one-source rejection (it expected stage zero's "Unexpected syntax"; the authored parser accepts it) is gone, and the "rows outlive the producer" assertions now only check that rows live in the caller's arena. `--package-compiler-chibi-scalar` passes (6 of 6) here; the Linux x86-64 native lane compiles but could only be syntax-checked on this host.
+
+## Visual catalogs, UI documents and text editing (second engine tranche)
+
+Archived because no toolchain program (`chibi`, `chibi-compile`, `chibi-build-host`, `chibi-compiler-host`) or retained test links them, and the editor that used them is separate:
+
+- `src/runtime/{shaders,models,images,geometry,scenes}`: shader programs and detail/effects/volume/image inspection, model bounds/hits/frames/parameters/lifecycle/inspection/finite checks, the image and sky catalogs, mesh assets and picking, scene instantiation and snapshots. Lost: running or inspecting any of these from C; the matching prepared artifact formats (`parts`, `image`, `sky`, `shader_values`) no longer appear in the build identity.
+- `src/render` (`scene3d_parts`, `shader_catalog`, `shader_values`): the render-side catalogs.
+- `src/assets/ui_document`, `ui_events`, `src/ui`: UI document composition, bindings and events.
+- `src/support/{rcss,rcss_map,text_edit,text_overlay,text_search,text_file,file_watch}`: RCSS expansion, editor text edits and unsaved-text overlay, text search and file reads, and the polling file watcher (hot reload watches files from Chibi instead).
+- Tests: `test/runtime/ui_document.c`, `test/support/{rcss,text_overlay,file_watch}.c` and `test/tools/scene.c`, with selectors `--ui-document`, `--text-files` and `--scene`.
+- Graph targets `chibi_visual_catalog`, `chibi_shader_runtime`, `chibi_model_runtime`, `chibi_image_catalog`, `chibi_mesh_runtime`, `chibi_scene_runtime`, `chibi_ui_document`, `chibi_ui_document_values`, `chibi_ui_authoring`, `chibi_text_source`, `chibi_text_search` and the `chibi_scene_consumer` and `chibi_ui_document_consumer` programs.
+
+## The source registry runtime (src/runtime/behaviors)
+
+`source.[ch]`, `source_internal.h`, `source_publication.c` and `source_profile.c` (the registry that attached stage-zero-era behavior modules to entities, ran their systems and published edits for Studio Live), `package_stage`/`package_stage_budget`/`package_load` in `package.[ch]`, and `test/language/headless_consumer.[ch]` with its `test_behavior_consumer` target are archived. Kept: `package.c`'s read side (`package_read_budget`, `package_collection`), `module_set.c` and `event_catalog.c`. Not re-covered: registration ownership, Begin/Tick/Destroy payload dispatch and removal through the registry (the headless consumer's two cases). Edit and Continue is proven through `authoring/program.c` (`execution_program_prepare_replace`), not through the registry.

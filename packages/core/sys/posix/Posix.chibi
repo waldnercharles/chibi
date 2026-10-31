@@ -7,6 +7,7 @@ import target "core:target"
 // the call's stack buffer (see "Foreign libraries" in docs/code-language.md),
 // so a path of 4096 bytes or more traps. A call that fails returns its libc
 // result unchanged: 0 for success, -1 for failure; errno is not read yet.
+// Getenv, which builds a string from C bytes, waits for allocating text natively.
 //
 // The stat layout below is Linux x86-64's, and Darwin's when the compile
 // supplies it.
@@ -21,9 +22,6 @@ foreign libc {
     rename :: (source: cstring, destination: cstring) -> i32
     stat :: (path: cstring, buffer: u8[]) -> i32
     lstat :: (path: cstring, buffer: u8[]) -> i32
-    getenv :: (name: cstring) -> rawptr
-    strlen :: (text: rawptr) -> u64
-    memcpy :: (destination: u8[], source: rawptr, count: u64) -> rawptr
 }
 
 pub KindNone: int : 0;
@@ -103,19 +101,4 @@ pub Remove :: (path: string) -> bool {
 
 pub Rename :: (source: string, destination: string) -> bool {
     return rename(source, destination) == 0;
-}
-
-// The environment variable's value, "" when it is unset.
-pub Getenv :: (name: string) -> string {
-    value := getenv(name);
-    if value == 0 {
-        return "";
-    }
-    size := strlen(value);
-    buffer: u8[] = [];
-    for index in 0..<int(size) {
-        buffer.append(0);
-    }
-    memcpy(buffer, value, size);
-    return text_from_bytes(buffer);
 }

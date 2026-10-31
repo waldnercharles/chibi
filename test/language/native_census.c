@@ -22,6 +22,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +68,8 @@ static const char
  * call it cannot resolve. */
 static const char PRODUCER[] = "scalar proof ";
 static const char UNKNOWN[] = "Unknown function '";
+static const char SIGNATURE[] = "scalar proof requires number, bool, string, "
+                                "record or union parameters";
 enum
 {
     REJECTION_ROW = 1 /* scalar_facts.RejectionRow */
@@ -1012,6 +1015,12 @@ static bool census_function(int function)
         int missing = accepted || starts(message, PRODUCER)
                         ? -1
                         : omitted_call(&build, functions, start, end);
+        /* A pointer parameter is scoped only when its body passes it on to
+         * functions that use it so, which the census has to include to see: a
+         * signature the producer rejects follows every call omitted so far. */
+        if (!accepted && missing < 0 && starts(message, SIGNATURE)) {
+            missing = omitted_call(&build, functions, 0, INT_MAX);
+        }
         if (missing < 0) {
             break;
         }
@@ -1019,6 +1028,14 @@ static bool census_function(int function)
         free(message);
         message = NULL;
         build_free(&build);
+    }
+    if (getenv("CHIBI_CENSUS_SOURCE")) {
+        fprintf(
+            stderr,
+            "census source of %s:\n%s\n",
+            decls[function].name,
+            build.text
+        );
     }
     census_row row = { .function = decls[function].name,
                        .path = files[decls[function].source].path,
@@ -1435,9 +1452,41 @@ void test_language_native_census_flattening()
     RUN_TEST_CASE(native_census_flattens_imports_and_constants);
     cleanup();
 }
+/* CHIBI_CENSUS_ONLY=Name[,Name...] runs the census over those functions alone
+ * and prints each row's message; with CHIBI_CENSUS_SOURCE it prints the source
+ * the producer read. A way to see why one function stops. */
+static bool census_only(const char *names)
+{
+    REQUIRE(prepare() && load(SOURCES, SOURCE_COUNT));
+    char *list = strdup(names);
+    for (char *name = strtok(list, ","); name; name = strtok(NULL, ",")) {
+        int declared = decl_named(name);
+        if (declared < 0) {
+            fprintf(stderr, "no declaration named %s among %d\n", name, acount(decls));
+            continue;
+        }
+        REQUIRE(census_function(declared));
+        const census_row *r = &rows[acount(rows) - 1];
+        fprintf(
+            stderr,
+            "%s: %s | %s\n",
+            r->function,
+            r->message ? r->message : "passes",
+            r->excerpt ? r->excerpt : ""
+        );
+    }
+    free(list);
+    forget_rows();
+    return true;
+}
 void test_language_native_census(const char *report)
 {
     report_path = report;
+    if (getenv("CHIBI_CENSUS_ONLY")) {
+        census_only(getenv("CHIBI_CENSUS_ONLY"));
+        cleanup();
+        return;
+    }
     RUN_TEST_CASE(native_census_flattens_imports_and_constants);
     RUN_TEST_CASE(native_census_follows_calls_into_their_blockers);
     RUN_TEST_CASE(native_census_covers_every_compiler_function);

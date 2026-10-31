@@ -687,6 +687,21 @@ WindowsArguments :: () -> string {
     ]);
 }
 
+// What a start module for `triple` imports from system libraries: on Windows
+// the kernel32 functions its `declare dllimport` lines name, with or without
+// a context, which the link's kernel32 stub exports. Other start modules take
+// theirs from the C library. A test holds this list to the modules.
+pub StartImports :: (triple: string) -> Import {
+    if (TargetOf(triple) != WindowsX64) {
+        none: Import = {name: "", symbols: []};
+        return none;
+    }
+    kernel32: Import = {name: "kernel32",
+                        symbols: ["ExitProcess", "GetCommandLineW", "GetProcessHeap", "HeapAlloc", "GetStdHandle",
+                                  "WriteFile"]};
+    return kernel32;
+}
+
 pub Start :: (triple: string, static: bool, context: bool) -> string {
     module := Module(triple, static, context);
     if (module == "") {

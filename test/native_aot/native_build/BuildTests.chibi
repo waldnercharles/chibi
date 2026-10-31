@@ -337,10 +337,11 @@ LinksMacOSAndWindowsPrograms :: (suite: Suite) {
     assert(result.status == 0, "the macOS program builds");
     folder := Only(built, "O0-", "");
     assert(Printed(result) == Path([folder, "/program"]), "the printed macOS program");
-    link := Path(["-flavor\ndarwin\n-arch\narm64\n-platform_version\nmacos\n11.0.0\n11.0.0\n-dead_strip\n-e\n_main\n",
-                  folder, ".partial/object.o\n", folder, ".partial/start.o\n", folder, ".partial/libSystem.tbd\n-o\n", folder, ".partial/program\n"]);
+    link := Path(["-flavor\ndarwin\n-arch\narm64\n-platform_version\nmacos\n11.0.0\n11.0.0\n-dead_strip\n-undefined\n",
+                  "dynamic_lookup\n-e\n_main\n-o\n", folder, ".partial/a.out\n", folder, ".partial/object.o\n", folder,
+                  ".partial/start.o\n", folder, ".partial/System.tbd\n"]);
     assert(Read(Path([built.tools, "/ld.lld.argv"])) == link, "the macOS link");
-    assert(Holds(Path([folder, "/libSystem.tbd"]), "install-name: '/usr/lib/libSystem.B.dylib'\n"), "the libSystem stub");
+    assert(Holds(Path([folder, "/System.tbd"]), "install-name: '/usr/lib/libSystem.B.dylib'\n"), "the libSystem stub");
     assert(Holds(Path([folder, "/start.ll"]), "target triple = \"arm64-apple-macosx11.0.0\""), "the macOS start module");
     assert(Holds(Path([folder, "/start.ll"]), "define i32 @main(i32 %argc, ptr %argv, ptr %envp) {"), "dyld calls main with the arguments");
     assert(Holds(Path([folder, "/source.ll"]), "target triple = \"arm64-apple-macosx11.0.0\""), "the macOS module");
@@ -354,8 +355,9 @@ LinksMacOSAndWindowsPrograms :: (suite: Suite) {
     folder = strings.TrimSuffix(program, "/program.exe");
     imports := Path(["-flavor\nlink\n/lib\n/nologo\n/def:", folder, ".partial/kernel32.def\n/machine:x64\n/out:", folder, ".partial/kernel32.lib\n"]);
     assert(Read(Path([built.tools, "/ld.lld.lib.argv"])) == imports, "the import library");
-    link = Path(["-flavor\nlink\n/nologo\n/subsystem:console\n/entry:mainCRTStartup\n/nodefaultlib\n/opt:ref\n/out:", folder,
-                 ".partial/program.exe\n", folder, ".partial/object.o\n", folder, ".partial/start.o\n", folder, ".partial/kernel32.lib\n"]);
+    link = Path(["-flavor\nlink\n/nologo\n/subsystem:console\n/machine:x64\n/opt:ref\n/Brepro\n/out:", folder,
+                 ".partial/a.exe\n/nodefaultlib\n/entry:mainCRTStartup\n", folder, ".partial/object.o\n", folder,
+                 ".partial/start.o\n", folder, ".partial/kernel32.lib\n"]);
     assert(Read(Path([built.tools, "/ld.lld.argv"])) == link, "the Windows link");
     assert(Holds(Path([folder, "/kernel32.def"]), "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n"), "the kernel32 definition");
     for (text in ["call void @ExitProcess(i32 %status)", "module asm \"__chkstk:\"", "@_fltused = dso_local global i32 0"]) {
@@ -870,7 +872,7 @@ ImportsFromAWindowsSystemLibrary :: (suite: Suite) {
     windows := CrossTargets()[1];
     assert(ExecutableFor(program, windows), "a Windows program");
     folder := strings.TrimSuffix(program, "/program.exe");
-    assert(Holds(Path([folder, "/kernel32.def"]), "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCommandLineW\n    GetCurrentProcessId\n    GetTickCount\n"), "the import definition");
+    assert(Holds(Path([folder, "/kernel32.def"]), "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCommandLineW\n    GetProcessHeap\n    HeapAlloc\n    GetStdHandle\n    WriteFile\n    GetCurrentProcessId\n    GetTickCount\n"), "the import definition");
     assert(Holds(program, "GetCurrentProcessId") && Holds(program, "GetTickCount"), "the import table");
     BundleProgram(program, windows, "windows-imports.exe");
     result = Build(suite, suite.built, built, ["-O0"]);

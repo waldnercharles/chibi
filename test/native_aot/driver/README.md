@@ -70,19 +70,23 @@ executes fixed argument vectors:
    lowers a dense switch through, cannot link into the shared libraries the
    native tests load.
 4. For `Build` only: the same `llc` arguments on the generated `start.ll`,
-   giving `start.o`, then the target's link:
+   giving `start.o`, then the target's link, whose vectors, stubs and import
+   definitions come from `native_link` (`tools/compiler/native_link/README.md`),
+   as they do for `native_driver`. The linker writes `a.out` (`a.exe`) in the
+   partial folder, which the driver renames to `program` (`program.exe`):
    - Linux x86-64:
-     `ld.lld -flavor gnu -static --gc-sections -e _start object.o start.o -o program`.
+     `ld.lld -flavor gnu -static --gc-sections -e _start -o a.out object.o start.o`.
    - macOS arm64: `ld.lld -flavor darwin -arch arm64 -platform_version macos
-     11.0.0 11.0.0 -dead_strip -e _main object.o start.o libSystem.tbd -o
-     program`.
+     11.0.0 11.0.0 -dead_strip -undefined dynamic_lookup -e _main -o a.out
+     object.o start.o System.tbd`.
    - Windows x64: `ld.lld -flavor link /lib /nologo /def:kernel32.def
      /machine:x64 /out:kernel32.lib`, then `ld.lld -flavor link /nologo
-     /subsystem:console /entry:mainCRTStartup /nodefaultlib /opt:ref
-     /out:program.exe object.o start.o kernel32.lib`.
+     /subsystem:console /machine:x64 /opt:ref /Brepro /out:a.exe
+     /nodefaultlib /entry:mainCRTStartup object.o start.o kernel32.lib`.
 
-   The driver runs the linker it resolved, which may be lld's generic driver,
-   so it names the flavor rather than relying on the `ld.lld` name.
+   The driver runs the linker it resolved, which may be lld's generic driver;
+   `native_link`'s vectors name the flavor rather than relying on the
+   `ld.lld` name.
 
 The accepted Linux data layout is
 `e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128`.
@@ -143,17 +147,19 @@ The other targets need no SDK of their own system:
 - macOS arm64: `start.ll` defines `main`, which returns `chibi_scalar()`;
   dyld calls it through `LC_MAIN` and exits with its result. A program that
   allocates gets the same context a dynamically linked Linux program does,
-  with libSystem's `calloc`. The program links against `libSystem.tbd`, a text
+  with libSystem's `calloc`. The program links against `System.tbd`, a text
   stub that names `/usr/lib/libSystem.B.dylib`, as Zig's stubs stand in for the
   SDK. It exports the functions the module declares, which its foreign calls
   name, with `abort`, `calloc`, `dprintf`, the copies `llc` may call and
   `dyld_stub_binder`, and dyld binds them in libSystem, which re-exports the C
-  library. The SDK's own stub is not used: newer SDKs name architectures that
+  library; a vendored archive's own imports are looked up when the program
+  runs (`-undefined dynamic_lookup`). The SDK's own stub is not used: newer SDKs name architectures that
   older lld rejects. Every macOS process loads `libSystem`, and lld signs
   arm64 output ad hoc, which the kernel requires.
 - Windows x64: `start.ll` defines `mainCRTStartup`, which passes
   `chibi_scalar()` to `ExitProcess`, imported through a `kernel32.lib` that
-  lld writes from a one-line `.def` file, as rustc's `raw-dylib` does. It also
+  lld writes from a `.def` file of what the start module and the program
+  import, as rustc's `raw-dylib` does. It also
   defines `_fltused`, which code using floating point references, and
   `__chkstk`, the stack probe Windows code calls for a frame larger than a
   page: compiler-rt's, which touches each page from the top of the frame down.

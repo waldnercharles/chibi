@@ -32,26 +32,39 @@ pub Error :: struct {
     code: int;
 }
 
+// A system library and the symbols a program takes from it: `System` or a
+// library's name on macOS, a DLL's name without `.dll` on Windows.
+pub Import :: struct {
+    name: string;
+    symbols: string[];
+}
+
 // The program to build. `objects` define the platform's entry: `main` when
 // the C library starts the program, `_start` (Windows: mainCRTStartup) when
 // `static` is set and nothing but the objects and archives runs. `archives`
 // are vendored libraries, linked after the objects. `libraries` name system
 // libraries without a prefix or suffix: `m` and `pthread` on Linux, `c++` or
-// `framework:Cocoa` on macOS, `user32.lib` on Windows. `libpaths` add folders
-// the Windows linker searches. `work` is a folder this plan may write stubs
-// into; `libc` and `interpreter` (Linux, not static) come from Discover.
+// `framework:Cocoa` on macOS, `user32.lib` on Windows. `imports` name the
+// symbols the program takes from system libraries: a macOS stub exports them,
+// so dyld binds them in that library, and a Windows import library is written
+// from them. `libpaths` add folders the Windows linker searches. `work` is a
+// folder this plan may write stubs into; `libc` and `interpreter` (Linux, not
+// static) come from Discover. `shared` links a Linux shared library of the
+// objects instead of a program.
 pub Plan :: struct {
     triple: string;
     llvm: string;
     objects: string[];
     archives: string[];
     libraries: string[];
+    imports: Import[];
     libpaths: string[];
     output: string;
     work: string;
     libc: string;
     interpreter: string;
     static: bool;
+    shared: bool;
 }
 
 // A plan for the program of these objects and archives: dynamically linked
@@ -59,8 +72,9 @@ pub Plan :: struct {
 // found when the plan is linked.
 pub Program :: (triple: string, llvm: string, objects: string[], archives: string[], libraries: string[],
                 libpaths: string[], output: string, work: string, static: bool) -> Plan {
-    plan: Plan = {triple: triple, llvm: llvm, objects: objects, archives: archives, libraries: libraries,
-                  libpaths: libpaths, output: output, work: work, libc: "", interpreter: "", static: static};
+    plan: Plan = {triple: triple, llvm: llvm, objects: objects, archives: archives, libraries: libraries, imports: [],
+                  libpaths: libpaths, output: output, work: work, libc: "", interpreter: "", static: static,
+                  shared: false};
     return plan;
 }
 
@@ -103,16 +117,12 @@ pub ObjectCommand :: (llc: string, module: string, object: string, level: int) -
 }
 
 // A macOS dylib's stub for lld: a text file naming the library the program
-// loads and, for libSystem, the binder dyld's lazy stubs call. Symbols the
-// program takes from a library are looked up when it runs, so a stub lists no
-// others; this is how a link needs no SDK of its own.
-pub Stub :: (install: string, binder: bool) -> string {
-    symbols := "";
-    if (binder) {
-        symbols = "dyld_stub_binder";
-    }
+// loads and the symbols dyld binds in it. Symbols no stub lists are looked up
+// when the program runs (`-undefined dynamic_lookup`), as a vendored archive's
+// are; this is how a link needs no SDK of its own.
+pub Stub :: (install: string, symbols: string[]) -> string {
     return Join(["--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '", install,
-                 "'\nexports:\n  - targets: [ arm64-macos ]\n    symbols: [ ", symbols, " ]\n...\n"]);
+                 "'\nexports:\n  - targets: [ arm64-macos ]\n    symbols: [ ", strings.Join(symbols, ", "), " ]\n...\n"]);
 }
 
 // Where the dylib a library name stands for lives on a Mac.
@@ -135,30 +145,235 @@ pub StubPath :: (work: string, dependency: string) -> string {
     return Join([work, "/", strings.ReplaceAll(strings.ReplaceAll(dependency, ":", "-"), "+", "p"), ".tbd"]);
 }
 
-// Windows programs that run without the C runtime import kernel32 through a
-// library written from a definition file, as rustc's raw-dylib writes them.
-pub Kernel32Definition :: () -> string {
-    return "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCommandLineW\n    GetProcessHeap\n    HeapAlloc\n    GetStdHandle\n    WriteFile\n";
+// The import definition of the DLL `name`, from which lld-link writes its
+// import library, as rustc writes raw-dylib imports, so no Windows SDK is read.
+pub Definition :: (name: string, symbols: string[]) -> string {
+    lines: string[] = [Join(["LIBRARY ", name, ".dll\nEXPORTS\n"])];
+    for (symbol in symbols) {
+        lines.append(Join(["    ", symbol, "\n"]));
+    }
+    return Join(lines);
 }
 
-// The argument vector that links the plan's program to `to`: the file the
-// linker writes, which Link publishes as the plan's output.
+// Whether `value` spells a library or symbol name a definition can hold:
+// letters, digits and `_ . - @ $`.
+pub ImportName :: (value: string) -> bool {
+    if (value == "") {
+        return false;
+    }
+    for (byte in strings.Bytes(value)) {
+        // Stage one has no character literals: 95 is `_`, 46 `.`, 45 `-`,
+        // 64 `@` and 36 `$`.
+        word := byte == 95 || (byte >= 48 && byte <= 57) || (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122);
+        if (!word && byte != 46 && byte != 45 && byte != 64 && byte != 36) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The system libraries a module's IR imports from, other than libc, once each
+// in order: `; chibi-library system:NAME` names one and
+// `; chibi-import system:NAME SYMBOL` a symbol of it. The symbols are gathered
+// as (library, symbol) pairs first, so no library's list is copied as it
+// grows; a module names a few libraries, so each pair searches them in turn
+// and each library's symbols are one pass over the pairs.
+pub SystemImports :: (lines: string[]) -> Import[] {
+    names: string[] = [];
+    owners: int[] = [];
+    symbols: string[] = [];
+    seen: [string: bool] = [:];
+    named := "; chibi-library system:";
+    imports := "; chibi-import system:";
+    for (line in lines) {
+        library_name := "";
+        symbol := "";
+        if (strings.HasPrefix(line, named)) {
+            library_name = strings.TrimPrefix(line, named);
+        } else if (strings.HasPrefix(line, imports)) {
+            rest := strings.TrimPrefix(line, imports);
+            space := strings.Index(rest, " ");
+            if (space < 0) {
+                continue;
+            }
+            library_name = strings.Slice(rest, 0, space);
+            symbol = strings.Slice(rest, space + 1, strings.ByteLength(rest) - space - 1);
+        } else {
+            continue;
+        }
+        if (library_name == "c") {
+            continue;
+        }
+        at := -1;
+        for (index in 0..<length(names)) {
+            if (names[index] == library_name) {
+                at = index;
+            }
+        }
+        if (at < 0) {
+            names.append(library_name);
+            at = length(names) - 1;
+        }
+        key := Join([library_name, " ", symbol]);
+        if (symbol != "" && !seen.has(key)) {
+            seen[key] = true;
+            owners.append(at);
+            symbols.append(symbol);
+        }
+    }
+    found: Import[] = [];
+    for (index in 0..<length(names)) {
+        listed: string[] = [];
+        for (pair in 0..<length(owners)) {
+            if (owners[pair] == index) {
+                listed.append(symbols[pair]);
+            }
+        }
+        imported: Import = {name: names[index], symbols: listed};
+        found.append(imported);
+    }
+    return found;
+}
+
+// The index of the library `name` in `imports`, -1 when it is not there.
+Find :: (imports: Import[], name: string) -> int {
+    for (index in 0..<length(imports)) {
+        if (imports[index].name == name) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+// The libraries a plan's link writes stubs for in `work`, in link order, each
+// with the symbols it exports. macOS: libSystem, which dyld requires of every
+// program and whose stub exports dyld's binder, then each of `libraries`.
+// Windows: kernel32 with what the start module imports, when `static`. Then,
+// on both, the plan's imports; Linux links none.
+pub Imports :: (plan: Plan) -> Import[] {
+    target := TargetOf(plan.triple);
+    found: Import[] = [];
+    if (target == MacOSArm64) {
+        libsystem: Import = {name: "System", symbols: ["dyld_stub_binder"]};
+        found.append(libsystem);
+        for (dependency in plan.libraries) {
+            if (Find(found, dependency) < 0) {
+                dependent: Import = {name: dependency, symbols: []};
+                found.append(dependent);
+            }
+        }
+    } else if (target == WindowsX64) {
+        if (plan.static) {
+            found.append(StartImports(plan.triple));
+        }
+    } else {
+        return found;
+    }
+    // A macOS program may import thousands of symbols, so duplicates are found
+    // by key.
+    seen: [string: bool] = [:];
+    for (listed in found) {
+        for (symbol in listed.symbols) {
+            seen[Join([listed.name, " ", symbol])] = true;
+        }
+    }
+    for (imported in plan.imports) {
+        at := Find(found, imported.name);
+        if (at < 0) {
+            added: Import = {name: imported.name, symbols: []};
+            found.append(added);
+            at = length(found) - 1;
+        }
+        changed := found[at];
+        symbols := changed.symbols;
+        for (symbol in imported.symbols) {
+            key := Join([imported.name, " ", symbol]);
+            if (!seen.has(key)) {
+                seen[key] = true;
+                symbols.append(symbol);
+            }
+        }
+        changed.symbols = symbols;
+        found[at] = changed;
+    }
+    return found;
+}
+
+// The file a stub of Imports is written to: a text stub on macOS, an import
+// definition on Windows.
+pub ImportPath :: (plan: Plan, name: string) -> string {
+    if (TargetOf(plan.triple) == WindowsX64) {
+        return Join([plan.work, "/", name, ".def"]);
+    }
+    return StubPath(plan.work, name);
+}
+
+pub ImportText :: (plan: Plan, stub: Import) -> string {
+    if (TargetOf(plan.triple) == WindowsX64) {
+        return Definition(stub.name, stub.symbols);
+    }
+    return Stub(InstallName(stub.name), stub.symbols);
+}
+
+// The import library lld-link writes from a Windows stub's definition.
+pub ImportLibrary :: (plan: Plan, name: string) -> string {
+    return Join([plan.work, "/", name, ".lib"]);
+}
+
+// The command that turns a stub into what the link reads, after ImportText
+// is written: lld-link's import library on Windows, none (an empty vector) on
+// macOS, which links the stub itself.
+pub ImportCommand :: (plan: Plan, name: string) -> string[] {
+    if (TargetOf(plan.triple) != WindowsX64) {
+        return [];
+    }
+    return [Join([plan.llvm, "/lld-link"]), "-flavor", "link", "/lib", "/nologo",
+            Join(["/def:", ImportPath(plan, name)]), "/machine:x64", Join(["/out:", ImportLibrary(plan, name)])];
+}
+
+// The file the linker writes in `work`, which Link publishes as the plan's
+// output. It has the same name whatever the program is called: a macOS
+// ad-hoc signature carries it, and two links of the same inputs give the
+// same bytes.
+pub Partial :: (plan: Plan) -> string {
+    if (TargetOf(plan.triple) == WindowsX64) {
+        return Join([plan.work, "/a.exe"]);
+    }
+    return Join([plan.work, "/a.out"]);
+}
+
+// Where a Linux system keeps the C library's start files and development
+// library, the files that must all be there, and the dynamic linker's paths,
+// in the order they are tried.
+pub LibcFolders :: () -> string[] {
+    return ["/usr/lib/x86_64-linux-gnu", "/usr/lib64", "/lib/x86_64-linux-gnu", "/usr/lib"];
+}
+pub LibcFiles :: () -> string[] {
+    return ["crt1.o", "crti.o", "crtn.o", "libc.so"];
+}
+pub Interpreters :: () -> string[] {
+    return ["/lib64/ld-linux-x86-64.so.2", "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2", "/usr/lib64/ld-linux-x86-64.so.2"];
+}
+
+// The argument vector that links the plan's program to `to`, Partial(plan)
+// when Link runs it. Each vector names its flavor, so any of lld's names,
+// or lld itself, may run in place of the first argument.
 pub Command :: (plan: Plan, to: string) -> string[] {
     target := TargetOf(plan.triple);
     linker := Join([plan.llvm, "/", Linker(target)]);
     if (target == MacOSArm64) {
-        command := [linker, "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0", "-dead_strip",
-                    "-undefined", "dynamic_lookup", "-e", "_main", "-o", to];
+        command := [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
+                    "-dead_strip", "-undefined", "dynamic_lookup", "-e", "_main", "-o", to];
         command.extend(plan.objects);
         command.extend(plan.archives);
-        command.append(StubPath(plan.work, "System"));
-        for (dependency in plan.libraries) {
-            command.append(StubPath(plan.work, dependency));
+        for (stub in Imports(plan)) {
+            command.append(StubPath(plan.work, stub.name));
         }
         return command;
     }
     if (target == WindowsX64) {
-        command := [linker, "/nologo", "/subsystem:console", "/machine:x64", "/opt:ref", "/Brepro", Join(["/out:", to])];
+        command := [linker, "-flavor", "link", "/nologo", "/subsystem:console", "/machine:x64", "/opt:ref", "/Brepro",
+                    Join(["/out:", to])];
         if (plan.static) {
             command.extend(["/nodefaultlib", "/entry:mainCRTStartup"]);
         }
@@ -167,14 +382,20 @@ pub Command :: (plan: Plan, to: string) -> string[] {
         }
         command.extend(plan.objects);
         command.extend(plan.archives);
-        if (plan.static) {
-            command.append(Join([plan.work, "/kernel32.lib"]));
+        for (stub in Imports(plan)) {
+            command.append(ImportLibrary(plan, stub.name));
         }
         command.extend(plan.libraries);
         return command;
     }
+    if (plan.shared) {
+        command := [linker, "-flavor", "gnu", "-shared", "--gc-sections", "-o", to];
+        command.extend(plan.objects);
+        command.extend(plan.archives);
+        return command;
+    }
     if (plan.static) {
-        command := [linker, "-static", "--gc-sections", "-e", "_start", "-o", to];
+        command := [linker, "-flavor", "gnu", "-static", "--gc-sections", "-e", "_start", "-o", to];
         command.extend(plan.objects);
         command.extend(plan.archives);
         for (dependency in plan.libraries) {
@@ -182,7 +403,7 @@ pub Command :: (plan: Plan, to: string) -> string[] {
         }
         return command;
     }
-    command := [linker, "--dynamic-linker", plan.interpreter, "--gc-sections", "-o", to,
+    command := [linker, "-flavor", "gnu", "--dynamic-linker", plan.interpreter, "--gc-sections", "-o", to,
                 Join([plan.libc, "/crt1.o"]), Join([plan.libc, "/crti.o"])];
     command.extend(plan.objects);
     command.extend(plan.archives);
@@ -193,4 +414,3 @@ pub Command :: (plan: Plan, to: string) -> string[] {
     command.extend(["-lc", Join([plan.libc, "/crtn.o"])]);
     return command;
 }
-

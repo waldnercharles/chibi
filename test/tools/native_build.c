@@ -1645,11 +1645,15 @@ TEST_CASE(native_build_links_core_sys_windows)
  * in its own forked process: the parent keeps no state a case changes. */
 static bool run_forked(const char *const names[], bool (*const cases[])(void), int count, int workers)
 {
-    pid_t running[16];
-    int slot_case[16];
-    bool passed[16] = { false };
+    enum
+    {
+        MAX_CASES = 32
+    };
+    pid_t running[MAX_CASES];
+    int slot_case[MAX_CASES];
+    bool passed[MAX_CASES] = { false };
     int started = 0, active = 0, finished = 0;
-    assert(count <= 16 && workers <= 16);
+    assert(count <= MAX_CASES && workers <= MAX_CASES);
     memset(running, 0, sizeof running);
     while (finished < count) {
         for (int slot = 0; slot < workers && started < count && active < workers;

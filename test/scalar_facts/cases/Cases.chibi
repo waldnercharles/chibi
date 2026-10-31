@@ -103,7 +103,7 @@ Cases :: () -> Case[] {
         Rejected("parameter", "package scalar\nMain :: (x: int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: int)"),
         Rejected("scoped pointer entry", "package scalar\nMain :: (x: ^int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: ^int)"),
         Accepted("scoped pointer read", "package scalar\nMain :: () -> int { v := 41; return Next(&v); }\nNext :: (x: ^int) -> int { return x^ + 1; }", 42, "Main,Next", ""),
-        Rejected("scoped pointer write", "package scalar\nMain :: () -> int { v := 41; return Bump(&v); }\nBump :: (x: ^int) -> int { x^ += 1; return x^; }", "scalar proof does not write through pointer 'x' yet", "{ x^ += 1; return x^; }"),
+        Accepted("scoped pointer write", "package scalar\nMain :: () -> int { v := 41; return Bump(&v); }\nBump :: (x: ^int) -> int { x^ += 1; return x^; }", 42, "Main,Bump", ""),
         Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int", "bool"),
         Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int", "i64"),
         
@@ -507,10 +507,11 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: i64[]) -
         }
     }
 }
-// Whether a module has an Array row.
+// Whether a module has an Array row or a reference, which the recorded
+// evaluation does not model.
 Arrayed :: (rows: facts.Row[]) -> bool {
     for (row in rows) {
-        if (row.kind == facts.ArrayRow) {
+        if (row.kind == facts.ArrayRow || row.kind == facts.RefRow) {
             return true;
         }
     }
@@ -622,7 +623,7 @@ pub Check :: (rows: facts.Row[]) -> int {
         } // "the evaluation does not model u64"
     }
     empty: i64[] = [];
-    // Arrays and loops are evaluated by the VMs and the native code, which
+    // Arrays, references and loops are evaluated by the VMs and the native code, which
     // must give the case's value; this evaluation covers straight-line rows.
     if (!Arrayed(rows) && Evaluate(rows, Heads(rows), 0, empty) != i64(expected.value)) {
         return -9;

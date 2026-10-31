@@ -475,7 +475,7 @@ ScalarSpelled :: (left: int, right: int) -> int {
 // `context`, 0 when there is none.
 ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, context: int) -> int {
-    node := Unparenthesized(forest, operand);
+    node := ScalarTarget(forest, operand);
     if (Is(forest, node, "unary_expression") && Text(forest, text, Field(forest, node, "operator")) == "+") {
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, "operand"),
                                     context);
@@ -574,6 +574,15 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     }
     return IntStorage;
 }
+// `operand` without parentheses, and a scoped parameter's `p^` as `p`: a
+// returned dereference keeps its node, but reads the parameter all the same.
+ScalarTarget :: (forest: snapshot.SnapshotNode[], operand: int) -> int {
+    node := Unparenthesized(forest, operand);
+    if (Is(forest, node, "dereference_expression") && Is(forest, Field(forest, node, "operand"), "identifier")) {
+        return Field(forest, node, "operand");
+    }
+    return node;
+}
 // Appends the operand rows of `node`, an expression where storage `expected`
 // is the context, after `rows`, in evaluation order: a call's arguments left
 // to right, then the call. The rows give it the storage ScalarOperandStorage
@@ -583,7 +592,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
 // argument and result types.
 ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, expected: int, rows: facts.Row[]) -> ScalarOperands {
-    node := Unparenthesized(forest, operand);
+    node := ScalarTarget(forest, operand);
     if (Is(forest, node, "unary_expression") && Text(forest, text, Field(forest, node, "operator")) == "+") {
         return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, "operand"),
                              expected, rows);
@@ -2287,10 +2296,27 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
             // A retained local reads and writes its state, which the facts carry.
-            if ((length(retained) == 0 && (effects != 0 || direct_write != 0)) || !ScalarHosts(hosts, roots) ||
-                !ScalarCells(cells, calls, hosts, AnyReference(params))) {
+            // A write through a scoped parameter the module passes by reference
+            // changes the caller's variable, which the facts carry.
+            permitted: int = 0;
+            for (param in params) {
+                if (param.written) {
+                    permitted = WriteEffect;
+                }
+            }
+            why := "";
+            if (length(retained) == 0 && (effects | permitted) != permitted) {
+                why = format_text("effects {}", effects);
+            } else if (length(retained) == 0 && (direct_write | permitted) != permitted) {
+                why = "a direct write";
+            } else if (!ScalarHosts(hosts, roots)) {
+                why = "a host call or root";
+            } else if (!ScalarCells(cells, calls, hosts, AnyReference(params))) {
+                why = "a cell";
+            }
+            if (why != "") {
                 return Diagnose(forest, Field(forest, callables[function].node, "body"), 0,
-                                "scalar proof requires known effect-free scalar execution");
+                                format_text("scalar proof requires known effect-free scalar execution, not {}", why));
             }
             return ScalarPassed();
     }

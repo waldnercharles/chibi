@@ -416,3 +416,24 @@ pub ProfileOptionError :: (arguments: string[], build_type: string) -> string {
     }
     return "";
 }
+
+// Why a --target the arguments name is not among `targets`, or "" when each
+// is: checked before any discovery or build writes.
+pub TargetError :: (arguments: string[], targets: string[]) -> string {
+    for (i in 0..<length(arguments)) {
+        if (arguments[i] != "--target") {
+            continue;
+        }
+        if (i + 1 == length(arguments) || strings.HasPrefix(arguments[i + 1], "--")) {
+            return "graph: --target requires a target name";
+        }
+        found := false;
+        for (target in targets) {
+            found = found || arguments[i + 1] == target;
+        }
+        if (!found) {
+            return format_text("graph: unknown target '{0}'", arguments[i + 1]);
+        }
+    }
+    return "";
+}

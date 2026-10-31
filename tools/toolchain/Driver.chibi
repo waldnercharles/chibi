@@ -19,7 +19,7 @@ import strings "core:strings"
 // and chibi_ctl; --all builds every target. --dry-run prints the
 // commands instead of running them. The other verbs are `test`, `install`,
 // `format`, `clean`, `sdk-reflect`, `runtime-sdk`, `package-runtime-sdk`,
-// `bootstrap-artifact`, `bootstrap-refresh`, `bootstrap-recover`,
+// `bootstrap-artifact`, `bootstrap-recover`,
 // `publish-seed` and `native-census`; Usage lists them.
 
 Join :: (parts: string[]) -> string {
@@ -301,10 +301,9 @@ Deadline :: (rows: string[], name: string, fallback: string) -> string {
 
 // The command one selector runs: its row's words with the build directories
 // filled in, under the environment the test drivers read.
-TestCommand :: (row: string, directory: string, releases: string, host: string, seconds: string) -> string[] {
+TestCommand :: (row: string, directory: string, releases: string, host: string) -> string[] {
     fields := Fields(row)
     command := [
-        "sh", "tools/with-timeout.sh", seconds,
         "env",
         Join(["CHIBI_TOOLS_BUILD_DIR=", Absolute(directory), "/test/tools"]),
         Join(["CHIBI_LANGUAGE_BUILD_DIR=", Absolute(directory), "/test/language"]),
@@ -357,8 +356,8 @@ Test :: (arguments: string[]) -> int {
     }
     if (Flag(arguments, "--dry-run")) {
         for (name in selected) {
-            command := TestCommand(Row(rows, "tool", name), directory, releases, host, Deadline(rows, name, seconds))
-            os.Print(Join([name, ": ", strings.Join(command, " ")]))
+            command := TestCommand(Row(rows, "tool", name), directory, releases, host)
+            os.Print(format_text("{} ({}s): {}", name, Deadline(rows, name, seconds), strings.Join(command, " ")))
         }
         return 0
     }
@@ -369,18 +368,21 @@ Test :: (arguments: string[]) -> int {
     while (waited < length(selected)) {
         while (started < length(selected) && started - waited < jobs) {
             os.Print(format_text("RUN {}", selected[started]))
-            handles.append(os.Spawn(TestCommand(Row(rows, "tool", selected[started]), directory, releases, host, Deadline(rows, selected[started], seconds))))
+            command := TestCommand(Row(rows, "tool", selected[started]), directory, releases, host)
+            handles.append(os.Start(command, os.Inherited))
             started += 1
         }
-        status := os.Wait(handles[waited])
-        if (status == 0) {
+        // The deadline counts from the wait, so a selector never stops early.
+        limit := Count(Deadline(rows, selected[waited], seconds))
+        status := os.Wait(handles[waited], limit * 1000)
+        if (status == os.StillRunning) {
+            os.Kill(handles[waited])
+            os.Print(format_text("FAIL {} (timed out after {}s)", selected[waited], limit))
+            failed += 1
+        } else if (status == 0) {
             os.Print(format_text("PASS {}", selected[waited]))
         } else {
-            reason := ""
-            if (status == 124) {
-                reason = Join([", timed out after ", Deadline(rows, selected[waited], seconds), "s"])
-            }
-            os.Print(format_text("FAIL {} (status {}{})", selected[waited], status, reason))
+            os.Print(format_text("FAIL {} (status {})", selected[waited], status))
             failed += 1
         }
         waited += 1
@@ -535,21 +537,18 @@ Revision :: () -> string {
     return build.trim(described.stdout)
 }
 
-// Rewrites tools/compiler/bootstrap: the bootstrap check leaves stage two and
-// its arguments in a seed folder, and the host writes the artifact once stage
-// two compiles the sources to themselves. With `refresh` the seed folder is
-// recovery's fixed point instead, without the check's sample runs.
+// Rewrites tools/compiler/bootstrap: recovery compiles the sources on disk
+// with the current seed to stage one and stage two, the fixed point, and
+// leaves it with its Compile arguments in a seed folder; the host writes the
+// artifact once that seed compiles the sources to itself. `recover` only
+// checks that recovery succeeds.
 Bootstrap :: (arguments: string[], mode: string) -> int {
     dry := Flag(arguments, "--dry-run")
     releases := Option(arguments, "--release-build", "build-release")
     host := CompilerHost(arguments)
     artifact := Option(arguments, "--artifact", "tools/compiler/bootstrap")
     base := ["--bootstrap", artifact, "--compiler", "tools/compiler", "--core", "packages/core"]
-    targets := ["chibi-compiler-host"]
-    if (mode == "artifact") {
-        targets = build.concat(targets, ["test_language"])
-    }
-    status := ReleaseBuild(arguments, targets, dry)
+    status := ReleaseBuild(arguments, ["chibi-compiler-host"], dry)
     if (status != 0) {
         return status
     }
@@ -561,20 +560,11 @@ Bootstrap :: (arguments: string[], mode: string) -> int {
     if (status != 0) {
         return status
     }
-    if (mode == "artifact") {
-        status = Step(
-            "bootstrap-check",
-            ["env", Join(["CHIBI_BOOTSTRAP_SEED=", seed]), "sh", "tools/build.sh", "test", "--release-build", releases,
-             "language-package-compiler-chibi-bootstrap"],
-            dry
-        )
-    } else {
-        status = Step(
-            "recover",
-            build.concat(build.concat([host], base), ["--recover", Join([seed, "/compiler.chibip"]), "--arguments", Join([seed, "/compile.json"])]),
-            dry
-        )
-    }
+    status = Step(
+        "recover",
+        build.concat(build.concat([host], base), ["--recover", Join([seed, "/compiler.chibip"]), "--arguments", Join([seed, "/compile.json"])]),
+        dry
+    )
     if (status != 0) {
         return status
     }
@@ -636,7 +626,7 @@ Usage :: () -> int {
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
     os.Print("       build format [--check] | clean | publish-seed | native-census")
-    os.Print("       build bootstrap-artifact | bootstrap-refresh | bootstrap-recover [--release-build DIR]")
+    os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
     os.Print("       build sdk-reflect | runtime-sdk | package-runtime-sdk [--reflect-build DIR] [--runtime-build DIR] [--output DIR] [-- NATIVE ARGUMENTS]")
     return 2
 }
@@ -675,9 +665,6 @@ Main :: () -> int {
     }
     if (verb == "bootstrap-artifact") {
         return Bootstrap(arguments, "artifact")
-    }
-    if (verb == "bootstrap-refresh") {
-        return Bootstrap(arguments, "refresh")
     }
     if (verb == "bootstrap-recover") {
         return Bootstrap(arguments, "recover")

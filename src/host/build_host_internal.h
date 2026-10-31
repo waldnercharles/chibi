@@ -49,7 +49,6 @@ const char *build_host_environment(void *, const pin_value *, pin_value *);
 const char *build_host_environment_names(void *, const pin_value *, pin_value *);
 const char *build_host_start(void *, const pin_value *, pin_value *);
 const char *build_host_spawn(void *, const pin_value *, pin_value *);
-const char *build_host_wait(void *, const pin_value *, pin_value *);
 const char *build_host_wait_for(void *, const pin_value *, pin_value *);
 const char *build_host_kill(void *, const pin_value *, pin_value *);
 void build_host_stop_jobs(build_host *);

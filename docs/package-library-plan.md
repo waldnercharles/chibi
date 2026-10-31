@@ -227,7 +227,6 @@ Run from the worktree root:
 chibi build test language-package-compiler-chibi-imports
 chibi build test language-package-compiler-chibi-imports-compiled
 CHIBI_LANGUAGE_BUILD_DIR=build-release/test/language chibi build test language-package-compiler-chibi-sharing
-chibi build test language-package-compiler-chibi-bootstrap
 ```
 
 Independent review found no remaining actionable issues. C formatting and

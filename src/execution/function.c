@@ -1684,6 +1684,7 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
     managed_seen local = { 0 };
     managed_seen *seen = collection_seen ? collection_seen : &local;
     managed_push(&pending, (managed_work){ .value = *root });
+    arena_collection *collection = arena_marker_collection(mark, user);
     while (pending.count) {
         managed_work next = managed_pop(&pending);
         pin_value value = next.value;
@@ -1708,8 +1709,8 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
             }
             /* A shared payload whose anchor the collection holds is walked
              * once, by the anchor's tracer, as a shell in the collection is. */
-            if (mark == arena_collect_mark && !array->pointer &&
-                pin_array_collect_backing(array, user)) {
+            if (collection && !array->pointer &&
+                pin_array_collect_backing(array, collection)) {
                 continue;
             }
             managed_push_items(&pending, array, false);

@@ -1,0 +1,275 @@
+package graph_c_tests
+
+import c "graph_c:."
+import os "core:os"
+import strings "core:strings"
+
+// Steps, links and dependency files of tools/graph/c. The compiler and linked programs are real; only the
+// partial-output failure and the argv recorder are controlled drivers.
+
+Path :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+Read :: (path: string) -> string {
+    read := os.ReadText(path);
+    assert(!read.error, "the file reads");
+    return read.text;
+}
+Write :: (path: string, text: string) -> bool {
+    return os.WriteText(path, text) == nil;
+}
+// Makes a directory and its parents.
+Make :: (path: string) -> bool {
+    return os.MakeDirectory(path) == nil;
+}
+Gone :: (path: string) -> bool {
+    return os.Remove(path) == nil;
+}
+// The record Link writes starts with the original command, one argument per line.
+Records :: (record: string, command: string[]) -> bool {
+    return strings.HasPrefix(Read(record), Path([strings.Join(command, "\n"), "\n\n"]));
+}
+
+// Run checks this entry's output: a failed step names only its output.
+pub FailedStep :: () -> int {
+    output := os.Arguments()[0];
+    assert(c.Step(["/bin/sh", "-c", "exit 7", "unlogged-command-token"], [], output) == -1, "the step fails");
+    return 0;
+}
+
+FailedStepNamesOnlyTheOutput :: (host: string, scratch: string) {
+    output := Path([scratch, "/expected-step-output.c"]);
+    result := os.Capture([host, "--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", os.Root(),
+                          "--source", "test/graph/CTests.chibi", "--core", "packages/core", "--collection", "graph_c=tools/graph/c",
+                          "--entry", "FailedStep", "--timeout-ms", "30000", "--", output]);
+    log := Path([result.stdout, result.stderr]);
+    if (log != Path(["graph: step failed: ", output, "\n"])) {
+        os.Print(log);
+    }
+    assert(result.status == 0 && log == Path(["graph: step failed: ", output, "\n"]), "the step's diagnostic");
+    assert(!os.Exists(output) && !os.Exists(Path([output, ".chibi-record"])), "a failed step leaves no output or record");
+}
+
+// link_commands.json keeps empty arguments and escapes quotes and backslashes.
+LinkEntriesKeepEveryArgument :: () {
+    text := c.LinkEntry(["cc", "", "a\"b\\c"], "out put");
+    assert(text == "{\"output\": \"out put\", \"arguments\": [\"cc\", \"\", \"a\\\"b\\\\c\"]}", "a link entry");
+}
+
+Prerequisites :: (text: string) -> string {
+    return strings.Join(c.Dependencies(text), "|");
+}
+
+// Make dependency files: escaped spaces, hashes and dollars, continuations
+// with either line ending, and a long list.
+DependencyFilesListPrerequisites :: () {
+    assert(Prerequisites("out/a.o: a.c b\\ c.h \\\n  d\\#.h \\\r\n e$$f.h\tg\\#h.h\n") == "a.c|b c.h|d#.h|e$f.h|g#h.h", "escaped prerequisites");
+    assert(length(c.Dependencies("no target")) == 0 && length(c.Dependencies("out.o: ")) == 0, "no prerequisites");
+    assert(Prerequisites("out.o:\\\na.c") == "a.c" && Prerequisites("out.o:\\\r\nb.c") == "b.c", "a continuation after the target");
+    assert(Prerequisites("out.o: a\\\\\nb.c") == "a b.c" && Prerequisites("out.o: a\\\\\r\nb.c") == "a b.c", "an escaped backslash before a line end");
+    long := "out/a.o: main.c";
+    for (i in 0..<128) {
+        long = format_text("{0} \\\n include/long-enough-to-represent-a-real-header-path/header-{1}.h", long, i);
+    }
+    paths := c.Dependencies(long);
+    assert(length(paths) == 129 && paths[0] == "main.c" && paths[128] == "include/long-enough-to-represent-a-real-header-path/header-127.h", "a long list");
+}
+
+// The recorder writes each argument the driver received on a line.
+TransportMatches :: (root: string, command: string[], empties: int) -> bool {
+    actual := strings.SplitLines(strings.TrimSuffix(Read(Path([root, "/transport-argv"])), "\n"));
+    original_bytes := 0;
+    for (argument in command) {
+        original_bytes += strings.ByteLength(argument) + 1;
+    }
+    transport_bytes := strings.ByteLength(command[0]) + 1;
+    empty_count := 0;
+    for (argument in actual) {
+        transport_bytes += strings.ByteLength(argument) + 1;
+        if (argument == "") {
+            empty_count += 1;
+        }
+    }
+    return length(actual) + 1 <= length(command) && transport_bytes <= original_bytes && empty_count == empties;
+}
+
+LinkFixture :: struct {
+    root: string;
+    tools: c.Tools;
+    // Tools whose driver records its argv, then runs the real compiler.
+    captured: c.Tools;
+    object: string;
+    flags: string[];
+    search_dir: string;
+}
+
+// Standalone empties keep the driver's behavior, provenance and cache identity.
+EmptyArguments :: (fixture: LinkFixture, quoted: string) {
+    tools := fixture.tools;
+    object := fixture.object;
+    output := Path([quoted, "/empty-argument"]);
+    flags := slice(fixture.flags, 0, length(fixture.flags));
+    flags.append("");
+    command := c.LinkCommand(tools, output, [object], flags, []);
+    assert(length(command) == 6 && command[2] == "", "the empty argument stays in the command");
+    direct := os.Run(command);
+    response := c.Link(tools, output, [object], flags, []);
+    assert((direct == 0 && response == 1) || (direct != 0 && response == -1), "empty argument transport keeps driver semantics");
+    record := Path([output, ".chibi-record"]);
+    if (direct == 0) {
+        assert(os.Run([output]) == 37 && Records(record, command), "an accepted empty argument keeps the original argv");
+        assert(c.Link(tools, output, [object], flags, []) == 0, "an empty argument keeps the cache identity");
+    } else {
+        assert(!os.Exists(record), "a rejected empty argument leaves no success record");
+    }
+    assert(!os.Exists(Path([output, ".chibi-link.rsp"])), "the empty argument's response is removed");
+}
+
+// Empty option operands stay between their surrounding response runs.
+EmptyOperands :: (fixture: LinkFixture, quoted: string) {
+    tools := fixture.tools;
+    captured := fixture.captured;
+    object := fixture.object;
+    output := Path([quoted, "/empty-operand"]);
+    flags := slice(fixture.flags, 0, length(fixture.flags));
+    for (i in 0..<8) {
+        flags.append(Path(["-L", fixture.search_dir]));
+    }
+    flags.extend(["-B", "", ""]);
+    command := c.LinkCommand(captured, output, [object], flags, []);
+    assert(length(command) == 16 && command[10] == "-B" && command[11] == "" && command[12] == "", "the empty operands stay in the command");
+    assert(os.Run(c.LinkCommand(tools, output, [object], flags, [])) == 0, "the direct link with empty operands");
+    assert(c.Link(captured, output, [object], flags, []) == 1 && os.Run([output]) == 37, "empty -B operands keep link semantics");
+    assert(TransportMatches(fixture.root, command, 2), "the transport neither grows argv nor drops an empty argument");
+    record := Path([output, ".chibi-record"]);
+    response := Path([output, ".chibi-link.rsp"]);
+    numbered := Path([response, ".1"]);
+    assert(Records(record, command) && c.Link(captured, output, [object], flags, []) == 0, "a segmented link keeps provenance and cache");
+    assert(!os.Exists(response) && !os.Exists(numbered), "a segmented link removes its responses");
+    assert(Gone(record) && Make(numbered), "a blocked numbered response");
+    assert(c.Link(captured, output, [object], flags, []) == -1 && !os.Exists(record) && !os.Exists(response), "a failed numbered response write leaves no success");
+    assert(os.Kind(numbered) == os.KindDirectory, "a failed write keeps what it does not own");
+    assert(Gone(numbered) && c.Link(captured, output, [object], flags, []) == 1, "the retry links");
+    missing := Path([fixture.root, "/missing.a"]);
+    assert(c.Link(captured, output, [object], flags, [missing]) == -1, "a link with a missing input fails");
+    assert(!os.Exists(record) && !os.Exists(response) && !os.Exists(numbered), "a failed segmented link removes its responses");
+    assert(c.Link(captured, output, [object], flags, []) == 1, "the retry links again");
+
+    // Short runs test argument count and byte admission around many empties.
+    tiny_output := Path([quoted, "/many empty runs"]);
+    tiny_flags := slice(fixture.flags, 0, length(fixture.flags));
+    for (i in 0..<64) {
+        tiny_flags.extend(["-B", ""]);
+    }
+    tiny_command := c.LinkCommand(captured, tiny_output, [object], tiny_flags, []);
+    assert(os.Run(c.LinkCommand(tools, tiny_output, [object], tiny_flags, [])) == 0, "the direct link with many empty operands");
+    assert(c.Link(captured, tiny_output, [object], tiny_flags, []) == 1 && os.Run([tiny_output]) == 37, "many empty operands keep link semantics");
+    assert(TransportMatches(fixture.root, tiny_command, 64), "short empty-separated runs keep their admission");
+}
+
+// A real link exceeds the host's argv byte limit; failures and retries keep
+// records and response files honest.
+LongLinks :: (fixture: LinkFixture, source: string, quoted: string) {
+    tools := fixture.tools;
+    object := fixture.object;
+    flags := fixture.flags;
+    output := Path([quoted, "/program '\"\\ name"]);
+    record := Path([output, ".chibi-record"]);
+    response := Path([output, ".chibi-link.rsp"]);
+    libraries: string[] = [];
+    for (i in 0..<400) {
+        libraries.append(Path(["-L", fixture.search_dir]));
+    }
+    command := c.LinkCommand(tools, output, [object], flags, libraries);
+    bytes := 0;
+    for (argument in command) {
+        bytes += strings.ByteLength(argument) + 1;
+    }
+    assert(length(command) == 405 && bytes > 65536, "the command exceeds the argv byte limit");
+    assert(c.Link(tools, output, [object], flags, libraries) == 1 && os.Run([output]) == 37, "the long link");
+    assert(Records(record, command) && !os.Exists(response), "the long link keeps the original argv");
+    assert(c.Link(tools, output, [object], flags, libraries) == 0, "the long link is current");
+    libraries.append("-lm");
+    assert(c.Link(tools, output, [object], flags, libraries) == 1 && c.Link(tools, output, [object], flags, libraries) == 0, "a changed command relinks");
+    assert(Write(source, "int main(void) { return 38; }\n") && os.Run([tools.compiler, "-c", source, "-o", object]) == 0, "the changed object");
+    assert(c.Link(tools, output, [object], flags, libraries) == 1 && os.Run([output]) == 38, "a changed input relinks");
+    failed := slice(libraries, 0, length(libraries));
+    failed.append(Path([fixture.root, "/missing.a"]));
+    assert(c.Link(tools, output, [object], flags, failed) == -1 && !os.Exists(record) && !os.Exists(response), "a failed link leaves no success");
+    assert(c.Link(tools, output, [object], flags, libraries) == 1 && os.Run([output]) == 38, "the retry links");
+
+    partial := Path([fixture.root, "/partial-output"]);
+    assert(c.Link(tools, partial, [object], flags, []) == 1, "the partial output's first link");
+    broken := tools;
+    broken.compiler = Path([fixture.root, "/partial-driver"]);
+    assert(c.Link(broken, partial, [object], flags, []) == -1 && Read(partial) == "partial", "a driver that fails after writing");
+    assert(!os.Exists(Path([partial, ".chibi-record"])), "a partial failure leaves no success record");
+    assert(c.Link(tools, partial, [object], flags, []) == 1 && os.Run([partial]) == 38, "the partial output's retry");
+    assert(Gone(record) && Make(response), "a blocked response");
+    assert(c.Link(tools, output, [object], flags, libraries) == -1 && !os.Exists(record), "a failed response write leaves no success");
+
+    // A retry with fewer segments removes abandoned numbered files only.
+    abandoned := Path([response, ".17"]);
+    neighbor := Path([response, ".notes"]);
+    assert(Write(abandoned, "interrupted link") && Write(neighbor, "keep"), "an interrupted link's files");
+    assert(Gone(response) && c.Link(tools, output, [object], flags, libraries) == 1, "the retry after an interrupted link");
+    assert(!os.Exists(abandoned) && Read(neighbor) == "keep" && Gone(neighbor), "the retry removes only abandoned segments");
+    for (bad in ["line\nending", "line\rending", "nul\u0000ending"]) {
+        assert(c.Link(tools, output, [object], [bad], []) == -1, "a malformed link argument is rejected");
+    }
+    assert(c.Link(tools, "", [object], flags, []) == -1, "an empty output is rejected");
+}
+
+LinkResponses :: (scratch: string) {
+    quoted := Path([scratch, "/quoted '\"\\ café 雪 directory"]);
+    search_dir := Path([quoted, "/", strings.Repeat("l", 200)]);
+    assert(Make(search_dir), "the quoted directories");
+    source := Path([scratch, "/link.c"]);
+    partial := Path([scratch, "/partial-driver"]);
+    recorder := Path([scratch, "/record-driver"]);
+    assert(Write(source, "int main(void) { return 37; }\n"), "the program");
+    assert(Write(partial, "#!/bin/sh\nprintf partial > \"${0%/*}/partial-output\"\nexit 9\n"), "the partial driver");
+    assert(Write(recorder, "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$@\" > \"${0%/*}/transport-argv\"\nIFS= read -r compiler < \"$0.compiler\"\nexec \"$compiler\" \"$@\"\n"), "the recording driver");
+    assert(os.Run(["chmod", "700", partial, recorder]) == 0, "the drivers are executable");
+    selected := os.Getenv("CC");
+    if (selected == "") {
+        selected = "clang";
+    }
+    compiler := os.FindExecutable(selected);
+    assert(compiler != "" && Write(Path([recorder, ".compiler"]), Path([compiler, "\n"])), "a C compiler");
+    tools: c.Tools = {launcher: "", compiler: compiler, cxx_compiler: "", archiver: "", ranlib: "", jobs: 1};
+    captured := tools;
+    captured.compiler = recorder;
+    flags := ["-Wl,-dead_strip"];
+    if (os.Platform() == "Linux") {
+        flags[0] = "-Wl,--gc-sections";
+    }
+    object := Path([quoted, "/object '\"\\ name.o"]);
+    assert(os.Run([compiler, "-c", source, "-o", object]) == 0, "the object compiles");
+    fixture: LinkFixture = {root: scratch, tools: tools, captured: captured, object: object, flags: flags, search_dir: search_dir};
+
+    output := Path([quoted, "/program '\"\\ name"]);
+    assert(c.Link(tools, output, [object], flags, []) == 1 && os.Run([output]) == 37, "a quoted link");
+    assert(Records(Path([output, ".chibi-record"]), c.LinkCommand(tools, output, [object], flags, [])), "a short link keeps the original argv");
+    stamp := os.Stamp(output);
+    response := Path([output, ".chibi-link.rsp"]);
+    assert(!os.Exists(response) && Make(response), "the short link removed its response");
+    assert(c.Link(tools, output, [object], flags, []) == 0 && os.Stamp(output) == stamp && Gone(response), "a current link does not run");
+    EmptyArguments(fixture, quoted);
+    EmptyOperands(fixture, quoted);
+    LongLinks(fixture, source, quoted);
+}
+
+// The build host runs this entry with its own path as the one argument.
+pub Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 1, "the build host's path");
+    scratch := Path([os.Root(), "/.chibi/graph-c"]);
+    assert(os.Run(["rm", "-rf", scratch]) == 0 && Make(scratch), "the scratch directory");
+    LinkEntriesKeepEveryArgument();
+    DependencyFilesListPrerequisites();
+    FailedStepNamesOnlyTheOutput(arguments[0], scratch);
+    LinkResponses(scratch);
+    assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch cleanup");
+    return 0;
+}

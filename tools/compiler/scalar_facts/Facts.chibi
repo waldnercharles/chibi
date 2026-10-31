@@ -272,6 +272,18 @@ pub ArrayRow: int : 37;
 // an address instead: the first operand is that address, a 64-bit word, and
 // `name` and `text` are empty.
 pub ForeignRow: int : 38;
+// A call operand that passes the variable `value`, of its `type`, by
+// reference: the callee's reference parameter reads and writes that variable.
+// Passing a reference parameter on gives the caller's variable on.
+pub RefRow: int : 39;
+// What a RefRow of `type` pushes on a call's operand stack, and so what a
+// reference parameter of `type` takes: ReferenceType plus the type. A
+// parameter row whose literal is 1 is a reference parameter. Its variable is
+// of its `type` for every other row, and reading or writing it reads or
+// writes the caller's variable, so a callee changes its caller's records and
+// arrays in place. No other function holds a reference: the caller's
+// variable outlives the call, and none is the entry or in a library.
+pub ReferenceType: int : 1048576;
 
 // The value types: int and bool, then the other integer types, then the
 // floating ones, then string. The facts carry no compiler storage ordinal.

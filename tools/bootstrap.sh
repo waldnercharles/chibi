@@ -32,3 +32,5 @@ fi
 mkdir -p "$(dirname "$output")"
 chmod +x "$directory/$asset"
 mv "$directory/$asset" "$output"
+# tools/build.sh trusts a host only when it is newer than the last pin change.
+touch "$output"

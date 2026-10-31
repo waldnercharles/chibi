@@ -770,9 +770,6 @@ static const char *const
                       "u64) -> i32, argument: u64) -> i32\n"
                       "    thrd_join :: (thread: u64, result: u8[]) -> i32\n"
                       "}\n"
-                      "Worker :: (argument: u64) -> i32 {\n"
-                      "    return i32(argument) + 1;\n"
-                      "}\n"
                       "Main :: () -> int {\n"
                       "    thread: u8[] = [0, 0, 0, 0, 0, 0, 0, 0];\n"
                       "    result: u8[] = [0, 0, 0, 0];\n"
@@ -784,9 +781,13 @@ static const char *const
                       "56);\n"
                       "    joined := thrd_join(id, result);\n"
                       "    return int(result[0]) + started + joined;\n"
+                      "}\n"
+                      "Worker :: (argument: u64) -> i32 {\n"
+                      "    return i32(argument) + 1;\n"
                       "}\n";
 
-/* C calls an authored function: thrd_create starts a thread that runs Worker
+/* C calls an authored function (Main is first: the scalar proof reads the
+ * first function): thrd_create starts a thread that runs Worker
  * through the adapter the compiler makes, thrd_join collects its result. */
 TEST_CASE(native_build_gives_c_an_authored_function)
 {
@@ -1173,6 +1174,10 @@ static bool driver_build(const char *ir, const char *out)
     path(opt, tools, "opt");
     path(llc, tools, "llc");
     path(lld, tools, "ld.lld");
+    /* The driver compiles from source, which contention from the other cases
+     * slows; it may use what remains of the selector's deadline. */
+    char budget[32];
+    snprintf(budget, sizeof budget, "%d", (int)((deadline - chibi_process_now()) * 1000));
     const char *argv[] = { host,       "--root",
                            driver,     "--source",
                            source,     "--collection",
@@ -1181,7 +1186,7 @@ static bool driver_build(const char *ir, const char *out)
                            compiler,   "--compiler-core",
                            core,       "--entry",
                            "Build",    "--timeout-ms",
-                           "120000",   "--",
+                           budget,     "--",
                            ir,         out,
                            opt,        llc,
                            lld,        "2",

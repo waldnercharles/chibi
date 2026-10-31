@@ -103,7 +103,7 @@ checkout (Apple M-series, release SDK, measured 2026-10-30 at a load average
 of about 35 on 14 cores):
 
 - Start: about 0.1 s (`chibi fmt --help`; `chibi version` takes 20 ms), with
-  nothing compiled: loading the 2.7 MB closure takes most of it. Compiling the
+  nothing compiled: loading the 1.3 MB closure takes most of it. Compiling the
   program is a step of the SDK build: about 12 s of CPU on the compiler host's
   SLJIT, 38 s on bytecode, where a start used to spend 26 s or more. It takes
   about 45 million calls and close to the 4 billion instructions a package

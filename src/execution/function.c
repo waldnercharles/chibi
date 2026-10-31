@@ -1723,6 +1723,9 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
             const type_desc *layout = pin_value_type(&value);
             for (int i = 0; layout && i < layout->field_count; i++) {
                 const type_field *field = &layout->fields[i];
+                assert(
+                    field->container == PIN_CONTAINER_SINGLE || field->container == PIN_CONTAINER_ARRAY
+                );
                 const void *data = (const char *)value.ptr + field->offset;
                 pin_value member = { .type = field->type,
                                      .container = field->container,
@@ -1734,7 +1737,6 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
                     memcpy(&member.ptr, data, sizeof member.ptr);
                     member.record = field->layout ? field->layout->carrier : NULL;
                 } else if (field->type == PIN_STRUCT) {
-                    assert(field->container == PIN_CONTAINER_SINGLE);
                     const type_desc *child = type_field_type(field, value_resolver(&value));
                     assert(child);
                     member.ptr = (void *)data;

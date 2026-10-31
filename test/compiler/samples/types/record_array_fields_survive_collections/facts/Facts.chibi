@@ -1,8 +1,8 @@
 package facts
 // A record whose field holds an array of records, read while the test's heap
-// collects. The collector once walked such a field as an Item stored inline:
-// it read the array pointer and `flag` as the Item's `id` and `name`, and
-// followed name 1.
+// collects. The collector once walked such a field as an Item stored inline,
+// reading the array pointer as its `id` and `flag` as its `name`, and crashed
+// reading text at address 1.
 Item :: struct { id: int; name: string; }
 Holder :: struct { items: Item[]; flag: bool; }
 Make :: (n: int) -> Holder {

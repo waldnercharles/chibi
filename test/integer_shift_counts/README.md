@@ -24,5 +24,5 @@ authored-test route, not a claim of all-backend or native-code coverage.
 identity and `9 tests, 0 failed`. It then changes only the expected value 2 to 3
 in a scratch copy, invokes the same table/driver route and requires one failed
 test plus a failing selector status. It also checks that the retired native
-`--integer-shift-counts` spelling is rejected instead of falling through to
-syntax tests. Both selectors remain in the ordinary language group.
+`--integer-shift-counts` spelling is rejected instead of silently succeeding without
+shift tests. Both selectors remain in the ordinary language group.

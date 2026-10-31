@@ -1,21 +1,33 @@
 package source_parser_tests
 
 import parser "project:source_parser"
+import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+import strings "core:strings"
 
 // Constructs the repository does not use, from the former Tree-sitter differential
 // corpus (test/language/syntax_corpus), one short source each: the valid ones parse
 // cleanly and the invalid ones are rejected with one diagnostic at the first token
 // the grammar cannot read. Sources stay short because a test has a fixed instruction budget.
 Accepts :: (text: string) {
-    assert(length(parser.Diagnose(text)) == 0, "the parser reads this source");
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            assert(length(nodes) > 0, "the parser reads this source");
+        case .Rejected(diagnostic):
+            assert(false, "the parser reads this source");
+    }
 }
 
 Rejects :: (text: string, line: int, column: int) {
-    d := parser.Diagnose(text);
-    assert(length(d) == 1, "one diagnostic");
-    assert(d[0].line == line, "diagnostic line");
-    assert(d[0].column == column, "diagnostic column");
-    assert(d[0].message != "", "diagnostic message");
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            assert(false, "the parser rejects this source");
+        case .Rejected(diagnostic):
+            assert(diagnostic.line == line, "diagnostic line");
+            assert(diagnostic.column == column, "diagnostic column");
+            assert(diagnostic.start >= 0 && diagnostic.end >= diagnostic.start, "diagnostic range");
+            assert(diagnostic.document == 0 && diagnostic.message != "", "diagnostic message");
+    }
 }
 
 @test
@@ -151,11 +163,63 @@ Shape :: (text: string) -> string[] {
         case .Parsed(nodes, fields, is_named, is_extra, root):
             index: int = 0;
             while (index < length(nodes)) {
-                shape.append(format_text("{}:{}", fields[index], nodes[index].kind));
+                shape.append(format_text("{}:{}", syntax.FieldNames()[fields[index]], parser.KindName(nodes[index].kind)));
                 index += 1;
             }
+        case .Rejected(diagnostic):
+            assert(false, "the source parses");
     }
     return shape;
+}
+
+@test
+KindsFollowTokens :: () {
+    // A token leaf's kind is its token's, so node kinds start past the tokens.
+    assert(syntax.Comment >= tk.KindCount, "node kinds follow the token kinds");
+    assert(length(syntax.KindNames()) == syntax.KindCount - syntax.Comment, "every node kind has a name");
+    assert(length(syntax.FieldNames()) == syntax.FieldCount, "every field has a name");
+}
+
+@test
+KindNamesMatchTheirConstants :: () {
+    // The first and last kind of each group, the renamed words, and tokens.
+    kinds := [tk.OpenParen, tk.Plain, syntax.Comment, syntax.QueryGenerator, syntax.CallableBody,
+              syntax.YieldStatement, syntax.Type, syntax.ParenthesizedType, syntax.SourceFile,
+              syntax.ExitDeclaration, syntax.Fn, syntax.Error];
+    names := ["(", "plain", "comment", "query_generator", "callable_body", "yield_statement", "type",
+              "parenthesized_type", "source_file", "exit_declaration", "fn", "ERROR"];
+    index: int = 0;
+    while (index < length(kinds)) {
+        assert(parser.KindName(kinds[index]) == names[index], "a kind's name");
+        index += 1;
+    }
+    assert(syntax.FieldNames()[syntax.FieldAlias] == "alias" && syntax.FieldNames()[syntax.FieldVisibility] == "visibility",
+           "a field's name");
+}
+
+@test
+ReadsRenamedWords :: () {
+    text := "package p\n\nwhen A {\n}\n\nF :: (v: view int[], s: self Thing) {\n    reduce min(t, v)\n    reduce max(t, v)\n}\n";
+    shape := Shape(text);
+    Has(shape, ":when");
+    Has(shape, "trait:view");
+    Has(shape, "trait:self");
+    Has(shape, "operator:min");
+    Has(shape, "operator:max");
+}
+
+@test
+RejectionKeepsTheDiagnosticRowsBytes :: () {
+    // A long found token is cut to the 191 bytes a diagnostic row holds.
+    text := format_text("package p\n\nF :: () {{\n    a := 1 \"{}\"\n}}\n", strings.Repeat("x", 300));
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            assert(false, "the source is rejected");
+        case .Rejected(diagnostic):
+            assert(strings.ByteLength(diagnostic.message) == 191, "the message is cut");
+            assert(strings.HasPrefix(diagnostic.message, "Expected the end of the statement, found `\"xxx"),
+                   "the message says what was expected and found");
+    }
 }
 
 Has :: (shape: string[], item: string) {

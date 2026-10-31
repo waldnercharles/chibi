@@ -39,7 +39,7 @@ pub Run :: () -> int {
     }
     assert(strings.Contains(log, "9 tests, 0 failed\n"), "exactly nine shift cases, not empty discovery or syntax");
 
-    // The retired native spelling must not silently execute the syntax suite.
+    // The retired native spelling must not silently succeed without shift tests.
     retired := os.Capture([arguments[2], "--integer-shift-counts"]);
     assert(retired.status == 2 && strings.Contains(Output(retired), "Usage:"), "the obsolete native selector is rejected");
 

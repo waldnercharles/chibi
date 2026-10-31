@@ -6,12 +6,10 @@
 #include <stdio.h>
 #include <string.h>
 
-void test_language_syntax();
 void test_language_parallel();
 void test_language_record_values();
 void test_language_record_document();
 void test_language_record_compatibility();
-void test_language_corpus(const char *manifest);
 void test_language_execution();
 void test_language_execution_scope();
 void test_language_program_session();
@@ -44,7 +42,6 @@ int main(int argc, char **argv)
     if (argc == 3 && !strcmp(argv[1], "--stack-overflow-child")) {
         return test_language_stack_overflow_child(argv[2]);
     }
-    bool corpus = argc == 4 && !strcmp(argv[2], "--corpus");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
     bool execution_scope = argc == 2 && !strcmp(argv[1], "--execution-scope");
     bool record_compatibility = argc == 2 &&
@@ -72,12 +69,12 @@ int main(int argc, char **argv)
     if ((!execution && !execution_scope && !record_values && !record_document &&
          !record_compatibility && !program && !program_session && !ranges &&
          !asset_compiler_host && !package_compiler_chibi_scalar &&
-         !package_compiler_chibi_native && !native_census && !native_census_flattening &&
-         !host_packages_compiler && !component_write && !component_write_layout &&
-         !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !package_compiler_chibi_native && !native_census &&
+         !native_census_flattening && !host_packages_compiler &&
+         !component_write && !component_write_layout && !text_format)) {
         fprintf(
             stderr,
-            "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
+            "Usage: %s --test-parallel | "
             "--execution | "
             "--execution-scope  "
             "  "
@@ -195,11 +192,6 @@ int main(int argc, char **argv)
         test_language_execution_scope();
     } else if (execution) {
         test_language_execution();
-    } else {
-        test_language_syntax();
-        if (corpus) {
-            test_language_corpus(argv[3]);
-        }
     }
     test_parallel_finish();
     pu_print_stats();

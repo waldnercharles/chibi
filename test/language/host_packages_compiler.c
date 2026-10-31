@@ -736,10 +736,59 @@ TEST_CASE(host_packages_catalog_handle_types_reach_package_signatures)
     return true;
 }
 
+/* An argument document that outgrows the host's shared quota is refused before
+ * the compiler runs, and the diagnostic names the bound and the counts. Each
+ * JSON string costs two values and 128 bytes of the 4,000,000-value, 256 MiB
+ * budget, so 2,200,000 extra paths exhaust it while the document is checked. */
+TEST_CASE(host_packages_compiler_names_the_exhausted_argument_bound)
+{
+    REQUIRE(load_compiler());
+    size_t length = 0;
+    char *input = compile_input(APP, CLOCK, "/host/clock/Clock.chibi", native, &length);
+    REQUIRE(input);
+    yyjson_doc *parsed = yyjson_read(input, length, 0);
+    free(input);
+    REQUIRE(parsed);
+    yyjson_mut_doc *doc = yyjson_doc_mut_copy(parsed, NULL);
+    yyjson_doc_free(parsed);
+    REQUIRE(doc);
+    yyjson_mut_val *paths = yyjson_mut_arr_get(yyjson_mut_doc_get_root(doc), 3);
+    for (int i = 0; i < 2200000; i++) {
+        REQUIRE(yyjson_mut_arr_add_str(doc, paths, ""));
+    }
+    char *json = yyjson_mut_write(doc, 0, &length);
+    yyjson_mut_doc_free(doc);
+    REQUIRE(json);
+    compiler_host_result result = { 0 };
+    bool called = compiler_host_invoke(
+        compiler,
+        compiler_host_entry("project:package_compiler:1:CompileWithEffects:callable"),
+        json,
+        length,
+        COMPILE_BUDGET,
+        &result
+    );
+    free(json);
+    free(result.json);
+    if (called || !strstr(result.diagnostic, " of 4000000 values, ")) {
+        fprintf(stderr, "argument bound: %s\n", called ? "the call ran" : result.diagnostic);
+    }
+    REQUIRE(!called);
+    REQUIRE(
+        strstr(result.diagnostic, "invalid or oversized compiler argument document: the document, ")
+    );
+    REQUIRE(
+        strstr(result.diagnostic, " of 4000000 values, ") &&
+        strstr(result.diagnostic, " of 268435456 bytes")
+    );
+    return true;
+}
+
 void test_language_host_packages_compiler()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(host_packages_compile_link_and_run_through_stage_one);
     RUN_TEST_CASE(host_packages_catalog_handle_types_reach_package_signatures);
+    RUN_TEST_CASE(host_packages_compiler_names_the_exhausted_argument_bound);
     pu_clear_setup();
 }

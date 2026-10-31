@@ -1042,35 +1042,22 @@ to its executable. For the installed graph, pass
 `--core PREFIX/share/chibi/core`, and
 `--collection graph=PREFIX/share/chibi/graph`.
 
-`chibi build test build-sdk` runs the C packaging and relocation
-cases against the Release graph tools. The separate SDK CI lane deliberately
-retains a CMake-built harness as a reference consumer; the full Graph validation
-lane builds the harness with Graph. To run the CMake reference harness:
+`chibi build test graph-sdk-install` runs `test/graph/SDKInstallTests.chibi`
+against the Release graph tools, so build them first:
 
 ```sh
-chibi build --release  --target chibi-build-host --target chibi-compiler-host
-chibi build  --build build-sdk-tests --target test_tools --host "$PWD/build-release/sdk/chibi-build-host"
-CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
-CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
-CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
-  chibi build test build-sdk
+chibi build --release --target chibi-build-host --target chibi-compiler-host
+chibi build test graph-sdk-install
 ```
 
-The CMake harness must leave both shipped Release hosts and their adjacent
-`.chibi-record` files unchanged. Linux CI records and checks those four SHA-256
-identities around the harness build. The separate CMake build supplies the test
-harness; the compiler tools being packaged and relocated remain Release graph
-outputs.
-`/build-sdk-tests/` is the explicitly ignored generated harness directory.
-
-The test derives the archive location from the Release graph link record;
-`CHIBI_SDK_THIRD_PARTY_DIR` can name it explicitly. `CHIBI_TOOLS_BUILD_DIR` selects
-the harness, while `CHIBI_SDK_GRAPH_BUILD_DIR` and `CHIBI_BUILD_HOST` select
-matching graph outputs. The cases exercise recovery and build-program/graph
-compilation after relocation with an empty tool search path. The graph's
-`--profile explicit` disables discovery and requires its compiler, archiver and
-ranlib to be named; an omitted launcher remains empty. This checkpoint
-has no Linux/Windows packaging, full SDK, browser or Studio acceptance claim.
+It reads the dependency archive's location from the Release build host's link
+record. The cases check what `CompilerTools` refuses before staging, the
+staging it owns, and an installed prefix that still recovers its compiler,
+runs a program and writes graph commands after it moves, with an empty tool
+search path. The graph's `--profile explicit` disables discovery and requires
+its compiler, archiver and ranlib to be named; an omitted launcher remains
+empty. This checkpoint has no Linux/Windows packaging, full SDK, browser or
+Studio acceptance claim.
 
 The standalone SDK program adds `build.reserve_directory` and
 `build.publish_directory`. These private bindings reserve one fresh directory

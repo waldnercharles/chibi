@@ -17,36 +17,19 @@ pixel, renderer, backend and authored-workflow assertions until a focused test
 covers their contract. A short unit result does not satisfy unrelated integration
 requirements or clear a PR hold. The broad suites below still need migration.
 
-Compiler fixtures normally prepare independent bytecode and compiled owners.
-The package-compiler sample selectors request only their compiler backend;
-their stage-zero oracle prepares only the bytecode owner it serializes. The
-generated sample closures still run on both target backends, with the existing
-output, diagnostic, debug metadata and execution-counter assertions. Each
-preparation owns a fresh source snapshot and native catalog; preparation is not
-cached across fixture lifetimes. Scalar producer/consumer lifetime tests retain
-their original preparation of both backends.
-
-`language-compiler-fixture` retains two native ownership cases: six single-backend
-preparations and one default dual-backend preparation of a one-function source,
-with eight calls at budget 100. It checks absent unrequested owners, independent
-snapshots, mutation of the original source, concurrent fixtures, detached text
-after teardown, changed source on re-preparation, and both execution backends.
-Native adapter cases additionally check selected and dual-backend authored
-execution, ordered failure reporting and continuation, missing tests, invalid
-worker settings, exact collection selection, custom budgets and replacement-module bodies. They add no
-processes, timing loops, network, rendering or GPU work.
+The scalar lane (`language-package-compiler-chibi-scalar`) runs the authored
+compiler, as `compiler_bootstrap_load` recovers it, through `test/language/scalar_host.c`:
+`CollectScalar` produces rows, and a closure of the consumer packages (`scalar_llvm`,
+`llvm_native`, `native_abi`, the `scalar_cases` corpus) validates and emits them.
+Nothing is prepared with stage zero.
 
 ### Authored emitter regressions
 
-The ordinary `language-package-compiler-chibi-scalar` selector discovers every
-`@test` in `test/native_aot/emitter_calls/*.chibi`. CMake embeds all matching
-files in `test_language`, including the same-run binary used by manual language
-shards; no runtime source staging, bootstrap manifest or seed changes are needed.
-The generic `compiler_fixture_tests` adapter runs each prepared owner on its
-matching bytecode/SLJIT backend and fails on empty discovery, unavailable backend
-or any failed test. Results remain in source order. `CHIBI_TEST_WORKERS=1..32`
-can bound the authored pool explicitly; absent means the normal automatic pool.
-Unknown or impure host closures remain serial barriers.
+`chibi-test-compiler` (`chibi test tools/compiler`) runs every `@test` in
+`tools/compiler/llvm_native/tests/*.chibi` and `tools/compiler/native_abi/tests`
+on the host's backend; no C selector, runtime source staging or seed change is
+involved. It fails on a rejected diagnostic, a malformed module that emits, or any
+failed test, and results keep source order.
 
 The first eighteen authored tests preserve call definitions/argument order,
 eleven malformed call plans, exact float and NaN payload encodings, unordered
@@ -162,56 +145,22 @@ make benchmark          # native C benchmark selectors
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
-Groups automatically overlap source-audited independent selectors in separate
-processes, initially up to two workers (bounded by available CPU affinity and a
-conservative 2 GiB available-memory admission reserve per worker). Linux checks MemAvailable
-and visible cgroup limits; macOS checks free/inactive/speculative pages. Missing
-or uninspectable capacity selects serial execution.
-No CI sharding or flags are required: `make test-language-all` takes this route.
-The initial allowlist contains the heavy scalar, behavior, packaging, asset-host,
-compiler-bootstrap and Linux scalar-native selectors. Other selectors remain
-exclusive barriers until their resources are audited; they are not omitted.
-`make -j1` still protects cross-target fixtures. `make test-language-all
-TEST_JOBS=1` or `chibi build test language` preserves
-the original fully serial group route. `--jobs N` / `TEST_JOBS=N` explicitly
-selects a worker limit; it does not make unaudited selectors parallel-safe.
+`chibi build test` (tools/toolchain/Driver.chibi) runs the selectors and groups
+of `tools/tests.tsv` in table order, up to `--jobs N` at a time (default 1). Each
+selector is a separate process. It prints `RUN` when a selector starts, then
+`PASS` or `FAIL` when it ends. A short selector frees its slot while a long one
+still runs. With `--jobs` above 1, each selector's output is captured and printed
+when it ends, so concurrent selectors don't interleave. With `--jobs 1`, a
+selector writes to the terminal as it runs.
 
-Each worker owns its supervisor/process group, temporary root and disk-backed
-log. Logs are emitted without interleaving in manifest order. Failure stops new
-work, cancels owned workers, prints their partial logs and reports queued selectors
-as not run. The optional group deadline still covers the whole group, including
-queueing; existing in-test child budgets are unchanged. Scratch is removed after
-worker cleanup, including on SIGINT/SIGTERM. Absolute source paths are not
-isolated by changing TMPDIR; the retired resource audit recorded why each enabled selector was safe.
-
-The runner writes `Test policy: {...}` JSON diagnostics to stderr, separate from
-program stdout: selected automatic/explicit worker count and admission reason,
-CPU/memory probe availability and reserve, then manifest-ordered selector
-supervisor start/observed-finish timestamps and statuses, observed peak live
-workers and group wall time. Timestamps use the monotonic clock; intervals include
-supervisor startup/cleanup and are not CPU time or a speedup measurement. Exits
-are polled afresh before admission. These receipts distinguish actual scheduled
-overlap from a serial capacity fallback in ordinary CI logs without CI flags.
-The preserved legacy serial route explicitly reports `unobserved-serial` and a
-null peak: it does not invent per-selector intervals or claim observed overlap.
-
-This is selector-level parallelism, not individual pico_unit cases or threads.
-The initial two-worker cap is a conservative rollout policy, not a measured
-memory bound or a promise to use every core. Peak-memory and matched serial /
-parallel wall-time measurements are required before increasing the automatic
-cap; native compiler/linker children can themselves use threads. The memory
-reserve is an admission heuristic, not a measured peak-RSS limit; `--jobs N`
-overrides automatic admission when the caller has better capacity evidence.
-Finer-grained discovery should serve the Chibi-first test API rather than making C coverage
-the language's testing foundation.
-
-The runner has no default global timeout.
-`make test-fast TEST_ARGS='--test-runner'` runs a selected standalone tooling
-case; set `TEST_BINARY` to use another driver. The arguments are tokenized and
-passed directly to the program. For an arbitrary driver invocation, use
-`python3 tools/test_policy.py native /absolute/path/to/test_binary --selector`.
-An optional timeout precedes the action, for example
-`chibi build test language-program`.
+An `exclusive NAME` row runs that selector alone: nothing else runs while it
+does. Mark a selector exclusive when it starts its own worker pool
+(`language-test-parallel`) or shares files with other selectors. Each selector
+has a deadline, set by `--timeout SECONDS` (600 by default) or by a
+`timeout NAME SECONDS` row. A selector that passes it is killed with its process
+tree and reported as `FAIL NAME (timed out after Ns)`; the others still run.
+CI runs the `projects language` invocation with `--jobs 3` on Linux (4 cores,
+16 GB) and `--jobs 2` on macOS (3 cores, 7 GB).
 
 `make test-projects` also builds an unsanitized Release `chibi_ctl` and `chibi`
 launcher, with its `chibi-compile` and `chibi-player`, in `build-release/`:
@@ -2487,7 +2436,6 @@ the `language-` prefix.
 
 | Selector | Cases / assertions |
 | --- | ---: |
-| `compiler-fixture` | 2 / 201 |
 | `bounded-compiler-chibi` | 1 / 37,599 |
 | `prepared-writer-chibi` | 2 / 1,112 |
 | `package-compiler-chibi` | 3 / 20,139 |

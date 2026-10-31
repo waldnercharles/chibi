@@ -322,11 +322,29 @@ TestCommand :: (row: string, directory: string, releases: string, host: string) 
     return command
 }
 
+// A selector `build test` has started and not yet reported.
+Running :: struct {
+    index: int; // into the selection
+    process: int;
+    // Milliseconds spent waiting while it ran: a lower bound on its age.
+    waited: int;
+}
+
+// How long `build test` waits on its oldest selector before polling the rest.
+TestSlice: int : 250
+
+// Whether tools/tests.tsv has an `exclusive NAME` row: the selector runs alone,
+// because it starts its own workers or shares files with others.
+Exclusive :: (rows: string[], name: string) -> bool {
+    return Row(rows, "exclusive", name) != ""
+}
+
 // Runs the named selectors or groups of tools/tests.tsv against the built test
-// drivers, up to --jobs at a time, and fails when any fails.
+// drivers, up to --jobs at a time (an `exclusive` row runs one alone), and fails
+// when any fails.
 //   build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...
-// Each selector gets --timeout seconds (600 by default; a `timeout NAME SECONDS` row of tools/tests.tsv sets one selector's); a hung one fails alone
-// with status 124 and the rest still run.
+// Each selector gets --timeout seconds (600 by default; a `timeout NAME SECONDS` row of tools/tests.tsv sets one selector's); a hung one is killed
+// and reported as timed out, and the rest still run.
 Test :: (arguments: string[]) -> int {
     rows := Rows()
     if (Flag(arguments, "--list")) {
@@ -361,31 +379,54 @@ Test :: (arguments: string[]) -> int {
         }
         return 0
     }
-    handles: int[] = []
-    started := 0
-    waited := 0
+    // Piped output keeps each selector's lines together when several run.
+    stdio := os.Inherited
+    if (jobs > 1) {
+        stdio = os.Piped
+    }
+    running: Running[] = []
+    next := 0
     failed := 0
-    while (waited < length(selected)) {
-        while (started < length(selected) && started - waited < jobs) {
-            os.Print(format_text("RUN {}", selected[started]))
-            command := TestCommand(Row(rows, "tool", selected[started]), directory, releases, host)
-            handles.append(os.Start(command, os.Inherited))
-            started += 1
+    while (next < length(selected) || length(running) > 0) {
+        while (next < length(selected) && length(running) < jobs &&
+               (length(running) == 0 || (!Exclusive(rows, selected[next]) && !Exclusive(rows, selected[running[0].index])))) {
+            os.Print(format_text("RUN {}", selected[next]))
+            command := TestCommand(Row(rows, "tool", selected[next]), directory, releases, host)
+            started: Running = {index: next, process: os.Start(command, stdio), waited: 0}
+            running.append(started)
+            next += 1
         }
-        // The deadline counts from the wait, so a selector never stops early.
-        limit := Count(Deadline(rows, selected[waited], seconds))
-        status := os.Wait(handles[waited], limit * 1000)
+        // Wait a slice for the oldest, then poll the rest, so a short selector
+        // frees its slot while a long one runs. Only a slice that passes in
+        // full counts toward the running deadlines, so none stops early.
+        status := os.Wait(running[0].process, TestSlice)
+        passed := 0
         if (status == os.StillRunning) {
-            os.Kill(handles[waited])
-            os.Print(format_text("FAIL {} (timed out after {}s)", selected[waited], limit))
-            failed += 1
-        } else if (status == 0) {
-            os.Print(format_text("PASS {}", selected[waited]))
-        } else {
-            os.Print(format_text("FAIL {} (status {})", selected[waited], status))
-            failed += 1
+            passed = TestSlice
         }
-        waited += 1
+        left: Running[] = []
+        for (i in 0..<length(running)) {
+            job := running[i]
+            if (i > 0) {
+                status = os.Wait(job.process, 0)
+            }
+            job.waited += passed
+            name := selected[job.index]
+            limit := Count(Deadline(rows, name, seconds))
+            if (status == os.StillRunning && job.waited >= limit * 1000) {
+                os.Kill(job.process)
+                os.Print(format_text("FAIL {} (timed out after {}s)", name, limit))
+                failed += 1
+            } else if (status == os.StillRunning) {
+                left.append(job)
+            } else if (status == 0) {
+                os.Print(format_text("PASS {}", name))
+            } else {
+                os.Print(format_text("FAIL {} (status {})", name, status))
+                failed += 1
+            }
+        }
+        running = left
     }
     os.Print(format_text("{} tests, {} failed", length(selected), failed))
     if (failed > 0) {

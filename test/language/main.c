@@ -1,5 +1,4 @@
 #define PICO_UNIT_IMPLEMENTATION
-#include "compiler_fixture.h"
 #include "package_compiler_chibi.h"
 #include "test/parallel.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -58,11 +57,8 @@ int main(int argc, char **argv)
     bool integer_shift_counts = (argc == 2 || argc == 3) &&
                                 !strcmp(argv[1], "--integer-shift-counts");
     bool asset_compiler_host = argc == 2 && !strcmp(argv[1], "--asset-compiler-host");
-    bool compiler_fixture = argc == 2 && !strcmp(argv[1], "--compiler-fixture");
     bool package_compiler_chibi_scalar = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-scalar");
-    bool package_compiler_chibi_native_arguments = argc == 2 &&
-                                                   !strcmp(argv[1], "--package-compiler-chibi-native-arguments");
     bool package_compiler_chibi_native = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-native");
     bool native_census = (argc == 2 || argc == 3) &&
@@ -77,10 +73,9 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
          !record_compatibility && !program && !program_session && !ranges &&
-         !integer_shift_counts && !asset_compiler_host && !compiler_fixture &&
+         !integer_shift_counts && !asset_compiler_host &&
          !package_compiler_chibi_scalar && !package_compiler_chibi_native &&
-         !native_census && !native_census_flattening &&
-         !package_compiler_chibi_native_arguments && !host_packages_compiler &&
+         !native_census && !native_census_flattening && !host_packages_compiler &&
          !component_write && !component_write_layout && !text_format &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -104,7 +99,7 @@ int main(int argc, char **argv)
             ""
             ""
             ""
-            "--compiler-fixture | "
+            ""
             ""
             ""
             "--package-compiler-chibi-types -imports "
@@ -127,7 +122,7 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-scalar | "
             "--package-compiler-chibi-native | --native-census [report] | "
             "--native-census-flattening | "
-            "--package-compiler-chibi-native-arguments | "
+            ""
             ""
             ""
             ""
@@ -178,12 +173,8 @@ int main(int argc, char **argv)
         test_language_record_values();
     } else if (text_format) {
         test_language_text_format();
-    } else if (compiler_fixture) {
-        test_language_compiler_fixture();
     } else if (package_compiler_chibi_scalar) {
         test_language_package_compiler_chibi_scalar();
-    } else if (package_compiler_chibi_native_arguments) {
-        test_language_package_compiler_chibi_native_arguments();
     } else if (package_compiler_chibi_native) {
         test_language_package_compiler_chibi_native();
     } else if (native_census) {

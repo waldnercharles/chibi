@@ -816,6 +816,27 @@ AllocatesOnWindowsWithoutLibc :: (suite: Suite) {
     BundleProgram(program, windows, "windows-heap.exe");
 }
 
+// core:sys/windows over kernel32: files and directories, in a program with no
+// C library. It links on Linux and macOS; with CHIBI_NATIVE_BUNDLE set, CI's
+// native-targets job runs it on Windows.
+LinksCoreSysWindows :: (suite: Suite) {
+    source := "package scalar\nimport windows \"core:sys/windows\"\nMain :: () -> int {\n    assert(windows.MakeDirectory(\"chibi_win_probe\"), \"make\");\n    assert(windows.Exists(\"chibi_win_probe\"), \"exists\");\n    assert(windows.Kind(\"chibi_win_probe\") == windows.KindDirectory, \"directory\");\n    data: u8[] = [104, 105];\n    assert(windows.WriteBytes(\"chibi_win_probe\\\\a.txt\", data), \"write\");\n    back := windows.ReadBytes(\"chibi_win_probe\\\\a.txt\");\n    assert(length(back) == 2 && back[0] == 104, \"read\");\n    assert(windows.Rename(\"chibi_win_probe\\\\a.txt\", \"chibi_win_probe\\\\b.txt\"), \"rename\");\n    assert(windows.Remove(\"chibi_win_probe\\\\b.txt\") && windows.Remove(\"chibi_win_probe\"), \"remove\");\n    assert(!windows.Exists(\"chibi_win_probe\"), \"removed\");\n    return 42;\n}\n";
+    built := Reset(suite, "windows-os", source);
+    RealTools(suite, built);
+    result := Build(suite, suite.built, built, ["-O0", "--target", "x86_64-pc-windows-msvc"]);
+    if (result.status != 0) {
+        os.Print(result.log);
+    }
+    assert(result.status == 0, "the Windows program builds");
+    program := Printed(result);
+    windows := CrossTargets()[1];
+    assert(strings.Contains(os.Capture(["file", "-b", program]).stdout, windows.kind), "a Windows program");
+    folder := strings.TrimSuffix(program, "/program.exe");
+    assert(Holds(Path([folder, "/kernel32.def"]), "    CreateFileW\n"), "kernel32's file calls");
+    assert(!Holds(program, "msvcrt") && !Holds(program, "ucrtbase"), "no C library");
+    BundleProgram(program, windows, "windows-os.exe");
+}
+
 // Each case by name, so Run can give each a build host of its own.
 Cases :: (llvm: bool) -> string[] {
     names := ["LinksStaticallyOnRequest", "AddsLineTablesWithG", "KeepsPriorProgramsAndNeverFallsBack",
@@ -825,7 +846,7 @@ Cases :: (llvm: bool) -> string[] {
         names.extend(["RunsWithLLVMAndNoCCompiler", "LinksAVendoredArchive", "CallsThroughAFunctionPointer",
                       "PassesAByteArrayToC", "SwapsARunningLoopKeepingState", "WatchesAndSwapsARunningLoop",
                       "ReportsAFailedAssert", "RunsTheForeignSamples", "GivesCAnAuthoredFunction", "LinksOtherTargetsWithLLVM",
-                      "ImportsFromAWindowsSystemLibrary", "AllocatesOnWindowsWithoutLibc"]);
+                      "ImportsFromAWindowsSystemLibrary", "AllocatesOnWindowsWithoutLibc", "LinksCoreSysWindows"]);
     }
     return names;
 }
@@ -870,6 +891,8 @@ RunCase :: (suite: Suite, name: string) {
         ImportsFromAWindowsSystemLibrary(suite);
     } else if (name == "AllocatesOnWindowsWithoutLibc") {
         AllocatesOnWindowsWithoutLibc(suite);
+    } else if (name == "LinksCoreSysWindows") {
+        LinksCoreSysWindows(suite);
     } else {
         assert(false, "a known case");
     }

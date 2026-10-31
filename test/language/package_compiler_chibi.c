@@ -27,8 +27,6 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_host.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/catalog.h"
@@ -2593,7 +2591,7 @@ static bool native_module_ir(const char *target, const native_module *m, char **
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 81
+    SCALAR_ACCEPTED_CASES = 84
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on

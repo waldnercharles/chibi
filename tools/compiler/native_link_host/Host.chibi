@@ -77,14 +77,13 @@ Write :: (path: string, text: string) -> bool {
     return os.WriteText(path, text) == nil;
 }
 
-// Links the plan's program and publishes it at `output`, replacing nothing
-// until the link has succeeded.
-pub Link :: (plan: link.Plan) -> link.Error? {
+// The link itself, with the stubs written into plan.work.
+Build :: (plan: link.Plan) -> link.Error? {
     target := link.TargetOf(plan.triple);
     if (target < 0) {
         return Fail(link.BadTriple, 0);
     }
-    if (length(plan.objects) == 0 || plan.output == "" || plan.work == "") {
+    if (length(plan.objects) == 0 || plan.output == "") {
         return Fail(link.BadPlan, 0);
     }
     if (Tool(plan.llvm, link.Linker(target)) == "") {
@@ -115,7 +114,13 @@ pub Link :: (plan: link.Plan) -> link.Error? {
             return Fail(link.ToolFailed, made);
         }
     }
-    partial := Join([plan.output, ".partial"]);
+    // The linker's output has the same name whatever the program is called: a
+    // macOS ad-hoc signature carries it, and two links of the same inputs must
+    // give the same bytes.
+    partial := Join([plan.work, "/a.out"]);
+    if (target == link.WindowsX64) {
+        partial = Join([plan.work, "/a.exe"]);
+    }
     if (os.Remove(partial) != nil) {
         return Fail(link.CannotWrite, 0);
     }
@@ -129,6 +134,52 @@ pub Link :: (plan: link.Plan) -> link.Error? {
         return Fail(link.ToolFailed, status);
     }
     if (os.Rename(partial, plan.output) != nil) {
+        return Fail(link.CannotWrite, 0);
+    }
+    return nil;
+}
+
+// The files Build leaves in the work folder.
+Leftovers :: (plan: link.Plan) -> string[] {
+    names: string[] = [link.StubPath(plan.work, "System"), Join([plan.work, "/kernel32.def"]),
+                       Join([plan.work, "/kernel32.lib"]), Join([plan.work, "/a.out"]),
+                       Join([plan.work, "/a.exe"])];
+    for (dependency in plan.libraries) {
+        names.append(link.StubPath(plan.work, dependency));
+    }
+    return names;
+}
+
+// Links the plan's program and publishes it at `output`, replacing nothing
+// until the link has succeeded. Nothing else outlives the call: the work
+// folder, `output.work` unless the plan names one, holds only the stubs and is
+// removed with them. No path, time or process id reaches the program's bytes.
+pub Link :: (plan: link.Plan) -> link.Error? {
+    ready := plan;
+    own := false;
+    if (plan.work == "") {
+        ready.work = Join([plan.output, ".work"]);
+        own = true;
+    }
+    if (os.Kind(ready.work) == os.KindNone) {
+        if (os.MakeDirectory(ready.work) != nil) {
+            return Fail(link.CannotWrite, 0);
+        }
+    } else {
+        own = false;
+    }
+    failure := Build(ready);
+    cleaned := true;
+    for (path in Leftovers(ready)) {
+        cleaned = cleaned && os.Remove(path) == nil;
+    }
+    if (own) {
+        cleaned = cleaned && os.Remove(ready.work) == nil;
+    }
+    if (failure != nil) {
+        return failure;
+    }
+    if (!cleaned) {
         return Fail(link.CannotWrite, 0);
     }
     return nil;

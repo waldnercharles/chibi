@@ -2693,9 +2693,14 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              mutated: string[], built: int[], context: BodyContext, generic_updates: int[],
              ops: Ops, target: Target, query_specs: QuerySpec[]) -> Body {
     types := table^;
+    // Whether the table holds a math type. MathKind is nonzero only for a math
+    // row, a base native row named as one, or an alias or optional component
+    // that resolves to such a row, which is then in the table too; so only
+    // those rows are asked, not every row of every body.
     math_enabled := false;
     for (math_type in 0..<length(types)) {
-        if (MathKind(types, math_type) != 0) {
+        kind := types[math_type].kind;
+        if ((kind == MathDecl || (kind == NativeDecl && types[math_type].parent < 0)) && MathKind(types, math_type) != 0) {
             math_enabled = true;
             break;
         }

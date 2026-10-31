@@ -36,6 +36,14 @@ operations from remaining limits.
 - A scoped pointer parameter can name temporary frame storage, so taking its
   address makes it an ordinary managed pointer instead; `F(pointer)` already
   lends a managed target to a scoped parameter.
+- Indexing a pointer to an array without the caret, `slots[index]`, makes the
+  parameter a managed pointer instead of a scoped one, because the scoped-use
+  check allows only `p^` and `p.member` of the identifier. The native lane then
+  rejects it. `slots^[index]` is scoped, and the compiler's own sources always
+  spell it that way. Found by the W10 probes on 2026-10-31; no source needs the
+  other spelling. Prior art: Odin and Zig index through a pointer to an array
+  with the same syntax as the array itself (Zig auto-dereferences a
+  single-item pointer to an array); Rust does too.
 - A presence guard on a nullable local can be tracked. Repeated mutable field
   reads cannot assume an alias left the field unchanged. Bind the pointer to a
   local before checking and dereferencing it.

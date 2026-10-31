@@ -1,6 +1,5 @@
 #include "host/application.h"
 
-#include "authoring/native_bindings.h"
 #include "authoring/program_service.h"
 #include "execution/log.h"
 #include "execution/status.h"

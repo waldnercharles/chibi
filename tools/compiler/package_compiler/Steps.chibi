@@ -3971,6 +3971,15 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     if (right.storage != NumberStorage && left.storage == NumberStorage) {
         wanted = right.storage;
     }
+    if (!Comparison(ops, op) && !Integer(wanted) && !Floating(wanted) && left.storage == NumberStorage &&
+        right.storage == NumberStorage) {
+        // Literal-only arithmetic nested in a larger expression has no expected
+        // type of its own; it takes the one its literals spell.
+        inferred := ConstantExpressionStorage(forest, text, item.node);
+        if (inferred > 0) {
+            wanted = inferred;
+        }
+    }
     spelled := Comparison(ops, op) && !Integer(wanted) && !Floating(wanted);
     operands: Value[] = [left, right];
     side: int = 0;

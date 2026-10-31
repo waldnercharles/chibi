@@ -1,8 +1,6 @@
 #ifndef CHIBI_TEST_PACKAGE_COMPILER_CHIBI_H
 #define CHIBI_TEST_PACKAGE_COMPILER_CHIBI_H
 
-#include "compiler_fixture.h"
-
 void test_language_package_compiler_chibi_scalar();
 void test_language_package_compiler_chibi_native();
 /* The child mode of the native test: calls into one built library. */

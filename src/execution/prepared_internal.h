@@ -19,7 +19,6 @@ typedef struct
     size_t record_work, record_work_limit;
     size_t *shared_record_work;
     size_t record_cache_bytes;
-    int version; /* The format being read or written. */
 } prepared_context;
 /* Target layout plus stable instruction names at their numeric enum indices.
  * This detects schema differences, not unchanged-name payload/semantic changes. */

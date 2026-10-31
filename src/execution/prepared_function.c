@@ -368,22 +368,6 @@ void prepared_function(prepared_context *c, behavior_function *f)
         ENUM(v->type);
         INT(v->output);
         INT(v->left);
-        if (c->version < 28) {
-            INT(v->right);
-            INT(v->target);
-            INT(v->frame);
-            INT(v->source);
-            INT(v->stack);
-            INT(v->pin);
-            SIZE(v->offset);
-            BOOL(v->indirect);
-            INT(v->component);
-            U64(v->node_id);
-            VALUE(v->value);
-            U64(v->layout);
-            STRING(v->message);
-            continue;
-        }
         INT(v->source);
         uint64_t fields = w->reading ? 0 : instruction_fields(v);
         U64(fields);

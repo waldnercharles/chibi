@@ -1,6 +1,7 @@
 package source_format_tests
 
 import format "project:source_format"
+import strings "core:strings"
 
 // Formats `input` and returns the text, or the rejection message.
 Run :: (input: string, options: format.Options) -> string {
@@ -82,12 +83,13 @@ UsesTheIndentWidthOrTabs :: () {
 @test
 ReturnsEmptySourceUnchanged :: () {
     assert(Run("", format.Defaults()) == "", "empty source");
+    assert(Run("  \n\n", format.Defaults()) == "  \n\n", "blank source");
 }
 
 @test
 RejectsSourceTheGrammarCannotRead :: () {
     got := Run("package p\n\nA :: ( {\n", format.Defaults());
-    assert(got == "Cannot format source with syntax errors", "syntax errors are named");
+    assert(strings.HasPrefix(got, "Cannot format source with syntax errors: 4:1: Expected"), "syntax errors are named with their place");
 }
 
 @test

@@ -252,7 +252,6 @@ pub Tokenize :: (text: string) -> Tokens {
             label = false;
             annotating = false;
             valued = false;
-            dereferenced = false;
             kept = false;
         }
         insert = false;

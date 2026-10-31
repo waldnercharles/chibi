@@ -7,7 +7,7 @@
 /* One text value: room for a build graph's compile_commands.json, which
  * passed 1 MB at about 580 sources. */
 #define BUILD_TEXT_LIMIT (16 * 1024 * 1024)
-#define BUILD_ARRAY_LIMIT 8192
+#define BUILD_ARRAY_LIMIT (1024 * 1024)
 /* Bound a bank's retained arena blocks. The host reuses its native-result
  * bank after the VM imports a callback's results; root arguments have a
  * separate bank that lives for the invocation. */

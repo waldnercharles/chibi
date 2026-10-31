@@ -39,7 +39,7 @@ pub Format :: (text: string, options: Options) -> Result {
     if (text_byte_length(text) > MaxBytes) {
         return Result.Rejected("Source exceeds the formatter's byte limit");
     }
-    // The parser reads no tree from blank text, which has nothing to format.
+    // The parser rejects a text with no declaration; there is nothing to lay out.
     if (strings.TrimSpace(text) == "") {
         return Result.Formatted(text);
     }
@@ -47,12 +47,18 @@ pub Format :: (text: string, options: Options) -> Result {
         case .Parsed(rows, fields, named, extras, root):
             return FormatParsed(text, rows, fields, named, root, options);
         case .Rejected(diagnostic):
-            return Result.Rejected("Cannot format source with syntax errors");
+            return Result.Rejected(Unparsed(diagnostic));
     }
 }
 
+// Why a source the parser rejects cannot be formatted, with where.
+pub Unparsed :: (diagnostic: diag.Diagnostic) -> string {
+    return format_text("Cannot format source with syntax errors: {}:{}: {}", diagnostic.line, diagnostic.column,
+                       diagnostic.message);
+}
+
 // Format for a caller that has already parsed `text`, such as one that also
-// highlights it; `rows` and the rest are compiler_syntax.Parse's result.
+// highlights it; `rows` and the rest are compiler_syntax.Parse's Parsed result.
 pub FormatParsed :: (text: string, rows: diag.Node[], fields: int[], named: bool[], root: int,
                      options: Options) -> Result {
     invalid := Validate(options);
@@ -129,7 +135,7 @@ Frame :: struct {
     close: Margin;
 }
 
-// A row's kind, or tk.Invalid, no row's kind, for none.
+// A row's kind, or tk.Invalid, which is no node's, for none.
 KindOf :: (rows: diag.Node[], node: int) -> int {
     if (node < 0) {
         return tk.Invalid;
@@ -215,24 +221,23 @@ IsChain :: (rows: diag.Node[], node: int) -> bool {
     return KindOf(rows, node) == diag.BinaryExpression && ParentKind(rows, node) != diag.BinaryExpression;
 }
 
-// Nodes whose last token ends a line: declarations, statements, assignments,
-// handlers and fields.
-EndsLine :: (rows: diag.Node[], node: int) -> bool {
-    kind := KindOf(rows, node);
-    return kind == diag.IfStatement || kind == diag.WhileStatement || kind == diag.ForStatement ||
-           kind == diag.SwitchStatement || kind == diag.BreakStatement || kind == diag.ContinueStatement ||
-           kind == diag.LocalDeclaration || kind == diag.ExpressionStatement || kind == diag.ReturnStatement ||
-           kind == diag.DeleteStatement || kind == diag.BranchStatement || kind == diag.CancelStatement ||
-           kind == diag.GotoStatement || kind == diag.LabelStatement || kind == diag.ReduceStatement ||
-           kind == diag.SequenceStatement || kind == diag.YieldStatement || kind == diag.ImportDeclaration ||
-           kind == diag.ForeignImportDeclaration || kind == diag.FunctionDeclaration ||
-           kind == diag.ConstantDeclaration || kind == diag.StateDeclaration || kind == diag.RecordDeclaration ||
-           kind == diag.UnionDeclaration || kind == diag.MacroDeclaration || kind == diag.WhenDeclaration ||
-           kind == diag.PrototypeDeclaration || kind == diag.RelationshipDeclaration ||
-           kind == diag.ActionDeclaration || kind == diag.EventDeclaration || kind == diag.EventsDeclaration ||
-           kind == diag.BindDeclaration || kind == diag.EntryDeclaration || kind == diag.ExitDeclaration ||
-           kind == diag.Assignment || kind == diag.Handler || kind == diag.ComponentField ||
-           kind == diag.RecordField;
+// Which node kinds end a line with their last token: the declarations and
+// statements, named so in diag.KindNames, and the few others listed. Built
+// once per format from that one definition.
+LineEnders :: () -> bool[] {
+    enders := resize([false], diag.KindCount);
+    names := diag.KindNames();
+    index: int = 0;
+    while (index < length(names)) {
+        name := names[index];
+        enders[diag.Comment + index] = strings.HasSuffix(name, "_declaration") || strings.HasSuffix(name, "_statement");
+        index += 1;
+    }
+    enders[diag.Assignment] = true;
+    enders[diag.Handler] = true;
+    enders[diag.ComponentField] = true;
+    enders[diag.RecordField] = true;
+    return enders;
 }
 
 // A bare switch-arm body is a block that does not start with a brace.
@@ -265,11 +270,12 @@ VisibleEnds :: (rows: diag.Node[]) -> int[] {
 Tokens :: (rows: diag.Node[], fields: int[], root: int) -> Token[] {
     tokens: Token[] = [];
     ends := VisibleEnds(rows);
+    enders := LineEnders();
     i: int = 0;
     while (i < length(rows)) {
         row := rows[i];
         if (row.first_child < 0 && row.start >= 0 && row.end > row.start) {
-            tokens.append(MakeToken(rows, fields, ends, root, i));
+            tokens.append(MakeToken(rows, fields, ends, enders, root, i));
         }
         i += 1;
     }
@@ -295,11 +301,10 @@ ColonAnchor :: (rows: diag.Node[], node: int, kind: int, parent_kind: int) -> in
 }
 
 AssignOperator :: (kind: int) -> bool {
-    return kind == tk.Eq || kind == tk.ColonEq || kind == tk.AddEq || kind == tk.SubEq || kind == tk.MulEq ||
-           kind == tk.QuoEq || kind == tk.ModEq || kind == tk.AndEq || kind == tk.OrEq || kind == tk.XorEq;
+    return kind == tk.Eq || kind == tk.ColonEq || (kind >= tk.AddEq && kind <= tk.XorEq);
 }
 
-MakeToken :: (rows: diag.Node[], fields: int[], ends: int[], root: int, node: int) -> Token {
+MakeToken :: (rows: diag.Node[], fields: int[], ends: int[], enders: bool[], root: int, node: int) -> Token {
     kind := rows[node].kind;
     parent := rows[node].parent;
     parent_kind := KindOf(rows, parent);
@@ -314,15 +319,12 @@ MakeToken :: (rows: diag.Node[], fields: int[], ends: int[], root: int, node: in
                     switch_open: kind == tk.OpenBrace && block && parent_kind == diag.SwitchStatement,
                     end_line: kind == tk.Comma && block,
                     nest_open: opener && nest, nest_close: closer && nest,
-                    brace: (kind == tk.OpenBrace || kind == tk.CloseBrace) && nest &&
-                           parent_kind == diag.StructExpression,
+                    brace: (kind == tk.OpenBrace || kind == tk.CloseBrace) && nest && parent_kind == diag.StructExpression,
                     paren: (kind == tk.OpenParen || kind == tk.CloseParen) && nest,
-                    bracket: (kind == tk.OpenBracket || kind == tk.CloseBracket) && nest &&
-                             parent_kind == diag.ArrayExpression,
+                    bracket: (kind == tk.OpenBracket || kind == tk.CloseBracket) && nest && parent_kind == diag.ArrayExpression,
                     case_open: false, case_close: false, chain_open: 0, chain_close: 0,
                     comment: kind == diag.Comment, semicolon: kind == tk.Semicolon,
-                    assign: AssignOperator(kind) &&
-                            (parent_kind == diag.Assignment || parent_kind == diag.LocalDeclaration),
+                    assign: AssignOperator(kind) && (parent_kind == diag.Assignment || parent_kind == diag.LocalDeclaration),
                     colon: ColonAnchor(rows, node, kind, parent_kind),
                     top: -1, header: false};
     if (kind == tk.Colon && parent_kind == diag.SwitchArm) {
@@ -338,7 +340,7 @@ MakeToken :: (rows: diag.Node[], fields: int[], ends: int[], root: int, node: in
     }
     ancestor = parent;
     while (ancestor >= 0 && ends[ancestor] == end) {
-        if (EndsLine(rows, ancestor)) {
+        if (enders[rows[ancestor].kind]) {
             token.end_line = true;
         }
         if (IsChain(rows, ancestor)) {
@@ -368,12 +370,6 @@ IsConstantColon :: (rows: diag.Node[], node: int) -> bool {
            KindOf(rows, PreviousSibling(rows, node)) == diag.Type;
 }
 
-// u/s^2
-IsUnitOperator :: (rows: diag.Node[], node: int) -> bool {
-    kind := rows[node].kind;
-    return (kind == tk.Quo || kind == tk.Xor) && ParentKind(rows, node) == diag.Unit;
-}
-
 // A token that takes no space before it.
 TightBefore :: (rows: diag.Node[], node: int) -> bool {
     kind := rows[node].kind;
@@ -393,8 +389,7 @@ TightBefore :: (rows: diag.Node[], node: int) -> bool {
     }
     if (kind == tk.OpenParen) {
         if (parent == diag.ParameterList || parent == diag.QueryList || parent == diag.PatternBindings ||
-            parent == diag.ReduceStatement || parent == diag.PrototypeBases ||
-            parent == diag.ParenthesizedType) {
+            parent == diag.ReduceStatement || parent == diag.PrototypeBases || parent == diag.ParenthesizedType) {
             return true;
         }
         return parent == diag.ArgumentList && ParentKind(rows, rows[node].parent) != diag.ReturnStatement;
@@ -593,8 +588,7 @@ BreakAfter :: (rows: diag.Node[], fields: int[], previous: Token, open: Token) -
     if (rows[previous.node].kind == tk.Comma) {
         return parent == rows[open.node].parent;
     }
-    return ParentKind(rows, open.node) == diag.ParenthesizedExpression &&
-           KindOf(rows, parent) == diag.BinaryExpression &&
+    return ParentKind(rows, open.node) == diag.ParenthesizedExpression && KindOf(rows, parent) == diag.BinaryExpression &&
            fields[previous.node] == diag.FieldOperator;
 }
 
@@ -1052,6 +1046,8 @@ CompareTokens :: (original: string, rewritten: string) -> int {
 // because a second parse costs about 3 KB of heap per source byte.
 SameTree :: (original: string, a: diag.Node[], a_fields: int[], a_named: bool[], rewritten: string) -> bool {
     switch syntax.Parse(rewritten) {
+        case .Rejected(diagnostic):
+            return false;
         case .Parsed(b, b_fields, b_named, b_extras, b_root):
             a_depths := Depths(a);
             b_depths := Depths(b);
@@ -1073,8 +1069,6 @@ SameTree :: (original: string, a: diag.Node[], a_fields: int[], a_named: bool[],
                 j = NextVisible(b, j + 1);
             }
             return i >= length(a) && j >= length(b);
-        case .Rejected(diagnostic):
-            return false;
     }
 }
 

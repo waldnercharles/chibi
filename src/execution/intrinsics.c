@@ -1453,7 +1453,9 @@ static const type_field *reference_member_field(const language_reference *ref, p
 static const type_field *reference_text_field(const language_reference *ref, pin_value root)
 {
     const type_field *field = reference_member_field(ref, root);
-    return field && field->type == PIN_STR ? field : NULL;
+    return field && field->type == PIN_STR && field->container == PIN_CONTAINER_SINGLE
+             ? field
+             : NULL;
 }
 static pin_array *reference_array(const language_reference *ref, pin_value *root)
 {

@@ -216,6 +216,10 @@ Cases :: () -> Case[] {
         // root 0 with children 1 and 2: 2000 + 100 + 0 + 1, one failure, and a
         // message of four bytes.
         Accepted("parser_references", "package scalar\nNode :: struct { kind: string; parent: int; first: int; last: int; next: int; token: int; }\nCursor :: struct { pos: int; final: int; token: int; failed: bool; message: string; }\nMain :: () -> int {\n    n: Node[] = [];\n    c: Cursor = {pos: 0, final: 2, token: 7, failed: false, message: \"\"};\n    root := New(&n, \"root\");\n    t0 := New(&n, \"a\");\n    t1 := New(&n, \"b\");\n    taken := Take(&c, &n, root);\n    taken2 := Take(&c, &n, root);\n    Fail(&c, &n, \"boom\");\n    Fail(&c, &n, \"again\");\n    ok: int = 0;\n    if (c.failed) { ok = 1; }\n    return n[root].last * 1000 + n[root].first * 100 + taken * 10 + taken2 + ok * 10000 + text_byte_length(c.message) * 100000;\n}\nNew :: (n: ^(Node[]), kind: string) -> int {\n    node: Node = {kind: kind, parent: -1, first: -1, last: -1, next: -1, token: 0};\n    n.append(node);\n    return length(n^) - 1;\n}\nAdd :: (n: ^(Node[]), parent: int, child: int) {\n    n^[child].parent = parent;\n    if (n^[parent].last < 0) { n^[parent].first = child; } else { n^[n^[parent].last].next = child; }\n    n^[parent].last = child;\n}\nTake :: (c: ^Cursor, n: ^(Node[]), parent: int) -> int {\n    at := c.pos;\n    if (at < c.final) { c.pos += 1; c.token = c.token + 1; }\n    if (parent >= 0) { Add(n, parent, at + 1); }\n    return at;\n}\nFail :: (c: ^Cursor, n: ^(Node[]), message: string) {\n    if (!c.failed) { c.failed = true; c.message = message; }\n    c.pos = c.final;\n}\n", 412101, "Main,New,Add,Take,Fail", ""),
+        // Optionals are a union of nil and the payload: a tuple result holds one, a
+        // value becomes a Some and nil a Nil, and a comparison with nil tests the
+        // tag. 42 + 100 for no error, 1000 for one, and 10000 and 100000.
+        Accepted("optional_results", "package scalar\nMain :: () -> int {\n    a := Load(true);\n    b := Load(false);\n    c := Check(-3);\n    d := Check(3);\n    total: int = a.value;\n    if (a.error == nil) { total += 100; }\n    if (b.error != nil) { total += 1000; }\n    if (c != nil) { total += 10000; }\n    if (d == nil) { total += 100000; }\n    return total;\n}\nError :: struct { kind: int; code: int; }\nFailure :: (code: int) -> Error { return {kind: 1, code: code}; }\nLoad :: (ok: bool) -> (value: int, error: Error?) {\n    if (!ok) { return (0, Failure(7)); }\n    return (42, nil);\n}\nCheck :: (code: int) -> Error? {\n    if (code < 0) { return Failure(code); }\n    return nil;\n}\n", 111142, "Main,Failure,Load,Check", ""),
         // A call statement drops its result: a number, then a string, an array and a record,
         // then a record of several results. Each function counts its call in `total`.
         Accepted("discarded_scalar_call", "package scalar\nMain :: () -> int {\n    total: int = 0;\n    Bump(&total);\n    Bump(&total);\n    return total;\n}\nBump :: (sum: ^int) -> int {\n    sum^ += 5;\n    return 100;\n}\n", 10, "Main,Bump", ""),
@@ -523,11 +527,11 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: i64[]) -
         }
     }
 }
-// Whether a module has an Array row or a reference, which the recorded
-// evaluation does not model.
+// Whether a module has an Array row, a reference or an optional, which the
+// recorded evaluation does not model.
 Arrayed :: (rows: facts.Row[]) -> bool {
     for (row in rows) {
-        if (row.kind == facts.ArrayRow || row.kind == facts.RefRow) {
+        if (row.kind == facts.ArrayRow || row.kind == facts.RefRow || (row.kind == facts.UnionRow && row.name == "optional")) {
             return true;
         }
     }

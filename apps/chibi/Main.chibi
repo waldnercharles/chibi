@@ -150,7 +150,7 @@ ParentPathsStopAtRoot :: () {
 }
 
 Usage :: (program: string) -> string {
-    commands := format_text("Usage: {} version\n       {} doctor\n       {} build --native [-O0|-O2] [-g] [--target TRIPLE]\n                [--llvm DIR] [ROOT]\n       {} test [ROOT]\n       {} fmt [--check | --staged] [PATH...]\n       {} run [--watch] [PATH] [--] [ARGUMENTS]\n       {} [--watch] PATH [--] [ARGUMENTS]\n", program, program, program, program, program, program, program)
+    commands := format_text("Usage: {} version\n       {} doctor\n       {} build --native [-O0|-O2] [-g] [--target TRIPLE]\n                [--llvm DIR] [ROOT]\n       {} test [ROOT]\n       {} fmt [--check | --staged] [--option NAME=VALUE]... [PATH...]\n       {} run [--watch] [PATH] [--] [ARGUMENTS]\n       {} [--watch] PATH [--] [ARGUMENTS]\n", program, program, program, program, program, program, program)
     return Join([commands,
         "PATH is a .chibi file or package directory. Its Main takes no arguments\n",
         "and returns nothing or an int exit status. chibi PATH is shorthand for run.\n",

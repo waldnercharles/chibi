@@ -103,22 +103,33 @@ IdentifierClass :: (source: string, nodes: syntax.Node[], fields: int[], index: 
     return "";
 }
 
-Operator :: (kind: int) -> bool {
-    return kind == tk.ColonColon || kind == tk.ColonEq || kind == tk.Eq || kind == tk.ArrowRight ||
-           kind == tk.FatArrow || kind == tk.Add || kind == tk.Sub || kind == tk.Mul || kind == tk.Quo ||
-           kind == tk.Mod || kind == tk.Xor || kind == tk.And || kind == tk.Or || kind == tk.Complement ||
-           kind == tk.Not || kind == tk.Lt || kind == tk.Gt || kind == tk.LtEq || kind == tk.GtEq ||
-           kind == tk.CmpEq || kind == tk.NotEq || kind == tk.Shl || kind == tk.Shr || kind == tk.Coalesce ||
-           kind == tk.Question || kind == tk.Ellipsis || kind == tk.HalfOpenRange;
+// The role of each anonymous token kind: a keyword (its spelling is a word,
+// such as `return`, or a word the parser renames, such as `fn`), an operator,
+// or none. Built once per text from the token vocabulary.
+TokenRoles :: () -> string[] {
+    roles := resize([""], syntax.KindCount);
+    names := tk.KindNames();
+    kind: int = 0;
+    while (kind < length(names)) {
+        first := strings.ByteAt(names[kind], 0);
+        if (first >= 97 && first <= 122) {
+            roles[kind] = "chibi-keyword";
+        }
+        kind += 1;
+    }
+    for (operator in [tk.ColonColon, tk.ColonEq, tk.Eq, tk.ArrowRight, tk.FatArrow, tk.Add, tk.Sub, tk.Mul,
+                      tk.Quo, tk.Mod, tk.Xor, tk.And, tk.Or, tk.Complement, tk.Not, tk.Lt, tk.Gt, tk.LtEq,
+                      tk.GtEq, tk.CmpEq, tk.NotEq, tk.Shl, tk.Shr, tk.Coalesce, tk.Question, tk.Ellipsis,
+                      tk.HalfOpenRange]) {
+        roles[operator] = "chibi-operator";
+    }
+    for (word in [syntax.Fn, syntax.When, syntax.View, syntax.Self, syntax.Min, syntax.Max]) {
+        roles[word] = "chibi-keyword";
+    }
+    return roles;
 }
 
-// A word's token: a keyword the tokenizer reads, or a word the parser renames.
-Keyword :: (kind: int) -> bool {
-    return (kind >= tk.Package && kind <= tk.Emit) || kind == syntax.Fn || kind == syntax.When ||
-           kind == syntax.View || kind == syntax.Self || kind == syntax.Min || kind == syntax.Max;
-}
-
-TokenClass :: (source: string, nodes: syntax.Node[], fields: int[], named: bool[], index: int) -> string {
+TokenClass :: (source: string, nodes: syntax.Node[], fields: int[], named: bool[], roles: string[], index: int) -> string {
     node := nodes[index];
     kind := node.kind;
     if (kind == syntax.Comment) {
@@ -143,10 +154,10 @@ TokenClass :: (source: string, nodes: syntax.Node[], fields: int[], named: bool[
         return "chibi-constant";
     }
     if (!named[index]) {
-        if (Keyword(kind)) {
-            return "chibi-keyword";
+        if (roles[kind] != "") {
+            return roles[kind];
         }
-        if (fields[index] == syntax.FieldOperator || Operator(kind)) {
+        if (fields[index] == syntax.FieldOperator) {
             return "chibi-operator";
         }
     }
@@ -154,12 +165,14 @@ TokenClass :: (source: string, nodes: syntax.Node[], fields: int[], named: bool[
 }
 
 // Every leaf of a parse of `source` that has width, other than `;`, in source
-// order, with its role ("" for none). The leaves are the tokenizer's tokens and comments, so a
-// text with the same tokens, such as a formatted copy, takes the same roles.
+// order, with its role ("" for none). The leaves are the tokenizer's tokens and
+// comments, so a text with the same tokens, such as a formatted copy, takes the
+// same roles.
 pub Classes :: (source: string, nodes: syntax.Node[], fields: int[], named: bool[]) -> (starts: int[], ends: int[], classes: string[]) {
     starts: int[] = [];
     ends: int[] = [];
     classes: string[] = [];
+    roles := TokenRoles();
     index: int = 0;
     while (index < length(nodes)) {
         node := nodes[index];
@@ -168,7 +181,7 @@ pub Classes :: (source: string, nodes: syntax.Node[], fields: int[], named: bool
         if (node.first_child < 0 && node.end > node.start && node.kind != tk.Semicolon) {
             starts.append(node.start);
             ends.append(node.end);
-            classes.append(TokenClass(source, nodes, fields, named, index));
+            classes.append(TokenClass(source, nodes, fields, named, roles, index));
         }
         index += 1;
     }
@@ -281,8 +294,8 @@ pub Retarget :: (source: string, classes: string[]) -> string {
     return Render(source, starts, ends, classes);
 }
 
-// The classified leaves of a parse of `text`, and whether the parser read it:
-// a text it rejects has no tree, so no leaves.
+// The classified leaves of a parse of `text`, and whether it parsed; a text
+// the parser rejects has no leaves.
 Classify :: (text: string) -> (starts: int[], ends: int[], classes: string[], clean: bool) {
     switch parser.Parse(text) {
         case .Parsed(nodes, fields, named, extras, root):
@@ -290,8 +303,8 @@ Classify :: (text: string) -> (starts: int[], ends: int[], classes: string[], cl
             return (leaves.starts, leaves.ends, leaves.classes, true);
         case .Rejected(diagnostic):
             none: int[] = [];
-            unclassified: string[] = [];
-            return (none, none, unclassified, false);
+            roles: string[] = [];
+            return (none, none, roles, false);
     }
 }
 
@@ -326,7 +339,7 @@ Place :: (source: string, prefix: int, leaf_starts: int[], leaf_ends: int[], lea
 // Declaration fragments, including generated reference signatures, can supply
 // their missing package and callable body: a package header, then also an
 // empty body after it. A context is used only when the parser accepts the
-// whole text; text no context makes readable renders without roles. At most
+// whole text; otherwise the raw tree, with its ERROR nodes, is used. At most
 // three parses.
 pub Highlight :: (source: string) -> string {
     first := Classify(source);

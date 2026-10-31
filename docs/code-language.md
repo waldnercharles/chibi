@@ -738,9 +738,29 @@ foreign libc {
 native build links dynamically by default (`chibi build --native --static`
 links none); another `system:` path is not linked yet. Any other path is a
 prebuilt archive, relative to the importing package, that the native build adds
-to the link line and records by hash in its receipt. `foreign alias { ... }`
+to the link line and records by hash in its receipt. `vendor:NAME` is the
+archive `libchibi_vendor_NAME.a` in the SDK's `lib/chibi-vendor`, the one pinned
+third-party archive the engine itself links, so a program binds FreeType, box3d
+or another vendored library without shipping a copy. Odin's `vendor:` packages
+bind prebuilt libraries the same way, each beside its package; here the SDK owns
+the archives, and a changed archive rebuilds the program that links it. A name
+the SDK does not hold fails the build and names it. A build tree stages only
+`vendor:freetype` so far; an installed SDK holds every archive in
+`tools/graph/sdk/Contracts.chibi`. `foreign alias { ... }`
 declares the library's functions by signature alone. A function's name is its
 C symbol.
+
+```chibi
+foreign import freetype "vendor:freetype"
+
+foreign freetype {
+    FT_Init_FreeType :: (library: u64[]) -> i32
+}
+```
+
+The array is the out-pointer: `FT_Init_FreeType(library)` fills `library[0]`
+with the handle, an opaque 64-bit word that later calls take as a `u64`.
+test/compiler/samples/native/foreign_vendor opens a font this way.
 
 Parameters and results are integers, floats, `bool` and `rawptr`, an opaque
 64-bit word. A parameter may also be `cstring`, which takes any string. The call

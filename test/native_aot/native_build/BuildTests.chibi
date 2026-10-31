@@ -200,7 +200,27 @@ LinksAProgramAndReusesIt :: (suite: Suite) {
     assert(Says(Build(suite, suite.launcher, built, ["-O0"]), "is up to date") && !Exists(trace), "an unchanged build runs nothing");
     assert(Read(Path([folder, "/receipt.txt"])) == receipt, "the receipt is kept");
     assert(Build(suite, suite.launcher, built, ["-O2"]).status == 0 && Count(built, "O2-") == 1 && Count(built, "O0-") == 1, "-O2 builds its own output");
-    assert(Count(built, "emitter-") == 1, "one emitter closure");
+    // The scalar emitter is compiled once per machine, into the compiler cache
+    // the build passes on, so another package folder reuses it.
+    cache := strings.TrimPrefix(suite.cache, "CHIBI_COMPILER_CACHE=");
+    published := Emitters(cache);
+    assert(Count(built, "emitter-") == 0 && length(published) >= 1, "the emitter is in the compiler cache");
+    elsewhere := Reset(suite, "cache elsewhere", Source());
+    assert(Build(suite, suite.launcher, elsewhere, ["-O0"]).status == 0, "another package builds");
+    assert(strings.Join(Emitters(cache), ",") == strings.Join(published, ","), "it reuses the cached emitter");
+}
+
+// The identities of the compiled emitters in `cache`, which a republished one changes.
+Emitters :: (cache: string) -> string[] {
+    found: string[] = [];
+    for (name in Names(cache)) {
+        if (strings.HasPrefix(name, "native-emitter-")) {
+            stamp := os.Stamp(Path([cache, "/", name]));
+            fields := strings.Split(stamp, ":");
+            found.append(Path([name, " ", fields[0], ":", fields[1]]));
+        }
+    }
+    return found;
 }
 
 // --static keeps the no-CRT static link of a Linux program as an explicit
@@ -464,6 +484,11 @@ LinksAVendoredArchive :: (suite: Suite) {
     RealTools(suite, missing);
     result := Build(suite, suite.built, missing, ["-O0"]);
     assert(result.status != 0 && Says(result, "libprobe.a is not a file"), "a missing archive");
+    // A `vendor:NAME` path names an archive of the SDK's lib/chibi-vendor.
+    vendor := Reset(suite, "foreign-vendor-missing", "package scalar\nforeign import probe \"vendor:no_such_archive\"\nforeign probe {\n    chibi_probe_add :: (a: i32, b: i32) -> i32\n}\nMain :: () -> int {\n    return chibi_probe_add(40, 2);\n}\n");
+    RealTools(suite, vendor);
+    result = Build(suite, suite.built, vendor, ["-O0"]);
+    assert(result.status != 0 && Says(result, "vendor:no_such_archive is not in the SDK's"), "a missing vendor archive");
     built := Reset(suite, "foreign", source);
     RealTools(suite, built);
     Clone(vendored, Path([built.game, "/libprobe.a"]));
@@ -546,19 +571,28 @@ CopySample :: (from: string, to: string) {
 // `chibi build --native` and runs, and its asserts hold when the program exits
 // 0. libc is the foreign library.
 RunsTheForeignSamples :: (suite: Suite) {
-    for (sample in ["foreign_declared", "foreign_library", "foreign_posix"]) {
+    for (sample in ["foreign_declared", "foreign_library", "foreign_posix", "foreign_vendor"]) {
         built := Reset(suite, sample, "package main\n");
         target := Path([built.game, "/", sample]);
         Make(target);
         CopySample(Path([os.Root(), "/test/compiler/samples/native/", sample]), target);
         Write(Path([target, "/facts/Native.chibi"]), "package facts\npub Native :: () -> int {\n    return Calls();\n}\n");
         Write(Path([built.game, "/Main.chibi"]), Path(["package main\nimport facts \"project:", sample, "/facts\"\nMain :: () -> int {\n    return facts.Native();\n}\n"]));
+        // The vendor sample opens the font beside the program, which runs in game.
+        if (sample == "foreign_vendor") {
+            assert(os.Run(["/bin/ln", "-s", Path([os.Root(), "/third_party/fonts/inter/Inter.ttf"]), Path([built.game, "/Inter.ttf"])]) == 0, "the font");
+        }
         RealTools(suite, built);
         result := Build(suite, suite.built, built, ["-O0"]);
         if (result.status != 0) {
             os.Print(result.log);
         }
         assert(result.status == 0 && os.Run(In(built.game, Printed(result))) == 0, "the sample's asserts hold natively");
+        // The receipt records the vendor archive by hash.
+        program := Printed(result);
+        assert(sample != "foreign_vendor" ||
+               Holds(Path([strings.Slice(program, 0, strings.LastIndex(program, "/")), "/receipt.txt"]), "libchibi_vendor_freetype.a\nlibrary-sha256 "),
+               "the vendor archive's hash");
     }
 }
 

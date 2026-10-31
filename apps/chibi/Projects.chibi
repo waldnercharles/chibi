@@ -78,5 +78,8 @@ BuildNative :: (options: Options) -> int {
     if options.static_link {
         driver = append(driver, "static")
     }
+    if options.shared {
+        driver = append(driver, "shared")
+    }
     return process.run(NativeDriver(share, "Native", driver))
 }

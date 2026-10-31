@@ -5,7 +5,6 @@ import named "project:named_binding"
 import constructors "project:type_constructors"
 import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
-import json "project:json_string"
 import strings "core:strings"
 
 // Complete catalog order, including native records and internal constructors.
@@ -432,7 +431,7 @@ VariantText :: union {
 }
 ReadVariant :: (tree: reader.Tree, node: int, document: int, literal: bool) -> VariantText {
     if (literal) {
-        decoded := json.Value(reader.Text(tree, node));
+        decoded := compiler_json_value_string(reader.Text(tree, node));
         diagnostics: syntax.Diagnostic[] = [];
         if (!decoded.valid) {
             diagnostics.append(reader.Diagnostic(tree, node, document, "Invalid string literal"));

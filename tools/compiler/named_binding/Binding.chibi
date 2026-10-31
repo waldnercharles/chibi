@@ -2,7 +2,6 @@ package named_binding
 
 import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
-import json "project:json_string"
 import strings "core:strings"
 
 // All tables contain analyzer/catalog facts. A negative ID slot denotes zero;
@@ -421,7 +420,7 @@ pub Text :: (environment: Environment, request: Request) -> Resolution {
         container = 1;
     }
     if (strings.HasPrefix(name, "\"")) {
-        decoded := json.Metadata(name);
+        decoded := compiler_json_string(name);
         // Legacy fallback copies the decoded C-string prefix, including when
         // JSON contains NUL. Parsed-name validation is a different entry path.
         if (decoded.valid) {

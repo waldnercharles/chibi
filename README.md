@@ -5,7 +5,7 @@ run it with `chibi`. Game projects add scenes, components and resources.
 
 - [Language](docs/code-language.md): learn the syntax through code.
 - [Examples](docs/examples.md): try common game programming tasks.
-- [Toolchain](docs/guide/toolchain.md): run a program, or build and export a game.
+- [Toolchain](docs/guide/toolchain.md): run a program, test packages and build native programs.
 - [Testing](docs/guide/testing.md): check package functions with `@test`.
 
 ## Install

@@ -19,7 +19,7 @@ import strings "core:strings"
 // driver, as `zig build` runs its install step; --target names a subset (and
 // the build host the graph needs). --dry-run prints the
 // commands instead of running them. The other verbs are `test`, `install`,
-// `format`, `clean`, `sdk-reflect`, `runtime-sdk`, `package-runtime-sdk`,
+// `format`, `clean`, `census`, `sdk-reflect`, `runtime-sdk`, `package-runtime-sdk`,
 // `bootstrap-artifact`, `bootstrap-recover`,
 // `publish-seed`, `native-census` and `native-self-host`; Usage lists them.
 
@@ -836,11 +836,62 @@ Clean :: (arguments: string[]) -> int {
     return 0
 }
 
+// Goal items 3 and 4 as numbers over the tracked files outside archive/ and
+// third_party/: it fails on CMake, Make or Python build tooling, and prints the
+// first-party C and the C++/Objective-C shims that remain, with line counts.
+Census :: () -> int {
+    listed := os.Capture(["git", "-C", os.Root(), "ls-files"])
+    if (listed.status != 0) {
+        os.Print("census: git ls-files failed")
+        return 1
+    }
+    banned: string[] = []
+    shims: string[] = []
+    c_files := 0
+    c_lines := 0
+    for (path in strings.SplitLines(listed.stdout)) {
+        if (strings.HasPrefix(path, "archive/") || strings.HasPrefix(path, "third_party/")) {
+            continue
+        }
+        name := strings.BaseName(path)
+        if (name == "CMakeLists.txt" || name == "Makefile" || strings.HasSuffix(name, ".cmake") || strings.HasSuffix(name, ".py")) {
+            banned.append(path)
+            continue
+        }
+        is_c := strings.HasSuffix(name, ".c") || strings.HasSuffix(name, ".h")
+        is_shim := false
+        for (suffix in [".cpp", ".cc", ".cxx", ".hpp", ".m", ".mm"]) {
+            is_shim = is_shim || strings.HasSuffix(name, suffix)
+        }
+        if (!is_c && !is_shim) {
+            continue
+        }
+        lines := strings.Count(build.read_file(Absolute(path)), "\n")
+        if (is_c) {
+            c_files = c_files + 1
+            c_lines = c_lines + lines
+        } else {
+            shims.append(format_text("{} {}", lines, path))
+        }
+    }
+    for (path in banned) {
+        os.Print(Join(["census: build tooling outside archive/: ", path]))
+    }
+    for (shim in shims) {
+        os.Print(Join(["census: shim ", shim]))
+    }
+    os.Print(format_text("census: {} first-party C files, {} lines, {} C++/Objective-C shims, {} build tooling files", c_files, c_lines, length(shims), length(banned)))
+    if (length(banned) > 0) {
+        return 1
+    }
+    return 0
+}
+
 Usage :: () -> int {
     os.Print("usage: build [--release|--debug|--profile NAME] [--build DIR] [--target NAME]... [--jobs N] [--dry-run]")
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
-    os.Print("       build format [--check] | clean | publish-seed | native-census")
+    os.Print("       build format [--check] | clean | census | publish-seed | native-census")
     os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--work DIR] [--release-build DIR] [--skip-vm] [--dry-run]")
     os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
     os.Print("       build sdk-reflect | runtime-sdk | package-runtime-sdk [--reflect-build DIR] [--runtime-build DIR] [--output DIR] [-- NATIVE ARGUMENTS]")
@@ -872,6 +923,9 @@ Main :: () -> int {
     }
     if (verb == "clean") {
         return Clean(arguments)
+    }
+    if (verb == "census") {
+        return Census()
     }
     if (verb == "sdk-reflect") {
         return SdkReflect(arguments)

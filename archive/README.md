@@ -16,6 +16,16 @@ Editing, rename, completion/hover/highlighting and prototype-source editing for 
 - `src/authoring/source_prototype_edit*`: prototype source edits.
 - `test/authoring/source_edit.c`: their test.
 
+## Asset source compiler services (authoring, compiler)
+
+The asset-source reader and writer, parameter and prototype editing, and the cost-explanation report ran on the packaged compiler's asset entry points, which only archived games and Studio called. The packaged compiler itself stays: `tools/compiler/asset_compiler/Compile.chibi` still holds `CompilePackages` and `RejectPackages`, which `chibi test`, `chibi run` and `chibi-compile` take every package closure from, and `src/authoring/asset_compiler_host.c` still runs it (`asset_compiler_compile_closure[_cached]`). The packaged resource no longer carries a copy of the SDK's core and game sources.
+
+- `tools/compiler/asset_source/`, `tools/compiler/asset_packaging/`, `tools/compiler/cost_explanations/`, `tools/compiler/asset_compiler/Cache.chibi`: the Chibi sides, and the asset entry points of `tools/compiler/asset_compiler/Compile.chibi` (the archived copy is the whole file before they were cut).
+- `src/authoring/asset_compiler_host*`: the whole host before it was reduced to the closure compile (`asset_source_read`, `asset_source_write`, the asset cache and the packaged library snapshot).
+- `test/language/asset_compiler_host.c`, `test/language/portable_asset_source.h.in`, `test/fixtures/portable-byte-asset/`: their tests.
+- `packages/game/`: `game:assets` and the documentation package, which only the asset source used.
+- `docs/cost-explanations.md`.
+
 ## Source formatter and documentation site (authoring)
 
 `chibi fmt` / `chibi-compile --format` and `chibi doc` / `chibi-compile --docs` ran on the C front end. They are archived while the compiler moves to Chibi.

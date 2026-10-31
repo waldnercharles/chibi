@@ -15,9 +15,6 @@ void test_language_execution_scope();
 void test_language_program_session();
 void test_language_capture();
 void test_numeric_ranges();
-#ifdef CHIBI_TEST_ASSET_COMPILER_HOST
-void test_language_asset_compiler_host();
-#endif
 void test_language_host_packages_compiler();
 void test_language_component_write_ir();
 void test_language_component_write_layout();
@@ -53,7 +50,6 @@ int main(int argc, char **argv)
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool integer_shift_counts = (argc == 2 || argc == 3) &&
                                 !strcmp(argv[1], "--integer-shift-counts");
-    bool asset_compiler_host = argc == 2 && !strcmp(argv[1], "--asset-compiler-host");
     bool package_compiler_chibi_scalar = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-scalar");
     bool package_compiler_chibi_native = argc == 2 &&
@@ -70,9 +66,9 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
          !record_compatibility && !program && !program_session && !ranges &&
-         !integer_shift_counts && !asset_compiler_host &&
-         !package_compiler_chibi_scalar && !package_compiler_chibi_native &&
-         !native_census && !native_census_flattening && !host_packages_compiler &&
+         !integer_shift_counts && !package_compiler_chibi_scalar &&
+         !package_compiler_chibi_native && !native_census &&
+         !native_census_flattening && !host_packages_compiler &&
          !component_write && !component_write_layout && !text_format)) {
         fprintf(
             stderr,
@@ -174,13 +170,6 @@ int main(int argc, char **argv)
         test_language_native_census_flattening();
     } else if (host_packages_compiler) {
         test_language_host_packages_compiler();
-    } else if (asset_compiler_host) {
-#ifdef CHIBI_TEST_ASSET_COMPILER_HOST
-        test_language_asset_compiler_host();
-#else
-        fprintf(stderr, "asset compiler host component unavailable on this platform/configuration\n");
-        return 1;
-#endif
     } else if (ranges) {
         test_numeric_ranges();
     } else if (component_write_layout) {

@@ -83,11 +83,12 @@ The bootstrap seed is compiled for that catalog, so adding a native means a
 new runtime pin, first build host and seed.
 
 [`Generate.chibi`](../tools/graph/asset_compiler/Generate.chibi) takes compiler
-implementation inputs from `CompilerSources.txt`. It captures the complete
-public core snapshot for packaging after compiling the compiler/facade inputs.
-Captured source bytes still participate in the final consistency check. The
-asset compiler's existing `ExplainCosts` facade from
-[#788](https://github.com/waldnercharles/chibi/pull/788) is preserved.
+implementation inputs from `CompilerSources.txt`. Source bytes captured for the
+compile still participate in the final consistency check. The packaged
+resource holds only the compiled artifact; the public core snapshot and the
+`ExplainCosts` facade from
+[#788](https://github.com/waldnercharles/chibi/pull/788) went to `archive/`
+with the asset-source code.
 
 [`Driver.chibi`](../tools/native_aot/driver/Driver.chibi) compiles the private scalar
 emitter with its four compiler packages and `core:strings`. Compilation and

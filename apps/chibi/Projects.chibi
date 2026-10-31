@@ -35,7 +35,7 @@ NativeDriver :: (share: string, callable: string, arguments: string[]) -> string
     compiler := Join([share, "/compiler"])
     core := Join([share, "/core"])
     return Concat([PrivateProgram("chibi-build-host"), "--root", driver,
-                   "--source", Join([driver, "/Driver.chibi"]), "--core", core,
+                   "--source", Join([driver, "/Driver.chibi"]), "--collection", Join(["native_aot=", driver, "/driver"]), "--core", core,
                    "--compiler", compiler, "--compiler-core", core,
                    "--entry", callable, "--timeout-ms", "900000", "--",
                    PrivateProgram("chibi-compiler-host"), compiler, core], arguments)

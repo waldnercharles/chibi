@@ -1391,7 +1391,8 @@ pub ProgramDirectory :: (target: string) -> string {
 // Files a target installs into the build tree, `DESTINATION=SOURCE`, as roo
 // CMakeLists.txt configures them: a directory SOURCE copies every file below
 // it. The launcher's players, `chibi version`, `chibi test` and `chibi doc`
-// read ../share/chibi as installed ones do.
+// read ../share/chibi as installed ones do, and `vendor:freetype` reads
+// ../lib/chibi-vendor, where an SDK keeps its prebuilt archives.
 // build/sdk/chibi_engine_metadata.json is the build identity (Identity).
 pub Resources :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
@@ -1406,7 +1407,8 @@ pub Resources :: (target: string) -> string[] {
             "build/share/chibi/engine.json=build/sdk/chibi_engine_metadata.json",
             "build/share/chibi/apps/chibi=apps/chibi",
             "build/share/chibi/apps/host=apps/host",
-            "build/share/chibi/core=packages/core"
+            "build/share/chibi/core=packages/core",
+            "build/lib/chibi-vendor/libchibi_vendor_freetype.a=third-party/lib/chibi-vendor/libchibi_vendor_freetype.a"
         ];
     }
     return [];

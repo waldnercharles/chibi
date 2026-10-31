@@ -385,6 +385,11 @@ Link :: (linker: string, target: int, partial: string, object: string, start: st
     if (target == 1) {
         command := [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
                     "-dead_strip", "-e", "_main", object, start];
+        if (length(libraries) > 0) {
+            // An archive's own C imports are not in the stub, which names only
+            // what the module declares; dyld binds them in libSystem at launch.
+            command.extend(["-undefined", "dynamic_lookup"]);
+        }
         command.extend(libraries);
         command.extend([Join([partial, "/libSystem.tbd"]), "-o", program]);
         return command;
@@ -507,11 +512,65 @@ LinkedLibraries :: (text: string) -> string[] {
     return found;
 }
 
+// The SDK's folder of prebuilt third-party archives, lib/chibi-vendor beside
+// share/chibi, for the SDK whose core is `core`; "" when `core` is not below a
+// share/chibi folder.
+VendorDirectory :: (core: string) -> string {
+    suffix := "/share/chibi/core";
+    if (!strings.HasSuffix(core, suffix)) {
+        return "";
+    }
+    return Join([strings.Slice(core, 0, strings.ByteLength(core) - strings.ByteLength(suffix)), "/lib/chibi-vendor"]);
+}
+
+// The archive a `vendor:NAME` foreign path names in `vendor`, "" for a path
+// that is not one or a name that is not an identifier.
+VendorArchive :: (path: string, vendor: string) -> string {
+    if (!strings.HasPrefix(path, "vendor:")) {
+        return "";
+    }
+    name := strings.Slice(path, 7, strings.ByteLength(path) - 7);
+    if (!strings.IsIdentifier(name)) {
+        return "";
+    }
+    return Join([vendor, "/libchibi_vendor_", name, ".a"]);
+}
+
+// The vendor archives the sources name, `NAME:HASH` once each in source order,
+// so a changed archive rebuilds the program that links it.
+VendorState :: (texts: string[], vendor: string) -> string {
+    parts: string[] = [];
+    for (text in texts) {
+        rest := text;
+        at := strings.Index(rest, "\"vendor:");
+        while (at >= 0) {
+            rest = strings.Slice(rest, at + 1, strings.ByteLength(rest) - at - 1);
+            end := strings.Index(rest, "\"");
+            if (end < 0) {
+                break;
+            }
+            path := strings.Slice(rest, 0, end);
+            archive := VendorArchive(path, vendor);
+            if (archive != "") {
+                part := Join([path, ":", build.hash_file(archive)]);
+                if (!parts.contains(part)) {
+                    parts.append(part);
+                }
+            }
+            rest = strings.Slice(rest, end + 1, strings.ByteLength(rest) - end - 1);
+            at = strings.Index(rest, "\"vendor:");
+        }
+    }
+    return strings.Join(parts, ",");
+}
+
 // `text` with each `; chibi-library PATH` comment resolved to an existing
-// regular file under `root` and rewritten as `; link ABSOLUTE`, or "" after
-// reporting why not. `system:c` is libc and rewritten to nothing; other system
-// libraries stay as they are, for a Windows link to write their import libraries.
-ResolveLibraries :: (text: string, root: string) -> string {
+// regular file and rewritten as `; link ABSOLUTE`, or "" after reporting why
+// not. A `vendor:NAME` path is the SDK's prebuilt archive in `vendor`, and any
+// other relative path is below `root`. `system:c` is libc and rewritten to
+// nothing; other system libraries stay as they are, for a Windows link to write
+// their import libraries.
+ResolveLibraries :: (text: string, root: string, vendor: string) -> string {
     out: string[] = [];
     for (line in strings.SplitLines(text)) {
         if (!strings.HasPrefix(line, "; chibi-library ")) {
@@ -529,7 +588,13 @@ ResolveLibraries :: (text: string, root: string) -> string {
             continue;
         }
         absolute := path;
-        if (!strings.HasPrefix(path, "/")) {
+        if (strings.HasPrefix(path, "vendor:")) {
+            absolute = VendorArchive(path, vendor);
+            if (absolute == "" || build.file_kind(absolute) != "file") {
+                build.report(Join(["native: the foreign library ", path, " is not in the SDK's ", vendor]));
+                return "";
+            }
+        } else if (!strings.HasPrefix(path, "/")) {
             absolute = Join([root, "/", path]);
         }
         absolute = build.resolve_path(absolute);
@@ -1225,6 +1290,7 @@ pub Native :: () -> int {
     compiler := arguments[1];
     core := arguments[2];
     root := arguments[3];
+    vendor := VendorDirectory(core);
     mode := arguments[5];
     debug := arguments[6];
     destination := Requested(arguments[7]);
@@ -1341,7 +1407,7 @@ pub Native :: () -> int {
     key := build.hash_text(strings.Join([
         "chibi-native 1", entry_path, build.hash_text(text), emitter_key,
         build.hash_file(Join([build.root(), "/Driver.chibi"])), build.hash_file(opt), build.hash_file(llc),
-        build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root), linkage,
+        build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root), VendorState(build.concat([text], package_texts), vendor), linkage,
         strings.Join(package_state, ",")
     ], "\n"));
     folder := Join([root, "/build/native"]);
@@ -1443,7 +1509,7 @@ pub Native :: () -> int {
     }
     emitted := build.read_file(module);
     if (strings.Contains(emitted, "\n; chibi-library ")) {
-        resolved := ResolveLibraries(emitted, root);
+        resolved := ResolveLibraries(emitted, root, vendor);
         if (resolved == "" || !build.write_file(module, resolved)) {
             return Finish(work, 1);
         }

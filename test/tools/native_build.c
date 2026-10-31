@@ -730,6 +730,17 @@ static const char *const FOREIGN_SOURCE =
     "    return total + int(chibi_probe_scale(0.5, 2.0));\n"
     "}\n";
 
+/* A `vendor:NAME` path names an archive of the SDK's lib/chibi-vendor. */
+static const char *const
+    VENDOR_MISSING_SOURCE = "package scalar\n"
+                            "foreign import probe \"vendor:no_such_archive\"\n"
+                            "foreign probe {\n"
+                            "    chibi_probe_add :: (a: i32, b: i32) -> i32\n"
+                            "}\n"
+                            "Main :: () -> int {\n"
+                            "    return chibi_probe_add(40, 2);\n"
+                            "}\n";
+
 /* A program links the prebuilt archive its source imports: the driver finds it
  * beside the source, adds it to the link line and records its hash. The
  * archive is vendored: nothing here compiles its C. A missing archive fails
@@ -748,6 +759,12 @@ TEST_CASE(native_build_links_a_vendored_archive)
     reset("foreign-missing", FOREIGN_SOURCE);
     real_tools(bin);
     REQUIRE(build_with(in_place, options, tools) != 0 && strstr(errors, "libprobe.a is not a file"));
+    reset("foreign-vendor-missing", VENDOR_MISSING_SOURCE);
+    real_tools(bin);
+    REQUIRE(
+        build_with(in_place, options, tools) != 0 &&
+        strstr(errors, "vendor:no_such_archive is not in the SDK's")
+    );
     reset("foreign", FOREIGN_SOURCE);
     real_tools(bin);
     path(copied, game, "libprobe.a");
@@ -1057,7 +1074,8 @@ TEST_CASE(native_build_runs_the_foreign_samples)
     }
     static const char *const SAMPLES[] = { "foreign_declared",
                                            "foreign_library",
-                                           "foreign_posix" };
+                                           "foreign_posix",
+                                           "foreign_vendor" };
     char in_place[1024];
     path(in_place, built, "sdk/chibi");
     const char *options[] = { "-O0", NULL };
@@ -1077,10 +1095,31 @@ TEST_CASE(native_build_runs_the_foreign_samples)
             SAMPLES[i]
         );
         write_at(game, "Main.chibi", main_text);
+        if (!strcmp(SAMPLES[i], "foreign_vendor")) {
+            /* The sample opens the font beside the program, which runs in game. */
+            char font[1100], link[1100];
+            snprintf(font, sizeof font, "%s/third_party/fonts/inter/Inter.ttf", CHIBI_SOURCE_ROOT);
+            path(link, game, "Inter.ttf");
+            REQUIRE(!symlink(font, link));
+        }
         real_tools(bin);
         REQUIRE(build_with(in_place, options, tools) == 0);
         char program[1024];
         REQUIRE(printed(program));
+        if (!strcmp(SAMPLES[i], "foreign_vendor")) {
+            /* The receipt records the vendor archive by hash. */
+            char receipt[1100];
+            snprintf(
+                receipt,
+                sizeof receipt,
+                "%.*s/receipt.txt",
+                (int)(strrchr(program, '/') - program),
+                program
+            );
+            char *recorded = tool_read(receipt);
+            REQUIRE(recorded && strstr(recorded, "libchibi_vendor_freetype.a\nlibrary-sha256 "));
+            free(recorded);
+        }
         const char *argv[] = { program, NULL };
         const char *envp[] = { NULL };
         chibi_process_output out = { 0 }, err = { 0 };
@@ -1631,11 +1670,15 @@ TEST_CASE(native_build_links_core_sys_windows)
  * in its own forked process: the parent keeps no state a case changes. */
 static bool run_forked(const char *const names[], bool (*const cases[])(void), int count, int workers)
 {
-    pid_t running[16];
-    int slot_case[16];
-    bool passed[16] = { false };
+    enum
+    {
+        MAX_CASES = 32
+    };
+    pid_t running[MAX_CASES];
+    int slot_case[MAX_CASES];
+    bool passed[MAX_CASES] = { false };
     int started = 0, active = 0, finished = 0;
-    assert(count <= 16 && workers <= 16);
+    assert(count <= MAX_CASES && workers <= MAX_CASES);
     memset(running, 0, sizeof running);
     while (finished < count) {
         for (int slot = 0; slot < workers && started < count && active < workers;

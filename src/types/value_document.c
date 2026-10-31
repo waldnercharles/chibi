@@ -11,6 +11,8 @@
 
 #include <string.h>
 
+/* Its only caller, the compiler host, allows COMPILER_HOST_MAX_VALUES values in
+ * a result; a projection has the same bound. */
 #define DOCUMENT_MAX_VALUES 4000000
 #define DOCUMENT_MAX_DEPTH 64
 

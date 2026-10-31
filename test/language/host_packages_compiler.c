@@ -738,8 +738,8 @@ TEST_CASE(host_packages_catalog_handle_types_reach_package_signatures)
 
 /* An argument document that outgrows the host's shared quota is refused before
  * the compiler runs, and the diagnostic names the bound and the counts. Each
- * JSON string costs two values and 128 bytes of the 1,000,000-value, 64 MiB
- * budget, so 600,000 extra paths exhaust it while the document is checked. */
+ * JSON string costs two values and 128 bytes of the 4,000,000-value, 256 MiB
+ * budget, so 2,200,000 extra paths exhaust it while the document is checked. */
 TEST_CASE(host_packages_compiler_names_the_exhausted_argument_bound)
 {
     REQUIRE(load_compiler());
@@ -753,7 +753,7 @@ TEST_CASE(host_packages_compiler_names_the_exhausted_argument_bound)
     yyjson_doc_free(parsed);
     REQUIRE(doc);
     yyjson_mut_val *paths = yyjson_mut_arr_get(yyjson_mut_doc_get_root(doc), 3);
-    for (int i = 0; i < 600000; i++) {
+    for (int i = 0; i < 2200000; i++) {
         REQUIRE(yyjson_mut_arr_add_str(doc, paths, ""));
     }
     char *json = yyjson_mut_write(doc, 0, &length);
@@ -770,7 +770,7 @@ TEST_CASE(host_packages_compiler_names_the_exhausted_argument_bound)
     );
     free(json);
     free(result.json);
-    if (called || !strstr(result.diagnostic, " of 1000000 values, ")) {
+    if (called || !strstr(result.diagnostic, " of 4000000 values, ")) {
         fprintf(stderr, "argument bound: %s\n", called ? "the call ran" : result.diagnostic);
     }
     REQUIRE(!called);
@@ -778,8 +778,8 @@ TEST_CASE(host_packages_compiler_names_the_exhausted_argument_bound)
         strstr(result.diagnostic, "invalid or oversized compiler argument document: the document, ")
     );
     REQUIRE(
-        strstr(result.diagnostic, " of 1000000 values, ") &&
-        strstr(result.diagnostic, " of 67108864 bytes")
+        strstr(result.diagnostic, " of 4000000 values, ") &&
+        strstr(result.diagnostic, " of 268435456 bytes")
     );
     return true;
 }

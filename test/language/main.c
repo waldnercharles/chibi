@@ -61,8 +61,6 @@ int main(int argc, char **argv)
     bool compiler_fixture = argc == 2 && !strcmp(argv[1], "--compiler-fixture");
     bool package_compiler_chibi_scalar = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-scalar");
-    bool package_compiler_chibi_native_arguments = argc == 2 &&
-                                                   !strcmp(argv[1], "--package-compiler-chibi-native-arguments");
     bool package_compiler_chibi_native = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-native");
     bool native_census = (argc == 2 || argc == 3) &&
@@ -79,8 +77,7 @@ int main(int argc, char **argv)
          !record_compatibility && !program && !program_session && !ranges &&
          !integer_shift_counts && !asset_compiler_host && !compiler_fixture &&
          !package_compiler_chibi_scalar && !package_compiler_chibi_native &&
-         !native_census && !native_census_flattening &&
-         !package_compiler_chibi_native_arguments && !host_packages_compiler &&
+         !native_census && !native_census_flattening && !host_packages_compiler &&
          !component_write && !component_write_layout && !text_format &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -127,7 +124,7 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-scalar | "
             "--package-compiler-chibi-native | --native-census [report] | "
             "--native-census-flattening | "
-            "--package-compiler-chibi-native-arguments | "
+            ""
             ""
             ""
             ""
@@ -182,8 +179,6 @@ int main(int argc, char **argv)
         test_language_compiler_fixture();
     } else if (package_compiler_chibi_scalar) {
         test_language_package_compiler_chibi_scalar();
-    } else if (package_compiler_chibi_native_arguments) {
-        test_language_package_compiler_chibi_native_arguments();
     } else if (package_compiler_chibi_native) {
         test_language_package_compiler_chibi_native();
     } else if (native_census) {

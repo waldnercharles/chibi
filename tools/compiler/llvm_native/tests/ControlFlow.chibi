@@ -35,20 +35,20 @@ Occurrences :: (text: string, needle: string) -> int {
         remaining = strings.Slice(remaining, start, strings.ByteLength(remaining) - start);
     }
 }
-InlineProbe: string : "\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n";
-Tables: string : "unsupported native scalar signature or table size";
+InlineProbe :: () -> string { return "\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n"; }
+Tables :: () -> string { return "unsupported native scalar signature or table size"; }
 @test
 DirectRecursionCallsItsSymbolAndProbesTheStack :: () {
     text := Emitted(RecursiveModule(abi.LinuxX64()));
     assert(Occurrences(text, "define i32 @chibi_scalar() #0 {\nentry:\n") == 1);
     assert(Occurrences(text, "call i32 @chibi_scalar()") == 1);
-    assert(Occurrences(text, InlineProbe) == 1);
+    assert(Occurrences(text, InlineProbe()) == 1);
     assert(Occurrences(text, "depth") == 0);
 }
 @test
 MacOSRecursionProbesInline :: () {
     text := Emitted(RecursiveModule(abi.MacOSArm64()));
-    assert(Occurrences(text, InlineProbe) == 1);
+    assert(Occurrences(text, InlineProbe()) == 1);
 }
 @test
 WindowsRecursionProbesWithChkstk :: () {
@@ -69,12 +69,12 @@ MutualRecursionCallsBothSymbolsAndProbesEveryFunction :: () {
     assert(Occurrences(text, "call i32 @chibi_scalar.1()") == 1);
     assert(Occurrences(text, "call i32 @chibi_scalar()") == 1);
     assert(Occurrences(text, " #0 {") == 2);
-    assert(Occurrences(text, InlineProbe) == 1);
+    assert(Occurrences(text, InlineProbe()) == 1);
 }
 @test
 UnownedCodeRowIsRejected :: () {
     Rejects(Emit([Function(6, 0, 0, 4, 0, 7, 0, 3), Function(6, 3, 4, 1, 8, 3, 3, 0)],
-                 [6, 1, 6], [6, 1, 6, 6, 6], Calls(), [0, 1, 2]), Tables);
+                 [6, 1, 6], [6, 1, 6, 6, 6], Calls(), [0, 1, 2]), Tables());
 }
 @test
 WrappedSlotRangesAreRejected :: () {
@@ -88,7 +88,7 @@ WrappedSlotRangesAreRejected :: () {
     empty: int[] = [];
     Rejects(Emit([Function(6, 0, 0, 2147483647, 0, 4, 0, 0),
                   Function(6, 0, 2147483647, 2147483647, 4, 4, 0, 0),
-                  Function(6, 0, -2, 2, 8, 4, 0, 0)], empty, empty, code, empty), Tables);
+                  Function(6, 0, -2, 2, 8, 4, 0, 0)], empty, empty, code, empty), Tables());
 }
 @test
 BackEdgeMaySkipTheEntryCheck :: () {

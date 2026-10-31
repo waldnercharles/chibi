@@ -28,11 +28,11 @@ TextReadModule :: (code: native.Instruction[]) -> native.Result {
                        [13, 6, 13, 6, 13, 6, 6, 6], empty, code, empty, records, empty,
                        ["abcd"], source, names, empty, empty, false, 1);
 }
-TextReadMismatch: string : "native text read differs from its operands";
+TextReadMismatch :: () -> string { return "native text read differs from its operands"; }
 ChangedTextRead :: (row: int, item: native.Instruction) {
     code := TextReads();
     code[row] = item;
-    Rejects(TextReadModule(code), TextReadMismatch);
+    Rejects(TextReadModule(code), TextReadMismatch());
 }
 // Length is the second field. Byte reads stay below it, and slices clamp
 // their count so neither a read nor a pointer passes the string's bytes.

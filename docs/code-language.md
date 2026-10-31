@@ -748,7 +748,10 @@ the SDK does not hold fails the build and names it. A build tree stages only
 `vendor:freetype` so far; an installed SDK holds every archive in
 `tools/graph/sdk/Contracts.chibi`. `foreign alias { ... }`
 declares the library's functions by signature alone. A function's name is its
-C symbol.
+C symbol. A block with no library, `foreign { ... }`, declares symbols that the
+program's own objects define, such as its start module's exports, as Odin does.
+The link resolves them, and no library, libSystem stub or Windows import library
+lists them.
 
 ```chibi
 foreign import freetype "vendor:freetype"
@@ -763,7 +766,7 @@ with the handle, an opaque 64-bit word that later calls take as a `u64`.
 test/compiler/samples/native/foreign_vendor opens a font this way.
 
 Parameters and results are integers, floats, `bool` and `rawptr`, an opaque
-64-bit word. A parameter may also be `cstring`, which takes any string. The call
+64-bit word that an authored function can also take, return and hold. A parameter may also be `cstring`, which takes any string. The call
 copies it with a NUL into a 4096-byte stack buffer and passes the buffer, so the
 cost is one small copy, visible in the declaration, with no heap allocation. A
 string of 4096 bytes or more, or one that holds a NUL byte, traps instead of

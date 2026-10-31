@@ -479,9 +479,13 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 libraries.append(Text(forest, text, Field(forest, member, syntax.FieldAlias)));
                 paths.append(strings.Slice(spelled, 1, strings.ByteLength(spelled) - 2));
             } else if (Is(forest, member, syntax.ForeignBlock)) {
-                alias := Text(forest, text, Field(forest, member, syntax.FieldLibrary));
+                alias := "";
                 path: string = "";
-                known := false;
+                // A block with no library declares symbols of the program's own objects.
+                known := Field(forest, member, syntax.FieldLibrary) < 0;
+                if (!known) {
+                    alias = Text(forest, text, Field(forest, member, syntax.FieldLibrary));
+                }
                 for (index in 0..<length(libraries)) {
                     if (libraries[index] == alias) {
                         path = paths[index];
@@ -835,7 +839,7 @@ Complete :: (ops: Ops) -> bool {
     return true;
 }
 // The storage of a scalar type, any of which a record field may hold: an
-// integer, bool or string; 0 for any other.
+// integer, bool, string or rawptr; 0 for any other.
 ScalarStorage :: (text: string) -> int {
     integer: int = Int8Storage;
     while (integer <= WordStorage) {
@@ -852,6 +856,10 @@ ScalarStorage :: (text: string) -> int {
     }
     if (text == "string") {
         return TextStorage;
+    }
+    // An opaque 64-bit word, the C pointer a foreign function takes and gives.
+    if (text == "rawptr") {
+        return WordStorage;
     }
     if (text == "number" || text == "f32") {
         return FloatStorage;
@@ -1021,6 +1029,10 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
         declared := CharIndex(table^);
         if (declared < 0) { return none; }
         return ReadTypeSuffixes(forest, node, table, {storage: IntStorage, container: 0, record: declared}, package, view);
+    } else if (name == "rawptr") {
+        // The opaque 64-bit word a foreign function takes or returns, also the
+        // type of an authored function's parameter, result or local.
+        return ReadTypeSuffixes(forest, node, table, {storage: WordStorage, container: 0, record: -1}, package, view);
     } else if (ScalarStorage(name) != 0) {
         return ReadTypeSuffixes(forest, node, table, {storage: ScalarStorage(name), container: 0, record: -1},
                                 package, view);

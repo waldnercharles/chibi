@@ -55,12 +55,16 @@ WideArgument :: () -> string {
 // functions work, by way of `add` from the archive. Run with no arguments it checks
 // that the count is 1, the program's name has bytes and an index past the end is -1;
 // run with the two arguments above it checks the count is 3 and that it reads both
-// back byte for byte.
-Entry :: (triple: string) -> string {
+// back byte for byte. chibi_environment is an array on POSIX and null on Windows.
+Entry :: (triple: string, windows: bool) -> string {
     spaced := SpacedArgument();
     wide := WideArgument();
+    environment := "ne";
+    if (windows) {
+        environment = "eq";
+    }
     return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\ndeclare i64 @chibi_argument_count()\n",
-                 "declare i64 @chibi_argument(i64, ptr, i64)\n",
+                 "declare i64 @chibi_argument(i64, ptr, i64)\ndeclare ptr @chibi_environment()\n",
                  Constant("spaced", spaced), Constant("wide", wide),
                  "define internal i1 @same(ptr %a, ptr %b, i64 %n) {\nentry:\n  br label %loop\nloop:\n",
                  "  %i = phi i64 [ 0, %entry ], [ %next, %body ]\n  %done = icmp uge i64 %i, %n\n",
@@ -82,7 +86,9 @@ Entry :: (triple: string) -> string {
                  "  %len2 = icmp eq i64 %second, ", format_text("{}", strings.ByteLength(wide)), "\n",
                  "  %arguments.a = and i1 %len1, %len2\n  %arguments.b = and i1 %same1, %same2\n",
                  "  %arguments = and i1 %arguments.a, %arguments.b\n  %with = and i1 %three, %arguments\n",
-                 "  %either = or i1 %one, %with\n  %ok.a = and i1 %either, %named\n  %all = and i1 %ok.a, %missing\n",
+                 "  %either = or i1 %one, %with\n  %ok.a = and i1 %either, %named\n  %ok.b = and i1 %ok.a, %missing\n",
+                 "  %env = call ptr @chibi_environment()\n  %envok = icmp ", environment, " ptr %env, null\n",
+                 "  %all = and i1 %ok.b, %envok\n",
                  "  %bit = zext i1 %all to i32\n  %x = call i32 @add(i32 41, i32 %bit)\n  ret i32 %x\n}\n"]);
 }
 
@@ -134,6 +140,76 @@ ParserCases :: (llvm: string, work: string, triple: string, windows: bool) -> in
     return 0;
 }
 
+// The modules of the test program built into objects in `work` and the archive of `add`;
+// the archive's path, or "" after reporting what failed.
+Compile :: (llvm: string, work: string, triple: string, windows: bool, suffix: string) -> string {
+    if (os.WriteText(Join([work, "/add.ll"]), Add(triple)) != nil ||
+        os.WriteText(Join([work, "/main.ll"]), Entry(triple, windows)) != nil ||
+        os.WriteText(Join([work, "/start.ll"]), link.Start(triple, windows, false)) != nil) {
+        Fail("cannot write the modules");
+        return "";
+    }
+    if (host.Object(llvm, Join([work, "/add.ll"]), Join([work, "/add.o"]), 2) != nil ||
+        host.Object(llvm, Join([work, "/main.ll"]), Join([work, "/main.o"]), 2) != nil ||
+        host.Object(llvm, Join([work, "/start.ll"]), Join([work, "/start.o"]), 2) != nil) {
+        Fail("llc failed");
+        return "";
+    }
+    ar := host.Tool(llvm, "llvm-ar");
+    archive := Join([work, "/libadd", suffix]);
+    if (ar == "" || os.Run([ar, "rcs", archive, Join([work, "/add.o"])]) != 0) {
+        Fail("llvm-ar failed");
+        return "";
+    }
+    return archive;
+}
+
+// The folder `path`, made if absent.
+Ensure :: (path: string) -> bool {
+    return os.Kind(path) != os.KindNone || os.MakeDirectory(path) == nil;
+}
+
+// With CHIBI_NATIVE_BUNDLE set (CI's Linux job), links the program for the other targets, which
+// the native-targets job runs on macOS and Windows: `bundle/<directory>/programs/arguments`
+// listed twice in programs.txt, run without arguments and with the two above separated by
+// tabs. The macOS program links against stubs and the Windows one is static (kernel32 from a
+// generated library), so neither needs an SDK.
+Bundle :: (llvm: string, work: string, bundle: string, triple: string, directory: string) -> int {
+    windows := link.TargetOf(triple) == link.WindowsX64;
+    suffix := ".a";
+    name := "arguments";
+    if (windows) {
+        suffix = ".lib";
+        name = "arguments.exe";
+    }
+    folder := Join([work, "/", directory]);
+    target := Join([bundle, "/", directory]);
+    programs := Join([target, "/programs"]);
+    if (!Ensure(folder) || !Ensure(bundle) || !Ensure(target) || !Ensure(programs)) {
+        return Fail("cannot prepare the bundle folders");
+    }
+    archive := Compile(llvm, folder, triple, windows, suffix);
+    if (archive == "") {
+        return 1;
+    }
+    plan := link.Program(triple, llvm, [Join([folder, "/main.o"]), Join([folder, "/start.o"])], [archive], [], [],
+                         Join([programs, "/", name]), "", windows);
+    failure := host.Link(plan);
+    if (failure != nil) {
+        return Fail(format_text("the {} program did not link, kind {} code {}", directory, failure.kind, failure.code));
+    }
+    listed := os.ReadText(Join([target, "/programs.txt"]));
+    text := "";
+    if (listed.error == nil) {
+        text = listed.text;
+    }
+    lines := Join([text, "program ", name, " 42\n", "program ", name, " 42\t", SpacedArgument(), "\t", WideArgument(), "\n"]);
+    if (os.WriteText(Join([target, "/programs.txt"]), lines) != nil) {
+        return Fail("cannot write programs.txt");
+    }
+    return 0;
+}
+
 Fail :: (what: string) -> int {
     os.Print(Join(["native-link: ", what]));
     return 1;
@@ -159,20 +235,9 @@ Run :: () -> int {
         suffix2 = ".exe";
         program = Join([work, "/program.exe"]);
     }
-    if (os.WriteText(Join([work, "/add.ll"]), Add(triple)) != nil ||
-        os.WriteText(Join([work, "/main.ll"]), Entry(triple)) != nil ||
-        os.WriteText(Join([work, "/start.ll"]), link.Start(triple, windows, false)) != nil) {
-        return Fail("cannot write the modules");
-    }
-    if (host.Object(llvm, Join([work, "/add.ll"]), Join([work, "/add.o"]), 2) != nil ||
-        host.Object(llvm, Join([work, "/main.ll"]), Join([work, "/main.o"]), 2) != nil ||
-        host.Object(llvm, Join([work, "/start.ll"]), Join([work, "/start.o"]), 2) != nil) {
-        return Fail("llc failed");
-    }
-    ar := host.Tool(llvm, "llvm-ar");
-    archive := Join([work, "/libadd", suffix]);
-    if (ar == "" || os.Run([ar, "rcs", archive, Join([work, "/add.o"])]) != 0) {
-        return Fail("llvm-ar failed");
+    archive := Compile(llvm, work, triple, windows, suffix);
+    if (archive == "") {
+        return 1;
     }
     // Two links of the same inputs to different paths give the same bytes, and
     // each leaves nothing but its program: the work folder is removed.
@@ -207,6 +272,17 @@ Run :: () -> int {
     parsed := ParserCases(llvm, work, triple, windows);
     if (parsed != 0) {
         return parsed;
+    }
+    bundle := os.Getenv("CHIBI_NATIVE_BUNDLE");
+    if (bundle != "") {
+        for (other in [["macos-arm64", "arm64-apple-macosx11.0.0"], ["windows-x64", "x86_64-pc-windows-msvc"]]) {
+            if (other[1] != triple) {
+                built := Bundle(llvm, work, bundle, other[1], other[0]);
+                if (built != 0) {
+                    return built;
+                }
+            }
+        }
     }
     os.Print("native-link: linked and ran a program from an object and an archive; the command-line parser agrees on its cases");
     return 0;

@@ -3,7 +3,7 @@ package facts
 import posix "core:sys/posix"
 
 // core:sys/posix over libc: a directory is made, found, renamed and removed,
-// a file and a missing path are told apart, and a file's bytes round-trip. The VM skips this sample as
+// a file and a missing path are told apart, a file's bytes round-trip, and programs run. The VM skips this sample as
 // native only; native_build_runs_the_foreign_samples runs it.
 @test
 Calls :: () {
@@ -36,4 +36,12 @@ Calls :: () {
     assert((names[0] == "hi.txt" && names[1] == "ho.txt") || (names[0] == "ho.txt" && names[1] == "hi.txt"), "names")
     assert(length(posix.List("posix_missing_dir")) == 0, "missing directory")
     assert(posix.Remove("posix_list/hi.txt") && posix.Remove("posix_list/ho.txt") && posix.Remove("posix_list"), "list cleanup")
+    assert(posix.Run(["true"]) == 0 && posix.Run(["false"]) == 1, "run status")
+    assert(posix.Run(["posix-missing-program"]) == 127, "run missing program")
+    said := posix.Capture(["echo", "hi"])
+    assert(said.status == 0 && said.stdout == "hi\n" && said.stderr == "", "capture")
+    both := posix.Capture(["sh", "-c", "echo out; echo err >&2; exit 3"])
+    assert(both.status == 3 && both.stdout == "out\n" && both.stderr == "err\n", "capture both streams")
+    process := posix.Spawn(["true"])
+    assert(process > 0 && posix.Wait(process) == 0, "spawn and wait")
 }

@@ -88,10 +88,26 @@ DebugOptionsAreValidated :: () {
     assert(engine.ProfileOptionError(["--debug-frame-pointers", "off"], "RelWithDebInfo") == frames, "RelWithDebInfo frames");
 }
 
+// Every named target must exist, and an absolute directory must follow
+// --asset-generator-hosts, before anything is written.
+ArgumentsAreValidated :: () {
+    targets := engine.Targets();
+    assert(engine.TargetError(["--target", "chibi_support"], targets) == "", "a known target");
+    assert(engine.TargetError(["--commands-only", "on", "--target", "chibi-clt"], targets) == "graph: unknown target 'chibi-clt'", "an unknown target");
+    assert(engine.TargetError(["--target", "chibi_support", "--target", "chibi-clt"], targets) == "graph: unknown target 'chibi-clt'", "a later unknown target");
+    assert(engine.TargetError(["--commands-only", "on", "--target"], targets) == "graph: --target requires a target name", "a missing target");
+    assert(engine.TargetError(["--target", "--commands-only", "on"], targets) == "graph: --target requires a target name", "an option as target");
+    hosts := "graph: --asset-generator-hosts requires an absolute directory";
+    assert(engine.ProfileOptionError(["--asset-generator-hosts", "build-release/sdk"], "Debug") == hosts, "relative hosts");
+    assert(engine.ProfileOptionError(["--asset-generator-hosts"], "Debug") == hosts, "missing hosts");
+    assert(engine.ProfileOptionError(["--asset-generator-hosts", "/abs/sdk"], "Debug") == "", "absolute hosts");
+}
+
 // The build host runs this entry; each case stops it on a failed assert.
 pub Run :: () -> int {
     DebugFlagsKeepInstrumentation();
     TestsKeepAssertions();
     DebugOptionsAreValidated();
+    ArgumentsAreValidated();
     return 0;
 }

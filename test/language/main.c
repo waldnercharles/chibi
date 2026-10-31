@@ -19,21 +19,12 @@ void test_language_execution_scope();
 void test_language_program_session();
 void test_language_capture();
 void test_numeric_ranges();
-void test_language_integer_semantics();
-void test_language_integer_shift_counts(const char *name);
-void test_language_integer_shift_counts_authored();
 #ifdef CHIBI_TEST_ASSET_COMPILER_HOST
 void test_language_asset_compiler_host();
 #endif
-void test_language_package_imports();
-void test_language_host_packages();
 void test_language_host_packages_compiler();
-void test_language_package_files();
-void test_language_package_math();
-void test_language_package_math_benchmark();
 void test_language_component_write_ir();
 void test_language_component_write_layout();
-void test_language_build_workflow();
 void test_language_text_format();
 void test_language_native_census(const char *report);
 void test_language_native_census_flattening();
@@ -69,9 +60,6 @@ int main(int argc, char **argv)
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool integer_shift_counts = (argc == 2 || argc == 3) &&
                                 !strcmp(argv[1], "--integer-shift-counts");
-    bool integer_semantics = argc == 2 && !strcmp(argv[1], "--integer-semantics");
-    bool integer_shift_counts_authored = argc == 2 &&
-                                         !strcmp(argv[1], "--integer-shift-counts-authored");
     bool asset_compiler_host = argc == 2 && !strcmp(argv[1], "--asset-compiler-host");
     bool compiler_fixture = argc == 2 && !strcmp(argv[1], "--compiler-fixture");
     bool package_compiler_chibi = argc == 2 &&
@@ -100,8 +88,6 @@ int main(int argc, char **argv)
                                          !strcmp(argv[1], "--package-compiler-chibi-scalar");
     bool package_compiler_chibi_native_arguments = argc == 2 &&
                                                    !strcmp(argv[1], "--package-compiler-chibi-native-arguments");
-    bool package_compiler_chibi_native_arguments_oracle = argc == 2 &&
-                                                          !strcmp(argv[1], "--package-compiler-chibi-native-arguments-oracle");
     bool package_compiler_chibi_native = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-native");
     bool native_census = (argc == 2 || argc == 3) &&
@@ -124,23 +110,15 @@ int main(int argc, char **argv)
                                                    !strcmp(argv[1], "--package-compiler-chibi-imports-compiled");
     bool package_compiler_chibi_bootstrap = argc == 2 &&
                                             !strcmp(argv[1], "--package-compiler-chibi-bootstrap");
-    bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
-    bool host_packages = argc == 2 && !strcmp(argv[1], "--host-packages");
     bool host_packages_compiler = argc == 2 &&
                                   !strcmp(argv[1], "--host-packages-compiler");
-    bool package_math = argc == 2 && !strcmp(argv[1], "--package-math");
-    bool package_math_benchmark = argc == 2 &&
-                                  !strcmp(argv[1], "--package-math-benchmark");
-    bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
     bool component_write_layout = argc == 2 &&
                                   !strcmp(argv[1], "--component-write-layout");
-    bool build_workflow = argc == 2 && !strcmp(argv[1], "--build-workflow");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
          !record_compatibility && !compositional_records && !program &&
-         !program_session && !ranges && !integer_semantics &&
-         !integer_shift_counts && !integer_shift_counts_authored &&
+         !program_session && !ranges && !integer_shift_counts &&
          !asset_compiler_host && !compiler_fixture && !package_compiler_chibi &&
          !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
          !package_compiler_chibi_fallible && !package_compiler_chibi_imports &&
@@ -155,11 +133,8 @@ int main(int argc, char **argv)
          !package_compiler_chibi_debug_free && !package_compiler_chibi_scalar &&
          !package_compiler_chibi_native && !native_census &&
          !native_census_flattening && !package_compiler_chibi_native_arguments &&
-         !package_compiler_chibi_native_arguments_oracle && !package_imports &&
-         !host_packages && !host_packages_compiler && !package_files &&
-         !package_math && !package_math_benchmark && !component_write &&
-         !component_write_layout && !build_workflow && !text_format &&
-         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !host_packages_compiler && !component_write && !component_write_layout &&
+         !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
@@ -172,9 +147,9 @@ int main(int argc, char **argv)
             ""
             ""
             ""
-            "--ranges | --integer-semantics | "
+            "--ranges | "
             ""
-            "--integer-shift-counts [case] | --integer-shift-counts-authored | "
+            "--integer-shift-counts [case] | "
             ""
             ""
             ""
@@ -206,7 +181,6 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-native | --native-census [report] | "
             "--native-census-flattening | "
             "--package-compiler-chibi-native-arguments | "
-            "--package-compiler-chibi-native-arguments-oracle | "
             ""
             ""
             ""
@@ -218,9 +192,9 @@ int main(int argc, char **argv)
             ""
             ""
             ""
-            "--package-imports | --host-packages | --host-packages-compiler | "
-            "--package-files | "
-            "--package-math | --package-math-benchmark | "
+            "--package-imports -compiler | "
+            ""
+            ""
             ""
             ""
             "--component-write | --component-write-layout | "
@@ -231,7 +205,7 @@ int main(int argc, char **argv)
             "--binding-benchmark "
             "| "
             ""
-            "--build-workflow | "
+            ""
             ""
             ""
             "--text-format | "
@@ -259,14 +233,6 @@ int main(int argc, char **argv)
         test_language_record_values();
     } else if (text_format) {
         test_language_text_format();
-    } else if (build_workflow) {
-        test_language_build_workflow();
-    } else if (integer_shift_counts) {
-        test_language_integer_shift_counts(argc == 3 ? argv[2] : NULL);
-    } else if (integer_shift_counts_authored) {
-        test_language_integer_shift_counts_authored();
-    } else if (integer_semantics) {
-        test_language_integer_semantics();
     } else if (compiler_fixture) {
         test_language_compiler_fixture();
     } else if (package_compiler_chibi) {
@@ -311,26 +277,14 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi_scalar();
     } else if (package_compiler_chibi_native_arguments) {
         test_language_package_compiler_chibi_native_arguments();
-    } else if (package_compiler_chibi_native_arguments_oracle) {
-        test_language_package_compiler_chibi_native_arguments_oracle();
     } else if (package_compiler_chibi_native) {
         test_language_package_compiler_chibi_native();
     } else if (native_census) {
         test_language_native_census(argc == 3 ? argv[2] : NULL);
     } else if (native_census_flattening) {
         test_language_native_census_flattening();
-    } else if (package_imports) {
-        test_language_package_imports();
-    } else if (host_packages) {
-        test_language_host_packages();
     } else if (host_packages_compiler) {
         test_language_host_packages_compiler();
-    } else if (package_math) {
-        test_language_package_math();
-    } else if (package_math_benchmark) {
-        test_language_package_math_benchmark();
-    } else if (package_files) {
-        test_language_package_files();
     } else if (asset_compiler_host) {
 #ifdef CHIBI_TEST_ASSET_COMPILER_HOST
         test_language_asset_compiler_host();

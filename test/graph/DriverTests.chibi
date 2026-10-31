@@ -1,0 +1,100 @@
+package graph_driver_tests
+
+import os "core:os"
+import strings "core:strings"
+
+// `chibi build` plans, from test/tools/build_graph.c's driver cases: the
+// driver runs in the build host this program is given, with --dry-run, so it
+// prints the commands each verb would run without running them.
+Driver :: (host: string, arguments: string[]) -> os.Result {
+    command := ["--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", os.Root(), "--source", "tools/toolchain/Driver.chibi", "--core", "packages/core",
+                "--entry", "Main", "--timeout-ms", "50000", "--", "build"];
+    full := [host];
+    full.extend(command);
+    full.extend(arguments);
+    return os.Capture(full);
+}
+Output :: (result: os.Result) -> string {
+    return format_text("{}{}", result.stdout, result.stderr);
+}
+Plan :: (host: string, options: string[]) -> string {
+    arguments := ["--dry-run", "--host", host];
+    arguments.extend(options);
+    result := Driver(host, arguments);
+    assert(result.status == 0, "the build plans");
+    return Output(result);
+}
+Verb :: (host: string, verb: string, options: string[]) -> os.Result {
+    arguments := [verb];
+    arguments.extend(options);
+    return Driver(host, arguments);
+}
+Has :: (log: string, part: string) -> bool {
+    return strings.Contains(log, part);
+}
+
+// A non-Release profile first builds the Release hosts it borrows, then runs
+// the third-party and graph steps; a Release build borrows nothing.
+EngineBuildSteps :: (host: string) {
+    log := Plan(host, ["--target", "chibi"]);
+    release := strings.Index(log, "--profile release");
+    sanitized := strings.Index(log, "--profile sanitizer");
+    assert(release >= 0 && sanitized > release, "Release hosts before the sanitizer build");
+    assert(Has(log, "--target chibi-compiler-host") && Has(log, "--target chibi --target chibi-build-host"), "borrowed hosts");
+    assert(Has(log, "--asset-generator-hosts") && Has(log, "third-party:") && Has(log, "compile-commands:"), "build steps");
+    log = Plan(host, ["--release", "--target", "chibi"]);
+    assert(Has(log, "--profile release") && !Has(log, "--profile sanitizer"), "a Release build");
+    assert(!Has(log, "--asset-generator-hosts") && Has(log, "build-release/compile_commands.json"), "borrows nothing");
+    log = Plan(host, ["--debug", "--all"]);
+    assert(Has(log, "--profile debug") && !Has(log, "--target chibi "), "a Debug build of everything");
+}
+
+// `test` runs tools/tests.tsv's selectors: --list names them and --dry-run
+// prints each selector's command under its deadline.
+TestSelectors :: (host: string) {
+    listed := Verb(host, "test", ["--list"]);
+    log := Output(listed);
+    assert(listed.status == 0 && Has(log, "tool chibi-cli") && Has(log, "tool chibi-test-compiler"), "the list");
+    planned := Verb(host, "test", ["--dry-run", "--build", "out", "--release-build", "rel", "chibi-cli", "projects"]);
+    log = Output(planned);
+    assert(planned.status == 0 && Has(log, "chibi-cli (600s): env "), "the default deadline");
+    assert(Has(log, "/out/test/tools/test_tools --chibi-cli /") && Has(log, "CHIBI_CLI=") && Has(log, "/rel/sdk/chibi "), "the selector command");
+    bounded := Verb(host, "test", ["--dry-run", "--timeout", "30", "chibi-cli"]);
+    assert(bounded.status == 0 && Has(Output(bounded), "chibi-cli (30s): env "), "an explicit deadline");
+    heavy := Verb(host, "test", ["--dry-run", "language-package-compiler-chibi-bootstrap"]);
+    assert(heavy.status == 0 && Has(Output(heavy), "language-package-compiler-chibi-bootstrap (1200s): env "), "a selector's own deadline");
+    unknown := Verb(host, "test", ["no-such-selector"]);
+    assert(unknown.status != 0 && Has(Output(unknown), "unknown selector 'no-such-selector'"), "an unknown selector");
+}
+
+// The other verbs plan their own commands.
+OtherVerbs :: (host: string) {
+    install := Verb(host, "install", ["--dry-run", "--prefix", "/prefix"]);
+    log := Output(install);
+    assert(install.status == 0 && Has(log, "--profile release") && Has(log, "--entry Install") && Has(log, "--prefix /prefix"), "install");
+    refresh := Verb(host, "bootstrap-refresh", ["--dry-run", "--release-build", "rel"]);
+    log = Output(refresh);
+    assert(refresh.status == 0 && Has(log, "/rel/sdk/chibi-compiler-host --bootstrap tools/compiler/bootstrap") && Has(log, "--recover "), "bootstrap-refresh");
+    assert(Has(log, "/rel/bootstrap.refresh/compile.json") && Has(log, "--seed ") && Has(log, "--revision "), "bootstrap-refresh inputs");
+    reflect := Verb(host, "sdk-reflect", ["--dry-run", "--libclang-root", "/llvm", "--", "-DFLAG=1"]);
+    log = Output(reflect);
+    assert(reflect.status == 0 && Has(log, "--entry SDKReflect") && Has(log, "--libclang-root /llvm") && Has(log, "-- -DFLAG=1"), "sdk-reflect");
+    format := Verb(host, "format", ["--dry-run", "--check"]);
+    assert(format.status == 0 && Has(Output(format), "format: sh tools/clang-format.sh --check"), "format");
+    clean := Verb(host, "clean", ["--dry-run", "--build", "out"]);
+    log = Output(clean);
+    assert(clean.status == 0 && Has(log, "clean: rm -rf -- ") && Has(log, "/out"), "clean");
+    assert(Verb(host, "no-such-verb", ["--dry-run"]).status != 0, "an unknown verb");
+}
+
+// The build host runs this entry with its own path as the one argument; each
+// case stops it on a failed assert.
+pub Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 1, "the build host's path");
+    host := arguments[0];
+    EngineBuildSteps(host);
+    TestSelectors(host);
+    OtherVerbs(host);
+    return 0;
+}

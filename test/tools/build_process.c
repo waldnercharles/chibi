@@ -1579,7 +1579,7 @@ TEST_CASE(private_runtime_failures_name_their_cause)
         /* A called function's failure reaches the program's diagnostic. */
         "package fails\nInner :: () -> int { xs: int[] = []; return xs[1]; }\n"
         "Build :: () -> int { return Inner(); }",
-        "package fails\nInner :: () -> int { return build.wait(99); }\n"
+        "package fails\nInner :: () -> int { return build.wait_for(99, -1); }\n"
         "Build :: () -> int { return Inner(); }",
     };
     static const char *diagnostics[] = {
@@ -1616,9 +1616,10 @@ TEST_CASE(private_started_steps_run_together)
                   "build.start([worker, \"sleep\", \"0.4\"])); } "
                   "fast := build.start([worker, \"sleep\", \"0.05\"]); "
                   "failed := 0; "
-                  "for (handle in handles) { if (build.wait(handle) != 0) { "
+                  "for (handle in handles) { if (build.wait_for(handle, -1) != "
+                  "0) { "
                   "failed += 1; } } "
-                  "return failed + build.wait(fast); }";
+                  "return failed + build.wait_for(fast, -1); }";
     chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
     primitive_started = 0;
     options.prepared = primitive_prepared;
@@ -1658,11 +1659,13 @@ TEST_CASE(private_waits_take_output_in_wait_order)
         "large := build.start([worker, \"build-output\", \"300000\"]); "
         "argv := build.start([worker, \"build-argv\", \"first\"]); "
         "code := build.start([worker, \"exit\", \"7\"]); "
-        "if (build.wait(code) != 7) { return 1; } "
-        "if (build.wait(large) != 0 || text_byte_length(build.last_stdout()) "
+        "if (build.wait_for(code, -1) != 7) { return 1; } "
+        "if (build.wait_for(large, -1) != 0 || "
+        "text_byte_length(build.last_stdout()) "
         "!= 300000) { return 2; } "
         "held:=build.last_stdout(); build.platform(); "
-        "if (build.wait(argv) != 23 || build.after(build.last_stdout(), "
+        "if (build.wait_for(argv, -1) != 23 || "
+        "build.after(build.last_stdout(), "
         "\"arg=5:\") != \"first\\n\") { return 3; } "
         "if (build.last_stderr() != \"worker-stderr\\n\") { return 4; } "
         "if (text_byte_length(held)!=300000 || text_byte_at(held,0)!=111 || "
@@ -1682,11 +1685,11 @@ TEST_CASE(private_waits_take_output_in_wait_order)
 TEST_CASE(private_waits_refuse_unknown_and_repeated_handles)
 {
     static const char *sources[] = {
-        "package jobs\nBuild :: () -> int { return build.wait(1); }",
+        "package jobs\nBuild :: () -> int { return build.wait_for(1, -1); }",
         "package jobs\nBuild :: () -> int { "
         "step := build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
         "\"exit\", \"0\"]); "
-        "build.wait(step); return build.wait(step); }",
+        "build.wait_for(step, -1); return build.wait_for(step, -1); }",
     };
     for (int i = 0; i < 2; i++) {
         chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
@@ -1752,9 +1755,9 @@ TEST_CASE(private_unwaited_and_late_steps_stop)
     REQUIRE(timing_rows(options.timings, "abandoned", -SIGKILL, CHIBI_PROCESS_OK) == 1);
     REQUIRE(!fclose(options.timings));
     static const char
-        *late = "package jobs\nBuild :: () -> int { return build.wait("
+        *late = "package jobs\nBuild :: () -> int { return build.wait_for("
                 "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
-                "\"sleep\", \"30\"])); }";
+                "\"sleep\", \"30\"]), -1); }";
     options = primitive_options(late, BEHAVIOR_BYTECODE);
     options.deadline = now() + 0.5;
     options.timings = tmpfile();
@@ -1782,9 +1785,9 @@ static void timing_cancel_prepared()
 TEST_CASE(build_timings_record_interrupted_children)
 {
     const char
-        *source = "package jobs\nBuild :: () -> int { return build.wait("
+        *source = "package jobs\nBuild :: () -> int { return build.wait_for("
                   "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
-                  "\"sleep\", \"30\"])); }";
+                  "\"sleep\", \"30\"]), -1); }";
     chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
     options.prepared = timing_cancel_prepared;
     options.cancelled = &cancelled;

@@ -670,6 +670,10 @@ void arena_collect_mark(void *collection, const void *address)
 {
     (void)arena_collect_mark_held(collection, address);
 }
+arena_collection *arena_marker_collection(arena_marker mark, void *user)
+{
+    return mark == arena_collect_mark ? user : NULL;
+}
 void arena_collect_end(arena_collection *c)
 {
     while (acount(c->pending)) {
@@ -710,7 +714,8 @@ size_t arena_storage_bytes(const arena *a)
     size_t bytes = 0;
     if (a->slabs) {
         bytes += sizeof *a->slabs +
-                 (size_t)acap(a->slabs->slabs) * sizeof *a->slabs->slabs;
+                 (size_t)acap(a->slabs->slabs) * sizeof *a->slabs->slabs +
+                 (size_t)acap(a->slabs->starts) * sizeof *a->slabs->starts;
         for (int i = 0; i < acount(a->slabs->slabs); i++) {
             bytes += a->slabs->slabs[i]->bytes;
         }

@@ -1168,7 +1168,7 @@ Requested :: (name: string) -> int {
 
 // A package of the compiler project beside others, as native_driver is: the
 // compiler compiles the driver's pure core (every file but Main.chibi and
-// core:os) to an artifact, whose Compile entry gives the program's module, or
+// core:os, and the link step) to an artifact, whose Compile entry gives the program's module, or
 // a 0 byte and then the first rejection; the module is linked as any other.
 Driver :: (host: string, artifact: string, core: string, work: string, target: string, entry_path: string,
            packages: string[], package_texts: string[], text: string, triple: string, output: string,
@@ -1178,7 +1178,8 @@ Driver :: (host: string, artifact: string, core: string, work: string, target: s
     all := build.concat([entry_path], packages);
     sources := build.concat([text], package_texts);
     for (at in 0..<length(all)) {
-        if (!strings.HasSuffix(all[at], "/Main.chibi") && !strings.HasPrefix(all[at], Join([core, "/os/"]))) {
+        if (!strings.HasSuffix(all[at], "/Main.chibi") && !strings.HasPrefix(all[at], Join([core, "/os/"])) &&
+            !strings.HasPrefix(all[at], "native_link")) {
             location := all[at];
             if (strings.HasPrefix(location, Join([core, "/"]))) {
                 location = Join(["/sdk/core/", strings.TrimPrefix(location, Join([core, "/"]))]);
@@ -1477,9 +1478,13 @@ pub Native :: () -> int {
     if (length(packages) > 0) {
         // CollectScalarPackages: the entry file first, then the packages, with
         // core as the collection whose files lie at its own path.
+        // The destination's os and arch, as core:target numbers them, select
+        // what a `when` on them chooses.
+        oses: int[] = [1, 2, 3];
+        arches: int[] = [1, 2, 1];
         request = Join(["[\"/project\",[\"core\"],", Array([core]), ",", Array(build.concat([entry_path], packages)), ",",
                         Array(build.concat([text], package_texts)), ",", facts[0], ",", facts[2], ",", facts[3], ",",
-                        facts[4], ",", facts[5], "]"]);
+                        facts[4], ",", facts[5], format_text(",{},{}]", oses[destination], arches[destination])]);
         collector = "0xe248351e192972a1";
     }
     if (!build.write_file(collect, request) ||

@@ -3023,30 +3023,51 @@ ScalarPassed :: () -> syntax.Diagnostic {
 // The first member of one source document this subset cannot express, which
 // admits only function, record, union and constant declarations, and in a
 // package set, imports, with no function required of a package. A constant
-// is the value Declare folds it to, so its reads are literals.
+// is the value Declare folds it to, so its reads are literals. A `when` is
+// checked through both of its branches, in source order; Declare keeps the
+// one its condition selects.
 ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int, packaged: bool) -> syntax.Diagnostic {
+    checked := ScalarMemberList(forest, Members(forest, root), packaged);
+    if (checked.diagnostic.message != "") {
+        return checked.diagnostic;
+    }
+    if (!packaged && !checked.functions) {
+        return Diagnose(forest, root, 0, "scalar proof requires at least one function");
+    }
+    return ScalarPassed();
+}
+ScalarMemberList :: (forest: snapshot.SnapshotNode[], members: int[], packaged: bool)
+-> (functions: bool, diagnostic: syntax.Diagnostic) {
     functions := false;
-    member := FirstMember(forest, root);
-    while (member >= 0) {
-        if (Is(forest, member, syntax.FunctionDeclaration)) {
+    for (member in members) {
+        if (Is(forest, member, syntax.WhenDeclaration)) {
+            branches := Members(forest, Field(forest, member, syntax.FieldConsequence));
+            alternative := Field(forest, member, syntax.FieldAlternative);
+            if (Is(forest, alternative, syntax.WhenDeclaration)) {
+                branches.append(alternative);
+            } else if (alternative >= 0) {
+                branches.extend(Members(forest, alternative));
+            }
+            inner := ScalarMemberList(forest, branches, packaged);
+            if (inner.diagnostic.message != "") {
+                return (functions, inner.diagnostic);
+            }
+            functions = functions || inner.functions;
+        } else if (Is(forest, member, syntax.FunctionDeclaration)) {
             attribute := Field(forest, member, syntax.FieldAttribute);
             if (attribute >= 0) {
-                return Diagnose(forest, attribute, 0, "scalar proof does not support function attributes");
+                return (functions, Diagnose(forest, attribute, 0, "scalar proof does not support function attributes"));
             }
             functions = true;
         } else if (!Is(forest, member, syntax.PackageHeader) && !(packaged && Is(forest, member, syntax.ImportDeclaration)) &&
                    !Is(forest, member, syntax.RecordDeclaration) && !Is(forest, member, syntax.ForeignImportDeclaration) &&
                    !Is(forest, member, syntax.ForeignBlock) &&
                    !Is(forest, member, syntax.UnionDeclaration) && !Is(forest, member, syntax.ConstantDeclaration)) {
-            return Diagnose(forest, member, 0,
-                            "scalar proof supports only ordinary function, record, union and constant declarations");
+            return (functions, Diagnose(forest, member, 0,
+                                        "scalar proof supports only ordinary function, record, union and constant declarations"));
         }
-        member = NextMember(forest, member);
     }
-    if (!packaged && !functions) {
-        return Diagnose(forest, root, 0, "scalar proof requires at least one function");
-    }
-    return ScalarPassed();
+    return (functions, ScalarPassed());
 }
 // The first NUL byte's diagnostic, or none. The raw parser takes a C string;
 // the snapshot's supplied byte count is not a NUL check when it came from this
@@ -3211,7 +3232,7 @@ ScalarEntryFirst :: (callables: Callable[]) -> Callable[] {
 // function.
 pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[], natives: Native[],
                       ports: Port[], identities: u64[]) -> facts.Row[] {
-    return ScalarCollect(project, [], [], [path], [text], target, names, natives, ports, identities, false);
+    return ScalarCollect(project, [], [], [path], [text], target, names, natives, ports, identities, false, 0, 0);
 }
 // The authored parser's tree for `text`, for tools that read syntax outside the
 // compiler's passes: the native census reads its sources through it.
@@ -3228,16 +3249,19 @@ pub SyntaxFieldNames :: () -> string[] {
 // The facts rows of the project packages `paths` hold, as CollectScalar gives
 // one source's: the first function of the first file is the entry, the other
 // files are packages it imports, and a call may name an import's function. The
-// collections are Compile's; every package must be a project package.
+// collections are Compile's; every package must be a project package. `os`
+// and `arch` are the destination's, as TargetPackageText numbers them, and
+// replace core:target's text, so a `when` on them selects the destination's
+// declarations; 0 keeps the file's own.
 pub CollectScalarPackages :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                               sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
-                              identities: u64[]) -> facts.Row[] {
+                              identities: u64[], os: int, arch: int) -> facts.Row[] {
     return ScalarCollect(project, collection_names, collection_paths, paths, sources, target, names, natives, ports,
-                         identities, true);
+                         identities, true, os, arch);
 }
 ScalarCollect :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                   sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
-                  identities: u64[], packaged: bool) -> facts.Row[] {
+                  identities: u64[], packaged: bool, os: int, arch: int) -> facts.Row[] {
     if (length(paths) == 0 || length(paths) != length(sources) || length(collection_names) != length(collection_paths) ||
         (!packaged && length(paths) != 1)) {
         return ScalarFailure("", "", ScalarStart("scalar proof requires matching paths and sources"));
@@ -3277,9 +3301,13 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
     inputs: snapshot.Input[] = [];
     sizes: u64[] = [];
     for (index in 0..<length(paths)) {
-        input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
+        source := sources[index];
+        if (os != 0 && TargetPackagePath(collection_names, collection_paths, paths[index])) {
+            source = TargetPackageText(os, arch, target.pointer_size * 8);
+        }
+        input: snapshot.Input = {path: paths[index], text: source, has_path: true, has_text: true};
         inputs.append(input);
-        sizes.append(u64(strings.ByteLength(sources[index])));
+        sizes.append(u64(strings.ByteLength(source)));
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
                                  has_files: true, has_collections: length(collections) != 0, file_count: length(inputs),

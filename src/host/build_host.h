@@ -22,12 +22,14 @@ typedef struct
 
 typedef struct chibi_build_compiler chibi_build_compiler;
 /* Owns a validated current compiler generation, independent of a build
- * program's core collection. Matching recorded source hashes load the checked
+ * program's core collection. Matching recorded source hashes take the checked
  * closure directly; changed sources recover a fixed point, which takes
  * minutes. A non-NULL cache directory keeps that compiler for the next load
  * of the same seed, sources, target and host binary (see compiler_bootstrap.h);
- * NULL writes no files. Reuse sequentially; reload after changing compiler
- * sources. */
+ * NULL writes no files. A closure at hand is loaded, about a second, only when
+ * a build first compiles a program the cache does not keep, or by
+ * chibi_build_compiler_ready. Reuse sequentially; reload after changing
+ * compiler sources. */
 chibi_build_compiler *chibi_build_compiler_load(
     const char *sources,
     const char *core,
@@ -35,6 +37,9 @@ chibi_build_compiler *chibi_build_compiler_load(
     char *error,
     size_t size
 );
+/* Loads the compiler now, so a build's deadline does not include it. False
+ * with why. */
+bool chibi_build_compiler_ready(chibi_build_compiler *, char *error, size_t size);
 void chibi_build_compiler_free(chibi_build_compiler *);
 
 typedef struct

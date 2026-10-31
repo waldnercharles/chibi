@@ -333,6 +333,9 @@ bool scalar_host_collect_collection(
         );
     }
     REQUIRE(append_target(doc, arguments));
+    /* No destination: core:target keeps its own text. */
+    yyjson_mut_arr_add_int(doc, arguments, 0);
+    yyjson_mut_arr_add_int(doc, arguments, 0);
     yyjson_doc *result;
     REQUIRE(
         invoke(producer, "project:package_compiler:1:CollectScalarPackages:callable", doc, &result)

@@ -189,7 +189,7 @@ ValidRejection :: (rows: facts.Row[], starts: int[], size: int) -> string {
         return "noncanonical rejected scalar module";
     }
     if (!Positioned(rejection, starts, size)) {
-        return "invalid scalar diagnostic position";
+        return format_text("invalid scalar diagnostic position for: {}", rejection.text);
     }
     return "";
 }

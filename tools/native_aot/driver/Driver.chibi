@@ -1477,9 +1477,13 @@ pub Native :: () -> int {
     if (length(packages) > 0) {
         // CollectScalarPackages: the entry file first, then the packages, with
         // core as the collection whose files lie at its own path.
+        // The destination's os and arch, as core:target numbers them, select
+        // what a `when` on them chooses.
+        oses: int[] = [1, 2, 3];
+        arches: int[] = [1, 2, 1];
         request = Join(["[\"/project\",[\"core\"],", Array([core]), ",", Array(build.concat([entry_path], packages)), ",",
                         Array(build.concat([text], package_texts)), ",", facts[0], ",", facts[2], ",", facts[3], ",",
-                        facts[4], ",", facts[5], "]"]);
+                        facts[4], ",", facts[5], format_text(",{},{}]", oses[destination], arches[destination])]);
         collector = "0xe248351e192972a1";
     }
     if (!build.write_file(collect, request) ||

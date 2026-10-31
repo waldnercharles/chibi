@@ -61,8 +61,16 @@ Where :: (paths: string[], sources: string[], at: int) -> string {
 // packages by project-relative path and core packages by path under `core`.
 // A rejection message reads `rejected FUNCTION: MESSAGE`.
 pub Module :: (core: string, paths: string[], sources: string[], triple: string) -> Output {
+    os := 1;
+    arch := 1;
+    if (strings.HasPrefix(triple, "aarch64-apple")) {
+        os = 2;
+        arch = 2;
+    } else if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+        os = 3;
+    }
     rows := compiler.CollectScalarPackages("/project", ["core"], [core], paths, sources, TargetFacts(), Names(),
-                                           Natives(), Ports(), Identities());
+                                           Natives(), Ports(), Identities(), os, arch);
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
         rejected := rows[length(rows) - 1];
         return Output.Rejected(strings.Concatenate(["rejected ", FunctionAt(rows[0].text, rejected.start), ": ",

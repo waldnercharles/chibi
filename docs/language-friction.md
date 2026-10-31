@@ -942,6 +942,11 @@ more (`test/graph/DiscoveryTests.chibi`, `CTests.chibi`); the build host now
 says where ("Expected a name, found `entry`"), so it took a rename, not a
 bisection.
 
+The foreign_vendor sample named FreeType's handle `library`, as FreeType's
+C API does; stage one rejects it ("Expected a name, found `library`"), and
+the native build showed only "invalid scalar diagnostic position" until the
+emitter reported the rejection's text. It became `ft`.
+
 The 2026-10-22 flat-query change removes the `join`, `without` and query
 `where` clauses and their keyword reservations. The other examples above
 remain separate parser and diagnostic concerns.

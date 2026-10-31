@@ -9,14 +9,15 @@ import strings "core:strings"
 // (tools/build.sh before a chibi exists).
 //
 //   build [--release|--debug|--profile NAME] [--build DIR] [--release-build DIR]
-//         [--target NAME]... [--all] [--jobs N (default: every processor)]
+//         [--target NAME]... [--jobs N (default: every processor)]
 //         [--host PATH] [--libclang-root DIR] [--reflect PATH]
 //         [--asset-generator-hosts DIR] [--debug-optimization 0|1]
 //         [--debug-frame-pointers on|off] [--dry-run]
 //
 // A sanitized build in `build` is the default; --release builds `build-release`
-// and --debug `build-debug`. Without --target it builds chibi and
-// chibi-compile; --all builds every target. --dry-run prints the
+// and --debug `build-debug`. Without --target it builds every product and test
+// driver, as `zig build` runs its install step; --target names a subset (and
+// the build host the graph needs). --dry-run prints the
 // commands instead of running them. The other verbs are `test`, `install`,
 // `format`, `clean`, `sdk-reflect`, `runtime-sdk`, `package-runtime-sdk`,
 // `bootstrap-artifact`, `bootstrap-recover`,
@@ -192,10 +193,8 @@ Build :: (arguments: string[]) -> int {
         graph = build.concat(graph, ["--asset-generator-hosts", Absolute(generators)])
     }
     graph = build.concat(graph, ["--all-commands", "on"])
+    // Without --target everything builds, as `zig build` runs its install step.
     targets := Values(arguments, "--target")
-    if (length(targets) == 0 && !Flag(arguments, "--all")) {
-        targets = ["chibi", "chibi-compile"]
-    }
     if (length(targets) > 0) {
         targets = build.concat(targets, ["chibi-build-host"])
     }
@@ -838,7 +837,7 @@ Clean :: (arguments: string[]) -> int {
 }
 
 Usage :: () -> int {
-    os.Print("usage: build [--release|--debug|--profile NAME] [--build DIR] [--target NAME]... [--all] [--jobs N] [--dry-run]")
+    os.Print("usage: build [--release|--debug|--profile NAME] [--build DIR] [--target NAME]... [--jobs N] [--dry-run]")
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
     os.Print("       build format [--check] | clean | publish-seed | native-census")

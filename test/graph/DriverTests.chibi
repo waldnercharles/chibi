@@ -72,10 +72,11 @@ OtherVerbs :: (host: string) {
     install := Verb(host, "install", ["--dry-run", "--prefix", "/prefix"]);
     log := Output(install);
     assert(install.status == 0 && Has(log, "--profile release") && Has(log, "--entry Install") && Has(log, "--prefix /prefix"), "install");
-    refresh := Verb(host, "bootstrap-refresh", ["--dry-run", "--release-build", "rel"]);
-    log = Output(refresh);
-    assert(refresh.status == 0 && Has(log, "/rel/sdk/chibi-compiler-host --bootstrap tools/compiler/bootstrap") && Has(log, "--recover "), "bootstrap-refresh");
-    assert(Has(log, "/rel/bootstrap.refresh/compile.json") && Has(log, "--seed ") && Has(log, "--revision "), "bootstrap-refresh inputs");
+    artifact := Verb(host, "bootstrap-artifact", ["--dry-run", "--release-build", "rel"]);
+    log = Output(artifact);
+    assert(artifact.status == 0 && Has(log, "/rel/sdk/chibi-compiler-host --bootstrap tools/compiler/bootstrap") && Has(log, "--recover "), "bootstrap-artifact");
+    assert(Has(log, "/rel/bootstrap.artifact/compile.json") && Has(log, "--seed ") && Has(log, "--revision "), "bootstrap-artifact inputs");
+    assert(!Has(log, "test_language"), "bootstrap-artifact needs no stage-zero check");
     reflect := Verb(host, "sdk-reflect", ["--dry-run", "--libclang-root", "/llvm", "--", "-DFLAG=1"]);
     log = Output(reflect);
     assert(reflect.status == 0 && Has(log, "--entry SDKReflect") && Has(log, "--libclang-root /llvm") && Has(log, "-- -DFLAG=1"), "sdk-reflect");

@@ -817,14 +817,13 @@ queue behind a regenerated artifact.
 `chibi build bootstrap-artifact` rewrites it (`BOOTSTRAP_ARTIFACT` names another
 folder). It runs in two steps:
 
-1. The Release bootstrap check (`make test-bootstrap`) prepares stage one with
-   stage zero, compiles the compiler sources to stage two and has the compiler
-   host compile them again with stage two, to the same bytes. With
-   `CHIBI_BOOTSTRAP_SEED` naming a folder, it leaves stage two and Compile's
-   arguments there as `compiler.chibip` and `compile.json`. The compiler is
-   compiled without debugger points and watches: its `debug` argument is
-   false, and the seed must say so. The target
-   leaves the seed in `build-release/bootstrap.seed` and removes it after.
+1. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
+   packages/core --recover SEED/compiler.chibip --arguments SEED/compile.json`
+   recovers the compiler from the current seed: it compiles the sources on
+   disk to stage one, stage one compiles them to stage two, and stage two must
+   compile them to itself. It writes that fixed point and Compile's arguments
+   (with `debug` false) to the seed folder, `build-release/bootstrap.artifact`,
+   which the target removes after.
 2. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
    packages/core --seed SEED --revision REV` checks three things: that the
    sources the seed compiled are the ones on disk, with every file of their

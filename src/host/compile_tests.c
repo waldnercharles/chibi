@@ -1,6 +1,5 @@
 #include "authoring/package_compile.h"
 #include "authoring/package_tests.h"
-#include "authoring/project_compile.h"
 #include "authoring/source_package_io.h"
 #include "execution/backend.h"
 #include "execution/function.h"

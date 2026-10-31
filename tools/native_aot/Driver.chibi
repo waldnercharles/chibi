@@ -3,7 +3,8 @@ package native_aot
 import driver "native_aot:."
 
 // The LLVM CLI driver's entries. The build host runs this file with
-// --root at this folder and --collection native_aot=<this folder>/driver
+// --root at this folder, --collection native_aot=<this folder>/driver and
+// --collection native_link=<the compiler>/native_link
 // (test/native_aot/driver/README.md).
 Build :: () -> int {
     return driver.Build();

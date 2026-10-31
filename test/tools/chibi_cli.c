@@ -662,12 +662,14 @@ TEST_CASE(native_build_forwards_driver_arguments)
         "--root\n%s/share/chibi/tools/native_aot\n"
         "--source\n%s/share/chibi/tools/native_aot/Driver.chibi\n"
         "--collection\nnative_aot=%s/share/chibi/tools/native_aot/driver\n"
+        "--collection\nnative_link=%s/share/chibi/compiler/native_link\n"
         "--core\n%s/share/chibi/core\n--compiler\n%s/share/chibi/compiler\n"
         "--compiler-core\n%s/share/chibi/"
         "core\n--entry\nNative\n--timeout-ms\n900000\n--\n"
         "%s/bin/../libexec/chibi/chibi-compiler-host\n%s/share/chibi/"
         "compiler\n%s/share/chibi/core\n"
         "%s\n%s\n0\nlines\narm64-apple-darwin\n",
+        root,
         root,
         root,
         root,

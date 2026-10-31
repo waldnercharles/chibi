@@ -1,5 +1,7 @@
 package posix
 
+import target "core:target"
+
 // The POSIX calls core:os needs, declared against libc and called from native
 // programs; the VM never runs foreign code. Paths are copied with a NUL into
 // the call's stack buffer (see "Foreign libraries" in docs/code-language.md),
@@ -7,8 +9,9 @@ package posix
 // result unchanged: 0 for success, -1 for failure; errno is not read yet.
 // Getenv, which builds a string from C bytes, waits for allocating text natively.
 //
-// The stat layout is Linux x86-64's or Darwin's (see IsDarwin); Linux on other
-// processors is not covered yet.
+// The stat layout and the directory entry's name offset are Linux x86-64's, and
+// Darwin's when the build's destination is Darwin; Linux on other processors is
+// not covered yet.
 
 foreign import libc "system:c"
 
@@ -26,7 +29,6 @@ foreign libc {
     fclose :: (stream: rawptr) -> i32
     fseek :: (stream: rawptr, offset: i64, whence: i32) -> i32
     ftell :: (stream: rawptr) -> i64
-    uname :: (names: u8[]) -> i32
     getenv :: (name: cstring) -> rawptr
     strlen :: (text: rawptr) -> u64
     memcpy :: (destination: u8[], source: rawptr, count: u64) -> rawptr
@@ -63,38 +65,14 @@ pub KindOther: int : 4;
 
 StatBytes: int : 256;
 
-// The platform is read at run time, from uname's system name, once per call that
-// needs it, so the package stays plain declarations that the native lane
-// compiles on every platform. It is a stand-in for `when target.Os`, which the
-// scalar producer cannot fold yet (docs/native-llvm-ledger.md). Only
-// the layouts of struct stat and of a directory entry differ: Darwin keeps
-// st_mode at 4, two bytes, and d_name at 21; Linux x86-64 keeps st_mode at 24,
-// four bytes, and d_name at 19.
-IsDarwin :: () -> bool {
-    names := Block(1536);
-    status := uname(names);
-    return names[0] == 68;
-}
-
-ModeOffset :: (darwin: bool) -> int {
-    if darwin {
-        return 4;
-    }
-    return 24;
-}
-
-ModeBytes :: (darwin: bool) -> int {
-    if darwin {
-        return 2;
-    }
-    return 4;
-}
-
-NameOffset :: (darwin: bool) -> int {
-    if darwin {
-        return 21;
-    }
-    return 19;
+when target.Os == target.Darwin {
+    ModeOffset: int : 4;
+    ModeBytes: int : 2;
+    NameOffset: int : 21;
+} else {
+    ModeOffset: int : 24;
+    ModeBytes: int : 4;
+    NameOffset: int : 19;
 }
 
 // A directory entry begins with its inode and offset (8 bytes each) and then
@@ -123,10 +101,9 @@ Mode :: (path: string, link: bool) -> int {
     if status != 0 {
         return -1;
     }
-    darwin := IsDarwin();
     mode := 0;
-    for index in 0..<ModeBytes(darwin) {
-        mode += int(buffer[ModeOffset(darwin) + index]) << u32(8 * index);
+    for index in 0..<ModeBytes {
+        mode += int(buffer[ModeOffset + index]) << u32(8 * index);
     }
     return mode;
 }
@@ -243,7 +220,6 @@ pub Getenv :: (name: string) -> string {
 // from an empty one).
 pub List :: (path: string) -> string[] {
     names: string[] = [];
-    name_at := NameOffset(IsDarwin());
     directory := opendir(path);
     if directory == 0 {
         return names;
@@ -264,7 +240,7 @@ pub List :: (path: string) -> string[] {
         }
         moved = memcpy(record, record_at, u64(size));
         name: u8[] = [];
-        at := name_at;
+        at := NameOffset;
         while at < length(record) && record[at] != 0 {
             name.append(record[at]);
             at += 1;

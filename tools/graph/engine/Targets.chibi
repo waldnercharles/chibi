@@ -31,7 +31,7 @@ pub Targets :: () -> string[] {
     // The native products and full test drivers share the platform's archive.
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
         // test_language's object library, which it links.
-        targets.extend(["chibi-compile", "test_behavior_consumer", "chibi_asset_compiler_consumer", "test_language"]);
+        targets.extend(["chibi-compile", "chibi_asset_compiler_consumer", "test_language"]);
         // The tooling tests' consumers, several over the archive's headers.
         targets.extend(ToolConsumers());
         targets.append("test_tools");
@@ -183,9 +183,8 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_behavior_runtime") {
         return [
-            "src/runtime/event_catalog.c", "src/runtime/behaviors/source.c",
-            "src/runtime/behaviors/source_profile.c", "src/runtime/behaviors/source_publication.c",
-            "src/runtime/behaviors/package.c", "src/runtime/behaviors/module_set.c"
+            "src/runtime/event_catalog.c", "src/runtime/behaviors/package.c",
+            "src/runtime/behaviors/module_set.c"
         ];
     }
     if (target == "chibi_native_prepared") {
@@ -280,9 +279,6 @@ Files :: (target: string) -> string[] {
     }
     if (target == "benchmark_trials") {
         return ["tools/benchmark.c", "src/host/process.c"];
-    }
-    if (target == "test_behavior_consumer") {
-        return ["test/language/headless_consumer.c"];
     }
     if (target == "test_language") {
         return [
@@ -470,7 +466,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_behavior_runtime") {
         return [
-            "runtime/behaviors/module_set.h", "runtime/behaviors/package.h", "runtime/behaviors/source.h",
+            "runtime/behaviors/module_set.h", "runtime/behaviors/package.h",
             "runtime/event_catalog.h"
         ];
     }
@@ -959,13 +955,6 @@ pub Includes :: (target: string) -> string[] {
     if (target == "benchmark_trials") {
         return ["src"];
     }
-    if (target == "test_behavior_consumer") {
-        return [
-            "build/test/language/testing/include", "public/behavior_runtime", "public/execution",
-            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
-            "public/events"
-        ];
-    }
     if (target == "test_language") {
         return [
             "build/test/language/testing/include", "public/host_clock", "public/native_capabilities",
@@ -1254,9 +1243,6 @@ pub Options :: (target: string) -> string[] {
         return ["-UNDEBUG"];
     }
     if (target == "chibi_asset_compiler_consumer") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "test_behavior_consumer") {
         return ["-UNDEBUG"];
     }
     if (target == "chibi_sdk_contracts") {
@@ -1603,7 +1589,7 @@ pub LinksCxx :: (target: string) -> bool {
 // The libraries whose objects executables link directly, as CMake's OBJECT
 // libraries, rather than archive.
 pub ObjectLibrary :: (target: string) -> bool {
-    return target == "chibi_application" || target == "chibi_build_host" || target == "chibi_asset_compiler_consumer" || target == "test_behavior_consumer" ||
+    return target == "chibi_application" || target == "chibi_build_host" || target == "chibi_asset_compiler_consumer" ||
            Listed(ToolConsumers(), target);
 }
 
@@ -1617,7 +1603,7 @@ pub LinkedObjects :: (target: string) -> string[] {
         return ["chibi_build_host"];
     }
     if (target == "test_language") {
-        return ["chibi_asset_compiler_consumer", "test_behavior_consumer"];
+        return ["chibi_asset_compiler_consumer"];
     }
     if (target == "test_tools") {
         return [

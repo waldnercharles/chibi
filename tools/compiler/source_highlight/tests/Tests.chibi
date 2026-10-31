@@ -40,5 +40,7 @@ RetargetsRolesToAFormattedCopy :: () {
             got := highlight.Retarget(formatted, leaves.classes);
             assert(got == format_text("{}{}{}", "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n", "<span class=\"chibi-function\">F</span> <span class=\"chibi-operator\">::</span> () {\n", "    x <span class=\"chibi-operator\">:=</span> <span class=\"chibi-number\">1</span>\n}\n"), "same roles on the copy");
             assert(highlight.Retarget("package p\nx\n", leaves.classes) == "package p\nx\n", "a different text renders plain");
+        case .Rejected(diagnostic):
+            assert(false, "the source parses");
     }
 }

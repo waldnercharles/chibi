@@ -46,12 +46,12 @@ imports and declarations that an example fragment need not contain.
 
 ## Fragments and validation
 
-The raw recovered tree is sufficient for incomplete examples. For a fragment
-that does not parse cleanly as a complete source file, the renderer also tries
-an isolated package header and then an empty trailing body. These contexts
-let declaration-only reference signatures acquire their normal roles. A
-wrapped tree is selected only when the entire tree is error-free; otherwise
-the original recovered tree remains in use. There are at most three parses.
+The parser gives no tree for text it cannot read. For a fragment that does
+not parse as a complete source file, the renderer also tries an isolated
+package header and then an empty trailing body. These contexts let
+declaration-only reference signatures acquire their normal roles. The first
+text that parses gives the roles; a fragment no context makes readable
+renders as escaped plain text. There are at most three parses.
 Synthetic prefix/suffix bytes never appear in rendered output. Unexpected
 overlapping or cross-boundary leaf ranges fall back to escaped plain text.
 

@@ -41,6 +41,9 @@ Answer :: (directory: string, id: string, options: format.Options, source: strin
                 case .Formatted(formatted):
                     Respond(directory, id, "ok", [formatted, original, highlight.Retarget(formatted, leaves.classes)]);
             }
+        case .Rejected(diagnostic):
+            message := format_text("{}:{}: {}", diagnostic.line, diagnostic.column, diagnostic.message);
+            Respond(directory, id, "error", [message, highlight.Escape(source), ""]);
     }
 }
 

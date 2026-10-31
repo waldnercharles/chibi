@@ -39,22 +39,25 @@ pub Format :: (text: string, options: Options) -> Result {
     if (text_byte_length(text) > MaxBytes) {
         return Result.Rejected("Source exceeds the formatter's byte limit");
     }
+    // The parser reads no tree from blank text, which has nothing to format.
+    if (strings.TrimSpace(text) == "") {
+        return Result.Formatted(text);
+    }
     switch syntax.Parse(text) {
         case .Parsed(rows, fields, named, extras, root):
             return FormatParsed(text, rows, fields, named, root, options);
+        case .Rejected(diagnostic):
+            return Result.Rejected("Cannot format source with syntax errors");
     }
 }
 
 // Format for a caller that has already parsed `text`, such as one that also
 // highlights it; `rows` and the rest are compiler_syntax.Parse's result.
-pub FormatParsed :: (text: string, rows: diag.Node[], fields: string[], named: bool[], root: int,
+pub FormatParsed :: (text: string, rows: diag.Node[], fields: int[], named: bool[], root: int,
                      options: Options) -> Result {
     invalid := Validate(options);
     if (invalid != "") {
         return Result.Rejected(invalid);
-    }
-    if (rows[root].has_error) {
-        return Result.Rejected("Cannot format source with syntax errors");
     }
     tokens := Tokens(rows, fields, root);
     if (length(tokens) == 0) {
@@ -126,9 +129,10 @@ Frame :: struct {
     close: Margin;
 }
 
-KindOf :: (rows: diag.Node[], node: int) -> string {
+// A row's kind, or tk.Invalid, no row's kind, for none.
+KindOf :: (rows: diag.Node[], node: int) -> int {
     if (node < 0) {
-        return "";
+        return tk.Invalid;
     }
     return rows[node].kind;
 }
@@ -140,7 +144,7 @@ ParentOf :: (rows: diag.Node[], node: int) -> int {
     return rows[node].parent;
 }
 
-ParentKind :: (rows: diag.Node[], node: int) -> string {
+ParentKind :: (rows: diag.Node[], node: int) -> int {
     return KindOf(rows, ParentOf(rows, node));
 }
 
@@ -165,10 +169,10 @@ PreviousSibling :: (rows: diag.Node[], node: int) -> int {
     return previous;
 }
 
-ChildByField :: (rows: diag.Node[], fields: string[], parent: int, name: string) -> int {
+ChildByField :: (rows: diag.Node[], fields: int[], parent: int, field: int) -> int {
     child := rows[parent].first_child;
     while (child >= 0) {
-        if (fields[child] == name) {
+        if (fields[child] == field) {
             return child;
         }
         child = rows[child].next_sibling;
@@ -179,15 +183,15 @@ ChildByField :: (rows: diag.Node[], fields: string[], parent: int, name: string)
 // Nodes whose braces open an indented body.
 IsBlock :: (rows: diag.Node[], node: int) -> bool {
     kind := KindOf(rows, node);
-    if (kind == "block" || kind == "declaration_body" || kind == "system_body" ||
-        kind == "callable_body" || kind == "component_body" || kind == "record_body" ||
-        kind == "prototype_body" || kind == "switch_statement" ||
-        kind == "union_declaration" || kind == "sequence_statement") {
+    if (kind == diag.Block || kind == diag.DeclarationBody || kind == diag.SystemBody ||
+        kind == diag.CallableBody || kind == diag.ComponentBody || kind == diag.RecordBody ||
+        kind == diag.PrototypeBody || kind == diag.SwitchStatement ||
+        kind == diag.UnionDeclaration || kind == diag.SequenceStatement) {
         return true;
     }
-    if (kind == "struct_expression") {
+    if (kind == diag.StructExpression) {
         parent := ParentKind(rows, node);
-        return parent == "prototype_component" || parent == "relationship_declaration";
+        return parent == diag.PrototypeComponent || parent == diag.RelationshipDeclaration;
     }
     return false;
 }
@@ -198,31 +202,43 @@ IsNest :: (rows: diag.Node[], node: int) -> bool {
         return false;
     }
     kind := KindOf(rows, node);
-    return kind == "argument_list" || kind == "parameter_list" || kind == "query_list" ||
-           kind == "pattern_bindings" || kind == "array_expression" ||
-           kind == "map_expression" || kind == "struct_expression" ||
-           kind == "prototype_bases" || kind == "struct_field" ||
-           kind == "parenthesized_expression";
+    return kind == diag.ArgumentList || kind == diag.ParameterList || kind == diag.QueryList ||
+           kind == diag.PatternBindings || kind == diag.ArrayExpression ||
+           kind == diag.MapExpression || kind == diag.StructExpression ||
+           kind == diag.PrototypeBases || kind == diag.StructField ||
+           kind == diag.ParenthesizedExpression;
 }
 
 // The outermost operator of an expression, whose operands may continue on
 // later lines.
 IsChain :: (rows: diag.Node[], node: int) -> bool {
-    return KindOf(rows, node) == "binary_expression" && ParentKind(rows, node) != "binary_expression";
+    return KindOf(rows, node) == diag.BinaryExpression && ParentKind(rows, node) != diag.BinaryExpression;
 }
 
-// Nodes whose last token ends a line.
+// Nodes whose last token ends a line: declarations, statements, assignments,
+// handlers and fields.
 EndsLine :: (rows: diag.Node[], node: int) -> bool {
     kind := KindOf(rows, node);
-    return strings.HasSuffix(kind, "_declaration") || strings.HasSuffix(kind, "_statement") ||
-           kind == "assignment" || kind == "handler" || kind == "component_field" ||
-           kind == "record_field";
+    return kind == diag.IfStatement || kind == diag.WhileStatement || kind == diag.ForStatement ||
+           kind == diag.SwitchStatement || kind == diag.BreakStatement || kind == diag.ContinueStatement ||
+           kind == diag.LocalDeclaration || kind == diag.ExpressionStatement || kind == diag.ReturnStatement ||
+           kind == diag.DeleteStatement || kind == diag.BranchStatement || kind == diag.CancelStatement ||
+           kind == diag.GotoStatement || kind == diag.LabelStatement || kind == diag.ReduceStatement ||
+           kind == diag.SequenceStatement || kind == diag.YieldStatement || kind == diag.ImportDeclaration ||
+           kind == diag.ForeignImportDeclaration || kind == diag.FunctionDeclaration ||
+           kind == diag.ConstantDeclaration || kind == diag.StateDeclaration || kind == diag.RecordDeclaration ||
+           kind == diag.UnionDeclaration || kind == diag.MacroDeclaration || kind == diag.WhenDeclaration ||
+           kind == diag.PrototypeDeclaration || kind == diag.RelationshipDeclaration ||
+           kind == diag.ActionDeclaration || kind == diag.EventDeclaration || kind == diag.EventsDeclaration ||
+           kind == diag.BindDeclaration || kind == diag.EntryDeclaration || kind == diag.ExitDeclaration ||
+           kind == diag.Assignment || kind == diag.Handler || kind == diag.ComponentField ||
+           kind == diag.RecordField;
 }
 
 // A bare switch-arm body is a block that does not start with a brace.
 IsBareArm :: (rows: diag.Node[], node: int) -> bool {
-    return KindOf(rows, node) == "block" && ParentKind(rows, node) == "switch_arm" &&
-           KindOf(rows, FirstChild(rows, node)) != "{";
+    return KindOf(rows, node) == diag.Block && ParentKind(rows, node) == diag.SwitchArm &&
+           KindOf(rows, FirstChild(rows, node)) != tk.OpenBrace;
 }
 
 // The end of the last leaf with width at or below each row, or -1 for none. A
@@ -246,7 +262,7 @@ VisibleEnds :: (rows: diag.Node[]) -> int[] {
 
 // The leaves with width, in source order. Zero-width terminators never
 // print, so they have no row here.
-Tokens :: (rows: diag.Node[], fields: string[], root: int) -> Token[] {
+Tokens :: (rows: diag.Node[], fields: int[], root: int) -> Token[] {
     tokens: Token[] = [];
     ends := VisibleEnds(rows);
     i: int = 0;
@@ -262,53 +278,56 @@ Tokens :: (rows: diag.Node[], fields: string[], root: int) -> Token[] {
 
 // The alignment a `:` starts: a field's type, a typed constant's type or a
 // struct literal field's value; -1 for other colons.
-ColonAnchor :: (rows: diag.Node[], node: int, kind: string, parent_kind: string) -> int {
-    if (kind != ":") {
+ColonAnchor :: (rows: diag.Node[], node: int, kind: int, parent_kind: int) -> int {
+    if (kind != tk.Colon) {
         return -1;
     }
-    if (parent_kind == "record_field" || parent_kind == "component_field") {
+    if (parent_kind == diag.RecordField || parent_kind == diag.ComponentField) {
         return AnchorField;
     }
-    if (parent_kind == "struct_field") {
+    if (parent_kind == diag.StructField) {
         return AnchorValue;
     }
-    if (parent_kind == "constant_declaration" && !IsConstantColon(rows, node)) {
+    if (parent_kind == diag.ConstantDeclaration && !IsConstantColon(rows, node)) {
         return AnchorConstant;
     }
     return -1;
 }
 
-AssignOperator :: (kind: string) -> bool {
-    return kind == "=" || kind == ":=" || kind == "+=" || kind == "-=" || kind == "*=" ||
-           kind == "/=" || kind == "%=" || kind == "&=" || kind == "|=" || kind == "^=";
+AssignOperator :: (kind: int) -> bool {
+    return kind == tk.Eq || kind == tk.ColonEq || kind == tk.AddEq || kind == tk.SubEq || kind == tk.MulEq ||
+           kind == tk.QuoEq || kind == tk.ModEq || kind == tk.AndEq || kind == tk.OrEq || kind == tk.XorEq;
 }
 
-MakeToken :: (rows: diag.Node[], fields: string[], ends: int[], root: int, node: int) -> Token {
+MakeToken :: (rows: diag.Node[], fields: int[], ends: int[], root: int, node: int) -> Token {
     kind := rows[node].kind;
     parent := rows[node].parent;
     parent_kind := KindOf(rows, parent);
     start := rows[node].start;
     end := rows[node].end;
     block := IsBlock(rows, parent);
-    opener := kind == "(" || kind == "[" || kind == "{";
-    closer := kind == ")" || kind == "]" || kind == "}";
+    opener := kind == tk.OpenParen || kind == tk.OpenBracket || kind == tk.OpenBrace;
+    closer := kind == tk.CloseParen || kind == tk.CloseBracket || kind == tk.CloseBrace;
     nest := IsNest(rows, parent);
     token: Token = {node: node, start: start, end: end,
-                    open: kind == "{" && block, close: kind == "}" && block,
-                    switch_open: kind == "{" && block && parent_kind == "switch_statement",
-                    end_line: kind == "," && block,
+                    open: kind == tk.OpenBrace && block, close: kind == tk.CloseBrace && block,
+                    switch_open: kind == tk.OpenBrace && block && parent_kind == diag.SwitchStatement,
+                    end_line: kind == tk.Comma && block,
                     nest_open: opener && nest, nest_close: closer && nest,
-                    brace: (kind == "{" || kind == "}") && nest && parent_kind == "struct_expression",
-                    paren: (kind == "(" || kind == ")") && nest,
-                    bracket: (kind == "[" || kind == "]") && nest && parent_kind == "array_expression",
+                    brace: (kind == tk.OpenBrace || kind == tk.CloseBrace) && nest &&
+                           parent_kind == diag.StructExpression,
+                    paren: (kind == tk.OpenParen || kind == tk.CloseParen) && nest,
+                    bracket: (kind == tk.OpenBracket || kind == tk.CloseBracket) && nest &&
+                             parent_kind == diag.ArrayExpression,
                     case_open: false, case_close: false, chain_open: 0, chain_close: 0,
-                    comment: kind == "comment", semicolon: kind == ";",
-                    assign: AssignOperator(kind) && (parent_kind == "assignment" || parent_kind == "local_declaration"),
+                    comment: kind == diag.Comment, semicolon: kind == tk.Semicolon,
+                    assign: AssignOperator(kind) &&
+                            (parent_kind == diag.Assignment || parent_kind == diag.LocalDeclaration),
                     colon: ColonAnchor(rows, node, kind, parent_kind),
                     top: -1, header: false};
-    if (kind == ":" && parent_kind == "switch_arm") {
-        body := ChildByField(rows, fields, parent, "body");
-        token.case_open = KindOf(rows, FirstChild(rows, body)) != "{";
+    if (kind == tk.Colon && parent_kind == diag.SwitchArm) {
+        body := ChildByField(rows, fields, parent, diag.FieldBody);
+        token.case_open = KindOf(rows, FirstChild(rows, body)) != tk.OpenBrace;
     }
     ancestor := parent;
     while (ancestor >= 0 && rows[ancestor].start == start) {
@@ -337,59 +356,60 @@ MakeToken :: (rows: diag.Node[], fields: string[], ends: int[], root: int, node:
     token.top = ancestor;
     if (ancestor >= 0) {
         top_kind := rows[ancestor].kind;
-        token.header = top_kind == "package_header" || top_kind == "import_declaration" ||
-                       top_kind == "foreign_import_declaration";
+        token.header = top_kind == diag.PackageHeader || top_kind == diag.ImportDeclaration ||
+                       top_kind == diag.ForeignImportDeclaration;
     }
     return token;
 }
 
 // `Name: T : value` spaces the colon that follows a constant's type.
 IsConstantColon :: (rows: diag.Node[], node: int) -> bool {
-    return rows[node].kind == ":" && ParentKind(rows, node) == "constant_declaration" &&
-           KindOf(rows, PreviousSibling(rows, node)) == "type";
+    return rows[node].kind == tk.Colon && ParentKind(rows, node) == diag.ConstantDeclaration &&
+           KindOf(rows, PreviousSibling(rows, node)) == diag.Type;
 }
 
 // u/s^2
 IsUnitOperator :: (rows: diag.Node[], node: int) -> bool {
     kind := rows[node].kind;
-    return (kind == "/" || kind == "^") && ParentKind(rows, node) == "unit";
+    return (kind == tk.Quo || kind == tk.Xor) && ParentKind(rows, node) == diag.Unit;
 }
 
 // A token that takes no space before it.
 TightBefore :: (rows: diag.Node[], node: int) -> bool {
     kind := rows[node].kind;
     parent := ParentKind(rows, node);
-    if (kind == "," || kind == ";" || kind == ".." || kind == "..<" || kind == ")" || kind == "]") {
+    if (kind == tk.Comma || kind == tk.Semicolon || kind == tk.Ellipsis || kind == tk.HalfOpenRange ||
+        kind == tk.CloseParen || kind == tk.CloseBracket) {
         return true;
     }
-    if (kind == ":") {
+    if (kind == tk.Colon) {
         return !IsConstantColon(rows, node);
     }
-    if (kind == ".") {
-        return parent != "variant_pattern";
+    if (kind == tk.Period) {
+        return parent != diag.VariantPattern;
     }
-    if (kind == "}") {
-        return parent == "struct_expression";
+    if (kind == tk.CloseBrace) {
+        return parent == diag.StructExpression;
     }
-    if (kind == "(") {
-        if (parent == "parameter_list" || parent == "query_list" || parent == "pattern_bindings" ||
-            parent == "reduce_statement" || parent == "prototype_bases" ||
-            parent == "parenthesized_type") {
+    if (kind == tk.OpenParen) {
+        if (parent == diag.ParameterList || parent == diag.QueryList || parent == diag.PatternBindings ||
+            parent == diag.ReduceStatement || parent == diag.PrototypeBases ||
+            parent == diag.ParenthesizedType) {
             return true;
         }
-        return parent == "argument_list" && ParentKind(rows, rows[node].parent) != "return_statement";
+        return parent == diag.ArgumentList && ParentKind(rows, rows[node].parent) != diag.ReturnStatement;
     }
-    if (kind == "[") {
-        return parent == "type" || parent == "index_expression";
+    if (kind == tk.OpenBracket) {
+        return parent == diag.Type || parent == diag.IndexExpression;
     }
-    if (kind == "?") {
-        return parent == "type";
+    if (kind == tk.Question) {
+        return parent == diag.Type;
     }
-    if (kind == "^") {
-        return parent == "dereference_expression" || parent == "unit";
+    if (kind == tk.Xor) {
+        return parent == diag.DereferenceExpression || parent == diag.Unit;
     }
-    if (kind == "/") {
-        return parent == "unit";
+    if (kind == tk.Quo) {
+        return parent == diag.Unit;
     }
     return false;
 }
@@ -398,25 +418,26 @@ TightBefore :: (rows: diag.Node[], node: int) -> bool {
 TightAfter :: (rows: diag.Node[], node: int) -> bool {
     kind := rows[node].kind;
     parent := ParentKind(rows, node);
-    if (kind == "(" || kind == "[" || kind == "." || kind == ".." || kind == "..<" || kind == "@") {
+    if (kind == tk.OpenParen || kind == tk.OpenBracket || kind == tk.Period || kind == tk.Ellipsis ||
+        kind == tk.HalfOpenRange || kind == tk.At) {
         return true;
     }
-    if (kind == "$") {
-        return parent == "type_binder" || parent == "parameter";
+    if (kind == tk.Dollar) {
+        return parent == diag.TypeBinder || parent == diag.Parameter;
     }
-    if (kind == "{") {
-        return parent == "struct_expression";
+    if (kind == tk.OpenBrace) {
+        return parent == diag.StructExpression;
     }
-    if (kind == "^") {
-        return parent == "pointer_type" || parent == "unit";
+    if (kind == tk.Xor) {
+        return parent == diag.PointerType || parent == diag.Unit;
     }
-    if (kind == "/") {
-        return parent == "unit";
+    if (kind == tk.Quo) {
+        return parent == diag.Unit;
     }
-    if (kind == "&") {
-        return parent == "address_expression" || parent == "for_statement";
+    if (kind == tk.And) {
+        return parent == diag.AddressExpression || parent == diag.ForStatement;
     }
-    return parent == "unary_expression" && kind != "not" &&
+    return parent == diag.UnaryExpression && kind != tk.NotKeyword &&
            rows[rows[node].parent].start == rows[node].start;
 }
 
@@ -439,7 +460,7 @@ Spaces :: (rows: diag.Node[], previous: Token, current: Token, options: Options)
         return 1;
     }
     kind := rows[previous.node].kind;
-    if (kind == "->" || kind == "::") {
+    if (kind == tk.ArrowRight || kind == tk.ColonColon) {
         return 1;
     }
     if (TightBefore(rows, current.node) || TightAfter(rows, previous.node)) {
@@ -548,7 +569,7 @@ Groups :: (rows: diag.Node[], tokens: Token[], options: Options, group: ^(int[])
         if (t.nest_close && length(stack) > 0) {
             open := stack[length(stack) - 1];
             mark := marks[length(marks) - 1];
-            if (options.magic_trailing_comma && i > open + 1 && rows[tokens[i - 1].node].kind == ",") {
+            if (options.magic_trailing_comma && i > open + 1 && rows[tokens[i - 1].node].kind == tk.Comma) {
                 hard += 1;
             }
             stack = resize(stack, length(stack) - 1);
@@ -567,13 +588,14 @@ Groups :: (rows: diag.Node[], tokens: Token[], options: Options, group: ^(int[])
 // Whether a wrapped group breaks after `previous`: after a comma of the
 // group's own list, or after the operator of a binary expression directly
 // inside parentheses.
-BreakAfter :: (rows: diag.Node[], fields: string[], previous: Token, open: Token) -> bool {
+BreakAfter :: (rows: diag.Node[], fields: int[], previous: Token, open: Token) -> bool {
     parent := rows[previous.node].parent;
-    if (rows[previous.node].kind == ",") {
+    if (rows[previous.node].kind == tk.Comma) {
         return parent == rows[open.node].parent;
     }
-    return ParentKind(rows, open.node) == "parenthesized_expression" && KindOf(rows, parent) == "binary_expression" &&
-           fields[previous.node] == "operator";
+    return ParentKind(rows, open.node) == diag.ParenthesizedExpression &&
+           KindOf(rows, parent) == diag.BinaryExpression &&
+           fields[previous.node] == diag.FieldOperator;
 }
 
 // The matching closing brace of every block's opening brace, and whether the
@@ -624,7 +646,7 @@ Separated :: (bytes: int[], rows: diag.Node[], root: int, ends: int[]) -> bool[]
             spans[k] = bytes[at] == 10;
             at += 1;
         }
-        if (rows[c].kind == "comment" && k + 1 < length(children)) {
+        if (rows[c].kind == diag.Comment && k + 1 < length(children)) {
             breaks: int = 0;
             at = ends[c];
             while (at < rows[children[k + 1]].start) {
@@ -646,7 +668,7 @@ Separated :: (bytes: int[], rows: diag.Node[], root: int, ends: int[]) -> bool[]
                 own += 1;
             }
             before := k - 1;
-            while (before > 0 && rows[children[before]].kind == "comment") {
+            while (before > 0 && rows[children[before]].kind == diag.Comment) {
                 before -= 1;
             }
             separated[children[k]] = spans[own] || spans[before];
@@ -724,7 +746,7 @@ AlignAnchors :: (out: ^(string[]), kind: int, pieces: int[], lines: int[], colum
     }
 }
 
-Layout :: (text: string, rows: diag.Node[], fields: string[], root: int, tokens: Token[],
+Layout :: (text: string, rows: diag.Node[], fields: int[], root: int, tokens: Token[],
            options: Options) -> string {
     bytes := text_bytes(text);
     count := length(tokens);
@@ -737,7 +759,7 @@ Layout :: (text: string, rows: diag.Node[], fields: string[], root: int, tokens:
     if (options.crlf) {
         eol = "\r\n";
     }
-    packaged := ChildByField(rows, fields, root, "package") >= 0;
+    packaged := ChildByField(rows, fields, root, diag.FieldPackage) >= 0;
     wrapping := options.preferred_width > 0;
     group := resize([int(-1)], count);
     pair := resize([int(-1)], count);
@@ -803,7 +825,7 @@ Layout :: (text: string, rows: diag.Node[], fields: string[], root: int, tokens:
             inline_comment := current.comment && lines == 0;
             empty_block := previous.open && current.close;
             kind := rows[current.node].kind;
-            chained := previous.close && (kind == "else" || kind == ";");
+            chained := previous.close && (kind == tk.Else || kind == tk.Semicolon);
             group_break := false;
             if (wrapping && group[i] >= 0) {
                 open := group[i];
@@ -1028,12 +1050,9 @@ CompareTokens :: (original: string, rewritten: string) -> int {
 // kind, named flag and field for every row with width, and the same bytes in
 // every leaf. Only a rewrite that adds or drops a terminator comes here,
 // because a second parse costs about 3 KB of heap per source byte.
-SameTree :: (original: string, a: diag.Node[], a_fields: string[], a_named: bool[], rewritten: string) -> bool {
+SameTree :: (original: string, a: diag.Node[], a_fields: int[], a_named: bool[], rewritten: string) -> bool {
     switch syntax.Parse(rewritten) {
         case .Parsed(b, b_fields, b_named, b_extras, b_root):
-            if (b[b_root].has_error) {
-                return false;
-            }
             a_depths := Depths(a);
             b_depths := Depths(b);
             i := NextVisible(a, 0);
@@ -1054,6 +1073,8 @@ SameTree :: (original: string, a: diag.Node[], a_fields: string[], a_named: bool
                 j = NextVisible(b, j + 1);
             }
             return i >= length(a) && j >= length(b);
+        case .Rejected(diagnostic):
+            return false;
     }
 }
 
@@ -1061,7 +1082,7 @@ SameTree :: (original: string, a: diag.Node[], a_fields: string[], a_named: bool
 // semicolon has and an inserted terminator lacks; the cursor walk the archived
 // formatter compared skipped the zero-width terminators the same way.
 NextVisible :: (rows: diag.Node[], at: int) -> int {
-    while (at < length(rows) && (rows[at].end == rows[at].start || rows[at].kind == ";")) {
+    while (at < length(rows) && (rows[at].end == rows[at].start || rows[at].kind == tk.Semicolon)) {
         at += 1;
     }
     return at;

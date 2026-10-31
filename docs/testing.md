@@ -2605,7 +2605,6 @@ the `language-` prefix.
 | `package-compiler-chibi-debug-free` | 1 / 2,452 |
 | `package-compiler-chibi-behaviors-rest` | 2 / 5,730 |
 | `package-compiler-chibi-libraries` | 13 / 17,393 |
-| `package-compiler-chibi-native-arguments-oracle` | 1 / 178 |
 | `package-compiler-chibi-native-arguments` | 1 / 11,664 |
 
 The new fixture regression also failed under a temporary eager-preparation

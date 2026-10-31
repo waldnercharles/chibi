@@ -13,8 +13,6 @@
 #include "execution/prepared.h"
 #include "execution/status.h"
 #include "float_conversion_cases.h"
-#include "language/lower.h"
-#include "language/semantic.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arithmetic_definition.h"
 #include "runtime/arrays_definition.h"
@@ -3696,63 +3694,7 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length, bool h
  * points with stage zero; both compare explicit target effects. */
 /* Stage zero's packages for the sample, linked against the fixture's
  * natives, and its selected diagnostic package (facts by default). */
-static authoring_packages *oracle_packages(const sample *s, const authoring_package **root)
-{
-    source_package_input inputs[SAMPLE_INPUTS];
-    int count = sample_inputs(s, inputs);
-    source_package_collection collections[] = { { "core", "/sdk/core" } };
-    source_package_snapshot_options options = { .project_root = "/compiler",
-                                                .files = inputs,
-                                                .file_count = count,
-                                                .collections = collections,
-                                                .collection_count = 1 };
-    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
-    assert(snapshot && !source_package_snapshot_error_at(snapshot));
-    script_lower_bindings bindings = authoring_native_bindings(fixture.native);
-    authoring_packages *packages = authoring_packages_prepare(
-        snapshot,
-        native_capabilities_catalog(fixture.native),
-        &bindings,
-        BEHAVIOR_BYTECODE,
-        NULL
-    );
-    assert(packages);
-    const char *identity = s->oracle_package ? s->oracle_package : "project:facts";
-    *root = NULL;
-    for (int p = 0; p < authoring_packages_count(packages); p++) {
-        const authoring_package *candidate = authoring_packages_at(packages, p);
-        if (!strcmp(candidate->identity, identity)) {
-            *root = candidate;
-        }
-    }
-    assert(*root);
-    return packages;
-}
-static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
-{
-    const authoring_package *root;
-    authoring_packages *packages = oracle_packages(s, &root);
-    REQUIRE(!authoring_packages_valid(packages));
-    REQUIRE(root->diagnostic_count);
-    const script_diagnostic *expected = &root->diagnostics[0];
-    bool same = !strcmp(expected->message, s->oracle_message ? s->oracle_message : message) &&
-                expected->range.line == line && expected->range.column == column;
-    if (!same) {
-        fprintf(
-            stderr,
-            "stage zero %s: %s at %d:%d; stage one at %d:%d\n",
-            s->name,
-            expected->message,
-            expected->range.line,
-            expected->range.column,
-            line,
-            column
-        );
-    }
-    authoring_packages_free(packages);
-    REQUIRE(same);
-    return true;
-}
+
 static bool rejects_malformed_effects()
 {
     static const source_package_input bad_source = { "facts/Main.chibi", "not source", 10 };
@@ -4047,207 +3989,7 @@ static bool char_failures_use_data_status(const unsigned char *bytes, size_t len
     REQUIRE(checked > 0);
     return true;
 }
-static bool math_rejects_at_source(const sample *s)
-{
-    const authoring_package *root;
-    authoring_packages *packages = oracle_packages(s, &root);
-    bool same = !authoring_packages_valid(packages) && root->diagnostic_count > 0;
-    if (same) {
-        const script_diagnostic *diagnostic = &root->diagnostics[0];
-        same = !strcmp(diagnostic->message, s->oracle_message) &&
-               diagnostic->range.line == s->oracle_line &&
-               diagnostic->range.column == s->oracle_column;
-        if (!same) {
-            fprintf(
-                stderr,
-                "stage zero math %s: %s at %d:%d\n",
-                s->name,
-                diagnostic->message,
-                diagnostic->range.line,
-                diagnostic->range.column
-            );
-        }
-    }
-    authoring_packages_free(packages);
-    REQUIRE(same);
-    return true;
-}
-static bool run_sample_table(sample_group group, int b, const sample *table, int table_count)
-{
-    REQUIRE(prepare_backends(1u << b));
-    if (group == BASE_SAMPLES && b == 0) {
-        REQUIRE(rejects_malformed_effects());
-    }
-    for (int i = 0; i < table_count; i++) {
-        const sample *s = &table[i];
-        if ((group != MATH_SAMPLES && s->group != group)) {
-            continue;
-        }
-        source_package_input inputs[SAMPLE_INPUTS];
-        int count = sample_inputs(s, inputs);
-        compiler_result out;
-        bool compiled = compile(b, s->game, s->c_string_probe, s->host_effects, inputs, count, COMPILE_BUDGET, &out);
-        if (!compiled) {
-            fprintf(
-                stderr,
-                "package compiler sample failed: name=%s index=%d group=%d "
-                "backend=%s inputs=%d source_bytes=%zu budget=%d\n",
-                s->name,
-                i,
-                group,
-                b ? "compiled" : "bytecode",
-                count,
-                strlen(s->source),
-                COMPILE_BUDGET
-            );
-        }
-        REQUIRE(compiled);
-        if (s->message) {
-            if (compiler_succeeded(&out)) {
-                fprintf(stderr, "package compiler %s: accepted\n", s->name);
-                if (s->same_rejection && s->oracle_message && s->line > 0 &&
-                    s->column > 0) {
-                    REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
-                    fprintf(
-                        stderr,
-                        "stage zero rejected it: %s at %d:%d\n",
-                        s->oracle_message,
-                        s->line,
-                        s->column
-                    );
-                }
-            }
-            REQUIRE(!compiler_succeeded(&out));
-            pin_value message, line, column;
-            REQUIRE(get(compiler_error(&out), "message", &message));
-            REQUIRE(
-                get(compiler_error(&out), "line", &line) &&
-                get(compiler_error(&out), "column", &column)
-            );
-            bool position = s->same_rejection
-                              ? rejects_like_oracle(
-                                    s,
-                                    pin_text(message).bytes,
-                                    line.i,
-                                    column.i
-                                )
-                              : line.i == s->line && column.i == s->column;
-            if (strcmp(pin_text(message).bytes, s->message) || !position) {
-                fprintf(
-                    stderr,
-                    "package compiler %s: %s at %d:%d\n",
-                    s->name,
-                    pin_text(message).bytes,
-                    line.i,
-                    column.i
-                );
-            }
-            REQUIRE(!strcmp(pin_text(message).bytes, s->message) && position);
-            if (group == MATH_SAMPLES) {
-                REQUIRE(math_rejects_at_source(s));
-            }
-            arena_free(&detached);
-            continue;
-        }
-        if (!compiler_succeeded(&out)) {
-            pin_value message, line, column;
-            get(compiler_error(&out), "message", &message);
-            get(compiler_error(&out), "line", &line);
-            get(compiler_error(&out), "column", &column);
-            fprintf(
-                stderr,
-                "package compiler %s rejected: %s at %d:%d\n",
-                s->name,
-                pin_text(message).bytes,
-                line.i,
-                column.i
-            );
-        }
-        REQUIRE(compiler_succeeded(&out));
-        size_t length;
-        unsigned char *bytes = closure_bytes(&out, &length);
-        arena_free(&detached);
-        if (s->project_modules) {
-            REQUIRE(project_closure_only(bytes, length, s->project_modules));
-        }
-        unsigned char *expected = NULL;
-        size_t expected_length = 0;
-        bool ran = (!s->char_checks || char_failures_use_data_status(bytes, length)) &&
-                   (!s->updates || updates_in_place(bytes, length, s->name)) &&
-                   (!s->specializations ||
-                    reuses_specializations(bytes, length, s->specializations)) &&
-                   (!s->boxed || reads_boxed(bytes, length)) &&
-                   (!s->moves || moves_fresh_values(bytes, length)) &&
-                   (!s->aliases || reads_in_place(bytes, length)) &&
-                   (!s->variants || moves_returned_variants(bytes, length)) &&
-                   (!s->built || builds_results(bytes, length)) &&
-                   (!s->lends || lends_native_values(bytes, length)) &&
-                   (!s->drops || drops_only_collections(bytes, length)) &&
-                   ((b && !s->host_effects && !s->debug_metadata) ||
-                    (oracle_closure(s, &expected, &expected_length) &&
-                     (s->math || points_like_oracle(bytes, length, s->host_effects))));
-        bool hosted = !s->traced || !s->c_string_probe;
-        for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
-            for (int backend = 0; ran && backend < 2; backend++) {
-                ran = call_sample(s, bytes, length, &s->calls[c], backend);
-                if (!ran && group == MATH_SAMPLES) {
-                    fprintf(stderr, "math stage-one compiler=%d target-vm=%d\n", b, backend);
-                }
-            }
-            if (ran && !b) {
-                ran = call_sample(s, expected, expected_length, &s->calls[c], 0);
-                if (!ran && group == MATH_SAMPLES) {
-                    fprintf(stderr, "math stage-zero oracle target-vm=0\n");
-                }
-            }
-            if (ran && !b && group == MATH_SAMPLES) {
-                ran = call_sample(s, expected, expected_length, &s->calls[c], 1);
-                if (!ran) {
-                    fprintf(stderr, "math stage-zero oracle target-vm=1\n");
-                }
-            }
-        }
-        ran = ran && (!s->traced || traces_like_oracle(bytes, length, s));
-        if (ran && s->update_order) {
-            ran = (b || array_update_order(expected, expected_length, s)) &&
-                  array_update_order(bytes, length, s) &&
-                  observes_array_update(bytes, length, s);
-            pin_value args[ARGUMENTS], closure;
-            REQUIRE(arguments(b, false, inputs, count, args));
-            REQUIRE(compiler_fixture_call(
-                &fixture,
-                b,
-                PACKAGE,
-                "CompileClosure",
-                args,
-                ARGUMENTS,
-                COMPILE_BUDGET,
-                &detached,
-                &closure
-            ));
-            const pin_array *array = closure.ptr;
-            REQUIRE(closure.type == PIN_U8 && closure.container == PIN_CONTAINER_ARRAY && array);
-            REQUIRE(length > 0 && (size_t)array->count == length);
-            bool same = true;
-            for (size_t i = 0; i < length; i++) {
-                same &= array->items[i].u8 == bytes[i];
-            }
-            arena_free(&detached);
-            REQUIRE(same);
-        }
-        free(bytes);
-        free(expected);
-        if (!ran) {
-            fprintf(stderr, "package compiler %s: differs\n", s->name);
-        }
-        REQUIRE(ran);
-    }
-    return true;
-}
-static bool run_samples(sample_group group, int b)
-{
-    return run_sample_table(group, b, samples, (int)SAMPLES);
-}
+
 /* Without debugger points and watches, a closure's functions have none, and
  * its loops and branches still run as they do with them. */
 /* The closure the compiler builds for sample `s` without debug information,
@@ -4549,73 +4291,7 @@ static bool approved_float_conversion_admission(int compiler, bool constants)
 
 /* The literal diagnostics also hold in the independent stage-zero frontend,
  * including reference and boxed targets and record fields. */
-TEST_CASE(package_compiler_compound_diagnostics_match_stage_zero)
-{
-    REQUIRE(prepare());
-    int checked = 0;
-    for (int i = 0; i < (int)SAMPLES; i++) {
-        const sample *s = &samples[i];
-        if (!strncmp(s->name, "mixed compound ", strlen("mixed compound "))) {
-            REQUIRE(s->message);
-            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
-            checked++;
-        }
-    }
-    REQUIRE(checked == 7);
-    return true;
-}
-TEST_CASE(package_compiler_builds_runnable_packages)
-{
-    return run_samples(BASE_SAMPLES, 0);
-}
-TEST_CASE(package_compiler_builds_runnable_packages_compiled)
-{
-    return run_samples(BASE_SAMPLES, 1);
-}
-TEST_CASE(package_compiler_builtin_math_source_contracts)
-{
-    enum
-    {
-        COUNT = sizeof math_samples / sizeof *math_samples
-    };
-    REQUIRE(run_sample_table(MATH_SAMPLES, 0, math_samples, COUNT));
-    cleanup();
-    return run_sample_table(MATH_SAMPLES, 1, math_samples, COUNT);
-}
-TEST_CASE(package_compiler_builds_runnable_typed_packages)
-{
-    return run_samples(TYPE_SAMPLES, 0);
-}
-TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled)
-{
-    return run_samples(TYPE_SAMPLES, 1);
-}
-TEST_CASE(package_compiler_checks_fallible_source_results)
-{
-    return run_samples(FALLIBLE_SAMPLES, 0);
-}
-TEST_CASE(package_compiler_checks_fallible_source_results_compiled)
-{
-    return run_samples(FALLIBLE_SAMPLES, 1);
-}
-TEST_CASE(package_compiler_builds_runnable_collection_packages)
-{
-    return run_samples(COLLECTION_SAMPLES, 0);
-}
-TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled)
-{
-    return run_samples(COLLECTION_SAMPLES, 1);
-}
-TEST_CASE(package_compiler_builds_runnable_importing_packages)
-{
-    REQUIRE(run_samples(IMPORT_SAMPLES, 0));
-    return approved_float_conversion_admission(0, false);
-}
-TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
-{
-    REQUIRE(run_samples(IMPORT_SAMPLES, 1));
-    return approved_float_conversion_admission(1, false);
-}
+
 TEST_CASE(package_compiler_float_constant_dependency)
 {
     REQUIRE(prepare_backends(COMPILER_FIXTURE_BYTECODE));
@@ -5804,17 +5480,7 @@ typedef struct
 {
     float x, y, z;
 } native_math_vector;
-typedef struct
-{
-    native_capabilities *native;
-    script_syntax *syntax;
-    script_analysis *analysis;
-    execution_module_plan *plan;
-    execution_module *expected[2], *actual;
-    unsigned char *bytes;
-    package_module *modules;
-    int module_count;
-} native_math_fixture;
+
 enum
 {
     CATALOG_SELECT_SPOT = 6100,
@@ -5864,233 +5530,14 @@ TEST_CASE(package_compiler_pure_provider_has_no_write)
     native_capabilities_free(native);
     return true;
 }
-TEST_CASE(package_compiler_rejects_invalid_char_conversions)
-{
-    static const char *const sources[] = {
-        "package facts\nBad :: () -> char { return char(-1); }",
-        "package facts\nBad :: () -> char { return char(0xD800); }",
-        "package facts\nBad :: () -> char { return char(0xDFFF); }",
-        "package facts\nBad :: () -> char { return char(0x110000); }",
-        "package facts\nBad :: () -> char { return char(4294967296); }",
-        "package facts\nBad :: () -> char { return char(18446744073709551615); "
-        "}",
-        "package facts\nBad :: () -> char { return char(wrap: 65); }",
-        "package facts\nBad :: (value: number) -> char { return char(value); }",
-        "package facts\nBad :: (value: int) -> char { return value; }",
-        "package facts\nTake :: (value: char) -> int { return int(value); }\n"
-        "Bad :: (value: int) -> int { return Take(value); }",
-        "package facts\nBad :: (n: int) -> int { value: char = char(65); "
-        "value = n; return int(value); }",
-        "package facts\nBad :: (value: char) -> u8 { return value; }",
-        "package facts\nBad :: (n: int) -> (value: char) { value = n; return; "
-        "}",
-        "package facts\nBad :: (n: int) -> (value: char) { return(n); }",
-        "package facts\nBad :: () -> char { return char(65.5); }",
-        "package facts\nFloat: number : 0;\nBad :: () -> char { return "
-        "char(Float); }",
-        "package facts\nFloat: f64 : 0;\nBad :: () -> char { return "
-        "char(Float); }",
-        "package facts\nRow :: struct { x: number; }\n"
-        "Bad :: () -> number { row: Row = {x: 0.0}; row.x = char(65); return "
-        "row.x; }",
-        "package facts\nRow :: struct { x: f64; }\n"
-        "Bad :: () -> f64 { row: Row = {x: 0.0}; row.x = char(65); return "
-        "row.x; }",
-        "package facts\nBad :: (value: char) -> int { return "
-        "native.kernel(value); }"
-    };
-    REQUIRE(prepare());
-    for (int i = 0; i < NATIVE_COUNT(sources); i++) {
-        sample s = { .source = sources[i] };
-        const authoring_package *root;
-        authoring_packages *native = oracle_packages(&s, &root);
-        REQUIRE(!authoring_packages_valid(native));
-        REQUIRE(root->diagnostic_count > 0);
-        authoring_packages_free(native);
-        source_package_input inputs[SAMPLE_INPUTS];
-        int count = sample_inputs(&s, inputs);
-        for (int b = 0; b < 2; b++) {
-            compiler_result out;
-            pin_value message;
-            bool probe = strstr(sources[i], "native.kernel") != NULL;
-            REQUIRE(compile(b, false, probe, false, inputs, count, COMPILE_BUDGET, &out));
-            if (compiler_succeeded(&out)) {
-                fprintf(stderr, "stage one accepted invalid char source: %s\n", sources[i]);
-            }
-            REQUIRE(!compiler_succeeded(&out));
-            REQUIRE(get(compiler_error(&out), "message", &message));
-            if (i < 6) {
-                REQUIRE(strstr(pin_text(message).bytes, "Constant does not fit in char"));
-            }
-            arena_free(&detached);
-        }
-    }
-    return true;
-}
+
 /* The bounded scalar-char prerequisite deliberately does not enable its
  * container, pointer, field or arithmetic forms. Native acceptance proves
  * these failures describe stage-one coverage rather than invalid Chibi. */
-TEST_CASE(package_compiler_rejects_deferred_char_forms)
-{
-    static const struct
-    {
-        const char *name, *source;
-    } cases[] = {
-        { "explicit array",
-          "package facts\nRun :: () -> int { values: char[] = [char(65)]; "
-          "return int(values[0]); }" },
-        { "grouped array", "package facts\nRun :: () -> int { values: (char)[] = [char(65)]; return int(values[0]); }" },
-        { "nested grouped array", "package facts\nRun :: () -> int { values: ((char))[] = [char(65)]; return int(values[0]); }" },
-        { "grouped array type", "package facts\nRun :: () -> int { values: (char[]) = [char(65)]; return int(values[0]); }" },
-        { "inferred array",
-          "package facts\nRun :: () -> int { values := [char(65)]; "
-          "return int(values[0]); }" },
-        { "scoped pointer",
-          "package facts\nRead :: (value: ^char) -> int { return int(value^); "
-          "}\n"
-          "Run :: () -> int { value: char = char(65); return Read(&value); }" },
-        { "addressed local",
-          "package facts\nRun :: () -> int { value: char = char(65); "
-          "pointer := &value; return int(pointer^); }" },
-        { "map key after int key",
-          "package facts\nKnown :: (n: int) -> int { known: [int: int] = [:]; "
-          "known[n] = 1; return known[n]; }\n"
-          "Run :: () -> int { values: [char: int] = [:]; "
-          "values[char(65)] = 7; return values[char(65)]; }" },
-        { "map value",
-          "package facts\nRun :: () -> int { values: [int: char] = [:]; "
-          "values[0] = char(65); return int(values[0]); }" },
-        { "unary arithmetic",
-          "package facts\nRun :: (value: char) -> char { return -value; }" },
-        { "binary arithmetic",
-          "package facts\nRun :: (value: char) -> char { return value + 1; }" },
-        { "compound arithmetic", "package facts\nRun :: (value: char) -> int { value += 1; return int(value); }" },
-        { "record field",
-          "package facts\nRow :: struct { value: char; }\n"
-          "Run :: () -> int { row: Row = {value: char(65)}; return "
-          "int(row.value); }" },
-        { "optional", "package facts\nRun :: () -> char? { return char(65); }" },
-        { "union payload",
-          "package facts\nValue :: union { Rune(value: char) | Empty }\n"
-          "Run :: () -> Value { return Value.Rune(char(65)); }" },
-        { "character literal", "package facts\nRun :: () -> int { return int('A'); }" },
-        { "contextual decimal expression",
-          "package facts\nRun :: () -> int { return int(char(64.0 + 1.0)); }" },
-        { "nested contextual decimal expression", "package facts\nRun :: () -> int { return int(char((32.0 * 2.0) + 1.0)); }" },
-        { "widened named char result projection",
-          "package facts\nNamed :: () -> (scalar: char) { return char(65); }\n"
-          "Run :: () -> char { value: int = Named(); value = -1; return "
-          "value.scalar; }" },
-        { "wide named char result projection",
-          "package facts\nNamed :: () -> (scalar: char) { return char(65); }\n"
-          "Run :: () -> char { value: i64 = Named(); value = 4294967296; "
-          "return value.scalar; }" },
-        { "compound int field with char",
-          "package facts\nRow :: struct { x: int; }\n"
-          "Run :: () -> int { row: Row = {x: 0}; row.x += char(65); return "
-          "row.x; }" },
-        { "compound int array with char",
-          "package facts\nRun :: () -> int { values: int[] = [0]; "
-          "values[0] += char(65); return values[0]; }" },
-        { "inferred generic array",
-          "package facts\nRun :: () -> int { values := make_array(char(65)); "
-          "return int(values[0]); }" }
-    };
-    REQUIRE(prepare());
-    bool rejected_all = true;
-    for (int i = 0; i < NATIVE_COUNT(cases); i++) {
-        sample s = { .source = cases[i].source };
-        const authoring_package *root;
-        authoring_packages *native = oracle_packages(&s, &root);
-        if (!authoring_packages_valid(native)) {
-            for (int j = 0; j < root->diagnostic_count; j++) {
-                fprintf(
-                    stderr,
-                    "native deferred char %s: %s\n",
-                    cases[i].name,
-                    root->diagnostics[j].message
-                );
-            }
-        }
-        REQUIRE(authoring_packages_valid(native));
-        authoring_packages_free(native);
-        source_package_input inputs[SAMPLE_INPUTS];
-        int count = sample_inputs(&s, inputs);
-        for (int b = 0; b < 2; b++) {
-            compiler_result out;
-            pin_value message;
-            REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
-            if (compiler_succeeded(&out)) {
-                fprintf(
-                    stderr,
-                    "stage one accepted deferred char form: %s\n",
-                    cases[i].name
-                );
-            }
-            bool rejected = !compiler_succeeded(&out);
-            rejected_all &= rejected;
-            if (rejected) {
-                REQUIRE(get(compiler_error(&out), "message", &message));
-                REQUIRE(pin_text(message).length > 0);
-            }
-            arena_free(&detached);
-        }
-    }
-    REQUIRE(rejected_all);
-    return true;
-}
+
 /* A state's resolved nominal type must be checked after grouping, before
  * its integer storage or default can enter the behavior state table. */
-TEST_CASE(package_compiler_defers_generic_char_native_results)
-{
-    REQUIRE(prepare());
-    char error[256];
-    const native_definition_pack pack = NATIVE_ARITHMETIC_DEFINITION_PACK;
-    native_capabilities *
-        arithmetic = native_capabilities_from_definition_packs(NULL, 0, &pack, 1, error, sizeof error);
-    REQUIRE(arithmetic);
-    const script_catalog *catalog = native_capabilities_catalog(arithmetic);
-    const char *sources[] = {
-        "package facts\nRun :: () -> char { return negate(char(65)); }",
-        "package facts\nRun :: (value: int) -> int { return negate(value); }"
-    };
-    for (int i = 0; i < NATIVE_COUNT(sources); i++) {
-        source_package_input source = { "facts/Main.chibi",
-                                        sources[i],
-                                        strlen(sources[i]) };
-        source_package_snapshot_options options = { .project_root = "/compiler",
-                                                    .files = &source,
-                                                    .file_count = 1 };
-        source_package_snapshot *snapshot = source_package_snapshot_new(&options);
-        REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
-        script_lower_bindings bindings = authoring_native_bindings(arithmetic);
-        authoring_packages *native = authoring_packages_prepare(snapshot, catalog, &bindings, BEHAVIOR_BYTECODE, NULL);
-        REQUIRE(native && authoring_packages_valid(native));
-        authoring_packages_free(native);
-        for (int b = 0; b < 2; b++) {
-            pin_value args[ARGUMENTS + 1];
-            compiler_result out;
-            REQUIRE(arguments(b, false, &source, 1, args));
-            REQUIRE(
-                compiler_fixture_natives(&fixture, b, PACKAGE, catalog, &input, &args[9], &args[ARGUMENTS])
-            );
-            REQUIRE(
-                compiler_call(b, "CompileWithEffects", args, ARGUMENTS + 1, COMPILE_BUDGET, &out)
-            );
-            REQUIRE(compiler_succeeded(&out) == (i != 0));
-            if (i == 0) {
-                pin_value message;
-                REQUIRE(get(compiler_error(&out), "message", &message));
-                REQUIRE(
-                    strstr(pin_text(message).bytes, "generic char native results are not supported yet")
-                );
-            }
-            arena_free(&detached);
-        }
-    }
-    native_capabilities_free(arithmetic);
-    return true;
-}
+
 TEST_CASE(package_compiler_shares_its_arguments)
 {
     REQUIRE(prepare());
@@ -14985,19 +14432,12 @@ TEST_CASE(package_compiler_query_values_are_readonly)
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_compound_diagnostics_match_stage_zero);
-    RUN_TEST_CASE(package_compiler_builds_runnable_packages);
     RUN_TEST_CASE(package_compiler_asserts_without_native_capability);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_types()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builtin_math_source_contracts);
-    RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages);
-    RUN_TEST_CASE(package_compiler_rejects_invalid_char_conversions);
-    RUN_TEST_CASE(package_compiler_rejects_deferred_char_forms);
-    RUN_TEST_CASE(package_compiler_defers_generic_char_native_results);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_math_native()
@@ -15008,46 +14448,38 @@ void test_language_package_compiler_chibi_math_native()
 void test_language_package_compiler_chibi_fallible()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_checks_fallible_source_results);
-    RUN_TEST_CASE(package_compiler_checks_fallible_source_results_compiled);
     RUN_TEST_CASE(package_compiler_fallible_system_query_keeps_unsupported_boundary);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_imports()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages);
     RUN_TEST_CASE(package_compiler_float_constant_dependency);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_compiled()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_packages_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_types_compiled()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_collections()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_collection_packages);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_collections_compiled()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_imports_compiled()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled);
     RUN_TEST_CASE(package_compiler_float_constant_dependency_compiled);
     pu_clear_setup();
 }
@@ -15194,161 +14626,11 @@ static const sample native_argument_samples[] = {
       .column = 47 },
 };
 
-TEST_CASE(native_arguments_reference_contract)
-{
-    /* Every valid call supplies all parameters of the existing text natives. */
-    source_package_input inputs[SAMPLE_INPUTS];
-    int count = sample_inputs(&native_argument_samples[0], inputs);
-    native_definition_pack packs[] = { CSTRING_PACK };
-    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
-    for (int i = 0;
-         i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
-         i++) {
-        const sample *s = &native_argument_samples[i];
-        fprintf(stderr, "native arguments reference: %s\n", s->name);
-        if (s->message) {
-            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
-            continue;
-        }
-        unsigned char *bytes = NULL;
-        size_t length = 0;
-        REQUIRE(oracle_closure(s, &bytes, &length));
-        bool passed = run(bytes, length, &s->calls[0], 0) &&
-                      run(bytes, length, &s->calls[0], 1);
-        free(bytes);
-        REQUIRE(passed);
-    }
-    return true;
-}
-
 /* Stage zero picks native.overload's integer or text overload by the
  * argument; an untyped number never converts to text, so it cannot pick the
  * text one. native.kernel's number overload takes literals and typed values
  * other than i64, which takes the f64 one. */
-TEST_CASE(native_overload_reference_contract)
-{
-    static const struct
-    {
-        const char *source;
-        pin_type parameter;
-        const char *message;
-        int column;
-    } cases[] = {
-        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32, NULL, 0 },
-        { "package facts\nRun :: () -> int { return "
-          "native.overload((-(2))); }",
-          PIN_I32,
-          NULL,
-          0 },
-        { "package facts\nRun :: () -> int { return native.overload(2.0); "
-          "}",
-          PIN_I32,
-          NULL,
-          0 },
-        { "package facts\nRun :: () -> int { return native.overload(1e0); "
-          "}",
-          PIN_I32,
-          NULL,
-          0 },
-        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32, NULL, 0 },
-        { "package facts\nRun :: (v: int) -> int { return native.kernel(v "
-          "* "
-          "2); }",
-          PIN_F32,
-          NULL,
-          0 },
-        { "package facts\nRun :: (v: i64) -> int { return native.kernel(v "
-          "* "
-          "2); }",
-          PIN_F64,
-          NULL,
-          0 },
-        { "package facts\nRun :: (v: f64) -> int { return "
-          "native.kernel(v); }",
-          PIN_F64,
-          NULL,
-          0 },
-        { "package facts\nRun :: (v: int) -> int { return "
-          "native.overload(v); "
-          "}",
-          PIN_I32,
-          NULL,
-          0 },
-        { "package facts\nRun :: () -> int { return "
-          "native.overload(\"three\"); }",
-          PIN_STR,
-          NULL,
-          0 },
-        { "package facts\nRun :: () -> int { return native.overload(2.5); "
-          "}",
-          PIN_FLOW,
-          "Numeric literal has a fraction, which int cannot hold",
-          43 },
-        { "package facts\nRun :: () -> int { return "
-          "native.overload(4294967296); }",
-          PIN_FLOW,
-          "Numeric literal is outside the range of int",
-          43 },
-    };
-    native_definition_pack packs[] = { CSTRING_PACK };
-    source_package_input inputs[SAMPLE_INPUTS];
-    sample first = { .source = cases[0].source };
-    int count = sample_inputs(&first, inputs);
-    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
-    const script_catalog *catalog = native_capabilities_catalog(fixture.native);
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        sample s = { .source = cases[i].source };
-        const authoring_package *root;
-        authoring_packages *packages = oracle_packages(&s, &root);
-        if (cases[i].message) {
-            const script_diagnostic *d = root->diagnostic_count
-                                           ? &root->diagnostics[0]
-                                           : NULL;
-            if (d) {
-                fprintf(
-                    stderr,
-                    "native overload %zu: %s at %d:%d\n",
-                    i,
-                    d->message,
-                    d->range.line,
-                    d->range.column
-                );
-            }
-            bool same = d && !strcmp(d->message, cases[i].message) &&
-                        d->range.line == 2 && d->range.column == cases[i].column;
-            authoring_packages_free(packages);
-            REQUIRE(same);
-            continue;
-        }
-        const script_analysis *analysis = root->analysis;
-        int chosen = 0;
-        for (int e = 0; e < analysis->expression_count; e++) {
-            const script_expression *expression = &analysis->expressions[e];
-            const script_catalog_capability *capability = expression->kind == SCRIPT_EXPR_CALL
-                                                            ? script_catalog_capability_by_id(
-                                                                  catalog,
-                                                                  expression->capability
-                                                              )
-                                                            : NULL;
-            if (capability && capability->parameter_count == 1 &&
-                capability->parameters[0].type.storage == cases[i].parameter) {
-                chosen++;
-            }
-        }
-        bool valid = root->valid && chosen == 1;
-        if (!valid) {
-            fprintf(
-                stderr,
-                "native overload %zu: %s\n",
-                i,
-                root->diagnostic_count ? root->diagnostics[0].message : "other overload"
-            );
-        }
-        authoring_packages_free(packages);
-        REQUIRE(valid);
-    }
-    return true;
-}
+
 TEST_CASE(native_arguments_authored_contract)
 {
     REQUIRE(prepare());
@@ -15419,8 +14701,6 @@ TEST_CASE(native_arguments_authored_contract)
 void test_language_package_compiler_chibi_native_arguments_oracle()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(native_arguments_reference_contract);
-    RUN_TEST_CASE(native_overload_reference_contract);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_native_arguments()

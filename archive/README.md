@@ -114,3 +114,7 @@ outright (git history keeps them):
 - unreferenced C from the dead-code sweep;
 - the KDL value layer, ckdl, the unread KDL fixtures, the KDL game-equivalence stories and the player
   packaging license check.
+
+## Stage-zero oracle cases removed from package_compiler_chibi.c
+
+`test/language/package_compiler_chibi.c` no longer includes `language/lower.h` or `language/semantic.h`. Removed (deleted, not archived; the authored compiler has no stage-zero to compare against): `oracle_packages` and the cases that compared authored compilation with stage-zero analysis or lowering: compound diagnostics vs stage zero, runnable package/typed/collection/importing sample tables (plain and `_compiled`), fallible source results, builtin math source contracts, invalid/deferred char conversion rejections, generic char native results, `native_overload_reference_contract` and `native_arguments_reference_contract`, and the `--package-compiler-chibi-native-arguments-oracle` selector. Authored `@test` suites and the remaining bootstrap/native lanes cover the authored side only. `compositional_records.c` lost an unused `language/lower.h` include.

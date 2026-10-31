@@ -100,8 +100,6 @@ int main(int argc, char **argv)
                                          !strcmp(argv[1], "--package-compiler-chibi-scalar");
     bool package_compiler_chibi_native_arguments = argc == 2 &&
                                                    !strcmp(argv[1], "--package-compiler-chibi-native-arguments");
-    bool package_compiler_chibi_native_arguments_oracle = argc == 2 &&
-                                                          !strcmp(argv[1], "--package-compiler-chibi-native-arguments-oracle");
     bool package_compiler_chibi_native = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-native");
     bool native_census = (argc == 2 || argc == 3) &&
@@ -155,11 +153,10 @@ int main(int argc, char **argv)
          !package_compiler_chibi_debug_free && !package_compiler_chibi_scalar &&
          !package_compiler_chibi_native && !native_census &&
          !native_census_flattening && !package_compiler_chibi_native_arguments &&
-         !package_compiler_chibi_native_arguments_oracle && !package_imports &&
-         !host_packages && !host_packages_compiler && !package_files &&
-         !package_math && !package_math_benchmark && !component_write &&
-         !component_write_layout && !build_workflow && !text_format &&
-         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !package_imports && !host_packages && !host_packages_compiler &&
+         !package_files && !package_math && !package_math_benchmark &&
+         !component_write && !component_write_layout && !build_workflow &&
+         !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
@@ -206,7 +203,6 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-native | --native-census [report] | "
             "--native-census-flattening | "
             "--package-compiler-chibi-native-arguments | "
-            "--package-compiler-chibi-native-arguments-oracle | "
             ""
             ""
             ""
@@ -311,8 +307,6 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi_scalar();
     } else if (package_compiler_chibi_native_arguments) {
         test_language_package_compiler_chibi_native_arguments();
-    } else if (package_compiler_chibi_native_arguments_oracle) {
-        test_language_package_compiler_chibi_native_arguments_oracle();
     } else if (package_compiler_chibi_native) {
         test_language_package_compiler_chibi_native();
     } else if (native_census) {

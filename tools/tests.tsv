@@ -26,7 +26,7 @@ tool	native-aot-driver	@build@/test/tools/test_tools	--native-aot-driver	tools/n
 tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/tools/policy_worker	@host@
 tool	build-timings	@build@/test/tools/test_tools	--build-timings	@build@/test/tools/policy_worker	@host@
 tool	build-process-files	@build@/test/tools/test_tools	--build-process-files	@build@/test/tools/policy_worker	@host@
-tool	compiler-bootstrap	@build@/test/tools/test_tools	--compiler-bootstrap	@build@/test/language/test_language	@build@/sdk/chibi-compiler-host
+tool	compiler-bootstrap	@build@/test/tools/test_tools	--compiler-bootstrap	@build@/sdk/chibi-compiler-host
 tool	bootstrap-recovery	@build@/test/tools/test_tools	--bootstrap-recovery	@release@/sdk/chibi-compiler-host	tools/compiler/bootstrap
 tool	graph-engine	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/EngineTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000
 tool	graph-driver	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/DriverTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	600000	--	@host@

@@ -1,0 +1,33 @@
+package facts
+// A record whose field holds an array of records, read while the test's heap
+// collects. The collector once walked such a field as an Item stored inline:
+// it read the array pointer and `flag` as the Item's `id` and `name`, and
+// followed name 1.
+Item :: struct { id: int; name: string; }
+Holder :: struct { items: Item[]; flag: bool; }
+Make :: (n: int) -> Holder {
+    items: Item[] = [];
+    i: int = 0;
+    while (i < n) { items = append(items, {id: i, name: format_text("item{}", i)}); i += 1; }
+    return {items: items, flag: true};
+}
+// Builds and drops a 1 MiB string, about 2 MiB of allocation.
+Garbage :: () -> int {
+    s: string = "0123456789abcdef";
+    while (text_byte_length(s) < 1048576) { s = format_text("{}{}", s, s); }
+    return text_byte_length(s);
+}
+// A test's heap collects at a call or return once it has allocated 64 MiB, so
+// 128 rounds collect about four times while `held` is live.
+Survive :: (n: int, rounds: int) -> int {
+    held := Make(n);
+    total: int = 0;
+    round: int = 0;
+    while (round < rounds) {
+        Garbage();
+        for (item in held.items) { total += item.id + text_byte_length(item.name); }
+        if (held.flag) { total += 1; }
+        round += 1;
+    }
+    return total;
+}

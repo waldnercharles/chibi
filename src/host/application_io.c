@@ -173,7 +173,7 @@ bool application_io_stopped(const application_io *io)
     return atomic_load_explicit(&stop_signal, memory_order_relaxed) != 0;
 }
 
-int application_io_interrupt_status(const application_io *io)
+static int application_io_interrupt_status(const application_io *io)
 {
     if (io != signal_owner) {
         abort();
@@ -182,7 +182,7 @@ int application_io_interrupt_status(const application_io *io)
     return signal ? 128 + signal : 0;
 }
 
-volatile sig_atomic_t *application_io_stop_flag(application_io *io)
+static volatile sig_atomic_t *application_io_stop_flag(application_io *io)
 {
     if (io != signal_owner) {
         abort();
@@ -190,7 +190,7 @@ volatile sig_atomic_t *application_io_stop_flag(application_io *io)
     return &capture_stop;
 }
 
-void application_io_sync_stop(application_io *io)
+static void application_io_sync_stop(application_io *io)
 {
     if (io != signal_owner) {
         abort();

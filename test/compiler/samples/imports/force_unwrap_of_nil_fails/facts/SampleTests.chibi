@@ -1,8 +1,10 @@
 package facts
 
+import testing "core:testing"
+
 // a postfix ! on nil fails at run time
-// fails: Unwrapped a nil optional
 @test
 Calls :: () {
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
     Main();
 }

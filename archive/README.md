@@ -129,3 +129,7 @@ Each compiled authored sources with stage zero (`source_package_prepare`, `autho
 - `integer_semantics.c` (+ `--integer-shift-counts-authored`): width-by-width integer pinning and shift counts through stage zero.
 - `host_packages.c`: import aliases and shadowing, private-kernel precedence, member rejection, unavailable target, host:clock grant transport, sample retention, imported-wrapper effects, distinct domains, platform monotonic samples, `core:time` authored tests.
 - `build_workflow.c` (+ its source header): configure/build order, failure propagation and missing-binding rejection for the authored build workflow service.
+
+## Fixture-compiled sequence cases removed from execution.c
+
+`test/language/execution.c` no longer includes `compiler_fixture.h` or `authoring/source_package_prepare.h`. Seven cases compiled `project:sequences` sources through stage zero and called them on each backend: sequence values copying at ownership boundaries, scoped lent locals, strict sequence ranges, pointer views following rebinding, sequence-place evaluation order, calls lending arguments (callees copying writes), and lent records copying nothing. Deleted; the hand-built-module cases in the file remain.

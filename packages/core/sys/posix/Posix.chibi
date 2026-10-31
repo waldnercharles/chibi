@@ -65,7 +65,7 @@ Mode :: (path: string, link: bool) -> int {
     }
     mode := 0;
     for index in 0..<ModeBytes {
-        mode += int(buffer[ModeOffset + index]) << (8 * index);
+        mode += int(buffer[ModeOffset + index]) << u32(8 * index);
     }
     return mode;
 }

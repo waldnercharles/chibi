@@ -33,7 +33,7 @@ tool	graph-discovery	@host@	--compiler	tools/compiler	--compiler-core	packages/c
 tool	graph-sdk	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/SDKTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000
 tool	graph-c	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/CTests.chibi	--core	packages/core	--collection	graph_c=tools/graph/c	--entry	Run	--timeout-ms	600000	--	@host@
 tool	graph-build	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/BuildTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	1200000	--	@host@
-tool	build-sdk	@build@/test/tools/test_tools	--build-sdk	@host@	@release@	
+tool	graph-sdk-install	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/SDKInstallTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	3000000	--	@host@	@release@
 tool	collab	@build@/test/tools/test_tools	--collab
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
 tool	whole-conversion	@build@/test/tools/test_tools	--whole-conversion
@@ -97,6 +97,7 @@ tool	wasm-package-math	node	build-wasm-language/test_language.js	--package-math
 tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 timeout	chibi-cli	900
+timeout	graph-sdk-install	1200
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math
 group	native	native-values	graph-c	box3d	runtime-scene	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	ui-document	text-files	fmt	arena
 group	projects	chibi-cli	native-build

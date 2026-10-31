@@ -130,8 +130,6 @@ ForeignArrayArgumentIsItsElementPointer :: () {
     assert(strings.Contains(text, "%c2_0.data = extractvalue { i32, i32, ptr } %c2_0, 2\n"));
     assert(strings.Contains(text, "%v2 = call i32 @chibi_probe_fill(ptr %c2_0.data)\n"));
 }
-// An array of numbers passes as the pointer to its elements, which the callee
-// may write.
 // A string is copied with its NUL to a stack buffer the callee reads as a C string.
 @test
 ForeignStringArgumentIsCopiedWithItsNul :: () {

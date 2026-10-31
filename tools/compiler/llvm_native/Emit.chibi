@@ -206,7 +206,11 @@ pub Poke: int : 54;
 // waits there for the start module to report; C gets the result's zero.
 pub FunctionAddress: int : 55;
 // One past the last instruction; bump it with each new one.
-pub InstructionCount: int : 56;
+// output = a string of the bytes of the left slot's array of bytes (u8), a
+// copy the runtime's allocation holds and no owner frees, as ArrayBytes
+// allocates; type is the string type. It allocates through the context.
+pub ArrayText: int : 56;
+pub InstructionCount: int : 57;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -215,7 +219,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || op == LocalAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) ||
+    return op <= Local || op == LocalAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
            op == ForeignCall || op == StateLoad || op == FunctionAddress;
 }
 Comparison :: (op: int) -> bool {
@@ -226,7 +230,7 @@ Unary :: (op: int) -> bool {
 }
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
-           (op >= ArrayLength && op <= ArrayBytes) || op == StateStore || op == Deref || op == Poke;
+           (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == StateStore || op == Deref || op == Poke;
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -272,7 +276,7 @@ ReadsTarget :: (op: int) -> bool {
 // an allocation.
 ArrayCalls :: (op: int) -> bool {
     return op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
-           op == ArraySlice || op == ArrayResize || op == ArrayBytes;
+           op == ArraySlice || op == ArrayResize || op == ArrayBytes || op == ArrayText;
 }
 // Whether an instruction reads argument slots: a call's or a format's.
 ReadsArguments :: (op: int) -> bool {
@@ -690,7 +694,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native field read differs from its record");
             }
         }
-        if (item.op >= ArrayLength && item.op <= ArrayBytes && !ArrayValid(records, slots, item)) {
+        if (((item.op >= ArrayLength && item.op <= ArrayBytes) || item.op == ArrayText) && !ArrayValid(records, slots, item)) {
             return Result.Rejected(base + pc, "native array operation differs from its operands");
         }
         if (item.op >= TextLength && item.op <= TextTake && !TextValid(slots, item)) {
@@ -763,6 +767,9 @@ ArrayValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
     held := slots[item.left];
     if (item.op == ArrayBytes) {
         return item.type == ArrayType + abi.IntStorage && held == abi.TextStorage;
+    }
+    if (item.op == ArrayText) {
+        return item.type == abi.TextStorage && held == ArrayType + abi.ByteStorage;
     }
     if (item.op == ArrayLength) {
         return item.type == abi.IntStorage && ElementType(records, held) != 0;
@@ -1084,6 +1091,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, StateWrite(item, pc));
     } else if (item.op == ArrayBytes) {
         out = format_text("{}{}", out, ArrayBytesRead(item, pc));
+    } else if (item.op == ArrayText) {
+        out = format_text("{}{}", out, ArrayTextRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
         out = format_text("{}{}", out, ArrayRead(item, pc));
     } else if (item.op >= TextLength && item.op <= TextTake) {
@@ -1362,6 +1371,26 @@ ArrayBytesRead :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %sized{} = insertvalue {} zeroinitializer, i32 %n{}, 0\n", out, pc, array, pc);
     out = format_text("{}  %capped{} = insertvalue {} %sized{}, i32 %n{}, 1\n", out, pc, array, pc, pc);
     out = format_text("{}  %v{} = insertvalue {} %capped{}, ptr %buffer{}, 2\n", out, pc, array, pc, pc);
+    return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+}
+// A new string of the bytes of the left slot's array of bytes, empty when the
+// array is: they are copied to an allocation of the context's, which the
+// string borrows and nothing frees.
+ArrayTextRead :: (item: Instruction, pc: int) -> string {
+    array := abi.ArrayType();
+    text := abi.TextType();
+    out := Load(format_text("a{}", pc), ArrayType + abi.ByteStorage, "s", item.left);
+    out = format_text("{}  %n{} = extractvalue {} %a{}, 0\n  %data{} = extractvalue {} %a{}, 2\n", out, pc, array, pc, pc,
+                      array, pc);
+    out = format_text("{}  %none{} = icmp eq i32 %n{}, 0\n", out, pc, pc);
+    out = format_text("{}  br i1 %none{}, label %done{}, label %make{}\nmake{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %bytes{} = zext i32 %n{} to i64\n", out, pc, pc);
+    out = format_text("{}{}", out, Allocated(format_text("fresh{}", pc), format_text("%bytes{}", pc)));
+    out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %bytes{})\n", out, pc, pc, pc);
+    out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
+    out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %make{} ]\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %at{} = insertvalue {} zeroinitializer, ptr %buffer{}, 0\n", out, pc, text, pc);
+    out = format_text("{}  %v{} = insertvalue {} %at{}, i32 %n{}, 1\n", out, pc, text, pc, pc);
     return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
 }
 // Whether an element of the array loaded as %a<pc> equals the value in the

@@ -2,20 +2,20 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "36e7505edafd885babed8d1e15ce138783ad83a9",
+  "revision": "3360fcdaca8b03287d4deb8b36c4170352df84da",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 13814954,
-    "sha256": "ceb6ea48e0c8a141867c89950028e7a47d96a6d843446fb9638cf35b2c672f4f"
+    "bytes": 13810887,
+    "sha256": "a678b578680c5e55e8d5de8bc8a5b892ea3d8af89e99577df8e25ee7596a3e02"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 210535,
-      "sha256": "a57cdfd0bb75c15616475a2dd0c8563173c1451ebcb8a39ef9012ee89f2be81d"
+      "bytes": 210458,
+      "sha256": "287010591cc5d8f6e3dbaf8c07f7f81287e1d2e0bf3a4c53f9f0cde3adf295e2"
     },
     {
       "path": "package_compiler/Body.chibi",
@@ -104,13 +104,13 @@
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 169968,
-      "sha256": "70d9bd5967812a093f2edefb9da71421fa9131a34033a16509584687c3f3c553"
+      "bytes": 170108,
+      "sha256": "5f755039c088a6a73d66879fc55af21d1174f7a4a7b28963087a241ddfe199c8"
     },
     {
       "path": "package_compiler/ScalarArrays.chibi",
-      "bytes": 35177,
-      "sha256": "94a97ba75b6e3ae93cd5090c391fbc24f62c7cd5f12ca2e455f024108f479166"
+      "bytes": 35458,
+      "sha256": "dec7cfa21b0d8e1aa3703429f5022336e5fb75ed65af92f069dc88cf6847d5b5"
     },
     {
       "path": "package_compiler/Math.chibi",
@@ -129,8 +129,8 @@
     },
     {
       "path": "json_string/JsonString.chibi",
-      "bytes": 10727,
-      "sha256": "d4baae854519caf93d450438f50aa39aab972cb7c6efcfc3a48b59519fcdca7d"
+      "bytes": 10675,
+      "sha256": "3a57f8b5b66ec6f3f067e5e8613eadf8f7a2010dc76638744ae854e61de36b06"
     },
     {
       "path": "source_snapshot/Snapshot.chibi",
@@ -204,8 +204,8 @@
     },
     {
       "path": "prepared_writer/Writer.chibi",
-      "bytes": 43703,
-      "sha256": "a222c2476c805136b2582e38d4979a9b1cc7b104b2cef4d8988c8184c70dfff5"
+      "bytes": 42783,
+      "sha256": "b4c8d6bbf652c9416def9dbee2a2d8d3ab9c2a389e7cb386ceef9cb21868659d"
     },
     {
       "path": "math_types/Types.chibi",
@@ -219,8 +219,8 @@
     },
     {
       "path": "scalar_facts/Facts.chibi",
-      "bytes": 23056,
-      "sha256": "42e8f3742dc23b41b94eaa026c61ae5360c6d68bcaf3723a0e2b77e7f448098d"
+      "bytes": 23144,
+      "sha256": "a49f4226a53818381d65ba943b106fc26719e407f18d5e5b59c1196268a70ad0"
     }
   ],
   "target": [
@@ -230,8 +230,8 @@
       "value_size": 48,
       "payload_offset": 8,
       "arguments_offset": 168,
-      "delta_seconds_offset": 344,
       "results_offset": 208,
+      "delta_seconds_offset": 344,
       "error_status_offset": 496,
       "type_offset": 0,
       "container_offset": 16,
@@ -421,8 +421,16 @@
         "effects": 0
       },
       {
-        "name": "make_array",
+        "name": "text_from_bytes",
         "first": 17,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false,
+        "effects": 0
+      },
+      {
+        "name": "make_array",
+        "first": 19,
         "parameters": 1,
         "results": 1,
         "variadic": true,
@@ -430,7 +438,7 @@
       },
       {
         "name": "get",
-        "first": 19,
+        "first": 21,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -438,14 +446,6 @@
       },
       {
         "name": "length",
-        "first": 22,
-        "parameters": 1,
-        "results": 1,
-        "variadic": false,
-        "effects": 0
-      },
-      {
-        "name": "last_index",
         "first": 24,
         "parameters": 1,
         "results": 1,
@@ -453,7 +453,7 @@
         "effects": 0
       },
       {
-        "name": "is_empty",
+        "name": "last_index",
         "first": 26,
         "parameters": 1,
         "results": 1,
@@ -461,7 +461,7 @@
         "effects": 0
       },
       {
-        "name": "is_not_empty",
+        "name": "is_empty",
         "first": 28,
         "parameters": 1,
         "results": 1,
@@ -469,8 +469,16 @@
         "effects": 0
       },
       {
-        "name": "is_valid_index",
+        "name": "is_not_empty",
         "first": 30,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false,
+        "effects": 0
+      },
+      {
+        "name": "is_valid_index",
+        "first": 32,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -478,7 +486,7 @@
       },
       {
         "name": "contains",
-        "first": 33,
+        "first": 35,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -486,7 +494,7 @@
       },
       {
         "name": "find",
-        "first": 36,
+        "first": 38,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -494,7 +502,7 @@
       },
       {
         "name": "identical",
-        "first": 39,
+        "first": 41,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -502,7 +510,7 @@
       },
       {
         "name": "append",
-        "first": 42,
+        "first": 44,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -510,7 +518,7 @@
       },
       {
         "name": "add_unique",
-        "first": 45,
+        "first": 47,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -518,7 +526,7 @@
       },
       {
         "name": "extend",
-        "first": 48,
+        "first": 50,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -526,7 +534,7 @@
       },
       {
         "name": "set_array_elem",
-        "first": 51,
+        "first": 53,
         "parameters": 3,
         "results": 1,
         "variadic": false,
@@ -534,7 +542,7 @@
       },
       {
         "name": "insert",
-        "first": 55,
+        "first": 57,
         "parameters": 3,
         "results": 1,
         "variadic": false,
@@ -542,7 +550,7 @@
       },
       {
         "name": "remove_index",
-        "first": 59,
+        "first": 61,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -550,7 +558,7 @@
       },
       {
         "name": "remove_item",
-        "first": 62,
+        "first": 64,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -558,14 +566,6 @@
       },
       {
         "name": "clear",
-        "first": 65,
-        "parameters": 1,
-        "results": 1,
-        "variadic": false,
-        "effects": 0
-      },
-      {
-        "name": "reverse",
         "first": 67,
         "parameters": 1,
         "results": 1,
@@ -573,8 +573,16 @@
         "effects": 0
       },
       {
-        "name": "swap",
+        "name": "reverse",
         "first": 69,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false,
+        "effects": 0
+      },
+      {
+        "name": "swap",
+        "first": 71,
         "parameters": 3,
         "results": 1,
         "variadic": false,
@@ -582,7 +590,7 @@
       },
       {
         "name": "resize",
-        "first": 73,
+        "first": 75,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -590,33 +598,9 @@
       },
       {
         "name": "slice",
-        "first": 76,
+        "first": 78,
         "parameters": 3,
         "results": 1,
-        "variadic": false,
-        "effects": 0
-      },
-      {
-        "name": "compiler_json_string",
-        "first": 80,
-        "parameters": 1,
-        "results": 3,
-        "variadic": false,
-        "effects": 0
-      },
-      {
-        "name": "compiler_json_value_string",
-        "first": 84,
-        "parameters": 1,
-        "results": 3,
-        "variadic": false,
-        "effects": 0
-      },
-      {
-        "name": "compiler_syntax_parse",
-        "first": 88,
-        "parameters": 1,
-        "results": 15,
         "variadic": false,
         "effects": 0
       }
@@ -722,6 +706,18 @@
         "name": "Result",
         "storage": 6,
         "container": 1,
+        "c_string": false
+      },
+      {
+        "name": "Value",
+        "storage": 3,
+        "container": 1,
+        "c_string": false
+      },
+      {
+        "name": "Result",
+        "storage": 13,
+        "container": 0,
         "c_string": false
       },
       {
@@ -1101,150 +1097,6 @@
         "storage": 0,
         "container": 1,
         "c_string": false
-      },
-      {
-        "name": "literal",
-        "storage": 13,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "valid",
-        "storage": 1,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "value",
-        "storage": 13,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "byte_length",
-        "storage": 6,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "literal",
-        "storage": 13,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "valid",
-        "storage": 1,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "value",
-        "storage": 13,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "byte_length",
-        "storage": 6,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "text",
-        "storage": 13,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "root",
-        "storage": 6,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "kinds",
-        "storage": 13,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "starts",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "ends",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "rows",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "columns",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "parents",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "first_children",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "next_siblings",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "errors",
-        "storage": 1,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "missing",
-        "storage": 1,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "has_errors",
-        "storage": 1,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "fields",
-        "storage": 13,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "is_named",
-        "storage": 1,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "is_extra",
-        "storage": 1,
-        "container": 1,
-        "c_string": false
       }
     ],
     [
@@ -1260,6 +1112,8 @@
       11058014659850463058,
       1683859838082548203,
       16323488948382029418,
+      15680545488861091003,
+      14978592308995963343,
       9113434692769582988,
       8037792630547010653,
       13611205187560399313,
@@ -1303,13 +1157,7 @@
       14634955569547237247,
       1163729563572031444,
       9047479961286963383,
-      99454087654202719,
-      2237180186179475025,
-      7549062905279916309,
-      9759211591336674878,
-      7549062905279916309,
-      7774473451661455710,
-      17716896529171580466
+      99454087654202719
     ]
   ]
 }

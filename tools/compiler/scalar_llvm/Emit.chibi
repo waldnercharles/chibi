@@ -495,8 +495,8 @@ ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayNew) {
         return operand.count;
     }
-    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1];
-    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayBytes) {
+    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1, 1];
+    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayText) {
         return 0;
     }
     return consumed[operand.value];
@@ -537,6 +537,12 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         searched := Element(records, stack[base]);
         if (operand.type != facts.BoolType || searched == 0 || searched >= facts.RecordType ||
             stack[base + 1] != searched) {
+            return mismatch;
+        }
+        return "";
+    }
+    if (operator == facts.ArrayText) {
+        if (operand.type != facts.StringType || Element(records, stack[base]) != facts.ByteType) {
             return mismatch;
         }
         return "";
@@ -1210,6 +1216,9 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     }
     if (operand.value == facts.ArrayBytes) {
         return Op(native.ArrayBytes, type, slot, stack[base], 0, 0);
+    }
+    if (operand.value == facts.ArrayText) {
+        return Op(native.ArrayText, type, slot, stack[base], 0, 0);
     }
     return Op(native.ArrayCopy, type, slot, stack[base], 0, 0);
 }

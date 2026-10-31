@@ -213,7 +213,7 @@ int main(int argc, char **argv)
     if ((argc == 2 || argc == 3) && !strcmp(argv[1], "--target-json")) {
         size_t length;
         char error[256] = { 0 };
-        char *json = compiler_host_compiler_target_json(&length, error, sizeof error);
+        char *json = compiler_host_values_target_json(&length, error, sizeof error);
         if (!json) {
             fprintf(stderr, "%s\n", error);
             return 1;

@@ -27,8 +27,6 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_host.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/catalog.h"

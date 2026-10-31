@@ -369,6 +369,8 @@ pub ArrayWith: int : 12;
 pub ArrayJoin: int : 13;
 // An array of ints, the bytes of the string it consumes, from 0 to 255.
 pub ArrayBytes: int : 14;
+// A string, the bytes of the array of bytes (u8) it consumes.
+pub ArrayText: int : 15;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range

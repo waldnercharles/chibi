@@ -77,12 +77,10 @@ Invalid native argument shapes/types fail without replacing the output.
 [`strings.Bytes`](../packages/core/strings/Strings.chibi) continues to return
 `int[]`; this batch does not migrate its callers or signature.
 
-The public text definition pack contains seven natives. The compiler seed keeps
-its existing six-native text profile through
-`NATIVE_COMPILER_TEXT_DEFINITION_PACK`. These are definition counts, not compiler
-versions. [`compiler_host.c`](../src/toolchain/compiler_host.c) uses the compiler
-profile for compiler loading/target facts and the public profile for value-only
-consumers. Adding a public byte conversion does not expand the seed catalog.
+The text definition pack contains seven natives, `text_from_bytes` last, and
+the compiler host, the build host and the value-only consumers all use it.
+The bootstrap seed is compiled for that catalog, so adding a native means a
+new runtime pin, first build host and seed.
 
 [`Generate.chibi`](../tools/graph/asset_compiler/Generate.chibi) takes compiler
 implementation inputs from `CompilerSources.txt`. It captures the complete

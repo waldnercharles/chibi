@@ -7,8 +7,6 @@
 #include "runtime/task_pool.h"
 #include "support/array.h"
 #include "support/xalloc.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -299,11 +297,9 @@ int authoring_project_test(const char *root, const char *core)
      * busy test sees where it is. */
     setvbuf(stdout, NULL, _IOLBF, 0);
     char error[512] = { 0 };
-    const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
-                                                COMPILER_JSON_DEFINITION_PACK,
-                                                TESTING_DEFINITION_PACK };
+    const native_definition_pack compiler[] = { TESTING_DEFINITION_PACK };
     native_capabilities
-        *native = host_native_standalone_catalog_new(NULL, 0, compiler, 3, error, sizeof error);
+        *native = host_native_standalone_catalog_new(NULL, 0, compiler, 1, error, sizeof error);
     if (!native) {
         fprintf(stderr, "Test preparation failed: %s\n", error);
         return 1;

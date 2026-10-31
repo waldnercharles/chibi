@@ -11,11 +11,13 @@
 #include "toolchain/compiler_host.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 /* The SHA-256 of "abc", from FIPS 180-2. */
@@ -25,8 +27,10 @@
 #define NOTHING "[]", "[]"
 /* A target no host has. */
 #define ELSEWHERE "[{\"pointer_size\": 4}, 0, [], [], [], []]"
-/* How long a recovery may take: one or two compiles of the compiler. */
-#define RECOVERY_SECONDS 50
+/* How long a recovery may take: two or three VM compiles of the compiler, each
+ * about 100 s (2026-10-31), so the bound only stops a hang. It matches the
+ * compiler's own 600 s deadline. */
+#define RECOVERY_SECONDS 600
 
 static const char *host_path, *artifact_path;
 static char root[PATH_MAX], log_path[PATH_MAX], compiler[PATH_MAX], core[PATH_MAX];
@@ -687,14 +691,32 @@ TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
     return true;
 }
 
+/* Writes a sparse cache entry of `bytes` last written at `stamp`. */
+static bool stale_entry(const char *file, off_t bytes, time_t stamp)
+{
+    FILE *entry = fopen(file, "wb");
+    if (!entry || fclose(entry) || truncate(file, bytes)) {
+        return false;
+    }
+    struct timeval times[2] = { { .tv_sec = stamp }, { .tv_sec = stamp } };
+    return !utimes(file, times);
+}
+
 /* A load with a cache directory keeps the compiler it recovers, and a later
  * load of the same sources takes it from there without recovering. The test
- * host is the same binary for both. A source edit names another entry. */
+ * host is the same binary for both. A source edit names another entry. The
+ * cache is shared by every checkout, so publishing first removes the oldest
+ * entries past its 2 GiB budget: two sparse 1 GiB entries fill it here. */
 TEST_CASE(bootstrap_load_reuses_a_recovered_compiler_from_its_cache)
 {
-    char source[PATH_MAX], cache[PATH_MAX];
+    char source[PATH_MAX], cache[PATH_MAX], oldest[PATH_MAX], older[PATH_MAX];
     path(source, "tools/compiler/package_compiler/Compile.chibi");
     path(cache, "compiler-cache");
+    path(oldest, "compiler-cache/compiler-stale-oldest.bin");
+    path(older, "compiler-cache/compiler-stale-older.bin");
+    REQUIRE(!mkdir(cache, 0700) || errno == EEXIST);
+    REQUIRE(stale_entry(oldest, (off_t)1024 * 1024 * 1024, 1000));
+    REQUIRE(stale_entry(older, (off_t)1024 * 1024 * 1024, 2000));
     size_t length = 0;
     unsigned char *original = read_bytes(source, &length);
     REQUIRE(original && length);
@@ -730,6 +752,8 @@ TEST_CASE(bootstrap_load_reuses_a_recovered_compiler_from_its_cache)
     REQUIRE(recovered);
     REQUIRE(reused);
     REQUIRE(works);
+    REQUIRE(access(oldest, F_OK) != 0);
+    REQUIRE(!access(older, F_OK) && !unlink(older));
     return true;
 }
 

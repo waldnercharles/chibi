@@ -495,7 +495,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["host/native_default.h"];
     }
     if (target == "chibi_source_catalog") {
-        return ["authoring/package_tests.h", "authoring/source_package_io.h", "authoring/project_compile.h"];
+        return ["authoring/package_tests.h", "authoring/source_package_io.h"];
     }
     if (target == "chibi_program") {
         return ["authoring/program.h", "authoring/program_service.h"];

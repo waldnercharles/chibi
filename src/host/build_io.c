@@ -42,7 +42,7 @@ static const char *io_ready(double deadline, const volatile sig_atomic_t *cancel
     return NULL;
 }
 
-char *build_io_path(const char *root, const char *path)
+static char *build_io_path(const char *root, const char *path)
 {
     assert(root && root[0] == '/' && path);
     if (path[0] == '/') {

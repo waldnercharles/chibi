@@ -355,7 +355,8 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     operation_code := ConstantCode(ops, IntStorage, u64(operation), operation_slot, node);
     watches.append(operation_code);
     operation_value := Typed(operation_slot, IntStorage, 0, -1);
-    arguments = insert(arguments, 1, operation_value);
+    // slice and extend rather than insert, which the native lane lacks.
+    arguments = extend([arguments[0], operation_value], slice(arguments, 1, length(arguments) - 1));
     shifted: Bases = {pc: at.pc + length(watches), slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
                       call: at.call};
     switch SequenceCallStep(arguments, ArrayMutatePlaceIntrinsic, Typed(-1, BoolStorage, 0, -1), u64(0), false,

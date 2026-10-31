@@ -153,3 +153,14 @@ The authored emitter `@test`s moved from `test/native_aot/emitter_calls` and `te
 ## compiler_fixture and the stage-zero scalar lane
 
 `test/language/compiler_fixture.[ch]` (stage-zero preparation of authored packages, `pin_value` calls, record shapes read from `authoring_packages` metadata, its ownership self-tests and `--compiler-fixture`) are archived. The kept lanes in `package_compiler_chibi.c` now go through `test/language/scalar_host.c`: the producer is the compiler `compiler_bootstrap_load` recovers (the same one the census uses), the consumer packages compile to one closure behind a small root package, and rows cross as JSON, read back as `scalar_facts.Row` records. Each lane runs on the host's one backend rather than on bytecode and SLJIT alternately. Changes in coverage: the two-libraries-in-one-source rejection (it expected stage zero's "Unexpected syntax"; the authored parser accepts it) is gone, and the "rows outlive the producer" assertions now only check that rows live in the caller's arena. `--package-compiler-chibi-scalar` passes (6 of 6) here; the Linux x86-64 native lane compiles but could only be syntax-checked on this host.
+
+## Visual catalogs, UI documents and text editing (second engine tranche)
+
+Archived because no toolchain program (`chibi`, `chibi-compile`, `chibi-build-host`, `chibi-compiler-host`) or retained test links them, and the editor that used them is separate:
+
+- `src/runtime/{shaders,models,images,geometry,scenes}`: shader programs and detail/effects/volume/image inspection, model bounds/hits/frames/parameters/lifecycle/inspection/finite checks, the image and sky catalogs, mesh assets and picking, scene instantiation and snapshots. Lost: running or inspecting any of these from C; the matching prepared artifact formats (`parts`, `image`, `sky`, `shader_values`) no longer appear in the build identity.
+- `src/render` (`scene3d_parts`, `shader_catalog`, `shader_values`): the render-side catalogs.
+- `src/assets/ui_document`, `ui_events`, `src/ui`: UI document composition, bindings and events.
+- `src/support/{rcss,rcss_map,text_edit,text_overlay,text_search,text_file,file_watch}`: RCSS expansion, editor text edits and unsaved-text overlay, text search and file reads, and the polling file watcher (hot reload watches files from Chibi instead).
+- Tests: `test/runtime/ui_document.c`, `test/support/{rcss,text_overlay,file_watch}.c` and `test/tools/scene.c`, with selectors `--ui-document`, `--text-files` and `--scene`.
+- Graph targets `chibi_visual_catalog`, `chibi_shader_runtime`, `chibi_model_runtime`, `chibi_image_catalog`, `chibi_mesh_runtime`, `chibi_scene_runtime`, `chibi_ui_document`, `chibi_ui_document_values`, `chibi_ui_authoring`, `chibi_text_source`, `chibi_text_search` and the `chibi_scene_consumer` and `chibi_ui_document_consumer` programs.

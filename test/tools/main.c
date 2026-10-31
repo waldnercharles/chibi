@@ -76,7 +76,6 @@ void test_arena();
 #ifdef CHIBI_TEST_PROGRAM
 void test_program_sdk();
 #endif
-void test_tool_scene();
 #ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
@@ -109,20 +108,13 @@ void test_tool_native_values();
 #ifdef CHIBI_TEST_ASSET_VALUES
 void test_asset_value();
 #endif
-#ifdef CHIBI_TEST_UI_DOCUMENT
-void test_ui_document();
-void test_rcss();
-void test_file_watch();
-void test_text_overlay();
-#endif
 #ifdef CHIBI_TEST_FMT
 void test_fmt();
 #endif
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
 static const char *const document_selectors[] = {
-    "--asset-values",    "--ui-document",
-    "--text-files",      "--fmt",
+    "--asset-values",    "--fmt",
     "--reference-index", "--asset-source",
     "--behavior-loader", "--engine-clock",
     "--preview-layout",  "--fields",
@@ -149,18 +141,6 @@ static bool run_document_suites(int argc, char **argv)
 #ifdef CHIBI_TEST_ASSET_VALUES
     if (selected(argc, argv, "--asset-values")) {
         test_asset_value();
-        return true;
-    }
-#endif
-#ifdef CHIBI_TEST_UI_DOCUMENT
-    if (selected(argc, argv, "--ui-document")) {
-        test_ui_document();
-        test_rcss();
-        return true;
-    }
-    if (selected(argc, argv, "--text-files")) {
-        test_file_watch();
-        test_text_overlay();
         return true;
     }
 #endif
@@ -372,7 +352,6 @@ int main(int argc, char **argv)
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
-    bool scene = argc == 2 && !strcmp(argv[1], "--scene");
 #ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
 #endif
     bool native_values = false, box3d = false, mesh_files = false,
@@ -410,7 +389,7 @@ int main(int argc, char **argv)
 #endif
     if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
         !collab && !unit && !web_storage && !wasm_browser && !query_benchmark &&
-        !scene && !native_values && !arena && !types && !box3d && !mesh_files &&
+        !native_values && !arena && !types && !box3d && !mesh_files &&
         !model_import && !model_graphs && !model_catalog && !shader_graphs &&
         !persistent_store && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !system_schedule && !scheduler_benchmark &&
@@ -428,7 +407,6 @@ int main(int argc, char **argv)
             "--wasm-browser | "
             "--ecs-query-benchmark | --arena | --types | "
             ""
-            "--scene | "
             ""
             "--native-values "
             "| "
@@ -462,7 +440,7 @@ int main(int argc, char **argv)
             "--vector-nodes | "
             "--asset-values "
             "| "
-            "--ui-document | --text-files | --fmt | "
+            "--fmt | "
             ""
             ""
             ""
@@ -527,8 +505,6 @@ int main(int argc, char **argv)
         test_tool_wasm_browser();
     } else if (collab) {
         test_tool_collab();
-    } else if (scene) {
-        test_tool_scene();
     } else if (unit) {
         test_tool_execution_policy();
     } else if (web_storage) {

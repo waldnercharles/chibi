@@ -160,6 +160,10 @@ Param :: struct {
     // A scoped pointer parameter, whose argument is a reference to the
     // caller's location.
     reference: bool;
+    // A scoped parameter its function changes, or passes on to one that does:
+    // the native lane passes it by reference, a pointer to the caller's
+    // variable. The module's analysis sets it; the source never does.
+    written: bool;
     // The node that declares the parameter, -1 when the source declares none.
     node: int;
 }
@@ -2422,7 +2426,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
         }
         param: Param = {name: param_name, storage: declared.storage, container: declared.container,
                         record: declared.record, has_default: false, default_bits: 0, default_text: "",
-                        default_occurrence: default_occurrence, reference: reference,
+                        default_occurrence: default_occurrence, reference: reference, written: false,
                         node: Field(forest, parameter, "name")};
         if (default_value >= 0 && declared.storage == PointerStorage && declared.container == 0 &&
             declared.record >= 0 && table^[declared.record].key != 0 && Is(forest, default_value, "nil")) {
@@ -2473,7 +2477,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             param: Param = {name: result_name, storage: declared.storage, container: declared.container,
                             record: declared.record,
                             has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
-                            reference: false, node: Field(forest, named, "name")};
+                            reference: false, written: false, node: Field(forest, named, "name")};
             added.append(param);
             named = NextMember(forest, named);
         }

@@ -310,7 +310,7 @@ PayloadParams :: (forest: snapshot.SnapshotNode[], source: string, handler: int,
     while (at < declared.count) {
         param: Param = {name: "", storage: event_fields[declared.first + at].storage, container: 0, record: -1,
                         has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
-                        reference: false, node: listed[at]};
+                        reference: false, written: false, node: listed[at]};
         if (listed[at] >= 0) {
             param.name = Text(forest, source, listed[at]);
         }

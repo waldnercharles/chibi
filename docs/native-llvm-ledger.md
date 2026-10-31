@@ -147,6 +147,22 @@ first blocker only, and the next one appears when its package lands. Rerun
 `chibi build native-census` (about three minutes under ASan) after each package lands
 and update this table.
 
+## What blocks W22
+
+Running list, 31 October 2026 (census: 973 of 1238 functions pass the producer; a pass does not yet
+mean native, since `scalar_llvm` and `Driver.Object` must also take the function):
+
+| Blocker | Functions | State |
+| --- | ---: | --- |
+| W10 pointers: read-only by value (#1084), writes by reference (#1084 slice 2) | 178 | landed, census not rerun |
+| W2 functions without a result (most pointer writers are void) | 13 | sdk-cmake |
+| W14 `compiler_json_value_string`, `compiler_json_string` | 33 | builtin-math, `foreign import` |
+| W9 optionals and record fields of map, pointer or optional type | 7 | sdk-cmake |
+| `insert` on arrays | 1 | open |
+| Producer passes but native emission untested over the closure | unknown | W22 driver: compile the 973 through `Driver.Object` and list the rejections |
+| Maps (W8), `string[]` literals in natives, host catalog calls | open | not yet counted |
+| Driver itself: link the native compiler, run it on the compiler's sources, compare stage three with stage two | none written | core-math |
+
 ## Features
 
 | Feature | Semantic owner | State | Native gap | Runtime need | Selector and evidence |

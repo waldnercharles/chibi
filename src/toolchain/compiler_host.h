@@ -30,7 +30,9 @@
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
 #define COMPILER_HOST_MAX_LAYOUT_WORK (512u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_OUTPUT_BYTES (16u * 1024u * 1024u)
-#define COMPILER_HOST_MAX_ARTIFACT_BYTES (32u * 1024u * 1024u)
+/* The asset compiler's closure reached 32 MiB on 2026-10-31 (the compiler's
+ * own is 29 MiB); prepared artifacts take about 16 bytes per source byte. */
+#define COMPILER_HOST_MAX_ARTIFACT_BYTES (64u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_VALUES 1000000
 #define COMPILER_HOST_MAX_DEPTH 64
 #define COMPILER_HOST_MAX_BATCH 64

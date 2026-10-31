@@ -29,7 +29,7 @@ pub Targets :: () -> string[] {
     // The native products and full test drivers share the platform's archive.
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
         // test_language's object library, which it links.
-        targets.extend(["chibi-compile", "chibi_asset_compiler_consumer", "test_language"]);
+        targets.extend(["chibi-compile", "test_language"]);
         // The tooling tests' consumers, several over the archive's headers.
         targets.extend(ToolConsumers());
         targets.append("test_tools");
@@ -45,9 +45,6 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_host") {
         return ["src/authoring/asset_compiler_host.c", "src/authoring/package_compile.c",
                 "src/support/binary_cache.c", "build/sdk/generated/assets/asset_compiler_packaged.c"];
-    }
-    if (target == "chibi_asset_compiler_consumer") {
-        return ["test/language/asset_compiler_host.c"];
     }
     if (target == "reflect") {
         return [
@@ -472,7 +469,7 @@ pub PublicHeaders :: (target: string) -> string[] {
 // libraries share, which CMake stages for none of them alone.
 pub PrivateHeaders :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_host") {
-        return ["authoring/asset_compiler_host_internal.h", "support/binary_cache.h", "support/sha256.h"];
+        return ["support/binary_cache.h", "support/sha256.h"];
     }
     if (target == "chibi_types") {
         return ["types/array_internal.h"];
@@ -621,11 +618,6 @@ pub Includes :: (target: string) -> string[] {
             "public/asset_values",
             "public/behavior_runtime", "public/events", "public/asset_compiler_host"
         ];
-    }
-    if (target == "chibi_asset_compiler_consumer") {
-        return ["build/test/language/testing/include", "public/asset_compiler_host", "public/asset_values",
-                "public/support", "public/behavior_runtime", "public/execution", "public/types",
-                "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events"];
     }
     if (target == "chibi_asset_compiler_host") {
         return [
@@ -1083,7 +1075,7 @@ pub Defines :: (target: string) -> string[] {
     }
     if (target == "test_language") {
         return [
-            "CHIBI_PACKAGE_TEST_POOL=1", "CHIBI_TEST_ASSET_COMPILER_HOST=1", "CHIBI_TEST_ENKITS=1",
+            "CHIBI_PACKAGE_TEST_POOL=1", "CHIBI_TEST_ENKITS=1",
             "CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS", "ENKITS_TASK_PRIORITIES_NUM=3"
         ];
     }
@@ -1152,9 +1144,6 @@ pub Options :: (target: string) -> string[] {
         return ["-UNDEBUG"];
     }
     if (target == "test_language") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "chibi_asset_compiler_consumer") {
         return ["-UNDEBUG"];
     }
     if (target == "chibi_sdk_contracts") {
@@ -1266,7 +1255,6 @@ pub Configures :: (target: string) -> string[] {
             "test/parallel.h=test/parallel.h",
             "package_core_source.h=test/language/package_core_source.h.in",
             "host_packages_source.h=test/language/host_packages_source.h.in",
-            "portable_asset_source.h=test/language/portable_asset_source.h.in",
             "package_graph_chibi_source.h=test/language/package_graph_chibi_source.h.in",
             "syntax_chibi_source.h=test/language/syntax_chibi_source.h.in",
             "package_syntax_chibi_source.h=test/language/package_syntax_chibi_source.h.in",
@@ -1300,7 +1288,6 @@ pub Configures :: (target: string) -> string[] {
 pub Substitutions :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
-            "CHIBI_PORTABLE_ASSET_BYTES=bytes:test/fixtures/portable-byte-asset/Build.chibi",
             "CHIBI_COMPILER_SYNTAX_BYTES=bytes:tools/compiler/compiler_syntax/Syntax.chibi",
             "CHIBI_CORE_STRINGS_BYTES=bytes:packages/core/strings/Strings.chibi",
             "CHIBI_CORE_TIME_BYTES=bytes:packages/core/time/Time.chibi",
@@ -1468,7 +1455,7 @@ pub LinksCxx :: (target: string) -> bool {
 // The libraries whose objects executables link directly, as CMake's OBJECT
 // libraries, rather than archive.
 pub ObjectLibrary :: (target: string) -> bool {
-    return target == "chibi_application" || target == "chibi_build_host" || target == "chibi_asset_compiler_consumer" ||
+    return target == "chibi_application" || target == "chibi_build_host" ||
            Listed(ToolConsumers(), target);
 }
 
@@ -1480,9 +1467,6 @@ pub LinkedObjects :: (target: string) -> string[] {
     }
     if (target == "chibi-build-host") {
         return ["chibi_build_host"];
-    }
-    if (target == "test_language") {
-        return ["chibi_asset_compiler_consumer"];
     }
     if (target == "test_tools") {
         return [

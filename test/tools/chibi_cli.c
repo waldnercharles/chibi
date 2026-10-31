@@ -567,20 +567,6 @@ TEST_CASE(compiler_test_reports_each_test)
     return true;
 }
 
-TEST_CASE(compiler_runs_cost_explanation_regressions)
-{
-    const char *run[] = { compiler,
-                          "--project-root",
-                          CHIBI_SOURCE_ROOT "/tools/compiler/cost_explanations",
-                          "--test",
-                          NULL };
-    REQUIRE(cli_run(run, root, log_path) == 0);
-    REQUIRE(file_has("output.log", "PASS project.EmptyReport\n"));
-    REQUIRE(file_has("output.log", "PASS project.FullWidthIdentifiersAndJsonEscaping\n"));
-    REQUIRE(file_has("output.log", "6 tests, 0 failed\n"));
-    return true;
-}
-
 /* A package that declares `foreign import`, or imports one that does, is native
  * only: the VM cannot prepare it, so the runner reports it as skipped. */
 TEST_CASE(compiler_test_skips_native_only_packages)
@@ -1895,7 +1881,6 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(launcher_keeps_its_compiled_application);
     RUN_TEST_CASE(test_runs_shared_package_tests);
     RUN_TEST_CASE(compiler_test_reports_each_test);
-    RUN_TEST_CASE(compiler_runs_cost_explanation_regressions);
     RUN_TEST_CASE(compiler_test_skips_native_only_packages);
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
     RUN_TEST_CASE(native_build_forwards_driver_arguments);

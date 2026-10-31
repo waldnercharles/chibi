@@ -76,11 +76,18 @@ pub Module :: (core: string, paths: string[], sources: string[], triple: string)
         return Output.Rejected(strings.Concatenate(["rejected ", FunctionAt(rows[0].text, rejected.start), ": ",
                                                     rejected.text, " (", Where(paths, sources, rejected.start), ")"]));
     }
-    module := scalar.EmitBytesFor(Target(triple), rows);
-    if (length(module) == 0) {
-        return Output.Rejected("rejected (module): the rows lower to no module");
+    switch scalar.EmitFor(Target(triple), rows) {
+        case .Rejected(rejected):
+            return Output.Rejected(strings.Concatenate(["rejected (module): ", rejected[length(rejected) - 1].text]));
+        case .Invalid(message):
+            return Output.Rejected(strings.Concatenate(["rejected (module): ", message]));
+        case .Emitted(text):
+            module: u8[] = [];
+            for (item in strings.Bytes(text)) {
+                module.append(u8(item));
+            }
+            return Output.Emitted(module);
     }
-    return Output.Emitted(module);
 }
 
 // The compiler host's entry: the module's bytes, or a 0 byte and then the

@@ -56,6 +56,11 @@ enum
 };
 static const char
     PARSE_SOURCE[] = "project:package_compiler:1:ParseSyntax:callable";
+/* The tree's kinds and fields are integers; the compiler names them once. */
+static const char
+    KIND_NAME[] = "project:package_compiler:1:SyntaxKindName:callable";
+static const char
+    FIELD_NAMES[] = "project:package_compiler:1:SyntaxFieldNames:callable";
 static const char
     COLLECT_SCALAR[] = "project:package_compiler:1:CollectScalar:callable";
 /* The producer's own rejections and the ordinary compiler's rejection of a
@@ -335,14 +340,65 @@ static void free_tree(census_tree *tree)
     free(tree->has_errors);
     free(tree);
 }
-static char *copy_text(yyjson_val *value)
+/* Names of the kinds and fields seen so far, owned for the process, filled
+ * from the compiler on first use. Kinds stay below 512: tokens, then the node
+ * kinds from syntax_diagnostics.Comment = 128. */
+enum
 {
-    const char *text = yyjson_get_str(value);
-    size_t length = yyjson_get_len(value);
-    char *copy = xmalloc(length + 1);
-    memcpy(copy, text ? text : "", text ? length : 0);
-    copy[text ? length : 0] = 0;
-    return copy;
+    CENSUS_KINDS = 512
+};
+static char *kind_names[CENSUS_KINDS];
+static char **field_names;
+static int field_count;
+/* The JSON result of `entry` with `arguments`, or NULL with a report. */
+static yyjson_doc *census_call(const char *entry, const char *arguments)
+{
+    compiler_host_result result = { 0 };
+    bool called = compiler_host_invoke(
+        compiler,
+        compiler_host_entry(entry),
+        arguments,
+        strlen(arguments),
+        PARSE_BUDGET,
+        &result
+    );
+    if (!called) {
+        fprintf(stderr, "native census %s: %s\n", entry, result.diagnostic);
+        return NULL;
+    }
+    yyjson_doc *doc = yyjson_read(result.json, result.length, COMPILER_HOST_JSON_READ_FLAGS);
+    free(result.json);
+    return doc;
+}
+static const char *kind_name(int64_t kind)
+{
+    assert(kind >= 0 && kind < CENSUS_KINDS);
+    if (!kind_names[kind]) {
+        char arguments[32];
+        snprintf(arguments, sizeof arguments, "[%lld]", (long long)kind);
+        yyjson_doc *doc = census_call(KIND_NAME, arguments);
+        const char *name = doc
+                             ? yyjson_get_str(yyjson_arr_get(yyjson_doc_get_root(doc), 0))
+                             : NULL;
+        kind_names[kind] = xstrdup(name ? name : "");
+        yyjson_doc_free(doc);
+    }
+    return kind_names[kind];
+}
+static const char *field_name(int64_t field)
+{
+    if (!field_names) {
+        yyjson_doc *doc = census_call(FIELD_NAMES, "[]");
+        yyjson_val *names = doc ? yyjson_arr_get(yyjson_doc_get_root(doc), 0) : NULL;
+        field_count = (int)yyjson_arr_size(names);
+        field_names = xcalloc((size_t)field_count + 1, sizeof *field_names);
+        for (int i = 0; i < field_count; i++) {
+            const char *name = yyjson_get_str(yyjson_arr_get(names, (size_t)i));
+            field_names[i] = xstrdup(name ? name : "");
+        }
+        yyjson_doc_free(doc);
+    }
+    return field >= 0 && field < field_count ? field_names[field] : "";
 }
 /* The tree compiler_syntax.Parse reads `text` into: the loaded compiler runs
  * the authored parser, whose rows are the tree. NULL with a report when it
@@ -398,8 +454,12 @@ static census_tree *parse_source(const char *text, size_t size)
         tree->has_errors = xcalloc(count, sizeof *tree->has_errors);
         for (size_t i = 0; i < count; i++) {
             yyjson_val *row = yyjson_arr_get(nodes, i);
-            tree->kinds[i] = copy_text(yyjson_obj_get(row, "kind"));
-            tree->fields[i] = copy_text(yyjson_arr_get(fields, i));
+            tree->kinds[i] = xstrdup(
+                kind_name(yyjson_get_int(yyjson_obj_get(row, "kind")))
+            );
+            tree->fields[i] = xstrdup(
+                field_name(yyjson_get_int(yyjson_arr_get(fields, i)))
+            );
             tree->starts[i] = (int)yyjson_get_int(yyjson_obj_get(row, "start"));
             tree->ends[i] = (int)yyjson_get_int(yyjson_obj_get(row, "end"));
             tree->parents[i] = (int)yyjson_get_int(yyjson_obj_get(row, "parent"));

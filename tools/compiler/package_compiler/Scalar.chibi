@@ -10,6 +10,7 @@ import routes "project:package_routes"
 import graph "project:package_graph"
 import json "project:json_string"
 import strings "core:strings"
+import tk "project:source_tokenizer"
 
 // Opt-in internal producer of a scalar_facts module. The snapshot,
 // declarations, bodies, literal ranges, bindings, scopes and callees are the
@@ -502,29 +503,59 @@ ScalarMember :: (forest: snapshot.SnapshotNode[], text: string, callables: Calla
     }
     return FindField(types, members, record, Text(forest, text, Field(forest, node, syntax.FieldMember)));
 }
-// The facts operator of a comparison's source operator, 0 for any other. The
-// spellings are in the order of facts.Less through facts.NotEqual.
-ScalarComparison :: (operator: string) -> int {
-    spellings := ["<", "<=", ">", ">=", "==", "!="];
-    for (index in 0..<length(spellings)) {
-        if (spellings[index] == operator) {
-            return facts.Less + index;
-        }
+// The facts operator of a comparison's source operator, 0 for any other,
+// in the order of facts.Less through facts.NotEqual.
+ScalarComparison :: (operator: int) -> int {
+    if (operator == tk.Lt) {
+        return facts.Less;
+    }
+    if (operator == tk.LtEq) {
+        return facts.Less + 1;
+    }
+    if (operator == tk.Gt) {
+        return facts.Less + 2;
+    }
+    if (operator == tk.GtEq) {
+        return facts.Less + 3;
+    }
+    if (operator == tk.CmpEq) {
+        return facts.Less + 4;
+    }
+    if (operator == tk.NotEq) {
+        return facts.Less + 5;
     }
     return 0;
 }
 ScalarCompares :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     return Is(forest, node, syntax.BinaryExpression) &&
-           ScalarComparison(Text(forest, text, Field(forest, node, syntax.FieldOperator))) != 0;
+           ScalarComparison(Operator(forest, node)) != 0;
 }
-// The facts operator of a binary arithmetic source operator, 0 for any other.
-// The spellings are in the order of facts.Add through facts.Xor.
-ScalarArithmetic :: (operator: string) -> int {
-    spellings := ["+", "-", "*", "/", "%", "&", "|", "^"];
-    for (index in 0..<length(spellings)) {
-        if (spellings[index] == operator) {
-            return facts.Add + index;
-        }
+// The facts operator of a binary arithmetic source operator, 0 for any other,
+// in the order of facts.Add through facts.Xor.
+ScalarArithmetic :: (operator: int) -> int {
+    if (operator == tk.Add) {
+        return facts.Add;
+    }
+    if (operator == tk.Sub) {
+        return facts.Add + 1;
+    }
+    if (operator == tk.Mul) {
+        return facts.Add + 2;
+    }
+    if (operator == tk.Quo) {
+        return facts.Add + 3;
+    }
+    if (operator == tk.Mod) {
+        return facts.Add + 4;
+    }
+    if (operator == tk.And) {
+        return facts.Add + 5;
+    }
+    if (operator == tk.Or) {
+        return facts.Add + 6;
+    }
+    if (operator == tk.Xor) {
+        return facts.Add + 7;
     }
     return 0;
 }
@@ -532,16 +563,16 @@ ScalarArithmetic :: (operator: string) -> int {
 // complement that is not itself a signed literal.
 ScalarComputes :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     if (Is(forest, node, syntax.BinaryExpression)) {
-        return ScalarArithmetic(Text(forest, text, Field(forest, node, syntax.FieldOperator))) != 0;
+        return ScalarArithmetic(Operator(forest, node)) != 0;
     }
     if (!Is(forest, node, syntax.UnaryExpression)) {
         return false;
     }
-    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
-    return (operator == "~" || operator == "-") && InferredNumberStorage(forest, text, node) == 0;
+    operator := Operator(forest, node);
+    return (operator == tk.Complement || operator == tk.Sub) && InferredNumberStorage(forest, text, node) == 0;
 }
 ScalarShifts :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    return Is(forest, node, syntax.BinaryExpression) && Shift(Text(forest, text, Field(forest, node, syntax.FieldOperator)));
+    return Is(forest, node, syntax.BinaryExpression) && Shift(Operator(forest, node));
 }
 // The storage two operands of storages `left` and `right` meet at, as
 // OperatorStep converts them: an untyped one, 0, takes the other's, an
@@ -574,7 +605,7 @@ ScalarSpelled :: (left: int, right: int) -> int {
 ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, context: int) -> int {
     node := ScalarTarget(forest, operand);
-    if (Is(forest, node, syntax.UnaryExpression) && Text(forest, text, Field(forest, node, syntax.FieldOperator)) == "+") {
+    if (Is(forest, node, syntax.UnaryExpression) && Operator(forest, node) == tk.Add) {
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand),
                                     context);
     }
@@ -696,7 +727,7 @@ ScalarTarget :: (forest: snapshot.SnapshotNode[], operand: int) -> int {
 ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, expected: int, rows: facts.Row[]) -> ScalarOperands {
     node := ScalarTarget(forest, operand);
-    if (Is(forest, node, syntax.UnaryExpression) && Text(forest, text, Field(forest, node, syntax.FieldOperator)) == "+") {
+    if (Is(forest, node, syntax.UnaryExpression) && Operator(forest, node) == tk.Add) {
         return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand),
                              expected, rows);
     }
@@ -867,7 +898,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             contexts = [InferredNumberStorage(forest, text, sides[0]), InferredNumberStorage(forest, text, sides[1])];
             compared = ScalarSpelled(contexts[0], contexts[1]);
         }
-        operator := ScalarComparison(Text(forest, text, Field(forest, node, syntax.FieldOperator)));
+        operator := ScalarComparison(Operator(forest, node));
         equality := operator == facts.Equal || operator == facts.NotEqual;
         if (!Integer(compared) && !Floating(compared) &&
             !((compared == BoolStorage || compared == TextStorage) && equality)) {
@@ -877,10 +908,10 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarSides(forest, text, callables, params, callable, names, types, members, constants, node, sides, contexts, compared, compare,
                            output);
     }
-    if (Is(forest, node, syntax.BinaryExpression) && ScalarLogic(Text(forest, text, Field(forest, node, syntax.FieldOperator))) != 0) {
+    if (Is(forest, node, syntax.BinaryExpression) && ScalarLogic(Operator(forest, node)) != 0) {
         return ScalarLogical(forest, text, callables, params, callable, names, types, members, constants, node, output);
     }
-    if (Is(forest, node, syntax.UnaryExpression) && ScalarNegated(Text(forest, text, Field(forest, node, syntax.FieldOperator)))) {
+    if (Is(forest, node, syntax.UnaryExpression) && ScalarNegated(Operator(forest, node))) {
         row := ScalarAt(forest, node, facts.UnaryRow, facts.BoolType, facts.Not, 1, "");
         return ScalarSides(forest, text, callables, params, callable, names, types, members, constants, node, [Field(forest, node, syntax.FieldOperand)],
                            [BoolStorage], BoolStorage, row, output);
@@ -1279,7 +1310,7 @@ ScalarShifted :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
     }
     operator := facts.ShiftLeft;
-    if (Text(forest, text, Field(forest, node, syntax.FieldOperator)) == ">>") {
+    if (Operator(forest, node) == tk.Shr) {
         operator = facts.ShiftRight;
     }
     output.append(ScalarAt(forest, node, facts.ArithmeticRow, ScalarTypeOf(storage), operator, 2, ""));
@@ -1295,10 +1326,10 @@ ScalarComputed :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         return ScalarOperands.Failed(Diagnose(forest, node, 0, "scalar proof does arithmetic only on numbers"));
     }
     type := ScalarTypeOf(storage);
-    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
+    operator := Operator(forest, node);
     if (Is(forest, node, syntax.UnaryExpression)) {
         value := facts.Negate;
-        if (operator == "~") {
+        if (operator == tk.Complement) {
             value = facts.Complement;
         }
         row := ScalarAt(forest, node, facts.UnaryRow, type, value, 1, "");
@@ -1311,17 +1342,17 @@ ScalarComputed :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
                        rows);
 }
 // The facts operator of a logical source operator, 0 for any other.
-ScalarLogic :: (operator: string) -> int {
-    if (operator == "&&" || operator == "and") {
+ScalarLogic :: (operator: int) -> int {
+    if (operator == tk.CmpAnd || operator == tk.AndKeyword) {
         return facts.LogicalAnd;
     }
-    if (operator == "||" || operator == "or") {
+    if (operator == tk.CmpOr || operator == tk.OrKeyword) {
         return facts.LogicalOr;
     }
     return 0;
 }
-ScalarNegated :: (operator: string) -> bool {
-    return operator == "!" || operator == "not";
+ScalarNegated :: (operator: int) -> bool {
+    return operator == tk.Not || operator == tk.NotKeyword;
 }
 // The rows of `node`, `left && right` or `left || right`, after `rows`: its
 // left operand, its Logical row, then its right operand's rows, which the
@@ -1336,7 +1367,7 @@ ScalarLogical :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         case .Built(built):
             output = built;
     }
-    operator := ScalarLogic(Text(forest, text, Field(forest, node, syntax.FieldOperator)));
+    operator := ScalarLogic(Operator(forest, node));
     output.append(ScalarAt(forest, node, facts.LogicalRow, facts.BoolType, operator, 0, ""));
     at := length(output) - 1;
     switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldRight), BoolStorage,
@@ -1536,7 +1567,7 @@ ScalarFieldAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables
     storage := members[field].storage;
     read := [ScalarAt(forest, object, facts.ReadRow, type, ordinal, 0, "")];
     update := [ScalarAt(forest, destination, facts.UpdateRow, type, place, 2, "")];
-    operator := ScalarArithmetic(CompoundOperator(Text(forest, text, Field(forest, node, syntax.FieldOperator))));
+    operator := ScalarArithmetic(CompoundOperator(Operator(forest, node)));
     if (operator != 0) {
         read = [read[0], read[0], ScalarAt(forest, destination, facts.FieldRow, ScalarTypeOf(storage), place, 1, "")];
         update = [ScalarAt(forest, node, facts.ArithmeticRow, ScalarTypeOf(storage), operator, 2, ""), update[0]];
@@ -1573,7 +1604,7 @@ ScalarAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         case .Built(built):
             output = built;
     }
-    operator := ScalarArithmetic(CompoundOperator(Text(forest, text, Field(forest, node, syntax.FieldOperator))));
+    operator := ScalarArithmetic(CompoundOperator(Operator(forest, node)));
     output.append(ScalarAt(forest, node, facts.ArithmeticRow, type, operator, 2, ""));
     return ScalarOperands.Built(output);
 }
@@ -1682,7 +1713,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         if (binding.container == ArrayContainer) {
             assigned: ValueType = {storage: binding.storage, container: ArrayContainer, record: binding.record};
             if (ScalarArrayType(types, binding.storage, binding.record) == 0 ||
-                CompoundOperator(Text(forest, text, Field(forest, statement, syntax.FieldOperator))) != "") {
+                CompoundOperator(Operator(forest, statement)) != NoOperator) {
                 return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof assigns arrays only by ="));
             }
             return ScalarPlan.Array(value, assigned, true);
@@ -1691,7 +1722,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             return ScalarPlan.Record(value, binding.record);
         }
         storage := binding.storage;
-        if (CompoundOperator(Text(forest, text, Field(forest, statement, syntax.FieldOperator))) != "") {
+        if (CompoundOperator(Operator(forest, statement)) != NoOperator) {
             return ScalarPlan.Compound(storage);
         }
         return ScalarPlan.Converted(value, storage, storage);

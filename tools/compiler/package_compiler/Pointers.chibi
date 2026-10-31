@@ -607,7 +607,7 @@ PointerCompoundStep :: (forest: snapshot.SnapshotNode[], text: string, document:
                         pointer: Value, current: Value, right: Value, popped: int, item: Work, ops: Ops,
                         target: Target, at: Bases) -> Step {
     node := forest[item.node];
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
+    operator := CompoundOperator(Operator(forest, item.node));
     if (current.container == 0 && MixedCompoundIntegers(operator, current.storage, right)) {
         return Fail(forest, item.node, document,
                     format_text("Mismatched integer types {} and {}; convert one operand",
@@ -669,7 +669,7 @@ PointerAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
             return Fail(forest, item.node, document, "Nullable pointer requires a presence guard before dereference");
         }
         value := Expect(StatementValue(forest, item.node), element.storage, element.container, element.record);
-        if (CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator))) != "") {
+        if (CompoundOperator(Operator(forest, item.node)) != NoOperator) {
             read := PointerContinue(PointerReadStep(types, values[top - 1], 0, ops, target, at, node), value);
             return PointerContinue(read, Resume(item.node, PointerAssignPhase, 0, 2));
         }
@@ -846,8 +846,8 @@ PointerGuard :: (forest: snapshot.SnapshotNode[], text: string, condition: int, 
         return truth && Text(forest, text, at) == name;
     }
     if (Is(forest, at, syntax.UnaryExpression)) {
-        operator := Text(forest, text, Field(forest, at, syntax.FieldOperator));
-        return (operator == "!" || operator == "not") &&
+        operator := Operator(forest, at);
+        return (operator == tk.Not || operator == tk.NotKeyword) &&
                PointerGuard(forest, text, Field(forest, at, syntax.FieldOperand), name, !truth);
     }
     if (Is(forest, at, syntax.CallExpression)) {
@@ -874,9 +874,9 @@ PointerGuard :: (forest: snapshot.SnapshotNode[], text: string, condition: int, 
     if (!Is(forest, at, syntax.BinaryExpression)) {
         return false;
     }
-    operator := Text(forest, text, Field(forest, at, syntax.FieldOperator));
-    if ((truth && (operator == "&&" || operator == "and")) ||
-        (!truth && (operator == "||" || operator == "or"))) {
+    operator := Operator(forest, at);
+    if ((truth && (operator == tk.CmpAnd || operator == tk.AndKeyword)) ||
+        (!truth && (operator == tk.CmpOr || operator == tk.OrKeyword))) {
         return PointerGuard(forest, text, Field(forest, at, syntax.FieldLeft), name, truth) ||
                PointerGuard(forest, text, Field(forest, at, syntax.FieldRight), name, truth);
     }
@@ -891,7 +891,7 @@ PointerGuard :: (forest: snapshot.SnapshotNode[], text: string, condition: int, 
         !Is(forest, right, syntax.Nil) || Text(forest, text, left) != name) {
         return false;
     }
-    return (truth && operator == "!=") || (!truth && operator == "==");
+    return (truth && operator == tk.NotEq) || (!truth && operator == tk.CmpEq);
 }
 // Presence tests observe the declared nullable type, even if an earlier
 // initializer or guard already proves the value present.
@@ -905,8 +905,8 @@ PointerNilOperand :: (forest: snapshot.SnapshotNode[], text: string, node: int) 
     if (!Is(forest, parent, syntax.BinaryExpression)) {
         return false;
     }
-    operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
-    if (operator != "==" && operator != "!=") {
+    operator := Operator(forest, parent);
+    if (operator != tk.CmpEq && operator != tk.NotEq) {
         return false;
     }
     left := Field(forest, parent, syntax.FieldLeft);
@@ -947,10 +947,10 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
             }
         }
         if (Is(forest, parent, syntax.BinaryExpression) && Ancestor(forest, Field(forest, parent, syntax.FieldRight), node)) {
-            operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
+            operator := Operator(forest, parent);
             left := Field(forest, parent, syntax.FieldLeft);
-            truth := operator == "&&" || operator == "and";
-            if ((truth || operator == "||" || operator == "or") &&
+            truth := operator == tk.CmpAnd || operator == tk.AndKeyword;
+            if ((truth || operator == tk.CmpOr || operator == tk.OrKeyword) &&
                 PointerGuard(forest, text, left, binding.name, truth) &&
                 !PointerProofChanged(forest, text, parent, forest[left].end, forest[node].start,
                                      binding.name, aliased, stable_local)) {

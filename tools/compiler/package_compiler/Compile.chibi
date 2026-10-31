@@ -3657,9 +3657,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     }
                     values.append(value);
                     row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
-                                               left: code.left, right: code.right, target: code.target, frame: 0, source: origins[pc],
-                                               stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: node_id,
-                                               value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
+                                               left: code.left, right: code.right, target: code.target, source: origins[pc],
+                                               offset: code.offset, node: node_id, value: length(values) - 1,
+                                               message: code.message, has_message: code.has_message};
                     instructions.append(row);
                     pc += 1;
                 }

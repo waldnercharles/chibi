@@ -1940,6 +1940,19 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             member = ChosenAt(chosen, chosen_at);
         }
     }
+    // Which pointer parameters are scoped depends on the functions they are
+    // passed to, in any file of the package, so the package decides it at once.
+    declared_functions: int[] = [];
+    declared_texts: string[] = [];
+    for (file in files) {
+        for (member in ChosenMembers(selected, selected_starts, selected_counts, files, file)) {
+            if (Is(forest, member, syntax.FunctionDeclaration)) {
+                declared_functions.append(member);
+                declared_texts.append(documents[file].text);
+            }
+        }
+    }
+    scopes := ScopedParameters(forest, declared_texts, declared_functions);
     for (file in files) {
         text := documents[file].text;
         solid := SolidOffsets(text);
@@ -1969,7 +1982,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     continue;
                 }
                 switch FunctionSignature(forest, text, documents[file].key, solid, &types, aliases, package, file,
-                                         member, name, length(params)) {
+                                         member, name, length(params), scopes) {
                     case .Failed(diagnostic):
                         return Declarations.Failed(diagnostic);
                     case .Read(callable, added):
@@ -2594,7 +2607,8 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
 // The signature of the function `member` named `name`, its params numbered
 // from `first`. Named results include text, arrays and boxed optionals.
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], table: ^(TypeDecl[]),
-                      aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
+                      aliases: Name[], package: int, file: int, member: int, name: string, first: int,
+                      scopes: ScopeTable) -> Signature {
     attributes := DeclarationAttributes(forest, text, file, member, "test");
     if (length(attributes) > 0) {
         return Signature.Failed(attributes[0]);
@@ -2613,7 +2627,14 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
         }
         // A scoped pointer parameter takes a reference to its target.
         pointer := PointerAnnotation(forest, type_node);
-        reference := pointer >= 0 && ScopedPointer(forest, text, member, parameter, []);
+        reference := false;
+        if (pointer >= 0) {
+            // The table lists the pointer parameters of declared functions. A
+            // signature without a body, such as a callable parameter's, has no
+            // uses that could make its pointer managed.
+            verdict := ScopedVerdict(scopes, parameter);
+            reference = verdict == 1 || (verdict < 0 && Field(forest, member, syntax.FieldBody) < 0);
+        }
         if (reference) {
             type_node = Field(forest, pointer, syntax.FieldTarget);
         }

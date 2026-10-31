@@ -96,6 +96,35 @@ ScalarForeignLibrary :: (forest: snapshot.SnapshotNode[], text: string, declarat
     }
     return "";
 }
+// The row of the address of the authored function `argument` names, for a foreign
+// parameter of function type `signature`: the function's parameters and result
+// are the type's, and C calls it through an adapter.
+ScalarCallbackAddress :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                          callable: Callable, argument: int, signature: int, rows: facts.Row[]) -> ScalarOperands {
+    node := Unparenthesized(forest, argument);
+    found := -1;
+    if (Is(forest, node, syntax.Identifier)) {
+        found = FindCallable(callables, callable.package, Text(forest, text, node));
+    }
+    if (found < 0) {
+        return ScalarOperands.Failed(Diagnose(forest, argument, 0, "a function value passed to C is the name of a function"));
+    }
+    target := callables[found];
+    shape := ProcShape(forest, text, signature);
+    matches := target.count == length(shape) - 1 && target.result == shape[length(shape) - 1] && target.result_container == 0;
+    for (index in 0..<target.count) {
+        if (index < length(shape) - 1) {
+            given := params[target.first + index];
+            matches = matches && given.storage == shape[index] && given.container == 0 && !given.reference;
+        }
+    }
+    if (!matches) {
+        return ScalarOperands.Failed(Diagnose(forest, argument, 0, "the function differs from the parameter's function type"));
+    }
+    output := rows;
+    output.append(ScalarAt(forest, node, facts.FunctionAddressRow, facts.WordType, found, 0, target.name));
+    return ScalarOperands.Built(output);
+}
 // The rows of a call of a foreign function: each argument converted to its
 // parameter, then one Foreign row naming the symbol and the library.
 ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
@@ -114,6 +143,16 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
     }
     output := rows;
     for (index in 0..<length(arguments)) {
+        callback := GenericCallableType(forest, Field(forest, parameters[index], syntax.FieldType));
+        if (callback >= 0) {
+            switch ScalarCallbackAddress(forest, text, callables, params, callable, arguments[index], callback, output) {
+                case .Failed(diagnostic):
+                    return ScalarOperands.Failed(diagnostic);
+                case .Built(built):
+                    output = built;
+            }
+            continue;
+        }
         element := ForeignArray(forest, text, Field(forest, parameters[index], syntax.FieldType));
         if (element != 0 && !Is(forest, arguments[index], syntax.NamedArgument) && !Is(forest, arguments[index], syntax.TypedArgument)) {
             // An array is lent: the callee gets the pointer to its own elements.

@@ -60,10 +60,8 @@ void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
 void test_build_graph(const char *host);
-void test_build_graph_link_response(const char *host);
 void test_build_graph_support(const char *host);
 void test_build_graph_reflect(const char *host);
-void test_build_graph_generated(const char *host);
 void test_build_graph_debug_optimization(const char *host);
 void test_build_graph_programs(const char *host);
 #ifndef _WIN32
@@ -254,22 +252,9 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    if (argc == 3 && !strcmp(argv[1], "--build-graph-link-response")) {
-#ifdef CHIBI_TEST_BUILD_PROCESS
-        tool_init();
-        pu_display_time(true);
-        test_build_graph_link_response(argv[2]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-#else
-        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
-        return 2;
-#endif
-    }
     if (argc == 3 && (!strcmp(argv[1], "--build-graph") ||
                       !strcmp(argv[1], "--build-graph-support") ||
                       !strcmp(argv[1], "--build-graph-reflect") ||
-                      !strcmp(argv[1], "--build-graph-generated") ||
                       !strcmp(argv[1], "--build-graph-programs") ||
                       !strcmp(argv[1], "--build-graph-debug-optimization"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
@@ -283,10 +268,8 @@ int main(int argc, char **argv)
             test_build_graph_reflect(argv[2]);
         } else if (!strcmp(argv[1], "--build-graph-debug-optimization")) {
             test_build_graph_debug_optimization(argv[2]);
-        } else if (!strcmp(argv[1], "--build-graph-programs")) {
-            test_build_graph_programs(argv[2]);
         } else {
-            test_build_graph_generated(argv[2]);
+            test_build_graph_programs(argv[2]);
         }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;

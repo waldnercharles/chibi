@@ -525,10 +525,8 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: No Make, CMake or Python build files outside archive/
-        run: |
-          found=$(git ls-files | grep -Ev '^(archive|third_party)/' | grep -E '(^|/)(CMakeLists\.txt|Makefile)$|\.cmake$|\.py$' || true)
-          test -z "$found" || { printf '%s\n' "$found"; exit 1; }
+      - name: No Make, CMake or Python build files outside archive/, and the C that remains
+        run: sh tools/build.sh census
       - name: Install LLVM and the platform libraries
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends \

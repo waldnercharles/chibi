@@ -212,19 +212,31 @@ static bool only(const char *prefix, const char *suffix, char found[1024])
     return count == 1;
 }
 
-static int count(const char *prefix)
+/* The entries of `folder` starting with `prefix`, and the sum of their inode
+ * numbers, which a republished entry changes. */
+static int listed(const char *folder, const char *prefix, unsigned long long *inodes)
 {
-    char folder[1024];
-    path(folder, game, "build/native");
     DIR *listing = opendir(folder);
     int found = 0;
+    *inodes = 0;
     for (struct dirent *entry; listing && (entry = readdir(listing));) {
-        found += !strncmp(entry->d_name, prefix, strlen(prefix));
+        if (!strncmp(entry->d_name, prefix, strlen(prefix))) {
+            found++;
+            *inodes += (unsigned long long)entry->d_ino;
+        }
     }
     if (listing) {
         closedir(listing);
     }
     return found;
+}
+
+static int count(const char *prefix)
+{
+    char folder[1024];
+    path(folder, game, "build/native");
+    unsigned long long inodes;
+    return listed(folder, prefix, &inodes);
 }
 
 static const char *const
@@ -254,7 +266,20 @@ TEST_CASE(native_build_links_a_program_and_reuses_it)
     free(after);
     free(before);
     REQUIRE(build(launcher, "-O2", tools) == 0 && count("O2-") == 1 && count("O0-") == 1);
-    REQUIRE(count("emitter-") == 1);
+    /* The scalar emitter is compiled once per machine, into the compiler cache
+     * the build passes on, so another package folder reuses it; without a
+     * cache it stays beside the package's builds. */
+    const char *cache = getenv("CHIBI_COMPILER_CACHE");
+    if (!cache || !*cache || !strcmp(cache, "off")) {
+        REQUIRE(count("emitter-") == 1);
+        return true;
+    }
+    unsigned long long published, reused;
+    int emitters = listed(cache, "native-emitter-", &published);
+    REQUIRE(count("emitter-") == 0 && emitters >= 1);
+    reset("cache elsewhere", SOURCE);
+    REQUIRE(build(launcher, "-O0", tools) == 0);
+    REQUIRE(listed(cache, "native-emitter-", &reused) == emitters && reused == published);
     return true;
 }
 

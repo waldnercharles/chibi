@@ -379,8 +379,8 @@ const char *build_host_run_probe(void *service, const pin_value *arguments, pin_
     return run_step(service, arguments, results, false);
 }
 /* build.start begins a reported step and returns its handle at once;
- * build.wait(handle) waits for it while every other started step keeps
- * running, then gives its status as build.run does. build.spawn starts one
+ * build.wait_for(handle, milliseconds) waits for it while every other started
+ * step keeps running, then gives its status as build.run does. build.spawn starts one
  * whose output is the build's own, as it is written, instead of captured. */
 static const char *start_step(void *service, const pin_value *arguments, pin_value *results, bool inherit)
 {
@@ -514,22 +514,6 @@ static const char *job_finish(build_host *host, int slot, pin_value *results)
     host->job_handles[slot] = 0;
     results[0].i = child.status;
     return process_failure(child.error);
-}
-
-const char *build_host_wait(void *service, const pin_value *arguments, pin_value *results)
-{
-    build_host *host = service;
-    if (!host) {
-        return "build host service is unavailable";
-    }
-    int slot = job_slot(host, arguments[0].i);
-    if (slot == BUILD_MAX_JOBS) {
-        return "unknown build job";
-    }
-    while (chibi_process_running(&host->jobs[slot])) {
-        service_jobs(host);
-    }
-    return job_finish(host, slot, results);
 }
 
 /* build.wait_for(handle, milliseconds): the step's status once it has ended,

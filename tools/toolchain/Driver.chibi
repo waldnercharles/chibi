@@ -301,10 +301,9 @@ Deadline :: (rows: string[], name: string, fallback: string) -> string {
 
 // The command one selector runs: its row's words with the build directories
 // filled in, under the environment the test drivers read.
-TestCommand :: (row: string, directory: string, releases: string, host: string, seconds: string) -> string[] {
+TestCommand :: (row: string, directory: string, releases: string, host: string) -> string[] {
     fields := Fields(row)
     command := [
-        "sh", "tools/with-timeout.sh", seconds,
         "env",
         Join(["CHIBI_TOOLS_BUILD_DIR=", Absolute(directory), "/test/tools"]),
         Join(["CHIBI_LANGUAGE_BUILD_DIR=", Absolute(directory), "/test/language"]),
@@ -357,8 +356,8 @@ Test :: (arguments: string[]) -> int {
     }
     if (Flag(arguments, "--dry-run")) {
         for (name in selected) {
-            command := TestCommand(Row(rows, "tool", name), directory, releases, host, Deadline(rows, name, seconds))
-            os.Print(Join([name, ": ", strings.Join(command, " ")]))
+            command := TestCommand(Row(rows, "tool", name), directory, releases, host)
+            os.Print(format_text("{} ({}s): {}", name, Deadline(rows, name, seconds), strings.Join(command, " ")))
         }
         return 0
     }
@@ -369,18 +368,21 @@ Test :: (arguments: string[]) -> int {
     while (waited < length(selected)) {
         while (started < length(selected) && started - waited < jobs) {
             os.Print(format_text("RUN {}", selected[started]))
-            handles.append(os.Spawn(TestCommand(Row(rows, "tool", selected[started]), directory, releases, host, Deadline(rows, selected[started], seconds))))
+            command := TestCommand(Row(rows, "tool", selected[started]), directory, releases, host)
+            handles.append(os.Start(command, os.Inherited))
             started += 1
         }
-        status := os.Wait(handles[waited])
-        if (status == 0) {
+        // The deadline counts from the wait, so a selector never stops early.
+        limit := Count(Deadline(rows, selected[waited], seconds))
+        status := os.Wait(handles[waited], limit * 1000)
+        if (status == os.StillRunning) {
+            os.Kill(handles[waited])
+            os.Print(format_text("FAIL {} (timed out after {}s)", selected[waited], limit))
+            failed += 1
+        } else if (status == 0) {
             os.Print(format_text("PASS {}", selected[waited]))
         } else {
-            reason := ""
-            if (status == 124) {
-                reason = Join([", timed out after ", Deadline(rows, selected[waited], seconds), "s"])
-            }
-            os.Print(format_text("FAIL {} (status {}{})", selected[waited], status, reason))
+            os.Print(format_text("FAIL {} (status {})", selected[waited], status))
             failed += 1
         }
         waited += 1

@@ -246,6 +246,8 @@ LinkDynamic :: (linker: string, libc: string[], object: string, start: string, p
 // The module that calls the program's entry from libc's C runtime. An entry
 // that takes the runtime context gets one whose allocate is libc's calloc and
 // whose index failure aborts; formatting text is not available to a program.
+// A failed assert ends the entry early with its failure in the context, which
+// main reports on stderr before it exits with status 134.
 StartDynamic :: (context: bool) -> string {
     if (!context) {
         return Join([
@@ -261,6 +263,9 @@ StartDynamic :: (context: bool) -> string {
         "target triple = \"x86_64-unknown-linux-gnu\"\n",
         "declare ptr @calloc(i64, i64)\n",
         "declare void @abort() noreturn\n",
+        "declare i32 @dprintf(i32, ptr, ...)\n",
+        "@chibi_report = private unnamed_addr constant [59 x i8] ",
+        "c\"assertion failed in function %lu at source bytes %d to %d\\0A\\00\"\n",
         "declare i32 @chibi_scalar(ptr)\n",
         "define internal void @chibi_format_text(ptr %ctx, ptr %values, i32 %count, ptr %result) {\n",
         "  call void @abort()\n",
@@ -278,6 +283,19 @@ StartDynamic :: (context: bool) -> string {
         "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
         "define i32 @main() {\n",
         "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
+        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
+        "  %failure = load ptr, ptr %failure.at\n",
+        "  %failed = icmp ne ptr %failure, null\n",
+        "  br i1 %failed, label %report, label %done\n",
+        "report:\n",
+        "  %function = load i64, ptr %failure\n",
+        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
+        "  %start = load i32, ptr %start.at\n",
+        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
+        "  %end = load i32, ptr %end.at\n",
+        "  call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @chibi_report, i64 %function, i32 %start, i32 %end)\n",
+        "  ret i32 134\n",
+        "done:\n",
         "  ret i32 %status\n",
         "}\n"
     ]);

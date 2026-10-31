@@ -45,16 +45,19 @@ EngineBuildSteps :: (host: string) {
     log = Plan(host, ["--release", "--target", "chibi"]);
     assert(Has(log, "--profile release") && !Has(log, "--profile sanitizer"), "a Release build");
     assert(!Has(log, "--asset-generator-hosts") && Has(log, "build-release/compile_commands.json"), "borrows nothing");
-    log = Plan(host, ["--debug", "--all"]);
-    assert(Has(log, "--profile debug") && !Has(log, "--target chibi "), "a Debug build of everything");
+    log = Plan(host, ["--debug"]);
+    assert(Has(log, "--profile debug") && !Has(log, "--target chibi ") && !Has(log, "--target test_tools"), "a Debug build of everything: no target is named");
+    log = Plan(host, ["--target", "chibi"]);
+    assert(Has(log, "--target chibi --target chibi-build-host"), "a named target and the build host");
 }
 
-// A build without --target names only targets the graph knows: the default
-// once named the deleted chibi_ctl, and the graph step refused it.
+// A build without --target names none: the graph builds every product and test
+// driver, and a target it names is one the graph knows.
 DefaultTargets :: (host: string) {
     log := Plan(host, ["--release"]);
-    assert(Has(log, "--target chibi "), "the default targets");
-    assert(engine.TargetError(strings.Fields(log), engine.Targets()) == "", "the graph knows each default target");
+    assert(!Has(log, "--target "), "the default names no target");
+    named := Plan(host, ["--release", "--target", "chibi"]);
+    assert(engine.TargetError(strings.Fields(named), engine.Targets()) == "", "the graph knows each named target");
 }
 
 // A build runs its steps on every processor online unless --jobs says otherwise.

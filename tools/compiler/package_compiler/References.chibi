@@ -266,8 +266,7 @@ SpellsName :: (forest: snapshot.SnapshotNode[], parent: int, node: int) -> bool 
            (Is(forest, parent, syntax.ForStatement) && Field(forest, parent, syntax.FieldKey) == node);
 }
 BindingForm :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
-    return Is(forest, node, syntax.LocalDeclaration) || Is(forest, node, syntax.ForStatement) ||
-           Is(forest, node, syntax.QueryGenerator);
+    return Is(forest, node, syntax.LocalDeclaration) || Is(forest, node, syntax.ForStatement);
 }
 // The scoped pointer parameters of a package's functions, decided together.
 // `nodes` lists their parameter nodes in ascending order, each with a verdict in

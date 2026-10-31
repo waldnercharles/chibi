@@ -1015,62 +1015,6 @@ The census flattens two features, so neither is ever a first blocker: 815 functi
 | `package_compiler/Sequences.chibi` | `CopyResultCellsStep` | none |  | W12, W13 |  |  |
 | `package_compiler/Sequences.chibi` | `CopyNativeResultsStep` | none |  | W12, W13 |  |  |
 | `package_compiler/Sequences.chibi` | `CopyFunctionResultsStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryProviderOf` | none |  |  |  |  |
-| `package_compiler/Queries.chibi` | `QuerySource` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryFields` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryLeaf` | none |  |  |  |  |
-| `package_compiler/Queries.chibi` | `QueryGuardTerms` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryTerms` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryPointers` | W10 | `EnsurePointer` | W12, W13 | `table: ^(TypeDecl[])` | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result |
-| `package_compiler/Queries.chibi` | `QueryRowName` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `FindQuery` | none |  |  |  |  |
-| `package_compiler/Queries.chibi` | `QueryFieldIndex` | none |  |  |  |  |
-| `package_compiler/Queries.chibi` | `Relationship` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `Ancestor` | none |  | W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryType` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result |
-| `package_compiler/Queries.chibi` | `QueryValueType` | W10 | `EmitBody` | W12, W13 | `table: ^(TypeDecl[])` | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result |
-| `package_compiler/Queries.chibi` | `QueryScopeName` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryPatternScope` | none |  | W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryPatternNames` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QuerySourceRoot` | none |  | W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryScope` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result |
-| `package_compiler/Queries.chibi` | `QueryHelperLocal` | none |  | W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryImpure` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryExcludes` | none |  | W13 |  |  |
-| `package_compiler/Queries.chibi` | `CollectQuery` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result |
-| `package_compiler/Queries.chibi` | `CollectQueries` | W10 | `ReadType` | W12, W13 | `table: ^(TypeDecl[])` | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result |
-| `package_compiler/Queries.chibi` | `QueryCallStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryCell` | none |  | W12 |  |  |
-| `package_compiler/Queries.chibi` | `QueryCurrentStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryChangedStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryGetStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QuerySnapshotHeader` | none |  | W12 |  |  |
-| `package_compiler/Queries.chibi` | `QuerySnapshotReadStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryReadonlyDestination` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryAccessPresent` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryEvaluator` | none |  |  |  |  |
-| `package_compiler/Queries.chibi` | `QueryNames` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryFieldRow` | none |  | W12 |  |  |
-| `package_compiler/Queries.chibi` | `QueryGuardContext` | none |  | W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryGuardFunction` | none |  | W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryMembership` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryMembershipStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryBooleanPosition` | none |  | W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryBooleanStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryPresence` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryPresenceStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryFieldReadStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryExpressionStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryOwnedComponentStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryComponentStep` | none |  | W12, W13 |  |  |
-| `package_compiler/Queries.chibi` | `QueryEvaluateStep` | none |  | W12, W13 |  |  |
-| `package_compiler/QueryLoops.chibi` | `QueryCursorSlot` | none |  | W12 |  |  |
-| `package_compiler/QueryLoops.chibi` | `QueryIteratorStep` | none |  | W12, W13 |  |  |
-| `package_compiler/QueryLoops.chibi` | `QueryIteratorEndStep` | none |  | W12, W13 |  |  |
-| `package_compiler/QueryLoops.chibi` | `QueryIteratorCleanupStep` | none |  | W12, W13 |  |  |
-| `package_compiler/QueryLoops.chibi` | `QueryFinishLoop` | none |  | W12, W13 |  |  |
-| `package_compiler/QueryLoops.chibi` | `QueryCleanReturn` | none |  | W12, W13 |  |  |
 | `package_compiler/Behavior.chibi` | `StateValue` | none |  | W12, W13 |  |  |
 | `package_compiler/Behavior.chibi` | `BehaviorNames` | none |  | W12 |  |  |
 | `package_compiler/Behavior.chibi` | `ComponentsOf` | none |  | W12 |  |  |

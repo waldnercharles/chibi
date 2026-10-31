@@ -222,7 +222,7 @@ MathReferences :: (types: TypeDecl[], record: int, wanted: int) -> bool {
         if (declared.kind == PointerDecl || declared.kind == OptionalDecl || declared.kind == CollectionDecl ||
             declared.kind == MapDecl) {
             at = declared.value_record;
-        } else if (declared.kind == NativeDecl || declared.kind == OptionalComponentDecl) {
+        } else if (declared.kind == NativeDecl) {
             at = declared.parent;
         } else {
             return false;
@@ -1573,9 +1573,6 @@ MathAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     }
     operator := CompoundOperator(Operator(forest, item.node));
     if (item.phase == 0) {
-        if (QueryReadonlyDestination(forest, text, types, members, names, destination)) {
-            return Fail(forest, destination, document, "Query value bindings are read-only; use a component pointer to modify storage");
-        }
         receiver_type := MathPlaceType(forest, text, types, members, callables, natives, ports, names,
                                        package, receiver);
         effects := MathLocationEffects(forest, text, types, members, callables, natives, ports, names, package, receiver);

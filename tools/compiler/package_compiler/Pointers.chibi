@@ -689,16 +689,6 @@ PointerNilComparisonStep :: (forest: snapshot.SnapshotNode[], document: int, typ
                              top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
     pointer := values[top - 1];
-    if (Single(pointer, StructStorage) && pointer.record >= 0 && types[pointer.record].kind == OptionalComponentDecl) {
-        constant := ConstantCode(ops, target.pointer_storage, 0, at.slot, node);
-        op := ops.eq;
-        if (item.c != 0) {
-            op = ops.ne;
-        }
-        return Step.Emitted([constant, Instruction(op, target.pointer_storage, at.slot + 1, pointer.slot, at.slot, -1, node)],
-                            [AddressSlot(target), ValueLocal(BoolStorage)], [], [], [], [], [], [], [], 1,
-                            Typed(at.slot + 1, BoolStorage, 0, -1), NoValue(), []);
-    }
     if (!Single(pointer, PointerStorage) || pointer.record < 0 || types[pointer.record].key == 0) {
         return Fail(forest, item.node, document, "nil requires a nullable pointer type");
     }
@@ -850,27 +840,6 @@ PointerGuard :: (forest: snapshot.SnapshotNode[], text: string, condition: int, 
         return (operator == tk.Not || operator == tk.NotKeyword) &&
                PointerGuard(forest, text, Field(forest, at, syntax.FieldOperand), name, !truth);
     }
-    if (Is(forest, at, syntax.CallExpression)) {
-        if (!QueryGuardContext(forest, at)) {
-            return false;
-        }
-        function := Text(forest, text, Field(forest, at, syntax.FieldFunction));
-        arguments := Members(forest, Field(forest, at, syntax.FieldArguments));
-        if (function == "has" && length(arguments) == 1) {
-            return PointerGuard(forest, text, arguments[0], name, truth);
-        }
-        if (function == "not" && length(arguments) == 1) {
-            return PointerGuard(forest, text, arguments[0], name, !truth);
-        }
-        if ((truth && function == "all") || (!truth && function == "any")) {
-            for (argument in arguments) {
-                if (PointerGuard(forest, text, argument, name, truth)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
     if (!Is(forest, at, syntax.BinaryExpression)) {
         return false;
     }
@@ -916,8 +885,7 @@ PointerNilOperand :: (forest: snapshot.SnapshotNode[], text: string, node: int) 
 }
 PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name, node: int) -> bool {
     function := node;
-    while (function >= 0 && !Is(forest, function, syntax.FunctionDeclaration) && !Is(forest, function, syntax.Handler) &&
-           !Is(forest, function, syntax.System)) {
+    while (function >= 0 && !Is(forest, function, syntax.FunctionDeclaration)) {
         function = forest[function].parent;
     }
     if (function < 0) {
@@ -930,22 +898,6 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
     parent := forest[node].parent;
     while (parent >= 0 && parent != function) {
         condition := Field(forest, parent, syntax.FieldCondition);
-        if (Is(forest, parent, syntax.ArgumentList)) {
-            call := forest[parent].parent;
-            spelling := Text(forest, text, Field(forest, call, syntax.FieldFunction));
-            if ((spelling == "all" || spelling == "any") && QueryGuardContext(forest, call)) {
-                for (argument in Members(forest, parent)) {
-                    if (Ancestor(forest, argument, node)) {
-                        break;
-                    }
-                    if (PointerGuard(forest, text, argument, binding.name, spelling == "all") &&
-                        !PointerProofChanged(forest, text, call, forest[argument].end, forest[node].start,
-                                             binding.name, aliased, stable_local)) {
-                        return true;
-                    }
-                }
-            }
-        }
         if (Is(forest, parent, syntax.BinaryExpression) && Ancestor(forest, Field(forest, parent, syntax.FieldRight), node)) {
             operator := Operator(forest, parent);
             left := Field(forest, parent, syntax.FieldLeft);

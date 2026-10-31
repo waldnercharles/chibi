@@ -99,6 +99,13 @@ Fail :: (c: ^Cursor, n: ^(Node[]), message: string) {
     c.token = n^[c.final].token;
 }
 
+// Behaviors, components, systems and queries are archived (archive/README.md).
+// The parser names the form it found and stops.
+Archived :: (c: ^Cursor, n: ^(Node[]), form: string) {
+    Fail(c, n, format_text("{} are archived: behaviors, components, systems and queries have left the language",
+                           form));
+}
+
 // Moves the current token under `parent`, keeping its own kind.
 Take :: (c: ^Cursor, n: ^(Node[]), parent: int, field: int) -> int {
     at := c.pos;

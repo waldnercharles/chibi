@@ -101,5 +101,7 @@ TextFormatLiteralPercentRunRemainsUnchanged :: () {
 @test
 FormatTextTakesNoArguments :: () {
     assert(format_text("plain") == "plain");
-    assert(format_text("{}{}", 1, 2) == "12");
+    one: int = 1;
+    two: int = 2;
+    assert(format_text("{}{}", one, two) == "12");
 }

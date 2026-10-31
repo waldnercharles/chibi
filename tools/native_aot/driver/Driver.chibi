@@ -211,8 +211,66 @@ Imports :: (module: string) -> string[] {
     }
     return symbols;
 }
-Kernel32 :: () -> string {
-    return "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n";
+// The import definition of the DLL `name`: lld-link writes its import library
+// from it, as it does for the program's own ExitProcess.
+ImportDefinition :: (name: string, symbols: string[]) -> string {
+    lines: string[] = [Join(["LIBRARY ", name, ".dll\nEXPORTS\n"])];
+    for (symbol in symbols) {
+        lines.append(Join(["    ", symbol, "\n"]));
+    }
+    return Join(lines);
+}
+
+// lld-link's command for the import library of the DLL `name`, from the
+// definition beside it.
+ImportLibrary :: (linker: string, partial: string, name: string) -> string[] {
+    return [linker, "-flavor", "link", "/lib", "/nologo", Join(["/def:", partial, "/", name, ".def"]), "/machine:x64",
+            Join(["/out:", partial, "/", name, ".lib"])];
+}
+
+// The system libraries a module's IR names, other than libc: the NAME of each
+// `; chibi-library system:NAME`, once, in order.
+SystemLibraries :: (text: string) -> string[] {
+    names: string[] = [];
+    prefix := "; chibi-library system:";
+    for (line in strings.SplitLines(text)) {
+        if (strings.HasPrefix(line, prefix)) {
+            name := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
+            if (name != "c" && !names.contains(name)) {
+                names.append(name);
+            }
+        }
+    }
+    return names;
+}
+
+// The symbols the module imports from the system library `name`, once, in
+// order: `; chibi-import system:NAME SYMBOL`.
+SystemSymbols :: (text: string, name: string) -> string[] {
+    symbols: string[] = [];
+    prefix := Join(["; chibi-import system:", name, " "]);
+    for (line in strings.SplitLines(text)) {
+        if (strings.HasPrefix(line, prefix)) {
+            symbol := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
+            if (!symbols.contains(symbol)) {
+                symbols.append(symbol);
+            }
+        }
+    }
+    return symbols;
+}
+
+// Whether `value` spells a library or symbol name a definition file can hold.
+ImportName :: (value: string) -> bool {
+    if (value == "") {
+        return false;
+    }
+    for (byte in strings.Bytes(value)) {
+        if (!Word(byte) && byte != 46 && byte != 45 && byte != 64 && byte != 36) {
+            return false;
+        }
+    }
+    return true;
 }
 
 // lld's link of target's program from the module's object and the start
@@ -349,7 +407,7 @@ LinkedLibraries :: (text: string) -> string[] {
 // `text` with each `; chibi-library PATH` comment resolved to an existing
 // regular file under `root` and rewritten as `; link ABSOLUTE`, or "" after
 // reporting why not. `system:c` is libc and rewritten to nothing; other system
-// libraries are not linked yet.
+// libraries stay as they are, for a Windows link to write their import libraries.
 ResolveLibraries :: (text: string, root: string) -> string {
     out: string[] = [];
     for (line in strings.SplitLines(text)) {
@@ -363,8 +421,9 @@ ResolveLibraries :: (text: string, root: string) -> string {
             continue;
         }
         if (strings.HasPrefix(path, "system:")) {
-            build.report(Join(["native: ", path, " is a system library; only system:c is linked, so link a prebuilt archive instead"]));
-            return "";
+            // A Windows link writes its import library; other targets refuse it.
+            out.append(line);
+            continue;
         }
         absolute := path;
         if (!strings.HasPrefix(path, "/")) {
@@ -478,8 +537,19 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     }
     program := Join([partial, "/", Program(target)]);
     libraries := LinkedLibraries(text);
-    if (target == 2 && length(libraries) > 0) {
-        return Failed(partial, "foreign libraries link on Linux and macOS only", 2);
+    imported := SystemLibraries(text);
+    if (target != 2 && length(imported) > 0) {
+        return Failed(partial, Join(["system library ", imported[0], " links on Windows only; link a prebuilt archive instead"]), 2);
+    }
+    for (name in imported) {
+        if (!ImportName(name)) {
+            return Failed(partial, Join(["invalid system library name ", name]), 2);
+        }
+        for (symbol in SystemSymbols(text, name)) {
+            if (!ImportName(symbol)) {
+                return Failed(partial, Join(["invalid symbol name ", symbol, " imported from ", name]), 2);
+            }
+        }
     }
     dynamic := executable && linkage == "dynamic" && target == 0;
     // A program that allocates takes the runtime context, which only a dynamic
@@ -500,9 +570,27 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     if (dynamic) {
         link = LinkDynamic(linker, libc, object, start_object, program, libraries);
     }
-    stub := Join([partial, "/kernel32.def"]);
-    imports := [linker, "-flavor", "link", "/lib", "/nologo", Join(["/def:", stub]), "/machine:x64",
-                Join(["/out:", partial, "/kernel32.lib"])];
+    // kernel32 is always linked, for the program's ExitProcess.
+    windows_libraries: string[] = ["kernel32"];
+    for (name in imported) {
+        if (!windows_libraries.contains(name)) {
+            windows_libraries.append(name);
+        }
+    }
+    kernel32: string[] = ["ExitProcess"];
+    for (symbol in SystemSymbols(text, "kernel32")) {
+        if (!kernel32.contains(symbol)) {
+            kernel32.append(symbol);
+        }
+    }
+    if (target == 2) {
+        for (name in windows_libraries) {
+            if (name != "kernel32") {
+                link.append(Join([partial, "/", name, ".lib"]));
+            }
+        }
+        link.extend(libraries);
+    }
     status = build.run(compile);
     if (status != 0) {
         return Failed(partial, "LLVM object emission", status);
@@ -532,12 +620,18 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
             return Failed(partial, "libSystem stub", 1);
         }
         if (target == 2) {
-            if (!build.write_file(stub, Kernel32())) {
-                return Failed(partial, "kernel32 definition", 1);
-            }
-            status = build.run(imports);
-            if (status != 0) {
-                return Failed(partial, "kernel32 import library", status);
+            for (name in windows_libraries) {
+                symbols := kernel32;
+                if (name != "kernel32") {
+                    symbols = SystemSymbols(text, name);
+                }
+                if (!build.write_file(Join([partial, "/", name, ".def"]), ImportDefinition(name, symbols))) {
+                    return Failed(partial, Join([name, " definition"]), 1);
+                }
+                status = build.run(ImportLibrary(linker, partial, name));
+                if (status != 0) {
+                    return Failed(partial, Join([name, " import library"]), status);
+                }
             }
         }
         status = build.run(link);
@@ -585,7 +679,9 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
                         "\nlinker-sha256 ", linker_hash, "\nprogram-sha256 ", program_hash, "\n",
                         Command("llc-start", compile_start)]);
         if (target == 2) {
-            receipt = Join([receipt, Command("import-library", imports)]);
+            for (name in windows_libraries) {
+                receipt = Join([receipt, Command("import-library", ImportLibrary(linker, partial, name))]);
+            }
         }
         for (archive in libraries) {
             receipt = Join([receipt, "library ", archive, "\nlibrary-sha256 ", build.hash_file(archive), "\n"]);

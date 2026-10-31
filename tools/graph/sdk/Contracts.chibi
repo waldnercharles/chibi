@@ -21,7 +21,6 @@ pub RuntimeTargets :: () -> string[] {
         "behavior_runtime",
         "box2d",
         "box3d",
-        "builtin_fonts",
         "capabilities",
         "comparison_capabilities",
         "conversion_capabilities",
@@ -171,12 +170,6 @@ pub Properties :: (name: string) -> string[] {
     if (name == "box3d") {
         return [
             "INTERFACE_LINK_LIBRARIES=Chibi::vendor_box3d"
-        ];
-    }
-    if (name == "builtin_fonts") {
-        return [
-            "INTERFACE_INCLUDE_DIRECTORIES=@prefix/include/chibi/builtin_fonts",
-            "INTERFACE_LINK_LIBRARIES=Chibi::ui_documents"
         ];
     }
     if (name == "capabilities") {
@@ -493,7 +486,7 @@ pub Properties :: (name: string) -> string[] {
     if (name == "ui") {
         return [
             "INTERFACE_INCLUDE_DIRECTORIES=@prefix/include/chibi/ui",
-            "INTERFACE_LINK_LIBRARIES=Chibi::platform;Chibi::json;Chibi::ui_document_values;Chibi::ui_documents;Chibi::text_search;$<LINK_ONLY:Chibi::builtin_fonts>;$<LINK_ONLY:Chibi::support>;$<LINK_ONLY:Chibi::vendor_rmlui_core>"
+            "INTERFACE_LINK_LIBRARIES=Chibi::platform;Chibi::json;Chibi::ui_document_values;Chibi::ui_documents;Chibi::text_search;$<LINK_ONLY:Chibi::support>;$<LINK_ONLY:Chibi::vendor_rmlui_core>"
         ];
     }
     if (name == "ui_document_values") {
@@ -556,7 +549,7 @@ pub PlatformProperties :: (name: string, platform: string) -> string[] {
         }
         if (name == "ui") {
             return [
-                "INTERFACE_LINK_LIBRARIES=Chibi::platform;Chibi::json;Chibi::ui_document_values;Chibi::ui_documents;Chibi::text_search;$<LINK_ONLY:Chibi::builtin_fonts>;$<LINK_ONLY:Chibi::support>;$<LINK_ONLY:Chibi::vendor_rmlui_core>;$<LINK_ONLY:c++>"
+                "INTERFACE_LINK_LIBRARIES=Chibi::platform;Chibi::json;Chibi::ui_document_values;Chibi::ui_documents;Chibi::text_search;$<LINK_ONLY:Chibi::support>;$<LINK_ONLY:Chibi::vendor_rmlui_core>;$<LINK_ONLY:c++>"
             ];
         }
     }

@@ -834,27 +834,29 @@ static bool object_holds(const char *out, const char *bytes, size_t size)
 static bool driver_build(const char *ir, const char *out)
 {
     char host[1024], share[1024], driver[1024], source[1024], core[1024],
-        compiler[1024], opt[1024], llc[1024], lld[1024];
+        compiler[1024], opt[1024], llc[1024], lld[1024], collection[1100];
     path(host, sdk, "libexec/chibi/chibi-build-host");
     path(share, sdk, "share/chibi");
     path(driver, share, "tools/native_aot");
     path(source, driver, "Driver.chibi");
+    snprintf(collection, sizeof collection, "native_aot=%s/driver", driver);
     path(core, share, "core");
     path(compiler, share, "compiler");
     path(opt, tools, "opt");
     path(llc, tools, "llc");
     path(lld, tools, "ld.lld");
-    const char *argv[] = { host,     "--root",
-                           driver,   "--source",
-                           source,   "--core",
-                           core,     "--compiler",
-                           compiler, "--compiler-core",
-                           core,     "--entry",
-                           "Build",  "--timeout-ms",
-                           "120000", "--",
-                           ir,       out,
-                           opt,      llc,
-                           lld,      "2",
+    const char *argv[] = { host,       "--root",
+                           driver,     "--source",
+                           source,     "--collection",
+                           collection, "--core",
+                           core,       "--compiler",
+                           compiler,   "--compiler-core",
+                           core,       "--entry",
+                           "Build",    "--timeout-ms",
+                           "120000",   "--",
+                           ir,         out,
+                           opt,        llc,
+                           lld,        "2",
                            NULL };
     const char *envp[] = { "PATH=", NULL };
     chibi_process_output out_text = { .data = output, .capacity = sizeof output };

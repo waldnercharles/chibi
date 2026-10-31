@@ -586,8 +586,8 @@ The graph also links executables. `engine.Programs` lists them (the
 reflection tool `reflect`, the build host, the compiler host, the `chibi`
 launcher and the host, concurrency, policy-worker and benchmark test drivers,
 the first two over the header set the graph stages below
-`BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS the
-player, `chibi-compile`, `chibi_ctl`, `test_language` and `test_tools`, whose
+`BUILD/testing/host/include`, as root `CMakeLists.txt` does, and on macOS
+`chibi-compile`, `test_language` and `test_tools`, whose
 `Links` name the desktop archive's libraries as `third-party/` paths and its
 frameworks as CMake orders them; Linux's follow its archive). An executable
 over C++ (`LinksCxx`) links with the C++ compiler. `c.Link` runs CMake's
@@ -617,16 +617,15 @@ libraries over staged SDK headers and the fixtures it copies to
 and links `test_tools` over them. A target's defines take the same
 placeholders as a source's, and `{program:NAME}` names where an executable
 is written: below the build directory where CMake writes it
-(`ProgramDirectory`: `sdk/` for the SDK's programs, `bin/chibi_ctl`, and the
-test drivers' CMake subdirectories). A `compiler:ARGUMENT` substitution
+(`ProgramDirectory`: `sdk/` for the SDK's programs and the test drivers'
+CMake subdirectories). A `compiler:ARGUMENT` substitution
 writes the profile's C compiler and C flags, then ARGUMENT, as C string
 initializer lines; `test_tools` exports C with them. An include of `.` is
 the source root.
 A target's `Resources` (`DESTINATION=SOURCE`; a directory copies every file
 below it) are written before any compile, as root `CMakeLists.txt`
-configures them: the launcher's `BUILD/share/chibi`, which `chibi version`,
-`chibi test`, `chibi doc` and the players read as installed ones do, and
-`chibi_ctl`'s `BUILD/controller_resources`. Their `engine.json` is the build
+configures them: the launcher's `BUILD/share/chibi`, which `chibi version`
+and `chibi test` read as installed ones do. Its `engine.json` is the build
 identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
 `sdk/artifact_formats.cmake` does: the SDK version from
 `sdk/VERSION`, the project version from `src/assets/project.h`, the

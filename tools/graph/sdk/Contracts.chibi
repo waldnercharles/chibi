@@ -765,7 +765,6 @@ pub ResourceEntries :: () -> string[] {
         "share/chibi/licenses/fonts/nerd-fonts-symbols-only/NOTICES.md=@source/third_party/fonts/nerd-fonts-symbols-only/NOTICES.md",
         "share/chibi/licenses/fonts/nerd-fonts-symbols-only/licenses=@source/third_party/fonts/nerd-fonts-symbols-only/licenses",
         "share/chibi/licenses/fonts/noto-sans/OFL.txt=@source/third_party/fonts/noto-sans/OFL.txt",
-        "share/chibi/licenses/yyjson/LICENSE=@source/third_party/yyjson/LICENSE",
-        "share/chibi/shaders=@source/src/render/shaders"
+        "share/chibi/licenses/yyjson/LICENSE=@source/third_party/yyjson/LICENSE"
     ];
 }

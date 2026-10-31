@@ -205,6 +205,8 @@ pub Poke: int : 54;
 // @chibi_context its start module defines, and a failure the function records
 // waits there for the start module to report; C gets the result's zero.
 pub FunctionAddress: int : 55;
+// One past the last instruction; bump it with each new one.
+pub InstructionCount: int : 56;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -627,7 +629,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > FunctionAddress) {
+        if (item.op < Constant || item.op >= InstructionCount) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {

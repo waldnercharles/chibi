@@ -763,7 +763,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     if (Is(forest, node, syntax.String)) {
         return TextStorage;
     }
-    if (ScalarVariantMade(forest, text, callables, names, callable.package, node) && ScalarUnionOf(forest, text, callables, names, types, callable.package, node) >= 0) {
+    if (ScalarVariantMade(forest, text, callables, names, callable.package, node) && ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
         return UnionStorage;
     }
     named := ConstantOf(forest, text, constants, names, callable.package, node);
@@ -948,7 +948,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
     }
     if (storage == UnionStorage && !arrayed && !fielded) {
-        held := ScalarUnionOf(forest, text, callables, names, types, callable.package, node);
+        held := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, node);
         type = ScalarRecordType(types, held);
         if (held >= 0 && ScalarVariantMade(forest, text, callables, names, callable.package, node)) {
             return ScalarVariant(forest, text, callables, params, callable, names, types, members, constants, node, held, rows);
@@ -1318,7 +1318,7 @@ ScalarIs :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[
     if (FirstMember(forest, Field(forest, pattern, syntax.FieldBindings)) >= 0) {
         return ScalarOperands.Failed(Diagnose(forest, pattern, 0, "scalar proof binds payloads only in switch arms"));
     }
-    held := ScalarUnionOf(forest, text, callables, names, types, callable.package, value);
+    held := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, value);
     output := rows;
     switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, value, UnionStorage,
                          output) {
@@ -1348,6 +1348,14 @@ ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         if (field >= 0 && members[field].storage == UnionStorage && members[field].container == 0) {
             return members[field].record;
         }
+    }
+    // An element of an array of unions.
+    if (Is(forest, value, syntax.IndexExpression)) {
+        element := ScalarArrayShape(forest, text, callables, params, names, types, members, package, Field(forest, value, syntax.FieldObject));
+        if (element.storage == UnionStorage && element.container == ArrayContainer) {
+            return element.record;
+        }
+        return -1;
     }
     return ScalarUnionOf(forest, text, callables, names, types, package, value);
 }
@@ -1804,7 +1812,7 @@ ScalarDeclaredRecord :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (found >= 0) {
             return found;
         }
-        return ScalarUnionOf(forest, text, callables, names, types, callable.package, value);
+        return ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, value);
     }
     table := types;
     return ReadType(forest, text, &table, names, callable.package, declared).record;
@@ -1937,7 +1945,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             // or a hidden local that holds it.
             subject := Unparenthesized(forest, value);
             if (!Is(forest, subject, syntax.Identifier)) {
-                held := ScalarUnionOf(forest, text, callables, names, types, callable.package, value);
+                held := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, value);
                 if (held < 0) {
                     return ScalarPlan.Failed(Diagnose(forest, value, 0, "scalar proof switches only on unions of the source"));
                 }

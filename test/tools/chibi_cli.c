@@ -41,13 +41,20 @@ static void locate_driver(const char *self)
     free(resolved);
 }
 
+/* How long a launcher may take to compile a program nothing has compiled
+ * before: 8 to 10 s for a small one on a workstation, more with several
+ * selectors sharing a CI runner, and 0.5 s from the kept closure. Every wait on
+ * a program's first output, a first compile or a command that runs one uses it;
+ * a passing case takes no longer, a failing one takes this long. */
+#define FIRST_COMPILE_SECONDS 120
+
 /* Runs a command with a bound for a launcher that compiles on first use: about
  * 8 s for a small package on a workstation, longer on a CI runner; the same
  * sources start from the kept closure afterwards. A failing case takes as long
  * as the bound, a passing one does not. */
 static int cli_run(const char *const argv[], const char *cwd, const char *log)
 {
-    return tool_run_within(argv, cwd, log, 120);
+    return tool_run_within(argv, cwd, log, FIRST_COMPILE_SECONDS);
 }
 
 static void path(char *out, const char *relative)
@@ -1125,7 +1132,7 @@ static size_t watch_output_size()
  * so its output gets the bound cli_run gives a first compile. */
 static bool watch_output(chibi_process *process, size_t after, const char *expected)
 {
-    double deadline = chibi_process_now() + 120;
+    double deadline = chibi_process_now() + FIRST_COMPILE_SECONDS;
     do {
         char *text = tool_read(log_path);
         bool found = text && strlen(text) >= after && strstr(text + after, expected);
@@ -1410,7 +1417,7 @@ TEST_CASE(program_process_run_stops_children_when_only_parent_is_signalled)
 
 static bool pty_output(chibi_process *process, int master, char *text, size_t capacity, const char *expected)
 {
-    double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
+    double deadline = chibi_process_now() + FIRST_COMPILE_SECONDS;
     do {
         size_t used = strlen(text);
         if (used + 1 == capacity) {

@@ -44,7 +44,7 @@ PackageFiles :: (folder: string) -> string[] {
     files: string[] = [];
     listed := os.List(folder);
     for (name in listed.names) {
-        if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
+        if (strings.HasSuffix(name, ".chibi") && !strings.HasSuffix(name, "Tests.chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
             files.append(name);
         }
     }

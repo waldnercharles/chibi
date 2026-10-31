@@ -2358,8 +2358,7 @@ compiles about fifteen C files and takes about 2.5 minutes.
 two-page site with the installed generator. It takes about three seconds and starts no
 player.
 
-`chibi build test runtime-sdk` takes the private build host and selects the
-authored runtime SDK checks: canonical JSON against the Python manifest encoder, and on
+`graph-sdk` runs `test/graph/SDKTests.chibi`'s runtime SDK checks: canonical JSON against the Python manifest encoder, and on
 macOS the installer's verify, replace and rollback paths plus graph record, tool and
 configuration evidence over synthetic records. No engine library, SDK or package is built.
 

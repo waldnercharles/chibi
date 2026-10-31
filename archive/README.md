@@ -187,18 +187,21 @@ ran no cases after their suites were archived. Their removal did not restore
 the missing coverage.
 
 `language-source-systems` now runs `test/language/source_systems.c` through the
-ordinary language group. It restores only the synchronous arithmetic oracle
-from `archive/test/code_system_runtime.c`: the authored compiler prepares a
+ordinary language group. It restores two oracles from
+`archive/test/code_system_runtime.c`: the authored compiler prepares a
 system, the runtime loads that module for bytecode and SLJIT, and real ECS rows
 change by `input * speed * dt`. Zero delta, two rows and a changed live speed
-are checked. The synthetic component/event catalog is test-only; no game
+are checked. A separate static-membership case checks that the empty `any()`
+arm in `any(has(Marker), any())` admits no bare row while the marked row still
+executes the authored body. It does not cover membership transitions or all
+`any`/`not` forms. The synthetic component/event catalog is test-only; no game
 registry or stage-zero compiler is restored.
 
-The other ten cases from that suite are not restored by this selector:
+The other nine cases from that suite are not restored by this selector:
 
 - Still-relevant source-to-runtime oracles: persistent waits across membership
   removal/re-add and entity generation reuse; live component reads after
-  resume; optional/excluded membership; nested `any`/`not`; empty `any()`;
+  resume; optional/excluded membership; nested `any`/`not`;
   reactive binding checkpoints. Lower-level ECS and execution tests are not
   equivalent to compiling these authored systems and observing their outcomes.
 - Parked product integrations: prototype spawn/resume, nested spawn lifetime,

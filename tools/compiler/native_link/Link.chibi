@@ -178,11 +178,22 @@ pub ImportName :: (value: string) -> bool {
 // as (library, symbol) pairs first, so no library's list is copied as it
 // grows; a module names a few libraries, so each pair searches them in turn
 // and each library's symbols are one pass over the pairs.
+// Whether `key` is among `keys`: a scan, since a module names a few hundred
+// symbols at most; a native map (W8) would make it constant time.
+Listed :: (keys: string[], key: string) -> bool {
+    for (other in keys) {
+        if (other == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
 pub SystemImports :: (lines: string[]) -> Import[] {
     names: string[] = [];
     owners: int[] = [];
     symbols: string[] = [];
-    seen: [string: bool] = [:];
+    seen: string[] = [];
     named := "; chibi-library system:";
     imports := "; chibi-import system:";
     for (line in lines) {
@@ -215,8 +226,8 @@ pub SystemImports :: (lines: string[]) -> Import[] {
             at = length(names) - 1;
         }
         key := Join([library_name, " ", symbol]);
-        if (symbol != "" && !seen.has(key)) {
-            seen[key] = true;
+        if (symbol != "" && !Listed(seen, key)) {
+            seen.append(key);
             owners.append(at);
             symbols.append(symbol);
         }
@@ -269,12 +280,11 @@ pub Imports :: (plan: Plan) -> Import[] {
     } else {
         return found;
     }
-    // A macOS program may import thousands of symbols, so duplicates are found
-    // by key.
-    seen: [string: bool] = [:];
+    // Duplicates are found by key.
+    seen: string[] = [];
     for (listed in found) {
         for (symbol in listed.symbols) {
-            seen[Join([listed.name, " ", symbol])] = true;
+            seen.append(Join([listed.name, " ", symbol]));
         }
     }
     for (imported in plan.imports) {
@@ -288,8 +298,8 @@ pub Imports :: (plan: Plan) -> Import[] {
         symbols := changed.symbols;
         for (symbol in imported.symbols) {
             key := Join([imported.name, " ", symbol]);
-            if (!seen.has(key)) {
-                seen[key] = true;
+            if (!Listed(seen, key)) {
+                seen.append(key);
                 symbols.append(symbol);
             }
         }

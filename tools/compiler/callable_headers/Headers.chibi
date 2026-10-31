@@ -473,7 +473,7 @@ AddInitializer :: (work: Work, symbol: int, document: int, node: int) -> Work {
 }
 Parameters :: (work: Work, tree: reader.Tree, node: int, context: Context, results: bool) -> Work {
     current := work;
-    if (results && node >= 0 && !reader.Kind(tree, node, "parameter_list")) {
+    if (results && node >= 0 && !reader.Kind(tree, node, syntax.ParameterList)) {
         switch Annotation(current, tree, node, context, true) {
             case .Typed(next, value, has_unit, unit):
                 switch Declare(next, tree, node, context, "Result", 7, value, true) {
@@ -499,7 +499,7 @@ Parameters :: (work: Work, tree: reader.Tree, node: int, context: Context, resul
             child := nodes[node].first_child;
             while (child >= 0) {
                 if (named_flags[child] && !extra_flags[child]) {
-                    switch Annotation(current, tree, reader.Field(tree, child, "type"), context, true) {
+                    switch Annotation(current, tree, reader.Field(tree, child, syntax.FieldType), context, true) {
                         case .Typed(next, source_value, has_unit, unit):
                             updated := next;
                             value := source_value;
@@ -510,7 +510,7 @@ Parameters :: (work: Work, tree: reader.Tree, node: int, context: Context, resul
                                         value = named.Value.Typed(0, 0, 1, 0, 0);
                                     }
                             }
-                            token := reader.Field(tree, child, "name");
+                            token := reader.Field(tree, child, syntax.FieldName);
                             switch Name(updated, tree, token, context.document) {
                                 case .Name(decoded, name):
                                     kind: int = 6;
@@ -526,7 +526,7 @@ Parameters :: (work: Work, tree: reader.Tree, node: int, context: Context, resul
                                             symbol.has_unit = has_unit;
                                             current = SetSymbol(admitted, symbol_index, symbol, 2);
                                             current = AddMember(current, context.function, symbol_index, membership);
-                                            default_node := reader.Field(tree, child, "value");
+                                            default_node := reader.Field(tree, child, syntax.FieldValue);
                                             if (default_node >= 0) {
                                                 current = AddInitializer(current, symbol_index, context.document, default_node);
                                             }
@@ -614,9 +614,9 @@ ReturnsValue :: (tree: reader.Tree, root: int) -> bool {
         case .Raw(nodes, fields, named_flags, extra_flags, text):
             cursor := root;
             while (cursor >= 0) {
-                prune := cursor != root && (nodes[cursor].kind == "function_declaration" || nodes[cursor].kind == "macro_declaration");
-                if (nodes[cursor].kind == "return_statement") {
-                    if (reader.Field(tree, cursor, "value") >= 0) {
+                prune := cursor != root && (nodes[cursor].kind == syntax.FunctionDeclaration || nodes[cursor].kind == syntax.MacroDeclaration);
+                if (nodes[cursor].kind == syntax.ReturnStatement) {
+                    if (reader.Field(tree, cursor, syntax.FieldValue) >= 0) {
                         return true;
                     }
                     prune = true;
@@ -677,8 +677,8 @@ Finish :: (work: Work, symbol: int, function: int) -> Header {
 }
 pub Register :: (environment: Environment, tree: reader.Tree, node: int, context: Context) -> Header {
     work := Start(environment);
-    is_macro := reader.Kind(tree, node, "macro_declaration");
-    token := reader.Field(tree, node, "name");
+    is_macro := reader.Kind(tree, node, syntax.MacroDeclaration);
+    token := reader.Field(tree, node, syntax.FieldName);
     symbol_index: int = -1;
     function_index: int = -1;
     name := "";
@@ -720,7 +720,7 @@ pub Register :: (environment: Environment, tree: reader.Tree, node: int, context
     work = SetSymbol(work, symbol_index, symbol, 24);
     active := context;
     active.function = function_index;
-    body := reader.Field(tree, node, "body");
+    body := reader.Field(tree, node, syntax.FieldBody);
     switch NewScope(work, tree, body, active) {
         case .Declared(updated, index):
             work = updated;
@@ -729,37 +729,8 @@ pub Register :: (environment: Environment, tree: reader.Tree, node: int, context
     function := FunctionAt(work, function_index);
     function.scope = active.scope;
     work = SetFunction(work, function_index, function);
-    generic_node := reader.Field(tree, node, "type_parameters");
-    if (generic_node >= 0) {
-        switch tree {
-            case .Raw(nodes, fields, named_flags, extra_flags, text):
-                child := nodes[generic_node].first_child;
-                while (child >= 0) {
-                    if (named_flags[child] && !extra_flags[child]) {
-                        switch Annotation(work, tree, reader.Field(tree, child, "type"), active, false) {
-                            case .Typed(read, value, has_unit, unit):
-                                generic_name := reader.Field(tree, child, "name");
-                                switch Name(read, tree, generic_name, active.document) {
-                                    case .Name(decoded, text):
-                                        switch Declare(decoded, tree, generic_name, active, text, 12, value, false) {
-                                            case .Declared(admitted, index):
-                                                work = admitted;
-                                                prior := SymbolValue(work, index);
-                                                switch prior {
-                                                    case .Typed(storage, container, flags, nominal, parameter):
-                                                        work = SetType(work, index, named.Value.Typed(storage, container, flags | 32, nominal, SymbolID(work, index)));
-                                                }
-                                                work = AddMember(work, function_index, index, 2);
-                                        }
-                                }
-                        }
-                    }
-                    child = nodes[child].next_sibling;
-                }
-        }
-    }
-    work = Parameters(work, tree, reader.Field(tree, node, "parameters"), active, false);
-    result_node := reader.Field(tree, node, "results");
+    work = Parameters(work, tree, reader.Field(tree, node, syntax.FieldParameters), active, false);
+    result_node := reader.Field(tree, node, syntax.FieldResults);
     work = Parameters(work, tree, result_node, active, true);
     function = FunctionAt(work, function_index);
     function.inferred = !is_macro && result_node < 0 && ReturnsValue(tree, body);
@@ -790,14 +761,14 @@ pub Register :: (environment: Environment, tree: reader.Tree, node: int, context
             case .Raw(nodes, fields, named_flags, extra_flags, text):
                 child := nodes[body].first_child;
                 while (child >= 0) {
-                    if (named_flags[child] && reader.Kind(tree, child, "entry_declaration")) {
+                    if (named_flags[child] && reader.Kind(tree, child, syntax.EntryDeclaration)) {
                         entry_index: int = -1;
                         switch NewFunction(work, tree, child, active, 4, -1) {
                             case .Declared(updated, index):
                                 work = updated;
                                 entry_index = index;
                         }
-                        switch Name(work, tree, reader.Field(tree, child, "name"), active.document) {
+                        switch Name(work, tree, reader.Field(tree, child, syntax.FieldName), active.document) {
                             case .Name(decoded, text):
                                 work = decoded;
                                 entry_function := FunctionAt(work, entry_index);
@@ -806,8 +777,8 @@ pub Register :: (environment: Environment, tree: reader.Tree, node: int, context
                                 entry_function.has_entry = true;
                                 work = SetFunction(work, entry_index, entry_function);
                         }
-                    } else if (named_flags[child] && reader.Kind(tree, child, "exit_declaration")) {
-                        exit_node := reader.Field(tree, child, "name");
+                    } else if (named_flags[child] && reader.Kind(tree, child, syntax.ExitDeclaration)) {
+                        exit_node := reader.Field(tree, child, syntax.FieldName);
                         switch Name(work, tree, exit_node, active.document) {
                             case .Name(decoded, text):
                                 switch Declare(decoded, tree, exit_node, active, text, 11, named.Value.Typed(0, 0, 0, 0, 0), false) {

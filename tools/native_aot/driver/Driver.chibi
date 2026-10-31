@@ -243,13 +243,41 @@ LinkDynamic :: (linker: string, libc: string[], object: string, start: string, p
     return command;
 }
 
-// The module that calls the program's entry from libc's C runtime.
-StartDynamic :: () -> string {
+// The module that calls the program's entry from libc's C runtime. An entry
+// that takes the runtime context gets one whose allocate is libc's calloc and
+// whose index failure aborts; formatting text is not available to a program.
+StartDynamic :: (context: bool) -> string {
+    if (!context) {
+        return Join([
+            "target triple = \"x86_64-unknown-linux-gnu\"\n",
+            "declare i32 @chibi_scalar()\n",
+            "define i32 @main() {\n",
+            "  %status = call i32 @chibi_scalar()\n",
+            "  ret i32 %status\n",
+            "}\n"
+        ]);
+    }
     return Join([
         "target triple = \"x86_64-unknown-linux-gnu\"\n",
-        "declare i32 @chibi_scalar()\n",
+        "declare ptr @calloc(i64, i64)\n",
+        "declare void @abort() noreturn\n",
+        "declare i32 @chibi_scalar(ptr)\n",
+        "define internal void @chibi_format_text(ptr %ctx, ptr %values, i32 %count, ptr %result) {\n",
+        "  call void @abort()\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
+        "  %memory = call ptr @calloc(i64 1, i64 %size)\n",
+        "  ret ptr %memory\n",
+        "}\n",
+        "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
+        "  call void @abort()\n",
+        "  unreachable\n",
+        "}\n",
+        "@chibi_context = internal global { ptr, ptr, ptr, ptr } ",
+        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
         "define i32 @main() {\n",
-        "  %status = call i32 @chibi_scalar()\n",
+        "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
         "  ret i32 %status\n",
         "}\n"
     ]);
@@ -403,6 +431,12 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         return Failed(partial, "foreign libraries link on Linux x86-64 only", 2);
     }
     dynamic := executable && linkage == "dynamic" && target == 0;
+    // A program that allocates takes the runtime context, which only a dynamic
+    // link supplies, from libc's allocator.
+    takes_context := strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx)");
+    if (executable && takes_context && !dynamic) {
+        return Failed(partial, "a program that allocates links libc dynamically; omit --static", 2);
+    }
     libc: string[] = [];
     if (dynamic) {
         libc = Libc();
@@ -427,7 +461,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     if (executable) {
         start_text := Start(target);
         if (dynamic) {
-            start_text = StartDynamic();
+            start_text = StartDynamic(takes_context);
         }
         if (!build.write_file(start, start_text)) {
             return Failed(partial, "start module", 1);

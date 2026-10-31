@@ -196,6 +196,34 @@ static bool string_size(quota *q, const char *text)
     size_t length = text ? strnlen(text, room + 1) : 0;
     return length <= room && charge(q, length * 6);
 }
+/* Names the shared bound an argument document or a result ran out of and how
+ * far it got, so a caller whose data grew knows which limit to look at. A
+ * negative index means the argument document itself, before any signature. */
+static void quota_diagnostic(
+    char *out,
+    size_t size,
+    const char *failure,
+    const char *part,
+    int index,
+    const quota *q
+)
+{
+    char where[32] = "the document";
+    if (index >= 0) {
+        snprintf(where, sizeof where, "%s %d", part, index);
+    }
+    snprintf(
+        out,
+        size,
+        "%s: %s, %zu of %u values, %zu of %u bytes",
+        failure,
+        where,
+        q->values,
+        (unsigned)COMPILER_HOST_MAX_VALUES,
+        q->bytes,
+        (unsigned)COMPILER_HOST_MAX_BYTES
+    );
+}
 static const yyjson_read_flag READ_FLAGS = COMPILER_HOST_JSON_READ_FLAGS;
 static const yyjson_write_flag WRITE_FLAGS = YYJSON_WRITE_ALLOW_INVALID_UNICODE |
                                              YYJSON_WRITE_ALLOW_INF_AND_NAN;
@@ -548,6 +576,9 @@ static bool invoke(
     if (!parsed || !json_quota(yyjson_doc_get_root(parsed), 0, &q) ||
         !yyjson_is_arr(yyjson_doc_get_root(parsed))) {
         failure = "invalid or oversized compiler argument document";
+        if (parsed) {
+            quota_diagnostic(out->diagnostic, sizeof out->diagnostic, failure, "argument", -1, &q);
+        }
         goto done;
     }
     if (yyjson_arr_size(yyjson_doc_get_root(parsed)) != (size_t)argument_count) {
@@ -570,6 +601,7 @@ static bool invoke(
             )) {
             failure = "compiler arguments exceed signature or shared storage "
                       "limits";
+            quota_diagnostic(out->diagnostic, sizeof out->diagnostic, failure, "argument", i, &q);
             goto done;
         }
     }
@@ -678,6 +710,7 @@ static bool invoke(
     for (int i = 0; i < result_count; i++) {
         if (!value_quota(&results[i], 0, &q)) {
             failure = "compiler result exceeds projection limits";
+            quota_diagnostic(out->diagnostic, sizeof out->diagnostic, failure, "result", i, &q);
             goto done;
         }
     }

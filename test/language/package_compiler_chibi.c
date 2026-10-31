@@ -2385,6 +2385,134 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
     }
     return true;
 }
+/* count records whose fields, in declaration order, take consecutive values,
+ * as a JSON array of objects. */
+static yyjson_mut_val *records_json(
+    yyjson_mut_doc *doc,
+    const char *const *fields,
+    int width,
+    const int64_t *values,
+    int count
+)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_val *object = yyjson_mut_obj(doc);
+        for (int j = 0; j < width; j++) {
+            yyjson_mut_obj_add_sint(doc, object, fields[j], values[i * width + j]);
+        }
+        yyjson_mut_arr_append(array, object);
+    }
+    return array;
+}
+static yyjson_mut_val *ints_json(yyjson_mut_doc *doc, const int *values, int count)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_arr_add_sint(doc, array, values[i]);
+    }
+    return array;
+}
+static yyjson_mut_val *texts_json(yyjson_mut_doc *doc, const char *const *items, int count)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_arr_add_str(doc, array, items[i]);
+    }
+    return array;
+}
+/* The LLVM text llvm_native.Emit gives m for native_abi's target `target`
+ * under budget 1, its first function the entry; NULL when it rejects m.
+ * scalar_host_consumer frees the arguments document. */
+static bool native_module_ir(const char *target, const native_module *m, char **ir)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *arguments = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, arguments);
+    yyjson_mut_arr_add_str(doc, arguments, target);
+    /* llvm_native.Function has every field of the module's tables; the tests'
+     * native_function leaves out the locals, which are zero. */
+    static const char *const LLVM_FUNCTION_FIELDS[] = {
+        "result", "first_parameter", "parameters", "first_slot",
+        "slots",  "first_local",     "locals",     "first_code",
+        "code",   "first_argument",  "arguments"
+    };
+    enum
+    {
+        LLVM_FUNCTION_WIDTH = (int)(sizeof LLVM_FUNCTION_FIELDS / sizeof *LLVM_FUNCTION_FIELDS)
+    };
+    int64_t *functions = xmalloc(
+        sizeof *functions * LLVM_FUNCTION_WIDTH * (size_t)m->function_count
+    );
+    for (int i = 0; i < m->function_count; i++) {
+        const native_function *f = &m->functions[i];
+        const int64_t fields[LLVM_FUNCTION_WIDTH] = { f->result,
+                                                      f->first_parameter,
+                                                      f->parameters,
+                                                      f->first_slot,
+                                                      f->slots,
+                                                      0,
+                                                      0,
+                                                      f->first_code,
+                                                      f->code,
+                                                      f->first_argument,
+                                                      f->arguments };
+        memcpy(&functions[i * LLVM_FUNCTION_WIDTH], fields, sizeof fields);
+    }
+    yyjson_mut_arr_append(
+        arguments,
+        records_json(doc, LLVM_FUNCTION_FIELDS, LLVM_FUNCTION_WIDTH, functions, m->function_count)
+    );
+    free(functions);
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->parameters, m->parameter_count));
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->slots, m->slot_count));
+    yyjson_mut_arr_append(arguments, ints_json(doc, NULL, 0));
+    int64_t *code = xmalloc(sizeof *code * CODE_WIDTH * (size_t)m->code_count);
+    for (int i = 0; i < m->code_count; i++) {
+        const native_code *c = &m->code[i];
+        const int64_t fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
+                                             c->left,   c->right, c->target,
+                                             c->literal };
+        memcpy(&code[i * CODE_WIDTH], fields, sizeof fields);
+    }
+    yyjson_mut_arr_append(arguments, records_json(doc, CODE_FIELDS, CODE_WIDTH, code, m->code_count));
+    free(code);
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->arguments, m->argument_count));
+    int64_t *records = xmalloc(
+        sizeof *records * RECORD_WIDTH * (size_t)(m->record_count + 1)
+    );
+    for (int i = 0; i < m->record_count; i++) {
+        records[i * RECORD_WIDTH] = m->records[i].first;
+        records[i * RECORD_WIDTH + 1] = m->records[i].count;
+    }
+    yyjson_mut_arr_append(
+        arguments,
+        records_json(doc, RECORD_FIELDS, RECORD_WIDTH, records, m->record_count)
+    );
+    free(records);
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->fields, m->field_count));
+    yyjson_mut_arr_append(arguments, texts_json(doc, m->texts, m->text_count));
+    yyjson_mut_val *source = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_str(doc, source, "file", m->file ? m->file : "");
+    yyjson_mut_obj_add_str(doc, source, "directory", m->directory ? m->directory : "");
+    yyjson_mut_arr_append(arguments, source);
+    int placed = m->file ? m->code_count : 0;
+    yyjson_mut_arr_append(arguments, texts_json(doc, m->names, m->file ? m->function_count : 0));
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->lines, placed));
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->columns, placed));
+    yyjson_mut_arr_add_false(doc, arguments);
+    yyjson_mut_arr_add_sint(doc, arguments, 1);
+    yyjson_doc *result;
+    REQUIRE(scalar_host_consumer("EmitModule", doc, &result));
+    yyjson_val *text = yyjson_arr_get(yyjson_doc_get_root(result), 0);
+    *ir = NULL;
+    if (yyjson_get_len(text)) {
+        *ir = xmalloc(yyjson_get_len(text) + 1);
+        memcpy(*ir, yyjson_get_str(text), yyjson_get_len(text) + 1);
+    }
+    yyjson_doc_free(result);
+    return true;
+}
 #if defined(__linux__) && defined(__x86_64__)
 /* Native execution of the authored scalar corpus. Each case's source goes
  * through CollectScalar on one producer VM, alternating by case, and must be
@@ -2404,7 +2532,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 79
+    SCALAR_ACCEPTED_CASES = 81
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -4403,115 +4531,7 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
 }
 /* A module whose entry returns 0 and whose function k + 1 applies operation
  * k to its parameters. */
-/* count records whose fields, in declaration order, take consecutive values,
- * as a JSON array of objects. */
-static yyjson_mut_val *records_json(
-    yyjson_mut_doc *doc,
-    const char *const *fields,
-    int width,
-    const int64_t *values,
-    int count
-)
-{
-    yyjson_mut_val *array = yyjson_mut_arr(doc);
-    for (int i = 0; i < count; i++) {
-        yyjson_mut_val *object = yyjson_mut_obj(doc);
-        for (int j = 0; j < width; j++) {
-            yyjson_mut_obj_add_sint(doc, object, fields[j], values[i * width + j]);
-        }
-        yyjson_mut_arr_append(array, object);
-    }
-    return array;
-}
-static yyjson_mut_val *ints_json(yyjson_mut_doc *doc, const int *values, int count)
-{
-    yyjson_mut_val *array = yyjson_mut_arr(doc);
-    for (int i = 0; i < count; i++) {
-        yyjson_mut_arr_add_sint(doc, array, values[i]);
-    }
-    return array;
-}
-static yyjson_mut_val *texts_json(yyjson_mut_doc *doc, const char *const *items, int count)
-{
-    yyjson_mut_val *array = yyjson_mut_arr(doc);
-    for (int i = 0; i < count; i++) {
-        yyjson_mut_arr_add_str(doc, array, items[i]);
-    }
-    return array;
-}
-/* The LLVM text llvm_native.Emit gives m for native_abi's target `target`
- * under budget 1, its first function the entry; NULL when it rejects m. */
-static bool native_module_ir(const char *target, const native_module *m, char **ir)
-{
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *arguments = yyjson_mut_arr(doc);
-    yyjson_mut_doc_set_root(doc, arguments);
-    yyjson_mut_arr_add_str(doc, arguments, target);
-    int64_t *functions = xmalloc(sizeof *functions * FUNCTION_WIDTH * (size_t)m->function_count);
-    for (int i = 0; i < m->function_count; i++) {
-        const native_function *f = &m->functions[i];
-        const int64_t fields[FUNCTION_WIDTH] = {
-            f->result,     f->first_parameter, f->parameters,
-            f->first_slot, f->slots,           f->first_code,
-            f->code,       f->first_argument,  f->arguments
-        };
-        memcpy(&functions[i * FUNCTION_WIDTH], fields, sizeof fields);
-    }
-    yyjson_mut_arr_append(
-        arguments,
-        records_json(doc, FUNCTION_FIELDS, FUNCTION_WIDTH, functions, m->function_count)
-    );
-    free(functions);
-    yyjson_mut_arr_append(arguments, ints_json(doc, m->parameters, m->parameter_count));
-    yyjson_mut_arr_append(arguments, ints_json(doc, m->slots, m->slot_count));
-    yyjson_mut_arr_append(arguments, ints_json(doc, NULL, 0));
-    int64_t *code = xmalloc(sizeof *code * CODE_WIDTH * (size_t)m->code_count);
-    for (int i = 0; i < m->code_count; i++) {
-        const native_code *c = &m->code[i];
-        const int64_t fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
-                                             c->left,   c->right, c->target,
-                                             c->literal };
-        memcpy(&code[i * CODE_WIDTH], fields, sizeof fields);
-    }
-    yyjson_mut_arr_append(arguments, records_json(doc, CODE_FIELDS, CODE_WIDTH, code, m->code_count));
-    free(code);
-    yyjson_mut_arr_append(arguments, ints_json(doc, m->arguments, m->argument_count));
-    int64_t *records = xmalloc(
-        sizeof *records * RECORD_WIDTH * (size_t)(m->record_count + 1)
-    );
-    for (int i = 0; i < m->record_count; i++) {
-        records[i * RECORD_WIDTH] = m->records[i].first;
-        records[i * RECORD_WIDTH + 1] = m->records[i].count;
-    }
-    yyjson_mut_arr_append(
-        arguments,
-        records_json(doc, RECORD_FIELDS, RECORD_WIDTH, records, m->record_count)
-    );
-    free(records);
-    yyjson_mut_arr_append(arguments, ints_json(doc, m->fields, m->field_count));
-    yyjson_mut_arr_append(arguments, texts_json(doc, m->texts, m->text_count));
-    yyjson_mut_val *source = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_str(doc, source, "file", m->file ? m->file : "");
-    yyjson_mut_obj_add_str(doc, source, "directory", m->directory ? m->directory : "");
-    yyjson_mut_arr_append(arguments, source);
-    int placed = m->file ? m->code_count : 0;
-    yyjson_mut_arr_append(arguments, texts_json(doc, m->names, m->file ? m->function_count : 0));
-    yyjson_mut_arr_append(arguments, ints_json(doc, m->lines, placed));
-    yyjson_mut_arr_append(arguments, ints_json(doc, m->columns, placed));
-    yyjson_mut_arr_add_false(doc, arguments);
-    yyjson_mut_arr_add_sint(doc, arguments, 1);
-    yyjson_doc *result;
-    REQUIRE(scalar_host_consumer("EmitModule", doc, &result));
-    yyjson_val *text = yyjson_arr_get(yyjson_doc_get_root(result), 0);
-    *ir = NULL;
-    if (yyjson_get_len(text)) {
-        *ir = xmalloc(yyjson_get_len(text) + 1);
-        memcpy(*ir, yyjson_get_str(text), yyjson_get_len(text) + 1);
-    }
-    yyjson_doc_free(result);
-    yyjson_mut_doc_free(doc);
-    return true;
-}
+
 static bool total_ir(const char *function, char **ir)
 {
     native_code code[4 + TOTAL_OPERATION_COUNT * 6];
@@ -4850,6 +4870,50 @@ TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit)
 /* This test-only source joins the compiler fixture's package, so its probe
  * can exercise private scope collection without adding a shipped export. */
 
+/* The consumer's llvm_native.Emit takes its module as JSON tables on every
+ * host: Main calls Pick(7, true, 9), and Pick returns its third argument. */
+TEST_CASE(package_compiler_native_modules_emit_through_the_consumer)
+{
+    REQUIRE(prepare());
+    static const native_code code[] = {
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .literal = 7 },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .output = 1, .literal = 1 },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 2, .literal = 9 },
+        { .op = NATIVE_CALL, .type = NATIVE_INT, .output = 3, .left = 1, .target = 3 },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 3 },
+        { .op = NATIVE_RETURN },
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_ARGUMENT, .type = NATIVE_INT, .left = 2 },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+    };
+    static const native_function functions[] = {
+        { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
+        { NATIVE_INT, 0, 3, 4, 1, 7, 4, 3, 0 }
+    };
+    static const int parameters[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT };
+    static const int slots[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT, NATIVE_INT, NATIVE_INT };
+    static const int arguments[] = { 0, 1, 2 };
+    native_module m = { functions, 2,    parameters, 3,         slots,
+                        5,         code, 11,         arguments, 3 };
+    char *ir;
+    REQUIRE(native_module_ir("LinuxX64", &m, &ir) && ir);
+    bool emitted = strstr(ir, "define internal i32 @chibi_scalar.1(") &&
+                   strstr(ir, "call i32 @chibi_scalar.1(");
+    if (!emitted) {
+        fprintf(stderr, "%s\n", ir);
+    }
+    free(ir);
+    REQUIRE(emitted);
+    /* A call to a function with another signature is rejected: no text. */
+    native_code changed[11];
+    memcpy(changed, code, sizeof changed);
+    changed[4].left = 2;
+    m.code = changed;
+    REQUIRE(native_module_ir("LinuxX64", &m, &ir) && !ir);
+    return true;
+}
 void test_language_package_compiler_chibi_scalar()
 {
     pu_setup(NULL, cleanup);
@@ -4859,6 +4923,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
     RUN_TEST_CASE(package_compiler_scalar_retains_library_states);
     RUN_TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit);
+    RUN_TEST_CASE(package_compiler_native_modules_emit_through_the_consumer);
     pu_clear_setup();
     scalar_host_close();
 }
@@ -4887,6 +4952,10 @@ static void cancel_native(int)
 void test_language_package_compiler_chibi_native()
 {
 #if defined(__linux__) && defined(__x86_64__)
+    if (!getenv("CHIBI_LLVM_BIN")) {
+        fprintf(stderr, "native scalar execution skipped: set CHIBI_LLVM_BIN to the directory of opt, llc, ld.lld and llvm-nm\n");
+        return;
+    }
     /* The supervised children run in their own process groups, so a signal
      * to this one cancels them instead of leaving them running. */
     struct sigaction cancel = { .sa_handler = cancel_native }, interrupt, terminate;
@@ -4905,8 +4974,7 @@ void test_language_package_compiler_chibi_native()
     sigaction(SIGINT, &interrupt, NULL);
     sigaction(SIGTERM, &terminate, NULL);
 #else
-    fprintf(stderr, "native scalar execution runs on Linux x86-64; other targets run its bundle\n");
-    abort();
+    fprintf(stderr, "native scalar execution skipped: it runs on Linux x86-64; other targets run its bundle\n");
 #endif
 }
 

@@ -1,0 +1,19 @@
+package facts
+
+// packed scalar appends
+@test
+Calls :: () {
+    r1: int = Kinds();
+    e1: int = 2047;
+    assert(r1 == e1, "Kinds call 1");
+    r2: int = Shared();
+    e2: int = 20344;
+    assert(r2 == e2, "Shared call 2");
+    r3: int = SharedItems();
+    e3: int = 2345;
+    assert(r3 == e3, "SharedItems call 3");
+    assert(Matches(1000), "Matches call 4");
+    r5: int = Field();
+    e5: int = 134;
+    assert(r5 == e5, "Field call 5");
+}

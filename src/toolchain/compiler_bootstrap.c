@@ -759,6 +759,40 @@ static void cache_key(const artifact *a, const char *json, size_t length, char k
     snprintf(key, BINARY_CACHE_KEY_BYTES + 1, "compiler-%s", digest);
 }
 
+/* One cache serves every checkout on the machine; past this many bytes the
+ * entries written longest ago go first (reads don't refresh them). About 65
+ * recovered compilers of 30 MB. */
+#define CACHE_BUDGET_BYTES (2048ull * 1024u * 1024u)
+
+/* Removes the oldest entries until `incoming` more bytes fit the budget. */
+static void cache_evict(const char *directory, uint64_t incoming)
+{
+    binary_cache_entry *entries = NULL;
+    int count = 0;
+    if (!binary_cache_list(directory, &entries, &count)) {
+        return;
+    }
+    uint64_t total = incoming;
+    for (int i = 0; i < count; i++) {
+        total += entries[i].bytes;
+    }
+    while (total > CACHE_BUDGET_BYTES) {
+        int oldest = -1;
+        for (int i = 0; i < count; i++) {
+            if (entries[i].bytes &&
+                (oldest < 0 || entries[i].stamp < entries[oldest].stamp)) {
+                oldest = i;
+            }
+        }
+        if (oldest < 0 || !binary_cache_remove(directory, entries[oldest].key)) {
+            break;
+        }
+        total -= entries[oldest].bytes;
+        entries[oldest].bytes = 0;
+    }
+    free(entries);
+}
+
 /* Keeps the recovered compiler for the next start. Losing the lock or the
  * write costs only that start's time. */
 static void cache_publish(const char *directory, const char *key, const unsigned char *bytes, size_t length)
@@ -770,6 +804,7 @@ static void cache_publish(const char *directory, const char *key, const unsigned
     if (lock < 0) {
         return;
     }
+    cache_evict(directory, length + BINARY_CACHE_HEADER_BYTES);
     binary_cache_write(directory, key, bytes, length, COMPILER_HOST_MAX_CLOSURE_BYTES);
     binary_cache_unlock(lock);
 }

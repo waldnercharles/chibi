@@ -171,7 +171,10 @@ pub ArrayBytes: int : 48;
 // texts[literal], and the argument slots are this function's
 // arguments[right, right + target), each a number or a bool, as is the result,
 // the instruction's type. It passes no context and never fails. A small
-// integer or bool carries the extension the C ABI asks of its caller.
+// integer or bool carries the extension the C ABI asks of its caller. An
+// argument may be a string, passed as the pointer to its NUL-ended bytes. With
+// `left` 1 it calls the address in its first argument instead, and its symbol
+// text is empty.
 pub ForeignCall: int : 49;
 // A module's retained states: scalars that outlive a call, which a host that
 // replaces the module reads out and sets in the new one. StateLoad declares
@@ -1472,22 +1475,46 @@ CExtension :: (type: int) -> string {
     }
     return "";
 }
-// Whether a foreign call names a C symbol the module does not define and has
-// number or bool operands and result.
+// Whether an argument of a foreign call is a number, a bool or a string, whose
+// data pointer the callee reads.
+ForeignArgument :: (type: int) -> bool {
+    return abi.ScalarType(type) != "" || type == abi.TextStorage;
+}
+// The type of an argument in a foreign declaration or call: a string is the
+// pointer to its bytes.
+ForeignType :: (type: int) -> string {
+    if (type == abi.TextStorage) {
+        return "ptr";
+    }
+    return format_text("{}{}", TypeName(type), CExtension(type));
+}
+// Whether a foreign call names a C symbol the module does not define, or when
+// its `left` is 1 calls through the address in its first argument, a word, and
+// has number, bool or string operands and a number or bool result.
 ForeignValid :: (slots: int[], arguments: int[], texts: string[], item: Instruction) -> bool {
-    if (item.literal < 0 || item.literal >= i64(length(texts))) {
+    if (item.literal < 0 || item.literal >= i64(length(texts)) || abi.ScalarType(item.type) == "") {
         return false;
     }
     symbol := texts[int(item.literal)];
-    if (!Identifier(symbol) || symbol == "main" || symbol == "chibi_scalar" || abi.ScalarType(item.type) == "") {
+    indirect := item.left == 1;
+    if (item.left != 0 && !indirect) {
+        return false;
+    }
+    if (indirect && symbol != "") {
+        return false;
+    }
+    if (!indirect && (!Identifier(symbol) || symbol == "main" || symbol == "chibi_scalar")) {
         return false;
     }
     if (item.right < 0 || item.target < 0 || item.target > length(arguments) - item.right) {
         return false;
     }
+    if (indirect && (item.target < 1 || !Typed(slots, arguments[item.right], abi.WordStorage))) {
+        return false;
+    }
     for (index in 0..<item.target) {
         slot := arguments[item.right + index];
-        if (!Index(slot, length(slots)) || abi.ScalarType(slots[slot]) == "") {
+        if (!Index(slot, length(slots)) || !ForeignArgument(slots[slot])) {
             return false;
         }
     }
@@ -1500,13 +1527,12 @@ ForeignDeclarations :: (functions: Function[], slots: int[], code: Instruction[]
     for (shape in functions) {
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
-            if (item.op != ForeignCall) {
+            if (item.op != ForeignCall || item.left == 1) {
                 continue;
             }
             listed: string[] = [];
             for (index in 0..<item.target) {
-                type := slots[shape.first_slot + arguments[shape.first_argument + item.right + index]];
-                listed.append(format_text("{}{}", TypeName(type), CExtension(type)));
+                listed.append(ForeignType(slots[shape.first_slot + arguments[shape.first_argument + item.right + index]]));
             }
             declaration := format_text("declare{} {} @{}({})\n", CExtension(item.type), TypeName(item.type),
                                        texts[int(item.literal)], strings.Join(listed, ", "));
@@ -1517,19 +1543,85 @@ ForeignDeclarations :: (functions: Function[], slots: int[], code: Instruction[]
     }
     return out;
 }
-// A call of a foreign symbol: the arguments load in order and nothing else
-// is passed.
+// The most bytes of a string a foreign call passes as a cstring, without its
+// NUL: the stack buffer holds a copy of the string and its end.
+CstringCapacity: int : 4096;
+// How many of a foreign call's arguments are strings.
+ForeignTexts :: (slots: int[], arguments: int[], item: Instruction) -> int {
+    count: int = 0;
+    for (index in 0..<item.target) {
+        if (slots[arguments[item.right + index]] == abi.TextStorage) {
+            count += 1;
+        }
+    }
+    return count;
+}
+// Whether any function of the module passes a string to a foreign call.
+Cstrings :: (functions: Function[], slots: int[], code: Instruction[], arguments: int[]) -> bool {
+    for (shape in functions) {
+        for (pc in 0..<shape.code) {
+            item := code[shape.first_code + pc];
+            if (item.op == ForeignCall &&
+                ForeignTexts(Part(slots, shape.first_slot, shape.slots),
+                             Part(arguments, shape.first_argument, shape.arguments), item) > 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+// Copies a string's bytes to `to` and ends them with a NUL, or returns false at
+// a NUL the string holds, which C would read as its end. A loop of its own, in
+// a function that disables the library calls, like the array copy.
+CstringHelper :: () -> string {
+    out := "define internal i1 @chibi_scalar.cstring(ptr %to, ptr %from, i32 %length) #1 {\nentry:\n  br label %head\n";
+    out = format_text("{}head:\n  %at = phi i32 [ 0, %entry ], [ %next, %store ]\n  %done = icmp eq i32 %at, %length\n", out);
+    out = format_text("{}  br i1 %done, label %exit, label %body\nbody:\n  %wide = zext i32 %at to i64\n", out);
+    out = format_text("{}  %source = getelementptr inbounds i8, ptr %from, i64 %wide\n  %byte = load i8, ptr %source\n", out);
+    out = format_text("{}  %zero = icmp eq i8 %byte, 0\n  br i1 %zero, label %bad, label %store\nstore:\n", out);
+    out = format_text("{}  %target = getelementptr inbounds i8, ptr %to, i64 %wide\n  store i8 %byte, ptr %target\n", out);
+    out = format_text("{}  %next = add i32 %at, 1\n  br label %head\nexit:\n  %last = zext i32 %length to i64\n", out);
+    out = format_text("{}  %end = getelementptr inbounds i8, ptr %to, i64 %last\n  store i8 0, ptr %end\n  ret i1 true\nbad:\n  ret i1 false\n}\n", out);
+    return out;
+}
+// A call of a foreign symbol, or through an address: the arguments load in
+// order, and nothing else is passed. A string is copied with its NUL to one of
+// the function's stack buffers, so the callee reads a C string; a string too
+// long for the buffer, or holding a NUL, traps.
 ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], item: Instruction, pc: int) -> string {
     out := format_text("p{}:\n", pc);
     listed: string[] = [];
+    callee := format_text("@{}", texts[int(item.literal)]);
+    buffer: int = 0;
     for (index in 0..<item.target) {
         slot := arguments[item.right + index];
         type := slots[slot];
-        out = format_text("{}{}", out, Load(format_text("c{}_{}", pc, index), type, "s", slot));
-        listed.append(format_text("{}{} %c{}_{}", TypeName(type), CExtension(type), pc, index));
+        name := format_text("c{}_{}", pc, index);
+        out = format_text("{}{}", out, Load(name, type, "s", slot));
+        if (item.left == 1 && index == 0) {
+            callee = format_text("%callee{}", pc);
+            out = format_text("{}  {} = inttoptr i64 %{} to ptr\n", out, callee, name);
+            // A missing symbol is a null address, which traps instead of jumping to 0.
+            out = format_text("{}  %null{} = icmp eq ptr {}, null\n  br i1 %null{}, label %trap, label %call{}\ncall{}:\n", out, pc,
+                              callee, pc, pc, pc);
+            continue;
+        }
+        if (type == abi.TextStorage) {
+            out = format_text("{}  %{}.data = extractvalue {} %{}, 0\n", out, name, TypeName(type), name);
+            out = format_text("{}  %{}.length = extractvalue {} %{}, 1\n", out, name, TypeName(type), name);
+            out = format_text("{}  %{}.fits = icmp ult i32 %{}.length, {}\n", out, name, name, CstringCapacity);
+            out = format_text("{}  br i1 %{}.fits, label %{}.copy, label %trap\n{}.copy:\n", out, name, name, name);
+            out = format_text("{}  %{}.ok = call i1 @chibi_scalar.cstring(ptr %cstr{}, ptr %{}.data, i32 %{}.length)\n", out, name,
+                              buffer, name, name);
+            out = format_text("{}  br i1 %{}.ok, label %{}.ready, label %trap\n{}.ready:\n", out, name, name, name);
+            listed.append(format_text("ptr %cstr{}", buffer));
+            buffer += 1;
+            continue;
+        }
+        listed.append(format_text("{}{} %{}", TypeName(type), CExtension(type), name));
     }
-    out = format_text("{}  %v{} = call{} {} @{}({})\n", out, pc, CExtension(item.type), TypeName(item.type),
-                      texts[int(item.literal)], strings.Join(listed, ", "));
+    out = format_text("{}  %v{} = call{} {} {}({})\n", out, pc, CExtension(item.type), TypeName(item.type), callee,
+                      strings.Join(listed, ", "));
     out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
@@ -1580,6 +1672,22 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
             out = format_text("{}  %values{} = alloca [{} x {}]\n  %text{} = alloca {}\n", out, pc, item.target,
                               abi.ValueType(), pc, abi.TextType());
         }
+    }
+    // A foreign call's string arguments are copied into buffers of the entry
+    // block, shared by the function's calls.
+    buffers: int = 0;
+    for (pc in 0..<shape.code) {
+        item := code[shape.first_code + pc];
+        if (item.op == ForeignCall) {
+            texted := ForeignTexts(Part(slots, shape.first_slot, shape.slots),
+                                   Part(arguments, shape.first_argument, shape.arguments), item);
+            if (texted > buffers) {
+                buffers = texted;
+            }
+        }
+    }
+    for (index in 0..<buffers) {
+        out = format_text("{}  %cstr{} = alloca [{} x i8]\n", out, index, CstringCapacity + 1);
     }
     out = format_text("{}  br label %p0\n", out);
     own := Part(arguments, shape.first_argument, shape.arguments);
@@ -1958,11 +2066,15 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (Zeroes(code)) {
         out = format_text("{}\n{}", out, ArrayZeroHelper());
     }
+    cstrings := Cstrings(functions, slots, code, arguments);
+    if (cstrings) {
+        out = format_text("{}\n{}", out, CstringHelper());
+    }
     // Recursion is unchecked, as Rust's is: each function probes every page
     // of its frame, so running out of stack faults in the guard page below
     // it, which the host reports as a stack overflow.
     out = strings.Join([out, "\nattributes #0 = { ", abi.StackProbe(target), " }\n"], "");
-    if (Copies(code)) {
+    if (Copies(code) || cstrings) {
         out = strings.Join([out, "attributes #1 = { noinline nounwind \"no-builtins\" }\n"], "");
     }
     if (debug) {

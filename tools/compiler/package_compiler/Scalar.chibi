@@ -74,7 +74,7 @@ ScalarForeignResult :: (forest: snapshot.SnapshotNode[], text: string, declarati
     if (result < 0) {
         return 0;
     }
-    return ForeignStorage(forest, text, result);
+    return ForeignResultStorage(forest, text, result);
 }
 // The path of the library a foreign function's block imports, "" when its
 // file has no such import.
@@ -113,13 +113,8 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
     output := rows;
     for (index in 0..<length(arguments)) {
         storage := ForeignStorage(forest, text, Field(forest, parameters[index], "type"));
-        if (storage == 0 || Is(forest, arguments[index], "named_argument") ||
-            Is(forest, arguments[index], "typed_argument")) {
-            return ScalarOperands.Failed(Diagnose(forest, arguments[index], 0,
-                                                  "scalar proof passes numbers and bools to a foreign function by position"));
-        }
-        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
-                             arguments[index], arguments[index], storage, storage, facts.Clamp, output) {
+        switch ScalarForeignArgument(forest, text, callables, params, callable, names, types, members, constants,
+                                     arguments[index], storage, output) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Built(built):
@@ -130,6 +125,68 @@ ScalarForeignRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
                     Text(forest, text, Field(forest, declaration, "name")));
     row.text = archive;
     output.append(row);
+    return ScalarOperands.Built(output);
+}
+// The rows of one argument of a foreign call, converted to the storage its
+// parameter spells. A cstring is any string; the call copies it to a buffer
+// with its NUL.
+ScalarForeignArgument :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                          constants: ConstDecl[], argument: int, storage: int, rows: facts.Row[]) -> ScalarOperands {
+    if (storage == 0 || Is(forest, argument, "named_argument") || Is(forest, argument, "typed_argument")) {
+        return ScalarOperands.Failed(Diagnose(forest, argument, 0,
+                                              "scalar proof passes numbers, bools and strings to a foreign function by position"));
+    }
+    if (storage != TextStorage) {
+        return ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, argument,
+                             argument, storage, storage, facts.Clamp, rows);
+    }
+    return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, argument,
+                         TextStorage, rows);
+}
+// The procedure type the call `node` calls through, -1 when its callee is not a
+// variable holding one.
+ScalarProcCallee :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> int {
+    callee := Field(forest, node, "function");
+    if (!Is(forest, callee, "identifier")) {
+        return -1;
+    }
+    return ProcOf(forest, text, names, callee);
+}
+// The rows of a call through a procedure value: the address, each argument
+// converted to its parameter, then one Foreign row with no symbol. Its value
+// is 1, the mark of a call through the first operand.
+ScalarProcRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                   constants: ConstDecl[], node: int, proc: int, rows: facts.Row[]) -> ScalarOperands {
+    shape := ProcShape(forest, text, proc);
+    arguments := Members(forest, Field(forest, node, "arguments"));
+    result := shape[length(shape) - 1];
+    if (length(arguments) != length(shape) - 1) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "call has the wrong number of arguments"));
+    }
+    if (result <= 0) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0,
+                                              "scalar proof requires a procedure with a number or bool result"));
+    }
+    output := rows;
+    switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                         Field(forest, node, "function"), WordStorage, output) {
+        case .Failed(diagnostic):
+            return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output = built;
+    }
+    for (index in 0..<length(arguments)) {
+        switch ScalarForeignArgument(forest, text, callables, params, callable, names, types, members, constants,
+                                     arguments[index], shape[index], output) {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Built(built):
+                output = built;
+        }
+    }
+    output.append(ScalarAt(forest, node, facts.ForeignRow, ScalarTypeOf(result), 1, length(arguments) + 1, ""));
     return ScalarOperands.Built(output);
 }
 ScalarSource :: (path: string, text: string) -> facts.Row {
@@ -521,6 +578,11 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (callee_foreign >= 0) {
             return ScalarForeignResult(forest, text, callee_foreign);
         }
+        callee_proc := ScalarProcCallee(forest, text, names, node);
+        if (callee_proc >= 0) {
+            shape := ProcShape(forest, text, callee_proc);
+            return shape[length(shape) - 1];
+        }
         if (ScalarLengthOf(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
             return IntStorage;
         }
@@ -626,6 +688,11 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         if (callee_foreign >= 0) {
             return ScalarForeignRows(forest, text, callables, params, callable, names, types, members, constants, node,
                                      callee_foreign, rows);
+        }
+        callee_proc := ScalarProcCallee(forest, text, names, node);
+        if (callee_proc >= 0) {
+            return ScalarProcRows(forest, text, callables, params, callable, names, types, members, constants, node,
+                                  callee_proc, rows);
         }
     }
     native := ScalarArrayCall(forest, text, callables, params, names, types, members, callable.package, node);
@@ -2569,7 +2636,8 @@ ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int, packaged: bool) ->
             }
             functions = true;
         } else if (!Is(forest, member, "package_header") && !(packaged && Is(forest, member, "import_declaration")) &&
-                   !Is(forest, member, "record_declaration") &&
+                   !Is(forest, member, "record_declaration") && !Is(forest, member, "foreign_import_declaration") &&
+                   !Is(forest, member, "foreign_block") &&
                    !Is(forest, member, "union_declaration") && !Is(forest, member, "constant_declaration")) {
             return Diagnose(forest, member, 0,
                             "scalar proof supports only ordinary function, record, union and constant declarations");
@@ -2847,6 +2915,24 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                         for (listed in packages) {
                             roots_named.append(documents[files_of[listed.member_start]].identity);
                         }
+                    }
+                    // The foreign functions and procedure types the sources declare are
+                    // natives to the body check. A native build owns its effects, so the
+                    // proof treats them as it treats the text natives.
+                    text_count := length(text_natives);
+                    switch ForeignNatives(nodes, documents, text_natives, text_ports, text_identities,
+                                          resize([int(0)], text_count)) {
+                        case .Failed(diagnostic):
+                            return ScalarFailure(path, text, diagnostic);
+                        case .Declared(declared_natives, declared_ports, declared_identities, declared_effects):
+                            text_natives = declared_natives;
+                            text_ports = declared_ports;
+                            text_identities = declared_identities;
+                    }
+                    for (index in text_count..<length(text_natives)) {
+                        quiet := text_natives[index];
+                        quiet.effects = 0;
+                        text_natives[index] = quiet;
                     }
                     switch Declare(nodes, documents, packages, files_of, active, imports, links, target) {
                         case .Failed(diagnostic):

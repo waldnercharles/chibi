@@ -163,6 +163,7 @@ staging directories, or limit a child's resources. Its instruction budget,
 | `tools/configure.sh`, `tools/configure_native.sh` | Stage-zero configuration and cold-build recovery. | **Removed** with the CMake build in ef553b24b. The driver fetches the pinned first host (`tools/bootstrap.sh`). |
 | `tools/web_env.sh` | Browser compiler isolation. | **Deleted** with the web packaging in 7b97ecf7c. |
 | `tools/clang-format.sh`, `.githooks/pre-commit` | C formatting. `chibi build format [--check]`, CI, the pre-commit hook. | **Keep** while project C exists. |
+| `chibi build census` | Fails on CMake, Make or Python build files outside `archive/` and `third_party/`, and prints the first-party C files and lines and each C++/Objective-C shim. CI runs it on every commit. | **Keep** until the C count reaches zero. |
 
 ### Make and CMake
 

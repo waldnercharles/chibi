@@ -664,6 +664,12 @@ Example :: library {
 }
 ```
 
+A postfix `!` takes an optional's payload and fails when it is `nil`, as Swift's
+`!` does: `scores["Ada"]!` is the value, or a failed run with the message
+"Unwrapped a nil optional". It must touch its operand, so `a!` unwraps and `a !b`
+does not. Use it where absence is a bug; `??`, `if value` and `as T` handle
+absence.
+
 ## Packages and visibility
 
 A package is a folder of `.chibi` files with the same `package` header.

@@ -203,6 +203,13 @@ ParseUnary :: (c: ^Cursor, n: ^(Node[])) -> int {
             Add(n, deref, left, "operand");
             Take(c, n, deref, "");
             left = deref;
+        } else if (token == tk.Not && n^[c.pos].start == n^[c.pos - 1].end) {
+            // `value!` takes an optional's payload and traps on nil. The `!`
+            // must touch its operand, so `a !b` is still not followed by one.
+            unwrap := New(n, "force_unwrap_expression");
+            Add(n, unwrap, left, "operand");
+            Take(c, n, unwrap, "");
+            left = unwrap;
         } else {
             break;
         }

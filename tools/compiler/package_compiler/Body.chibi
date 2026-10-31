@@ -703,7 +703,7 @@ Expression :: (kind: string) -> bool {
            kind == "member_expression" || kind == "index_expression" || kind == "struct_expression" ||
            kind == "array_expression" || kind == "map_expression" || kind == "call_expression" ||
            kind == "unary_expression" || kind == "binary_expression" || kind == "is_expression" ||
-           kind == "address_expression" || kind == "dereference_expression";
+           kind == "address_expression" || kind == "dereference_expression" || kind == "force_unwrap_expression";
 }
 // The occurrence of the symbol the node `declared` declares, or `undeclared`
 // for one the source declares nowhere.
@@ -3549,6 +3549,49 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 produced = Typed(first + 1, item.storage, item.container, item.record);
                 if (Pointer(item.storage, item.container)) {
                     roots.append({slot: produced.slot, storage: item.storage, container: item.container, record: item.record});
+                }
+            }
+        } else if (kind == "force_unwrap_expression") {
+            // `value!`: the payload of a present optional, or a failed guard.
+            stepped = false;
+            if (item.phase == 0) {
+                next.append(Visit(Field(forest, item.node, "operand")));
+                next.append(Resume(item.node, 1, 0, 0));
+            } else {
+                value_top -= 1;
+                optional := values[value_top];
+                if (OptionalElement(types, optional).storage == 0) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "operand of ! must be optional"));
+                }
+                present := NoValue();
+                probe: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                                cell: length(cells), host: length(hosts), call: length(calls)};
+                switch OptionalPresentStep(optional, false, 0, ops, target, probe, node) {
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
+                    case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                                  added_calls, added_names, scheduled, popped, value, kept, marks):
+                        code.extend(added_code);
+                        slots.extend(added_slots);
+                        present = value;
+                }
+                check := Instruction(ops.guard, 0, 0, present.slot, 0, target.assert_failure, node);
+                check.message = "Unwrapped a nil optional";
+                check.has_message = true;
+                code.append(check);
+                unwrap_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                                    cell: length(cells), host: length(hosts), call: length(calls)};
+                switch OptionalUnwrapStep(types, optional, 0, ops, target, unwrap_at, node) {
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
+                    case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                                  added_calls, added_names, scheduled, popped, value, kept, marks):
+                        code.extend(added_code);
+                        slots.extend(added_slots);
+                        cells.extend(added_cells);
+                        hosts.extend(added_hosts);
+                        roots.extend(added_roots);
+                        produced = value;
                 }
             }
         } else if (logic) {

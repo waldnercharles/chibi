@@ -63,6 +63,17 @@ HasToken :: (forest: snapshot.SnapshotNode[], parent: int, token: int) -> bool {
     }
     return false;
 }
+// The operator of a node that has none, and the operation of a plain `=`.
+NoOperator: int : 0;
+// The kind of `node`'s operator: a tk kind such as tk.Add, syntax.NotIn for
+// `not in`, syntax.Min or syntax.Max; NoOperator when it has none.
+Operator :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    operator := Field(forest, node, syntax.FieldOperator);
+    if (operator < 0) {
+        return NoOperator;
+    }
+    return forest[operator].kind;
+}
 Text :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> string {
     if (node < 0) {
         return "";

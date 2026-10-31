@@ -63,7 +63,7 @@ benchmark loops.
 fallback rows of the retired `language-package-core` C selector as `@test`s
 against the production `core:strings` package. Its README maps each test to the
 C row it replaced. `chibi test test/core_strings` runs all 191; no
-`tools/tests.tsv` row runs them yet. Native byte ownership, copy/read counters,
+`tools/tests.tsv` row runs them yet. Native byte ownership, read counters,
 metadata and binary/hash witnesses stay in C.
 
 ### Portable byte-library regressions

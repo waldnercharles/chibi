@@ -2,7 +2,6 @@
 
 #include "support/xalloc.h"
 #include "types/array.h"
-#include "types/copy_internal.h"
 #include "types/trace.h"
 
 #include <assert.h>
@@ -48,7 +47,6 @@ typedef struct
 int pin_union_copy(pin_value *out, const pin_value *source)
 {
     *out = *source;
-    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     const pin_union *from = source->ptr;
     if (!from || from == &cancelled) {
         return 0;

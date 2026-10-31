@@ -4,7 +4,6 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
-#include "types/copy_internal.h"
 #include "types/record.h"
 #include "types/text.h"
 
@@ -472,7 +471,6 @@ const char *pin_write_field_resolved(arena *storage, void *base, const type_fiel
             memcpy(copy, text.bytes, text.length);
             copy[text.length] = 0;
             *(const char **)dst = copy;
-            pin_copy_record(PIN_COPY_TEXT, (size_t)text.length + 1);
             break;
         }
         case PIN_HANDLE:

@@ -4,7 +4,7 @@ Keep this patch. Upstream commit `96e6034aa6bc44665856ee480962a9ddab0b87cc` stil
 
 The patch adds `cf_app_set_imgui_render_target`. With the application canvas selected, Cute draws ImGui into that canvas before blitting it to the window, so captures contain the overlay. The target follows replacement of the default canvas after a resize.
 
-Chibi's preview controller reads the composed frame after drawing. Studio calls the setter in `src/editor/workspace/application.c` for game mode. Studio's RmlUi interface is a different rendering path.
+Studio calls the setter in `src/editor/workspace/application.c` for game mode, so its captures read the composed frame. Studio's RmlUi interface is a different rendering path.
 
 ```c
 CF_Canvas capture = cf_app_get_canvas();

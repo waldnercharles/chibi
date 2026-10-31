@@ -243,8 +243,9 @@ Passed on macOS arm64 in this checkout, using the existing pico-unit dispatchers
 Passed on Linux x64 (clang 18, ASan/UBSan) at the review-round head of #695,
 which supersedes the macOS artifact figures above:
 
-- `make test-build`, `test-native`, `test-materials`, `test-projects`,
-  `test-language-all`, `test-tools`, `check-format` and `package-sdk`.
+- The since-retired Makefile's `test-build`, `test-native`, `test-materials`,
+  `test-projects`, `test-language-all`, `test-tools`, `check-format` and
+  `package-sdk` targets.
 - Package compiler collections, including compound writes that read their
   target once before the value (`p^ += Set(p)`, an addressed local, and
   fields through a pointer and an addressed record), plain-write widening and
@@ -253,8 +254,9 @@ which supersedes the macOS artifact figures above:
   forced safe-point collection and writes through it; a rebound borrowing
   callback that fails before it runs; malformed borrowing arguments rejected
   at definition freeze.
-- `chibi build bootstrap-artifact`, the `compiler-bootstrap` checks and
-  `make test-recovery`. Isolated recovery from `git archive HEAD` sources with
+- `chibi build bootstrap-artifact`, the `compiler-bootstrap` checks and the
+  Makefile's `test-recovery` target (now `chibi build test bootstrap-recovery`).
+  Isolated recovery from `git archive HEAD` sources with
   an empty environment reproduced all 14,224,585 artifact bytes and SHA-256
   `faf6bf0a28025ede5782350022ba9c12807697244f6a583813f88d0e405ef4e5`.
 

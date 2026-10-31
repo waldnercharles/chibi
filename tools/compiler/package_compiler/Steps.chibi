@@ -5,6 +5,7 @@ import syntax "project:syntax_diagnostics"
 import json "project:json_string"
 import parser "project:source_parser"
 import strings "core:strings"
+import tk "project:source_tokenizer"
 
 // The steps EmitBody takes for nodes other than control flow. Each reads the
 // body's tables, which calls share rather than copy, and returns only what it
@@ -232,11 +233,11 @@ InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: i
     digits := literal;
     if (Is(forest, digits, syntax.UnaryExpression)) {
         digits = Field(forest, digits, syntax.FieldOperand);
-        operator := Text(forest, text, Field(forest, literal, syntax.FieldOperator));
-        if (operator != "-" && operator != "+") {
+        operator := Operator(forest, literal);
+        if (operator != tk.Sub && operator != tk.Add) {
             return 0;
         }
-        if (operator == "+") {
+        if (operator == tk.Add) {
             literal = digits;
         }
     }
@@ -283,8 +284,8 @@ ConstantExpressionStorage :: (forest: snapshot.SnapshotNode[], text: string, nod
         return spelled;
     }
     if (Is(forest, expression, syntax.UnaryExpression)) {
-        sign := Text(forest, text, Field(forest, expression, syntax.FieldOperator));
-        if (sign == "-" || sign == "+" || sign == "~") {
+        sign := Operator(forest, expression);
+        if (sign == tk.Sub || sign == tk.Add || sign == tk.Complement) {
             return ConstantExpressionStorage(forest, text, Field(forest, expression, syntax.FieldOperand));
         }
         return 0;
@@ -292,10 +293,10 @@ ConstantExpressionStorage :: (forest: snapshot.SnapshotNode[], text: string, nod
     if (!Is(forest, expression, syntax.BinaryExpression)) {
         return 0;
     }
-    operator := Text(forest, text, Field(forest, expression, syntax.FieldOperator));
-    shifts := operator == "<<" || operator == ">>";
-    if (!shifts && operator != "+" && operator != "-" && operator != "*" && operator != "/" && operator != "%" &&
-        operator != "&" && operator != "|" && operator != "^") {
+    operator := Operator(forest, expression);
+    shifts := operator == tk.Shl || operator == tk.Shr;
+    if (!shifts && operator != tk.Add && operator != tk.Sub && operator != tk.Mul && operator != tk.Quo && operator != tk.Mod &&
+        operator != tk.And && operator != tk.Or && operator != tk.Xor) {
         return 0;
     }
     left := ConstantExpressionStorage(forest, text, Field(forest, expression, syntax.FieldLeft));
@@ -432,7 +433,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             expected = Expect(value, callable.result, callable.result_container, callable.result_record);
         } else if (kind == syntax.Assignment || changing) {
             destination := StatementTarget(forest, item.node);
-            operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
+            operator := CompoundOperator(Operator(forest, item.node));
             whole := SelfComponent(forest, text, types, names, destination);
             owned: int = -1;
             if (Is(forest, destination, syntax.MemberExpression)) {
@@ -451,7 +452,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     expected = Expect(value, binding.storage, binding.container, binding.record);
                     // A compound write reads a managed target, with its points,
                     // before its value, as stage zero caches the target.
-                    if (binding.place == ManagedPlace && operator != "") {
+                    if (binding.place == ManagedPlace && operator != NoOperator) {
                         code.extend(NamePoints(forest, text, names, ops, destination));
                         read := PointerContinue(ManagedReadStep(types, binding, ops, target, at, node), expected);
                         return PointerPrefix(code, [], PointerContinue(read, Resume(item.node, PointerCompoundPhase,
@@ -464,7 +465,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     argument: int = -1;
                     // A method call updates in place only as its own statement;
                     // `xs = xs.append(x)` is an error CallStep reports.
-                    if (operator == "" &&
+                    if (operator == NoOperator &&
                         (changing || !Is(forest, Field(forest, value, syntax.FieldFunction), syntax.MemberExpression))) {
                         switch InPlaceUpdate(forest, text, callables, natives, ports, identities, names, package,
                                              found, destination, value) {
@@ -517,7 +518,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                                             NoValue(), retained, marks);
                     }
-                    if (operator != "" || Parameter(forest, binding) || binding.place == ManagedPlace) {
+                    if (operator != NoOperator || Parameter(forest, binding) || binding.place == ManagedPlace) {
                         code.extend(NamePoints(forest, text, names, ops, destination));
                     }
                 }
@@ -530,7 +531,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 // `self.C op= v` combines the owner's component with the value
                 // and writes the result through the reference it read.
                 write := Resume(item.node, ComponentAssignPhase, shifted.slot + ComponentReferenceSlot, whole);
-                if (operator == "") {
+                if (operator == NoOperator) {
                     return PrefixSlots([ValueLocal(HandleStorage)],
                                        ComponentMakeStep(code, types, whole, -1, [Visit(value), write], ops, target,
                                                          shifted, node));
@@ -559,7 +560,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 code.extend(OwnerWatch(ops, at.slot, forest[TargetRoot(forest, destination)]));
                 return PrefixSlots([ValueLocal(HandleStorage)],
                                    ComponentReferenceStep(code, types, members, owned, field, -1, value,
-                                                          operator != "", item, ops, target, SlotsPast(at, 1), node));
+                                                          operator != NoOperator, item, ops, target, SlotsPast(at, 1), node));
             } else if (other >= 0 || other_owned >= 0) {
                 // `e.C = v` and `e.C.f = v` on a component of another entity:
                 // the entity, then the reference to its component.
@@ -592,7 +593,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     at_member = Field(forest, at_member, syntax.FieldObject);
                 }
                 write := Resume(item.node, EntityComponentPhase, component, field);
-                if (operator != "") {
+                if (operator != NoOperator) {
                     write.c = 1;
                 }
                 next.extend([Visit(entity), write]);
@@ -622,7 +623,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     next.append(Expect(value, result.storage, result.container, result.record));
                     next.append(Resume(value, CopyValuePhase, 0, 0));
                     write := Resume(item.node, FieldPhase, found, index);
-                    if (operator != "") {
+                    if (operator != NoOperator) {
                         write.c = 1;
                     }
                     next.append(write);
@@ -650,7 +651,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 code.extend(TargetPoints(forest, text, names, ops, destination));
                 next.append(Expect(value, members[field].storage, 0, -1));
                 write := Resume(item.node, FieldPhase, found, field);
-                if (operator != "") {
+                if (operator != NoOperator) {
                     write.c = 1;
                 }
                 next.append(write);
@@ -673,10 +674,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 binding := names[found];
                 compound: int = 0;
                 code.append(ExpressionCode(ops, forest[destination]));
-                if (operator != "") {
+                if (operator != NoOperator) {
                     compound = 1;
                 }
-                if (operator != "" || Parameter(forest, binding)) {
+                if (operator != NoOperator || Parameter(forest, binding)) {
                     code.extend(NamePoints(forest, text, names, ops, object));
                 }
                 next.append(Expect(Field(forest, destination, syntax.FieldIndex), IntStorage, 0, -1));
@@ -840,8 +841,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, destination, document, "Assignment requires a writable value");
             }
             binding := names[found];
-            operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
-            if (operator != "" && (CharType(types, binding.storage, binding.container, binding.record) ||
+            operator := CompoundOperator(Operator(forest, item.node));
+            if (operator != NoOperator && (CharType(types, binding.storage, binding.container, binding.record) ||
                                     CharValue(types, result))) {
                 return Fail(forest, item.node, document, "char arithmetic is not supported yet");
             }
@@ -851,7 +852,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                         TypeName(binding.storage), TypeName(result.storage)));
             }
             if (binding.place == NarrowedPlace) {
-                if (operator != "") {
+                if (operator != NoOperator) {
                     return Fail(forest, destination, document, "compound narrowed-value assignment is not supported yet");
                 }
                 element: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
@@ -900,7 +901,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 result = Typed(at.slot + length(slots) - 1, binding.storage, 0, -1);
                 stored = result;
             }
-            if (operator != "") {
+            if (operator != NoOperator) {
                 op := BinaryOp(ops, operator);
                 if (op < 0 || Comparison(ops, op) || !Numeric(binding.storage) || binding.container != 0 ||
                     !Single(result, binding.storage)) {
@@ -1122,7 +1123,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             if (CharValue(types, operand)) {
                 return Fail(forest, item.node, document, "char arithmetic is not supported yet");
             }
-            op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator))));
+            op := BinaryOp(ops, CompoundOperator(Operator(forest, item.node)));
             if (op < 0 || Comparison(ops, op) || binding.storage != IntStorage || !Single(operand, IntStorage)) {
                 return Fail(forest, item.node, document, "compound assignment needs int operands");
             }
@@ -1962,12 +1963,12 @@ BorrowsElement :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDec
         return storage != StructStorage && storage != UnionStorage;
     }
     comparison := forest[member].parent;
-    operator := Text(forest, text, Field(forest, comparison, syntax.FieldOperator));
+    operator := Operator(forest, comparison);
     other := Field(forest, comparison, syntax.FieldRight);
     if (other == member) {
         other = Field(forest, comparison, syntax.FieldLeft);
     }
-    return Is(forest, comparison, syntax.BinaryExpression) && (operator == "==" || operator == "!=") &&
+    return Is(forest, comparison, syntax.BinaryExpression) && (operator == tk.CmpEq || operator == tk.NotEq) &&
            (Is(forest, other, syntax.Identifier) || Is(forest, other, syntax.String));
 }
 // Whether the element `node` reads initializes a local in place, as stage
@@ -2457,8 +2458,8 @@ NativeOwnerZero :: (forest: snapshot.SnapshotNode[], text: string, document: int
     }
     numeric := Is(forest, at, syntax.Number);
     if (Is(forest, at, syntax.UnaryExpression)) {
-        operator := Text(forest, text, Field(forest, at, syntax.FieldOperator));
-        numeric = (operator == "+" || operator == "-") && Is(forest, Field(forest, at, syntax.FieldOperand), syntax.Number);
+        operator := Operator(forest, at);
+        numeric = (operator == tk.Add || operator == tk.Sub) && Is(forest, Field(forest, at, syntax.FieldOperand), syntax.Number);
     }
     if (numeric) {
         switch NumberBits(forest, text, at) {
@@ -3840,10 +3841,10 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     next: Work[] = [];
     marks: int[] = [];
     if (item.phase == 0 && !unary) {
-        operator := Text(forest, text, Field(forest, item.node, syntax.FieldOperator));
+        operator := Operator(forest, item.node);
         left := Field(forest, item.node, syntax.FieldLeft);
         right := Field(forest, item.node, syntax.FieldRight);
-        if ((operator == "==" || operator == "!=") && (Is(forest, left, syntax.Nil) || Is(forest, right, syntax.Nil))) {
+        if ((operator == tk.CmpEq || operator == tk.NotEq) && (Is(forest, left, syntax.Nil) || Is(forest, right, syntax.Nil))) {
             nil_node := right;
             value := left;
             if (Is(forest, left, syntax.Nil)) {
@@ -3851,7 +3852,7 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
                 value = right;
             }
             finish := Resume(item.node, PointerNilPhase, nil_node, 0);
-            if (operator == "!=") {
+            if (operator == tk.NotEq) {
                 finish.c = 1;
             }
             return Step.Emitted([], [], [], [], [], [], [], [], [Visit(value), finish], 0, NoValue(), NoValue(), []);
@@ -3870,7 +3871,7 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
         next.append(finish);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
     }
-    operator := Text(forest, text, Field(forest, item.node, syntax.FieldOperator));
+    operator := Operator(forest, item.node);
     if (node.kind == syntax.Assignment) {
         operator = CompoundOperator(operator);
     }
@@ -3882,11 +3883,11 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
         }
         typed_here := Integer(item.storage) || Floating(item.storage);
         if (operand.storage == NumberStorage &&
-            (operator == "+" || (operator == "-" && (!typed_here || ParsedLiteral(forest, text, item.node))))) {
+            (operator == tk.Add || (operator == tk.Sub && (!typed_here || ParsedLiteral(forest, text, item.node))))) {
             // A signed literal is a literal too: typed here when its use is,
             // else by its use. A minus on a grouped one negates it here.
             literal := Typed(-1, NumberStorage, 0, item.node);
-            if (operator == "+") {
+            if (operator == tk.Add) {
                 literal = operand;
             }
             if (item.storage == HandleStorage && item.container == 0) {
@@ -3901,7 +3902,7 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
                 slots.append(ValueLocal(HandleStorage));
                 code.append(ConstantCode(ops, HandleStorage, 0, at.slot, node));
                 code.extend(LiteralWatch(forest, ops, at.slot, HandleStorage, literal.record));
-                if (operator == "+") {
+                if (operator == tk.Add) {
                     code.append(ScalarWatch(ops, at.slot, HandleStorage, 0, true, node));
                 }
                 return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
@@ -3943,21 +3944,21 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
         op: int = -1;
         left_slot := operand.slot;
         right_slot: int = 0;
-        if (operator == "-" && (integer || Single(operand, FloatStorage) || Single(operand, DoubleStorage))) {
+        if (operator == tk.Sub && (integer || Single(operand, FloatStorage) || Single(operand, DoubleStorage))) {
             output := at.slot + length(slots);
             slots.extend(NegationSlots(operand.storage, ops));
             code.extend(NegationCode(ops, operand.storage, operand.slot, output, node));
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
                                 Typed(at.slot + length(slots) - 1, operand.storage, 0, -1), NoValue(), marks);
-        } else if (operator == "~" && integer) {
+        } else if (operator == tk.Complement && integer) {
             op = ops.bit_not;
-        } else if ((operator == "!" || operator == "not") && Single(operand, BoolStorage)) {
+        } else if ((operator == tk.Not || operator == tk.NotKeyword) && Single(operand, BoolStorage)) {
             // Not is equality with false.
             slots.append(flag);
             code.append(ConstantCode(ops, BoolStorage, 0, at.slot + length(slots) - 1, node));
             right_slot = at.slot + length(slots) - 1;
             op = ops.eq;
-        } else if (operator == "+" && integer) {
+        } else if (operator == tk.Add && integer) {
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, operand, NoValue(),
                                 marks);
         } else {
@@ -4135,9 +4136,9 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
 
 // Compound arithmetic combines the same typed integers before any assignment
 // widening. Plain assignment and shift-count typing have separate contracts.
-MixedCompoundIntegers :: (operator: string, storage: int, value: Value) -> bool {
-    compound := operator == "+" || operator == "-" || operator == "*" || operator == "/" || operator == "%" ||
-                operator == "&" || operator == "|" || operator == "^";
+MixedCompoundIntegers :: (operator: int, storage: int, value: Value) -> bool {
+    compound := operator == tk.Add || operator == tk.Sub || operator == tk.Mul || operator == tk.Quo || operator == tk.Mod ||
+                operator == tk.And || operator == tk.Or || operator == tk.Xor;
     return compound && Integer(storage) && Single(value, value.storage) && Integer(value.storage) &&
            value.storage != storage;
 }
@@ -4197,7 +4198,7 @@ SignedConstant :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             exact = ExactStored(checked, storage);
     }
     for (sign in Signs(forest, text, node)) {
-        if (Text(forest, text, Field(forest, sign, syntax.FieldOperator)) == "-") {
+        if (Operator(forest, sign) == tk.Sub) {
             if (!Signed(storage)) {
                 return IntegerLiteralResult.Rejected(Diagnose(forest, sign, document, "Cannot negate an unsigned constant"));
             }
@@ -4228,7 +4229,7 @@ SignCode :: (forest: snapshot.SnapshotNode[], text: string, ops: Ops, node: int,
     signs := Signs(forest, text, node);
     level := length(signs) - 1;
     while (level >= 0) {
-        if (Text(forest, text, Field(forest, signs[level], syntax.FieldOperator)) == "-") {
+        if (Operator(forest, signs[level]) == tk.Sub) {
             code.extend(NegationCode(ops, storage, value, value + 1, at_node));
             value += length(NegationSlots(storage, ops));
         }
@@ -4241,7 +4242,7 @@ SignCode :: (forest: snapshot.SnapshotNode[], text: string, ops: Ops, node: int,
 SignSlots :: (forest: snapshot.SnapshotNode[], text: string, ops: Ops, node: int, storage: int) -> Slot[] {
     slots: Slot[] = [];
     for (sign in Signs(forest, text, node)) {
-        if (Text(forest, text, Field(forest, sign, syntax.FieldOperator)) == "-") {
+        if (Operator(forest, sign) == tk.Sub) {
             slots.extend(NegationSlots(storage, ops));
         }
     }
@@ -4250,7 +4251,7 @@ SignSlots :: (forest: snapshot.SnapshotNode[], text: string, ops: Ops, node: int
 
 // Whether `node` is a literal ParseNumber reads: a number, or `-` on one.
 ParsedLiteral :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    if (Is(forest, node, syntax.UnaryExpression) && Text(forest, text, Field(forest, node, syntax.FieldOperator)) == "-") {
+    if (Is(forest, node, syntax.UnaryExpression) && Operator(forest, node) == tk.Sub) {
         return Is(forest, Field(forest, node, syntax.FieldOperand), syntax.Number);
     }
     return Is(forest, node, syntax.Number);
@@ -4263,8 +4264,8 @@ SignedLiteral :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> i
         if (!Is(forest, at, syntax.UnaryExpression)) {
             return -1;
         }
-        operator := Text(forest, text, Field(forest, at, syntax.FieldOperator));
-        if (operator != "-" && operator != "+") {
+        operator := Operator(forest, at);
+        if (operator != tk.Sub && operator != tk.Add) {
             return -1;
         }
         at = Unparenthesized(forest, Field(forest, at, syntax.FieldOperand));
@@ -4307,8 +4308,8 @@ Folds :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[],
     if (!Floating(storage) && GroupedDecimal(forest, text, node)) {
         return true;
     }
-    operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
-    signed := (operator == "-" || operator == "+") && Is(forest, Field(forest, value, syntax.FieldOperand), syntax.Number);
+    operator := Operator(forest, value);
+    signed := (operator == tk.Sub || operator == tk.Add) && Is(forest, Field(forest, value, syntax.FieldOperand), syntax.Number);
     composite := Is(forest, value, syntax.BinaryExpression) || Is(forest, value, syntax.CallExpression) ||
                  (Is(forest, value, syntax.UnaryExpression) && !signed);
     if (!composite || !ConstantExpression(forest, text, constants, names, package, node)) {
@@ -4359,8 +4360,8 @@ ZeroDivisor :: (forest: snapshot.SnapshotNode[], text: string, document: int, co
     if (!Is(forest, node, syntax.BinaryExpression) && !Is(forest, node, syntax.Assignment)) {
         return false;
     }
-    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
-    if (operator != "/" && operator != "%" && operator != "/=" && operator != "%=") {
+    operator := Operator(forest, node);
+    if (operator != tk.Quo && operator != tk.Mod && operator != tk.QuoEq && operator != tk.ModEq) {
         return false;
     }
     divisor := Field(forest, node, syntax.FieldRight);
@@ -4644,7 +4645,7 @@ FunctionResultAssignStep :: (forest: snapshot.SnapshotNode[], text: string, docu
                              binding: Name, result: Param, value: Value, item: Work, ops: Ops, target: Target,
                              at: Bases, node: snapshot.SnapshotNode) -> Step {
     destination := Field(forest, item.node, syntax.FieldTarget);
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
+    operator := CompoundOperator(Operator(forest, item.node));
     if (item.c == 1 && result.container == 0 && MixedCompoundIntegers(operator, result.storage, value)) {
         return Fail(forest, item.node, document,
                     format_text("Mismatched integer types {} and {}; convert one operand",
@@ -4721,7 +4722,7 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
     next: Work[] = [];
     marks: int[] = [];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
+    operator := CompoundOperator(Operator(forest, item.node));
     if (CharValue(types, value) && item.c == 1) {
         return Fail(forest, item.node, document, "char arithmetic is not supported yet");
     }
@@ -4749,7 +4750,7 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
     }
     if (item.c == 1) {
         // The current field, read in place, combined with the value.
-        op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator))));
+        op := BinaryOp(ops, CompoundOperator(Operator(forest, item.node)));
         if (op < 0 || Comparison(ops, op) || !(Integer(field.storage) || Floating(field.storage)) ||
             !Single(stored, field.storage)) {
             return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
@@ -5655,7 +5656,7 @@ SameFields :: (types: TypeDecl[], members: TypeMember[], left: int, right: int) 
 }
 // The native that combines records for the binary `operator`: -1 for none,
 // -2 for several.
-FindAggregate :: (operators: NumericOperator[], operator: string) -> int {
+FindAggregate :: (operators: NumericOperator[], operator: int) -> int {
     found: int = -1;
     for (candidate in operators) {
         if (candidate.operator == operator && found >= 0) {
@@ -5681,7 +5682,7 @@ AggregateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
-    operator := Text(forest, text, Field(forest, item.node, syntax.FieldOperator));
+    operator := Operator(forest, item.node);
     if (node.kind == syntax.Assignment) {
         operator = CompoundOperator(operator);
     }

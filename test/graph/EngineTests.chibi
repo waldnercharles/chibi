@@ -3,9 +3,8 @@ package graph_tests
 import engine "graph:engine"
 import strings "core:strings"
 
-// The profile options' compile flags and their validation, from
-// test/tools/build_graph.c's debug-optimization cases, which planned 18 graph
-// builds to read the same flags from compile_commands.json.
+// The profile options' compile flags, argument validation and target
+// selection, checked on the engine's functions without running the graph.
 Debug :: (sanitizers: string, frames: bool, optimization: string) -> engine.Profile {
     profile: engine.Profile = {
         compiler: "/unused/clang", cxx_compiler: "/unused/clang++", compiler_id: "Clang", build_type: "Debug",
@@ -103,11 +102,70 @@ ArgumentsAreValidated :: () {
     assert(engine.ProfileOptionError(["--asset-generator-hosts", "/abs/sdk"], "Debug") == "", "absolute hosts");
 }
 
+ReflectionError :: (arguments: string[]) -> string {
+    return engine.ReflectionOptions(arguments).error;
+}
+
+// SDK reflection takes three options and the toolchain definitions Make's
+// SDK consumers pass, and rejects anything else before building.
+ReflectionArgumentsAreValidated :: () {
+    for (option in ["--jobs", "--build", "--libclang-root"]) {
+        invalid := format_text("graph: invalid native reflection option '{0}'", option);
+        assert(ReflectionError([option]) == invalid, "an option without a value");
+        assert(ReflectionError([option, ""]) == invalid, "an option with an empty value");
+    }
+    assert(ReflectionError(["--commands-only", "on"]) == "graph: invalid native reflection option '--commands-only'", "an unknown option");
+    unsupported := "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'";
+    assert(ReflectionError(["--", "-DUNSUPPORTED=ON"]) == unsupported, "an unknown definition");
+    assert(ReflectionError(["--", "-D"]) == "graph: -D requires a native toolchain definition", "a missing definition");
+    assert(ReflectionError(["--", "-DCMAKE_C_COMPILER:FILEPATH="]) == "graph: unsupported native reflection toolchain argument '-DCMAKE_C_COMPILER:FILEPATH='", "an empty definition");
+    assert(ReflectionError(["--", "-DCMAKE_C_COMPILER:FILEPATH=/usr/bin/true", "-DUNSUPPORTED=ON"]) == unsupported, "a typed compiler, then an unknown definition");
+    assert(ReflectionError(["--", "-D", "CMAKE_C_COMPILER:FILEPATH=/usr/bin/true", "-DUNSUPPORTED=ON"]) == unsupported, "a split compiler, then an unknown definition");
+    assert(ReflectionError(["--", "-D", "LIBCLANG_ROOT:PATH=/fixture/llvm root", "-DUNSUPPORTED=ON"]) == unsupported, "a split libclang root, then an unknown definition");
+    assert(ReflectionError(["--", "-D", "UNSUPPORTED=ON"]) == unsupported, "a split unknown definition");
+
+    value := "/fixture/llvm root=value";
+    mapped := engine.NativeToolchainOption(strings.Join(["-DLIBCLANG_ROOT:PATH=", value], ""));
+    assert(length(mapped) == 2 && mapped[0] == "--libclang-root" && mapped[1] == value, "a typed path keeps its value");
+    assert(length(engine.NativeToolchainOption("-DLIBCLANG_ROOT:PATH")) == 0, "a definition without a value");
+
+    // The last definition wins, and an explicit --libclang-root wins over both.
+    reflection := engine.ReflectionOptions(["--build", "/out", "--libclang-root", "/llvm", "--", "-DCMAKE_C_COMPILER=cc",
+                                            "-D", "CMAKE_C_COMPILER:FILEPATH=clang", "-DLIBCLANG_ROOT=/other"]);
+    assert(reflection.error == "", "valid reflection arguments");
+    options := reflection.options;
+    assert(Option(options, "--compiler") == "clang" && Option(options, "--libclang-root") == "/llvm", "the chosen definitions");
+    assert(Option(options, "--build") == "/out" && Option(options, "--profile") == "release" && Option(options, "--target") == "reflect", "the reflection build");
+}
+
+// Naming test_tools and the launcher builds the programs they run, as CMake's
+// add_dependencies does, and no other program.
+NamedProgramsBuildWhatTheyRun :: () {
+    named := ["--commands-only", "on", "--target", "test_tools", "--target", "chibi"];
+    for (program in ["test_tools", "policy_worker", "chibi-compile", "chibi-build-host", "chibi-compiler-host", "chibi"]) {
+        assert(engine.Selected(named, program), "a program a named program runs");
+    }
+    assert(!engine.Selected(named, "test_host"), "another test driver");
+    assert(engine.Selected(["--commands-only", "on"], "test_host"), "no target names every target");
+}
+
+// The value after the first `--name`, as the graph reads options.
+Option :: (options: string[], name: string) -> string {
+    for (i in 0..<length(options) - 1) {
+        if (options[i] == name) {
+            return options[i + 1];
+        }
+    }
+    return "";
+}
+
 // The build host runs this entry; each case stops it on a failed assert.
 pub Run :: () -> int {
     DebugFlagsKeepInstrumentation();
     TestsKeepAssertions();
     DebugOptionsAreValidated();
     ArgumentsAreValidated();
+    ReflectionArgumentsAreValidated();
+    NamedProgramsBuildWhatTheyRun();
     return 0;
 }

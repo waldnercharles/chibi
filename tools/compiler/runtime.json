@@ -3,24 +3,24 @@
   "repository": "waldnercharles/chibi",
   "platforms": {
     "macos-arm64": {
-      "tag": "compiler-runtime-prepared27-7cbab282272fb2420baa4a171b1fd02e47953357",
-      "source_revision": "7cbab282272fb2420baa4a171b1fd02e47953357",
-      "source_tree": "3de7b770836700fe1df4aa40922196a257c29e88",
-      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41189049905",
+      "tag": "compiler-runtime-prepared28-238664e998955d43602fa9d145a4d3fb260c8292",
+      "source_revision": "238664e998955d43602fa9d145a4d3fb260c8292",
+      "source_tree": "c2f0548e0ce2d88a54446aefeaaed85af8d0ff81",
+      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41213015938",
       "max_artifact_bytes": 67108864,
       "asset": "chibi-compiler-host-macos-arm64",
-      "sha256": "b1fee4de8013986e95284e190f0496517d6bee59928b661599c4e6b21b5e23d4",
-      "bytes": 1028592
+      "sha256": "64b9aaf5ddb1220f88e3604753df56def2a5169bde42893601eb01e434a27851",
+      "bytes": 1028416
     },
     "linux-x64": {
-      "tag": "compiler-runtime-prepared27-7cbab282272fb2420baa4a171b1fd02e47953357",
-      "source_revision": "7cbab282272fb2420baa4a171b1fd02e47953357",
-      "source_tree": "3de7b770836700fe1df4aa40922196a257c29e88",
-      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41189049905",
+      "tag": "compiler-runtime-prepared28-238664e998955d43602fa9d145a4d3fb260c8292",
+      "source_revision": "238664e998955d43602fa9d145a4d3fb260c8292",
+      "source_tree": "c2f0548e0ce2d88a54446aefeaaed85af8d0ff81",
+      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/41213015938",
       "max_artifact_bytes": 67108864,
       "asset": "chibi-compiler-host-linux-x64",
-      "sha256": "71967b223a585839843a9196608103f9458cd2bb301a9fef36731b1fbf5e8000",
-      "bytes": 1472776
+      "sha256": "82de24a28eaf81c890a375ec7f3681356fb488dd5d4f295eaac7c97ffbf19d8a",
+      "bytes": 1472632
     },
     "windows-x64": {
       "tag": "compiler-runtime-prepared27-dddc4c491f68b0232f8b654766a8900dd76f37be",

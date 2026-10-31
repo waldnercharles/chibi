@@ -663,6 +663,8 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
         } else if (kind == "index_expression") {
             children.append(Field(forest, node, "object"));
             children.append(Field(forest, node, "index"));
+        } else if (kind == "optional_member_expression") {
+            children.append(Field(forest, node, "object"));
         } else if (kind == "range_expression") {
             children.append(Field(forest, node, "start"));
             children.append(Field(forest, node, "end"));

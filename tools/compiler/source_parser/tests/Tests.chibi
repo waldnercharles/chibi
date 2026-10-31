@@ -44,6 +44,11 @@ AcceptsForceUnwrap :: () {
 }
 
 @test
+AcceptsOptionalMember :: () {
+    Accepts("package p\nF :: (a: P?) -> int {\n    return a?.b?.c ?? 0;\n}\n");
+}
+
+@test
 KeepsNotAndNotEqualApart :: () {
     Accepts("package p\nF :: (a: bool, b: bool, c: int) -> bool {\n    return !a && !b || c != 1;\n}\n");
 }

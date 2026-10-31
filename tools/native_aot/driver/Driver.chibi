@@ -312,7 +312,7 @@ StartDynamic :: (triple: string, context: bool) -> string {
         "  call void @abort()\n",
         "  unreachable\n",
         "}\n",
-        "@chibi_context = internal global { ptr, ptr, ptr, ptr } ",
+        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
         "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
         "define i32 @main() {\n",
         "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",

@@ -787,8 +787,13 @@ A call through a null address traps. A foreign function may return a function ty
 to a function type without a cast, which is how one `dlsym` declaration serves
 every signature. The parameters and result follow the foreign rules above. A
 runtime address cannot yet be passed to an authored function's `fn` parameter;
-call it where the local is. An authored function cannot yet be turned into a
-function value for C to call.
+call it where the local is. Passing an authored function by name where a foreign function takes an `fn`
+parameter gives C an adapter the compiler generates for it, at no cost to the
+call: `thrd_create(thread, Worker, 41)`. The function's signature must match the
+parameter's, in the foreign types above. The adapter runs the function with the
+program's single runtime context, so a function that C calls on another thread
+must not allocate, assert or fail while another thread can; a C callback is
+plain data in, plain data out.
 
 Planned after that: `@variadic` with the number of fixed arguments for
 variadic C functions, foreign functions without a result, and data symbols.

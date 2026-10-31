@@ -915,7 +915,7 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_compiler_json") {
         return [
-            "private/compiler-json", "public/json", "public/native_capabilities", "public/capabilities",
+            "private/compiler-json", "public/native_capabilities", "public/capabilities",
             "public/types", "public/support", "public/execution_contract"
         ];
     }

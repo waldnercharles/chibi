@@ -10,7 +10,7 @@ run it with `chibi`. Game projects add scenes, components and resources.
 
 ## Install
 
-Native builds need CMake, a C23 compiler and libclang for reflection.
+Native builds need a C23 compiler and libclang for reflection.
 Run these commands from the engine checkout:
 
 ```sh

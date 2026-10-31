@@ -205,6 +205,8 @@ pub Poke: int : 54;
 // @chibi_context its start module defines, and a failure the function records
 // waits there for the start module to report; C gets the result's zero.
 pub FunctionAddress: int : 55;
+// One past the last instruction; bump it with each new one.
+pub InstructionCount: int : 56;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -627,7 +629,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > FunctionAddress) {
+        if (item.op < Constant || item.op >= InstructionCount) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -2643,9 +2645,10 @@ HostTable :: (symbol: string, type: string, results: string[]) -> string {
 // as a program in a language with foreign calls only, which cannot walk a
 // manifest. `chibi_host_call_<Function>` calls a function whose types
 // HostCallable admits, in a library that calls no runtime. The state accessors
-// of a library with retained states are `chibi_host_retained_count`, `_type`
-// and `_hash` (NameHash of the name) by index, and `_get` and `_set`, which move
-// one state as its word, `_set` giving 1 for an index that names a state.
+// of a library are `chibi_host_retained_count`, `_type` and `_hash` (NameHash
+// of the name) by index, and `_get` and `_set`, which move one state as its
+// word, `_set` giving 1 for an index that names a state; a library without
+// states has none.
 HostSymbols :: (text: string, names: string[], functions: Function[], parameters: int[], code: Instruction[],
                 texts: string[], runtime: bool) -> string {
     out := text;
@@ -2666,9 +2669,6 @@ HostSymbols :: (text: string, names: string[], functions: Function[], parameters
                           Symbol(function, NoEntry), strings.Join(passed, ", "), TypeName(shape.result));
     }
     states := RetainedStates(code);
-    if (length(states) == 0) {
-        return out;
-    }
     types: string[] = [];
     hashes: string[] = [];
     for (item in states) {
@@ -2679,6 +2679,10 @@ HostSymbols :: (text: string, names: string[], functions: Function[], parameters
     out = format_text("{}\ndefine i32 @chibi_host_retained_count() #0 {\nentry:\n  ret i32 {}\n}\n", out, count);
     out = format_text("{}\n{}\n{}", out, HostTable("chibi_host_retained_type", "i32", types),
                       HostTable("chibi_host_retained_hash", "i64", hashes));
+    if (count == 0) {
+        out = format_text("{}\ndefine i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  ret i64 0\n}\n", out);
+        return format_text("{}\ndefine i32 @chibi_host_retained_set(i32 %i, i64 %v) #0 {\nentry:\n  ret i32 0\n}\n", out);
+    }
     out = format_text("{}\ndefine i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  %words = alloca [{} x i64]\n", out, count);
     out = format_text("{}  call void @chibi_scalar.retained.get(ptr null, ptr null, ptr %words)\n  %ok = icmp ult i32 %i, {}\n", out, count);
     out = format_text("{}  br i1 %ok, label %read, label %none\nread:\n  %at = getelementptr inbounds i64, ptr %words, i32 %i\n", out);

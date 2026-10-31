@@ -638,7 +638,11 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     if (target < 0) {
         return Failed(partial, "canonical target/layout admission", 2);
     }
+    shared := linkage == "shared";
     program := Join([partial, "/", Program(target)]);
+    if (shared) {
+        program = Join([partial, "/generation.so"]);
+    }
     libraries := LinkedLibraries(text);
     imported := SystemLibraries(text);
     if (target != 2 && length(imported) > 0) {
@@ -653,6 +657,9 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
                 return Failed(partial, Join(["invalid symbol name ", symbol, " imported from ", name]), 2);
             }
         }
+    }
+    if (shared && (!executable || target != 0)) {
+        return Failed(partial, "a shared library is a Linux x86-64 link", 2);
     }
     dynamic := executable && linkage == "dynamic" && target == 0;
     // A program that allocates takes the runtime context, which only a dynamic
@@ -697,6 +704,9 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
             }
         }
         link.extend(libraries);
+    }
+    if (shared) {
+        link = [linker, "-flavor", "gnu", "-shared", "--gc-sections", object, "-o", program];
     }
     status = build.run(compile);
     if (status != 0) {
@@ -759,11 +769,13 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     start_hash := "";
     program_hash := "";
     if (executable) {
-        start_hash = build.hash_file(start_object);
+        if (!shared) {
+            start_hash = build.hash_file(start_object);
+        }
         program_hash = build.hash_file(program);
     }
     if (source_hash != build.hash_text(text) || module_hash == "" || object_hash == "" ||
-        (executable && (start_hash == "" || program_hash == ""))) {
+        (executable && ((start_hash == "" && !shared) || program_hash == ""))) {
         return Failed(partial, "output identity", 1);
     }
     kind := "object";
@@ -781,6 +793,9 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         kind_of_link := "static";
         if (dynamic) {
             kind_of_link = Join(["dynamic ", libc[0]]);
+        }
+        if (shared) {
+            kind_of_link = "shared";
         }
         receipt = Join([receipt, "linkage ", kind_of_link, "\nstart-object-sha256 ", start_hash, "\nlinker ", linker,
                         "\nlinker-sha256 ", linker_hash, "\nprogram-sha256 ", program_hash, "\n",
@@ -1124,12 +1139,13 @@ pub Native :: () -> int {
     }
     linkage := "dynamic";
     if (length(arguments) == 9) {
-        if (arguments[8] != "static") {
-            build.report("native: the optional last argument is static");
+        if (arguments[8] != "static" && arguments[8] != "shared") {
+            build.report("native: the optional last argument is static or shared");
             return 2;
         }
-        linkage = "static";
+        linkage = arguments[8];
     }
+    shared := linkage == "shared";
     host := Tool(arguments[0]);
     compiler := arguments[1];
     core := arguments[2];
@@ -1150,6 +1166,10 @@ pub Native :: () -> int {
     }
     if (debug == "lines" && destination != 0) {
         build.report("native: line tables are Linux x86-64 only so far");
+        return 2;
+    }
+    if (shared && (destination != 0 || debug == "lines")) {
+        build.report("native: a shared library is Linux x86-64 and has no line tables yet");
         return 2;
     }
     opt := Tool(Join([arguments[4], "/opt"]));
@@ -1232,6 +1252,9 @@ pub Native :: () -> int {
     folder := Join([root, "/build/native"]);
     output := Join([folder, "/O", mode, "-", strings.Slice(key, 0, 16)]);
     program := Program(destination);
+    if (shared) {
+        program = "generation.so";
+    }
     if (build.file_kind(output) != "") {
         problem := Incomplete(output, program, opt, llc, lld);
         if (problem != "") {
@@ -1303,9 +1326,16 @@ pub Native :: () -> int {
         build.report(Join(["native: cannot write ", input]));
         return Finish(work, 1);
     }
+    // A library source takes the rows alone, and its rejection is its own.
+    rejection := "0x6ae396cf0d691de";
+    if (shared) {
+        callable = "0xe37e475ee6152694";
+        input = rows;
+        rejection = "0x33c99518aadf27a3";
+    }
     if (Invoke(host, emitter, callable, input, module, "120000") != 0) {
         diagnostic := Join([work, "/diagnostic.txt"]);
-        if (Invoke(host, emitter, "0x6ae396cf0d691de", rows, diagnostic, "120000") != 0) {
+        if (Invoke(host, emitter, rejection, rows, diagnostic, "120000") != 0) {
             build.report(Join(["native: ", source, " has no native module: ", build.last_stderr()]));
             return Finish(work, 1);
         }
@@ -1324,6 +1354,117 @@ pub Native :: () -> int {
         build.report(Join(["native: ", output, "/", program]));
     }
     return Finish(work, status);
+}
+
+// The path a `chibi build --native` printed, as "native: PATH", with any
+// "is up to date" after it, or "".
+Printed :: (report: string) -> string {
+    for (line in strings.SplitLines(report)) {
+        if (strings.HasPrefix(line, "native: /")) {
+            path := strings.Slice(line, 8, strings.ByteLength(line) - 8);
+            marker := " is up to date";
+            if (strings.HasSuffix(path, marker)) {
+                path = strings.Slice(path, 0, strings.ByteLength(path) - strings.ByteLength(marker));
+            }
+            return path;
+        }
+    }
+    return "";
+}
+
+// `chibi build --native` of `folder` with `flags` through the launcher, the
+// path it built or "" after reporting why not.
+BuiltBy :: (chibi: string, flags: string[], mode: string, target: string, llvm: string, folder: string) -> string {
+    command := [chibi, "build", "--native", Join(["-O", mode]), "--target", target, "--llvm", llvm];
+    command.extend(flags);
+    command.append(folder);
+    if (build.probe(command) != 0) {
+        build.report(build.last_stderr());
+        return "";
+    }
+    return Printed(build.last_stderr());
+}
+
+// `chibi run --native`: the loop host (Host.chibi) runs generation after
+// generation of the library source in ROOT, which it never restarts. The host
+// is built from HOST_SOURCE, started in WORK with the first generation as
+// live-0.so, and its exit status is the result. With `watch`, each saved
+// change to the source is built as the next generation and published to the
+// host as next.so, which swaps it in between two Frames, keeping the
+// retained states the generations share. A change that does not build is
+// reported and the running generation continues. The arguments are the
+// launcher, HOST_SOURCE, ROOT, the LLVM folder, 0|2, the target, WORK and
+// watch|once, all absolute paths.
+pub Watch :: () -> int {
+    arguments := build.arguments();
+    if (length(arguments) != 8) {
+        build.report("usage: CHIBI HOST_SOURCE ROOT LLVM 0|2 TARGET WORK watch|once (absolute paths)");
+        return 2;
+    }
+    chibi := arguments[0];
+    root := arguments[2];
+    work := arguments[6];
+    watching := arguments[7] == "watch";
+    source := "";
+    for (name in build.list_directory(root)) {
+        if (strings.HasSuffix(name, ".chibi") && build.file_kind(Join([root, "/", name])) == "file") {
+            if (source != "") {
+                build.report(Join(["native: ", root, " must hold exactly one .chibi source"]));
+                return 2;
+            }
+            source = Join([root, "/", name]);
+        }
+    }
+    if (source == "" || !Path(chibi) || !Path(arguments[1]) || !Path(work) || (arguments[7] != "watch" && arguments[7] != "once")) {
+        build.report("native: a launcher, a host source, a folder holding one library source, a work folder, and watch or once are required");
+        return 2;
+    }
+    host_folder := Join([work, "/host"]);
+    if (!build.make_directory(Join([root, "/build"])) || !build.make_directory(Join([root, "/build/native"])) ||
+        !build.make_directory(work) || !build.make_directory(host_folder)) {
+        build.report(Join(["native: cannot make ", work]));
+        return 1;
+    }
+    for (stale in ["live-0.so", "live-1.so", "next.so", "pending.so", "rejected.so", "host/Main.chibi"]) {
+        build.remove(Join([work, "/", stale]));
+    }
+    if (!build.copy_file(arguments[1], Join([host_folder, "/Main.chibi"]))) {
+        build.report("native: cannot copy the host source");
+        return 1;
+    }
+    program := BuiltBy(chibi, [], arguments[4], arguments[5], arguments[3], host_folder);
+    generation := BuiltBy(chibi, ["--shared"], arguments[4], arguments[5], arguments[3], root);
+    if (program == "" || generation == "" || !build.copy_file(generation, Join([work, "/live-0.so"]))) {
+        return 1;
+    }
+    process := build.spawn(["/bin/sh", "-c", Join(["cd '", work, "' && exec '", program, "'"])]);
+    stamp := build.file_stamp(source);
+    while (true) {
+        status := build.wait_for(process, 250);
+        if (status != 65536) {
+            return status;
+        }
+        changed := build.file_stamp(source);
+        if (!watching || changed == stamp) {
+            continue;
+        }
+        stamp = changed;
+        built := BuiltBy(chibi, ["--shared"], arguments[4], arguments[5], arguments[3], root);
+        if (built == "") {
+            continue;
+        }
+        pending := Join([work, "/pending.so"]);
+        build.remove(pending);
+        if (!build.copy_file(built, pending)) {
+            build.report("native: cannot stage the new generation");
+            continue;
+        }
+        // The host takes one generation at a time.
+        while (build.file_kind(Join([work, "/next.so"])) != "" && build.wait_for(process, 50) == 65536) {
+        }
+        build.rename(pending, Join([work, "/next.so"]));
+    }
+    return 0;
 }
 
 // Whether `value` is a byte of an identifier, as the grammar spells one.

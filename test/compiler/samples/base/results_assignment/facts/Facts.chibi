@@ -1,4 +1,0 @@
-package facts
-One :: (s: string) -> bool { d := compiler_json_string(s); d = compiler_json_string(s); return d.valid; }
-
-// error: 2:60: assigning a native's several results is not supported yet

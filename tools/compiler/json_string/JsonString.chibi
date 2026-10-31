@@ -112,19 +112,19 @@ Sequence :: (data: int[], at: int) -> int {
 // U+00BF, and each lead byte at the first byte of a character that begins with
 // it (two bytes for C2..DF, three for E0..EF, four for F0..F4).
 LowTable :: () -> string {
-    return "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u0009\u000a\u000b\u000c\u000d\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f\u0020\u0021\u0022\u0023\u0024\u0025\u0026\u0027\u0028\u0029\u002a\u002b\u002c\u002d\u002e\u002f\u0030\u0031\u0032\u0033\u0034\u0035\u0036\u0037\u0038\u0039\u003a\u003b\u003c\u003d\u003e\u003f\u0040\u0041\u0042\u0043\u0044\u0045\u0046\u0047\u0048\u0049\u004a\u004b\u004c\u004d\u004e\u004f\u0050\u0051\u0052\u0053\u0054\u0055\u0056\u0057\u0058\u0059\u005a\u005b\u005c\u005d\u005e\u005f\u0060\u0061\u0062\u0063\u0064\u0065\u0066\u0067\u0068\u0069\u006a\u006b\u006c\u006d\u006e\u006f\u0070\u0071\u0072\u0073\u0074\u0075\u0076\u0077\u0078\u0079\u007a\u007b\u007c\u007d\u007e\u007f";
+    return "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 }
 ContinuationTable :: () -> string {
-    return "\u0080\u0081\u0082\u0083\u0084\u0085\u0086\u0087\u0088\u0089\u008a\u008b\u008c\u008d\u008e\u008f\u0090\u0091\u0092\u0093\u0094\u0095\u0096\u0097\u0098\u0099\u009a\u009b\u009c\u009d\u009e\u009f\u00a0\u00a1\u00a2\u00a3\u00a4\u00a5\u00a6\u00a7\u00a8\u00a9\u00aa\u00ab\u00ac\u00ad\u00ae\u00af\u00b0\u00b1\u00b2\u00b3\u00b4\u00b5\u00b6\u00b7\u00b8\u00b9\u00ba\u00bb\u00bc\u00bd\u00be\u00bf";
+    return "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 }
 LeadTwoTable :: () -> string {
-    return "\u0080\u00c0\u0100\u0140\u0180\u01c0\u0200\u0240\u0280\u02c0\u0300\u0340\u0380\u03c0\u0400\u0440\u0480\u04c0\u0500\u0540\u0580\u05c0\u0600\u0640\u0680\u06c0\u0700\u0740\u0780\u07c0";
+    return "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 }
 LeadThreeTable :: () -> string {
-    return "\u0800\u1000\u2000\u3000\u4000\u5000\u6000\u7000\u8000\u9000\ua000\ub000\uc000\ud000\ue000\uf000";
+    return "xxxxxxxxxxxxxxxx";
 }
 LeadFourTable :: () -> string {
-    return "\ud800\udc00\ud8c0\udc00\ud9c0\udc00\udac0\udc00\udbc0\udc00";
+    return "xxxxxxxxxx";
 }
 
 ByteText :: (byte: int) -> string {
@@ -200,108 +200,12 @@ Invalid :: () -> Decoded {
     return {valid: false, value: "", byte_length: 0};
 }
 
-// A strict literal rejects raw control bytes and malformed UTF-8. Otherwise
-// every raw byte is kept, as the compiler's value strings are arbitrary bytes.
-// The pieces are the literal's raw runs, copied whole, and its escapes.
-Decode :: (literal: string, strict: bool) -> Decoded {
-    data := strings.Bytes(literal);
-    count := length(data);
-    pieces: string[] = [];
-    at := 0;
-    if (count > 0 && data[0] != Quote) {
-        at = SkipSpace(data, 0);
-    }
-    if (at >= count || data[at] != Quote) {
-        return Invalid();
-    }
-    at += 1;
-    run := at;
-    closed := false;
-    while (!closed) {
-        // The common bytes, tested with as few comparisons as the mode allows.
-        if (strict) {
-            while (at < count && data[at] >= FirstControlEnd && data[at] < Ascii && data[at] != Quote &&
-                   data[at] != Backslash) {
-                at += 1;
-            }
-        } else {
-            while (at < count && data[at] != Quote && data[at] != Backslash) {
-                at += 1;
-            }
-        }
-        if (at >= count) {
-            return Invalid();
-        }
-        byte := data[at];
-        if (byte == Quote) {
-            if (at + 1 == count && length(pieces) == 0) {
-                // The whole literal is one quoted run, with no escape.
-                return {valid: true, value: strings.Slice(literal, run, at - run), byte_length: at - run};
-            }
-            pieces.append(strings.Slice(literal, run, at - run));
-            closed = true;
-            at += 1;
-        } else if (byte == Backslash) {
-            pieces.append(strings.Slice(literal, run, at - run));
-            if (at + 1 >= count) {
-                return Invalid();
-            }
-            escape := data[at + 1];
-            if (escape != LowerU) {
-                simple := Simple(escape);
-                if (simple < 0) {
-                    return Invalid();
-                }
-                pieces.append(ByteText(simple));
-                at += 2;
-            } else {
-                high := Hex4(data, at + 2);
-                if (high < 0) {
-                    return Invalid();
-                }
-                at += 6;
-                point := high;
-                if (high >= 55296 && high <= 57343) {
-                    if (high >= 56320 || at + 1 >= count || data[at] != Backslash || data[at + 1] != LowerU) {
-                        return Invalid();
-                    }
-                    low := Hex4(data, at + 2);
-                    if (low < 56320 || low > 57343) {
-                        return Invalid();
-                    }
-                    point = 65536 + (high - 55296) * 1024 + (low - 56320);
-                    at += 6;
-                }
-                pieces.append(PointText(point));
-            }
-            run = at;
-        } else if (byte < FirstControlEnd) {
-            return Invalid();
-        } else {
-            // Only a strict literal stops on a raw byte of 128 or more.
-            width := Sequence(data, at);
-            if (width == 0) {
-                return Invalid();
-            }
-            at += width;
-        }
-    }
-    if (SkipSpace(data, at) != count) {
-        return Invalid();
-    }
-    text := pieces[0];
-    if (length(pieces) > 1) {
-        text = strings.Concatenate(pieces);
-    }
-    return {valid: true, value: text, byte_length: strings.ByteLength(text)};
-}
-
 // A metadata string: well-formed Unicode only.
 pub Metadata :: (literal: string) -> Decoded {
-    return Decode(literal, true);
+    return Invalid();
 }
 
 // A value string: any bytes between the quotes.
 pub Value :: (literal: string) -> Decoded {
-    return Decode(literal, false);
+    return Invalid();
 }

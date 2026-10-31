@@ -1,5 +1,7 @@
 package facts
 
+import testing "core:testing"
+
 // arrays
 @test
 Calls :: () {
@@ -44,9 +46,9 @@ Records :: () {
     assert(Nested([c, d, e]) == 57, "Nested");
 }
 
-// fails: array index out of range
 @test
 PickPastTheEndFails :: () {
     xs: int[] = [1, 2];
+    testing.ExpectFailure(testing.Failure.IndexOutOfRange);
     Pick(xs, 2);
 }

@@ -819,12 +819,40 @@ Example :: library {
 }
 ```
 
-Compile-time execution supports scalar and type values, authored calls, locals,
-assignment, `if` and `while`. It does not support arrays, `for`, closures or
-native calls. Each evaluation has a 65,536-step budget and a 128-call limit.
+Compile-time execution supports integer and bool values, arrays of them,
+authored calls, locals, assignment, `if`, `while`, `for`, `break`, `continue`
+and `return`. It does not support records, floats, closures or native calls.
+Each evaluation has a 65,536-step budget and a 128-call limit.
 A constant initializer may call such a function, `Size :: Factorial(5)`, and
 may combine calls with arithmetic and conversions; a `when` condition may not
 call functions yet.
+
+Arrays are local values: an array literal, `values: int[] = []`, `append`,
+`length`, `values[i]` to read, and `values[i] = x` or `values[i] += x` to
+change an element. Assigning or passing an array copies it. A function may
+take and return arrays, and an index outside the array is a compilation error.
+`for i in 0..<n`, `for i in 0..n`, `for < i in ...` (reverse), `for value in
+array` and `for index, value in array` loop over a range or an array; loops
+iterate by value, so a `for` over a `ref` is rejected.
+
+```chibi
+Example :: library {
+    Squares :: (count: int) -> int[] {
+        values: int[] = []
+        for i in 0..<count { values.append(i * i) }
+        return values
+    }
+
+    Sum :: (values: int[]) -> int {
+        total := 0
+        for value in values { total += value }
+        return total
+    }
+
+    Total :: Sum(Squares(5))  // 30
+    Third :: Squares(6)[3]    // 9
+}
+```
 
 ### Choosing declarations per platform
 

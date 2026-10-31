@@ -124,7 +124,7 @@ pub FileSize :: (path: string) -> int {
 // The file's bytes, including NUL and malformed UTF-8; no bytes when it cannot
 // be read (FileSize tells that from an empty file). Opens through stdio, which
 // takes no variadic arguments, so it is the same call on every platform.
-pub ReadFile :: (path: string) -> u8[] {
+pub ReadBytes :: (path: string) -> u8[] {
     buffer: u8[] = [];
     stream := fopen(path, "rb");
     if stream == 0 {
@@ -146,7 +146,7 @@ pub ReadFile :: (path: string) -> u8[] {
 }
 
 // Replaces the file with the bytes; false when it cannot be written whole.
-pub WriteFile :: (path: string, data: u8[]) -> bool {
+pub WriteBytes :: (path: string, data: u8[]) -> bool {
     stream := fopen(path, "wb");
     if stream == 0 {
         return false;

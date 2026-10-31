@@ -1,0 +1,255 @@
+package native_link
+
+// The start modules: the LLVM IR of the shim that starts a native program,
+// calls its entry `chibi_scalar() -> i32` (`chibi_scalar(ptr)` with a runtime
+// context when `context` is set) and makes the result the exit status. Link it
+// as one more object beside the program's own.
+//
+// The shim keeps the process arguments where core:os reads them: `@chibi_argc`
+// (i32) and `@chibi_argv` (ptr to the argument strings) on Linux and macOS, and
+// on Windows `@chibi_command_line`, the UTF-16 string GetCommandLineW gives.
+// They are set before the entry runs.
+//
+// A context's allocate is libc's calloc (HeapAlloc on Windows); its index
+// failure aborts; formatting text is not available to a program. A failed
+// assert ends the entry early with its failure in the context, which the shim
+// reports on stderr before it exits with status 134.
+
+WindowsPrelude :: () -> string {
+    return Join([
+        "target triple = \"x86_64-pc-windows-msvc\"\n",
+        "module asm \".text\"\n",
+        "module asm \".globl __chkstk\"\n",
+        "module asm \"__chkstk:\"\n",
+        "module asm \"pushq %rcx\"\n",
+        "module asm \"pushq %rax\"\n",
+        "module asm \"cmpq $0x1000, %rax\"\n",
+        "module asm \"leaq 24(%rsp), %rcx\"\n",
+        "module asm \"jb 1f\"\n",
+        "module asm \"2:\"\n",
+        "module asm \"subq $0x1000, %rcx\"\n",
+        "module asm \"testq %rcx, (%rcx)\"\n",
+        "module asm \"subq $0x1000, %rax\"\n",
+        "module asm \"cmpq $0x1000, %rax\"\n",
+        "module asm \"ja 2b\"\n",
+        "module asm \"1:\"\n",
+        "module asm \"subq %rax, %rcx\"\n",
+        "module asm \"testq %rcx, (%rcx)\"\n",
+        "module asm \"popq %rax\"\n",
+        "module asm \"popq %rcx\"\n",
+        "module asm \"retq\"\n",
+        "@_fltused = dso_local global i32 0\n",
+        "declare dllimport void @ExitProcess(i32) noreturn\n",
+        "declare dllimport ptr @GetCommandLineW()\n",
+        "@chibi_command_line = dso_local global ptr null\n"
+    ]);
+}
+
+WindowsStart :: () -> string {
+    return Join([
+        WindowsPrelude(),
+        "declare i32 @chibi_scalar()\n",
+        "define void @mainCRTStartup() {\n",
+        "  %line = call ptr @GetCommandLineW()\n",
+        "  store ptr %line, ptr @chibi_command_line\n",
+        "  %status = call i32 @chibi_scalar()\n",
+        "  call void @ExitProcess(i32 %status)\n",
+        "  unreachable\n",
+        "}\n"
+    ]);
+}
+
+WindowsContextStart :: () -> string {
+    return Join([
+        WindowsPrelude(),
+        "declare dllimport ptr @GetProcessHeap()\n",
+        "declare dllimport ptr @HeapAlloc(ptr, i32, i64)\n",
+        "declare dllimport ptr @GetStdHandle(i32)\n",
+        "declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n",
+        "declare i32 @chibi_scalar(ptr)\n",
+        "@chibi_report_head = private unnamed_addr constant [29 x i8] c\"assertion failed in function \"\n",
+        "@chibi_report_from = private unnamed_addr constant [17 x i8] c\" at source bytes \"\n",
+        "@chibi_report_to = private unnamed_addr constant [4 x i8] c\" to \"\n",
+        "@chibi_report_end = private unnamed_addr constant [1 x i8] c\"\\0A\"\n",
+        "define internal void @chibi_format_text(ptr %ctx, ptr %values, i32 %count, ptr %result) {\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
+        "  %heap = call ptr @GetProcessHeap()\n",
+        "  %memory = call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)\n",
+        "  ret ptr %memory\n",
+        "}\n",
+        "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal void @chibi_write(ptr %bytes, i32 %count) {\n",
+        "  %error = call ptr @GetStdHandle(i32 -12)\n",
+        "  %written = alloca i32\n",
+        "  %ignored = call i32 @WriteFile(ptr %error, ptr %bytes, i32 %count, ptr %written, ptr null)\n",
+        "  ret void\n",
+        "}\n",
+        "define internal void @chibi_write_decimal(i64 %value) {\n",
+        "entry:\n",
+        "  %buffer = alloca [20 x i8]\n",
+        "  br label %loop\n",
+        "loop:\n",
+        "  %rest = phi i64 [ %value, %entry ], [ %next, %loop ]\n",
+        "  %at = phi i32 [ 20, %entry ], [ %back, %loop ]\n",
+        "  %digit = urem i64 %rest, 10\n",
+        "  %character = add i64 %digit, 48\n",
+        "  %byte = trunc i64 %character to i8\n",
+        "  %back = sub i32 %at, 1\n",
+        "  %slot = getelementptr inbounds [20 x i8], ptr %buffer, i32 0, i32 %back\n",
+        "  store i8 %byte, ptr %slot\n",
+        "  %next = udiv i64 %rest, 10\n",
+        "  %more = icmp ne i64 %next, 0\n",
+        "  br i1 %more, label %loop, label %done\n",
+        "done:\n",
+        "  %first = getelementptr inbounds [20 x i8], ptr %buffer, i32 0, i32 %back\n",
+        "  %count = sub i32 20, %back\n",
+        "  call void @chibi_write(ptr %first, i32 %count)\n",
+        "  ret void\n",
+        "}\n",
+        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
+        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
+        "define void @mainCRTStartup() {\n",
+        "  %line = call ptr @GetCommandLineW()\n",
+        "  store ptr %line, ptr @chibi_command_line\n",
+        "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
+        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
+        "  %failure = load ptr, ptr %failure.at\n",
+        "  %failed = icmp ne ptr %failure, null\n",
+        "  br i1 %failed, label %report, label %done\n",
+        "report:\n",
+        "  %function = load i64, ptr %failure\n",
+        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
+        "  %start = load i32, ptr %start.at\n",
+        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
+        "  %end = load i32, ptr %end.at\n",
+        "  %start.wide = zext i32 %start to i64\n",
+        "  %end.wide = zext i32 %end to i64\n",
+        "  call void @chibi_write(ptr @chibi_report_head, i32 29)\n",
+        "  call void @chibi_write_decimal(i64 %function)\n",
+        "  call void @chibi_write(ptr @chibi_report_from, i32 17)\n",
+        "  call void @chibi_write_decimal(i64 %start.wide)\n",
+        "  call void @chibi_write(ptr @chibi_report_to, i32 4)\n",
+        "  call void @chibi_write_decimal(i64 %end.wide)\n",
+        "  call void @chibi_write(ptr @chibi_report_end, i32 1)\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "done:\n",
+        "  call void @ExitProcess(i32 %status)\n",
+        "  unreachable\n",
+        "}\n"
+    ]);
+}
+
+LinuxStart :: () -> string {
+    return Join([
+        "target triple = \"x86_64-unknown-linux-gnu\"\n",
+        "module asm \".text\"\n",
+        "module asm \".globl _start\"\n",
+        "module asm \".type _start, @function\"\n",
+        "module asm \"_start:\"\n",
+        "module asm \"xorl %ebp, %ebp\"\n",
+        "module asm \"movq (%rsp), %rax\"\n",
+        "module asm \"movl %eax, chibi_argc(%rip)\"\n",
+        "module asm \"leaq 8(%rsp), %rax\"\n",
+        "module asm \"movq %rax, chibi_argv(%rip)\"\n",
+        "module asm \"andq $-16, %rsp\"\n",
+        "module asm \"callq chibi_scalar\"\n",
+        "module asm \"movl %eax, %edi\"\n",
+        "module asm \"movl $231, %eax\"\n",
+        "module asm \"syscall\"\n",
+        "module asm \"ud2\"\n",
+        "@chibi_argc = dso_local global i32 0\n",
+        "@chibi_argv = dso_local global ptr null\n",
+        "declare i32 @chibi_scalar()\n"
+    ]);
+}
+
+DynamicStart :: (triple: string, context: bool) -> string {
+    if (!context) {
+        return Join([
+            "target triple = \"", triple, "\"\n",
+            "declare i32 @chibi_scalar()\n",
+            "@chibi_argc = dso_local global i32 0\n",
+            "@chibi_argv = dso_local global ptr null\n",
+            "define i32 @main(i32 %argc, ptr %argv) {\n",
+            "  store i32 %argc, ptr @chibi_argc\n",
+            "  store ptr %argv, ptr @chibi_argv\n",
+            "  %status = call i32 @chibi_scalar()\n",
+            "  ret i32 %status\n",
+            "}\n"
+        ]);
+    }
+    return Join([
+        "target triple = \"", triple, "\"\n",
+        "declare ptr @calloc(i64, i64)\n",
+        "declare void @abort() noreturn\n",
+        "declare i32 @dprintf(i32, ptr, ...)\n",
+        "@chibi_report = private unnamed_addr constant [59 x i8] ",
+        "c\"assertion failed in function %lu at source bytes %d to %d\\0A\\00\"\n",
+        "declare i32 @chibi_scalar(ptr)\n",
+        "define internal void @chibi_format_text(ptr %ctx, ptr %values, i32 %count, ptr %result) {\n",
+        "  call void @abort()\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
+        "  %memory = call ptr @calloc(i64 1, i64 %size)\n",
+        "  ret ptr %memory\n",
+        "}\n",
+        "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
+        "  call void @abort()\n",
+        "  unreachable\n",
+        "}\n",
+        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
+        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
+        "@chibi_argc = dso_local global i32 0\n",
+        "@chibi_argv = dso_local global ptr null\n",
+        "define i32 @main(i32 %argc, ptr %argv) {\n",
+        "  store i32 %argc, ptr @chibi_argc\n",
+        "  store ptr %argv, ptr @chibi_argv\n",
+        "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
+        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
+        "  %failure = load ptr, ptr %failure.at\n",
+        "  %failed = icmp ne ptr %failure, null\n",
+        "  br i1 %failed, label %report, label %done\n",
+        "report:\n",
+        "  %function = load i64, ptr %failure\n",
+        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
+        "  %start = load i32, ptr %start.at\n",
+        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
+        "  %end = load i32, ptr %end.at\n",
+        "  call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @chibi_report, i64 %function, i32 %start, i32 %end)\n",
+        "  ret i32 134\n",
+        "done:\n",
+        "  ret i32 %status\n",
+        "}\n"
+    ]);
+}
+
+// The start module for the triple. A static Linux program has no C library, so
+// it takes no context: "" for that combination and for a triple this link step
+// does not know.
+pub Start :: (triple: string, static: bool, context: bool) -> string {
+    target := TargetOf(triple);
+    if (target == WindowsX64 && context) {
+        return WindowsContextStart();
+    }
+    if (target == WindowsX64) {
+        return WindowsStart();
+    }
+    if (target == LinuxX64 && static && context) {
+        return "";
+    }
+    if (target == LinuxX64 && static) {
+        return LinuxStart();
+    }
+    if (target < 0) {
+        return "";
+    }
+    return DynamicStart(triple, context);
+}

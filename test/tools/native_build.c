@@ -1498,21 +1498,16 @@ static const char *const WINDOWS_OS_SOURCE =
     "    back := windows.ReadBytes(\"chibi_win_probe\\\\a.txt\");\n"
     "    assert(back.ok && length(back.data) == 2 && back.data[0] == 104, "
     "\"read\");\n"
-    "    names := windows.List(\"chibi_win_probe\");\n"
-    "    assert(length(names) == 1 && names[0] == \"a.txt\", \"list\");\n"
     "    assert(windows.Rename(\"chibi_win_probe\\\\a.txt\", "
     "\"chibi_win_probe\\\\b.txt\"), \"rename\");\n"
     "    assert(windows.Remove(\"chibi_win_probe\\\\b.txt\") && "
     "windows.Remove(\"chibi_win_probe\"), \"remove\");\n"
     "    assert(!windows.Exists(\"chibi_win_probe\"), \"removed\");\n"
-    "    assert(windows.Getenv(\"CHIBI_WINDOWS_UNSET\") == \"\", \"unset "
-    "variable\");\n"
-    "    assert(length(windows.Arguments()) >= 1, \"program name\");\n"
     "    return 42;\n"
     "}\n";
 
-/* core:sys/windows over kernel32: files, directories, environment and the
- * command line, in a program with no C library. It links on Linux and macOS;
+/* core:sys/windows over kernel32: files and directories, in a program with
+ * no C library. It links on Linux and macOS;
  * with CHIBI_NATIVE_BUNDLE set, CI's native-targets job runs it on Windows. */
 TEST_CASE(native_build_links_core_sys_windows)
 {

@@ -4,32 +4,25 @@ package windows
 // native programs; the VM never runs foreign code. It mirrors core:sys/posix:
 // the same names and shapes, so core:os picks one by `target.Os`.
 //
-// Paths and names are UTF-8 strings. The calls take UTF-16, so each string
-// is converted with MultiByteToWideChar and back with WideCharToMultiByte,
-// which keep every path the file system can hold. A call that fails returns
-// false (or an empty result); the error code is not read yet.
+// Paths are UTF-8 strings. The calls take UTF-16, so each path is converted
+// with MultiByteToWideChar, which keeps every path the file system can hold.
+// A call that fails returns false; the error code is not read yet. Getenv,
+// List and Arguments, which build strings from UTF-16, wait for text built
+// from bytes to run natively.
 
 foreign import kernel32 "system:kernel32"
 
 foreign kernel32 {
     MultiByteToWideChar :: (page: u32, flags: u32, text: cstring, length: i32, wide: u16[], size: i32) -> i32
-    WideCharToMultiByte :: (page: u32, flags: u32, wide: u16[], length: i32, text: u8[], size: i32, fallback: rawptr, used: rawptr) -> i32
     GetFileAttributesW :: (path: u16[]) -> u32
     CreateDirectoryW :: (path: u16[], security: rawptr) -> i32
     DeleteFileW :: (path: u16[]) -> i32
     RemoveDirectoryW :: (path: u16[]) -> i32
     MoveFileExW :: (source: u16[], destination: u16[], flags: u32) -> i32
-    GetEnvironmentVariableW :: (name: u16[], buffer: u16[], size: u32) -> u32
-    GetCommandLineW :: () -> rawptr
-    lstrlenW :: (text: rawptr) -> i32
-    RtlMoveMemory :: (destination: u16[], source: rawptr, length: u64)
     CreateFileW :: (path: u16[], access: u32, share: u32, security: rawptr, creation: u32, flags: u32, template: rawptr) -> u64
     ReadFile :: (handle: u64, buffer: u8[], count: u32, read: u32[], overlapped: rawptr) -> i32
     WriteFile :: (handle: u64, buffer: u8[], count: u32, written: u32[], overlapped: rawptr) -> i32
     CloseHandle :: (handle: u64) -> i32
-    FindFirstFileW :: (pattern: u16[], data: u16[]) -> u64
-    FindNextFileW :: (handle: u64, data: u16[]) -> i32
-    FindClose :: (handle: u64) -> i32
     ExitProcess :: (code: u32)
 }
 
@@ -49,9 +42,6 @@ ShareAll: u32 : 7;
 CreateAlways: u32 : 2;
 OpenExisting: u32 : 3;
 ReplaceExisting: u32 : 1;
-FindDataUnits: int : 296;
-FindNameUnit: int : 22;
-FindNameUnits: int : 260;
 ReadChunk: int : 65536;
 
 // The UTF-16 units of `text` and a terminating NUL.
@@ -63,18 +53,6 @@ Wide :: (text: string) -> u16[] {
     }
     MultiByteToWideChar(Utf8, 0, text, -1, wide, size);
     return wide;
-}
-
-// The text of the first `count` UTF-16 units of `wide`.
-Narrow :: (wide: u16[], count: int) -> string {
-    empty: u8[] = [];
-    size := WideCharToMultiByte(Utf8, 0, wide, i32(count), empty, 0, 0, 0);
-    buffer: u8[] = [];
-    for (index in 0..<int(size)) {
-        buffer.append(0);
-    }
-    WideCharToMultiByte(Utf8, 0, wide, i32(count), buffer, size, 0, 0);
-    return text_from_bytes(buffer);
 }
 
 // The attribute bits of the path, InvalidAttributes when it does not exist.
@@ -117,22 +95,6 @@ pub Remove :: (path: string) -> bool {
 // Renames, replacing an existing destination as rename does elsewhere.
 pub Rename :: (source: string, destination: string) -> bool {
     return MoveFileExW(Wide(source), Wide(destination), ReplaceExisting) != 0;
-}
-
-// The environment variable's value, "" when it is unset.
-pub Getenv :: (name: string) -> string {
-    empty: u16[] = [];
-    wide := Wide(name);
-    size := GetEnvironmentVariableW(wide, empty, 0);
-    if (size == 0) {
-        return "";
-    }
-    buffer: u16[] = [];
-    for (index in 0..<int(size)) {
-        buffer.append(0);
-    }
-    count := GetEnvironmentVariableW(wide, buffer, size);
-    return Narrow(buffer, int(count));
 }
 
 // The file's bytes, or false when it cannot be opened or read.
@@ -178,119 +140,6 @@ pub WriteBytes :: (path: string, data: u8[]) -> bool {
     }
     CloseHandle(handle);
     return done;
-}
-
-// The names in a directory, without "." and "..", in the order the system
-// lists them; empty when it cannot be listed.
-pub List :: (path: string) -> string[] {
-    names: string[] = [];
-    data: u16[] = [];
-    for (index in 0..<FindDataUnits) {
-        data.append(0);
-    }
-    pattern := Wide(path);
-    pattern[length(pattern) - 1] = 92;
-    pattern.append(42);
-    pattern.append(0);
-    handle := FindFirstFileW(pattern, data);
-    if (~handle == 0) {
-        return names;
-    }
-    while (true) {
-        count := 0;
-        while (count < FindNameUnits && data[FindNameUnit + count] != 0) {
-            count += 1;
-        }
-        name: u16[] = [];
-        for (index in 0..<count) {
-            name.append(data[FindNameUnit + index]);
-        }
-        text := Narrow(name, count);
-        if (text != "." && text != "..") {
-            names.append(text);
-        }
-        if (FindNextFileW(handle, data) == 0) {
-            break;
-        }
-    }
-    FindClose(handle);
-    return names;
-}
-
-// The program's command line split into arguments by Windows' rules: spaces
-// and tabs separate them outside quotes, a quote toggles quoting, 2n
-// backslashes before a quote are n backslashes and a toggle, 2n+1 are n
-// backslashes and a literal quote. The program name keeps its backslashes.
-pub Arguments :: () -> string[] {
-    source := GetCommandLineW();
-    size := lstrlenW(source);
-    wide: u16[] = [];
-    for (index in 0..<int(size)) {
-        wide.append(0);
-    }
-    RtlMoveMemory(wide, source, u64(size) * 2);
-    return Split(Narrow(wide, int(size)));
-}
-
-// The arguments of the command line `text`.
-pub Split :: (text: string) -> string[] {
-    arguments: string[] = [];
-    bytes := text_bytes(text);
-    at := 0;
-    first := true;
-    while (at < length(bytes)) {
-        while (at < length(bytes) && (bytes[at] == 32 || bytes[at] == 9)) {
-            at += 1;
-        }
-        if (at >= length(bytes)) {
-            break;
-        }
-        current: u8[] = [];
-        quoted := false;
-        started := false;
-        while (at < length(bytes)) {
-            byte := bytes[at];
-            if (!quoted && (byte == 32 || byte == 9)) {
-                break;
-            }
-            if (byte == 92 && !first) {
-                slashes := 0;
-                while (at < length(bytes) && bytes[at] == 92) {
-                    slashes += 1;
-                    at += 1;
-                }
-                if (at < length(bytes) && bytes[at] == 34) {
-                    for (index in 0..<(slashes / 2)) {
-                        current.append(92);
-                    }
-                    if (slashes % 2 == 1) {
-                        current.append(34);
-                        at += 1;
-                    }
-                } else {
-                    for (index in 0..<slashes) {
-                        current.append(92);
-                    }
-                }
-                started = true;
-                continue;
-            }
-            if (byte == 34) {
-                quoted = !quoted;
-                started = true;
-                at += 1;
-                continue;
-            }
-            current.append(u8(byte));
-            started = true;
-            at += 1;
-        }
-        first = false;
-        if (started) {
-            arguments.append(text_from_bytes(current));
-        }
-    }
-    return arguments;
 }
 
 // Ends the program with the exit status.

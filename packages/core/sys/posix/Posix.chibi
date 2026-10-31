@@ -28,6 +28,12 @@ foreign libc {
     fclose :: (stream: rawptr) -> i32
     fseek :: (stream: rawptr, offset: i64, whence: i32) -> i32
     ftell :: (stream: rawptr) -> i64
+    getenv :: (name: cstring) -> rawptr
+    strlen :: (text: rawptr) -> u64
+    memcpy :: (destination: u8[], source: rawptr, count: u64) -> rawptr
+    opendir :: (path: cstring) -> rawptr
+    readdir :: (directory: rawptr) -> rawptr
+    closedir :: (directory: rawptr) -> i32
 }
 
 pub KindNone: int : 0;
@@ -41,10 +47,17 @@ StatBytes: int : 256;
 when target.Os == target.Darwin {
     ModeOffset: int : 4;
     ModeBytes: int : 2;
+    NameOffset: int : 21;
 } else {
     ModeOffset: int : 24;
     ModeBytes: int : 4;
+    NameOffset: int : 19;
 }
+
+// A directory entry begins with its inode and offset (8 bytes each) and then
+// its record length, two bytes, at 16 on both platforms; the name follows the
+// type at NameOffset.
+RecordLengthOffset: int : 16;
 
 // Whether the path names anything a link points at.
 pub Exists :: (path: string) -> bool {
@@ -154,4 +167,69 @@ pub WriteBytes :: (path: string, data: u8[]) -> bool {
     written := fwrite(data, 1, u64(length(data)), stream);
     closed := fclose(stream);
     return int(written) == length(data) && closed == 0;
+}
+
+// The text of the bytes, which may hold NUL and malformed UTF-8.
+pub Text :: (data: u8[]) -> string {
+    return text_from_bytes(data);
+}
+
+// The file's text, "" when it cannot be read.
+pub ReadText :: (path: string) -> string {
+    return text_from_bytes(ReadBytes(path));
+}
+
+// The environment variable's value, "" when it is unset.
+pub Getenv :: (name: string) -> string {
+    value := getenv(name);
+    if value == 0 {
+        return "";
+    }
+    size := int(strlen(value));
+    buffer: u8[] = [];
+    for index in 0..<size {
+        buffer.append(0);
+    }
+    moved := memcpy(buffer, value, u64(size));
+    return text_from_bytes(buffer);
+}
+
+// The names in the directory, in the order the system gives them and without
+// "." and "..". Empty when it cannot be opened (Kind tells a missing directory
+// from an empty one).
+pub List :: (path: string) -> string[] {
+    names: string[] = [];
+    directory := opendir(path);
+    if directory == 0 {
+        return names;
+    }
+    record_at := readdir(directory);
+    while record_at != 0 {
+        // The record length is read from a copy of the entry's head, then
+        // exactly that many bytes are copied, so nothing past the entry is read.
+        head: u8[] = [];
+        for index in 0..<RecordLengthOffset + 2 {
+            head.append(0);
+        }
+        moved := memcpy(head, record_at, u64(RecordLengthOffset + 2));
+        size := int(head[RecordLengthOffset]) + int(head[RecordLengthOffset + 1]) * 256;
+        record: u8[] = [];
+        for index in 0..<size {
+            record.append(0);
+        }
+        moved = memcpy(record, record_at, u64(size));
+        name: u8[] = [];
+        at := NameOffset;
+        while at < length(record) && record[at] != 0 {
+            name.append(record[at]);
+            at += 1;
+        }
+        text := text_from_bytes(name);
+        if text != "." && text != ".." {
+            names.append(text);
+        }
+        record_at = readdir(directory);
+    }
+    status := closedir(directory);
+    return names;
 }

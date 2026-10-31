@@ -1,7 +1,5 @@
 package posix
 
-import target "core:target"
-
 // The POSIX calls core:os needs, declared against libc and called from native
 // programs; the VM never runs foreign code. Paths are copied with a NUL into
 // the call's stack buffer (see "Foreign libraries" in docs/code-language.md),
@@ -9,8 +7,8 @@ import target "core:target"
 // result unchanged: 0 for success, -1 for failure; errno is not read yet.
 // Getenv, which builds a string from C bytes, waits for allocating text natively.
 //
-// The stat layout below is Linux x86-64's, and Darwin's when the compile
-// supplies it.
+// The stat layout is Linux x86-64's or Darwin's (see IsDarwin); Linux on other
+// processors is not covered yet.
 
 foreign import libc "system:c"
 
@@ -28,12 +26,25 @@ foreign libc {
     fclose :: (stream: rawptr) -> i32
     fseek :: (stream: rawptr, offset: i64, whence: i32) -> i32
     ftell :: (stream: rawptr) -> i64
+    uname :: (names: u8[]) -> i32
     getenv :: (name: cstring) -> rawptr
     strlen :: (text: rawptr) -> u64
     memcpy :: (destination: u8[], source: rawptr, count: u64) -> rawptr
     opendir :: (path: cstring) -> rawptr
     readdir :: (directory: rawptr) -> rawptr
     closedir :: (directory: rawptr) -> i32
+    calloc :: (count: u64, size: u64) -> rawptr
+    memmove :: (destination: rawptr, source: u8[], count: u64) -> rawptr
+    pipe :: (descriptors: u8[]) -> i32
+    read :: (descriptor: i32, buffer: u8[], count: u64) -> i64
+    close :: (descriptor: i32) -> i32
+    poll :: (descriptors: u8[], count: u64, timeout: i32) -> i32
+    waitpid :: (pid: i32, status: u8[], options: i32) -> i32
+    posix_spawnp :: (pid: u8[], file: cstring, actions: u8[], attributes: rawptr, arguments: u8[], environment: rawptr) -> i32
+    posix_spawn_file_actions_init :: (actions: u8[]) -> i32
+    posix_spawn_file_actions_adddup2 :: (actions: u8[], descriptor: i32, target: i32) -> i32
+    posix_spawn_file_actions_addclose :: (actions: u8[], descriptor: i32) -> i32
+    posix_spawn_file_actions_destroy :: (actions: u8[]) -> i32
 }
 
 pub KindNone: int : 0;
@@ -44,14 +55,38 @@ pub KindOther: int : 4;
 
 StatBytes: int : 256;
 
-when target.Os == target.Darwin {
-    ModeOffset: int : 4;
-    ModeBytes: int : 2;
-    NameOffset: int : 21;
-} else {
-    ModeOffset: int : 24;
-    ModeBytes: int : 4;
-    NameOffset: int : 19;
+// The platform is read at run time, from uname's system name, once per call that
+// needs it, so the package stays plain declarations that the native lane
+// compiles on every platform. It is a stand-in for `when target.Os`, which the
+// scalar producer cannot fold yet (docs/native-llvm-ledger.md). Only
+// the layouts of struct stat and of a directory entry differ: Darwin keeps
+// st_mode at 4, two bytes, and d_name at 21; Linux x86-64 keeps st_mode at 24,
+// four bytes, and d_name at 19.
+IsDarwin :: () -> bool {
+    names := Block(1536);
+    status := uname(names);
+    return names[0] == 68;
+}
+
+ModeOffset :: (darwin: bool) -> int {
+    if darwin {
+        return 4;
+    }
+    return 24;
+}
+
+ModeBytes :: (darwin: bool) -> int {
+    if darwin {
+        return 2;
+    }
+    return 4;
+}
+
+NameOffset :: (darwin: bool) -> int {
+    if darwin {
+        return 21;
+    }
+    return 19;
 }
 
 // A directory entry begins with its inode and offset (8 bytes each) and then
@@ -80,9 +115,10 @@ Mode :: (path: string, link: bool) -> int {
     if status != 0 {
         return -1;
     }
+    darwin := IsDarwin();
     mode := 0;
-    for index in 0..<ModeBytes {
-        mode += int(buffer[ModeOffset + index]) << u32(8 * index);
+    for index in 0..<ModeBytes(darwin) {
+        mode += int(buffer[ModeOffset(darwin) + index]) << u32(8 * index);
     }
     return mode;
 }
@@ -199,6 +235,7 @@ pub Getenv :: (name: string) -> string {
 // from an empty one).
 pub List :: (path: string) -> string[] {
     names: string[] = [];
+    name_at := NameOffset(IsDarwin());
     directory := opendir(path);
     if directory == 0 {
         return names;
@@ -219,7 +256,7 @@ pub List :: (path: string) -> string[] {
         }
         moved = memcpy(record, record_at, u64(size));
         name: u8[] = [];
-        at := NameOffset;
+        at := name_at;
         while at < length(record) && record[at] != 0 {
             name.append(record[at]);
             at += 1;
@@ -232,4 +269,180 @@ pub List :: (path: string) -> string[] {
     }
     status := closedir(directory);
     return names;
+}
+
+// A finished child process: its exit status (the negative signal number when a
+// signal ended it, 127 when the program could not be started) and, for Capture,
+// what it wrote.
+pub Result :: struct {
+    status: int;
+    stdout: string;
+    stderr: string;
+}
+
+// The argument vector `execvp` takes, as bytes: one 8-byte little-endian
+// pointer to each argument's NUL-ended copy, then a null pointer. The copies
+// live in the heap until the program exits.
+Vector :: (command: string[]) -> u8[] {
+    vector: u8[] = [];
+    for argument in command {
+        size := text_byte_length(argument);
+        data: u8[] = [];
+        for index in 0..<size {
+            data.append(u8(text_byte_at(argument, index)));
+        }
+        block := calloc(u64(size + 1), 1);
+        moved := memmove(block, data, u64(size));
+        word := u64(block);
+        for index in 0..<8 {
+            vector.append(u8((word >> u32(8 * index)) & 255));
+        }
+    }
+    for index in 0..<8 {
+        vector.append(0);
+    }
+    return vector;
+}
+
+// What `waitpid` reported as an exit status.
+Decoded :: (status: int) -> int {
+    signal := status & 127;
+    if signal == 0 {
+        return (status >> 8) & 255;
+    }
+    return -signal;
+}
+
+// A zeroed block for a libc structure the program only passes along.
+Block :: (size: int) -> u8[] {
+    block: u8[] = [];
+    for index in 0..<size {
+        block.append(0);
+    }
+    return block;
+}
+
+// The 32-bit integer at `at` in `bytes`, little endian.
+Word32 :: (bytes: u8[], at: int) -> int {
+    return int(bytes[at]) + int(bytes[at + 1]) * 256 + int(bytes[at + 2]) * 65536 + int(bytes[at + 3]) * 16777216;
+}
+
+// Starts the program with the command's arguments, keeping this process's
+// standard streams, and returns its process id; -1 when it cannot be started.
+pub Spawn :: (command: string[]) -> int {
+    if length(command) == 0 {
+        return -1;
+    }
+    pid := Block(8);
+    actions := Block(256);
+    status := posix_spawn_file_actions_init(actions);
+    started := posix_spawnp(pid, command[0], actions, 0, Vector(command), 0);
+    status = posix_spawn_file_actions_destroy(actions);
+    if started != 0 {
+        return -1;
+    }
+    return Word32(pid, 0);
+}
+
+// Waits for the process and returns its exit status.
+pub Wait :: (process: int) -> int {
+    status := Block(8);
+    done := waitpid(i32(process), status, 0);
+    if done < 0 {
+        return -1;
+    }
+    return Decoded(Word32(status, 0));
+}
+
+// Runs the program, keeping the standard streams, and returns its exit status;
+// 127 when it cannot be started.
+pub Run :: (command: string[]) -> int {
+    process := Spawn(command);
+    if process < 0 {
+        return 127;
+    }
+    return Wait(process);
+}
+
+// Runs the program with its standard output and error read into the result.
+// Both pipes are read together, so a child filling one cannot stop on the other.
+pub Capture :: (command: string[]) -> Result {
+    result: Result = {status: 127, stdout: "", stderr: ""};
+    if length(command) == 0 {
+        return result;
+    }
+    out := Block(8);
+    err := Block(8);
+    made := pipe(out);
+    made = made + pipe(err);
+    if made != 0 {
+        return result;
+    }
+    out_read := i32(Word32(out, 0));
+    out_write := i32(Word32(out, 4));
+    err_read := i32(Word32(err, 0));
+    err_write := i32(Word32(err, 4));
+    pid := Block(8);
+    actions := Block(256);
+    status := posix_spawn_file_actions_init(actions);
+    status = posix_spawn_file_actions_adddup2(actions, out_write, 1);
+    status = posix_spawn_file_actions_adddup2(actions, err_write, 2);
+    status = posix_spawn_file_actions_addclose(actions, out_read);
+    status = posix_spawn_file_actions_addclose(actions, err_read);
+    started := posix_spawnp(pid, command[0], actions, 0, Vector(command), 0);
+    status = posix_spawn_file_actions_destroy(actions);
+    status = close(out_write);
+    status = close(err_write);
+    standard: u8[] = [];
+    errors: u8[] = [];
+    if started == 0 {
+        // Two pollfd records: descriptor (4 bytes), requested events (2),
+        // returned events (2). POLLIN is 1 and POLLHUP is 16 on both platforms.
+        watched := Block(16);
+        for index in 0..<4 {
+            watched[index] = u8(Word32(out, 0) >> u32(8 * index));
+            watched[8 + index] = u8(Word32(err, 0) >> u32(8 * index));
+        }
+        watched[4] = 1;
+        watched[12] = 1;
+        chunk := Block(4096);
+        open := 2;
+        while open > 0 {
+            ready := poll(watched, 2, -1);
+            if ready < 0 {
+                break;
+            }
+            for stream in 0..<2 {
+                if watched[stream * 8 + 6] != 0 {
+                    descriptor := out_read;
+                    if stream == 1 {
+                        descriptor = err_read;
+                    }
+                    count := read(descriptor, chunk, 4096);
+                    if count <= 0 {
+                        // Closed: stop watching it.
+                        watched[stream * 8 + 3] = 255;
+                        watched[stream * 8 + 2] = 255;
+                        watched[stream * 8 + 1] = 255;
+                        watched[stream * 8] = 255;
+                        open -= 1;
+                    } else {
+                        for index in 0..<int(count) {
+                            if stream == 0 {
+                                standard.append(chunk[index]);
+                            } else {
+                                errors.append(chunk[index]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        result.status = Wait(Word32(pid, 0));
+    }
+    status = close(out_read);
+    status = close(err_read);
+    result.stdout = text_from_bytes(standard);
+    result.stderr = text_from_bytes(errors);
+    return result;
 }

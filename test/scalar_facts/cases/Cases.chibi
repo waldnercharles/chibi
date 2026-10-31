@@ -264,6 +264,8 @@ Cases :: () -> Case[] {
         // An array field of a record variable grows in place: append and extend on `bag.items`,
         // then another record extended by it: 30 + 7 + 5, 2 items, 3 items.
         Accepted("record_array_field_append", "package scalar\nBag :: struct { items: int[]; total: int; }\nMain :: () -> int {\n    bag: Bag = {items: [], total: 5};\n    bag.items.append(30);\n    bag.items.append(7);\n    other: Bag = {items: [1], total: 0};\n    other.items.extend(bag.items);\n    return bag.items[0] + bag.items[1] + bag.total + length(bag.items) * 100 + length(other.items) * 1000;\n}\n", 3242, "Main", ""),
+        // A loop over an array literal whose first element is a package constant, then one of a conversion.
+        Accepted("for_array_literal_constants", "package scalar\nFirst: int : 3;\nSecond: int : 40;\nMain :: () -> int {\n    total: int = 0;\n    for (kind in [First, Second, 500]) { total += kind; }\n    for (n in [int(1), 2]) { total += n * 10000; }\n    return total;\n}\n", 30543, "Main", ""),
         Accepted("record_nested_records", "package scalar\nInner :: struct { x: int; y: int; }\nOuter :: struct { inner: Inner; items: Inner[]; }\nMain :: () -> int {\n    items: Inner[] = [{x: 1, y: 2}, {x: 3, y: 4}];\n    o: Outer = {inner: {x: 5, y: 6}, items: items};\n    return o.inner.x * 1000 + o.items[1].y * 100 + length(o.items) * 10 + o.inner.y;\n}\n", 5426, "Main", ""),
         // The value forms append(a, x) and extend(a, b) give new arrays and
         // leave a alone.

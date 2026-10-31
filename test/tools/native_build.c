@@ -1030,7 +1030,9 @@ TEST_CASE(native_build_runs_the_foreign_samples)
         fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
         return true;
     }
-    static const char *const SAMPLES[] = { "foreign_declared", "foreign_library" };
+    static const char *const SAMPLES[] = { "foreign_declared",
+                                           "foreign_library",
+                                           "foreign_posix" };
     char in_place[1024];
     path(in_place, built, "sdk/chibi");
     const char *options[] = { "-O0", NULL };

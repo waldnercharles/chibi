@@ -966,7 +966,7 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
 Finish :: (work: string, status: int) -> int {
     ok := true;
     for (name in ["target.json", "compile.json", "emitter.chibip", "collect.json", "rows.json", "emit.json",
-                  "module.ll", "diagnostic.txt", "optimized.ll", "library.o"]) {
+                  "module.ll", "diagnostic.txt", "optimized.ll", "library.o", "driver.chibip", "run.json"]) {
         ok = build.remove(Join([work, "/", name])) && ok;
     }
     if (!build.remove(work) || !ok) {
@@ -1063,6 +1063,55 @@ Requested :: (name: string) -> int {
         }
     }
     return -1;
+}
+
+// A package of the compiler project beside others, as native_driver is: the
+// compiler compiles the driver's pure core (every file but Main.chibi and
+// core:os) to an artifact, whose Compile entry gives the program's module, or
+// a 0 byte and then the first rejection; the module is linked as any other.
+Driver :: (host: string, artifact: string, core: string, work: string, target: string, entry_path: string,
+           packages: string[], package_texts: string[], text: string, triple: string, output: string,
+           program: string, tools: string[]) -> int {
+    paths: string[] = [];
+    texts: string[] = [];
+    all := build.concat([entry_path], packages);
+    sources := build.concat([text], package_texts);
+    for (at in 0..<length(all)) {
+        if (!strings.HasSuffix(all[at], "/Main.chibi") && !strings.HasPrefix(all[at], Join([core, "/os/"]))) {
+            location := all[at];
+            if (strings.HasPrefix(location, Join([core, "/"]))) {
+                location = Join(["/sdk/core/", strings.TrimPrefix(location, Join([core, "/"]))]);
+            }
+            paths.append(location);
+            texts.append(sources[at]);
+        }
+    }
+    request := Join(["[\"/project\",[\"core\"],[\"/sdk/core\"],", Array(paths), ",", Array(texts), ",false,",
+                     strings.Slice(target, 1, strings.ByteLength(target) - 2), "]"]);
+    input := Join([work, "/compile.json"]);
+    driver := Join([work, "/driver.chibip"]);
+    if (!build.write_file(input, request) ||
+        Invoke(host, artifact, "0x140a9546d9e8c296", input, driver, "3600000") != 0) {
+        build.report(Join(["native: the driver's core did not compile: ", build.last_stderr()]));
+        return Finish(work, 1);
+    }
+    module := Join([work, "/module.ll"]);
+    run := Join([work, "/run.json"]);
+    request = Join(["[", Quote(core), ",", Array(all), ",", Array(sources), ",", Quote(triple), "]"]);
+    if (!build.write_file(run, request) || Invoke(host, driver, "0x560ddcc1bb427667", run, module, "3600000") != 0) {
+        build.report(Join(["native: the compiler did not compile ", entry_path, ": ", build.last_stderr()]));
+        return Finish(work, 1);
+    }
+    emitted := build.read_file(module);
+    if (strings.ByteAt(emitted, 0) == 0) {
+        build.report(Join(["native: ", strings.Slice(emitted, 1, strings.ByteLength(emitted))]));
+        return Finish(work, 1);
+    }
+    status := Run([module, output, tools[0], tools[1], tools[2], tools[3]], true, tools[4]);
+    if (status == 0) {
+        build.report(Join(["native: ", output, "/", program]));
+    }
+    return Finish(work, status);
 }
 
 // The names an import line of `text` takes from `collection`: each
@@ -1185,9 +1234,18 @@ pub Native :: () -> int {
             names.append(name);
         }
     }
+    // Several files in the folder are one package whose entry is Main.chibi.
+    if (length(names) > 1) {
+        found := false;
+        for (name in names) {
+            found = found || name == "Main.chibi";
+        }
+        if (found) {
+            names = ["Main.chibi"];
+        }
+    }
     if (length(names) != 1) {
-        build.report(Join(["native: ", root, " must hold exactly one .chibi source; it holds ",
-                           format_text("{}", length(names))]));
+        build.report(Join(["native: ", root, " must hold one .chibi source or a Main.chibi beside the rest of its package"]));
         return 2;
     }
     source := Join([root, "/", names[0]]);
@@ -1209,13 +1267,24 @@ pub Native :: () -> int {
     // the project: the entry's path then starts with the folder's name.
     base := root;
     entry_path := names[0];
-    if (length(packages) == 0) {
+    nested := false;
+    for (path in packages) {
+        nested = nested || strings.Contains(path, "/");
+    }
+    if (!nested) {
         parent := strings.TrimSuffix(root, Join(["/", strings.BaseName(root)]));
-        for (name in ImportedFrom(text, "project")) {
-            if (build.file_kind(Join([root, "/", name])) != "directory" &&
+        wanted: string[] = [];
+        for (source_text in build.concat([text], package_texts)) {
+            wanted.extend(ImportedFrom(source_text, "project"));
+        }
+        for (name in wanted) {
+            if (base == root && build.file_kind(Join([root, "/", name])) != "directory" &&
                 build.file_kind(Join([parent, "/", name])) == "directory") {
                 base = parent;
                 entry_path = Join([strings.BaseName(root), "/", names[0]]);
+                for (at in 0..<length(packages)) {
+                    packages[at] = Join([strings.BaseName(root), "/", packages[at]]);
+                }
             }
         }
     }
@@ -1287,6 +1356,10 @@ pub Native :: () -> int {
     if (length(facts) != 6) {
         build.report(Join(["native: the compiler host gave a malformed target: ", target_json]));
         return Finish(work, 1);
+    }
+    if (base != root) {
+        return Driver(host, artifact, core, work, target_json, entry_path, packages, package_texts, text, arguments[7],
+                      output, program, [opt, llc, lld, mode, linkage]);
     }
     if (build.file_kind(emitter) != "file" && !Emitter(host, artifact, compiler, core, work, target_json, emitter)) {
         return Finish(work, 1);

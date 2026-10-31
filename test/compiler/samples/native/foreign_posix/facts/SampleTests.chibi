@@ -1,0 +1,19 @@
+package facts
+
+import posix "core:sys/posix"
+
+// core:sys/posix over libc: a directory is made, found, renamed and removed,
+// and a file and a missing path are told apart. The VM skips this sample as
+// native only; native_build_runs_the_foreign_samples runs it.
+@test
+Calls :: () {
+    assert(posix.MakeDirectory("posix_probe"), "make")
+    assert(posix.Exists("posix_probe"), "exists")
+    assert(posix.Kind("posix_probe") == posix.KindDirectory, "directory")
+    assert(posix.Rename("posix_probe", "posix_moved"), "rename")
+    assert(!posix.Exists("posix_probe") && posix.Exists("posix_moved"), "moved")
+    assert(posix.Remove("posix_moved"), "remove")
+    assert(!posix.Exists("posix_moved"), "removed")
+    assert(posix.Kind("Main.chibi") == posix.KindFile, "file")
+    assert(posix.Kind("posix_missing") == posix.KindNone, "missing")
+}

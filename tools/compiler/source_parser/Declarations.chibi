@@ -407,7 +407,8 @@ ParseResults :: (c: ^Cursor, n: ^(Node[]), owner: int) {
 
 // `foreign import alias "path"` names a prebuilt library, and `foreign alias {
 // Name :: (parameters) -> result ... }` declares the C functions it provides,
-// each by signature alone, as Odin's foreign blocks do.
+// each by signature alone, as Odin's foreign blocks do. A block with no library,
+// `foreign { ... }`, declares C symbols the program's own objects define.
 ParseForeign :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (Peek(c, n, 1) == tk.Import) {
         imported := New(n, syntax.ForeignImportDeclaration);
@@ -424,7 +425,9 @@ ParseForeign :: (c: ^Cursor, n: ^(Node[])) -> int {
     }
     block := New(n, syntax.ForeignBlock);
     Take(c, n, block, syntax.FieldNone);
-    TakeName(c, n, block, syntax.FieldLibrary);
+    if (c.token != tk.OpenBrace) {
+        TakeName(c, n, block, syntax.FieldLibrary);
+    }
     Expect(c, n, block, tk.OpenBrace, syntax.FieldNone);
     while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         Add(n, block, ParseForeignFunction(c, n), syntax.FieldNone);

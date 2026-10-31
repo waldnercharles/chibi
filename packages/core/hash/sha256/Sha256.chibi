@@ -1,5 +1,7 @@
 package sha256
 
+import bytes "core:bytes"
+
 // SHA-256 as FIPS 180-4 defines it. The digest is a cryptographic hash of raw
 // bytes: use it to identify content, never as a lookup hash (use fnv for that).
 // Results do not depend on the host's byte order.
@@ -132,4 +134,23 @@ pub Sum :: (data: u8[]) -> u8[] {
         digest.append(u8(word & u32(0xff)));
     }
     return digest;
+}
+
+// The digest of the text's bytes as 64 lowercase hexadecimal digits. Same work
+// as Sum.
+pub Hex :: (text: string) -> string {
+    digest := Sum(bytes.FromString(text));
+    digits: u8[] = [];
+    index := 0;
+    while index < length(digest) {
+        for nibble in [digest[index] / 16, digest[index] % 16] {
+            if nibble < 10 {
+                digits.append(48 + nibble);
+            } else {
+                digits.append(87 + nibble);
+            }
+        }
+        index += 1;
+    }
+    return bytes.ToString(digits);
 }

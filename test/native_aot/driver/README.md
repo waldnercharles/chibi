@@ -172,9 +172,9 @@ The checks:
   compile outlasts the cases' 10-second deadlines. CI links real programs
   through `chibi build --native` instead: the `native-build` selector in the
   projects group (see `docs/guide/toolchain.md`).
-- In `native-build`, `native_build_links_macos_and_windows_programs` checks
+- In `native-build`, `LinksMacOSAndWindowsPrograms` checks
   the macOS and Windows link lines, stubs and start objects with controlled
-  tools, and `native_build_links_other_targets_with_llvm` links real programs
+  tools, and `LinksOtherTargetsWithLLVM` links real programs
   for both with `CHIBI_LLVM_BIN`. With `CHIBI_NATIVE_BUNDLE` set, those
   programs go into the bundle that `native-targets` runs on macOS and Windows
   (`test/native_aot/targets/README.md`).

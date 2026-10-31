@@ -839,7 +839,7 @@ Complete :: (ops: Ops) -> bool {
     return true;
 }
 // The storage of a scalar type, any of which a record field may hold: an
-// integer, bool or string; 0 for any other.
+// integer, bool, string or rawptr; 0 for any other.
 ScalarStorage :: (text: string) -> int {
     integer: int = Int8Storage;
     while (integer <= WordStorage) {
@@ -856,6 +856,10 @@ ScalarStorage :: (text: string) -> int {
     }
     if (text == "string") {
         return TextStorage;
+    }
+    // An opaque 64-bit word, the C pointer a foreign function takes and gives.
+    if (text == "rawptr") {
+        return WordStorage;
     }
     if (text == "number" || text == "f32") {
         return FloatStorage;

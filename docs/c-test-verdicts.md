@@ -25,7 +25,7 @@ program only to exercise a C host (a process runner, a loader, a limit) is C.
 | `test/tools/compiler_bootstrap.c` | 13 | keep | The C seed loader and its manifest checks. |
 | `test/tools/chibi_cli.c` | 70 | keep | Process tests of the `chibi` launcher: exit codes, signals, terminal hand-over, relocation. The Chibi programs it runs are fixtures. |
 | `test/tools/build_process.c` | 116 | keep | The C build host's natives (process, file, hash, value storage) and its limits. |
-| `test/tools/native_build.c`, `native_workloads.c` | 26, 4 | keep | `chibi build --native` end to end with LLVM tools and child processes. |
+| `native_workloads.c` | 4 | keep | `chibi build --native` end to end with LLVM tools and child processes. |
 | `test/tools/types.c`, `ecs.c`, `ecs_hierarchy.c`, `ecs_query.c`, `ecs_relationship.c`, `ecs_world.c`, `native_values.c`, `program_consumer.c` | 84, 39, 12, 44, 22, 26, 2, 4 | keep | C types, ECS and the program consumer. |
 | `test/tools/scheduler_benchmark.c`, `ecs_query_benchmark.c`, `box3d.c` | 26, 6, 4 | keep | C benchmarks and a third-party library check. |
 | `test/tools/execution_policy.c`, `fixture.c`, `case_timings.c`, `case_timings_test.c`, `policy_worker.c`, `main.c` | 12, 0, 0, 19, 0, 0 | keep | The C test infrastructure and execution policy. |

@@ -159,6 +159,7 @@ mean native, since `scalar_llvm` and `Driver.Object` must also take the function
 | W14 `compiler_json_value_string`, `compiler_json_string` | 33 | landed (#1126, Chibi `json_string`), census not rerun |
 | W9 optionals and record fields of map, pointer or optional type | 7 | sdk-cmake |
 | `insert` on arrays | 1 | open |
+| Converge `core:sys/os` into `core:os`: one package whose bodies are `build.*` on the VM and `core:sys/posix` or `core:sys/windows` natively under `core:os`'s signatures, chosen by a package-level `when`. Needs (1) imports in a kept `when` branch bound by the VM compile (repro: `else { import bytes "core:bytes" ... bytes.FromString(...) }` fails "Unknown function 'bytes.FromString'" while an import in an unkept branch is fine), (2) a `core:target` fact for native vs VM, (3) tuples holding an array (`List`, `ReadBytes`) native, or those two lose their `Error?` first. Then delete `core:sys/os` and Reach's path resolution | 2 packages | open |
 | Producer passes but native emission untested over the closure | unknown | W22 driver: compile the 973 through `Driver.Object` and list the rejections |
 | Maps (W8), `string[]` literals in natives, host catalog calls | open | not yet counted |
 | Stage-one driver: `tools/compiler/native_driver/Main.chibi`, a program that compiles a compiler folder to a native executable | none written | core-math |

@@ -1098,9 +1098,12 @@ static size_t watch_output_size()
     return length;
 }
 
+/* A watched program compiles before it prints, and again after each edit it
+ * picks up: 8 s for a small one on a workstation, longer on a loaded CI runner,
+ * so its output gets the bound cli_run gives a first compile. */
 static bool watch_output(chibi_process *process, size_t after, const char *expected)
 {
-    double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
+    double deadline = chibi_process_now() + 120;
     do {
         char *text = tool_read(log_path);
         bool found = text && strlen(text) >= after && strstr(text + after, expected);

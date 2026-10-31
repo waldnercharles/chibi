@@ -172,3 +172,10 @@ Archived because no toolchain program (`chibi`, `chibi-compile`, `chibi-build-ho
 ## The source registry runtime (src/runtime/behaviors)
 
 `source.[ch]`, `source_internal.h`, `source_publication.c` and `source_profile.c` (the registry that attached stage-zero-era behavior modules to entities, ran their systems and published edits for Studio Live), `package_stage`/`package_stage_budget`/`package_load` in `package.[ch]`, and `test/language/headless_consumer.[ch]` with its `test_behavior_consumer` target are archived. Kept: `package.c`'s read side (`package_read_budget`, `package_collection`), `module_set.c` and `event_catalog.c`. Not re-covered: registration ownership, Begin/Tick/Destroy payload dispatch and removal through the registry (the headless consumer's two cases). Edit and Continue is proven through `authoring/program.c` (`execution_program_prepare_replace`), not through the registry.
+
+## Unused Chibi analyzers (tools/compiler, 2026-10-31)
+
+- `tools/compiler/shader_source` (shader lowering for the archived shader graph), `effect_analysis` (behavior effect
+  rows) and `unit_analysis` (unit-of-measure checks over `unit_algebra`). Nothing outside their own folders imported
+  them; they were Chibi ports of analyzers whose C callers were archived with the renderer and the game runtime.
+  `unit_algebra` stays: `signature_reader` uses it.

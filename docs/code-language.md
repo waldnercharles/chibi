@@ -745,8 +745,7 @@ or another vendored library without shipping a copy. Odin's `vendor:` packages
 bind prebuilt libraries the same way, each beside its package; here the SDK owns
 the archives, and a changed archive rebuilds the program that links it. A name
 the SDK does not hold fails the build and names it. A build tree stages only
-`vendor:freetype` so far; an installed SDK holds every archive in
-`tools/graph/sdk/Contracts.chibi`. `foreign alias { ... }`
+`vendor:freetype` so far; an installed SDK holds the archives its build tree stages. `foreign alias { ... }`
 declares the library's functions by signature alone. A function's name is its
 C symbol. A block with no library, `foreign { ... }`, declares symbols that the
 program's own objects define, such as its start module's exports, as Odin does.

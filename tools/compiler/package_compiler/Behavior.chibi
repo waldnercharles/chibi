@@ -751,7 +751,8 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
                 return SourceMembers.Failed(Diagnose(forest, member, package, format_text("Duplicate declaration '{}'", name)));
             }
             switch FunctionSignature(forest, source, identity, solid, table, aliases, package, package, member, name,
-                                     length(params)) {
+                                     length(params),
+                                     SiblingScopes(forest, source, member)) {
                 case .Failed(diagnostic):
                     return SourceMembers.Failed(diagnostic);
                 case .Read(procedure, added):

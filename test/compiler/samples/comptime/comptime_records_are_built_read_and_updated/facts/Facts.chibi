@@ -1,0 +1,32 @@
+package facts
+Point :: struct { x: int; y: int; }
+Box :: struct { big: bool; size: int; }
+Shifted :: (p: Point, dx: int) -> Point {
+    result := p;
+    result.x += dx;
+    result.y = result.y * 2 + 1;
+    return result;
+}
+Origin :: () -> Point { return {x: 0, y: 0}; }
+Manhattan :: (p: Point) -> int { return p.x + p.y; }
+Walk :: (steps: int) -> Point {
+    here: Point = {y: 0, x: 1};
+    for i in 0..<steps {
+        here = Shifted(here, i);
+    }
+    return here;
+}
+Classify :: (n: int) -> Box { return {size: n, big: n > 10}; }
+Weight :: (n: int) -> int {
+    box := Classify(n);
+    if (box.big) {
+        return box.size;
+    }
+    return 0;
+}
+Moved :: Manhattan(Shifted({x: 1, y: 2}, 10));
+WalkX :: Walk(4).x;
+WalkY :: Walk(4).y;
+AtOrigin :: Manhattan(Origin());
+Heavy :: Weight(20) + Weight(3);
+Main :: () -> int { return Moved * 10000 + WalkX * 1000 + WalkY * 10 + AtOrigin + Heavy; }

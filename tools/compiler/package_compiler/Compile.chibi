@@ -2015,7 +2015,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
         while (at < length(constants)) {
             constant := constants[at];
             if (constant.package == package && !constant.folded) {
-                switch FoldCalling(forest, documents, links, callables, params, constants, package, constant.file,
+                switch FoldCalling(forest, documents, links, callables, params, constants, types, members, package, constant.file,
                                 constant.node, constant.storage) {
                     case .Failed(diagnostic):
                         return Declarations.Failed(diagnostic);

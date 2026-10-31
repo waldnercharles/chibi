@@ -47,6 +47,14 @@ foreign libc {
     posix_spawn_file_actions_destroy :: (actions: u8[]) -> i32
 }
 
+// Exports of the program's own start module (tools/compiler/native_link/Start.chibi):
+// the process arguments and the environment its entry received.
+foreign {
+    chibi_argument_count :: () -> i64
+    chibi_argument :: (index: i64, buffer: u8[], size: i64) -> i64
+    chibi_environment :: () -> rawptr
+}
+
 pub KindNone: int : 0;
 pub KindFile: int : 1;
 pub KindDirectory: int : 2;
@@ -336,7 +344,7 @@ pub Spawn :: (command: string[]) -> int {
     pid := Block(8);
     actions := Block(256);
     status := posix_spawn_file_actions_init(actions);
-    started := posix_spawnp(pid, command[0], actions, 0, Vector(command), 0);
+    started := posix_spawnp(pid, command[0], actions, 0, Vector(command), chibi_environment());
     status = posix_spawn_file_actions_destroy(actions);
     if started != 0 {
         return -1;
@@ -389,7 +397,7 @@ pub Capture :: (command: string[]) -> Result {
     status = posix_spawn_file_actions_adddup2(actions, err_write, 2);
     status = posix_spawn_file_actions_addclose(actions, out_read);
     status = posix_spawn_file_actions_addclose(actions, err_read);
-    started := posix_spawnp(pid, command[0], actions, 0, Vector(command), 0);
+    started := posix_spawnp(pid, command[0], actions, 0, Vector(command), chibi_environment());
     status = posix_spawn_file_actions_destroy(actions);
     status = close(out_write);
     status = close(err_write);
@@ -445,4 +453,22 @@ pub Capture :: (command: string[]) -> Result {
     result.stdout = text_from_bytes(standard);
     result.stderr = text_from_bytes(errors);
     return result;
+}
+
+// The program's arguments, the first being how it was started. Each is read
+// twice: its length first, then its bytes into a buffer of that size.
+pub Arguments :: () -> string[] {
+    arguments: string[] = [];
+    count := int(chibi_argument_count());
+    for index in 0..<count {
+        none: u8[] = [];
+        size := int(chibi_argument(i64(index), none, 0));
+        if size < 0 {
+            break;
+        }
+        bytes := Block(size);
+        copied := chibi_argument(i64(index), bytes, i64(size));
+        arguments.append(text_from_bytes(bytes));
+    }
+    return arguments;
 }

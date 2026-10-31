@@ -42,6 +42,7 @@ Calls :: () {
     assert(said.status == 0 && said.stdout == "hi\n" && said.stderr == "", "capture")
     both := posix.Capture(["sh", "-c", "echo out; echo err >&2; exit 3"])
     assert(both.status == 3 && both.stdout == "out\n" && both.stderr == "err\n", "capture both streams")
+    assert(length(posix.Arguments()) >= 1 && posix.Arguments()[0] != "", "arguments")
     process := posix.Spawn(["true"])
     assert(process > 0 && posix.Wait(process) == 0, "spawn and wait")
 }

@@ -262,12 +262,15 @@ See [Testing](testing.md) for a complete example.
 ## The CLI is a Chibi program
 
 [apps/chibi/Main.chibi](../../apps/chibi/Main.chibi) is an ordinary package
-entry point. The native [launcher](../../src/host/chibi_main.c) locates its
-installed source and the SDK's core library, then starts it through the same
-application host used by other programs. Argument parsing, command selection,
+entry point. The SDK build compiles it once, with the formatter that `chibi
+fmt` runs, and the native [launcher](../../src/host/chibi_main.c) embeds both,
+so no command compiles Chibi source when it starts. The launcher locates the
+SDK's core library, then starts the CLI through the same application host used
+by other programs. Argument parsing, command selection,
 output, build freshness and watch policy live in the authored package.
 
-From the engine checkout, run or test that package directly:
+To change the CLI without rebuilding the SDK, run or test its package
+directly from the engine checkout:
 
 ```sh
 chibi apps/chibi -- version
@@ -284,6 +287,7 @@ The [program service](../../src/authoring/program_service.h) has these operation
 | Operation | Result |
 | --- | --- |
 | `program.open(path, entry, arguments)` | An owned program handle with a copied argument vector. `entry` may be empty to require none. Source errors are reported by `update`. |
+| `program.embedded(name, entry, arguments)` | The same, for a program the SDK compiled and the launcher embeds, such as `fmt`; its first `update` loads it and later ones report it unchanged. A name the SDK does not embed fails the call. |
 | `program.update(handle)` | `1` when a changed generation is accepted, `0` when unchanged, or `-1` for a new failure. |
 | `program.call(handle)` | Calls the entry named at `open`. Separate `status` and `result` values. Status 0 means execution succeeded; result is the authored integer return, or 0 for no return value. |
 | `program.call_entry(handle, name)` | The same, for a named zero-argument function of the accepted generation, such as `Main` or `Frame`. A missing name fails with a diagnostic. |

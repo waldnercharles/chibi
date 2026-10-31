@@ -23,6 +23,9 @@ typedef struct
 {
     uint64_t handle;
     authoring_program *program;
+    /* NULL for a session over sources. An embedded program's path is its
+     * source label, which names its files in diagnostics. */
+    const embedded_program *embedded;
     char *path, *entry, *message;
     source_package_snapshot_options observed;
     arena arguments_storage;
@@ -32,6 +35,8 @@ typedef struct
 struct program_service
 {
     char *core;
+    const embedded_program *programs;
+    int program_count;
     authoring_program_options options;
     service_binding *services;
     program_entry **entries;
@@ -133,11 +138,13 @@ static bool unchanged(const source_package_snapshot_options *before, const sourc
     return true;
 }
 
-program_service *program_service_new(const char *core)
+program_service *program_service_new(const char *core, const embedded_program *programs, int program_count)
 {
-    assert(core);
+    assert(core && program_count >= 0 && (!program_count || programs));
     program_service *service = xcalloc(1, sizeof *service);
     service->core = absolute(core);
+    service->programs = programs;
+    service->program_count = program_count;
     return service;
 }
 
@@ -186,20 +193,23 @@ static char *absolute(const char *path)
     return out;
 }
 
-uint64_t program_service_open(
+/* A new session whose path is owned by it. */
+static uint64_t open_session(
     program_service *service,
-    const char *path,
+    char *path,
+    const embedded_program *embedded,
     const char *name,
     const char *const *arguments,
     int count
 )
 {
-    assert(service && service->configured && path && name && count >= 0 && (!count || arguments));
+    assert(service && service->configured && name && count >= 0 && (!count || arguments));
     program_entry *entry = xcalloc(1, sizeof *entry);
     entry->handle = atomic_fetch_add_explicit(&next_handle, 1, memory_order_relaxed);
     assert(entry->handle);
     entry->program = authoring_program_new(&service->options);
-    entry->path = absolute(path);
+    entry->embedded = embedded;
+    entry->path = path;
     entry->entry = xstrdup(name);
     entry->arguments = (pin_array){ .element_type = PIN_STR,
                                     .count = count,
@@ -222,6 +232,36 @@ uint64_t program_service_open(
     return entry->handle;
 }
 
+uint64_t program_service_open(
+    program_service *service,
+    const char *path,
+    const char *name,
+    const char *const *arguments,
+    int count
+)
+{
+    assert(path);
+    return open_session(service, absolute(path), NULL, name, arguments, count);
+}
+
+uint64_t program_service_open_embedded(
+    program_service *service,
+    const char *name,
+    const char *entry,
+    const char *const *arguments,
+    int count
+)
+{
+    assert(name);
+    for (int i = 0; i < service->program_count; i++) {
+        const embedded_program *program = &service->programs[i];
+        if (!strcmp(program->name, name)) {
+            return open_session(service, xstrdup(program->source), program, entry, arguments, count);
+        }
+    }
+    return 0;
+}
+
 int program_service_update(program_service *service, uint64_t handle)
 {
     program_entry *entry = find(service, handle);
@@ -231,24 +271,40 @@ int program_service_update(program_service *service, uint64_t handle)
     if (authoring_program_busy(entry->program)) {
         return message(entry, "Program is executing") ? -1 : 0;
     }
-    source_package_snapshot_options inputs = { 0 };
-    source_package_load_error error = { 0 };
-    if (!load_sources(service, entry, &inputs, &error)) {
-        size_t size = strlen(error.path) + strlen(error.message) + 3;
-        char *text = xmalloc(size);
-        snprintf(text, size, "%s: %s", error.path, error.message);
-        bool changed = message(entry, text);
-        free(text);
-        return changed ? -1 : 0;
+    bool candidate;
+    if (entry->embedded) {
+        /* The closure never changes: once accepted, it stays current. */
+        if (authoring_program_runtime(entry->program)) {
+            return 0;
+        }
+        const source_package_collection collection = { "core", service->core };
+        const source_package_disk_options roots = { entry->path, &collection, 1 };
+        candidate = authoring_program_load(
+            entry->program,
+            entry->embedded->closure,
+            entry->embedded->length,
+            &roots
+        );
+    } else {
+        source_package_snapshot_options inputs = { 0 };
+        source_package_load_error error = { 0 };
+        if (!load_sources(service, entry, &inputs, &error)) {
+            size_t size = strlen(error.path) + strlen(error.message) + 3;
+            char *text = xmalloc(size);
+            snprintf(text, size, "%s: %s", error.path, error.message);
+            bool changed = message(entry, text);
+            free(text);
+            return changed ? -1 : 0;
+        }
+        if (unchanged(&entry->observed, &inputs)) {
+            source_package_files_release(&inputs);
+            return 0;
+        }
+        source_package_files_release(&entry->observed);
+        entry->observed = inputs;
+        candidate = authoring_program_compile(entry->program, &entry->observed);
     }
-    if (unchanged(&entry->observed, &inputs)) {
-        source_package_files_release(&inputs);
-        return 0;
-    }
-    source_package_files_release(&entry->observed);
-    entry->observed = inputs;
-    if (!authoring_program_compile(entry->program, &entry->observed) ||
-        !authoring_program_prepare(entry->program, entry->entry, false) ||
+    if (!candidate || !authoring_program_prepare(entry->program, entry->entry, false) ||
         !authoring_program_commit(entry->program)) {
         session_error(entry);
         authoring_program_discard(entry->program);
@@ -386,25 +442,56 @@ void program_service_free(program_service *service)
     free(service);
 }
 
-static const char *native_open(void *user, const pin_value *arguments, pin_value *results)
+/* The path or name, entry and argument vector of an open. */
+static const char *open_arguments(
+    program_service *service,
+    const pin_value *arguments,
+    const char **path,
+    const char **entry,
+    const char ***argv,
+    int *count
+)
 {
-    program_service *service = user;
     arena_reset(&service->scratch);
-    const char *path = NULL, *entry = NULL;
-    const char *error = pin_text_cstring(&service->scratch, arguments[0], &path, NULL);
+    const char *error = pin_text_cstring(&service->scratch, arguments[0], path, NULL);
     if (!error) {
-        error = pin_text_cstring(&service->scratch, arguments[1], &entry, NULL);
+        error = pin_text_cstring(&service->scratch, arguments[1], entry, NULL);
     }
     const pin_array *array = arguments[2].ptr;
-    int count = array ? array->count : 0;
-    const char **argv = count
-                          ? arena_alloc(&service->scratch, (size_t)count * sizeof *argv)
-                          : NULL;
-    for (int i = 0; !error && i < count; i++) {
-        error = pin_text_cstring(&service->scratch, pin_array_get(array, i), &argv[i], NULL);
+    *count = array ? array->count : 0;
+    *argv = *count ? arena_alloc(&service->scratch, (size_t)*count * sizeof **argv)
+                   : NULL;
+    for (int i = 0; !error && i < *count; i++) {
+        error = pin_text_cstring(&service->scratch, pin_array_get(array, i), &(*argv)[i], NULL);
     }
+    return error;
+}
+
+static const char *native_open(void *user, const pin_value *arguments, pin_value *results)
+{
+    const char *path = NULL, *entry = NULL, **argv = NULL;
+    int count = 0;
+    const char *error = open_arguments(user, arguments, &path, &entry, &argv, &count);
     if (!error) {
-        results[0].u64 = program_service_open(service, path, entry, argv, count);
+        results[0].u64 = program_service_open(user, path, entry, argv, count);
+    }
+    return error;
+}
+
+static const char *native_embedded(void *user, const pin_value *arguments, pin_value *results)
+{
+    program_service *service = user;
+    const char *name = NULL, *entry = NULL, **argv = NULL;
+    int count = 0;
+    const char *error = open_arguments(service, arguments, &name, &entry, &argv, &count);
+    if (!error) {
+        results[0].u64 = program_service_open_embedded(service, name, entry, argv, count);
+    }
+    if (!error && !results[0].u64) {
+        size_t size = strlen(name) + sizeof "The SDK embeds no program called ";
+        char *text = arena_alloc(&service->scratch, size);
+        snprintf(text, size, "The SDK embeds no program called %s", name);
+        error = text;
     }
     return error;
 }
@@ -488,6 +575,11 @@ static const script_catalog_parameter open_parameters[] = {
     { .name = "entry", .type = { .storage = PIN_STR } },
     { .name = "arguments", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } }
 };
+static const script_catalog_parameter embedded_parameters[] = {
+    { .name = "name", .type = { .storage = PIN_STR } },
+    { .name = "entry", .type = { .storage = PIN_STR } },
+    { .name = "arguments", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } }
+};
 static const script_catalog_parameter handle_parameter = {
     .name = "program",
     .type = { .storage = PIN_HANDLE, .nominal = PROGRAM_TYPE }
@@ -513,7 +605,8 @@ static const script_catalog_parameter call_results[] = {
     X(4, "program.diagnostic", &handle_parameter, 1, &text_result, 1, invoke, native_diagnostic) \
     X(5, "program.close", &handle_parameter, 1, NULL, 0, invoke, native_close)                   \
     X(7, "program.call_entry", entry_parameters, 2, call_results, 2, context, native_call_entry) \
-    X(8, "program.has", entry_parameters, 2, &bool_result, 1, invoke, native_has)
+    X(8, "program.has", entry_parameters, 2, &bool_result, 1, invoke, native_has)                \
+    X(9, "program.embedded", embedded_parameters, 3, &handle_parameter, 1, invoke, native_embedded)
 
 #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULTS, RESULT_COUNT, KIND, FUNCTION) \
     { .id = PROGRAM_CAPABILITY(ID),                                                    \

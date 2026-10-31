@@ -141,25 +141,66 @@ void authoring_program_discard(authoring_program *program)
     program->pending_entry = 0;
 }
 
-bool authoring_program_compile(authoring_program *program, const source_package_snapshot_options *inputs)
+/* Starts a new candidate: forgets the last one and its error, and keeps the
+ * roots that name the files of a later run-time failure. */
+static bool begin_candidate(
+    authoring_program *program,
+    const char *project_root,
+    const source_package_collection *collections,
+    int collection_count
+)
 {
-    assert(program && inputs);
     if (!idle(program)) {
         return false;
     }
     authoring_program_discard(program);
     clear_error(program);
     forget_roots(program);
-    program->project_root = xstrdup(inputs->project_root);
-    for (int i = 0; i < inputs->collection_count; i++) {
+    program->project_root = xstrdup(project_root);
+    for (int i = 0; i < collection_count; i++) {
         apush(
             program->collections,
-            ((source_package_collection){ xstrdup(inputs->collections[i].name),
-                                          xstrdup(inputs->collections[i].root) })
+            ((source_package_collection){ xstrdup(collections[i].name),
+                                          xstrdup(collections[i].root) })
         );
     }
+    return true;
+}
+
+/* Keeps the decoded packages as the candidate, or reports why there are none. */
+static bool keep_candidate(
+    authoring_program *program,
+    package_collection *packages,
+    const package_compile_error *error
+)
+{
+    program->candidate = packages;
+    if (!packages) {
+        diagnostic(
+            program,
+            FLOW_ERR_COMPILE,
+            *error->path ? error->path : NULL,
+            (position){ .line = error->line, .column = error->column },
+            error->message
+        );
+        return false;
+    }
+    return true;
+}
+
+bool authoring_program_compile(authoring_program *program, const source_package_snapshot_options *inputs)
+{
+    assert(program && inputs);
+    if (!begin_candidate(
+            program,
+            inputs->project_root,
+            inputs->collections,
+            inputs->collection_count
+        )) {
+        return false;
+    }
     package_compile_error error;
-    program->candidate = package_compile(
+    package_collection *packages = package_compile(
         inputs,
         NULL,
         NULL,
@@ -167,17 +208,29 @@ bool authoring_program_compile(authoring_program *program, const source_package_
         program->options.backend,
         &error
     );
-    if (!program->candidate) {
-        diagnostic(
-            program,
-            FLOW_ERR_COMPILE,
-            *error.path ? error.path : NULL,
-            (position){ .line = error.line, .column = error.column },
-            error.message
-        );
+    return keep_candidate(program, packages, &error);
+}
+
+bool authoring_program_load(
+    authoring_program *program,
+    const unsigned char *closure,
+    size_t length,
+    const source_package_disk_options *roots
+)
+{
+    assert(program && closure && roots);
+    if (!begin_candidate(program, roots->project_root, roots->collections, roots->collection_count)) {
         return false;
     }
-    return true;
+    package_compile_error error;
+    package_collection *packages = package_compile_read(
+        closure,
+        length,
+        program->options.native,
+        program->options.backend,
+        &error
+    );
+    return keep_candidate(program, packages, &error);
 }
 
 bool authoring_program_prepare(authoring_program *program, const char *name, bool restart)

@@ -41,10 +41,10 @@ static void locate_driver(const char *self)
     free(resolved);
 }
 
-/* Runs a command with a bound for a launcher that compiles on first use: about
- * 8 s for a small package on a workstation, longer on a CI runner; the same
- * sources start from the kept closure afterwards. A failing case takes as long
- * as the bound, a passing one does not. */
+/* Runs a command with a bound for a program the launcher compiles on first
+ * use: about 8 s for a small package on a workstation, longer on a CI runner;
+ * the same sources start from the kept closure afterwards. A failing case
+ * takes as long as the bound, a passing one does not. */
 static int cli_run(const char *const argv[], const char *cwd, const char *log)
 {
     return tool_run_within(argv, cwd, log, 120);
@@ -91,17 +91,6 @@ static bool copy_resource(const char *binary, const char *name, const char *dest
     return cli_run(args, root, log_path) == 0;
 }
 
-/* The launcher compiles its application on a first start, which takes longer
- * than a case may run; start it once, with time to finish, so every case after
- * it starts from the kept closure. Its status does not matter. */
-static void warm_launcher()
-{
-    const char *version[] = { launcher, "version", NULL };
-    char output[256];
-    path(output, "warm.log");
-    tool_run_within(version, root, output, 300);
-}
-
 static void setup(const char *binary)
 {
     strcpy(root, "/tmp/chibi-cli-XXXXXX");
@@ -130,7 +119,6 @@ static void setup(const char *binary)
         path(destination, resources[i]);
         assert(!mkdir(destination, 0700));
     }
-    assert(copy_resource(binary, "apps", destination));
     assert(copy_resource(binary, "core", destination));
     char manifest[256];
     snprintf(manifest, sizeof manifest, "version %d\nname \"CLI proof\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", CHIBI_PROJECT_VERSION);
@@ -157,7 +145,6 @@ static void setup(const char *binary)
     char program[256];
     path(program, "bin/chibi-compile");
     assert(!chmod(program, 0700));
-    warm_launcher();
 }
 
 /* The text of the file at `relative`, which must exist. */
@@ -255,31 +242,49 @@ static void append_comment(const char *relative)
     fclose(stream);
 }
 
-/* The launcher compiles its application once per set of sources: a second start
- * reuses the kept closure, and an edit to the application or to a core package
- * it imports compiles another. */
-TEST_CASE(launcher_keeps_its_compiled_application)
+/* The launcher compiles no Chibi source when it starts: the CLI and the
+ * formatter are compiled when the SDK is built and embedded, so they keep no
+ * closure. A program it runs compiles once per set of sources: a second run
+ * reuses the kept closure, and an edit to the program or to a core package
+ * compiles another. */
+TEST_CASE(launcher_runs_embedded_programs_and_keeps_compiled_ones)
 {
-    char cache[256];
+    char cache[256], program[256], unformatted[256], report[256];
     path(cache, "closure-cache");
+    path(program, "Kept.chibi");
+    path(unformatted, "Unformatted.chibi");
+    path(report, "batch-report");
+    write_file("Kept.chibi", "package kept\nMain :: () -> int { return 0 }\n");
+    write_file("Unformatted.chibi", "package p\n\nMain :: () -> int {return 0}\n");
     const char *previous = getenv("CHIBI_ASSET_CACHE_DIR");
     char *saved = previous ? xstrdup(previous) : NULL;
     REQUIRE(!setenv("CHIBI_ASSET_CACHE_DIR", cache, 1));
     const char *version[] = { launcher, "version", NULL };
-    bool compiled = cli_run(version, root, log_path) == 0 && closures_kept(cache) == 1;
-    bool reused = cli_run(version, root, log_path) == 0 && closures_kept(cache) == 1;
-    append_comment("share/chibi/apps/chibi/Main.chibi");
-    bool application = cli_run(version, root, log_path) == 0 &&
-                       closures_kept(cache) == 2;
+    const char *check[] = { launcher, "fmt", "--check", unformatted, NULL };
+    /* A later batch of a large job runs as a child with explicit files. */
+    const char *batch[] = { launcher, "fmt",     "--batch",   "--report",
+                            report,   "--check", unformatted, NULL };
+    const char *format[] = { launcher, "fmt", unformatted, NULL };
+    bool embedded = cli_run(version, root, log_path) == 0 &&
+                    cli_run(check, root, log_path) == 1 &&
+                    cli_run(batch, root, log_path) == 1 &&
+                    file_is("batch-report", "1 0") &&
+                    cli_run(format, root, log_path) == 0 &&
+                    cli_run(check, root, log_path) == 0 && closures_kept(cache) == 0;
+    const char *run[] = { launcher, program, NULL };
+    bool compiled = cli_run(run, root, log_path) == 0 && closures_kept(cache) == 1;
+    bool reused = cli_run(run, root, log_path) == 0 && closures_kept(cache) == 1;
+    append_comment("Kept.chibi");
+    bool edited = cli_run(run, root, log_path) == 0 && closures_kept(cache) == 2;
     append_comment("share/chibi/core/strings/Strings.chibi");
-    bool core = cli_run(version, root, log_path) == 0 && closures_kept(cache) == 3;
+    bool core = cli_run(run, root, log_path) == 0 && closures_kept(cache) == 3;
     if (saved) {
         setenv("CHIBI_ASSET_CACHE_DIR", saved, 1);
     } else {
         unsetenv("CHIBI_ASSET_CACHE_DIR");
     }
     free(saved);
-    REQUIRE(compiled && reused && application && core);
+    REQUIRE(embedded && compiled && reused && edited && core);
     return true;
 }
 
@@ -978,12 +983,11 @@ TEST_CASE(public_cli_is_a_relocatable_ordinary_application)
     }
     REQUIRE(clone_program_file(built, "program-sdk/bin/chibi"));
     REQUIRE(clone_program_file(compiler, "program-sdk/bin/chibi-compile"));
-    char share[256], application[256], relocated[256], source[256], cwd[256];
+    char share[256], core[256], relocated[256], source[256], cwd[256];
     path(share, "program-sdk/share/chibi");
-    REQUIRE(copy_resource(built, "apps", share));
     REQUIRE(copy_resource(built, "core", share));
     REQUIRE(copy_resource(built, "engine.json", share));
-    path(application, "program-sdk/share/chibi/apps/chibi");
+    path(core, "program-sdk/share/chibi/core");
     path(relocated, "program-sdk/bin/chibi");
     path(source, "Hello.chibi");
     path(cwd, "unrelated-program-cwd");
@@ -991,30 +995,17 @@ TEST_CASE(public_cli_is_a_relocatable_ordinary_application)
     const char *args[] = { relocated, source, NULL };
     REQUIRE(cli_run(args, cwd, log_path) == 0);
     REQUIRE(file_is("output.log", "Hello, world!\n"));
-    /* The public CLI itself runs through the ordinary source-session API. */
-    const char *self[] = { relocated, application, "--", "version", NULL };
+    /* The CLI the launcher embeds is an ordinary package: its source runs
+     * through the same program session, as a nested CLI. */
+    const char *self[] = { relocated, CHIBI_SOURCE_ROOT "/apps/chibi", "--", "version", NULL };
     REQUIRE(cli_run(self, cwd, log_path) == 0);
     REQUIRE(file_has("output.log", "chibi "));
-    /* Replacing the whole package controls every command without C fallback. */
-    tool_remove_tree(application);
-    directory("program-sdk/share/chibi/apps/chibi");
-    write_file("program-sdk/share/chibi/apps/chibi/Main.chibi", "package chibi\nMain :: () -> int { return 42 }\n");
-    REQUIRE(cli_run(args, cwd, log_path) == 42);
-    REQUIRE(file_is("output.log", ""));
-    const char *version[] = { relocated, "version", NULL };
-    REQUIRE(cli_run(version, cwd, log_path) == 42);
-    REQUIRE(file_is("output.log", ""));
-    tool_remove_tree(application);
+    /* Without its core collection the launcher runs nothing. */
+    tool_remove_tree(core);
     REQUIRE(cli_run(args, cwd, log_path) == 1);
-    REQUIRE(file_has("output.log", "apps/chibi"));
+    REQUIRE(file_has("output.log", "The SDK has no core"));
     REQUIRE(!file_has("output.log", "Hello, world!"));
-    directory("program-sdk/share/chibi/apps/chibi");
-    write_file("program-sdk/share/chibi/apps/chibi/Main.chibi", "package chibi\nMain :: ( {\n");
-    REQUIRE(cli_run(args, cwd, log_path) == 1);
-    REQUIRE(file_has("output.log", "Main.chibi"));
-    REQUIRE(!file_has("output.log", "Hello, world!"));
-    tool_remove_tree(application);
-    REQUIRE(copy_resource(built, "apps", share));
+    REQUIRE(copy_resource(built, "core", share));
     REQUIRE(cli_run(args, cwd, log_path) == 0);
     REQUIRE(file_is("output.log", "Hello, world!\n"));
     REQUIRE(!exists("program-sdk/.chibi"));
@@ -1894,7 +1885,7 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(version_of_the_built_launcher);
     RUN_TEST_CASE(doctor_reports_each_capability);
     RUN_TEST_CASE(doctor_of_the_built_launcher);
-    RUN_TEST_CASE(launcher_keeps_its_compiled_application);
+    RUN_TEST_CASE(launcher_runs_embedded_programs_and_keeps_compiled_ones);
     RUN_TEST_CASE(test_runs_shared_package_tests);
     RUN_TEST_CASE(compiler_test_reports_each_test);
     RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
@@ -1966,10 +1957,9 @@ static void setup_installed(const char *binary)
     assert(length > 0 && length < (int)sizeof compiler);
     free(program);
     path(log_path, "output.log");
-    warm_launcher();
 }
 
-TEST_CASE(raw_sdk_build_finds_its_application_and_companions)
+TEST_CASE(raw_sdk_build_runs_and_finds_its_companions)
 {
     char output[256];
     path(output, "raw-sdk.log");
@@ -2012,7 +2002,7 @@ TEST_CASE(raw_sdk_build_finds_its_application_and_companions)
 void test_tool_chibi_cli_build(const char *binary)
 {
     setup_installed(binary);
-    RUN_TEST_CASE(raw_sdk_build_finds_its_application_and_companions);
+    RUN_TEST_CASE(raw_sdk_build_runs_and_finds_its_companions);
     RUN_TEST_CASE(version_of_the_built_launcher);
     RUN_TEST_CASE(doctor_of_the_built_launcher);
     RUN_TEST_CASE(program_main_runs_from_files_and_directories);

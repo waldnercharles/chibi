@@ -83,12 +83,12 @@ unsigned char *asset_compiler_compile_closure(
     asset_compiler_diagnostic *
 );
 /* asset_compiler_compile_closure with the closure kept on disk beside the asset
- * cache, so a launcher that compiles the same application on every start (about
- * 5 s on the VM-hosted compiler) starts from a hit. The key is the compiler
- * artifact, the request and `salt`, which must name whatever else the compile
- * reads, such as the files of the collections the request only names by root.
- * A NULL salt, an unavailable cache or a cancelled call compiles without it.
- * At most 16 closures stay; only successes are kept. */
+ * cache, so a program the launcher runs from unchanged sources (several seconds
+ * to compile on the VM-hosted compiler) starts from a hit. The key is the
+ * compiler artifact, the request and `salt`, which must name whatever else the
+ * compile reads, such as the files of the collections the request only names by
+ * root. A NULL salt, an unavailable cache or a cancelled call compiles without
+ * it. At most 16 closures stay; only successes are kept. */
 unsigned char *asset_compiler_compile_closure_cached(
     const char *request,
     size_t request_length,

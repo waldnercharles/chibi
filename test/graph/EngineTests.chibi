@@ -1,6 +1,7 @@
 package graph_tests
 
 import engine "graph:engine"
+import os "core:os"
 import strings "core:strings"
 
 // The profile options' compile flags, argument validation and target
@@ -142,11 +143,32 @@ ReflectionArgumentsAreValidated :: () {
 // add_dependencies does, and no other program.
 NamedProgramsBuildWhatTheyRun :: () {
     named := ["--commands-only", "on", "--target", "test_tools", "--target", "chibi"];
-    for (program in ["test_tools", "policy_worker", "chibi-compile", "chibi-build-host", "chibi-compiler-host", "chibi"]) {
+    for (program in ["test_tools", "policy_worker", "chibi-compile", "chibi-build-host", "chibi-compiler-host",
+                     "chibi-program-request", "chibi"]) {
         assert(engine.Selected(named, program), "a program a named program runs");
     }
     assert(!engine.Selected(named, "test_host"), "another test driver");
     assert(engine.Selected(["--commands-only", "on"], "test_host"), "no target names every target");
+}
+
+// Staging an embedded program lays its packages out as ProgramSources names
+// them, and a later staging removes a source the package no longer has, so the
+// program's compile never reads a deleted file.
+StagingRemovesDeletedSources :: () {
+    root := strings.Join([os.Root(), "/.chibi/graph-stage"], "");
+    package := strings.Join([root, "/package"], "");
+    assert(os.Run(["rm", "-rf", root]) == 0 && os.MakeDirectory(strings.Join([root, "/app"], "")) == nil &&
+           os.MakeDirectory(strings.Join([root, "/lib"], "")) == nil, "the scratch root");
+    for (file in ["app/Main.chibi", "lib/A.chibi", "lib/B.chibi"]) {
+        assert(os.WriteText(strings.Join([root, "/", file], ""), "package p\n") == nil, "a source");
+    }
+    staged := engine.StageProgram(root, package, ["=app", "lib=lib"]);
+    assert(length(staged) == 3 && os.IsFile(strings.Join([package, "/Main.chibi"], "")) &&
+           os.IsFile(strings.Join([package, "/lib/B.chibi"], "")), "the package is laid out");
+    assert(os.Remove(strings.Join([root, "/lib/B.chibi"], "")) == nil, "a source is deleted");
+    staged = engine.StageProgram(root, package, ["=app", "lib=lib"]);
+    assert(length(staged) == 2 && !os.Exists(strings.Join([package, "/lib/B.chibi"], "")), "its copy is removed");
+    assert(os.Run(["rm", "-rf", root]) == 0, "the scratch root is removed");
 }
 
 // The value after the first `--name`, as the graph reads options.
@@ -167,5 +189,6 @@ pub Run :: () -> int {
     ArgumentsAreValidated();
     ReflectionArgumentsAreValidated();
     NamedProgramsBuildWhatTheyRun();
+    StagingRemovesDeletedSources();
     return 0;
 }

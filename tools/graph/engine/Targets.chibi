@@ -26,7 +26,8 @@ pub Targets :: () -> string[] {
         "chibi_task_pool_runtime", "chibi_host_native_default",
 
         "chibi_source_catalog", "chibi_program", "chibi_build_host", "chibi-build-host", "chibi_compiler_host",
-        "chibi-compiler-host", "chibi_asset_compiler_host", "chibi_application", "chibi", "chibi_compiler_syntax", "chibi_compiler_json"
+        "chibi-compiler-host", "chibi_asset_compiler_host", "chibi_application", "chibi-program-request", "chibi",
+        "chibi_compiler_syntax", "chibi_compiler_json"
     ];
     // The native products and full test drivers share the platform's archive.
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
@@ -251,7 +252,10 @@ Files :: (target: string) -> string[] {
         return ["test/tools/program_consumer.c"];
     }
     if (target == "chibi") {
-        return ["src/host/chibi_main.c"];
+        return ["src/host/chibi_main.c", "build/sdk/generated/programs/embedded_programs.c"];
+    }
+    if (target == "chibi-program-request") {
+        return ["src/host/program_request_main.c"];
     }
     if (target == "chibi_compiler_syntax") {
         return ["src/toolchain/compiler_syntax.c"];
@@ -913,9 +917,9 @@ pub Includes :: (target: string) -> string[] {
             "public/text_capabilities", "public/array_capabilities", "public/json"
         ];
     }
-    if (target == "chibi") {
+    if (LinksLikeLauncher(target)) {
         return [
-            "private/launcher", "public/program", "public/source_catalog",
+            "private/launcher", "public/program", "public/source_catalog", "public/asset_compiler_host",
             "public/language_syntax", "public/support",
             "public/capabilities", "public/types", "public/execution", "public/execution_contract",
             "public/ecs", "public/tasks", "public/native_capabilities", "public/input_action", "public/asset_values",
@@ -1054,7 +1058,7 @@ pub Includes :: (target: string) -> string[] {
 // Cute's Linux interface links s2n after PhysicsFS and before SDL. Preserve
 // that transitive include order; other platforms do not link s2n.
 pub SystemIncludes :: (target: string) -> string[] {
-    if (target == "chibi") {
+    if (LinksLikeLauncher(target)) {
         return [
             "third-party/include/chibi/vendor/tree_sitter/1", "public/math"
         ];
@@ -1508,7 +1512,7 @@ pub Embeds :: (target: string) -> string[] {
 // places it; empty for the build directory itself.
 pub ProgramDirectory :: (target: string) -> string {
     if (target == "chibi-compile" || target == "chibi-build-host" ||
-        target == "chibi-compiler-host" || target == "chibi") {
+        target == "chibi-compiler-host" || target == "chibi-program-request" || target == "chibi") {
         return "sdk";
     }
     if (target == "test_language") {
@@ -1536,15 +1540,6 @@ pub Resources :: (target: string) -> string[] {
     if (target == "chibi") {
         return [
             "build/share/chibi/engine.json=build/sdk/chibi_engine_metadata.json",
-            "build/share/chibi/apps/chibi=apps/chibi",
-            // chibi fmt runs apps/fmt as a program of its own, with the formatter's
-            // packages beside it, so the other commands do not compile them.
-            "build/share/chibi/apps/fmt=apps/fmt",
-            "build/share/chibi/apps/fmt/compiler_syntax=tools/compiler/compiler_syntax",
-            "build/share/chibi/apps/fmt/source_format=tools/compiler/source_format",
-            "build/share/chibi/apps/fmt/source_parser=tools/compiler/source_parser",
-            "build/share/chibi/apps/fmt/source_tokenizer=tools/compiler/source_tokenizer",
-            "build/share/chibi/apps/fmt/syntax_diagnostics=tools/compiler/syntax_diagnostics",
             "build/share/chibi/core=packages/core"
         ];
     }
@@ -1573,15 +1568,48 @@ pub ArtifactFormats :: () -> string[] {
     ];
 }
 
+// The launcher, and the tool that writes its embedded programs' compile
+// requests, which links what it links so the requests name its catalog.
+pub LinksLikeLauncher :: (target: string) -> bool {
+    return target == "chibi" || target == "chibi-program-request";
+}
+
+// The programs the launcher embeds, compiled when the SDK is built so that no
+// command compiles Chibi source when it starts: the CLI, which the launcher
+// opens as "chibi", and the commands it runs as programs of their own
+// (program.embedded). ProgramSources lays out each one's package.
+pub EmbeddedPrograms :: () -> string[] {
+    return ["chibi", "fmt"];
+}
+
+
+// An embedded program's package as `DIRECTORY=SOURCE` below the package root,
+// the root package's own SOURCE first: `chibi fmt` imports the formatter and
+// the stage-one parser as `project:` packages beside its Main.
+pub ProgramSources :: (program: string) -> string[] {
+    if (program == "chibi") {
+        return ["=apps/chibi"];
+    }
+    if (program == "fmt") {
+        return [
+            "=apps/fmt", "compiler_syntax=tools/compiler/compiler_syntax", "source_format=tools/compiler/source_format",
+            "source_parser=tools/compiler/source_parser", "source_tokenizer=tools/compiler/source_tokenizer",
+            "syntax_diagnostics=tools/compiler/syntax_diagnostics"
+        ];
+    }
+    return [];
+}
+
 // The programs an executable runs, built with it as CMake's add_dependencies
 // builds them: test_tools runs the workers and tools whose paths it compiles
-// in, and the launcher the compiler and player beside it.
+// in, the launcher the compiler and player beside it, and its build the tool
+// that writes its embedded programs' requests.
 pub Runs :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_host") {
         return ["chibi-build-host", "chibi-compiler-host"];
     }
     if (target == "chibi") {
-        return ["chibi-compile"];
+        return ["chibi-compile", "chibi-program-request"];
     }
     if (target == "test_tools") {
         return ["policy_worker", "benchmark_trials", "chibi-build-host", "chibi-compiler-host", "chibi-compile"];
@@ -1592,7 +1620,8 @@ pub Runs :: (target: string) -> string[] {
 // The executables the graph builds; every other target is a library.
 pub Programs :: () -> string[] {
     programs := [
-        "reflect", "chibi-build-host", "chibi-compiler-host", "chibi", "test_host", "concurrent_runner",
+        "reflect", "chibi-build-host", "chibi-compiler-host", "chibi-program-request", "chibi", "test_host",
+        "concurrent_runner",
         "policy_worker", "benchmark_trials"
     ];
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
@@ -1604,7 +1633,7 @@ pub Programs :: () -> string[] {
 // Whether an executable links with the C++ compiler, as CMake does when a
 // library it links has C++ sources.
 pub LinksCxx :: (target: string) -> bool {
-    return target == "chibi" || target == "chibi-compile" || target == "test_language" ||
+    return LinksLikeLauncher(target) || target == "chibi-compile" || target == "test_language" ||
            target == "test_tools";
 }
 
@@ -1618,7 +1647,7 @@ pub ObjectLibrary :: (target: string) -> bool {
 // The object libraries an executable links, whose objects come before its
 // own, as CMake orders them.
 pub LinkedObjects :: (target: string) -> string[] {
-    if (target == "chibi") {
+    if (LinksLikeLauncher(target)) {
         return ["chibi_application"];
     }
     if (target == "chibi-build-host") {
@@ -1688,7 +1717,7 @@ pub Links :: (target: string) -> string[] {
             "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a"
         ];
     }
-    if (target == "chibi" && os.Platform() == "Darwin") {
+    if (LinksLikeLauncher(target) && os.Platform() == "Darwin") {
         return [
             "chibi_program", "chibi_source_catalog",
             "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
@@ -1708,7 +1737,7 @@ pub Links :: (target: string) -> string[] {
             "chibi_types", "chibi_support", "-lm"
         ];
     }
-    if (target == "chibi" && os.Platform() == "Linux") {
+    if (LinksLikeLauncher(target) && os.Platform() == "Linux") {
         links := ["chibi_program"];
         links.extend(LinuxLinks("chibi-compile"));
         return links;

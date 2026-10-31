@@ -7,10 +7,24 @@
 #define PROGRAM_SERVICE "application.programs"
 
 typedef struct program_service program_service;
+/* A program compiled ahead of time that the host embeds, as the launcher
+ * embeds its CLI and formatter: `name` opens it, and `closure` holds `length`
+ * bytes of its closure, compiled for the host's catalog. `source` is the root
+ * of its files in diagnostics: the package's directory in the engine checkout,
+ * such as apps/fmt, below which the SDK build laid out the packages it
+ * imports from elsewhere (tools/compiler/source_parser as source_parser). */
+typedef struct
+{
+    const char *name, *source;
+    const unsigned char *closure;
+    size_t length;
+} embedded_program;
+
 /* Construct the service before composing its native catalog, then configure
  * it once before opening sessions. Core is an explicit absolute collection
- * directory. Configure retains the catalog and copies service rows/names. */
-program_service *program_service_new(const char *core);
+ * directory. The embedded programs are borrowed for the service's life.
+ * Configure retains the catalog and copies service rows/names. */
+program_service *program_service_new(const char *core, const embedded_program *programs, int program_count);
 void program_service_configure(program_service *, const authoring_program_options *);
 const native_capability_pack *program_service_pack();
 /* Every open returns a distinct owned handle, including for invalid sources;
@@ -19,6 +33,17 @@ const native_capability_pack *program_service_pack();
 uint64_t program_service_open(
     program_service *,
     const char *path,
+    const char *entry,
+    const char *const *arguments,
+    int count
+);
+/* Opens the embedded program called `name` as open opens sources. Its first
+ * update decodes and verifies the closure; once accepted, later ones report
+ * it unchanged, and after a failure each decodes it again. 0 when the service
+ * embeds no program of that name. */
+uint64_t program_service_open_embedded(
+    program_service *,
+    const char *name,
     const char *entry,
     const char *const *arguments,
     int count

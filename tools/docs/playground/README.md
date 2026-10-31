@@ -30,9 +30,11 @@ the packages it imports, passing requests through files in a mailbox folder. One
 parse of each request serves the formatting and both highlighted texts. The
 first format waits about 30 s while the program compiles; later ones take about
 0.1 s. The program ends after 1.5 MB of source, because its garbage is
-collected only between runs, and starts again on the next request. It is not
-`chibi fmt`: the formatter, the parser and the highlighter together already
-take most of a program's compile budget.
+collected only between runs, and starts again on the next request from the
+closure the launcher kept. It cannot reuse the formatter the launcher embeds
+for `chibi fmt`, which formats files and has no highlighter; the formatter, the
+parser and the highlighter together take most of the budget a program compiled
+from source may use.
 
 ```sh
 python3 tools/docs/playground/serve.py "$PWD" "$PWD/build-release/sdk/chibi" 8765

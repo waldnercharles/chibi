@@ -766,6 +766,166 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
     return compiled;
 }
 
+// Copies an embedded program's package below `package` as ProgramSources lays
+// it out, and removes what an earlier copy staged that the package no longer
+// has. The staged sources, or none when a copy fails. A package holds tens of
+// files, so the removal scans the list.
+pub StageProgram :: (root: string, package: string, mounts: string[]) -> string[] {
+    staged: string[] = [];
+    origins: string[] = [];
+    for (mount in mounts) {
+        directory := build.before(mount, "=");
+        source := Join([root, "/", build.after(mount, "=")]);
+        for (path in ChibiSources(source)) {
+            relative := build.after(path, Join([source, "/"]));
+            if (directory != "") {
+                relative = Join([directory, "/", relative]);
+            }
+            staged.append(Join([package, "/", relative]));
+            origins.append(path);
+        }
+    }
+    listing := Join([package, ".staged"]);
+    if (os.Exists(listing)) {
+        for (old in build.lines(build.read_file(listing))) {
+            if (old != "" && !Listed(staged, old) && os.Exists(old) && os.Remove(old)) {
+                os.Print(Join(["graph: removing a stale program source failed: ", old]));
+                return [];
+            }
+        }
+    }
+    for (i in 0..<length(staged)) {
+        if (!CopyChanged(origins[i], staged[i])) {
+            os.Print(Join(["graph: staging a program source failed: ", origins[i]]));
+            return [];
+        }
+    }
+    text := build.join(staged, "\n");
+    if ((!os.Exists(listing) || build.read_file(listing) != text) && os.WriteText(listing, text)) {
+        return [];
+    }
+    return staged;
+}
+
+// Compiles a program's request on the asset compiler, on SLJIT, unless the
+// closure is already the compiler's result for the same request: the key is
+// the compiler's and the request's SHA-256, as the launcher keys the closures
+// it keeps. A rejected request prints the compiler's first diagnostic. 1 when
+// it compiled, 0 when the closure was current, -1 on failure, as c.Step.
+CompileProgram :: (host: string, compiler_sha256: string, compiler: string, request: string, closure: string) -> int {
+    key := build.hash_text(Join([compiler_sha256, " ", build.hash_file(request)]));
+    record := Join([closure, ".key"]);
+    if (os.Exists(closure) && os.Exists(record) && build.read_file(record) == key) {
+        return 0;
+    }
+    // fmt takes about 4 billion instructions, the budget the launcher gives a
+    // compile at run time (CLOSURE_COMPILE_BUDGET); the build allows 2.5 times
+    // that, as the asset compiler's own generation does.
+    invocation := ["--artifact", compiler, "--input", request, "--backend", "sljit", "--budget", "10000000000",
+                   "--timeout-ms", "600000"];
+    written := Join([closure, ".tmp"]);
+    // project:asset_compiler:1:CompilePackages:callable
+    command := [host, "--entry", "0xf10ff1d6771d8100"];
+    command.extend(invocation);
+    command.extend(["--output-bytes", written]);
+    compiled := os.Capture(command);
+    if (compiled.status != 0) {
+        os.Print(Join(["graph: compiling ", request, " failed: ", compiled.stderr]));
+        if (strings.Contains(compiled.stderr, "the compiler entry returned no bytes")) {
+            // project:asset_compiler:1:RejectPackages:callable
+            diagnosis := [host, "--entry", "0x6e1d6a18ca7e0f16"];
+            diagnosis.extend(invocation);
+            os.Print(Join(["graph: the first rejection, as the index of the request's path (its root package's ",
+                           "files first), line, column and message: ", os.Capture(diagnosis).stdout]));
+        }
+        return -1;
+    }
+    if (os.Rename(written, closure) || os.WriteText(record, key)) {
+        return -1;
+    }
+    return 1;
+}
+
+// Compiles each program the launcher embeds (EmbeddedPrograms) once, on the
+// prepared asset compiler, and writes its closure as a C array, with the table
+// the launcher runs them from, so no command compiles Chibi source when it
+// starts. The table includes every array, since its rows take their sizes;
+// compiling it takes about a second. chibi-program-request links what the launcher
+// links, so each request names the launcher's catalog. The number of sources
+// compiled, or -1 on failure.
+EmbedPrograms :: (tools: c.Tools, profile: Profile, root: string, folder: string) -> int {
+    prerequisites: string[] = [];
+    for (target in Targets()) {
+        if (target == "chibi-program-request" || target == "chibi-compiler-host" ||
+            Needed("chibi-program-request", target) || Needed("chibi-compiler-host", target)) {
+            prerequisites.append(target);
+        }
+    }
+    compiled := Build(tools, profile, root, folder, prerequisites);
+    if (compiled < 0) {
+        return -1;
+    }
+    output := Join([folder, "/sdk/generated/programs"]);
+    request_tool := Executable(folder, "chibi-program-request");
+    compiler_host := Executable(folder, "chibi-compiler-host");
+    if (profile.asset_generator_hosts != "") {
+        compiler_host = Join([profile.asset_generator_hosts, "/chibi-compiler-host"]);
+    }
+    compiler := Join([folder, "/sdk/generated/assets/asset_compiler.chibip"]);
+    compiler_sha256 := build.hash_file(compiler);
+    core := Join([root, "/packages/core"]);
+    core_sources := ChibiSources(core);
+    includes: string[] = [];
+    rows: string[] = [];
+    for (program in EmbeddedPrograms()) {
+        package := Join([output, "/", program]);
+        sources := StageProgram(root, package, ProgramSources(program));
+        if (length(sources) == 0) {
+            os.Print(Join(["graph: the embedded program ", program, " has no sources"]));
+            return -1;
+        }
+        // Listing the inputs makes an added or removed source rerun the step.
+        inputs := [request_tool];
+        inputs.extend(sources);
+        inputs.extend(core_sources);
+        inventory := Join([package, ".inputs"]);
+        listing := build.join(inputs, "\n");
+        if ((!os.Exists(inventory) || build.read_file(inventory) != listing) && os.WriteText(inventory, listing)) {
+            return -1;
+        }
+        inputs.append(inventory);
+        request := Join([package, ".request.json"]);
+        closure := Join([package, ".closure"]);
+        array := Join([package, ".inc"]);
+        symbol := Join(["embedded_", program]);
+        if (c.Step([request_tool, package, core, request], inputs, request) < 0) {
+            return -1;
+        }
+        recompiled := CompileProgram(compiler_host, compiler_sha256, compiler, request, closure);
+        if (recompiled < 0) {
+            return -1;
+        }
+        // fmt's array is 17 MB of C text; writing it only to compare costs
+        // more than this check.
+        if (recompiled > 0 || !os.Exists(array)) {
+            build.embed_file(closure, array, symbol);
+        }
+        includes.append(Join(["#include \"", program, ".inc\"\n"]));
+        rows.append(Join(["    { \"", program, "\", \"", build.after(ProgramSources(program)[0], "="), "\", ", symbol,
+                          ", sizeof ", symbol, " },\n"]));
+    }
+    table := Join(["/* Written by tools/graph/engine/Engine.chibi (EmbedPrograms): the programs\n",
+                   " * EmbeddedPrograms names, compiled for the launcher's catalog. */\n",
+                   "#include \"host/application.h\"\n\n", Join(includes),
+                   "\nconst embedded_program embedded_programs[] = {\n", Join(rows), "};\n",
+                   format_text("const int embedded_program_count = {};\n", length(rows))]);
+    path := Join([output, "/embedded_programs.c"]);
+    if ((!os.Exists(path) || build.read_file(path) != table) && os.WriteText(path, table)) {
+        return -1;
+    }
+    return compiled;
+}
+
 // Whether building the targets runs reflect first: one compiles a source it
 // writes.
 Reflects :: (targets: string[]) -> bool {
@@ -1161,6 +1321,13 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             return -1;
         }
         generated += assets_built;
+    }
+    if (Listed(targets, "chibi")) {
+        programs_built := EmbedPrograms(tools, profile, source_root, build_dir);
+        if (programs_built < 0) {
+            return -1;
+        }
+        generated += programs_built;
     }
     for (target in targets) {
         if (!Embed(source_root, build_dir, target)) {

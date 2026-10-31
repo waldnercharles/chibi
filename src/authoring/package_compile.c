@@ -36,7 +36,7 @@ static int top_level_file(const source_package_snapshot_options *inputs)
     return -1;
 }
 
-static package_collection *read_closure(
+package_collection *package_compile_read(
     const unsigned char *closure,
     size_t length,
     const native_capabilities *native,
@@ -44,6 +44,7 @@ static package_collection *read_closure(
     package_compile_error *error
 )
 {
+    *error = (package_compile_error){ 0 };
     native_prepared_context context = { .native = native };
     execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
     linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -301,20 +302,34 @@ void package_compile_source_path(
     snprintf(out, size, "%s", label);
 }
 
-package_collection *package_compile(
+/* The files a compile sends: the root package's and those of the packages it
+ * reaches, borrowed from the inputs and the virtual first file. */
+typedef struct
+{
+    const char **paths, **texts;
+    size_t *sizes;
+    int count;
+} compile_files;
+
+static void compile_files_free(compile_files *files)
+{
+    free(files->sizes);
+    free(files->texts);
+    free(files->paths);
+}
+
+static bool select_files(
     const source_package_snapshot_options *inputs,
     const char *first_path,
     const char *first_text,
-    const native_capabilities *native,
-    behavior_backend backend,
+    compile_files *files,
     package_compile_error *error
 )
 {
-    *error = (package_compile_error){ 0 };
     int first = first_path ? -1 : top_level_file(inputs);
     if (!first_path && first < 0) {
         fail(error, NULL, 0, 0, "The project folder holds no source file");
-        return NULL;
+        return false;
     }
     bool virtual_file = first_path != NULL;
     char *root_directory = directory_of(
@@ -326,48 +341,99 @@ package_collection *package_compile(
     for (int i = 0; i < inputs->file_count; i++) {
         count += keep[i];
     }
-    const char **paths = xmalloc((size_t)count * sizeof *paths);
-    const char **texts = xmalloc((size_t)count * sizeof *texts);
-    size_t *sizes = xmalloc((size_t)count * sizeof *sizes);
+    files->paths = xmalloc((size_t)count * sizeof *files->paths);
+    files->texts = xmalloc((size_t)count * sizeof *files->texts);
+    files->sizes = xmalloc((size_t)count * sizeof *files->sizes);
     int at = 0;
     if (virtual_file) {
-        paths[at] = first_path;
-        texts[at] = first_text;
-        sizes[at++] = strlen(first_text);
+        files->paths[at] = first_path;
+        files->texts[at] = first_text;
+        files->sizes[at++] = strlen(first_text);
     }
     for (int i = -1; i < inputs->file_count; i++) {
         int index = i < 0 ? first : i;
         if (index < 0 || (i >= 0 && (i == first || !keep[i]))) {
             continue;
         }
-        paths[at] = inputs->files[index].path;
-        texts[at] = inputs->files[index].text;
-        sizes[at++] = inputs->files[index].size;
+        files->paths[at] = inputs->files[index].path;
+        files->texts[at] = inputs->files[index].text;
+        files->sizes[at++] = inputs->files[index].size;
     }
+    files->count = count;
+    free(keep);
+    return true;
+}
+
+static char *request_json(
+    const source_package_snapshot_options *inputs,
+    const compile_files *files,
+    const native_capabilities *native,
+    size_t *length,
+    package_compile_error *error
+)
+{
     const char **names = xmalloc((size_t)(inputs->collection_count + 1) * sizeof *names);
     const char **roots = xmalloc((size_t)(inputs->collection_count + 1) * sizeof *roots);
     for (int i = 0; i < inputs->collection_count; i++) {
         names[i] = inputs->collections[i].name;
         roots[i] = inputs->collections[i].root;
     }
-    size_t request_length = 0;
     char *request = compiler_package_catalog_request_json(
         inputs->project_root,
         names,
         roots,
         inputs->collection_count,
-        paths,
-        texts,
-        sizes,
-        count,
+        files->paths,
+        files->texts,
+        files->sizes,
+        files->count,
         native_capabilities_catalog(native),
         native,
-        &request_length
+        length
     );
-    package_collection *packages = NULL;
     if (!request) {
         fail(error, NULL, 0, 0, "The native catalog cannot be described to the compiler");
-    } else {
+    }
+    free(roots);
+    free(names);
+    return request;
+}
+
+char *package_compile_request(
+    const source_package_snapshot_options *inputs,
+    const native_capabilities *native,
+    size_t *length,
+    package_compile_error *error
+)
+{
+    *error = (package_compile_error){ 0 };
+    compile_files files;
+    if (!select_files(inputs, NULL, NULL, &files, error)) {
+        return NULL;
+    }
+    char *request = request_json(inputs, &files, native, length, error);
+    compile_files_free(&files);
+    return request;
+}
+
+package_collection *package_compile(
+    const source_package_snapshot_options *inputs,
+    const char *first_path,
+    const char *first_text,
+    const native_capabilities *native,
+    behavior_backend backend,
+    package_compile_error *error
+)
+{
+    *error = (package_compile_error){ 0 };
+    compile_files files;
+    if (!select_files(inputs, first_path, first_text, &files, error)) {
+        return NULL;
+    }
+    size_t request_length = 0;
+    char *request = request_json(inputs, &files, native, &request_length, error);
+    package_collection *packages = NULL;
+    if (request) {
         asset_compiler_diagnostic diagnostic;
         size_t length = 0;
         char *salt = collections_salt(inputs);
@@ -381,12 +447,12 @@ package_collection *package_compile(
         );
         free(salt);
         if (closure) {
-            packages = read_closure(closure, length, native, backend, error);
+            packages = package_compile_read(closure, length, native, backend, error);
         } else {
-            bool known = diagnostic.document >= 0 && diagnostic.document < count;
+            bool known = diagnostic.document >= 0 && diagnostic.document < files.count;
             fail(
                 error,
-                known ? paths[diagnostic.document] : NULL,
+                known ? files.paths[diagnostic.document] : NULL,
                 diagnostic.line,
                 diagnostic.column,
                 diagnostic.message
@@ -395,11 +461,6 @@ package_collection *package_compile(
         free(closure);
     }
     free(request);
-    free(roots);
-    free(names);
-    free(keep);
-    free(sizes);
-    free(texts);
-    free(paths);
+    compile_files_free(&files);
     return packages;
 }

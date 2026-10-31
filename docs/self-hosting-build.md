@@ -634,6 +634,25 @@ with the SHA-256 of the sources and headers that own it. A target's
 ROOT by absolute path, byte-sorted, as
 `test/language/CMakeLists.txt` writes the language corpus `test_language`
 reads.
+
+Building the launcher first compiles the programs it embeds, so that no command
+compiles Chibi source when it starts. `EmbeddedPrograms` names them: `chibi`,
+the CLI (`apps/chibi`), which the launcher opens by that name, and `fmt`;
+`ProgramSources` lays out each package, as `fmt`'s Main imports the formatter
+and the stage-one parser as `project:` packages beside it. `EmbedPrograms`
+stages each package below `BUILD/sdk/generated/programs`, runs
+`chibi-program-request`, which links what the launcher links, to write the
+request the launcher's package compile would send for it, compiles that once on
+the asset compiler with the compiler host on SLJIT, writes the closure as a C
+array, and writes `embedded_programs.c`, the table the launcher reads, which
+includes the arrays. The closure is the same
+bytes `asset_compiler_compile_closure` returns for the package at run time; it
+is recompiled only when the request or the asset compiler changes, keyed by
+their SHA-256 as the launcher keys the closures it keeps. Compiling the
+CLI takes about 4 s of CPU and `fmt` about 12 s (38 s on bytecode). The
+launcher decodes and verifies a closure when a program opens it; to change the
+CLI without rebuilding the SDK, run its package, `chibi apps/chibi -- ARGUMENTS`.
+
 Every run
 writes `BUILD/link_commands.json` beside the compile commands. Naming a
 program with `--target` also builds the libraries it links and the programs

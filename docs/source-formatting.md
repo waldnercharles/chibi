@@ -95,22 +95,34 @@ would stage those edits. `.githooks/pre-commit` runs it with the `chibi` it
 finds in `build/sdk`, `build-release/sdk` or `PATH`, so enable the hooks once
 with `git config core.hooksPath .githooks`.
 
-The command runs `apps/fmt` as a program of its own, installed in
-`share/chibi/apps/fmt` with the formatter's packages beside it, so that no other
-command compiles them. Costs on this checkout (Apple M-series, release SDK):
+The SDK build compiles `apps/fmt`, with the formatter's packages beside it,
+and the launcher embeds the closure; the command runs it as a program of its
+own (`program.embedded`), so that no other command loads it. Costs on this
+checkout (Apple M-series, release SDK, measured 2026-10-30 at a load average
+of about 35 on 14 cores):
 
-- Start: about 26 s, all of it compiling the program. That takes close to the 4
-  billion instructions a package closure may use (`CLOSURE_COMPILE_BUDGET` in
+- Start: about 0.1 s (`chibi fmt --help`; `chibi version` takes 20 ms), with
+  nothing compiled: loading the 2.7 MB closure takes most of it. Compiling the
+  program is a step of the SDK build: about 12 s of CPU on the compiler host's
+  SLJIT, 38 s on bytecode, where a start used to spend 26 s or more. It takes
+  about 45 million calls and close to the 4 billion instructions a package
+  closure compiled at run time may use (`CLOSURE_COMPILE_BUDGET` in
   `src/authoring/asset_compiler_host.c`), roughly 500,000 interpreted
   instructions per source line of the closure. Adding the 330-line
-  highlighter to it exceeded the budget, so the playground's host is a
+  highlighter to it exceeded that budget, so the playground's host is a
   separate program.
 - Formatting: about 3 s for the 4,000-line `Body.chibi`; parsing dominates.
+  One small file takes about 0.25 s in all, 40 ms of it for `git rev-parse`.
 - Memory: a program's garbage is collected only between runs, and a parse costs
   about 3 KB of heap per source byte, so one process formats at most 400 KB of
   source. A larger job runs its first batch itself and each later batch in a
-  child process, and each child pays the start again.
-- The whole tree, 859 files and 4 MB, takes about 5 minutes with `--check`.
+  child `chibi fmt`.
+- The whole tree, 914 files and 4 MB, takes about 2 minutes with `--check`
+  (95 s of CPU), formatting nearly all of it.
+
+After a change to the formatter, `tools/build.sh build --release --target
+chibi` compiles the program again; the packages' own tests run with `chibi test
+tools/compiler`.
 
 First whole-tree result (2026-10-30): 369 of 859 files would change, 3 cannot
 be formatted. 351 of the 369 are the dense one-line fixtures in

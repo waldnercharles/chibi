@@ -10,16 +10,16 @@ import strings "core:strings"
 // files are the ones git tracks below it; without one, the working directory.
 // --check writes nothing and fails when a file would change. --staged formats
 // the files staged for commit and stages the result, for the pre-commit hook.
-// `chibi fmt` runs this package as a separate program so that the other
-// commands do not compile the formatter on every start.
+// The SDK build compiles this package and the launcher embeds it; `chibi fmt`
+// runs it as a separate program so that the other commands do not load it.
 //
 // A program's garbage is collected only between runs, and parsing costs about
 // 3 KB of heap per source byte, so one process formats at most BatchBytes of
 // source. A larger job runs its first batch itself and each later batch in a
-// child `chibi run` of this package with the internal --batch flag, which takes
-// explicit files, prints one line per changed file and writes its counts to the
-// file named by --report. (process.capture cannot carry a child's output: it
-// gives up after ten seconds, and a child spends longer than that compiling.)
+// child `chibi fmt` with the internal --batch flag, which takes explicit
+// files, prints one line per changed file and writes its counts to the file
+// named by --report. (process.capture cannot carry a child's output: it gives
+// up after ten seconds, and a batch can take longer than that.)
 
 // The most source one process formats; about 1.3 GB of heap.
 BatchBytes: int : 400000;
@@ -64,7 +64,7 @@ Request :: struct {
     options: string
 }
 
-// The flags among `arguments`, which hold the program path first; FormatPaths
+// The flags among `arguments`, which hold the command name first; FormatPaths
 // lists the rest.
 ParseRequest :: (arguments: string[]) -> Request {
     request: Request = {check: false, staged: false, error: "", help: false, batch: false, report: "", options: ""}
@@ -236,12 +236,12 @@ FormatBatch :: (sources: string[], from: int, to: int, check: bool, options: for
 
 // Runs one later batch in a child process, which prints as it goes; its counts
 // come back through `report`, a file path.
-RunBatch :: (program: string, request: Request, batch: string[], report: string) -> Counts {
+RunBatch :: (request: Request, batch: string[], report: string) -> Counts {
     launcher := Join([application.bin(), "/chibi"])
     if application.platform() == "Windows" {
         launcher = Join([launcher, ".exe"])
     }
-    command := [launcher, "run", program, "--", "--batch", "--report", report]
+    command := [launcher, "fmt", "--batch", "--report", report]
     if request.check {
         command = append(command, "--check")
     }
@@ -299,7 +299,7 @@ FormatTree :: (request: Request, arguments: string[], options: format.Options) -
             if scratch == "" {
                 scratch = files.temporary("chibi-fmt")
             }
-            counts = RunBatch(arguments[0], request, Slice(sources, start, end), Join([scratch, "/report"]))
+            counts = RunBatch(request, Slice(sources, start, end), Join([scratch, "/report"]))
         }
         total.changed += counts.changed
         total.rejected += counts.rejected

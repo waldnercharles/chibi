@@ -44,6 +44,16 @@ authoring_program *authoring_program_new(const authoring_program_options *);
  * project root, with the packages it imports on the authored compiler. The
  * inputs are borrowed for the call. Replaces any prior unpublished candidate. */
 bool authoring_program_compile(authoring_program *, const source_package_snapshot_options *inputs);
+/* Decodes a closure compiled ahead of time, such as a program the launcher
+ * embeds, as the candidate in place of compiling sources, verifying its bytes.
+ * The roots name the files of a run-time failure, as a compile's inputs do.
+ * Both are borrowed for the call. */
+bool authoring_program_load(
+    authoring_program *,
+    const unsigned char *closure,
+    size_t length,
+    const source_package_disk_options *roots
+);
 /* A non-empty entry must name a runnable root-package function; an empty one
  * requires none, for programs that start from `Main` or run a `Frame` hook. */
 bool authoring_program_prepare(authoring_program *, const char *entry, bool restart);

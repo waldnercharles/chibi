@@ -1280,17 +1280,23 @@ Toolchain. `chibi fmt` is a program whose closure holds the stage-one
 tokenizer, parser and formatter, about 7,000 lines. Compiling it takes about
 26 s and close to the 4 billion interpreted instructions a package closure may
 use (`CLOSURE_COMPILE_BUDGET`, `src/authoring/asset_compiler_host.c`): roughly
-500,000 instructions per line, paid on every run because programs are not
-cached. Adding the 330-line `source_highlight` package exceeded the budget
-("shared instruction budget exhausted"), so the formatter playground runs a
-second program for highlighting, and every `chibi fmt` invocation, including
-the pre-commit hook and each batch of a whole-tree check, waits for the compile
-(2026-10-30, `cwaldner/chibi-formatter`).
+500,000 instructions per line. Adding the 330-line `source_highlight` package
+exceeded the budget ("shared instruction budget exhausted"), so the formatter
+playground runs a second program for highlighting (2026-10-30,
+`cwaldner/chibi-formatter`).
 
 - Go compiles and caches each package once (`GOCACHE`); `gofmt` starts in
   milliseconds. Zig caches compiled units by content hash, Rust incrementally
-  by query, and Odin compiles a whole program in well under a second.
+  by query, and Odin compiles a whole program in well under a second. `zig fmt`
+  is a command of the one `zig` binary, compiled with it.
 
-Suggestion: cache a program's prepared closure by the hash of its sources, so a
-second `chibi fmt` starts at once, and profile where stage one spends its
-instructions per line.
+Status (2026-10-30, `cwaldner/embedded-cli-programs`): the start cost is gone.
+The launcher keeps compiled closures by the hash of their sources, so a second
+run of a program starts from the kept one, and the SDK build compiles the CLI
+and `fmt` once, on the compiler host's SLJIT (12 s of CPU for `fmt`, 38 s on
+bytecode), and embeds them: `chibi fmt` starts in about 0.1 s and `chibi
+version` in 20 ms, compiling nothing. The cost per line remains for programs
+compiled from source, such as the playground's host, and the budget still
+bounds them.
+
+Suggestion: profile where stage one spends its instructions per line.

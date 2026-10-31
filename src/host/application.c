@@ -6,15 +6,32 @@
 #include "host/application_io.h"
 #include "host/application_tools.h"
 #include "host/native_default.h"
+#include "runtime/component_catalog.h"
 #include "runtime/task_pool.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
+#include "types/catalog.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* The standard reflected value layouts supply native vector defaults. The
+ * application capability selection excludes running-game services. */
+int type_catalog_pack_count()
+{
+    return 1;
+}
+
+type_catalog_pack type_catalog_pack_at(int index)
+{
+    assert(index == 0);
+    (void)index;
+    return TYPE_PACK;
+}
 
 typedef struct
 {
@@ -94,28 +111,33 @@ static void print(void *, const execution_log_message *message)
     fflush(stdout);
 }
 
+native_capabilities *chibi_application_catalog_new(char *error, size_t error_size)
+{
+    const native_capability_pack packs[] = { *application_io_natives(),
+                                             *application_tools_natives(),
+                                             *program_service_pack() };
+    const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
+                                                COMPILER_JSON_DEFINITION_PACK };
+    return host_native_standalone_catalog_new(packs, 3, compiler, 2, error, error_size);
+}
+
 int chibi_application_run(
-    const char *path,
+    const embedded_program *programs,
+    int program_count,
     const char *bin,
     const char *core,
     int argc,
     const char *const *argv
 )
 {
-    program_service *programs = program_service_new(core);
-    application_io *io = application_io_new(bin, arguments, programs);
+    program_service *service = program_service_new(core, programs, program_count);
+    application_io *io = application_io_new(bin, arguments, service);
     size_t size = strlen(bin) + sizeof "/../share/chibi";
     char *share = xmalloc(size);
     snprintf(share, size, "%s/../share/chibi", bin);
     application_tools tools = { .bin = bin, .core = core, .share = share, .io = io };
-    const native_capability_pack packs[] = { *application_io_natives(),
-                                             *application_tools_natives(),
-                                             *program_service_pack() };
-    const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
-                                                COMPILER_JSON_DEFINITION_PACK };
     char error[512];
-    native_capabilities *
-        native = host_native_standalone_catalog_new(packs, 3, compiler, 2, error, sizeof error);
+    native_capabilities *native = chibi_application_catalog_new(error, sizeof error);
     execution_log_service log = { .emit = print };
     application_tests tests = { 0 };
     test_executor(&tests);
@@ -126,7 +148,7 @@ int chibi_application_run(
         service_binding *services = NULL;
         apush(services, ((service_binding){ APPLICATION_IO_SERVICE, io }));
         apush(services, ((service_binding){ APPLICATION_TOOLS_SERVICE, &tools }));
-        apush(services, ((service_binding){ PROGRAM_SERVICE, programs }));
+        apush(services, ((service_binding){ PROGRAM_SERVICE, service }));
         apush(services, ((service_binding){ EXECUTION_LOG_SERVICE, &log }));
         authoring_program_options options = {
             .native = native,
@@ -136,17 +158,18 @@ int chibi_application_run(
             .cancel_user = io,
             .test_tasks = &tests.tasks,
         };
-        program_service_configure(programs, &options);
+        program_service_configure(service, &options);
         afree(services);
-        uint64_t app = program_service_open(programs, path, "Main", argv, argc);
-        if (program_service_update(programs, app) != 1) {
-            fprintf(stderr, "%s\n", program_service_diagnostic(programs, app));
+        uint64_t app = program_service_open_embedded(service, "chibi", "Main", argv, argc);
+        assert(app);
+        if (program_service_update(service, app) != 1) {
+            fprintf(stderr, "%s\n", program_service_diagnostic(service, app));
         } else {
             int result = 0;
             const authoring_program_call_options call = { .cooperative = true };
-            int flow = program_service_call(programs, app, &call, &result);
+            int flow = program_service_call(service, app, &call, &result);
             if (flow != FLOW_OK) {
-                fprintf(stderr, "%s\n", program_service_diagnostic(programs, app));
+                fprintf(stderr, "%s\n", program_service_diagnostic(service, app));
             } else if (result < 0 || result > 255) {
                 fprintf(stderr, "Main returned an exit status outside 0..255\n");
             } else {
@@ -154,7 +177,7 @@ int chibi_application_run(
             }
         }
     }
-    program_service_free(programs);
+    program_service_free(service);
     application_io_free(io);
     application_tools_free(&tools);
     native_capabilities_free(native);

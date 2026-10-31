@@ -1,3 +1,5 @@
+#include "authoring/asset_compiler_host.h"
+#include "authoring/package_compile.h"
 #include "authoring/program.h"
 #include "authoring/program_service.h"
 #include "backend.h"
@@ -571,7 +573,7 @@ static bool disk()
     write_source(library, "package base\n");
     REQUIRE(catalog());
     for (int i = 0; i < 2; i++) {
-        services[i] = program_service_new(core);
+        services[i] = program_service_new(core, NULL, 0);
         service_binding *bindings = NULL;
         apush(bindings, ((service_binding){ PROGRAM_SERVICE, services[i] }));
         authoring_program_options configuration = options(TEST_COMPILED_BACKEND);
@@ -610,6 +612,54 @@ TEST_CASE(program_handles_suppress_rejections_and_never_alias_other_sessions)
     return true;
 }
 
+/* A program compiled ahead of time opens by name: the closure a compile of
+ * the same request returns runs, an update after acceptance reports it
+ * unchanged, a name the service does not embed opens nothing, and bytes that
+ * are no closure fail verification with a diagnostic. */
+TEST_CASE(embedded_programs_open_by_name_and_verify_their_bytes)
+{
+    REQUIRE(catalog());
+    package_compile_error error;
+    size_t request_length = 0;
+    char *request = package_compile_request(
+        snapshot("package app\nMain :: () -> int { return 7 }\n", NULL),
+        native,
+        &request_length,
+        &error
+    );
+    REQUIRE(request);
+    asset_compiler_diagnostic diagnostic;
+    size_t length = 0;
+    unsigned char *closure = asset_compiler_compile_closure(request, request_length, &length, NULL, &diagnostic);
+    free(request);
+    REQUIRE(closure);
+    static const unsigned char garbage[] = "not a closure";
+    const embedded_program programs[] = {
+        { "seven", "programs/seven", closure, length },
+        { "broken", "programs/broken", garbage, sizeof garbage }
+    };
+    services[0] = program_service_new("/", programs, 2);
+    service_binding *bindings = NULL;
+    apush(bindings, ((service_binding){ PROGRAM_SERVICE, services[0] }));
+    authoring_program_options configuration = options(TEST_COMPILED_BACKEND);
+    configuration.services = bindings;
+    program_service_configure(services[0], &configuration);
+    afree(bindings);
+    REQUIRE(!program_service_open_embedded(services[0], "absent", "Main", NULL, 0));
+    uint64_t seven = program_service_open_embedded(services[0], "seven", "Main", NULL, 0);
+    REQUIRE(seven && program_service_update(services[0], seven) == 1);
+    REQUIRE(program_service_update(services[0], seven) == 0);
+    int result = 0;
+    REQUIRE(program_service_call(services[0], seven, NULL, &result) == FLOW_OK && result == 7);
+    uint64_t broken = program_service_open_embedded(services[0], "broken", "Main", NULL, 0);
+    REQUIRE(broken && program_service_update(services[0], broken) == -1);
+    REQUIRE(*program_service_diagnostic(services[0], broken));
+    program_service_free(services[0]);
+    services[0] = NULL;
+    free(closure);
+    return true;
+}
+
 void test_language_program_session()
 {
     pu_setup(NULL, cleanup);
@@ -624,5 +674,6 @@ void test_language_program_session()
     RUN_TEST_CASE(session_repeated_calls_cannot_reset_the_enclosing_budget);
     RUN_TEST_CASE(session_calls_honor_the_callers_live_cancellation_budget);
     RUN_TEST_CASE(program_handles_suppress_rejections_and_never_alias_other_sessions);
+    RUN_TEST_CASE(embedded_programs_open_by_name_and_verify_their_bytes);
     pu_clear_setup();
 }

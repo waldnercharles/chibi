@@ -78,7 +78,7 @@ static void relocate(const char *binary)
         snprintf(to, sizeof to, "%s/libexec/chibi/%s", sdk, hosts[i]);
         copy(from, to);
     }
-    const char *shared[] = { "compiler", "core", "tools/native_aot", "apps" };
+    const char *shared[] = { "compiler", "core", "tools/native_aot" };
     for (size_t i = 0; i < sizeof shared / sizeof *shared; i++) {
         snprintf(from, sizeof from, "%s/share/chibi/%s", built, shared[i]);
         snprintf(to, sizeof to, "%s/share/chibi/%s", sdk, shared[i]);

@@ -59,8 +59,9 @@ code running. See [program reload](docs/guide/toolchain.md#reload-a-program)
 for a complete example.
 
 The CLI is itself an ordinary Chibi program in
-[apps/chibi/Main.chibi](apps/chibi/Main.chibi). The native launcher locates the
-SDK and starts its `Main`; command parsing and reload policy live in Chibi.
+[apps/chibi/Main.chibi](apps/chibi/Main.chibi). The SDK build compiles it and
+the native launcher embeds it, so `chibi` starts without compiling; command
+parsing and reload policy live in Chibi.
 
 ## Run a project
 

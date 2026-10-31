@@ -2,20 +2,20 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "ba4958b58f0ae2d4aab0f0d227c3a5f4f6411dc9",
+  "revision": "244969438f6a4dbb0456c978bba24a51c0d2f2ea",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 13892322,
-    "sha256": "58ae2e6fdef467462d57a95e70782558b65d12c81aeedd9d2c37794cf1a848f8"
+    "bytes": 13855008,
+    "sha256": "db1d1861919b95ac75b076711256e1a8481fd1e8e501d4e797562c947bde48dd"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 211123,
-      "sha256": "37eb0ff5600e67bb5b677bce01bd528ec7d11952692e65fa38c0728ce6a5a0a9"
+      "bytes": 212161,
+      "sha256": "6e70bbab8fbb3ef72fa2ef6f04cc79552f7f0e0a983360c85b76f455eaa8094e"
     },
     {
       "path": "package_compiler/Body.chibi",
@@ -29,8 +29,8 @@
     },
     {
       "path": "package_compiler/Generics.chibi",
-      "bytes": 63066,
-      "sha256": "c1e5853be9f1a9d74c7912088a19d54d6a854da862d53d9e345970adea2de595"
+      "bytes": 63241,
+      "sha256": "a96e0bae355437f6b2ca76d653479932dac61031924b479cd527e540255db975"
     },
     {
       "path": "package_compiler/Comptime.chibi",
@@ -49,8 +49,8 @@
     },
     {
       "path": "package_compiler/References.chibi",
-      "bytes": 42877,
-      "sha256": "73a01edb17942a96e82c0255bae8f17b93389c560d183893c0c96713e1bfa6ed"
+      "bytes": 47479,
+      "sha256": "a68371c60071c1f17c8d46d644a09e807c1770c5a618f7b774cf7319106143aa"
     },
     {
       "path": "package_compiler/Pointers.chibi",
@@ -99,13 +99,13 @@
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 62823,
-      "sha256": "2329b56a4b3f556b61ad3c45aba21d848088734cafec0a79d114ee764f80f7b7"
+      "bytes": 62899,
+      "sha256": "e7e78c03f9e37c4ef1bed6c44959027eda667a827289b50bf59922f99ae926d5"
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 182950,
-      "sha256": "6ad6493087a66c9f00785c7ba953555c6d9dbc84c2531744500ef62f35cb6cbb"
+      "bytes": 183067,
+      "sha256": "8fbf3b516a446dcbb0f0f6c8dad038173bbf1a97a710ae6a2b7bf302fa5f84b2"
     },
     {
       "path": "package_compiler/ScalarArrays.chibi",

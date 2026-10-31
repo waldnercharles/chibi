@@ -1,6 +1,8 @@
 ; The vendored library the foreign-import test links, built by
 ;   llc -mtriple=x86_64-unknown-linux-gnu -filetype=obj -relocation-model=pic -O2 libprobe.ll -o libprobe.o
 ;   llvm-ar rcs libprobe.a libprobe.o
+; and macos-arm64/libprobe.a by the same commands with
+;   -mtriple=arm64-apple-macosx11.0.0
 ; A prebuilt archive, as a vendored library is: the build links it and never compiles it.
 target triple = "x86_64-unknown-linux-gnu"
 

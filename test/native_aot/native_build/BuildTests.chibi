@@ -452,11 +452,12 @@ RunNative :: (suite: Suite, name: string, source: string) -> int {
 
 // A program links the prebuilt archive its source imports: the driver finds it
 // beside the source, adds it to the link line and records its hash. The
-// archive is vendored x86-64 Linux code: nothing here compiles its C. A
-// missing archive fails the build and names it.
+// archive is vendored, for the host's system: nothing here compiles its code.
+// A missing archive fails the build and names it.
 LinksAVendoredArchive :: (suite: Suite) {
-    if (os.Platform() != "Linux") {
-        return;
+    vendored := Path([os.Root(), "/test/native_aot/foreign/libprobe.a"]);
+    if (os.Platform() == "Darwin") {
+        vendored = Path([os.Root(), "/test/native_aot/foreign/macos-arm64/libprobe.a"]);
     }
     source := "package scalar\nforeign import probe \"libprobe.a\"\nforeign probe {\n    chibi_probe_add :: (a: i32, b: i32) -> i32\n    chibi_probe_pick :: (n: i32, flag: bool) -> bool\n    chibi_probe_scale :: (value: f64, by: f64) -> f64\n}\nMain :: () -> int {\n    total := chibi_probe_add(40, 2);\n    if (chibi_probe_pick(5, true)) { total = total + 1; }\n    if (chibi_probe_pick(2, true)) { total = total + 100; }\n    return total + int(chibi_probe_scale(0.5, 2.0));\n}\n";
     missing := Reset(suite, "foreign-missing", source);
@@ -465,7 +466,7 @@ LinksAVendoredArchive :: (suite: Suite) {
     assert(result.status != 0 && Says(result, "libprobe.a is not a file"), "a missing archive");
     built := Reset(suite, "foreign", source);
     RealTools(suite, built);
-    Clone(Path([os.Root(), "/test/native_aot/foreign/libprobe.a"]), Path([built.game, "/libprobe.a"]));
+    Clone(vendored, Path([built.game, "/libprobe.a"]));
     result = Build(suite, suite.built, built, ["-O0"]);
     assert(result.status == 0, "the program builds");
     program := Printed(result);

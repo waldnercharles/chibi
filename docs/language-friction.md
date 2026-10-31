@@ -953,7 +953,9 @@ syntax errors the parser's position and token.
 Language. In the build graph's `c` package, `array_add(running, {source: s,
 handle: h})` fails with "Struct literal needs an explicit record or reflected
 type", although `running` is a `Running[]`. The literal needs a typed local
-first: `compile: Running = {source: s, handle: h};`.
+first: `compile: Running = {source: s, handle: h};`. The same holds for any
+array native's item (#1109): `set_array_elem(wrappers, 1, {holder: h, tag: 4})`
+on a `Wrapper[]` needs `replacement: Wrapper = {...}` first.
 
 - Odin infers a compound literal's type from its parameter or element type;
   Zig's `.{ ... }` coerces to the parameter's type; C# 9 has target-typed
@@ -961,6 +963,24 @@ first: `compile: Running = {source: s, handle: h};`.
 
 Suggestion: type a struct literal from the parameter, element or return type it
 fills, as Odin does.
+
+## A failed assert can't show the values it compared
+
+Stage one (#1109). `assert`'s message must be a string literal ("assert's
+message is a string constant"), and `core:testing` has no equality check, so
+`assert(Remove() == 112, "Remove")` reports only "Assertion failed: Remove".
+Finding the actual value took a second test that returned it, a rebuild and a
+rerun.
+
+- Rust's `assert_eq!(left, right)` prints both values, and `assert!(c, "{}",
+  x)` formats its message only on failure.
+- Zig's `std.testing.expectEqual(expected, actual)` prints both; Go's
+  `t.Errorf` formats; Odin's `testing.expect_value(t, value, expected)` prints
+  both.
+
+Suggestion: `testing.ExpectEqual(expected, actual)` that names both values on
+failure, as Zig and Odin do. It needs no message formatting in `assert` and
+keeps a passing assert free of string building.
 
 ## Stage one cannot negate a float
 
@@ -1043,8 +1063,28 @@ can end a statement, is a `bool[]` filled from a list.
   X-macros for the names; C# `Enum.GetName`; TypeScript numeric enums with
   reverse mapping; Python `enum.Enum`.
 
+The syntax tree's 122 node kinds and 55 fields in `syntax_diagnostics`
+(#1114) are constants chained one to the next, `Character: int : Comment + 1;`,
+so inserting one renumbers nothing, with `KindNames` and `FieldNames` kept in
+the same order by hand. A token leaf keeps its token kind, so the node kinds
+start at a hand-picked 128, past the tokenizer's 117, and a test checks the
+gap. Zig's `std.zig.Ast.Node.Tag` is an enum with `@tagName`.
+
 Suggestion: Odin's `enum`, enumerated arrays and `bit_set`, with a name for
 each value.
+
+### Records have no stated size
+
+Language. Each high-count record should carry a byte budget pinned at compile
+time, but Chibi has neither `size_of` nor a compile-time assert, so
+`SnapshotNode`'s 40 bytes per row (#1114) are a comment.
+
+- Odin has `#assert(size_of(T) == N)`; Zig `comptime { assert(@sizeOf(T) == N); }`;
+  C `_Static_assert(sizeof(T) == N, "")`; Rust
+  `const _: () = assert!(size_of::<T>() == N);`.
+
+Suggestion: `size_of(T)` as a constant expression and an `#assert` that
+fails compilation.
 
 ### A switch arm takes one value
 

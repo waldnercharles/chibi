@@ -819,12 +819,61 @@ Example :: library {
 }
 ```
 
-Compile-time execution supports scalar and type values, authored calls, locals,
-assignment, `if` and `while`. It does not support arrays, `for`, closures or
-native calls. Each evaluation has a 65,536-step budget and a 128-call limit.
+Compile-time execution supports integer and bool values, arrays of them,
+records of them, authored calls, locals, assignment, `if`, `while`, `for`,
+`break`, `continue` and `return`. It does not support floats, strings,
+closures or native calls.
+Each evaluation has a 65,536-step budget and a 128-call limit.
 A constant initializer may call such a function, `Size :: Factorial(5)`, and
 may combine calls with arithmetic and conversions; a `when` condition may not
 call functions yet.
+
+Arrays are local values: an array literal, `values: int[] = []`, `append`,
+`length`, `values[i]` to read, and `values[i] = x` or `values[i] += x` to
+change an element. Assigning or passing an array copies it. A function may
+take and return arrays, and an index outside the array is a compilation error.
+`for i in 0..<n`, `for i in 0..n`, `for < i in ...` (reverse), `for value in
+array` and `for index, value in array` loop over a range or an array; loops
+iterate by value, so a `for` over a `ref` is rejected.
+
+A record whose fields are all integers and bools is a value too: `p: Point =
+{x: 1, y: 2}` (each field once, in any order), `p.x` to read, `p.x = v` or
+`p.x += v` to change a field, and a record may be passed to and returned from
+a function. A record with an array, string or record field is rejected where a
+function takes or returns it.
+
+```chibi
+Example :: library {
+    Squares :: (count: int) -> int[] {
+        values: int[] = []
+        for i in 0..<count { values.append(i * i) }
+        return values
+    }
+
+    Sum :: (values: int[]) -> int {
+        total := 0
+        for value in values { total += value }
+        return total
+    }
+
+    Total :: Sum(Squares(5))  // 30
+    Third :: Squares(6)[3]    // 9
+}
+```
+
+```chibi
+Example :: library {
+    Point :: struct { x: int; y: int; }
+
+    Shifted :: (p: Point, dx: int) -> Point {
+        result := p
+        result.x += dx
+        return result
+    }
+
+    Right :: Shifted({x: 1, y: 2}, 10).x  // 11
+}
+```
 
 ### Choosing declarations per platform
 
@@ -1326,7 +1375,7 @@ A test that must end with a run-time failure says so with `core:testing`,
 as Odin's `expect_assert` does. `testing.ExpectFailure(kind)` makes the
 running test pass only if it then ends with that kind of failure:
 `IndexOutOfRange`, `MapKeyAbsent`, `ViewOutOfRange`, `AssertionFailed`,
-`BudgetExhausted` or `DepthExceeded`. Returning normally, or failing with
+`BudgetExhausted`, `DepthExceeded` or `UnwrappedNil`. Returning normally, or failing with
 another kind, fails the test, and a failure before the call is an ordinary
 failure. Nothing unwinds: the failure ends the test as it otherwise would.
 

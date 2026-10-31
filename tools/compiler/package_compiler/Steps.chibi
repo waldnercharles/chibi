@@ -2,6 +2,8 @@ package package_compiler
 
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
+import json "project:json_string"
+import parser "project:source_parser"
 import strings "core:strings"
 
 // The steps EmitBody takes for nodes other than control flow. Each reads the
@@ -228,9 +230,9 @@ ArgumentSchemaStep :: (step: Step, argument: int, ops: Ops, target: Target, at: 
 InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     literal := Unparenthesized(forest, node);
     digits := literal;
-    if (Is(forest, digits, "unary_expression")) {
-        digits = Field(forest, digits, "operand");
-        operator := Text(forest, text, Field(forest, literal, "operator"));
+    if (Is(forest, digits, syntax.UnaryExpression)) {
+        digits = Field(forest, digits, syntax.FieldOperand);
+        operator := Text(forest, text, Field(forest, literal, syntax.FieldOperator));
         if (operator != "-" && operator != "+") {
             return 0;
         }
@@ -238,7 +240,7 @@ InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: i
             literal = digits;
         }
     }
-    if (!Is(forest, digits, "number")) {
+    if (!Is(forest, digits, syntax.Number)) {
         return 0;
     }
     spelling := Text(forest, text, digits);
@@ -280,24 +282,24 @@ ConstantExpressionStorage :: (forest: snapshot.SnapshotNode[], text: string, nod
     if (spelled != 0) {
         return spelled;
     }
-    if (Is(forest, expression, "unary_expression")) {
-        sign := Text(forest, text, Field(forest, expression, "operator"));
+    if (Is(forest, expression, syntax.UnaryExpression)) {
+        sign := Text(forest, text, Field(forest, expression, syntax.FieldOperator));
         if (sign == "-" || sign == "+" || sign == "~") {
-            return ConstantExpressionStorage(forest, text, Field(forest, expression, "operand"));
+            return ConstantExpressionStorage(forest, text, Field(forest, expression, syntax.FieldOperand));
         }
         return 0;
     }
-    if (!Is(forest, expression, "binary_expression")) {
+    if (!Is(forest, expression, syntax.BinaryExpression)) {
         return 0;
     }
-    operator := Text(forest, text, Field(forest, expression, "operator"));
+    operator := Text(forest, text, Field(forest, expression, syntax.FieldOperator));
     shifts := operator == "<<" || operator == ">>";
     if (!shifts && operator != "+" && operator != "-" && operator != "*" && operator != "/" && operator != "%" &&
         operator != "&" && operator != "|" && operator != "^") {
         return 0;
     }
-    left := ConstantExpressionStorage(forest, text, Field(forest, expression, "left"));
-    right := ConstantExpressionStorage(forest, text, Field(forest, expression, "right"));
+    left := ConstantExpressionStorage(forest, text, Field(forest, expression, syntax.FieldLeft));
+    right := ConstantExpressionStorage(forest, text, Field(forest, expression, syntax.FieldRight));
     if (left == 0 || right == 0) {
         return 0;
     }
@@ -343,30 +345,30 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     // their receiver; `xs.append(x)` and `xs.extend(ys)` on a local array
     // push in place as `xs = append(xs, x)` does. A debug build keeps the
     // method call's own points.
-    changing := item.phase == 0 && !ops.debug && kind == "expression_statement" &&
+    changing := item.phase == 0 && !ops.debug && kind == syntax.ExpressionStatement &&
                 LocalPush(forest, text, callables, natives, ports, identities, names, package, generic_updates,
                           item.node);
     if (item.phase == 0) {
         code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
-        if (kind == "assignment" && QueryReadonlyDestination(forest, text, types, members, names,
+        if (kind == syntax.Assignment && QueryReadonlyDestination(forest, text, types, members, names,
                                                              StatementTarget(forest, item.node))) {
             return Fail(forest, item.node, document, "Query value bindings are read-only; use a component pointer to modify storage");
         }
-        value := Field(forest, item.node, "value");
-        if (kind == "expression_statement") {
+        value := Field(forest, item.node, syntax.FieldValue);
+        if (kind == syntax.ExpressionStatement) {
             value = FirstMember(forest, item.node);
         }
-        if (kind == "delete_statement" ||
-            (kind == "expression_statement" && MapMethod(forest, text, names, value, "delete"))) {
+        if (kind == syntax.DeleteStatement ||
+            (kind == syntax.ExpressionStatement && MapMethod(forest, text, names, value, "delete"))) {
             return MapDeleteStep(forest, text, document, types, names, item, ops, node);
         }
-        if (kind == "assignment" && PointerDestination(forest, text, types, members, names,
+        if (kind == syntax.Assignment && PointerDestination(forest, text, types, members, names,
                                                        StatementTarget(forest, item.node))) {
             return PointerAssignmentStart(forest, text, document, types, members, names, item, ops, target, at);
         }
         expected := Visit(value);
-        if (kind == "local_declaration") {
-            declared := Field(forest, item.node, "type");
+        if (kind == syntax.LocalDeclaration) {
+            declared := Field(forest, item.node, syntax.FieldType);
             if (declared >= 0) {
                 hidden := PrivateType(forest, text, types, names, package, declared);
                 if (hidden >= 0) {
@@ -382,7 +384,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                         return Fail(forest, item.node, document, "view local requires an initial value");
                     }
                     if (OptionalElement(types, Typed(-1, resolved.storage, resolved.container, resolved.record)).storage != 0) {
-                        name_node := Field(forest, item.node, "name");
+                        name_node := Field(forest, item.node, syntax.FieldName);
                         name := Text(forest, text, name_node);
                         if (Declared(names, scope, name)) {
                             return Fail(forest, name_node, document, format_text("Duplicate declaration '{}'", name));
@@ -398,7 +400,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                         types[resolved.record].key == 0) {
                         return Fail(forest, item.node, document, "non-null pointer local requires an initial value");
                     }
-                    name_node := Field(forest, item.node, "name");
+                    name_node := Field(forest, item.node, syntax.FieldName);
                     name := Text(forest, text, name_node);
                     if (Declared(names, scope, name)) {
                         return Fail(forest, name_node, document, format_text("Duplicate declaration '{}'", name));
@@ -426,23 +428,23 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     expected = Expect(value, inferred, 0, -1);
                 }
             }
-        } else if (kind == "return_statement") {
+        } else if (kind == syntax.ReturnStatement) {
             expected = Expect(value, callable.result, callable.result_container, callable.result_record);
-        } else if (kind == "assignment" || changing) {
+        } else if (kind == syntax.Assignment || changing) {
             destination := StatementTarget(forest, item.node);
-            operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+            operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
             whole := SelfComponent(forest, text, types, names, destination);
             owned: int = -1;
-            if (Is(forest, destination, "member_expression")) {
-                owned = SelfComponent(forest, text, types, names, Field(forest, destination, "object"));
+            if (Is(forest, destination, syntax.MemberExpression)) {
+                owned = SelfComponent(forest, text, types, names, Field(forest, destination, syntax.FieldObject));
             }
             other := EntityComponent(forest, text, types, members, names, destination);
             other_owned: int = -1;
-            if (Is(forest, destination, "member_expression")) {
+            if (Is(forest, destination, syntax.MemberExpression)) {
                 other_owned = EntityComponent(forest, text, types, members, names,
-                                              Field(forest, destination, "object"));
+                                              Field(forest, destination, syntax.FieldObject));
             }
-            if (Is(forest, destination, "identifier")) {
+            if (Is(forest, destination, syntax.Identifier)) {
                 found := Lookup(names, Text(forest, text, destination));
                 if (found >= 0) {
                     binding := names[found];
@@ -463,7 +465,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     // A method call updates in place only as its own statement;
                     // `xs = xs.append(x)` is an error CallStep reports.
                     if (operator == "" &&
-                        (changing || !Is(forest, Field(forest, value, "function"), "member_expression"))) {
+                        (changing || !Is(forest, Field(forest, value, syntax.FieldFunction), syntax.MemberExpression))) {
                         switch InPlaceUpdate(forest, text, callables, natives, ports, identities, names, package,
                                              found, destination, value) {
                             case .NotApplicable:
@@ -540,7 +542,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             } else if (owned >= 0) {
                 // `self.C.f = v` on a component of the owner.
                 code.extend(TargetPoints(forest, text, names, ops, destination));
-                member := Text(forest, text, Field(forest, destination, "member"));
+                member := Text(forest, text, Field(forest, destination, syntax.FieldMember));
                 field := FindField(types, members, owned, member);
                 if (field < 0) {
                     return Fail(forest, destination, document, format_text("Unknown field '{}'", member));
@@ -563,11 +565,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 // the entity, then the reference to its component.
                 component := other;
                 field: int = -1;
-                entity := Field(forest, destination, "object");
+                entity := Field(forest, destination, syntax.FieldObject);
                 if (other_owned >= 0) {
                     component = other_owned;
-                    entity = Field(forest, entity, "object");
-                    member := Text(forest, text, Field(forest, destination, "member"));
+                    entity = Field(forest, entity, syntax.FieldObject);
+                    member := Text(forest, text, Field(forest, destination, syntax.FieldMember));
                     field = FindField(types, members, component, member);
                     if (field < 0) {
                         return Fail(forest, destination, document, format_text("Unknown field '{}'", member));
@@ -587,7 +589,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 at_member := destination;
                 while (at_member != entity) {
                     code.append(ExpressionCode(ops, forest[at_member]));
-                    at_member = Field(forest, at_member, "object");
+                    at_member = Field(forest, at_member, syntax.FieldObject);
                 }
                 write := Resume(item.node, EntityComponentPhase, component, field);
                 if (operator != "") {
@@ -596,11 +598,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 next.extend([Visit(entity), write]);
                 return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                                     NoValue(), retained, marks);
-            } else if (Is(forest, destination, "member_expression")) {
+            } else if (Is(forest, destination, syntax.MemberExpression)) {
                 // `x.f = v` on a local record, written as stage zero writes it.
-                object := Field(forest, destination, "object");
+                object := Field(forest, destination, syntax.FieldObject);
                 found: int = -1;
-                if (Is(forest, object, "identifier")) {
+                if (Is(forest, object, syntax.Identifier)) {
                     found = Lookup(names, Text(forest, text, object));
                 }
                 if (found >= 0 && names[found].place == ResultsPlace &&
@@ -608,7 +610,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     // A local owns its result bank, including banks copied
                     // from another local. Select its existing typed cell.
                     called := callables[names[found].record];
-                    member := Text(forest, text, Field(forest, destination, "member"));
+                    member := Text(forest, text, Field(forest, destination, syntax.FieldMember));
                     index := NamedResult(params, called, member);
                     if (index < 0) {
                         return Fail(forest, destination, document, format_text("Unknown result '{}'", member));
@@ -634,7 +636,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     names[found].storage != StructStorage || names[found].container != 0) {
                     return Fail(forest, destination, document, "field assignment needs a local record");
                 }
-                member := Text(forest, text, Field(forest, destination, "member"));
+                member := Text(forest, text, Field(forest, destination, syntax.FieldMember));
                 field := FindField(types, members, names[found].record, member);
                 if (field < 0) {
                     return Fail(forest, destination, document, format_text("Unknown field '{}'", member));
@@ -654,11 +656,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 next.append(write);
                 return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                                     NoValue(), retained, marks);
-            } else if (Is(forest, destination, "index_expression")) {
+            } else if (Is(forest, destination, syntax.IndexExpression)) {
                 // `xs[i] = x` on a local array stores in place.
-                object := Field(forest, destination, "object");
+                object := Field(forest, destination, syntax.FieldObject);
                 found: int = -1;
-                if (Is(forest, object, "identifier")) {
+                if (Is(forest, object, syntax.Identifier)) {
                     found = Lookup(names, Text(forest, text, object));
                 }
                 if (found >= 0 && names[found].container == MapContainer) {
@@ -677,17 +679,17 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 if (operator != "" || Parameter(forest, binding)) {
                     code.extend(NamePoints(forest, text, names, ops, object));
                 }
-                next.append(Expect(Field(forest, destination, "index"), IntStorage, 0, -1));
+                next.append(Expect(Field(forest, destination, syntax.FieldIndex), IntStorage, 0, -1));
                 next.append(Expect(value, binding.storage, 0, binding.record));
                 next.append(Resume(item.node, StorePhase, found, compound));
                 return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                                     NoValue(), retained, marks);
             }
         }
-        if (kind == "return_statement" && callable.results > 0) {
+        if (kind == syntax.ReturnStatement && callable.results > 0) {
             return NamedReturnStep(forest, document, code, params, callable, named, value, item, ops, target, at, node);
         }
-        if (kind == "return_statement" && value < 0) {
+        if (kind == syntax.ReturnStatement && value < 0) {
             if (callable.result != 0) {
                 return Fail(forest, item.node, document, "return needs a value");
             }
@@ -701,13 +703,13 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         popped = 1;
         result := values[top - 1];
         if (result.storage < 0 && result.storage != NumberStorage && !Single(result, ResultsStorage) &&
-            !Single(result, FunctionResultsStorage) && kind != "expression_statement") {
+            !Single(result, FunctionResultsStorage) && kind != syntax.ExpressionStatement) {
             return Fail(forest, item.node, document, "call has no value");
         }
-        if (kind == "expression_statement" && result.storage == ResultsStorage) {
+        if (kind == syntax.ExpressionStatement && result.storage == ResultsStorage) {
             return PointerPopped(DropNativeResultsStep(result, natives, ports, ops, target, at, node), 1);
         }
-        if (kind == "expression_statement") {
+        if (kind == syntax.ExpressionStatement) {
             return PointerPopped(DropSequenceValues(Held(types, members, [result]), ops, target, at, node), 1);
         }
         // A union read from an array the function may change shares that
@@ -715,16 +717,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         // local takes its own copy.
         if (result.storage == UnionStorage && result.container == 0 && !result.owned &&
             length(Held(types, members, [result])) > 0 &&
-            (kind == "local_declaration" ||
-             (kind == "assignment" && Is(forest, StatementTarget(forest, item.node), "identifier"))) &&
-            ChangingElement(forest, text, names, referenced, mutated, addressed, Field(forest, item.node, "value"))) {
+            (kind == syntax.LocalDeclaration ||
+             (kind == syntax.Assignment && Is(forest, StatementTarget(forest, item.node), syntax.Identifier))) &&
+            ChangingElement(forest, text, names, referenced, mutated, addressed, Field(forest, item.node, syntax.FieldValue))) {
             return PointerContinue(CopyValueStep(result, 1, ops, target, at, node), Resume(item.node, ValuePhase, 0, 0));
         }
-        if (kind == "local_declaration") {
-            declared := Field(forest, item.node, "type");
+        if (kind == syntax.LocalDeclaration) {
+            declared := Field(forest, item.node, syntax.FieldType);
             local := result;
             if (declared < 0 && result.storage == NumberStorage) {
-                return Fail(forest, Field(forest, item.node, "value"), document,
+                return Fail(forest, Field(forest, item.node, syntax.FieldValue), document,
                             "local initializer has no concrete numeric type");
             }
             if (declared >= 0) {
@@ -753,12 +755,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             if (!Accepts(types, local.storage, local.container, local.record, result)) {
                 return Fail(forest, item.node, document, "local value differs from its type");
             }
-            name := Text(forest, text, Field(forest, item.node, "name"));
+            name := Text(forest, text, Field(forest, item.node, syntax.FieldName));
             if (name == "") {
-                return Fail(forest, Field(forest, item.node, "name"), document, "Invalid string or embedded NUL");
+                return Fail(forest, Field(forest, item.node, syntax.FieldName), document, "Invalid string or embedded NUL");
             }
             if (Declared(names, scope, name)) {
-                return Fail(forest, Field(forest, item.node, "name"), document, format_text("Duplicate declaration '{}'", name));
+                return Fail(forest, Field(forest, item.node, syntax.FieldName), document, format_text("Duplicate declaration '{}'", name));
             }
             if (Single(result, ResultsStorage) && !result.owned && declared < 0) {
                 return PointerContinue(CopyNativeResultsStep(result, natives, ports, ops, target, at, node),
@@ -772,7 +774,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 // Each binding owns an independent result bank.
                 binding: Name = {owned: result.storage == ResultsStorage, name: name, place: ResultsPlace, index: result.slot, storage: result.storage,
                                  container: 0, record: result.record, writable: false,
-                                 node: Field(forest, item.node, "name")};
+                                 node: Field(forest, item.node, syntax.FieldName)};
                 bound.append(binding);
             } else if (Holds(addressed, name)) {
                 initial := result;
@@ -781,19 +783,19 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 initial.record = local.record;
                 EnsurePointer(table, {storage: local.storage, container: local.container, record: local.record}, false, 0);
                 return PointerPrefix(code, slots,
-                                     ManagedBoxStep(table^, members, initial, name, Field(forest, item.node, "name"), 1,
+                                     ManagedBoxStep(table^, members, initial, name, Field(forest, item.node, syntax.FieldName), 1,
                                                     ops, target, SlotsPast(at, length(slots)), node));
             } else if (Pointer(local.storage, local.container)) {
                 // The local is the cell that holds its own copy, or the value
                 // itself when it is fresh or a temporary it takes over, or
                 // when neither it nor what it reads ever changes.
-                code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
+                code.append(SymbolCode(ops, Field(forest, item.node, syntax.FieldName), node));
                 // A lent element is read in place and never dropped.
                 lent := LendsElement(forest, text, names, referenced, mutated, built, addressed,
-                                     Field(forest, item.node, "value"));
-                if (lent || result.owned || Fresh(forest, text, callables, natives, types, names, package, Field(forest, item.node, "value")) ||
+                                     Field(forest, item.node, syntax.FieldValue));
+                if (lent || result.owned || Fresh(forest, text, callables, natives, types, names, package, Field(forest, item.node, syntax.FieldValue)) ||
                     (!Holds(mutated, name) &&
-                     Unchanging(forest, text, callables, natives, types, names, package, mutated, Field(forest, item.node, "value")))) {
+                     Unchanging(forest, text, callables, natives, types, names, package, mutated, Field(forest, item.node, syntax.FieldValue)))) {
                     cells.append(MovedCell(result));
                     slots.append(AddressSlot(target));
                     code.extend(MoveCode(result, ops, target, at.slot + length(slots) - 1,
@@ -816,15 +818,15 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             } else {
                 locals.append(ValueLocal(local.storage));
                 code.append(Instruction(ops.save, local.storage, 0, result.slot, 0, at.local, node));
-                code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
+                code.append(SymbolCode(ops, Field(forest, item.node, syntax.FieldName), node));
                 binding: Name = {owned: false, name: name, place: LocalPlace, index: at.local, storage: local.storage, container: 0,
-                                 record: local.record, writable: true, node: Field(forest, item.node, "name")};
+                                 record: local.record, writable: true, node: Field(forest, item.node, syntax.FieldName)};
                 bound.append(binding);
             }
-        } else if (kind == "assignment" || changing) {
+        } else if (kind == syntax.Assignment || changing) {
             destination := StatementTarget(forest, item.node);
             found: int = -1;
-            if (Is(forest, destination, "identifier")) {
+            if (Is(forest, destination, syntax.Identifier)) {
                 found = Lookup(names, Text(forest, text, destination));
             }
             if (found < 0 || names[found].place == ParameterPlace || Alias(names[found].place) ||
@@ -838,7 +840,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, destination, document, "Assignment requires a writable value");
             }
             binding := names[found];
-            operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+            operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
             if (operator != "" && (CharType(types, binding.storage, binding.container, binding.record) ||
                                     CharValue(types, result))) {
                 return Fail(forest, item.node, document, "char arithmetic is not supported yet");
@@ -959,7 +961,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             if (!Parameter(forest, binding)) {
                 code.append(SymbolCode(ops, binding.node, node));
             }
-        } else if (kind == "return_statement") {
+        } else if (kind == syntax.ReturnStatement) {
             if (result.container == 0 && callable.result_container == 0 &&
                 !CharType(types, callable.result, 0, callable.result_record) &&
                 (Widens(result.storage, callable.result) || FloatWidens(result.storage, callable.result) ||
@@ -985,7 +987,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
             if (Pointer(result.storage, result.container) &&
                 (result.owned ||
-                 Fresh(forest, text, callables, natives, types, names, package, Field(forest, item.node, "value")))) {
+                 Fresh(forest, text, callables, natives, types, names, package, Field(forest, item.node, syntax.FieldValue)))) {
                 // A fresh value or a temporary is already the copy a return
                 // would make, and a built local already lies in the caller's
                 // storage.
@@ -1000,7 +1002,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 retained = result;
                 next.append(Resume(item.node, RetainedPhase, -1, 0));
             } else {
-                code.append(SymbolCode(ops, -1, forest[Field(forest, item.node, "value")]));
+                code.append(SymbolCode(ops, -1, forest[Field(forest, item.node, syntax.FieldValue)]));
                 code.append(CompletionCode(ops, node));
                 code.append(Instruction(ops.result, result.storage, 0, result.slot, 0, 0, node));
                 code.append(Instruction(ops.finish, 0, 0, 0, 0, 0, node));
@@ -1036,12 +1038,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         popped = 1;
         kept := values[top - 1];
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-        if (kind == "local_declaration") {
-            binding: Name = {owned: item.b == 0, name: Text(forest, text, Field(forest, item.node, "name")), place: CellPlace,
+        if (kind == syntax.LocalDeclaration) {
+            binding: Name = {owned: item.b == 0, name: Text(forest, text, Field(forest, item.node, syntax.FieldName)), place: CellPlace,
                              index: kept.cell, storage: kept.storage, container: kept.container, record: kept.record,
-                             writable: true, node: Field(forest, item.node, "name")};
+                             writable: true, node: Field(forest, item.node, syntax.FieldName)};
             bound.append(binding);
-        } else if (kind == "assignment" || changing) {
+        } else if (kind == syntax.Assignment || changing) {
             code.extend(CellRead(SlotStorage(kept.storage, kept.container, target), item.a,
                                  ops, target, at.slot, node));
             slots.extend([address, {storage: SlotStorage(kept.storage, kept.container, target),
@@ -1060,7 +1062,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         } else {
             // Copy the cell's whole header, type name and layout included,
             // into result zero.
-            code.append(SymbolCode(ops, -1, forest[Field(forest, item.node, "value")]));
+            code.append(SymbolCode(ops, -1, forest[Field(forest, item.node, syntax.FieldValue)]));
             code.append(CompletionCode(ops, node));
             slots.append(address);
             code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot, kept.cell, 0, 0, node));
@@ -1120,7 +1122,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             if (CharValue(types, operand)) {
                 return Fail(forest, item.node, document, "char arithmetic is not supported yet");
             }
-            op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))));
+            op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator))));
             if (op < 0 || Comparison(ops, op) || binding.storage != IntStorage || !Single(operand, IntStorage)) {
                 return Fail(forest, item.node, document, "compound assignment needs int operands");
             }
@@ -1141,7 +1143,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                     at.pc + length(code), -1, ops, target, node));
             element := at.slot + length(slots) - 1;
             code.append(ScalarWatch(ops, element, IntStorage, 0, true,
-                                    forest[Field(forest, item.node, "target")]));
+                                    forest[Field(forest, item.node, syntax.FieldTarget)]));
             combined: Slot = {storage: IntStorage, kind: ValueKind};
             slots.append(combined);
             code.append(Instruction(op, IntStorage, element + 1, element, operand.slot, -1, node));
@@ -1236,12 +1238,12 @@ LocalPush :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable
               ports: ResolvedPort[], identities: u64[], names: Name[], package: int, generic_updates: int[],
               node: int) -> bool {
     value := StatementValue(forest, node);
-    if (!Is(forest, value, "call_expression") || !Is(forest, Field(forest, value, "function"), "member_expression") ||
+    if (!Is(forest, value, syntax.CallExpression) || !Is(forest, Field(forest, value, syntax.FieldFunction), syntax.MemberExpression) ||
         generic_updates.contains(node)) {
         return false;
     }
     receiver := StatementTarget(forest, node);
-    if (!Is(forest, receiver, "identifier")) {
+    if (!Is(forest, receiver, syntax.Identifier)) {
         return false;
     }
     found := Lookup(names, Text(forest, text, receiver));
@@ -1268,8 +1270,8 @@ ReadIntegerLiteral :: (forest: snapshot.SnapshotNode[], text: string, document: 
     if (!Floating(storage) && InferredNumberStorage(forest, text, node) == FloatStorage) {
         // A whole decimal such as 2.0 or 1e3 is the integer it spells.
         digits := node;
-        if (Is(forest, node, "unary_expression")) {
-            digits = Field(forest, node, "operand");
+        if (Is(forest, node, syntax.UnaryExpression)) {
+            digits = Field(forest, node, syntax.FieldOperand);
         }
         switch IntegralOf(Text(forest, text, digits)) {
             case .Fraction:
@@ -1316,15 +1318,15 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     popped: int = 0;
     produced := NoValue();
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-    if (kind == "nil" && OptionalElement(types, Typed(-1, item.storage, item.container, item.record)).storage != 0) {
+    if (kind == syntax.Nil && OptionalElement(types, Typed(-1, item.storage, item.container, item.record)).storage != 0) {
         return Step.Emitted([ConstantCode(ops, UnionStorage, 0, at.slot, node)], [ValueLocal(UnionStorage)],
                             [], [], [], [], [], [], [], 0, Typed(at.slot, UnionStorage, 0, item.record), NoValue(), []);
     }
-    if (kind == "nil" && item.container == ViewContainer) {
+    if (kind == syntax.Nil && item.container == ViewContainer) {
         return Fail(forest, item.node, document, "view requires an initialized value");
     }
     // `nil` where a pointer is expected; `null` for an entity is below.
-    if (kind == "nil" && item.storage == PointerStorage) {
+    if (kind == syntax.Nil && item.storage == PointerStorage) {
         if (item.container != 0 || item.record < 0 || types[item.record].key == 0) {
             return Fail(forest, item.node, document, "nil requires a nullable pointer type");
         }
@@ -1333,7 +1335,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         return Step.Emitted([constant], [{storage: PointerStorage, kind: ValueKind}], [], [], [], [], [], [], [],
                             0, Typed(at.slot, PointerStorage, 0, item.record), NoValue(), []);
     }
-    if (item.phase == 0 && kind == "member_expression") {
+    if (item.phase == 0 && kind == syntax.MemberExpression) {
         hidden := PrivateAccess(forest, text, callables, types, constants, names, package, item.node);
         if (hidden >= 0) {
             return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
@@ -1341,7 +1343,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     }
     // A literal where an optional is expected is its element; the statement
     // that stores it wraps it.
-    if ((kind == "number" || kind == "boolean" || kind == "string") && item.storage == UnionStorage &&
+    if ((kind == syntax.Number || kind == syntax.Boolean || kind == syntax.String) && item.storage == UnionStorage &&
         item.container == 0 && item.record >= 0 && item.record < length(types) &&
         types[item.record].kind == OptionalDecl) {
         element := OptionalElement(types, Typed(-1, item.storage, item.container, item.record));
@@ -1350,11 +1352,11 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         item.record = element.record;
     }
     // `nil` where an optional is expected is the absent optional, below.
-    absent := kind == "nil" && item.storage == UnionStorage && item.container == 0 && item.record >= 0 &&
+    absent := kind == syntax.Nil && item.storage == UnionStorage && item.container == 0 && item.record >= 0 &&
               item.record < length(types) && types[item.record].kind == OptionalDecl;
-    if ((kind == "nil" && !absent) || (kind == "number" && item.storage == HandleStorage && item.container == 0)) {
-        empty := kind == "nil" && Text(forest, text, item.node) == "null";
-        if (kind == "number") {
+    if ((kind == syntax.Nil && !absent) || (kind == syntax.Number && item.storage == HandleStorage && item.container == 0)) {
+        empty := kind == syntax.Nil && Text(forest, text, item.node) == "null";
+        if (kind == syntax.Number) {
             switch NumberBits(forest, text, item.node) {
                 case .Finite(double_bits, float_fits, float_bits):
                     empty = (double_bits & 0x7fffffffffffffff) == 0;
@@ -1363,43 +1365,43 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             }
         }
         if (item.storage != HandleStorage || item.container != 0 || !empty) {
-            if (kind == "number") {
+            if (kind == syntax.Number) {
                 return Fail(forest, item.node, document, "entity value requires null or zero");
             }
             return Fail(forest, item.node, document, "unsupported nil or null value");
         }
         slots.append(ValueLocal(HandleStorage));
         code.append(ConstantCode(ops, HandleStorage, 0, at.slot, node));
-        if (kind == "number") {
+        if (kind == syntax.Number) {
             code.extend(LiteralWatch(forest, ops, at.slot, HandleStorage, item.node));
         }
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                             Typed(at.slot, HandleStorage, 0, item.record), NoValue(), marks);
     }
-    if (kind == "number" && Floating(item.storage)) {
+    if (kind == syntax.Number && Floating(item.storage)) {
         // A literal where a floating value is expected is one.
         return FloatConstantStep(forest, text, document, Typed(-1, NumberStorage, 0, item.node), item.storage, ops, at,
                                  node);
     }
-    if (kind == "nil") {
+    if (kind == syntax.Nil) {
         slots.append(ValueLocal(UnionStorage));
         code.append(ConstantCode(ops, UnionStorage, 0, at.slot, node));
         produced = Typed(at.slot, UnionStorage, 0, item.record);
-    } else if (kind == "number" && !Integer(item.storage)) {
+    } else if (kind == syntax.Number && !Integer(item.storage)) {
         // An untyped literal: its use gives it a type.
         produced = Typed(-1, NumberStorage, 0, item.node);
-    } else if (kind == "number" || kind == "boolean" || kind == "string") {
+    } else if (kind == syntax.Number || kind == syntax.Boolean || kind == syntax.String) {
         storage := item.storage;
         payload: u64 = 0;
         literal := "";
-        if (kind == "number") {
+        if (kind == syntax.Number) {
             switch ReadIntegerLiteral(forest, text, document, item.node, storage) {
                 case .Rejected(diagnostic):
                     return Step.Failed(diagnostic);
                 case .Checked(bits):
                     payload = bits;
             }
-        } else if (kind == "boolean") {
+        } else if (kind == syntax.Boolean) {
             storage = BoolStorage;
             if (Text(forest, text, item.node) == "true") {
                 payload = 1;
@@ -1407,7 +1409,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         } else {
             // String literals are JSON strings.
             storage = TextStorage;
-            decoded := compiler_json_value_string(Text(forest, text, item.node));
+            decoded := json.Value(Text(forest, text, item.node));
             if (!decoded.valid) {
                 return Fail(forest, item.node, document, "Invalid string literal");
             }
@@ -1417,13 +1419,13 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         slots.append(slot);
         constant := ConstantCode(ops, storage, payload, at.slot, node);
         constant.text = literal;
-        constant.has_text = kind == "string";
+        constant.has_text = kind == syntax.String;
         code.append(constant);
-        if (kind == "number") {
+        if (kind == syntax.Number) {
             code.extend(LiteralWatch(forest, ops, at.slot, storage, item.node));
         }
         produced = Typed(at.slot, storage, 0, -1);
-    } else if (item.phase == 0 && (kind == "identifier" || kind == "member_expression") &&
+    } else if (item.phase == 0 && (kind == syntax.Identifier || kind == syntax.MemberExpression) &&
                ConstantOf(forest, text, constants, names, package, item.node) >= 0) {
         // A package constant is its value.
         declared := constants[ConstantOf(forest, text, constants, names, package, item.node)];
@@ -1431,12 +1433,12 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         slots.append(slot);
         code.append(ConstantCode(ops, declared.storage, declared.bits, at.slot, node));
         produced = Typed(at.slot, declared.storage, 0, -1);
-    } else if (kind == "identifier" && item.phase == NarrowedReadPhase) {
+    } else if (kind == syntax.Identifier && item.phase == NarrowedReadPhase) {
         // The payload of the optional a narrowed name just read, which stage
         // zero marks again as the payload.
         return PointerPrefix([ExpressionCode(ops, node)], [],
                              OptionalUnwrapStep(types, values[top - 1], 1, ops, target, at, node));
-    } else if (kind == "identifier") {
+    } else if (kind == syntax.Identifier) {
         wanted := Text(forest, text, item.node);
         found := Lookup(names, wanted);
         if (item.phase == NarrowedOriginalPhase) {
@@ -1572,13 +1574,13 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                 return ArgumentSchemaStep(read, binding.index, ops, target, at, node);
             }
         }
-    } else if (kind == "parenthesized_expression") {
-        next.append(Expect(Field(forest, item.node, "expression"), item.storage, item.container, item.record));
-    } else if (item.phase == 0 && kind == "member_expression" &&
+    } else if (kind == syntax.ParenthesizedExpression) {
+        next.append(Expect(Field(forest, item.node, syntax.FieldExpression), item.storage, item.container, item.record));
+    } else if (item.phase == 0 && kind == syntax.MemberExpression &&
                UnionOf(forest, text, types, names, package, item.node) >= 0) {
         // A variant without a payload: the constructor takes only its tag.
         sum_type := UnionOf(forest, text, types, names, package, item.node);
-        member := Text(forest, text, Field(forest, item.node, "member"));
+        member := Text(forest, text, Field(forest, item.node, syntax.FieldMember));
         variant := FindVariant(types, sum_type, member);
         if (variant < 0) {
             return Fail(forest, item.node, document, format_text("Unknown variant '{}'", member));
@@ -1602,7 +1604,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         load.offset = target.payload_offset;
         code.append(load);
         produced = Typed(at.slot + 1, UnionStorage, 0, sum_type);
-    } else if (item.phase == 0 && kind == "member_expression" &&
+    } else if (item.phase == 0 && kind == syntax.MemberExpression &&
                KeyedMember(forest, text, types, members, names, item.node) >= 0) {
         // A global's keyed field, such as a scene binding, a native reads by
         // its key.
@@ -1626,7 +1628,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                                     read_locals, read_cells, read_hosts, read_roots, read_calls, read_bound,
                                     read_next, 0, read, NoValue(), read_marks);
         }
-    } else if (item.phase == 0 && kind == "member_expression" &&
+    } else if (item.phase == 0 && kind == syntax.MemberExpression &&
                ConstantMember(forest, text, types, members, names, item.node) >= 0) {
         // A constant member of a global, such as an input action, is its name.
         field := members[ConstantMember(forest, text, types, members, names, item.node)];
@@ -1636,14 +1638,14 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         constant.has_text = true;
         code.append(constant);
         produced = Typed(at.slot, field.storage, 0, field.record);
-    } else if (item.phase == 0 && kind == "member_expression" &&
+    } else if (item.phase == 0 && kind == syntax.MemberExpression &&
                SelfComponent(forest, text, types, names, item.node) >= 0) {
         return ComponentReadStep([], types, SelfComponent(forest, text, types, names, item.node), false, -1, [],
                                  ops, target, at, node);
     } else if (item.phase == 0) {
-        next.append(Visit(Field(forest, item.node, "object")));
+        next.append(Visit(Field(forest, item.node, syntax.FieldObject)));
         // An index's type is a map's key type or an array's int.
-        if (kind == "index_expression") {
+        if (kind == syntax.IndexExpression) {
             next.append(Resume(item.node, KeyPhase, 0, 0));
         } else {
             next.append(Resume(item.node, 1, 0, 0));
@@ -1651,17 +1653,17 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     } else if (item.phase == KeyPhase) {
         // The object is ready, so the index takes a map's key type or an
         // array's int.
-        index := Field(forest, item.node, "index");
+        index := Field(forest, item.node, syntax.FieldIndex);
         if (IsMap(values[top - 1])) {
             next.append(Expect(index, types[values[top - 1].record].key, 0, -1));
         } else {
             next.append(Expect(index, IntStorage, 0, -1));
         }
         next.append(Resume(item.node, 1, 0, 0));
-    } else if (kind == "member_expression") {
+    } else if (kind == syntax.MemberExpression) {
         popped = 1;
         object := values[top - 1];
-        member := Text(forest, text, Field(forest, item.node, "member"));
+        member := Text(forest, text, Field(forest, item.node, syntax.FieldMember));
         if (Single(object, QueryStorage) && object.record >= 0) {
             if (types[object.record].kind != QueryDecl) {
                 return Fail(forest, item.node, document, "Query description fields are available through iteration");
@@ -1682,28 +1684,28 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return read;
         }
         if (Single(object, StructStorage) && object.record >= 0 && types[object.record].kind == OptionalComponentDecl) {
-            if (!QueryAccessPresent(forest, text, types, names, Field(forest, item.node, "object"))) {
+            if (!QueryAccessPresent(forest, text, types, names, Field(forest, item.node, syntax.FieldObject))) {
                 return Fail(forest, item.node, document, "Optional component requires a presence guard before field access");
             }
             object.record = types[object.record].parent;
         }
         if (member == "") {
-            return Fail(forest, Field(forest, item.node, "member"), document, "Invalid string or embedded NUL");
+            return Fail(forest, Field(forest, item.node, syntax.FieldMember), document, "Invalid string or embedded NUL");
         }
         if (Single(object, PointerStorage)) {
-            receiver := forest[Field(forest, item.node, "object")];
+            receiver := forest[Field(forest, item.node, syntax.FieldObject)];
             return PointerPrefix([ExpressionCode(ops, receiver)], [],
                                  PointerContinue(PointerReadStep(types, object, 1, ops, target, at, receiver),
                                                  Resume(item.node, PointerMemberReadPhase, 0, 0)));
         }
         if (item.phase == PointerMemberReadPhase && ops.debug) {
             code.append(WatchCode(ops, object.slot, object.storage, object.container, object.record, 0, true,
-                                  forest[Field(forest, item.node, "object")], target));
+                                  forest[Field(forest, item.node, syntax.FieldObject)], target));
         }
         // A dereferenced pointer's member is its pointee's field, never the
         // name of the output that returned the pointer, as in stage zero.
         dereferenced := item.phase == PointerMemberReadPhase;
-        source := ResultSourceCall(forest, text, names, Field(forest, item.node, "object"));
+        source := ResultSourceCall(forest, text, names, Field(forest, item.node, syntax.FieldObject));
         called := ResultSourceCallable(forest, text, callables, natives, names, package, source);
         if (!dereferenced && called >= 0 && NamedResult(params, callables[called], member) == 0) {
             // A single named result is also an ordinary value. Its output
@@ -1722,7 +1724,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                                 NoValue(), marks);
         }
         if (OptionalElement(types, object).storage != 0) {
-            return Fail(forest, Field(forest, item.node, "member"), document,
+            return Fail(forest, Field(forest, item.node, syntax.FieldMember), document,
                         "Optional component requires a presence guard before member access");
         }
         origin := FindNativeCall(native_calls, source.node);
@@ -1806,7 +1808,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         }
         if (Single(object, StructStorage) && MathKind(types, object.record) != 0) {
             effects := MathLocationEffects(forest, text, types, members, callables, natives, ports, names, package,
-                                           Field(forest, item.node, "object")) & ReadEffect;
+                                           Field(forest, item.node, syntax.FieldObject)) & ReadEffect;
             return PointerPrefix(code, slots,
                                  EffectsStep(MathMemberStep(forest, document, types, members, object, member,
                                                             ops, target, at, node), effects));
@@ -1870,10 +1872,10 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return CleanupProjectionStep(emitted, array, natives, ports, ops, target, at, node);
         }
         if (array.container != ArrayContainer && array.container != ViewContainer) {
-            return Fail(forest, Field(forest, item.node, "object"), document, "indexing needs an array");
+            return Fail(forest, Field(forest, item.node, syntax.FieldObject), document, "indexing needs an array");
         }
         if (!Single(position, IntStorage)) {
-            return Fail(forest, Field(forest, item.node, "index"), document, "index needs an int");
+            return Fail(forest, Field(forest, item.node, syntax.FieldIndex), document, "index needs an int");
         }
         element_type := SequenceElement(types, {storage: array.storage, container: array.container, record: array.record});
         read := SequenceGetIntrinsic;
@@ -1905,7 +1907,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         return EffectsStep(CleanupProjectionStep(emitted, array, natives, ports, ops, target, at, node), observed);
     }
     emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, NoValue(), marks);
-    if (produced.storage != 0 && popped > 0 && (kind == "member_expression" || kind == "index_expression")) {
+    if (produced.storage != 0 && popped > 0 && (kind == syntax.MemberExpression || kind == syntax.IndexExpression)) {
         return CleanupProjectionStep(emitted, values[top - popped], natives, ports, ops, target, at, node);
     }
     return emitted;
@@ -1940,11 +1942,11 @@ ReadsInPlace :: (array: Value, element: ValueType, borrowed: bool) -> bool {
 BorrowsElement :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
                    node: int, element: ValueType) -> bool {
     member := forest[node].parent;
-    if (!Is(forest, member, "member_expression") || Field(forest, member, "object") != node ||
+    if (!Is(forest, member, syntax.MemberExpression) || Field(forest, member, syntax.FieldObject) != node ||
         element.storage != StructStorage || element.container != 0 || element.record < 0) {
         return false;
     }
-    found := FindField(types, members, element.record, Text(forest, text, Field(forest, member, "member")));
+    found := FindField(types, members, element.record, Text(forest, text, Field(forest, member, syntax.FieldMember)));
     if (found < 0 || members[found].container != 0 || members[found].read >= 0 || members[found].c_string) {
         return false;
     }
@@ -1953,13 +1955,13 @@ BorrowsElement :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDec
         return storage != StructStorage && storage != UnionStorage;
     }
     comparison := forest[member].parent;
-    operator := Text(forest, text, Field(forest, comparison, "operator"));
-    other := Field(forest, comparison, "right");
+    operator := Text(forest, text, Field(forest, comparison, syntax.FieldOperator));
+    other := Field(forest, comparison, syntax.FieldRight);
     if (other == member) {
-        other = Field(forest, comparison, "left");
+        other = Field(forest, comparison, syntax.FieldLeft);
     }
-    return Is(forest, comparison, "binary_expression") && (operator == "==" || operator == "!=") &&
-           (Is(forest, other, "identifier") || Is(forest, other, "string"));
+    return Is(forest, comparison, syntax.BinaryExpression) && (operator == "==" || operator == "!=") &&
+           (Is(forest, other, syntax.Identifier) || Is(forest, other, syntax.String));
 }
 // Whether the element `node` reads initializes a local in place, as stage
 // zero lends a declaration: nothing changes the local, nor the parameter or
@@ -1968,18 +1970,18 @@ BorrowsElement :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDec
 LendsElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], referenced: string[],
                  mutated: string[], built: int[], addressed: string[], node: int) -> bool {
     declaration := forest[node].parent;
-    if (!Is(forest, node, "index_expression") || !Is(forest, declaration, "local_declaration") ||
-        Field(forest, declaration, "value") != node || built.contains(Field(forest, declaration, "name"))) {
+    if (!Is(forest, node, syntax.IndexExpression) || !Is(forest, declaration, syntax.LocalDeclaration) ||
+        Field(forest, declaration, syntax.FieldValue) != node || built.contains(Field(forest, declaration, syntax.FieldName))) {
         return false;
     }
     root := RootOf(forest, node);
-    if (!Is(forest, root, "identifier")) {
+    if (!Is(forest, root, syntax.Identifier)) {
         return false;
     }
     found := Lookup(names, Text(forest, text, root));
     return found >= 0 && (names[found].place == ParameterPlace || names[found].place == CellPlace) &&
            names[found].container != ViewContainer &&
-           Fixed(referenced, mutated, addressed, Text(forest, text, Field(forest, declaration, "name"))) &&
+           Fixed(referenced, mutated, addressed, Text(forest, text, Field(forest, declaration, syntax.FieldName))) &&
            Fixed(referenced, mutated, addressed, names[found].name);
 }
 // Whether `node` reads an element of an array or map that something may
@@ -1987,11 +1989,11 @@ LendsElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], r
 ChangingElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], referenced: string[],
                     mutated: string[], addressed: string[], node: int) -> bool {
     at := Unparenthesized(forest, node);
-    if (!Is(forest, at, "index_expression")) {
+    if (!Is(forest, at, syntax.IndexExpression)) {
         return false;
     }
     root := RootOf(forest, at);
-    if (!Is(forest, root, "identifier")) {
+    if (!Is(forest, root, syntax.Identifier)) {
         return true;
     }
     found := Lookup(names, Text(forest, text, root));
@@ -2012,7 +2014,7 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ta
                 at: Bases) -> Step {
     types := table^;
     node := forest[item.node];
-    array := node.kind == "array_expression";
+    array := node.kind == syntax.ArrayExpression;
     code: Code[] = [];
     slots: Slot[] = [];
     locals: Slot[] = [];
@@ -2082,28 +2084,28 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ta
                 element := SequenceElement(types, {storage: item.storage, container: item.container, record: record});
                 next.append(Expect(member, element.storage, element.container, element.record));
             } else {
-                name := Text(forest, text, Field(forest, member, "name"));
+                name := Text(forest, text, Field(forest, member, syntax.FieldName));
                 if (name == "") {
-                    return Fail(forest, Field(forest, member, "name"), document, "Invalid string or embedded NUL");
+                    return Fail(forest, Field(forest, member, syntax.FieldName), document, "Invalid string or embedded NUL");
                 }
                 if (FindField(types, members, record, name) < 0) {
                     return Fail(forest, member, document, format_text("Unknown field '{}'", name));
                 }
                 earlier := FirstMember(forest, item.node);
                 while (earlier != member) {
-                    if (Text(forest, text, Field(forest, earlier, "name")) == name) {
+                    if (Text(forest, text, Field(forest, earlier, syntax.FieldName)) == name) {
                         return Fail(forest, member, document, format_text("Duplicate literal member '{}'", name));
                     }
                     earlier = NextMember(forest, earlier);
                 }
                 field := members[FindField(types, members, record, name)];
                 if (field.c_string) {
-                    message := CStringMessage(forest, text, Field(forest, member, "value"), field.name);
+                    message := CStringMessage(forest, text, Field(forest, member, syntax.FieldValue), field.name);
                     if (message != "") {
-                        return Fail(forest, Field(forest, member, "value"), document, message);
+                        return Fail(forest, Field(forest, member, syntax.FieldValue), document, message);
                     }
                 }
-                next.append(Expect(Field(forest, member, "value"), field.storage, field.container, field.record));
+                next.append(Expect(Field(forest, member, syntax.FieldValue), field.storage, field.container, field.record));
             }
             next.append(Resume(member, CopyValuePhase, 0, 0));
             count += 1;
@@ -2115,7 +2117,7 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ta
                 field := members[field_index];
                 provided := false;
                 for (given in Members(forest, item.node)) {
-                    if (Text(forest, text, Field(forest, given, "name")) == field.name) {
+                    if (Text(forest, text, Field(forest, given, syntax.FieldName)) == field.name) {
                         provided = true;
                     }
                 }
@@ -2146,7 +2148,7 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ta
 
         }
         if (!array) {
-            found := FindField(types, members, record, Text(forest, text, Field(forest, member, "name")));
+            found := FindField(types, members, record, Text(forest, text, Field(forest, member, syntax.FieldName)));
             field := members[found];
             if (!Accepts(types, field.storage, field.container, field.record, value)) {
                 return Fail(forest, member, document, "field value differs from its type");
@@ -2206,21 +2208,21 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ta
 // `node` without the parentheses around it.
 Unparenthesized :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     at := node;
-    while (Is(forest, at, "parenthesized_expression")) {
-        at = Field(forest, at, "expression");
+    while (Is(forest, at, syntax.ParenthesizedExpression)) {
+        at = Field(forest, at, syntax.FieldExpression);
     }
     return at;
 }
 // A provable literal at an explicit foreign C-string boundary.
 CStringMessage :: (forest: snapshot.SnapshotNode[], text: string, node: int, boundary: string) -> string {
     at := Unparenthesized(forest, node);
-    if (Is(forest, at, "named_argument")) {
-        at = Unparenthesized(forest, Field(forest, at, "value"));
+    if (Is(forest, at, syntax.NamedArgument)) {
+        at = Unparenthesized(forest, Field(forest, at, syntax.FieldValue));
     }
-    if (!Is(forest, at, "string")) {
+    if (!Is(forest, at, syntax.String)) {
         return "";
     }
-    decoded := compiler_json_value_string(Text(forest, text, at));
+    decoded := json.Value(Text(forest, text, at));
     if (!decoded.valid) {
         return "";
     }
@@ -2253,9 +2255,9 @@ NativeNameStorage: int : 12;
 NativeSources :: (forest: snapshot.SnapshotNode[], call: int, method: bool) -> int[] {
     sources: int[] = [];
     if (method) {
-        sources.append(Field(forest, Field(forest, call, "function"), "object"));
+        sources.append(Field(forest, Field(forest, call, syntax.FieldFunction), syntax.FieldObject));
     }
-    argument := FirstMember(forest, Field(forest, call, "arguments"));
+    argument := FirstMember(forest, Field(forest, call, syntax.FieldArguments));
     while (argument >= 0) {
         sources.append(argument);
         argument = NextMember(forest, argument);
@@ -2328,11 +2330,11 @@ BindNative :: (forest: snapshot.SnapshotNode[], text: string, call: int, sources
     for (source in sources) {
         value := source;
         parameter := ordinal;
-        if (Is(forest, source, "named_argument")) {
-            if (Field(forest, source, "type") >= 0) {
+        if (Is(forest, source, syntax.NamedArgument)) {
+            if (Field(forest, source, syntax.FieldType) >= 0) {
                 return NativeBinding.Failed(source, "typed native arguments are not supported yet");
             }
-            name := Text(forest, text, Field(forest, source, "name"));
+            name := Text(forest, text, Field(forest, source, syntax.FieldName));
             parameter = NativeParameter(ports, called, name, length(sources));
             if (parameter < 0) {
                 problem := format_text("Unknown argument '{}'", name);
@@ -2341,9 +2343,9 @@ BindNative :: (forest: snapshot.SnapshotNode[], text: string, call: int, sources
                 }
                 return NativeBinding.Failed(source, problem);
             }
-            value = Field(forest, source, "value");
+            value = Field(forest, source, syntax.FieldValue);
             if (value < 0) {
-                value = Field(forest, source, "source");
+                value = Field(forest, source, syntax.FieldSource);
             }
         }
         if (value < 0 || parameter < 0 ||
@@ -2384,10 +2386,10 @@ BindNative :: (forest: snapshot.SnapshotNode[], text: string, call: int, sources
 NativeExpectation :: (forest: snapshot.SnapshotNode[], text: string, call: int, sources: int[],
                       natives: ResolvedNative[], ports: ResolvedPort[], name: string, ordinal: int) -> Work {
     source := sources[ordinal];
-    if (Is(forest, source, "named_argument")) {
-        source = Field(forest, source, "value");
+    if (Is(forest, source, syntax.NamedArgument)) {
+        source = Field(forest, source, syntax.FieldValue);
         if (source < 0) {
-            source = Field(forest, sources[ordinal], "source");
+            source = Field(forest, sources[ordinal], syntax.FieldSource);
         }
     }
     expected := Visit(source);
@@ -2421,35 +2423,35 @@ NativeOwnerZero :: (forest: snapshot.SnapshotNode[], text: string, document: int
                     callables: Callable[], names: Name[], package: int, node: int) -> bool {
     at := Unparenthesized(forest, node);
     remaining := length(forest);
-    while (at >= 0 && remaining > 0 && Is(forest, at, "call_expression")) {
-        callee := Field(forest, at, "function");
+    while (at >= 0 && remaining > 0 && Is(forest, at, syntax.CallExpression)) {
+        callee := Field(forest, at, syntax.FieldFunction);
         spelling := Text(forest, text, callee);
         converted := ScalarStorage(spelling);
-        if (!Is(forest, callee, "identifier") || FindCallable(callables, package, spelling) >= 0 ||
+        if (!Is(forest, callee, syntax.Identifier) || FindCallable(callables, package, spelling) >= 0 ||
             Lookup(names, spelling) >= 0 || !Integer(converted)) {
             return false;
         }
-        argument := FirstMember(forest, Field(forest, at, "arguments"));
+        argument := FirstMember(forest, Field(forest, at, syntax.FieldArguments));
         if (argument < 0 || NextMember(forest, argument) >= 0) {
             return false;
         }
-        if (Is(forest, argument, "named_argument")) {
-            label := Text(forest, text, Field(forest, argument, "name"));
+        if (Is(forest, argument, syntax.NamedArgument)) {
+            label := Text(forest, text, Field(forest, argument, syntax.FieldName));
             if (label != "wrap" && label != "clamp") {
                 return false;
             }
-            argument = Field(forest, argument, "value");
+            argument = Field(forest, argument, syntax.FieldValue);
         }
         at = Unparenthesized(forest, argument);
         remaining -= 1;
     }
-    if (Is(forest, at, "nil")) {
+    if (Is(forest, at, syntax.Nil)) {
         return Text(forest, text, at) == "null";
     }
-    numeric := Is(forest, at, "number");
-    if (Is(forest, at, "unary_expression")) {
-        operator := Text(forest, text, Field(forest, at, "operator"));
-        numeric = (operator == "+" || operator == "-") && Is(forest, Field(forest, at, "operand"), "number");
+    numeric := Is(forest, at, syntax.Number);
+    if (Is(forest, at, syntax.UnaryExpression)) {
+        operator := Text(forest, text, Field(forest, at, syntax.FieldOperator));
+        numeric = (operator == "+" || operator == "-") && Is(forest, Field(forest, at, syntax.FieldOperand), syntax.Number);
     }
     if (numeric) {
         switch NumberBits(forest, text, at) {
@@ -2579,7 +2581,7 @@ NativeBoundValues :: (forest: snapshot.SnapshotNode[], text: string, document: i
                 }
             }
         } else {
-            site := Field(forest, call, "arguments");
+            site := Field(forest, call, syntax.FieldArguments);
             if (!port.has_default || !port.default_supported || port.storage <= 0 || port.container != 0 ||
                 port.storage == StructStorage || port.storage == UnionStorage) {
                 return NativeValues.Failed(call, format_text("default argument '{}' is not supported yet", port.name));
@@ -2740,31 +2742,31 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                                  slice(values, top - item.b, item.b), item.a, item.b, ops, target, at, node);
     }
     if (item.phase == 1 && item.c == MathFunctionCall) {
-        name := Text(forest, text, Field(forest, item.node, "function"));
+        name := Text(forest, text, Field(forest, item.node, syntax.FieldFunction));
         return MathFunctionStep(forest, text, document, types, members, constants, names, package,
                                 name, slice(values, top - item.b, item.b), item.b, ops, target, at, node);
     }
     if (item.phase == 0) {
-        callee := Field(forest, item.node, "function");
+        callee := Field(forest, item.node, syntax.FieldFunction);
         hidden := PrivateAccess(forest, text, callables, types, constants, names, package, callee);
         if (hidden >= 0) {
             return Fail(forest, hidden, document, PrivateMessage(Text(forest, text, hidden)));
         }
         sum_type: int = -1;
-        if (Is(forest, callee, "member_expression")) {
+        if (Is(forest, callee, syntax.MemberExpression)) {
             sum_type = UnionOf(forest, text, types, names, package, callee);
         }
         if (sum_type >= 0) {
             // A variant with a payload: each argument is a payload field, in order.
-            member := Text(forest, text, Field(forest, callee, "member"));
+            member := Text(forest, text, Field(forest, callee, syntax.FieldMember));
             variant := FindVariant(types, sum_type, member);
             if (variant < 0) {
                 return Fail(forest, callee, document, format_text("Unknown variant '{}'", member));
             }
             count: int = 0;
-            argument := FirstMember(forest, Field(forest, item.node, "arguments"));
+            argument := FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
             while (argument >= 0) {
-                if (Is(forest, argument, "named_argument")) {
+                if (Is(forest, argument, syntax.NamedArgument)) {
                     return Fail(forest, argument, document, "named payload arguments are not supported yet");
                 }
                 if (count >= types[variant].count) {
@@ -2788,28 +2790,28 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // local receiver keeps its package or array-method meaning.
         qualified_native: bool = false;
         native_name: string = "";
-        if (Is(forest, callee, "member_expression")) {
-            prefix := Field(forest, callee, "object");
-            if (Is(forest, prefix, "identifier") && Lookup(names, Text(forest, text, prefix)) < 0 &&
+        if (Is(forest, callee, syntax.MemberExpression)) {
+            prefix := Field(forest, callee, syntax.FieldObject);
+            if (Is(forest, prefix, syntax.Identifier) && Lookup(names, Text(forest, text, prefix)) < 0 &&
                 QualifierOf(forest, text, names, package, prefix) < 0) {
                 qualified_native = true;
                 native_name = format_text("{}.{}", Text(forest, text, prefix),
-                                          Text(forest, text, Field(forest, callee, "member")));
+                                          Text(forest, text, Field(forest, callee, syntax.FieldMember)));
             }
         }
         // `xs.f(...)` calls the array function f with xs first. A method that
         // changes its array is a statement on the array's name.
         method: int = -1;
-        if (!qualified_native && Is(forest, callee, "member_expression") &&
-            QualifierOf(forest, text, names, package, Field(forest, callee, "object")) < 0) {
-            method = ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member")));
+        if (!qualified_native && Is(forest, callee, syntax.MemberExpression) &&
+            QualifierOf(forest, text, names, package, Field(forest, callee, syntax.FieldObject)) < 0) {
+            method = ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, syntax.FieldMember)));
         }
         if (method >= 0) {
             if (ArrayChanger(natives, method) &&
                 ChangedArray(forest, text, names, natives, ports, forest[item.node].parent) < 0) {
                 return Fail(forest, callee, document,
                             format_text("{} changes the array; call it as a statement on a name",
-                                        Text(forest, text, Field(forest, callee, "member"))));
+                                        Text(forest, text, Field(forest, callee, syntax.FieldMember))));
             }
             if (!natives[method].direct) {
                 return Fail(forest, callee, document, "native binding cannot be called directly as data");
@@ -2841,13 +2843,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // `F(...)` calls this package's F or a native; a bound alias calls an
         // imported package's F; an unbound prefix qualifies a native's name.
         qualifier: int = -1;
-        if (Is(forest, callee, "member_expression")) {
-            qualifier = Field(forest, callee, "object");
-            callee = Field(forest, callee, "member");
+        if (Is(forest, callee, syntax.MemberExpression)) {
+            qualifier = Field(forest, callee, syntax.FieldObject);
+            callee = Field(forest, callee, syntax.FieldMember);
         }
         home := QualifierOf(forest, text, names, package, qualifier);
-        if ((!qualified_native && home < 0) || !Is(forest, callee, "identifier")) {
-            return Fail(forest, Field(forest, item.node, "function"), document, "call needs a function name");
+        if ((!qualified_native && home < 0) || !Is(forest, callee, syntax.Identifier)) {
+            return Fail(forest, Field(forest, item.node, syntax.FieldFunction), document, "call needs a function name");
         }
         callee_name := Text(forest, text, callee);
         found := CalledFunction(forest, text, callables, natives, names, package, item.node);
@@ -2863,7 +2865,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             // signature's native takes them.
             address_native := FindNative(natives, ProcName(forest, text, proc));
             shape := ProcShape(forest, text, proc);
-            arguments := Members(forest, Field(forest, item.node, "arguments"));
+            arguments := Members(forest, Field(forest, item.node, syntax.FieldArguments));
             if (address_native < 0) {
                 return Fail(forest, callee, document, "procedure type has no native");
             }
@@ -2872,8 +2874,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             }
             next.append(Expect(callee, WordStorage, 0, -1));
             for (index in 0..<length(arguments)) {
-                if (Is(forest, arguments[index], "named_argument") || Is(forest, arguments[index], "typed_argument") ||
-                    Is(forest, arguments[index], "reference_argument")) {
+                if (Is(forest, arguments[index], syntax.NamedArgument) || Is(forest, arguments[index], syntax.TypedArgument)) {
                     return Fail(forest, arguments[index], document, "a procedure takes positional arguments");
                 }
                 next.append(Expect(arguments[index], shape[index], 0, -1));
@@ -2886,9 +2887,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         math_kind := MathName(callee_name);
         if (qualifier < 0 && found == -1 && math_kind != 0) {
             count: int = 0;
-            for (argument in Members(forest, Field(forest, item.node, "arguments"))) {
-                if (Is(forest, argument, "named_argument") || Is(forest, argument, "typed_argument") ||
-                    Is(forest, argument, "reference_argument")) {
+            for (argument in Members(forest, Field(forest, item.node, syntax.FieldArguments))) {
+                if (Is(forest, argument, syntax.NamedArgument) || Is(forest, argument, syntax.TypedArgument)) {
                     return Fail(forest, argument, document, "built-in math constructors take positional arguments");
                 }
                 next.extend([Visit(argument), Resume(argument, MathCapturePhase, 0, 0)]);
@@ -2903,10 +2903,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             (callee_name == "step" || FindNative(natives, callee_name) == -1 ||
              MathArguments(forest, text, types, members, callables, natives, ports, names, package, item.node))) {
             positional := true;
-            arguments := Members(forest, Field(forest, item.node, "arguments"));
+            arguments := Members(forest, Field(forest, item.node, syntax.FieldArguments));
             for (argument in arguments) {
-                if (Is(forest, argument, "named_argument") || Is(forest, argument, "typed_argument") ||
-                    Is(forest, argument, "reference_argument")) {
+                if (Is(forest, argument, syntax.NamedArgument) || Is(forest, argument, syntax.TypedArgument)) {
                     positional = false;
                 }
             }
@@ -2938,11 +2937,11 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             if (CharIndex(types) < 0) {
                 return Fail(forest, item.node, document, "char conversion needs its nominal type");
             }
-            argument := FirstMember(forest, Field(forest, item.node, "arguments"));
+            argument := FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
             if (argument < 0 || NextMember(forest, argument) >= 0) {
                 return Fail(forest, item.node, document, "Conversion takes one value");
             }
-            if (Is(forest, argument, "named_argument")) {
+            if (Is(forest, argument, syntax.NamedArgument)) {
                 return Fail(forest, item.node, document, "char converts only with char(value)");
             }
             if (ConstantExpression(forest, text, constants, names, package, argument) || SignedLiteral(forest, text, argument) >= 0) {
@@ -2991,22 +2990,22 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             // Floating conversions use the existing runtime rounding operation.
             // `T(value)` clamps the value to T; `T(wrap: value)` keeps its
             // low bits. A constant value folds before it gets here.
-            argument := FirstMember(forest, Field(forest, item.node, "arguments"));
+            argument := FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
             if (argument < 0 || NextMember(forest, argument) >= 0) {
                 return Fail(forest, item.node, document, "Conversion takes one value");
             }
             mode: int = 0;
             value := argument;
-            if (Is(forest, argument, "named_argument")) {
+            if (Is(forest, argument, syntax.NamedArgument)) {
                 if (Floating(conversion)) {
                     return Fail(forest, item.node, document, "wrap and clamp convert between integer types");
                 }
-                if (Text(forest, text, Field(forest, argument, "name")) != "wrap") {
-                    return Fail(forest, Field(forest, argument, "name"), document,
+                if (Text(forest, text, Field(forest, argument, syntax.FieldName)) != "wrap") {
+                    return Fail(forest, Field(forest, argument, syntax.FieldName), document,
                                 "A conversion argument may only be named wrap");
                 }
                 mode = 1;
-                value = Field(forest, argument, "value");
+                value = Field(forest, argument, syntax.FieldValue);
             }
             if (Floating(conversion) && mode != 0) {
                 return Fail(forest, argument, document, "wrap and clamp apply only to integer conversions");
@@ -3035,13 +3034,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             condition: int = -1;
             message: int = -1;
             index: int = 0;
-            argument := FirstMember(forest, Field(forest, item.node, "arguments"));
+            argument := FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
             while (argument >= 0) {
                 value := argument;
                 position := index;
-                if (Is(forest, argument, "named_argument")) {
-                    label := Text(forest, text, Field(forest, argument, "name"));
-                    value = Field(forest, argument, "value");
+                if (Is(forest, argument, syntax.NamedArgument)) {
+                    label := Text(forest, text, Field(forest, argument, syntax.FieldName));
+                    value = Field(forest, argument, syntax.FieldValue);
                     position = -1;
                     if (NameMatches("Condition", label)) {
                         position = 0;
@@ -3051,7 +3050,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 }
                 if (position < 0) {
                     return Fail(forest, argument, document,
-                                format_text("Unknown argument '{}'", Text(forest, text, Field(forest, argument, "name"))));
+                                format_text("Unknown argument '{}'", Text(forest, text, Field(forest, argument, syntax.FieldName))));
                 }
                 if (position > 1) {
                     return Fail(forest, argument, document, "Too many arguments");
@@ -3072,7 +3071,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             if (condition < 0) {
                 return Fail(forest, item.node, document, "assert needs a condition");
             }
-            if (message >= 0 && !Is(forest, Unparenthesized(forest, message), "string")) {
+            if (message >= 0 && !Is(forest, Unparenthesized(forest, message), syntax.String)) {
                 return Fail(forest, message, document, "assert's message is a string constant");
             }
             if (guard) {
@@ -3091,7 +3090,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             // Preserve the source contract even when lowering replaces INVOKE.
             next.append(RecordSemantic(item.node, CallFact, found));
         } else if (qualifier >= 0 && !qualified_native) {
-            return Fail(forest, Field(forest, item.node, "function"), document,
+            return Fail(forest, Field(forest, item.node, syntax.FieldFunction), document,
                         format_text("Unknown function '{}'", callee_name));
         } else {
             native = FindNative(natives, callee_name);
@@ -3156,7 +3155,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         labeled := callback_signature >= 0 || GenericResolvedCall(names, item.node);
         callback_parameters: int[] = [];
         position: int = 0;
-        argument := FirstMember(forest, Field(forest, item.node, "arguments"));
+        argument := FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
         while (argument >= 0) {
             if (GenericOmitted(names, argument)) {
                 argument = NextMember(forest, argument);
@@ -3164,8 +3163,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             }
             // A callable takes neither yet; reject them before an argument
             // is read positionally.
-            if ((Is(forest, argument, "named_argument") && !labeled) || Is(forest, argument, "typed_argument")) {
-                return Fail(forest, argument, document, format_text("unsupported syntax '{}'", forest[argument].kind));
+            if ((Is(forest, argument, syntax.NamedArgument) && !labeled) || Is(forest, argument, syntax.TypedArgument)) {
+                return Fail(forest, argument, document, format_text("unsupported syntax '{}'",
+                                                                 parser.KindName(forest[argument].kind)));
             }
             parameter_index := GenericCallParameter(forest, text, callables, params, names, found, item.node, argument, position);
             if (labeled) {
@@ -3175,16 +3175,16 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 callback_parameters.append(parameter_index);
             }
             value_node := argument;
-            if (labeled && Is(forest, argument, "named_argument")) {
-                value_node = Field(forest, argument, "value");
+            if (labeled && Is(forest, argument, syntax.NamedArgument)) {
+                value_node = Field(forest, argument, syntax.FieldValue);
             }
             expected := Visit(value_node);
             if (found >= 0 && parameter_index < expected_count) {
                 param := params[callables[found].first + parameter_index];
                 expected = Expect(value_node, param.storage, param.container, param.record);
-                if (param.reference && Is(forest, value_node, "address_expression")) {
+                if (param.reference && Is(forest, value_node, syntax.AddressExpression)) {
                     // `&x` lends x's location for the call.
-                    expected.node = Unparenthesized(forest, Field(forest, value_node, "operand"));
+                    expected.node = Unparenthesized(forest, Field(forest, value_node, syntax.FieldOperand));
                     expected.phase = ReferencePhase;
                 } else if (param.reference) {
                     expected.phase = ScopedPhase;
@@ -3198,7 +3198,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 next.append(Resume(value_node, CopyValuePhase, 0, 0));
             }
             count += 1;
-            if (!Is(forest, argument, "named_argument")) { position += 1; }
+            if (!Is(forest, argument, syntax.NamedArgument)) { position += 1; }
             argument = NextMember(forest, argument);
         }
         // A variadic native's last parameter takes any number of arguments,
@@ -3228,7 +3228,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // when it gives none.
         said := Text(forest, text, Unparenthesized(forest, item.b));
         if (item.a >= 0) {
-            decoded := compiler_json_value_string(Text(forest, text, Unparenthesized(forest, item.a)));
+            decoded := json.Value(Text(forest, text, Unparenthesized(forest, item.a)));
             if (!decoded.valid) {
                 return Fail(forest, item.a, document, "Invalid string literal");
             }
@@ -3305,9 +3305,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             param := params[callables[item.a].first + omitted];
             if (callables[item.a].package == package) {
                 code.append(OccurrenceCode(ops, ExpressionRecord, param.default_occurrence,
-                                           forest[Field(forest, forest[param.node].parent, "value")]));
+                                           forest[Field(forest, forest[param.node].parent, syntax.FieldValue)]));
             } else {
-                code.append(ExpressionCode(ops, forest[Field(forest, item.node, "arguments")]));
+                code.append(ExpressionCode(ops, forest[Field(forest, item.node, syntax.FieldArguments)]));
             }
             omitted += 1;
         }
@@ -3320,7 +3320,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         variant := types[item.a];
         returned := Returned(forest, item.node);
         keep: i64 = 0;
-        argument_node := FirstMember(forest, Field(forest, item.node, "arguments"));
+        argument_node := FirstMember(forest, Field(forest, item.node, syntax.FieldArguments));
         position: int = 0;
         while (returned && count <= 64 && argument_node >= 0) {
             if (BuiltName(forest, text, names, built, argument_node)) {
@@ -3389,13 +3389,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     chosen := item.a;
     if (item.c == NativeChoiceCall) {
         // An overloaded native: the one whose parameters take the arguments.
-        callee := Field(forest, item.node, "function");
+        callee := Field(forest, item.node, syntax.FieldFunction);
         chosen = Overload(forest, text, document, item.node, constants, callables, types, names, package,
                           natives, ports, NativeCallName(forest, text, item.node), NativeSources(forest, item.node, false),
                           values, first);
         if (chosen == -2) {
-            if (Is(forest, callee, "member_expression")) {
-                callee = Field(forest, callee, "member");
+            if (Is(forest, callee, syntax.MemberExpression)) {
+                callee = Field(forest, callee, syntax.FieldMember);
             }
             return Fail(forest, callee, document,
                         format_text("Ambiguous function '{}'", NativeCallName(forest, text, item.node)));
@@ -3433,7 +3433,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     // The given arguments, then the defaults of those the call omits.
     arguments: Value[] = slice(values, first, count);
     if (item.c == LabeledCall) {
-        source_arguments := Members(forest, Field(forest, item.node, "arguments"));
+        source_arguments := Members(forest, Field(forest, item.node, syntax.FieldArguments));
         ordered := arguments;
         ordinal: int = 0;
         position: int = 0;
@@ -3441,7 +3441,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             if (GenericOmitted(names, source_argument)) { continue; }
             parameter := GenericCallParameter(forest, text, callables, params, names, item.a, item.node, source_argument, position);
             ordered[parameter] = arguments[ordinal];
-            if (!Is(forest, source_argument, "named_argument")) { position += 1; }
+            if (!Is(forest, source_argument, syntax.NamedArgument)) { position += 1; }
             ordinal += 1;
         }
         arguments = ordered;
@@ -3492,10 +3492,10 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             if (called.package == package) {
                 code.append(DefaultWatch(ops, at.slot + length(slots) - 1, param.storage,
                                          param.default_occurrence,
-                                         forest[Field(forest, forest[param.node].parent, "value")]));
+                                         forest[Field(forest, forest[param.node].parent, syntax.FieldValue)]));
             } else {
                 code.append(DefaultWatch(ops, at.slot + length(slots) - 1, param.storage, u64(0),
-                                         forest[Field(forest, item.node, "arguments")]));
+                                         forest[Field(forest, item.node, syntax.FieldArguments)]));
             }
             arguments.append(Typed(at.slot + length(slots) - 1, param.storage, param.container, param.record));
         }
@@ -3797,7 +3797,7 @@ CharConversionStep :: (forest: snapshot.SnapshotNode[], document: int, types: Ty
 OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], constants: ConstDecl[],
                  names: Name[], package: int, values: Value[], top: int, item: Work, ops: Ops, at: Bases) -> Step {
     node := forest[item.node];
-    unary := node.kind == "unary_expression";
+    unary := node.kind == syntax.UnaryExpression;
     code: Code[] = [];
     slots: Slot[] = [];
     locals: Slot[] = [];
@@ -3809,13 +3809,13 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     next: Work[] = [];
     marks: int[] = [];
     if (item.phase == 0 && !unary) {
-        operator := Text(forest, text, Field(forest, item.node, "operator"));
-        left := Field(forest, item.node, "left");
-        right := Field(forest, item.node, "right");
-        if ((operator == "==" || operator == "!=") && (Is(forest, left, "nil") || Is(forest, right, "nil"))) {
+        operator := Text(forest, text, Field(forest, item.node, syntax.FieldOperator));
+        left := Field(forest, item.node, syntax.FieldLeft);
+        right := Field(forest, item.node, syntax.FieldRight);
+        if ((operator == "==" || operator == "!=") && (Is(forest, left, syntax.Nil) || Is(forest, right, syntax.Nil))) {
             nil_node := right;
             value := left;
-            if (Is(forest, left, "nil")) {
+            if (Is(forest, left, syntax.Nil)) {
                 nil_node = left;
                 value = right;
             }
@@ -3828,10 +3828,10 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     }
     if (item.phase == 0) {
         if (unary) {
-            next.append(Visit(Field(forest, item.node, "operand")));
+            next.append(Visit(Field(forest, item.node, syntax.FieldOperand)));
         } else {
-            next.append(Visit(Field(forest, item.node, "left")));
-            next.append(Visit(Field(forest, item.node, "right")));
+            next.append(Visit(Field(forest, item.node, syntax.FieldLeft)));
+            next.append(Visit(Field(forest, item.node, syntax.FieldRight)));
         }
         // The expected type stays with the node, for untyped literals.
         finish := Expect(item.node, item.storage, item.container, item.record);
@@ -3839,8 +3839,8 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
         next.append(finish);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
     }
-    operator := Text(forest, text, Field(forest, item.node, "operator"));
-    if (node.kind == "assignment") {
+    operator := Text(forest, text, Field(forest, item.node, syntax.FieldOperator));
+    if (node.kind == syntax.Assignment) {
         operator = CompoundOperator(operator);
     }
     flag: Slot = {storage: BoolStorage, kind: ValueKind};
@@ -4166,7 +4166,7 @@ SignedConstant :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             exact = ExactStored(checked, storage);
     }
     for (sign in Signs(forest, text, node)) {
-        if (Text(forest, text, Field(forest, sign, "operator")) == "-") {
+        if (Text(forest, text, Field(forest, sign, syntax.FieldOperator)) == "-") {
             if (!Signed(storage)) {
                 return IntegerLiteralResult.Rejected(Diagnose(forest, sign, document, "Cannot negate an unsigned constant"));
             }
@@ -4197,7 +4197,7 @@ SignCode :: (forest: snapshot.SnapshotNode[], text: string, ops: Ops, node: int,
     signs := Signs(forest, text, node);
     level := length(signs) - 1;
     while (level >= 0) {
-        if (Text(forest, text, Field(forest, signs[level], "operator")) == "-") {
+        if (Text(forest, text, Field(forest, signs[level], syntax.FieldOperator)) == "-") {
             code.extend(NegationCode(ops, storage, value, value + 1, at_node));
             value += length(NegationSlots(storage, ops));
         }
@@ -4210,7 +4210,7 @@ SignCode :: (forest: snapshot.SnapshotNode[], text: string, ops: Ops, node: int,
 SignSlots :: (forest: snapshot.SnapshotNode[], text: string, ops: Ops, node: int, storage: int) -> Slot[] {
     slots: Slot[] = [];
     for (sign in Signs(forest, text, node)) {
-        if (Text(forest, text, Field(forest, sign, "operator")) == "-") {
+        if (Text(forest, text, Field(forest, sign, syntax.FieldOperator)) == "-") {
             slots.extend(NegationSlots(storage, ops));
         }
     }
@@ -4219,24 +4219,24 @@ SignSlots :: (forest: snapshot.SnapshotNode[], text: string, ops: Ops, node: int
 
 // Whether `node` is a literal ParseNumber reads: a number, or `-` on one.
 ParsedLiteral :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    if (Is(forest, node, "unary_expression") && Text(forest, text, Field(forest, node, "operator")) == "-") {
-        return Is(forest, Field(forest, node, "operand"), "number");
+    if (Is(forest, node, syntax.UnaryExpression) && Text(forest, text, Field(forest, node, syntax.FieldOperator)) == "-") {
+        return Is(forest, Field(forest, node, syntax.FieldOperand), syntax.Number);
     }
-    return Is(forest, node, "number");
+    return Is(forest, node, syntax.Number);
 }
 // The ParsedLiteral inside the parentheses and signs around `node`, as stage
 // zero types a grouped or signed literal; -1 for any other expression.
 SignedLiteral :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     at := Unparenthesized(forest, node);
     while (!ParsedLiteral(forest, text, at)) {
-        if (!Is(forest, at, "unary_expression")) {
+        if (!Is(forest, at, syntax.UnaryExpression)) {
             return -1;
         }
-        operator := Text(forest, text, Field(forest, at, "operator"));
+        operator := Text(forest, text, Field(forest, at, syntax.FieldOperator));
         if (operator != "-" && operator != "+") {
             return -1;
         }
-        at = Unparenthesized(forest, Field(forest, at, "operand"));
+        at = Unparenthesized(forest, Field(forest, at, syntax.FieldOperand));
     }
     return at;
 }
@@ -4246,7 +4246,7 @@ Signs :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int[] {
     at := Unparenthesized(forest, node);
     while (!ParsedLiteral(forest, text, at)) {
         signs.append(at);
-        at = Unparenthesized(forest, Field(forest, at, "operand"));
+        at = Unparenthesized(forest, Field(forest, at, syntax.FieldOperand));
     }
     return signs;
 }
@@ -4276,10 +4276,10 @@ Folds :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[],
     if (!Floating(storage) && GroupedDecimal(forest, text, node)) {
         return true;
     }
-    operator := Text(forest, text, Field(forest, value, "operator"));
-    signed := (operator == "-" || operator == "+") && Is(forest, Field(forest, value, "operand"), "number");
-    composite := Is(forest, value, "binary_expression") || Is(forest, value, "call_expression") ||
-                 (Is(forest, value, "unary_expression") && !signed);
+    operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
+    signed := (operator == "-" || operator == "+") && Is(forest, Field(forest, value, syntax.FieldOperand), syntax.Number);
+    composite := Is(forest, value, syntax.BinaryExpression) || Is(forest, value, syntax.CallExpression) ||
+                 (Is(forest, value, syntax.UnaryExpression) && !signed);
     if (!composite || !ConstantExpression(forest, text, constants, names, package, node)) {
         return false;
     }
@@ -4297,26 +4297,26 @@ GroupedDecimal :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> 
 ShadowedConversion :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], package: int,
                        node: int) -> bool {
     value := Unparenthesized(forest, node);
-    if (Is(forest, value, "unary_expression")) {
-        return ShadowedConversion(forest, text, callables, package, Field(forest, value, "operand"));
+    if (Is(forest, value, syntax.UnaryExpression)) {
+        return ShadowedConversion(forest, text, callables, package, Field(forest, value, syntax.FieldOperand));
     }
-    if (Is(forest, value, "binary_expression")) {
-        return ShadowedConversion(forest, text, callables, package, Field(forest, value, "left")) ||
-               ShadowedConversion(forest, text, callables, package, Field(forest, value, "right"));
+    if (Is(forest, value, syntax.BinaryExpression)) {
+        return ShadowedConversion(forest, text, callables, package, Field(forest, value, syntax.FieldLeft)) ||
+               ShadowedConversion(forest, text, callables, package, Field(forest, value, syntax.FieldRight));
     }
     if (ConversionType(forest, text, value) == 0) {
         return false;
     }
-    if (FindCallable(callables, package, Text(forest, text, Field(forest, value, "function"))) >= 0) {
+    if (FindCallable(callables, package, Text(forest, text, Field(forest, value, syntax.FieldFunction))) >= 0) {
         return true;
     }
     return ShadowedConversion(forest, text, callables, package, ConversionArgument(forest, value));
 }
 // The one argument of the conversion `node`, named or not.
 ConversionArgument :: (forest: snapshot.SnapshotNode[], node: int) -> int {
-    argument := FirstMember(forest, Field(forest, node, "arguments"));
-    if (Is(forest, argument, "named_argument")) {
-        return Field(forest, argument, "value");
+    argument := FirstMember(forest, Field(forest, node, syntax.FieldArguments));
+    if (Is(forest, argument, syntax.NamedArgument)) {
+        return Field(forest, argument, syntax.FieldValue);
     }
     return argument;
 }
@@ -4325,15 +4325,15 @@ ConversionArgument :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 // does not evaluate has reported its own error.
 ZeroDivisor :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
                 package: int, node: int) -> bool {
-    if (!Is(forest, node, "binary_expression") && !Is(forest, node, "assignment")) {
+    if (!Is(forest, node, syntax.BinaryExpression) && !Is(forest, node, syntax.Assignment)) {
         return false;
     }
-    operator := Text(forest, text, Field(forest, node, "operator"));
+    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
     if (operator != "/" && operator != "%" && operator != "/=" && operator != "%=") {
         return false;
     }
-    divisor := Field(forest, node, "right");
-    if (Is(forest, node, "assignment")) {
+    divisor := Field(forest, node, syntax.FieldRight);
+    if (Is(forest, node, syntax.Assignment)) {
         divisor = StatementValue(forest, node);
     }
     if (!ConstantExpression(forest, text, constants, names, package, divisor)) {
@@ -4358,7 +4358,7 @@ ZeroDivisor :: (forest: snapshot.SnapshotNode[], text: string, document: int, co
 ZeroCompoundDivisor :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[],
                         names: Name[], package: int, node: int) -> bool {
     statement := forest[node].parent;
-    return Is(forest, statement, "assignment") && StatementValue(forest, statement) == node &&
+    return Is(forest, statement, syntax.Assignment) && StatementValue(forest, statement) == node &&
            ZeroDivisor(forest, text, document, constants, names, package, statement);
 }
 // A constant expression as one constant of its type, or of the expected one
@@ -4484,7 +4484,7 @@ ShiftStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, cons
     } else if (!Single(right, right.storage) || !Integer(right.storage)) {
         return Fail(forest, item.node, document, "operator does not apply to these operands");
     } else if (Signed(right.storage)) {
-        return Fail(forest, Unparenthesized(forest, Field(forest, item.node, "right")), document,
+        return Fail(forest, Unparenthesized(forest, Field(forest, item.node, syntax.FieldRight)), document,
                     "Shift count must be unsigned; convert it with u32(value)");
     } else if (right.storage != value.storage) {
         slots.append(ValueLocal(value.storage));
@@ -4612,8 +4612,8 @@ ForStep :: (types: TypeDecl[], array: Value, packable: bool, reverse: bool, lent
 FunctionResultAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
                              binding: Name, result: Param, value: Value, item: Work, ops: Ops, target: Target,
                              at: Bases, node: snapshot.SnapshotNode) -> Step {
-    destination := Field(forest, item.node, "target");
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    destination := Field(forest, item.node, syntax.FieldTarget);
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
     if (item.c == 1 && result.container == 0 && MixedCompoundIntegers(operator, result.storage, value)) {
         return Fail(forest, item.node, document,
                     format_text("Mismatched integer types {} and {}; convert one operand",
@@ -4690,7 +4690,7 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
     next: Work[] = [];
     marks: int[] = [];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
     if (CharValue(types, value) && item.c == 1) {
         return Fail(forest, item.node, document, "char arithmetic is not supported yet");
     }
@@ -4718,7 +4718,7 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
     }
     if (item.c == 1) {
         // The current field, read in place, combined with the value.
-        op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))));
+        op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator))));
         if (op < 0 || Comparison(ops, op) || !(Integer(field.storage) || Floating(field.storage)) ||
             !Single(stored, field.storage)) {
             return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
@@ -4741,7 +4741,7 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         slots.append(current);
         code.append(Instruction(op, field.storage, base + 3, base + 2, stored.slot, -1, node));
         code.append(ScalarWatch(ops, base + 3, field.storage, 0, true,
-                                forest[Field(forest, item.node, "target")]));
+                                forest[Field(forest, item.node, syntax.FieldTarget)]));
         stored = Typed(base + 3, field.storage, 0, -1);
     }
     if (!SameType(field.storage, 0, -1, stored)) {
@@ -4797,18 +4797,18 @@ CellWrite :: (storage: int, value: int, cell: int, ops: Ops, target: Target, slo
 // for any other node.
 SelfComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[],
                   node: int) -> int {
-    if (!Is(forest, node, "member_expression")) {
+    if (!Is(forest, node, syntax.MemberExpression)) {
         return -1;
     }
-    owner := Field(forest, node, "object");
-    if (!Is(forest, owner, "identifier")) {
+    owner := Field(forest, node, syntax.FieldObject);
+    if (!Is(forest, owner, syntax.Identifier)) {
         return -1;
     }
     found := Lookup(names, Text(forest, text, owner));
     if (found < 0 || names[found].place != SelfPlace) {
         return -1;
     }
-    component := FindNativeType(types, Text(forest, text, Field(forest, node, "member")));
+    component := FindNativeType(types, Text(forest, text, Field(forest, node, syntax.FieldMember)));
     if (component < 0 || types[component].component == 0) {
         return -1;
     }
@@ -4824,17 +4824,17 @@ OwnerHandle :: (types: TypeDecl[], names: Name[], record: int) -> bool {
 // or a global's keyed handle; -1 for any other node.
 EntityComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
                     names: Name[], node: int) -> int {
-    if (!Is(forest, node, "member_expression")) {
+    if (!Is(forest, node, syntax.MemberExpression)) {
         return -1;
     }
-    owner := Field(forest, node, "object");
+    owner := Field(forest, node, syntax.FieldObject);
     handle := false;
-    if (Is(forest, owner, "identifier")) {
+    if (Is(forest, owner, syntax.Identifier)) {
         found := Lookup(names, Text(forest, text, owner));
         handle = found >= 0 && names[found].place != SelfPlace && names[found].place != GlobalPlace &&
                  names[found].storage == HandleStorage && names[found].container == 0 &&
                  OwnerHandle(types, names, names[found].record);
-    } else if (Is(forest, owner, "member_expression")) {
+    } else if (Is(forest, owner, syntax.MemberExpression)) {
         keyed := KeyedMember(forest, text, types, members, names, owner);
         handle = keyed >= 0 && members[keyed].storage == HandleStorage &&
                  OwnerHandle(types, names, members[keyed].record);
@@ -4842,21 +4842,21 @@ EntityComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDe
     if (!handle) {
         return -1;
     }
-    return Component(types, Text(forest, text, Field(forest, node, "member")));
+    return Component(types, Text(forest, text, Field(forest, node, syntax.FieldMember)));
 }
 // The field `g.F` names on the global `g` that a native reads by its key, as
 // an index into `members`; -1 for any other node.
 KeyedMember :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
                 names: Name[], node: int) -> int {
-    global := Field(forest, node, "object");
-    if (!Is(forest, global, "identifier")) {
+    global := Field(forest, node, syntax.FieldObject);
+    if (!Is(forest, global, syntax.Identifier)) {
         return -1;
     }
     found := Lookup(names, Text(forest, text, global));
     if (found < 0 || names[found].place != GlobalPlace || names[found].record < 0) {
         return -1;
     }
-    field := FindField(types, members, names[found].record, Text(forest, text, Field(forest, node, "member")));
+    field := FindField(types, members, names[found].record, Text(forest, text, Field(forest, node, syntax.FieldMember)));
     if (field < 0 || members[field].read < 0 || members[field].read_key == "") {
         return -1;
     }
@@ -4874,15 +4874,15 @@ Component :: (types: TypeDecl[], name: string) -> int {
 // `members`; -1 for any other node.
 ConstantMember :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
                    names: Name[], node: int) -> int {
-    global := Field(forest, node, "object");
-    if (!Is(forest, global, "identifier")) {
+    global := Field(forest, node, syntax.FieldObject);
+    if (!Is(forest, global, syntax.Identifier)) {
         return -1;
     }
     found := Lookup(names, Text(forest, text, global));
     if (found < 0 || names[found].place != GlobalPlace || names[found].record < 0) {
         return -1;
     }
-    field := FindField(types, members, names[found].record, Text(forest, text, Field(forest, node, "member")));
+    field := FindField(types, members, names[found].record, Text(forest, text, Field(forest, node, syntax.FieldMember)));
     if (field < 0 || !members[field].constant) {
         return -1;
     }
@@ -5129,7 +5129,7 @@ ComponentMakeStep :: (before: Code[], types: TypeDecl[], component: int, entity:
 // members[item.b], as the owner's is written; item.c marks a compound one.
 EntityComponentStep :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[], entity: Value,
                         item: Work, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
-    value := Field(forest, item.node, "value");
+    value := Field(forest, item.node, syntax.FieldValue);
     if (item.b >= 0) {
         return ComponentReferenceStep([], types, members, item.a, item.b, entity.slot, value, item.c != 0, item, ops,
                                       target, at, node);
@@ -5233,8 +5233,8 @@ ComponentWriteStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
 }
 // The bit patterns of the untyped literal at `node`: a number, or `-` on one.
 NumberBits :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> FloatBits {
-    if (Is(forest, node, "unary_expression")) {
-        return LiteralBits(Text(forest, text, Field(forest, node, "operand")), true);
+    if (Is(forest, node, syntax.UnaryExpression)) {
+        return LiteralBits(Text(forest, text, Field(forest, node, syntax.FieldOperand)), true);
     }
     return LiteralBits(Text(forest, text, node), false);
 }
@@ -5342,10 +5342,10 @@ ResultSourceCall :: (forest: snapshot.SnapshotNode[], text: string, names: Name[
     remaining := length(names) + 1;
     while (at >= 0 && remaining > 0) {
         remaining -= 1;
-        if (Is(forest, at, "call_expression")) {
+        if (Is(forest, at, syntax.CallExpression)) {
             return {node: at, visible: length(visible)};
         }
-        if (!Is(forest, at, "identifier")) {
+        if (!Is(forest, at, syntax.Identifier)) {
             return {node: -1, visible: 0};
         }
         found := Lookup(visible, Text(forest, text, at));
@@ -5353,10 +5353,10 @@ ResultSourceCall :: (forest: snapshot.SnapshotNode[], text: string, names: Name[
             return {node: -1, visible: 0};
         }
         declaration := forest[visible[found].node].parent;
-        if (!Is(forest, declaration, "local_declaration")) {
+        if (!Is(forest, declaration, syntax.LocalDeclaration)) {
             return {node: -1, visible: 0};
         }
-        at = Unparenthesized(forest, Field(forest, declaration, "value"));
+        at = Unparenthesized(forest, Field(forest, declaration, syntax.FieldValue));
         visible = slice(visible, 0, found);
     }
     return {node: -1, visible: 0};
@@ -5493,7 +5493,7 @@ NamedResultsStep :: (before: Code[], ops: Ops, target: Target, params: Param[], 
     return Step.Emitted(code, slots, [], cells, hosts, [], [], [], [], 0, NoValue(), NoValue(), []);
 }
 NamedReturnValues :: (forest: snapshot.SnapshotNode[], value: int) -> int[] {
-    if (Is(forest, value, "argument_list")) {
+    if (Is(forest, value, syntax.ArgumentList)) {
         return Members(forest, value);
     }
     return [value];
@@ -5512,7 +5512,7 @@ NamedReturnStep :: (forest: snapshot.SnapshotNode[], document: int, before: Code
         return Fail(forest, value, document, "a function with named results returns one value for each result");
     }
     for (argument in returned) {
-        if (Is(forest, argument, "named_argument")) {
+        if (Is(forest, argument, syntax.NamedArgument)) {
             return Fail(forest, value, document, "named return arguments are not supported yet");
         }
     }
@@ -5534,7 +5534,7 @@ ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
     next: Work[] = [];
     result := params[callable.first + callable.count + item.a];
     returned := values[top - 1];
-    returned_nodes := NamedReturnValues(forest, Field(forest, item.node, "value"));
+    returned_nodes := NamedReturnValues(forest, Field(forest, item.node, syntax.FieldValue));
     if (item.b == 0) {
         if (returned.container == 0 && !CharType(types, result.storage, result.container, result.record) &&
             (!CharValue(types, returned) || CharWidens(types, result.storage, result.container, result.record, returned)) &&
@@ -5650,8 +5650,8 @@ AggregateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
-    operator := Text(forest, text, Field(forest, item.node, "operator"));
-    if (node.kind == "assignment") {
+    operator := Text(forest, text, Field(forest, item.node, syntax.FieldOperator));
+    if (node.kind == syntax.Assignment) {
         operator = CompoundOperator(operator);
     }
     native := FindAggregate(operators, operator);
@@ -6071,7 +6071,7 @@ CallCode :: (arguments: Value[], first: int, host: int, storage: int, slot: int,
 // components, references, pointers and the places behind them stay copied.
 LentArgument :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], argument: int) -> bool {
     root := Unparenthesized(forest, argument);
-    if (!Is(forest, root, "identifier")) {
+    if (!Is(forest, root, syntax.Identifier)) {
         return false;
     }
     name := Text(forest, text, root);
@@ -6090,8 +6090,8 @@ LentArgument :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], a
     }
     earlier := FirstMember(forest, forest[argument].parent);
     while (earlier >= 0 && earlier != argument) {
-        if (Is(forest, earlier, "address_expression") &&
-            RootName(forest, text, Field(forest, earlier, "operand")) == name) {
+        if (Is(forest, earlier, syntax.AddressExpression) &&
+            RootName(forest, text, Field(forest, earlier, syntax.FieldOperand)) == name) {
             return false;
         }
         earlier = NextMember(forest, earlier);
@@ -6105,7 +6105,7 @@ LentArgument :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], a
 NativeArgumentWork :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], call: int, argument: int) -> Work[] {
     root := Unparenthesized(forest, argument);
     if (LentArgument(forest, text, names, argument) &&
-        !ReferencesName(forest, text, Field(forest, call, "arguments"), Text(forest, text, root))) {
+        !ReferencesName(forest, text, Field(forest, call, syntax.FieldArguments), Text(forest, text, root))) {
         return [];
     }
     return [Resume(argument, CopyValuePhase, 0, 0)];
@@ -6303,18 +6303,18 @@ IsStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: 
            target: Target, at: Bases) -> Step {
     held := values[top - 1];
     if (!Single(held, UnionStorage)) {
-        return Fail(forest, Field(forest, item.node, "value"), document, "is needs a union value");
+        return Fail(forest, Field(forest, item.node, syntax.FieldValue), document, "is needs a union value");
     }
-    pattern := Field(forest, item.node, "type");
-    if (!Is(forest, pattern, "variant_pattern") || Field(forest, item.node, "binding") >= 0) {
+    pattern := Field(forest, item.node, syntax.FieldType);
+    if (!Is(forest, pattern, syntax.VariantPattern) || Field(forest, item.node, syntax.FieldBinding) >= 0) {
         return Fail(forest, pattern, document, "is pattern is not supported yet");
     }
-    member := Text(forest, text, Field(forest, pattern, "name"));
+    member := Text(forest, text, Field(forest, pattern, syntax.FieldName));
     variant := FindVariant(types, held.record, member);
     if (variant < 0) {
         return Fail(forest, pattern, document, format_text("Unknown union variant '{}'", member));
     }
-    bindings := Field(forest, pattern, "bindings");
+    bindings := Field(forest, pattern, syntax.FieldBindings);
     count: int = 0;
     binding := FirstMember(forest, bindings);
     while (binding >= 0) {
@@ -6324,7 +6324,7 @@ IsStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: 
     if (count != 0 && count != types[variant].count) {
         return Fail(forest, pattern, document, "A union payload pattern must bind every field");
     }
-    negated := Field(forest, item.node, "negated") >= 0;
+    negated := Field(forest, item.node, syntax.FieldNegated) >= 0;
     if (count != 0 && (negated || !BindingCondition(forest, text, item.node))) {
         return Fail(forest, FirstMember(forest, bindings), document,
                     "Pattern bindings require a matching if, while or switch arm");

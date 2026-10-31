@@ -462,7 +462,7 @@ CompilerToolsPackageAndRunAfterRelocation :: (fixture: Fixture) {
     for (dependency in ["fmt/LICENSE", "fmt/README.md", "yyjson/LICENSE"]) {
         Copied(original, Path(["share/chibi/licenses/", dependency]), fixture.checkout, Path(["third_party/", dependency]));
     }
-    for (vendor in ["tree_sitter/LICENSE", "sljit/LICENSE"]) {
+    for (vendor in ["sljit/LICENSE"]) {
         license := Path(["share/chibi/licenses/vendor/", vendor]);
         Copied(original, license, fixture.archive, license);
     }
@@ -519,7 +519,7 @@ CompilerToolsPackageAndRunAfterRelocation :: (fixture: Fixture) {
 
 // The directory holding the vendor archive the build host's link record names.
 Archive :: (build_dir: string) -> string {
-    suffix := "/lib/chibi-vendor/libchibi_vendor_tree_sitter.a";
+    suffix := "/lib/chibi-vendor/libchibi_vendor_sljit.a";
     for (line in strings.Split(Read(Path([build_dir, "/sdk/chibi-build-host.chibi-record"])), "\n")) {
         if (strings.HasPrefix(line, "/") && strings.HasSuffix(line, suffix) && line != suffix) {
             return os.RealPath(strings.TrimSuffix(line, suffix));

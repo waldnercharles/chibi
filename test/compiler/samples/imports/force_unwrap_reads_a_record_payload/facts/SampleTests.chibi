@@ -12,6 +12,6 @@ Calls :: () {
 
 @test
 MissingFails :: () {
-    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    testing.ExpectFailure(testing.Failure.UnwrappedNil);
     Missing();
 }

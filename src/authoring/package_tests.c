@@ -91,6 +91,7 @@ static const struct
     [PACKAGE_TEST_FAILURE_ASSERTION_FAILED] = { "Assertion failed", true },
     [PACKAGE_TEST_FAILURE_BUDGET_EXHAUSTED] = { "instruction budget exhausted", false },
     [PACKAGE_TEST_FAILURE_DEPTH_EXCEEDED] = { "call depth exceeded", false },
+    [PACKAGE_TEST_FAILURE_UNWRAPPED_NIL] = { "Unwrapped a nil optional", false },
 };
 static const char *const FAILURE_NAMES[PACKAGE_TEST_FAILURE_COUNT] = {
     [PACKAGE_TEST_FAILURE_INDEX_OUT_OF_RANGE] = "IndexOutOfRange",
@@ -99,6 +100,7 @@ static const char *const FAILURE_NAMES[PACKAGE_TEST_FAILURE_COUNT] = {
     [PACKAGE_TEST_FAILURE_ASSERTION_FAILED] = "AssertionFailed",
     [PACKAGE_TEST_FAILURE_BUDGET_EXHAUSTED] = "BudgetExhausted",
     [PACKAGE_TEST_FAILURE_DEPTH_EXCEEDED] = "DepthExceeded",
+    [PACKAGE_TEST_FAILURE_UNWRAPPED_NIL] = "UnwrappedNil",
 };
 
 /* The kind of a failure's message, or NONE when it is none of them. */

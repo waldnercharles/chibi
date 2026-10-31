@@ -72,7 +72,34 @@ static const type_desc narrow_enum_type = { .name = "fixture.narrow_enum",
                                             .size = 1,
                                             .fields = &narrow_enum_field,
                                             .field_count = 1 };
-static const type_desc *const types[] = { &box_type, &c_text_type, &narrow_enum_type };
+/* An int64_t[] field beside an int64_t: the array slot holds a pin_array
+ * pointer as wide as the int64_t. */
+typedef struct
+{
+    pin_array *items;
+    int64_t count;
+} fixture_listed;
+static const type_field listed_fields[] = {
+    { .name = "items",
+      .type = PIN_I64,
+      .offset = offsetof(fixture_listed, items),
+      .size = sizeof(pin_array *),
+      .type_name = "int64_t",
+      .container = PIN_CONTAINER_ARRAY },
+    { .name = "count",
+      .type = PIN_I64,
+      .offset = offsetof(fixture_listed, count),
+      .size = sizeof(int64_t),
+      .type_name = "int64_t" },
+};
+static const type_desc listed_type = { .name = "fixture.listed",
+                                       .size = sizeof(fixture_listed),
+                                       .fields = listed_fields,
+                                       .field_count = 2 };
+static const type_desc *const types[] = { &box_type,
+                                          &c_text_type,
+                                          &narrow_enum_type,
+                                          &listed_type };
 
 /* The engine's reflected types follow the fixtures, as in the engine's own
  * targets, so natives whose defaults are engine structs (vec3) link. */
@@ -87,7 +114,8 @@ type_catalog_pack type_catalog_pack_at(int index)
     if (index == 1) {
         return TYPE_PACK;
     }
-    return (type_catalog_pack){ .types = types, .type_count = 3 };
+    return (type_catalog_pack){ .types = types,
+                                .type_count = (int)(sizeof types / sizeof *types) };
 }
 
 static behavior_function_builder *builder;
@@ -1119,6 +1147,77 @@ TEST_CASE(execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers
     return true;
 }
 
+/* Contexts own hundreds of shells, so membership goes through an index once a
+ * list outgrows a short scan. Grows both lists past that bound and drains
+ * them, twice, and checks every answer against a plain membership table. A
+ * shell can be in both lists. Shells here are never dereferenced: retain and
+ * transfer compare pointers, and nothing drops. */
+TEST_CASE(execution_collection_owners_match_a_membership_table)
+{
+    enum
+    {
+        shells = 300,
+        steps = 40000
+    };
+    static char storage[shells];
+    /* Membership by context (1 and 2) and key; key < shells is an array. */
+    static bool owned[3][2 * shells];
+    memset(owned, 0, sizeof owned);
+    behavior_function_context first = { 0 }, second = { 0 };
+    behavior_function_context *contexts[] = { NULL, &first, &second };
+    uint32_t random = 0x9E3779B9u;
+    for (int step = 0; step < steps; step++) {
+        random = random * 1664525u + 1013904223u;
+        /* The same address as an array and as a map are distinct shells. */
+        int key = (int)((random >> 8) % (2 * shells));
+        pin_value shell = { .container = key < shells ? PIN_CONTAINER_ARRAY
+                                                      : PIN_CONTAINER_MAP,
+                            .ptr = &storage[key % shells] };
+        /* Retains and moves fill the first and third quarters; transfers
+         * out drain the second and fourth. */
+        bool growing = (step / (steps / 4)) % 2 == 0;
+        unsigned op = (random >> 28) % 8;
+        int from = 1 + (int)((random >> 4) & 1), to = 3 - from;
+        if (growing && op < 5) {
+            behavior_function_collection_retain(contexts[from], &shell);
+            owned[from][key] = true;
+        } else if (op < 7) {
+            /* A move retains in the other context even what the first did
+             * not own. */
+            bool move = growing && op == 6;
+            behavior_function_collection_transfer(contexts[from], move ? contexts[to] : NULL, &shell);
+            owned[from][key] = false;
+            owned[to][key] |= move;
+        }
+        for (int c = 1; c <= 2; c++) {
+            REQUIRE(behavior_function_collection_holds(contexts[c], &shell) == owned[c][key]);
+            REQUIRE(behavior_function_collection_owns(contexts[c], &shell) == owned[c][key]);
+        }
+        if ((step + 1) % (steps / 4) == 0) {
+            for (int c = 1; c <= 2; c++) {
+                int count = 0;
+                for (int k = 0; k < 2 * shells; k++) {
+                    count += owned[c][k];
+                }
+                REQUIRE(growing ? count > 400 : count < 8);
+            }
+        }
+    }
+    for (int key = 0; key < 2 * shells; key++) {
+        pin_value shell = { .container = key < shells ? PIN_CONTAINER_ARRAY
+                                                      : PIN_CONTAINER_MAP,
+                            .ptr = &storage[key % shells] };
+        for (int c = 1; c <= 2; c++) {
+            REQUIRE(behavior_function_collection_holds(contexts[c], &shell) == owned[c][key]);
+            behavior_function_collection_transfer(contexts[c], NULL, &shell);
+        }
+    }
+    behavior_function_collection_clear(&first);
+    behavior_function_collection_clear(&second);
+    REQUIRE(!first.collection_owners && !second.collection_owners);
+    return true;
+}
+
 TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service)
 {
     builder = behavior_function_builder_new();
@@ -1569,6 +1668,36 @@ TEST_CASE(execution_verifier_rejects_signature_and_local_type_mismatches)
     char error[256];
     REQUIRE(behavior_function_builder_finish(builder, error, sizeof error) == NULL);
     REQUIRE(error[0] != '\0');
+    return true;
+}
+
+/* An indirect access reads or writes a scalar stored in the record. An array
+ * field of that scalar type holds a pin_array pointer, so the verifier once
+ * accepted an int access that would overwrite it. */
+TEST_CASE(execution_verifier_rejects_indirect_access_to_array_fields)
+{
+    static const size_t offsets[] = { offsetof(fixture_listed, count),
+                                      offsetof(fixture_listed, items) };
+    const pin_value listed = { .type = PIN_STRUCT, .type_name = "fixture.listed" };
+    for (int i = 0; i < 2; i++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        behavior_function_builder_signature(builder, &listed, 1, NULL, 0, NULL, 0);
+        slot(PIN_I64);
+        emit((behavior_function_instruction){ .op = BF_ARGUMENT,
+                                              .type = PIN_I64,
+                                              .indirect = true,
+                                              .offset = offsets[i],
+                                              .value = { .type = PIN_I64 } });
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256] = "";
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        if (i == 0) {
+            REQUIRE(function);
+        } else {
+            REQUIRE(!function && strstr(error, "invalid indirect struct field range"));
+        }
+    }
     return true;
 }
 
@@ -6744,12 +6873,14 @@ void test_language_execution()
     RUN_TEST_CASE(execution_verifier_rejects_invalid_saved_aggregate_roots);
     RUN_TEST_CASE(execution_saved_aggregate_roots_keep_only_live_shapes);
     RUN_TEST_CASE(execution_verifier_rejects_signature_and_local_type_mismatches);
+    RUN_TEST_CASE(execution_verifier_rejects_indirect_access_to_array_fields);
     RUN_TEST_CASE(execution_linked_function_returns_checked_value);
     RUN_TEST_CASE(execution_helper_returns_keep_native_schema_after_input_retirement);
     RUN_TEST_CASE(execution_owned_intrinsics_validate_action_state_targets);
     RUN_TEST_CASE(execution_raw_scalar_helper_preserves_owned_failure_text);
     RUN_TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service);
     RUN_TEST_CASE(execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers);
+    RUN_TEST_CASE(execution_collection_owners_match_a_membership_table);
     RUN_TEST_CASE(execution_integer_bitwise_preserves_width_and_valid_shifts);
     RUN_TEST_CASE(execution_integer_shift_past_the_width_shifts_every_bit_out);
     RUN_TEST_CASE(execution_fast_shift_past_the_width_keeps_both_stores);

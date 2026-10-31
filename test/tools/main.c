@@ -52,6 +52,7 @@ void test_tool_chibi_cli_export(const char *binary);
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
 void test_tool_compiler_bootstrap(const char *host);
 void test_tool_bootstrap_recovery(const char *host, const char *artifact);
+void test_tool_bootstrap_load(const char *artifact);
 #endif
 #ifdef CHIBI_TEST_BUILD_PROCESS
 void test_tool_build_process(const char *worker, const char *host);
@@ -204,6 +205,18 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_tool_bootstrap_recovery(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private compiler artifact host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 3 && !strcmp(argv[1], "--bootstrap-load")) {
+#ifdef CHIBI_TEST_COMPILER_ARTIFACT
+        tool_init();
+        pu_display_time(true);
+        test_tool_bootstrap_load(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

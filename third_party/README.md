@@ -26,10 +26,10 @@ for each:
 
 - Cute Framework, with SDL3, PhysicsFS, its own Box2D and Box3D and, on Linux,
   s2n-tls; RmlUi, with FreeType.
-- Box2D, Box3D, enkiTS (not in `web` or `web-player`), SLJIT (native only),
-  and tree-sitter. The SDK exports them as
-  `Chibi::box2d`, `Chibi::box3d`, `Chibi::task_scheduler`,
-  `Chibi::execution_sljit` and `Chibi::syntax_runtime`.
+- Box2D, Box3D, enkiTS (not in `web` or `web-player`), SLJIT (native only).
+  The SDK exports them as
+  `Chibi::box2d`, `Chibi::box3d`, `Chibi::task_scheduler` and
+  `Chibi::execution_sljit`.
   They keep the flags the SDK compiled them with: Box2D and Box3D without
   floating-point contraction and with SIMD only in `web-threads` among the web
   targets, enkiTS with three task priorities, SLJIT with its W^X allocator.

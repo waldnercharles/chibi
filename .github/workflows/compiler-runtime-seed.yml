@@ -291,20 +291,16 @@ jobs:
           git archive --format=tar.gz --prefix="chibi-$short/" -o "$out/chibi-source-$short.tar.gz" HEAD
           pin() { awk -v name="$1" '$1 == "chibi_third_party(" name { getline; sub(/\)$/, "", $1); print $1 }' archive/third_party/CMakeLists.txt; }
           sljit=$(pin sljit)
-          tree_sitter=$(pin tree_sitter)
-          [[ $sljit =~ ^[0-9a-f]{40}$ && $tree_sitter =~ ^[0-9a-f]{40}$ ]]
+          [[ $sljit =~ ^[0-9a-f]{40}$ ]]
           curl -fsSL -o "$out/sljit-$sljit.tar.gz" "https://github.com/zherczeg/sljit/archive/$sljit.tar.gz"
-          curl -fsSL -o "$out/tree-sitter-$tree_sitter.tar.gz" "https://github.com/tree-sitter/tree-sitter/archive/$tree_sitter.tar.gz"
           notices="$RUNNER_TEMP/chibi-runtime-notices"
           mkdir -p "$notices/chibi/docs" "$notices/fmt" "$notices/yyjson"
           cp COPYING COPYING.EXAMPLES COPYING.LESSER LICENSE.md "$notices/chibi/"
           cp docs/distribution-licensing.md "$notices/chibi/docs/"
           cp third_party/fmt/LICENSE third_party/fmt/README.md "$notices/fmt/"
           cp third_party/yyjson/LICENSE "$notices/yyjson/"
-          mkdir "$notices/sljit" "$notices/tree-sitter"
+          mkdir "$notices/sljit"
           tar -xzf "$out/sljit-$sljit.tar.gz" -C "$notices/sljit" --strip-components=1 --wildcards --no-wildcards-match-slash '*/LICENSE'
-          tar -xzf "$out/tree-sitter-$tree_sitter.tar.gz" -C "$notices/tree-sitter" --strip-components=1 \
-            --wildcards --no-wildcards-match-slash '*/LICENSE' '*/lib/src/unicode/ICU_SHA' '*/lib/src/unicode/LICENSE' '*/lib/src/unicode/README.md'
           tar -czf "$out/chibi-runtime-notices.tar.gz" -C "$RUNNER_TEMP" chibi-runtime-notices
 
           # The pin, checked against each platform's recovery evidence. Format 2
@@ -358,7 +354,7 @@ jobs:
           cat > "$RUNNER_TEMP/notes.md" <<EOF
           Prepared$VERSION compiler runtime seeds built from \`$GITHUB_SHA\` and recovered on macOS ARM64 and Linux x64 in [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID), which recovered identical compiler bytes. Windows keeps its pinned runtime.
 
-          Verify each executable against \`runtime.json\` or \`SHA256SUMS\`. \`seed-evidence-*.json\` holds each recovery's inputs, environment and timings, and \`native-imports-*.txt\` the libraries each seed loads. The corresponding source is this commit (\`chibi-source-*.tar.gz\`), the SLJIT and Tree-sitter sources it pins (SLJIT with \`third_party/sljit/arm64-immediate-negation.patch\` applied once), and their notices (\`chibi-runtime-notices.tar.gz\`).
+          Verify each executable against \`runtime.json\` or \`SHA256SUMS\`. \`seed-evidence-*.json\` holds each recovery's inputs, environment and timings, and \`native-imports-*.txt\` the libraries each seed loads. The corresponding source is this commit (\`chibi-source-*.tar.gz\`), the SLJIT source it pins (SLJIT with \`third_party/sljit/arm64-immediate-negation.patch\` applied once), and their notices (\`chibi-runtime-notices.tar.gz\`).
 
           Commit-specific prerelease, not latest.
           EOF
@@ -436,7 +432,7 @@ jobs:
           assert len(closures) == 1, 'recovered compiler bytes differ'
           # Source archives must still name the exact source and pinned dependencies.
           for name in expected:
-              if name.startswith(('chibi-source-', 'sljit-', 'tree-sitter-')):
+              if name.startswith(('chibi-source-', 'sljit-')):
                   assert (assets / name).read_bytes() == (root / 'release' / name).read_bytes(), name
           PY_VERIFY
       # Transfer only the manifest just verified, rather than downloading an

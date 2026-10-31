@@ -9,6 +9,8 @@ Extracted :: (text: string) -> extract.Result {
     switch parser.Parse(text) {
         case .Parsed(nodes, fields, is_named, is_extra, root):
             return extract.Extract(nodes, fields, text, root, 7, "app/a.chibi", "app");
+        case .Rejected(diagnostic):
+            return extract.Result.Rejected(diagnostic);
     }
 }
 

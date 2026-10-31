@@ -3,7 +3,7 @@ package facts
 import posix "core:sys/posix"
 
 // core:sys/posix over libc: a directory is made, found, renamed and removed,
-// and a file and a missing path are told apart. The VM skips this sample as
+// a file and a missing path are told apart, and a file's bytes round-trip. The VM skips this sample as
 // native only; native_build_runs_the_foreign_samples runs it.
 @test
 Calls :: () {
@@ -16,4 +16,13 @@ Calls :: () {
     assert(!posix.Exists("posix_moved"), "removed")
     assert(posix.Kind("Main.chibi") == posix.KindFile, "file")
     assert(posix.Kind("posix_missing") == posix.KindNone, "missing")
+    data: u8[] = [0, 255, 10, 13, 128, 0, 65]
+    assert(posix.WriteFile("posix_probe.bin", data), "write")
+    assert(posix.FileSize("posix_probe.bin") == 7, "size")
+    back := posix.ReadFile("posix_probe.bin")
+    assert(length(back) == 7 && back[0] == 0 && back[1] == 255 && back[6] == 65, "bytes read back")
+    assert(posix.FileSize("posix_missing.bin") == -1 && length(posix.ReadFile("posix_missing.bin")) == 0, "missing file")
+    empty: u8[] = []
+    assert(posix.WriteFile("posix_probe.bin", empty) && posix.FileSize("posix_probe.bin") == 0, "empty file")
+    assert(posix.Remove("posix_probe.bin"), "remove file")
 }

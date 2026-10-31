@@ -1,5 +1,7 @@
 package native_driver
 
+import link "project:native_link"
+import host "project:native_link_host"
 import os "core:os"
 import strings "core:strings"
 
@@ -137,12 +139,35 @@ Main :: () -> int {
             os.Print(strings.Concatenate(["native: ", message]));
             return 1;
         case .Emitted(module):
-            written := os.WriteBytes(strings.Concatenate([output, ".ll"]), module);
-            if (written) {
+            if (os.WriteBytes(strings.Concatenate([output, ".ll"]), module) != nil) {
                 os.Print(strings.Concatenate(["native: cannot write ", output, ".ll"]));
                 return 2;
             }
     }
-    os.Print("native: wrote the module; linking is not implemented yet");
-    return 2;
+    // A Linux or Windows program runs with nothing but its own objects; macOS
+    // links libSystem, as its programs always have.
+    static := !strings.HasPrefix(triple, "aarch64-apple");
+    objects := [strings.Concatenate([output, ".o"])];
+    if (host.Object(llvm, strings.Concatenate([output, ".ll"]), objects[0], 2) != nil) {
+        os.Print("native: llc could not emit the object");
+        return 2;
+    }
+    start := link.Start(triple, static, false);
+    if (start != "") {
+        if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil ||
+            host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), 2) != nil) {
+            os.Print("native: cannot emit the start object");
+            return 2;
+        }
+        objects.append(strings.Concatenate([output, ".start.o"]));
+    }
+    plan := link.Program(triple, llvm, objects, [], [], [], output, "", static);
+    if (host.Link(plan) != nil) {
+        os.Print("native: the link failed");
+        return 2;
+    }
+    for (name in [".ll", ".o", ".start.ll", ".start.o"]) {
+        os.Remove(strings.Concatenate([output, name]));
+    }
+    return 0;
 }

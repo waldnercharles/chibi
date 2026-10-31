@@ -43,6 +43,10 @@ Calls :: () {
     both := posix.Capture(["sh", "-c", "echo out; echo err >&2; exit 3"])
     assert(both.status == 3 && both.stdout == "out\n" && both.stderr == "err\n", "capture both streams")
     assert(length(posix.Arguments()) >= 1 && posix.Arguments()[0] != "", "arguments")
+    assert(posix.WriteText("posix_text.txt", "text\n") && posix.ReadText("posix_text.txt") == "text\n", "text round trip")
+    assert(posix.IsFile("posix_text.txt") && !posix.IsDirectory("posix_text.txt") && posix.IsDirectory("."), "is file and directory")
+    assert(posix.Remove("posix_text.txt"), "text cleanup")
+    posix.Print("posix print")
     process := posix.Spawn(["true"])
     assert(process > 0 && posix.Wait(process) == 0, "spawn and wait")
 }

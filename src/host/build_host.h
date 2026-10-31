@@ -10,7 +10,7 @@
 /* Raise with the Makefile's `build` gate whenever the compiler bootstrap or
  * build programs need a prepared format, capability or syntax an older host
  * lacks. */
-#define CHIBI_BUILD_HOST_PROTOCOL 14
+#define CHIBI_BUILD_HOST_PROTOCOL 15
 #define CHIBI_BUILD_OUTPUT_CAPACITY 4096
 
 /* A collection a program imports as name:path, as Odin's -collection names. */

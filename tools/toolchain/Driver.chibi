@@ -103,7 +103,7 @@ HostUsable :: (host: string) -> bool {
         return false
     }
     probe := os.Capture([host, "--protocol-version"])
-    return probe.status == 0 && build.trim(probe.stdout) == "14"
+    return probe.status == 0 && build.trim(probe.stdout) == "15"
 }
 
 // The command that runs an authored program under the private host.

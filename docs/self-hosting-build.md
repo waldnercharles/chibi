@@ -95,7 +95,14 @@ queries stay out of the build's output and leave room for its diagnostics.
 
 `build.start(arguments: string[]) -> int` begins a reported step and returns
 its handle at once; `build.wait(handle: int) -> int` waits for that step and
-gives its status as `build.run` would. While a program waits for one step, the
+gives its status as `build.run` would. `build.wait_for(handle: int,
+milliseconds: int) -> int` waits at most that long (a negative limit waits
+without one) and returns 65536 when the step still runs, leaving it running;
+`build.kill(handle: int) -> int` stops a step and everything it started, reaps
+it and returns its status, the negative signal number for a killed step.
+`build.spawn(arguments: string[]) -> int` starts a step like `build.start` whose
+standard output and error are the build's own, as they are written, and which
+leaves `build.last_stdout` alone. While a program waits for one step, the
 host drains every other started step's output, so steps that write more than a
 pipe holds still finish. Up to 64 started steps run at once, and each counts
 toward the invocation's steps. A wait makes its step's output the last output
@@ -325,7 +332,7 @@ primitive rather than repeatedly copying an accumulated prefix. Small path
 joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
 Unknown or missing `--target` names fail before toolchain discovery or writes.
 
-Elsewhere `chibi build` uses this program when its private host reports protocol version 14
+Elsewhere `chibi build` uses this program when its private host reports protocol version 15
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 the compiler bootstrap or `Build.chibi` needs a prepared format, capability or
 syntax an older host lacks; version 3 adds the

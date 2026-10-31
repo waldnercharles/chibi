@@ -1,0 +1,94 @@
+package native_link_smoke
+
+import host "native_link_host:."
+import link "native_link:."
+import os "core:os"
+import strings "core:strings"
+
+// Links a real program on this machine with only LLVM's tools: a module that
+// calls `add` from a vendored-style archive, built with llc and llvm-ar. It
+// runs from `chibi build test native-link` (tools/tests.tsv, through run.sh,
+// which gives the build host the two packages as collections) with
+// CHIBI_LLVM_BIN naming the folder of llc, llvm-ar and the lld tools; an empty
+// PATH is enough. Without CHIBI_LLVM_BIN it reports that it did not run. The
+// program must exit with status 42.
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+Triple :: () -> string {
+    if (os.Platform() == "Darwin") {
+        return "arm64-apple-macosx11.0.0";
+    }
+    if (os.Platform() == "Windows") {
+        return "x86_64-pc-windows-msvc";
+    }
+    return "x86_64-unknown-linux-gnu";
+}
+
+Add :: (triple: string) -> string {
+    return Join(["target triple = \"", triple, "\"\n",
+                 "define i32 @add(i32 %a, i32 %b) {\n  %c = add i32 %a, %b\n  ret i32 %c\n}\n"]);
+}
+
+// The program's entry: main for the C library or dyld, and on Windows the
+// static no-CRT entry, which exits through kernel32.
+Main :: (triple: string) -> string {
+    if (link.TargetOf(triple) == link.WindowsX64) {
+        return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\ndeclare void @ExitProcess(i32)\n",
+                     "define i32 @mainCRTStartup() {\n  %x = call i32 @add(i32 40, i32 2)\n",
+                     "  call void @ExitProcess(i32 %x)\n  unreachable\n}\n"]);
+    }
+    return Join(["target triple = \"", triple, "\"\ndeclare i32 @add(i32, i32)\n",
+                 "define i32 @main() {\n  %x = call i32 @add(i32 40, i32 2)\n  ret i32 %x\n}\n"]);
+}
+
+Fail :: (what: string) -> int {
+    os.Print(Join(["native-link: ", what]));
+    return 1;
+}
+
+Run :: () -> int {
+    llvm := os.Getenv("CHIBI_LLVM_BIN");
+    if (llvm == "") {
+        os.Print("native-link: not run: set CHIBI_LLVM_BIN to the folder of llc, llvm-ar and the lld tools");
+        return 0;
+    }
+    triple := Triple();
+    work := Join([os.Root(), "/.chibi/native-link-smoke"]);
+    if (os.Remove(work) != nil || os.MakeDirectory(work) != nil) {
+        return Fail("cannot prepare the work folder");
+    }
+    suffix := ".a";
+    program := Join([work, "/program"]);
+    if (link.TargetOf(triple) == link.WindowsX64) {
+        suffix = ".lib";
+        program = Join([work, "/program.exe"]);
+    }
+    if (os.WriteText(Join([work, "/add.ll"]), Add(triple)) != nil ||
+        os.WriteText(Join([work, "/main.ll"]), Main(triple)) != nil) {
+        return Fail("cannot write the modules");
+    }
+    if (host.Object(llvm, Join([work, "/add.ll"]), Join([work, "/add.o"]), 2) != nil ||
+        host.Object(llvm, Join([work, "/main.ll"]), Join([work, "/main.o"]), 2) != nil) {
+        return Fail("llc failed");
+    }
+    ar := host.Tool(llvm, "llvm-ar");
+    archive := Join([work, "/libadd", suffix]);
+    if (ar == "" || os.Run([ar, "rcs", archive, Join([work, "/add.o"])]) != 0) {
+        return Fail("llvm-ar failed");
+    }
+    plan := link.Program(triple, llvm, [Join([work, "/main.o"])], [archive], [], [], program, work,
+                         link.TargetOf(triple) == link.WindowsX64);
+    failure := host.Link(plan);
+    if (failure != nil) {
+        return Fail(format_text("the link failed, kind {} code {}", failure.kind, failure.code));
+    }
+    status := os.Run([program]);
+    if (status != 42) {
+        return Fail(format_text("the program exited with {}, not 42", status));
+    }
+    os.Print("native-link: linked and ran a program from an object and an archive");
+    return 0;
+}

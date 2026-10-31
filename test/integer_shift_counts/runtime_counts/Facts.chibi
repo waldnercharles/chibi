@@ -1,0 +1,14 @@
+package facts
+F :: (a: i8) -> i8 { return a << 200; }
+G :: (a: i8, n: u64) -> i8 { return a << n; }
+H :: (a: i8) -> i8 { return a << 5000; }
+
+@test
+RuntimeCounts :: () {
+    value: i8 = 1;
+    count: u64 = 200;
+    expected: i8 = 0;
+    assert(F(value) == expected);
+    assert(G(value, count) == expected);
+    assert(H(value) == expected);
+}

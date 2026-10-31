@@ -221,9 +221,10 @@ pub Tokenize :: (text: string) -> Tokens {
     valued := false;
     // A `:: prototype` declaration whose body has not opened yet.
     prototyping := false;
-    // Whether the last token other than a comment is a postfix dereference,
-    // which ends an expression although its kind is the binary `^`.
+    // The last token was a postfix `^`; a `->` came since the last separator,
+    // so a brace after the result type opens an inline function's body.
     dereferenced := false;
+    arrowed := false;
     while (true) {
         // Odin's skip_whitespace, counting rows. Calls cost more than the
         // scanning, so the hot paths read class tables inline.
@@ -331,13 +332,7 @@ pub Tokenize :: (text: string) -> Tokens {
         if (kind == OpenParen || kind == OpenBracket) {
             opened = Group;
         } else if (kind == OpenBrace) {
-            // After `p^` a brace opens a body, as after `p` or `p)`; only a
-            // binary `^` leaves a value to follow.
-            last := previous;
-            if (dereferenced) {
-                last = CloseParen;
-            }
-            opened = BraceHolds(top, last, valued, prototyping);
+            opened = BraceHolds(top, previous, valued, prototyping, dereferenced, arrowed);
             prototyping = false;
         }
         if (opened >= 0) {
@@ -373,6 +368,8 @@ pub Tokenize :: (text: string) -> Tokens {
                      previous == OpenBrace || previous == CloseBrace);
             prototyping = prototyping || (kind == Prototype && previous == ColonColon);
             dereferenced = dereference;
+            arrowed = kind == ArrowRight || (arrowed && kind != Comma && kind != OpenParen && kind != OpenBracket &&
+                                             kind != OpenBrace && kind != CloseBrace && kind != Semicolon);
             before = previous;
             previous = kind;
         }
@@ -505,7 +502,15 @@ Classes :: () -> int[] {
 // follows; a union's variants after `union`; a prototype's fields, whose
 // components and a relationship's body are literals that end nothing; and
 // otherwise statements.
-BraceHolds :: (outer: int, previous: int, valued: bool, prototyping: bool) -> int {
+BraceHolds :: (outer: int, previous: int, valued: bool, prototyping: bool, dereferenced: bool, arrowed: bool) -> int {
+    // An inline function's body, after its parameters or its result type, or a
+    // block after a dereference such as `if p^ {`.
+    if ((outer == Group || outer == Literal) && (previous == CloseParen || arrowed)) {
+        return Statements;
+    }
+    if (dereferenced && previous == Xor) {
+        return Statements;
+    }
     if (outer == Fields) {
         if (previous == Colon) {
             return Literal;

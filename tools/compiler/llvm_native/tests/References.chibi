@@ -1,0 +1,78 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+Ref: int : 1048582;
+
+// Main saves 5 in a local and calls Bump with its address; Bump reads the int
+// the reference refers to, adds 1 and writes the sum back, so Main reads 6.
+References :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 6, 0, 0, 0, 0, 5),
+            Code(native.Save, 6, 0, 0, 0, 0, 0),
+            Code(native.LocalAddress, Ref, 1, 0, 0, 0, 0),
+            Code(native.Call, 6, 2, 1, 0, 1, 0),
+            Code(native.Local, 6, 3, 0, 0, 0, 0),
+            Code(native.Publish, 6, 0, 3, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0),
+            Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Argument, Ref, 0, 0, 0, 0, 0),
+            Code(native.Save, Ref, 0, 0, 0, 0, 0),
+            Code(native.Local, Ref, 1, 0, 0, 0, 0),
+            Code(native.Deref, 6, 2, 1, 0, 0, 0),
+            Code(native.Constant, 6, 3, 0, 0, 0, 1),
+            Code(native.Add, 6, 4, 2, 3, 0, 0),
+            Code(native.Local, Ref, 5, 0, 0, 0, 0),
+            Code(native.Poke, 6, 0, 5, 4, 0, 0),
+            Code(native.Publish, 6, 0, 4, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+ReferenceFunctions :: () -> native.Function[] {
+    main: native.Function = {result: 6, first_parameter: 0, parameters: 0, first_slot: 0, slots: 4, first_local: 0,
+                             locals: 1, first_code: 0, code: 8, first_argument: 0, arguments: 1};
+    bump: native.Function = {result: 6, first_parameter: 0, parameters: 1, first_slot: 4, slots: 6, first_local: 1,
+                             locals: 1, first_code: 8, code: 11, first_argument: 1, arguments: 0};
+    return [main, bump];
+}
+ReferenceModule :: (code: native.Instruction[], slots: int[], locals: int[]) -> native.Result {
+    records: native.Record[] = [];
+    texts: string[] = [];
+    empty: int[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(), ReferenceFunctions(), [Ref], slots, locals, code, [1], records, empty, texts,
+                       source, texts, empty, empty, false, 1);
+}
+ReferenceSlots :: () -> int[] {
+    return [6, Ref, 6, 6, Ref, Ref, 6, 6, 6, Ref];
+}
+// The callee holds the caller's address and loads and stores through it.
+@test
+AReferenceIsALocalsAddress :: () {
+    text := Emitted(ReferenceModule(References(), ReferenceSlots(), [6, Ref]));
+    assert(strings.Contains(text, "store ptr %l0, ptr %s1\n"));
+    assert(strings.Contains(text, "call i32 @chibi_scalar.1(ptr %c4_0)\n"));
+    assert(strings.Contains(text, "%v4 = load i32, ptr %a4\n"));
+    assert(strings.Contains(text, "store i32 %b8, ptr %a8\n"));
+}
+@test
+DerefRejectsAValueSlot :: () {
+    code := References();
+    code[12] = Code(native.Deref, 6, 2, 3, 0, 0, 0);
+    Rejects(ReferenceModule(code, ReferenceSlots(), [6, Ref]), "native reference differs from its operands");
+}
+@test
+LocalAddressRejectsAWrongLocal :: () {
+    code := References();
+    code[3] = Code(native.LocalAddress, Ref, 1, 1, 0, 0, 0);
+    Rejects(ReferenceModule(code, ReferenceSlots(), [6, Ref]), "native reference differs from its operands");
+}
+@test
+PokeRejectsAWrongValue :: () {
+    code := References();
+    code[16] = Code(native.Poke, 6, 0, 5, 3, 0, 0);
+    Emitted(ReferenceModule(code, ReferenceSlots(), [6, Ref]));
+    code[16] = Code(native.Poke, 6, 0, 5, 1, 0, 0);
+    Rejects(ReferenceModule(code, ReferenceSlots(), [6, Ref]), "native reference differs from its operands");
+}

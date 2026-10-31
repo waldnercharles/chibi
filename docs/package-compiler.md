@@ -638,9 +638,9 @@ stride choice, cut the CPU time of the base, types and imports selectors from
 31, 26 and 41 s to 27, 24 and 36 s, and of the writer's own selector from 36 s
 to 21 s.
 
-`make test-bootstrap` builds an unsanitized Release `test_language` and runs
-`tool language-package-compiler-chibi-bootstrap`. Stage zero prepares stage
-one, which compiles the compiler's complete source set, without debugger
+`chibi build bootstrap-artifact` recovers stage two from the seed and the sources
+on disk (the stage-zero lane that prepared stage one was retired on 2026-10-30; the
+sequence below is what it checked). Stage one compiles the compiler's complete source set, without debugger
 points and watches, to a 9.6 MB closure: stage two. The compiler host loads
 stage two and runs its `CompileClosure` on the same sources and arguments, as
 JSON, and the bytes must equal stage one's. Stage two then compiles every

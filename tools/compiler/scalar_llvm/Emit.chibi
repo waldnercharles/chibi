@@ -226,6 +226,14 @@ Arrayed :: (row: facts.Row) -> bool {
 Keyed :: (row: facts.Row) -> bool {
     return row.kind == facts.ForRow && row.literal == i64(facts.RangeArray + facts.RangeKeyed);
 }
+// Whether the variable `variable` of the function whose Function row is
+// rows[head] is a reference parameter.
+Referenced :: (rows: facts.Row[], head: int, variable: int) -> bool {
+    if (variable >= rows[head].count) {
+        return false;
+    }
+    return rows[head + 1 + variable].literal == 1;
+}
 // The row after the declaration at `at`: a Record row and its members, or a
 // Union row and its variants, each with its members; -1 when a count is
 // empty or negative, runs past `rows`, or a union's variant row is missing.
@@ -636,6 +644,13 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 variables[operand.value] != operand.type) {
                 return "scalar read differs from its variable";
             }
+        } else if (operand.kind == facts.RefRow) {
+            if (operand.name != "" || operand.count != 0 || !Holds(visible, operand.value) ||
+                variables[operand.value] != operand.type) {
+                return "scalar reference differs from its variable";
+            }
+            stack.append(facts.ReferenceType + operand.type);
+            continue;
         } else if (operand.kind == facts.LogicalRow) {
             base := length(stack) - 1;
             if (operand.count < 1 || operand.count > last - row - 1) {
@@ -696,7 +711,12 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar call differs from its callee's signature";
             }
             for (argument in 0..<operand.count) {
-                if (stack[base + argument] != rows[heads[operand.value] + 1 + argument].type) {
+                parameter := rows[heads[operand.value] + 1 + argument];
+                wanted := parameter.type;
+                if (parameter.literal == 1) {
+                    wanted += facts.ReferenceType;
+                }
+                if (stack[base + argument] != wanted) {
                     return "scalar call argument differs from its parameter";
                 }
             }
@@ -856,7 +876,8 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
     for (index in 0..<declaration.count) {
         param := rows[head + 1 + index];
         if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Valued(records, param.type) ||
-            param.value != index || param.count != 0 || param.literal != 0 || !Located(param, starts, size) ||
+            param.value != index || param.count != 0 || (param.literal != 0 && param.literal != 1) ||
+            (param.literal == 1 && (is_library || function == 0)) || !Located(param, starts, size) ||
             !Within(param, declaration)) {
             return "invalid scalar parameter row";
         }
@@ -896,9 +917,10 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         arrayed := Arrayed(row);
         // A local holding the union a switch is on, followed by that switch.
         subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
+        retained := row.kind == facts.LocalRow && row.literal == i64(facts.Retained);
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
-        if (row.text != "" || (row.literal != 0 && !ranged && !subject) || !Located(row, starts, size) ||
+        if (row.text != "" || (row.literal != 0 && !ranged && !subject && !retained) || !Located(row, starts, size) ||
             (row.kind != facts.EndRow && row.start < earliest) || (!declares && row.name != "") ||
             (!typed && row.type != 0) || (!declares && row.kind != facts.AssignRow && row.value != 0)) {
             return "invalid scalar statement row";
@@ -991,6 +1013,8 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
                 (ranged && !arrayed && (row.type != facts.IntType || row.literal < 0 ||
                                         row.literal > i64(facts.RangeExclusive + facts.RangeReverse))) ||
                 (arrayed && (row.type >= facts.ArrayType || !Valued(records, facts.ArrayType + row.type))) ||
+                (retained && (!is_library || row.count != 1 || rows[at + 1].kind != facts.LiteralRow ||
+                              (facts.Bits(row.type) == 0 && row.type != facts.BoolType && !facts.Floating(row.type)))) ||
                 (subject && (UnionHead(rows, records, row.type) < 0 || at + row.count + 1 >= last ||
                              rows[at + row.count + 1].kind != facts.SwitchRow ||
                              rows[at + row.count + 1].start != row.start || rows[at + row.count + 1].end != row.end))) {
@@ -1240,6 +1264,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
     fields: int[] = [];
     field_names: string[] = [];
     texts: string[] = [];
+    states: int = 0;
     names: string[] = [];
     ids: i64[] = [];
     lines: int[] = [];
@@ -1277,10 +1302,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         column := declaration.column;
         // Each variable's local, and the next slot and local.
         places: int[] = [];
+        // The variables that are retained states, and their states.
+        retained_variables: int[] = [];
+        retained_states: int[] = [];
         slot: int = 0;
         local: int = 0;
         for (index in 0..<declaration.count) {
             type := NativeType(rows[head + 1 + index].type);
+            if (Referenced(rows, head, index)) {
+                type += native.RefType;
+            }
             parameters.append(type);
             slots.append(type);
             locals.append(type);
@@ -1515,6 +1546,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     if (item.literal == i64(length(texts))) {
                         texts.append(operand.text);
                     }
+                } else if (operand.kind == facts.ReadRow && Referenced(rows, head, operand.value)) {
+                    // The reference is read from its local, then what it
+                    // refers to.
+                    slots[length(slots) - 1] = native.RefType + type;
+                    body.append(Op(native.Local, native.RefType + type, slot, places[operand.value], 0, 0));
+                    slots.append(type);
+                    item = Op(native.Deref, type, slot + 1, slot, 0, 0);
+                    slot += 1;
+                } else if (operand.kind == facts.RefRow) {
+                    slots[length(slots) - 1] = native.RefType + type;
+                    if (Referenced(rows, head, operand.value)) {
+                        item = Op(native.Local, native.RefType + type, slot, places[operand.value], 0, 0);
+                    } else {
+                        item = Op(native.LocalAddress, native.RefType + type, slot, places[operand.value], 0, 0);
+                    }
                 } else if (operand.kind == facts.ReadRow) {
                     item = Op(native.Local, type, slot, places[operand.value], 0, 0);
                 } else if (operand.kind == facts.CompareRow) {
@@ -1738,14 +1784,47 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 fail := Op(native.Fail, 0, 0, row.start, row.end, 0);
                 fail.literal = declaration.literal;
                 body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]);
+            } else if (row.kind == facts.LocalRow && row.literal == i64(facts.Retained)) {
+                // The variable starts as the state, which starts as the
+                // literal the declaration holds.
+                type := NativeType(row.type);
+                load := Op(native.StateLoad, type, slot, 0, length(texts), states);
+                load.literal = rows[at + 1].literal;
+                texts.append(format_text("{}.{}", declaration.name, row.name));
+                slots.append(type);
+                locals.append(type);
+                places.append(local);
+                retained_variables.append(row.value);
+                retained_states.append(states);
+                body.extend([load, Op(native.Save, type, 0, slot, 0, local)]);
+                slot += 1;
+                local += 1;
+                states += 1;
             } else if (row.kind == facts.LocalRow) {
                 type := NativeType(row.type);
                 locals.append(type);
                 places.append(local);
                 body.append(Op(native.Save, type, 0, value, 0, local));
                 local += 1;
+            } else if (row.kind == facts.AssignRow && Referenced(rows, head, row.value)) {
+                // The value goes where the reference points.
+                type := NativeType(row.type);
+                slots.append(native.RefType + type);
+                body.extend([Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0),
+                             Op(native.Poke, type, 0, slot, value, 0)]);
+                slot += 1;
             } else if (row.kind == facts.AssignRow) {
-                body.append(Op(native.Save, NativeType(row.type), 0, value, 0, places[row.value]));
+                type := NativeType(row.type);
+                body.append(Op(native.Save, type, 0, value, 0, places[row.value]));
+                // A retained variable's state follows it.
+                for (retained in 0..<length(retained_variables)) {
+                    if (retained_variables[retained] == row.value) {
+                        store := Op(native.StateStore, type, 0, slot, 0, retained_states[retained]);
+                        slots.append(type);
+                        body.extend([Op(native.Local, type, slot, places[row.value], 0, 0), store]);
+                        slot += 1;
+                    }
+                }
             } else if (row.kind == facts.SwitchRow) {
                 type := NativeType(row.type);
                 locals.append(type);

@@ -24,10 +24,9 @@ SemanticTag :: (types: TypeDecl[], value: ValueType) -> u64 {
 FindPointer :: (types: TypeDecl[], value: ValueType, nullable: bool) -> int {
     index: int = 0;
     while (index < length(types)) {
-        declared := types[index];
-        if (declared.kind == PointerDecl && declared.value_storage == value.storage &&
-            declared.value_container == value.container && declared.value_record == value.record &&
-            (declared.key != 0) == nullable) {
+        if (types[index].kind == PointerDecl && types[index].value_storage == value.storage &&
+            types[index].value_container == value.container && types[index].value_record == value.record &&
+            (types[index].key != 0) == nullable) {
             return index;
         }
         index += 1;
@@ -183,12 +182,13 @@ PointerReadStep :: (types: TypeDecl[], pointer: Value, popped: int, ops: Ops, ta
 }
 // Address expressions may infer a pointer without spelling its type. The
 // compiler's finite type universe supplies those constructor headers before
-// immutable body emission: a pointer to each declared type, spelled pointers
-// included, so an address of a pointer field has its type. The address of a
-// local that holds a pointer an address made declares its own, as the local
-// is boxed.
+// immutable body emission: each file that takes an address declares a pointer
+// to every type it spells, and then its package declares the universe's.
+AddressPointers :: union {
+    Declared(types: TypeDecl[], addresses: bool)
+}
 DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: TypeDecl[], aliases: Name[],
-                           package: int, root: int) -> TypeDecl[] {
+                           package: int, root: int) -> AddressPointers {
     types := input_types;
     pending: int[] = [root];
     spelled: int[] = [];
@@ -206,13 +206,22 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
             pending.append(child);
         }
     }
-    if (!addresses) {
-        return types;
+    if (addresses) {
+        for (node in spelled) {
+            value := ReadType(forest, text, &types, aliases, package, node);
+            EnsurePointer(&types, value, false, package);
+        }
     }
-    for (node in spelled) {
-        value := ReadType(forest, text, &types, aliases, package, node);
-        EnsurePointer(&types, value, false, package);
-    }
+    return AddressPointers.Declared(types, addresses);
+}
+// A pointer to each scalar, scalar array and declared type, spelled pointers
+// included, so an address of a pointer field has its type. A pointer to a
+// pointer gets none of its own: pointers stop two deep, so a package that
+// takes addresses doesn't add a layer over the pointers earlier packages added.
+// The address of a local that holds a pointer an address made declares its
+// own, as the local is boxed.
+DeclareUniversePointers :: (input_types: TypeDecl[], package: int) -> TypeDecl[] {
+    types := input_types;
     scalar: int = 1;
     while (scalar <= TextStorage) {
         if (scalar != 12) {
@@ -241,8 +250,10 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
         if (declared.kind == CollectionDecl) {
             container = ArrayContainer;
         }
+        two_deep := declared.kind == PointerDecl && declared.value_storage == PointerStorage &&
+                    declared.value_container == 0;
         if (declared.kind != VariantDecl && declared.kind != NamespaceDecl &&
-            declared.kind != BuiltinScalarDecl && storage > 0) {
+            declared.kind != BuiltinScalarDecl && storage > 0 && !two_deep) {
             EnsurePointer(&types, {storage: storage, container: container, record: index}, false, package);
         }
         index += 1;

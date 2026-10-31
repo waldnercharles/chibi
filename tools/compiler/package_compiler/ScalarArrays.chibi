@@ -35,10 +35,10 @@ ScalarArrayElement :: (storage: int) -> bool {
 }
 // The array the literal `node` is, from its first element when that names its
 // own storage: a string, a bool, a number conversion such as `u8(0)`, a call of
-// a function of the source, or a variable that holds one number, bool or string.
+// a function of the source, or a variable or a record's field that holds one number, bool or string.
 // An element of another form, such as a bare number, has storage 0.
-ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
-                       package: int, node: int) -> ValueType {
+ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                       names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> ValueType {
     head := FirstMember(forest, node);
     storage: int = 0;
     record: int = -1;
@@ -64,6 +64,12 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
             storage = names[found].storage;
             record = names[found].record;
         }
+    } else if (Is(forest, first, "member_expression")) {
+        field := ScalarMember(forest, text, callables, params, names, types, members, package, first);
+        if (field >= 0 && members[field].container == 0) {
+            storage = members[field].storage;
+            record = members[field].record;
+        }
     }
     if (!ScalarArrayElement(storage)) {
         return {storage: 0, container: 0, record: -1};
@@ -78,7 +84,7 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     none: ValueType = {storage: 0, container: 0, record: -1};
     value := Unparenthesized(forest, node);
     if (Is(forest, value, "array_expression")) {
-        return ScalarLiteralShape(forest, text, callables, names, package, value);
+        return ScalarLiteralShape(forest, text, callables, params, names, types, members, package, value);
     }
     if (Is(forest, value, "identifier")) {
         found := Lookup(names, Text(forest, text, value));

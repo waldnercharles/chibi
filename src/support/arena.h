@@ -92,8 +92,13 @@ typedef struct arena_collection
 void arena_collect_begin(arena_collection *, arena **arenas, int count);
 /* An arena_marker whose user is the collection. */
 void arena_collect_mark(void *collection, const void *address);
-/* Thread-local count of collection marks, a measure of collection work. */
-uint64_t arena_collect_marks();
+/* Marks address as arena_collect_mark does, and says whether a live value of
+ * the collection holds it, so that value's tracer walks what it reaches. */
+bool arena_collect_mark_held(arena_collection *, const void *address);
+/* The collection a marker and its user mark into, or NULL for any other
+ * marker. A marker that wraps arena_collect_mark is another marker: walks
+ * that shortcut through the collection's tracers then take the full walk. */
+arena_collection *arena_marker_collection(arena_marker mark, void *user);
 /* Traces what the marks reach and sweeps the rest. */
 void arena_collect_end(arena_collection *);
 /* The copy of source that a remembers, or NULL. An arena remembers each

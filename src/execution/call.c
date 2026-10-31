@@ -496,10 +496,12 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
             return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result cannot be retained");
         }
         /* A result that shares a collection the caller holds, such as an
-         * argument it lent or an earlier result, gets its own copy, so that
-         * writing one leaves the other. */
+         * argument it lent or an earlier result, or one the callee only
+         * borrowed from its own caller, gets its own copy, so that writing
+         * or dropping one leaves the other. */
         pin_value shared = retained;
-        if (behavior_function_collection_holds(parent, &shared) &&
+        if ((behavior_function_collection_holds(parent, &shared) ||
+             !behavior_function_collection_owns(context, &shared)) &&
             pin_value_collection_copy(sharing_storage(parent), &retained, &shared)) {
             return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result cannot be retained");
         }

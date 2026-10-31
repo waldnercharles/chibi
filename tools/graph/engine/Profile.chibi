@@ -391,3 +391,49 @@ pub OpenGLInclude :: () -> string {
     }
     return "";
 }
+
+// Why an option the profile takes is invalid, or "" when none is. The
+// Debug-only options take one of their values and the Debug build type, and
+// an omitted value is rejected too: Option alone falls back at end-of-argv.
+pub ProfileOptionError :: (arguments: string[], build_type: string) -> string {
+    for (i in 0..<length(arguments)) {
+        if (arguments[i] == "--debug-optimization" &&
+            (i + 1 == length(arguments) ||
+             (arguments[i + 1] != "0" && arguments[i + 1] != "1") ||
+             build_type != "Debug")) {
+            return "graph: --debug-optimization requires 0 or 1 and build type Debug";
+        }
+        if (arguments[i] == "--debug-frame-pointers" &&
+            (i + 1 == length(arguments) ||
+             (arguments[i + 1] != "on" && arguments[i + 1] != "off") ||
+             build_type != "Debug")) {
+            return "graph: --debug-frame-pointers requires on or off and build type Debug";
+        }
+        if (arguments[i] == "--asset-generator-hosts" &&
+            (i + 1 == length(arguments) || !strings.HasPrefix(arguments[i + 1], "/"))) {
+            return "graph: --asset-generator-hosts requires an absolute directory";
+        }
+    }
+    return "";
+}
+
+// Why a --target the arguments name is not among `targets`, or "" when each
+// is: checked before any discovery or build writes.
+pub TargetError :: (arguments: string[], targets: string[]) -> string {
+    for (i in 0..<length(arguments)) {
+        if (arguments[i] != "--target") {
+            continue;
+        }
+        if (i + 1 == length(arguments) || strings.HasPrefix(arguments[i + 1], "--")) {
+            return "graph: --target requires a target name";
+        }
+        found := false;
+        for (target in targets) {
+            found = found || arguments[i + 1] == target;
+        }
+        if (!found) {
+            return format_text("graph: unknown target '{0}'", arguments[i + 1]);
+        }
+    }
+    return "";
+}

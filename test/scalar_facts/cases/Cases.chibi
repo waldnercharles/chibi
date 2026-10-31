@@ -101,7 +101,9 @@ Cases :: () -> Case[] {
         Accepted("extra_return", "package scalar\nMain :: () -> int { return 42; return 0; }", 42, "Main", "return 42 return 0"),
         Rejected("unknown_call", "package scalar\nMain :: () -> int { return unknown(); }", "Unknown function 'unknown'", "unknown"),
         Rejected("parameter", "package scalar\nMain :: (x: int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: int)"),
-        Rejected("scoped pointer", "package scalar\nMain :: (x: ^int) -> int { return 42; }", "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result", "x: ^int"),
+        Rejected("scoped pointer entry", "package scalar\nMain :: (x: ^int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: ^int)"),
+        Accepted("scoped pointer read", "package scalar\nMain :: () -> int { v := 41; return Next(&v); }\nNext :: (x: ^int) -> int { return x^ + 1; }", 42, "Main,Next", ""),
+        Accepted("scoped pointer write", "package scalar\nMain :: () -> int { v := 41; return Bump(&v); }\nBump :: (x: ^int) -> int { x^ += 1; return x^; }", 42, "Main,Bump", ""),
         Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int", "bool"),
         Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int", "i64"),
         
@@ -196,6 +198,13 @@ Cases :: () -> Case[] {
         // the string has three bytes and an empty one none, and the second byte
         // is 98.
         Accepted("array_text_bytes", "package scalar\nMain :: () -> int {\n    bytes := text_bytes(\"AbZ\");\n    total: int = 0;\n    for (b in bytes) { total += b; }\n    empty := text_bytes(\"\");\n    return total + length(bytes) * 1000 + length(empty) * 100000 + bytes[1];\n}\n", 3351, "Main", ""),
+        // A literal led by a record's field is an array of that field's type: the
+        // loop adds 3 and 4, then 5 and 6 are the second pair.
+        Accepted("array_literal_fields", "package scalar\nPair :: struct { a: int; b: int; }\nMain :: () -> int {\n    p: Pair = {a: 3, b: 4};\n    total: int = 0;\n    for (v in [p.a, p.b]) { total += v; }\n    return total * 100 + length(resize([p.b], 5));\n}\n", 705, "Main", ""),
+        // A scoped parameter the callee writes is the caller's variable: Bump moves
+        // the point to (6, 7), Twice passes the parameter on for two more, (8, 9),
+        // Fill appends 0, 1, 2 to the caller's array and Add raises its total by 4.
+        Accepted("reference_parameters", "package scalar\nPoint :: struct { x: int; y: int; }\nMain :: () -> int {\n    p: Point = {x: 1, y: 2};\n    items: int[] = [];\n    total: int = 0;\n    a := Bump(&p, 5);\n    b := Twice(&p);\n    c := Fill(&items, 3);\n    d := Add(&total, 4);\n    return p.x * 100 + p.y * 10 + length(items) + total + a + b + c + d;\n}\nBump :: (point: ^Point, by: int) -> int {\n    point.x += by;\n    point.y = point.y + by;\n    return 1;\n}\nTwice :: (point: ^Point) -> int {\n    a := Bump(point, 1);\n    b := Bump(point, 1);\n    return a + b;\n}\nFill :: (items: ^(int[]), n: int) -> int {\n    for (i in 0..<n) { items.append(i); }\n    return n;\n}\nAdd :: (sum: ^int, by: int) -> int {\n    sum^ += by;\n    return 0;\n}\n", 903, "Main,Bump,Twice,Fill,Add", ""),
         // Assigning an array copies it: b changes alone, then a alone. a ends
         // as [1, 2, 3, 4] and b as [10, 2, 3].
         Accepted("array_copy_independence", "package scalar\nMain :: () -> int {\n    a: int[] = [1, 2, 3];\n    b := a;\n    b[0] = 10;\n    a.append(4);\n    return a[0] * 100 + b[0] + length(a) * 1000 + length(b) * 10000;\n}\n", 34110, "Main", ""),
@@ -498,10 +507,11 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: i64[]) -
         }
     }
 }
-// Whether a module has an Array row.
+// Whether a module has an Array row or a reference, which the recorded
+// evaluation does not model.
 Arrayed :: (rows: facts.Row[]) -> bool {
     for (row in rows) {
-        if (row.kind == facts.ArrayRow) {
+        if (row.kind == facts.ArrayRow || row.kind == facts.RefRow) {
             return true;
         }
     }
@@ -613,7 +623,7 @@ pub Check :: (rows: facts.Row[]) -> int {
         } // "the evaluation does not model u64"
     }
     empty: i64[] = [];
-    // Arrays and loops are evaluated by the VMs and the native code, which
+    // Arrays, references and loops are evaluated by the VMs and the native code, which
     // must give the case's value; this evaluation covers straight-line rows.
     if (!Arrayed(rows) && Evaluate(rows, Heads(rows), 0, empty) != i64(expected.value)) {
         return -9;

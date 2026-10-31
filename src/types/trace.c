@@ -67,6 +67,18 @@ void pin_value_trace(const pin_value *value, arena_marker mark, void *user)
         }
     }
 }
+/* Packed arrays hold only scalars and pointers; records with text or arrays
+ * are boxed, so the compiler's record arrays are traced item by item. Marking
+ * the items' shared header once per run measured no gain on its self-compile
+ * (2026-10-30), so each item is traced as it would be alone. */
+void pin_array_trace_items(const pin_array *array, arena_marker mark, void *user)
+{
+    assert(!array->pointer);
+    for (int i = 0; pin_array_items_reach(array) && i < array->count; i++) {
+        pin_value item = pin_array_get(array, i);
+        pin_value_trace(&item, mark, user);
+    }
+}
 bool pin_array_items_reach(const pin_array *array)
 {
     /* Only authored records hold pointers, and their layouts travel with the
@@ -100,11 +112,7 @@ static void trace_array(const void *data, const void *, arena_marker mark, void 
     mark(user, array->items);
     mark(user, array->data);
     mark(user, array->buckets);
-    bool reach = pin_array_items_reach(array);
-    for (int i = 0; reach && i < array->count; i++) {
-        pin_value item = pin_array_get(array, i);
-        pin_value_trace(&item, mark, user);
-    }
+    pin_array_trace_items(array, mark, user);
 }
 static void trace_union(const void *data, const void *, arena_marker mark, void *user)
 {

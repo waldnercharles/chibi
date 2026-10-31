@@ -180,6 +180,14 @@ static const char *build_report(void *service, const pin_value *arguments, pin_v
         return "invalid build string arguments";
     }
     pin_string text = pin_text(arguments[0]);
+    results[0].i = 0;
+    if (host->options->stderr_sink) {
+        FILE *sink = host->options->stderr_sink;
+        fwrite(text.bytes, 1, text.length, sink);
+        fputc('\n', sink);
+        fflush(sink);
+        return NULL;
+    }
     chibi_build_result *result = host->result;
     size_t size = text.length;
     size_t remaining = sizeof(result->stderr_text) - result->stderr_size - 1;
@@ -192,7 +200,6 @@ static const char *build_report(void *service, const pin_value *arguments, pin_v
     }
     result->stderr_text[result->stderr_size] = 0;
     result->stderr_truncated |= copy != size || !remaining;
-    results[0].i = 0;
     return NULL;
 }
 static const char *build_file_kind(void *service, const pin_value *arguments, pin_value *results)
@@ -386,6 +393,10 @@ static const script_catalog_parameter embed_parameters[] = {
 };
 static const script_catalog_parameter handle_parameter = { .name = "handle",
                                                            .type = { .storage = PIN_I32 } };
+static const script_catalog_parameter wait_parameters[] = {
+    { .name = "handle", .type = { .storage = PIN_I32 } },
+    { .name = "milliseconds", .type = { .storage = PIN_I32 } },
+};
 static const script_catalog_parameter path_parameter = { .name = "path",
                                                          .type = { .storage = PIN_STR },
                                                          .c_string = true };
@@ -438,12 +449,14 @@ static const script_catalog_parameter array_result = {
     X(932, "build.hash_file", &path_parameter, 1, text_result, build_hash_file)                 \
     X(933, "build.hash_text", &text_parameter, 1, text_result, build_hash_text)                 \
     X(934, "build.start", &array_parameter, 1, int_result, build_host_start)                    \
-    X(935, "build.wait", &handle_parameter, 1, int_result, build_host_wait)                     \
     X(936, "build.embed_file", embed_parameters, 3, bool_result, build_embed_file)              \
     X(937, "build.replace", replace_parameters, 3, text_result, value_replace)                  \
     X(938, "build.byte_list", &path_parameter, 1, text_result, build_byte_list)                 \
     X(939, "build.reserve_directory", &path_parameter, 1, bool_result, build_reserve_directory) \
-    X(940, "build.publish_directory", move_parameters, 2, bool_result, build_publish_directory)
+    X(940, "build.publish_directory", move_parameters, 2, bool_result, build_publish_directory) \
+    X(941, "build.wait_for", wait_parameters, 2, int_result, build_host_wait_for)               \
+    X(942, "build.kill", &handle_parameter, 1, int_result, build_host_kill)                     \
+    X(943, "build.spawn", &array_parameter, 1, int_result, build_host_spawn)
 #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)              \
     { .id = ID,                                                                \
       .name = NAME,                                                            \

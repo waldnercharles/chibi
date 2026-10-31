@@ -1,0 +1,6 @@
+package facts
+import lib "project:callable_signature_rejection/lib"
+Wrong :: (value: int) -> int { return value; }
+Main :: () -> bool { return lib.Apply(3, Wrong); }
+
+// error: 4:42: Function argument does not match the callable parameter signature

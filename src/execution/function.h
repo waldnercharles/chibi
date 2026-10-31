@@ -450,6 +450,10 @@ void behavior_function_collection_transfer(
 );
 /* Whether the context owns a collection the value holds. */
 bool behavior_function_collection_holds(const behavior_function_context *, const pin_value *);
+/* Whether the context owns every collection the value reaches. A value that
+ * reaches one it does not own, a lent argument's or a caller's data, is
+ * borrowed: moving it out of the context would free it under its owner. */
+bool behavior_function_collection_owns(const behavior_function_context *, const pin_value *);
 /* Releases the collections the context owns; empty keeps the list's capacity. */
 void behavior_function_collection_empty(behavior_function_context *);
 void behavior_function_collection_clear(behavior_function_context *);

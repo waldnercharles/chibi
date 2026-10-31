@@ -1,8 +1,8 @@
 #ifndef CHIBI_AUTHORING_PACKAGE_TESTS_H
 #define CHIBI_AUTHORING_PACKAGE_TESTS_H
 
-#include "authoring/source_package_prepare.h"
 #include "runtime/behaviors/package.h"
+#include "runtime/native_definitions.h"
 
 typedef struct task_system task_system;
 
@@ -20,24 +20,36 @@ typedef struct
     /* Inferred deterministic closure with no external effects. */
     bool parallel;
 } package_test;
+/* The run-time failures a test can expect with core:testing's ExpectFailure,
+ * in the order of its Failure union's variants. */
+typedef enum
+{
+    PACKAGE_TEST_FAILURE_NONE,
+    PACKAGE_TEST_FAILURE_INDEX_OUT_OF_RANGE,
+    PACKAGE_TEST_FAILURE_MAP_KEY_ABSENT,
+    PACKAGE_TEST_FAILURE_VIEW_OUT_OF_RANGE,
+    PACKAGE_TEST_FAILURE_ASSERTION_FAILED,
+    PACKAGE_TEST_FAILURE_BUDGET_EXHAUSTED,
+    PACKAGE_TEST_FAILURE_DEPTH_EXCEEDED,
+    PACKAGE_TEST_FAILURE_COUNT
+} package_test_failure_kind;
 typedef struct
 {
     const char *path; /* Borrowed from the failing module; NULL when unknown. */
     int line, column;
     char message[256];
+    /* What the test said it ends with, or NONE. */
+    package_test_failure_kind expected;
 } package_test_failure;
+/* core:testing's natives: test_expect_failure(kind), which records the kind
+ * of failure the running test must end with. */
+extern const native_definition_pack TESTING_DEFINITION_PACK;
 typedef struct
 {
     bool passed;
     package_test_failure failure;
 } package_test_result;
 
-/* The tests of the valid project: packages, ordered by file and position;
- * collection packages such as core: contribute none. An array to afree(). */
-package_test *package_tests_find(const authoring_packages *);
-/* Explicit collection tests, ordered by file and position. collection is a
- * collection name such as "core", without a colon. An array to afree(). */
-package_test *package_tests_find_collection(const authoring_packages *, const char *collection);
 /* The tests of the packages of the project: collection compiled by the authored
  * compiler, ordered by package, file and position. A package exports each test
  * as "@test NAME". An array to afree(). */

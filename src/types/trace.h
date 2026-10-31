@@ -18,6 +18,8 @@ void pin_value_trace(const pin_value *value, arena_marker mark, void *user);
 /* Whether an array's items can reach storage of their own: packed scalars and
  * plain records reach nothing beyond the array's payload. */
 bool pin_array_items_reach(const pin_array *array);
+/* Traces an owner array's items as pin_value_trace traces each of them. */
+void pin_array_trace_items(const pin_array *array, arena_marker mark, void *user);
 void pin_arena_trace_struct(arena *storage, void *data, const type_desc *type);
 void pin_arena_trace_array(arena *storage, pin_array *array);
 void pin_arena_trace_union(arena *storage, pin_union *value);

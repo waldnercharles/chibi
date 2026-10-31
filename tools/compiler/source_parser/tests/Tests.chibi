@@ -122,3 +122,86 @@ RejectsUnterminatedString :: () {
 AcceptsABodyAfterADereferenceAndALineBreak :: () {
     Accepts("package p\n\nF :: (p: ^bool) -> int {\n    if p^ {}\n    return 8\n}\n");
 }
+
+// The field and kind of every node of a parsed source, as "field:kind", in tree order.
+Shape :: (text: string) -> string[] {
+    shape: string[] = [];
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            index: int = 0;
+            while (index < length(nodes)) {
+                shape.append(format_text("{}:{}", fields[index], nodes[index].kind));
+                index += 1;
+            }
+    }
+    return shape;
+}
+
+Has :: (shape: string[], item: string) {
+    found := false;
+    for (row in shape) {
+        if (row == item) {
+            found = true;
+        }
+    }
+    assert(found, "the shape holds the expected node");
+}
+
+Lacks :: (shape: string[], item: string) {
+    for (row in shape) {
+        assert(row != item, "the shape lacks the unexpected node");
+    }
+}
+
+@test
+ReadsCallableParameterType :: () {
+    text := "package p\n\nApply :: (value: int, transform: fn(value: int) -> int) -> int {\n    return transform(value)\n}\n";
+    Accepts(text);
+    shape := Shape(text);
+    Has(shape, ":callable_type");
+    Has(shape, ":fn");
+    Has(shape, "parameters:parameter_list");
+}
+
+@test
+ReadsInlineFunctionWithArrow :: () {
+    text := "package p\n\nF :: (limit: int) -> int {\n    return Apply(3, (value: int) => value > limit)\n}\n";
+    Accepts(text);
+    shape := Shape(text);
+    Has(shape, ":lambda_expression");
+    Has(shape, "body:callable_body");
+    Has(shape, ":=>");
+    Has(shape, "value:binary_expression");
+}
+
+@test
+ReadsInlineFunctionWithBlock :: () {
+    text := "package p\n\nF :: () -> int {\n    return Apply(4, (value: int) { return value * 2 })\n}\n";
+    Accepts(text);
+    Has(Shape(text), ":lambda_expression");
+}
+
+@test
+ReadsInlineFunctionWithFnAndResult :: () {
+    text := "package p\n\nF :: () -> int {\n    return Apply(4, fn(value: int) -> int { return value * 2 })\n}\n";
+    Accepts(text);
+    shape := Shape(text);
+    Has(shape, ":lambda_expression");
+    Has(shape, ":fn");
+}
+
+@test
+ReadsFnAsAName :: () {
+    text := "package p\n\nF :: (x: int) -> int {\n    return fn(x)\n}\n";
+    Accepts(text);
+    shape := Shape(text);
+    Has(shape, "value:call_expression");
+    Lacks(shape, ":lambda_expression");
+}
+
+@test
+ReadsDereferenceAsCondition :: () {
+    text := "package p\n\nF :: (p: ^bool) -> int {\n    if p^ {\n        return 1\n    }\n    return 0\n}\n";
+    Accepts(text);
+    Has(Shape(text), "condition:dereference_expression");
+}

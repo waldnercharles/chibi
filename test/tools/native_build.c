@@ -1248,6 +1248,23 @@ static const struct
 } PROBES[] = { { "\xff\x07\x40\xd1\xff\x63\x29\xeb\xff\x03\x00\xf9", 12 },
                { "__chkstk", 8 } };
 
+/* Whether the file `name` holds the text `needle`. */
+static bool file_holds(const char *name, const char *needle)
+{
+    FILE *file = fopen(name, "rb");
+    assert(file);
+    static char data[1 << 20];
+    size_t length = fread(data, 1, sizeof data - 1, file);
+    fclose(file);
+    data[length] = 0;
+    for (size_t i = 0; i + strlen(needle) <= length; i++) {
+        if (!memcmp(data + i, needle, strlen(needle))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Whether the object.o published in `out` holds `size` bytes of `bytes`. */
 static bool object_holds(const char *out, const char *bytes, size_t size)
 {
@@ -1376,6 +1393,95 @@ TEST_CASE(native_build_links_other_targets_with_llvm)
     return true;
 }
 
+static const char *const
+    WINDOWS_IMPORT_SOURCE = "package scalar\n"
+                            "foreign import k32 \"system:kernel32\"\n"
+                            "foreign k32 {\n"
+                            "    GetCurrentProcessId :: () -> u32\n"
+                            "    GetTickCount :: () -> u32\n"
+                            "}\n"
+                            "Main :: () -> int {\n"
+                            "    if (int(GetCurrentProcessId()) > 0 && "
+                            "int(GetTickCount()) >= 0) { return 42; }\n"
+                            "    return 1;\n"
+                            "}\n";
+
+/* A Windows program imports from a system library its source names: the
+ * driver writes the library's import definition from the symbols the program
+ * calls and lld-link makes the import library from it, so no Windows SDK is
+ * needed. The import table of the PE file names each symbol. Other targets
+ * refuse a system library. With CHIBI_NATIVE_BUNDLE set, the program goes
+ * into the bundle that CI's native-targets job runs on Windows. */
+TEST_CASE(native_build_imports_from_a_windows_system_library)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link Windows imports with real LLVM tools\n");
+        return true;
+    }
+    reset("windows-imports", WINDOWS_IMPORT_SOURCE);
+    real_tools(bin);
+    char in_place[1024], program[1024], folder[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *windows[] = { "-O0", "--target", "x86_64-pc-windows-msvc", NULL };
+    REQUIRE(build_with(in_place, windows, tools) == 0 && printed(program));
+    REQUIRE(executable_for(program, 1));
+    size_t length = strlen(program) - strlen("/program.exe");
+    memcpy(folder, program, length);
+    folder[length] = 0;
+    REQUIRE(
+        holds(folder, "kernel32.def", "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCurrentProcessId\n    GetTickCount\n")
+    );
+    REQUIRE(file_holds(program, "GetCurrentProcessId") && file_holds(program, "GetTickCount"));
+    bundle_program(program, 1, "windows-imports.exe");
+    const char *linux_only[] = { "-O0", NULL };
+    REQUIRE(
+        build_with(in_place, linux_only, tools) != 0 &&
+        strstr(errors, "system library kernel32 links on Windows only")
+    );
+    return true;
+}
+
+static const char *const
+    WINDOWS_HEAP_SOURCE = "package scalar\n"
+                          "Main :: () -> int {\n"
+                          "    values: int[] = [40, 1, 1];\n"
+                          "    return values[0] + values[1] + values[2];\n"
+                          "}\n";
+
+/* A Windows program that allocates links no C library: its start module
+ * allocates with HeapAlloc and reports a failed assert with WriteFile, so the
+ * program imports only kernel32. With CHIBI_NATIVE_BUNDLE set, the program
+ * goes into the bundle that CI's native-targets job runs on Windows. */
+TEST_CASE(native_build_allocates_on_windows_without_libc)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link Windows programs with real LLVM tools\n");
+        return true;
+    }
+    reset("windows-heap", WINDOWS_HEAP_SOURCE);
+    real_tools(bin);
+    char in_place[1024], program[1024], folder[1024];
+    path(in_place, built, "sdk/chibi");
+    const char *windows[] = { "-O0", "--target", "x86_64-pc-windows-msvc", NULL };
+    REQUIRE(build_with(in_place, windows, tools) == 0 && printed(program));
+    REQUIRE(executable_for(program, 1));
+    size_t length = strlen(program) - strlen("/program.exe");
+    memcpy(folder, program, length);
+    folder[length] = 0;
+    REQUIRE(holds(folder, "start.ll", "call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)"));
+    REQUIRE(
+        holds(folder, "kernel32.def", "    GetProcessHeap\n    HeapAlloc\n    GetStdHandle\n    WriteFile\n")
+    );
+    REQUIRE(
+        file_holds(program, "HeapAlloc") && !file_holds(program, "msvcrt") &&
+        !file_holds(program, "ucrtbase")
+    );
+    bundle_program(program, 1, "windows-heap.exe");
+    return true;
+}
+
 /* Each case reads and writes the file-scope fixture state above, so it runs
  * in its own forked process: the parent keeps no state a case changes. */
 static bool run_forked(const char *const names[], bool (*const cases[])(void), int count, int workers)
@@ -1455,6 +1561,8 @@ TEST_CASE(native_build_runs_the_cases_in_parallel)
         "native_build_runs_the_foreign_samples",
         "native_build_gives_c_an_authored_function",
         "native_build_links_other_targets_with_llvm",
+        "native_build_imports_from_a_windows_system_library",
+        "native_build_allocates_on_windows_without_libc",
     };
     static bool (*const cases[])(void) = {
         native_build_links_statically_on_request,
@@ -1473,6 +1581,8 @@ TEST_CASE(native_build_runs_the_cases_in_parallel)
         native_build_runs_the_foreign_samples,
         native_build_gives_c_an_authored_function,
         native_build_links_other_targets_with_llvm,
+        native_build_imports_from_a_windows_system_library,
+        native_build_allocates_on_windows_without_libc,
     };
     long cores = sysconf(_SC_NPROCESSORS_ONLN);
     int workers = cores < 1 ? 1 : cores > 4 ? 4 : (int)cores;

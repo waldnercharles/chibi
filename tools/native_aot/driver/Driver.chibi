@@ -117,32 +117,43 @@ Program :: (target: int) -> string {
 // `_fltused` and large frames call `__chkstk`, both of which the C runtime
 // would define. This `__chkstk` is compiler-rt's x86-64 probe: it touches
 // each page from the stack pointer down by RAX bytes and changes no register.
-Start :: (target: int) -> string {
+// What every Windows program starts with: the target, `__chkstk`, `_fltused`
+// and the import of ExitProcess.
+WindowsPrelude :: () -> string {
+    return Join([
+        "target triple = \"x86_64-pc-windows-msvc\"\n",
+        "module asm \".text\"\n",
+        "module asm \".globl __chkstk\"\n",
+        "module asm \"__chkstk:\"\n",
+        "module asm \"pushq %rcx\"\n",
+        "module asm \"pushq %rax\"\n",
+        "module asm \"cmpq $0x1000, %rax\"\n",
+        "module asm \"leaq 24(%rsp), %rcx\"\n",
+        "module asm \"jb 1f\"\n",
+        "module asm \"2:\"\n",
+        "module asm \"subq $0x1000, %rcx\"\n",
+        "module asm \"testq %rcx, (%rcx)\"\n",
+        "module asm \"subq $0x1000, %rax\"\n",
+        "module asm \"cmpq $0x1000, %rax\"\n",
+        "module asm \"ja 2b\"\n",
+        "module asm \"1:\"\n",
+        "module asm \"subq %rax, %rcx\"\n",
+        "module asm \"testq %rcx, (%rcx)\"\n",
+        "module asm \"popq %rax\"\n",
+        "module asm \"popq %rcx\"\n",
+        "module asm \"retq\"\n",
+        "@_fltused = dso_local global i32 0\n",
+        "declare dllimport void @ExitProcess(i32) noreturn\n"
+    ]);
+}
+
+Start :: (target: int, context: bool) -> string {
+    if (target == 2 && context) {
+        return WindowsContextStart();
+    }
     if (target == 2) {
         return Join([
-            "target triple = \"x86_64-pc-windows-msvc\"\n",
-            "module asm \".text\"\n",
-            "module asm \".globl __chkstk\"\n",
-            "module asm \"__chkstk:\"\n",
-            "module asm \"pushq %rcx\"\n",
-            "module asm \"pushq %rax\"\n",
-            "module asm \"cmpq $0x1000, %rax\"\n",
-            "module asm \"leaq 24(%rsp), %rcx\"\n",
-            "module asm \"jb 1f\"\n",
-            "module asm \"2:\"\n",
-            "module asm \"subq $0x1000, %rcx\"\n",
-            "module asm \"testq %rcx, (%rcx)\"\n",
-            "module asm \"subq $0x1000, %rax\"\n",
-            "module asm \"cmpq $0x1000, %rax\"\n",
-            "module asm \"ja 2b\"\n",
-            "module asm \"1:\"\n",
-            "module asm \"subq %rax, %rcx\"\n",
-            "module asm \"testq %rcx, (%rcx)\"\n",
-            "module asm \"popq %rax\"\n",
-            "module asm \"popq %rcx\"\n",
-            "module asm \"retq\"\n",
-            "@_fltused = dso_local global i32 0\n",
-            "declare dllimport void @ExitProcess(i32) noreturn\n",
+            WindowsPrelude(),
             "declare i32 @chibi_scalar()\n",
             "define void @mainCRTStartup() {\n",
             "  %status = call i32 @chibi_scalar()\n",
@@ -165,6 +176,98 @@ Start :: (target: int) -> string {
         "module asm \"syscall\"\n",
         "module asm \"ud2\"\n",
         "declare i32 @chibi_scalar()\n"
+    ]);
+}
+
+// The Windows start module for an entry that takes the runtime context: the
+// plain start's `__chkstk` and `_fltused`, then a context whose allocate is
+// HeapAlloc on the process heap, zeroed as calloc is, and whose index failure
+// and text formatting exit with status 134, as abort does elsewhere. A failed
+// assert ends the entry early with its failure in the context, which the
+// program writes to standard error with WriteFile before it exits with 134.
+// The program calls no C library.
+WindowsContextStart :: () -> string {
+    return Join([
+        WindowsPrelude(),
+        "declare dllimport ptr @GetProcessHeap()\n",
+        "declare dllimport ptr @HeapAlloc(ptr, i32, i64)\n",
+        "declare dllimport ptr @GetStdHandle(i32)\n",
+        "declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n",
+        "declare i32 @chibi_scalar(ptr)\n",
+        "@chibi_report_head = private unnamed_addr constant [29 x i8] c\"assertion failed in function \"\n",
+        "@chibi_report_from = private unnamed_addr constant [17 x i8] c\" at source bytes \"\n",
+        "@chibi_report_to = private unnamed_addr constant [4 x i8] c\" to \"\n",
+        "@chibi_report_end = private unnamed_addr constant [1 x i8] c\"\\0A\"\n",
+        "define internal void @chibi_format_text(ptr %ctx, ptr %values, i32 %count, ptr %result) {\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
+        "  %heap = call ptr @GetProcessHeap()\n",
+        "  %memory = call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)\n",
+        "  ret ptr %memory\n",
+        "}\n",
+        "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal void @chibi_write(ptr %bytes, i32 %count) {\n",
+        "  %error = call ptr @GetStdHandle(i32 -12)\n",
+        "  %written = alloca i32\n",
+        "  %ignored = call i32 @WriteFile(ptr %error, ptr %bytes, i32 %count, ptr %written, ptr null)\n",
+        "  ret void\n",
+        "}\n",
+        "define internal void @chibi_write_decimal(i64 %value) {\n",
+        "entry:\n",
+        "  %buffer = alloca [20 x i8]\n",
+        "  br label %loop\n",
+        "loop:\n",
+        "  %rest = phi i64 [ %value, %entry ], [ %next, %loop ]\n",
+        "  %at = phi i32 [ 20, %entry ], [ %back, %loop ]\n",
+        "  %digit = urem i64 %rest, 10\n",
+        "  %character = add i64 %digit, 48\n",
+        "  %byte = trunc i64 %character to i8\n",
+        "  %back = sub i32 %at, 1\n",
+        "  %slot = getelementptr inbounds [20 x i8], ptr %buffer, i32 0, i32 %back\n",
+        "  store i8 %byte, ptr %slot\n",
+        "  %next = udiv i64 %rest, 10\n",
+        "  %more = icmp ne i64 %next, 0\n",
+        "  br i1 %more, label %loop, label %done\n",
+        "done:\n",
+        "  %first = getelementptr inbounds [20 x i8], ptr %buffer, i32 0, i32 %back\n",
+        "  %count = sub i32 20, %back\n",
+        "  call void @chibi_write(ptr %first, i32 %count)\n",
+        "  ret void\n",
+        "}\n",
+        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
+        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
+        "define void @mainCRTStartup() {\n",
+        "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
+        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
+        "  %failure = load ptr, ptr %failure.at\n",
+        "  %failed = icmp ne ptr %failure, null\n",
+        "  br i1 %failed, label %report, label %done\n",
+        "report:\n",
+        "  %function = load i64, ptr %failure\n",
+        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
+        "  %start = load i32, ptr %start.at\n",
+        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
+        "  %end = load i32, ptr %end.at\n",
+        "  %start.wide = zext i32 %start to i64\n",
+        "  %end.wide = zext i32 %end to i64\n",
+        "  call void @chibi_write(ptr @chibi_report_head, i32 29)\n",
+        "  call void @chibi_write_decimal(i64 %function)\n",
+        "  call void @chibi_write(ptr @chibi_report_from, i32 17)\n",
+        "  call void @chibi_write_decimal(i64 %start.wide)\n",
+        "  call void @chibi_write(ptr @chibi_report_to, i32 4)\n",
+        "  call void @chibi_write_decimal(i64 %end.wide)\n",
+        "  call void @chibi_write(ptr @chibi_report_end, i32 1)\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "done:\n",
+        "  call void @ExitProcess(i32 %status)\n",
+        "  unreachable\n",
+        "}\n"
     ]);
 }
 
@@ -211,8 +314,66 @@ Imports :: (module: string) -> string[] {
     }
     return symbols;
 }
-Kernel32 :: () -> string {
-    return "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n";
+// The import definition of the DLL `name`: lld-link writes its import library
+// from it, as it does for the program's own ExitProcess.
+ImportDefinition :: (name: string, symbols: string[]) -> string {
+    lines: string[] = [Join(["LIBRARY ", name, ".dll\nEXPORTS\n"])];
+    for (symbol in symbols) {
+        lines.append(Join(["    ", symbol, "\n"]));
+    }
+    return Join(lines);
+}
+
+// lld-link's command for the import library of the DLL `name`, from the
+// definition beside it.
+ImportLibrary :: (linker: string, partial: string, name: string) -> string[] {
+    return [linker, "-flavor", "link", "/lib", "/nologo", Join(["/def:", partial, "/", name, ".def"]), "/machine:x64",
+            Join(["/out:", partial, "/", name, ".lib"])];
+}
+
+// The system libraries a module's IR names, other than libc: the NAME of each
+// `; chibi-library system:NAME`, once, in order.
+SystemLibraries :: (text: string) -> string[] {
+    names: string[] = [];
+    prefix := "; chibi-library system:";
+    for (line in strings.SplitLines(text)) {
+        if (strings.HasPrefix(line, prefix)) {
+            name := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
+            if (name != "c" && !names.contains(name)) {
+                names.append(name);
+            }
+        }
+    }
+    return names;
+}
+
+// The symbols the module imports from the system library `name`, once, in
+// order: `; chibi-import system:NAME SYMBOL`.
+SystemSymbols :: (text: string, name: string) -> string[] {
+    symbols: string[] = [];
+    prefix := Join(["; chibi-import system:", name, " "]);
+    for (line in strings.SplitLines(text)) {
+        if (strings.HasPrefix(line, prefix)) {
+            symbol := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
+            if (!symbols.contains(symbol)) {
+                symbols.append(symbol);
+            }
+        }
+    }
+    return symbols;
+}
+
+// Whether `value` spells a library or symbol name a definition file can hold.
+ImportName :: (value: string) -> bool {
+    if (value == "") {
+        return false;
+    }
+    for (byte in strings.Bytes(value)) {
+        if (!Word(byte) && byte != 46 && byte != 45 && byte != 64 && byte != 36) {
+            return false;
+        }
+    }
+    return true;
 }
 
 // lld's link of target's program from the module's object and the start
@@ -349,7 +510,7 @@ LinkedLibraries :: (text: string) -> string[] {
 // `text` with each `; chibi-library PATH` comment resolved to an existing
 // regular file under `root` and rewritten as `; link ABSOLUTE`, or "" after
 // reporting why not. `system:c` is libc and rewritten to nothing; other system
-// libraries are not linked yet.
+// libraries stay as they are, for a Windows link to write their import libraries.
 ResolveLibraries :: (text: string, root: string) -> string {
     out: string[] = [];
     for (line in strings.SplitLines(text)) {
@@ -363,8 +524,9 @@ ResolveLibraries :: (text: string, root: string) -> string {
             continue;
         }
         if (strings.HasPrefix(path, "system:")) {
-            build.report(Join(["native: ", path, " is a system library; only system:c is linked, so link a prebuilt archive instead"]));
-            return "";
+            // A Windows link writes its import library; other targets refuse it.
+            out.append(line);
+            continue;
         }
         absolute := path;
         if (!strings.HasPrefix(path, "/")) {
@@ -482,8 +644,19 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         program = Join([partial, "/generation.so"]);
     }
     libraries := LinkedLibraries(text);
-    if (target == 2 && length(libraries) > 0) {
-        return Failed(partial, "foreign libraries link on Linux and macOS only", 2);
+    imported := SystemLibraries(text);
+    if (target != 2 && length(imported) > 0) {
+        return Failed(partial, Join(["system library ", imported[0], " links on Windows only; link a prebuilt archive instead"]), 2);
+    }
+    for (name in imported) {
+        if (!ImportName(name)) {
+            return Failed(partial, Join(["invalid system library name ", name]), 2);
+        }
+        for (symbol in SystemSymbols(text, name)) {
+            if (!ImportName(symbol)) {
+                return Failed(partial, Join(["invalid symbol name ", symbol, " imported from ", name]), 2);
+            }
+        }
     }
     if (shared && (!executable || target != 0)) {
         return Failed(partial, "a shared library is a Linux x86-64 link", 2);
@@ -493,7 +666,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     // link supplies, from libc's allocator. A macOS program always links
     // libSystem dynamically.
     takes_context := strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx)");
-    if (executable && takes_context && !dynamic && target != 1) {
+    if (executable && takes_context && !dynamic && target == 0) {
         return Failed(partial, "a program that allocates links libc dynamically; omit --static", 2);
     }
     libc: string[] = [];
@@ -507,12 +680,34 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     if (dynamic) {
         link = LinkDynamic(linker, libc, object, start_object, program, libraries);
     }
+    // kernel32 is always linked, for the program's ExitProcess.
+    windows_libraries: string[] = ["kernel32"];
+    for (name in imported) {
+        if (!windows_libraries.contains(name)) {
+            windows_libraries.append(name);
+        }
+    }
+    kernel32: string[] = ["ExitProcess"];
+    if (target == 2 && takes_context) {
+        // The start module's allocator and assert report.
+        kernel32.extend(["GetProcessHeap", "HeapAlloc", "GetStdHandle", "WriteFile"]);
+    }
+    for (symbol in SystemSymbols(text, "kernel32")) {
+        if (!kernel32.contains(symbol)) {
+            kernel32.append(symbol);
+        }
+    }
+    if (target == 2) {
+        for (name in windows_libraries) {
+            if (name != "kernel32") {
+                link.append(Join([partial, "/", name, ".lib"]));
+            }
+        }
+        link.extend(libraries);
+    }
     if (shared) {
         link = [linker, "-flavor", "gnu", "-shared", "--gc-sections", object, "-o", program];
     }
-    stub := Join([partial, "/kernel32.def"]);
-    imports := [linker, "-flavor", "link", "/lib", "/nologo", Join(["/def:", stub]), "/machine:x64",
-                Join(["/out:", partial, "/kernel32.lib"])];
     status = build.run(compile);
     if (status != 0) {
         return Failed(partial, "LLVM object emission", status);
@@ -521,34 +716,38 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         return Failed(partial, "LLVM object emission", 1);
     }
     if (executable) {
-        if (!shared) {
-            start_text := Start(target);
-            if (dynamic) {
-                start_text = StartDynamic("x86_64-unknown-linux-gnu", takes_context);
-            }
-            if (target == 1) {
-                start_text = StartDynamic("arm64-apple-macosx11.0.0", takes_context);
-            }
-            if (!build.write_file(start, start_text)) {
-                return Failed(partial, "start module", 1);
-            }
-            status = build.run(compile_start);
-            if (status != 0) {
-                return Failed(partial, "start object emission", status);
-            }
-            if (build.file_kind(start_object) != "file") {
-                return Failed(partial, "start object emission", 1);
-            }
-            if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem(Imports(build.read_file(module))))) {
-                return Failed(partial, "libSystem stub", 1);
-            }
-            if (target == 2) {
-                if (!build.write_file(stub, Kernel32())) {
-                    return Failed(partial, "kernel32 definition", 1);
+        start_text := Start(target, takes_context);
+        if (dynamic) {
+            start_text = StartDynamic("x86_64-unknown-linux-gnu", takes_context);
+        }
+        if (target == 1) {
+            start_text = StartDynamic("arm64-apple-macosx11.0.0", takes_context);
+        }
+        if (!build.write_file(start, start_text)) {
+            return Failed(partial, "start module", 1);
+        }
+        status = build.run(compile_start);
+        if (status != 0) {
+            return Failed(partial, "start object emission", status);
+        }
+        if (build.file_kind(start_object) != "file") {
+            return Failed(partial, "start object emission", 1);
+        }
+        if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem(Imports(build.read_file(module))))) {
+            return Failed(partial, "libSystem stub", 1);
+        }
+        if (target == 2) {
+            for (name in windows_libraries) {
+                symbols := kernel32;
+                if (name != "kernel32") {
+                    symbols = SystemSymbols(text, name);
                 }
-                status = build.run(imports);
+                if (!build.write_file(Join([partial, "/", name, ".def"]), ImportDefinition(name, symbols))) {
+                    return Failed(partial, Join([name, " definition"]), 1);
+                }
+                status = build.run(ImportLibrary(linker, partial, name));
                 if (status != 0) {
-                    return Failed(partial, "kernel32 import library", status);
+                    return Failed(partial, Join([name, " import library"]), status);
                 }
             }
         }
@@ -602,7 +801,9 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
                         "\nlinker-sha256 ", linker_hash, "\nprogram-sha256 ", program_hash, "\n",
                         Command("llc-start", compile_start)]);
         if (target == 2) {
-            receipt = Join([receipt, Command("import-library", imports)]);
+            for (name in windows_libraries) {
+                receipt = Join([receipt, Command("import-library", ImportLibrary(linker, partial, name))]);
+            }
         }
         for (archive in libraries) {
             receipt = Join([receipt, "library ", archive, "\nlibrary-sha256 ", build.hash_file(archive), "\n"]);

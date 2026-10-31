@@ -97,11 +97,18 @@ ReferencesName :: (forest: snapshot.SnapshotNode[], text: string, node: int, nam
     }
     return false;
 }
-// The `&x` arguments of scoped parameters in the body `node`. Each lends `x`
-// for the call rather than taking a managed address.
-ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
-                    natives: ResolvedNative[], aliases: Name[], package: int, node: int) -> int[] {
-    found: int[] = [];
+// An argument a call passes for a scoped parameter: its value node (`&x`, or
+// a scoped parameter or managed pointer passed on) and the parameter, as an
+// index into params.
+ScopedArgument :: struct {
+    value: int;
+    param: int;
+}
+// The arguments of scoped parameters in the body `node`, in the order the
+// calls appear.
+ScopedCalls :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                natives: ResolvedNative[], aliases: Name[], package: int, node: int) -> ScopedArgument[] {
+    found: ScopedArgument[] = [];
     pending: int[] = [node];
     top: int = 1;
     while (top > 0) {
@@ -113,10 +120,11 @@ ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
             for (argument in Members(forest, Field(forest, at, "arguments"))) {
                 if (GenericOmitted(aliases, argument)) { continue; }
                 index := GenericCallParameter(forest, text, callables, params, aliases, called, at, argument, position);
-                value := GenericArgumentValue(forest, argument);
                 if (called >= 0 && index >= 0 && index < callables[called].count &&
-                    params[callables[called].first + index].reference && Is(forest, value, "address_expression")) {
-                    found.append(value);
+                    params[callables[called].first + index].reference) {
+                    scoped: ScopedArgument = {value: GenericArgumentValue(forest, argument),
+                                              param: callables[called].first + index};
+                    found.append(scoped);
                 }
                 if (!Is(forest, argument, "named_argument")) { position += 1; }
             }
@@ -130,6 +138,18 @@ ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
             }
             top += 1;
             child = forest[child].next_sibling;
+        }
+    }
+    return found;
+}
+// The `&x` arguments of scoped parameters in the body `node`. Each lends `x`
+// for the call rather than taking a managed address.
+ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                    natives: ResolvedNative[], aliases: Name[], package: int, node: int) -> int[] {
+    found: int[] = [];
+    for (argument in ScopedCalls(forest, text, callables, params, natives, aliases, package, node)) {
+        if (Is(forest, argument.value, "address_expression")) {
+            found.append(argument.value);
         }
     }
     return found;

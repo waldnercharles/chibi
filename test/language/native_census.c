@@ -1,4 +1,5 @@
 #include "authoring/source_package_io.h"
+#include "compiler_cache.h"
 #include "execution/function.h"
 #include "execution/instruction.h"
 #include "execution/prepared.h"
@@ -911,7 +912,8 @@ static bool prepare()
     const compiler_bootstrap options = {
         .folder = CHIBI_SOURCE_ROOT "/tools/compiler/bootstrap",
         .compiler = CHIBI_SOURCE_ROOT "/tools/compiler",
-        .core = CHIBI_SOURCE_ROOT "/packages/core"
+        .core = CHIBI_SOURCE_ROOT "/packages/core",
+        .cache = test_compiler_cache()
     };
     compiler = compiler_bootstrap_load(&options, error, sizeof error);
     if (!compiler) {

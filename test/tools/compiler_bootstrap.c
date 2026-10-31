@@ -28,7 +28,7 @@
 /* How long a recovery may take: one or two compiles of the compiler. */
 #define RECOVERY_SECONDS 50
 
-static const char *host_path, *producer_path, *artifact_path;
+static const char *host_path, *artifact_path;
 static char root[PATH_MAX], log_path[PATH_MAX], compiler[PATH_MAX], core[PATH_MAX];
 static char api_folder[PATH_MAX], api_sources[512], api_digest[65], api_error[512];
 static unsigned char *api_bytes;
@@ -274,20 +274,25 @@ TEST_CASE(bootstrap_reads_every_recorded_source)
     return true;
 }
 
-/* A closure this host loads, the compiler-artifact fixture's, recorded for
+/* The seed's closure, tools/compiler/bootstrap/compiler.chibip: a closure this
+ * host loads, for the cases that need one. */
+static unsigned char *seed_closure(size_t *length)
+{
+    return read_bytes(CHIBI_SOURCE_ROOT "/tools/compiler/bootstrap/compiler.chibip", length);
+}
+
+/* A closure this host loads, the seed's, recorded for
  * another target is refused before it compiles anything. */
 TEST_CASE(bootstrap_rejects_another_target)
 {
-    char produced[PATH_MAX], closure[PATH_MAX];
-    folder("produced");
-    path(produced, "produced");
-    const char *produce[] = { producer_path, "--compiler-artifact-write", produced, NULL };
-    REQUIRE(tool_run_within(produce, root, log_path, 40) == 0);
+    char closure[PATH_MAX];
+    size_t seed_length;
+    unsigned char *seed = seed_closure(&seed_length);
+    REQUIRE(seed && seed_length);
     folder("other");
     path(closure, "other/compiler.chibip");
-    char source[PATH_MAX];
-    path(source, "produced/compiler.artifact");
-    REQUIRE(!rename(source, closure));
+    write_binary("other/compiler.chibip", seed, seed_length);
+    free(seed);
     contract(1, 1);
     folder("compiler/one");
     write_file("compiler/one/A.chibi", "package one\n");
@@ -387,13 +392,8 @@ static void api_manifest(const char *target)
  * still execute after the loader's manifest/closure buffers retire. */
 TEST_CASE(bootstrap_load_uses_matching_sources_without_recompilation)
 {
-    folder("api-produced");
-    char produced[PATH_MAX], file[PATH_MAX];
-    path(produced, "api-produced");
-    const char *produce[] = { producer_path, "--compiler-artifact-write", produced, NULL };
-    REQUIRE(tool_run_within(produce, root, log_path, 40) == 0);
-    path(file, "api-produced/compiler.artifact");
-    api_bytes = read_bytes(file, &api_length);
+    char file[PATH_MAX];
+    api_bytes = seed_closure(&api_length);
     REQUIRE(api_bytes && api_length);
     sha256_hex(api_bytes, api_length, api_digest);
     api_host = compiler_host_load(api_bytes, api_length, BEHAVIOR_BYTECODE, api_error, sizeof api_error);
@@ -423,22 +423,6 @@ TEST_CASE(bootstrap_load_uses_matching_sources_without_recompilation)
     write_binary("api-bootstrap/compiler.chibip", api_bytes, api_length);
     api_manifest(api_target);
     REQUIRE(load(api_folder));
-    path(file, "api-produced/entry.txt");
-    char *id = tool_read(file);
-    REQUIRE(id);
-    uint64_t entry = strtoull(id, NULL, 16);
-    free(id);
-    path(file, "api-produced/requests.json");
-    char *arguments = tool_read(file);
-    REQUIRE(arguments);
-    bool called = compiler_host_invoke_batch(api_host, entry, arguments, strlen(arguments), 3000000, &api_result);
-    free(arguments);
-    REQUIRE(called && api_result.flow_status == FLOW_OK);
-    path(file, "api-produced/expected.json");
-    char *expected = tool_read(file);
-    bool same = expected && api_result.json && !strcmp(expected, api_result.json);
-    free(expected);
-    REQUIRE(same);
     return true;
 }
 
@@ -479,7 +463,12 @@ TEST_CASE(bootstrap_load_reads_closures_up_to_the_artifact_bound)
         write_binary("api-bootstrap/compiler.chibip", "", 0);
         REQUIRE(!truncate(file, (off_t)lengths[i]));
         REQUIRE(!load(api_folder));
-        snprintf(expected, sizeof expected, "compiler.chibip, %zu bytes", i == 3 ? 0 : lengths[i]);
+        if (i == 3) {
+            /* Past the bound nothing is read, so the folder holds no closure. */
+            REQUIRE(strstr(api_error, "holds no compiler.chibip"));
+            continue;
+        }
+        snprintf(expected, sizeof expected, "compiler.chibip, %zu bytes", lengths[i]);
         REQUIRE(strstr(api_error, expected));
         REQUIRE(strstr(api_error, "is not the closure bootstrap.json records"));
     }
@@ -522,10 +511,11 @@ TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness)
     REQUIRE(strstr(api_error, "api/Extra.chibi is in the package of a compiler source but"));
     REQUIRE(strstr(api_error, "does not list it"));
     /* Listed, the new file is a changed source like any other: it needs no new
-     * artifact, only a compiler that can compile it, which this fixture lacks. */
+     * artifact, only a compiler that can compile it: the seed's rejects this one. */
+    write_file("compiler/api/Extra.chibi", "package \n");
     write_file("compiler/asset_compiler/CompilerSources.txt", "api/Fixture.chibi\n/sdk/core/API.chibi\napi/Extra.chibi\n");
     REQUIRE(!load(api_folder));
-    REQUIRE(strstr(api_error, "the compiler failed:"));
+    REQUIRE(strstr(api_error, "the compiler rejected the sources:"));
     write_file("compiler/asset_compiler/CompilerSources.txt", "api/Fixture.chibi\n/sdk/core/API.chibi\n");
     char file[PATH_MAX];
     path(file, "compiler/api/Extra.chibi");
@@ -544,8 +534,8 @@ TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness)
 }
 
 /* Hashing must compare current bytes on every load, for compiler and core
- * sources. This fixture cannot recover, so any changed source must reject
- * through CompileClosure, then load successfully once restored. */
+ * sources. The seed compiles them, so a source it rejects must fail the load,
+ * which succeeds again once the source is restored. */
 TEST_CASE(bootstrap_load_does_not_cache_source_hashes)
 {
     REQUIRE(api_target && api_bytes && api_folder[0]);
@@ -554,10 +544,10 @@ TEST_CASE(bootstrap_load_does_not_cache_source_hashes)
     for (int i = 0; i < 2; i++) {
         char changed[32];
         snprintf(changed, sizeof changed, "%s", sources[i]);
-        changed[8] ^= 1;
+        changed[8] = '`'; /* an illegal character in the package name */
         write_file(files[i], changed);
         REQUIRE(!load(api_folder));
-        REQUIRE(strstr(api_error, "the compiler failed:"));
+        REQUIRE(strstr(api_error, "the compiler rejected the sources:"));
         write_file(files[i], sources[i]);
         REQUIRE(load(api_folder));
         cleanup_load();
@@ -581,9 +571,8 @@ static void setup_root()
     path(core, "core");
 }
 
-void test_tool_compiler_bootstrap(const char *producer, const char *host)
+void test_tool_compiler_bootstrap(const char *host)
 {
-    producer_path = producer;
     host_path = host;
     setup_root();
     folder("compiler");

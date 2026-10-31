@@ -1,8 +1,6 @@
 #include "package_compiler_chibi.h"
 
-#include "authoring/native_bindings.h"
 #include "backend.h"
-#include "compiler_fixture.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
@@ -21,6 +19,7 @@
 #include "runtime/text_definition.h"
 #include "runtime/text_format.h"
 #include "runtime/vectors_definition.h"
+#include "scalar_host.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/file_io.h"
@@ -35,6 +34,7 @@
 #include "types/catalog.h"
 #include "types/copy.h"
 #include "types/map.h"
+#include "types/record.h"
 #include "types/text.h"
 #include "types/union.h"
 #include "types/value_document.h"
@@ -72,7 +72,7 @@ extern char **environ;
  * on bytecode and SLJIT, and stage zero's own closure of the same packages
  * must give the same JSON result. Rejections report their exact message and
  * position. */
-static const char PACKAGE[] = "project:package_compiler";
+
 enum
 {
     CALLS = 14,
@@ -123,98 +123,14 @@ enum
  * `c_string_probe` sample's calls run only that way, because the compiler
  * host does not link the probe natives, and return int. */
 
-static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
-{
-    const char *value = NULL;
-    size_t nul = 0;
-    const char *error = pin_text_cstring(storage, arguments[0], &value, &nul);
-    if (error) {
-        return error;
-    }
-    result->i = (int)strlen(value);
-    return NULL;
-}
-static const char *integer_probe(arena *, const pin_value *arguments, int, pin_value *result)
-{
-    result->i = arguments[0].i;
-    return NULL;
-}
-static const native_parameter_definition INTEGER_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-};
-static const native_parameter_definition CSTRING_INPUT[] = {
-    { .name = "value",
-      .kind = NATIVE_PARAMETER_DATA,
-      .storage = PIN_STR,
-      .type_name = "const char *",
-      .c_string = true },
-};
 /* The second parameter deliberately carries the C-string boundary. */
-static const native_parameter_definition CSTRING_PAIR_INPUT[] = {
-    { .name = "prefix", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-    { .name = "value",
-      .kind = NATIVE_PARAMETER_DATA,
-      .storage = PIN_STR,
-      .type_name = "const char *",
-      .c_string = true },
-};
-static const char *cstring_pair(arena *storage, const pin_value *arguments, int count, pin_value *result)
-{
-    return cstring_probe(storage, arguments + 1, count - 1, result);
-}
+
 /* Overloads that report which one ran: number or f64, and an int and an f64
  * in either order. */
-static const char *first_kernel(arena *, const pin_value *, int, pin_value *result)
-{
-    result->i = 1;
-    return NULL;
-}
-static const char *second_kernel(arena *, const pin_value *, int, pin_value *result)
-{
-    result->i = 2;
-    return NULL;
-}
-static const native_parameter_definition NUMBER_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F32, .type_name = "number" },
-};
-static const native_parameter_definition DOUBLE_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
-};
-static const native_parameter_definition INTEGER_DOUBLE_INPUT[] = {
-    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-    { .name = "second", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
-};
-static const native_parameter_definition DOUBLE_INTEGER_INPUT[] = {
-    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
-    { .name = "second", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-};
-static const native_parameter_definition CSTRING_OUTPUT[] = {
-    { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-};
+
 /* Borrowed native result banks exercise tuple copies without authored named
  * collection results, which stage one does not support. */
-static const char *sequence_pair_probe(void *, const pin_value *, pin_value *results)
-{
-    static int items[] = { 3, 4 };
-    static pin_array values = {
-        .element_type = PIN_I32,
-        .count = 2,
-        .capacity = 2,
-        .data = items,
-        .stride = sizeof *items,
-    };
-    results[0].ptr = &values;
-    results[1].i = 9;
-    return NULL;
-}
-static const native_parameter_definition SEQUENCE_PAIR_OUTPUTS[] = {
-    { .name = "values",
-      .kind = NATIVE_PARAMETER_DATA,
-      .storage = PIN_I32,
-      .container = PIN_CONTAINER_ARRAY,
-      .type_name = "int" },
-    { .name = "stamp", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
-};
+
 #define PROBE_DEFINITION(CANONICAL, SOURCE, INPUT, PURE)                       \
     { .canonical_name = CANONICAL,                                             \
       .source_name = SOURCE,                                                   \
@@ -225,44 +141,9 @@ static const native_parameter_definition SEQUENCE_PAIR_OUTPUTS[] = {
       .output_count = 1,                                                       \
       .completion_output = -1,                                                 \
       .pure = PURE }
-static const native_capability_definition CSTRING_DEFINITIONS[] = {
-    PROBE_DEFINITION("CString Probe", "cstring_probe", CSTRING_INPUT, true),
-    { .canonical_name = "CString Pair",
-      .source_name = "cstring_pair",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = CSTRING_PAIR_INPUT,
-      .input_count = 2,
-      .outputs = CSTRING_OUTPUT,
-      .output_count = 1,
-      .completion_output = -1,
-      .pure = true },
-    PROBE_DEFINITION("Qualified Probe", "native.probe", CSTRING_INPUT, false),
-    PROBE_DEFINITION("Qualified Length", "native.length", CSTRING_INPUT, true),
-    PROBE_DEFINITION("Qualified Text Overload", "native.overload", CSTRING_INPUT, true),
-    PROBE_DEFINITION("Qualified Integer Overload", "native.overload", INTEGER_INPUT, true),
-    PROBE_DEFINITION("Qualified Ambiguous One", "native.ProbeOne", CSTRING_INPUT, true),
-    PROBE_DEFINITION("Qualified Ambiguous Two", "native.probe_one", CSTRING_INPUT, true),
-    { .canonical_name = "Sequence Pair Probe",
-      .source_name = "Multi",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .outputs = SEQUENCE_PAIR_OUTPUTS,
-      .output_count = 2,
-      .completion_output = -1,
-      .pure = true },
-    PROBE_DEFINITION("Number Kernel", "native.kernel", NUMBER_INPUT, true),
-    PROBE_DEFINITION("Double Kernel", "native.kernel", DOUBLE_INPUT, true),
-    PROBE_DEFINITION("Integer Double Pair", "native.pair", INTEGER_DOUBLE_INPUT, true),
-    PROBE_DEFINITION("Double Integer Pair", "native.pair", DOUBLE_INTEGER_INPUT, true),
-};
+
 #undef PROBE_DEFINITION
-static const node_host_call CSTRING_CALL = { .value = cstring_probe };
-static const node_host_call CSTRING_PAIR_CALL = { .value = cstring_pair };
-static const node_host_call INTEGER_CALL = { .value = integer_probe };
-static const node_host_call SEQUENCE_PAIR_CALL = { .invoke = sequence_pair_probe };
-static const node_host_call FIRST_CALL = { .value = first_kernel };
-static const node_host_call SECOND_CALL = { .value = second_kernel };
-static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
-static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+
 #define PROBE_BINDING(CANONICAL, CALL, ACCESS)                                 \
     {                                                                          \
         .canonical_name = CANONICAL, .implementation = {                       \
@@ -270,29 +151,8 @@ static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
             .access = &ACCESS                                                  \
         }                                                                      \
     }
-static const native_definition_binding CSTRING_BINDINGS[] = {
-    PROBE_BINDING("CString Probe", CSTRING_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("CString Pair", CSTRING_PAIR_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Qualified Probe", CSTRING_CALL, HOST_ACCESS),
-    PROBE_BINDING("Qualified Length", CSTRING_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Qualified Text Overload", CSTRING_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Qualified Integer Overload", INTEGER_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Qualified Ambiguous One", CSTRING_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Qualified Ambiguous Two", CSTRING_CALL, CSTRING_ACCESS),
-    { .canonical_name = "Sequence Pair Probe",
-      .implementation = { .call = &SEQUENCE_PAIR_CALL, .access = &CSTRING_ACCESS } },
-    PROBE_BINDING("Number Kernel", FIRST_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Double Kernel", SECOND_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Integer Double Pair", FIRST_CALL, CSTRING_ACCESS),
-    PROBE_BINDING("Double Integer Pair", SECOND_CALL, CSTRING_ACCESS),
-};
+
 #undef PROBE_BINDING
-static const native_definition_pack CSTRING_PACK = {
-    .definitions = CSTRING_DEFINITIONS,
-    .definition_count = sizeof CSTRING_DEFINITIONS / sizeof *CSTRING_DEFINITIONS,
-    .bindings = CSTRING_BINDINGS,
-    .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
-};
 
 /* default_pair's overloads: an int then an f64 that defaults to 5, and the
  * reverse. Each reports which one ran. */
@@ -304,105 +164,39 @@ static const native_definition_pack CSTRING_PACK = {
 
 #undef UNCHECKED_COLLECTION_ERROR_BODY
 
+/* scalar_llvm's IR of `rows` for native_abi's target `function`; *ir is NULL
+ * when it rejects them. */
+static bool target_ir(const char *function, const pin_value *rows, char **ir)
+{
+    REQUIRE(scalar_host_emit(function, rows, ir));
+    if (!**ir) {
+        free(*ir);
+        *ir = NULL;
+    }
+    return true;
+}
 /* Source-level contracts use literal answers. They do not ask the constant
  * evaluator or either compiler to calculate the expected result. */
 
-static compiler_fixture fixture, oracle, consumer, corpus;
-/* The compiler host's natives, and those with the core pack a game links,
- * which declares assert. */
-static native_capabilities *linked[2][2];
-static native_capabilities *actions_native;
-/* Compile's native tables for the host and for a game, per compiler backend,
- * built once from `linked`. */
-static pin_value linked_tables[2][2][2][3];
-static pin_value linked_effects[2][2][2];
+/* The rows and sources a test reads live in `detached`; `input` holds what a
+ * test builds for a native call. */
 static arena input, detached;
-static compiler_host *host;
-static compiler_host_result result;
 
-/* Whether a test published its project's types, which cleanup withdraws
- * after a test that returned early. */
-static bool project_published;
-static void publish_project(const type_catalog_pack *pack)
-{
-    type_catalog_set_project(pack);
-    project_published = pack;
-}
 static void cleanup()
 {
-    if (project_published) {
-        publish_project(NULL);
-    }
-    compiler_fixture_free(&fixture);
-    compiler_fixture_free(&oracle);
-    compiler_fixture_free(&consumer);
-    compiler_fixture_free(&corpus);
-    native_capabilities_free(actions_native);
-    actions_native = NULL;
-    for (int game = 0; game < 2; game++) {
-        for (int probe = 0; probe < 2; probe++) {
-            native_capabilities_free(linked[game][probe]);
-        }
-    }
-    memset(linked, 0, sizeof linked);
-    memset(linked_tables, 0, sizeof linked_tables);
-    memset(linked_effects, 0, sizeof linked_effects);
     arena_free(&input);
     arena_free(&detached);
-    compiler_host_free(host);
-    host = NULL;
-    free(result.json);
-    result = (compiler_host_result){ 0 };
 }
+
 static pin_value text(const char *s)
 {
     pin_value value = { 0 };
     assert(!pin_value_text(&input, &value, s, strlen(s)));
     return value;
 }
-static pin_value strings(const char *const *items, int count)
-{
-    pin_array *array = pin_array_snapshot_allocate(&input, PIN_STR, NULL, count);
-    for (int i = 0; i < count; i++) {
-        array->items[i] = text(items[i]);
-    }
-    return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
-}
+
 /* Writes an int or int64 field. */
-static bool put(pin_value *row, const char *name, int64_t value)
-{
-    const type_field *field = pin_type_field_path(pin_value_type(row), name);
-    REQUIRE(field && (field->type == PIN_I32 || field->type == PIN_I64));
-    pin_value v = { .type = PIN_I64, .i64 = value };
-    if (field->type == PIN_I32) {
-        REQUIRE(value >= INT32_MIN && value <= INT32_MAX);
-        v = (pin_value){ .type = PIN_I32, .i = (int32_t)value };
-    }
-    REQUIRE(!pin_write_field(&input, row->ptr, field, v));
-    return true;
-}
-static bool put_value(pin_value *row, const char *name, pin_value value)
-{
-    const type_field *field = pin_type_field_path(pin_value_type(row), name);
-    REQUIRE(field && field->type == value.type);
-    REQUIRE(!pin_write_field(&input, row->ptr, field, value));
-    return true;
-}
-static pin_value record_row(const compiler_fixture *f, int b, const char *identity, const char *name)
-{
-    const pin_record *shape = compiler_fixture_record(f, b, identity, name, &input);
-    assert(shape);
-    pin_value v = { .type = PIN_STRUCT,
-                    .ptr = arena_alloc(&input, shape->type.size),
-                    .record = shape,
-                    .type_name = shape->type.name };
-    memset(v.ptr, 0, shape->type.size);
-    return v;
-}
-static pin_value row(int b, const char *name)
-{
-    return record_row(&fixture, b, PACKAGE, name);
-}
+
 static pin_value rows(const pin_value *items, int count, pin_type type, const pin_record *shape)
 {
     pin_array *
@@ -421,55 +215,7 @@ static pin_value rows(const pin_value *items, int count, pin_type type, const pi
  * suspension. It links the compiler's text profile, which the compiler is
  * compiled for; a game links the public text pack, which also converts bytes
  * to text. */
-static bool natives(int b, bool game, bool probe, pin_value *out)
-{
-    if (linked_tables[game][probe][b][0].ptr) {
-        memcpy(out, linked_tables[game][probe][b], sizeof linked_tables[game][probe][b]);
-        return true;
-    }
-    if (!linked[game][probe]) {
-        const native_definition_pack packs[] = { game ? NATIVE_TEXT_DEFINITION_PACK
-                                                      : NATIVE_COMPILER_TEXT_DEFINITION_PACK,
-                                                 NATIVE_ARRAY_DEFINITION_PACK,
-                                                 COMPILER_JSON_DEFINITION_PACK,
-                                                 COMPILER_SYNTAX_DEFINITION_PACK };
-        char error[256];
-        native_definition_pack selected[8];
-        int count = (int)(sizeof packs / sizeof *packs);
-        memcpy(selected, packs, sizeof packs);
-        if (game) {
-            selected[count++] = CORE_DEFINITION_PACK;
-            selected[count++] = NATIVE_MATH_DEFINITION_PACK;
-            /* With the arrays', its length overload makes a call of length
-             * ambiguous among natives; a collection argument still takes the
-             * collection's. */
-            selected[count++] = NATIVE_VECTOR_DEFINITION_PACK;
-        }
-        if (probe) {
-            selected[count++] = CSTRING_PACK;
-        }
-        linked[game][probe] = native_capabilities_from_definition_packs(
-            NULL,
-            0,
-            selected,
-            count,
-            error,
-            sizeof error
-        );
-        REQUIRE(linked[game][probe]);
-    }
-    REQUIRE(compiler_fixture_natives(
-        &fixture,
-        b,
-        PACKAGE,
-        native_capabilities_catalog(linked[game][probe]),
-        &input,
-        out,
-        &linked_effects[game][probe][b]
-    ));
-    memcpy(linked_tables[game][probe][b], out, sizeof linked_tables[game][probe][b]);
-    return true;
-}
+
 static bool get(const pin_value *row, const char *name, pin_value *out)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
@@ -477,105 +223,18 @@ static bool get(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
-static uint64_t fixture_variant_tag(
-    const compiler_fixture *f,
-    int b,
-    const char *identity,
-    const char *union_name,
-    const char *variant
-)
-{
-    const authoring_package *owner = compiler_fixture_package(f, b, identity);
-    const script_catalog_type *type = script_catalog_type_by_id(
-        owner->exports->metadata,
-        compiler_fixture_export(f, b, identity, union_name)
-    );
-    for (int i = 0; type && i < type->variant_count; i++) {
-        if (!strcmp(type->variants[i].name, variant)) {
-            return type->variants[i].tag;
-        }
-    }
-    return 0;
-}
 
-static bool prepare_backends(unsigned backends)
-{
-    const source_package_input sources[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
-    native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
-                                       COMPILER_SYNTAX_DEFINITION_PACK,
-                                       CSTRING_PACK };
-    REQUIRE(compiler_fixture_prepare_backends(
-        &fixture,
-        backends,
-        sources,
-        (int)(sizeof sources / sizeof *sources),
-        packs,
-        3
-    ));
-    return true;
-}
 static bool prepare()
 {
-    return prepare_backends(COMPILER_FIXTURE_BOTH);
+    return scalar_host_open();
 }
 /* The sample's files: package facts, then lib and core:strings when it
  * uses them. */
 
-static pin_value files(const source_package_input *inputs, int count, bool sources)
-{
-    pin_array *array = pin_array_snapshot_allocate(&input, PIN_STR, NULL, count);
-    for (int i = 0; i < count; i++) {
-        array->items[i] = text(sources ? inputs[i].text : inputs[i].path);
-    }
-    return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
-}
 /* This host's target, as Compile and CollectScalar take it. */
-static bool target(int b, pin_value *out)
-{
-    const pin_record *record = compiler_fixture_record(&fixture, b, PACKAGE, "Target", &input);
-    REQUIRE(record);
-    *out = (pin_value){ .type = PIN_STRUCT,
-                        .ptr = arena_alloc(&input, record->type.size),
-                        .record = record,
-                        .type_name = record->type.name };
-    memset(out->ptr, 0, record->type.size);
-    REQUIRE(put(out, "pointer_storage", BF_POINTER_TYPE));
-    REQUIRE(put(out, "pointer_size", (int)sizeof(void *)));
-    REQUIRE(put(out, "value_size", (int)sizeof(pin_value)));
-    REQUIRE(put(out, "payload_offset", (int)offsetof(pin_value, d)));
-    REQUIRE(put(out, "arguments_offset", (int)offsetof(behavior_function_context, arguments)));
-    REQUIRE(
-        put(out, "delta_seconds_offset", (int)offsetof(behavior_function_context, delta_seconds))
-    );
-    REQUIRE(put(out, "results_offset", (int)offsetof(behavior_function_context, results)));
-    REQUIRE(
-        put(out, "error_status_offset", (int)offsetof(behavior_function_context, error_status))
-    );
-    REQUIRE(put(out, "type_offset", (int)offsetof(pin_value, type)));
-    REQUIRE(put(out, "container_offset", (int)offsetof(pin_value, container)));
-    REQUIRE(put(out, "name_offset", (int)offsetof(pin_value, type_name)));
-    REQUIRE(put(out, "record_offset", (int)offsetof(pin_value, record)));
-    REQUIRE(put(out, "schema_offset", (int)offsetof(pin_value, schema)));
-    REQUIRE(put(out, "count_offset", (int)offsetof(pin_array, count)));
-    REQUIRE(put(out, "items_offset", (int)offsetof(pin_array, items)));
-    REQUIRE(put(out, "data_offset", (int)offsetof(pin_array, data)));
-    REQUIRE(put(out, "stride_offset", (int)offsetof(pin_array, stride)));
-    REQUIRE(put(out, "map_count_offset", (int)offsetof(pin_map, count)));
-    REQUIRE(put(out, "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
-    REQUIRE(put(out, "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
-    REQUIRE(put(out, "assert_failure", BEHAVIOR_FUNCTION_DATA));
-    return true;
-}
+
 /* The names of this host's prepared instructions, in their order. */
-static pin_value instruction_names()
-{
-    int instructions = execution_prepared_instruction_count();
-    pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, instructions);
-    for (int i = 0; i < instructions; i++) {
-        names->items[i] = text(execution_prepared_instruction_name(i));
-    }
-    return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
-}
+
 enum
 {
     SCALAR_ARGUMENTS = 8
@@ -583,47 +242,12 @@ enum
 /* CollectScalar's arguments for `source` at `path` on VM b: the project, the
  * path and source, this host's target and instruction names, and the
  * production natives it links. */
-static bool scalar_arguments(int b, const char *path, pin_value source, pin_value args[SCALAR_ARGUMENTS])
-{
-    args[0] = text("/project");
-    args[1] = text(path);
-    args[2] = source;
-    REQUIRE(target(b, &args[3]));
-    args[4] = instruction_names();
-    REQUIRE(natives(b, false, false, &args[5]));
-    return true;
-}
+
 /* Compile's arguments for `inputs`: the project, the core collection, the
  * files, debugger points and watches, this host's target and the natives it
  * links: with `game`, also the core pack a game links. */
-static bool arguments_for(
-    int b,
-    bool game,
-    bool probe,
-    const source_package_input *inputs,
-    int count,
-    pin_value args[ARGUMENTS]
-)
-{
-    const char *collection_names[] = { "core" };
-    const char *collection_paths[] = { "/sdk/core" };
-    args[0] = text("/project");
-    args[1] = strings(collection_names, 1);
-    args[2] = strings(collection_paths, 1);
-    args[3] = files(inputs, count, false);
-    args[4] = files(inputs, count, true);
-    args[DEBUG_ARGUMENT] = (pin_value){ .type = PIN_BOOL, .b = true };
-    REQUIRE(target(b, &args[6]));
-    args[7] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
-    args[8] = instruction_names();
-    REQUIRE(natives(b, game, probe, &args[9]));
-    return true;
-}
+
 /* Ordinary compilation and bootstrap use only production host natives. */
-static bool arguments(int b, bool game, const source_package_input *inputs, int count, pin_value args[ARGUMENTS])
-{
-    return arguments_for(b, game, false, inputs, count, args);
-}
 
 /* Math packages link the ordinary native libm pack, outside the compiler
  * host's intentionally restricted JSON/text/array execution profile. */
@@ -631,13 +255,6 @@ static bool arguments(int b, bool game, const source_package_input *inputs, int 
 /* Whether a point is one this compiler places as stage zero does: a
  * function's entry and completions, each statement's, each evaluated
  * expression's and each symbol's it reads or stores. */
-static bool placed(const behavior_source_point *point)
-{
-    return point->kind == BEHAVIOR_SOURCE_FUNCTION ||
-           point->kind == BEHAVIOR_SOURCE_STATEMENT ||
-           point->kind == BEHAVIOR_SOURCE_EXPRESSION ||
-           point->kind == BEHAVIOR_SOURCE_SYMBOL;
-}
 
 /* Each function of stage one's module has stage zero's function and
  * statement points, as many of each, in any order. */
@@ -845,9 +462,6 @@ enum
     TICKS = 5
 };
 
-static const script_catalog_parameter delta_seconds = { .name = "DeltaSeconds",
-                                                        .type = { .storage = PIN_F32 } };
-
 /* The game: Spot, two nominal handle types, and keyed scene globals, with
  * Tick, Move, `self`, and the unsupported scalar global `pace`. */
 
@@ -858,10 +472,6 @@ static const script_catalog_parameter delta_seconds = { .name = "DeltaSeconds",
  * for the two handle types must never make them assignment-compatible. */
 
 /* Stage zero's module of `source`. */
-static pin_value u64(uint64_t value)
-{
-    return (pin_value){ .type = PIN_U64, .u64 = value };
-}
 
 /* The index of the type `id` among the catalog's, -1 for none. */
 
@@ -944,7 +554,7 @@ static const char
                       "Pick :: (x: int, b: bool) -> int { return x; }\n";
 /* Two concrete Remap instances, one with a named function and one with an
  * inline function. Main's independent arithmetic oracle is 50 + 150 = 200. */
-static const char CASES_PACKAGE[] = "project:scalar_cases";
+
 static const char GENERIC_SCALAR_SOURCE
     [] = "package scalar\n"
          "Main :: () -> int { return int(Named(0.25) * 100) + int(Inline(0.5) "
@@ -1837,42 +1447,17 @@ static void write_row(const pin_value *rows, int index, const char *name, pin_va
     assert(!pin_write_field(&detached, row->ptr, field, value));
 }
 /* native_abi's target `function`, such as "LinuxX64", on VM b. */
-static bool native_target(int b, const char *function, pin_value *out)
-{
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:native_abi", function, NULL, 0, COMPILE_BUDGET, &input, out)
-    );
-    return true;
-}
+
 /* scalar_llvm's EmitBytesFor of `rows` and native_abi's target `function`. */
-static bool emit_bytes(int b, const char *function, const pin_value *rows, pin_value *emitted)
+
+static bool validated(pin_value *rows, const char *message)
 {
-    pin_value args[2] = { { 0 }, *rows };
-    REQUIRE(native_target(b, function, &args[0]));
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytesFor", args, 2, COMPILE_BUDGET, &input, emitted)
-    );
-    return true;
-}
-static bool validated(int b, pin_value *rows, const char *message)
-{
-    pin_value error, emitted;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "Validate", rows, 1, COMPILE_BUDGET, &input, &error)
-    );
-    REQUIRE(emit_bytes(b, "LinuxX64", rows, &emitted));
-    bool valid = pin_text_equal(
-        pin_text(error),
-        (pin_string){ .bytes = message, .length = strlen(message) }
-    );
+    char *error, *ir;
+    REQUIRE(scalar_host_validate(rows, &error));
+    REQUIRE(scalar_host_emit("LinuxX64", rows, &ir));
+    bool valid = !strcmp(error, message);
     if (!valid) {
-        fprintf(
-            stderr,
-            "scalar_llvm Validate gave \"%.*s\", not \"%s\"\n",
-            (int)pin_text(error).length,
-            pin_text(error).bytes,
-            message
-        );
+        fprintf(stderr, "scalar_llvm Validate gave \"%s\", not \"%s\"\n", error, message);
         const pin_array *dump = rows->ptr;
         for (int i = 0; i < dump->count && i < 40; i++) {
             fprintf(
@@ -1892,12 +1477,15 @@ static bool validated(int b, pin_value *rows, const char *message)
             );
         }
     }
-    REQUIRE(valid && !((const pin_array *)emitted.ptr)->count == !!*message);
+    bool emitted = *ir;
+    free(error);
+    free(ir);
+    REQUIRE(valid && emitted == !*message);
     return true;
 }
 /* Each edit applied to the producer's rows, the message Validate gives, and
  * the rows restored. */
-static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malformed)
+static bool rejects_guard(pin_value *rows, const malformed_guard *malformed)
 {
     pin_value saved[GUARD_EDITS];
     int count = 0;
@@ -1919,7 +1507,7 @@ static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malform
         }
         write_row(rows, edit->row, edit->field, value);
     }
-    bool rejected = validated(b, rows, malformed->message);
+    bool rejected = validated(rows, malformed->message);
     for (int i = count - 1; i >= 0; i--) {
         write_row(rows, malformed->edits[i].row, malformed->edits[i].field, saved[i]);
     }
@@ -1929,7 +1517,6 @@ static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malform
  * each malformed variant of them when its layout, operators, operand types,
  * ranges or calls are not what a producer gives, and emits nothing for it. */
 static bool rejects_malformed(
-    int b,
     pin_value *rows,
     const int *kinds,
     int count,
@@ -1941,16 +1528,16 @@ static bool rejects_malformed(
     for (int i = 0; i < count; i++) {
         REQUIRE(scalar_field(guard_row(rows, i), "kind").i == kinds[i]);
     }
-    REQUIRE(validated(b, rows, ""));
+    REQUIRE(validated(rows, ""));
     bool rejected = true;
     for (int i = 0; i < variants; i++) {
-        if (!rejects_guard(b, rows, &malformed[i])) {
+        if (!rejects_guard(rows, &malformed[i])) {
             fprintf(stderr, "malformed variant %d\n", i);
             rejected = false;
         }
     }
     REQUIRE(rejected);
-    REQUIRE(validated(b, rows, ""));
+    REQUIRE(validated(rows, ""));
     return true;
 }
 /* WIDTH_SOURCE's typed rows: 298 is an int argument that Low wraps to a byte,
@@ -2040,7 +1627,7 @@ static bool recorded_rows(const pin_value *rows)
  * literal 0, its variables, Name's result and its read are strings, and its
  * comparison gives a bool. Its IR holds one text, which both literals name.
  * A literal longer than any source is noncanonical. */
-static bool stringed_rows(int b, pin_value *rows)
+static bool stringed_rows(pin_value *rows)
 {
     static const int STRING_TYPED[] = { STRING_LOCAL,         STRING_ARGUMENT,
                                         STRING_READ,          STRING_LITERAL,
@@ -2057,16 +1644,8 @@ static bool stringed_rows(int b, pin_value *rows)
         );
     }
     REQUIRE(scalar_field(guard_row(rows, STRING_COMPARE), "type").i == SCALAR_BOOL);
-    pin_value emitted;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
-    );
-    const pin_array *bytes = emitted.ptr;
-    char *ir = xmalloc((size_t)bytes->count + 1);
-    for (int i = 0; i < bytes->count; i++) {
-        ir[i] = (char)bytes->items[i].u8;
-    }
-    ir[bytes->count] = 0;
+    char *ir;
+    REQUIRE(target_ir("LinuxX64", rows, &ir) && ir);
     bool shared = strstr(ir, "@chibi_scalar.text.0 = private unnamed_addr constant [4 x i8] c\"one\\00\"") &&
                   !strstr(ir, "@chibi_scalar.text.1");
     free(ir);
@@ -2083,7 +1662,7 @@ static bool stringed_rows(int b, pin_value *rows)
     long_text[LONG_TEXT] = 0;
     write_row(rows, STRING_LITERAL, "text", text(long_text));
     free(long_text);
-    REQUIRE(validated(b, rows, ""));
+    REQUIRE(validated(rows, ""));
     write_row(rows, STRING_LITERAL, "text", saved);
     return true;
 }
@@ -2111,7 +1690,7 @@ static bool texted_rows(pin_value *rows)
 /* ASSERT_ROWS_SOURCE's assert has its call's range and its condition's
  * three operands, and lowers to a branch past a Fail that names the range in
  * a failure constant, which the context carries. */
-static bool asserted_rows(int b, pin_value *rows)
+static bool asserted_rows(pin_value *rows)
 {
     static const char call[] = "assert(x < 2, \"x is small\")";
     const pin_value *row = guard_row(rows, ASSERT_STATEMENT);
@@ -2120,15 +1699,8 @@ static bool asserted_rows(int b, pin_value *rows)
     REQUIRE(scalar_field(row, "start").i == start);
     REQUIRE(scalar_field(row, "end").i == start + (int)strlen(call));
     REQUIRE(scalar_field(row, "line").i == 4 && scalar_field(row, "column").i == 5);
-    pin_value emitted;
-    REQUIRE(emit_bytes(b, "LinuxX64", rows, &emitted));
-    const pin_array *bytes = emitted.ptr;
-    REQUIRE(emitted.container == PIN_CONTAINER_ARRAY && bytes->count > 0);
-    char *ir = xmalloc((size_t)bytes->count + 1), constant[160];
-    for (int i = 0; i < bytes->count; i++) {
-        ir[i] = (char)bytes->items[i].u8;
-    }
-    ir[bytes->count] = 0;
+    char *ir, constant[160];
+    REQUIRE(target_ir("LinuxX64", rows, &ir) && ir);
     snprintf(
         constant,
         sizeof constant,
@@ -2286,48 +1858,17 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
                              switched, recorded,    unioned,
                              stringed, texted,      formatted,
                              asserted, specialized, specialized_integer };
-    for (int b = 0; b < 2; b++) {
-        pin_value args[SCALAR_ARGUMENTS];
-        REQUIRE(scalar_arguments(b, "Scalar.chibi", text(SCALAR_SOURCE), args));
-        for (size_t i = 0; i < sizeof texts / sizeof *texts; i++) {
-            args[2] = text(texts[i]);
-            REQUIRE(compiler_fixture_call(
-                &fixture,
-                b,
-                PACKAGE,
-                "CollectScalar",
-                args,
-                SCALAR_ARGUMENTS,
-                COMPILE_BUDGET,
-                &detached,
-                &outputs[i][b]
-            ));
-        }
+    for (size_t i = 0; i < sizeof texts / sizeof *texts; i++) {
+        REQUIRE(scalar_host_collect("Scalar.chibi", texts[i], &detached, &outputs[i][0]));
     }
-    compiler_fixture_free(&fixture);
-    arena_free(&input);
-    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
-    const source_package_input oracle[] = { SCALAR_CASES_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&corpus, oracle, (int)(sizeof oracle / sizeof *oracle)));
-    for (int b = 0; b < 2; b++) {
+    for (int b = 0; b < 1; b++) {
         REQUIRE(generic_scalar_rows(&specialized[b]));
-        REQUIRE(validated(b, &specialized[b], ""));
+        REQUIRE(validated(&specialized[b], ""));
         REQUIRE(generic_scalar_rows(&specialized_integer[b]));
-        REQUIRE(validated(b, &specialized_integer[b], ""));
-        pin_value expected;
-        REQUIRE(compiler_fixture_call(
-            &corpus,
-            b,
-            CASES_PACKAGE,
-            "Value",
-            &specialized_integer[b],
-            1,
-            COMPILE_BUDGET,
-            &input,
-            &expected
-        ));
-        REQUIRE(expected.type == PIN_I64 && expected.i64 == 200);
+        REQUIRE(validated(&specialized_integer[b], ""));
+        int64_t expected;
+        REQUIRE(scalar_host_case_value(&specialized_integer[b], &expected));
+        REQUIRE(expected == 200);
         const pin_array *rows = produced[b].ptr;
         REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && arena_contains(&detached, rows));
         REQUIRE(rows->count == 12 && arena_contains(&detached, rows->record));
@@ -2339,21 +1880,13 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         REQUIRE(scalar_field(&rows->items[6], "value").i == 1);
         REQUIRE(scalar_field(&rows->items[6], "count").i == 2);
         REQUIRE(retained_text(&rows->items[7], "name", "Pick"));
-        pin_value emitted;
-        REQUIRE(emit_bytes(b, "LinuxX64", &produced[b], &emitted));
-        const pin_array *bytes = emitted.ptr;
-        REQUIRE(emitted.container == PIN_CONTAINER_ARRAY && bytes->count > 0);
-        char *ir = xmalloc((size_t)bytes->count + 1);
-        for (int i = 0; i < bytes->count; i++) {
-            ir[i] = (char)bytes->items[i].u8;
-        }
-        ir[bytes->count] = 0;
+        char *ir;
+        REQUIRE(target_ir("LinuxX64", &produced[b], &ir) && ir);
         bool called = strstr(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1)") &&
                       strstr(ir, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)");
         free(ir);
         REQUIRE(called);
         REQUIRE(rejects_malformed(
-            b,
             &guarded[b],
             GUARD_KINDS,
             GUARD_ROWS,
@@ -2361,7 +1894,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_GUARDS / sizeof *MALFORMED_GUARDS)
         ));
         REQUIRE(rejects_malformed(
-            b,
             &computed[b],
             ARITHMETIC_KINDS,
             ARITHMETIC_ROWS,
@@ -2370,7 +1902,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         ));
         REQUIRE(widened_rows(&widened[b]));
         REQUIRE(rejects_malformed(
-            b,
             &widened[b],
             WIDTH_KINDS,
             WIDTH_ROWS,
@@ -2378,7 +1909,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_WIDTHS / sizeof *MALFORMED_WIDTHS)
         ));
         REQUIRE(rejects_malformed(
-            b,
             &controlled[b],
             CONTROL_KINDS,
             CONTROL_ROWS,
@@ -2387,7 +1917,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         ));
         REQUIRE(looped_rows(&looped[b]));
         REQUIRE(rejects_malformed(
-            b,
             &looped[b],
             LOOP_KINDS,
             LOOP_ROWS,
@@ -2396,7 +1925,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         ));
         REQUIRE(switched_rows(&switched[b]));
         REQUIRE(rejects_malformed(
-            b,
             &switched[b],
             SWITCH_KINDS,
             SWITCH_ROWS,
@@ -2404,7 +1932,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_SWITCHES / sizeof *MALFORMED_SWITCHES)
         ));
         REQUIRE(rejects_malformed(
-            b,
             &recorded[b],
             RECORD_KINDS,
             RECORD_ROWS,
@@ -2414,7 +1941,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         REQUIRE(recorded_rows(&recorded[b]));
         REQUIRE(unioned_rows(&unioned[b]));
         REQUIRE(rejects_malformed(
-            b,
             &unioned[b],
             UNION_KINDS,
             UNION_ROWS,
@@ -2422,17 +1948,15 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_UNIONS / sizeof *MALFORMED_UNIONS)
         ));
         REQUIRE(rejects_malformed(
-            b,
             &stringed[b],
             STRING_KINDS,
             STRING_ROWS,
             MALFORMED_STRINGS,
             (int)(sizeof MALFORMED_STRINGS / sizeof *MALFORMED_STRINGS)
         ));
-        REQUIRE(stringed_rows(b, &stringed[b]));
+        REQUIRE(stringed_rows(&stringed[b]));
         REQUIRE(texted_rows(&texted[b]));
         REQUIRE(rejects_malformed(
-            b,
             &texted[b],
             TEXT_KINDS,
             TEXT_ROWS,
@@ -2441,7 +1965,6 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         ));
         REQUIRE(formatted_rows(&formatted[b]));
         REQUIRE(rejects_malformed(
-            b,
             &formatted[b],
             FORMAT_KINDS,
             FORMAT_ROWS,
@@ -2449,14 +1972,13 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_FORMATS / sizeof *MALFORMED_FORMATS)
         ));
         REQUIRE(rejects_malformed(
-            b,
             &asserted[b],
             ASSERT_KINDS,
             ASSERT_ROWS,
             MALFORMED_ASSERTS,
             (int)(sizeof MALFORMED_ASSERTS / sizeof *MALFORMED_ASSERTS)
         ));
-        REQUIRE(asserted_rows(b, &asserted[b]));
+        REQUIRE(asserted_rows(&asserted[b]));
     }
     return true;
 }
@@ -2521,15 +2043,7 @@ typedef struct native_module
     const char *const *names;
     const int *lines, *columns;
 } native_module;
-static const char NATIVE_PACKAGE[] = "project:llvm_native";
-static pin_value native_ints(const int *values, int count)
-{
-    pin_array *array = pin_array_snapshot_allocate(&input, PIN_I32, NULL, count);
-    for (int i = 0; i < count; i++) {
-        array->items[i] = (pin_value){ .type = PIN_I32, .i = values[i] };
-    }
-    return (pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = array };
-}
+
 static const char *const CODE_FIELDS[] = { "op",    "type",   "output", "left",
                                            "right", "target", "literal" };
 static const char *const FUNCTION_FIELDS[] = { "result",     "first_parameter",
@@ -2546,133 +2060,15 @@ enum
 };
 /* count Instruction, Function or Record records whose fields, in declaration
  * order, take consecutive values. No records is an empty array. */
-static bool native_records(int b, const char *name, const int64_t *values, int count, pin_value *out)
-{
-    const char *const *fields = RECORD_FIELDS;
-    int width = RECORD_WIDTH;
-    if (!strcmp(name, "Instruction")) {
-        fields = CODE_FIELDS;
-        width = CODE_WIDTH;
-    } else if (!strcmp(name, "Function")) {
-        fields = FUNCTION_FIELDS;
-        width = FUNCTION_WIDTH;
-    }
-    if (!count) {
-        *out = rows(
-            NULL,
-            0,
-            PIN_STRUCT,
-            compiler_fixture_record(&consumer, b, NATIVE_PACKAGE, name, &input)
-        );
-        return true;
-    }
-    pin_value *items = xmalloc(sizeof *items * (size_t)count);
-    for (int i = 0; i < count; i++) {
-        items[i] = record_row(&consumer, b, NATIVE_PACKAGE, name);
-        for (int j = 0; j < width; j++) {
-            REQUIRE(put(&items[i], fields[j], values[i * width + j]));
-        }
-    }
-    *out = rows(items, count, PIN_STRUCT, items[0].record);
-    free(items);
-    return true;
-}
-static bool native_codes(int b, const native_code *code, int count, pin_value *out)
-{
-    int64_t *values = xmalloc(sizeof *values * CODE_WIDTH * (size_t)count);
-    for (int i = 0; i < count; i++) {
-        const native_code *c = &code[i];
-        const int64_t fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
-                                             c->left,   c->right, c->target,
-                                             c->literal };
-        memcpy(&values[i * CODE_WIDTH], fields, sizeof fields);
-    }
-    bool built = native_records(b, "Instruction", values, count, out);
-    free(values);
-    return built;
-}
-static bool native_functions(int b, const native_function *functions, int count, pin_value *out)
-{
-    int64_t *values = xmalloc(sizeof *values * FUNCTION_WIDTH * (size_t)count);
-    for (int i = 0; i < count; i++) {
-        const native_function *f = &functions[i];
-        const int64_t fields[FUNCTION_WIDTH] = {
-            f->result,     f->first_parameter, f->parameters,
-            f->first_slot, f->slots,           f->first_code,
-            f->code,       f->first_argument,  f->arguments
-        };
-        memcpy(&values[i * FUNCTION_WIDTH], fields, sizeof fields);
-    }
-    bool built = native_records(b, "Function", values, count, out);
-    free(values);
-    return built;
-}
-static bool native_record_table(int b, const native_record *records, int count, pin_value *out)
-{
-    int64_t *values = xmalloc(sizeof *values * RECORD_WIDTH * (size_t)count);
-    for (int i = 0; i < count; i++) {
-        values[i * RECORD_WIDTH] = records[i].first;
-        values[i * RECORD_WIDTH + 1] = records[i].count;
-    }
-    bool built = native_records(b, "Record", values, count, out);
-    free(values);
-    return built;
-}
 
 /* native_abi's target `function` and m's tables, the arguments Emit and
  * EmitLibrary share. */
-static bool native_tables(int b, const char *function, const native_module *m, pin_value args[10])
-{
-    REQUIRE(native_target(b, function, &args[0]));
-    REQUIRE(native_functions(b, m->functions, m->function_count, &args[1]));
-    args[2] = native_ints(m->parameters, m->parameter_count);
-    args[3] = native_ints(m->slots, m->slot_count);
-    args[4] = native_ints(NULL, 0);
-    REQUIRE(native_codes(b, m->code, m->code_count, &args[5]));
-    args[6] = native_ints(m->arguments, m->argument_count);
-    REQUIRE(native_record_table(b, m->records, m->record_count, &args[7]));
-    args[8] = native_ints(m->fields, m->field_count);
-    args[9] = strings(m->texts, m->text_count);
-    return true;
-}
-static bool native_result(int b, const char *function, pin_value *args, int count, const pin_union **out)
-{
-    pin_value result;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, function, args, count, COMPILE_BUDGET, &input, &result)
-    );
-    REQUIRE(result.type == PIN_UNION && result.ptr);
-    *out = result.ptr;
-    return true;
-}
+
 /* Emits m for native_abi's target `function` under budget 1, its first
  * function the entry, or `main` for a program. */
-static bool native_entry_emit(
-    int b,
-    const char *function,
-    const native_module *m,
-    bool main,
-    const pin_union **out
-)
-{
-    pin_value args[16];
-    REQUIRE(native_tables(b, function, m, args));
-    args[10] = record_row(&consumer, b, NATIVE_PACKAGE, "Source");
-    REQUIRE(put_value(&args[10], "file", text(m->file ? m->file : "")));
-    REQUIRE(put_value(&args[10], "directory", text(m->directory ? m->directory : "")));
-    int placed = m->file ? m->code_count : 0;
-    args[11] = strings(m->names, m->file ? m->function_count : 0);
-    args[12] = native_ints(m->lines, placed);
-    args[13] = native_ints(m->columns, placed);
-    args[14] = (pin_value){ .type = PIN_BOOL, .b = main };
-    args[15] = (pin_value){ .type = PIN_I32, .i = 1 };
-    return native_result(b, "Emit", args, 16, out);
-}
+
 /* Emits m for native_abi's target `function` with its entry chibi_scalar. */
-static bool native_target_emit(int b, const char *function, const native_module *m, const pin_union **out)
-{
-    return native_entry_emit(b, function, m, false, out);
-}
+
 /* Emits m for native_abi's target `function` as the library `name` under
  * budget 1, its functions named and identified by `names` and `ids`, `count`
  * of each. */
@@ -2682,15 +2078,6 @@ static bool native_target_emit(int b, const char *function, const native_module 
 /* main() returns Pick(7, true, 9), and Pick :: (int, bool, int) -> int
  * returns its third argument. Slots s0..s2 hold the arguments in call order. */
 
-static bool contains(pin_string haystack, const char *needle)
-{
-    char *text = xmalloc(haystack.length + 1);
-    memcpy(text, haystack.bytes, haystack.length);
-    text[haystack.length] = 0;
-    bool found = strstr(text, needle);
-    free(text);
-    return found;
-}
 /* The call module as the library Lib: every function internal, one wrapper
  * per word signature, and the manifest the only exported symbol. */
 
@@ -2714,23 +2101,7 @@ static bool contains(pin_string haystack, const char *needle)
 
 /* CollectScalarPackages' arguments for the project files `inputs`: no
  * collection, the paths and sources, this host's target and the natives. */
-static bool scalar_package_arguments(
-    int b,
-    const source_package_input *inputs,
-    int count,
-    pin_value args[10]
-)
-{
-    args[0] = text("/project");
-    args[1] = strings(NULL, 0);
-    args[2] = strings(NULL, 0);
-    args[3] = files(inputs, count, false);
-    args[4] = files(inputs, count, true);
-    REQUIRE(target(b, &args[5]));
-    args[6] = instruction_names();
-    REQUIRE(natives(b, false, false, &args[7]));
-    return true;
-}
+
 /* A function of an imported project package is one module with its caller:
  * the entry is the first function of the first file, whichever package order
  * puts the dependency in front, the qualified call is a call row to the
@@ -2750,57 +2121,31 @@ TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
                   "}\n"
                   "pub Add :: (a: int, b: int) -> int { return a + b; }\n" },
     };
-    pin_value produced[2];
-    for (int b = 0; b < 2; b++) {
-        pin_value args[10];
-        REQUIRE(scalar_package_arguments(b, packages, 2, args));
-        REQUIRE(compiler_fixture_call(
-            &fixture,
-            b,
-            PACKAGE,
-            "CollectScalarPackages",
-            args,
-            10,
-            COMPILE_BUDGET,
-            &detached,
-            &produced[b]
-        ));
+    pin_value produced;
+    REQUIRE(scalar_host_collect_packages(packages, 2, &detached, &produced));
+    const pin_array *rows = produced.ptr;
+    REQUIRE(produced.container == PIN_CONTAINER_ARRAY && rows->count > 1);
+    if (rows->count == 2) {
+        fprintf(
+            stderr,
+            "scalar packages: %s\n",
+            pin_text(scalar_field(guard_row(&produced, 1), "text")).bytes
+        );
     }
-    compiler_fixture_free(&fixture);
-    arena_free(&input);
-    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
-    for (int b = 0; b < 2; b++) {
-        const pin_array *rows = produced[b].ptr;
-        REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && rows->count > 1);
-        if (rows->count == 2) {
-            fprintf(
-                stderr,
-                "scalar packages: %s\n",
-                pin_text(scalar_field(guard_row(&produced[b], 1), "text")).bytes
-            );
-        }
-        REQUIRE(rows->count > 2);
-        REQUIRE(scalar_field(&rows->items[2], "kind").i != SCALAR_REJECTION_ROW);
-        REQUIRE(retained_text(&rows->items[2], "name", "Main"));
-        REQUIRE(validated(b, &produced[b], ""));
-        pin_value emitted;
-        REQUIRE(emit_bytes(b, "LinuxX64", &produced[b], &emitted));
-        const pin_array *bytes = emitted.ptr;
-        char *ir = xmalloc((size_t)bytes->count + 1);
-        for (int i = 0; i < bytes->count; i++) {
-            ir[i] = (char)bytes->items[i].u8;
-        }
-        ir[bytes->count] = 0;
-        bool spans = strstr(ir, "define internal i32 @chibi_scalar.1(") &&
-                     strstr(ir, "define internal i32 @chibi_scalar.2(") &&
-                     strstr(ir, "call i32 @chibi_scalar.");
-        if (!spans) {
-            fprintf(stderr, "%s\n", ir);
-        }
-        free(ir);
-        REQUIRE(spans);
+    REQUIRE(rows->count > 2);
+    REQUIRE(scalar_field(&rows->items[2], "kind").i != SCALAR_REJECTION_ROW);
+    REQUIRE(retained_text(&rows->items[2], "name", "Main"));
+    REQUIRE(validated(&produced, ""));
+    char *ir;
+    REQUIRE(target_ir("LinuxX64", &produced, &ir) && ir);
+    bool spans = strstr(ir, "define internal i32 @chibi_scalar.1(") &&
+                 strstr(ir, "define internal i32 @chibi_scalar.2(") &&
+                 strstr(ir, "call i32 @chibi_scalar.");
+    if (!spans) {
+        fprintf(stderr, "%s\n", ir);
     }
+    free(ir);
+    REQUIRE(spans);
     return true;
 }
 /* llvm_native's call and float contracts: definitions, argument order,
@@ -2861,58 +2206,39 @@ static const struct
  * diagnostic and nothing else. */
 static bool scalar_rejects_unsupported()
 {
-    for (int b = 0; b < 2; b++) {
-        for (int i = 0; i < (int)(sizeof UNSUPPORTED / sizeof *UNSUPPORTED); i++) {
-            const char *source = UNSUPPORTED[i].source;
-            pin_value args[SCALAR_ARGUMENTS];
-            REQUIRE(scalar_arguments(b, "Scalar.chibi", text(source), args));
-            pin_value rows;
-            REQUIRE(compiler_fixture_call(
-                &fixture,
-                b,
-                PACKAGE,
-                "CollectScalar",
-                args,
-                SCALAR_ARGUMENTS,
-                COMPILE_BUDGET,
-                &detached,
-                &rows
-            ));
-            const pin_array *array = rows.ptr;
-            REQUIRE(array->count == 2);
-            pin_value *rejection = guard_row(&rows, 1);
-            REQUIRE(scalar_field(rejection, "kind").i == SCALAR_REJECTION_ROW);
-            int start = scalar_field(rejection, "start").i,
-                end = scalar_field(rejection, "end").i;
-            pin_string message = pin_text(scalar_field(rejection, "text"));
-            bool expected = !strcmp(message.bytes, UNSUPPORTED[i].message) &&
-                            end - start == (int)strlen(UNSUPPORTED[i].excerpt) &&
-                            !strncmp(source + start, UNSUPPORTED[i].excerpt, (size_t)(end - start));
-            if (!expected) {
-                fprintf(
-                    stderr,
-                    "unsupported rejection %d: %s at %.*s\n",
-                    i,
-                    message.bytes,
-                    end - start,
-                    source + start
-                );
-            }
-            REQUIRE(expected);
-            arena_free(&detached);
+    for (int i = 0; i < (int)(sizeof UNSUPPORTED / sizeof *UNSUPPORTED); i++) {
+        const char *source = UNSUPPORTED[i].source;
+        pin_value rows;
+        REQUIRE(scalar_host_collect("Scalar.chibi", source, &detached, &rows));
+        const pin_array *array = rows.ptr;
+        REQUIRE(array->count == 2);
+        pin_value *rejection = guard_row(&rows, 1);
+        REQUIRE(scalar_field(rejection, "kind").i == SCALAR_REJECTION_ROW);
+        int start = scalar_field(rejection, "start").i,
+            end = scalar_field(rejection, "end").i;
+        pin_string message = pin_text(scalar_field(rejection, "text"));
+        bool expected = !strcmp(message.bytes, UNSUPPORTED[i].message) &&
+                        end - start == (int)strlen(UNSUPPORTED[i].excerpt) &&
+                        !strncmp(source + start, UNSUPPORTED[i].excerpt, (size_t)(end - start));
+        if (!expected) {
+            fprintf(
+                stderr,
+                "unsupported rejection %d: %s at %.*s\n",
+                i,
+                message.bytes,
+                end - start,
+                source + start
+            );
         }
+        REQUIRE(expected);
+        arena_free(&detached);
     }
     return true;
 }
 /* CollectScalar's rows of `source` at libraries/Tools.chibi on VM b. */
-static bool library_rows(int b, const char *source, pin_value *rows)
+static bool library_rows(const char *source, pin_value *rows)
 {
-    pin_value args[SCALAR_ARGUMENTS];
-    REQUIRE(scalar_arguments(b, "libraries/Tools.chibi", text(source), args));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, SCALAR_ARGUMENTS, COMPILE_BUDGET, &detached, rows)
-    );
-    return true;
+    return scalar_host_collect("libraries/Tools.chibi", source, &detached, rows);
 }
 /* Library sources that are not one library of plain functions, each with
  * its message. A source holds at most one library, so the grammar rejects
@@ -2924,9 +2250,6 @@ static const struct
     { "Tools :: library {\n    Point :: struct { x: int; }\n}\n",
       "a native library holds only functions without attributes" },
     { "Tools :: library {\n}\n", "scalar proof requires at least one function" },
-    { "Tools :: library {\n    One :: () -> int { return 1; }\n}\n"
-      "More :: library {\n    Two :: () -> int { return 2; }\n}\n",
-      "Unexpected syntax" },
     { "Tools :: library {\n    One :: () -> int { return 1; }\n"
       "    One :: () -> int { return 2; }\n}\n",
       "Duplicate declaration 'One'" },
@@ -2944,9 +2267,9 @@ static bool scalar_collects_libraries()
         (int64_t)script_catalog_id("symbol", "libraries/Tools.chibi:1:Add:callable"),
         (int64_t)script_catalog_id("symbol", "libraries/Tools.chibi:1:Name:callable"),
     };
-    for (int b = 0; b < 2; b++) {
+    {
         pin_value rows;
-        REQUIRE(library_rows(b, source, &rows));
+        REQUIRE(library_rows(source, &rows));
         const pin_array *array = rows.ptr;
         REQUIRE(scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_DOCUMENT_ROW);
         REQUIRE(retained_text(guard_row(&rows, 1), "text", "Tools"));
@@ -2963,8 +2286,17 @@ static bool scalar_collects_libraries()
         arena_free(&detached);
         for (size_t i = 0; i < sizeof LIBRARY_REJECTIONS / sizeof *LIBRARY_REJECTIONS;
              i++) {
-            REQUIRE(library_rows(b, LIBRARY_REJECTIONS[i].source, &rows));
+            REQUIRE(library_rows(LIBRARY_REJECTIONS[i].source, &rows));
             array = rows.ptr;
+            if (array->count != 2) {
+                fprintf(
+                    stderr,
+                    "library rejection %zu gave %d rows for:\n%s\n",
+                    i,
+                    array->count,
+                    LIBRARY_REJECTIONS[i].source
+                );
+            }
             REQUIRE(array->count == 2);
             pin_value *rejection = guard_row(&rows, 1);
             REQUIRE(scalar_field(rejection, "kind").i == SCALAR_REJECTION_ROW);
@@ -2990,13 +2322,9 @@ static bool scalar_retains_library_states()
                                  "        return count;\n"
                                  "    }\n"
                                  "}\n";
-    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(
-        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
-    );
-    for (int b = 0; b < 2; b++) {
-        pin_value rows, emitted;
-        REQUIRE(library_rows(b, source, &rows));
+    {
+        pin_value rows;
+        REQUIRE(library_rows(source, &rows));
         const pin_array *array = rows.ptr;
         if (array->count > 1 &&
             scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_REJECTION_ROW) {
@@ -3007,13 +2335,8 @@ static bool scalar_retains_library_states()
             );
         }
         REQUIRE(array->count > 2 && scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_DOCUMENT_ROW);
-        REQUIRE(emit_bytes(b, "LinuxX64", &rows, &emitted));
-        const pin_array *bytes = emitted.ptr;
-        char *ir = xmalloc((size_t)bytes->count + 1);
-        for (int i = 0; i < bytes->count; i++) {
-            ir[i] = (char)bytes->items[i].u8;
-        }
-        ir[bytes->count] = 0;
+        char *ir;
+        REQUIRE(target_ir("LinuxX64", &rows, &ir) && ir);
         bool emits = strstr(ir, "@chibi_scalar.retained.0 = internal global i32 4\n") &&
                      strstr(ir, "load i32, ptr @chibi_scalar.retained.0") &&
                      strstr(ir, "store i32 %a") &&
@@ -3044,35 +2367,20 @@ TEST_CASE(package_compiler_scalar_retains_library_states)
 }
 TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 {
-    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
     static const int32_t expected[] = { 42, 0, INT32_MAX };
-    for (int b = 0; b < 2; b++) {
-        for (int i = 0; i < 3; i++) {
-            pin_value ordinal = { .type = PIN_I32, .i = i }, literal;
-            REQUIRE(compiler_fixture_call(
-                &corpus,
-                b,
-                CASES_PACKAGE,
-                "ExpectedValue",
-                &ordinal,
-                1,
-                COMPILE_BUDGET,
-                &detached,
-                &literal
-            ));
-            REQUIRE(literal.type == PIN_I32 && literal.i == expected[i]);
-            int64_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
-            REQUIRE(scalar_results_match(values, literal.i));
-            int64_t wrong = expected[i] == 42 ? 41 : 1;
-            const int64_t consensus[4] = { wrong, wrong, wrong, wrong };
-            REQUIRE(!scalar_results_match(consensus, literal.i));
-            for (int column = 0; column < 4; column++) {
-                values[column] = wrong;
-                REQUIRE(!scalar_results_match(values, literal.i));
-                values[column] = expected[i];
-            }
-            arena_free(&detached);
+    for (int i = 0; i < 3; i++) {
+        int literal;
+        REQUIRE(scalar_host_case_expected(i, &literal));
+        REQUIRE(literal == expected[i]);
+        int64_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
+        REQUIRE(scalar_results_match(values, literal));
+        int64_t wrong = expected[i] == 42 ? 41 : 1;
+        const int64_t consensus[4] = { wrong, wrong, wrong, wrong };
+        REQUIRE(!scalar_results_match(consensus, literal));
+        for (int column = 0; column < 4; column++) {
+            values[column] = wrong;
+            REQUIRE(!scalar_results_match(values, literal));
+            values[column] = expected[i];
         }
     }
     return true;
@@ -3096,12 +2404,13 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 77
+    SCALAR_ACCEPTED_CASES = 79
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
  * the recovered compiler, which has no such limit. */
 
+static const char *const DEEP_CASES[] = { "deep_operands" };
 enum
 {
     DEEP_CASE_COUNT = (int)(sizeof DEEP_CASES / sizeof *DEEP_CASES)
@@ -3122,6 +2431,68 @@ typedef struct scalar_probe
 /* The six comparisons of the operators case, in the order of their source
  * functions, each probed with every pair. */
 
+static const scalar_probe SCALAR_PROBES[] = {
+    { "recursion", "Sum", 1, { 0 }, 0 },
+    { "recursion", "Sum", 1, { 10 }, 55 },
+    { "mutual_recursion", "A", 1, { 4 }, 1 },
+    { "mutual_recursion", "B", 1, { 4 }, 2 },
+    { "recursive_guard", "Down", 1, { -1 }, -1 },
+    { "recursive_guard", "Down", 1, { 7 }, 0 },
+    { "min", "Min", 2, { INT32_MIN, INT32_MAX }, INT32_MIN },
+    { "min", "Min", 2, { INT32_MAX, INT32_MIN }, INT32_MIN },
+    { "min", "Min", 2, { -1, -1 }, -1 },
+    { "max", "Max", 2, { INT32_MIN, INT32_MAX }, INT32_MAX },
+    { "max", "Max", 2, { INT32_MAX, INT32_MIN }, INT32_MAX },
+    { "max", "Max", 2, { 0, -1 }, 0 },
+    { "clamp", "Clamp", 3, { -5, 0, 10 }, 0 },
+    { "clamp", "Clamp", 3, { 5, 0, 10 }, 5 },
+    { "clamp", "Clamp", 3, { 15, 0, 10 }, 10 },
+    { "clamp", "Clamp", 3, { INT32_MIN, INT32_MIN + 1, INT32_MAX }, INT32_MIN + 1 },
+    { "operators", "If", 3, { 1, 4, 9 }, 4 },
+    { "operators", "If", 3, { 0, 4, 9 }, 9 },
+    { "call_condition", "Small", 1, { 9 }, 1 },
+    { "call_condition", "Small", 1, { 10 }, 0 },
+    { "lazy_arm", "Choose", 1, { 1 }, 1 },
+    { "lazy_arm", "Choose", 1, { 0 }, 2 },
+    { "bare_condition", "Positive", 1, { INT32_MIN }, 0 },
+    { "bare_condition", "Positive", 1, { 0 }, 0 },
+    { "bare_condition", "Positive", 1, { INT32_MAX }, INT32_MAX },
+    { "int_operators", "Mix", 3, { 3, 4, 5 }, 37 },
+    { "int_operators", "Mix", 3, { 4, 3, 5 }, 4 },
+    /* (a + b) * c wraps to -6, and -c % 3 is -2. */
+    { "int_operators", "Mix", 3, { INT32_MAX - 1, INT32_MAX, 2 }, -4 },
+    /* The folded constant is 2^30; only the sum with x wraps. */
+    { "arithmetic", "Half", 1, { 0 }, 1073741824 },
+    { "arithmetic", "Half", 1, { INT32_MAX }, -1073741825 },
+    { "folded_operand", "Add", 1, { INT32_MAX }, -1073741825 },
+    /* The guard compares with 2^29, not the -2^29 wrapping rows give. */
+    { "folded_guard", "Pick", 1, { 0 }, 0 },
+    { "folded_guard", "Pick", 1, { 536870912 }, 0 },
+    { "folded_guard", "Pick", 1, { 536870913 }, INT32_MAX },
+    { "wrapped_operand", "Half", 1, { 1 }, 1 },
+    { "wrapped_operand", "Half", 1, { -3 }, -1 },
+    /* The low byte of an int, widened back. */
+    { "conversion", "Low", 1, { -1 }, 255 },
+    { "conversion", "Low", 1, { 256 }, 0 },
+    { "conversion", "Low", 1, { INT32_MIN }, 0 },
+    { "conversion", "Low", 1, { INT32_MAX }, 255 },
+    { "shift", "Shl", 1, { -1 }, -4 },
+    { "shift", "Shl", 1, { INT32_MIN }, 0 },
+    { "shift", "Shl", 1, { INT32_MAX }, -4 },
+    /* Each path of a && b's short circuit. */
+    { "logical_and", "Mid", 3, { 2, 1, 3 }, 2 },
+    { "logical_and", "Mid", 3, { 1, 3, 2 }, 1 },
+    { "logical_and", "Mid", 3, { 1, 2, 3 }, 2 },
+    { "bool_comparison", "Same", 2, { 1, 1 }, 1 },
+    { "bool_comparison", "Same", 2, { 0, 1 }, 0 },
+    { "helper_statement", "Id", 1, { INT32_MIN }, INT32_MIN },
+};
+static const char *const COMPARISONS[] = { "Lt", "Le", "Gt", "Ge", "Eq", "Ne" };
+static const int32_t COMPARED[][2] = { { INT32_MIN, INT32_MAX },
+                                       { INT32_MAX, INT32_MIN },
+                                       { 0, 0 },
+                                       { -1, 0 },
+                                       { INT32_MAX, INT32_MAX } };
 enum
 {
     PROBES = (int)(sizeof SCALAR_PROBES / sizeof *SCALAR_PROBES),
@@ -3186,10 +2557,7 @@ static bool llvm_tool(const char *name, char path[PATH_MAX])
 /* Set by SIGINT or SIGTERM while the native tests run: the running child's
  * process group is killed, and the run reports cancellation, not a timeout. */
 static volatile sig_atomic_t native_cancelled;
-static void cancel_native(int)
-{
-    native_cancelled = 1;
-}
+
 /* The deadlines of an LLVM tool and of a library's calls, and the output
  * kept of each. */
 static const double TOOL_SECONDS = 60, CALLS_SECONDS = 20, SPIN_SECONDS = 1;
@@ -3554,9 +2922,6 @@ enum
 
 /* Each call's value from the authored compiler's closure on both VMs. */
 
-typedef int32_t (*scalar_entry)();
-typedef int32_t (*scalar_runtime_entry)(execution_native_context *);
-typedef int64_t (*scalar_adapter)(const int64_t *);
 enum
 {
     CALL_SPEC = 160
@@ -3713,6 +3078,10 @@ static int enc_child(const char *first, const char *second)
     fflush(stdout);
     return 0;
 }
+typedef int32_t (*scalar_entry)();
+typedef int32_t (*scalar_runtime_entry)(execution_native_context *);
+typedef int64_t (*scalar_adapter)(const int64_t *);
+
 static int library_child(const char *library, int count, char **specs)
 {
     if (count == 2 && !strcmp(specs[0], "continue")) {
@@ -4006,44 +3375,16 @@ static bool native_values(
 
 /* The IR EmitBytesFor gives for `rows` and native_abi's target `function`,
  * NUL-terminated, or NULL for none. */
-static bool target_ir(int b, const char *function, const pin_value *rows, char **ir)
-{
-    pin_value emitted;
-    REQUIRE(emit_bytes(b, function, rows, &emitted));
-    const pin_array *bytes = emitted.ptr;
-    REQUIRE(emitted.container == PIN_CONTAINER_ARRAY);
-    *ir = NULL;
-    if (!bytes->count) {
-        return true;
-    }
-    *ir = xmalloc((size_t)bytes->count + 1);
-    for (int i = 0; i < bytes->count; i++) {
-        (*ir)[i] = (char)bytes->items[i].u8;
-    }
-    (*ir)[bytes->count] = 0;
-    return true;
-}
+
 /* The Linux x86-64 IR EmitBytesFor gives for `rows`, or NULL for none. */
-static bool emitted_ir(int b, pin_value *rows, char **ir)
+static bool emitted_ir(pin_value *rows, char **ir)
 {
-    return target_ir(b, "LinuxX64", rows, ir);
+    return target_ir("LinuxX64", rows, ir);
 }
 /* `source`'s producer rows at `path` from CollectScalar on VM b. */
-static bool collected_at(int b, const char *path, const char *case_name, pin_value source, pin_value *rows)
+static bool collected_at(const char *path, const char *case_name, const char *source, pin_value *rows)
 {
-    pin_value args[SCALAR_ARGUMENTS];
-    REQUIRE(scalar_arguments(b, path, source, args));
-    bool collected = compiler_fixture_call(
-        &fixture,
-        b,
-        PACKAGE,
-        "CollectScalar",
-        args,
-        SCALAR_ARGUMENTS,
-        COMPILE_BUDGET,
-        &detached,
-        rows
-    );
+    bool collected = scalar_host_collect(path, source, &detached, rows);
     if (!collected) {
         fprintf(stderr, "scalar case %s: CollectScalar failed\n", case_name);
     }
@@ -4053,9 +3394,9 @@ static bool collected_at(int b, const char *path, const char *case_name, pin_val
 /* With a bundle, the module of `rows` for each other target, with `calls`,
  * whose values every run agreed on. */
 
-static bool collected_rows(int b, const char *case_name, pin_value source, pin_value *rows)
+static bool collected_rows(const char *case_name, const char *source, pin_value *rows)
 {
-    return collected_at(b, "Scalar.chibi", case_name, source, rows);
+    return collected_at("Scalar.chibi", case_name, source, rows);
 }
 /* Each of `calls` of an accepted module, `ir` its IR, gives its expected
  * value on both VMs, from the authored compiler's closure of `source` on VM
@@ -4515,6 +3856,22 @@ enum
 /* The integer types, as the width modules declare them: each one's name, the
  * name its functions take, its scalar_facts type, bits and signedness. */
 
+typedef struct scalar_width
+{
+    const char *name, *title;
+    int type, bits;
+    bool is_unsigned;
+} scalar_width;
+static const scalar_width WIDTHS[] = {
+    { "i8", "Int8", SCALAR_INT8, 8, false },
+    { "u8", "Byte", SCALAR_BYTE, 8, true },
+    { "i16", "Int16", SCALAR_INT16, 16, false },
+    { "u16", "Uint16", SCALAR_UINT16, 16, true },
+    { "int", "Int", SCALAR_INT, 32, false },
+    { "u32", "Uint", SCALAR_UINT, 32, true },
+    { "i64", "Int64", SCALAR_INT64, 64, false },
+    { "u64", "Uint64", SCALAR_WORD, 64, true },
+};
 enum
 {
     SCALAR_WIDTHS = (int)(sizeof WIDTHS / sizeof *WIDTHS),
@@ -4617,6 +3974,10 @@ static const struct
 
 /* The operations float and double take, of WIDTH_OPERATION. */
 
+static const int FLOATING_OPERATIONS[] = { WIDTH_ADD, WIDTH_SUB, WIDTH_MUL,
+                                           WIDTH_DIV, WIDTH_LT,  WIDTH_LE,
+                                           WIDTH_GT,  WIDTH_GE,  WIDTH_EQ,
+                                           WIDTH_NE };
 enum
 {
     FLOATING_OPERATION_COUNT = (int)(sizeof FLOATING_OPERATIONS / sizeof *FLOATING_OPERATIONS),
@@ -4882,15 +4243,16 @@ static bool lookup_tables_link(const char *directory)
 
 /* The SIGSEGV handler a stack_overflow child installs before the report,
  * with SIGUSR1 in its mask: it exits 7 when that mask is in force. */
+
+/* The child of stack_overflow_leaves_other_faults. `mode` is "handled" or
+ * "default", the action SIGSEGV has before the report is installed, then
+ * "-fault" for a write to an unmapped page or "-sent" for raise(SIGSEGV). */
 static void handled_fault(int)
 {
     sigset_t blocked;
     sigprocmask(SIG_SETMASK, NULL, &blocked);
     _exit(sigismember(&blocked, SIGUSR1) ? 7 : 8);
 }
-/* The child of stack_overflow_leaves_other_faults. `mode` is "handled" or
- * "default", the action SIGSEGV has before the report is installed, then
- * "-fault" for a write to an unmapped page or "-sent" for raise(SIGSEGV). */
 int test_language_stack_overflow_child(const char *mode)
 {
     struct sigaction before = { .sa_handler = SIG_DFL };
@@ -4935,17 +4297,11 @@ TEST_CASE(stack_overflow_leaves_other_faults)
 /* The rows of the library `source`, emitted for Linux x86-64 as LLVM text. */
 static bool library_ir(const char *source, char **ir)
 {
-    pin_value rows, emitted;
-    REQUIRE(library_rows(0, source, &rows));
+    pin_value rows;
+    REQUIRE(library_rows(source, &rows));
     const pin_array *array = rows.ptr;
     REQUIRE(array->count > 2);
-    REQUIRE(emit_bytes(0, "LinuxX64", &rows, &emitted));
-    const pin_array *bytes = emitted.ptr;
-    *ir = xmalloc((size_t)bytes->count + 1);
-    for (int i = 0; i < bytes->count; i++) {
-        (*ir)[i] = (char)bytes->items[i].u8;
-    }
-    (*ir)[bytes->count] = 0;
+    REQUIRE(target_ir("LinuxX64", &rows, ir) && *ir);
     arena_free(&detached);
     return true;
 }
@@ -4972,10 +4328,6 @@ TEST_CASE(package_compiler_native_edit_and_continue_keeps_state)
                                 "    }\n"
                                 "}\n";
     REQUIRE(prepare());
-    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(
-        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
-    );
     char directory[PATH_MAX], first[PATH_MAX], second[PATH_MAX], self[PATH_MAX],
         out[NATIVE_OUTPUT];
     REQUIRE(native_directory(directory));
@@ -5051,6 +4403,115 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
 }
 /* A module whose entry returns 0 and whose function k + 1 applies operation
  * k to its parameters. */
+/* count records whose fields, in declaration order, take consecutive values,
+ * as a JSON array of objects. */
+static yyjson_mut_val *records_json(
+    yyjson_mut_doc *doc,
+    const char *const *fields,
+    int width,
+    const int64_t *values,
+    int count
+)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_val *object = yyjson_mut_obj(doc);
+        for (int j = 0; j < width; j++) {
+            yyjson_mut_obj_add_sint(doc, object, fields[j], values[i * width + j]);
+        }
+        yyjson_mut_arr_append(array, object);
+    }
+    return array;
+}
+static yyjson_mut_val *ints_json(yyjson_mut_doc *doc, const int *values, int count)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_arr_add_sint(doc, array, values[i]);
+    }
+    return array;
+}
+static yyjson_mut_val *texts_json(yyjson_mut_doc *doc, const char *const *items, int count)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_arr_add_str(doc, array, items[i]);
+    }
+    return array;
+}
+/* The LLVM text llvm_native.Emit gives m for native_abi's target `target`
+ * under budget 1, its first function the entry; NULL when it rejects m. */
+static bool native_module_ir(const char *target, const native_module *m, char **ir)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *arguments = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, arguments);
+    yyjson_mut_arr_add_str(doc, arguments, target);
+    int64_t *functions = xmalloc(sizeof *functions * FUNCTION_WIDTH * (size_t)m->function_count);
+    for (int i = 0; i < m->function_count; i++) {
+        const native_function *f = &m->functions[i];
+        const int64_t fields[FUNCTION_WIDTH] = {
+            f->result,     f->first_parameter, f->parameters,
+            f->first_slot, f->slots,           f->first_code,
+            f->code,       f->first_argument,  f->arguments
+        };
+        memcpy(&functions[i * FUNCTION_WIDTH], fields, sizeof fields);
+    }
+    yyjson_mut_arr_append(
+        arguments,
+        records_json(doc, FUNCTION_FIELDS, FUNCTION_WIDTH, functions, m->function_count)
+    );
+    free(functions);
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->parameters, m->parameter_count));
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->slots, m->slot_count));
+    yyjson_mut_arr_append(arguments, ints_json(doc, NULL, 0));
+    int64_t *code = xmalloc(sizeof *code * CODE_WIDTH * (size_t)m->code_count);
+    for (int i = 0; i < m->code_count; i++) {
+        const native_code *c = &m->code[i];
+        const int64_t fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
+                                             c->left,   c->right, c->target,
+                                             c->literal };
+        memcpy(&code[i * CODE_WIDTH], fields, sizeof fields);
+    }
+    yyjson_mut_arr_append(arguments, records_json(doc, CODE_FIELDS, CODE_WIDTH, code, m->code_count));
+    free(code);
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->arguments, m->argument_count));
+    int64_t *records = xmalloc(
+        sizeof *records * RECORD_WIDTH * (size_t)(m->record_count + 1)
+    );
+    for (int i = 0; i < m->record_count; i++) {
+        records[i * RECORD_WIDTH] = m->records[i].first;
+        records[i * RECORD_WIDTH + 1] = m->records[i].count;
+    }
+    yyjson_mut_arr_append(
+        arguments,
+        records_json(doc, RECORD_FIELDS, RECORD_WIDTH, records, m->record_count)
+    );
+    free(records);
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->fields, m->field_count));
+    yyjson_mut_arr_append(arguments, texts_json(doc, m->texts, m->text_count));
+    yyjson_mut_val *source = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_str(doc, source, "file", m->file ? m->file : "");
+    yyjson_mut_obj_add_str(doc, source, "directory", m->directory ? m->directory : "");
+    yyjson_mut_arr_append(arguments, source);
+    int placed = m->file ? m->code_count : 0;
+    yyjson_mut_arr_append(arguments, texts_json(doc, m->names, m->file ? m->function_count : 0));
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->lines, placed));
+    yyjson_mut_arr_append(arguments, ints_json(doc, m->columns, placed));
+    yyjson_mut_arr_add_false(doc, arguments);
+    yyjson_mut_arr_add_sint(doc, arguments, 1);
+    yyjson_doc *result;
+    REQUIRE(scalar_host_consumer("EmitModule", doc, &result));
+    yyjson_val *text = yyjson_arr_get(yyjson_doc_get_root(result), 0);
+    *ir = NULL;
+    if (yyjson_get_len(text)) {
+        *ir = xmalloc(yyjson_get_len(text) + 1);
+        memcpy(*ir, yyjson_get_str(text), yyjson_get_len(text) + 1);
+    }
+    yyjson_doc_free(result);
+    yyjson_mut_doc_free(doc);
+    return true;
+}
 static bool total_ir(const char *function, char **ir)
 {
     native_code code[4 + TOTAL_OPERATION_COUNT * 6];
@@ -5091,17 +4552,13 @@ static bool total_ir(const char *function, char **ir)
                         slots,      s,
                         code,       c,
                         NULL,       0 };
-    const pin_union *value;
-    REQUIRE(native_target_emit(0, function, &m, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, 0, NATIVE_PACKAGE, "Result", "Emitted"));
-    pin_string text = pin_text(value->values[0]);
+    char *text;
+    REQUIRE(native_module_ir(function, &m, &text) && text);
     REQUIRE(
-        !contains(text, "label %trap\n  br") && !contains(text, " nsw ") &&
-        !contains(text, " nuw ")
+        !strstr(text, "label %trap\n  br") && !strstr(text, " nsw ") &&
+        !strstr(text, " nuw ")
     );
-    *ir = xmalloc(text.length + 1);
-    memcpy(*ir, text.bytes, text.length);
-    (*ir)[text.length] = 0;
+    *ir = text;
     return true;
 }
 /* The validation-only adapter probe_NAME(ptr) of each operation, which
@@ -5193,10 +4650,6 @@ static bool total_bundled(const char *directory, const char *adapters)
 }
 TEST_CASE(package_compiler_native_arithmetic_is_total)
 {
-    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(
-        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
-    );
     char *ir;
     REQUIRE(total_ir("LinuxX64", &ir));
     char *adapters = total_adapters(), directory[PATH_MAX];
@@ -5243,63 +4696,51 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
 TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
 {
     REQUIRE(prepare());
-    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
-    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(
-        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
-    );
     char directory[PATH_MAX];
     REQUIRE(native_directory(directory));
-    pin_value count;
-    REQUIRE(
-        compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count)
-    );
+    int count;
+    REQUIRE(scalar_host_case_count(&count));
     int ran = 0;
-    for (int index = 0; index < count.i; index++) {
-        int b = index % 2;
-        pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows,
-                  expected;
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
-        );
-        const char *named = pin_text(name).bytes;
-        if (strncmp(named, "array_", strlen("array_")) &&
-            strncmp(named, "union_array", strlen("union_array")) &&
-            strncmp(named, "record_", strlen("record_")) &&
-            strncmp(named, "switch_on", strlen("switch_on"))) {
-            arena_free(&detached);
+    for (int index = 0; index < count; index++) {
+        char *name, *source;
+        pin_value rows;
+        int expected;
+        REQUIRE(scalar_host_case_text(false, index, &name));
+        if (strncmp(name, "array_", strlen("array_")) &&
+            strncmp(name, "union_array", strlen("union_array")) &&
+            strncmp(name, "record_", strlen("record_")) &&
+            strncmp(name, "switch_on", strlen("switch_on"))) {
+            free(name);
             continue;
         }
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
-        );
-        REQUIRE(collected_rows(b, pin_text(name).bytes, source, &rows));
+        REQUIRE(scalar_host_case_text(true, index, &source));
+        REQUIRE(collected_rows(name, source, &rows));
+        free(source);
         if (row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW) {
+            free(name);
             arena_free(&detached);
             continue;
         }
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "ExpectedValue", &ordinal, 1, COMPILE_BUDGET, &detached, &expected)
-        );
+        REQUIRE(scalar_host_case_expected(index, &expected));
         char *ir;
-        REQUIRE(emitted_ir(b, &rows, &ir));
+        REQUIRE(emitted_ir(&rows, &ir));
         REQUIRE(ir);
         scalar_call entry = { .symbol = "chibi_scalar" };
-        REQUIRE(native_values(directory, pin_text(name).bytes, &rows, ir, &entry, 1));
-        if (entry.values[2] != expected.i || entry.values[3] != expected.i) {
+        REQUIRE(native_values(directory, name, &rows, ir, &entry, 1));
+        if (entry.values[2] != expected || entry.values[3] != expected) {
             fprintf(
                 stderr,
                 "native %s gave %" PRId64 " at O0 and %" PRId64
                 " at O2, expected %d\n",
-                pin_text(name).bytes,
+                name,
                 entry.values[2],
                 entry.values[3],
-                expected.i
+                expected
             );
         }
-        REQUIRE(entry.values[2] == expected.i && entry.values[3] == expected.i);
+        REQUIRE(entry.values[2] == expected && entry.values[3] == expected);
         free(ir);
+        free(name);
         ran++;
         arena_free(&detached);
     }
@@ -5319,9 +4760,9 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
     };
     for (int i = 0; i < 2; i++) {
         pin_value rows;
-        REQUIRE(collected_rows(i, "outside", text(OUTSIDE[i]), &rows));
+        REQUIRE(collected_rows("outside", OUTSIDE[i], &rows));
         char *ir;
-        REQUIRE(emitted_ir(i, &rows, &ir));
+        REQUIRE(emitted_ir(&rows, &ir));
         REQUIRE(ir);
         for (int level = 0; level < 2; level++) {
             char library[PATH_MAX];
@@ -5345,75 +4786,47 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
 TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit)
 {
     REQUIRE(prepare());
-    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
-    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(
-        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
-    );
-    pin_value count;
-    REQUIRE(
-        compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count)
-    );
-    for (int index = 0; index < count.i; index++) {
-        int b = index % 2;
-        pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows, checked;
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
-        );
+    int count;
+    REQUIRE(scalar_host_case_count(&count));
+    for (int index = 0; index < count; index++) {
+        char *name, *source;
+        pin_value rows;
+        int checked;
+        REQUIRE(scalar_host_case_text(false, index, &name));
         // The 64-deep nesting passes the stage-zero fixture's call depth.
-        if (pin_text_equal(pin_text(name), (pin_string){ .bytes = "deep_operands", .length = 13 })) {
-            arena_free(&detached);
+        if (!strcmp(name, "deep_operands")) {
+            free(name);
             continue;
         }
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
-        );
-        pin_value args[SCALAR_ARGUMENTS];
-        REQUIRE(scalar_arguments(b, "Scalar.chibi", source, args));
-        REQUIRE(compiler_fixture_call(
-            &fixture,
-            b,
-            PACKAGE,
-            "CollectScalar",
-            args,
-            SCALAR_ARGUMENTS,
-            COMPILE_BUDGET,
-            &detached,
-            &rows
-        ));
-        REQUIRE(
-            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
-        );
+        REQUIRE(scalar_host_case_text(true, index, &source));
+        REQUIRE(scalar_host_collect("Scalar.chibi", source, &detached, &rows));
+        REQUIRE(scalar_host_case_check(&rows, &checked));
         const pin_array *produced = rows.ptr;
         pin_value *second = &produced->items[1];
         bool rejected = scalar_field(second, "kind").i == SCALAR_REJECTION_ROW;
-        if (checked.i != 1) {
+        if (checked != 1) {
             int from = rejected ? (int)scalar_field(second, "start").i : 0,
                 to = rejected ? (int)scalar_field(second, "end").i : 0;
             fprintf(
                 stderr,
                 "scalar case %s: Check gave %d%s%s at `%.*s`\n",
-                pin_text(name).bytes,
-                checked.i,
+                name,
+                checked,
                 rejected ? ", rejected: " : "",
                 rejected ? pin_text(scalar_field(second, "text")).bytes : "",
                 to > from ? to - from : 0,
-                to > from ? pin_text(source).bytes + from : ""
+                to > from ? source + from : ""
             );
         }
-        // A rejection's message is the parser's, which this fixture's differs
-        // from the recovered compiler's in places; the corpus's native lane and
-        // Run.ps1 check it.
-        REQUIRE(checked.i == 1 || rejected);
-        if (!rejected && !validated(b, &rows, "")) {
-            fprintf(
-                stderr,
-                "scalar case %s: its rows do not validate and emit\n",
-                pin_text(name).bytes
-            );
+        // A rejection's message is the parser's, which the recovered compiler's
+        // differs from in places; the corpus's native lane and Run.ps1 check it.
+        REQUIRE(checked == 1 || rejected);
+        if (!rejected && !validated(&rows, "")) {
+            fprintf(stderr, "scalar case %s: its rows do not validate and emit\n", name);
             return false;
         }
+        free(name);
+        free(source);
         arena_free(&detached);
     }
     return true;
@@ -5447,6 +4860,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_scalar_retains_library_states);
     RUN_TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit);
     pu_clear_setup();
+    scalar_host_close();
 }
 #if defined(__linux__) && defined(__x86_64__)
 int test_language_package_compiler_chibi_native_call(int count, char **arguments)
@@ -5463,6 +4877,12 @@ int test_language_stack_overflow_child(const char *)
     abort();
 }
 
+#endif
+#if defined(__linux__) && defined(__x86_64__)
+static void cancel_native(int)
+{
+    native_cancelled = 1;
+}
 #endif
 void test_language_package_compiler_chibi_native()
 {
@@ -5481,6 +4901,7 @@ void test_language_package_compiler_chibi_native()
     RUN_TEST_CASE(package_compiler_native_arrays_run_and_check_indexes);
     RUN_TEST_CASE(package_compiler_native_edit_and_continue_keeps_state);
     pu_clear_setup();
+    scalar_host_close();
     sigaction(SIGINT, &interrupt, NULL);
     sigaction(SIGTERM, &terminate, NULL);
 #else

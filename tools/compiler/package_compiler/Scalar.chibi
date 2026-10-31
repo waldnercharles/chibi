@@ -8,6 +8,7 @@ import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 import routes "project:package_routes"
 import graph "project:package_graph"
+import json "project:json_string"
 import strings "core:strings"
 
 // Opt-in internal producer of a scalar_facts module. The snapshot,
@@ -776,7 +777,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (Is(forest, node, syntax.String)) {
         // The bytes the literal step decodes, which EmitBody has checked.
         row := ScalarAt(forest, node, facts.LiteralRow, type, 0, 0, "");
-        row.text = compiler_json_value_string(Text(forest, text, node)).value;
+        row.text = json.Value(Text(forest, text, node)).value;
         output.append(row);
         return ScalarOperands.Built(output);
     }

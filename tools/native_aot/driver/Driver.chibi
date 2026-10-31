@@ -1168,7 +1168,7 @@ Requested :: (name: string) -> int {
 
 // A package of the compiler project beside others, as native_driver is: the
 // compiler compiles the driver's pure core (every file but Main.chibi and
-// core:os) to an artifact, whose Compile entry gives the program's module, or
+// core:os, and the link step) to an artifact, whose Compile entry gives the program's module, or
 // a 0 byte and then the first rejection; the module is linked as any other.
 Driver :: (host: string, artifact: string, core: string, work: string, target: string, entry_path: string,
            packages: string[], package_texts: string[], text: string, triple: string, output: string,
@@ -1178,7 +1178,8 @@ Driver :: (host: string, artifact: string, core: string, work: string, target: s
     all := build.concat([entry_path], packages);
     sources := build.concat([text], package_texts);
     for (at in 0..<length(all)) {
-        if (!strings.HasSuffix(all[at], "/Main.chibi") && !strings.HasPrefix(all[at], Join([core, "/os/"]))) {
+        if (!strings.HasSuffix(all[at], "/Main.chibi") && !strings.HasPrefix(all[at], Join([core, "/os/"])) &&
+            !strings.HasPrefix(all[at], "native_link")) {
             location := all[at];
             if (strings.HasPrefix(location, Join([core, "/"]))) {
                 location = Join(["/sdk/core/", strings.TrimPrefix(location, Join([core, "/"]))]);

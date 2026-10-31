@@ -637,15 +637,15 @@ pub Check :: (rows: facts.Row[]) -> int {
     if (Names(rows) != expected.functions) {
         return -8;
     } // "functions differ"
+    // A 64-bit word is not modeled by this evaluation; the VMs and the native code give its value.
+    wide := false;
     for (row in rows) {
-        if (row.type == facts.WordType) {
-            return -12;
-        } // "the evaluation does not model u64"
+        wide = wide || row.type == facts.WordType;
     }
     empty: i64[] = [];
     // Arrays, references and loops are evaluated by the VMs and the native code, which
     // must give the case's value; this evaluation covers straight-line rows.
-    if (!Arrayed(rows) && Evaluate(rows, Heads(rows), 0, empty) != i64(expected.value)) {
+    if (!Arrayed(rows) && !wide && Evaluate(rows, Heads(rows), 0, empty) != i64(expected.value)) {
         return -9;
     } // "the recorded evaluation differs"
     if (expected.trace != "" && Trace(rows) != expected.trace) {

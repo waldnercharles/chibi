@@ -23,9 +23,15 @@ directory, it also emits each module it runs for the other targets
 `native-build` (`test/tools/native_build.c`) adds programs that
 `chibi build --native --target` links on Linux, at O0 and O2, and one with a
 256 KiB frame, which Windows code probes through the program's `__chkstk`.
-`<target>/programs.txt` lists each as `program NAME STATUS`, and the program
-is `<target>/programs/NAME`. The projects group, which runs `native-build`,
+`<target>/programs.txt` lists each as `program NAME STATUS`, optionally
+followed by tab-separated UTF-8 arguments, and the program is
+`<target>/programs/NAME`. The projects group, which runs `native-build`,
 runs before the language group, so CI's bundle holds both.
+
+`native-link` (`test/native_aot/link/Smoke.chibi`) adds the argument program, linked by
+`native_link` with no SDK: listed once without arguments and once with `a b` and `héllo €`.
+It checks `chibi_argument_count`, `chibi_argument` and `chibi_environment`. On Windows
+`run.c` starts it with `_wspawnv`, so the arguments reach `GetCommandLineW` as UTF-16.
 
 The Linux cases that supervise a hung or overflowing native call, and the
 lazy-arm and lookup-table checks that rewrite or hand-write IR, stay on

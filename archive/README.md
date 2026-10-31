@@ -133,3 +133,7 @@ Each compiled authored sources with stage zero (`source_package_prepare`, `autho
 ## Fixture-compiled sequence cases removed from execution.c
 
 `test/language/execution.c` no longer includes `compiler_fixture.h` or `authoring/source_package_prepare.h`. Seven cases compiled `project:sequences` sources through stage zero and called them on each backend: sequence values copying at ownership boundaries, scoped lent locals, strict sequence ranges, pointer views following rebinding, sequence-place evaluation order, calls lending arguments (callees copying writes), and lent records copying nothing. Deleted; the hand-built-module cases in the file remain.
+
+## native_census.c no longer uses compiler_fixture
+
+The census loads the compiler with `compiler_bootstrap_load` (the sources on disk, recovered from the checked-in seed) and runs `CollectScalar` through `compiler_host_invoke` with the target taken from `compiler_target_json`, instead of preparing the compiler with stage zero. Report format and flattening are unchanged. Not run locally when it landed (all heavy slots were held); the first run of `--native-census-flattening` verifies it.

@@ -1326,6 +1326,77 @@ static bool driver_build(const char *ir, const char *out)
     return status.error == CHIBI_PROCESS_OK && !status.status;
 }
 
+/* `chibi run --native --watch`: the CLI builds the loop host and the first
+ * generation of the source, runs the host, and when the source is saved while
+ * the loop runs, rebuilds it and publishes the next generation, which the host
+ * swaps in between two Frames. The edited Frame's exit status 7 proves the
+ * count survived the swap and the new state started at its initializer; its
+ * Main, which would return 9, never runs. */
+TEST_CASE(native_build_watches_and_swaps_a_running_loop)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link with real LLVM tools\n");
+        return true;
+    }
+    char in_place[1024], live[1024], source[1024];
+    path(in_place, built, "sdk/chibi");
+    reset("native-run", LOOP_FIRST);
+    real_tools(bin);
+    path(live, game, "build/native/run/live-0.so");
+    path(source, game, "Main.chibi");
+    char cache[1100] = "";
+    const char *configured = getenv("CHIBI_COMPILER_CACHE");
+    if (configured && *configured) {
+        snprintf(cache, sizeof cache, "CHIBI_COMPILER_CACHE=%s", configured);
+    }
+    const char *argv[] = { in_place,
+                           "run",
+                           "--native",
+                           "--watch",
+                           "-O0",
+                           "--target",
+                           "x86_64-unknown-linux-gnu",
+                           "--llvm",
+                           tools,
+                           game,
+                           NULL };
+    const char *envp[] = { "PATH=", cache[0] ? cache : NULL, NULL };
+    static char watch_output[65536], watch_errors[65536];
+    chibi_process_output out = { watch_output, sizeof watch_output, 0, false },
+                         err = { watch_errors, sizeof watch_errors, 0, false };
+    chibi_process_job job;
+    double limit = chibi_process_now() + 600;
+    REQUIRE(
+        chibi_process_begin(&job, in_place, argv, suite, envp, limit, NULL, &out, &err)
+            .error == CHIBI_PROCESS_OK
+    );
+    /* The first generation is live once the work folder holds it; the host runs
+     * it on its own for a moment before the edit is saved. */
+    while (chibi_process_running(&job) && !exists(live)) {
+        chibi_process_service(&job, 1, limit, NULL);
+    }
+    for (int i = 0; i < 150; i++) {
+        chibi_process_service(&job, 1, limit, NULL);
+    }
+    REQUIRE(chibi_process_running(&job));
+    tool_write(source, LOOP_EDITED);
+    while (chibi_process_running(&job)) {
+        chibi_process_service(&job, 1, limit, NULL);
+    }
+    chibi_process_capture_result ended = chibi_process_end(&job);
+    fprintf(
+        stderr,
+        "native run: error %d status %d\n%s%s",
+        (int)ended.error,
+        ended.status,
+        watch_output,
+        watch_errors
+    );
+    REQUIRE(ended.error == CHIBI_PROCESS_OK && ended.status == 7);
+    return true;
+}
+
 /* Real LLVM tools on Linux link macOS arm64 and Windows x64 programs with no
  * SDK of either system. A 256 KiB frame links too: Windows code calls the
  * start object's __chkstk, and arm64 probes inline. A volatile index keeps O2
@@ -1607,6 +1678,7 @@ TEST_CASE(native_build_runs_the_cases_in_parallel)
         "native_build_calls_through_a_function_pointer",
         "native_build_passes_a_byte_array_to_c",
         "native_build_swaps_a_running_loop_keeping_state",
+        "native_build_watches_and_swaps_a_running_loop",
         "native_build_reports_a_failed_assert",
         "native_build_runs_the_foreign_samples",
         "native_build_gives_c_an_authored_function",
@@ -1628,6 +1700,7 @@ TEST_CASE(native_build_runs_the_cases_in_parallel)
         native_build_calls_through_a_function_pointer,
         native_build_passes_a_byte_array_to_c,
         native_build_swaps_a_running_loop_keeping_state,
+        native_build_watches_and_swaps_a_running_loop,
         native_build_reports_a_failed_assert,
         native_build_runs_the_foreign_samples,
         native_build_gives_c_an_authored_function,

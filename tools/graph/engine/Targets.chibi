@@ -18,7 +18,6 @@ pub Targets :: () -> string[] {
         "chibi_selection_capabilities", "chibi_set_capabilities",
         "chibi_comparison_capabilities", "chibi_conversion_capabilities", "chibi_host_native_catalog", "chibi_host_clock", "chibi_scheduling", "chibi_fmt", "chibi_json", "chibi_asset_json",
         "chibi_text_capabilities", "chibi_array_capabilities",
-        "chibi_builtin_fonts",
         "chibi_math",
         "chibi_execution", "chibi_core_capabilities", "chibi_behavior_runtime", "chibi_native_prepared",
         "chibi_vector_capabilities", "chibi_math_capabilities",
@@ -54,26 +53,6 @@ Files :: (target: string) -> string[] {
         return [
             "tools/reflect/reflect.c", "tools/reflect/collect.c", "tools/reflect/identity.c", "tools/reflect/emit.c",
             "tools/reflect/emit_function.c", "tools/reflect/emit_component.c", "tools/reflect/emit_catalog.c"
-        ];
-    }
-    if (target == "chibi_builtin_fonts") {
-        return [
-            "build/sdk/generated/fonts/editor_nerd_symbols_font.c",
-            "build/sdk/generated/fonts/editor_ui_font.c",
-            "build/sdk/generated/fonts/editor_ui_bold_font.c",
-            "build/sdk/generated/fonts/editor_ui_medium_font.c",
-            "build/sdk/generated/fonts/editor_ui_semibold_font.c",
-            "build/sdk/generated/fonts/editor_ui_numeric_font.c",
-            "build/sdk/generated/fonts/studio_regular_font.c",
-            "build/sdk/generated/fonts/studio_medium_font.c",
-            "build/sdk/generated/fonts/studio_semibold_font.c",
-            "build/sdk/generated/fonts/studio_bold_font.c",
-            "build/sdk/generated/fonts/studio_numeric_font.c",
-            "build/sdk/generated/fonts/editor_noto_sans_font.c",
-            "build/sdk/generated/fonts/editor_noto_sans_semibold_font.c",
-            "build/sdk/generated/fonts/editor_noto_sans_bold_font.c",
-            "build/sdk/generated/fonts/editor_inconsolata_font.c",
-            "build/sdk/generated/fonts/editor_code_font.c"
         ];
     }
     if (target == "chibi_support") {
@@ -675,9 +654,6 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "reflect") {
         return ["public/capabilities", "public/types", "public/support", "public/execution_contract"];
-    }
-    if (target == "chibi_builtin_fonts") {
-        return ["public/builtin_fonts"];
     }
     if (target == "chibi_support") {
         return ["public/support"];
@@ -1424,34 +1400,6 @@ pub Generator :: (target: string) -> string {
     return "";
 }
 
-// Files a target embeds as byte arrays: `OUTPUT=SYMBOL=INPUT` writes the
-// generated source OUTPUT, a `build/` path as Files names it, defining SYMBOL
-// with the bytes of INPUT below the source root, as cmake/embed_binary.cmake
-// does.
-pub Embeds :: (target: string) -> string[] {
-    if (target == "chibi_builtin_fonts") {
-        return [
-            "build/sdk/generated/fonts/editor_nerd_symbols_font.c=editor_nerd_symbols_font=third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf",
-            "build/sdk/generated/fonts/editor_ui_font.c=editor_ui_font=third_party/fonts/inter/Inter.ttf",
-            "build/sdk/generated/fonts/editor_ui_bold_font.c=editor_ui_bold_font=third_party/fonts/inter/Inter-Bold.ttf",
-            "build/sdk/generated/fonts/editor_ui_medium_font.c=editor_ui_medium_font=third_party/fonts/inter/Inter-Medium.ttf",
-            "build/sdk/generated/fonts/editor_ui_semibold_font.c=editor_ui_semibold_font=third_party/fonts/inter/Inter-SemiBold.ttf",
-            "build/sdk/generated/fonts/editor_ui_numeric_font.c=editor_ui_numeric_font=third_party/fonts/inter/Inter-Numeric.ttf",
-            "build/sdk/generated/fonts/studio_regular_font.c=studio_regular_font=third_party/fonts/geist/Geist-Regular.ttf",
-            "build/sdk/generated/fonts/studio_medium_font.c=studio_medium_font=third_party/fonts/geist/Geist-Medium.ttf",
-            "build/sdk/generated/fonts/studio_semibold_font.c=studio_semibold_font=third_party/fonts/geist/Geist-SemiBold.ttf",
-            "build/sdk/generated/fonts/studio_bold_font.c=studio_bold_font=third_party/fonts/geist/Geist-Bold.ttf",
-            "build/sdk/generated/fonts/studio_numeric_font.c=studio_numeric_font=third_party/fonts/geist/Geist-Numeric.ttf",
-            "build/sdk/generated/fonts/editor_noto_sans_font.c=editor_noto_sans_font=third_party/fonts/noto-sans/NotoSans-Regular.ttf",
-            "build/sdk/generated/fonts/editor_noto_sans_semibold_font.c=editor_noto_sans_semibold_font=third_party/fonts/noto-sans/NotoSans-SemiBold.ttf",
-            "build/sdk/generated/fonts/editor_noto_sans_bold_font.c=editor_noto_sans_bold_font=third_party/fonts/noto-sans/NotoSans-Bold.ttf",
-            "build/sdk/generated/fonts/editor_inconsolata_font.c=editor_inconsolata_font=third_party/fonts/inconsolata/Inconsolata-Regular.ttf",
-            "build/sdk/generated/fonts/editor_code_font.c=editor_code_font=third_party/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"
-        ];
-    }
-    return [];
-}
-
 // The directory below the build directory CMake writes an executable to, as
 // the CMake subdirectory that declares it or its RUNTIME_OUTPUT_DIRECTORY
 // places it; empty for the build directory itself.
@@ -1486,6 +1434,7 @@ pub Resources :: (target: string) -> string[] {
         return [
             "build/share/chibi/engine.json=build/sdk/chibi_engine_metadata.json",
             "build/share/chibi/apps/chibi=apps/chibi",
+            "build/share/chibi/apps/host=apps/host",
             "build/share/chibi/core=packages/core"
         ];
     }
@@ -1628,7 +1577,6 @@ pub Links :: (target: string) -> string[] {
             "chibi_program", "chibi_source_catalog",
             "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
             "chibi_scheduling",
-            "chibi_builtin_fonts",
             "chibi_host_native_default", "chibi_host_native_catalog",
             "chibi_selection_capabilities",
             "chibi_set_capabilities", "chibi_comparison_capabilities", "chibi_conversion_capabilities",
@@ -1662,7 +1610,6 @@ pub Links :: (target: string) -> string[] {
             "chibi_scheduling",
             "chibi_host_native_default",
             "chibi_host_native_catalog", "chibi_native_bindings", "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a", "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a",
-            "chibi_builtin_fonts",
             "chibi_compiler_syntax", "chibi_compiler_json", "chibi_task_pool_runtime",
             "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
             "chibi_source_catalog", "chibi_text_capabilities", "chibi_fmt",
@@ -1695,7 +1642,7 @@ pub Links :: (target: string) -> string[] {
             "chibi_arithmetic_capabilities", "chibi_core_capabilities",
             "chibi_asset_values", "chibi_comparison_capabilities",
             "chibi_vector_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities",
-            "chibi_native_types", "chibi_builtin_fonts",
+            "chibi_native_types",
             "chibi_compiler_syntax", "chibi_compiler_json", "chibi_json",
             "chibi_native_capabilities", "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
             "chibi_capabilities", "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events",
@@ -1730,7 +1677,7 @@ pub Links :: (target: string) -> string[] {
             "chibi_native_bindings", "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a", "chibi_scheduling",
             "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
             "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_native_prepared",
-            "chibi_asset_json", "chibi_builtin_fonts",
+            "chibi_asset_json",
             "chibi_compiler_syntax", "chibi_compiler_json",
             "chibi_behavior_runtime",
             "chibi_json", "chibi_native_types", "chibi_value_document", "chibi_core_capabilities", "chibi_array_capabilities",

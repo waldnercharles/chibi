@@ -1,5 +1,8 @@
 # PR407 history-preserving integration disposition
 
+Recorded 2026-10-25 (fb4e2c606). Several paths below, including
+`tools/test_policy.py` and the CMake files, have since been deleted or archived.
+
 This records the ordinary two-parent integration plan and its explicit source
 resolutions. It does not authorize updating the existing PR branch, resolving
 its denied review thread, or merging into main.

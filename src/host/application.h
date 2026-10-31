@@ -4,8 +4,8 @@
 #include "authoring/program_service.h"
 
 /* The catalog applications run against: the SDK's application, filesystem,
- * process, project and program services and the compiler's syntax and JSON
- * definitions. The launcher's embedded programs are compiled for it. Owned by
+ * process, project and program services. The launcher's embedded programs
+ * are compiled for it. Owned by
  * the caller (native_capabilities_free); NULL with the reason in `error`. */
 native_capabilities *chibi_application_catalog_new(char *error, size_t error_size);
 

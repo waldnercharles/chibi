@@ -1,5 +1,6 @@
 package graph_driver_tests
 
+import engine "graph:engine"
 import os "core:os"
 import strings "core:strings"
 
@@ -44,8 +45,34 @@ EngineBuildSteps :: (host: string) {
     log = Plan(host, ["--release", "--target", "chibi"]);
     assert(Has(log, "--profile release") && !Has(log, "--profile sanitizer"), "a Release build");
     assert(!Has(log, "--asset-generator-hosts") && Has(log, "build-release/compile_commands.json"), "borrows nothing");
-    log = Plan(host, ["--debug", "--all"]);
-    assert(Has(log, "--profile debug") && !Has(log, "--target chibi "), "a Debug build of everything");
+    log = Plan(host, ["--debug"]);
+    assert(Has(log, "--profile debug") && !Has(log, "--target chibi ") && !Has(log, "--target test_tools"), "a Debug build of everything: no target is named");
+    log = Plan(host, ["--target", "chibi"]);
+    assert(Has(log, "--target chibi --target chibi-build-host"), "a named target and the build host");
+}
+
+// A build without --target names none: the graph builds every product and test
+// driver, and a target it names is one the graph knows.
+DefaultTargets :: (host: string) {
+    log := Plan(host, ["--release"]);
+    assert(!Has(log, "--target "), "the default names no target");
+    named := Plan(host, ["--release", "--target", "chibi"]);
+    assert(engine.TargetError(strings.Fields(named), engine.Targets()) == "", "the graph knows each named target");
+}
+
+// A build runs its steps on every processor online unless --jobs says otherwise.
+BuildJobs :: (host: string) {
+    online := os.Capture(["getconf", "_NPROCESSORS_ONLN"]);
+    cores := strings.TrimSpace(online.stdout);
+    assert(online.status == 0 && cores != "", "the processor count");
+    log := Plan(host, ["--release", "--target", "chibi"]);
+    assert(Has(log, format_text("--jobs {}", cores)), "every processor by default");
+    explicit := "2";
+    if (cores == "2") {
+        explicit = "3";
+    }
+    log = Plan(host, ["--release", "--target", "chibi", "--jobs", explicit]);
+    assert(Has(log, format_text("--jobs {}", explicit)) && !Has(log, format_text("--jobs {}", cores)), "an explicit --jobs");
 }
 
 // `test` runs tools/tests.tsv's selectors: --list names them and --dry-run
@@ -94,6 +121,30 @@ TestScheduling :: (host: string) {
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed");
 }
 
+// `census` fails on build tooling outside archive/ and counts the C that
+// remains, in a scratch repository of its own.
+Census :: (host: string) {
+    source := os.Root()
+    scratch := format_text("{}/.chibi/graph-census", source)
+    assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(scratch) == nil, "the scratch root")
+    assert(os.MakeDirectory(format_text("{}/archive", scratch)) == nil, "the archive directory")
+    assert(os.WriteText(format_text("{}/a.c", scratch), "int a;\nint b;\n") == nil, "a C file")
+    assert(os.WriteText(format_text("{}/b.mm", scratch), "x\n") == nil, "a shim")
+    assert(os.WriteText(format_text("{}/archive/CMakeLists.txt", scratch), "x\n") == nil, "archived tooling")
+    assert(os.Run(["git", "-C", scratch, "init", "-q"]) == 0 && os.Run(["git", "-C", scratch, "add", "-A"]) == 0, "the scratch repository")
+    command := [host, "--compiler", format_text("{}/tools/compiler", source), "--compiler-core", format_text("{}/packages/core", source),
+                "--root", scratch, "--source", format_text("{}/tools/toolchain/Driver.chibi", source),
+                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "50000", "--", "build", "census"]
+    result := os.Capture(command)
+    log := Output(result)
+    assert(result.status == 0 && Has(log, "census: shim 1 b.mm\n") && Has(log, "1 first-party C files, 2 lines, 1 C++/Objective-C shims, 0 build tooling files"), "archived tooling is allowed");
+    assert(os.WriteText(format_text("{}/Makefile", scratch), "all:\n") == nil && os.Run(["git", "-C", scratch, "add", "-A"]) == 0, "a Makefile");
+    result = os.Capture(command)
+    log = Output(result)
+    assert(result.status != 0 && Has(log, "census: build tooling outside archive/: Makefile\n"), "a Makefile fails the census");
+    assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed");
+}
+
 // The other verbs plan their own commands.
 OtherVerbs :: (host: string) {
     install := Verb(host, "install", ["--dry-run", "--prefix", "/prefix"]);
@@ -122,8 +173,11 @@ pub Run :: () -> int {
     assert(length(arguments) == 1, "the build host's path");
     host := arguments[0];
     EngineBuildSteps(host);
+    DefaultTargets(host);
+    BuildJobs(host);
     TestSelectors(host);
     TestScheduling(host);
+    Census(host);
     OtherVerbs(host);
     return 0;
 }

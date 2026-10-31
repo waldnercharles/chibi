@@ -664,6 +664,18 @@ Example :: library {
 }
 ```
 
+A postfix `!` takes an optional's payload and fails when it is `nil`, as Swift's
+`!` does: `scores["Ada"]!` is the value, or a failed run with the message
+"Unwrapped a nil optional". It must touch its operand, so `a!` unwraps and `a !b`
+does not. Use it where absence is a bug; `??`, `if value` and `as T` handle
+absence.
+
+`value?.field` reads a field of an optional record: `nil` when the record is
+`nil`, otherwise the field as an optional, so `(p?.x ?? 0) + 1` has a default.
+`value!.field` unwraps first and fails on `nil`. Like `!`, `?.` must touch its
+operand. It reads authored record fields only: not a call, not a field that
+holds a record, and not an assignment target.
+
 ## Packages and visibility
 
 A package is a folder of `.chibi` files with the same `package` header.
@@ -722,21 +734,89 @@ foreign libc {
 }
 ```
 
-`foreign import alias "path"` names the library. A `system:` path asks the
-linker for a system library; any other path is a prebuilt archive, relative to
-the importing package. `foreign alias { ... }` declares the library's functions
-by signature alone. A function's name is its C symbol.
+`foreign import alias "path"` names the library. `system:c` is libc, which a
+native build links dynamically by default (`chibi build --native --static`
+links none); another `system:` path is not linked yet. Any other path is a
+prebuilt archive, relative to the importing package, that the native build adds
+to the link line and records by hash in its receipt. `vendor:NAME` is the
+archive `libchibi_vendor_NAME.a` in the SDK's `lib/chibi-vendor`, the one pinned
+third-party archive the engine itself links, so a program binds FreeType, box3d
+or another vendored library without shipping a copy. Odin's `vendor:` packages
+bind prebuilt libraries the same way, each beside its package; here the SDK owns
+the archives, and a changed archive rebuilds the program that links it. A name
+the SDK does not hold fails the build and names it. A build tree stages only
+`vendor:freetype` so far; an installed SDK holds every archive in
+`tools/graph/sdk/Contracts.chibi`. `foreign alias { ... }`
+declares the library's functions by signature alone. A function's name is its
+C symbol.
 
-Status: the compiler declares each foreign function as a native the target
-must link. Its identity names the library path and the symbol, so a target that
-does not link the library cannot load a program that calls it; the VM never
-runs foreign code. Parameters and results are integers, floats, `bool` and
-`rawptr`, an opaque 64-bit word. Calls through the native backend and linking
-the archive are the next steps. Names are global like other natives, so two
-foreign functions cannot share one. Planned after that: a `u8[]` passed as a
-data pointer with its length given separately, text for `const char *` when it
-is NUL-terminated, and `@variadic` with the number of fixed arguments for
-variadic C functions.
+```chibi
+foreign import freetype "vendor:freetype"
+
+foreign freetype {
+    FT_Init_FreeType :: (library: u64[]) -> i32
+}
+```
+
+The array is the out-pointer: `FT_Init_FreeType(library)` fills `library[0]`
+with the handle, an opaque 64-bit word that later calls take as a `u64`.
+test/compiler/samples/native/foreign_vendor opens a font this way.
+
+Parameters and results are integers, floats, `bool` and `rawptr`, an opaque
+64-bit word. A parameter may also be `cstring`, which takes any string. The call
+copies it with a NUL into a 4096-byte stack buffer and passes the buffer, so the
+cost is one small copy, visible in the declaration, with no heap allocation. A
+string of 4096 bytes or more, or one that holds a NUL byte, traps instead of
+being truncated. A result cannot be a `cstring`.
+
+An array of numbers, such as `u8[]`, is passed as the pointer to its elements,
+which the callee may write. The length is a parameter of its own, as in C, so
+`read(fd, buffer, u64(length(buffer)))` fills `buffer` in place. The array is
+lent for the call: nothing copies it, and C must not keep the pointer.
+
+A foreign function is a native whose identity names the library path and the
+symbol, so a target that does not link the library cannot load a program that
+calls it; the VM never runs foreign code. Names are global like other natives,
+so two foreign functions cannot share one.
+
+### Function values from C
+
+A C function's address has a function type, spelled like the callback types in
+[passing functions](#passing-functions): `fn(n: i32) -> i32`. In a callback
+parameter of an authored function it names a function the compiler knows, and
+the algorithm is specialized for it. A function type that types a local, or a
+foreign function's parameter or result, holds the address itself: a 64-bit
+word, and a call through it is a C-ABI call.
+
+```chibi
+foreign import libc "system:c"
+
+foreign libc {
+    dlsym :: (handle: rawptr, name: cstring) -> rawptr
+}
+
+Main :: () -> int {
+    absolute: fn(n: i32) -> i32 = dlsym(0, "abs")
+    return absolute(-42)
+}
+```
+
+A call through a null address traps. A foreign function may return a function type directly,
+`dlsym :: (handle: rawptr, name: cstring) -> fn(n: i32) -> i32`, so
+`absolute := dlsym(0, "abs")` takes its type from the result. A `rawptr` converts
+to a function type without a cast, which is how one `dlsym` declaration serves
+every signature. The parameters and result follow the foreign rules above. A
+runtime address cannot yet be passed to an authored function's `fn` parameter;
+call it where the local is. Passing an authored function by name where a foreign function takes an `fn`
+parameter gives C an adapter the compiler generates for it, at no cost to the
+call: `thrd_create(thread, Worker, 41)`. The function's signature must match the
+parameter's, in the foreign types above. The adapter runs the function with the
+program's single runtime context, so a function that C calls on another thread
+must not allocate, assert or fail while another thread can; a C callback is
+plain data in, plain data out.
+
+Planned after that: `@variadic` with the number of fixed arguments for
+variadic C functions, foreign functions without a result, and data symbols.
 
 ## Generics and compile-time values
 
@@ -764,12 +844,61 @@ Example :: library {
 }
 ```
 
-Compile-time execution supports scalar and type values, authored calls, locals,
-assignment, `if` and `while`. It does not support arrays, `for`, closures or
-native calls. Each evaluation has a 65,536-step budget and a 128-call limit.
+Compile-time execution supports integer and bool values, arrays of them,
+records of them, authored calls, locals, assignment, `if`, `while`, `for`,
+`break`, `continue` and `return`. It does not support floats, strings,
+closures or native calls.
+Each evaluation has a 65,536-step budget and a 128-call limit.
 A constant initializer may call such a function, `Size :: Factorial(5)`, and
 may combine calls with arithmetic and conversions; a `when` condition may not
 call functions yet.
+
+Arrays are local values: an array literal, `values: int[] = []`, `append`,
+`length`, `values[i]` to read, and `values[i] = x` or `values[i] += x` to
+change an element. Assigning or passing an array copies it. A function may
+take and return arrays, and an index outside the array is a compilation error.
+`for i in 0..<n`, `for i in 0..n`, `for < i in ...` (reverse), `for value in
+array` and `for index, value in array` loop over a range or an array; loops
+iterate by value, so a `for` over a `ref` is rejected.
+
+A record whose fields are all integers and bools is a value too: `p: Point =
+{x: 1, y: 2}` (each field once, in any order), `p.x` to read, `p.x = v` or
+`p.x += v` to change a field, and a record may be passed to and returned from
+a function. A record with an array, string or record field is rejected where a
+function takes or returns it.
+
+```chibi
+Example :: library {
+    Squares :: (count: int) -> int[] {
+        values: int[] = []
+        for i in 0..<count { values.append(i * i) }
+        return values
+    }
+
+    Sum :: (values: int[]) -> int {
+        total := 0
+        for value in values { total += value }
+        return total
+    }
+
+    Total :: Sum(Squares(5))  // 30
+    Third :: Squares(6)[3]    // 9
+}
+```
+
+```chibi
+Example :: library {
+    Point :: struct { x: int; y: int; }
+
+    Shifted :: (p: Point, dx: int) -> Point {
+        result := p
+        result.x += dx
+        return result
+    }
+
+    Right :: Shifted({x: 1, y: 2}, 10).x  // 11
+}
+```
 
 ### Choosing declarations per platform
 
@@ -1271,7 +1400,7 @@ A test that must end with a run-time failure says so with `core:testing`,
 as Odin's `expect_assert` does. `testing.ExpectFailure(kind)` makes the
 running test pass only if it then ends with that kind of failure:
 `IndexOutOfRange`, `MapKeyAbsent`, `ViewOutOfRange`, `AssertionFailed`,
-`BudgetExhausted` or `DepthExceeded`. Returning normally, or failing with
+`BudgetExhausted`, `DepthExceeded` or `UnwrappedNil`. Returning normally, or failing with
 another kind, fails the test, and a failure before the call is an ordinary
 failure. Nothing unwinds: the failure ends the test as it otherwise would.
 
@@ -1286,12 +1415,10 @@ PickPastTheEnd :: () {
 }
 ```
 
-Run tests and format source with the command line tools.
+Run tests with the command line tool.
 
 ```sh
 chibi test path/to/packages
-chibi fmt path/to/project
-chibi check path/to/project
 ```
 
 Independent tests run in parallel by default, with private execution state and

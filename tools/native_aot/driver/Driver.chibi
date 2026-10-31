@@ -1,0 +1,1880 @@
+package driver
+
+import strings "core:strings"
+
+// Bounded LLVM CLI consumer. It runs on Linux x64 and macOS arm64, and its
+// objects and programs may be for any admitted target. The build host is a transitional
+// capability provider, not part of the emitted executable or a C exemption.
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+Path :: (value: string) -> bool {
+    if (!strings.HasPrefix(value, "/") || strings.ByteLength(value) > 4096) {
+        return false;
+    }
+    for (byte in strings.Bytes(value)) {
+        if (byte < 32 || byte == 127) {
+            return false;
+        }
+    }
+    return true;
+}
+
+pub Tool :: (path: string) -> string {
+    if (!Path(path) || build.find_executable(path) == "") {
+        return "";
+    }
+    resolved := build.resolve_path(path);
+    if (!Path(resolved)) {
+        return "";
+    }
+    return resolved;
+}
+
+// Each admitted triple, in native_abi's target order, with each canonical
+// data layout LLVM gives it, as measured. The arm64 layout changed with LLVM
+// 19 (-Fn32) and again by 22 (the x86 address spaces), and each is the same
+// ABI; any other layout is rejected rather than trusted.
+Admitted :: (triple: string, layout: string) -> int {
+    triples := ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"];
+    targets: int[] = [0, 1, 1, 1, 2];
+    layouts := ["e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+                "e-m:o-i64:64-i128:128-n32:64-S128",
+                "e-m:o-i64:64-i128:128-n32:64-S128-Fn32",
+                "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32",
+                "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"];
+    for (index in 0..<length(layouts)) {
+        target := targets[index];
+        if (triple == Join(["target triple = \"", triples[target], "\""]) &&
+            layout == Join(["target datalayout = \"", layouts[index], "\""])) {
+            return target;
+        }
+    }
+    return -1;
+}
+
+// Only LLVM's verified, canonical textual output is inspected. This admits
+// declared target metadata, not source semantics or arbitrary LLVM syntax.
+// The result is the admitted target's index, or -1.
+pub Target :: (text: string) -> int {
+    triples := 0;
+    layouts := 0;
+    triple := "";
+    layout := "";
+    for (line in build.lines(text)) {
+        if (strings.HasPrefix(line, "target triple = ")) {
+            triple = line;
+            triples += 1;
+        }
+        if (strings.HasPrefix(line, "target datalayout = ")) {
+            layout = line;
+            layouts += 1;
+        }
+    }
+    if (triples != 1 || layouts != 1) {
+        return -1;
+    }
+    return Admitted(triple, layout);
+}
+
+// Never recurse or remove anything outside the directory this invocation
+// exclusively reserved. Timeout/cancellation can leave an unpublished partial.
+pub Cleanup :: (partial: string) -> bool {
+    ok := true;
+    for (name in ["source.ll", "module.ll", "object.o", "start.ll", "start.o", "libSystem.tbd", "kernel32.def",
+                  "kernel32.lib", "program", "program.exe", "receipt.txt"]) {
+        ok = build.remove(Join([partial, "/", name])) && ok;
+    }
+    return build.remove(partial) && ok;
+}
+
+Failed :: (partial: string, stage: string, status: int) -> int {
+    build.report(Join(["native-aot: ", stage, " failed; no output published"]));
+    if (!Cleanup(partial)) {
+        build.report("native-aot: unpublished partial needs cleanup");
+    }
+    return status;
+}
+
+// Each target's program is named as its system runs programs.
+Program :: (target: int) -> string {
+    if (target == 2) {
+        return "program.exe";
+    }
+    return "program";
+}
+
+// The program's only runtime, which calls the module's entry, `chibi_scalar()
+// -> i32` as `scalar_llvm` emits it, and makes its result the exit status.
+// Nothing else is linked, so no C library or compiler driver is needed.
+//
+// On Linux it is shaped like Odin's no-CRT `_start` and musl's crt1: clear the
+// frame pointer, align the stack down to 16 bytes, call the entry, then exit.
+// A macOS program always links libSystem, so StartDynamic starts it. On
+// Windows `mainCRTStartup` passes the result to ExitProcess, as rustc's no-CRT
+// programs do, rather than returning while the loader's threads may still run. Windows code that uses floating point references
+// `_fltused` and large frames call `__chkstk`, both of which the C runtime
+// would define. This `__chkstk` is compiler-rt's x86-64 probe: it touches
+// each page from the stack pointer down by RAX bytes and changes no register.
+// What every Windows program starts with: the target, `__chkstk`, `_fltused`
+// and the import of ExitProcess.
+WindowsPrelude :: () -> string {
+    return Join([
+        "target triple = \"x86_64-pc-windows-msvc\"\n",
+        "module asm \".text\"\n",
+        "module asm \".globl __chkstk\"\n",
+        "module asm \"__chkstk:\"\n",
+        "module asm \"pushq %rcx\"\n",
+        "module asm \"pushq %rax\"\n",
+        "module asm \"cmpq $0x1000, %rax\"\n",
+        "module asm \"leaq 24(%rsp), %rcx\"\n",
+        "module asm \"jb 1f\"\n",
+        "module asm \"2:\"\n",
+        "module asm \"subq $0x1000, %rcx\"\n",
+        "module asm \"testq %rcx, (%rcx)\"\n",
+        "module asm \"subq $0x1000, %rax\"\n",
+        "module asm \"cmpq $0x1000, %rax\"\n",
+        "module asm \"ja 2b\"\n",
+        "module asm \"1:\"\n",
+        "module asm \"subq %rax, %rcx\"\n",
+        "module asm \"testq %rcx, (%rcx)\"\n",
+        "module asm \"popq %rax\"\n",
+        "module asm \"popq %rcx\"\n",
+        "module asm \"retq\"\n",
+        "@_fltused = dso_local global i32 0\n",
+        "declare dllimport void @ExitProcess(i32) noreturn\n"
+    ]);
+}
+
+Start :: (target: int, context: bool) -> string {
+    if (target == 2 && context) {
+        return WindowsContextStart();
+    }
+    if (target == 2) {
+        return Join([
+            WindowsPrelude(),
+            "declare i32 @chibi_scalar()\n",
+            "define void @mainCRTStartup() {\n",
+            "  %status = call i32 @chibi_scalar()\n",
+            "  call void @ExitProcess(i32 %status)\n",
+            "  unreachable\n",
+            "}\n"
+        ]);
+    }
+    return Join([
+        "target triple = \"x86_64-unknown-linux-gnu\"\n",
+        "module asm \".text\"\n",
+        "module asm \".globl _start\"\n",
+        "module asm \".type _start, @function\"\n",
+        "module asm \"_start:\"\n",
+        "module asm \"xorl %ebp, %ebp\"\n",
+        "module asm \"andq $-16, %rsp\"\n",
+        "module asm \"callq chibi_scalar\"\n",
+        "module asm \"movl %eax, %edi\"\n",
+        "module asm \"movl $231, %eax\"\n",
+        "module asm \"syscall\"\n",
+        "module asm \"ud2\"\n",
+        "declare i32 @chibi_scalar()\n"
+    ]);
+}
+
+// The Windows start module for an entry that takes the runtime context: the
+// plain start's `__chkstk` and `_fltused`, then a context whose allocate is
+// HeapAlloc on the process heap, zeroed as calloc is, and whose index failure
+// and text formatting exit with status 134, as abort does elsewhere. A failed
+// assert ends the entry early with its failure in the context, which the
+// program writes to standard error with WriteFile before it exits with 134.
+// The program calls no C library.
+WindowsContextStart :: () -> string {
+    return Join([
+        WindowsPrelude(),
+        "declare dllimport ptr @GetProcessHeap()\n",
+        "declare dllimport ptr @HeapAlloc(ptr, i32, i64)\n",
+        "declare dllimport ptr @GetStdHandle(i32)\n",
+        "declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n",
+        "declare i32 @chibi_scalar(ptr)\n",
+        "@chibi_report_head = private unnamed_addr constant [29 x i8] c\"assertion failed in function \"\n",
+        "@chibi_report_from = private unnamed_addr constant [17 x i8] c\" at source bytes \"\n",
+        "@chibi_report_to = private unnamed_addr constant [4 x i8] c\" to \"\n",
+        "@chibi_report_end = private unnamed_addr constant [1 x i8] c\"\\0A\"\n",
+        "define internal void @chibi_format_text(ptr %ctx, ptr %values, i32 %count, ptr %result) {\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
+        "  %heap = call ptr @GetProcessHeap()\n",
+        "  %memory = call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)\n",
+        "  ret ptr %memory\n",
+        "}\n",
+        "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal void @chibi_write(ptr %bytes, i32 %count) {\n",
+        "  %error = call ptr @GetStdHandle(i32 -12)\n",
+        "  %written = alloca i32\n",
+        "  %ignored = call i32 @WriteFile(ptr %error, ptr %bytes, i32 %count, ptr %written, ptr null)\n",
+        "  ret void\n",
+        "}\n",
+        "define internal void @chibi_write_decimal(i64 %value) {\n",
+        "entry:\n",
+        "  %buffer = alloca [20 x i8]\n",
+        "  br label %loop\n",
+        "loop:\n",
+        "  %rest = phi i64 [ %value, %entry ], [ %next, %loop ]\n",
+        "  %at = phi i32 [ 20, %entry ], [ %back, %loop ]\n",
+        "  %digit = urem i64 %rest, 10\n",
+        "  %character = add i64 %digit, 48\n",
+        "  %byte = trunc i64 %character to i8\n",
+        "  %back = sub i32 %at, 1\n",
+        "  %slot = getelementptr inbounds [20 x i8], ptr %buffer, i32 0, i32 %back\n",
+        "  store i8 %byte, ptr %slot\n",
+        "  %next = udiv i64 %rest, 10\n",
+        "  %more = icmp ne i64 %next, 0\n",
+        "  br i1 %more, label %loop, label %done\n",
+        "done:\n",
+        "  %first = getelementptr inbounds [20 x i8], ptr %buffer, i32 0, i32 %back\n",
+        "  %count = sub i32 20, %back\n",
+        "  call void @chibi_write(ptr %first, i32 %count)\n",
+        "  ret void\n",
+        "}\n",
+        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
+        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
+        "define void @mainCRTStartup() {\n",
+        "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
+        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
+        "  %failure = load ptr, ptr %failure.at\n",
+        "  %failed = icmp ne ptr %failure, null\n",
+        "  br i1 %failed, label %report, label %done\n",
+        "report:\n",
+        "  %function = load i64, ptr %failure\n",
+        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
+        "  %start = load i32, ptr %start.at\n",
+        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
+        "  %end = load i32, ptr %end.at\n",
+        "  %start.wide = zext i32 %start to i64\n",
+        "  %end.wide = zext i32 %end to i64\n",
+        "  call void @chibi_write(ptr @chibi_report_head, i32 29)\n",
+        "  call void @chibi_write_decimal(i64 %function)\n",
+        "  call void @chibi_write(ptr @chibi_report_from, i32 17)\n",
+        "  call void @chibi_write_decimal(i64 %start.wide)\n",
+        "  call void @chibi_write(ptr @chibi_report_to, i32 4)\n",
+        "  call void @chibi_write_decimal(i64 %end.wide)\n",
+        "  call void @chibi_write(ptr @chibi_report_end, i32 1)\n",
+        "  call void @ExitProcess(i32 134)\n",
+        "  unreachable\n",
+        "done:\n",
+        "  call void @ExitProcess(i32 %status)\n",
+        "  unreachable\n",
+        "}\n"
+    ]);
+}
+
+// A macOS program links libSystem, which dyld requires of every program and
+// which re-exports the C library. A text stub that names it stands in for the
+// SDK's, as Zig's stubs do, so a program links on any host and with any Xcode:
+// lld reads only the stub formats it knows, and newer SDKs name architectures
+// older lld rejects. The stub exports `symbols`, which dyld then binds in
+// libSystem. The Windows program imports ExitProcess from kernel32, whose
+// import library lld-link writes from a definition, as rustc writes raw-dylib
+// imports, so no Windows SDK is needed either.
+LibSystem :: (symbols: string[]) -> string {
+    return Join(["--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '/usr/lib/libSystem.B.dylib'\n",
+                 "exports:\n  - targets: [ arm64-macos ]\n    symbols: [ ", strings.Join(symbols, ", "), " ]\n...\n"]);
+}
+// The C symbols a macOS program imports, by their Mach-O names: each function
+// the module declares, which its foreign calls name, then what the start
+// object's context calls, the copies llc may lower to calls, and dyld's
+// binder for the lazy stubs lld writes for them.
+Imports :: (module: string) -> string[] {
+    symbols: string[] = [];
+    for (line in strings.SplitLines(module)) {
+        if (!strings.HasPrefix(line, "declare ")) {
+            continue;
+        }
+        at := strings.Index(line, "@");
+        end := strings.Index(line, "(");
+        if (at < 0 || end <= at) {
+            continue;
+        }
+        name := strings.Slice(line, at + 1, end - at - 1);
+        if (!strings.HasPrefix(name, "llvm.")) {
+            symbols.append(Join(["_", name]));
+        }
+    }
+    for (name in ["_abort", "_calloc", "_dprintf", "_memcpy", "_memmove", "_memset", "dyld_stub_binder"]) {
+        listed := false;
+        for (symbol in symbols) {
+            listed = listed || symbol == name;
+        }
+        if (!listed) {
+            symbols.append(name);
+        }
+    }
+    return symbols;
+}
+// The import definition of the DLL `name`: lld-link writes its import library
+// from it, as it does for the program's own ExitProcess.
+ImportDefinition :: (name: string, symbols: string[]) -> string {
+    lines: string[] = [Join(["LIBRARY ", name, ".dll\nEXPORTS\n"])];
+    for (symbol in symbols) {
+        lines.append(Join(["    ", symbol, "\n"]));
+    }
+    return Join(lines);
+}
+
+// lld-link's command for the import library of the DLL `name`, from the
+// definition beside it.
+ImportLibrary :: (linker: string, partial: string, name: string) -> string[] {
+    return [linker, "-flavor", "link", "/lib", "/nologo", Join(["/def:", partial, "/", name, ".def"]), "/machine:x64",
+            Join(["/out:", partial, "/", name, ".lib"])];
+}
+
+// The system libraries a module's IR names, other than libc: the NAME of each
+// `; chibi-library system:NAME`, once, in order.
+SystemLibraries :: (text: string) -> string[] {
+    names: string[] = [];
+    prefix := "; chibi-library system:";
+    for (line in strings.SplitLines(text)) {
+        if (strings.HasPrefix(line, prefix)) {
+            name := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
+            if (name != "c" && !names.contains(name)) {
+                names.append(name);
+            }
+        }
+    }
+    return names;
+}
+
+// The symbols the module imports from the system library `name`, once, in
+// order: `; chibi-import system:NAME SYMBOL`.
+SystemSymbols :: (text: string, name: string) -> string[] {
+    symbols: string[] = [];
+    prefix := Join(["; chibi-import system:", name, " "]);
+    for (line in strings.SplitLines(text)) {
+        if (strings.HasPrefix(line, prefix)) {
+            symbol := strings.Slice(line, strings.ByteLength(prefix), strings.ByteLength(line) - strings.ByteLength(prefix));
+            if (!symbols.contains(symbol)) {
+                symbols.append(symbol);
+            }
+        }
+    }
+    return symbols;
+}
+
+// Whether `value` spells a library or symbol name a definition file can hold.
+ImportName :: (value: string) -> bool {
+    if (value == "") {
+        return false;
+    }
+    for (byte in strings.Bytes(value)) {
+        if (!Word(byte) && byte != 46 && byte != 45 && byte != 64 && byte != 36) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// lld's link of target's program from the module's object and the start
+// object, with the platform's library stub in `partial`. The resolved linker
+// may be lld's generic driver, which reads its flavor from its name unless
+// told.
+Link :: (linker: string, target: int, partial: string, object: string, start: string, program: string,
+         libraries: string[]) -> string[] {
+    if (target == 1) {
+        command := [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
+                    "-dead_strip", "-e", "_main", object, start];
+        if (length(libraries) > 0) {
+            // An archive's own C imports are not in the stub, which names only
+            // what the module declares; dyld binds them in libSystem at launch.
+            command.extend(["-undefined", "dynamic_lookup"]);
+        }
+        command.extend(libraries);
+        command.extend([Join([partial, "/libSystem.tbd"]), "-o", program]);
+        return command;
+    }
+    if (target == 2) {
+        return [linker, "-flavor", "link", "/nologo", "/subsystem:console", "/entry:mainCRTStartup",
+                "/nodefaultlib", "/opt:ref", Join(["/out:", program]), object, start,
+                Join([partial, "/kernel32.lib"])];
+    }
+    command := [linker, "-flavor", "gnu", "-static", "--gc-sections", "-e", "_start", object, start];
+    command.extend(libraries);
+    command.extend(["-o", program]);
+    return command;
+}
+
+// Where the C library's development files are: the folder holding crt1.o, crti.o,
+// crtn.o and libc.so, then the dynamic linker's path, or none. A program links
+// libc dynamically by default, as Odin's does, and --static links none.
+Libc :: () -> string[] {
+    found: string[] = [];
+    for (folder in ["/usr/lib/x86_64-linux-gnu", "/usr/lib64", "/lib/x86_64-linux-gnu", "/usr/lib"]) {
+        complete := true;
+        for (name in ["crt1.o", "crti.o", "crtn.o", "libc.so"]) {
+            complete = complete && build.file_kind(Join([folder, "/", name])) == "file";
+        }
+        if (!complete) {
+            continue;
+        }
+        for (interpreter in ["/lib64/ld-linux-x86-64.so.2", "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+                             "/usr/lib64/ld-linux-x86-64.so.2"]) {
+            if (build.file_kind(interpreter) != "") {
+                found.append(folder);
+                found.append(interpreter);
+                return found;
+            }
+        }
+    }
+    return found;
+}
+
+// lld's dynamic link of a Linux program against libc, whose C runtime starts
+// it and calls the start module's main.
+LinkDynamic :: (linker: string, libc: string[], object: string, start: string, program: string,
+                libraries: string[]) -> string[] {
+    command := [linker, "-flavor", "gnu", "--dynamic-linker", libc[1], "--gc-sections", "-o", program,
+                Join([libc[0], "/crt1.o"]), Join([libc[0], "/crti.o"]), object, start];
+    command.extend(libraries);
+    command.extend(["-L", libc[0], "-lc", Join([libc[0], "/crtn.o"])]);
+    return command;
+}
+
+// The module that calls the program's entry from libc's C runtime, or on
+// macOS from dyld, which calls main and exits with its result. An entry
+// that takes the runtime context gets one whose allocate is libc's calloc and
+// whose index failure aborts; formatting text is not available to a program.
+// A failed assert ends the entry early with its failure in the context, which
+// main reports on stderr before it exits with status 134.
+StartDynamic :: (triple: string, context: bool) -> string {
+    if (!context) {
+        return Join([
+            "target triple = \"", triple, "\"\n",
+            "declare i32 @chibi_scalar()\n",
+            "define i32 @main() {\n",
+            "  %status = call i32 @chibi_scalar()\n",
+            "  ret i32 %status\n",
+            "}\n"
+        ]);
+    }
+    return Join([
+        "target triple = \"", triple, "\"\n",
+        "declare ptr @calloc(i64, i64)\n",
+        "declare void @abort() noreturn\n",
+        "declare i32 @dprintf(i32, ptr, ...)\n",
+        "@chibi_report = private unnamed_addr constant [59 x i8] ",
+        "c\"assertion failed in function %lu at source bytes %d to %d\\0A\\00\"\n",
+        "declare i32 @chibi_scalar(ptr)\n",
+        "define internal void @chibi_format_text(ptr %ctx, ptr %values, i32 %count, ptr %result) {\n",
+        "  call void @abort()\n",
+        "  unreachable\n",
+        "}\n",
+        "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
+        "  %memory = call ptr @calloc(i64 1, i64 %size)\n",
+        "  ret ptr %memory\n",
+        "}\n",
+        "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
+        "  call void @abort()\n",
+        "  unreachable\n",
+        "}\n",
+        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
+        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
+        "define i32 @main() {\n",
+        "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
+        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
+        "  %failure = load ptr, ptr %failure.at\n",
+        "  %failed = icmp ne ptr %failure, null\n",
+        "  br i1 %failed, label %report, label %done\n",
+        "report:\n",
+        "  %function = load i64, ptr %failure\n",
+        "  %start.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 1\n",
+        "  %start = load i32, ptr %start.at\n",
+        "  %end.at = getelementptr inbounds { i64, i32, i32 }, ptr %failure, i32 0, i32 2\n",
+        "  %end = load i32, ptr %end.at\n",
+        "  call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @chibi_report, i64 %function, i32 %start, i32 %end)\n",
+        "  ret i32 134\n",
+        "done:\n",
+        "  ret i32 %status\n",
+        "}\n"
+    ]);
+}
+
+// The absolute library paths a module's IR names with `; link PATH` comments,
+// which the driver writes in place of the emitter's `; chibi-library PATH`.
+LinkedLibraries :: (text: string) -> string[] {
+    found: string[] = [];
+    for (line in strings.SplitLines(text)) {
+        if (strings.HasPrefix(line, "; link ")) {
+            found.append(strings.Slice(line, 7, strings.ByteLength(line) - 7));
+        }
+    }
+    return found;
+}
+
+// The SDK's folder of prebuilt third-party archives, lib/chibi-vendor beside
+// share/chibi, for the SDK whose core is `core`; "" when `core` is not below a
+// share/chibi folder.
+VendorDirectory :: (core: string) -> string {
+    suffix := "/share/chibi/core";
+    if (!strings.HasSuffix(core, suffix)) {
+        return "";
+    }
+    return Join([strings.Slice(core, 0, strings.ByteLength(core) - strings.ByteLength(suffix)), "/lib/chibi-vendor"]);
+}
+
+// The archive a `vendor:NAME` foreign path names in `vendor`, "" for a path
+// that is not one or a name that is not an identifier.
+VendorArchive :: (path: string, vendor: string) -> string {
+    if (!strings.HasPrefix(path, "vendor:")) {
+        return "";
+    }
+    name := strings.Slice(path, 7, strings.ByteLength(path) - 7);
+    if (!strings.IsIdentifier(name)) {
+        return "";
+    }
+    return Join([vendor, "/libchibi_vendor_", name, ".a"]);
+}
+
+// The vendor archives the sources name, `NAME:HASH` once each in source order,
+// so a changed archive rebuilds the program that links it.
+VendorState :: (texts: string[], vendor: string) -> string {
+    parts: string[] = [];
+    for (text in texts) {
+        rest := text;
+        at := strings.Index(rest, "\"vendor:");
+        while (at >= 0) {
+            rest = strings.Slice(rest, at + 1, strings.ByteLength(rest) - at - 1);
+            end := strings.Index(rest, "\"");
+            if (end < 0) {
+                break;
+            }
+            path := strings.Slice(rest, 0, end);
+            archive := VendorArchive(path, vendor);
+            if (archive != "") {
+                part := Join([path, ":", build.hash_file(archive)]);
+                if (!parts.contains(part)) {
+                    parts.append(part);
+                }
+            }
+            rest = strings.Slice(rest, end + 1, strings.ByteLength(rest) - end - 1);
+            at = strings.Index(rest, "\"vendor:");
+        }
+    }
+    return strings.Join(parts, ",");
+}
+
+// `text` with each `; chibi-library PATH` comment resolved to an existing
+// regular file and rewritten as `; link ABSOLUTE`, or "" after reporting why
+// not. A `vendor:NAME` path is the SDK's prebuilt archive in `vendor`, and any
+// other relative path is below `root`. `system:c` is libc and rewritten to
+// nothing; other system libraries stay as they are, for a Windows link to write
+// their import libraries.
+ResolveLibraries :: (text: string, root: string, vendor: string) -> string {
+    out: string[] = [];
+    for (line in strings.SplitLines(text)) {
+        if (!strings.HasPrefix(line, "; chibi-library ")) {
+            out.append(line);
+            continue;
+        }
+        path := strings.Slice(line, 16, strings.ByteLength(line) - 16);
+        if (path == "system:c") {
+            // libc, which every dynamic link names already.
+            continue;
+        }
+        if (strings.HasPrefix(path, "system:")) {
+            // A Windows link writes its import library; other targets refuse it.
+            out.append(line);
+            continue;
+        }
+        absolute := path;
+        if (strings.HasPrefix(path, "vendor:")) {
+            absolute = VendorArchive(path, vendor);
+            if (absolute == "" || build.file_kind(absolute) != "file") {
+                build.report(Join(["native: the foreign library ", path, " is not in the SDK's ", vendor]));
+                return "";
+            }
+        } else if (!strings.HasPrefix(path, "/")) {
+            absolute = Join([root, "/", path]);
+        }
+        absolute = build.resolve_path(absolute);
+        if (absolute == "" || build.file_kind(absolute) != "file") {
+            build.report(Join(["native: the foreign library ", path, " is not a file"]));
+            return "";
+        }
+        out.append(Join(["; link ", absolute]));
+    }
+    return Join([strings.Join(out, "\n"), "\n"]);
+}
+
+// Receipt arguments occupy separate lines. Path controls are rejected before
+// execution, and every other argument is fixed, so no line escaping is needed.
+Command :: (stage: string, arguments: string[]) -> string {
+    return Join(["stage ", stage, "\n", strings.Join(arguments, "\n"), "\nend-stage\n"]);
+}
+
+pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
+    count := 5;
+    if (executable) {
+        count = 6;
+    }
+    if (length(arguments) != count) {
+        if (executable) {
+            build.report("usage: INPUT.ll OUTPUT_DIRECTORY OPT LLC LD_LLD 0|2 (absolute paths)");
+        } else {
+            build.report("usage: INPUT.ll OUTPUT_DIRECTORY OPT LLC 0|2 (absolute paths)");
+        }
+        return 2;
+    }
+    mode := arguments[count - 1];
+    if (mode != "0" && mode != "2") {
+        build.report("native-aot: mode must be 0 or 2");
+        return 2;
+    }
+    if (!Path(arguments[0]) || !Path(arguments[1])) {
+        build.report("native-aot: absolute input/output paths are required");
+        return 2;
+    }
+    input := build.resolve_path(arguments[0]);
+    opt := Tool(arguments[2]);
+    llc := Tool(arguments[3]);
+    linker := "";
+    if (executable) {
+        linker = Tool(arguments[4]);
+    }
+    name := strings.BaseName(arguments[1]);
+    slash := strings.LastIndexByte(arguments[1], 47);
+    parent := build.resolve_path(strings.Slice(arguments[1], 0, slash + 1));
+    if (!Path(input) || build.file_kind(input) != "file" || opt == "" || llc == "" ||
+        (executable && linker == "") || !Path(parent) || name == "" || name == "." || name == "..") {
+        build.report("native-aot: regular IR, executable tools and an existing output parent are required");
+        return 2;
+    }
+    output := Join([parent, "/", name]);
+    partial := Join([output, ".partial"]);
+    if (build.file_kind(output) != "" || build.file_kind(partial) != "") {
+        build.report("native-aot: output and partial must be absent; choose a fresh directory");
+        return 2;
+    }
+    text := build.read_file(input);
+    if (strings.ByteLength(text) == 0) {
+        build.report("native-aot: empty IR is not an emitted scalar module");
+        return 2;
+    }
+    opt_hash := build.hash_file(opt);
+    llc_hash := build.hash_file(llc);
+    linker_hash := "";
+    if (executable) {
+        linker_hash = build.hash_file(linker);
+    }
+    if (opt_hash == "" || llc_hash == "" || (executable && linker_hash == "")) {
+        build.report("native-aot: cannot identify tool executables");
+        return 2;
+    }
+    if (!build.reserve_directory(partial)) {
+        build.report("native-aot: cannot exclusively reserve partial output");
+        return 1;
+    }
+    source := Join([partial, "/source.ll"]);
+    module := Join([partial, "/module.ll"]);
+    object := Join([partial, "/object.o"]);
+    start := Join([partial, "/start.ll"]);
+    start_object := Join([partial, "/start.o"]);
+    if (!build.write_file(source, text)) {
+        return Failed(partial, "IR snapshot", 1);
+    }
+    passes := "verify";
+    if (mode == "2") {
+        passes = "verify,default<O2>,verify";
+    }
+    optimize := [opt, "-S", Join(["-passes=", passes]), source, "-o", module];
+    // Position independent, so a dense switch's table also links into the
+    // shared libraries the native tests load.
+    compile := [llc, "-filetype=obj", Join(["-O=", mode]), "-relocation-model=pic", module, "-o", object];
+    compile_start := [llc, "-filetype=obj", Join(["-O=", mode]), "-relocation-model=pic", start, "-o", start_object];
+    status := build.run(optimize);
+    if (status != 0) {
+        return Failed(partial, "LLVM verification/optimization", status);
+    }
+    target := -1;
+    if (build.file_kind(module) == "file") {
+        target = Target(build.read_file(module));
+    }
+    if (target < 0) {
+        return Failed(partial, "canonical target/layout admission", 2);
+    }
+    shared := linkage == "shared";
+    program := Join([partial, "/", Program(target)]);
+    if (shared) {
+        program = Join([partial, "/generation.so"]);
+    }
+    libraries := LinkedLibraries(text);
+    imported := SystemLibraries(text);
+    if (target != 2 && length(imported) > 0) {
+        return Failed(partial, Join(["system library ", imported[0], " links on Windows only; link a prebuilt archive instead"]), 2);
+    }
+    for (name in imported) {
+        if (!ImportName(name)) {
+            return Failed(partial, Join(["invalid system library name ", name]), 2);
+        }
+        for (symbol in SystemSymbols(text, name)) {
+            if (!ImportName(symbol)) {
+                return Failed(partial, Join(["invalid symbol name ", symbol, " imported from ", name]), 2);
+            }
+        }
+    }
+    if (shared && (!executable || target != 0)) {
+        return Failed(partial, "a shared library is a Linux x86-64 link", 2);
+    }
+    dynamic := executable && linkage == "dynamic" && target == 0;
+    // A program that allocates takes the runtime context, which only a dynamic
+    // link supplies, from libc's allocator. A macOS program always links
+    // libSystem dynamically.
+    takes_context := strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx)");
+    if (executable && takes_context && !dynamic && target == 0) {
+        return Failed(partial, "a program that allocates links libc dynamically; omit --static", 2);
+    }
+    libc: string[] = [];
+    if (dynamic) {
+        libc = Libc();
+        if (length(libc) != 2) {
+            return Failed(partial, "libc development files (crt1.o, crti.o, crtn.o, libc.so) not found; use --static", 2);
+        }
+    }
+    link := Link(linker, target, partial, object, start_object, program, libraries);
+    if (dynamic) {
+        link = LinkDynamic(linker, libc, object, start_object, program, libraries);
+    }
+    // kernel32 is always linked, for the program's ExitProcess.
+    windows_libraries: string[] = ["kernel32"];
+    for (name in imported) {
+        if (!windows_libraries.contains(name)) {
+            windows_libraries.append(name);
+        }
+    }
+    kernel32: string[] = ["ExitProcess"];
+    if (target == 2 && takes_context) {
+        // The start module's allocator and assert report.
+        kernel32.extend(["GetProcessHeap", "HeapAlloc", "GetStdHandle", "WriteFile"]);
+    }
+    for (symbol in SystemSymbols(text, "kernel32")) {
+        if (!kernel32.contains(symbol)) {
+            kernel32.append(symbol);
+        }
+    }
+    if (target == 2) {
+        for (name in windows_libraries) {
+            if (name != "kernel32") {
+                link.append(Join([partial, "/", name, ".lib"]));
+            }
+        }
+        link.extend(libraries);
+    }
+    if (shared) {
+        link = [linker, "-flavor", "gnu", "-shared", "--gc-sections", object, "-o", program];
+    }
+    status = build.run(compile);
+    if (status != 0) {
+        return Failed(partial, "LLVM object emission", status);
+    }
+    if (build.file_kind(object) != "file") {
+        return Failed(partial, "LLVM object emission", 1);
+    }
+    if (executable) {
+        start_text := Start(target, takes_context);
+        if (dynamic) {
+            start_text = StartDynamic("x86_64-unknown-linux-gnu", takes_context);
+        }
+        if (target == 1) {
+            start_text = StartDynamic("arm64-apple-macosx11.0.0", takes_context);
+        }
+        if (!build.write_file(start, start_text)) {
+            return Failed(partial, "start module", 1);
+        }
+        status = build.run(compile_start);
+        if (status != 0) {
+            return Failed(partial, "start object emission", status);
+        }
+        if (build.file_kind(start_object) != "file") {
+            return Failed(partial, "start object emission", 1);
+        }
+        if (target == 1 && !build.write_file(Join([partial, "/libSystem.tbd"]), LibSystem(Imports(build.read_file(module))))) {
+            return Failed(partial, "libSystem stub", 1);
+        }
+        if (target == 2) {
+            for (name in windows_libraries) {
+                symbols := kernel32;
+                if (name != "kernel32") {
+                    symbols = SystemSymbols(text, name);
+                }
+                if (!build.write_file(Join([partial, "/", name, ".def"]), ImportDefinition(name, symbols))) {
+                    return Failed(partial, Join([name, " definition"]), 1);
+                }
+                status = build.run(ImportLibrary(linker, partial, name));
+                if (status != 0) {
+                    return Failed(partial, Join([name, " import library"]), status);
+                }
+            }
+        }
+        status = build.run(link);
+        if (status != 0) {
+            return Failed(partial, "native link", status);
+        }
+        if (build.file_kind(program) != "file" || build.find_executable(program) == "") {
+            return Failed(partial, "native link", 1);
+        }
+    }
+    if (build.hash_file(opt) != opt_hash || build.hash_file(llc) != llc_hash ||
+        (executable && build.hash_file(linker) != linker_hash)) {
+        return Failed(partial, "tool identity changed during build", 1);
+    }
+    source_hash := build.hash_file(source);
+    module_hash := build.hash_file(module);
+    object_hash := build.hash_file(object);
+    start_hash := "";
+    program_hash := "";
+    if (executable) {
+        if (!shared) {
+            start_hash = build.hash_file(start_object);
+        }
+        program_hash = build.hash_file(program);
+    }
+    if (source_hash != build.hash_text(text) || module_hash == "" || object_hash == "" ||
+        (executable && ((start_hash == "" && !shared) || program_hash == ""))) {
+        return Failed(partial, "output identity", 1);
+    }
+    kind := "object";
+    if (executable) {
+        kind = "executable";
+    }
+    receipt := Join([
+        "native-aot-driver 1\noutput-kind ", kind,
+        "\ninput ", input, "\ninput-sha256 ", source_hash,
+        "\nopt ", opt, "\nopt-sha256 ", opt_hash, "\nllc ", llc, "\nllc-sha256 ", llc_hash,
+        "\nmode ", mode, "\nmodule-sha256 ", module_hash, "\nobject-sha256 ", object_hash, "\n",
+        Command("opt", optimize), Command("llc", compile)
+    ]);
+    if (executable) {
+        kind_of_link := "static";
+        if (dynamic) {
+            kind_of_link = Join(["dynamic ", libc[0]]);
+        }
+        if (shared) {
+            kind_of_link = "shared";
+        }
+        receipt = Join([receipt, "linkage ", kind_of_link, "\nstart-object-sha256 ", start_hash, "\nlinker ", linker,
+                        "\nlinker-sha256 ", linker_hash, "\nprogram-sha256 ", program_hash, "\n",
+                        Command("llc-start", compile_start)]);
+        if (target == 2) {
+            for (name in windows_libraries) {
+                receipt = Join([receipt, Command("import-library", ImportLibrary(linker, partial, name))]);
+            }
+        }
+        for (archive in libraries) {
+            receipt = Join([receipt, "library ", archive, "\nlibrary-sha256 ", build.hash_file(archive), "\n"]);
+        }
+        receipt = Join([receipt, Command("link", link)]);
+    }
+    if (!build.write_file(Join([partial, "/receipt.txt"]), receipt)) {
+        return Failed(partial, "receipt", 1);
+    }
+    if (!build.publish_directory(partial, output)) {
+        return Failed(partial, "exclusive publication", 1);
+    }
+    build.report(Join(["native-aot: published ", output]));
+    return 0;
+}
+
+// The prebuilt archives beside the source with their hashes, so a changed
+// library rebuilds the program that links it.
+Archives :: (root: string) -> string {
+    parts: string[] = [];
+    for (name in build.list_directory(root)) {
+        path := Join([root, "/", name]);
+        if (strings.HasSuffix(name, ".a") && build.file_kind(path) == "file") {
+            parts.append(Join([name, ":", build.hash_file(path)]));
+        }
+    }
+    return strings.Join(parts, ",");
+}
+
+// Existing executable entry and explicit object entry share publication rules.
+pub Build :: () -> int {
+    return Run(build.arguments(), true, "static");
+}
+pub Object :: () -> int {
+    return Run(build.arguments(), false, "static");
+}
+
+// `chibi build --native`: one package source, through the ordinary compiler's
+// CollectScalar and the scalar emitter, to a program Build links. Each output
+// directory is named by a hash of everything that decides its bytes, so the
+// same inputs reuse it and a changed input never replaces a prior program.
+// Compiler host entries are FNV-1a hashes of their package symbols:
+// package_compiler's CompileClosure (0x140a9546d9e8c296) and CollectScalar
+// (0xebbc43e46769862a), and native_emitter's Emit (0xcd64c452c8ed1e6f),
+// EmitLines (0xaf22e1821461cc9c) and Diagnose (0x6ae396cf0d691de).
+EmitterPackages :: () -> string[] {
+    return ["scalar_facts", "scalar_llvm", "llvm_native", "native_abi"];
+}
+
+// The scalar emitter imports core:strings. Its closure and cache key use the
+// same explicit dependencies within the compiler's private native catalog.
+EmitterCoreSources :: () -> string[] {
+    return ["strings/Strings.chibi"];
+}
+
+Quote :: (text: string) -> string {
+    parts := ["\""];
+    start := 0;
+    index := 0;
+    for (value in strings.Bytes(text)) {
+        escape := "";
+        if (value == 34) {
+            escape = "\\\"";
+        } else if (value == 92) {
+            escape = "\\\\";
+        } else if (value == 10) {
+            escape = "\\n";
+        } else if (value < 32) {
+            digits := "0123456789abcdef";
+            escape = Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
+        }
+        if (escape != "") {
+            parts.append(strings.Slice(text, start, index - start));
+            parts.append(escape);
+            start = index + 1;
+        }
+        index += 1;
+    }
+    parts.append(strings.Slice(text, start, index - start));
+    parts.append("\"");
+    return Join(parts);
+}
+
+Array :: (values: string[]) -> string {
+    quoted: string[] = [];
+    for (value in values) {
+        quoted.append(Quote(value));
+    }
+    return Join(["[", strings.Join(quoted, ","), "]"]);
+}
+
+// The top-level elements of a JSON array, as the compiler host writes them.
+Elements :: (json: string) -> string[] {
+    elements: string[] = [];
+    depth := 0;
+    quoted := false;
+    escaped := false;
+    start := 1;
+    index := 0;
+    for (value in strings.Bytes(json)) {
+        if (escaped) {
+            escaped = false;
+        } else if (quoted) {
+            escaped = value == 92;
+            quoted = value != 34;
+        } else if (value == 34) {
+            quoted = true;
+        } else if (value == 91 || value == 123) {
+            depth += 1;
+        } else if (value == 93 || value == 125) {
+            depth -= 1;
+            if (depth == 0) {
+                elements.append(strings.Slice(json, start, index - start));
+            }
+        } else if (value == 44 && depth == 1) {
+            elements.append(strings.Slice(json, start, index - start));
+            start = index + 1;
+        }
+        index += 1;
+    }
+    return elements;
+}
+
+// The `.chibi` files below `folder`, relative to it, in listing order.
+// Hidden entries are skipped, as the project's source catalog skips them.
+Sources :: (folder: string) -> string[] {
+    paths: string[] = [];
+    for (name in build.list_directory(folder)) {
+        if (strings.HasPrefix(name, ".")) {
+            continue;
+        }
+        path := Join([folder, "/", name]);
+        if (build.file_kind(path) == "directory") {
+            // A package's tests sit beside it and are not part of the emitter.
+            if (name == "tests") {
+                continue;
+            }
+            for (nested in Sources(path)) {
+                paths.append(Join([name, "/", nested]));
+            }
+        } else if (strings.HasSuffix(name, ".chibi")) {
+            paths.append(name);
+        }
+    }
+    return paths;
+}
+
+Invoke :: (host: string, artifact: string, callable: string, input: string, output: string, timeout: string) -> int {
+    command := [host, "--artifact", artifact, "--entry", callable, "--input", input, "--backend", "sljit", "--budget",
+                "10000000000", "--timeout-ms", timeout];
+    if (output != "") {
+        command = build.concat(command, ["--output-bytes", output]);
+    }
+    // Probed, so the host's counters and the rows stay out of the command's
+    // output; a failure reports the step's stderr itself.
+    return build.probe(command);
+}
+
+// Removes the work directory's known files, then the directory.
+Finish :: (work: string, status: int) -> int {
+    ok := true;
+    for (name in ["target.json", "compile.json", "emitter.chibip", "collect.json", "rows.json", "emit.json",
+                  "module.ll", "diagnostic.txt", "optimized.ll", "library.o", "driver.chibip", "run.json"]) {
+        ok = build.remove(Join([work, "/", name])) && ok;
+    }
+    if (!build.remove(work) || !ok) {
+        build.report(Join(["native: ", work, " needs cleanup"]));
+    }
+    return status;
+}
+
+// The emitter closure: the scalar emitter's packages, its core dependencies
+// and native_emitter, compiled once by the compiler artifact into `emitter`.
+Emitter :: (host: string, artifact: string, compiler: string, core: string, work: string, target: string,
+            emitter: string) -> bool {
+    paths := ["native_emitter/Emitter.chibi"];
+    files := [Join([build.root(), "/emitter/Emitter.chibi"])];
+    for (part in EmitterPackages()) {
+        for (path in Sources(Join([compiler, "/", part]))) {
+            paths.append(Join([part, "/", path]));
+            files.append(Join([compiler, "/", part, "/", path]));
+        }
+    }
+    for (path in EmitterCoreSources()) {
+        paths.append(Join(["/sdk/core/", path]));
+        files.append(Join([core, "/", path]));
+    }
+    texts: string[] = [];
+    for (file in files) {
+        texts.append(build.read_file(file));
+    }
+    input := Join([work, "/compile.json"]);
+    output := Join([work, "/emitter.chibip"]);
+    request := Join(["[\"/project\",[\"core\"],[\"/sdk/core\"],", Array(paths), ",", Array(texts), ",false,",
+                     strings.Slice(target, 1, strings.ByteLength(target) - 2), "]"]);
+    if (!build.write_file(input, request) ||
+        Invoke(host, artifact, "0x140a9546d9e8c296", input, output, "600000") != 0) {
+        build.report(Join(["native: the scalar emitter did not compile: ", build.last_stderr()]));
+        return false;
+    }
+    // A copy, published under its name at once, since a cache on another file
+    // system cannot take a rename; builds that compile it at the same time
+    // publish the same bytes.
+    if (!build.copy_file(output, emitter)) {
+        build.report(Join(["native: cannot publish the scalar emitter to ", emitter]));
+        return false;
+    }
+    return true;
+}
+
+// Where the compiled scalar emitter is kept. Its key covers everything that
+// decides its bytes, so one copy serves every package folder and checkout on
+// the machine: the compiler cache's, as the build host finds it
+// (CHIBI_COMPILER_CACHE, "off" for none, else chibi/compiler-cache under
+// $XDG_CACHE_HOME or ~/.cache), named like the cache's own entries so its
+// budget counts and evicts it. Without a cache it stays in `folder`.
+EmitterPath :: (folder: string, key: string) -> string {
+    cache := build.environment("CHIBI_COMPILER_CACHE");
+    if (cache == "") {
+        xdg := build.environment("XDG_CACHE_HOME");
+        home := build.environment("HOME");
+        if (xdg != "") {
+            cache = Join([xdg, "/chibi/compiler-cache"]);
+        } else if (home != "") {
+            cache = Join([home, "/.cache/chibi/compiler-cache"]);
+        }
+    }
+    if (cache == "" || cache == "off" || !build.make_directory(cache)) {
+        return Join([folder, "/emitter-", strings.Slice(key, 0, 16), ".chibip"]);
+    }
+    return Join([cache, "/native-emitter-", key, ".bin"]);
+}
+
+// Why a published output does not hold the program its key names, or "". The
+// key already covers the source and emitter; the receipt must name these tools
+// and the program's current bytes, and the program must still be executable.
+Incomplete :: (output: string, name: string, opt: string, llc: string, lld: string) -> string {
+    receipt := Join([output, "/receipt.txt"]);
+    program := Join([output, "/", name]);
+    if (build.file_kind(output) != "directory" || build.file_kind(receipt) != "file") {
+        return "has no receipt";
+    }
+    if (build.find_executable(program) == "") {
+        return "has no executable program";
+    }
+    lines := build.lines(build.read_file(receipt));
+    facts := ["native-aot-driver 1", "output-kind executable", Join(["opt-sha256 ", build.hash_file(opt)]),
+              Join(["llc-sha256 ", build.hash_file(llc)]), Join(["linker-sha256 ", build.hash_file(lld)]),
+              Join(["program-sha256 ", build.hash_file(program)])];
+    for (fact in facts) {
+        found := false;
+        for (line in lines) {
+            found = found || line == fact;
+        }
+        if (!found) {
+            return Join(["does not match its receipt (", build.before(fact, " "), ")"]);
+        }
+    }
+    return "";
+}
+
+// The inputs that decide the emitter's bytes, hashed.
+EmitterKey :: (host: string, artifact: string, compiler: string, core: string) -> string {
+    lines := [build.hash_file(host), build.hash_file(artifact),
+              build.hash_file(Join([build.root(), "/emitter/Emitter.chibi"]))];
+    for (part in EmitterPackages()) {
+        for (path in Sources(Join([compiler, "/", part]))) {
+            lines.append(Join([part, "/", path, " ", build.hash_file(Join([compiler, "/", part, "/", path]))]));
+        }
+    }
+    for (path in EmitterCoreSources()) {
+        lines.append(Join([path, " ", build.hash_file(Join([core, "/", path]))]));
+    }
+    return build.hash_text(strings.Join(lines, "\n"));
+}
+
+// `chibi build --native --target`'s names, rustc's, in Target's order.
+Requested :: (name: string) -> int {
+    names := ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-pc-windows-msvc"];
+    for (index in 0..<length(names)) {
+        if (name == names[index]) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+// A package of the compiler project beside others, as native_driver is: the
+// compiler compiles the driver's pure core (every file but Main.chibi and
+// core:os) to an artifact, whose Compile entry gives the program's module, or
+// a 0 byte and then the first rejection; the module is linked as any other.
+Driver :: (host: string, artifact: string, core: string, work: string, target: string, entry_path: string,
+           packages: string[], package_texts: string[], text: string, triple: string, output: string,
+           program: string, tools: string[]) -> int {
+    paths: string[] = [];
+    texts: string[] = [];
+    all := build.concat([entry_path], packages);
+    sources := build.concat([text], package_texts);
+    for (at in 0..<length(all)) {
+        if (!strings.HasSuffix(all[at], "/Main.chibi") && !strings.HasPrefix(all[at], Join([core, "/os/"]))) {
+            location := all[at];
+            if (strings.HasPrefix(location, Join([core, "/"]))) {
+                location = Join(["/sdk/core/", strings.TrimPrefix(location, Join([core, "/"]))]);
+            }
+            paths.append(location);
+            texts.append(sources[at]);
+        }
+    }
+    request := Join(["[\"/project\",[\"core\"],[\"/sdk/core\"],", Array(paths), ",", Array(texts), ",false,",
+                     strings.Slice(target, 1, strings.ByteLength(target) - 2), "]"]);
+    input := Join([work, "/compile.json"]);
+    driver := Join([work, "/driver.chibip"]);
+    if (!build.write_file(input, request) ||
+        Invoke(host, artifact, "0x140a9546d9e8c296", input, driver, "3600000") != 0) {
+        build.report(Join(["native: the driver's core did not compile: ", build.last_stderr()]));
+        return Finish(work, 1);
+    }
+    module := Join([work, "/module.ll"]);
+    run := Join([work, "/run.json"]);
+    request = Join(["[", Quote(core), ",", Array(all), ",", Array(sources), ",", Quote(triple), "]"]);
+    if (!build.write_file(run, request) || Invoke(host, driver, "0x560ddcc1bb427667", run, module, "3600000") != 0) {
+        build.report(Join(["native: the compiler did not compile ", entry_path, ": ", build.last_stderr()]));
+        return Finish(work, 1);
+    }
+    emitted := build.read_file(module);
+    if (strings.ByteAt(emitted, 0) == 0) {
+        build.report(Join(["native: ", strings.Slice(emitted, 1, strings.ByteLength(emitted))]));
+        return Finish(work, 1);
+    }
+    status := Run([module, output, tools[0], tools[1], tools[2], tools[3]], true, tools[4]);
+    if (status == 0) {
+        build.report(Join(["native: ", output, "/", program]));
+    }
+    return Finish(work, status);
+}
+
+// The names an import line of `text` takes from `collection`: each
+// `import alias "collection:name"`.
+ImportedFrom :: (text: string, collection: string) -> string[] {
+    found: string[] = [];
+    prefix := Join([collection, ":"]);
+    for (line in build.lines(text)) {
+        if (!strings.HasPrefix(line, "import ")) {
+            continue;
+        }
+        parts := strings.Split(line, "\"");
+        if (length(parts) >= 3 && strings.HasPrefix(parts[1], prefix)) {
+            found.append(strings.TrimPrefix(parts[1], prefix));
+        }
+    }
+    return found;
+}
+
+// The .chibi files directly in package folder `folder`.
+PackageFiles :: (folder: string) -> string[] {
+    files: string[] = [];
+    for (name in build.list_directory(folder)) {
+        if (strings.HasSuffix(name, ".chibi") && !strings.HasSuffix(name, "Tests.chibi") && build.file_kind(Join([folder, "/", name])) == "file") {
+            files.append(name);
+        }
+    }
+    return files;
+}
+
+// The packages the sources import beyond the ones already held, followed
+// transitively, in the order found. A project package lies in `base`'s folder
+// of its name, a core package in `core`'s. Each is the folder's files, as
+// `<name>/<file>` for a project package and `<core>/<name>/<file>` for core.
+Reach :: (base: string, core: string, texts: string[], held: string[]) -> string[] {
+    files: string[] = [];
+    seen: string[] = held;
+    pending := texts;
+    while (length(pending) > 0) {
+        text := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        for (kind in ["project", "core"]) {
+            for (name in ImportedFrom(text, kind)) {
+                key := Join([kind, ":", name]);
+                known := false;
+                for (other in seen) {
+                    known = known || other == key;
+                }
+                if (known) {
+                    continue;
+                }
+                seen.append(key);
+                folder := Join([base, "/", name]);
+                prefix := Join([name, "/"]);
+                if (kind == "core") {
+                    folder = Join([core, "/", name]);
+                    prefix = Join([core, "/", name, "/"]);
+                }
+                for (file in PackageFiles(folder)) {
+                    files.append(Join([prefix, file]));
+                    pending.append(build.read_file(Join([folder, "/", file])));
+                }
+            }
+        }
+    }
+    return files;
+}
+
+pub Native :: () -> int {
+    arguments := build.arguments();
+    if (length(arguments) != 8 && length(arguments) != 9) {
+        build.report("usage: COMPILER_HOST COMPILER CORE ROOT LLVM 0|2 lines|none TARGET [static] (absolute paths)");
+        return 2;
+    }
+    linkage := "dynamic";
+    if (length(arguments) == 9) {
+        if (arguments[8] != "static" && arguments[8] != "shared") {
+            build.report("native: the optional last argument is static or shared");
+            return 2;
+        }
+        linkage = arguments[8];
+    }
+    shared := linkage == "shared";
+    host := Tool(arguments[0]);
+    compiler := arguments[1];
+    core := arguments[2];
+    root := arguments[3];
+    vendor := VendorDirectory(core);
+    mode := arguments[5];
+    debug := arguments[6];
+    destination := Requested(arguments[7]);
+    artifact := Join([compiler, "/bootstrap/compiler.chibip"]);
+    if (host == "" || !Path(compiler) || !Path(core) || build.file_kind(artifact) != "file" || !Path(root) ||
+        build.file_kind(root) != "directory" || (mode != "0" && mode != "2") || (debug != "lines" && debug != "none")) {
+        build.report("native: a compiler host, the SDK's compiler and core, a package folder, 0 or 2 and lines or none are required");
+        return 2;
+    }
+    if (destination < 0) {
+        build.report(Join(["native: unknown target ", arguments[7],
+                           "; use x86_64-unknown-linux-gnu, aarch64-apple-darwin or x86_64-pc-windows-msvc"]));
+        return 2;
+    }
+    if (debug == "lines" && destination != 0) {
+        build.report("native: line tables are Linux x86-64 only so far");
+        return 2;
+    }
+    if (shared && (destination != 0 || debug == "lines")) {
+        build.report("native: a shared library is Linux x86-64 and has no line tables yet");
+        return 2;
+    }
+    opt := Tool(Join([arguments[4], "/opt"]));
+    llc := Tool(Join([arguments[4], "/llc"]));
+    lld := Tool(Join([arguments[4], "/ld.lld"]));
+    if (!Path(arguments[4]) || opt == "" || llc == "" || lld == "") {
+        build.report(Join(["native: ", arguments[4], " must hold LLVM's opt, llc and ld.lld"]));
+        return 2;
+    }
+    names: string[] = [];
+    for (name in build.list_directory(root)) {
+        if (strings.HasSuffix(name, ".chibi") && build.file_kind(Join([root, "/", name])) == "file") {
+            names.append(name);
+        }
+    }
+    // Several files in the folder are one package whose entry is Main.chibi.
+    if (length(names) > 1) {
+        found := false;
+        for (name in names) {
+            found = found || name == "Main.chibi";
+        }
+        if (found) {
+            names = ["Main.chibi"];
+        }
+    }
+    if (length(names) != 1) {
+        build.report(Join(["native: ", root, " must hold one .chibi source or a Main.chibi beside the rest of its package"]));
+        return 2;
+    }
+    source := Join([root, "/", names[0]]);
+    text := build.read_file(source);
+    // The other .chibi files below the folder, but its build output, are the
+    // packages the source imports.
+    packages: string[] = [];
+    package_texts: string[] = [];
+    package_state: string[] = [];
+    for (path in Sources(root)) {
+        if (path != names[0] && !strings.HasPrefix(path, "build/")) {
+            packages.append(path);
+            package_texts.append(build.read_file(Join([root, "/", path])));
+            package_state.append(Join([path, ":", build.hash_file(Join([root, "/", path]))]));
+        }
+    }
+    // A project package that is not below the folder but beside it, as the
+    // compiler's packages are beside native_driver, makes the folder's parent
+    // the project: the entry's path then starts with the folder's name.
+    base := root;
+    entry_path := names[0];
+    nested := false;
+    for (path in packages) {
+        nested = nested || strings.Contains(path, "/");
+    }
+    if (!nested) {
+        parent := strings.TrimSuffix(root, Join(["/", strings.BaseName(root)]));
+        wanted: string[] = [];
+        for (source_text in build.concat([text], package_texts)) {
+            wanted.extend(ImportedFrom(source_text, "project"));
+        }
+        for (name in wanted) {
+            if (base == root && build.file_kind(Join([root, "/", name])) != "directory" &&
+                build.file_kind(Join([parent, "/", name])) == "directory") {
+                base = parent;
+                entry_path = Join([strings.BaseName(root), "/", names[0]]);
+                for (at in 0..<length(packages)) {
+                    packages[at] = Join([strings.BaseName(root), "/", packages[at]]);
+                }
+            }
+        }
+    }
+    // The packages the sources import from the project beside them and from
+    // core are inputs too.
+    held: string[] = [];
+    for (path in packages) {
+        top := strings.Split(path, "/");
+        if (length(top) > 1) {
+            held.append(Join(["project:", top[0]]));
+        }
+    }
+    for (path in Reach(base, core, build.concat([text], package_texts), held)) {
+        packages.append(path);
+        location := path;
+        if (!strings.HasPrefix(path, Join([core, "/"]))) {
+            location = Join([base, "/", path]);
+        }
+        package_texts.append(build.read_file(location));
+        package_state.append(Join([path, ":", build.hash_file(location)]));
+    }
+    emitter_key := EmitterKey(host, artifact, compiler, core);
+    // Line tables name the source's directory, so a moved package rebuilds.
+    directory := "";
+    if (debug == "lines") {
+        directory = root;
+    }
+    key := build.hash_text(strings.Join([
+        "chibi-native 1", entry_path, build.hash_text(text), emitter_key,
+        build.hash_file(Join([build.root(), "/Driver.chibi"])), build.hash_file(opt), build.hash_file(llc),
+        build.hash_file(lld), mode, debug, directory, arguments[7], Archives(root), VendorState(build.concat([text], package_texts), vendor), linkage,
+        strings.Join(package_state, ",")
+    ], "\n"));
+    folder := Join([root, "/build/native"]);
+    output := Join([folder, "/O", mode, "-", strings.Slice(key, 0, 16)]);
+    program := Program(destination);
+    if (shared) {
+        program = "generation.so";
+    }
+    if (build.file_kind(output) != "") {
+        problem := Incomplete(output, program, opt, llc, lld);
+        if (problem != "") {
+            build.report(Join(["native: ", output, " ", problem, "; remove it to rebuild"]));
+            return 1;
+        }
+        build.report(Join(["native: ", output, "/", program, " is up to date"]));
+        return 0;
+    }
+    work := Join([output, ".work"]);
+    for (stale in [work, Join([output, ".partial"])]) {
+        if (build.file_kind(stale) != "") {
+            build.report(Join(["native: an interrupted build left ", stale, "; remove it once no build is running"]));
+            return 1;
+        }
+    }
+    if (!build.make_directory(Join([root, "/build"])) || !build.make_directory(folder) ||
+        !build.reserve_directory(work)) {
+        build.report(Join(["native: cannot reserve ", work]));
+        return 1;
+    }
+    target := Join([work, "/target.json"]);
+    if (build.probe([host, "--target-json", target]) != 0) {
+        build.report("native: the compiler host gave no target");
+        return Finish(work, 1);
+    }
+    target_json := build.trim(build.read_file(target));
+    facts := Elements(target_json);
+    emitter := EmitterPath(folder, emitter_key);
+    if (length(facts) != 6) {
+        build.report(Join(["native: the compiler host gave a malformed target: ", target_json]));
+        return Finish(work, 1);
+    }
+    if (base != root) {
+        return Driver(host, artifact, core, work, target_json, entry_path, packages, package_texts, text, arguments[7],
+                      output, program, [opt, llc, lld, mode, linkage]);
+    }
+    if (build.file_kind(emitter) != "file" && !Emitter(host, artifact, compiler, core, work, target_json, emitter)) {
+        return Finish(work, 1);
+    }
+    collect := Join([work, "/collect.json"]);
+    rows := Join([work, "/rows.json"]);
+    module := Join([work, "/module.ll"]);
+    request := Join(["[\"/project\",", Quote(names[0]), ",", Quote(text), ",", facts[0], ",", facts[2], ",",
+                     facts[3], ",", facts[4], ",", facts[5], "]"]);
+    collector := "0xebbc43e46769862a";
+    if (length(packages) > 0) {
+        // CollectScalarPackages: the entry file first, then the packages, with
+        // core as the collection whose files lie at its own path.
+        request = Join(["[\"/project\",[\"core\"],", Array([core]), ",", Array(build.concat([entry_path], packages)), ",",
+                        Array(build.concat([text], package_texts)), ",", facts[0], ",", facts[2], ",", facts[3], ",",
+                        facts[4], ",", facts[5], "]"]);
+        collector = "0xe248351e192972a1";
+    }
+    if (!build.write_file(collect, request) ||
+        Invoke(host, artifact, collector, collect, "", "120000") != 0 ||
+        !build.write_file(rows, build.last_stdout())) {
+        build.report(Join(["native: the compiler did not read ", source, ": ", build.last_stderr()]));
+        return Finish(work, 1);
+    }
+    // The emitter also takes the target, or with line tables the source's
+    // directory.
+    callable := "0xcd64c452c8ed1e6f";
+    argument := format_text("{}", destination);
+    if (debug == "lines") {
+        callable = "0xaf22e1821461cc9c";
+        argument = Quote(root);
+    }
+    input := Join([work, "/emit.json"]);
+    listed := build.trim(build.read_file(rows));
+    if (!build.write_file(input, Join([strings.Slice(listed, 0, strings.ByteLength(listed) - 1), ",", argument,
+                                       "]"]))) {
+        build.report(Join(["native: cannot write ", input]));
+        return Finish(work, 1);
+    }
+    // A library source takes the rows alone, and its rejection is its own.
+    rejection := "0x6ae396cf0d691de";
+    if (shared) {
+        callable = "0xe37e475ee6152694";
+        input = rows;
+        rejection = "0x33c99518aadf27a3";
+    }
+    if (Invoke(host, emitter, callable, input, module, "120000") != 0) {
+        diagnostic := Join([work, "/diagnostic.txt"]);
+        if (Invoke(host, emitter, rejection, rows, diagnostic, "120000") != 0) {
+            build.report(Join(["native: ", source, " has no native module: ", build.last_stderr()]));
+            return Finish(work, 1);
+        }
+        build.report(Join([source, ":", build.read_file(diagnostic)]));
+        return Finish(work, 1);
+    }
+    emitted := build.read_file(module);
+    if (strings.Contains(emitted, "\n; chibi-library ")) {
+        resolved := ResolveLibraries(emitted, root, vendor);
+        if (resolved == "" || !build.write_file(module, resolved)) {
+            return Finish(work, 1);
+        }
+    }
+    status := Run([module, output, opt, llc, lld, mode], true, linkage);
+    if (status == 0) {
+        build.report(Join(["native: ", output, "/", program]));
+    }
+    return Finish(work, status);
+}
+
+// The path a `chibi build --native` printed, as "native: PATH", with any
+// "is up to date" after it, or "".
+Printed :: (report: string) -> string {
+    for (line in strings.SplitLines(report)) {
+        if (strings.HasPrefix(line, "native: /")) {
+            path := strings.Slice(line, 8, strings.ByteLength(line) - 8);
+            marker := " is up to date";
+            if (strings.HasSuffix(path, marker)) {
+                path = strings.Slice(path, 0, strings.ByteLength(path) - strings.ByteLength(marker));
+            }
+            return path;
+        }
+    }
+    return "";
+}
+
+// `chibi build --native` of `folder` with `flags` through the launcher, the
+// path it built or "" after reporting why not.
+BuiltBy :: (chibi: string, flags: string[], mode: string, target: string, llvm: string, folder: string) -> string {
+    command := [chibi, "build", "--native", Join(["-O", mode]), "--target", target, "--llvm", llvm];
+    command.extend(flags);
+    command.append(folder);
+    if (build.probe(command) != 0) {
+        build.report(build.last_stderr());
+        return "";
+    }
+    return Printed(build.last_stderr());
+}
+
+// `chibi run --native`: the loop host (Host.chibi) runs generation after
+// generation of the library source in ROOT, which it never restarts. The host
+// is built from HOST_SOURCE, started in WORK with the first generation as
+// live-0.so, and its exit status is the result. With `watch`, each saved
+// change to the source is built as the next generation and published to the
+// host as next.so, which swaps it in between two Frames, keeping the
+// retained states the generations share. A change that does not build is
+// reported and the running generation continues. The arguments are the
+// launcher, HOST_SOURCE, ROOT, the LLVM folder, 0|2, the target, WORK and
+// watch|once, all absolute paths.
+pub Watch :: () -> int {
+    // The compiler host, the compiler and the core come first, as for Native.
+    arguments := slice(build.arguments(), 3, length(build.arguments()) - 3);
+    if (length(arguments) != 8) {
+        build.report("usage: COMPILER_HOST COMPILER CORE CHIBI HOST_SOURCE ROOT LLVM 0|2 TARGET WORK watch|once (absolute paths)");
+        return 2;
+    }
+    chibi := arguments[0];
+    root := arguments[2];
+    work := arguments[6];
+    watching := arguments[7] == "watch";
+    source := "";
+    for (name in build.list_directory(root)) {
+        if (strings.HasSuffix(name, ".chibi") && build.file_kind(Join([root, "/", name])) == "file") {
+            if (source != "") {
+                build.report(Join(["native: ", root, " must hold exactly one .chibi source"]));
+                return 2;
+            }
+            source = Join([root, "/", name]);
+        }
+    }
+    if (source == "" || !Path(chibi) || !Path(arguments[1]) || !Path(work) || (arguments[7] != "watch" && arguments[7] != "once")) {
+        build.report("native: a launcher, a host source, a folder holding one library source, a work folder, and watch or once are required");
+        return 2;
+    }
+    host_folder := Join([work, "/host"]);
+    if (!build.make_directory(Join([root, "/build"])) || !build.make_directory(Join([root, "/build/native"])) ||
+        !build.make_directory(work) || !build.make_directory(host_folder)) {
+        build.report(Join(["native: cannot make ", work]));
+        return 1;
+    }
+    for (stale in ["live-0.so", "live-1.so", "next.so", "pending.so", "rejected.so", "host/Main.chibi"]) {
+        build.remove(Join([work, "/", stale]));
+    }
+    if (!build.copy_file(arguments[1], Join([host_folder, "/Main.chibi"]))) {
+        build.report("native: cannot copy the host source");
+        return 1;
+    }
+    program := BuiltBy(chibi, [], arguments[4], arguments[5], arguments[3], host_folder);
+    generation := BuiltBy(chibi, ["--shared"], arguments[4], arguments[5], arguments[3], root);
+    if (program == "" || generation == "" || !build.copy_file(generation, Join([work, "/live-0.so"]))) {
+        return 1;
+    }
+    process := build.spawn(["/bin/sh", "-c", Join(["cd '", work, "' && exec '", program, "'"])]);
+    stamp := build.file_stamp(source);
+    while (true) {
+        status := build.wait_for(process, 250);
+        if (status != 65536) {
+            return status;
+        }
+        changed := build.file_stamp(source);
+        if (!watching || changed == stamp) {
+            continue;
+        }
+        stamp = changed;
+        built := BuiltBy(chibi, ["--shared"], arguments[4], arguments[5], arguments[3], root);
+        if (built == "") {
+            continue;
+        }
+        pending := Join([work, "/pending.so"]);
+        build.remove(pending);
+        if (!build.copy_file(built, pending)) {
+            build.report("native: cannot stage the new generation");
+            continue;
+        }
+        // The host takes one generation at a time.
+        while (build.file_kind(Join([work, "/next.so"])) != "" && build.wait_for(process, 50) == 65536) {
+        }
+        build.rename(pending, Join([work, "/next.so"]));
+    }
+    return 0;
+}
+
+// Whether `value` is a byte of an identifier, as the grammar spells one.
+Word :: (value: int) -> bool {
+    return value == 95 || (value >= 48 && value <= 57) || (value >= 65 && value <= 90) || (value >= 97 && value <= 122);
+}
+
+// Where the whitespace and comments from `at` end.
+Trivia :: (bytes: int[], at: int) -> int {
+    while (at < length(bytes)) {
+        value := bytes[at];
+        next := 0;
+        if (at + 1 < length(bytes)) {
+            next = bytes[at + 1];
+        }
+        if (value == 32 || (value >= 9 && value <= 13)) {
+            at += 1;
+        } else if (value == 47 && next == 47) {
+            while (at < length(bytes) && bytes[at] != 10) {
+                at += 1;
+            }
+        } else if (value == 47 && next == 42) {
+            at += 2;
+            while (at + 1 < length(bytes) && !(bytes[at] == 42 && bytes[at + 1] == 47)) {
+                at += 1;
+            }
+            at += 2;
+        } else {
+            return at;
+        }
+    }
+    return at;
+}
+
+// Where the identifier at `at` ends, or `at` when none starts there.
+WordEnd :: (bytes: int[], at: int) -> int {
+    if (at >= length(bytes) || (bytes[at] >= 48 && bytes[at] <= 57)) {
+        return at;
+    }
+    while (at < length(bytes) && Word(bytes[at])) {
+        at += 1;
+    }
+    return at;
+}
+
+// The library a source declares, or "". The grammar roots a library source
+// at its declaration alone, so its first tokens are a name, `::` and
+// `library`.
+pub LibraryName :: (text: string) -> string {
+    bytes := strings.Bytes(text);
+    start := Trivia(bytes, 0);
+    end := WordEnd(bytes, start);
+    colons := Trivia(bytes, end);
+    keyword := Trivia(bytes, colons + 2);
+    if (end == start || colons + 2 > length(bytes) || bytes[colons] != 58 || bytes[colons + 1] != 58 ||
+        WordEnd(bytes, keyword) != keyword + 7 || strings.Slice(text, keyword, 7) != "library") {
+        return "";
+    }
+    return strings.Slice(text, start, end - start);
+}
+
+// The `.chibi` files in the folders the project compiles executable sources
+// from, relative to `content`, as source_catalog.c scans them.
+ExecutableSources :: (content: string) -> string[] {
+    paths: string[] = [];
+    for (folder in ["behaviors", "libraries", "systems"]) {
+        if (build.file_kind(Join([content, "/", folder])) == "directory") {
+            for (path in Sources(Join([content, "/", folder]))) {
+                paths.append(Join([folder, "/", path]));
+            }
+        }
+    }
+    return paths;
+}
+
+// `output`, the shared object the player loads, linked from the emitted
+// `module` in `work`: verified and optimized as Run does, for the one
+// admitted target a library emits, with only its manifest exported.
+Shared :: (module: string, work: string, output: string, opt: string, llc: string, lld: string,
+           mode: string) -> bool {
+    passes := "verify";
+    if (mode == "2") {
+        passes = "verify,default<O2>,verify";
+    }
+    optimized := Join([work, "/optimized.ll"]);
+    object := Join([work, "/library.o"]);
+    if (build.run([opt, "-S", Join(["-passes=", passes]), module, "-o", optimized]) != 0 ||
+        build.file_kind(optimized) != "file" || Target(build.read_file(optimized)) != 0) {
+        return false;
+    }
+    return build.run([llc, "-filetype=obj", Join(["-O=", mode]), "-relocation-model=pic", optimized, "-o",
+                      object]) == 0 &&
+           build.run([lld, "-flavor", "gnu", "-shared", "--gc-sections", object, "-o", output]) == 0 &&
+           build.file_kind(output) == "file";
+}
+
+// Removes the partial output's libraries, then the folder.
+Unpublished :: (partial: string, names: string[]) -> bool {
+    ok := true;
+    for (name in names) {
+        ok = build.remove(Join([partial, "/", name, ".so"])) && ok;
+    }
+    return build.remove(partial) && ok;
+}
+
+// `chibi export --native`: each library source below CONTENT, through the
+// ordinary compiler's CollectScalar and the emitter's EmitLibrary
+// (0xe37e475ee6152694), to OUTPUT/<Library>.so, which the player loads from
+// a game's natives folder. A library's function IDs name its path below
+// CONTENT, as the prepared artifact's do. A library the emitter rejects stays
+// in the VM, and the driver says why (Rejection, 0x33c99518aadf27a3); any
+// other failure fails the step. CACHE keeps the emitter closure, as
+// Native's folder does, and OUTPUT is published only when complete.
+pub Libraries :: () -> int {
+    arguments := build.arguments();
+    if (length(arguments) != 8) {
+        build.report("usage: COMPILER_HOST COMPILER CORE CONTENT LLVM 0|2 CACHE OUTPUT (absolute paths)");
+        return 2;
+    }
+    host := Tool(arguments[0]);
+    compiler := arguments[1];
+    core := arguments[2];
+    content := arguments[3];
+    mode := arguments[5];
+    cache := arguments[6];
+    output := arguments[7];
+    artifact := Join([compiler, "/bootstrap/compiler.chibip"]);
+    if (host == "" || !Path(compiler) || !Path(core) || build.file_kind(artifact) != "file" || !Path(content) ||
+        build.file_kind(content) != "directory" || (mode != "0" && mode != "2") || !Path(cache) || !Path(output)) {
+        build.report("native: a compiler host, the SDK's compiler and core, a content folder, 0 or 2, a cache and an output are required");
+        return 2;
+    }
+    if (build.platform() != "Linux") {
+        build.report("native: libraries are built on Linux x86-64 only so far");
+        return 2;
+    }
+    opt := Tool(Join([arguments[4], "/opt"]));
+    llc := Tool(Join([arguments[4], "/llc"]));
+    lld := Tool(Join([arguments[4], "/ld.lld"]));
+    if (!Path(arguments[4]) || opt == "" || llc == "" || lld == "") {
+        build.report(Join(["native: ", arguments[4], " must hold LLVM's opt, llc and ld.lld"]));
+        return 2;
+    }
+    paths: string[] = [];
+    names: string[] = [];
+    for (path in ExecutableSources(content)) {
+        name := LibraryName(build.read_file(Join([content, "/", path])));
+        for (other in names) {
+            if (name != "" && name == other) {
+                build.report(Join(["native: two libraries are named ", name, "; the player loads one file per library"]));
+                return 1;
+            }
+        }
+        if (name != "") {
+            paths.append(path);
+            names.append(name);
+        }
+    }
+    if (length(paths) == 0) {
+        build.report(Join(["native: ", content, " holds no library sources"]));
+        return 0;
+    }
+    work := Join([cache, "/libraries.work"]);
+    partial := Join([output, ".partial"]);
+    for (stale in [work, partial]) {
+        if (build.file_kind(stale) != "") {
+            build.report(Join(["native: an interrupted build left ", stale, "; remove it once no build is running"]));
+            return 1;
+        }
+    }
+    if (build.file_kind(output) != "") {
+        build.report(Join(["native: ", output, " must be absent"]));
+        return 2;
+    }
+    if (!build.make_directory(cache) || !build.reserve_directory(work)) {
+        build.report(Join(["native: cannot reserve ", work]));
+        return 1;
+    }
+    if (!build.reserve_directory(partial)) {
+        build.report(Join(["native: cannot reserve ", partial]));
+        return Finish(work, 1);
+    }
+    target := Join([work, "/target.json"]);
+    if (build.probe([host, "--target-json", target]) != 0) {
+        build.report("native: the compiler host gave no target");
+        Unpublished(partial, names);
+        return Finish(work, 1);
+    }
+    target_json := build.trim(build.read_file(target));
+    facts := Elements(target_json);
+    emitter_key := EmitterKey(host, artifact, compiler, core);
+    emitter := EmitterPath(cache, emitter_key);
+    if (length(facts) != 6) {
+        build.report(Join(["native: the compiler host gave a malformed target: ", target_json]));
+        Unpublished(partial, names);
+        return Finish(work, 1);
+    }
+    if (build.file_kind(emitter) != "file" && !Emitter(host, artifact, compiler, core, work, target_json, emitter)) {
+        Unpublished(partial, names);
+        return Finish(work, 1);
+    }
+    collect := Join([work, "/collect.json"]);
+    rows := Join([work, "/rows.json"]);
+    module := Join([work, "/module.ll"]);
+    diagnostic := Join([work, "/diagnostic.txt"]);
+    built := 0;
+    for (index in 0..<length(paths)) {
+        source := Join([content, "/", paths[index]]);
+        request := Join(["[\"/project\",", Quote(paths[index]), ",", Quote(build.read_file(source)), ",", facts[0], ",",
+                         facts[2], ",", facts[3], ",", facts[4], ",", facts[5], "]"]);
+        if (!build.write_file(collect, request) ||
+            Invoke(host, artifact, "0xebbc43e46769862a", collect, "", "120000") != 0 ||
+            !build.write_file(rows, build.last_stdout())) {
+            build.report(Join(["native: the compiler did not read ", source, ": ", build.last_stderr()]));
+            Unpublished(partial, names);
+            return Finish(work, 1);
+        }
+        if (Invoke(host, emitter, "0xe37e475ee6152694", rows, module, "120000") != 0) {
+            if (Invoke(host, emitter, "0x33c99518aadf27a3", rows, diagnostic, "120000") != 0) {
+                build.report(Join(["native: ", source, " has no native module: ", build.last_stderr()]));
+                Unpublished(partial, names);
+                return Finish(work, 1);
+            }
+            build.report(Join([source, ":", build.read_file(diagnostic), "; the library stays in the VM"]));
+        } else if (!Shared(module, work, Join([partial, "/", names[index], ".so"]), opt, llc, lld, mode)) {
+            build.report(Join(["native: ", source, " did not link"]));
+            Unpublished(partial, names);
+            return Finish(work, 1);
+        } else {
+            built += 1;
+        }
+        for (name in ["module.ll", "optimized.ll", "library.o", "diagnostic.txt"]) {
+            build.remove(Join([work, "/", name]));
+        }
+    }
+    if (built == 0) {
+        Unpublished(partial, names);
+        return Finish(work, 0);
+    }
+    if (!build.publish_directory(partial, output)) {
+        build.report(Join(["native: cannot publish ", output]));
+        Unpublished(partial, names);
+        return Finish(work, 1);
+    }
+    build.report(Join(["native: built ", format_text("{}", built), " of ", format_text("{}", length(paths)), " libraries"]));
+    return Finish(work, 0);
+}

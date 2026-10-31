@@ -214,9 +214,9 @@ operations and binary persistence, and exercise each C-string adapter's approved
 NUL outcome. The in-progress cutover must pass these checks before it is
 reported as implemented.
 
-[compiler_json.c](../src/toolchain/compiler_json.c) keeps strict Unicode decoding
-for metadata in `compiler_json_string` and permits arbitrary literal bytes in
-`compiler_json_value_string`; both return explicit lengths. Conversely,
+[json_string](../tools/compiler/json_string/JsonString.chibi) keeps strict Unicode
+decoding for metadata in `Metadata` and permits arbitrary literal bytes in `Value`;
+both return explicit lengths. Conversely,
 [source_package_snapshot.c](../src/authoring/source_package_snapshot.c)
 deliberately rejects source NUL. Preserve explicit source-language rejection
 while runtime values support NUL; do not let parser input truncate or

@@ -1,26 +1,27 @@
 package source_parser
 
 import tk "../source_tokenizer"
+import syntax "../syntax_diagnostics"
 
 // block: `{` statements `}`.
 ParseBlock :: (c: ^Cursor, n: ^(Node[])) -> int {
-    block := New(n, "block");
-    Expect(c, n, block, tk.OpenBrace, "");
+    block := New(n, syntax.Block);
+    Expect(c, n, block, tk.OpenBrace, syntax.FieldNone);
     while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
-        Add(n, block, ParseStatement(c, n, false), "");
+        Add(n, block, ParseStatement(c, n, false), syntax.FieldNone);
     }
-    Expect(c, n, block, tk.CloseBrace, "");
+    Expect(c, n, block, tk.CloseBrace, syntax.FieldNone);
     return block;
 }
 
 // The body of a function, a system or a macro: statements and declarations.
-ParseCallableBody :: (c: ^Cursor, n: ^(Node[]), kind: string) -> int {
+ParseCallableBody :: (c: ^Cursor, n: ^(Node[]), kind: int) -> int {
     body := New(n, kind);
-    Expect(c, n, body, tk.OpenBrace, "");
+    Expect(c, n, body, tk.OpenBrace, syntax.FieldNone);
     while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
-        Add(n, body, ParseStatement(c, n, true), "");
+        Add(n, body, ParseStatement(c, n, true), syntax.FieldNone);
     }
-    Expect(c, n, body, tk.CloseBrace, "");
+    Expect(c, n, body, tk.CloseBrace, syntax.FieldNone);
     return body;
 }
 
@@ -37,10 +38,10 @@ ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
         return ParseIf(c, n);
     }
     if (token == tk.While) {
-        loop := New(n, "while_statement");
-        Take(c, n, loop, "");
-        Add(n, loop, ParseBinary(c, n, OrPower), "condition");
-        Add(n, loop, ParseBlock(c, n), "body");
+        loop := New(n, syntax.WhileStatement);
+        Take(c, n, loop, syntax.FieldNone);
+        Add(n, loop, ParseBinary(c, n, OrPower), syntax.FieldCondition);
+        Add(n, loop, ParseBlock(c, n), syntax.FieldBody);
         return loop;
     }
     if (token == tk.For) {
@@ -53,36 +54,36 @@ ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
         return ParseReturn(c, n);
     }
     if (token == tk.Goto) {
-        jump := New(n, "goto_statement");
-        Take(c, n, jump, "");
-        TakeName(c, n, jump, "name");
+        jump := New(n, syntax.GotoStatement);
+        Take(c, n, jump, syntax.FieldNone);
+        TakeName(c, n, jump, syntax.FieldName);
         End(c, n, jump);
         return jump;
     }
     if (token == tk.Break) {
-        return ParseKeywordStatement(c, n, "break_statement");
+        return ParseKeywordStatement(c, n, syntax.BreakStatement);
     }
     if (token == tk.Continue) {
-        return ParseKeywordStatement(c, n, "continue_statement");
+        return ParseKeywordStatement(c, n, syntax.ContinueStatement);
     }
     if (token == tk.Yield) {
-        return ParseKeywordStatement(c, n, "yield_statement");
+        return ParseKeywordStatement(c, n, syntax.YieldStatement);
     }
     if (token == tk.Cancel) {
-        stop := New(n, "cancel_statement");
-        Take(c, n, stop, "");
-        Add(n, stop, ParseBinary(c, n, OrPower), "value");
+        stop := New(n, syntax.CancelStatement);
+        Take(c, n, stop, syntax.FieldNone);
+        Add(n, stop, ParseBinary(c, n, OrPower), syntax.FieldValue);
         if (c.token == tk.After) {
-            Take(c, n, stop, "");
-            Add(n, stop, ParseBinary(c, n, OrPower), "duration");
+            Take(c, n, stop, syntax.FieldNone);
+            Add(n, stop, ParseBinary(c, n, OrPower), syntax.FieldDuration);
         }
         End(c, n, stop);
         return stop;
     }
     if (token == tk.Delete) {
-        removal := New(n, "delete_statement");
-        Take(c, n, removal, "");
-        Add(n, removal, ParseBinary(c, n, OrPower), "target");
+        removal := New(n, syntax.DeleteStatement);
+        Take(c, n, removal, syntax.FieldNone);
+        Add(n, removal, ParseBinary(c, n, OrPower), syntax.FieldTarget);
         End(c, n, removal);
         return removal;
     }
@@ -139,35 +140,35 @@ ParseColonStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
     if (following >= 0 && n^[following].token == tk.Colon) {
         return ParseConstant(c, n, false);
     }
-    label := New(n, "label_statement");
-    TakeName(c, n, label, "name");
-    Expect(c, n, label, tk.Colon, "");
+    label := New(n, syntax.LabelStatement);
+    TakeName(c, n, label, syntax.FieldName);
+    Expect(c, n, label, tk.Colon, syntax.FieldNone);
     if (c.token == tk.Semicolon && n^[c.pos].hidden) {
-        Take(c, n, label, "");
+        Take(c, n, label, syntax.FieldNone);
     }
     return label;
 }
 
 // `name := value` or `name: Type = value`.
 ParseLocal :: (c: ^Cursor, n: ^(Node[])) -> int {
-    local := New(n, "local_declaration");
-    TakeName(c, n, local, "name");
-    if (Accept(c, n, local, tk.ColonEq, "")) {
-        Add(n, local, ParseBinary(c, n, OrPower), "value");
+    local := New(n, syntax.LocalDeclaration);
+    TakeName(c, n, local, syntax.FieldName);
+    if (Accept(c, n, local, tk.ColonEq, syntax.FieldNone)) {
+        Add(n, local, ParseBinary(c, n, OrPower), syntax.FieldValue);
         End(c, n, local);
         return local;
     }
-    Expect(c, n, local, tk.Colon, "");
-    Add(n, local, ParseType(c, n), "type");
-    Expect(c, n, local, tk.Eq, "");
-    Add(n, local, ParseBinary(c, n, OrPower), "value");
+    Expect(c, n, local, tk.Colon, syntax.FieldNone);
+    Add(n, local, ParseType(c, n), syntax.FieldType);
+    Expect(c, n, local, tk.Eq, syntax.FieldNone);
+    Add(n, local, ParseBinary(c, n, OrPower), syntax.FieldValue);
     End(c, n, local);
     return local;
 }
 
-ParseKeywordStatement :: (c: ^Cursor, n: ^(Node[]), kind: string) -> int {
+ParseKeywordStatement :: (c: ^Cursor, n: ^(Node[]), kind: int) -> int {
     statement := New(n, kind);
-    Take(c, n, statement, "");
+    Take(c, n, statement, syntax.FieldNone);
     End(c, n, statement);
     return statement;
 }
@@ -176,44 +177,44 @@ ParseKeywordStatement :: (c: ^Cursor, n: ^(Node[]), kind: string) -> int {
 ParseExpressionStatement :: (c: ^Cursor, n: ^(Node[])) -> int {
     value := ParseBinary(c, n, OrPower);
     if (!c.failed && IsAssignment(c.token)) {
-        assignment := New(n, "assignment");
-        Add(n, assignment, value, "target");
-        Take(c, n, assignment, "operator");
-        Add(n, assignment, ParseBinary(c, n, OrPower), "value");
+        assignment := New(n, syntax.Assignment);
+        Add(n, assignment, value, syntax.FieldTarget);
+        Take(c, n, assignment, syntax.FieldOperator);
+        Add(n, assignment, ParseBinary(c, n, OrPower), syntax.FieldValue);
         End(c, n, assignment);
         return assignment;
     }
-    statement := New(n, "expression_statement");
-    Add(n, statement, value, "");
+    statement := New(n, syntax.ExpressionStatement);
+    Add(n, statement, value, syntax.FieldNone);
     End(c, n, statement);
     return statement;
 }
 
 ParseIf :: (c: ^Cursor, n: ^(Node[])) -> int {
-    first := New(n, "if_statement");
+    first := New(n, syntax.IfStatement);
     current := first;
     while (!c.failed) {
-        Take(c, n, current, "");
-        Add(n, current, ParseBinary(c, n, OrPower), "condition");
-        Add(n, current, ParseBlock(c, n), "consequence");
+        Take(c, n, current, syntax.FieldNone);
+        Add(n, current, ParseBinary(c, n, OrPower), syntax.FieldCondition);
+        Add(n, current, ParseBlock(c, n), syntax.FieldConsequence);
         if (c.failed || c.token != tk.Else) {
             break;
         }
-        Take(c, n, current, "");
+        Take(c, n, current, syntax.FieldNone);
         if (c.token != tk.If) {
-            Add(n, current, ParseBlock(c, n), "alternative");
+            Add(n, current, ParseBlock(c, n), syntax.FieldAlternative);
             break;
         }
-        chained := New(n, "if_statement");
-        Add(n, current, chained, "alternative");
+        chained := New(n, syntax.IfStatement);
+        Add(n, current, chained, syntax.FieldAlternative);
         current = chained;
     }
     // The chain grew downward, so each link's range still ends where its own
     // last child did before the next link was added.
     chain: int[] = [first];
     link := first;
-    while (n^[link].last >= 0 && n^[n^[link].last].kind == "if_statement" &&
-           n^[n^[link].last].field == "alternative") {
+    while (n^[link].last >= 0 && n^[n^[link].last].kind == syntax.IfStatement &&
+           n^[n^[link].last].field == syntax.FieldAlternative) {
         link = n^[link].last;
         chain.append(link);
     }
@@ -228,79 +229,79 @@ ParseIf :: (c: ^Cursor, n: ^(Node[])) -> int {
 // `for [<] name in first (..|..<) last`, or `for [key,] [&]name in value`,
 // either one parenthesized.
 ParseFor :: (c: ^Cursor, n: ^(Node[])) -> int {
-    loop := New(n, "for_statement");
-    Take(c, n, loop, "");
-    Accept(c, n, loop, tk.Lt, "reverse");
+    loop := New(n, syntax.ForStatement);
+    Take(c, n, loop, syntax.FieldNone);
+    Accept(c, n, loop, tk.Lt, syntax.FieldReverse);
     grouped := c.token == tk.OpenParen;
     if (grouped) {
-        Take(c, n, loop, "");
+        Take(c, n, loop, syntax.FieldNone);
     }
     if (Peek(c, n, 1) == tk.Comma) {
-        TakeName(c, n, loop, "key");
-        Take(c, n, loop, "");
+        TakeName(c, n, loop, syntax.FieldKey);
+        Take(c, n, loop, syntax.FieldNone);
     }
-    Accept(c, n, loop, tk.And, "reference");
-    TakeName(c, n, loop, "name");
-    Expect(c, n, loop, tk.In, "");
+    Accept(c, n, loop, tk.And, syntax.FieldReference);
+    TakeName(c, n, loop, syntax.FieldName);
+    Expect(c, n, loop, tk.In, syntax.FieldNone);
     first := ParseBinary(c, n, OrPower);
     if (!c.failed && (c.token == tk.Ellipsis || c.token == tk.HalfOpenRange)) {
-        Add(n, loop, first, "first");
-        Take(c, n, loop, "bound");
-        Add(n, loop, ParseBinary(c, n, OrPower), "last");
+        Add(n, loop, first, syntax.FieldFirst);
+        Take(c, n, loop, syntax.FieldBound);
+        Add(n, loop, ParseBinary(c, n, OrPower), syntax.FieldLast);
     } else {
-        Add(n, loop, first, "value");
+        Add(n, loop, first, syntax.FieldValue);
     }
     if (grouped) {
-        Expect(c, n, loop, tk.CloseParen, "");
+        Expect(c, n, loop, tk.CloseParen, syntax.FieldNone);
     }
-    Add(n, loop, ParseBlock(c, n), "body");
+    Add(n, loop, ParseBlock(c, n), syntax.FieldBody);
     return loop;
 }
 
 ParseSwitch :: (c: ^Cursor, n: ^(Node[])) -> int {
-    selection := New(n, "switch_statement");
-    Take(c, n, selection, "");
-    Add(n, selection, ParseBinary(c, n, OrPower), "value");
-    Expect(c, n, selection, tk.OpenBrace, "");
+    selection := New(n, syntax.SwitchStatement);
+    Take(c, n, selection, syntax.FieldNone);
+    Add(n, selection, ParseBinary(c, n, OrPower), syntax.FieldValue);
+    Expect(c, n, selection, tk.OpenBrace, syntax.FieldNone);
     while (!c.failed && c.token == tk.Case) {
-        arm := New(n, "switch_arm");
-        Take(c, n, arm, "");
+        arm := New(n, syntax.SwitchArm);
+        Take(c, n, arm, syntax.FieldNone);
         if (c.token == tk.Colon) {
             // The default arm has no value.
         } else if (c.token == tk.Period) {
-            Add(n, arm, ParseVariantPattern(c, n), "value");
+            Add(n, arm, ParseVariantPattern(c, n), syntax.FieldValue);
         } else {
-            Add(n, arm, ParseBinary(c, n, OrPower), "value");
+            Add(n, arm, ParseBinary(c, n, OrPower), syntax.FieldValue);
         }
-        Expect(c, n, arm, tk.Colon, "");
+        Expect(c, n, arm, tk.Colon, syntax.FieldNone);
         if (c.token == tk.OpenBrace) {
-            Add(n, arm, ParseBlock(c, n), "body");
+            Add(n, arm, ParseBlock(c, n), syntax.FieldBody);
         } else {
-            statements := New(n, "block");
+            statements := New(n, syntax.Block);
             while (!c.failed && c.token != tk.Case && c.token != tk.CloseBrace && c.token != tk.EOF) {
-                Add(n, statements, ParseStatement(c, n, false), "");
+                Add(n, statements, ParseStatement(c, n, false), syntax.FieldNone);
             }
-            Add(n, arm, statements, "body");
+            Add(n, arm, statements, syntax.FieldBody);
         }
-        Add(n, selection, arm, "");
+        Add(n, selection, arm, syntax.FieldNone);
     }
-    Expect(c, n, selection, tk.CloseBrace, "");
+    Expect(c, n, selection, tk.CloseBrace, syntax.FieldNone);
     return selection;
 }
 
 // `return [.Outcome] [values]`.
 ParseReturn :: (c: ^Cursor, n: ^(Node[])) -> int {
-    statement := New(n, "return_statement");
-    Take(c, n, statement, "");
+    statement := New(n, syntax.ReturnStatement);
+    Take(c, n, statement, syntax.FieldNone);
     if (c.token == tk.Period) {
-        Take(c, n, statement, "");
-        TakeName(c, n, statement, "outcome");
+        Take(c, n, statement, syntax.FieldNone);
+        TakeName(c, n, statement, syntax.FieldOutcome);
     }
     if (!c.failed && c.token != tk.Semicolon) {
         if (c.token == tk.OpenParen) {
-            Add(n, statement, ParseArgumentsOrGroup(c, n), "value");
+            Add(n, statement, ParseArgumentsOrGroup(c, n), syntax.FieldValue);
         } else {
-            Add(n, statement, ParseBinary(c, n, OrPower), "value");
+            Add(n, statement, ParseBinary(c, n, OrPower), syntax.FieldValue);
         }
     }
     End(c, n, statement);
@@ -346,37 +347,40 @@ HoldsArguments :: (c: ^Cursor, n: ^(Node[])) -> bool {
 }
 
 ParseSequence :: (c: ^Cursor, n: ^(Node[])) -> int {
-    chain := New(n, "sequence_statement");
-    Take(c, n, chain, "");
-    Expect(c, n, chain, tk.OpenBrace, "");
+    chain := New(n, syntax.SequenceStatement);
+    Take(c, n, chain, syntax.FieldNone);
+    Expect(c, n, chain, tk.OpenBrace, syntax.FieldNone);
     while (!c.failed && c.token == tk.Branch) {
-        part := New(n, "branch_statement");
-        Take(c, n, part, "");
-        Add(n, part, ParseBlock(c, n), "body");
-        Add(n, chain, part, "");
+        part := New(n, syntax.BranchStatement);
+        Take(c, n, part, syntax.FieldNone);
+        Add(n, part, ParseBlock(c, n), syntax.FieldBody);
+        Add(n, chain, part, syntax.FieldNone);
     }
-    Expect(c, n, chain, tk.CloseBrace, "");
+    Expect(c, n, chain, tk.CloseBrace, syntax.FieldNone);
     return chain;
 }
 
 // `reduction [unordered] target += value` or `reduction min(target, value)`.
 ParseReduce :: (c: ^Cursor, n: ^(Node[])) -> int {
-    reduction := New(n, "reduce_statement");
-    Take(c, n, reduction, "");
+    reduction := New(n, syntax.ReduceStatement);
+    Take(c, n, reduction, syntax.FieldNone);
     if (IsWord(c, n, "min") || IsWord(c, n, "max")) {
-        word := Take(c, n, reduction, "operator");
-        n^[word].kind = Slice(c.text, n^[word].start, n^[word].end);
+        word := Take(c, n, reduction, syntax.FieldOperator);
+        n^[word].kind = syntax.Min;
+        if (IsWordAt(c, n, word, "max")) {
+            n^[word].kind = syntax.Max;
+        }
         n^[word].named = false;
-        Expect(c, n, reduction, tk.OpenParen, "");
-        Add(n, reduction, ParseBinary(c, n, OrPower), "target");
-        Expect(c, n, reduction, tk.Comma, "");
-        Add(n, reduction, ParseBinary(c, n, OrPower), "value");
-        Expect(c, n, reduction, tk.CloseParen, "");
+        Expect(c, n, reduction, tk.OpenParen, syntax.FieldNone);
+        Add(n, reduction, ParseBinary(c, n, OrPower), syntax.FieldTarget);
+        Expect(c, n, reduction, tk.Comma, syntax.FieldNone);
+        Add(n, reduction, ParseBinary(c, n, OrPower), syntax.FieldValue);
+        Expect(c, n, reduction, tk.CloseParen, syntax.FieldNone);
     } else {
-        Accept(c, n, reduction, tk.Unordered, "ordering");
-        Add(n, reduction, ParseBinary(c, n, OrPower), "target");
-        Expect(c, n, reduction, tk.AddEq, "operator");
-        Add(n, reduction, ParseBinary(c, n, OrPower), "value");
+        Accept(c, n, reduction, tk.Unordered, syntax.FieldOrdering);
+        Add(n, reduction, ParseBinary(c, n, OrPower), syntax.FieldTarget);
+        Expect(c, n, reduction, tk.AddEq, syntax.FieldOperator);
+        Add(n, reduction, ParseBinary(c, n, OrPower), syntax.FieldValue);
     }
     End(c, n, reduction);
     return reduction;

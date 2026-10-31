@@ -11,11 +11,13 @@
 #include "toolchain/compiler_host.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 /* The SHA-256 of "abc", from FIPS 180-2. */
@@ -25,8 +27,10 @@
 #define NOTHING "[]", "[]"
 /* A target no host has. */
 #define ELSEWHERE "[{\"pointer_size\": 4}, 0, [], [], [], []]"
-/* How long a recovery may take: one or two compiles of the compiler. */
-#define RECOVERY_SECONDS 50
+/* How long a recovery may take: two or three VM compiles of the compiler, each
+ * about 100 s (2026-10-31), so the bound only stops a hang. It matches the
+ * compiler's own 600 s deadline. */
+#define RECOVERY_SECONDS 600
 
 static const char *host_path, *artifact_path;
 static char root[PATH_MAX], log_path[PATH_MAX], compiler[PATH_MAX], core[PATH_MAX];
@@ -463,7 +467,12 @@ TEST_CASE(bootstrap_load_reads_closures_up_to_the_artifact_bound)
         write_binary("api-bootstrap/compiler.chibip", "", 0);
         REQUIRE(!truncate(file, (off_t)lengths[i]));
         REQUIRE(!load(api_folder));
-        snprintf(expected, sizeof expected, "compiler.chibip, %zu bytes", i == 3 ? 0 : lengths[i]);
+        if (i == 3) {
+            /* Past the bound nothing is read, so the folder holds no closure. */
+            REQUIRE(strstr(api_error, "holds no compiler.chibip"));
+            continue;
+        }
+        snprintf(expected, sizeof expected, "compiler.chibip, %zu bytes", lengths[i]);
         REQUIRE(strstr(api_error, expected));
         REQUIRE(strstr(api_error, "is not the closure bootstrap.json records"));
     }
@@ -506,10 +515,11 @@ TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness)
     REQUIRE(strstr(api_error, "api/Extra.chibi is in the package of a compiler source but"));
     REQUIRE(strstr(api_error, "does not list it"));
     /* Listed, the new file is a changed source like any other: it needs no new
-     * artifact, only a compiler that can compile it, which this fixture lacks. */
+     * artifact, only a compiler that can compile it: the seed's rejects this one. */
+    write_file("compiler/api/Extra.chibi", "package \n");
     write_file("compiler/asset_compiler/CompilerSources.txt", "api/Fixture.chibi\n/sdk/core/API.chibi\napi/Extra.chibi\n");
     REQUIRE(!load(api_folder));
-    REQUIRE(strstr(api_error, "the compiler failed:"));
+    REQUIRE(strstr(api_error, "the compiler rejected the sources:"));
     write_file("compiler/asset_compiler/CompilerSources.txt", "api/Fixture.chibi\n/sdk/core/API.chibi\n");
     char file[PATH_MAX];
     path(file, "compiler/api/Extra.chibi");
@@ -528,8 +538,8 @@ TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness)
 }
 
 /* Hashing must compare current bytes on every load, for compiler and core
- * sources. This fixture cannot recover, so any changed source must reject
- * through CompileClosure, then load successfully once restored. */
+ * sources. The seed compiles them, so a source it rejects must fail the load,
+ * which succeeds again once the source is restored. */
 TEST_CASE(bootstrap_load_does_not_cache_source_hashes)
 {
     REQUIRE(api_target && api_bytes && api_folder[0]);
@@ -538,10 +548,10 @@ TEST_CASE(bootstrap_load_does_not_cache_source_hashes)
     for (int i = 0; i < 2; i++) {
         char changed[32];
         snprintf(changed, sizeof changed, "%s", sources[i]);
-        changed[8] ^= 1;
+        changed[8] = '`'; /* an illegal character in the package name */
         write_file(files[i], changed);
         REQUIRE(!load(api_folder));
-        REQUIRE(strstr(api_error, "the compiler failed:"));
+        REQUIRE(strstr(api_error, "the compiler rejected the sources:"));
         write_file(files[i], sources[i]);
         REQUIRE(load(api_folder));
         cleanup_load();
@@ -594,11 +604,9 @@ void test_tool_compiler_bootstrap(const char *host)
     tool_remove_tree(root);
 }
 
-/* The compiler sources and core collection of HEAD, exported by git rather
- * than taken from the working tree, recover the compiler from the artifact:
- * its own bytes when it was written from them, otherwise a compiler that
- * compiles them to itself. --recover writes that compiler. */
-TEST_CASE(bootstrap_recovers_from_a_clean_checkout)
+/* Exports HEAD's compiler sources and core collection into the root, by git
+ * rather than from the working tree, and points `compiler` and `core` at them. */
+static bool export_sources()
 {
     char archive[PATH_MAX];
     path(archive, "sources.tar");
@@ -607,11 +615,21 @@ TEST_CASE(bootstrap_recovers_from_a_clean_checkout)
         "--output", archive, "HEAD",      "tools/compiler", "packages/core",
         NULL
     };
-    REQUIRE(tool_run(export, root, log_path) == 0);
     const char *extract[] = { "tar", "-xf", archive, "-C", root, NULL };
-    REQUIRE(tool_run(extract, root, log_path) == 0);
+    if (tool_run(export, root, log_path) || tool_run(extract, root, log_path)) {
+        return false;
+    }
     path(compiler, "tools/compiler");
     path(core, "packages/core");
+    return true;
+}
+
+/* The exported sources recover the compiler from the artifact: its own bytes
+ * when it was written from them, otherwise a compiler that compiles them to
+ * itself. --recover writes that compiler. */
+TEST_CASE(bootstrap_recovers_from_a_clean_checkout)
+{
+    REQUIRE(export_sources());
     char recovered[PATH_MAX], closure[4096];
     path(recovered, "recovered.chibip");
     snprintf(closure, sizeof closure, "%s/compiler.chibip", artifact_path);
@@ -634,29 +652,72 @@ TEST_CASE(bootstrap_recovers_from_a_clean_checkout)
     return true;
 }
 
-TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
+static void append(const char *file, const char *text)
 {
-    char source[PATH_MAX], output[PATH_MAX];
+    FILE *stream = fopen(file, "ab");
+    assert(stream && fputs(text, stream) >= 0 && !fclose(stream));
+}
+
+/* Writes a sparse cache entry of `bytes` last written at `stamp`. */
+static bool stale_entry(const char *file, off_t bytes, time_t stamp)
+{
+    FILE *entry = fopen(file, "wb");
+    if (!entry || fclose(entry) || truncate(file, bytes)) {
+        return false;
+    }
+    struct timeval times[2] = { { .tv_sec = stamp }, { .tv_sec = stamp } };
+    return !utimes(file, times);
+}
+
+/* Whether the loaded compiler's callable `name` returns `json`. */
+static bool returns(const char *name, const char *json)
+{
+    free(api_result.json);
+    api_result = (compiler_host_result){ 0 };
+    return compiler_host_invoke(api_host, compiler_host_entry(name), "[]", 2, 1000, &api_result) &&
+           api_result.flow_status == FLOW_OK && api_result.json &&
+           !strcmp(api_result.json, json);
+}
+
+/* One recovery covers the load path, since each takes minutes. A changed
+ * source and a source the list adds need no new artifact: the checked one
+ * compiles them, after an unlisted file is refused naming the list. The load
+ * writes no compiler, and the cache keeps the one it recovered, so a second
+ * load of the same sources reads that entry. The cache is shared by every
+ * checkout, so publishing first removes the oldest entries past its 2 GiB
+ * budget: two sparse 1 GiB entries fill it here. The sources are the scratch
+ * export, so the edits are not undone. */
+TEST_CASE(bootstrap_load_recovers_changed_sources_once_and_caches_them)
+{
+    char source[PATH_MAX], list[PATH_MAX], output[PATH_MAX], cache[PATH_MAX];
+    char oldest[PATH_MAX], older[PATH_MAX];
     path(source, "tools/compiler/package_compiler/Compile.chibi");
-    size_t length = 0;
-    unsigned char *original = read_bytes(source, &length);
-    REQUIRE(original && length);
-    FILE *file = fopen(source, "ab");
-    REQUIRE(file);
-    bool changed = fputs("\npub BootstrapLoadMarker :: () -> int { return 37; }\n", file) >=
-                   0;
-    changed = !fclose(file) && changed;
-    REQUIRE(changed);
+    path(list, "tools/compiler/asset_compiler/CompilerSources.txt");
     path(output, "load-must-not-write.chibip");
+    path(cache, "compiler-cache");
+    path(oldest, "compiler-cache/compiler-stale-oldest.bin");
+    path(older, "compiler-cache/compiler-stale-older.bin");
+    REQUIRE(export_sources());
+    REQUIRE(!mkdir(cache, 0700) || errno == EEXIST);
+    REQUIRE(stale_entry(oldest, (off_t)1024 * 1024 * 1024, 1000));
+    REQUIRE(stale_entry(older, (off_t)1024 * 1024 * 1024, 2000));
+    append(source, "\npub BootstrapLoadMarker :: () -> int { return 37; }\n");
+    write_file("tools/compiler/package_compiler/Added.chibi", "package package_compiler\n\npub BootstrapAddedMarker :: () -> int { return 41; }\n");
     compiler_bootstrap options = { .folder = artifact_path,
                                    .compiler = compiler,
                                    .core = core,
-                                   .output = output };
+                                   .output = output,
+                                   .cache = cache };
     api_error[0] = 0;
     api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
-    file = fopen(source, "wb");
-    assert(file && fwrite(original, 1, length, file) == length && !fclose(file));
-    free(original);
+    REQUIRE(!api_host);
+    REQUIRE(
+        strstr(api_error, "package_compiler/Added.chibi is in the package of a compiler source but")
+    );
+    REQUIRE(strstr(api_error, "asset_compiler/CompilerSources.txt does not list it"));
+    append(list, "package_compiler/Added.chibi\n");
+    api_error[0] = 0;
+    api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
     if (!api_host) {
         fprintf(stderr, "%s\n", api_error);
     }
@@ -674,102 +735,16 @@ TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
     REQUIRE(recovered > 0 && recovered <= COMPILER_HOST_MAX_ARTIFACT_BYTES);
     printf("%s\n", api_error);
     REQUIRE(access(output, F_OK) != 0);
-    uint64_t entry = compiler_host_entry("project:package_compiler:1:BootstrapLoadMarker:callable");
-    REQUIRE(compiler_host_invoke(api_host, entry, "[]", 2, 1000, &api_result));
-    REQUIRE(api_result.flow_status == FLOW_OK);
-    REQUIRE(api_result.json && !strcmp(api_result.json, "[37]"));
-    return true;
-}
-
-/* A load with a cache directory keeps the compiler it recovers, and a later
- * load of the same sources takes it from there without recovering. The test
- * host is the same binary for both. A source edit names another entry. */
-TEST_CASE(bootstrap_load_reuses_a_recovered_compiler_from_its_cache)
-{
-    char source[PATH_MAX], cache[PATH_MAX];
-    path(source, "tools/compiler/package_compiler/Compile.chibi");
-    path(cache, "compiler-cache");
-    size_t length = 0;
-    unsigned char *original = read_bytes(source, &length);
-    REQUIRE(original && length);
-    FILE *file = fopen(source, "ab");
-    REQUIRE(file);
-    bool changed = fputs("\npub BootstrapCacheMarker :: () -> int { return 53; }\n", file) >=
-                   0;
-    changed = !fclose(file) && changed;
-    REQUIRE(changed);
-    compiler_bootstrap options = { .folder = artifact_path,
-                                   .compiler = compiler,
-                                   .core = core,
-                                   .cache = cache };
-    api_error[0] = 0;
-    api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
-    bool recovered = api_host &&
-                     strstr(api_error, "compiler sources changed since revision");
+    REQUIRE(returns("project:package_compiler:1:BootstrapLoadMarker:callable", "[37]"));
+    REQUIRE(returns("project:package_compiler:1:BootstrapAddedMarker:callable", "[41]"));
     cleanup_load();
     /* The second load stops reporting a recovery: it read the entry. */
     api_error[0] = 0;
     api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
-    bool reused = api_host && !api_error[0];
-    uint64_t entry = compiler_host_entry(
-        "project:package_compiler:1:BootstrapCacheMarker:callable"
-    );
-    bool works = reused &&
-                 compiler_host_invoke(api_host, entry, "[]", 2, 1000, &api_result) &&
-                 api_result.flow_status == FLOW_OK && api_result.json &&
-                 !strcmp(api_result.json, "[53]");
-    file = fopen(source, "wb");
-    assert(file && fwrite(original, 1, length, file) == length && !fclose(file));
-    free(original);
-    REQUIRE(recovered);
-    REQUIRE(reused);
-    REQUIRE(works);
-    return true;
-}
-
-/* A source file the list adds to a package is a changed source, not a reason
- * for a new artifact: the checked artifact only has to compile it. An unlisted
- * file is refused first, naming the list. */
-TEST_CASE(bootstrap_load_recovers_a_new_listed_source_without_a_new_artifact)
-{
-    char list[PATH_MAX], added[PATH_MAX], output[PATH_MAX];
-    path(list, "tools/compiler/asset_compiler/CompilerSources.txt");
-    path(added, "tools/compiler/package_compiler/Added.chibi");
-    path(output, "added-must-not-write.chibip");
-    size_t length = 0;
-    unsigned char *original = read_bytes(list, &length);
-    REQUIRE(original && length);
-    write_file("tools/compiler/package_compiler/Added.chibi", "package package_compiler\n\npub BootstrapAddedMarker :: () -> int { return 41; }\n");
-    compiler_bootstrap options = { .folder = artifact_path,
-                                   .compiler = compiler,
-                                   .core = core,
-                                   .output = output };
-    api_error[0] = 0;
-    api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
-    bool refused = !api_host &&
-                   strstr(api_error, "package_compiler/Added.chibi is in the package of a compiler source but") &&
-                   strstr(api_error, "asset_compiler/CompilerSources.txt does not list it");
-    FILE *file = fopen(list, "ab");
-    assert(file && fputs("package_compiler/Added.chibi\n", file) >= 0 && !fclose(file));
-    api_error[0] = 0;
-    api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
-    bool restored = (file = fopen(list, "wb")) &&
-                    fwrite(original, 1, length, file) == length &&
-                    !fclose(file) && !unlink(added);
-    free(original);
-    REQUIRE(restored && refused);
-    if (!api_host) {
-        fprintf(stderr, "%s\n", api_error);
-    }
-    REQUIRE(api_host);
-    REQUIRE(strstr(api_error, "compiler sources changed since revision"));
-    REQUIRE(access(output, F_OK) != 0);
-    uint64_t entry = compiler_host_entry(
-        "project:package_compiler:1:BootstrapAddedMarker:callable"
-    );
-    REQUIRE(compiler_host_invoke(api_host, entry, "[]", 2, 1000, &api_result));
-    REQUIRE(api_result.flow_status == FLOW_OK);
-    REQUIRE(api_result.json && !strcmp(api_result.json, "[41]"));
+    REQUIRE(api_host && !api_error[0]);
+    REQUIRE(returns("project:package_compiler:1:BootstrapAddedMarker:callable", "[41]"));
+    REQUIRE(access(oldest, F_OK) != 0);
+    REQUIRE(!access(older, F_OK));
     return true;
 }
 
@@ -807,13 +782,15 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact)
     setup_root();
     RUN_TEST_CASE(bootstrap_validates_without_recovering);
     RUN_TEST_CASE(bootstrap_recovers_from_a_clean_checkout);
+    tool_remove_tree(root);
+}
+
+void test_tool_bootstrap_load(const char *artifact)
+{
+    artifact_path = artifact;
+    setup_root();
     pu_setup(NULL, cleanup_load);
-    RUN_TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing);
-    cleanup_load();
-    cleanup_load();
-    RUN_TEST_CASE(bootstrap_load_reuses_a_recovered_compiler_from_its_cache);
-    cleanup_load();
-    RUN_TEST_CASE(bootstrap_load_recovers_a_new_listed_source_without_a_new_artifact);
+    RUN_TEST_CASE(bootstrap_load_recovers_changed_sources_once_and_caches_them);
     pu_clear_setup();
     tool_remove_tree(root);
 }

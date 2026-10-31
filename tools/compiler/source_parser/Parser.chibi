@@ -13,45 +13,18 @@ Outcome :: union {
 
 // Parses a whole source text into the raw facts compiler_syntax.Parse returns:
 // every token as a leaf, with the node, field and extra flags of the grammar
-// in src/language/grammar.js. Text the grammar does not read gives the file
-// with one error node where the parse stopped, named by what was expected.
+// in src/language/grammar.js. Text the grammar does not read gives the
+// diagnostic of where the parse stopped, saying what was expected; its
+// message keeps the 191 bytes a diagnostic row holds.
 pub Parse :: (text: string) -> Tree {
     outcome := Build(text);
     switch outcome {
         case .Built(nodes, root):
             return Emit(nodes, root);
         case .Rejected(message, start, end, row, column):
-            return Failure(text, message, start, end, row, column);
+            return Tree.Rejected({start: start, end: end, line: row + 1, column: column + 1, document: 0,
+                                  message: text_slice(message, 0, 191)});
     }
-}
-
-// What is wrong with `text`: one diagnostic at the first token the grammar
-// cannot read, saying what it expected; none when the text parses.
-pub Diagnose :: (text: string) -> syntax.Diagnostic[] {
-    outcome := Build(text);
-    diagnostics: syntax.Diagnostic[] = [];
-    switch outcome {
-        case .Built(nodes, root):
-            return diagnostics;
-        case .Rejected(message, start, end, row, column):
-            diagnostics.append({start: start, end: end, line: row + 1, column: column + 1,
-                                document: 0, message: message});
-            return diagnostics;
-    }
-}
-
-// A tree for text the grammar does not read: the file with one error node
-// where the parse stopped. The node's kind carries the message, which
-// syntax_diagnostics.Diagnose reports.
-Failure :: (text: string, message: string, start: int, end: int, row: int, column: int) -> Tree {
-    nodes: syntax.Node[] = [];
-    nodes.append({kind: "source_file", start: 0, end: text_byte_length(text), row: 0, column: 0,
-                  parent: -1, first_child: 1, next_sibling: -1, error: false, missing: false,
-                  has_error: true});
-    nodes.append({kind: message, start: start, end: end, row: row, column: column,
-                  parent: 0, first_child: -1, next_sibling: -1, error: true, missing: false,
-                  has_error: true});
-    return Tree.Parsed(nodes, ["", ""], [true, true], [false, false], 0);
 }
 
 Build :: (text: string) -> Outcome {
@@ -67,15 +40,14 @@ Build :: (text: string) -> Outcome {
 }
 
 Construct :: (text: string, kinds: int[], starts: int[], ends: int[], rows: int[], columns: int[]) -> Outcome {
-    names := tk.KindNames();
     nodes: Node[] = [];
     comments: Node[] = [];
     index: int = 0;
     while (index < length(kinds)) {
-        leaf := Leaf(LeafKind(names, kinds[index]), kinds[index], starts[index], ends[index],
+        leaf := Leaf(LeafKind(kinds[index]), kinds[index], starts[index], ends[index],
                      rows[index], columns[index]);
         if (kinds[index] == tk.Ident && ends[index] - starts[index] == 2 && Spells(text, starts[index], "fn")) {
-            leaf.kind = "fn";
+            leaf.kind = syntax.Fn;
         }
         if (kinds[index] == tk.Comment) {
             leaf.named = true;
@@ -159,7 +131,7 @@ Insert :: (n: ^(Node[]), owner: int, comment: int) {
 // patched in when the walk reaches it.
 Emit :: (nodes: Node[], root: int) -> Tree {
     rows: syntax.Node[] = [];
-    fields: string[] = [];
+    fields: int[] = [];
     named: bool[] = [];
     extras: bool[] = [];
     place := resize([int(0)], length(nodes));
@@ -181,8 +153,7 @@ Emit :: (nodes: Node[], root: int) -> Tree {
         }
         rows.append({kind: nodes[current].kind, start: nodes[current].start, end: nodes[current].end,
                      row: nodes[current].row, column: nodes[current].column, parent: parent,
-                     first_child: first_child, next_sibling: -1, error: false, missing: false,
-                     has_error: false});
+                     first_child: first_child, next_sibling: -1});
         fields.append(nodes[current].field);
         named.append(nodes[current].named);
         extras.append(nodes[current].extra);

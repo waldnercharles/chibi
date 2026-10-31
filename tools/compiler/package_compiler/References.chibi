@@ -1,6 +1,7 @@
 package package_compiler
 
 import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
 
 // Scoped pointer parameters, lowered to stage zero's reference intrinsics. A
 // scoped parameter's argument is a descriptor of the caller's location: a
@@ -42,14 +43,14 @@ CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
             return resolved.index;
         }
     }
-    callee := Field(forest, call, "function");
+    callee := Field(forest, call, syntax.FieldFunction);
     qualifier: int = -1;
-    if (Is(forest, callee, "member_expression")) {
-        qualifier = Field(forest, callee, "object");
-        callee = Field(forest, callee, "member");
+    if (Is(forest, callee, syntax.MemberExpression)) {
+        qualifier = Field(forest, callee, syntax.FieldObject);
+        callee = Field(forest, callee, syntax.FieldMember);
     }
     home := QualifierOf(forest, text, aliases, package, qualifier);
-    if (home < 0 || !Is(forest, callee, "identifier")) {
+    if (home < 0 || !Is(forest, callee, syntax.Identifier)) {
         return -1;
     }
     if (qualifier < 0) {
@@ -65,15 +66,15 @@ CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
 // The name a place reads through its fields and elements, or "".
 RootName :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> string {
     at := node;
-    while (Is(forest, at, "parenthesized_expression") || Is(forest, at, "member_expression") ||
-           Is(forest, at, "index_expression")) {
-        if (Is(forest, at, "parenthesized_expression")) {
-            at = Field(forest, at, "expression");
+    while (Is(forest, at, syntax.ParenthesizedExpression) || Is(forest, at, syntax.MemberExpression) ||
+           Is(forest, at, syntax.IndexExpression)) {
+        if (Is(forest, at, syntax.ParenthesizedExpression)) {
+            at = Field(forest, at, syntax.FieldExpression);
         } else {
-            at = Field(forest, at, "object");
+            at = Field(forest, at, syntax.FieldObject);
         }
     }
-    if (!Is(forest, at, "identifier")) {
+    if (!Is(forest, at, syntax.Identifier)) {
         return "";
     }
     return Text(forest, text, at);
@@ -90,7 +91,7 @@ ReferencesName :: (forest: snapshot.SnapshotNode[], text: string, node: int, nam
         if (parent != node) {
             return false;
         }
-        if (Is(forest, at, "address_expression") && RootName(forest, text, Field(forest, at, "operand")) == name) {
+        if (Is(forest, at, syntax.AddressExpression) && RootName(forest, text, Field(forest, at, syntax.FieldOperand)) == name) {
             return true;
         }
         at += 1;
@@ -114,10 +115,10 @@ ScopedCalls :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
     while (top > 0) {
         top -= 1;
         at := pending[top];
-        if (Is(forest, at, "call_expression")) {
+        if (Is(forest, at, syntax.CallExpression)) {
             called := CalledFunction(forest, text, callables, natives, aliases, package, at);
             position: int = 0;
-            for (argument in Members(forest, Field(forest, at, "arguments"))) {
+            for (argument in Members(forest, Field(forest, at, syntax.FieldArguments))) {
                 if (GenericOmitted(aliases, argument)) { continue; }
                 index := GenericCallParameter(forest, text, callables, params, aliases, called, at, argument, position);
                 if (called >= 0 && index >= 0 && index < callables[called].count &&
@@ -126,7 +127,7 @@ ScopedCalls :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
                                               param: callables[called].first + index};
                     found.append(scoped);
                 }
-                if (!Is(forest, argument, "named_argument")) { position += 1; }
+                if (!Is(forest, argument, syntax.NamedArgument)) { position += 1; }
             }
         }
         child := forest[at].first_child;
@@ -148,7 +149,7 @@ ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
                     natives: ResolvedNative[], aliases: Name[], package: int, node: int) -> int[] {
     found: int[] = [];
     for (argument in ScopedCalls(forest, text, callables, params, natives, aliases, package, node)) {
-        if (Is(forest, argument.value, "address_expression")) {
+        if (Is(forest, argument.value, syntax.AddressExpression)) {
             found.append(argument.value);
         }
     }
@@ -161,8 +162,8 @@ ReferencedNames :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
                     natives: ResolvedNative[], aliases: Name[], package: int, node: int) -> string[] {
     found: string[] = [];
     for (argument in ScopedArguments(forest, text, callables, params, natives, aliases, package, node)) {
-        root := RootOf(forest, Field(forest, argument, "operand"));
-        if (Is(forest, root, "identifier")) {
+        root := RootOf(forest, Field(forest, argument, syntax.FieldOperand));
+        if (Is(forest, root, syntax.Identifier)) {
             found.append(Text(forest, text, root));
         }
     }
@@ -181,12 +182,12 @@ ScopedTargets :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
         while (at < callable.count) {
             if (params[callable.first + at].reference) {
                 text := documents[callable.document].text;
-                pending: int[] = [Field(forest, callable.node, "body")];
+                pending: int[] = [Field(forest, callable.node, syntax.FieldBody)];
                 while (length(pending) > 0) {
                     node := pending[length(pending) - 1];
                     pending = slice(pending, 0, length(pending) - 1);
-                    operand := Field(forest, node, "operand");
-                    if (Is(forest, node, "dereference_expression") && Is(forest, operand, "identifier") &&
+                    operand := Field(forest, node, syntax.FieldOperand);
+                    if (Is(forest, node, syntax.DereferenceExpression) && Is(forest, operand, syntax.Identifier) &&
                         Text(forest, text, operand) == params[callable.first + at].name &&
                         !Returned(forest, node) &&
                         !(params[callable.first + at].storage == PointerStorage && KeptTarget(forest, node))) {
@@ -210,22 +211,22 @@ ScopedTargets :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
 // the parameter, and a dereference of it reads through that pointer.
 KeptTarget :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     parent := forest[node].parent;
-    while (Is(forest, parent, "parenthesized_expression")) {
+    while (Is(forest, parent, syntax.ParenthesizedExpression)) {
         parent = forest[parent].parent;
     }
-    return Is(forest, parent, "dereference_expression") || CallArgument(forest, node);
+    return Is(forest, parent, syntax.DereferenceExpression) || CallArgument(forest, node);
 }
 // Whether `node`, possibly parenthesized, is an argument a call passes.
 CallArgument :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     at := node;
     parent := forest[at].parent;
-    while (Is(forest, parent, "parenthesized_expression")) {
+    while (Is(forest, parent, syntax.ParenthesizedExpression)) {
         at = parent;
         parent = forest[parent].parent;
     }
-    return Is(forest, parent, "argument_list") ||
-           ((Is(forest, parent, "named_argument") || Is(forest, parent, "typed_argument")) &&
-            Field(forest, parent, "value") == at);
+    return Is(forest, parent, syntax.ArgumentList) ||
+           ((Is(forest, parent, syntax.NamedArgument) || Is(forest, parent, syntax.TypedArgument)) &&
+            Field(forest, parent, syntax.FieldValue) == at);
 }
 // A `^T` parameter whose callers' addresses never outlive the call, as stage
 // zero decides it: not nullable, and its body only dereferences it, reads its
@@ -238,16 +239,16 @@ ScopedDepth: int : 64;
 // adds `?`, `[]` or a trait.
 PointerAnnotation :: (forest: snapshot.SnapshotNode[], type: int) -> int {
     at := type;
-    if (Is(forest, at, "measured_type")) {
-        at = Field(forest, at, "base");
+    if (Is(forest, at, syntax.MeasuredType)) {
+        at = Field(forest, at, syntax.FieldBase);
     }
-    if (!Is(forest, at, "type")) {
+    if (!Is(forest, at, syntax.Type)) {
         return -1;
     }
     pointer: int = -1;
     child := forest[at].first_child;
     while (child >= 0) {
-        if (!forest[child].is_named || pointer >= 0 || forest[child].kind != "pointer_type") {
+        if (!forest[child].is_named || pointer >= 0 || forest[child].kind != syntax.PointerType) {
             return -1;
         }
         pointer = child;
@@ -256,17 +257,17 @@ PointerAnnotation :: (forest: snapshot.SnapshotNode[], type: int) -> int {
     return pointer;
 }
 CallableDeclaration :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
-    return Is(forest, node, "function_declaration") || Is(forest, node, "macro_declaration") ||
-           Is(forest, node, "lambda_expression");
+    return Is(forest, node, syntax.FunctionDeclaration) || Is(forest, node, syntax.MacroDeclaration) ||
+           Is(forest, node, syntax.LambdaExpression);
 }
 // The declaration a plain call names among its caller's siblings, or -1.
 SiblingCallable :: (forest: snapshot.SnapshotNode[], text: string, caller: int, callee: int) -> int {
-    if (!Is(forest, callee, "identifier")) {
+    if (!Is(forest, callee, syntax.Identifier)) {
         return -1;
     }
     for (sibling in Members(forest, forest[caller].parent)) {
         if (CallableDeclaration(forest, sibling) &&
-            Text(forest, text, Field(forest, sibling, "name")) == Text(forest, text, callee)) {
+            Text(forest, text, Field(forest, sibling, syntax.FieldName)) == Text(forest, text, callee)) {
             return sibling;
         }
     }
@@ -278,21 +279,21 @@ ScopedForward :: (forest: snapshot.SnapshotNode[], text: string, caller: int, ar
                   visiting: int[]) -> bool {
     at := argument;
     list := forest[at].parent;
-    while (Is(forest, list, "parenthesized_expression")) {
+    while (Is(forest, list, syntax.ParenthesizedExpression)) {
         at = list;
         list = forest[list].parent;
     }
     label: int = -1;
-    if (Is(forest, list, "named_argument") ||
-        (Is(forest, list, "typed_argument") && Field(forest, list, "value") == at)) {
-        label = Field(forest, list, "name");
+    if (Is(forest, list, syntax.NamedArgument) ||
+        (Is(forest, list, syntax.TypedArgument) && Field(forest, list, syntax.FieldValue) == at)) {
+        label = Field(forest, list, syntax.FieldName);
         at = list;
         list = forest[list].parent;
     }
-    if (!Is(forest, list, "argument_list") || !Is(forest, forest[list].parent, "call_expression")) {
+    if (!Is(forest, list, syntax.ArgumentList) || !Is(forest, forest[list].parent, syntax.CallExpression)) {
         return false;
     }
-    callee := SiblingCallable(forest, text, caller, Field(forest, forest[list].parent, "function"));
+    callee := SiblingCallable(forest, text, caller, Field(forest, forest[list].parent, syntax.FieldFunction));
     if (callee < 0) {
         return false;
     }
@@ -301,15 +302,15 @@ ScopedForward :: (forest: snapshot.SnapshotNode[], text: string, caller: int, ar
         if (current == at) {
             break;
         }
-        if (!Is(forest, current, "named_argument") && !Is(forest, current, "typed_argument")) {
+        if (!Is(forest, current, syntax.NamedArgument) && !Is(forest, current, syntax.TypedArgument)) {
             position += 1;
         }
     }
     slot: int = 0;
-    for (parameter in Members(forest, Field(forest, callee, "parameters"))) {
+    for (parameter in Members(forest, Field(forest, callee, syntax.FieldParameters))) {
         if ((label < 0 && slot == position) ||
-            (label >= 0 && Text(forest, text, label) == Text(forest, text, Field(forest, parameter, "name")))) {
-            return PointerAnnotation(forest, Field(forest, parameter, "type")) >= 0 &&
+            (label >= 0 && Text(forest, text, label) == Text(forest, text, Field(forest, parameter, syntax.FieldName)))) {
+            return PointerAnnotation(forest, Field(forest, parameter, syntax.FieldType)) >= 0 &&
                    ScopedPointer(forest, text, callee, parameter, visiting);
         }
         slot += 1;
@@ -318,13 +319,13 @@ ScopedForward :: (forest: snapshot.SnapshotNode[], text: string, caller: int, ar
 }
 // Whether `node` spells a name in `parent` rather than reading a value.
 SpellsName :: (forest: snapshot.SnapshotNode[], parent: int, node: int) -> bool {
-    return Is(forest, parent, "argument_name") || Is(forest, parent, "type_name") ||
-           Field(forest, parent, "name") == node || Field(forest, parent, "member") == node ||
-           (Is(forest, parent, "for_statement") && Field(forest, parent, "key") == node);
+    return Is(forest, parent, syntax.ArgumentName) || Is(forest, parent, syntax.TypeName) ||
+           Field(forest, parent, syntax.FieldName) == node || Field(forest, parent, syntax.FieldMember) == node ||
+           (Is(forest, parent, syntax.ForStatement) && Field(forest, parent, syntax.FieldKey) == node);
 }
 BindingForm :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
-    return Is(forest, node, "local_declaration") || Is(forest, node, "for_statement") ||
-           Is(forest, node, "query_generator");
+    return Is(forest, node, syntax.LocalDeclaration) || Is(forest, node, syntax.ForStatement) ||
+           Is(forest, node, syntax.QueryGenerator);
 }
 // Whether each use of the parameter `name` of `caller` in `body` keeps its
 // address inside the call. A local of the same spelling makes it managed,
@@ -338,7 +339,7 @@ ScopedUses :: (forest: snapshot.SnapshotNode[], text: string, caller: int, body:
         if (CallableDeclaration(forest, at)) {
             continue;
         }
-        if (!Is(forest, at, "identifier") || Text(forest, text, at) != name) {
+        if (!Is(forest, at, syntax.Identifier) || Text(forest, text, at) != name) {
             for (child in Members(forest, at)) {
                 pending.append(child);
             }
@@ -351,21 +352,21 @@ ScopedUses :: (forest: snapshot.SnapshotNode[], text: string, caller: int, body:
             }
             continue;
         }
-        if (!Is(forest, parent, "dereference_expression") && !Is(forest, parent, "member_expression")) {
+        if (!Is(forest, parent, syntax.DereferenceExpression) && !Is(forest, parent, syntax.MemberExpression)) {
             if (!ScopedForward(forest, text, caller, at, visiting)) {
                 return false;
             }
             continue;
         }
         place := parent;
-        while (Is(forest, forest[place].parent, "dereference_expression") ||
-               Is(forest, forest[place].parent, "parenthesized_expression") ||
-               (Is(forest, forest[place].parent, "member_expression") &&
-                Field(forest, forest[place].parent, "object") == place)) {
+        while (Is(forest, forest[place].parent, syntax.DereferenceExpression) ||
+               Is(forest, forest[place].parent, syntax.ParenthesizedExpression) ||
+               (Is(forest, forest[place].parent, syntax.MemberExpression) &&
+                Field(forest, forest[place].parent, syntax.FieldObject) == place)) {
             place = forest[place].parent;
         }
         outer := forest[place].parent;
-        if (Is(forest, outer, "address_expression") && !ScopedForward(forest, text, caller, outer, visiting)) {
+        if (Is(forest, outer, syntax.AddressExpression) && !ScopedForward(forest, text, caller, outer, visiting)) {
             return false;
         }
     }
@@ -383,9 +384,9 @@ ScopedPointer :: (forest: snapshot.SnapshotNode[], text: string, declaration: in
     if (length(visiting) == ScopedDepth) {
         return false;
     }
-    body := Field(forest, declaration, "body");
+    body := Field(forest, declaration, syntax.FieldBody);
     return body < 0 || ScopedUses(forest, text, declaration, body,
-                                  Text(forest, text, Field(forest, parameter, "name")), append(visiting, parameter));
+                                  Text(forest, text, Field(forest, parameter, syntax.FieldName)), append(visiting, parameter));
 }
 // Whether `names` holds `name`.
 Holds :: (names: string[], name: string) -> bool {
@@ -477,7 +478,7 @@ PlaceReadStep :: (binding: Name, ops: Ops, target: Target, at: Bases, node: snap
 // argument lends, or a union something writes: its cell holds the value.
 BoxStep :: (forest: snapshot.SnapshotNode[], text: string, local: Value, value: Value, item: Work, ops: Ops,
             target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
-    name := Field(forest, item.node, "name");
+    name := Field(forest, item.node, syntax.FieldName);
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     code := CellWrite(local.storage, value.slot, at.cell, ops, target, at.slot, node);
     code.append(SymbolCode(ops, name, node));
@@ -508,7 +509,7 @@ BoxParameterStep :: (param: Param, index: int, ops: Ops, target: Target, at: Bas
 // point; a scoped parameter's target is the caller's.
 PlaceAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, binding: Name, value: Value,
                     item: Work, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
-    destination := forest[Field(forest, item.node, "target")];
+    destination := forest[Field(forest, item.node, syntax.FieldTarget)];
     slots: Slot[] = [];
     code: Code[] = [];
     cells: Cell[] = [];
@@ -526,8 +527,8 @@ PlaceAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: int
         slots.append(DescriptorSlot(target));
         code.append(DescriptorCode(ops, target, binding.index, descriptor, node));
     }
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
-    if (operator != "") {
+    operator := CompoundOperator(Operator(forest, item.node));
+    if (operator != NoOperator) {
         op := BinaryOp(ops, operator);
         if (op < 0 || Comparison(ops, op) || !Numeric(binding.storage) || binding.container != 0 ||
             !Single(stored, binding.storage)) {
@@ -624,44 +625,44 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
     item := work;
     argument := Unparenthesized(forest, item.node);
     forwarded := false;
-    if (item.phase == ScopedPhase && Is(forest, argument, "identifier")) {
+    if (item.phase == ScopedPhase && Is(forest, argument, syntax.Identifier)) {
         found := Lookup(names, Text(forest, text, argument));
         forwarded = found >= 0 && names[found].place == ReferencePlace;
     }
     if (forwarded) {
         item.node = argument;
     }
-    if (item.phase == ScopedPhase && !forwarded && !Is(forest, argument, "dereference_expression")) {
+    if (item.phase == ScopedPhase && !forwarded && !Is(forest, argument, syntax.DereferenceExpression)) {
         // A managed pointer lends its target, as its dereference would.
         resumed := item;
         resumed.phase = PointerBridgePhase;
         return Step.Emitted([ExpressionCode(ops, forest[item.node])], [], [], [], [], [], [], [],
                             [Visit(item.node), resumed], 0, NoValue(), NoValue(), []);
     }
-    if (Is(forest, argument, "dereference_expression")) {
+    if (Is(forest, argument, syntax.DereferenceExpression)) {
         resumed := item;
         resumed.phase = PointerBridgePhase;
         return Step.Emitted([ExpressionCode(ops, forest[item.node])], [], [], [], [], [], [], [],
-                            [Visit(Field(forest, argument, "operand")), resumed], 0, NoValue(), NoValue(), []);
+                            [Visit(Field(forest, argument, syntax.FieldOperand)), resumed], 0, NoValue(), NoValue(), []);
     }
     node := forest[item.node];
     code := TargetPoints(forest, text, names, ops, item.node);
     root := item.node;
     field: int = -1;
-    if (Is(forest, item.node, "member_expression")) {
-        root = Field(forest, item.node, "object");
+    if (Is(forest, item.node, syntax.MemberExpression)) {
+        root = Field(forest, item.node, syntax.FieldObject);
     }
     found: int = -1;
-    if (Is(forest, root, "identifier")) {
+    if (Is(forest, root, syntax.Identifier)) {
         found = Lookup(names, Text(forest, text, root));
     }
-    if (root != item.node && (Is(forest, root, "dereference_expression") ||
+    if (root != item.node && (Is(forest, root, syntax.DereferenceExpression) ||
                               (found >= 0 && names[found].storage == PointerStorage))) {
         source := root;
         points: Code[] = [ExpressionCode(ops, node)];
         points.append(ExpressionCode(ops, forest[root]));
-        if (Is(forest, root, "dereference_expression")) {
-            source = Field(forest, root, "operand");
+        if (Is(forest, root, syntax.DereferenceExpression)) {
+            source = Field(forest, root, syntax.FieldOperand);
         }
         resumed := item;
         resumed.phase = PointerRefFieldPhase;
@@ -700,7 +701,7 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
             (binding.place != CellPlace && binding.place != ReferencePlace)) {
             return Fail(forest, item.node, document, "a reference to this field is not supported yet");
         }
-        field = FindField(types, members, binding.record, Text(forest, text, Field(forest, item.node, "member")));
+        field = FindField(types, members, binding.record, Text(forest, text, Field(forest, item.node, syntax.FieldMember)));
         if (field < 0) {
             return Fail(forest, item.node, document, "Unknown field");
         }
@@ -785,7 +786,7 @@ ReferenceFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     reached := base + 3;
     stored := value;
     if (item.c == 1) {
-        op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))));
+        op := BinaryOp(ops, CompoundOperator(Operator(forest, item.node)));
         if (op < 0 || Comparison(ops, op) || !(Integer(field.storage) || Floating(field.storage)) ||
             !Single(stored, field.storage)) {
             return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
@@ -799,7 +800,7 @@ ReferenceFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
         hosts.append(ReadThroughHost(at.cell + 5));
         code.extend(ReadThroughCode(ops, target, field.storage, 0, reached, at.cell + 5, at.host + 1, read,
                                     node));
-        code.append(ScalarWatch(ops, read + 2, field.storage, 0, true, forest[Field(forest, item.node, "target")]));
+        code.append(ScalarWatch(ops, read + 2, field.storage, 0, true, forest[Field(forest, item.node, syntax.FieldTarget)]));
         slots.append(ValueLocal(field.storage));
         code.append(Instruction(op, field.storage, read + 3, read + 2, stored.slot, -1, node));
         stored = Typed(read + 3, field.storage, 0, -1);

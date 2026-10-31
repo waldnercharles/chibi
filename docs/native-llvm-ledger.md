@@ -156,12 +156,24 @@ mean native, since `scalar_llvm` and `Driver.Object` must also take the function
 | --- | ---: | --- |
 | W10 pointers: read-only by value (#1084), writes by reference (#1084 slice 2) | 178 | landed, census not rerun |
 | W2 functions without a result (most pointer writers are void) | 13 | sdk-cmake |
-| W14 `compiler_json_value_string`, `compiler_json_string` | 33 | builtin-math, `foreign import` |
+| W14 `compiler_json_value_string`, `compiler_json_string` | 33 | landed (#1126, Chibi `json_string`), census not rerun |
 | W9 optionals and record fields of map, pointer or optional type | 7 | sdk-cmake |
 | `insert` on arrays | 1 | open |
 | Producer passes but native emission untested over the closure | unknown | W22 driver: compile the 973 through `Driver.Object` and list the rejections |
 | Maps (W8), `string[]` literals in natives, host catalog calls | open | not yet counted |
-| Driver itself: link the native compiler, run it on the compiler's sources, compare stage three with stage two | none written | core-math |
+| Stage-one driver: `tools/compiler/native_driver/Main.chibi`, a program that compiles a compiler folder to a native executable | none written | core-math |
+| Harness: `chibi build native-self-host --llvm DIR` builds the driver natively, runs stage two and stage three each in a clean folder, compares their SHA-256 and prints each wall time next to the VM-hosted self-build's; CI job `Native self-host` | written | port-lead |
+
+### Stage contract
+
+The harness and the driver agree on this interface. A stage executable is run as
+`STAGE --compiler DIR --core DIR --output FILE --llvm DIR`: it compiles the package folder `DIR`
+and the core packages to the native executable `FILE`, which has the same interface; it may use
+`FILE.work` beside the output and removes it. The exit status is 0 for success, 1 when the native
+lane rejects the sources and 2 for a usage error; on a rejection the first stderr line is
+`native: rejected FUNCTION: MESSAGE`. The output's bytes depend only on the sources, the core
+packages and the LLVM tools, never on a path, a time or a process id, since stage two and stage
+three are built from different folders and compared byte for byte.
 
 ## Features
 
@@ -239,8 +251,6 @@ needs. Each one says who uses it and what replacing it requires.
 
 | Capability | Code | Callers | Replacement criterion |
 | --- | --- | --- | --- |
-| Tree-sitter parse to snapshot | `src/toolchain/compiler_syntax.c` | compiler host, `Compile`, `CollectScalar` | A native parser or a narrow generated binding that gives the same snapshot. |
-| JSON decoding natives | `src/toolchain/compiler_json.c` | package compiler, host transport | Chibi decoder with the same results, or a generated binding. |
 | Compiler host invocation | `src/toolchain/compiler_host.c` | `Run.ps1`, build host, C tests | Native compiler entry points (M7). |
 | Bootstrap and closure artifacts | `src/toolchain/compiler_bootstrap.c`, `compiler_artifact.c` | `chibi build bootstrap-artifact`, recovery | Native stage chain with fixed-point evidence (M7). |
 | Target layout facts | `src/toolchain/compiler_target.c` | `Target` argument | Target description owned in Chibi, checked against the platform ABI (M5). |

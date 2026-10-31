@@ -1,4 +1,0 @@
-package facts
-One :: (s: string) -> bool { xs := [compiler_json_string(s)]; return true; }
-
-// error: 2:37: array item has no value type

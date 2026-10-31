@@ -40,6 +40,24 @@
         }                                                                      \
     } while (0)
 
+static uint64_t instruction_fields(const behavior_function_instruction *v)
+{
+    /* Absent means the value encodes as the default's five zero bytes, the
+     * rule the Chibi writer applies to the encoded value. */
+    bool value = v->value.type != PIN_FLOW ||
+                 v->value.container != PIN_CONTAINER_SINGLE || v->value.type_name;
+    return (v->right ? INSTRUCTION_RIGHT : 0) |
+           (v->target ? INSTRUCTION_TARGET : 0) |
+           (v->offset ? INSTRUCTION_OFFSET : 0) |
+           (value ? INSTRUCTION_VALUE : 0) | (v->frame ? INSTRUCTION_FRAME : 0) |
+           (v->stack != -1 ? INSTRUCTION_STACK : 0) |
+           (v->pin ? INSTRUCTION_PIN : 0) |
+           (v->indirect ? INSTRUCTION_INDIRECT : 0) |
+           (v->component ? INSTRUCTION_COMPONENT : 0) |
+           (v->node_id ? INSTRUCTION_NODE : 0) |
+           (v->layout ? INSTRUCTION_LAYOUT : 0) |
+           (v->message ? INSTRUCTION_MESSAGE : 0);
+}
 void prepared_source(execution_wire *w, behavior_function_source *v)
 {
     U64(v->graph_id);
@@ -350,19 +368,58 @@ void prepared_function(prepared_context *c, behavior_function *f)
         ENUM(v->type);
         INT(v->output);
         INT(v->left);
-        INT(v->right);
-        INT(v->target);
-        INT(v->frame);
         INT(v->source);
-        INT(v->stack);
-        INT(v->pin);
-        SIZE(v->offset);
-        BOOL(v->indirect);
-        INT(v->component);
-        U64(v->node_id);
-        VALUE(v->value);
-        U64(v->layout);
-        STRING(v->message);
+        uint64_t fields = w->reading ? 0 : instruction_fields(v);
+        U64(fields);
+        if (fields & ~(uint64_t)INSTRUCTION_FIELDS) {
+            w->error = "unknown prepared instruction fields";
+            break;
+        }
+        if (w->reading) {
+            v->right = v->target = v->frame = v->pin = v->component = 0;
+            v->offset = 0;
+            v->value = (pin_value){ 0 };
+            v->stack = -1;
+            v->indirect = false;
+            v->node_id = v->layout = 0;
+            v->message = NULL;
+        }
+        if (fields & INSTRUCTION_RIGHT) {
+            INT(v->right);
+        }
+        if (fields & INSTRUCTION_TARGET) {
+            INT(v->target);
+        }
+        if (fields & INSTRUCTION_OFFSET) {
+            SIZE(v->offset);
+        }
+        if (fields & INSTRUCTION_VALUE) {
+            VALUE(v->value);
+        }
+        if (fields & INSTRUCTION_FRAME) {
+            INT(v->frame);
+        }
+        if (fields & INSTRUCTION_STACK) {
+            INT(v->stack);
+        }
+        if (fields & INSTRUCTION_PIN) {
+            INT(v->pin);
+        }
+        if (fields & INSTRUCTION_INDIRECT) {
+            BOOL(v->indirect);
+        }
+        if (fields & INSTRUCTION_COMPONENT) {
+            INT(v->component);
+        }
+        if (fields & INSTRUCTION_NODE) {
+            U64(v->node_id);
+        }
+        if (fields & INSTRUCTION_LAYOUT) {
+            U64(v->layout);
+        }
+        if (fields & INSTRUCTION_MESSAGE) {
+            STRING(v->message);
+        }
     });
     ARRAY(locals, {
         behavior_function_local *v = &f->locals[index];

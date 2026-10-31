@@ -1,0 +1,9 @@
+package facts
+
+// ?. reads a field of a present optional record and gives nil for a nil one
+@test
+Calls :: () {
+    r1: int = Main();
+    e1: int = 116;
+    assert(r1 == e1, "Main call 1");
+}

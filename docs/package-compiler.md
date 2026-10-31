@@ -166,9 +166,8 @@ import:
   ports take the one type its arguments give them, its wildcard ports each
   argument's own type, and a variadic native's last parameter any number of
   arguments; natives are matched by name as the catalog matches names. A
-  native with several results, such as `compiler_json_string`, gives a value
-  whose `.name` reads one result, directly or through a local:
-  `decoded := compiler_json_string(text); decoded.valid`;
+  native with several results gives a value whose `.name` reads one result,
+  directly or through a local: `decoded := native(text); decoded.valid`;
 - integer constants, typed (`Mask: i64 : 1 << 40;`) or untyped, which
   are `int` (`Width :: Unit * 4 + 1;`), whose value folds from literals, other
   constants of the package in any order or of an import, parentheses and the
@@ -257,8 +256,8 @@ Native rows retain capability kind, canonical and source names, and whether the
 binding supports a direct data call. Ports carry nominal type IDs and reflected
 defaults, including whether a default can be represented. `StageOne.chibi`
 invokes these entries on the input that
-`chibi-compile --stage-one-input` exports from the project's catalog
-(`docs/testing.md#game-equivalence`). The pure package/bootstrap inputs keep
+`chibi-compile --stage-one-input` exported from the project's catalog; both are
+archived with game projects. The pure package/bootstrap inputs keep
 their existing layouts. Fixed native structs and entity handles preserve their
 types through arguments, results, aliases and result-name projections. Nominal
 collections, unknown layouts and unsupported flags remain explicit failures
@@ -468,9 +467,8 @@ A behavior's handles are its entities, so their watches name the entity type.
 
 Without `debug`, a body places none of these. Steps still leave some
 placeholders, which the body drops at its end, sending a jump or branch to one
-to the instruction after it. `tool language-package-compiler-chibi-debug-free`
-compiles the loops and control samples that way, checks that no point or
-watch remains, and runs them on both backends.
+to the instruction after it. The `-debug-free` selector that checked this
+was deleted with stage zero on 2026-10-30.
 
 `Number.chibi` reads number literals of floating types as stage zero does:
 the binary64 nearest the literal, and the binary32 nearest that binary64. A
@@ -509,118 +507,40 @@ x86_64 and Windows x64 host execution remains unverified here.
   about 4 MB per KiB of module, and aborted on stage one's 482 KiB and 766 KiB
   modules. The same budget sends an inspected run to bytecode when its
   inspection module would exceed it.
-- **Selectors:** `tool wasm-package-compiler-chibi` and its `-compiled`,
-  `-types`, `-types-compiled`, `-imports`, `-imports-compiled`, `-behaviors`,
-  `-behaviors-rest`, `-sharing`, `-debug-free` and `-literals` variants run
-  each package-compiler selector in Node, in 4 to 6 s each (2026-10-20).
-  `make test-wasm` runs the base pair.
 - **Bootstrap:** it runs natively only. Stage one compiling itself needs more
   than Wasm's 2 GiB of linear memory.
 
 ## Test
 
-Four groups of samples each have two selectors, one for each backend the
-compiler runs on. The bytecode selector also
-compares each module with stage zero's. Times are from macOS arm64, Debug +
-ASan/UBSan, 2026-10-20, at a load average of about 3. About 33 s of each is
-stage zero preparing stage one:
+The compiler's own `@test` functions and the sample suites run with
+`chibi test`. Each is a row of `tools/tests.tsv`:
 
-- `tool language-package-compiler-chibi` and `-compiled`: scalars, control
-  flow, strings and natives, and the rejections that belong to no other group
-  (50.7 s and 41.7 s);
-- `tool language-package-compiler-chibi-types` and `-types-compiled`: unions,
-  constants, patterns, scopes, integer types, inferred arrays and element
-  reads (49.3 s and 41.5 s);
-- `tool language-package-compiler-chibi-collections` and
-  `-collections-compiled`: maps, references, arrays, ranges and records, and
-  their rejections (50.5 s and 42.0 s). They moved out of the base and type
-  groups once maps and references took the type selector to 58 s;
-- `tool language-package-compiler-chibi-imports` and `-imports-compiled`: the
-  imports sample, which compiles all of `core:strings`, and the samples that
-  link the core pack. Under sanitizers the bytecode selector came within a few
-  seconds of its ceiling, so both run an unsanitized Release `test_language`,
-  as the bootstrap check does (about 5 s and 4 s).
+- `chibi-test-compiler` (`chibi test tools/compiler`): the tests beside each
+  compiler package, including the emitter's;
+- `chibi-test-samples-base`, `-collections`, `-comptime`, `-fallible`,
+  `-imports`, `-math`, `-native`, `-native-arguments` and `-types`
+  (`chibi test test/compiler/samples/NAME`): the samples in
+  `test/compiler/samples`, with their `// error:` and `// fails:` expectations;
+- `language-package-compiler-chibi-scalar` and `language-scalar-native`: the C
+  scalar and native lanes of `test/language/package_compiler_chibi.c`;
+- `compiler-bootstrap`, `bootstrap-recovery` and `bootstrap-load`: recovery of
+  the compiler from the checked-in artifact.
 
-Expression and symbol points made the compiler about 20% slower on this
-sample: 18.2 s to 21.9 s of CPU time to compile it on the bytecode backend.
+```sh
+chibi build test chibi-test-compiler chibi-test-samples-base
+```
 
-A sample is package `facts`, optionally with a `lib` package and
-`core:strings`. Every accepted closure loads in a fresh runtime host and runs
-on bytecode and SLJIT with JSON arguments, and stage zero's own closure of the
-same packages must return the same JSON; calls that must fail, such as
-out-of-bounds reads, fail on all three. Each module of the closure must have
-the function and statement points of stage zero's module with its ID. Rejections check the exact message and
-position. In the boxed elements sample, the closure's functions that read
-arrays of strings, unions and records with a string field must not load an
-array's stride, and the one that reads an array of records of scalars must. In
-the push and extension samples, `Build(count)` must update its
-local array in place: doubling the count at most doubles the values it copies.
-Until stage one matched the array natives by capability identity, every update
-copied the whole array, and the stage-two compiler grew past 4 GB compiling the
-compiler's sources.
+Until 2026-10-30, `package_compiler_chibi.c` also ran the samples through stage
+zero and compared the two compilers: the plain, `-compiled`, `-types`,
+`-collections`, `-imports`, `-behaviors`, `-sharing`, `-actions`,
+`-libraries`, `-literals` and `-debug-free` selectors. They were deleted with
+stage zero; `archive/README.md` lists what they covered that nothing re-covers,
+such as authored-compiler output executing on both backends against the same
+sample tables.
 
-`tool language-package-compiler-chibi-behaviors` and
-`tool language-package-compiler-chibi-behaviors-rest` each compile half of
-twelve behaviors on both compiler backends against a game the test declares: a `Spot` component
-of three floats, one read-only; the entity type; a `Tick` event with a
-`DeltaSeconds` payload; and `self` and a `pace` global. The behaviors are:
-- Counter's;
-- a state store;
-- a payload parameter written to a field;
-- an integer literal written to a float field, handling `tick`;
-- a negative float literal written to a field;
-- a component field read into another field;
-- a field's compound assignment;
-- a whole component written with its own value;
-- a floating state's compound assignment, written to a field;
-- Results' fold: member procedures, named results, `int(value)` and
-  integers mixed with floats;
-- float division, subtraction, comparison and `*=`;
-- two states and two field writes.
-
-Each module must declare stage zero's module, owner type, requirements,
-services, states, events and payload fields, and handlers, with the same IDs,
-ABIs, kinds and effects, and each function must have stage zero's function
-and statement points. Then stage one's module, read back through a linker,
-and stage zero's each play five ticks on an owner of their own, and the
-`Spot` and the states must match after every tick. Seven sources must be
-rejected with their exact messages. With a project's path as its identity,
-Counter's module, state and handler must take stage zero's IDs. The second
-selector checks those two (4,316 and 5,715 assertions in 23.4 s and 28.9 s
-under load). `tool language-package-compiler-chibi-sharing` fails when any of
-stage one's functions outside the once-per-compile or once-per-source list in
-`copying_functions` (`test/language/package_compiler_chibi.c`) copies its
-arguments on each call. That list includes `CompileInput`, the private body
-behind the public `CompileWithEffects` wrapper. One copying function, through
-its callers, takes stage one compiling itself past its ceiling (11 assertions
-in 22.9 s; see `docs/language-friction.md`).
-
-`tool language-package-compiler-chibi-actions` checks rich catalog export and
-native differential execution of synchronous actions, named and omitted
-arguments, evaluation order, owner substitution, string ownership, callback
-failure and unsupported bindings. `tool language-package-compiler-chibi-libraries`
-checks multi-source library compilation and assembly, dependency order, native
-and source name precedence, named results, owned values and rejected cycles.
-Resolution cases execute distinguishable results and count native callbacks on
-both runtime backends, including primitive and canonical-name collisions.
-Array cases compare an item that writes its receiver and a pure reversed item
-call, including their values, source points and watches.
-Both selectors belong to the compiler group (`make test-compiler-parity`), separately
-from the native language group (`make test-language-all`).
-
-`tool language-package-compiler-chibi-literals` checks stage zero's build of
-`LiteralBits` against that rule, computed with `strtod` (3,962
-assertions in 19.2 s). On both compiler backends it reads 59 listed
-spellings: halfway cases, both ranges' ends, values that round up to the least
-normal binary64, binary64 subnormals, leading zeros and hexadecimal integers.
-On the compiled backend it also reads them negated, along with the exact
-decimals of five binary64 values that are binary32 ties (subnormal, normal and
-next to the largest), a halfway literal decided by a last digit 800 places past it, 800 zeros
-before `e-800`, and 120 generated spellings across the binary64 range. The
-bootstrap check also has stage two read the listed spellings with both signs.
-
-Compiling is slow. In this build, stage one compiles the base selector's 16
-accepted samples in 2.5 s on SLJIT and 5.7 s on bytecode. The arrays sample,
+Compiling is slow. In the Debug ASan/UBSan build of 2026-10-20 (macOS arm64),
+stage one compiled the base selector's 16 accepted samples in 2.5 s on SLJIT
+and 5.7 s on bytecode. The arrays sample,
 about 50 lines, takes 0.8 s and 1.8 s; the imports sample, which compiles all
 of `core:strings`, takes 5.7 s and 13.7 s, and stage zero's build of the
 compiler takes about 11 s of every selector. Two runtime changes cut the base

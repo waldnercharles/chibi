@@ -24,6 +24,9 @@ Run :: (options: Options, tail: string[]) -> int {
         Error("A program requires a .chibi file or package directory")
         return 2
     }
+    if options.native {
+        return RunNative(options, path)
+    }
     arguments := Concat([path], tail)
     return Session(program.open(path, "", arguments), options.watch)
 }

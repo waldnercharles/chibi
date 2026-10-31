@@ -495,8 +495,8 @@ ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayNew) {
         return operand.count;
     }
-    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1];
-    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayBytes) {
+    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1, 1];
+    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayText) {
         return 0;
     }
     return consumed[operand.value];
@@ -537,6 +537,12 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         searched := Element(records, stack[base]);
         if (operand.type != facts.BoolType || searched == 0 || searched >= facts.RecordType ||
             stack[base + 1] != searched) {
+            return mismatch;
+        }
+        return "";
+    }
+    if (operator == facts.ArrayText) {
+        if (operand.type != facts.StringType || Element(records, stack[base]) != facts.ByteType) {
             return mismatch;
         }
         return "";
@@ -628,8 +634,9 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             floor = depths[length(depths) - 1];
         }
         operand := rows[row];
-        // Only a string literal has text.
-        texted := operand.kind == facts.LiteralRow && operand.type == facts.StringType;
+        // Only a string literal has text, and a foreign call the library it links.
+        texted := (operand.kind == facts.LiteralRow && operand.type == facts.StringType) ||
+                  operand.kind == facts.ForeignRow;
         if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
             !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
             return "invalid scalar operand row";
@@ -700,6 +707,20 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar conversion is not one the runtime implements";
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.FunctionAddressRow) {
+            if (operand.value < 0 || operand.value >= length(heads)) {
+                return "scalar function address names no function of the module";
+            }
+            taken := rows[heads[operand.value]];
+            if (operand.name != taken.name || operand.count != 0 || operand.type != facts.WordType || !Scalar(taken.type)) {
+                return "scalar function address differs from its function";
+            }
+            for (argument in 0..<taken.count) {
+                parameter := rows[heads[operand.value] + 1 + argument];
+                if (!Scalar(parameter.type) || parameter.literal == 1) {
+                    return "scalar function address needs a function of numbers and bools";
+                }
+            }
         } else if (operand.kind == facts.CallRow) {
             if (operand.value < 0 || operand.value >= length(heads)) {
                 return "scalar call names no function of the module";
@@ -723,13 +744,20 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ForeignRow) {
             base := length(stack) - operand.count;
-            if (operand.name == "" || operand.text == "" || operand.value != 0 || !Scalar(operand.type) ||
+            indirect := operand.value == 1;
+            if ((operand.value != 0 && !indirect) || (indirect && (operand.name != "" || operand.text != "" || operand.count < 1)) ||
+                (!indirect && (operand.name == "" || operand.text == "")) || !Scalar(operand.type) ||
                 operand.count < 0 || base < floor) {
                 return "scalar foreign call differs from its operands";
             }
+            if (indirect && stack[base] != facts.WordType) {
+                return "scalar foreign call through an address needs a word";
+            }
             for (argument in 0..<operand.count) {
-                if (!Scalar(stack[base + argument])) {
-                    return "scalar foreign call takes numbers and bools";
+                given := stack[base + argument];
+                if (!Scalar(given) && given != facts.StringType &&
+                    !(given >= facts.ArrayType && Scalar(Element(records, given)) && Element(records, given) != facts.BoolType)) {
+                    return "scalar foreign call takes numbers, bools, strings and arrays of numbers";
                 }
             }
             stack = slice(stack, 0, base);
@@ -1189,6 +1217,9 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     if (operand.value == facts.ArrayBytes) {
         return Op(native.ArrayBytes, type, slot, stack[base], 0, 0);
     }
+    if (operand.value == facts.ArrayText) {
+        return Op(native.ArrayText, type, slot, stack[base], 0, 0);
+    }
     return Op(native.ArrayCopy, type, slot, stack[base], 0, 0);
 }
 // One native instruction without a literal.
@@ -1581,6 +1612,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     item = Op(native.Convert, type, slot, stack[base], slots[shape.first_slot + stack[base]], 0);
                     item.literal = i64(operand.value);
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.FunctionAddressRow) {
+                    item = Op(native.FunctionAddress, type, slot, operand.value, 0, 0);
                 } else if (operand.kind == facts.CallRow) {
                     item = Op(native.Call, type, slot, operand.value, shape.arguments, operand.count);
                     base := length(stack) - operand.count;
@@ -1590,7 +1623,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ForeignRow) {
-                    item = Op(native.ForeignCall, type, slot, 0, shape.arguments, operand.count);
+                    item = Op(native.ForeignCall, type, slot, operand.value, shape.arguments, operand.count);
                     item.literal = i64(length(texts));
                     texts.append(operand.name);
                     base := length(stack) - operand.count;
@@ -1895,17 +1928,29 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
 }
 // The module's text with a comment naming each library a foreign call needs,
 // once, for the driver to link: `; chibi-library PATH`, the path as the source
-// spells it.
+// spells it. A system library also gets a `; chibi-import PATH SYMBOL` comment
+// per symbol the module calls, which a Windows link needs to write the library's
+// import definition.
 Linked :: (text: string, rows: facts.Row[]) -> string {
     paths: string[] = [];
+    imports: string[] = [];
     for (row in rows) {
-        if (row.kind == facts.ForeignRow && !paths.contains(row.text)) {
+        if (row.kind == facts.ForeignRow && row.text != "" && !paths.contains(row.text)) {
             paths.append(row.text);
+        }
+        if (row.kind == facts.ForeignRow && strings.HasPrefix(row.text, "system:")) {
+            line := format_text("; chibi-import {} {}\n", row.text, row.name);
+            if (!imports.contains(line)) {
+                imports.append(line);
+            }
         }
     }
     out := text;
     for (path in paths) {
         out = format_text("{}; chibi-library {}\n", out, path);
+    }
+    for (line in imports) {
+        out = format_text("{}{}", out, line);
     }
     return out;
 }

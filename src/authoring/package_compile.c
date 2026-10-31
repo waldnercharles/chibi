@@ -195,9 +195,10 @@ static void reach_imports(
     }
 }
 
-/* Marks the input files of the packages reachable from `root_directory`,
- * whose own text is `first_text` when the root file is virtual. */
-static bool *reachable_files(
+/* The directories of the packages reachable from `root_directory` through
+ * imports, itself first; `first_text` is the root file's text when it is
+ * virtual. The caller owns the array and its strings. */
+static char **reached_directories(
     const source_package_snapshot_options *inputs,
     const char *root_directory,
     const char *first_text
@@ -227,17 +228,79 @@ static bool *reachable_files(
             }
         }
     }
+    for (int i = 0; i < inputs->file_count; i++) {
+        free(directories[i]);
+    }
+    free(directories);
+    return reached;
+}
+
+/* Marks the input files of the packages reachable from `root_directory`,
+ * whose own text is `first_text` when the root file is virtual. */
+static bool *reachable_files(
+    const source_package_snapshot_options *inputs,
+    const char *root_directory,
+    const char *first_text
+)
+{
+    char **reached = reached_directories(inputs, root_directory, first_text);
     bool *keep = xcalloc((size_t)(inputs->file_count + 1), sizeof *keep);
     for (int i = 0; i < inputs->file_count; i++) {
-        keep[i] = contains(reached, directories[i]);
-        free(directories[i]);
+        char *directory = directory_of(inputs->files[i].path);
+        keep[i] = contains(reached, directory);
+        free(directory);
     }
     for (int i = 0; i < acount(reached); i++) {
         free(reached[i]);
     }
     afree(reached);
-    free(directories);
     return keep;
+}
+
+/* Whether a line of the text starts with `foreign import`. */
+static bool declares_foreign_import(const char *text, size_t size)
+{
+    static const char foreign[] = "foreign", import[] = "import";
+    const char *end = text + size;
+    for (const char *line = text; line < end;) {
+        const char *next = memchr(line, '\n', (size_t)(end - line));
+        const char *stop = next ? next : end;
+        const char *at = line;
+        while (at < stop && (*at == ' ' || *at == '\t')) {
+            at++;
+        }
+        if (stop - at > (long)(sizeof foreign + sizeof import) &&
+            !memcmp(at, foreign, sizeof foreign - 1) &&
+            (at[sizeof foreign - 1] == ' ' || at[sizeof foreign - 1] == '\t')) {
+            at += sizeof foreign;
+            while (at < stop && (*at == ' ' || *at == '\t')) {
+                at++;
+            }
+            if (stop - at >= (long)sizeof import &&
+                !memcmp(at, import, sizeof import - 1)) {
+                return true;
+            }
+        }
+        line = next ? next + 1 : end;
+    }
+    return false;
+}
+
+bool package_compile_needs_native(const source_package_snapshot_options *inputs, const char *directory)
+{
+    char **reached = reached_directories(inputs, directory, NULL);
+    bool native = false;
+    for (int i = 0; !native && i < inputs->file_count; i++) {
+        char *where = directory_of(inputs->files[i].path);
+        native = contains(reached, where) &&
+                 declares_foreign_import(inputs->files[i].text, inputs->files[i].size);
+        free(where);
+    }
+    for (int i = 0; i < acount(reached); i++) {
+        free(reached[i]);
+    }
+    afree(reached);
+    return native;
 }
 
 #ifdef _WIN32

@@ -1,18 +1,17 @@
 # Test selectors for `chibi build test`: name, then the command, tab separated.
-# @build@ and @release@ are the --build and --release-build directories and @host@
-# the --build-host path, all made absolute; other paths are relative to the checkout. `group` rows list a group's selectors.
+# @build@ and @release@ are the --build and --release-build directories, @host@
+# the --build-host path and @root@ the checkout, all absolute; other paths are relative
+# to the checkout. `group` rows list a group's selectors.
 # `timeout NAME SECONDS` rows give a selector a deadline other than the runner's.
 # `exclusive NAME` rows run a selector alone under --jobs: it starts its own workers or shares files.
 # Generated from the retired tools/test_policy.py tables; edit it by hand now.
 tool	types	@build@/test/tools/test_tools	--types
 tool	execution-scope	@build@/test/language/test_language	--execution-scope
 tool	studio-panel-idle	build-studio/bin/studio-acceptance	--panel-idle	--project-root	
-tool	shader-parameters-prepared	@build@/test/tools/test_tools	--shader-parameters-prepared
 tool	ecs-query	@build@/test/tools/test_tools	--ecs-query
 tool	ecs-strings	@build@/test/tools/test_tools	--ecs-strings
 tool	ecs-query-benchmark	@build@/test/tools/test_tools	--ecs-query-benchmark
 tool	arena	@build@/test/tools/test_tools	--arena
-tool	source-systems	@build@/test/tools/test_tools	--source-systems
 tool	persistent-store	@build@/test/tools/test_tools	--persistent-store
 tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
 tool	chibi-cli-build	@build@/test/tools/test_tools	--chibi-cli-build	@release@/sdk/chibi
@@ -22,18 +21,22 @@ tool	chibi-cli	@build@/test/tools/test_tools	--chibi-cli	@release@/sdk/chibi
 tool	native-build	@build@/test/tools/test_tools	--native-build	@release@/sdk/chibi
 tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
 tool	chibi-cli-installed	@build@/test/tools/test_tools	--chibi-cli-installed	dist/sdk/bin/chibi
-tool	native-aot-driver	@build@/test/tools/test_tools	--native-aot-driver	tools/native_aot/Driver.chibi
+tool	native-aot-driver	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/native_aot/driver/DriverTests.chibi	--core	packages/core	--collection	native_aot=tools/native_aot/driver	--entry	Run	--timeout-ms	600000	--	@host@
+tool	native-link	sh	test/native_aot/link/run.sh	@host@
 tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/tools/policy_worker	@host@
 tool	build-timings	@build@/test/tools/test_tools	--build-timings	@build@/test/tools/policy_worker	@host@
 tool	build-process-files	@build@/test/tools/test_tools	--build-process-files	@build@/test/tools/policy_worker	@host@
 tool	compiler-bootstrap	@build@/test/tools/test_tools	--compiler-bootstrap	@build@/sdk/chibi-compiler-host
-tool	bootstrap-recovery	@build@/test/tools/test_tools	--bootstrap-recovery	@release@/sdk/chibi-compiler-host	tools/compiler/bootstrap
+tool	bootstrap-recovery	@build@/test/tools/test_tools	--bootstrap-recovery	@release@/sdk/chibi-compiler-host	@root@/tools/compiler/bootstrap
+tool	bootstrap-load	@release@/test/tools/test_tools	--bootstrap-load	@root@/tools/compiler/bootstrap
 tool	graph-engine	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/EngineTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000
-tool	graph-driver	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/DriverTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	600000	--	@host@
+tool	graph-driver	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/DriverTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000	--	@host@
 tool	graph-discovery	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/DiscoveryTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000	--	@host@
 tool	graph-sdk	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/SDKTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	600000
 tool	graph-c	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/CTests.chibi	--core	packages/core	--collection	graph_c=tools/graph/c	--entry	Run	--timeout-ms	600000	--	@host@
 tool	graph-build	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/BuildTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	1200000	--	@host@
+tool	graph-asset-cache	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/AssetCompilerCacheTests.chibi	--core	packages/core	--collection	asset_generator=tools/graph/asset_compiler	--entry	Run	--timeout-ms	600000
+tool	graph-os	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/OsTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	600000
 tool	graph-sdk-install	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/SDKInstallTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	3000000	--	@host@	@release@
 tool	collab	@build@/test/tools/test_tools	--collab
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
@@ -52,11 +55,16 @@ tool	language-integer-shift-counts	@build@/test/language/test_language	--integer
 tool	chibi-test-compiler	@release@/sdk/chibi	test	tools/compiler
 tool	chibi-test-core	@release@/sdk/chibi	test	packages/core
 tool	chibi-test-integer-arithmetic	@release@/sdk/chibi	test	test/integer_arithmetic
+tool	chibi-test-core-strings	@release@/sdk/chibi	test	test/core_strings
+tool	chibi-test-time	@release@/sdk/chibi	test	test/standard_library/time
+tool	chibi-test-portable-consumer	@release@/sdk/chibi	test	test/packages/portable_consumer
 tool	chibi-test-samples-base	@release@/sdk/chibi	test	test/compiler/samples/base
 tool	chibi-test-samples-collections	@release@/sdk/chibi	test	test/compiler/samples/collections
+tool	chibi-test-samples-comptime	@release@/sdk/chibi	test	test/compiler/samples/comptime
 tool	chibi-test-samples-fallible	@release@/sdk/chibi	test	test/compiler/samples/fallible
 tool	chibi-test-samples-imports	@release@/sdk/chibi	test	test/compiler/samples/imports
 tool	chibi-test-samples-math	@release@/sdk/chibi	test	test/compiler/samples/math
+tool	chibi-test-samples-native	@release@/sdk/chibi	test	test/compiler/samples/native
 tool	chibi-test-samples-native-arguments	@release@/sdk/chibi	test	test/compiler/samples/native_arguments
 tool	chibi-test-samples-types	@release@/sdk/chibi	test	test/compiler/samples/types
 tool	language-asset-compiler-host	@build@/test/language/test_language	--asset-compiler-host
@@ -73,31 +81,17 @@ tool	language-record-values	@build@/test/language/test_language	--record-values
 tool	language-program-session	@build@/test/language/test_language	--program-session
 tool	language-program	@build@/test/language/test_language	--program
 tool	language-execution	@build@/test/language/test_language	--execution
-tool	language	@build@/test/language/test_language	--syntax	--corpus	@build@/test/language/corpus.txt
 tool	wasm-browser	@build@/test/tools/test_tools	--wasm-browser
 tool	web-storage	@build@/test/tools/test_tools	--web-storage
 tool	native-tools	@build@/test/tools/test_tools
-tool	reflect-ranges	@build@/test/tools/test_tools	--reflect-ranges
-tool	wasm-execution	node	build-wasm-language/test_language.js	--execution
-tool	wasm-program	node	build-wasm-language/test_language.js	--program
-tool	wasm-format	node	build-wasm-language/test_language.js	--format
-tool	wasm-ranges	node	build-wasm-language/test_language.js	--ranges
-tool	wasm-component-write	node	build-wasm-language/test_language.js	--component-write
-tool	wasm-record-values	node	build-wasm-language/test_language.js	--record-values
-tool	wasm-record-semantic	node	build-wasm-language/test_language.js	--record-semantic
-tool	wasm-record-runtime	node	build-wasm-language/test_language.js	--record-runtime
-tool	wasm-record-document	node	build-wasm-language/test_language.js	--record-document
-tool	wasm-record-state	node	build-wasm-language/test_language.js	--record-state
-tool	wasm-record-compatibility	node	build-wasm-language/test_language.js	--record-compatibility
-tool	wasm-package-math	node	build-wasm-language/test_language.js	--package-math
-tool	unit	@build@/test/tools/test_tools	--unit
 tool	short	@build@/test/tools/test_tools
 timeout	chibi-cli	900
+timeout	native-build	1500
 timeout	graph-sdk-install	1200
+timeout	bootstrap-load	1800
 exclusive	language-test-parallel
-group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math
-group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	fmt	arena
+group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	asset-values	fmt	arena
 group	projects	chibi-cli	native-build
-group	language	language-test-parallel	execution-scope	language	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host
+group	language	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host	bootstrap-recovery	native-link
 group	compiler	language-package-compiler-chibi-scalar
 group	benchmarks	ecs-query-benchmark	native-workload-benchmark	scheduler-benchmark

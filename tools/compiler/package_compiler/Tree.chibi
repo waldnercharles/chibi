@@ -5,7 +5,8 @@ import syntax "project:syntax_diagnostics"
 import strings "core:strings"
 
 // Readers over the snapshot's syntax forest. Links are global node indices,
-// -1 when absent; offsets count bytes of the node's document text.
+// -1 when absent; offsets count bytes of the node's document text. Kinds and
+// fields are syntax_diagnostics constants; a token's kind is its tk kind.
 
 // The first named, non-extra node at or after `link` among its siblings.
 Member :: (forest: snapshot.SnapshotNode[], link: int) -> int {
@@ -34,25 +35,25 @@ FirstMember :: (forest: snapshot.SnapshotNode[], parent: int) -> int {
 NextMember :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     return Member(forest, forest[node].next_sibling);
 }
-// The child holding field `name`, named or not.
-Field :: (forest: snapshot.SnapshotNode[], node: int, name: string) -> int {
+// The child holding `field`, named or not.
+Field :: (forest: snapshot.SnapshotNode[], node: int, field: int) -> int {
     if (node < 0) {
         return -1;
     }
     child := forest[node].first_child;
     while (child >= 0) {
-        if (forest[child].field == name) {
+        if (forest[child].field == field) {
             return child;
         }
         child = forest[child].next_sibling;
     }
     return -1;
 }
-Is :: (forest: snapshot.SnapshotNode[], node: int, kind: string) -> bool {
+Is :: (forest: snapshot.SnapshotNode[], node: int, kind: int) -> bool {
     return node >= 0 && forest[node].kind == kind;
 }
-// Whether `parent` has a direct, non-extra token `token`, such as "?".
-HasToken :: (forest: snapshot.SnapshotNode[], parent: int, token: string) -> bool {
+// Whether `parent` has a direct, non-extra token of kind `token`, such as tk.Question.
+HasToken :: (forest: snapshot.SnapshotNode[], parent: int, token: int) -> bool {
     child := forest[parent].first_child;
     while (child >= 0) {
         if (!forest[child].is_extra && forest[child].kind == token) {
@@ -61,6 +62,17 @@ HasToken :: (forest: snapshot.SnapshotNode[], parent: int, token: string) -> boo
         child = forest[child].next_sibling;
     }
     return false;
+}
+// The operator of a node that has none, and the operation of a plain `=`.
+NoOperator: int : 0;
+// The kind of `node`'s operator: a tk kind such as tk.Add, syntax.NotIn for
+// `not in`, syntax.Min or syntax.Max; NoOperator when it has none.
+Operator :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    operator := Field(forest, node, syntax.FieldOperator);
+    if (operator < 0) {
+        return NoOperator;
+    }
+    return forest[operator].kind;
 }
 Text :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> string {
     if (node < 0) {

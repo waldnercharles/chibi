@@ -36,6 +36,14 @@ operations from remaining limits.
 - A scoped pointer parameter can name temporary frame storage, so taking its
   address makes it an ordinary managed pointer instead; `F(pointer)` already
   lends a managed target to a scoped parameter.
+- Indexing a pointer to an array without the caret, `slots[index]`, makes the
+  parameter a managed pointer instead of a scoped one, because the scoped-use
+  check allows only `p^` and `p.member` of the identifier. The native lane then
+  rejects it. `slots^[index]` is scoped, and the compiler's own sources always
+  spell it that way. Found by the W10 probes on 2026-10-31; no source needs the
+  other spelling. Prior art: Odin and Zig index through a pointer to an array
+  with the same syntax as the array itself (Zig auto-dereferences a
+  single-item pointer to an array); Rust does too.
 - A presence guard on a nullable local can be tracked. Repeated mutable field
   reads cannot assume an alias left the field unchanged. Bind the pointer to a
   local before checking and dereferencing it.
@@ -143,7 +151,7 @@ which int cannot hold" for `count * 0.5` and "convert with int(value)" for
 a floating value stored in an integer. Stage one still rejects an untyped
 local such as `i := 0`, though its type is now settled.
 
-The stage-zero formatter widens the gap. `chibi_ctl --format` rewrites
+The stage-zero formatter widened the gap. Its project formatting rewrote
 behavior state `steps: int = 0` as `steps := 0`, which stage one rejects with
 "state needs a number type". The Counter and Controls stories therefore keep
 their declarations as written (#565). gofmt and rustfmt never remove a type
@@ -168,6 +176,12 @@ The build graph's `c.Library` (M6) cannot hold its sources or flags, so every
 graph function takes them as two arrays beside the record, and a library's
 description is three functions (`Support`, `SupportSources`, `SupportFlags`)
 instead of one value.
+Stage one now accepts array and record fields, but until 2026-10-30 a live
+record holding an array of records crashed the collector, which walked the
+field as a record stored inline. #1073's `AddressPointers { types: TypeDecl[];
+addresses: bool; }` shipped as a one-variant union for that reason. A field
+still cannot be an array of unions, although the diagnostic says "union or
+array of those types".
 
 - C, C++, Rust, Odin, Zig, C#, F#, TypeScript, Python and Ruby all let a
   struct, record or object hold any value type.
@@ -947,7 +961,9 @@ syntax errors the parser's position and token.
 Language. In the build graph's `c` package, `array_add(running, {source: s,
 handle: h})` fails with "Struct literal needs an explicit record or reflected
 type", although `running` is a `Running[]`. The literal needs a typed local
-first: `compile: Running = {source: s, handle: h};`.
+first: `compile: Running = {source: s, handle: h};`. The same holds for any
+array native's item (#1109): `set_array_elem(wrappers, 1, {holder: h, tag: 4})`
+on a `Wrapper[]` needs `replacement: Wrapper = {...}` first.
 
 - Odin infers a compound literal's type from its parameter or element type;
   Zig's `.{ ... }` coerces to the parameter's type; C# 9 has target-typed
@@ -955,6 +971,24 @@ first: `compile: Running = {source: s, handle: h};`.
 
 Suggestion: type a struct literal from the parameter, element or return type it
 fills, as Odin does.
+
+## A failed assert can't show the values it compared
+
+Stage one (#1109). `assert`'s message must be a string literal ("assert's
+message is a string constant"), and `core:testing` has no equality check, so
+`assert(Remove() == 112, "Remove")` reports only "Assertion failed: Remove".
+Finding the actual value took a second test that returned it, a rebuild and a
+rerun.
+
+- Rust's `assert_eq!(left, right)` prints both values, and `assert!(c, "{}",
+  x)` formats its message only on failure.
+- Zig's `std.testing.expectEqual(expected, actual)` prints both; Go's
+  `t.Errorf` formats; Odin's `testing.expect_value(t, value, expected)` prints
+  both.
+
+Suggestion: `testing.ExpectEqual(expected, actual)` that names both values on
+failure, as Zig and Odin do. It needs no message formatting in `assert` and
+keeps a passing assert free of string building.
 
 ## Stage one cannot negate a float
 
@@ -1037,8 +1071,28 @@ can end a statement, is a `bool[]` filled from a list.
   X-macros for the names; C# `Enum.GetName`; TypeScript numeric enums with
   reverse mapping; Python `enum.Enum`.
 
+The syntax tree's 122 node kinds and 55 fields in `syntax_diagnostics`
+(#1114) are constants chained one to the next, `Character: int : Comment + 1;`,
+so inserting one renumbers nothing, with `KindNames` and `FieldNames` kept in
+the same order by hand. A token leaf keeps its token kind, so the node kinds
+start at a hand-picked 128, past the tokenizer's 117, and a test checks the
+gap. Zig's `std.zig.Ast.Node.Tag` is an enum with `@tagName`.
+
 Suggestion: Odin's `enum`, enumerated arrays and `bit_set`, with a name for
 each value.
+
+### Records have no stated size
+
+Language. Each high-count record should carry a byte budget pinned at compile
+time, but Chibi has neither `size_of` nor a compile-time assert, so
+`SnapshotNode`'s 40 bytes per row (#1114) are a comment.
+
+- Odin has `#assert(size_of(T) == N)`; Zig `comptime { assert(@sizeOf(T) == N); }`;
+  C `_Static_assert(sizeof(T) == N, "")`; Rust
+  `const _: () = assert!(size_of::<T>() == N);`.
+
+Suggestion: `size_of(T)` as a constant expression and an `#assert` that
+fails compilation.
 
 ### A switch arm takes one value
 
@@ -1253,15 +1307,6 @@ an arbitrary-byte fallback string without persisting it. This limitation belongs
 to the save format, not to the `string` invariant. Lossless binary saved values
 need a separately reviewed encoding/API contract; no replacement or truncation
 is performed at the existing boundary.
-
-### Preview diagnostic JSON still requires UTF-8
-
-Runtime boundary checkpoint (2026-10-21). Execution logs and preview log storage
-retain explicit byte lengths, including embedded NUL. The existing controller
-JSON transport can escape NUL but still cannot serialize malformed UTF-8 as a
-JSON string. Serialization failure remains explicit; bytes are not replaced or
-silently truncated. A lossless transport encoding needs its own response-contract
-review and is not implied by the runtime string invariant.
 
 ### Record construction repeats some string copies
 

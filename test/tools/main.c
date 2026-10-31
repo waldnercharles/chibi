@@ -40,7 +40,6 @@ int main(int argc, char **argv)
     return pu_test_failed() ? 1 : 0;
 }
 #else
-void test_tool_execution_policy();
 void test_tool_chibi_cli(const char *binary, const char *self);
 void test_tool_chibi_cli_process(const char *binary, const char *self);
 void test_tool_chibi_cli_build(const char *binary);
@@ -52,14 +51,12 @@ void test_tool_chibi_cli_export(const char *binary);
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
 void test_tool_compiler_bootstrap(const char *host);
 void test_tool_bootstrap_recovery(const char *host, const char *artifact);
+void test_tool_bootstrap_load(const char *artifact);
 #endif
 #ifdef CHIBI_TEST_BUILD_PROCESS
-void test_native_aot_driver(const char *source);
 void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
-#ifndef _WIN32
-#endif
 #endif
 void test_tool_collab();
 void test_tool_web_storage();
@@ -75,8 +72,6 @@ void test_tool_ecs_query_benchmark();
 void test_arena();
 #ifdef CHIBI_TEST_PROGRAM
 void test_program_sdk();
-#endif
-#ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
@@ -97,10 +92,6 @@ void test_tool_scheduler();
 #ifdef CHIBI_TEST_BOX3D
 void test_box3d();
 #endif
-#ifdef CHIBI_TEST_REFLECT
-void test_tool_reflect();
-void test_tool_reflect_ranges();
-#endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 void test_tool_native_values();
 #endif
@@ -113,12 +104,7 @@ void test_fmt();
 #endif
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
-static const char *const document_selectors[] = {
-    "--asset-values",    "--fmt",
-    "--reference-index", "--asset-source",
-    "--behavior-loader", "--engine-clock",
-    "--preview-layout",  "--fields",
-};
+static const char *const document_selectors[] = { "--asset-values", "--fmt" };
 
 static bool selected(int argc, char **argv, const char *name)
 {
@@ -150,23 +136,7 @@ static bool run_document_suites(int argc, char **argv)
         return true;
     }
 #endif
-#ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
-    /* These read the game's reflected types through the type catalog. */
-    source_runtime_active = true;
-    if (selected(argc, argv, "--reference-index")) {
-        return true;
-    }
-    if (selected(argc, argv, "--asset-source")) {
-        return true;
-    }
-#endif
     return false;
-}
-
-static bool shader_parameters;
-bool test_shader_parameters_active()
-{
-    return shader_parameters;
 }
 
 void test_tool_case_timings(const char *self);
@@ -188,18 +158,6 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
-    if (argc == 3 && !strcmp(argv[1], "--native-aot-driver")) {
-#ifdef CHIBI_TEST_BUILD_PROCESS
-        tool_init();
-        pu_display_time(true);
-        test_native_aot_driver(argv[2]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-#else
-        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
-        return 2;
-#endif
-    }
     if (argc == 3 && !strcmp(argv[1], "--compiler-bootstrap")) {
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
         tool_init();
@@ -217,6 +175,18 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_tool_bootstrap_recovery(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private compiler artifact host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 3 && !strcmp(argv[1], "--bootstrap-load")) {
+#ifdef CHIBI_TEST_COMPILER_ARTIFACT
+        tool_init();
+        pu_display_time(true);
+        test_tool_bootstrap_load(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else
@@ -333,53 +303,26 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
-    if (argc == 2 && !strcmp(argv[1], "--reflect-ranges")) {
-#ifdef CHIBI_TEST_REFLECT
-        tool_init();
-        pu_display_time(true);
-        test_tool_reflect_ranges();
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-#else
-        fprintf(stderr, "%s is not built in this configuration\n", argv[1]);
-        return 2;
-#endif
-    }
     bool collab = argc == 2 && !strcmp(argv[1], "--collab");
-    bool unit = argc == 2 && !strcmp(argv[1], "--unit");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
-#ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
-#endif
-    bool native_values = false, box3d = false, mesh_files = false,
-         model_import = false, model_graphs = false, model_catalog = false,
-         shader_graphs = false;
+    bool native_values = false, box3d = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, persistent_store = false;
-    bool system_schedule = false, scheduler_benchmark = false,
-
-         source_systems = false, source_query_rows = false, new_asset = false,
-         asset_refactor = false;
-    bool graph_document = false, graph_presentation = false,
-         graph_functions = false, vector_nodes = false;
+    bool system_schedule = false, scheduler_benchmark = false;
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     whole_math = argc == 2 && !strcmp(argv[1], "--whole-math");
     whole_integer = argc == 2 && !strcmp(argv[1], "--whole-integer");
     whole_conversion = argc == 2 && !strcmp(argv[1], "--whole-conversion");
     persistent_store = argc == 2 && !strcmp(argv[1], "--persistent-store");
     whole_select = argc == 2 && !strcmp(argv[1], "--whole-select");
-    new_asset = argc == 2 && !strcmp(argv[1], "--new-asset");
-    asset_refactor = argc == 2 && !strcmp(argv[1], "--asset-refactor");
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
-    shader_parameters = argc == 2 && !strcmp(argv[1], "--shader-parameters-prepared");
     system_schedule = argc == 2 && !strcmp(argv[1], "--system-schedule");
     scheduler_benchmark = argc == 2 && !strcmp(argv[1], "--scheduler-benchmark");
-    source_systems = argc == 2 && !strcmp(argv[1], "--source-systems");
-    source_query_rows = argc == 2 && !strcmp(argv[1], "--source-query-rows");
 #endif
 #ifdef CHIBI_TEST_BOX3D
     box3d = argc == 2 && !strcmp(argv[1], "--box3d");
@@ -387,65 +330,19 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
 #endif
-    if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
-        !collab && !unit && !web_storage && !wasm_browser && !query_benchmark &&
-        !native_values && !arena && !types && !box3d && !mesh_files &&
-        !model_import && !model_graphs && !model_catalog && !shader_graphs &&
+    if (argc != 1 && !collab && !web_storage && !wasm_browser &&
+        !query_benchmark && !native_values && !arena && !types && !box3d &&
         !persistent_store && !whole_math && !whole_integer && !whole_conversion &&
-        !whole_select && !system_schedule && !scheduler_benchmark &&
-        !source_systems && !source_query_rows && !graph_document &&
-        !graph_presentation && !graph_functions && !vector_nodes) {
+        !whole_select && !system_schedule && !scheduler_benchmark) {
         fprintf(
             stderr,
-            "Usage: %s [--collab | "
-            "--unit | "
-            "--validation-plan | "
-            "--reflect-ranges | "
-            "--ecs-query | --ecs-strings | "
+            "Usage: %s [--collab | --ecs-query | --ecs-strings | --web-storage "
             "| "
-            "--web-storage | "
-            "--wasm-browser | "
-            "--ecs-query-benchmark | --arena | --types | "
-            ""
-            ""
-            "--native-values "
-            "| "
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            "--box3d | "
-            "--sky-files | --mesh-files | --model-import | "
-            "--model-graphs | --model-catalog | --shader-graphs | "
-            ""
-            ""
-            ""
-            "--persistent-store | "
-            ""
-            "--whole-math | --whole-integer | --whole-conversion | "
-            "--whole-select | "
-            ""
-            ""
-            "--system-schedule | --scheduler-benchmark "
-            "| --source-systems | "
-            "--source-query-rows | "
-            ""
-            ""
-            "--new-asset | --asset-refactor | "
-            "--shader-parameters-prepared | "
-            "--graph-document | --graph-presentation | --graph-functions | "
-            "--vector-nodes | "
-            "--asset-values "
-            "| "
-            "--fmt | "
-            ""
-            ""
-            ""
-            "--reference-index | --asset-source | --behavior-loader | "
-            "--engine-clock | --preview-layout | --fields]\n",
+            "--wasm-browser | --ecs-query-benchmark | --arena | --types | "
+            "--native-values | --box3d | --persistent-store | --whole-math | "
+            "--whole-integer | --whole-conversion | --whole-select | "
+            "--system-schedule | --scheduler-benchmark | --asset-values | "
+            "--fmt]\n",
             argv[0]
         );
         return 2;
@@ -453,26 +350,18 @@ int main(int argc, char **argv)
     tool_init();
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = shader_parameters || new_asset || asset_refactor ||
-                            system_schedule || scheduler_benchmark ||
-                            source_systems || source_query_rows ||
+    source_runtime_active = system_schedule || scheduler_benchmark ||
                             persistent_store || whole_math || whole_integer ||
-                            whole_conversion || whole_select || graph_document ||
-                            graph_presentation || graph_functions || vector_nodes;
+                            whole_conversion || whole_select;
     if (source_runtime_active) {
 #ifdef CHIBI_TEST_SOURCE_FEATURES
-        if (shader_parameters) {
-        } else if (system_schedule) {
+        if (system_schedule) {
             test_tool_scheduler();
         } else if (scheduler_benchmark) {
             test_tool_scheduler_benchmark();
-        } else if (source_systems) {
-        } else if (source_query_rows) {
         } else
 #endif
-            if (new_asset) {
-        } else if (asset_refactor) {
-        } else if (persistent_store) {
+            if (persistent_store) {
             test_persistent_stores();
         } else if (whole_math) {
             test_compiled_math();
@@ -505,8 +394,6 @@ int main(int argc, char **argv)
         test_tool_wasm_browser();
     } else if (collab) {
         test_tool_collab();
-    } else if (unit) {
-        test_tool_execution_policy();
     } else if (web_storage) {
         test_tool_web_storage();
     } else if (query_benchmark) {
@@ -518,7 +405,6 @@ int main(int argc, char **argv)
     } else if (types) {
         test_tool_types();
     } else {
-        test_tool_execution_policy();
         test_tool_types();
         test_tool_ecs();
         test_tool_ecs_relationships();
@@ -526,9 +412,6 @@ int main(int argc, char **argv)
         test_tool_ecs_world();
         test_tool_ecs_query();
         test_tool_collab();
-#ifdef CHIBI_TEST_REFLECT
-        test_tool_reflect();
-#endif
     }
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;

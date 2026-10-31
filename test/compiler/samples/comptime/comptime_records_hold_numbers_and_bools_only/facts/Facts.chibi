@@ -1,0 +1,6 @@
+package facts
+Named :: struct { label: string; }
+Make :: () -> Named { return {label: "x"}; }
+Bad :: Make().label;
+Main :: () -> int { return 0; }
+// error: 3:1: compile-time execution needs a function with one integer, bool, array or record result

@@ -1,6 +1,9 @@
 # Authored LLVM CLI driver (bounded WIP)
 
 `tools/native_aot/Driver.chibi` is a real Chibi consumer of emitted LLVM IR.
+Its entries call the `native_aot` collection's package in
+`tools/native_aot/driver`, so the build host runs it with
+`--collection native_aot=DIR/driver`, where DIR holds `Driver.chibi`.
 It uses the existing build-host IO/process capabilities to run LLVM verification,
 optional optimization, object emission and native linking. No Python orchestration,
 C source generation or C wrapper is involved in that build path. This does not
@@ -40,6 +43,7 @@ CORE="$SDK/share/chibi/core"
 COMPILER="$SDK/share/chibi/compiler"
 mkdir -p "$ROOT/out"
 "$HOST" --root "$ROOT" --source tools/native_aot/Driver.chibi \
+  --collection native_aot="$ROOT/tools/native_aot/driver" \
   --core "$CORE" --compiler "$COMPILER" --compiler-core "$CORE" \
   --entry Build --timeout-ms 120000 -- \
   "$ROOT/test/native_aot/driver/fixtures/scalar/Main.ll" "$ROOT/out/scalar-2" \
@@ -83,9 +87,9 @@ executes fixed argument vectors:
 The accepted Linux data layout is
 `e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128`.
 It was measured from the actual LLVM 18 and 19 backends, not guessed; LLVM 18
-to 21 give the same x86-64 layouts. The arm64 layout changes with the LLVM
-major (LLVM 19 appends `-Fn32`), so the driver admits LLVM 18's and rejects
-the others. The source emitter
+to 23 give the same x86-64 layouts. The arm64 layout changes with the LLVM
+major: LLVM 19 appends `-Fn32` and LLVM 22 and 23 add the x86 address spaces.
+The driver admits those three, measured, as the same ABI, and rejects others. The source emitter
 provides a triple but no layout; LLVM canonicalization adds this layout. Missing
 or foreign canonical target metadata and conflicting layouts reject before
 object emission. Comments cannot supply metadata. LLVM resolves duplicate
@@ -122,7 +126,8 @@ quadratic remainder-slicing, for canonical metadata. Existing 16MiB text and
 
 ## Linking without a C compiler
 
-`Build` links programs with `ld.lld` alone, on Linux, for every target. The program's only
+`Build` links programs with `ld.lld` alone, on Linux or macOS, for every
+target. A Linux program's only
 runtime is `start.ll`, which the driver writes and compiles with the same `llc`
 arguments as the module. Like Odin's no-CRT `_start` and musl's `crt1`, it
 clears the frame pointer, aligns the stack down to 16 bytes, calls the module's
@@ -136,11 +141,16 @@ that overflow their stack end with the system's SIGSEGV, as before (D4).
 The other targets need no SDK of their own system:
 
 - macOS arm64: `start.ll` defines `main`, which returns `chibi_scalar()`;
-  dyld calls it through `LC_MAIN` and exits with its result. The program links
-  against `libSystem.tbd`, a text stub that names
-  `/usr/lib/libSystem.B.dylib` and exports nothing, as Zig's stubs stand in
-  for the SDK. Every macOS process loads `libSystem`, and lld signs arm64
-  output ad hoc, which the kernel requires.
+  dyld calls it through `LC_MAIN` and exits with its result. A program that
+  allocates gets the same context a dynamically linked Linux program does,
+  with libSystem's `calloc`. The program links against `libSystem.tbd`, a text
+  stub that names `/usr/lib/libSystem.B.dylib`, as Zig's stubs stand in for the
+  SDK. It exports the functions the module declares, which its foreign calls
+  name, with `abort`, `calloc`, `dprintf`, the copies `llc` may call and
+  `dyld_stub_binder`, and dyld binds them in libSystem, which re-exports the C
+  library. The SDK's own stub is not used: newer SDKs name architectures that
+  older lld rejects. Every macOS process loads `libSystem`, and lld signs
+  arm64 output ad hoc, which the kernel requires.
 - Windows x64: `start.ll` defines `mainCRTStartup`, which passes
   `chibi_scalar()` to `ExitProcess`, imported through a `kernel32.lib` that
   lld writes from a one-line `.def` file, as rustc's `raw-dylib` does. It also
@@ -296,139 +306,26 @@ identities, not independently rerun. This is not broader platform or integration
 acceptance. Foreign allocation, typed memory, output/free, production
 frontend integration and wider toolchain/platform support remain open.
 
-## C regression cases
+## Regression cases
 
-`python3 tools/test_policy.py tool native-aot-driver` selects the C/pico cases in
-`test/tools/native_aot_driver.c` through the existing `test_tools` dispatcher.
-It requires the private `chibi_build_host` target. A minimal compiler-enabled SDK
-and tooling build is sufficient; no renderer or GPU is needed. As with other
-tooling selectors, `CHIBI_TOOLS_BUILD_DIR` can name that tooling build directory.
-The dispatcher takes `--native-aot-driver ABSOLUTE_DRIVER_SOURCE`; the policy
-supplies the production driver. An explicit source path permits a temporary
-negative control without changing the checked-in driver.
+`chibi build test native-aot-driver` runs `DriverTests.chibi`, which imports
+the driver's package and checks it directly: tool admission of aliases and
+unusable paths, cleanup that removes only the names a run owns, target
+admission of each triple with the layouts LLVM gives it, library names read from
+the declaration alone, and an optimizer-argv oracle that a permissive
+stand-in cannot satisfy by succeeding. It then runs the publication cases in a
+build host of their own with an empty `PATH`: existing outputs and stale
+partials are kept, relocated tools with spaces build an object with no linker,
+`Build` links with the named linker and a start object, a macOS program links
+against a libSystem stub that exports what it imports, missing tools
+reject before reserving output, a failed, signalled or missing object never
+publishes, and a tool whose bytes change during the build prevents
+publication. With `CHIBI_LLVM_BIN` set it also links the scalar fixture for
+the host with real LLVM tools at O0 and O2 and runs each program to exit
+status 42. CI runs it on Linux and on macOS.
 
-`Contracts.chibi` contains only adapters for private `Tool`/`Cleanup` helpers and
-the host's process capability. The C runner appends those adapters to unchanged
-driver text in memory. It does not change production source, compiler,
-capabilities or platform admission.
-
-At the PR679 checkpoint, three portable cases passed on macOS arm64 with
-30 assertions:
-
-- Resolved executable aliases with spaces; missing, non-executable, directory,
-  dangling, relative and control-character tool paths.
-- Cleanup's known-file list, unknown-file preservation and sibling output
-  preservation.
-- Cancellation after a controlled tool writes object bytes. This host-capability
-  control requires the exact `build process cancelled` diagnostic. It does not
-  execute the Linux-only `Run` path on macOS.
-
-Two temporary negative controls fail as intended. Changing only `Tool`'s final
-`return resolved` to `return path` in a scratch driver copy fails the alias
-assertion. Disabling the C runner's cancellation pointer in a scratch C copy
-makes the process reach its 10-second deadline, yielding `build process timeout`.
-The cancellation case then fails its exact diagnostic assertion. The original
-source passes. Neither mutation is published.
-
-Six additional Linux-only cases cover:
-
-- Existing final files and stale partial object/receipt bytes for both entries,
-  with no optimizer execution before rejection.
-- Physical relocation of tools and IR, paths with spaces, a resolved tool alias,
-  exact optimizer and object argv at O0/O2, and `Object` succeeding with empty PATH and no
-  linker file or linker/program receipt fields.
-- Missing opt, llc and, for `Build`, linker capabilities before reservation.
-- An object written before exit71 or SIGTERM, and a zero-exit tool producing no
-  object. Both entries must leave no final or partial output and never link.
-- Mutation of opt or llc bytes after object creation, preventing publication.
-- Cancellation after an object is written, requiring the exact cancellation
-  diagnostic, leaving an unpublished partial that a retry refuses without
-  altering its bytes. A deadline failure cannot satisfy the cancellation check.
-
-`fixtures/stage-tool.sh` supplies controlled executable capabilities for these
-failure paths, following the tooling suite's existing shell stand-in pattern.
-It rejects malformed argument shapes, records each argument on its own line,
-and uses absolute utility paths. Its object bytes are a marker, not an ELF
-object. These cases test orchestration and publication, not LLVM behavior;
-the real LLVM fixtures and authored suites above remain separate coverage.
-The cancellation fixture signals its direct C test parent only after writing
-the object, then waits for host process-group cleanup. Every invocation has a
-10-second deadline. All fixtures live in one disposable directory removed by
-the C runner. Only the bytecode backend is selected.
-
-The coordinator approved minimal registration in `test/tools/main.c`,
-`test/tools/CMakeLists.txt` and `tools/test_policy.py`. Existing selectors,
-group membership, budgets and cleanup policy are unchanged. Registration was
-validated through the normal policy route against a Release compiler-enabled
-SDK/tooling build with assertions, no sanitizers, dead stripping and at most two
-jobs. The prebuilt third-party store matched the SHA256 pinned by this
-checkout's unchanged `third_party/archives.tsv`; first-party code was built from
-this checkout.
-
-[PR679](https://github.com/waldnercharles/chibi/pull/679) merged normally as
-`69306365ad66b6ee01fffaa95c40aa5ead1fa616`, with the same tree
-`fc448fbab7858a615a1d3a78fea0b382bcc0aa6d` as reviewed head
-`d95b6bfd1ca2fa387b86c3b6046a1fcc74fc69a5`. Independent Linux validation at
-that exact head passed the normal policy selector, nine cases and 100 assertions,
-in 13.906 seconds with clean source. The dispatcher and production host remained
-byte-identical to the positive/control/restored proof: disabling the cancellation
-pointer produced exactly two intended timeout-versus-cancellation assertion
-failures, while the original and restored binaries passed all nine cases.
-
-Postmerge [CI40104938260](https://github.com/waldnercharles/chibi/actions/runs/40104938260)
-and [self-build40104938238](https://github.com/waldnercharles/chibi/actions/runs/40104938238)
-succeeded on that merge. This includes the enabled Linux/Mac native suites and
-cross-platform compiler self-build; disabled jobs are not coverage. These results
-do not turn controlled marker objects into real LLVM evidence, establish
-sanitizer coverage of the explicit driver selector, or validate a standalone SDK
-profile. The earlier real LLVM fixture results remain a separate historical proof.
-
-## Optimizer argv contract follow-up
-
-The Linux relocation case also compares the recorded optimizer argv against
-independent C contract literals: O0 requires `-passes=verify`; O2 requires
-`-passes=verify,default<O2>,verify`. Both require `-S`, the reserved partial's
-`source.ll` snapshot, `-o`, and its `module.ll` output, in that order. Expected
-arguments are not read from `Driver.chibi`, a receipt, or marker module bytes.
-
-The optimizer stand-in deliberately accepts arbitrary pass-list arguments. A
-portable C fixture case confirms it records them faithfully and that the argv
-oracle rejects missing verification, missing either O2 verification boundary,
-missing optimization, and wrong snapshot/output paths despite successful marker
-emission. This makes a successful mock process insufficient to pass the contract.
-Portable mutation controls remove verification or O2 from the positive recorded
-argv while leaving the oracle fixed; they must fail its assertion. These are
-fixture/oracle checks, not execution of the Linux-only driver on macOS.
-
-On macOS arm64, the normal policy run and restored replay each passed four
-portable cases and 49 assertions using unchanged production `Driver.chibi`.
-The scratch positive-trace controls without verification and without O2 each
-failed exactly the new argv assertion, with three cases passing and one failing,
-exit 1. These mutations changed only the fixture invocation in a temporary C
-copy; actual production-driver pass-list mutations remain a Linux follow-up.
-
-This follow-up needs an exact-head Linux replay of the normal selector and
-scratch driver mutations. In a Linux checkout with its current compiler-enabled
-`test_tools` and production build host, run:
-
-```sh
-CHIBI_TOOLS_BUILD_DIR=build/test/tools python3 tools/test_policy.py tool native-aot-driver
-```
-
-Then use the same dispatcher with absolute scratch driver paths, preserving
-production source. Change only one pass-list assignment per control:
-
-- `DriverNoVerify0.chibi`: O0 `passes := "verify"` to `passes := ""`.
-- `DriverNoVerify2.chibi`: O2 verification `passes = "verify,default<O2>,verify"` to `passes = "default<O2>"`.
-- `DriverNoO2.chibi`: O2 optimization, that same assignment to `passes = "verify,verify"`.
-
-```sh
-python3 tools/test_policy.py native -- "$PWD/build/test/tools/test_tools" \
-  --native-aot-driver "$PWD/scratch/DriverNoVerify0.chibi"
-```
-
-Each control should still emit marker artifacts but fail the new optimizer argv
-assertion in the relocation case. Replay the unchanged production driver afterward.
-These Linux runs and actual Driver pass-list mutation outcomes must be reported
-separately from the available macOS fixture/oracle checks. Real LLVM semantics,
-new sanitizer runs, and broader suite reruns remain outside this follow-up proof.
+`fixtures/stage-tool.sh` supplies the controlled `opt`, `llc` and linker: it
+rejects malformed argument shapes, records each argument on its own line and
+uses absolute utility paths. Its object bytes are a marker, not an ELF object,
+so these cases test orchestration and publication, not LLVM behavior. The
+host's own cancellation is `build-process`'s to check.

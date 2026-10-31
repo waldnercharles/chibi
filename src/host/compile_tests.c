@@ -1,6 +1,5 @@
 #include "authoring/package_compile.h"
 #include "authoring/package_tests.h"
-#include "authoring/project_compile.h"
 #include "authoring/source_package_io.h"
 #include "execution/backend.h"
 #include "execution/function.h"
@@ -8,8 +7,6 @@
 #include "runtime/task_pool.h"
 #include "support/array.h"
 #include "support/xalloc.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -300,11 +297,9 @@ int authoring_project_test(const char *root, const char *core)
      * busy test sees where it is. */
     setvbuf(stdout, NULL, _IOLBF, 0);
     char error[512] = { 0 };
-    const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
-                                                COMPILER_JSON_DEFINITION_PACK,
-                                                TESTING_DEFINITION_PACK };
+    const native_definition_pack compiler[] = { TESTING_DEFINITION_PACK };
     native_capabilities
-        *native = host_native_standalone_catalog_new(NULL, 0, compiler, 3, error, sizeof error);
+        *native = host_native_standalone_catalog_new(NULL, 0, compiler, 1, error, sizeof error);
     if (!native) {
         fprintf(stderr, "Test preparation failed: %s\n", error);
         return 1;
@@ -320,13 +315,24 @@ int authoring_project_test(const char *root, const char *core)
     }
     behavior_backend backend = behavior_default_backend();
     char **tested = tested_packages(&inputs);
-    int total = 0, failed = 0;
+    int total = 0, failed = 0, skipped = 0;
     bool compiled = true;
     for (int i = 0; i < acount(tested); i++) {
         size_t root = strlen(inputs.project_root), directory = strlen(tested[i]);
         char *path = xmalloc(root + directory + 2);
         snprintf(path, root + directory + 2, "%s/%s", inputs.project_root, tested[i]);
         size_t prefix = strcmp(tested[i], ".") ? root + 1 + directory : root;
+        /* The VM cannot prepare foreign code; a native test path will run these. */
+        if (package_compile_needs_native(&inputs, path)) {
+            printf(
+                "SKIP %s (native only: foreign import)\n",
+                strcmp(tested[i], ".") ? tested[i] : "project"
+            );
+            skipped++;
+            free(path);
+            free(tested[i]);
+            continue;
+        }
         const source_package_input *rejected = rejected_file(&inputs, path, prefix);
         package_compile_error error;
         package_collection *packages = compile_tests(&inputs, tested[i], native, backend, &error);
@@ -360,7 +366,11 @@ int authoring_project_test(const char *root, const char *core)
     if (!compiled) {
         return 1;
     }
-    printf("%d tests, %d failed\n", total, failed);
+    printf("%d tests, %d failed", total, failed);
+    if (skipped) {
+        printf(", %d skipped", skipped);
+    }
+    printf("\n");
     return failed ? 1 : 0;
 }
 

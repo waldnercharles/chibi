@@ -1,14 +1,19 @@
 # Initial native CI build requests, 2026-10-24
 
-The Linux and macOS native jobs request the products and sanitizer test drivers
-in one `make build` invocation. The target list is the union of the previous
-`make test-build` and default `make build` requests:
+Historical record. The Makefile was retired in e4aa7b4e2 and the C
+`--test-runner` regression with the game runtime in 84ca9d25c. CI now calls the
+build driver directly (`tools/build.sh build --target ...`, which is
+`chibi build`).
+
+The Linux and macOS native jobs requested the products and sanitizer test
+drivers in one `make build` invocation. The target list was the union of the
+previous `make test-build` and default `make build` requests:
 
 ```
 chibi chibi-compile chibi-player test_tools test_language
 ```
 
-The Makefile still owns build policy. Its sanitizer profile, compiler flags,
+The Makefile then owned build policy. Its sanitizer profile, compiler flags,
 output directory, job limit, build-host recovery and graph/native routes are
 unchanged. The graph route still adds its build host. Release products, tooling
 checks and all four sequential native groups remain separate and unchanged,
@@ -63,8 +68,8 @@ compile/link JSON after each invocation, and alternate the run order.
 
 ## Regression
 
-The existing C `--test-runner` dispatcher reads the initial commands from both
-workflow jobs and runs an unchanged copy of the Makefile in a disposable
+The C `--test-runner` dispatcher read the initial commands from both
+workflow jobs and ran an unchanged copy of the Makefile in a disposable
 directory with recording build children. It covers cold build-host recovery and
 existing-host routes. It
 requires one request with the complete target set, the original sanitizer

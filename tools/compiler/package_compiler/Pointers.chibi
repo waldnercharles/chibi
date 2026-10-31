@@ -3,6 +3,8 @@ package package_compiler
 import snapshot "project:source_snapshot"
 import binding "project:lexical_binding"
 import strings "core:strings"
+import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
 
 PointerStorage: int : 19;
 PointerDecl: int : 6;
@@ -62,23 +64,23 @@ EnsurePointer :: (table: ^(TypeDecl[]), value: ValueType, nullable: bool, packag
     return length(table^) - 1;
 }
 TypePointerNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
-    if (Is(forest, node, "pointer_type")) {
+    if (Is(forest, node, syntax.PointerType)) {
         return node;
     }
     for (child in Members(forest, node)) {
-        if (Is(forest, child, "pointer_type")) {
+        if (Is(forest, child, syntax.PointerType)) {
             return child;
         }
     }
     return -1;
 }
 TypeGroupNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
-    if (Is(forest, node, "parenthesized_type")) {
-        return Field(forest, node, "type");
+    if (Is(forest, node, syntax.ParenthesizedType)) {
+        return Field(forest, node, syntax.FieldType);
     }
     for (child in Members(forest, node)) {
-        if (Is(forest, child, "parenthesized_type")) {
-            return Field(forest, child, "type");
+        if (Is(forest, child, syntax.ParenthesizedType)) {
+            return Field(forest, child, syntax.FieldType);
         }
     }
     return -1;
@@ -93,7 +95,7 @@ DeclarePointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: 
     while (length(pending) > 0) {
         at := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
-        if (Is(forest, at, "type")) {
+        if (Is(forest, at, syntax.Type)) {
             nodes.append(at);
         }
         for (child in Members(forest, at)) {
@@ -106,12 +108,12 @@ DeclarePointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: 
         index -= 1;
         pointer := TypePointerNode(forest, node);
         if (pointer >= 0) {
-            element := ReadType(forest, text, &types, aliases, package, Field(forest, pointer, "target"));
+            element := ReadType(forest, text, &types, aliases, package, Field(forest, pointer, syntax.FieldTarget));
             EnsurePointer(&types, element, false, package);
-            if (HasToken(forest, node, "?")) {
+            if (HasToken(forest, node, tk.Question)) {
                 EnsurePointer(&types, element, true, package);
             }
-        } else if (HasToken(forest, node, "?")) {
+        } else if (HasToken(forest, node, tk.Question)) {
             grouped := TypeGroupNode(forest, node);
             if (grouped >= 0) {
                 value := ReadType(forest, text, &types, aliases, package, grouped);
@@ -132,9 +134,9 @@ AddressedNames :: (forest: snapshot.SnapshotNode[], text: string, root: int, len
     while (length(pending) > 0) {
         at := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
-        if (Is(forest, at, "address_expression") && !lent.contains(at)) {
-            operand := RootOf(forest, Field(forest, at, "operand"));
-            if (Is(forest, operand, "identifier")) {
+        if (Is(forest, at, syntax.AddressExpression) && !lent.contains(at)) {
+            operand := RootOf(forest, Field(forest, at, syntax.FieldOperand));
+            if (Is(forest, operand, syntax.Identifier)) {
                 found.append(Text(forest, text, operand));
             }
         }
@@ -196,10 +198,10 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
     while (length(pending) > 0) {
         at := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
-        if (Is(forest, at, "address_expression")) {
+        if (Is(forest, at, syntax.AddressExpression)) {
             addresses = true;
         }
-        if (Is(forest, at, "type")) {
+        if (Is(forest, at, syntax.Type)) {
             spelled.append(at);
         }
         for (child in Members(forest, at)) {
@@ -401,7 +403,7 @@ PointerFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: in
     if (layout_error != "") {
         return Fail(forest, member_node, document, layout_error);
     }
-    field_index := FindField(types, members, element.record, Text(forest, text, Field(forest, member_node, "member")));
+    field_index := FindField(types, members, element.record, Text(forest, text, Field(forest, member_node, syntax.FieldMember)));
     if (field_index < 0) {
         return Fail(forest, member_node, document, "Unknown field");
     }
@@ -430,12 +432,12 @@ PointerExpressionStep :: (forest: snapshot.SnapshotNode[], text: string, documen
                           members: TypeMember[], names: Name[], values: Value[], top: int, item: Work,
                           ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
-    operand := Unparenthesized(forest, Field(forest, item.node, "operand"));
-    if (node.kind == "dereference_expression") {
+    operand := Unparenthesized(forest, Field(forest, item.node, syntax.FieldOperand));
+    if (node.kind == syntax.DereferenceExpression) {
         // A `p^` of a scoped `p` that ScopedTargets keeps reads p's target,
         // as the name alone does.
         scoped: int = -1;
-        if (Is(forest, operand, "identifier")) {
+        if (Is(forest, operand, syntax.Identifier)) {
             scoped = Lookup(names, Text(forest, text, operand));
         }
         if (item.phase == 0 && scoped >= 0 && names[scoped].place == ReferencePlace) {
@@ -485,9 +487,9 @@ PointerExpressionStep :: (forest: snapshot.SnapshotNode[], text: string, documen
     // location and could rebind the address after an ordinary value copy.
     projections: int[] = [];
     nested_root := operand;
-    while (Is(forest, nested_root, "member_expression")) {
+    while (Is(forest, nested_root, syntax.MemberExpression)) {
         projections.append(nested_root);
-        nested_root = Unparenthesized(forest, Field(forest, nested_root, "object"));
+        nested_root = Unparenthesized(forest, Field(forest, nested_root, syntax.FieldObject));
     }
     if (length(projections) > 1) {
         scheduled: Work[] = [];
@@ -501,7 +503,7 @@ PointerExpressionStep :: (forest: snapshot.SnapshotNode[], text: string, documen
             index -= 1;
         }
         found: int = -1;
-        if (Is(forest, nested_root, "identifier")) {
+        if (Is(forest, nested_root, syntax.Identifier)) {
             found = Lookup(names, Text(forest, text, nested_root));
         }
         if (found >= 0 && names[found].place == ManagedPlace && names[found].writable &&
@@ -514,30 +516,30 @@ PointerExpressionStep :: (forest: snapshot.SnapshotNode[], text: string, documen
                                 Typed(at.slot + 1, PointerStorage, 0, pointer), NoValue(), []);
         }
         source := nested_root;
-        if (Is(forest, source, "dereference_expression")) {
-            source = Field(forest, source, "operand");
+        if (Is(forest, source, syntax.DereferenceExpression)) {
+            source = Field(forest, source, syntax.FieldOperand);
         }
         return Step.Emitted([], [], [], [], [], [], [], [], extend([Visit(source)], scheduled), 0,
                             NoValue(), NoValue(), []);
     }
-    if (Is(forest, operand, "dereference_expression")) {
+    if (Is(forest, operand, syntax.DereferenceExpression)) {
         return Step.Emitted([], [], [], [], [], [], [], [],
-                            [Visit(Field(forest, operand, "operand")), Resume(item.node, PointerAddressPhase, 0, 1)],
+                            [Visit(Field(forest, operand, syntax.FieldOperand)), Resume(item.node, PointerAddressPhase, 0, 1)],
                             0, NoValue(), NoValue(), []);
     }
-    member := Is(forest, operand, "member_expression");
+    member := Is(forest, operand, syntax.MemberExpression);
     root := operand;
     if (member) {
-        root = Unparenthesized(forest, Field(forest, operand, "object"));
+        root = Unparenthesized(forest, Field(forest, operand, syntax.FieldObject));
     }
     found: int = -1;
-    if (Is(forest, root, "identifier")) {
+    if (Is(forest, root, syntax.Identifier)) {
         found = Lookup(names, Text(forest, text, root));
     }
     if (member && (found < 0 || names[found].storage == PointerStorage)) {
         source := root;
-        if (Is(forest, source, "dereference_expression")) {
-            source = Field(forest, source, "operand");
+        if (Is(forest, source, syntax.DereferenceExpression)) {
+            source = Field(forest, source, syntax.FieldOperand);
         }
         return Step.Emitted([], [], [], [], [], [], [], [],
                             [Visit(source), Resume(item.node, PointerAddressPhase, 0, 0)], 0,
@@ -605,7 +607,7 @@ PointerCompoundStep :: (forest: snapshot.SnapshotNode[], text: string, document:
                         pointer: Value, current: Value, right: Value, popped: int, item: Work, ops: Ops,
                         target: Target, at: Bases) -> Step {
     node := forest[item.node];
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    operator := CompoundOperator(Operator(forest, item.node));
     if (current.container == 0 && MixedCompoundIntegers(operator, current.storage, right)) {
         return Fail(forest, item.node, document,
                     format_text("Mismatched integer types {} and {}; convert one operand",
@@ -652,8 +654,8 @@ PointerAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
         }
         field := PointerFieldStep(forest, text, document, types, members, values[top - 1],
                                   StatementTarget(forest, item.node), 1, ops, target, at);
-        object := Field(forest, StatementTarget(forest, item.node), "object");
-        if (!Is(forest, Unparenthesized(forest, object), "dereference_expression")) {
+        object := Field(forest, StatementTarget(forest, item.node), syntax.FieldObject);
+        if (!Is(forest, Unparenthesized(forest, object), syntax.DereferenceExpression)) {
             field = PointerPrefix([ExpressionCode(ops, forest[object])], [], field);
         }
         return PointerContinue(field, Resume(item.node, PointerAssignPhase, 0, 0));
@@ -667,7 +669,7 @@ PointerAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
             return Fail(forest, item.node, document, "Nullable pointer requires a presence guard before dereference");
         }
         value := Expect(StatementValue(forest, item.node), element.storage, element.container, element.record);
-        if (CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))) != "") {
+        if (CompoundOperator(Operator(forest, item.node)) != NoOperator) {
             read := PointerContinue(PointerReadStep(types, values[top - 1], 0, ops, target, at, node), value);
             return PointerContinue(read, Resume(item.node, PointerAssignPhase, 0, 2));
         }
@@ -735,19 +737,19 @@ NeedsPointerValue :: (types: TypeDecl[], members: TypeMember[], storage: int, co
 
 PointerDestination :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
                        names: Name[], destination: int) -> bool {
-    if (Is(forest, destination, "dereference_expression")) {
+    if (Is(forest, destination, syntax.DereferenceExpression)) {
         return true;
     }
-    if (!Is(forest, destination, "member_expression")) {
+    if (!Is(forest, destination, syntax.MemberExpression)) {
         return false;
     }
-    object := Field(forest, destination, "object");
+    object := Field(forest, destination, syntax.FieldObject);
     // `e.C = v` and `e.C.f = v` write an entity's component, not a pointee.
     if (HandleComponent(forest, text, types, members, names, destination) ||
         HandleComponent(forest, text, types, members, names, object)) {
         return false;
     }
-    if (!Is(forest, object, "identifier")) {
+    if (!Is(forest, object, syntax.Identifier)) {
         return true;
     }
     found := Lookup(names, Text(forest, text, object));
@@ -757,11 +759,11 @@ PointerDestination :: (forest: snapshot.SnapshotNode[], text: string, types: Typ
 // global's keyed handle.
 HandleComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
                     names: Name[], node: int) -> bool {
-    if (!Is(forest, node, "member_expression")) {
+    if (!Is(forest, node, syntax.MemberExpression)) {
         return false;
     }
-    owner := Field(forest, node, "object");
-    if (Is(forest, owner, "identifier")) {
+    owner := Field(forest, node, syntax.FieldObject);
+    if (Is(forest, owner, syntax.Identifier)) {
         found := Lookup(names, Text(forest, text, owner));
         return found >= 0 && names[found].storage == HandleStorage && names[found].container == 0;
     }
@@ -775,14 +777,14 @@ PointerAssignmentStart :: (forest: snapshot.SnapshotNode[], text: string, docume
     code: Code[] = [Instruction(ops.check, 0, 0, 0, 0, 0, node)];
     destination := StatementTarget(forest, item.node);
     code.append(ExpressionCode(ops, forest[destination]));
-    if (Is(forest, destination, "dereference_expression")) {
+    if (Is(forest, destination, syntax.DereferenceExpression)) {
         return Step.Emitted(code, [], [], [], [], [], [], [],
-                            [Visit(Field(forest, destination, "operand")), Resume(item.node, PointerAssignPhase, 0, 0)],
+                            [Visit(Field(forest, destination, syntax.FieldOperand)), Resume(item.node, PointerAssignPhase, 0, 0)],
                             0, NoValue(), NoValue(), []);
     }
-    object := Field(forest, destination, "object");
+    object := Field(forest, destination, syntax.FieldObject);
     found: int = -1;
-    if (Is(forest, object, "identifier")) {
+    if (Is(forest, object, syntax.Identifier)) {
         found = Lookup(names, Text(forest, text, object));
     }
     if (found >= 0 && names[found].place == ManagedPlace && names[found].storage == StructStorage) {
@@ -797,9 +799,9 @@ PointerAssignmentStart :: (forest: snapshot.SnapshotNode[], text: string, docume
         return PointerContinue(PointerPrefix(code, slots, field), Resume(item.node, PointerAssignPhase, 0, 0));
     }
     source := Unparenthesized(forest, object);
-    if (Is(forest, source, "dereference_expression")) {
+    if (Is(forest, source, syntax.DereferenceExpression)) {
         code.append(ExpressionCode(ops, forest[source]));
-        source = Field(forest, source, "operand");
+        source = Field(forest, source, syntax.FieldOperand);
     }
     return Step.Emitted(code, [], [], [], [], [], [], [],
                         [Visit(source), Resume(item.node, PointerLvaluePhase, 0, 0)], 0, NoValue(), NoValue(), []);
@@ -821,13 +823,13 @@ PointerProofChanged :: (forest: snapshot.SnapshotNode[], text: string, root: int
             // A call cannot replace an ordinary local pointer whose address
             // has never escaped. Its pointee may change without changing
             // whether that local pointer is present.
-            if ((node.kind == "call_expression" && !stable_local) || node.kind == "await_expression" ||
-                node.kind == "yield_statement") {
+            if ((node.kind == syntax.CallExpression && !stable_local) || node.kind == syntax.AwaitExpression ||
+                node.kind == syntax.YieldStatement) {
                 return true;
             }
-            if (node.kind == "assignment") {
+            if (node.kind == syntax.Assignment) {
                 target := Unparenthesized(forest, StatementTarget(forest, at));
-                if (aliases || (Is(forest, target, "identifier") && Text(forest, text, target) == name)) {
+                if (aliases || (Is(forest, target, syntax.Identifier) && Text(forest, text, target) == name)) {
                     return true;
                 }
             }
@@ -840,20 +842,20 @@ PointerProofChanged :: (forest: snapshot.SnapshotNode[], text: string, root: int
 }
 PointerGuard :: (forest: snapshot.SnapshotNode[], text: string, condition: int, name: string, truth: bool) -> bool {
     at := Unparenthesized(forest, condition);
-    if (Is(forest, at, "identifier") || Is(forest, at, "member_expression")) {
+    if (Is(forest, at, syntax.Identifier) || Is(forest, at, syntax.MemberExpression)) {
         return truth && Text(forest, text, at) == name;
     }
-    if (Is(forest, at, "unary_expression")) {
-        operator := Text(forest, text, Field(forest, at, "operator"));
-        return (operator == "!" || operator == "not") &&
-               PointerGuard(forest, text, Field(forest, at, "operand"), name, !truth);
+    if (Is(forest, at, syntax.UnaryExpression)) {
+        operator := Operator(forest, at);
+        return (operator == tk.Not || operator == tk.NotKeyword) &&
+               PointerGuard(forest, text, Field(forest, at, syntax.FieldOperand), name, !truth);
     }
-    if (Is(forest, at, "call_expression")) {
+    if (Is(forest, at, syntax.CallExpression)) {
         if (!QueryGuardContext(forest, at)) {
             return false;
         }
-        function := Text(forest, text, Field(forest, at, "function"));
-        arguments := Members(forest, Field(forest, at, "arguments"));
+        function := Text(forest, text, Field(forest, at, syntax.FieldFunction));
+        arguments := Members(forest, Field(forest, at, syntax.FieldArguments));
         if (function == "has" && length(arguments) == 1) {
             return PointerGuard(forest, text, arguments[0], name, truth);
         }
@@ -869,68 +871,68 @@ PointerGuard :: (forest: snapshot.SnapshotNode[], text: string, condition: int, 
         }
         return false;
     }
-    if (!Is(forest, at, "binary_expression")) {
+    if (!Is(forest, at, syntax.BinaryExpression)) {
         return false;
     }
-    operator := Text(forest, text, Field(forest, at, "operator"));
-    if ((truth && (operator == "&&" || operator == "and")) ||
-        (!truth && (operator == "||" || operator == "or"))) {
-        return PointerGuard(forest, text, Field(forest, at, "left"), name, truth) ||
-               PointerGuard(forest, text, Field(forest, at, "right"), name, truth);
+    operator := Operator(forest, at);
+    if ((truth && (operator == tk.CmpAnd || operator == tk.AndKeyword)) ||
+        (!truth && (operator == tk.CmpOr || operator == tk.OrKeyword))) {
+        return PointerGuard(forest, text, Field(forest, at, syntax.FieldLeft), name, truth) ||
+               PointerGuard(forest, text, Field(forest, at, syntax.FieldRight), name, truth);
     }
-    left := Unparenthesized(forest, Field(forest, at, "left"));
-    right := Unparenthesized(forest, Field(forest, at, "right"));
-    if (Is(forest, left, "nil")) {
+    left := Unparenthesized(forest, Field(forest, at, syntax.FieldLeft));
+    right := Unparenthesized(forest, Field(forest, at, syntax.FieldRight));
+    if (Is(forest, left, syntax.Nil)) {
         swapped := left;
         left = right;
         right = swapped;
     }
-    if ((!Is(forest, left, "identifier") && !Is(forest, left, "member_expression")) ||
-        !Is(forest, right, "nil") || Text(forest, text, left) != name) {
+    if ((!Is(forest, left, syntax.Identifier) && !Is(forest, left, syntax.MemberExpression)) ||
+        !Is(forest, right, syntax.Nil) || Text(forest, text, left) != name) {
         return false;
     }
-    return (truth && operator == "!=") || (!truth && operator == "==");
+    return (truth && operator == tk.NotEq) || (!truth && operator == tk.CmpEq);
 }
 // Presence tests observe the declared nullable type, even if an earlier
 // initializer or guard already proves the value present.
 PointerNilOperand :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     at := node;
     parent := forest[at].parent;
-    while (Is(forest, parent, "parenthesized_expression")) {
+    while (Is(forest, parent, syntax.ParenthesizedExpression)) {
         at = parent;
         parent = forest[at].parent;
     }
-    if (!Is(forest, parent, "binary_expression")) {
+    if (!Is(forest, parent, syntax.BinaryExpression)) {
         return false;
     }
-    operator := Text(forest, text, Field(forest, parent, "operator"));
-    if (operator != "==" && operator != "!=") {
+    operator := Operator(forest, parent);
+    if (operator != tk.CmpEq && operator != tk.NotEq) {
         return false;
     }
-    left := Field(forest, parent, "left");
-    right := Field(forest, parent, "right");
-    return (left == at && Is(forest, Unparenthesized(forest, right), "nil")) ||
-           (right == at && Is(forest, Unparenthesized(forest, left), "nil"));
+    left := Field(forest, parent, syntax.FieldLeft);
+    right := Field(forest, parent, syntax.FieldRight);
+    return (left == at && Is(forest, Unparenthesized(forest, right), syntax.Nil)) ||
+           (right == at && Is(forest, Unparenthesized(forest, left), syntax.Nil));
 }
 PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name, node: int) -> bool {
     function := node;
-    while (function >= 0 && !Is(forest, function, "function_declaration") && !Is(forest, function, "handler") &&
-           !Is(forest, function, "system")) {
+    while (function >= 0 && !Is(forest, function, syntax.FunctionDeclaration) && !Is(forest, function, syntax.Handler) &&
+           !Is(forest, function, syntax.System)) {
         function = forest[function].parent;
     }
     if (function < 0) {
         return false;
     }
-    body := Field(forest, function, "body");
+    body := Field(forest, function, syntax.FieldBody);
     aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body, []), binding.name);
     stable_local := binding.place == LocalPlace && binding.node >= 0 && !aliased;
     walked_child := node;
     parent := forest[node].parent;
     while (parent >= 0 && parent != function) {
-        condition := Field(forest, parent, "condition");
-        if (Is(forest, parent, "argument_list")) {
+        condition := Field(forest, parent, syntax.FieldCondition);
+        if (Is(forest, parent, syntax.ArgumentList)) {
             call := forest[parent].parent;
-            spelling := Text(forest, text, Field(forest, call, "function"));
+            spelling := Text(forest, text, Field(forest, call, syntax.FieldFunction));
             if ((spelling == "all" || spelling == "any") && QueryGuardContext(forest, call)) {
                 for (argument in Members(forest, parent)) {
                     if (Ancestor(forest, argument, node)) {
@@ -944,25 +946,25 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
                 }
             }
         }
-        if (Is(forest, parent, "binary_expression") && Ancestor(forest, Field(forest, parent, "right"), node)) {
-            operator := Text(forest, text, Field(forest, parent, "operator"));
-            left := Field(forest, parent, "left");
-            truth := operator == "&&" || operator == "and";
-            if ((truth || operator == "||" || operator == "or") &&
+        if (Is(forest, parent, syntax.BinaryExpression) && Ancestor(forest, Field(forest, parent, syntax.FieldRight), node)) {
+            operator := Operator(forest, parent);
+            left := Field(forest, parent, syntax.FieldLeft);
+            truth := operator == tk.CmpAnd || operator == tk.AndKeyword;
+            if ((truth || operator == tk.CmpOr || operator == tk.OrKeyword) &&
                 PointerGuard(forest, text, left, binding.name, truth) &&
                 !PointerProofChanged(forest, text, parent, forest[left].end, forest[node].start,
                                      binding.name, aliased, stable_local)) {
                 return true;
             }
         }
-        if (Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) {
-            consequence := Field(forest, parent, "consequence");
-            if (Is(forest, parent, "while_statement")) {
-                consequence = Field(forest, parent, "body");
+        if (Is(forest, parent, syntax.IfStatement) || Is(forest, parent, syntax.WhileStatement)) {
+            consequence := Field(forest, parent, syntax.FieldConsequence);
+            if (Is(forest, parent, syntax.WhileStatement)) {
+                consequence = Field(forest, parent, syntax.FieldBody);
             }
             truth := consequence >= 0 && forest[walked_child].start >= forest[consequence].start &&
                      forest[walked_child].end <= forest[consequence].end;
-            alternative := Field(forest, parent, "alternative");
+            alternative := Field(forest, parent, syntax.FieldAlternative);
             false_branch := alternative >= 0 && forest[walked_child].start >= forest[alternative].start &&
                             forest[walked_child].end <= forest[alternative].end;
             if ((truth || false_branch) && PointerGuard(forest, text, condition, binding.name, truth) &&
@@ -971,7 +973,7 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
                                             binding.name, aliased, stable_local);
             }
             // An outer proof is not carried through a loop back edge.
-            if (Is(forest, parent, "while_statement")) {
+            if (Is(forest, parent, syntax.WhileStatement)) {
                 return false;
             }
         }
@@ -981,8 +983,8 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
     // A freshly addressed initializer is non-null until the name can change.
     if (binding.node >= 0) {
         declaration := forest[binding.node].parent;
-        initial := Unparenthesized(forest, Field(forest, declaration, "value"));
-        if (Is(forest, declaration, "local_declaration") && Is(forest, initial, "address_expression")) {
+        initial := Unparenthesized(forest, Field(forest, declaration, syntax.FieldValue));
+        if (Is(forest, declaration, syntax.LocalDeclaration) && Is(forest, initial, syntax.AddressExpression)) {
             return !PointerProofChanged(forest, text, body, forest[declaration].end, forest[node].start,
                                         binding.name, aliased, stable_local);
         }
@@ -1002,10 +1004,10 @@ PointerNarrow :: (step: Step, record: int) -> Step {
 
 // Keep pointer scheduling outside the body driver; every branch emits the
 // same step protocol as ordinary expressions and parameters.
-PointerWork :: (item: Work, kind: string) -> bool {
+PointerWork :: (item: Work, kind: int) -> bool {
     return (item.phase >= PointerReadPhase && item.phase <= PointerRefFieldPhase &&
             item.phase != PointerMemberReadPhase) ||
-           (item.phase == 0 && (kind == "address_expression" || kind == "dereference_expression"));
+           (item.phase == 0 && (kind == syntax.AddressExpression || kind == syntax.DereferenceExpression));
 }
 PointerParameterStep :: (types: TypeDecl[], members: TypeMember[], param: Param, values: Value[], top: int,
                          item: Work, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
@@ -1030,11 +1032,11 @@ PointerParameterStep :: (types: TypeDecl[], members: TypeMember[], param: Param,
 // through or a return returns, which stage zero evaluates as `p` alone,
 // without a point of its own.
 ElidedTarget :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> bool {
-    if (!Is(forest, node, "dereference_expression") || CallArgument(forest, node)) {
+    if (!Is(forest, node, syntax.DereferenceExpression) || CallArgument(forest, node)) {
         return false;
     }
-    operand := Unparenthesized(forest, Field(forest, node, "operand"));
-    if (!Is(forest, operand, "identifier")) {
+    operand := Unparenthesized(forest, Field(forest, node, syntax.FieldOperand));
+    if (!Is(forest, operand, syntax.Identifier)) {
         return false;
     }
     found := Lookup(names, Text(forest, text, operand));

@@ -305,21 +305,6 @@ pub Sources :: (source_root: string, build_dir: string, third_party: string, tar
     return sources;
 }
 
-// Writes each file a target embeds. An unchanged output keeps its stamp; a
-// failure to write one fails the program. False when an output directory
-// cannot be made.
-Embed :: (source_root: string, build_dir: string, target: string) -> bool {
-    for (embed in Embeds(target)) {
-        output := Resolve(source_root, build_dir, "", build.before(embed, "="));
-        rest := build.after(embed, "=");
-        if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/")))) {
-            return false;
-        }
-        build.embed_file(Join([source_root, "/", build.after(rest, "=")]), output, build.before(rest, "="));
-    }
-    return true;
-}
-
 // A define with the values CMake substitutes: {source_root}, {build_type},
 // {sha256:PATH} for a file's SHA-256 and {program:NAME} for where an
 // executable is written.
@@ -1294,12 +1279,6 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             return -1;
         }
         generated += programs_built;
-    }
-    for (target in targets) {
-        if (!Embed(source_root, build_dir, target)) {
-            os.Print(Join(["graph: embedding ", target, "'s files failed"]));
-            return -1;
-        }
     }
     for (target in Staged(targets)) {
         published := Resolve(source_root, build_dir, profile.third_party, HeaderSource(target));

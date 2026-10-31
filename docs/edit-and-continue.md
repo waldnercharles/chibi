@@ -2,8 +2,9 @@
 
 Status: implemented for standalone programs, 2026-10-29. Applies to standalone programs run with `chibi --watch`
 and to the shared program session (`Chibi::program`, `src/authoring/program.c`) that
-Studio can also use. Game projects keep Studio Live, which publishes through
-`src/runtime/behaviors/source_publication.c`; both end in the same
+Studio can also use. Studio Live used to publish through the source registry
+(`src/runtime/behaviors/source_publication.c`, archived 2026-10-30); it moves to the
+program session path when Studio is ported. Both end in the same
 `execution_program_prepare_replace` / `execution_program_commit_replace` pair.
 
 ## What the user sees
@@ -125,13 +126,18 @@ VM session above remains the implementation behind `chibi --watch`.
 
 ### Status
 
-Native programs cannot do this yet. Landed: scalar records across the export ABI with a
-schema (`chibi_state_<Name>`); `retain` locals of a library function as exported states
-(`chibi_retained_<Name>`); the schema migration in `apps/chibi/Generations.chibi`. Open, in
-order: the generation-swap host in Chibi, which needs function pointers, a dynamically linked
-libc for `dlopen`, and file and clock access from native code; `chibi run --native --watch`;
-the test that edits source while the loop runs and checks that state survives (Linux x86-64
-first, as native libraries are).
+Native programs do this on Linux x86-64: `chibi run --native --watch [-O0|-O2] [--llvm DIR] PATH`
+builds the library source in PATH's folder as a generation (`chibi build --native --shared`), runs
+it under the loop host (`apps/host/Host.chibi`, written in Chibi and built natively), and rebuilds
+and publishes each saved edit as the next generation. The host calls `Main` once, calls `Frame`
+until it returns a nonzero status, which is the exit status, and swaps `next.so` in between two
+Frames: it matches the retained states of the two generations by name hash and type
+(`chibi_host_retained_*`), sets the new generation's, and unloads the old one. A generation that
+fails to build is reported and the running one continues; one that fails to load is set aside as
+`rejected.so`. The test `native_build_watches_and_swaps_a_running_loop` edits a running loop and
+checks the exit status that only a surviving count gives; `native_build_swaps_a_running_loop_keeping_state`
+does the same with the editor played by the test. Not done: integer conversion on a type change
+(the host resets it), a source that is a program rather than a `library` block, other targets.
 
 ## Limits
 

@@ -9,7 +9,6 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
-#include "types/copy_internal.h"
 #include "types/map.h"
 #include "types/pointer.h"
 #include "types/record.h"
@@ -226,15 +225,43 @@ static const char *value_equal(arena *storage, const pin_value *args, int count,
     return NULL;
 }
 const node_host_call EXECUTION_value_equal_call = { .value = value_equal };
-/* Whether an array of `type` keeps its elements inline while it changes in
- * place: plain scalars do, so a byte grows the array by a byte. */
 static bool inline_scalar(pin_type type)
 {
     return type >= PIN_BOOL && type <= PIN_F64;
 }
-/* Boxes a packed array's elements in place; false when they cannot fit.
- * In-place updates of records grow boxed items; the packed records stay in
- * their owned allocation. */
+/* Whether a packed array keeps its elements inline while it changes in
+ * place: plain scalars and authored records whose layout holds no
+ * references are their own bytes, so an append grows the array by one
+ * element's bytes and a copy of the array copies bytes. Other packed arrays
+ * are boxed on their first in-place change, since their items own storage. */
+static bool stays_packed(const pin_array *array)
+{
+    return inline_scalar(array->element_type) ||
+           (array->element_type == PIN_STRUCT && array->record &&
+            type_is_plain(&array->record->type));
+}
+/* Whether item fits a packed array as its bytes, needing no copy: a scalar of
+ * the array's own type, or a record of the array's own layout, as
+ * pin_array_set accepts it. The array's layout is its arena's copy of the
+ * one records are built with, so records compare by layout, not address. */
+static bool packed_item(const pin_array *array, const pin_value *item)
+{
+    if (!array->stride || item->type != array->element_type ||
+        item->container != PIN_CONTAINER_SINGLE) {
+        return false;
+    }
+    if (item->type != PIN_STRUCT) {
+        return inline_scalar(item->type) && !item->record;
+    }
+    assert(stays_packed(array));
+    pin_value shape = { .type = PIN_STRUCT,
+                        .type_name = array->type_name,
+                        .record = array->record };
+    return item->ptr && item->schema == array->schema && item->type_name &&
+           array->type_name && !strcmp(item->type_name, array->type_name) &&
+           pin_value_layout_same(item, &shape);
+}
+/* Boxes a packed array's elements in place; false when they cannot fit. */
 static bool box(arena *storage, pin_array *array)
 {
     return pin_array_box_owned(storage, array) == 0;
@@ -246,20 +273,28 @@ static pin_array *owned_array(arena *storage, pin_value *header)
         header && (header->container == PIN_CONTAINER_ARRAY ||
                    header->container == PIN_CONTAINER_VIEW)
     );
-    pin_value retained;
-    if (pin_value_array_promote(storage, &retained, header)) {
-        return NULL;
-    }
-    *header = retained;
+    assert(storage && storage->collectable);
     pin_array *array = header->ptr;
+    /* A managed array is already its own retained value: promotion would
+     * only read its element names back into the header. */
+    if (array && !array->pointer && array->storage) {
+        header->type_name = array->type_name;
+        header->record = array->record;
+    } else {
+        pin_value retained;
+        if (pin_value_array_promote(storage, &retained, header)) {
+            return NULL;
+        }
+        *header = retained;
+        array = header->ptr;
+    }
     if (!array || !pin_array_view_valid(array)) {
         return NULL;
     }
     if (array->pointer) {
         return array;
     }
-    if (array->stride && !inline_scalar(array->element_type) &&
-        !box(array->storage, array)) {
+    if (array->stride && !stays_packed(array) && !box(array->storage, array)) {
         return NULL;
     }
     array->buckets = NULL;
@@ -285,12 +320,24 @@ static bool array_item_matches(const pin_array *array, pin_value item)
                            .record = root->record };
     return same_storage(expected, item);
 }
+static void array_drop_range(pin_array *, int first, int end);
 /* Appends item to an owned array: inline when it is packed and the item fits,
  * otherwise as a boxed copy. Its capacity must already hold it. */
-static void array_drop_range(pin_array *, int first, int end);
 static const char *append_item(arena *storage, pin_array *array, const pin_value *item)
 {
-    assert(array->count < array->capacity);
+    assert(!array->pointer && array->count < array->capacity);
+    if (packed_item(array, item)) {
+        memcpy(
+            (char *)array->data + (size_t)array->count * array->stride,
+            item->type == PIN_STRUCT ? item->ptr : &item->d,
+            array->stride
+        );
+        array->count++;
+        array->buckets = NULL;
+        array->bucket_mask = 0;
+        pin_array_mutation_end(array);
+        return NULL;
+    }
     if (!array_item_matches(array, *item)) {
         return "Array item differs from its element type";
     }
@@ -348,6 +395,11 @@ static const char *array_store(arena *storage, const pin_value *args, int count,
     if (!array) {
         return "Array exceeds its length limit";
     }
+    if (packed_item(array, &args[2])) {
+        return pin_array_set(array, index, &args[2])
+                 ? "Cannot retain array item"
+                 : NULL;
+    }
     if (!array_item_matches(array, args[2])) {
         return "Array item differs from its element type";
     }
@@ -373,14 +425,9 @@ static const char *array_extend(arena *storage, const pin_value *args, int count
         }
     }
     *out = (pin_value){ .type = PIN_BOOL, .b = true };
-    /* Packed scalars of one type copy as bytes; `xs.extend(xs)` reads the
-     * items it had before. */
-    pin_value shape = { .type = array->element_type,
-                        .type_name = array->type_name,
-                        .record = array->record };
-    bool plain = array->element_type != PIN_STRUCT ||
-                 type_is_plain(pin_value_type(&shape));
-    if (added && plain && array->stride && items->stride == array->stride &&
+    /* Packed items of the array's own layout, which every item matched, copy
+     * as bytes; `xs.extend(xs)` reads the items it had before. */
+    if (added && array->stride && items->stride == array->stride &&
         items->element_type == array->element_type) {
         memmove(
             (char *)array->data + (size_t)array->count * array->stride,
@@ -1452,7 +1499,6 @@ static int snapshot_reference_root(
     }
     assert(source->type == PIN_STRUCT && source->container == PIN_CONTAINER_SINGLE);
     *out = *source;
-    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     out->record = pin_record_from_type_resolved(storage, layout, resolver);
     if (!out->record) {
         return -1;
@@ -1461,7 +1507,6 @@ static int snapshot_reference_root(
     const type_desc *owned = &out->record->type;
     out->ptr = arena_alloc(storage, owned->size);
     memcpy(out->ptr, source->ptr, owned->size);
-    pin_copy_record(PIN_COPY_RECORD, owned->size);
     return pin_struct_snapshot_fields(storage, owned, out->ptr);
 }
 /* Whether two headers describe the same storage: the same type and
@@ -1504,6 +1549,23 @@ static const char *array_mutate_place(arena *storage, const pin_value *args, int
     }
     language_reference resolved,
         *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &resolved);
+    /* `out.append(x)` and `out.extend(xs)` through a reference to a whole
+     * local array change the local's header in its slot, as the local's own
+     * push and extend do. Resolving a path, detaching the owner and storing
+     * a persistent root back are for fields, state and components. */
+    execution_array_mutation operation = (execution_array_mutation)args[1].i;
+    if (ref->kind == LANGUAGE_REFERENCE_VALUE && !ref->path && count == 3 &&
+        ref->root.container == PIN_CONTAINER_ARRAY &&
+        (operation == EXECUTION_ARRAY_APPEND ||
+         (operation == EXECUTION_ARRAY_EXTEND && sequence_array(args[2])))) {
+        if (!root_matches(ref, *ref->value)) {
+            return "Array mutation owner differs from its reference";
+        }
+        pin_value local[] = { { .u64 = (uintptr_t)ref->value }, args[2] };
+        return operation == EXECUTION_ARRAY_APPEND
+                 ? array_push(storage, local, 2, out)
+                 : array_extend(storage, local, 2, out);
+    }
     pin_value root = reference_root(ref), target = root;
     if (!root_matches(ref, root)) {
         return "Array mutation owner differs from its reference";

@@ -15,8 +15,8 @@ import strings "core:strings"
 //         [--debug-frame-pointers on|off] [--dry-run]
 //
 // A sanitized build in `build` is the default; --release builds `build-release`
-// and --debug `build-debug`. Without --target it builds chibi, chibi-compile,
-// and chibi_ctl; --all builds every target. --dry-run prints the
+// and --debug `build-debug`. Without --target it builds chibi and
+// chibi-compile; --all builds every target. --dry-run prints the
 // commands instead of running them. The other verbs are `test`, `install`,
 // `format`, `clean`, `sdk-reflect`, `runtime-sdk`, `package-runtime-sdk`,
 // `bootstrap-artifact`, `bootstrap-recover`,
@@ -179,7 +179,7 @@ Build :: (arguments: string[]) -> int {
     graph = build.concat(graph, ["--all-commands", "on"])
     targets := Values(arguments, "--target")
     if (length(targets) == 0 && !Flag(arguments, "--all")) {
-        targets = ["chibi", "chibi-compile", "chibi_ctl"]
+        targets = ["chibi", "chibi-compile"]
     }
     if (length(targets) > 0) {
         targets = build.concat(targets, ["chibi-build-host"])
@@ -310,7 +310,6 @@ TestCommand :: (row: string, directory: string, releases: string, host: string) 
         Join(["CHIBI_BUILD_HOST=", Absolute(host)]),
         Join(["CHIBI_CLI=", Absolute(releases), "/sdk/chibi"]),
         Join(["CHIBI_COMPILE=", Absolute(releases), "/sdk/chibi-compile"]),
-        Join(["CHIBI_CTL=", Absolute(releases), "/bin/chibi_ctl"]),
         Join(["CHIBI_RELEASE_COMPILER_HOST=", Absolute(releases), "/sdk/chibi-compiler-host"]),
         Join(["CHIBI_RELEASE_LANGUAGE_BUILD_DIR=", Absolute(releases), "/test/language"])
     ]

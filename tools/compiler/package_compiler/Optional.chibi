@@ -506,7 +506,7 @@ ForceUnwrapStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeD
             present = value;
     }
     check := Instruction(ops.guard, 0, 0, present.slot, 0, target.assert_failure, node);
-    check.message = "Assertion failed: Unwrapped a nil optional";
+    check.message = "Unwrapped a nil optional";
     check.has_message = true;
     code.append(check);
     unwrapped := NoValue();

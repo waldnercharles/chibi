@@ -5,6 +5,6 @@ import testing "core:testing"
 // a postfix ! on nil fails at run time
 @test
 Calls :: () {
-    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    testing.ExpectFailure(testing.Failure.UnwrappedNil);
     Main();
 }

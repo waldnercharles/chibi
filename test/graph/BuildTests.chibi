@@ -67,7 +67,7 @@ Support :: (graph: Graph, warnings: bool) -> int {
 }
 
 SupportSources :: () -> string[] {
-    return ["arena", "file_io", "text_edit", "xalloc", "rcss_map"];
+    return ["arena", "file_io", "xalloc"];
 }
 Record :: (graph: Graph, source: string) -> string {
     return Path([graph.build_dir, "/objects/chibi_support/src/support/", source, ".c.o.chibi-record"]);
@@ -96,7 +96,7 @@ SupportRebuildsOnlyWhatChanged :: (graph: Graph) {
     assert(dependents >= 1 && dependents < all, "some sources include arena.h");
     Append(Path([graph.root, "/src/support/arena.h"]), "/* changed */\n");
     assert(Support(graph, true) == dependents, "a changed header recompiles its dependents");
-    assert(os.Remove(Path([graph.build_dir, "/objects/chibi_support/src/support/text_edit.c.o"])) == nil, "a deleted object");
+    assert(os.Remove(Path([graph.build_dir, "/objects/chibi_support/src/support/arena.c.o"])) == nil, "a deleted object");
     // A header nothing publishes leaves the staged include root.
     stale := Path([graph.build_dir, "/sdk/public/support/support/moved.h"]);
     assert(Write(stale, "#error moved\n"), "a stale staged header");

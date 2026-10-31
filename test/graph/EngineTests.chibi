@@ -1,6 +1,7 @@
 package graph_tests
 
 import engine "graph:engine"
+import os "core:os"
 import strings "core:strings"
 
 // The profile options' compile flags, argument validation and target
@@ -159,8 +160,36 @@ Option :: (options: string[], name: string) -> string {
     return "";
 }
 
+// A directory resource mirrors its source: a file deleted from the source, and
+// a directory emptied by that, are gone from the copy after the next install,
+// as are files the copy held that the source never had.
+MirrorDropsDeletedFiles :: () {
+    root := strings.Join([os.Root(), "/.chibi/mirror-test"], "");
+    assert(os.Run(["/bin/rm", "-rf", root]) == 0, "the old scratch is removed");
+    source := strings.Join([root, "/source"], "");
+    copy := strings.Join([root, "/copy"], "");
+    for (path in [root, source, strings.Join([source, "/sub"], ""), copy]) {
+        assert(os.MakeDirectory(path) == nil, "the directory is made");
+    }
+    for (path in ["/kept.chibi", "/gone.chibi", "/sub/inner.chibi"]) {
+        assert(os.WriteText(strings.Join([source, path], ""), path) == nil, "the file is written");
+    }
+    assert(engine.CopyChanged(source, copy), "the first copy");
+    assert(os.Kind(strings.Join([copy, "/gone.chibi"], "")) == os.KindFile, "the copy holds the file");
+    assert(os.Kind(strings.Join([copy, "/sub/inner.chibi"], "")) == os.KindFile, "the copy holds the nested file");
+    assert(os.WriteText(strings.Join([copy, "/stale.chibi"], ""), "stale") == nil, "a stale file is planted");
+    assert(os.Remove(strings.Join([source, "/gone.chibi"], "")) == nil, "the file is deleted from the source");
+    assert(os.Remove(strings.Join([source, "/sub/inner.chibi"], "")) == nil, "the nested file is deleted from the source");
+    assert(os.Remove(strings.Join([source, "/sub"], "")) == nil, "the emptied directory is deleted from the source");
+    assert(engine.CopyChanged(source, copy), "the second copy");
+    listed := os.List(copy);
+    assert(listed.error == nil && length(listed.names) == 1 && listed.names[0] == "kept.chibi", "the copy is the source");
+    assert(os.Run(["/bin/rm", "-rf", root]) == 0, "the scratch is removed");
+}
+
 // The build host runs this entry; each case stops it on a failed assert.
 pub Run :: () -> int {
+    MirrorDropsDeletedFiles();
     DebugFlagsKeepInstrumentation();
     TestsKeepAssertions();
     DebugOptionsAreValidated();

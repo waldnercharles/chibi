@@ -467,11 +467,35 @@ pub WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) 
     return true;
 }
 
-// Copies a file to `to` when it differs, or each file below a directory.
-CopyChanged :: (from: string, to: string) -> bool {
+// Removes a file, or a directory and what is below it.
+RemoveTree :: (path: string) -> bool {
+    if (os.IsDirectory(path)) {
+        for (name in build.list_directory(path)) {
+            if (!RemoveTree(Join([path, "/", name]))) {
+                return false;
+            }
+        }
+    }
+    return !os.Remove(path);
+}
+
+// Copies a file to `to` when it differs, or mirrors a directory: each file
+// below it is copied, and what `to` holds that the directory does not is
+// removed, so a file deleted from the source is gone from the copy.
+pub CopyChanged :: (from: string, to: string) -> bool {
     if (os.IsDirectory(from)) {
-        for (name in build.list_directory(from)) {
+        names := build.list_directory(from);
+        for (name in names) {
             if (!CopyChanged(Join([from, "/", name]), Join([to, "/", name]))) {
+                return false;
+            }
+        }
+        for (held in build.list_directory(to)) {
+            kept := false;
+            for (name in names) {
+                kept = kept || name == held;
+            }
+            if (!kept && !RemoveTree(Join([to, "/", held]))) {
                 return false;
             }
         }

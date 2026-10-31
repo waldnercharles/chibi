@@ -13,7 +13,11 @@ Contains :: (text: string, part: string) -> bool {
 // Removes a file, link or directory tree; true when nothing is left.
 RemoveTree :: (path: string) -> bool {
     if (os.IsDirectory(path)) {
-        for (name in os.List(path)) {
+        listed := os.List(path);
+        if (listed.error) {
+            return false;
+        }
+        for (name in listed.names) {
             if (!RemoveTree(Join([path, "/", name]))) {
                 return false;
             }
@@ -131,10 +135,11 @@ PruneThirdParty :: (cache: string) -> bool {
             }
         }
     }
-    if (!os.IsDirectory(cache)) {
+    cached := os.List(cache);
+    if (cached.error) {
         return false;
     }
-    for (name in os.List(cache)) {
+    for (name in cached.names) {
         if (!Contains(name, ".") && !Contains(pinned, Join(["|", name, "|"])) &&
             !RemoveTree(Join([cache, "/", name]))) {
             return false;

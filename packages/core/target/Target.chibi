@@ -14,8 +14,3 @@ pub Arm64: int : 2
 pub Os: int : 0
 pub Arch: int : 0
 pub PointerBits: int : 0
-
-// 1 when the package compiles into a native program, 0 when it runs on the VM
-// (and in this file's own text), so a package can pick native code or the VM's
-// natives with a `when` on it.
-pub Native: int : 0

@@ -474,13 +474,11 @@ pub WriteText :: (path: string, text: string) -> bool {
     return WriteBytes(path, Bytes(text));
 }
 
-// Writes the line and a newline to standard error, as build reports do; false
-// when it cannot be written whole.
-pub Print :: (line: string) -> bool {
+// Writes the line and a newline to standard error, as build reports do.
+pub Print :: (line: string) {
     data := Bytes(line);
     data.append(10);
     written := write(2, data, u64(length(data)));
-    return int(written) == length(data);
 }
 
 // Ends the process with the exit status; it does not return.

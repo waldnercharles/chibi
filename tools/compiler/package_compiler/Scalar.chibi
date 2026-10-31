@@ -3316,7 +3316,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
     for (index in 0..<length(paths)) {
         source := sources[index];
         if (os != 0 && TargetPackagePath(collection_names, collection_paths, paths[index])) {
-            source = TargetPackageText(os, arch, target.pointer_size * 8, 1);
+            source = TargetPackageText(os, arch, target.pointer_size * 8);
         }
         input: snapshot.Input = {path: paths[index], text: source, has_path: true, has_text: true};
         inputs.append(input);

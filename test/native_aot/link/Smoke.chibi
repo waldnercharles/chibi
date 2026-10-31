@@ -97,10 +97,11 @@ Clear :: (folder: string) -> bool {
     if (os.Kind(folder) == os.KindNone) {
         return true;
     }
-    if (!os.IsDirectory(folder)) {
+    listed := os.List(folder);
+    if (listed.error != nil) {
         return false;
     }
-    for (name in os.List(folder)) {
+    for (name in listed.names) {
         if (os.Remove(Join([folder, "/", name])) != nil) {
             return false;
         }

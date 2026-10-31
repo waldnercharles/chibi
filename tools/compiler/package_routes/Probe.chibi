@@ -1,0 +1,6 @@
+package package_routes
+
+// Probe for the Windows source-count experiment.
+ProbeJson :: () -> int {
+    return 0;
+}

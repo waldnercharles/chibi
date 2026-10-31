@@ -31,6 +31,7 @@ source_parser/Declarations.chibi
 source_parser/Parser.chibi
 compiler_syntax/Syntax.chibi
 package_routes/Routes.chibi
+package_routes/Probe.chibi
 package_syntax/Extract.chibi
 package_graph/Graph.chibi
 package_paths/Paths.chibi

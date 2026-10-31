@@ -207,7 +207,7 @@ ParseUnary :: (c: ^Cursor, n: ^(Node[])) -> int {
                    n^[c.pos + 1].start == n^[c.pos].end) {
             // `value?.member` is nil when value is, else the member as an optional.
             chain := New(n, "optional_member_expression");
-            Add(n, chain, left, "object");
+            Add(n, chain, left, "operand");
             Take(c, n, chain, "");
             Take(c, n, chain, "");
             TakeMember(c, n, chain, "member");

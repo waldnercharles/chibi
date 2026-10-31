@@ -3552,173 +3552,6 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     roots.append({slot: produced.slot, storage: item.storage, container: item.container, record: item.record});
                 }
             }
-        } else if (kind == "force_unwrap_expression") {
-            // `value!`: the payload of a present optional, or a failed guard.
-            stepped = false;
-            if (item.phase == 0) {
-                next.append(Visit(Field(forest, item.node, "operand")));
-                next.append(Resume(item.node, 1, 0, 0));
-            } else {
-                value_top -= 1;
-                optional := values[value_top];
-                if (OptionalElement(types, optional).storage == 0) {
-                    return Body.Failed(Diagnose(forest, item.node, document, "operand of ! must be optional"));
-                }
-                present := NoValue();
-                probe: Bases = {pc: length(code), slot: length(slots), local: length(locals),
-                                cell: length(cells), host: length(hosts), call: length(calls)};
-                switch OptionalPresentStep(optional, false, 0, ops, target, probe, node) {
-                    case .Failed(diagnostic):
-                        return Body.Failed(diagnostic);
-                    case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
-                                  added_calls, added_names, scheduled, popped, value, kept, marks):
-                        code.extend(added_code);
-                        slots.extend(added_slots);
-                        present = value;
-                }
-                check := Instruction(ops.guard, 0, 0, present.slot, 0, target.assert_failure, node);
-                check.message = "Unwrapped a nil optional";
-                check.has_message = true;
-                code.append(check);
-                unwrap_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
-                                    cell: length(cells), host: length(hosts), call: length(calls)};
-                switch OptionalUnwrapStep(types, optional, 0, ops, target, unwrap_at, node) {
-                    case .Failed(diagnostic):
-                        return Body.Failed(diagnostic);
-                    case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
-                                  added_calls, added_names, scheduled, popped, value, kept, marks):
-                        code.extend(added_code);
-                        slots.extend(added_slots);
-                        cells.extend(added_cells);
-                        hosts.extend(added_hosts);
-                        roots.extend(added_roots);
-                        produced = value;
-                }
-            }
-        } else if (kind == "optional_member_expression") {
-            // `value?.field`: nil when the optional record is nil, else the field as
-            // an optional, whose type the declarations already hold.
-            stepped = false;
-            if (item.phase == 0) {
-                next.append(Visit(Field(forest, item.node, "object")));
-                next.append(Resume(item.node, 1, 0, 0));
-            } else {
-                value_top -= 1;
-                optional := values[value_top];
-                holder := OptionalElement(types, optional);
-                if (holder.storage != StructStorage || holder.container != 0 || holder.record < 0 ||
-                    types[holder.record].kind != RecordDecl) {
-                    return Body.Failed(Diagnose(forest, item.node, document, "operand of ?. must be an optional record"));
-                }
-                member := Text(forest, text, Field(forest, item.node, "member"));
-                found := FindField(types, members, holder.record, member);
-                if (found < 0) {
-                    return Body.Failed(Diagnose(forest, item.node, document, format_text("Unknown field '{}'", member)));
-                }
-                field := members[found];
-                if (field.read >= 0 || field.c_string || (field.storage == StructStorage && field.container == 0)) {
-                    return Body.Failed(Diagnose(forest, item.node, document,
-                                                format_text("?. does not read field '{}' yet", member)));
-                }
-                field_type: ValueType = {storage: field.storage, container: field.container, record: field.record};
-                result_type := field_type;
-                flat := OptionalElement(types, Typed(-1, field.storage, field.container, field.record)).storage != 0;
-                if (!flat) {
-                    declared := FindOptional(types, field_type);
-                    if (declared < 0) {
-                        return Body.Failed(Diagnose(forest, item.node, document,
-                                                    format_text("?. needs an optional of field '{}'s type", member)));
-                    }
-                    result_type = {storage: UnionStorage, container: 0, record: declared};
-                }
-                cells.append(MovedCell(Typed(-1, result_type.storage, result_type.container, result_type.record)));
-                answer := length(cells) - 1;
-                present := NoValue();
-                probe: Bases = {pc: length(code), slot: length(slots), local: length(locals),
-                                cell: length(cells), host: length(hosts), call: length(calls)};
-                switch OptionalPresentStep(optional, false, 0, ops, target, probe, node) {
-                    case .Failed(diagnostic):
-                        return Body.Failed(diagnostic);
-                    case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
-                                  added_calls, added_names, scheduled, popped, value, kept, marks):
-                        code.extend(added_code);
-                        slots.extend(added_slots);
-                        present = value;
-                }
-                code.append(Instruction(ops.branch_if, 0, 0, present.slot, 0, length(code) + 2, node));
-                absent := length(code);
-                code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
-                holder_value := NoValue();
-                unwrap_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
-                                    cell: length(cells), host: length(hosts), call: length(calls)};
-                switch OptionalUnwrapStep(types, optional, 0, ops, target, unwrap_at, node) {
-                    case .Failed(diagnostic):
-                        return Body.Failed(diagnostic);
-                    case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
-                                  added_calls, added_names, scheduled, popped, value, kept, marks):
-                        code.extend(added_code);
-                        slots.extend(added_slots);
-                        cells.extend(added_cells);
-                        hosts.extend(added_hosts);
-                        roots.extend(added_roots);
-                        holder_value = value;
-                }
-                loaded_slot: Slot = {storage: SlotStorage(field.storage, field.container, target),
-                                     kind: SlotKind(field.storage, field.container)};
-                slots.append(loaded_slot);
-                read := Instruction(ops.load, loaded_slot.storage, length(slots) - 1, holder_value.slot, 0, 0, node);
-                read.offset = field.offset;
-                code.append(read);
-                held := Typed(length(slots) - 1, field.storage, field.container, field.record);
-                if (Pointer(field.storage, field.container)) {
-                    roots.append({slot: held.slot, storage: field.storage, container: field.container,
-                                  record: field.record});
-                }
-                if (!flat) {
-                    wrap_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
-                                      cell: length(cells), host: length(hosts), call: length(calls)};
-                    switch OptionalWrapStep(forest, document, types, held, result_type.record, ops, target, wrap_at, node) {
-                        case .Failed(diagnostic):
-                            return Body.Failed(diagnostic);
-                        case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
-                                      added_calls, added_names, scheduled, popped, value, kept, marks):
-                            code.extend(added_code);
-                            slots.extend(added_slots);
-                            locals.extend(added_locals);
-                            cells.extend(added_cells);
-                            hosts.extend(added_hosts);
-                            roots.extend(added_roots);
-                            calls.extend(added_calls);
-                            held = value;
-                    }
-                }
-                slots.append(AddressSlot(target));
-                code.extend(CellWrite(SlotStorage(result_type.storage, result_type.container, target), held.slot, answer,
-                                      ops, target, length(slots) - 1, node));
-                done := length(code);
-                code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
-                missing := code[absent];
-                missing.target = length(code);
-                code[absent] = missing;
-                slots.append(ValueLocal(UnionStorage));
-                code.append(ConstantCode(ops, UnionStorage, 0, length(slots) - 1, node));
-                slots.append(AddressSlot(target));
-                code.extend(CellWrite(SlotStorage(result_type.storage, result_type.container, target), length(slots) - 2,
-                                      answer, ops, target, length(slots) - 1, node));
-                finished := code[done];
-                finished.target = length(code);
-                code[done] = finished;
-                first := length(slots);
-                slots.extend([AddressSlot(target), {storage: SlotStorage(result_type.storage, result_type.container, target),
-                                                    kind: SlotKind(result_type.storage, result_type.container)}]);
-                code.extend(CellRead(SlotStorage(result_type.storage, result_type.container, target), answer, ops, target,
-                                     first, node));
-                produced = Typed(first + 1, result_type.storage, result_type.container, result_type.record);
-                if (Pointer(result_type.storage, result_type.container)) {
-                    roots.append({slot: produced.slot, storage: result_type.storage, container: result_type.container,
-                                  record: result_type.record});
-                }
-            }
         } else if (logic) {
             // The temporary local holds the answer whichever side decides it.
             stepped = false;
@@ -3850,6 +3683,15 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                         "Inline functions may only be passed to a callable parameter"));
         } else if (kind == "function_declaration" || kind == "lambda_expression") {
             step = ParameterStep(params, callable, item, ops, target, at, node);
+        } else if ((kind == "force_unwrap_expression" || kind == "optional_member_expression") && item.phase == 0) {
+            stepped = false;
+            next.append(Visit(Field(forest, item.node, "operand")));
+            next.append(Resume(item.node, 1, 0, 0));
+        } else if (kind == "force_unwrap_expression") {
+            step = ForceUnwrapStep(forest, document, types, values[value_top - 1], item.node, ops, target, at, node);
+        } else if (kind == "optional_member_expression") {
+            step = OptionalMemberStep(forest, text, document, types, members, values[value_top - 1], item.node, ops, target,
+                                      at, node);
         } else if (kind == "is_expression" && item.phase == 0) {
             stepped = false;
             next.append(Visit(Field(forest, item.node, "value")));

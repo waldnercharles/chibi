@@ -13,6 +13,7 @@ void test_language_record_compatibility();
 void test_language_execution();
 void test_language_execution_scope();
 void test_language_program_session();
+void test_language_source_systems();
 void test_language_capture();
 void test_numeric_ranges();
 #ifdef CHIBI_TEST_ASSET_COMPILER_HOST
@@ -50,6 +51,7 @@ int main(int argc, char **argv)
     bool record_values = argc == 2 && !strcmp(argv[1], "--record-values");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool program_session = argc == 2 && !strcmp(argv[1], "--program-session");
+    bool source_systems = argc == 2 && !strcmp(argv[1], "--source-systems");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool integer_shift_counts = (argc == 2 || argc == 3) &&
                                 !strcmp(argv[1], "--integer-shift-counts");
@@ -69,8 +71,8 @@ int main(int argc, char **argv)
                                   !strcmp(argv[1], "--component-write-layout");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
-         !record_compatibility && !program && !program_session && !ranges &&
-         !integer_shift_counts && !asset_compiler_host &&
+         !record_compatibility && !program && !program_session && !source_systems &&
+         !ranges && !integer_shift_counts && !asset_compiler_host &&
          !package_compiler_chibi_scalar && !package_compiler_chibi_native &&
          !native_census && !native_census_flattening && !host_packages_compiler &&
          !component_write && !component_write_layout && !text_format)) {
@@ -80,7 +82,7 @@ int main(int argc, char **argv)
             "--execution | "
             "--execution-scope  "
             "  "
-            "| --program | --program-session | "
+            "| --program | --program-session | --source-systems | "
             ""
             ""
             ""
@@ -191,6 +193,8 @@ int main(int argc, char **argv)
         test_language_capture();
     } else if (program_session) {
         test_language_program_session();
+    } else if (source_systems) {
+        test_language_source_systems();
     } else if (execution_scope) {
         test_language_execution_scope();
     } else if (execution) {

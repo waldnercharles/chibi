@@ -179,3 +179,37 @@ Archived because no toolchain program (`chibi`, `chibi-compile`, `chibi-build-ho
   rows) and `unit_analysis` (unit-of-measure checks over `unit_algebra`). Nothing outside their own folders imported
   them; they were Chibi ports of analyzers whose C callers were archived with the renderer and the game runtime.
   `unit_algebra` stays: `signature_reader` uses it.
+
+## Coverage behind the retired empty selectors
+
+The old `test_tools` selectors `source-systems` and `shader-parameters-prepared`
+ran no cases after their suites were archived. Their removal did not restore
+the missing coverage.
+
+`language-source-systems` now runs `test/language/source_systems.c` through the
+ordinary language group. It restores only the synchronous arithmetic oracle
+from `archive/test/code_system_runtime.c`: the authored compiler prepares a
+system, the runtime loads that module for bytecode and SLJIT, and real ECS rows
+change by `input * speed * dt`. Zero delta, two rows and a changed live speed
+are checked. The synthetic component/event catalog is test-only; no game
+registry or stage-zero compiler is restored.
+
+The other ten cases from that suite are not restored by this selector:
+
+- Still-relevant source-to-runtime oracles: persistent waits across membership
+  removal/re-add and entity generation reuse; live component reads after
+  resume; optional/excluded membership; nested `any`/`not`; empty `any()`;
+  reactive binding checkpoints. Lower-level ECS and execution tests are not
+  equivalent to compiling these authored systems and observing their outcomes.
+- Parked product integrations: prototype spawn/resume, nested spawn lifetime,
+  camera-follow through game globals and Tick dispatch, and engine input-action
+  edge delivery through the source registry.
+
+All seven cases in `archive/test/authoring/shader_parameters.c` still depend on
+archived production APIs: parameter persistence/corruption/stale generations;
+binding overrides and material defaults; model parameter reconstruction and
+staging budgets; particle parameter serialization/evaluation; rejection of
+particles as mesh materials; particle signature/context and replacement
+atomicity; and library-helper linking/evaluation. The now-archived
+`shader_source` tests checked provenance and supplied scalar lowering, not
+these prepared-parameter behaviors.

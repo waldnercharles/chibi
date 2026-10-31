@@ -1,0 +1,71 @@
+package shift_selector_tests
+
+import os "core:os"
+import strings "core:strings"
+
+// Exercise the real table and driver, not a mock command or just its exit code.
+// The scratch root changes only the authored input for the negative control.
+RunSelector :: (host: string, releases: string, root: string) -> os.Result {
+    source := os.Root();
+    cache := os.Getenv("CHIBI_COMPILER_CACHE");
+    if (cache == "") {
+        cache = format_text("{}/.chibi/compiler-cache", source);
+    }
+    return os.Capture(["env", format_text("CHIBI_COMPILER_CACHE={}", cache), host, "--compiler", format_text("{}/tools/compiler", source),
+                       "--compiler-core", format_text("{}/packages/core", source),
+                       "--root", root, "--source", format_text("{}/tools/toolchain/Driver.chibi", source),
+                       "--core", format_text("{}/packages/core", source), "--entry", "Main",
+                       "--timeout-ms", "600000", "--", "build", "test", "--release-build", releases,
+                       "--build-host", host, "language-integer-shift-counts"]);
+}
+
+Output :: (result: os.Result) -> string {
+    return format_text("{}{}", result.stdout, result.stderr);
+}
+
+pub Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 3, "build host, Release directory and language driver");
+    source := os.Root();
+    passed := RunSelector(arguments[0], arguments[1], source);
+    log := Output(passed);
+    os.Print(log);
+    assert(passed.status == 0, "the shift selector passes");
+    for (name in ["exact_counts.ExactCounts", "contextual_counts.ContextualCounts", "dynamic_left.DynamicLeft", "limit_inclusive.LimitInclusive", "runtime_counts.RuntimeCounts"]) {
+        assert(strings.Contains(log, format_text("PASS {}\n", name)), "each authored shift test ran");
+    }
+    for (name in ["negative_below_int64", "dynamic_negative_below_int64", "left_limit", "right_limit"]) {
+        assert(strings.Contains(log, format_text("PASS {}.compile_error\n", name)), "each located diagnostic ran");
+    }
+    assert(strings.Contains(log, "9 tests, 0 failed\n"), "exactly nine shift cases, not empty discovery or syntax");
+
+    // The retired native spelling must not silently succeed without shift tests.
+    retired := os.Capture([arguments[2], "--integer-shift-counts"]);
+    assert(retired.status == 2 && strings.Contains(Output(retired), "Usage:"), "the obsolete native selector is rejected");
+
+    scratch := format_text("{}/.chibi/shift-selector-dispatch", source);
+    removed := os.Run(["rm", "-rf", scratch]);
+    assert(removed == 0, "the old scratch root is removed");
+    made_tools := os.MakeDirectory(format_text("{}/tools", scratch));
+    assert(made_tools == nil, "the scratch tools directory");
+    made_tests := os.MakeDirectory(format_text("{}/test", scratch));
+    assert(made_tests == nil, "the scratch test directory");
+    copied_table := os.Run(["cp", format_text("{}/tools/tests.tsv", source), format_text("{}/tools/tests.tsv", scratch)]);
+    copied_tests := os.Run(["cp", "-R", format_text("{}/test/integer_shift_counts", source), format_text("{}/test/integer_shift_counts", scratch)]);
+    assert(copied_table == 0 && copied_tests == 0, "copy the real table and authored cases");
+    path := format_text("{}/test/integer_shift_counts/exact_counts/Facts.chibi", scratch);
+    input := os.ReadText(path);
+    assert(!input.error && strings.Contains(input.text, "expected: i8 = 2;"), "the literal oracle to mutate");
+    changed := os.WriteText(path, strings.ReplaceAll(input.text, "expected: i8 = 2;", "expected: i8 = 3;"));
+    assert(changed == nil, "change only the expected result");
+    failed := RunSelector(arguments[0], arguments[1], scratch);
+    log = Output(failed);
+    os.Print(log);
+    // Clean up before asserting, so an unexpected successful control leaves no copy.
+    removed = os.Run(["rm", "-rf", scratch]);
+    assert(removed == 0, "the scratch root is removed");
+    assert(failed.status != 0 && strings.Contains(log, "FAIL exact_counts.ExactCounts\n") &&
+        strings.Contains(log, "9 tests, 1 failed\n") && strings.Contains(log, "FAIL language-integer-shift-counts"),
+        "a wrong literal oracle fails through the actual selector");
+    return 0;
+}

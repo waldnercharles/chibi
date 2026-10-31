@@ -51,7 +51,8 @@ tool	fmt	@build@/test/tools/test_tools	--fmt
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
 tool	scheduler-benchmark	@build@/test/tools/test_tools	--scheduler-benchmark
 tool	language-ranges	@build@/test/language/test_language	--ranges
-tool	language-integer-shift-counts	@build@/test/language/test_language	--integer-shift-counts
+tool	language-integer-shift-counts	@release@/sdk/chibi	test	test/integer_shift_counts
+tool	language-integer-shift-dispatch	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/ShiftSelectorTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	600000	--	@host@	@release@	@build@/test/language/test_language
 tool	chibi-test-compiler	@release@/sdk/chibi	test	tools/compiler
 tool	chibi-test-core	@release@/sdk/chibi	test	packages/core
 tool	chibi-test-integer-arithmetic	@release@/sdk/chibi	test	test/integer_arithmetic
@@ -104,6 +105,6 @@ exclusive	language-test-parallel
 group	wasm	wasm-execution	wasm-program	wasm-ranges	wasm-component-write	wasm-package-math
 group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	source-systems	shader-parameters-prepared	asset-values	fmt	arena
 group	projects	chibi-cli	native-build
-group	language	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host	bootstrap-recovery
+group	language	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	language-integer-shift-dispatch	compiler-bootstrap	language-native-census-flattening	language-asset-compiler-host	bootstrap-recovery
 group	compiler	language-package-compiler-chibi-scalar
 group	benchmarks	ecs-query-benchmark	native-workload-benchmark	scheduler-benchmark

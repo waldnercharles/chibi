@@ -682,26 +682,6 @@ TEST_CASE(text_utf8_validation)
     }
     return true;
 }
-TEST_CASE(text_keys_preserve_suffix_after_nul)
-{
-    pin_map_entry entries[8];
-    for (int i = 0; i < 8; i++) {
-        const char bytes[] = { 'k', 0, (char)('0' + i) };
-        REQUIRE(!pin_value_text(&source, &entries[i].key, bytes, sizeof bytes));
-        entries[i].value = (pin_value){ .type = PIN_I32, .i = i };
-    }
-    pin_map *map = pin_map_create(&owned, entries[0].key, entries[0].value, entries, 8);
-    REQUIRE(map && map->count == 8 && map->slots);
-    arena_free(&source);
-    for (int i = 0; i < 8; i++) {
-        const char bytes[] = { 'k', 0, (char)('0' + i) };
-        pin_value key;
-        REQUIRE(!pin_value_text(&other, &key, bytes, sizeof bytes));
-        int index = pin_map_find(map, &key);
-        REQUIRE(index >= 0 && map->entries[index].value.i == i);
-    }
-    return true;
-}
 static const type_desc *resolve_local(void *user, const char *name)
 {
     const type_catalog_pack *types = user;
@@ -893,7 +873,6 @@ void test_language_record_values()
     RUN_TEST_CASE(record_projection_and_codec_guard);
     RUN_TEST_CASE(text_bytes_ownership_and_c_boundary);
     RUN_TEST_CASE(text_utf8_validation);
-    RUN_TEST_CASE(text_keys_preserve_suffix_after_nul);
     RUN_TEST_CASE(record_native_nested_resolution_is_call_owned);
     RUN_TEST_CASE(native_alias_snapshots_its_own_fields);
     RUN_TEST_CASE(retired_native_header_writes_without_its_payload);

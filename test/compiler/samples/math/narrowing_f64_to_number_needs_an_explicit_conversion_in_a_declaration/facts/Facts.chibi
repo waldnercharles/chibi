@@ -1,0 +1,4 @@
+package facts
+pub Fold :: (value: f64) -> number { result: number = value; return result; }
+
+// error: 2:38: local value differs from its type

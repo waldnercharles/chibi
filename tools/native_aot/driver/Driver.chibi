@@ -314,6 +314,22 @@ Command :: (stage: string, arguments: string[]) -> string {
     return Join(["stage ", stage, "\n", strings.Join(arguments, "\n"), "\nend-stage\n"]);
 }
 
+// The wall clock in whole seconds, from date.
+Seconds :: () -> int {
+    seconds := 0;
+    if (build.probe(["date", "+%s"]) == 0) {
+        for (byte in strings.Bytes(build.trim(build.last_stdout()))) {
+            seconds = seconds * 10 + byte - 48;
+        }
+    }
+    return seconds;
+}
+
+// Reports how long a step that began at `stamp` took.
+Took :: (step: string, stamp: int) {
+    build.report(format_text("native: {} took {} s", step, Seconds() - stamp));
+}
+
 pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     count := 5;
     if (executable) {
@@ -397,7 +413,9 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     // shared libraries the native tests load.
     compile := [llc, "-filetype=obj", Join(["-O=", mode]), "-relocation-model=pic", module, "-o", object];
     compile_start := [llc, "-filetype=obj", Join(["-O=", mode]), "-relocation-model=pic", start, "-o", start_object];
+    stamp := Seconds();
     status := build.run(optimize);
+    Took("opt", stamp);
     if (status != 0) {
         return Failed(partial, "LLVM verification/optimization", status);
     }
@@ -483,7 +501,9 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     stubs := native_link.Imports(plan);
     link := native_link.Command(plan, native_link.Partial(plan));
     link[0] = linker;
+    stamp = Seconds();
     status = build.run(compile);
+    Took("llc", stamp);
     if (status != 0) {
         return Failed(partial, "LLVM object emission", status);
     }
@@ -514,7 +534,9 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
                 }
             }
         }
+        stamp = Seconds();
         status = build.run(link);
+        Took("link", stamp);
         if (status != 0) {
             return Failed(partial, "native link", status);
         }

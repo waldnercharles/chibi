@@ -9,6 +9,7 @@ on:
       - tools/native_aot/**
       - tools/toolchain/Driver.chibi
       - tools/toolchain/Graph.chibi
+      - tools/bootstrap/native-seed.tsv
       - tools/graph/**
       - packages/core/**
       - .github/workflows/native-self-host.yml
@@ -46,9 +47,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
+        # Once tools/bootstrap/native-seed.tsv pins linux-x64, stage one is that
+        # native compiler: the recovery starts from the native seed.
         run: |
           set -o pipefail
-          sh tools/build.sh build native-self-host --llvm /usr/lib/llvm-18/bin --libclang-root /usr/lib/llvm-18 --jobs 4 --windows "$RUNNER_TEMP/windows" 2>&1 \
+          stage_one=()
+          if grep -q "^linux-x64	" tools/bootstrap/native-seed.tsv; then
+            sh tools/bootstrap/native-seed.sh linux-x64 "$RUNNER_TEMP/native-seed/chibi"
+            stage_one=(--stage-one "$RUNNER_TEMP/native-seed/chibi")
+          fi
+          sh tools/build.sh build native-self-host --llvm /usr/lib/llvm-18/bin --libclang-root /usr/lib/llvm-18 --jobs 4 "${stage_one[@]}" --windows "$RUNNER_TEMP/windows" 2>&1 \
             | tee "$RUNNER_TEMP/native-self-host.log"
       - name: Keep stage two for Windows
         if: always()

@@ -89,6 +89,10 @@ static inline execution_intrinsic execution_intrinsic_kind(uint64_t id)
 {
     return (execution_intrinsic)(id & 255);
 }
+/* The capability id of intrinsic `kind`: what execution_intrinsic_id returns
+ * for its call, as a constant. */
+#define EXECUTION_INTRINSIC_ID(kind)                                           \
+    (UINT64_C(0x4348494900000000) | (uint64_t)(kind))
 /* Native capability ids are hashes, so only an intrinsic id carries the bit. */
 static inline bool execution_intrinsic_in_result(uint64_t id)
 {

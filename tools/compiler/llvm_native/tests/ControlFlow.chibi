@@ -102,3 +102,47 @@ BackEdgeMaySkipTheEntryCheck :: () {
     empty: int[] = [];
     Emitted(Emit([Function(6, 0, 0, 2, 0, 7, 0, 0)], empty, [1, 6], code, empty));
 }
+// Dominance, not lexical order, decides whether an operand is defined.
+// Instruction 5 reads slot 1, which instruction 3 defines; each case gives
+// instructions 2 and 4, which pass the definition or skip it.
+Dominated :: (third: native.Instruction, fourth: native.Instruction) -> native.Result {
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, 1, 0, 0, 0, 0, 1),
+             third,
+             Code(native.Constant, 6, 1, 0, 0, 0, 5),
+             fourth,
+             Code(native.Publish, 6, 0, 1, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    empty: int[] = [];
+    return Emit([Function(6, 0, 0, 2, 0, 7, 0, 0)], empty, [1, 6], code, empty);
+}
+@test
+BranchAroundADefinitionIsRejected :: () {
+    Rejects(Dominated(Code(native.Branch, 0, 0, 0, 0, 5, 0), Code(native.Check, 0, 0, 0, 0, 0, 0)),
+            "native scalar left operand is not defined on every path");
+}
+@test
+DefinitionThatControlNeverReachesIsRejected :: () {
+    Rejects(Dominated(Code(native.Jump, 0, 0, 0, 0, 4, 0), Code(native.Check, 0, 0, 0, 0, 0, 0)),
+            "native scalar left operand is not defined on every path");
+}
+@test
+DefinitionBeforeBothArmsDominatesTheirJoin :: () {
+    Emitted(Dominated(Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Branch, 0, 0, 0, 0, 5, 0)));
+}
+@test
+UseThatControlNeverReachesIsAccepted :: () {
+    // Instruction 6 reads slot 1, which only the branch's fall-through
+    // defines, but nothing jumps to 6.
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, 1, 0, 0, 0, 0, 1),
+             Code(native.Constant, 6, 2, 0, 0, 0, 7),
+             Code(native.Branch, 0, 0, 0, 0, 5, 0),
+             Code(native.Constant, 6, 1, 0, 0, 0, 5),
+             Code(native.Jump, 0, 0, 0, 0, 7, 0),
+             Code(native.Publish, 6, 0, 1, 0, 0, 0),
+             Code(native.Publish, 6, 0, 2, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    empty: int[] = [];
+    Emitted(Emit([Function(6, 0, 0, 3, 0, 9, 0, 0)], empty, [1, 6, 6], code, empty));
+}

@@ -1966,14 +1966,13 @@ Linked :: (text: string, rows: facts.Row[]) -> string {
             }
         }
     }
-    out := text;
+    // The comments are joined apart, so the module's text is copied once.
+    comments: string[] = [];
     for (path in paths) {
-        out = format_text("{}; chibi-library {}\n", out, path);
+        comments.append(format_text("; chibi-library {}\n", path));
     }
-    for (line in imports) {
-        out = format_text("{}{}", out, line);
-    }
-    return out;
+    comments.extend(imports);
+    return format_text("{}{}", text, strings.Join(comments, ""));
 }
 
 // Emit and EmitBytes are the Linux x86-64 entries `chibi build` calls.

@@ -82,7 +82,7 @@ TaskResultDeclarations :: (callables: Callable[], params: Param[], input_types: 
             } else if (value.storage != 0) {
                 member: TypeMember = {name: "", storage: value.storage, container: value.container,
                                       record: value.record, offset: 0, writable: false, c_string: false,
-                                      constant: false, read: -1, read_key: ""};
+                                      constant: false, read: -1, read_key: "", fixed: false};
                 members.append(member);
                 count = 1;
             }

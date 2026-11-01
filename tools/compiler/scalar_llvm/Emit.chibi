@@ -512,6 +512,211 @@ Giving :: (type: int, slot: int) -> native.Instruction {
     }
     return Op(native.ArrayDrop, type, 0, slot, 0, 0);
 }
+// The statement row after the one at `at`, past its operands.
+Following :: (rows: facts.Row[], at: int) -> int {
+    return at + rows[at].count + 1;
+}
+// How many of the operands of the statement at `at` read variable `v`.
+ReadCount :: (rows: facts.Row[], at: int, v: int) -> int {
+    found := 0;
+    for (operand in at + 1..<at + 1 + rows[at].count) {
+        if ((rows[operand].kind == facts.ReadRow || rows[operand].kind == facts.RefRow) && rows[operand].value == v) {
+            found += 1;
+        }
+    }
+    return found;
+}
+// The End row that closes the open statement at `at`.
+Closed :: (rows: facts.Row[], at: int) -> int {
+    depth := 0;
+    next := at;
+    while (next < length(rows)) {
+        if (Opens(rows[next].kind)) {
+            depth += 1;
+        } else if (rows[next].kind == facts.EndRow) {
+            depth -= 1;
+            if (depth == 0) {
+                return next;
+            }
+        }
+        next = Following(rows, next);
+    }
+    return length(rows);
+}
+// The row that ends the block of statements starting at `from`: the End, Else
+// or Case row of the statement it lies in, or `limit`.
+BlockEnd :: (rows: facts.Row[], from: int, limit: int) -> int {
+    depth := 0;
+    next := from;
+    while (next < limit) {
+        kind := rows[next].kind;
+        if (depth == 0 && (kind == facts.EndRow || kind == facts.ElseRow || kind == facts.CaseRow)) {
+            return next;
+        }
+        if (Opens(kind)) {
+            depth += 1;
+        } else if (kind == facts.EndRow) {
+            depth -= 1;
+        }
+        next = Following(rows, next);
+    }
+    return limit;
+}
+// What the statements in [from, to), whole, do first with variable `v`: 0
+// nothing on some path, so what follows decides; 1 read it, or leave it for a
+// jump to decide; 2 overwrite it, or return, on every path. `nested` says the
+// statements lie inside a loop, if or switch the scan is looking through.
+Touches :: (rows: facts.Row[], records: int[], from: int, to: int, v: int, nested: bool) -> int {
+    at := from;
+    while (at < to) {
+        kind := rows[at].kind;
+        if (kind == facts.ReturnRow) {
+            if (ReadCount(rows, at, v) > 0) {
+                return 1;
+            }
+            return 2;
+        }
+        if (kind == facts.BreakRow || kind == facts.ContinueRow) {
+            // A jump out of the scanned statements leaves it to what follows
+            // them; inside a statement scanned whole, it goes where the scan
+            // looks anyway.
+            if (nested) {
+                return 0;
+            }
+            return 1;
+        }
+        if (!Opens(kind)) {
+            if (ReadCount(rows, at, v) > 0) {
+                return 1;
+            }
+            if (kind == facts.AssignRow && rows[at].value == v) {
+                return 2;
+            }
+            at = Following(rows, at);
+            continue;
+        }
+        if (ReadCount(rows, at, v) > 0) {
+            return 1;
+        }
+        found := Inside(rows, records, at, v, nested);
+        if (found == 1) {
+            return 1;
+        }
+        if (found == 2) {
+            return 2;
+        }
+        at = Closed(rows, at) + 1;
+    }
+    return 0;
+}
+// What the body of the open statement at `at` does first with `v`, as Touches
+// gives it, over the paths through it: the arms of an if or switch together, or
+// a loop's body, which may not run, so only a read in it counts.
+Inside :: (rows: facts.Row[], records: int[], at: int, v: int, nested: bool) -> int {
+    end := Closed(rows, at);
+    body := Following(rows, at);
+    if (Loop(rows[at].kind)) {
+        if (Touches(rows, records, body, end, v, true) == 1) {
+            return 1;
+        }
+        return 0;
+    }
+    if (rows[at].kind == facts.IfRow) {
+        stop := BlockEnd(rows, body, end);
+        first := Touches(rows, records, body, stop, v, nested);
+        second := 0;
+        if (stop < end && rows[stop].kind == facts.ElseRow) {
+            second = Touches(rows, records, Following(rows, stop), end, v, nested);
+        }
+        if (first == 1 || second == 1) {
+            return 1;
+        }
+        if (first == 2 && second == 2) {
+            return 2;
+        }
+        return 0;
+    }
+    // A switch: each Case row starts an arm. It has every path when an arm is
+    // the default or the arms are all the union's variants.
+    arms := 0;
+    ended := 0;
+    defaulted := false;
+    next := body;
+    while (next < end) {
+        if (rows[next].kind != facts.CaseRow) {
+            next = Following(rows, next);
+            continue;
+        }
+        if (rows[next].count == 0) {
+            defaulted = true;
+        }
+        start := Following(rows, next);
+        stop := BlockEnd(rows, start, end);
+        found := Touches(rows, records, start, stop, v, nested);
+        if (found == 1) {
+            return 1;
+        }
+        if (found == 2) {
+            ended += 1;
+        }
+        arms += 1;
+        next = stop;
+    }
+    head := UnionHead(rows, records, rows[at].type);
+    exhaustive := defaulted || (head >= 0 && arms == rows[head].count);
+    if (exhaustive && arms > 0 && ended == arms) {
+        return 2;
+    }
+    return 0;
+}
+// Whether variable `v` is dead once the operands of the statement at `at` are
+// evaluated: no path reads it before it is overwritten or the function ends.
+// A jump out of a loop counts as a read, and so does the end of a loop body
+// unless the variable, one of `opened` at the row of `opened_at`, was declared
+// inside the loop.
+Dead :: (rows: facts.Row[], records: int[], at: int, last: int, v: int, openers: int[], opened: int[],
+         opened_at: int[]) -> bool {
+    kind := rows[at].kind;
+    cur := Following(rows, at);
+    if (Opens(kind)) {
+        found := Inside(rows, records, at, v, false);
+        if (found == 1) {
+            return false;
+        }
+        if (found == 2) {
+            return true;
+        }
+        cur = Closed(rows, at) + 1;
+    }
+    for (turn in 0..<last) {
+        stop := BlockEnd(rows, cur, last);
+        found := Touches(rows, records, cur, stop, v, false);
+        if (found == 1) {
+            return false;
+        }
+        if (found == 2 || stop >= last) {
+            return true;
+        }
+        // The block ended: continue after the statement it belongs to, unless
+        // that runs again.
+        opener := openers[stop] - 1;
+        if (opener >= 0 && Loop(rows[opener].kind)) {
+            // Falling off a loop body runs the loop again. A variable declared
+            // in the body is declared anew before anything reads it.
+            for (index in 0..<length(opened)) {
+                if (opened[index] == v && opened_at[index] > opener) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (opener < 0) {
+            return false;
+        }
+        cur = Closed(rows, opener) + 1;
+    }
+    return false;
+}
 // `values` without `removed`.
 Without :: (values: int[], removed: int) -> int[] {
     kept: int[] = [];
@@ -989,8 +1194,10 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
     for (index in 0..<declaration.count) {
         param := rows[head + 1 + index];
         if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Valued(records, param.type) ||
-            param.value != index || param.count != 0 || (param.literal != 0 && param.literal != 1) ||
-            (param.literal == 1 && (is_library || function == 0)) || !Located(param, starts, size) ||
+            param.value != index || param.count != 0 || (param.literal != 0 && param.literal != 1 && param.literal != 2) ||
+            (param.literal == 1 && (is_library || function == 0)) ||
+            (param.literal == 2 && !ArrayTyped(NativeType(param.type))) ||
+            !Located(param, starts, size) ||
             !Within(param, declaration)) {
             return "invalid scalar parameter row";
         }
@@ -1411,6 +1618,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         records.append(record);
     }
     heads := Heads(rows, Start(rows, declared));
+    // The open statement an End, Else or Case row belongs to, plus one; 0 for
+    // any other row.
+    openers: int[] = resize([int(0)], length(rows));
     for (function in 0..<length(heads)) {
         head := heads[function];
         declaration := rows[head];
@@ -1431,6 +1641,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         retained_states: int[] = [];
         slot: int = 0;
         local: int = 0;
+        // The variables that own their arrays, in the order they opened and
+        // with their native array types, and the slots of fresh arrays no one
+        // owns yet (D10, native drops).
+        owned_vars: int[] = [];
+        owned_types: int[] = [];
+        fresh: int[] = [];
+        // The variables that bind a union's array payload, the variable of the
+        // union each binds from, and the variables of switch subjects that a
+        // call just made, which no one else holds.
+        bind_vars: int[] = [];
+        bind_subjects: int[] = [];
+        temp_subjects: int[] = [];
+        // The row of each local variable's declaration.
+        decl_vars: int[] = [];
+        decl_rows: int[] = [];
         for (index in 0..<declaration.count) {
             type := NativeType(rows[head + 1 + index].type);
             if (Referenced(rows, head, index)) {
@@ -1441,6 +1666,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             locals.append(type);
             body.extend([Op(native.Argument, type, slot, index, 0, 0), Op(native.Save, type, 0, slot, 0, local)]);
             places.append(local);
+            if (rows[head + 1 + index].literal == 2) {
+                // A parameter the function changes is its own array.
+                owned_vars.append(index);
+                owned_types.append(type);
+            }
             slot += 1;
             local += 1;
         }
@@ -1448,12 +1678,6 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         // continue: its jump and whether it continues; and each switch arm's
         // pending exit. A logical's own pending jumps are its operand's, not
         // these.
-        // The variables that own their arrays, in the order they opened and
-        // with their native array types, and the slots of fresh arrays no one
-        // owns yet (D10, native drops).
-        owned_vars: int[] = [];
-        owned_types: int[] = [];
-        fresh: int[] = [];
         frames: Frame[] = [];
         jumps: int[] = [];
         continuing: bool[] = [];
@@ -1463,6 +1687,20 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         integer := NativeType(facts.IntType);
         at := head + declaration.count + 1;
         last := Last(rows, heads, function);
+        walk := at;
+        open_rows: int[] = [];
+        while (walk < last) {
+            kind := rows[walk].kind;
+            if (kind == facts.EndRow) {
+                openers[walk] = open_rows[length(open_rows) - 1] + 1;
+                open_rows = slice(open_rows, 0, length(open_rows) - 1);
+            } else if (kind == facts.ElseRow || kind == facts.CaseRow) {
+                openers[walk] = open_rows[length(open_rows) - 1] + 1;
+            } else if (Opens(kind)) {
+                open_rows.append(walk);
+            }
+            walk = Following(rows, walk);
+        }
         while (at < last) {
             row := rows[at];
             while (length(lines) < length(code) + length(body)) {
@@ -1655,6 +1893,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             // The strings this statement's rows store in a record, union or
             // array, which each takes a reference to.
             stored: int[] = [];
+            moving: int = -1;
+            aliasing: int = -1;
+            // Every slot that reads a variable, the slots that take a union's
+            // payload and the variable of that union, and the slots that read a
+            // binding of one.
+            any_slots: int[] = [];
+            any_vars: int[] = [];
+            payload_slots: int[] = [];
+            payload_vars: int[] = [];
+            bound_slots: int[] = [];
+            bound_vars: int[] = [];
             // Each open logical's row after its right operands, its local,
             // its jump past them and its slot.
             closes: int[] = [];
@@ -1733,6 +1982,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     }
                 } else if (operand.kind == facts.ReadRow) {
                     item = Op(native.Local, type, slot, places[operand.value], 0, 0);
+                    any_slots.append(slot);
+                    any_vars.append(operand.value);
+                    if (Holds(bind_vars, operand.value)) {
+                        bound_slots.append(slot);
+                        bound_vars.append(operand.value);
+                    }
                     if (Owning(type) && Holds(owned_vars, operand.value)) {
                         reads.append(slot);
                         read_vars.append(operand.value);
@@ -1762,10 +2017,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
                         arguments.append(stack[base + argument]);
-                        // A call lends its arguments; a fresh one dies with it.
+                        // A call lends its arguments, and a fresh one dies with
+                        // it, but for a parameter the callee changes: that one
+                        // is the callee's own.
                         if (Holds(fresh, stack[base + argument]) &&
                             ArrayTyped(slots[shape.first_slot + stack[base + argument]])) {
-                            pending.append(stack[base + argument]);
+                            if (rows[heads[operand.value] + 1 + argument].literal == 2) {
+                                fresh = Without(fresh, stack[base + argument]);
+                            } else {
+                                pending.append(stack[base + argument]);
+                            }
                         }
                     }
                     shape.arguments += operand.count;
@@ -1788,6 +2049,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                            operand.kind == facts.PayloadRow) {
                     // A union's tag is its field 0, and its payloads follow.
                     base := length(stack) - 1;
+                    if (operand.kind == facts.PayloadRow) {
+                        for (at_read in 0..<length(any_slots)) {
+                            if (any_slots[at_read] == stack[base]) {
+                                payload_slots.append(slot);
+                                payload_vars.append(any_vars[at_read]);
+                            }
+                        }
+                    }
                     item = Op(native.Extract, type, slot, stack[base], slots[shape.first_slot + stack[base]], 0);
                     item.literal = i64(operand.value);
                     if (operand.kind == facts.PayloadRow) {
@@ -1838,6 +2107,42 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     base := length(stack) - ArrayOperands(operand);
                     // The arrays this row only reads: a fresh one dies with it.
                     op := operand.value;
+                    // The copy of an owning variable's array that is the last
+                    // thing to read it is that array, moved: the variable is
+                    // emptied so that nothing drops it twice.
+                    moving = -1;
+                    if (op == facts.ArrayCopy) {
+                        for (at_read in 0..<length(reads)) {
+                            if (reads[at_read] == stack[base] && ReadCount(rows, at, read_vars[at_read]) == 1 &&
+                                Dead(rows, declared, at, last, read_vars[at_read], openers, decl_vars, decl_rows)) {
+                                moving = read_vars[at_read];
+                            }
+                        }
+                    }
+                    for (at_var in 0..<length(owned_vars)) {
+                        if (owned_vars[at_var] == moving && owned_types[at_var] == 0) {
+                            moving = -1;
+                        }
+                    }
+                    // The copy of an array a call's union holds, taken out in the
+                    // arm that binds it, is that array: the union is dead, and
+                    // nothing frees a union's payloads yet.
+                    aliasing = -1;
+                    if (op == facts.ArrayCopy && moving < 0) {
+                        for (at_bound in 0..<length(bound_slots)) {
+                            if (bound_slots[at_bound] == stack[base]) {
+                                for (at_bind in 0..<length(bind_vars)) {
+                                    if (bind_vars[at_bind] == bound_vars[at_bound] &&
+                                        Holds(temp_subjects, bind_subjects[at_bind]) &&
+                                        ReadCount(rows, at, bound_vars[at_bound]) == 1 &&
+                                        Dead(rows, declared, at, last, bound_vars[at_bound], openers, decl_vars, decl_rows) &&
+                                        Dead(rows, declared, at, last, bind_subjects[at_bind], openers, decl_vars, decl_rows)) {
+                                        aliasing = bound_vars[at_bound];
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (op == facts.ArrayLength || op == facts.ArrayGet || op == facts.ArrayContains ||
                         op == facts.ArraySlice || op == facts.ArrayResize || op == facts.ArrayWith ||
                         op == facts.ArrayJoin || op == facts.ArrayCopy || op == facts.ArrayText) {
@@ -1886,6 +2191,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         slot += 1;
                     } else {
                         item = ArrayLowered(operand, type, slot, stack, base);
+                        if (moving >= 0) {
+                            item = Op(native.Local, type, slot, places[moving], 0, 0);
+                        }
+                        if (aliasing >= 0) {
+                            item = Op(native.Local, type, slot, places[aliasing], 0, 0);
+                        }
                         // A variable that owns its array may give back the old
                         // elements when they grow; an array field may not, as a
                         // copy of its record shares them.
@@ -1947,6 +2258,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 }
                 stack.append(slot);
                 slot += 1;
+                if (moving >= 0) {
+                    for (at_var in 0..<length(owned_vars)) {
+                        if (owned_vars[at_var] == moving) {
+                            slots.append(owned_types[at_var]);
+                            body.extend([Op(native.Constant, owned_types[at_var], slot, 0, 0, 0),
+                                         Op(native.Save, owned_types[at_var], 0, slot, 0, places[moving])]);
+                            slot += 1;
+                        }
+                    }
+                    moving = -1;
+                }
             }
             value := stack[0];
             ends = false;
@@ -2131,6 +2453,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 states += 1;
             } else if (row.kind == facts.LocalRow) {
                 type := NativeType(row.type);
+                decl_vars.append(row.value);
+                decl_rows.append(at);
                 locals.append(type);
                 places.append(local);
                 body.append(Op(native.Save, type, 0, value, 0, local));
@@ -2148,6 +2472,15 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 if (keeps) {
                     owned_vars.append(row.value);
                     owned_types.append(type);
+                }
+                for (at_payload in 0..<length(payload_slots)) {
+                    if (payload_slots[at_payload] == value && ArrayTyped(type)) {
+                        bind_vars.append(row.value);
+                        bind_subjects.append(payload_vars[at_payload]);
+                    }
+                }
+                if (row.literal == i64(facts.SwitchSubject) && rows[first + row.count - 1].kind == facts.CallRow) {
+                    temp_subjects.append(row.value);
                 }
                 local += 1;
             } else if (row.kind == facts.AssignRow && Referenced(rows, head, row.value)) {

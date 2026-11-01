@@ -696,6 +696,10 @@ TypeMember :: struct {
     constant: bool;
     read: int;
     read_key: string;
+    // An array field no function of the module changes after its record is
+    // built, which the scalar lane sets: a record literal may name an array it
+    // does not own.
+    fixed: bool;
 }
 Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: u64, bytes: u8[])
@@ -1804,7 +1808,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         // Names are published before their field types resolve, so
                         // a field may name a later record in the package.
                         field: TypeMember = {name: field_name, storage: 0, container: 0, record: -1, offset: 0,
-                                             writable: true, c_string: false, constant: false, read: -1, read_key: ""};
+                                             writable: true, c_string: false, constant: false, read: -1, read_key: "", fixed: false};
                         members.append(field);
                         item = NextMember(forest, item);
                     }
@@ -2100,7 +2104,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             }
                             field: TypeMember = {name: Text(forest, text, Field(forest, parameter, syntax.FieldName)),
                                                  storage: payload.storage, container: payload.container, record: payload.record, offset: 0,
-                                                 writable: true, c_string: false, constant: false, read: -1, read_key: ""};
+                                                 writable: true, c_string: false, constant: false, read: -1, read_key: "", fixed: false};
                             members.append(field);
                             parameter = NextMember(forest, parameter);
                         }

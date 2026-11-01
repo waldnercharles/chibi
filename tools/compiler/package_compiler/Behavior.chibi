@@ -192,7 +192,7 @@ NativeFields :: (type_fields: GameField[]) -> TypeMember[] {
     for (linked in type_fields) {
         row: TypeMember = {name: linked.name, storage: linked.storage, container: 0, record: linked.record,
                            offset: linked.offset, writable: linked.writable, c_string: linked.c_string, constant: linked.constant,
-                           read: linked.read, read_key: linked.read_key};
+                           read: linked.read, read_key: linked.read_key, fixed: false};
         fields.append(row);
     }
     return fields;

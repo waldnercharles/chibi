@@ -271,6 +271,16 @@ ScalarBorrowed :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     return Is(forest, node, syntax.Identifier) || Is(forest, node, syntax.MemberExpression) ||
            Is(forest, node, syntax.IndexExpression);
 }
+// Whether `value` names an array parameter that its function leaves as the
+// caller lent it: one the function changes is its own variable instead.
+ScalarLentParameter :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], value: int) -> bool {
+    node := Unparenthesized(forest, value);
+    if (!Is(forest, node, syntax.Identifier)) {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, node));
+    return found >= 0 && names[found].place == ParameterPlace && names[found].container == ArrayContainer;
+}
 // Whether `value`, returned, reads an array the caller keeps: a parameter, a
 // pattern's binding or a loop's variable, or a field or an element of any.
 ScalarKeptRead :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], value: int) -> bool {

@@ -59,15 +59,16 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
          !record_compatibility && !program && !program_session && !ranges &&
-         !package_compiler_chibi_scalar &&
-         !package_compiler_chibi_native && !native_census &&
+         !package_compiler_chibi_scalar && !package_compiler_chibi_native && !native_census &&
          !native_census_flattening && !host_packages_compiler && !text_format)) {
         fprintf(
             stderr,
-            "Usage: %s --test-parallel | --execution | --execution-scope | --program | "
+            "Usage: %s --test-parallel | --execution | --execution-scope | "
+            "--program | "
             "--program-session | --ranges | --package-compiler-chibi-scalar | "
             "--package-compiler-chibi-native | --native-census [report] | "
-            "--native-census-flattening | --host-packages-compiler | --text-format | "
+            "--native-census-flattening | --host-packages-compiler | "
+            "--text-format | "
             "--record-values | --record-document | --record-compatibility\n",
             argv[0]
         );

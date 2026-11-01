@@ -321,6 +321,13 @@ TEST_CASE(bootstrap_rejects_another_target)
         check("other") == 1 &&
         log_has("the artifact was compiled for other value layout than this host's")
     );
+    /* A correctly hashed but undecodable closure must reject its incompatible
+     * target before artifact preparation, not merely before compilation. */
+    artifact("unprepared", 1, 1, "abc", ABC_SHA256, sources, ELSEWHERE);
+    REQUIRE(
+        check("unprepared") == 1 &&
+        log_has("the artifact was compiled for other value layout than this host's")
+    );
     return true;
 }
 

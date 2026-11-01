@@ -156,7 +156,7 @@ StaticWindowsWritesKernel32AndEachImportLibrary :: () {
     plan.imports = [user32, kernel32];
     stubs := link.Imports(plan);
     assert(length(stubs) == 2 && stubs[0].name == "kernel32" && stubs[1].name == "user32", "kernel32 first");
-    Same(stubs[0].symbols, ["ExitProcess", "GetCommandLineW", "GetProcessHeap", "HeapAlloc", "GetStdHandle", "WriteFile",
+    Same(stubs[0].symbols, ["ExitProcess", "GetCommandLineW", "GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile",
                             "Sleep"]);
     assert(link.ImportPath(plan, "user32") == "/w/stubs/user32.def", "definition path");
     assert(link.ImportText(plan, stubs[1]) == "LIBRARY user32.dll\nEXPORTS\n    MessageBoxA\n", "definition");

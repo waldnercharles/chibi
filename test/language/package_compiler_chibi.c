@@ -1712,7 +1712,7 @@ static bool asserted_rows(pin_value *rows)
                    strstr(
                        ir,
                        "p7:\n  %fail7.at = getelementptr inbounds { ptr, ptr, "
-                       "ptr, ptr }, ptr %ctx, i32 0, i32 1\n"
+                       "ptr, ptr, ptr }, ptr %ctx, i32 0, i32 1\n"
                        "  store ptr @chibi_scalar.failure.0.7, ptr "
                        "%fail7.at\n  br label %failed\n"
                    ) &&
@@ -2591,7 +2591,7 @@ static bool native_module_ir(const char *target, const native_module *m, char **
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 95
+    SCALAR_ACCEPTED_CASES = 96
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -3269,6 +3269,23 @@ typedef int32_t (*scalar_entry)();
 typedef int32_t (*scalar_runtime_entry)(execution_native_context *);
 typedef int64_t (*scalar_adapter)(const int64_t *);
 
+/* The allocations a native entry makes and gives back, which stand in for the
+ * call's heap: real calloc and free, so an ASan build reports a double free or
+ * a use after free in the drops (D10), and the counts show a leak. */
+static size_t entry_allocations, entry_releases;
+static void *counted_allocate(execution_native_context *, size_t size)
+{
+    entry_allocations++;
+    void *memory = calloc(1, size ? size : 1);
+    assert(memory);
+    return memory;
+}
+static void counted_release(execution_native_context *, void *allocation)
+{
+    entry_releases++;
+    free(allocation);
+}
+
 static int library_child(const char *library, int count, char **specs)
 {
     if (count == 2 && !strcmp(specs[0], "continue")) {
@@ -3308,8 +3325,16 @@ static int library_child(const char *library, int count, char **specs)
                 &frame,
                 (execution_native_runtime){ NATIVE_FORMAT_TEXT_HOST.value }
             );
+            frame.context.allocate = counted_allocate;
+            frame.context.release = counted_release;
+            entry_allocations = entry_releases = 0;
             value = ((scalar_runtime_entry)function)(&frame.context);
             execution_native_frame_free(&frame);
+            /* A case about drops lets nothing go. */
+            if (strstr(library, "array_drops") && entry_allocations != entry_releases) {
+                fprintf(stderr, "native scalar leak: %zu allocations, %zu releases\n", entry_allocations, entry_releases);
+                return 1;
+            }
         } else {
             value = adapter ? ((scalar_adapter)function)(arguments)
                             : ((scalar_entry)function)();

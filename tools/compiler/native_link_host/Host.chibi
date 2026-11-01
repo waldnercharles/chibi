@@ -85,20 +85,25 @@ pub Objects :: (llvm: string, modules: string[], objects: string[], level: int, 
             if (status == os.StillRunning) {
                 continue;
             }
+            failure: link.Error? = nil;
             if (status != 0) {
+                failure = Fail(link.ToolFailed, status);
+            } else if (steps[index] == 2 && os.Remove(Join([objects[index], ".bc"])) != nil) {
+                failure = Fail(link.CannotWrite, 0);
+            }
+            if (failure != nil) {
                 for (other in 0..<next) {
                     if (other != index && (steps[other] == 1 || steps[other] == 2)) {
                         stopped := os.Kill(processes[other]);
                     }
                 }
-                return Fail(link.ToolFailed, status);
+                return failure;
             }
             if (steps[index] == 1) {
                 processes[index] = os.Start(link.ObjectCommand(llc, Join([objects[index], ".bc"]), objects[index], level),
                                             os.Piped);
                 steps[index] = 2;
             } else {
-                removed := os.Remove(Join([objects[index], ".bc"]));
                 steps[index] = 3;
                 running -= 1;
                 done += 1;

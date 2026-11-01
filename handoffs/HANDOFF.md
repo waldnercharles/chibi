@@ -1,7 +1,8 @@
 # Chibi handoff: start here (coordinator, 2026-11-02)
 
 This is the single entry point. It links the per-session handoff files and the longer notes. The `handoffs/` folder
-is local to this machine and isn't in any git repository.
+is local to this machine. A copy is pushed to the orphan branch `handoff/2026-11-02` of waldnercharles/chibi, which has
+no history shared with main. If you change the local copy, push it to that branch again.
 
 ## State at handoff
 

@@ -10,7 +10,8 @@ package native_link
 // on Windows `@chibi_command_line`, the UTF-16 string GetCommandLineW gives.
 // They are set before the entry runs.
 //
-// A context's allocate is libc's calloc (HeapAlloc on Windows); its index
+// A context's allocate is libc's calloc (HeapAlloc on Windows) and its release
+// libc's free (HeapFree on Windows); its index
 // failure aborts; formatting text is not available to a program. A failed
 // assert ends the entry early with its failure in the context, which the shim
 // reports on stderr before it exits with status 134.
@@ -275,6 +276,7 @@ WindowsContextStart :: () -> string {
         WindowsPrelude(),
         "declare dllimport ptr @GetProcessHeap()\n",
         "declare dllimport ptr @HeapAlloc(ptr, i32, i64)\n",
+        "declare dllimport i32 @HeapFree(ptr, i32, ptr)\n",
         "declare dllimport ptr @GetStdHandle(i32)\n",
         "declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n",
         "declare i32 @chibi_scalar(ptr)\n",
@@ -287,6 +289,11 @@ WindowsContextStart :: () -> string {
         "  %heap = call ptr @GetProcessHeap()\n",
         "  %memory = call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)\n",
         "  ret ptr %memory\n",
+        "}\n",
+        "define internal void @chibi_release(ptr %ctx, ptr %allocation) {\n",
+        "  %heap = call ptr @GetProcessHeap()\n",
+        "  %freed = call i32 @HeapFree(ptr %heap, i32 0, ptr %allocation)\n",
+        "  ret void\n",
         "}\n",
         "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
         "  call void @ExitProcess(i32 134)\n",
@@ -320,13 +327,13 @@ WindowsContextStart :: () -> string {
         "  call void @chibi_write(ptr %first, i32 %count)\n",
         "  ret void\n",
         "}\n",
-        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
-        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
+        "@chibi_context = global { ptr, ptr, ptr, ptr, ptr } ",
+        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }\n",
         "define void @mainCRTStartup() {\n",
         "  %line = call ptr @GetCommandLineW()\n",
         "  store ptr %line, ptr @chibi_command_line\n",
         "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
-        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
+        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
         "  %failure = load ptr, ptr %failure.at\n",
         "  %failed = icmp ne ptr %failure, null\n",
         "  br i1 %failed, label %report, label %done\n",
@@ -400,6 +407,7 @@ DynamicStart :: (triple: string, context: bool) -> string {
     return Join([
         "target triple = \"", triple, "\"\n",
         "declare ptr @calloc(i64, i64)\n",
+        "declare void @free(ptr)\n",
         "declare void @abort() noreturn\n",
         "declare i32 @dprintf(i32, ptr, ...)\n",
         "@chibi_report = private unnamed_addr constant [59 x i8] ",
@@ -410,12 +418,16 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "  %memory = call ptr @calloc(i64 1, i64 %size)\n",
         "  ret ptr %memory\n",
         "}\n",
+        "define internal void @chibi_release(ptr %ctx, ptr %allocation) {\n",
+        "  call void @free(ptr %allocation)\n",
+        "  ret void\n",
+        "}\n",
         "define internal void @chibi_index_failed(ptr %ctx, i32 %index, i32 %length) {\n",
         "  call void @abort()\n",
         "  unreachable\n",
         "}\n",
-        "@chibi_context = global { ptr, ptr, ptr, ptr } ",
-        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed }\n",
+        "@chibi_context = global { ptr, ptr, ptr, ptr, ptr } ",
+        "{ ptr @chibi_format_text, ptr null, ptr @chibi_allocate, ptr @chibi_index_failed, ptr @chibi_release }\n",
         "@chibi_argc = dso_local global i32 0\n",
         "@chibi_argv = dso_local global ptr null\n",
         "define i32 @main(i32 %argc, ptr %argv, ptr %envp) {\n",
@@ -423,7 +435,7 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "  store ptr %argv, ptr @chibi_argv\n",
             "  store ptr %envp, ptr @chibi_envp\n",
         "  %status = call i32 @chibi_scalar(ptr @chibi_context)\n",
-        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
+        "  %failure.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr @chibi_context, i32 0, i32 1\n",
         "  %failure = load ptr, ptr %failure.at\n",
         "  %failed = icmp ne ptr %failure, null\n",
         "  br i1 %failed, label %report, label %done\n",
@@ -902,7 +914,7 @@ pub StartImports :: (triple: string) -> Import {
         return none;
     }
     kernel32: Import = {name: "kernel32",
-                        symbols: ["ExitProcess", "GetCommandLineW", "GetProcessHeap", "HeapAlloc", "GetStdHandle",
+                        symbols: ["ExitProcess", "GetCommandLineW", "GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle",
                                   "WriteFile"]};
     return kernel32;
 }

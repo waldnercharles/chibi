@@ -66,7 +66,8 @@ Calls :: () {
     assert(os.Reserve("os_probe/r") == nil && os.Reserve("os_probe/r") != nil, "os: reserve")
     assert(os.Publish("os_probe/r", "os_probe/p") == nil && os.Publish("os_probe/p", "os_probe/a") != nil, "os: publish")
     assert(os.RealPath("os_probe/none") == "" && os.RealPath("os_probe/a") != "", "os: real path")
-    assert(os.FindExecutable("sh") != "" && os.FindExecutable("os-missing-program") == "", "os: find executable")
+    // native-build runs this under env -i, with no PATH to search.
+    assert(os.FindExecutable("/bin/sh") == "/bin/sh" && os.FindExecutable("os-missing-program") == "", "os: find executable")
     assert(os.Platform() == "Darwin" || os.Platform() == "Linux", "os: platform")
     assert(os.Root() != "" && os.IsDirectory(os.Root()), "os: root")
     for name in ["f.txt", "g.txt"] {

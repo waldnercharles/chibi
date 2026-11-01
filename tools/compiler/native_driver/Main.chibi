@@ -6,9 +6,12 @@ import os "core:os"
 import strings "core:strings"
 
 // The native compiler's driver: `STAGE --compiler DIR --core DIR --output FILE
-// --llvm DIR [--package NAME] [--target TRIPLE]` compiles package NAME of the
-// project at DIR (default native_driver) and the core packages it imports to
-// the native module FILE.ll. Exit 0 succeeded, 1 the sources were rejected,
+// --llvm DIR [--package NAME | --source FILE] [--entry NAME] [--collection NAME=DIR]...
+// [--target TRIPLE]` compiles package NAME of the project at DIR (default
+// native_driver), or the one program FILE, and the core and collection packages
+// it imports to the native module FILE.ll. Without --entry the program starts at
+// the first function of its first file; with it, at the function NAME of that
+// file, as the build host's --entry does. Exit 0 succeeded, 1 the sources were rejected,
 // 2 the arguments or the machine were unusable. The first stderr line of a
 // rejection is `native: rejected FUNCTION: MESSAGE`.
 //
@@ -24,18 +27,37 @@ Main :: () -> int {
     output := Option(arguments, "--output", "");
     llvm := Option(arguments, "--llvm", "");
     package := Option(arguments, "--package", "native_driver");
+    source := Option(arguments, "--source", "");
+    chosen := Option(arguments, "--entry", "");
     triple := Option(arguments, "--target", "x86_64-unknown-linux-gnu");
     if (project == "" || core == "" || output == "" || llvm == "") {
-        os.Print("usage: --compiler DIR --core DIR --output FILE --llvm DIR [--package NAME] [--target TRIPLE]");
+        os.Print("usage: --compiler DIR --core DIR --output FILE --llvm DIR [--package NAME | --source FILE] [--entry NAME] [--collection NAME=DIR]... [--target TRIPLE]");
         return 2;
     }
-    gathered := Gather(project, core, package);
+    collections: string[] = ["core"];
+    directories: string[] = [core];
+    for (declared in Values(arguments, "--collection")) {
+        equals := strings.Index(declared, "=");
+        if (equals <= 0) {
+            os.Print(strings.Concatenate(["native: --collection takes NAME=DIR, not ", declared]));
+            return 2;
+        }
+        name := strings.Slice(declared, 0, equals);
+        directory := strings.Slice(declared, equals + 1, strings.ByteLength(declared) - equals - 1);
+        if (!strings.HasPrefix(directory, "/") || Contains(collections, name)) {
+            os.Print(strings.Concatenate(["native: --collection takes a new name and an absolute directory, not ", declared]));
+            return 2;
+        }
+        collections.append(name);
+        directories.append(directory);
+    }
+    gathered := Gather(project, collections, directories, package, source);
     if (gathered.problem != "") {
         os.Print(strings.Concatenate(["native: ", gathered.problem]));
         return 2;
     }
     context := false;
-    switch Module(core, gathered.paths, gathered.sources, triple) {
+    switch Module(collections, directories, gathered.paths, gathered.sources, triple, chosen) {
         case .Rejected(message):
             os.Print(strings.Concatenate(["native: ", message]));
             return 1;
@@ -85,6 +107,17 @@ Option :: (arguments: string[], name: string, fallback: string) -> string {
     return fallback;
 }
 
+// The value of every `name VALUE` pair, in order.
+Values :: (arguments: string[], name: string) -> string[] {
+    found: string[] = [];
+    for (index in 0..<length(arguments) - 1) {
+        if (arguments[index] == name) {
+            found.append(arguments[index + 1]);
+        }
+    }
+    return found;
+}
+
 // The names an import line of `text` takes from `collection`.
 ImportedFrom :: (text: string, collection: string) -> string[] {
     found: string[] = [];
@@ -130,26 +163,38 @@ PackageFiles :: (folder: string) -> string[] {
     return ranked;
 }
 
-// The sources of the closure: the package's own files, Main.chibi first, then
-// each imported project package of the project folder and core package of the
-// core folder, in the order first imported. `paths[i]` is the project-relative
-// path of project files and the absolute path of core files.
+// The sources of the closure: the package's own files, Main.chibi first (or the
+// one file of `--source`), then each imported project package of the project
+// folder and package of a collection, in the order first imported. `paths[i]` is
+// the project-relative path of project files and the absolute path of collection
+// files (core's included).
 Inputs :: struct {
     paths: string[];
     sources: string[];
     problem: string;
 }
 
-Gather :: (project: string, core: string, package: string) -> Inputs {
+Gather :: (project: string, collections: string[], directories: string[], package: string, source: string) -> Inputs {
     found: Inputs = {paths: [], sources: [], problem: ""};
     seen: string[] = [strings.Concatenate(["project:", package])];
-    pending: string[] = [];
     folders: string[] = [strings.Concatenate([project, "/", package])];
     prefixes: string[] = [strings.Concatenate([package, "/"])];
+    kinds: string[] = ["project"];
+    kinds.extend(collections);
     next := 0;
     while (next < length(folders)) {
         files := PackageFiles(folders[next]);
-        if (next == 0) {
+        if (next == 0 && source != "") {
+            // One program: its file alone, whatever else its folder holds.
+            slash := strings.LastIndex(source, "/");
+            folders[0] = ".";
+            files = [source];
+            if (slash >= 0) {
+                folders[0] = strings.Slice(source, 0, slash);
+                files = [strings.Slice(source, slash + 1, strings.ByteLength(source) - slash - 1)];
+            }
+            prefixes[0] = "";
+        } else if (next == 0) {
             // The entry file is first, as the producer reads the first file's
             // first function as the module's entry.
             ordered: string[] = ["Main.chibi"];
@@ -174,29 +219,59 @@ Gather :: (project: string, core: string, package: string) -> Inputs {
             text := read.text;
             found.paths.append(strings.Concatenate([prefixes[next], file]));
             found.sources.append(text);
-            for (kind in ["project", "core"]) {
+            for (kind in kinds) {
                 for (name in ImportedFrom(text, kind)) {
                     key := strings.Concatenate([kind, ":", name]);
                     known := false;
                     for (other in seen) {
                         known = known || other == key;
                     }
-                    if (!known) {
-                        seen.append(key);
-                        if (kind == "core") {
-                            folders.append(strings.Concatenate([core, "/", name]));
-                            prefixes.append(strings.Concatenate([core, "/", name, "/"]));
-                        } else {
-                            folders.append(strings.Concatenate([project, "/", name]));
-                            prefixes.append(strings.Concatenate([name, "/"]));
-                        }
+                    if (known) {
+                        continue;
                     }
+                    seen.append(key);
+                    folder := "";
+                    if (kind == "project") {
+                        folder = strings.Concatenate([project, "/", name]);
+                        prefixes.append(strings.Concatenate([name, "/"]));
+                    } else {
+                        // A collection's package is its folder below the collection's
+                        // directory, `NAME:.` the directory itself, and its files are
+                        // named by absolute path.
+                        root := directories[Position(collections, kind)];
+                        folder = root;
+                        if (name != ".") {
+                            folder = strings.Concatenate([root, "/", name]);
+                        }
+                        prefixes.append(strings.Concatenate([folder, "/"]));
+                    }
+                    folders.append(folder);
                 }
             }
         }
         next += 1;
     }
     return found;
+}
+
+// Whether `name` is in `names`.
+Contains :: (names: string[], name: string) -> bool {
+    for (other in names) {
+        if (other == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Where `name` is in `names`; names holds it.
+Position :: (names: string[], name: string) -> int {
+    for (index in 0..<length(names)) {
+        if (names[index] == name) {
+            return index;
+        }
+    }
+    return 0;
 }
 
 // Whether the module's entry takes the runtime context: its text holds

@@ -1,5 +1,6 @@
 package engine
 
+import files "graph:files"
 import os "core:os"
 import strings "core:strings"
 
@@ -493,7 +494,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
 // The headers in src/DIRECTORY, as paths below src/.
 HeadersIn :: (directory: string) -> string[] {
     headers: string[] = [];
-    for (name in build.list_directory(Join([os.Root(), "/src/", directory]))) {
+    for (name in files.Names(Join([os.Root(), "/src/", directory]))) {
         if (strings.HasSuffix(name, ".h")) {
             headers.append(Join([directory, "/", name]));
         }

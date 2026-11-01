@@ -1,7 +1,75 @@
 package asset_compiler_stage
 
+import files "graph:files"
 import os "core:os"
+import target "core:target"
 import strings "core:strings"
+
+// Writes `output` as a C file declaring the array `symbol` with the input's
+// bytes, sixteen to a row, and `symbol_size`. An output that already holds
+// exactly this text is left alone so nothing rebuilds from it; true when it was
+// written. The build host has it as a native; a native program writes the same
+// text itself.
+when target.Native == 1 {
+    Digit :: (nibble: int) -> u8 {
+        if (nibble < 10) {
+            return u8(48 + nibble);
+        }
+        return u8(87 + nibble);
+    }
+
+    // Appends the bytes of `text` to `out` in place.
+    Spell :: (out: u8[], text: string) {
+        for (index in 0..<text_byte_length(text)) {
+            out.append(u8(text_byte_at(text, index)));
+        }
+    }
+
+    WriteBlob :: (input: string, output: string, symbol: string) -> bool {
+        read := os.ReadBytes(input);
+        if (read.error != nil) {
+            return false;
+        }
+        out: u8[] = [];
+        Spell(out, format_text("#include <stddef.h>\n\nconst unsigned char {}[] = {\n    ", symbol));
+        for (index in 0..<length(read.data)) {
+            if (index > 0 && index % 16 == 0) {
+                out.append(10);
+                for (indent in 0..<4) {
+                    out.append(32);
+                }
+            }
+            out.append(48);
+            out.append(120);
+            out.append(Digit(int(read.data[index]) / 16));
+            out.append(Digit(int(read.data[index]) % 16));
+            out.append(44);
+            if (index + 1 < length(read.data) && (index + 1) % 16 != 0) {
+                out.append(32);
+            }
+        }
+        Spell(out, format_text("\n};\nconst size_t {}_size = sizeof {};\n", symbol, symbol));
+        before := os.ReadBytes(output);
+        if (before.error == nil && length(before.data) == length(out)) {
+            same := true;
+            for (index in 0..<length(out)) {
+                same = same && before.data[index] == out[index];
+            }
+            if (same) {
+                return false;
+            }
+        }
+        partial := format_text("{}.partial", output);
+        if (os.WriteBytes(partial, out) != nil || os.Rename(partial, output) != nil) {
+            return false;
+        }
+        return true;
+    }
+} else {
+    WriteBlob :: (input: string, output: string, symbol: string) -> bool {
+        return build.embed_file(input, output, symbol);
+    }
+}
 
 // Retain each fragment once per level, not every growing prefix.
 Join :: (parts: string[]) -> string {
@@ -74,7 +142,7 @@ Array :: (values: string[]) -> string {
 
 Sources :: (folder: string) -> string[] {
     paths: string[] = [];
-    for (name in build.list_directory(folder)) {
+    for (name in files.Names(folder)) {
         path := Join([folder, "/", name]);
         if (os.IsDirectory(path)) {
             for (nested in Sources(path)) {
@@ -106,9 +174,9 @@ Read :: (root: string, paths: string[]) -> string[] {
     sources: string[] = [];
     for (path in paths) {
         if (strings.HasPrefix(path, "/sdk/core/")) {
-            sources.append(build.read_file(Join([root, "/packages/core/", strings.Slice(path, 10, strings.ByteLength(path))])));
+            sources.append(files.Text(Join([root, "/packages/core/", strings.Slice(path, 10, strings.ByteLength(path))])));
         } else {
-            sources.append(build.read_file(Join([root, "/tools/compiler/", path])));
+            sources.append(files.Text(Join([root, "/tools/compiler/", path])));
         }
     }
     return sources;
@@ -165,16 +233,13 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
 // instead of compiling the compiler's sources again. An empty `cache` keeps
 // nothing.
 Key :: (seed: string, request: string) -> string {
-    return Digest(Join([build.hash_file(seed), "\n", request]));
+    return Digest(Join([files.Digest(seed), "\n", request]));
 }
 
-// The SHA-256 of `text` as 64 lowercase hex digits, computed by the build
-// host. sha256.Hex gives the same digest, but on the build host's VM it costs
-// about 7 µs a byte: 28 s of this generator's 30 s for the 4 MB it hashes. Use
-// sha256.Hex again once build programs run natively (#1204's native build
-// runner plan); every digest the generator takes goes through here.
+// The SHA-256 of `text` as 64 lowercase hex digits. Every digest the generator
+// takes goes through here.
 Digest :: (text: string) -> string {
-    return build.hash_text(text);
+    return os.HashText(text);
 }
 
 Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
@@ -215,9 +280,9 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     stamps: string[] = [];
     // Capture non-text snapshot inputs before any host invocation reads them.
     for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json",
-                  "tools/graph/asset_compiler/Generate.chibi", "tools/graph/asset_compiler/Cache.chibi", "tools/compiler/asset_compiler/CompilerSources.txt",
+                  "tools/graph/asset_compiler/Generate.chibi", "tools/graph/asset_compiler/Cache.chibi", "tools/graph/files/Files.chibi", "tools/compiler/asset_compiler/CompilerSources.txt",
                   "tools/toolchain/AssetCompiler.chibi"]) {
-        checksum := build.hash_file(Join([root, "/", path]));
+        checksum := files.Digest(Join([root, "/", path]));
         records.append(Join(["{\"path\":", Quote(path), ",\"sha256\":", Quote(checksum), "}"]));
         stamps.append(Join([checksum, " ", path, "\n"]));
     }
@@ -225,18 +290,18 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     if (os.MakeDirectory(folder) || os.Run([host, "--target-json", native_facts]) != 0) {
         return false;
     }
-    native_target := strings.TrimSpace(build.read_file(native_facts));
+    native_target := strings.TrimSpace(files.Text(native_facts));
     if (target == "") {
         target = native_target;
     }
     paths: string[] = [];
-    for (path in strings.Lines(build.read_file(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"])))) {
+    for (path in strings.Lines(files.Text(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"])))) {
         if (path != "") {
             paths.append(path);
         }
     }
     for (directory in ["package_compiler"]) {
-        for (file in build.list_directory(Join([root, "/tools/compiler/", directory]))) {
+        for (file in files.Names(Join([root, "/tools/compiler/", directory]))) {
             path := Join([directory, "/", file]);
             found := false;
             for (item in paths) {
@@ -250,7 +315,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         }
     }
     // Compiler implementation dependencies are explicit in CompilerSources.txt.
-    for (file in build.list_directory(Join([root, "/tools/compiler/asset_compiler"]))) {
+    for (file in files.Names(Join([root, "/tools/compiler/asset_compiler"]))) {
         if (strings.HasSuffix(file, ".chibi")) {
             paths.append(Join(["asset_compiler/", file]));
         }
@@ -315,13 +380,13 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         index += 1;
     }
     manifest := Join(["{\"format\":1,\"artifact\":\"asset_compiler.chibip\",\"artifact_sha256\":",
-                      Quote(build.hash_file(artifact)), ",\"resource_sha256\":",
-                      Quote(build.hash_file(Join([folder, "/asset_compiler_packaged.c"]))),
+                      Quote(files.Digest(artifact)), ",\"resource_sha256\":",
+                      Quote(files.Digest(Join([folder, "/asset_compiler_packaged.c"]))),
                       ",\"target\":", target, ",\"sources\":[", strings.Join(records, ","), "]}\n"]);
     for (stamp in stamps) {
         checksum := strings.Partition(stamp, " ").head;
         path := strings.TrimSpace(strings.Partition(stamp, " ").tail);
-        if (build.hash_file(Join([root, "/", path])) != checksum) {
+        if (files.Digest(Join([root, "/", path])) != checksum) {
             os.Print(Join(["asset compiler source changed during generation: ", path]));
             return false;
         }
@@ -339,7 +404,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     }
     os.Print("asset compiler: embed artifact");
     blob := Join([folder, "/asset_compiler_blob.inc"]);
-    build.embed_file(artifact, blob, "asset_compiler_blob");
+    embedded := WriteBlob(artifact, blob, "asset_compiler_blob");
     if (!os.Exists(blob)) {
         return false;
     }

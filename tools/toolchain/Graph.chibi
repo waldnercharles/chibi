@@ -69,7 +69,7 @@ SDKReflect :: () -> int {
         }
         program := os.FindExecutable(chosen);
         if (program == "") {
-            os.Print(format_text("graph: native reflection tool not found for '{0}'", chosen));
+            os.Print(format_text("graph: native reflection tool not found for '{}'", chosen));
             return 2;
         }
         options = extend([name, program], options);
@@ -239,6 +239,6 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         os.Print("graph: the build failed");
         return 1;
     }
-    os.Print(format_text("graph: compiled {0} sources", total));
+    os.Print(format_text("graph: compiled {} sources", total));
     return 0;
 }

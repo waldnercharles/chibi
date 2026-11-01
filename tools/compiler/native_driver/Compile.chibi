@@ -58,9 +58,12 @@ Where :: (paths: string[], sources: string[], at: int) -> string {
 }
 
 // `paths[0]` and `sources[0]` are the entry file, the others its closure: project
-// packages by project-relative path and core packages by path under `core`.
-// A rejection message reads `rejected FUNCTION: MESSAGE`.
-pub Module :: (core: string, paths: string[], sources: string[], triple: string) -> Output {
+// packages by project-relative path and collection packages by path under their
+// `directories`. The program starts at the function `chosen` of the first file,
+// or at its first function when `chosen` is "". A rejection message reads
+// `rejected FUNCTION: MESSAGE`.
+pub Module :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+               chosen: string) -> Output {
     os := 1;
     arch := 1;
     if (strings.HasPrefix(triple, "aarch64-apple")) {
@@ -69,8 +72,8 @@ pub Module :: (core: string, paths: string[], sources: string[], triple: string)
     } else if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
         os = 3;
     }
-    rows := compiler.CollectScalarPackages("/project", ["core"], [core], paths, sources, TargetFacts(), Names(),
-                                           Natives(), Ports(), Identities(), os, arch);
+    rows := compiler.CollectScalarProgram("/project", collections, directories, paths, sources, TargetFacts(), Names(),
+                                          Natives(), Ports(), Identities(), os, arch, chosen);
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
         rejected := rows[length(rows) - 1];
         return Output.Rejected(strings.Concatenate(["rejected ", FunctionAt(rows[0].text, rejected.start), ": ",
@@ -93,7 +96,7 @@ pub Module :: (core: string, paths: string[], sources: string[], triple: string)
 // The compiler host's entry: the module's bytes, or a 0 byte and then the
 // rejection's text.
 pub Compile :: (core: string, paths: string[], sources: string[], triple: string) -> u8[] {
-    switch Module(core, paths, sources, triple) {
+    switch Module(["core"], [core], paths, sources, triple, "") {
         case .Rejected(message):
             flagged: u8[] = [0];
             for (byte in strings.Bytes(message)) {

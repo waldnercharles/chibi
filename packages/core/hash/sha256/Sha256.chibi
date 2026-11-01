@@ -136,10 +136,9 @@ pub Sum :: (data: u8[]) -> u8[] {
     return digest;
 }
 
-// The digest of the text's bytes as 64 lowercase hexadecimal digits. Same work
-// as Sum.
-pub Hex :: (text: string) -> string {
-    digest := Sum(bytes.FromString(text));
+// The digest of the bytes as 64 lowercase hexadecimal digits. Same work as Sum.
+pub HexOf :: (data: u8[]) -> string {
+    digest := Sum(data);
     digits: u8[] = [];
     index := 0;
     while index < length(digest) {
@@ -153,4 +152,9 @@ pub Hex :: (text: string) -> string {
         index += 1;
     }
     return bytes.ToString(digits);
+}
+
+// The digest of the text's bytes as 64 lowercase hexadecimal digits.
+pub Hex :: (text: string) -> string {
+    return HexOf(bytes.FromString(text));
 }

@@ -845,6 +845,11 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     if (!Is(forest, node, syntax.BinaryExpression)) {
         return 0;
     }
+    // `&&` and `||` are bool whatever their operands are: an optional operand
+    // counts as true when it is not nil.
+    if (ScalarLogic(Operator(forest, node)) != 0) {
+        return BoolStorage;
+    }
     left := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldLeft), 0);
     if (!ScalarShifts(forest, text, node)) {
         common := ScalarCommon(left, ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
@@ -1650,12 +1655,14 @@ ScalarNegated :: (operator: int) -> bool {
 }
 // The rows of `node`, `left && right` or `left || right`, after `rows`: its
 // left operand, its Logical row, then its right operand's rows, which the
-// Logical row counts. EmitBody has typed both sides bool.
+// Logical row counts. EmitBody has typed both sides bool or optional; an
+// optional is true when it is not nil.
 ScalarLogical :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], node: int, rows: facts.Row[]) -> ScalarOperands {
     output := rows;
-    switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldLeft), BoolStorage,
-                         output) {
+    left := Field(forest, node, syntax.FieldLeft);
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, left, left, BoolStorage,
+                         BoolStorage, facts.Clamp, output) {
         case .Failed(diagnostic):
             return ScalarOperands.Failed(diagnostic);
         case .Built(built):
@@ -1664,8 +1671,9 @@ ScalarLogical :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     operator := ScalarLogic(Operator(forest, node));
     output.append(ScalarAt(forest, node, facts.LogicalRow, facts.BoolType, operator, 0, ""));
     at := length(output) - 1;
-    switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldRight), BoolStorage,
-                         output) {
+    right := Field(forest, node, syntax.FieldRight);
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, right, right, BoolStorage,
+                         BoolStorage, facts.Clamp, output) {
         case .Failed(diagnostic):
             return ScalarOperands.Failed(diagnostic);
         case .Built(built):
@@ -3382,11 +3390,19 @@ ScalarJoinedNodes :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docum
 }
 // The callables with those of document 0 first, in their order, then the rest
 // in theirs: the entry of a package set is the first function of its first
-// file, whichever package order puts the dependencies in front.
-ScalarEntryFirst :: (callables: Callable[]) -> Callable[] {
+// file, whichever package order puts the dependencies in front. A function
+// named `chosen` in document 0 goes before the others of its document.
+ScalarEntryFirst :: (callables: Callable[], chosen: string) -> Callable[] {
     ordered: Callable[] = [];
+    if (chosen != "") {
+        for (callable in callables) {
+            if (callable.document == 0 && callable.name == chosen) {
+                ordered.append(callable);
+            }
+        }
+    }
     for (callable in callables) {
-        if (callable.document == 0) {
+        if (callable.document == 0 && (chosen == "" || callable.name != chosen)) {
             ordered.append(callable);
         }
     }
@@ -3397,6 +3413,15 @@ ScalarEntryFirst :: (callables: Callable[]) -> Callable[] {
     }
     return ordered;
 }
+// Whether the package identity `identity` is `NAME:...` for a collection NAME.
+ScalarInCollection :: (collection_names: string[], identity: string) -> bool {
+    for (name in collection_names) {
+        if (strings.HasPrefix(identity, strings.Concatenate([name, ":"]))) {
+            return true;
+        }
+    }
+    return false;
+}
 // The facts rows of `text` at `path`. `names`, `natives`, `ports` and
 // `identities` are the host's instruction names and native catalog, as
 // Compile takes them. Its text_byte_length, text_byte_at, text_slice and
@@ -3404,7 +3429,7 @@ ScalarEntryFirst :: (callables: Callable[]) -> Callable[] {
 // function.
 pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[], natives: Native[],
                       ports: Port[], identities: u64[]) -> facts.Row[] {
-    return ScalarCollect(project, [], [], [path], [text], target, names, natives, ports, identities, false, 0, 0);
+    return ScalarCollect(project, [], [], [path], [text], target, names, natives, ports, identities, false, 0, 0, "");
 }
 // The authored parser's tree for `text`, for tools that read syntax outside the
 // compiler's passes: the native census reads its sources through it.
@@ -3429,11 +3454,19 @@ pub CollectScalarPackages :: (project: string, collection_names: string[], colle
                               sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
                               identities: u64[], os: int, arch: int) -> facts.Row[] {
     return ScalarCollect(project, collection_names, collection_paths, paths, sources, target, names, natives, ports,
-                         identities, true, os, arch);
+                         identities, true, os, arch, "");
+}
+// CollectScalarPackages with the entry named: the function `chosen` of the first
+// file instead of its first function, and packages of any of the collections.
+pub CollectScalarProgram :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                             sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
+                             identities: u64[], os: int, arch: int, chosen: string) -> facts.Row[] {
+    return ScalarCollect(project, collection_names, collection_paths, paths, sources, target, names, natives, ports,
+                         identities, true, os, arch, chosen);
 }
 ScalarCollect :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                   sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
-                  identities: u64[], packaged: bool, os: int, arch: int) -> facts.Row[] {
+                  identities: u64[], packaged: bool, os: int, arch: int, chosen: string) -> facts.Row[] {
     if (length(paths) == 0 || length(paths) != length(sources) || length(collection_names) != length(collection_paths) ||
         (!packaged && length(paths) != 1)) {
         return ScalarFailure("", "", ScalarStart("scalar proof requires matching paths and sources"));
@@ -3510,10 +3543,11 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                     if (packaged) {
                         for (candidate in documents) {
                             if (!strings.HasPrefix(candidate.identity, "project:") &&
-                                !strings.HasPrefix(candidate.identity, "core:")) {
+                                !strings.HasPrefix(candidate.identity, "core:") &&
+                                !ScalarInCollection(collection_names, candidate.identity)) {
                                 return ScalarFailure(path, shown_text,
                                                      Diagnose(shown_nodes, candidate.syntax_root, 0,
-                                                              "scalar proof imports only project and core packages"));
+                                                              "scalar proof imports only project, core and collection packages"));
                             }
                             member_gap := ScalarMembers(shown_nodes, candidate.syntax_root, true);
                             if (member_gap.message != "") {
@@ -3567,12 +3601,16 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                     return ScalarFailed(packaged, path, text, documents, diagnostic);
                                 case .Ready(concrete, concrete_params, bindings):
                                     entered := concrete;
-                                    if (packaged && length(concrete) > 0 && concrete[0].document != 0) {
+                                    if (packaged && length(concrete) > 0 && (concrete[0].document != 0 || chosen != "")) {
                                         if (length(bindings) > 0) {
                                             return ScalarFailure(path, shown_text, Diagnose(shown_nodes, document.syntax_root, 0,
                                                 "scalar proof cannot order generic functions across packages"));
                                         }
-                                        entered = ScalarEntryFirst(concrete);
+                                        entered = ScalarEntryFirst(concrete, chosen);
+                                        if (chosen != "" && entered[0].name != chosen) {
+                                            return ScalarFailure(path, shown_text, Diagnose(shown_nodes, document.syntax_root, 0,
+                                                "scalar proof requires the entry function in the first file"));
+                                        }
                                     }
                                     // Import aliases name a package set's qualified calls; a lone source has none.
                                     module_links: graph.Binding[] = [];

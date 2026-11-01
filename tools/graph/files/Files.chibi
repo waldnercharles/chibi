@@ -1,0 +1,37 @@
+package files
+
+import os "core:os"
+
+// What the build graph reads of a path that may not be there. A missing path
+// reads as nothing, so a stamp, an inventory or a previous output that is not
+// there yet simply differs from the new one; the graph never needs to tell a
+// missing file from an empty one.
+
+// The file's text, "" when the path is not a readable file.
+pub Text :: (path: string) -> string {
+    read := os.ReadText(path);
+    if (read.error) {
+        return "";
+    }
+    return read.text;
+}
+
+// The file's SHA-256 as 64 lowercase hex digits, "" when the path is not a
+// readable file.
+pub Digest :: (path: string) -> string {
+    hashed := os.HashFile(path);
+    if (hashed.error) {
+        return "";
+    }
+    return hashed.digest;
+}
+
+// The names in a directory in byte order, none when the path is not a directory.
+pub Names :: (path: string) -> string[] {
+    listed := os.List(path);
+    if (listed.error) {
+        empty: string[] = [];
+        return empty;
+    }
+    return listed.names;
+}

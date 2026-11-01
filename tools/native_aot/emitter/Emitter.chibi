@@ -12,7 +12,7 @@ import strings "core:strings"
 // Windows x64.
 pub Emit :: (rows: facts.Row[], target: int) -> u8[] {
     targets := [abi.LinuxX64(), abi.MacOSArm64(), abi.WindowsX64()];
-    if (Library(rows) || Runtime(rows) || target < 0 || target >= length(targets)) {
+    if (Library(rows) || target < 0 || target >= length(targets)) {
         none: u8[] = [];
         return none;
     }
@@ -20,7 +20,7 @@ pub Emit :: (rows: facts.Row[], target: int) -> u8[] {
 }
 // Emit with line tables, for a source in `directory`.
 pub EmitLines :: (rows: facts.Row[], directory: string) -> u8[] {
-    if (Library(rows) || Runtime(rows)) {
+    if (Library(rows)) {
         none: u8[] = [];
         return none;
     }
@@ -58,18 +58,6 @@ pub Rejection :: (rows: facts.Row[]) -> u8[] {
 Library :: (rows: facts.Row[]) -> bool {
     return rows[1].kind == facts.DocumentRow && rows[1].text != "";
 }
-// Whether the rows format text, which calls the runtime through a context that
-// only the VM supplies: a program links no runtime. An assert only records its
-// failure in the context a dynamic start module supplies.
-Runtime :: (rows: facts.Row[]) -> bool {
-    for (row in rows) {
-        if (row.kind == facts.TextRow && row.value == facts.TextFormat) {
-            return true;
-        }
-    }
-    return false;
-}
-
 pub Diagnose :: (rows: facts.Row[]) -> u8[] {
     message := "";
     switch scalar.Emit(rows) {
@@ -80,8 +68,6 @@ pub Diagnose :: (rows: facts.Row[]) -> u8[] {
         case .Emitted(text):
             if (Library(rows)) {
                 message = "a native library has no entry; build --native links a package";
-            } else if (Runtime(rows)) {
-                message = "a native program cannot call the runtime yet, as format_text does; build --native links none";
             }
     }
     return Text(message);

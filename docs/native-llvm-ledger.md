@@ -432,6 +432,27 @@ release poisoning what it frees, and each gave the VM's value; that run found
 gives the old elements back after it copies the other array's) and the
 named-results case above.
 
+*Stage 2, unions (1 November 2026).* A variable that holds a union with array
+payloads owns it when only calls' results and fresh variants are stored in it
+and nothing reads it but for its tag and payloads (a lent parameter's unions
+are its caller's). Dropping it, at a scope's end, a return, a break or continue,
+or an assignment, drops the array of the variant its tag names (`UnionDrop`:
+Extract the tag, branch over the drop unless it is the variant's, Extract the
+payload, ArrayDrop). The arm of a switch that binds an array payload takes it
+over, emptying the union's field with an Insert so its drop frees nothing twice,
+when it is the union a call just returned or nothing reads the variable's
+payloads after the switch; otherwise the binding borrows. A union a statement
+discards is dropped at once. Four more changes the stage-two profile needed:
+a move into `return` no longer copies (the liveness check stopped scanning
+past the return), a parameter a function only hands on to a parameter that is
+the callee's own is the callee's own too (never one it also reads, as a table
+is), `EmitBody` reads `table^` instead of copying the type table twice per
+step, and a record literal's field only borrows when no function changes a field
+of that name. Measured on macOS, native stage two: 22 GB in 3 s at the start of
+the work; 226 s and 10.4 GB after records borrow lent arrays; 157 s and 4.5 GB
+now (the build without inlining, for stacks), of which format_text results and
+`SequenceJoined` are the largest leaks left.
+
 *Stage 3, landed (1 November 2026), ahead of stage 2.* Strings hold references
 to the runtime's `pin_text_owner` (an atomic count, the length, then the bytes
 and a NUL): `ArrayText` makes one with a count of 1; literals, text the host

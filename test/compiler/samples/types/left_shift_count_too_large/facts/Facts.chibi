@@ -1,0 +1,4 @@
+package facts
+Shift :: () -> i8 { return i8(0) << 4097; }
+
+// error: 2:37: Constant shift count is too large

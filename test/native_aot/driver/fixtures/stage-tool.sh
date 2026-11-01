@@ -23,6 +23,10 @@ case "$name" in
         esac
         printf 'target datalayout = "%s"\n' "$layout" > "$5"
         /bin/cat "$3" >> "$5"
+        IFS= read -r action < "$root/action"
+        if test "$action" = replace-input; then
+            printf 'changed original after snapshot\n' > "$root/input with spaces.ll"
+        fi
         ;;
     llc*)
         test "$#" = 6 || exit 64

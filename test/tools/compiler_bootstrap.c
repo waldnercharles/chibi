@@ -1,12 +1,18 @@
 #include "compiler_bootstrap.h"
 
 #include "execution/function.h"
+#include "execution/function_builder.h"
+#include "execution/module_builder.h"
+#include "execution/prepared.h"
 #include "execution/status.h"
+#include "support/array.h"
+#include "support/binary_cache.h"
 #include "support/sha256.h"
 #include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "third_party/yyjson/yyjson.h"
+#include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_bootstrap.h"
 #include "toolchain/compiler_host.h"
 
@@ -321,6 +327,13 @@ TEST_CASE(bootstrap_rejects_another_target)
         check("other") == 1 &&
         log_has("the artifact was compiled for other value layout than this host's")
     );
+    /* A correctly hashed but undecodable closure must reject its incompatible
+     * target before artifact preparation, not merely before compilation. */
+    artifact("unprepared", 1, 1, "abc", ABC_SHA256, sources, ELSEWHERE);
+    REQUIRE(
+        check("unprepared") == 1 &&
+        log_has("the artifact was compiled for other value layout than this host's")
+    );
     return true;
 }
 
@@ -575,6 +588,166 @@ static void setup_root()
     path(core, "core");
 }
 
+#ifndef _WIN32
+enum
+{
+    CACHE_MODULE = 881001,
+    CACHE_ENTRY = 881002
+};
+
+/* A prepared constant, not a source compiler: recovery fails immediately at
+ * the missing CompileClosure entry. No archived producer or seed is needed. */
+static bool cache_fixture(unsigned char **bytes, size_t *length, char **target)
+{
+    char error[256];
+    behavior_function_builder *builder = behavior_function_builder_new();
+    pin_value number = { .type = PIN_I32 };
+    behavior_function_builder_signature(builder, NULL, 0, &number, 1, NULL, 0);
+    int slot = behavior_function_builder_slot(builder, PIN_I32);
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_I32,
+                                         .output = slot,
+                                         .value = { .type = PIN_I32, .i = 37 } }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = slot }
+    );
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_RETURN });
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    behavior_function *body = behavior_function_builder_finish(builder, error, sizeof error);
+    behavior_function_builder_free(builder);
+    if (!body) {
+        return false;
+    }
+    execution_module_plan *plan = execution_module_plan_new();
+    plan->id = CACHE_MODULE;
+    plan->valid = true;
+    apush(
+        plan->functions,
+        ((execution_module_function){ .id = CACHE_ENTRY,
+                                      .kind = EXECUTION_FUNCTION_AUTHORED,
+                                      .body = body })
+    );
+    plan->function_count = 1;
+    execution_module *module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    execution_module_plan_free(plan);
+    unsigned char *blob = NULL;
+    size_t blob_length = 0;
+    bool valid = module &&
+                 execution_prepared_write(module, &blob, &blob_length, error, sizeof error);
+    package_module row = { "cache", CACHE_MODULE, blob, blob_length };
+    valid = valid &&
+            compiler_artifact_write(&row, 1, CACHE_MODULE, bytes, length, error, sizeof error);
+    free(blob);
+    execution_module_free(module);
+    compiler_host *host = valid
+                            ? compiler_host_load(*bytes, *length, BEHAVIOR_BYTECODE, error, sizeof error)
+                            : NULL;
+    size_t target_length = 0;
+    *target = host ? compiler_host_target_json(host, &target_length) : NULL;
+    compiler_host_free(host);
+    return *target && target_length;
+}
+
+/* A reader cannot mutate the entry owned by a publisher. This deterministic
+ * ownership check does not pretend to schedule the read/publish/unlink race. */
+TEST_CASE(bootstrap_cache_miss_preserves_a_publishers_entry)
+{
+    unsigned char *bytes = NULL;
+    size_t length = 0;
+    char *target = NULL;
+    bool made = cache_fixture(&bytes, &length, &target);
+    if (!made) {
+        free(bytes);
+        free(target);
+    }
+    REQUIRE(made);
+    folder("cache-compiler");
+    folder("cache-compiler/api");
+    folder("cache-compiler/asset_compiler");
+    folder("cache-core");
+    folder("cache-seed");
+    write_file("cache-compiler/bootstrap.kdl", "version 1\nminimum 1\n");
+    write_file("cache-compiler/api/Fixture.chibi", api_source);
+    write_file("cache-compiler/asset_compiler/CompilerSources.txt", "api/Fixture.chibi\n");
+    write_binary("cache-seed/compiler.chibip", bytes, length);
+    char digest[65], arguments_digest[65], key[BINARY_CACHE_KEY_BYTES + 1], text[256];
+    sha256_hex(bytes, length, digest);
+    manifest("cache-seed", 1, 1, length, digest, "[{\"path\":\"api/Fixture.chibi\",\"sha256\":\"\"}]", target);
+    size_t capacity = strlen(target) + 128;
+    char *arguments = xmalloc(capacity);
+    int count = snprintf(
+        arguments,
+        capacity,
+        "[\"/project\",[\"core\"],[\"/sdk/core\"],[\"api/Fixture.chibi\"],"
+        "[\"package api\\n\"],false,%s",
+        target + 1
+    );
+    assert(count > 0 && (size_t)count < capacity);
+    sha256_hex(arguments, (size_t)count, arguments_digest);
+    count = snprintf(
+        text,
+        sizeof text,
+        "chibi-compiler-cache-3 prepared %d seed %s arguments %s",
+        EXECUTION_PREPARED_VERSION,
+        digest,
+        arguments_digest
+    );
+    assert(count > 0 && (size_t)count < sizeof text);
+    sha256_hex(text, (size_t)count, digest);
+    snprintf(key, sizeof key, "compiler-%s", digest);
+    free(arguments);
+    free(target);
+
+    char seed[PATH_MAX], sources[PATH_MAX], collection[PATH_MAX], cache[PATH_MAX];
+    path(seed, "cache-seed");
+    path(sources, "cache-compiler");
+    path(collection, "cache-core");
+    path(cache, "compiler-cache");
+    compiler_bootstrap options = { .folder = seed, .compiler = sources, .core = collection };
+    char baseline[512] = { 0 }, error[512] = { 0 };
+    compiler_host *host = compiler_bootstrap_load(&options, baseline, sizeof baseline);
+    bool rejected = !host && strstr(baseline, "compiler entry ID was not found");
+    compiler_host_free(host);
+    int lock = binary_cache_lock(cache);
+    options.cache = cache;
+    bool published = lock >= 0 &&
+                     binary_cache_write(cache, key, bytes, length, COMPILER_HOST_MAX_CLOSURE_BYTES);
+    host = published ? compiler_bootstrap_load(&options, error, sizeof error) : NULL;
+    compiler_host_result result = { 0 };
+    bool hit = host && !error[0] &&
+               compiler_host_invoke(host, CACHE_ENTRY, "[]", 2, 128, &result) &&
+               result.flow_status == FLOW_OK && result.json &&
+               !strcmp(result.json, "[37]");
+    compiler_host_free(host);
+    free(result.json);
+    free(bytes);
+    static const char damaged[] = "not a compiler artifact";
+    bool damaged_written = published &&
+                           binary_cache_write(cache, key, damaged, sizeof damaged, COMPILER_HOST_MAX_CLOSURE_BYTES);
+    error[0] = 0;
+    host = damaged_written ? compiler_bootstrap_load(&options, error, sizeof error)
+                           : NULL;
+    bool same_error = !host && !strcmp(error, baseline);
+    compiler_host_free(host);
+    size_t kept_length = 0;
+    unsigned char *kept = binary_cache_read(cache, key, COMPILER_HOST_MAX_CLOSURE_BYTES, &kept_length);
+    bool preserved = kept && kept_length == sizeof damaged &&
+                     !memcmp(kept, damaged, sizeof damaged);
+    free(kept);
+    binary_cache_unlock(lock);
+    REQUIRE(rejected);
+    REQUIRE(published && hit);
+    REQUIRE(damaged_written && same_error);
+    REQUIRE(preserved);
+    return true;
+}
+
+#endif
+
 void test_tool_compiler_bootstrap(const char *host)
 {
     host_path = host;
@@ -582,6 +755,9 @@ void test_tool_compiler_bootstrap(const char *host)
     folder("compiler");
     folder("compiler/asset_compiler");
     folder("core");
+#ifndef _WIN32
+    RUN_TEST_CASE(bootstrap_cache_miss_preserves_a_publishers_entry);
+#endif
     RUN_TEST_CASE(bootstrap_usage_rejects_mixed_and_missing_options);
     RUN_TEST_CASE(bootstrap_needs_the_sources_contract);
     RUN_TEST_CASE(bootstrap_rejects_unknown_formats_and_old_versions);

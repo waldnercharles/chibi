@@ -88,7 +88,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: asset-compiler-v2-${{ runner.os }}-
       # Recovered compilers, keyed inside by everything that decides their bytes
       # (docs/self-hosting-build.md), so the newest snapshot is always safe to use.
       - name: Restore recovered compilers
@@ -114,11 +115,17 @@ jobs:
         run: |
           set -o pipefail
           sh tools/build.sh build --build build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root /usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+      # Checks that representative objects and links carry the selected profile
+      # (flags, records, sanitizer symbols). Informational until it has run green on main.
+      - name: Verify and preserve native profile evidence
+        if: always() && steps.debug-build.outcome != 'skipped'
+        continue-on-error: true
+        run: sh tools/build.sh native-evidence --sha "$GITHUB_SHA" --run "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --job "$GITHUB_JOB" --sanitizers "$CHIBI_CI_SANITIZERS" --profile "$BUILD_PROFILE" --optimization "$BUILD_DEBUG_OPTIMIZATION" --frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --outcome "${{ steps.debug-build.outcome }}" --host "$PWD/build-release/sdk/chibi-build-host" --build build --output "$RUNNER_TEMP/native-profile" --nm /usr/lib/llvm-18/bin/llvm-nm
       # The authored graph and native-driver tests, on the Release helper.
       - name: Graph and native driver programs
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-discovery graph-asset-cache graph-os graph-c native-aot-driver
+        run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" graph-engine graph-driver graph-evidence graph-discovery graph-asset-cache graph-os graph-c native-aot-driver
       # After `chibi build`, which builds the test drivers this step runs.
       - name: Build timing host regressions (ready drivers)
         env:
@@ -177,6 +184,7 @@ jobs:
           name: native-profile-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/native-build.log
+            ${{ runner.temp }}/native-profile/
             ${{ runner.temp }}/build-timings/
             ${{ runner.temp }}/case-timings/
           if-no-files-found: warn
@@ -198,7 +206,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
       # The cache has no eviction; drop entries no build rewrote for three days.
       - name: Prune old recovered compilers
         if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -255,7 +263,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: asset-compiler-v2-${{ runner.os }}-
       # Recovered compilers, keyed inside by everything that decides their bytes
       # (docs/self-hosting-build.md), so the newest snapshot is always safe to use.
       - name: Restore recovered compilers
@@ -276,6 +285,7 @@ jobs:
       # plan the selected Debug build. Release hosts also generate the asset
       # compiler resource; products and test drivers retain the selected profile.
       - name: Build products and test drivers (selected Debug profile)
+        id: native-build
         env:
           VERBOSE: '1'
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
@@ -283,6 +293,12 @@ jobs:
         run: |
           set -o pipefail
           sh tools/build.sh build --build build --profile "$BUILD_PROFILE" --debug-optimization "$BUILD_DEBUG_OPTIMIZATION" --debug-frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --target chibi --target chibi-compile --target test_tools --target test_language --host "$PWD/build-release/sdk/chibi-build-host" --asset-generator-hosts build-release/sdk --libclang-root "$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+      # Checks that representative objects and links carry the selected profile
+      # (flags, records, sanitizer symbols). Informational until it has run green on main.
+      - name: Verify and preserve native profile evidence
+        if: always() && steps.native-build.outcome != 'skipped'
+        continue-on-error: true
+        run: sh tools/build.sh native-evidence --sha "$GITHUB_SHA" --run "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --job "$GITHUB_JOB" --sanitizers "$CHIBI_CI_SANITIZERS" --profile "$BUILD_PROFILE" --optimization "$BUILD_DEBUG_OPTIMIZATION" --frame-pointers "$BUILD_DEBUG_FRAME_POINTERS" --outcome "${{ steps.native-build.outcome }}" --host "$PWD/build-release/sdk/chibi-build-host" --build build --output "$RUNNER_TEMP/native-profile" --nm "$LLVM/bin/llvm-nm"
       - name: Preserve failed macOS Graph stage log
         if: failure()
         uses: actions/upload-artifact@v4
@@ -324,6 +340,7 @@ jobs:
           name: native-profile-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/native-build.log
+            ${{ runner.temp }}/native-profile/
             ${{ runner.temp }}/build-timings/
             ${{ runner.temp }}/case-timings/
           if-no-files-found: warn
@@ -345,7 +362,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
       # The cache has no eviction; drop entries no build rewrote for three days.
       - name: Prune old recovered compilers
         if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -475,7 +492,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: asset-compiler-v2-${{ runner.os }}-
       # Recovered compilers, keyed inside by everything that decides their bytes
       # (docs/self-hosting-build.md), so the newest snapshot is always safe to use.
       - name: Restore recovered compilers

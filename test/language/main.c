@@ -46,8 +46,6 @@ int main(int argc, char **argv)
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool program_session = argc == 2 && !strcmp(argv[1], "--program-session");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
-    bool integer_shift_counts = (argc == 2 || argc == 3) &&
-                                !strcmp(argv[1], "--integer-shift-counts");
     bool package_compiler_chibi_scalar = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-scalar");
     bool package_compiler_chibi_native = argc == 2 &&
@@ -61,85 +59,16 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
          !record_compatibility && !program && !program_session && !ranges &&
-         !integer_shift_counts && !package_compiler_chibi_scalar &&
+         !package_compiler_chibi_scalar &&
          !package_compiler_chibi_native && !native_census &&
          !native_census_flattening && !host_packages_compiler && !text_format)) {
         fprintf(
             stderr,
-            "Usage: %s --test-parallel | "
-            "--execution | "
-            "--execution-scope  "
-            "  "
-            "| --program | --program-session | "
-            ""
-            ""
-            ""
-            ""
-            ""
-            "--ranges | "
-            ""
-            "--integer-shift-counts [case] | "
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            "--package-compiler-chibi-types -imports "
-            "-fallible "
-            "-math-native "
-            "| "
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            "--package-compiler-chibi-scalar | "
+            "Usage: %s --test-parallel | --execution | --execution-scope | --program | "
+            "--program-session | --ranges | --package-compiler-chibi-scalar | "
             "--package-compiler-chibi-native | --native-census [report] | "
-            "--native-census-flattening | "
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            "--package-imports -compiler | "
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            "--activation-cache "
-            "| "
-            "--binding-benchmark "
-            "| "
-            ""
-            ""
-            ""
-            ""
-            "--text-format | "
-            ""
-            "--record-values | "
-            "--record-document | "
-            "--record-compatibility\n",
+            "--native-census-flattening | --host-packages-compiler | --text-format | "
+            "--record-values | --record-document | --record-compatibility\n",
             argv[0]
         );
         return 2;

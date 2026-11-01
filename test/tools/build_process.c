@@ -648,16 +648,23 @@ static bool sdk_hash(const char *path, char digest[65])
 }
 
 /* A child with no inherited environment starts the compiler from its sources,
- * about a minute cold; its compiler cache under this HOME makes every later
- * start in the test a hit. The folder is created on first use. */
+ * about a minute cold and several on a loaded runner. It keeps the compiler
+ * cache of this process's HOME, which earlier cases and the build already
+ * filled with the same compiler, so it starts warm; with no HOME it gets a
+ * cache of its own under the test root. */
 static const char *cache_home()
 {
     static char home[PATH_MAX + 16];
     if (!home[0]) {
-        char folder[PATH_MAX];
-        sdk_path(folder, root, "cache-home");
-        assert(!mkdir(folder, 0700) || errno == EEXIST);
-        snprintf(home, sizeof home, "HOME=%s", folder);
+        const char *inherited = getenv("HOME");
+        if (inherited && *inherited) {
+            snprintf(home, sizeof home, "HOME=%s", inherited);
+        } else {
+            char folder[PATH_MAX];
+            sdk_path(folder, root, "cache-home");
+            assert(!mkdir(folder, 0700) || errno == EEXIST);
+            snprintf(home, sizeof home, "HOME=%s", folder);
+        }
     }
     return home;
 }
@@ -673,7 +680,7 @@ static bool default_compiler(const char *host, bool corrupt)
         "--entry",
         "Build",
         "--timeout-ms",
-        "120000",
+        "600000",
         NULL,
     };
     /* The child has no toolchain on PATH and no environment-supplied SDK. */
@@ -685,7 +692,7 @@ static bool default_compiler(const char *host, bool corrupt)
 #endif
         NULL,
     };
-    chibi_process_capture_result result = capture(argv, environment, 130);
+    chibi_process_capture_result result = capture(argv, environment, 620);
     REQUIRE(result.error == CHIBI_PROCESS_OK);
     REQUIRE(result.status == (corrupt ? 1 : 47));
     REQUIRE(!out.truncated && !err.truncated && !out.size);
@@ -961,13 +968,13 @@ TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants)
             "--entry",
             "Build",
             "--timeout-ms",
-            "120000",
+            "600000",
             NULL,
         };
         out = (chibi_process_output){ .data = output, .capacity = sizeof output };
         err = (chibi_process_output){ .data = errors, .capacity = sizeof errors };
         chibi_process_job job = { 0 };
-        double deadline = deadline_after(130);
+        double deadline = deadline_after(620);
         chibi_process_capture_result result = chibi_process_begin(
             &job,
             argv[0],

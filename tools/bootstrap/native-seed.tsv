@@ -2,5 +2,6 @@
 # release tag, asset, SHA-256. It is native stage two, byte-identical to the
 # stage three it compiles. The native-seed workflow publishes it;
 # tools/bootstrap/native-seed.sh fetches it.
-linux-x64	native-seed-5621c10e8ed43e7767ba0a22904e4f57d0b60970	chibi-native-linux-x64	fbf975e16a52b2a594a3156ddb690f40866bcc8b758f4d205df7354599361273
-macos-arm64	native-seed-5621c10e8ed43e7767ba0a22904e4f57d0b60970	chibi-native-macos-arm64	7643f7ffa3d1df5e553bdf4aa2d7d316d9c55c01f7d552edba1c88e7a6484af3
+# No pins: the generated code changed (arrays, unions and strings are freed, copies became moves), so the pinned
+# compiler of 5621c10e8 builds a stage two that differs from the stage three it compiles. Stage one comes from the
+# bytecode seed until the native-seed workflow publishes a compiler built from this code and its pins are committed.

@@ -353,6 +353,114 @@ Command :: (stage: string, arguments: string[]) -> string {
     return Join(["stage ", stage, "\n", strings.Join(arguments, "\n"), "\nend-stage\n"]);
 }
 
+// The modules of an emitted text: llvm_native begins each piece of a large
+// program after the first with a `; chibi-piece` line. The host's search keeps
+// this off the VM's per-byte path.
+Pieces :: (text: string) -> string[] {
+    marker := "\n; chibi-piece\n";
+    pieces: string[] = [];
+    rest := text;
+    while (true) {
+        head := build.before(rest, marker);
+        if (strings.ByteLength(head) == strings.ByteLength(rest)) {
+            pieces.append(rest);
+            return pieces;
+        }
+        pieces.append(Join([head, "\n"]));
+        rest = build.after(rest, marker);
+    }
+    return pieces;
+}
+
+// The file of piece `index` of a module: the first keeps the single module's
+// name, `NAME.EXT`, and the others are `NAME.INDEX.EXT`.
+PieceFile :: (partial: string, name: string, extension: string, index: int) -> string {
+    if (index == 0) {
+        return Join([partial, "/", name, ".", extension]);
+    }
+    return Join([partial, "/", name, ".", format_text("{}", index), ".", extension]);
+}
+
+// One process's arguments, so a list of them is an array of records.
+Step :: struct {
+    arguments: string[];
+}
+
+// The processors online, as `chibi build`'s --jobs counts them; 8 when getconf
+// cannot say.
+Processors :: () -> int {
+    if (build.probe(["getconf", "_NPROCESSORS_ONLN"]) != 0) {
+        return 8;
+    }
+    count := 0;
+    for (byte in strings.Bytes(build.trim(build.last_stdout()))) {
+        if (byte < 48 || byte > 57) {
+            return 8;
+        }
+        count = count * 10 + byte - 48;
+    }
+    if (count < 1) {
+        return 8;
+    }
+    return count;
+}
+
+// Runs every step, at most `jobs` at once, and returns 0 or the first failed
+// step's status, after stopping the rest. A step's output waits in a file
+// until it ends, so the lines of steps that run together never mix.
+RunAll :: (steps: Step[], jobs: int) -> int {
+    // One module's step runs as it always has, its output the build's own.
+    if (length(steps) == 1) {
+        return build.run(steps[0].arguments);
+    }
+    count := length(steps);
+    processes := resize([int(0)], count);
+    // Each step's state: 0 waiting, 1 running, 2 done.
+    states := resize([int(0)], count);
+    next := 0;
+    running := 0;
+    done := 0;
+    while (done < count) {
+        while (running < jobs && next < count) {
+            processes[next] = build.start(steps[next].arguments);
+            states[next] = 1;
+            running += 1;
+            next += 1;
+        }
+        // A slice on the oldest running step, then a look at the others, so
+        // a short step frees its place while a long one runs.
+        oldest := 0;
+        while (states[oldest] != 1) {
+            oldest += 1;
+        }
+        for (index in oldest..<next) {
+            if (states[index] != 1) {
+                continue;
+            }
+            wait := 0;
+            if (index == oldest) {
+                wait = 20;
+            }
+            status := build.wait_for(processes[index], wait);
+            if (status == 65536) {
+                continue;
+            }
+            if (status != 0) {
+                for (other in 0..<next) {
+                    if (other != index && states[other] == 1) {
+                        stopped := build.kill(processes[other]);
+                    }
+                }
+                return status;
+            }
+            states[index] = 2;
+            running -= 1;
+            done += 1;
+        }
+    }
+    return 0;
+}
+
 pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     count := 5;
     if (executable) {
@@ -415,42 +523,76 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         build.report("native-aot: cannot exclusively reserve partial output");
         return 1;
     }
-    source := Join([partial, "/source.ll"]);
-    module := Join([partial, "/module.ll"]);
-    object := Join([partial, "/object.o"]);
+    // A large program is several pieces, which opt and llc take at once;
+    // each piece is a module of its own, and the first keeps a single
+    // module's names.
+    pieces := Pieces(text);
+    sources: string[] = [];
+    modules: string[] = [];
+    objects: string[] = [];
+    for (index in 0..<length(pieces)) {
+        sources.append(PieceFile(partial, "source", "ll", index));
+        modules.append(PieceFile(partial, "module", "ll", index));
+        objects.append(PieceFile(partial, "object", "o", index));
+        if (!build.write_file(sources[index], pieces[index])) {
+            return Failed(partial, "IR snapshot", 1);
+        }
+    }
+    source := sources[0];
+    module := modules[0];
+    object := objects[0];
     start := Join([partial, "/start.ll"]);
     start_object := Join([partial, "/start.o"]);
-    if (!build.write_file(source, text)) {
-        return Failed(partial, "IR snapshot", 1);
-    }
     passes := "verify";
     if (mode == "2") {
         passes = "verify,default<O2>,verify";
     }
-    optimize := [opt, "-S", Join(["-passes=", passes]), source, "-o", module];
-    // Position independent, so a dense switch's table also links into the
-    // shared libraries the native tests load.
-    compile := [llc, "-filetype=obj", Join(["-O=", mode]), "-relocation-model=pic", module, "-o", object];
+    optimizing: Step[] = [];
+    compiling: Step[] = [];
+    for (index in 0..<length(pieces)) {
+        optimizing_step: Step = {arguments: [opt, "-S", Join(["-passes=", passes]), sources[index], "-o", modules[index]]};
+        optimizing.append(optimizing_step);
+        // Position independent, so a dense switch's table also links into
+        // the shared libraries the native tests load.
+        compiling_step: Step = {arguments: [llc, "-filetype=obj", Join(["-O=", mode]), "-relocation-model=pic",
+                                            modules[index], "-o", objects[index]]};
+        compiling.append(compiling_step);
+    }
+    optimize := optimizing[0].arguments;
+    compile := compiling[0].arguments;
     compile_start := [llc, "-filetype=obj", Join(["-O=", mode]), "-relocation-model=pic", start, "-o", start_object];
-    status := build.run(optimize);
+    jobs := 1;
+    if (length(pieces) > 1) {
+        jobs = Processors();
+    }
+    status := RunAll(optimizing, jobs);
     if (status != 0) {
         return Failed(partial, "LLVM verification/optimization", status);
     }
+    // Every piece names the same admitted target.
     target := -1;
     optimized: string[] = [];
-    if (build.file_kind(module) == "file") {
-        optimized = Markers(build.read_file(module));
-        target = TargetIn(optimized);
-    }
-    if (target < 0) {
-        return Failed(partial, "canonical target/layout admission", 2);
+    for (index in 0..<length(pieces)) {
+        lines: string[] = [];
+        if (build.file_kind(modules[index]) == "file") {
+            lines = Markers(build.read_file(modules[index]));
+        }
+        named := TargetIn(lines);
+        if (named < 0 || (index > 0 && named != target)) {
+            return Failed(partial, "canonical target/layout admission", 2);
+        }
+        target = named;
+        optimized = build.concat(optimized, lines);
     }
     shared := linkage == "shared";
     program := Join([partial, "/", Program(target)]);
     if (shared) {
         program = Join([partial, "/generation.so"]);
     }
-    markers := Markers(text);
+    markers: string[] = [];
+    for (piece in pieces) {
+        markers = build.concat(markers, Markers(piece));
+    }
     libraries := LinkedLibraries(markers);
     imported := native_link.SystemImports(markers);
     if (target != 2 && length(imported) > 0) {
@@ -498,13 +640,14 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     // native_link's link of the two objects and the archives, with the stubs
     // it names written into the partial folder. The linker runs in place of
     // the plan's, whose vectors name their flavor.
-    plan := native_link.Program(triples[target], "", [object, start_object], libraries, [], [], program, partial, !dynamic);
+    plan := native_link.Program(triples[target], "", build.concat(objects, [start_object]), libraries, [], [], program,
+                                partial, !dynamic);
     if (dynamic) {
         plan.libc = libc[0];
         plan.interpreter = libc[1];
     }
     if (shared) {
-        plan.objects = [object];
+        plan.objects = objects;
         plan.shared = true;
     }
     if (target == 2) {
@@ -519,12 +662,14 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     stubs := native_link.Imports(plan);
     link := native_link.Command(plan, native_link.Partial(plan));
     link[0] = linker;
-    status = build.run(compile);
+    status = RunAll(compiling, jobs);
     if (status != 0) {
         return Failed(partial, "LLVM object emission", status);
     }
-    if (build.file_kind(object) != "file") {
-        return Failed(partial, "LLVM object emission", 1);
+    for (each in objects) {
+        if (build.file_kind(each) != "file") {
+            return Failed(partial, "LLVM object emission", 1);
+        }
     }
     if (executable) {
         if (!build.write_file(start, start_text)) {
@@ -568,6 +713,20 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     source_hash := build.hash_file(source);
     module_hash := build.hash_file(module);
     object_hash := build.hash_file(object);
+    // Each later piece's snapshot, module and object, on a line of its own.
+    piece_lines: string[] = [];
+    for (index in 1..<length(pieces)) {
+        piece_source := build.hash_file(sources[index]);
+        piece_module := build.hash_file(modules[index]);
+        piece_object := build.hash_file(objects[index]);
+        if (piece_source != build.hash_text(pieces[index]) || piece_module == "" || piece_object == "") {
+            return Failed(partial, "output identity", 1);
+        }
+        piece_lines.append(format_text("piece {} input-sha256 {} module-sha256 {} object-sha256 {}\n", index,
+                                       piece_source, piece_module, piece_object));
+        piece_lines.append(Command(format_text("opt-{}", index), optimizing[index].arguments));
+        piece_lines.append(Command(format_text("llc-{}", index), compiling[index].arguments));
+    }
     start_hash := "";
     program_hash := "";
     if (executable) {
@@ -576,7 +735,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         }
         program_hash = build.hash_file(program);
     }
-    if (source_hash != build.hash_text(text) || module_hash == "" || object_hash == "" ||
+    if (source_hash != build.hash_text(pieces[0]) || module_hash == "" || object_hash == "" ||
         (executable && ((start_hash == "" && !shared) || program_hash == ""))) {
         return Failed(partial, "output identity", 1);
     }
@@ -589,7 +748,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         "\ninput ", input, "\ninput-sha256 ", source_hash,
         "\nopt ", opt, "\nopt-sha256 ", opt_hash, "\nllc ", llc, "\nllc-sha256 ", llc_hash,
         "\nmode ", mode, "\nmodule-sha256 ", module_hash, "\nobject-sha256 ", object_hash, "\n",
-        Command("opt", optimize), Command("llc", compile)
+        Command("opt", optimize), Command("llc", compile), strings.Join(piece_lines, "")
     ]);
     if (executable) {
         kind_of_link := "static";

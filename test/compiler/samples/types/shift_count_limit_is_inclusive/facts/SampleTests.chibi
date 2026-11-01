@@ -1,0 +1,8 @@
+package facts
+
+// 4096 is the largest constant shift count.
+@test
+Calls :: () {
+    limit: i8 = Limit();
+    assert(limit == 0, "count 4096");
+}

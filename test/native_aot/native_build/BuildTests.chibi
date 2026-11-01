@@ -1095,9 +1095,14 @@ pub Run :: () -> int {
         os.Print("native build: set CHIBI_LLVM_BIN to link with real LLVM tools");
     }
     names := Cases(suite.llvm != "");
+    // Each case's exit status by its index in names, so the report follows
+    // Cases' order rather than the order the cases finish in.
+    statuses: int[] = [];
+    for (index in 0..<length(names)) {
+        statuses.append(0);
+    }
     running: int[] = [];
-    owners: string[] = [];
-    failed: string[] = [];
+    owners: int[] = [];
     next := 0;
     while (next < length(names) || length(running) > 0) {
         while (next < length(names) && length(running) < 4) {
@@ -1106,27 +1111,33 @@ pub Run :: () -> int {
                                      Path([os.Root(), "/test/native_aot/native_build/BuildTests.chibi"]), "--core",
                                      Path([os.Root(), "/packages/core"]), "--entry", "One", "--timeout-ms", "1200000", "--",
                                      folder, built, suite.launcher, names[next]], os.Inherited));
-            owners.append(names[next]);
+            owners.append(next);
             next += 1;
         }
         still: int[] = [];
-        kept: string[] = [];
+        kept: int[] = [];
         for (index in 0..<length(running)) {
             status := os.Wait(running[index], 50);
             if (status == os.StillRunning) {
                 still.append(running[index]);
                 kept.append(owners[index]);
-            } else if (status != 0) {
-                failed.append(owners[index]);
+            } else {
+                statuses[owners[index]] = status;
             }
         }
         running = still;
         owners = kept;
     }
-    for (name in failed) {
-        os.Print(Path(["native build: ", name, " FAILED"]));
+    failures := 0;
+    for (index in 0..<length(names)) {
+        if (statuses[index] == 0) {
+            os.Print(Path(["native build: ", names[index], " passed"]));
+        } else {
+            os.Print(Path(["native build: ", names[index], " FAILED"]));
+            failures += 1;
+        }
     }
-    assert(length(failed) == 0, "every case passes");
+    assert(failures == 0, "every case passes");
     assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the scratch cleanup");
     return 0;
 }

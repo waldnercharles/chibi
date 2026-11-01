@@ -2,7 +2,7 @@ package native_driver
 
 import link "project:native_link"
 import host "project:native_link_host"
-import os "core:sys/os"
+import os "core:os"
 import strings "core:strings"
 
 // The native compiler's driver: `STAGE --compiler DIR --core DIR --output FILE
@@ -39,7 +39,7 @@ Main :: () -> int {
             os.Print(strings.Concatenate(["native: ", message]));
             return 1;
         case .Emitted(module):
-            if (!os.WriteBytes(strings.Concatenate([output, ".ll"]), module)) {
+            if (os.WriteBytes(strings.Concatenate([output, ".ll"]), module) != nil) {
                 os.Print(strings.Concatenate(["native: cannot write ", output, ".ll"]));
                 return 2;
             }
@@ -54,7 +54,7 @@ Main :: () -> int {
     }
     start := link.Start(triple, static, false);
     if (start != "") {
-        if (!os.WriteText(strings.Concatenate([output, ".start.ll"]), start) ||
+        if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil ||
             host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), 2) != nil) {
             os.Print("native: cannot emit the start object");
             return 2;
@@ -67,7 +67,7 @@ Main :: () -> int {
         return 2;
     }
     for (name in [".ll", ".o", ".start.ll", ".start.o"]) {
-        os.Remove(strings.Concatenate([output, name]));
+        removed := os.Remove(strings.Concatenate([output, name]));
     }
     return 0;
 }
@@ -100,7 +100,8 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
 // The .chibi files directly in a package folder, in the listing's order.
 PackageFiles :: (folder: string) -> string[] {
     files: string[] = [];
-    for (name in os.List(folder)) {
+    listed := os.List(folder);
+    for (name in listed.names) {
         if (strings.HasSuffix(name, ".chibi") && !strings.HasSuffix(name, "Tests.chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
             files.append(name);
         }
@@ -144,7 +145,12 @@ Gather :: (project: string, core: string, package: string) -> Inputs {
                 found.problem = strings.Concatenate(["cannot read ", location]);
                 return found;
             }
-            text := os.ReadText(location);
+            read := os.ReadText(location);
+            if (read.error != nil) {
+                found.problem = strings.Concatenate(["cannot read ", location]);
+                return found;
+            }
+            text := read.text;
             found.paths.append(strings.Concatenate([prefixes[next], file]));
             found.sources.append(text);
             for (kind in ["project", "core"]) {

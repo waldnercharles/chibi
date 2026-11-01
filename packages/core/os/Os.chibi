@@ -1,11 +1,15 @@
 package os
 
 import bytes "core:bytes"
+import target "core:target"
 
 // Files, directories, processes and the environment, as Odin's core:os offers
-// them. Until `foreign import` reaches libc, every operation is the build
-// host's native underneath, so this package compiles only where that host
-// provides them; callers keep their signatures when the bodies change.
+// them. On the VM every operation is the build host's native underneath; in a
+// native program (core:target's Native) it is the platform's libc or kernel32
+// through core:sys/posix or core:sys/windows. One set of signatures serves
+// both, so a package imports core:os and compiles either way. A native
+// program has no Stamp, Copy, Reserve, Publish, RealPath, HashFile, Root,
+// ProgramDirectory, Start, Kill, FindExecutable, Environment or Platform yet.
 //
 // Paths are relative to the program's root unless absolute. A fallible
 // operation reports an expected failure of the file system or a process as
@@ -42,6 +46,117 @@ Failure :: (kind: int) -> Error {
     return failed;
 }
 
+// The platform package a native program calls, under one alias; only the kept
+// branch binds.
+when target.Native == 1 and target.Os == target.Windows {
+    import sys "core:sys/windows"
+} else when target.Native == 1 {
+    import sys "core:sys/posix"
+}
+
+when target.Native == 1 {
+    pub Kind :: (path: string) -> int {
+        return sys.Kind(path);
+    }
+
+    pub IsFile :: (path: string) -> bool {
+        return sys.Kind(path) == KindFile;
+    }
+
+    pub IsDirectory :: (path: string) -> bool {
+        return sys.Kind(path) == KindDirectory;
+    }
+
+    pub Exists :: (path: string) -> bool {
+        return sys.Exists(path);
+    }
+
+    pub ReadText :: (path: string) -> (text: string, error: Error?) {
+        if (sys.Kind(path) != KindFile) {
+            return ("", Failure(NotFound));
+        }
+        return (sys.ReadText(path), nil);
+    }
+
+    pub ReadBytes :: (path: string) -> (data: u8[], error: Error?) {
+        if (sys.Kind(path) != KindFile) {
+            empty: u8[] = [];
+            return (empty, Failure(NotFound));
+        }
+        return (sys.ReadBytes(path), nil);
+    }
+
+    pub WriteBytes :: (path: string, data: u8[]) -> Error? {
+        if (!sys.WriteBytes(path, data)) {
+            return Failure(Failed);
+        }
+        return nil;
+    }
+
+    pub WriteText :: (path: string, text: string) -> Error? {
+        data: u8[] = [];
+        size := text_byte_length(text);
+        for index in 0..<size {
+            data.append(u8(text_byte_at(text, index)));
+        }
+        if (!sys.WriteBytes(path, data)) {
+            return Failure(Failed);
+        }
+        return nil;
+    }
+
+    pub Rename :: (source: string, destination: string) -> Error? {
+        if (!sys.Rename(source, destination)) {
+            return Failure(Failed);
+        }
+        return nil;
+    }
+
+    // Removes a file, or an empty directory. A path that is not there fails.
+    pub Remove :: (path: string) -> Error? {
+        if (!sys.Remove(path)) {
+            return Failure(Failed);
+        }
+        return nil;
+    }
+
+    pub MakeDirectory :: (path: string) -> Error? {
+        if (!sys.MakeDirectory(path)) {
+            return Failure(Failed);
+        }
+        return nil;
+    }
+
+    pub List :: (path: string) -> (names: string[], error: Error?) {
+        if (sys.Kind(path) != KindDirectory) {
+            empty: string[] = [];
+            return (empty, Failure(NotFound));
+        }
+        return (sys.List(path), nil);
+    }
+
+    pub Run :: (command: string[]) -> int {
+        return sys.Run(command);
+    }
+
+    pub Capture :: (command: string[]) -> Result {
+        captured := sys.Capture(command);
+        return {status: captured.status, stdout: captured.stdout, stderr: captured.stderr};
+    }
+
+    pub Getenv :: (name: string) -> string {
+        return sys.Getenv(name);
+    }
+
+    pub Arguments :: () -> string[] {
+        return sys.Arguments();
+    }
+
+    // Writes one line and a newline to the error output.
+    pub Print :: (line: string) {
+        written := sys.Print(line);
+    }
+} else {
 // What the path names, KindNone when nothing. A link is not followed.
 pub Kind :: (path: string) -> int {
     kind := build.file_kind(path);
@@ -258,4 +373,5 @@ pub Platform :: () -> string {
 // Writes one line to the build's error output.
 pub Print :: (line: string) {
     build.report(line);
+}
 }

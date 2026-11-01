@@ -1,5 +1,6 @@
 package install
 
+import files "graph:files"
 import os "core:os"
 import strings "core:strings"
 
@@ -84,14 +85,14 @@ pub SameTree :: (source: string, staged: string) -> bool {
         return false;
     }
     if (kind == os.KindFile) {
-        hash := build.hash_file(source);
-        return hash != "" && hash == build.hash_file(staged);
+        hash := files.Digest(source);
+        return hash != "" && hash == files.Digest(staged);
     }
     if (kind != os.KindDirectory) {
         return false;
     }
-    names := build.list_directory(source);
-    if (strings.Join(names, "\n") != strings.Join(build.list_directory(staged), "\n")) {
+    names := files.Names(source);
+    if (strings.Join(names, "\n") != strings.Join(files.Names(staged), "\n")) {
         return false;
     }
     for (name in names) {
@@ -112,7 +113,7 @@ pub CopyTree :: (source: string, destination: string) -> bool {
     if (kind != os.KindDirectory || os.MakeDirectory(destination)) {
         return false;
     }
-    for (name in build.list_directory(source)) {
+    for (name in files.Names(source)) {
         if (!CopyTree(Join([source, "/", name]), Join([destination, "/", name]))) {
             return false;
         }
@@ -121,7 +122,7 @@ pub CopyTree :: (source: string, destination: string) -> bool {
 }
 pub RemoveTree :: (path: string) -> bool {
     if (os.IsDirectory(path)) {
-        for (name in build.list_directory(path)) {
+        for (name in files.Names(path)) {
             if (!RemoveTree(Join([path, "/", name]))) {
                 return false;
             }
@@ -137,10 +138,10 @@ pub Inventory :: (root: string, relative: string) -> string {
         path = Join([root, "/", relative]);
     }
     if (os.IsFile(path)) {
-        return Join([relative, "\t", build.hash_file(path), "\n"]);
+        return Join([relative, "\t", files.Digest(path), "\n"]);
     }
     text := "";
-    for (name in build.list_directory(path)) {
+    for (name in files.Names(path)) {
         child := name;
         if (relative != "") {
             child = Join([relative, "/", name]);

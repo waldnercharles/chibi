@@ -7,8 +7,9 @@ import target "core:target"
 // native program (core:target's Native) it is the platform's libc or kernel32
 // through core:sys/posix or core:sys/windows. One set of signatures serves
 // both, so a package imports core:os and compiles either way. A native
-// program has no Stamp, Copy, Reserve, Publish, RealPath, HashFile, Root,
-// ProgramDirectory, Start, Kill, FindExecutable, Environment or Platform yet.
+// program has no ProgramDirectory or Environment yet, and on Windows Stamp,
+// Copy, Reserve, Publish, RealPath, Root, FindExecutable, Start, Wait and Kill
+// report failure until core:sys/windows has them.
 //
 // Paths are relative to the program's root unless absolute. A fallible
 // operation reports an expected failure of the file system or a process as
@@ -45,12 +46,25 @@ Failure :: (kind: int) -> Error {
     return failed;
 }
 
+// How a started program's standard output and error reach this one, as Zig's
+// Child.StdIo names them: Piped captures them and reports them when the program
+// ends, Inherited makes them this program's own, as they are written.
+pub Piped: int : 0;
+pub Inherited: int : 1;
+
+// What Wait returns for a program that still runs: past any exit status or
+// negative signal number.
+pub StillRunning: int : 65536;
+
 // The platform package a native program calls, under one alias; only the kept
 // branch binds.
 when target.Native == 1 and target.Os == target.Windows {
     import sys "core:sys/windows"
 } else when target.Native == 1 {
     import sys "core:sys/posix"
+}
+when target.Native == 1 {
+    import sha256 "core:hash/sha256"
 }
 
 when target.Native == 1 {
@@ -111,7 +125,7 @@ when target.Native == 1 {
         return nil;
     }
 
-    // Removes a file, or an empty directory. A path that is not there fails.
+    // Removes a file, or an empty directory. A path that is not there is not an error.
     pub Remove :: (path: string) -> Error? {
         if (!sys.Remove(path)) {
             return Failure(Failed);
@@ -119,6 +133,8 @@ when target.Native == 1 {
         return nil;
     }
 
+    // Makes the directory and its missing parents; one that exists already is not
+    // an error.
     pub MakeDirectory :: (path: string) -> Error? {
         if (!sys.MakeDirectory(path)) {
             return Failure(Failed);
@@ -126,14 +142,72 @@ when target.Native == 1 {
         return nil;
     }
 
-    // The names in a directory, in the order the OS lists them: unspecified, and
-    // different from the VM's. A caller that needs one order sorts.
+    // Whether text `a` sorts before `b` byte by byte, a prefix first.
+    Before :: (a: string, b: string) -> bool {
+        size_a := text_byte_length(a);
+        size_b := text_byte_length(b);
+        at := 0;
+        while (at < size_a && at < size_b) {
+            left := text_byte_at(a, at);
+            right := text_byte_at(b, at);
+            if (left != right) {
+                return left < right;
+            }
+            at += 1;
+        }
+        return size_a < size_b;
+    }
+
+    // The names in byte order, as the VM lists them: a merge sort.
+    Sorted :: (names: string[]) -> string[] {
+        count := length(names);
+        current := names;
+        width := 1;
+        while (width < count) {
+            merged: string[] = [];
+            start := 0;
+            while (start < count) {
+                middle := start + width;
+                if (middle > count) {
+                    middle = count;
+                }
+                end := start + 2 * width;
+                if (end > count) {
+                    end = count;
+                }
+                left := start;
+                right := middle;
+                while (left < middle && right < end) {
+                    if (Before(current[right], current[left])) {
+                        merged.append(current[right]);
+                        right += 1;
+                    } else {
+                        merged.append(current[left]);
+                        left += 1;
+                    }
+                }
+                while (left < middle) {
+                    merged.append(current[left]);
+                    left += 1;
+                }
+                while (right < end) {
+                    merged.append(current[right]);
+                    right += 1;
+                }
+                start = end;
+            }
+            current = merged;
+            width = width * 2;
+        }
+        return current;
+    }
+
     pub List :: (path: string) -> (names: string[], error: Error?) {
         if (sys.Kind(path) != KindDirectory) {
             empty: string[] = [];
             return (empty, Failure(NotFound));
         }
-        return (sys.List(path), nil);
+        return (Sorted(sys.List(path)), nil);
     }
 
     pub Run :: (command: string[]) -> int {
@@ -149,13 +223,101 @@ when target.Native == 1 {
         return sys.Getenv(name);
     }
 
+    // The arguments after the program's own name, as the VM gives them.
     pub Arguments :: () -> string[] {
-        return sys.Arguments();
+        all := sys.Arguments();
+        rest: string[] = [];
+        for (index in 1..<length(all)) {
+            rest.append(all[index]);
+        }
+        return rest;
     }
 
     // Writes one line and a newline to the error output.
     pub Print :: (line: string) {
         written := sys.Print(line);
+    }
+
+    // Identifies the file's content and metadata for change detection: equal
+    // stamps mean the same file untouched. "" when the path does not exist.
+    pub Stamp :: (path: string) -> string {
+        return sys.Stamp(path);
+    }
+
+    pub Copy :: (source: string, destination: string) -> Error? {
+        if (!sys.Copy(source, destination)) {
+            return Failure(Failed);
+        }
+        return nil;
+    }
+
+    // Makes one new directory whose parent exists. Any existing path, including
+    // a link, fails; nothing is replaced.
+    pub Reserve :: (path: string) -> Error? {
+        if (!sys.Reserve(path)) {
+            return Failure(Failed);
+        }
+        return nil;
+    }
+
+    // Renames a prepared directory to a destination that does not exist. Any
+    // existing destination fails; nothing is replaced.
+    pub Publish :: (source: string, destination: string) -> Error? {
+        if (!sys.Publish(source, destination)) {
+            return Failure(Failed);
+        }
+        return nil;
+    }
+
+    // The absolute path with links resolved, "" when the path does not exist.
+    pub RealPath :: (path: string) -> string {
+        return sys.RealPath(path);
+    }
+
+    // Lowercase hexadecimal SHA-256 of the file's bytes.
+    pub HashFile :: (path: string) -> (digest: string, error: Error?) {
+        if (sys.Kind(path) != KindFile) {
+            return ("", Failure(NotFound));
+        }
+        data := sys.ReadBytes(path);
+        if (length(data) != sys.FileSize(path)) {
+            return ("", Failure(Failed));
+        }
+        return (sha256.HexOf(data), nil);
+    }
+
+    // Lowercase hexadecimal SHA-256 of the text's bytes.
+    pub HashText :: (text: string) -> string {
+        data: u8[] = [];
+        for (index in 0..<text_byte_length(text)) {
+            data.append(u8(text_byte_at(text, index)));
+        }
+        return sha256.HexOf(data);
+    }
+
+    // The directory the program was started in, which relative paths follow.
+    pub Root :: () -> string {
+        return sys.Root();
+    }
+
+    pub Start :: (command: string[], stdio: int) -> int {
+        return sys.Start(command, stdio == Piped);
+    }
+
+    pub Wait :: (process: int, timeout_ms: int) -> int {
+        return sys.WaitFor(process, timeout_ms);
+    }
+
+    pub Kill :: (process: int) -> int {
+        return sys.Kill(process);
+    }
+
+    pub FindExecutable :: (name: string) -> string {
+        return sys.FindExecutable(name);
+    }
+
+    pub Platform :: () -> string {
+        return sys.Platform();
     }
 } else {
     // Only the VM bodies convert text and bytes; a native program must not
@@ -274,9 +436,7 @@ pub Publish :: (source: string, destination: string) -> Error? {
     return nil;
 }
 
-// The names in a directory, in the order unspecified here: the build host sorts
-// them by name today, a native program gets the OS order. A caller that needs
-// one order sorts.
+// The names in a directory in byte order, without "." and "..".
 pub List :: (path: string) -> (names: string[], error: Error?) {
     if (Kind(path) != KindDirectory) {
         empty: string[] = [];
@@ -296,6 +456,12 @@ pub HashFile :: (path: string) -> (digest: string, error: Error?) {
         return ("", Failure(NotFound));
     }
     return (build.hash_file(path), nil);
+}
+
+// Lowercase hexadecimal SHA-256 of the text's bytes. The build host hashes in C;
+// sha256.Hex costs about 7 µs a byte on the VM.
+pub HashText :: (text: string) -> string {
+    return build.hash_text(text);
 }
 
 // The directory build programs are rooted at.
@@ -319,16 +485,6 @@ pub Capture :: (command: string[]) -> Result {
     status := build.probe(command);
     return {status: status, stdout: build.last_stdout(), stderr: build.last_stderr()};
 }
-
-// How a started program's standard output and error reach this one, as Zig's
-// Child.StdIo names them: Piped captures them and reports them when the program
-// ends, Inherited makes them this program's own, as they are written.
-pub Piped: int : 0;
-pub Inherited: int : 1;
-
-// What Wait returns for a program that still runs: past any exit status or
-// negative signal number.
-pub StillRunning: int : 65536;
 
 // Starts a program without waiting and returns its process, an id that is
 // never 0; Wait and Kill end it. An unknown program is an exit status of 127

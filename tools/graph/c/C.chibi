@@ -1,5 +1,6 @@
 package c
 
+import files "graph:files"
 import os "core:os"
 import strings "core:strings"
 
@@ -97,7 +98,7 @@ Current :: (command: string[], output: string) -> bool {
     if (!os.Exists(record) || !os.Exists(output)) {
         return false;
     }
-    lines := strings.Lines(build.read_file(record));
+    lines := strings.Lines(files.Text(record));
     count := length(command);
     if (length(lines) < count + 2 || lines[count] != "") {
         return false;
@@ -245,7 +246,7 @@ pub Finish :: (compile: Running) -> bool {
         }
         return false;
     }
-    inputs := Dependencies(build.read_file(Join([compile.object, ".d"])));
+    inputs := Dependencies(files.Text(Join([compile.object, ".d"])));
     return !os.WriteText(Record(compile.object), RecordText(compile.command, inputs, compile.object));
 }
 
@@ -277,7 +278,7 @@ pub StageHeaders :: (root: string, headers: string[], destination: string, kept:
     for (header in headers) {
         from := Join([root, "/", header]);
         to := Join([destination, "/", header]);
-        if (os.Exists(to) && build.hash_file(to) == build.hash_file(from)) {
+        if (os.Exists(to) && files.Digest(to) == files.Digest(from)) {
             continue;
         }
         if (os.MakeDirectory(strings.Slice(to, 0, strings.LastIndex(to, "/"))) || os.Copy(from, to)) {
@@ -292,7 +293,7 @@ pub StageHeaders :: (root: string, headers: string[], destination: string, kept:
 // Removes the files below directory whose path from the staged root, under
 // prefix, no header names.
 RemoveUnlisted :: (directory: string, prefix: string, headers: string[]) -> bool {
-    for (name in build.list_directory(directory)) {
+    for (name in files.Names(directory)) {
         path := Join([directory, "/", name]);
         relative := name;
         if (prefix != "") {
@@ -486,7 +487,7 @@ RemovePreviousResponses :: (response: string) -> bool {
     }
     prefix := Join([name, "."]);
     paths: string[] = [];
-    for (item in build.list_directory(directory)) {
+    for (item in files.Names(directory)) {
         owned := item == name;
         if (strings.HasPrefix(item, prefix)) {
             suffix := strings.Partition(item, prefix).tail;

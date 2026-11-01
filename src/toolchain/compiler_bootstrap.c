@@ -167,7 +167,8 @@ static uint64_t entry(const char *name)
 }
 
 /* Whether the six target values from first in values are this host's, as
- * compiler_host_target_json describes it. */
+ * compiler_host_target_json describes it. Before loading a closure, NULL uses
+ * the same text/array native catalog without preparing the artifact. */
 static bool target_matches(const compiler_host *host, yyjson_val *values, size_t first, char *error, size_t size)
 {
     static const char *const PARTS[] = {
@@ -175,7 +176,11 @@ static bool target_matches(const compiler_host *host, yyjson_val *values, size_t
         "natives",      "native ports", "native identities"
     };
     size_t length;
-    char *json = compiler_host_target_json(host, &length);
+    char *json = host ? compiler_host_target_json(host, &length)
+                      : compiler_host_values_target_json(&length, error, size);
+    if (!json) {
+        return false;
+    }
     yyjson_doc *doc = yyjson_read(json, length, 0);
     yyjson_val *own = yyjson_doc_get_root(doc);
     bool valid = true;
@@ -930,8 +935,8 @@ static bool inputs(
     return *json != NULL;
 }
 
-/* Loads closure as a compiler of this host's target, or frees and returns
- * NULL with why. */
+/* Rejects another target before preparing closure; otherwise loads it as a
+ * compiler, or returns NULL with why. */
 static compiler_host *loaded(
     const unsigned char *closure,
     size_t closure_length,
@@ -940,13 +945,10 @@ static compiler_host *loaded(
     size_t size
 )
 {
-    compiler_host *host = compiler_host_load(closure, closure_length, behavior_default_backend(), report, size);
-    if (host &&
-        !target_matches(host, yyjson_obj_get(a->root, "target"), 0, report, size)) {
-        compiler_host_free(host);
-        host = NULL;
+    if (!target_matches(NULL, yyjson_obj_get(a->root, "target"), 0, report, size)) {
+        return NULL;
     }
-    return host;
+    return compiler_host_load(closure, closure_length, behavior_default_backend(), report, size);
 }
 
 static compiler_host *validated(

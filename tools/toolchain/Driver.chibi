@@ -19,7 +19,7 @@ import strings "core:strings"
 // driver, as `zig build` runs its install step; --target names a subset (and
 // the build host the graph needs). --dry-run prints the
 // commands instead of running them. The other verbs are `test`, `install`,
-// `format`, `clean`, `census`, `sdk-reflect`,
+// `format`, `clean`, `census`, `native-evidence`, `sdk-reflect`,
 // `bootstrap-artifact`, `bootstrap-recover`,
 // `publish-seed`, `native-census` and `native-self-host`; Usage lists them.
 
@@ -184,7 +184,7 @@ Build :: (arguments: string[]) -> int {
     }
     for (name in ["--debug-optimization", "--debug-frame-pointers"]) {
         value := Option(arguments, name, "")
-        if (value != "" && profile == "debug") {
+        if (value != "" && profile != "release") {
             graph = extend(graph, [name, value])
         }
     }
@@ -210,6 +210,22 @@ Build :: (arguments: string[]) -> int {
         return status
     }
     return Step("compile-commands", ["ln", "-sfn", Join([Absolute(directory), "/compile_commands.json"]), "compile_commands.json"], dry)
+}
+
+// Verifies that the build in --build ran with the profile CI selected and keeps
+// the receipt and the evidence it checked in --output.
+NativeEvidence :: (arguments: string[]) -> int {
+    dry := Flag(arguments, "--dry-run")
+    host := PrivateHost(arguments, dry)
+    if (host == "") {
+        return 1
+    }
+    tail := ["--build", Absolute(Option(arguments, "--build", "build")), "--output", Absolute(Option(arguments, "--output", "native-profile"))]
+    tail = extend(tail, ["--nm", Option(arguments, "--nm", "nm")])
+    for (name in ["--sha", "--run", "--attempt", "--job", "--sanitizers", "--profile", "--optimization", "--frame-pointers", "--outcome"]) {
+        tail = extend(tail, [name, Option(arguments, name, "")])
+    }
+    return GraphStep("native-evidence", host, "tools/toolchain/Evidence.chibi", "Capture", tail, dry)
 }
 
 // A tab separated row split into fields; empty fields are kept.
@@ -957,7 +973,7 @@ Usage :: () -> int {
     os.Print("usage: build [--release|--debug|--profile NAME] [--build DIR] [--target NAME]... [--jobs N] [--dry-run]")
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
-    os.Print("       build format [--check] | clean | census | publish-seed | native-census")
+    os.Print("       build format [--check] | clean | census | publish-seed | native-census | native-evidence --build DIR --output DIR --nm PATH --sha SHA --sanitizers ON|OFF ...")
     os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--work DIR] [--release-build DIR] [--skip-vm] [--dry-run]")
     os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
     os.Print("       build sdk-reflect [--reflect-build DIR] [-- NATIVE ARGUMENTS]")
@@ -989,6 +1005,9 @@ Main :: () -> int {
     }
     if (verb == "clean") {
         return Clean(arguments)
+    }
+    if (verb == "native-evidence") {
+        return NativeEvidence(arguments)
     }
     if (verb == "census") {
         return Census()

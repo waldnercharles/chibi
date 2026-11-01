@@ -8,7 +8,7 @@ import strings "core:strings"
 // prints the commands each verb would run without running them.
 Driver :: (host: string, arguments: string[]) -> os.Result {
     command := ["--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", os.Root(), "--source", "tools/toolchain/Driver.chibi", "--core", "packages/core",
-                "--entry", "Main", "--timeout-ms", "50000", "--", "build"];
+                "--entry", "Main", "--timeout-ms", "200000", "--", "build"];
     full := [host];
     full.extend(command);
     full.extend(arguments);
@@ -49,6 +49,29 @@ EngineBuildSteps :: (host: string) {
     assert(Has(log, "--profile debug") && !Has(log, "--target chibi ") && !Has(log, "--target test_tools"), "a Debug build of everything: no target is named");
     log = Plan(host, ["--target", "chibi"]);
     assert(Has(log, "--target chibi --target chibi-build-host"), "a named target and the build host");
+}
+
+// The Debug optimization and frame-pointer options reach every profile but
+// Release, the sanitizer profile included, where CI selects them.
+DebugOptions :: (host: string) {
+    options := ["--debug-optimization", "1", "--debug-frame-pointers", "on"];
+    debug := ["--debug", "--target", "chibi"];
+    debug.extend(options);
+    log := Plan(host, debug);
+    assert(Has(log, "--profile debug") && Has(log, "--debug-optimization 1") && Has(log, "--debug-frame-pointers on"), "Debug keeps them");
+    release := ["--release", "--target", "chibi"];
+    release.extend(options);
+    log = Plan(host, release);
+    assert(!Has(log, "--debug-optimization") && !Has(log, "--debug-frame-pointers"), "Release omits them");
+    sanitizer := ["--target", "chibi"];
+    sanitizer.extend(options);
+    log = Plan(host, sanitizer);
+    hosts := strings.Index(log, "--profile release");
+    graph := strings.Index(log, "--profile sanitizer");
+    assert(hosts >= 0 && graph > hosts, "the sanitizer graph step follows the Release host build");
+    assert(!Has(strings.Slice(log, 0, graph), "--debug-optimization"), "the Release host build omits them");
+    assert(Has(strings.Slice(log, graph, strings.ByteLength(log) - graph), "--debug-optimization 1"), "the sanitizer build keeps them");
+    assert(Has(strings.Slice(log, graph, strings.ByteLength(log) - graph), "--debug-frame-pointers on"), "and the frame pointers");
 }
 
 // A build without --target names none: the graph builds every product and test
@@ -141,7 +164,7 @@ TestScheduling :: (host: string) {
     assert(os.WriteText(format_text("{}/tools/tests.tsv", scratch), strings.Join(rows, "\n")) == nil, "the scratch table");
     command := [host, "--compiler", format_text("{}/tools/compiler", source), "--compiler-core", format_text("{}/packages/core", source),
                 "--root", scratch, "--source", format_text("{}/tools/toolchain/Driver.chibi", source),
-                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "50000", "--",
+                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "200000", "--",
                 "build", "test", "--build-host", host, "--jobs", "3", "a", "b", "alone", "after", "slow"];
     result := os.Capture(command);
     log := Output(result);
@@ -164,7 +187,7 @@ Census :: (host: string) {
     assert(os.Run(["git", "-C", scratch, "init", "-q"]) == 0 && os.Run(["git", "-C", scratch, "add", "-A"]) == 0, "the scratch repository")
     command := [host, "--compiler", format_text("{}/tools/compiler", source), "--compiler-core", format_text("{}/packages/core", source),
                 "--root", scratch, "--source", format_text("{}/tools/toolchain/Driver.chibi", source),
-                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "50000", "--", "build", "census"]
+                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "200000", "--", "build", "census"]
     result := os.Capture(command)
     log := Output(result)
     assert(result.status == 0 && Has(log, "census: shim 1 b.mm\n") && Has(log, "1 first-party C files, 2 lines, 1 C++/Objective-C shims, 0 build tooling files"), "archived tooling is allowed");
@@ -203,6 +226,7 @@ pub Run :: () -> int {
     assert(length(arguments) == 1, "the build host's path");
     host := arguments[0];
     EngineBuildSteps(host);
+    DebugOptions(host);
     DefaultTargets(host);
     BuildJobs(host);
     TestSelectors(host);

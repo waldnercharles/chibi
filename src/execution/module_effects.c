@@ -1967,9 +1967,8 @@ size_t execution_module_effects_bytes(const execution_module_plan *p)
              ? SIZE_MAX
              : e.capacity * 3 * sizeof(uint64_t);
 }
-bool execution_module_build_effects(execution_module *m)
+bool execution_module_build_effects(execution_module *m, size_t bytes)
 {
-    size_t bytes = execution_module_effects_bytes(&m->plan);
     if (bytes == SIZE_MAX) {
         return false;
     }

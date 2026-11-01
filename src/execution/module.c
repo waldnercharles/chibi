@@ -1307,7 +1307,8 @@ static execution_module *finish(
     if (publish(*owned, backend, error, size, decoded) != FLOW_OK) {
         return NULL;
     }
-    if (execution_module_effects_bytes(*owned) == SIZE_MAX) {
+    size_t effect_bytes = execution_module_effects_bytes(*owned);
+    if (effect_bytes == SIZE_MAX) {
         snprintf(error, size, "%s", "module effect closure exceeds bounded record limit");
         return NULL;
     }
@@ -1316,7 +1317,7 @@ static execution_module *finish(
     module->backend = backend;
     module->references = 1;
     module->retained_tasks = retained_tasks(&module->plan);
-    bool effects_ready = execution_module_build_effects(module);
+    bool effects_ready = execution_module_build_effects(module, effect_bytes);
     assert(effects_ready);
     (void)effects_ready;
     free(*owned);

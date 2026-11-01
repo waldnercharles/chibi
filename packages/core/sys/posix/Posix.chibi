@@ -257,10 +257,10 @@ pub List :: (path: string) -> string[] {
     return names;
 }
 
-// A finished child process: its exit status (the negative signal number when a
+// A finished child process (named Output so the record does not share a name with core:os's Result: the native lane keys records by name): its exit status (the negative signal number when a
 // signal ended it, 127 when the program could not be started) and, for Capture,
 // what it wrote.
-pub Result :: struct {
+pub Output :: struct {
     status: int;
     stdout: string;
     stderr: string;
@@ -352,8 +352,8 @@ pub Run :: (command: string[]) -> int {
 
 // Runs the program with its standard output and error read into the result.
 // Both pipes are read together, so a child filling one cannot stop on the other.
-pub Capture :: (command: string[]) -> Result {
-    result: Result = {status: 127, stdout: "", stderr: ""};
+pub Capture :: (command: string[]) -> Output {
+    result: Output = {status: 127, stdout: "", stderr: ""};
     if length(command) == 0 {
         return result;
     }

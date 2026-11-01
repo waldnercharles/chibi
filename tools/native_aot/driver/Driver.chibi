@@ -79,17 +79,17 @@ Markers :: (text: string) -> string[] {
 }
 // The marker lines of the module file at `path`, as Markers reads them from its
 // text. The compiler's module is tens of MB, past what the host reads whole, so
-// grep selects the lines.
+// grep selects the lines. Tools are named by path: builds run with an empty PATH.
 FileMarkers :: (path: string) -> string[] {
     found: string[] = [];
-    if (build.probe(["grep", "-a", "-E", "^[;td]", path]) > 1) {
+    if (build.probe(["/usr/bin/grep", "-a", "-E", "^[;td]", path]) > 1) {
         return found;
     }
     return build.lines(build.last_stdout());
 }
 // Whether the file at `path` starts with the 0 byte that flags a rejection's text.
 Flagged :: (path: string) -> bool {
-    if (build.probe(["head", "-c", "1", path]) != 0) {
+    if (build.probe(["/usr/bin/head", "-c", "1", path]) != 0) {
         return false;
     }
     flag := build.last_stdout();

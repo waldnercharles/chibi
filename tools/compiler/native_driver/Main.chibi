@@ -2,6 +2,7 @@ package native_driver
 
 import link "project:native_link"
 import host "project:native_link_host"
+import route "project:driver_paths"
 import os "core:os"
 import strings "core:strings"
 
@@ -36,6 +37,7 @@ Main :: () -> int {
     }
     collections: string[] = ["core"];
     directories: string[] = [core];
+    seen: string[] = [route.Visible(core)];
     for (declared in Values(arguments, "--collection")) {
         equals := strings.Index(declared, "=");
         if (equals <= 0) {
@@ -44,12 +46,13 @@ Main :: () -> int {
         }
         name := strings.Slice(declared, 0, equals);
         directory := strings.Slice(declared, equals + 1, strings.ByteLength(declared) - equals - 1);
-        if (!strings.HasPrefix(directory, "/") || Contains(collections, name)) {
+        if (!strings.HasPrefix(route.Visible(directory), "/") || Contains(collections, name)) {
             os.Print(strings.Concatenate(["native: --collection takes a new name and an absolute directory, not ", declared]));
             return 2;
         }
         collections.append(name);
         directories.append(directory);
+        seen.append(route.Visible(directory));
     }
     gathered := Gather(project, collections, directories, package, source);
     if (gathered.problem != "") {
@@ -58,7 +61,7 @@ Main :: () -> int {
     }
     context := false;
     markers: string[] = [];
-    switch Module(collections, directories, gathered.paths, gathered.sources, triple, chosen) {
+    switch Module(collections, seen, gathered.paths, gathered.sources, triple, chosen) {
         case .Rejected(message):
             os.Print(strings.Concatenate(["native: ", message]));
             return 1;
@@ -250,7 +253,7 @@ Gather :: (project: string, collections: string[], directories: string[], packag
                         if (name != ".") {
                             folder = strings.Concatenate([root, "/", name]);
                         }
-                        prefixes.append(strings.Concatenate([folder, "/"]));
+                        prefixes.append(strings.Concatenate([route.Visible(folder), "/"]));
                     }
                     folders.append(folder);
                 }

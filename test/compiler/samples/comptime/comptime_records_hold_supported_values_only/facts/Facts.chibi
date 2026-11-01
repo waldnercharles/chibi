@@ -1,0 +1,7 @@
+package facts
+Shape :: union { Circle(radius: int) | Empty }
+Holder :: struct { shape: Shape; }
+Make :: () -> Holder { return {shape: Shape.Empty}; }
+Bad: int : text_byte_length("x") + text_byte_length(format_text("{}", Make().shape));
+Main :: () -> int { return 0; }
+// error: 4:1: compile-time execution needs a function with one integer, bool, array or record result

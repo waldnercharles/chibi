@@ -142,6 +142,40 @@ TargetAdmitsEachTripleWithItsOwnLayout :: () {
     }
 }
 
+// Instruction/blank lines are not link metadata. A compiler-sized module
+// must not materialize the whole module as one host array.
+pub TargetScansPastTheBuildArrayLimit :: () -> int {
+    layout := "target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"";
+    triple := "target triple = \"x86_64-unknown-linux-gnu\"";
+    gap := strings.Repeat("\n", 1048577);
+    text := Path([layout, gap, triple]);
+    assert(driver.Target(text) == 0, "metadata after more than a million discarded lines");
+    assert(driver.Target(Path([text, "\n", triple])) == -1, "a late duplicate is not truncated");
+    for (ending in ["", "\n", "\r", "\r\n"]) {
+        assert(driver.Target(Path(["\r\n", layout, "\r\n\n", triple, ending])) == 0, "line endings preserve metadata");
+    }
+    // Exercise metadata and CRLF split at either side of a 64 KiB boundary.
+    paddings: int[] = [65534, 65535, 65536, 131071];
+    for (padding in paddings) {
+        prefix := strings.Repeat("\n", padding);
+        assert(driver.Target(Path([prefix, layout, "\r\n", triple])) == 0, "metadata crossing chunk boundaries");
+        assert(driver.Target(Path([layout, "\n", prefix, triple, "\n", triple])) == -1, "late duplicates across chunks");
+    }
+    spaces := strings.Repeat(" ", 131073);
+    for (first in [" ", ";", "d", "t"]) {
+        // The target-looking suffix is part of this long line, not metadata.
+        long_line := Path([first, spaces, triple]);
+        assert(driver.Target(Path([layout, "\n", long_line, "\r\n", triple])) == 0, "a long line is not split into metadata");
+        assert(driver.Target(Path([layout, "\n", triple, "\n", long_line, "\r"])) == 0, "an unterminated long line");
+    }
+    // A CR at the chunk boundary is kept inside a line, but a CR followed by
+    // LF across that same boundary is a single line ending.
+    prefix := strings.Repeat(" ", 65535);
+    assert(driver.Target(Path([prefix, "\rX\n", layout, "\n", triple])) == 0, "a boundary CR is not a terminator");
+    assert(driver.Target(Path([prefix, "\r\n", layout, "\n", triple])) == 0, "CRLF split across chunks");
+    return 0;
+}
+
 // `chibi export --native` finds library sources by their first tokens:
 // comments and whitespace, a name, `::` and the whole word `library`.
 LibraryNamesComeFromTheDeclarationAlone :: () {
@@ -195,6 +229,33 @@ Absent :: (fixture: Fixture) -> bool {
 }
 Receipt :: (fixture: Fixture) -> string {
     return Read(Path([fixture.output, "/receipt.txt"]));
+}
+
+// More marker bytes than a process probe captures: target admission must
+// still see the final triple, rather than a truncated grep result.
+MarkerBytesDoNotUseProcessCapture :: (scratch: string) {
+    fixture := Reset(scratch, "large marker result");
+    Write(fixture.input, Path([strings.Repeat("; padding\n", 120000), Read(fixture.input)]));
+    status := Drive(fixture, false, "0");
+    assert(status == 0, "marker bytes beyond the probe cap still admit the target");
+    assert(Equals(Path([fixture.output, "/object.o"]), "controlled object\n"), "the large-marker object publishes");
+}
+
+// The optimizer consumes the reserved snapshot, then changes the original.
+// Link metadata and the receipt must describe that same snapshot's bytes.
+LinkMarkersComeFromTheSnapshot :: (scratch: string) {
+    fixture := Reset(scratch, "marker snapshot");
+    archive := Path([fixture.root, "/snapshot archive.a"]);
+    Write(archive, "controlled archive\n");
+    original := Path([Read(fixture.input), "; link ", archive, "\n"]);
+    Write(fixture.input, original);
+    Write(Path([fixture.root, "/action"]), "replace-input\n");
+    status := Drive(fixture, true, "0");
+    assert(status == 0, "the snapshotted program builds");
+    assert(Equals(fixture.input, "changed original after snapshot\n"), "the optimizer changed only the original");
+    assert(Equals(Path([fixture.output, "/source.ll"]), original), "the source snapshot is preserved");
+    assert(strings.Contains(Read(Path([fixture.root, "/linker tool.argv"])), Path([archive, "\n"])), "the link uses the snapshot's archive");
+    assert(strings.Contains(Receipt(fixture), Path(["library ", archive, "\nlibrary-sha256 "])), "the receipt names the snapshot's archive");
 }
 
 PublicationPreservesExistingFilesAndStalePartialBytes :: (scratch: string) {
@@ -345,6 +406,8 @@ ChangedToolIdentityPreventsPublicationAfterObjectCreation :: (scratch: string) {
 pub Publication :: () -> int {
     arguments := os.Arguments();
     scratch := arguments[0];
+    MarkerBytesDoNotUseProcessCapture(scratch);
+    LinkMarkersComeFromTheSnapshot(scratch);
     PublicationPreservesExistingFilesAndStalePartialBytes(scratch);
     ObjectRelocatesToolsWithSpacesWithoutALinkerOrPath(scratch);
     ExecutableLinksWithTheNamedLinkerAndStartObject(scratch);
@@ -368,6 +431,8 @@ pub Run :: () -> int {
     ToolAdmissionResolvesAliasesAndRejectsUnusablePaths(scratch);
     CleanupRemovesOnlyOwnedNamesAndPreservesSiblings(scratch);
     TargetAdmitsEachTripleWithItsOwnLayout();
+    large_module := TargetScansPastTheBuildArrayLimit();
+    assert(large_module == 0, "large module metadata");
     LibraryNamesComeFromTheDeclarationAlone();
     OptimizerTraceDistinguishesPassesAndSnapshotPaths(scratch);
     result := os.Capture(["/usr/bin/env", "PATH=", Path(["CHIBI_COMPILER_CACHE=", checkout, "/.chibi/compiler-cache"]), arguments[0],

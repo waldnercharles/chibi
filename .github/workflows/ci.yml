@@ -445,6 +445,9 @@ jobs:
   graph-sdk-linux:
     name: Graph SDK packaging and relocation (Linux)
     runs-on: ubuntu-24.04
+    # The job takes 2-4 minutes; without a bound a hung apt-get held main's
+    # concurrency slot for two hours (run 41259496977).
+    timeout-minutes: 20
     env:
       LIBCLANG_ROOT: /usr/lib/llvm-18
       NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18

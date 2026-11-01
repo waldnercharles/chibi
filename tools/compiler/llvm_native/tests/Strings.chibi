@@ -90,3 +90,57 @@ AModuleThatComparesNoStringsDefinesNoComparison :: () {
     code[3] = Code(native.Constant, 1, 2, 0, 0, 0, 0);
     assert(!strings.Contains(Emitted(TextModule(code)), "text_equal"));
 }
+
+// Main holds a string a reference more and gives it back: 0.
+CountedTexts :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 13, 0, 0, 0, 0, 0),
+            Code(native.TextRetain, 13, 0, 0, 0, 0, 0),
+            Code(native.TextRelease, 13, 0, 0, 0, 0, 0),
+            Code(native.Constant, 6, 1, 0, 0, 0, 0),
+            Code(native.Publish, 6, 0, 1, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+CountedModule :: (code: native.Instruction[]) -> native.Result {
+    empty: int[] = [];
+    return TextEmit(6, empty, [13, 6], code, TextTable());
+}
+// A reference is added to, or given back from, a string's owner by the module's
+// helpers, and a null owner has none.
+@test
+TextReferencesCallTheCountingHelpers :: () {
+    ir := Emitted(CountedModule(CountedTexts()));
+    assert(strings.Contains(ir, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
+    assert(strings.Contains(ir, "call void @chibi_scalar.retain(ptr %owner2)\n"));
+    assert(strings.Contains(ir, "call void @chibi_scalar.free(ptr %ctx, ptr %owner3)\n"));
+    assert(strings.Contains(ir, "define internal void @chibi_scalar.retain(ptr %owner) {\nentry:\n  %counted = icmp ne ptr %owner, null\n"));
+    assert(strings.Contains(ir, "%before = atomicrmw add ptr %owner, i64 1 monotonic\n"));
+    assert(strings.Contains(ir, "%before = atomicrmw sub ptr %owner, i64 1 acq_rel\n"));
+    assert(strings.Contains(ir, "%at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n"));
+}
+@test
+TextReferencesNeedAString :: () {
+    code := CountedTexts();
+    code[2] = Code(native.TextRetain, 13, 0, 1, 0, 0, 0);
+    Rejects(CountedModule(code), "native text reference differs from its operand");
+}
+// Main copies an empty array of strings and drops the copy: 0.
+StringArrays :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 1037, 0, 0, 0, 0, 0),
+            Code(native.ArrayCopy, 1037, 1, 0, 0, 0, 0),
+            Code(native.ArrayDrop, 1037, 0, 1, 0, 0, 0),
+            Code(native.ArrayLength, 6, 2, 0, 0, 0, 0),
+            Code(native.Publish, 6, 0, 2, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+// The strings of an array each hold a reference: a copy takes one more for each
+// element, and dropping the array gives each back before the elements go.
+@test
+ArraysOfStringsCountTheirElements :: () {
+    empty: int[] = [];
+    ir := Emitted(TextEmit(6, empty, [1037, 1037, 6], StringArrays(), TextTable()));
+    assert(strings.Contains(ir, "call void @chibi_scalar.retain_range(ptr %fresh2, i32 %length2)\n"));
+    assert(strings.Contains(ir, "call void @chibi_scalar.free_range(ptr %ctx, ptr %data3, i32 %length3)\n"));
+    assert(strings.Contains(ir, "define internal void @chibi_scalar.free_range(ptr %ctx, ptr %data, i32 %count) {\n"));
+}

@@ -489,14 +489,28 @@ ArrayTyped :: (type: int) -> bool {
 // than one a variable or a lent argument holds.
 FreshArray :: (operand: facts.Row) -> bool {
     if (operand.kind == facts.CallRow) {
-        return ArrayTyped(operand.type);
+        return ArrayTyped(operand.type) || operand.type == facts.StringType;
+    }
+    if (operand.kind == facts.TextRow) {
+        return operand.value == facts.TextFormat;
     }
     if (operand.kind != facts.ArrayRow) {
         return false;
     }
     value := operand.value;
     return value == facts.ArrayNew || value == facts.ArrayCopy || value == facts.ArrayWith || value == facts.ArrayJoin ||
-           value == facts.ArraySlice || value == facts.ArrayResize || value == facts.ArrayBytes;
+           value == facts.ArraySlice || value == facts.ArrayResize || value == facts.ArrayBytes || value == facts.ArrayText;
+}
+// Whether the native `type` is owned by whoever holds it: an array, or a string.
+Owning :: (type: int) -> bool {
+    return ArrayTyped(type) || type == abi.TextStorage;
+}
+// The instruction that gives back a reference to a `type` that is Owning.
+Giving :: (type: int, slot: int) -> native.Instruction {
+    if (type == abi.TextStorage) {
+        return Op(native.TextRelease, type, 0, slot, 0, 0);
+    }
+    return Op(native.ArrayDrop, type, 0, slot, 0, 0);
 }
 // `values` without `removed`.
 Without :: (values: int[], removed: int) -> int[] {
@@ -523,8 +537,7 @@ DropAll :: (vars: int[], types: int[], places: int[], from: int, skips: int[], f
     next := slot;
     while (at >= from) {
         if (types[at] != 0 && !Holds(skips, vars[at])) {
-            found.code.extend([Op(native.Local, types[at], next, places[vars[at]], 0, 0),
-                               Op(native.ArrayDrop, types[at], 0, next, 0, 0)]);
+            found.code.extend([Op(native.Local, types[at], next, places[vars[at]], 0, 0), Giving(types[at], next)]);
             found.types.append(types[at]);
             next += 1;
         }
@@ -1639,6 +1652,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             reads: int[] = [];
             read_vars: int[] = [];
             escaped: int[] = [];
+            // The strings this statement's rows store in a record, union or
+            // array, which each takes a reference to.
+            stored: int[] = [];
             // Each open logical's row after its right operands, its local,
             // its jump past them and its slot.
             closes: int[] = [];
@@ -1717,7 +1733,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     }
                 } else if (operand.kind == facts.ReadRow) {
                     item = Op(native.Local, type, slot, places[operand.value], 0, 0);
-                    if (ArrayTyped(type) && Holds(owned_vars, operand.value)) {
+                    if (Owning(type) && Holds(owned_vars, operand.value)) {
                         reads.append(slot);
                         read_vars.append(operand.value);
                     }
@@ -1747,7 +1763,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     for (argument in 0..<operand.count) {
                         arguments.append(stack[base + argument]);
                         // A call lends its arguments; a fresh one dies with it.
-                        if (Holds(fresh, stack[base + argument])) {
+                        if (Holds(fresh, stack[base + argument]) &&
+                            ArrayTyped(slots[shape.first_slot + stack[base + argument]])) {
                             pending.append(stack[base + argument]);
                         }
                     }
@@ -1760,7 +1777,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
                         arguments.append(stack[base + argument]);
-                        if (Holds(fresh, stack[base + argument])) {
+                        if (Holds(fresh, stack[base + argument]) &&
+                            ArrayTyped(slots[shape.first_slot + stack[base + argument]])) {
                             pending.append(stack[base + argument]);
                         }
                     }
@@ -1793,6 +1811,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                                 escaped.append(read_vars[at_read]);
                             }
                         }
+                        if (slots[shape.first_slot + stack[base + field]] == abi.TextStorage) {
+                            stored.append(stack[base + field]);
+                        }
                         body.append(item);
                         slots.append(type);
                         item = Op(native.Insert, type, slot + 1, slot, stack[base + field], 0);
@@ -1806,6 +1827,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         if (reads[at_read] == stack[base + 1]) {
                             escaped.append(read_vars[at_read]);
                         }
+                    }
+                    if (slots[shape.first_slot + stack[base + 1]] == abi.TextStorage) {
+                        stored.append(stack[base + 1]);
                     }
                     item = Op(native.Insert, type, slot, stack[base], stack[base + 1], 0);
                     item.literal = i64(operand.value);
@@ -1823,6 +1847,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     }
                     if ((op == facts.ArrayJoin || op == facts.ArrayExtend) && Holds(fresh, stack[base + 1])) {
                         pending.append(stack[base + 1]);
+                    }
+                    // The strings an array takes as elements.
+                    if (op == facts.ArrayNew) {
+                        for (element in 0..<operand.count) {
+                            if (slots[shape.first_slot + stack[base + element]] == abi.TextStorage) {
+                                stored.append(stack[base + element]);
+                            }
+                        }
+                    }
+                    if ((op == facts.ArrayPush || op == facts.ArrayWith) &&
+                        slots[shape.first_slot + stack[base + 1]] == abi.TextStorage) {
+                        stored.append(stack[base + 1]);
+                    }
+                    if (op == facts.ArraySet && slots[shape.first_slot + stack[base + 2]] == abi.TextStorage) {
+                        stored.append(stack[base + 2]);
                     }
                     if (operand.value == facts.ArrayNew) {
                         // The empty array, then each element appended.
@@ -1886,6 +1925,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     }
                     stack = slice(stack, 0, base);
                 }
+                for (kept in stored) {
+                    if (Holds(fresh, kept)) {
+                        fresh = Without(fresh, kept);
+                    } else {
+                        body.append(Op(native.TextRetain, abi.TextStorage, 0, kept, 0, 0));
+                    }
+                }
+                stored = [];
                 body.append(item);
                 for (spent in pending) {
                     held_type := slots[shape.first_slot + spent];
@@ -1893,7 +1940,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     fresh = Without(fresh, spent);
                 }
                 pending = [];
-                if (FreshArray(operand)) {
+                // A string made on the right of && or || exists on some paths
+                // only, so it is not tracked: it stays unreleased.
+                if (FreshArray(operand) && (length(closes) == 0 || type != abi.TextStorage)) {
                     fresh.append(slot);
                 }
                 stack.append(slot);
@@ -1913,6 +1962,49 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     }
                 }
             }
+            // A statement that keeps a string takes a reference to it: a fresh
+            // string moves in, any other is retained. A variable it replaces
+            // gives its reference back, after the new one is taken. Every fresh
+            // string left over, a temporary, is released here, after the
+            // statement's rows have read it and before it branches or stores.
+            keeps := false;
+            if (slots[shape.first_slot + value] == abi.TextStorage &&
+                (row.kind == facts.LocalRow || row.kind == facts.AssignRow || row.kind == facts.ReturnRow)) {
+                held_by := -1;
+                for (at_read in 0..<length(reads)) {
+                    if (reads[at_read] == value) {
+                        held_by = read_vars[at_read];
+                    }
+                }
+                if (row.kind == facts.LocalRow && row.name == "_") {
+                    keeps = false;
+                } else if (row.kind == facts.ReturnRow && held_by >= 0) {
+                    // The variable returned moves out.
+                    keeps = false;
+                } else if (Holds(fresh, value)) {
+                    fresh = Without(fresh, value);
+                    keeps = true;
+                } else {
+                    body.append(Op(native.TextRetain, abi.TextStorage, 0, value, 0, 0));
+                    keeps = true;
+                }
+            }
+            if (keeps && row.kind == facts.AssignRow && !Referenced(rows, head, row.value) &&
+                Holds(owned_vars, row.value)) {
+                slots.append(abi.TextStorage);
+                body.extend([Op(native.Local, abi.TextStorage, slot, places[row.value], 0, 0),
+                             Op(native.TextRelease, abi.TextStorage, 0, slot, 0, 0)]);
+                slot += 1;
+            }
+            leftover: int[] = [];
+            for (temporary in fresh) {
+                if (slots[shape.first_slot + temporary] == abi.TextStorage) {
+                    body.append(Op(native.TextRelease, abi.TextStorage, 0, temporary, 0, 0));
+                } else {
+                    leftover.append(temporary);
+                }
+            }
+            fresh = leftover;
             if (Arrayed(row)) {
                 // The array and the index of the next element are locals of
                 // their own, before the element's variable.
@@ -2052,6 +2144,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         owned_vars.append(row.value);
                         owned_types.append(type);
                     }
+                }
+                if (keeps) {
+                    owned_vars.append(row.value);
+                    owned_types.append(type);
                 }
                 local += 1;
             } else if (row.kind == facts.AssignRow && Referenced(rows, head, row.value)) {

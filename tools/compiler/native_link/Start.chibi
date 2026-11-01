@@ -45,12 +45,14 @@ WindowsPrelude :: () -> string {
     ]);
 }
 
-// The runtime context's format_text for a program with no VM to call: each
-// `{}` of the format, the first value, is replaced by the next value as
-// decimal text for an integer (signed by its tag), `true` or `false` for a
-// bool, or its bytes for a string; a `{}` with no value left stays. Floats are
-// not formatted yet and trap. The text is made in memory chibi_allocate gives.
-// Written as a byte copy loop so a program that links nothing needs no memcpy.
+// The runtime context's format_text for a program with no VM to call, as the
+// VM formats: each `{}` of the format, the first value, is replaced by the next
+// value (decimal text for an integer, signed by its tag; `true` or `false` for
+// a bool; a string's bytes), or by nothing when no value is left; `{{` and
+// `}}` are one brace; any other brace stays. Floats are not formatted yet and
+// trap. The result is made once, in memory chibi_allocate gives, sized from
+// the format and the values. Written as a byte copy loop so a program that
+// links nothing needs no memcpy.
 RuntimeFormat :: () -> string {
     return Join([
         "@chibi_true = private unnamed_addr constant [4 x i8] c\"true\"\n",
@@ -116,19 +118,40 @@ RuntimeFormat :: () -> string {
         "step:\n",
         "  %c.at = getelementptr inbounds i8, ptr %fmt, i32 %i\n",
         "  %c = load i8, ptr %c.at\n",
-        "  %opens = icmp eq i8 %c, 123\n",
         "  %after = add i32 %i, 1\n",
         "  %has.after = icmp slt i32 %after, %fmt.length\n",
-        "  %both = and i1 %opens, %has.after\n",
-        "  br i1 %both, label %peek, label %literal\n",
+        "  br i1 %has.after, label %peek, label %literal\n",
         "peek:\n",
         "  %n.at = getelementptr inbounds i8, ptr %fmt, i32 %after\n",
         "  %n = load i8, ptr %n.at\n",
-        "  %closes = icmp eq i8 %n, 125\n",
+        "  %c.open = icmp eq i8 %c, 123\n",
+        "  %c.close = icmp eq i8 %c, 125\n",
+        "  %n.open = icmp eq i8 %n, 123\n",
+        "  %n.close = icmp eq i8 %n, 125\n",
+        "  %open.open = and i1 %c.open, %n.open\n",
+        "  %open.close = and i1 %c.open, %n.close\n",
+        "  %close.close = and i1 %c.close, %n.close\n",
+        "  %escaped = or i1 %open.open, %close.close\n",
+        "  br i1 %escaped, label %escape, label %hole.check\n",
+        "hole.check:\n",
+        "  br i1 %open.close, label %hole, label %literal\n",
+        "escape:\n",
+        "  %oe = load i32, ptr %o.slot\n",
+        "  %te = getelementptr inbounds i8, ptr %buffer, i32 %oe\n",
+        "  store i8 %c, ptr %te\n",
+        "  %oe.one = add i32 %oe, 1\n",
+        "  store i32 %oe.one, ptr %o.slot\n",
+        "  %skip.escape = add i32 %i, 2\n",
+        "  store i32 %skip.escape, ptr %i.slot\n",
+        "  br label %walk\n",
+        "hole:\n",
         "  %a = load i32, ptr %a.slot\n",
         "  %have = icmp slt i32 %a, %count\n",
-        "  %hole = and i1 %closes, %have\n",
-        "  br i1 %hole, label %argument, label %literal\n",
+        "  br i1 %have, label %argument, label %unfilled\n",
+        "unfilled:\n",
+        "  %skip.hole = add i32 %i, 2\n",
+        "  store i32 %skip.hole, ptr %i.slot\n",
+        "  br label %walk\n",
         "literal:\n",
         "  %o = load i32, ptr %o.slot\n",
         "  %to = getelementptr inbounds i8, ptr %buffer, i32 %o\n",

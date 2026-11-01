@@ -8,19 +8,16 @@ import json "project:json_string"
 import strings "core:strings"
 
 // Compile-time execution of authored functions. A constant initializer may
-// call a function of any package whose parameters and result are integers,
-// bool, arrays of them, or records of them: the body runs on the compiler, with
-// locals (arrays and records too), assignment (plain, compound, by element and
-// by field), `append`, `if`, `while`,
-// `for` over a range or an array, `break`, `continue` and `return`.
-// Expressions reuse the exact constant evaluator, so arithmetic keeps its
-// range checks and a result that does not fit its type is an error, not a
-// wrap. Each evaluation has a step budget and a call-depth limit.
+// call a function of any package whose parameters and result are numbers,
+// bools, text, records, or arrays of them, to any depth: the body runs on the
+// compiler, with locals, assignment (plain, compound, and to a field or an
+// element at any depth), `append`, `if`, `while`, `for` over a range or an
+// array, `break`, `continue` and `return`. Integer expressions reuse the exact
+// constant evaluator, so arithmetic keeps its range checks and a result that
+// does not fit its type is an error, not a wrap; floats use exact IEEE
+// arithmetic. Each evaluation has a step budget and a call-depth limit.
 CtSteps: int : 65536;
 CtDepth: int : 128;
-// A row's element type is a storage code below this; at or above it the row is
-// the fields of the record whose declaration is `CtRecord` less.
-CtRecord: int : 1048576;
 
 // What the compiler knows while it runs a function, read-only except `steps`.
 CtContext :: struct {
@@ -37,15 +34,15 @@ CtContext :: struct {
     steps: int;
 }
 // The locals of one activation, innermost last. A local's storage is its
-// type, or the negation of its row type when it is an array or a record, whose
-// elements or field values are in `arrays`.
+// type, or the negation of its kind when it is an array or a record, whose
+// image is in `arrays`.
 CtFrame :: struct {
     names: string[];
     bits: u64[];
     storages: int[];
     arrays: CtRow[];
 }
-// The elements of one array local, or the fields of a record local.
+// The image of one array or record local.
 CtRow :: struct {
     items: u64[];
 }
@@ -151,105 +148,6 @@ CtIntrinsic :: (context: ^CtContext, package: int, file: int, call: int) -> int 
     }
     return 0;
 }
-// The record declaration whose fields `object` reads, -1 when it is no record:
-// a record local or a call that returns a record.
-CtObjectRecord :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, object: int) -> int {
-    local := CtArrayLocal(context, file, frame, object);
-    if (local >= 0 && -frame.storages[local] >= CtRecord) {
-        return -frame.storages[local] - CtRecord;
-    }
-    if (!Is(context.forest, object, syntax.CallExpression)) {
-        return -1;
-    }
-    callee := CtCallee(context, package, file, object);
-    if (callee >= 0 && context.callables[callee].result == StructStorage &&
-        context.callables[callee].result_container == 0) {
-        return context.callables[callee].result_record;
-    }
-    return -1;
-}
-// Whether `node` is a text expression here: a string literal, a text local, a
-// call, field or element of text, or a `format_text` or `text_slice` call.
-CtIsText :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, node: int) -> bool {
-    forest := context.forest;
-    value := Unparenthesized(forest, node);
-    if (Is(forest, value, syntax.String)) {
-        return true;
-    }
-    if (Is(forest, value, syntax.Identifier)) {
-        at := CtLookup(frame, Text(forest, context.documents[file].text, value));
-        return at >= 0 && frame.storages[at] == TextStorage;
-    }
-    if (Is(forest, value, syntax.CallExpression)) {
-        callee := CtCallee(context, package, file, value);
-        if (callee >= 0) {
-            return context.callables[callee].result == TextStorage && context.callables[callee].result_container == 0;
-        }
-        code := CtIntrinsic(context, package, file, value);
-        return code == CtSliceOf || code == CtFormatText;
-    }
-    if (Is(forest, value, syntax.MemberExpression)) {
-        record := CtObjectRecord(context, package, file, frame, Unparenthesized(forest, Field(forest, value, syntax.FieldObject)));
-        if (record < 0) {
-            return false;
-        }
-        index := FindField(context.types, context.members, record,
-                           Text(forest, context.documents[file].text, Field(forest, value, syntax.FieldMember)));
-        return index >= 0 && context.members[index].storage == TextStorage && context.members[index].container == 0;
-    }
-    if (Is(forest, value, syntax.IndexExpression)) {
-        object := Unparenthesized(forest, Field(forest, value, syntax.FieldObject));
-        local := CtArrayLocal(context, file, frame, object);
-        if (local >= 0) {
-            return -frame.storages[local] == TextStorage;
-        }
-        if (Is(forest, object, syntax.CallExpression)) {
-            callee := CtCallee(context, package, file, object);
-            return callee >= 0 && context.callables[callee].result == TextStorage &&
-                   context.callables[callee].result_container == ArrayContainer;
-        }
-    }
-    return false;
-}
-// Whether `node` reads a field of a record local or of a call's record result.
-CtFieldRead :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, node: int) -> bool {
-    if (!Is(context.forest, node, syntax.MemberExpression)) {
-        return false;
-    }
-    object := Unparenthesized(context.forest, Field(context.forest, node, syntax.FieldObject));
-    if (CtArrayLocal(context, file, frame, object) >= 0) {
-        return true;
-    }
-    if (!Is(context.forest, object, syntax.CallExpression)) {
-        return false;
-    }
-    callee := CtCallee(context, package, file, object);
-    return callee >= 0 && context.callables[callee].result == StructStorage &&
-           context.callables[callee].result_container == 0;
-}
-// Appends the outermost nodes of the expression `node` that run before it is
-// folded: calls of authored functions, `length(array)`, `array[index]` and
-// `record.field`. Their own operands are evaluated with them.
-CtCollect :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, node: int, out: ^(int[])) {
-    if (node < 0) {
-        return;
-    }
-    if (Is(context.forest, node, syntax.IndexExpression) || CtFieldRead(context, package, file, frame, node) ||
-        (Is(context.forest, node, syntax.CallExpression) &&
-         (CtCallee(context, package, file, node) >= 0 || CtIntrinsic(context, package, file, node) != 0))) {
-        out.append(node);
-        return;
-    }
-    if (Is(context.forest, node, syntax.BinaryExpression) && ComparisonOperator(Operator(context.forest, node)) &&
-        (CtIsText(context, package, file, frame, Field(context.forest, node, syntax.FieldLeft)) ||
-         CtIsText(context, package, file, frame, Field(context.forest, node, syntax.FieldRight)))) {
-        out.append(node);
-        return;
-    }
-    for (child in Members(context.forest, node)) {
-        CtCollect(context, package, file, frame, child, out);
-    }
-}
 // Whether `node` is a condition: a comparison, a logical operation, `not`, or
 // a boolean literal, local or call.
 CtBoolean :: (forest: snapshot.SnapshotNode[], text: string, scope: ConstDecl[], aliases: Name[], package: int,
@@ -307,58 +205,9 @@ CtArrayLocal :: (context: ^CtContext, file: int, frame: ^CtFrame, node: int) -> 
     }
     return -1;
 }
-// Whether `node` is a row-valued expression here: an array literal, an array
-// or record local, or a call of a function that returns an array or a record.
-CtIsArray :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, node: int) -> bool {
-    value := Unparenthesized(context.forest, node);
-    if (Is(context.forest, value, syntax.ArrayExpression)) {
-        return true;
-    }
-    if (CtArrayLocal(context, file, frame, value) >= 0) {
-        return true;
-    }
-    if (Is(context.forest, value, syntax.CallExpression)) {
-        callee := CtCallee(context, package, file, value);
-        return callee >= 0 && (context.callables[callee].result_container == ArrayContainer ||
-                               (context.callables[callee].result == StructStorage &&
-                                context.callables[callee].result_container == 0));
-    }
-    return false;
-}
 // Whether values of `storage` are numbers or bools.
 CtScalar :: (storage: int) -> bool {
     return Integer(storage) || Floating(storage) || storage == BoolStorage || storage == TextStorage;
-}
-// The row type of a declared type: the element storage of an array, `CtRecord`
-// plus the declaration of a record, 0 for any other type.
-CtRowType :: (storage: int, container: int, record: int) -> int {
-    if (container == ArrayContainer) {
-        return storage;
-    }
-    if (container == 0 && storage == StructStorage && record >= 0) {
-        return CtRecord + record;
-    }
-    return 0;
-}
-// Whether a row of `kind` holds numbers and bools only: an array of them, or a
-// record that declares nothing else.
-CtRowOk :: (context: ^CtContext, kind: int) -> bool {
-    if (kind < CtRecord) {
-        return CtScalar(kind);
-    }
-    declaration := context.types[kind - CtRecord];
-    if (declaration.kind != RecordDecl) {
-        return false;
-    }
-    at := declaration.first;
-    while (at < declaration.first + declaration.count) {
-        member := context.members[at];
-        if (member.container != 0 || !CtScalar(member.storage)) {
-            return false;
-        }
-        at += 1;
-    }
-    return true;
 }
 // The value of the scalar expression `node` in an activation. `want` is the
 // type an untyped expression takes, 0 for the default.
@@ -418,113 +267,817 @@ CtEval :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth:
             return CtResult.Value(folded, typed);
     }
 }
-// The value of a row-valued expression: its elements or fields and their row
-// type. `want` is the row type an untyped literal takes, 0 for the default.
+// An image kind names a type: below `CtRecord` the storage of a scalar,
+// `CtRecord` plus a declaration for a record, `CtArray` plus an element kind
+// for an array of scalars or records.
+CtRecord: int : 1048576;
+CtArray: int : 2097152;
+
+// The kind of a type, 0 for one a compile-time function does not hold.
+CtTypeKind :: (storage: int, container: int, record: int) -> int {
+    element: int = 0;
+    if (storage == StructStorage) {
+        if (record >= 0) {
+            element = CtRecord + record;
+        }
+    } else if (CtScalar(storage)) {
+        element = storage;
+    }
+    if (element == 0 || container == 0) {
+        return element;
+    }
+    if (container == ArrayContainer) {
+        return CtArray + element;
+    }
+    return 0;
+}
+// The kind of field `index` of a record.
+CtMemberKind :: (context: ^CtContext, index: int) -> int {
+    member := context.members[index];
+    return CtTypeKind(member.storage, member.container, member.record);
+}
+// Whether a compile-time function holds values of `kind`: scalars, records of
+// held kinds and arrays of scalars and records.
+CtKindOk :: (context: ^CtContext, kind: int) -> bool {
+    if (kind < CtRecord) {
+        return CtScalar(kind);
+    }
+    if (kind >= CtArray) {
+        element := kind - CtArray;
+        return element != 0 && element < CtArray && CtKindOk(context, element);
+    }
+    declaration := context.types[kind - CtRecord];
+    if (declaration.kind != RecordDecl) {
+        return false;
+    }
+    at := declaration.first;
+    while (at < declaration.first + declaration.count) {
+        field := CtMemberKind(context, at);
+        if (field == 0 || !CtKindOk(context, field)) {
+            return false;
+        }
+        at += 1;
+    }
+    return true;
+}
+// A value of a kind is an image: a scalar is one slot; a record is its fields'
+// images in declaration order; an array is its length and then its elements'
+// images. The slots a value takes at `at` in `image`:
+CtSize :: (context: ^CtContext, kind: int, image: u64[], at: int) -> int {
+    if (kind < CtRecord) {
+        return 1;
+    }
+    if (kind >= CtArray) {
+        element := kind - CtArray;
+        count := int(image[at]);
+        if (element < CtRecord) {
+            return 1 + count;
+        }
+        used := 1;
+        index := 0;
+        while (index < count) {
+            used += CtSize(context, element, image, at + used);
+            index += 1;
+        }
+        return used;
+    }
+    declaration := context.types[kind - CtRecord];
+    used := 0;
+    field := declaration.first;
+    while (field < declaration.first + declaration.count) {
+        used += CtSize(context, CtMemberKind(context, field), image, at + used);
+        field += 1;
+    }
+    return used;
+}
+// Where field `index` of the record image at `at` begins.
+CtFieldAt :: (context: ^CtContext, record: int, image: u64[], at: int, index: int) -> int {
+    place := at;
+    field := context.types[record].first;
+    while (field < index) {
+        place += CtSize(context, CtMemberKind(context, field), image, place);
+        field += 1;
+    }
+    return place;
+}
+// Where element `position` of the array image at `at` begins.
+CtElementAt :: (context: ^CtContext, element: int, image: u64[], at: int, position: int) -> int {
+    if (element < CtRecord) {
+        return at + 1 + position;
+    }
+    place := at + 1;
+    index := 0;
+    while (index < position) {
+        place += CtSize(context, element, image, place);
+        index += 1;
+    }
+    return place;
+}
+// `image` with `size` slots at `at` replaced by `replacement`.
+CtSplice :: (image: u64[], at: int, size: int, replacement: u64[]) -> u64[] {
+    output := slice(image, 0, at);
+    output.extend(replacement);
+    output.extend(slice(image, at + size, length(image) - at - size));
+    return output;
+}
+// The kind an expression has by its form, 0 when it has none a compile-time
+// function holds: a local, a field or element of one, a call's result, text.
+CtStaticKind :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, node: int) -> int {
+    forest := context.forest;
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.String)) {
+        return TextStorage;
+    }
+    if (Is(forest, value, syntax.Identifier)) {
+        at := CtLookup(frame, Text(forest, context.documents[file].text, value));
+        if (at < 0) {
+            return 0;
+        }
+        if (frame.storages[at] < 0) {
+            return -frame.storages[at];
+        }
+        return frame.storages[at];
+    }
+    if (Is(forest, value, syntax.MemberExpression)) {
+        object := CtStaticKind(context, package, file, frame, Field(forest, value, syntax.FieldObject));
+        if (object < CtRecord || object >= CtArray) {
+            return 0;
+        }
+        index := FindField(context.types, context.members, object - CtRecord,
+                           Text(forest, context.documents[file].text, Field(forest, value, syntax.FieldMember)));
+        if (index < 0) {
+            return 0;
+        }
+        return CtMemberKind(context, index);
+    }
+    if (Is(forest, value, syntax.IndexExpression)) {
+        object := CtStaticKind(context, package, file, frame, Field(forest, value, syntax.FieldObject));
+        if (object < CtArray) {
+            return 0;
+        }
+        return object - CtArray;
+    }
+    if (Is(forest, value, syntax.CallExpression)) {
+        callee := CtCallee(context, package, file, value);
+        if (callee >= 0) {
+            return CtTypeKind(context.callables[callee].result, context.callables[callee].result_container,
+                              context.callables[callee].result_record);
+        }
+        code := CtIntrinsic(context, package, file, value);
+        if (code == CtSliceOf || code == CtFormatText) {
+            return TextStorage;
+        }
+        if (code == CtBytesOf) {
+            return CtArray + IntStorage;
+        }
+    }
+    return 0;
+}
+// Whether `node` is a text expression here.
+CtIsText :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, node: int) -> bool {
+    return CtStaticKind(context, package, file, frame, node) == TextStorage;
+}
+// Appends the outermost nodes of the expression `node` that run before it is
+// folded: calls of authored functions and of the operations a compile-time call
+// performs itself, fields and elements of records and arrays, and comparisons
+// of text. Their own operands are evaluated with them.
+CtCollect :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, node: int, out: ^(int[])) {
+    if (node < 0) {
+        return;
+    }
+    forest := context.forest;
+    reads := false;
+    if (Is(forest, node, syntax.CallExpression)) {
+        reads = CtCallee(context, package, file, node) >= 0 || CtIntrinsic(context, package, file, node) != 0;
+    } else if (Is(forest, node, syntax.MemberExpression) || Is(forest, node, syntax.IndexExpression)) {
+        reads = CtStaticKind(context, package, file, frame, Field(forest, node, syntax.FieldObject)) >= CtRecord;
+    } else if (Is(forest, node, syntax.BinaryExpression) && ComparisonOperator(Operator(forest, node))) {
+        reads = CtIsText(context, package, file, frame, Field(forest, node, syntax.FieldLeft)) ||
+                CtIsText(context, package, file, frame, Field(forest, node, syntax.FieldRight));
+    }
+    if (reads) {
+        out.append(node);
+        return;
+    }
+    for (child in Members(forest, node)) {
+        CtCollect(context, package, file, frame, child, out);
+    }
+}
+CtSpot :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Waiting
+    | Spot(image: u64[], at: int, kind: int, local: int)
+}
+// The place of a local, a field or element of one, or of a call's result:
+// the image that holds it, where, its kind, and the local that owns the image,
+// -1 for none.
+CtLocate :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int) -> CtSpot {
+    forest := context.forest;
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.Identifier)) {
+        local := CtArrayLocal(context, file, frame, value);
+        if (local < 0) {
+            return CtSpot.Failed(CtFail(context, node, file, "a compile-time array or record is a local, a call, a field or an element"));
+        }
+        return CtSpot.Spot(frame.arrays[local].items, 0, -frame.storages[local], local);
+    }
+    if (Is(forest, value, syntax.CallExpression)) {
+        if (CtCallee(context, package, file, value) < 0 && CtIntrinsic(context, package, file, value) == 0) {
+            return CtSpot.Failed(CtFail(context, node, file, "a compile-time array or record is a local, a call, a field or an element"));
+        }
+        switch CtRead(context, package, file, frame, depth, value) {
+            case .Failed(diagnostic):
+                return CtSpot.Failed(diagnostic);
+            case .Waiting:
+                return CtSpot.Waiting;
+            case .Value(item, kind):
+                return CtSpot.Failed(CtFail(context, node, file, "a number has no fields or elements"));
+            case .Elements(image, kind):
+                return CtSpot.Spot(image, 0, kind, -1);
+        }
+    }
+    if (Is(forest, value, syntax.MemberExpression)) {
+        switch CtLocate(context, package, file, frame, depth, Field(forest, value, syntax.FieldObject)) {
+            case .Failed(diagnostic):
+                return CtSpot.Failed(diagnostic);
+            case .Waiting:
+                return CtSpot.Waiting;
+            case .Spot(image, at, kind, local):
+                if (kind < CtRecord || kind >= CtArray) {
+                    return CtSpot.Failed(CtFail(context, node, file, "only a record has fields"));
+                }
+                record := kind - CtRecord;
+                name := Text(forest, context.documents[file].text, Field(forest, value, syntax.FieldMember));
+                index := FindField(context.types, context.members, record, name);
+                if (index < 0) {
+                    return CtSpot.Failed(CtFail(context, node, file, format_text("Unknown field '{}'", name)));
+                }
+                return CtSpot.Spot(image, CtFieldAt(context, record, image, at, index), CtMemberKind(context, index), local);
+        }
+    }
+    if (Is(forest, value, syntax.IndexExpression)) {
+        switch CtLocate(context, package, file, frame, depth, Field(forest, value, syntax.FieldObject)) {
+            case .Failed(diagnostic):
+                return CtSpot.Failed(diagnostic);
+            case .Waiting:
+                return CtSpot.Waiting;
+            case .Spot(image, at, kind, local):
+                if (kind < CtArray) {
+                    return CtSpot.Failed(CtFail(context, node, file, "only an array can be indexed at compile time"));
+                }
+                switch CtEval(context, package, file, frame, depth, Field(forest, value, syntax.FieldIndex), IntStorage) {
+                    case .Failed(diagnostic):
+                        return CtSpot.Failed(diagnostic);
+                    case .Waiting:
+                        return CtSpot.Waiting;
+                    case .Elements(more, other):
+                        return CtSpot.Failed(CtFail(context, node, file, "an array index is a number"));
+                    case .Value(position, storage):
+                        if (!Integer(storage)) {
+                            return CtSpot.Failed(CtFail(context, node, file, "an array index is a number"));
+                        }
+                        signed := ExactStored(position, storage);
+                        if (ExactNegative(signed) ||
+                            MagnitudeCompare(Magnitude(signed), Magnitude(ExactOf(false, image[at]))) >= 0) {
+                            return CtSpot.Failed(CtFail(context, node, file, "array index out of range"));
+                        }
+                        element := kind - CtArray;
+                        return CtSpot.Spot(image, CtElementAt(context, element, image, at, int(LowBits(Magnitude(signed)))),
+                                           element, local);
+                }
+        }
+    }
+    return CtSpot.Failed(CtFail(context, node, file, "a compile-time array or record is a local, a call, a field or an element"));
+}
+// The value at a place: a scalar's bits, or the image of an aggregate.
+CtSpotValue :: (context: ^CtContext, image: u64[], at: int, kind: int) -> CtResult {
+    if (kind < CtRecord) {
+        return CtResult.Value(image[at], kind);
+    }
+    return CtResult.Elements(slice(image, at, CtSize(context, kind, image, at)), kind);
+}
+// The value of an expression of any kind: an aggregate where a local, a field,
+// an element or a call gives one, else a scalar. `want` is the kind an untyped
+// literal takes, 0 for the default.
+CtEvalValue :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int,
+                want: int) -> CtResult {
+    forest := context.forest;
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.StructExpression) || Is(forest, value, syntax.ArrayExpression)) {
+        return CtEvalArray(context, package, file, frame, depth, value, want);
+    }
+    if (CtStaticKind(context, package, file, frame, value) >= CtRecord) {
+        return CtEvalArray(context, package, file, frame, depth, value, want);
+    }
+    return CtEval(context, package, file, frame, depth, value, want);
+}
+// The value of an expression of `kind`.
+CtEvalAny :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int,
+              kind: int) -> CtResult {
+    if (kind < CtRecord) {
+        return CtEval(context, package, file, frame, depth, node, kind);
+    }
+    return CtEvalArray(context, package, file, frame, depth, node, kind);
+}
+// The value of an aggregate expression: its image and kind. `want` is the kind
+// an untyped literal takes, 0 for the default.
 CtEvalArray :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int,
                 want: int) -> CtResult {
-    value := Unparenthesized(context.forest, node);
-    local := CtArrayLocal(context, file, frame, value);
-    if (local >= 0) {
-        return CtResult.Elements(frame.arrays[local].items, -frame.storages[local]);
-    }
-    if (Is(context.forest, value, syntax.CallExpression)) {
-        return CtRead(context, package, file, frame, depth, value);
-    }
-    if (Is(context.forest, value, syntax.StructExpression) && want >= CtRecord) {
+    forest := context.forest;
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.StructExpression)) {
+        if (want < CtRecord || want >= CtArray) {
+            return CtResult.Failed(CtFail(context, node, file, "a record literal needs a record type here"));
+        }
         return CtRecordLiteral(context, package, file, frame, depth, value, want - CtRecord);
     }
-    if (!Is(context.forest, value, syntax.ArrayExpression)) {
-        return CtResult.Failed(CtFail(context, node, file, "a compile-time array or record is a literal, a local or a call"));
+    if (Is(forest, value, syntax.ArrayExpression)) {
+        return CtArrayLiteral(context, package, file, frame, depth, value, want);
     }
-    elements: u64[] = [];
-    storage := want;
-    for (element in Members(context.forest, value)) {
-        switch CtEval(context, package, file, frame, depth, element, storage) {
+    if (Is(forest, value, syntax.CallExpression)) {
+        return CtRead(context, package, file, frame, depth, value);
+    }
+    switch CtLocate(context, package, file, frame, depth, value) {
+        case .Failed(diagnostic):
+            return CtResult.Failed(diagnostic);
+        case .Waiting:
+            return CtResult.Waiting;
+        case .Spot(image, at, kind, local):
+            return CtSpotValue(context, image, at, kind);
+    }
+}
+// The value of the array literal `[element, ...]` of array kind `want`, or of
+// the kind its first scalar element has.
+CtArrayLiteral :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int,
+                   want: int) -> CtResult {
+    element: int = 0;
+    if (want >= CtArray) {
+        element = want - CtArray;
+    }
+    image: u64[] = [0];
+    count: u64 = 0;
+    for item in Members(context.forest, node) {
+        result := CtEvalValue(context, package, file, frame, depth, item, element);
+        switch result {
             case .Failed(diagnostic):
                 return CtResult.Failed(diagnostic);
             case .Waiting:
                 return CtResult.Waiting;
-            case .Elements(values, kind):
-                return CtResult.Failed(CtFail(context, element, file, "compile-time arrays hold numbers and bools"));
-            case .Value(item, kind):
-                if (storage == 0) {
-                    storage = kind;
+            case .Value(bits, kind):
+                if (element == 0) {
+                    element = kind;
                 }
-                if (kind != storage && !CtWidens(kind, storage)) {
-                    return CtResult.Failed(CtFail(context, element, file, "array elements differ in type"));
+                if (kind != element && !CtWidens(kind, element)) {
+                    return CtResult.Failed(CtFail(context, item, file, "array elements differ in type"));
                 }
-                elements.append(CtWidened(item, kind, storage));
+                image.append(CtWidened(bits, kind, element));
+            case .Elements(more, kind):
+                if (element == 0) {
+                    element = kind;
+                }
+                if (kind != element) {
+                    return CtResult.Failed(CtFail(context, item, file, "array elements differ in type"));
+                }
+                image.extend(more);
         }
+        count += 1;
     }
-    if (storage == 0) {
+    if (element == 0) {
         return CtResult.Failed(CtFail(context, node, file, "an empty compile-time array needs its type"));
     }
-    return CtResult.Elements(elements, storage);
+    image[0] = count;
+    return CtResult.Elements(image, CtArray + element);
 }
 // The value of the record literal `{field: value, ...}` of declaration
 // `record`: each field once, in any order.
 CtRecordLiteral :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int,
                     record: int) -> CtResult {
-    if (!CtRowOk(context, CtRecord + record)) {
-        return CtResult.Failed(CtFail(context, node, file, "compile-time records hold numbers and bools only"));
+    if (!CtKindOk(context, CtRecord + record)) {
+        return CtResult.Failed(CtFail(context, node, file, "this record holds a type compile-time execution does not"));
     }
     declaration := context.types[record];
-    fields := Members(context.forest, node);
-    if (length(fields) != declaration.count) {
-        return CtResult.Failed(CtFail(context, node, file, "a compile-time record literal needs every field once"));
-    }
-    values: u64[] = [];
-    seen: bool[] = [];
-    at := 0;
-    while (at < declaration.count) {
-        values.append(0);
-        seen.append(false);
-        at += 1;
-    }
-    for (initializer in fields) {
-        name := Text(context.forest, context.documents[file].text, Field(context.forest, initializer, syntax.FieldName));
-        index := FindField(context.types, context.members, record, name);
-        if (index < 0 || seen[index - declaration.first]) {
-            return CtResult.Failed(CtFail(context, initializer, file, "a compile-time record literal needs every field once"));
+    initializers := Members(context.forest, node);
+    image: u64[] = [];
+    matched := 0;
+    field := declaration.first;
+    while (field < declaration.first + declaration.count) {
+        kind := CtMemberKind(context, field);
+        found := -1;
+        for initializer in initializers {
+            name := Text(context.forest, context.documents[file].text,
+                         Field(context.forest, initializer, syntax.FieldName));
+            if (found < 0 && name == context.members[field].name) {
+                found = initializer;
+            }
         }
-        kind := context.members[index].storage;
-        switch CtEval(context, package, file, frame, depth, Field(context.forest, initializer, syntax.FieldValue), kind) {
+        if (found < 0) {
+            return CtResult.Failed(CtFail(context, node, file, "a compile-time record literal needs every field once"));
+        }
+        matched += 1;
+        switch CtEvalAny(context, package, file, frame, depth, Field(context.forest, found, syntax.FieldValue), kind) {
             case .Failed(diagnostic):
                 return CtResult.Failed(diagnostic);
             case .Waiting:
                 return CtResult.Waiting;
             case .Elements(more, other):
-                return CtResult.Failed(CtFail(context, initializer, file, "compile-time records hold numbers and bools only"));
+                if (other != kind) {
+                    return CtResult.Failed(CtFail(context, found, file, "field value differs from its type"));
+                }
+                image.extend(more);
             case .Value(item, storage):
                 if (storage != kind && !CtWidens(storage, kind)) {
-                    return CtResult.Failed(CtFail(context, initializer, file, "field value differs from its type"));
+                    return CtResult.Failed(CtFail(context, found, file, "field value differs from its type"));
                 }
-                values[index - declaration.first] = CtWidened(item, storage, kind);
-                seen[index - declaration.first] = true;
+                image.append(CtWidened(item, storage, kind));
+        }
+        field += 1;
+    }
+    if (matched != length(initializers)) {
+        return CtResult.Failed(CtFail(context, node, file, "a compile-time record literal needs every field once"));
+    }
+    return CtResult.Elements(image, CtRecord + record);
+}
+// Evaluates a node CtCollect found: a call, a field or element, or a text
+// comparison.
+CtRead :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int) -> CtResult {
+    forest := context.forest;
+    if (Is(forest, node, syntax.MemberExpression) || Is(forest, node, syntax.IndexExpression)) {
+        switch CtLocate(context, package, file, frame, depth, node) {
+            case .Failed(diagnostic):
+                return CtResult.Failed(diagnostic);
+            case .Waiting:
+                return CtResult.Waiting;
+            case .Spot(image, at, kind, local):
+                return CtSpotValue(context, image, at, kind);
         }
     }
-    return CtResult.Elements(values, CtRecord + record);
-}
-// The value of `record.field`: the field of a record local or of a call's result.
-CtReadField :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int) -> CtResult {
-    switch CtEvalArray(context, package, file, frame, depth, Field(context.forest, node, syntax.FieldObject), 0) {
+    if (Is(forest, node, syntax.BinaryExpression)) {
+        return CtReadComparison(context, package, file, frame, depth, node);
+    }
+    code := CtIntrinsic(context, package, file, node);
+    if (code == 0) {
+        return CtCall(context, package, file, frame, depth, node);
+    }
+    if (code == CtFormatText) {
+        return CtReadFormat(context, package, file, frame, depth, node);
+    }
+    if (code != CtLengthOf) {
+        return CtReadText(context, package, file, frame, depth, node, code);
+    }
+    arguments := Members(forest, Field(forest, node, syntax.FieldArguments));
+    if (length(arguments) != 1) {
+        return CtResult.Failed(CtFail(context, node, file, "length takes one array or string"));
+    }
+    if (CtIsText(context, package, file, frame, arguments[0])) {
+        return CtReadText(context, package, file, frame, depth, node, CtByteLength);
+    }
+    switch CtEvalArray(context, package, file, frame, depth, arguments[0], 0) {
         case .Failed(diagnostic):
             return CtResult.Failed(diagnostic);
         case .Waiting:
             return CtResult.Waiting;
         case .Value(item, kind):
-            return CtResult.Failed(CtFail(context, node, file, "only a record has fields"));
-        case .Elements(values, kind):
-            if (kind < CtRecord) {
-                return CtResult.Failed(CtFail(context, node, file, "only a record has fields"));
+            return CtResult.Failed(CtFail(context, arguments[0], file, "length takes an array"));
+        case .Elements(image, kind):
+            if (kind < CtArray) {
+                return CtResult.Failed(CtFail(context, arguments[0], file, "length takes an array"));
             }
-            record := kind - CtRecord;
-            name := Text(context.forest, context.documents[file].text, Field(context.forest, node, syntax.FieldMember));
-            index := FindField(context.types, context.members, record, name);
-            if (index < 0) {
-                return CtResult.Failed(CtFail(context, node, file, format_text("Unknown field '{}'", name)));
+            return CtResult.Value(image[0], IntStorage);
+    }
+}
+// Calls the function that `call` names with its arguments evaluated here.
+CtCall :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, call: int) -> CtResult {
+    callee := CtCallee(context, package, file, call);
+    callable := context.callables[callee];
+    if (callable.count < 0) {
+        return CtResult.Failed(CtFail(context, call, file, "compile-time execution does not call generic functions yet"));
+    }
+    if (depth >= CtDepth) {
+        return CtResult.Failed(CtFail(context, call, file, "compile-time evaluation exceeded 128 nested calls"));
+    }
+    arguments := Members(context.forest, Field(context.forest, call, syntax.FieldArguments));
+    if (length(arguments) != callable.count) {
+        return CtResult.Failed(CtFail(context, call, file, "compile-time call needs every argument"));
+    }
+    inner: CtFrame = {names: [], bits: [], storages: [], arrays: []};
+    index: int = 0;
+    while (index < length(arguments)) {
+        param := context.params[callable.first + index];
+        kind := CtTypeKind(param.storage, param.container, param.record);
+        if (kind == 0 || !CtKindOk(context, kind) || param.reference ||
+            Is(context.forest, arguments[index], syntax.NamedArgument)) {
+            return CtResult.Failed(CtFail(context, arguments[index], file,
+                                          "compile-time calls take numbers, bools, text, and arrays and records of them by position"));
+        }
+        if (kind >= CtRecord) {
+            switch CtEvalArray(context, package, file, frame, depth, arguments[index], kind) {
+                case .Failed(diagnostic):
+                    return CtResult.Failed(diagnostic);
+                case .Waiting:
+                    return CtResult.Waiting;
+                case .Value(item, got):
+                    return CtResult.Failed(CtFail(context, arguments[index], file, "the argument must be an array or record"));
+                case .Elements(image, got):
+                    if (got != kind) {
+                        return CtResult.Failed(CtFail(context, arguments[index], file,
+                                                      "argument differs from its parameter type"));
+                    }
+                    inner.names.append(param.name);
+                    inner.bits.append(0);
+                    inner.storages.append(-kind);
+                    CtAddRow(&inner, image);
             }
-            return CtResult.Value(values[index - context.types[record].first], context.members[index].storage);
+        } else {
+            switch CtEval(context, package, file, frame, depth, arguments[index], param.storage) {
+                case .Failed(diagnostic):
+                    return CtResult.Failed(diagnostic);
+                case .Waiting:
+                    return CtResult.Waiting;
+                case .Elements(values, got):
+                    return CtResult.Failed(CtFail(context, arguments[index], file, "the argument must be a number"));
+                case .Value(value, storage):
+                    if (storage != param.storage && !CtWidens(storage, param.storage)) {
+                        return CtResult.Failed(CtFail(context, arguments[index], file,
+                                                      format_text("Mismatched integer types {} and {}; convert one operand",
+                                                                  TypeName(storage), TypeName(param.storage))));
+                    }
+                    inner.names.append(param.name);
+                    inner.bits.append(CtWidened(value, storage, param.storage));
+                    inner.storages.append(param.storage);
+                    CtAddRow(&inner, []);
+            }
+        }
+        index += 1;
+    }
+    return CtRun(context, callee, &inner, depth + 1);
+}
+// Runs function `callee` with its arguments in `frame`.
+CtRun :: (context: ^CtContext, callee: int, frame: ^CtFrame, depth: int) -> CtResult {
+    callable := context.callables[callee];
+    file := callable.document;
+    kind := CtTypeKind(callable.result, callable.result_container, callable.result_record);
+    if (callable.result == 0 || callable.results != 0 || kind == 0 || !CtKindOk(context, kind)) {
+        return CtResult.Failed(CtFail(context, callable.node, file,
+                                      "compile-time execution needs a function with one number, bool, text, array or record result"));
+    }
+    body := Field(context.forest, callable.node, syntax.FieldBody);
+    switch CtBlock(context, callable.package, file, frame, depth, callable, Members(context.forest, body)) {
+        case .Failed(diagnostic):
+            return CtResult.Failed(diagnostic);
+        case .Waiting:
+            return CtResult.Waiting;
+        case .Returned(value, storage):
+            return CtResult.Value(value, storage);
+        case .ReturnedElements(values, storage):
+            return CtResult.Elements(values, storage);
+        case .Normal:
+            return CtResult.Failed(CtFail(context, callable.node, file, "a compile-time function must return a value"));
+        case .Broke:
+            return CtResult.Failed(CtFail(context, callable.node, file, "break outside a loop"));
+        case .Continued:
+            return CtResult.Failed(CtFail(context, callable.node, file, "continue outside a loop"));
+    }
+}
+// The kind a type text names, 0 for none: a scalar, a record, or an array of
+// either written `T[]`.
+CtDeclared :: (context: ^CtContext, package: int, text: string) -> int {
+    base := text;
+    size := text_byte_length(text);
+    listed := size > 2 && text_slice(text, size - 2, 2) == "[]";
+    if (listed) {
+        base = text_slice(text, 0, size - 2);
+    }
+    element := ScalarStorage(base);
+    if (element == 0) {
+        record := FindType(context.types, package, base);
+        if (record >= 0 && context.types[record].kind == RecordDecl) {
+            element = CtRecord + record;
+        }
+    }
+    if (element != 0 && listed) {
+        return CtArray + element;
+    }
+    return element;
+}
+// `name: type = value` or `name := value`, of any kind.
+CtDeclaration :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int,
+                  statement: int) -> CtFlow {
+    forest := context.forest;
+    text := context.documents[file].text;
+    want: int = 0;
+    declared := Field(forest, statement, syntax.FieldType);
+    if (declared >= 0) {
+        want = CtDeclared(context, package, Text(forest, text, declared));
+        if (want == 0 || !CtKindOk(context, want)) {
+            return CtFlow.Failed(CtFail(context, declared, file,
+                                        "compile-time locals are numbers, bools, text, and arrays and records of them"));
+        }
+    }
+    value := Field(forest, statement, syntax.FieldValue);
+    if (value < 0) {
+        return CtFlow.Failed(CtFail(context, statement, file, "a compile-time local needs a value"));
+    }
+    name := Text(forest, text, Field(forest, statement, syntax.FieldName));
+    switch CtEvalValue(context, package, file, frame, depth, value, want) {
+        case .Failed(diagnostic):
+            return CtFlow.Failed(diagnostic);
+        case .Waiting:
+            return CtFlow.Waiting;
+        case .Elements(image, kind):
+            if (want != 0 && kind != want) {
+                return CtFlow.Failed(CtFail(context, value, file, "local value differs from its type"));
+            }
+            frame.names.append(name);
+            frame.bits.append(0);
+            frame.storages.append(-kind);
+            CtAddRow(frame, image);
+            return CtFlow.Normal;
+        case .Value(initial, storage):
+            if (want != 0 && storage != want && !CtWidens(storage, want)) {
+                return CtFlow.Failed(CtFail(context, value, file, "local value differs from its type"));
+            }
+            if (want == 0) {
+                want = storage;
+            }
+            frame.names.append(name);
+            frame.bits.append(CtWidened(initial, storage, want));
+            frame.storages.append(want);
+            CtAddRow(frame, []);
+            return CtFlow.Normal;
+    }
+}
+// The value of `current operator assigned` for a number of type `kind`; just
+// `assigned` when there is no operator.
+CtCombine :: (context: ^CtContext, file: int, statement: int, operator: int, kind: int, current: u64,
+              assigned: u64) -> CtResult {
+    if (operator == NoOperator) {
+        return CtResult.Value(assigned, kind);
+    }
+    if (Floating(kind)) {
+        if (operator != tk.Add && operator != tk.Sub && operator != tk.Mul && operator != tk.Quo) {
+            return CtResult.Failed(CtFail(context, statement, file, "compound assignment on a float needs + - * or /"));
+        }
+        return CtResult.Value(FloatArithmetic(operator, current, assigned, kind), kind);
+    }
+    if (!Integer(kind)) {
+        return CtResult.Failed(CtFail(context, statement, file, "compound assignment needs number operands"));
+    }
+    operand := ExactStored(assigned, kind);
+    if ((operator == tk.Quo || operator == tk.Mod) && ExactZero(operand)) {
+        return CtResult.Failed(CtFail(context, statement, file, "Constant division by zero"));
+    }
+    combined := CtApply(operator, ExactStored(current, kind), operand);
+    if (MagnitudeBits(Magnitude(combined)) > ExactLimit || !ExactFits(combined, kind)) {
+        return CtResult.Failed(OutsideRange(context.forest, file, statement, kind));
+    }
+    return CtResult.Value(ExactWrapped(combined, kind), kind);
+}
+// `x = v`, `x op= v`, and the same for a field or an element of a local, at any
+// depth: `a.b[i].c += v`. An array or a record may be assigned whole.
+CtAssignment :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int,
+                 statement: int) -> CtFlow {
+    forest := context.forest;
+    text := context.documents[file].text;
+    target := Field(forest, statement, syntax.FieldTarget);
+    operator := CompoundOperator(Operator(forest, statement));
+    value := Field(forest, statement, syntax.FieldValue);
+    if (Is(forest, target, syntax.Identifier)) {
+        at := CtLookup(frame, Text(forest, text, target));
+        if (at < 0) {
+            return CtFlow.Failed(CtFail(context, statement, file, "compile-time assignment needs a local"));
+        }
+        local := frame.storages[at];
+        if (local > 0) {
+            switch CtEval(context, package, file, frame, depth, value, local) {
+                case .Failed(diagnostic):
+                    return CtFlow.Failed(diagnostic);
+                case .Waiting:
+                    return CtFlow.Waiting;
+                case .Elements(values, other):
+                    return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
+                case .Value(assigned, storage):
+                    if (storage != local && !CtWidens(storage, local)) {
+                        return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
+                    }
+                    switch CtCombine(context, file, statement, operator, local, frame.bits[at],
+                                     CtWidened(assigned, storage, local)) {
+                        case .Failed(diagnostic):
+                            return CtFlow.Failed(diagnostic);
+                        case .Waiting:
+                            return CtFlow.Waiting;
+                        case .Elements(values, other):
+                            return CtFlow.Waiting;
+                        case .Value(result, other):
+                            frame.bits[at] = result;
+                            return CtFlow.Normal;
+                    }
+            }
+        }
+    }
+    switch CtLocate(context, package, file, frame, depth, target) {
+        case .Failed(diagnostic):
+            return CtFlow.Failed(diagnostic);
+        case .Waiting:
+            return CtFlow.Waiting;
+        case .Spot(image, at, kind, local):
+            if (local < 0) {
+                return CtFlow.Failed(CtFail(context, statement, file, "compile-time assignment needs a local"));
+            }
+            if (kind >= CtRecord) {
+                if (operator != NoOperator) {
+                    return CtFlow.Failed(CtFail(context, statement, file, "compound assignment needs number operands"));
+                }
+                switch CtEvalArray(context, package, file, frame, depth, value, kind) {
+                    case .Failed(diagnostic):
+                        return CtFlow.Failed(diagnostic);
+                    case .Waiting:
+                        return CtFlow.Waiting;
+                    case .Value(item, other):
+                        return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
+                    case .Elements(replacement, got):
+                        if (got != kind) {
+                            return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
+                        }
+                        CtSetRow(frame, local, CtSplice(image, at, CtSize(context, kind, image, at), replacement));
+                        return CtFlow.Normal;
+                }
+            }
+            switch CtEval(context, package, file, frame, depth, value, kind) {
+                case .Failed(diagnostic):
+                    return CtFlow.Failed(diagnostic);
+                case .Waiting:
+                    return CtFlow.Waiting;
+                case .Elements(values, other):
+                    return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
+                case .Value(assigned, storage):
+                    if (storage != kind && !CtWidens(storage, kind)) {
+                        return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
+                    }
+                    switch CtCombine(context, file, statement, operator, kind, image[at], CtWidened(assigned, storage, kind)) {
+                        case .Failed(diagnostic):
+                            return CtFlow.Failed(diagnostic);
+                        case .Waiting:
+                            return CtFlow.Waiting;
+                        case .Elements(values, other):
+                            return CtFlow.Waiting;
+                        case .Value(result, other):
+                            updated := image;
+                            updated[at] = result;
+                            CtSetRow(frame, local, updated);
+                            return CtFlow.Normal;
+                    }
+            }
+    }
+}
+// `array.append(value)`, on a local array or an array in one, the one
+// expression statement a compile-time function may use.
+CtAppend :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int,
+             statement: int) -> CtFlow {
+    forest := context.forest;
+    text := context.documents[file].text;
+    call := FirstMember(forest, statement);
+    function := Field(forest, call, syntax.FieldFunction);
+    if (!Is(forest, call, syntax.CallExpression) || !Is(forest, function, syntax.MemberExpression) ||
+        Text(forest, text, Field(forest, function, syntax.FieldMember)) != "append") {
+        return CtFlow.Failed(CtFail(context, statement, file, "compile-time execution does not support this statement yet"));
+    }
+    arguments := Members(forest, Field(forest, call, syntax.FieldArguments));
+    if (length(arguments) != 1) {
+        return CtFlow.Failed(CtFail(context, statement, file, "append takes one value for a local array"));
+    }
+    switch CtLocate(context, package, file, frame, depth, Field(forest, function, syntax.FieldObject)) {
+        case .Failed(diagnostic):
+            return CtFlow.Failed(diagnostic);
+        case .Waiting:
+            return CtFlow.Waiting;
+        case .Spot(image, at, kind, local):
+            if (local < 0 || kind < CtArray) {
+                return CtFlow.Failed(CtFail(context, statement, file, "append takes one value for a local array"));
+            }
+            element := kind - CtArray;
+            piece: u64[] = [];
+            switch CtEvalAny(context, package, file, frame, depth, arguments[0], element) {
+                case .Failed(diagnostic):
+                    return CtFlow.Failed(diagnostic);
+                case .Waiting:
+                    return CtFlow.Waiting;
+                case .Elements(more, got):
+                    if (got != element) {
+                        return CtFlow.Failed(CtFail(context, statement, file, "array elements differ in type"));
+                    }
+                    piece = more;
+                case .Value(item, storage):
+                    if (storage != element && !CtWidens(storage, element)) {
+                        return CtFlow.Failed(CtFail(context, statement, file, "array elements differ in type"));
+                    }
+                    piece = [CtWidened(item, storage, element)];
+            }
+            size := CtSize(context, kind, image, at);
+            replacement: u64[] = [image[at] + 1];
+            replacement.extend(slice(image, at + 1, size - 1));
+            replacement.extend(piece);
+            CtSetRow(frame, local, CtSplice(image, at, size, replacement));
+            return CtFlow.Normal;
     }
 }
 // A new text value of the run: its index.
@@ -716,7 +1269,9 @@ CtReadText :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, de
         for byte in strings.Bytes(subject) {
             bytes.append(u64(byte));
         }
-        return CtResult.Elements(bytes, IntStorage);
+        image: u64[] = [u64(length(bytes))];
+        image.extend(bytes);
+        return CtResult.Elements(image, CtArray + IntStorage);
     }
     numbers: int[] = [];
     for argument in slice(arguments, 1, wanted - 1) {
@@ -748,145 +1303,6 @@ CtReadText :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, de
     }
     return CtResult.Value(CtIntern(context, strings.Slice(subject, numbers[0], numbers[1])), TextStorage);
 }
-// Evaluates a node CtCollect found: a call, `length(array)`, `array[index]` or
-// `record.field`.
-CtRead :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int) -> CtResult {
-    if (Is(context.forest, node, syntax.MemberExpression)) {
-        return CtReadField(context, package, file, frame, depth, node);
-    }
-    if (Is(context.forest, node, syntax.BinaryExpression)) {
-        return CtReadComparison(context, package, file, frame, depth, node);
-    }
-    code := CtIntrinsic(context, package, file, node);
-    if (Is(context.forest, node, syntax.CallExpression) && code == 0) {
-        return CtCall(context, package, file, frame, depth, node);
-    }
-    if (Is(context.forest, node, syntax.CallExpression) && code == CtFormatText) {
-        return CtReadFormat(context, package, file, frame, depth, node);
-    }
-    if (Is(context.forest, node, syntax.CallExpression) && code != CtLengthOf) {
-        return CtReadText(context, package, file, frame, depth, node, code);
-    }
-    if (Is(context.forest, node, syntax.CallExpression)) {
-        arguments := Members(context.forest, Field(context.forest, node, syntax.FieldArguments));
-        if (length(arguments) != 1) {
-            return CtResult.Failed(CtFail(context, node, file, "length takes one array or string"));
-        }
-        if (CtIsText(context, package, file, frame, arguments[0])) {
-            return CtReadText(context, package, file, frame, depth, node, CtByteLength);
-        }
-        switch CtEvalArray(context, package, file, frame, depth, arguments[0], 0) {
-            case .Failed(diagnostic):
-                return CtResult.Failed(diagnostic);
-            case .Waiting:
-                return CtResult.Waiting;
-            case .Value(item, kind):
-                return CtResult.Failed(CtFail(context, arguments[0], file, "length takes an array"));
-            case .Elements(values, kind):
-                if (kind >= CtRecord) {
-                    return CtResult.Failed(CtFail(context, arguments[0], file, "length takes an array"));
-                }
-                return CtResult.Value(u64(length(values)), IntStorage);
-        }
-    }
-    switch CtEvalArray(context, package, file, frame, depth, Field(context.forest, node, syntax.FieldObject), 0) {
-        case .Failed(diagnostic):
-            return CtResult.Failed(diagnostic);
-        case .Waiting:
-            return CtResult.Waiting;
-        case .Value(item, kind):
-            return CtResult.Failed(CtFail(context, node, file, "only an array can be indexed at compile time"));
-        case .Elements(values, kind):
-            if (kind >= CtRecord) {
-                return CtResult.Failed(CtFail(context, node, file, "only an array can be indexed at compile time"));
-            }
-            switch CtEval(context, package, file, frame, depth, Field(context.forest, node, syntax.FieldIndex), IntStorage) {
-                case .Failed(diagnostic):
-                    return CtResult.Failed(diagnostic);
-                case .Waiting:
-                    return CtResult.Waiting;
-                case .Elements(more, other):
-                    return CtResult.Failed(CtFail(context, node, file, "an array index is a number"));
-                case .Value(position, storage):
-                    if (!Integer(storage)) {
-                        return CtResult.Failed(CtFail(context, node, file, "an array index is a number"));
-                    }
-                    signed := ExactStored(position, storage);
-                    if (ExactNegative(signed) ||
-                        MagnitudeCompare(Magnitude(signed), Magnitude(ExactOf(false, u64(length(values))))) >= 0) {
-                        return CtResult.Failed(CtFail(context, node, file, "array index out of range"));
-                    }
-                    return CtResult.Value(values[int(LowBits(Magnitude(signed)))], kind);
-            }
-    }
-}
-// Calls the function that `call` names with its arguments evaluated here.
-CtCall :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, call: int) -> CtResult {
-    callee := CtCallee(context, package, file, call);
-    callable := context.callables[callee];
-    if (callable.count < 0) {
-        return CtResult.Failed(CtFail(context, call, file, "compile-time execution does not call generic functions yet"));
-    }
-    if (depth >= CtDepth) {
-        return CtResult.Failed(CtFail(context, call, file, "compile-time evaluation exceeded 128 nested calls"));
-    }
-    arguments := Members(context.forest, Field(context.forest, call, syntax.FieldArguments));
-    if (length(arguments) != callable.count) {
-        return CtResult.Failed(CtFail(context, call, file, "compile-time call needs every argument"));
-    }
-    inner: CtFrame = {names: [], bits: [], storages: [], arrays: []};
-    index: int = 0;
-    while (index < length(arguments)) {
-        param := context.params[callable.first + index];
-        row := CtRowType(param.storage, param.container, param.record);
-        if ((row == 0 && (param.container != 0 || !CtScalar(param.storage))) ||
-            (row != 0 && !CtRowOk(context, row)) || param.reference ||
-            Is(context.forest, arguments[index], syntax.NamedArgument)) {
-            return CtResult.Failed(CtFail(context, arguments[index], file,
-                                          "compile-time calls take integers, bools, and arrays and records of them by position"));
-        }
-        if (row != 0) {
-            switch CtEvalArray(context, package, file, frame, depth, arguments[index], row) {
-                case .Failed(diagnostic):
-                    return CtResult.Failed(diagnostic);
-                case .Waiting:
-                    return CtResult.Waiting;
-                case .Value(item, kind):
-                    return CtResult.Failed(CtFail(context, arguments[index], file, "the argument must be an array or record"));
-                case .Elements(values, kind):
-                    if (kind != row) {
-                        return CtResult.Failed(CtFail(context, arguments[index], file,
-                                                      "argument differs from its parameter type"));
-                    }
-                    inner.names.append(param.name);
-                    inner.bits.append(0);
-                    inner.storages.append(-row);
-                    CtAddRow(&inner, values);
-            }
-        } else {
-            switch CtEval(context, package, file, frame, depth, arguments[index], param.storage) {
-                case .Failed(diagnostic):
-                    return CtResult.Failed(diagnostic);
-                case .Waiting:
-                    return CtResult.Waiting;
-                case .Elements(values, kind):
-                    return CtResult.Failed(CtFail(context, arguments[index], file, "the argument must be a number"));
-                case .Value(value, storage):
-                    if (storage != param.storage && !CtWidens(storage, param.storage)) {
-                        return CtResult.Failed(CtFail(context, arguments[index], file,
-                                                      format_text("Mismatched integer types {} and {}; convert one operand",
-                                                                  TypeName(storage), TypeName(param.storage))));
-                    }
-                    inner.names.append(param.name);
-                    inner.bits.append(CtWidened(value, storage, param.storage));
-                    inner.storages.append(param.storage);
-                    CtAddRow(&inner, []);
-            }
-        }
-        index += 1;
-    }
-    return CtRun(context, callee, &inner, depth + 1);
-}
 // `value` of type `from` as a value of the wider type `to`.
 CtWidened :: (value: u64, from: int, to: int) -> u64 {
     if (Floating(from) && Floating(to)) {
@@ -898,35 +1314,6 @@ CtWidened :: (value: u64, from: int, to: int) -> u64 {
 // a wider one, a float to a wider float.
 CtWidens :: (from: int, to: int) -> bool {
     return Widens(from, to) || FloatWidens(from, to);
-}
-// Runs function `callee` with its arguments in `frame`.
-CtRun :: (context: ^CtContext, callee: int, frame: ^CtFrame, depth: int) -> CtResult {
-    callable := context.callables[callee];
-    file := callable.document;
-    row := CtRowType(callable.result, callable.result_container, callable.result_record);
-    if (callable.result == 0 || callable.results != 0 ||
-        (row == 0 && (callable.result_container != 0 || !CtScalar(callable.result))) ||
-        (row != 0 && !CtRowOk(context, row))) {
-        return CtResult.Failed(CtFail(context, callable.node, file,
-                                      "compile-time execution needs a function with one integer, bool, array or record result"));
-    }
-    body := Field(context.forest, callable.node, syntax.FieldBody);
-    switch CtBlock(context, callable.package, file, frame, depth, callable, Members(context.forest, body)) {
-        case .Failed(diagnostic):
-            return CtResult.Failed(diagnostic);
-        case .Waiting:
-            return CtResult.Waiting;
-        case .Returned(value, storage):
-            return CtResult.Value(value, storage);
-        case .ReturnedElements(values, storage):
-            return CtResult.Elements(values, storage);
-        case .Normal:
-            return CtResult.Failed(CtFail(context, callable.node, file, "a compile-time function must return a value"));
-        case .Broke:
-            return CtResult.Failed(CtFail(context, callable.node, file, "break outside a loop"));
-        case .Continued:
-            return CtResult.Failed(CtFail(context, callable.node, file, "continue outside a loop"));
-    }
 }
 // `left op right` over exact values.
 CtApply :: (operator: int, left: u64[], right: u64[]) -> u64[] {
@@ -992,23 +1379,6 @@ CtBlock :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth
     CtDrop(frame, mark);
     return CtFlow.Normal;
 }
-// The storage a type text names: negated row type for an array of a scalar or
-// a record, 0 for none.
-CtDeclared :: (context: ^CtContext, package: int, text: string) -> int {
-    size := text_byte_length(text);
-    if (size > 2 && text_slice(text, size - 2, 2) == "[]") {
-        return -ScalarStorage(text_slice(text, 0, size - 2));
-    }
-    storage := ScalarStorage(text);
-    if (storage != 0) {
-        return storage;
-    }
-    record := FindType(context.types, package, text);
-    if (record >= 0 && context.types[record].kind == RecordDecl) {
-        return -(CtRecord + record);
-    }
-    return 0;
-}
 CtStatement :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, function: Callable,
                 statement: int) -> CtFlow {
     forest := context.forest;
@@ -1017,8 +1387,8 @@ CtStatement :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, d
         if (value < 0) {
             return CtFlow.Failed(CtFail(context, statement, file, "return needs a value"));
         }
-        row := CtRowType(function.result, function.result_container, function.result_record);
-        if (row != 0) {
+        row := CtTypeKind(function.result, function.result_container, function.result_record);
+        if (row >= CtRecord) {
             switch CtEvalArray(context, package, file, frame, depth, value, row) {
                 case .Failed(diagnostic):
                     return CtFlow.Failed(diagnostic);
@@ -1097,234 +1467,6 @@ CtStatement :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, d
     }
     return CtFlow.Failed(CtFail(context, statement, file, "compile-time execution does not support this statement yet"));
 }
-// `name: type = value` or `name := value`, scalar, array or record.
-CtDeclaration :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int,
-                  statement: int) -> CtFlow {
-    forest := context.forest;
-    text := context.documents[file].text;
-    want: int = 0;
-    declared := Field(forest, statement, syntax.FieldType);
-    if (declared >= 0) {
-        want = CtDeclared(context, package, Text(forest, text, declared));
-        if (want == 0 || (want > 0 && !CtScalar(want)) ||
-            (want < 0 && !CtRowOk(context, -want))) {
-            return CtFlow.Failed(CtFail(context, declared, file,
-                                        "compile-time locals are integers, bools, and arrays and records of them"));
-        }
-    }
-    value := Field(forest, statement, syntax.FieldValue);
-    if (value < 0) {
-        return CtFlow.Failed(CtFail(context, statement, file, "a compile-time local needs a value"));
-    }
-    name := Text(forest, text, Field(forest, statement, syntax.FieldName));
-    if (want < 0 || (want == 0 && CtIsArray(context, package, file, frame, value))) {
-        switch CtEvalArray(context, package, file, frame, depth, value, -want) {
-            case .Failed(diagnostic):
-                return CtFlow.Failed(diagnostic);
-            case .Waiting:
-                return CtFlow.Waiting;
-            case .Value(item, kind):
-                return CtFlow.Failed(CtFail(context, value, file, "local value differs from its type"));
-            case .Elements(values, kind):
-                if (want < 0 && kind != -want) {
-                    return CtFlow.Failed(CtFail(context, value, file, "local value differs from its type"));
-                }
-                frame.names.append(name);
-                frame.bits.append(0);
-                frame.storages.append(-kind);
-                CtAddRow(frame, values);
-                return CtFlow.Normal;
-        }
-    }
-    switch CtEval(context, package, file, frame, depth, value, want) {
-        case .Failed(diagnostic):
-            return CtFlow.Failed(diagnostic);
-        case .Waiting:
-            return CtFlow.Waiting;
-        case .Elements(values, kind):
-            return CtFlow.Failed(CtFail(context, value, file, "local value differs from its type"));
-        case .Value(initial, storage):
-            if (want != 0 && storage != want && !CtWidens(storage, want)) {
-                return CtFlow.Failed(CtFail(context, value, file, "local value differs from its type"));
-            }
-            if (want == 0) {
-                want = storage;
-            }
-            frame.names.append(name);
-            frame.bits.append(CtWidened(initial, storage, want));
-            frame.storages.append(want);
-            CtAddRow(frame, []);
-            return CtFlow.Normal;
-    }
-}
-// `x = v`, `x op= v`, `array[i] = v`, `record.field = v`, each also `op=`, and
-// `array = other`.
-CtAssignment :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int,
-                 statement: int) -> CtFlow {
-    forest := context.forest;
-    text := context.documents[file].text;
-    target := Field(forest, statement, syntax.FieldTarget);
-    operator := CompoundOperator(Operator(forest, statement));
-    value := Field(forest, statement, syntax.FieldValue);
-    element: int = -1;
-    named: int = -1;
-    holder := target;
-    if (Is(forest, target, syntax.IndexExpression)) {
-        holder = Field(forest, target, syntax.FieldObject);
-        element = Field(forest, target, syntax.FieldIndex);
-    }
-    if (Is(forest, target, syntax.MemberExpression)) {
-        holder = Field(forest, target, syntax.FieldObject);
-        named = Field(forest, target, syntax.FieldMember);
-    }
-    if (!Is(forest, holder, syntax.Identifier)) {
-        return CtFlow.Failed(CtFail(context, statement, file, "compile-time assignment needs a local"));
-    }
-    at := CtLookup(frame, Text(forest, text, holder));
-    if (at < 0) {
-        return CtFlow.Failed(CtFail(context, statement, file, "compile-time assignment needs a local"));
-    }
-    local := frame.storages[at];
-    if (element < 0 && named < 0 && local < 0) {
-        if (operator != NoOperator) {
-            return CtFlow.Failed(CtFail(context, statement, file, "compound assignment needs integer operands"));
-        }
-        switch CtEvalArray(context, package, file, frame, depth, value, -local) {
-            case .Failed(diagnostic):
-                return CtFlow.Failed(diagnostic);
-            case .Waiting:
-                return CtFlow.Waiting;
-            case .Value(item, kind):
-                return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
-            case .Elements(values, kind):
-                if (kind != -local) {
-                    return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
-                }
-                CtSetRow(frame, at, values);
-                return CtFlow.Normal;
-        }
-    }
-    kind := local;
-    position: int = 0;
-    if (named >= 0) {
-        if (local >= 0 || -local < CtRecord) {
-            return CtFlow.Failed(CtFail(context, statement, file, "only a record has fields"));
-        }
-        record := -local - CtRecord;
-        name := Text(forest, text, named);
-        index := FindField(context.types, context.members, record, name);
-        if (index < 0) {
-            return CtFlow.Failed(CtFail(context, named, file, format_text("Unknown named '{}'", name)));
-        }
-        kind = context.members[index].storage;
-        position = index - context.types[record].first;
-    }
-    if (element >= 0) {
-        if (local >= 0 || -local >= CtRecord) {
-            return CtFlow.Failed(CtFail(context, statement, file, "only an array can be indexed at compile time"));
-        }
-        kind = -local;
-        switch CtEval(context, package, file, frame, depth, element, IntStorage) {
-            case .Failed(diagnostic):
-                return CtFlow.Failed(diagnostic);
-            case .Waiting:
-                return CtFlow.Waiting;
-            case .Elements(more, other):
-                return CtFlow.Failed(CtFail(context, element, file, "an array index is a number"));
-            case .Value(index, storage):
-                signed := ExactStored(index, storage);
-                if (!Integer(storage) || ExactNegative(signed) ||
-                    MagnitudeCompare(Magnitude(signed), Magnitude(ExactOf(false, u64(length(frame.arrays[at].items))))) >= 0) {
-                    return CtFlow.Failed(CtFail(context, element, file, "array index out of range"));
-                }
-                position = int(LowBits(Magnitude(signed)));
-        }
-    }
-    switch CtEval(context, package, file, frame, depth, value, kind) {
-        case .Failed(diagnostic):
-            return CtFlow.Failed(diagnostic);
-        case .Waiting:
-            return CtFlow.Waiting;
-        case .Elements(values, other):
-            return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
-        case .Value(assigned, storage):
-            if (storage != kind && !CtWidens(storage, kind)) {
-                return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
-            }
-            current: u64 = 0;
-            if (element >= 0 || named >= 0) {
-                current = frame.arrays[at].items[position];
-            } else {
-                current = frame.bits[at];
-            }
-            result := CtWidened(assigned, storage, kind);
-            if (operator != NoOperator && Floating(kind)) {
-                if (operator != tk.Add && operator != tk.Sub && operator != tk.Mul && operator != tk.Quo) {
-                    return CtFlow.Failed(CtFail(context, statement, file, "compound assignment on a float needs + - * or /"));
-                }
-                result = FloatArithmetic(operator, current, result, kind);
-            } else if (operator != NoOperator) {
-                if (!Integer(kind)) {
-                    return CtFlow.Failed(CtFail(context, statement, file, "compound assignment needs number operands"));
-                }
-                operand := ExactStored(result, kind);
-                if ((operator == tk.Quo || operator == tk.Mod) && ExactZero(operand)) {
-                    return CtFlow.Failed(CtFail(context, statement, file, "Constant division by zero"));
-                }
-                combined := CtApply(operator, ExactStored(current, kind), operand);
-                if (MagnitudeBits(Magnitude(combined)) > ExactLimit || !ExactFits(combined, kind)) {
-                    return CtFlow.Failed(OutsideRange(forest, file, statement, kind));
-                }
-                result = ExactWrapped(combined, kind);
-            }
-            if (element >= 0 || named >= 0) {
-                row := frame.arrays[at].items;
-                row[position] = result;
-                CtSetRow(frame, at, row);
-            } else {
-                frame.bits[at] = result;
-            }
-            return CtFlow.Normal;
-    }
-}
-// `array.append(value)`, the one expression statement a compile-time function
-// may use.
-CtAppend :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int,
-             statement: int) -> CtFlow {
-    forest := context.forest;
-    text := context.documents[file].text;
-    call := FirstMember(forest, statement);
-    function := Field(forest, call, syntax.FieldFunction);
-    if (!Is(forest, call, syntax.CallExpression) || !Is(forest, function, syntax.MemberExpression) ||
-        Text(forest, text, Field(forest, function, syntax.FieldMember)) != "append") {
-        return CtFlow.Failed(CtFail(context, statement, file, "compile-time execution does not support this statement yet"));
-    }
-    at := CtArrayLocal(context, file, frame, Field(forest, function, syntax.FieldObject));
-    arguments := Members(forest, Field(forest, call, syntax.FieldArguments));
-    if (at < 0 || length(arguments) != 1) {
-        return CtFlow.Failed(CtFail(context, statement, file, "append takes one value for a local array"));
-    }
-    kind := -frame.storages[at];
-    if (kind >= CtRecord) {
-        return CtFlow.Failed(CtFail(context, statement, file, "append takes an array"));
-    }
-    switch CtEval(context, package, file, frame, depth, arguments[0], kind) {
-        case .Failed(diagnostic):
-            return CtFlow.Failed(diagnostic);
-        case .Waiting:
-            return CtFlow.Waiting;
-        case .Elements(values, other):
-            return CtFlow.Failed(CtFail(context, statement, file, "array elements differ in type"));
-        case .Value(item, storage):
-            if (storage != kind && !CtWidens(storage, kind)) {
-                return CtFlow.Failed(CtFail(context, statement, file, "array elements differ in type"));
-            }
-            row := frame.arrays[at].items;
-            row.append(CtWidened(item, storage, kind));
-            CtSetRow(frame, at, row);
-            return CtFlow.Normal;
-    }
-}
 // `while condition { ... }`.
 CtWhile :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, function: Callable,
             statement: int) -> CtFlow {
@@ -1380,6 +1522,9 @@ CtFor :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: 
     }
     values: u64[] = [];
     kind: int = IntStorage;
+    // An array of records iterates by element: the kind and the images.
+    element: int = 0;
+    parts: CtRow[] = [];
     key := Field(forest, statement, syntax.FieldKey);
     if (Field(forest, statement, syntax.FieldFirst) >= 0) {
         first: u64 = 0;
@@ -1428,23 +1573,41 @@ CtFor :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: 
                 return CtFlow.Waiting;
             case .Value(item, other):
                 return CtFlow.Failed(CtFail(context, statement, file, "only an array can be iterated at compile time"));
-            case .Elements(items, storage):
-                if (storage >= CtRecord) {
+            case .Elements(image, storage):
+                if (storage < CtArray) {
                     return CtFlow.Failed(CtFail(context, statement, file, "only an array can be iterated at compile time"));
                 }
-                values = items;
-                kind = storage;
+                element = storage - CtArray;
+                count := int(image[0]);
+                if (element < CtRecord) {
+                    values = slice(image, 1, count);
+                    kind = element;
+                } else {
+                    place := 1;
+                    index := 0;
+                    while (index < count) {
+                        size := CtSize(context, element, image, place);
+                        part: CtRow = {items: slice(image, place, size)};
+                        parts.append(part);
+                        place += size;
+                        index += 1;
+                    }
+                }
         }
+    }
+    total := length(values);
+    if (element >= CtRecord) {
+        total = length(parts);
     }
     mark := length(frame.names);
     position: int = 0;
-    while (position < length(values)) {
+    while (position < total) {
         if (!CtStep(context, statement, file)) {
             return CtFlow.Failed(CtFail(context, statement, file, "compile-time evaluation exceeded 65536 steps"));
         }
         at := position;
         if (reverse) {
-            at = length(values) - 1 - position;
+            at = total - 1 - position;
         }
         if (key >= 0) {
             frame.names.append(Text(forest, text, key));
@@ -1453,9 +1616,15 @@ CtFor :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: 
             CtAddRow(frame, []);
         }
         frame.names.append(name);
-        frame.bits.append(values[at]);
-        frame.storages.append(kind);
-        CtAddRow(frame, []);
+        if (element >= CtRecord) {
+            frame.bits.append(0);
+            frame.storages.append(-element);
+            CtAddRow(frame, parts[at].items);
+        } else {
+            frame.bits.append(values[at]);
+            frame.storages.append(kind);
+            CtAddRow(frame, []);
+        }
         position += 1;
         switch CtBlock(context, package, file, frame, depth, function, Members(forest, Field(forest, statement, syntax.FieldBody))) {
             case .Failed(diagnostic):

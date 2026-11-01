@@ -848,7 +848,7 @@ Example :: library {
 ```
 
 Compile-time execution supports integer, bool and floating values, arrays of
-them, records of them, authored calls, locals, assignment, `if`, `while`, `for`,
+them, records of them, nested to any depth, authored calls, locals, assignment, `if`, `while`, `for`,
 `break`, `continue` and `return`. It does not support closures or native
 calls other than the ones below.
 Each evaluation has a 65,536-step budget and a 128-call limit.
@@ -879,11 +879,12 @@ array elements and record fields, `==` and `!=`, `length`, and the operations
 joins text with `{}` for a text, integer or bool argument and `{{` and `}}` for
 braces; widths, precision, hex, explicit indexes and floats are rejected.
 
-A record whose fields are all integers, floats, strings and bools is a value too: `p: Point =
-{x: 1, y: 2}` (each field once, in any order), `p.x` to read, `p.x = v` or
-`p.x += v` to change a field, and a record may be passed to and returned from
-a function. A record with an array, string or record field is rejected where a
-function takes or returns it.
+A record is a value too, with fields of numbers, bools, text, other records and
+arrays: `p: Point = {x: 1, y: 2}` (each field once, in any order), `p.x` to
+read, and `p.x = v`, `p.x += v`, `path.points[i].y += v` or
+`path.points.append(q)` to change a field or an element at any depth. A record,
+like an array, copies when it is assigned or passed. A record with a map, union
+or pointer field is rejected where a function takes or returns it.
 
 ```chibi
 Example :: library {

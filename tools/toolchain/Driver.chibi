@@ -848,7 +848,11 @@ Census :: () -> int {
         if (!is_c && !is_shim) {
             continue
         }
-        lines := strings.Count(build.read_file(Absolute(path)), "\n")
+        read := os.ReadText(Absolute(path))
+        lines := 0
+        if (!read.error) {
+            lines = strings.Count(read.text, "\n")
+        }
         if (is_c) {
             c_files = c_files + 1
             c_lines = c_lines + lines

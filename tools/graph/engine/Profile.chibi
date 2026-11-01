@@ -1,5 +1,6 @@
 package engine
 
+import files "graph:files"
 import os "core:os"
 import strings "core:strings"
 
@@ -90,7 +91,7 @@ pub ThirdParty :: (source_root: string, compiler_id: string, sanitizers: string)
         cache = Join([strings.TrimSpace(git.stdout), "/chibi/third_party"]);
     }
     pin := Join([family, "-", architecture, "\t", variant, "\t"]);
-    for (line in strings.Lines(build.read_file(Join([source_root, "/third_party/archives.tsv"])))) {
+    for (line in strings.Lines(files.Text(Join([source_root, "/third_party/archives.tsv"])))) {
         if (strings.HasPrefix(line, pin)) {
             return Join([cache, "/", strings.Partition(strings.Partition(strings.Partition(line, "\t").tail, "\t").tail, "\t").tail]);
         }
@@ -292,7 +293,7 @@ DiscoverLibclang :: (part: string, root: string) -> string {
     }
     prefixes.extend(["/opt/homebrew/opt/llvm", "/usr/local/opt/llvm"]);
     versions: string[] = [];
-    for (name in build.list_directory("/usr/lib")) {
+    for (name in files.Names("/usr/lib")) {
         if (strings.HasPrefix(name, "llvm-")) {
             versions.append(name);
         }

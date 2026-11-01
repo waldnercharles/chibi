@@ -83,3 +83,11 @@ HexSpellsTheDigestInLowercase :: () {
     assert(Hex("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     assert(Hex("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 }
+
+@test
+HexOfMatchesHexOfTheSameBytes :: () {
+    abc: u8[] = [97, 98, 99];
+    empty: u8[] = [];
+    assert(HexOf(abc) == Hex("abc"));
+    assert(HexOf(empty) == Hex(""));
+}

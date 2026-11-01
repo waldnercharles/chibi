@@ -1,10 +1,12 @@
 package facts
 
+import os "core:os"
 import posix "core:sys/posix"
 
 // core:sys/posix over libc: a directory is made, found, renamed and removed,
-// a file and a missing path are told apart, a file's bytes round-trip, and programs run. The VM skips this sample as
-// native only; native_build_runs_the_foreign_samples runs it.
+// a file and a missing path are told apart, a file's bytes round-trip, and programs run. core:os then
+// does what its VM bodies do, over the same calls. The VM skips this sample as native only;
+// native_build_runs_the_foreign_samples runs it.
 @test
 Calls :: () {
     assert(posix.MakeDirectory("posix_probe"), "make")
@@ -49,4 +51,47 @@ Calls :: () {
     assert(posix.Print("posix print"), "print")
     process := posix.Spawn(["true"])
     assert(process > 0 && posix.Wait(process) == 0, "spawn and wait")
+
+    // core:os over libc agrees with the build host's natives.
+    assert(os.MakeDirectory("os_probe/a/b/c") == nil && os.IsDirectory("os_probe/a/b/c"), "os: parents are made")
+    assert(os.MakeDirectory("os_probe/a/b/c") == nil, "os: an existing directory is fine")
+    assert(os.Remove("os_probe/none") == nil, "os: removing an absent path is fine")
+    assert(os.WriteText("os_probe/a/f.txt", "hello\n") == nil, "os: write")
+    hashed := os.HashFile("os_probe/a/f.txt")
+    assert(hashed.error == nil && hashed.digest == "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03", "os: file hash")
+    assert(os.HashText("hello\n") == hashed.digest, "os: text hash")
+    assert(os.HashFile("os_probe/none").error != nil, "os: missing file hash")
+    assert(os.Copy("os_probe/a/f.txt", "os_probe/a/g.txt") == nil && os.ReadText("os_probe/a/g.txt").text == "hello\n", "os: copy")
+    assert(os.Stamp("os_probe/a/f.txt") != "" && os.Stamp("os_probe/none") == "", "os: stamp")
+    assert(os.Reserve("os_probe/r") == nil && os.Reserve("os_probe/r") != nil, "os: reserve")
+    assert(os.Publish("os_probe/r", "os_probe/p") == nil && os.Publish("os_probe/p", "os_probe/a") != nil, "os: publish")
+    assert(os.RealPath("os_probe/none") == "" && os.RealPath("os_probe/a") != "", "os: real path")
+    assert(os.FindExecutable("sh") != "" && os.FindExecutable("os-missing-program") == "", "os: find executable")
+    assert(os.Platform() == "Darwin" || os.Platform() == "Linux", "os: platform")
+    assert(os.Root() != "" && os.IsDirectory(os.Root()), "os: root")
+    for name in ["f.txt", "g.txt"] {
+        assert(os.Remove(format_text("os_probe/a/{}", name)) == nil, "os: remove file")
+    }
+    prefixed := os.MakeDirectory("os_probe/order") == nil && os.WriteText("os_probe/order/ab", "x") == nil &&
+                os.WriteText("os_probe/order/a", "x") == nil && os.WriteText("os_probe/order/b", "x") == nil
+    assert(prefixed, "os: order files")
+    order := os.List("os_probe/order").names
+    assert(length(order) == 3 && order[0] == "a" && order[1] == "ab" && order[2] == "b", "os: a prefix sorts first")
+    for name in ["a", "ab", "b"] {
+        assert(os.Remove(format_text("os_probe/order/{}", name)) == nil, "os: order cleanup")
+    }
+    assert(os.Remove("os_probe/order") == nil, "os: order directory")
+    assert(os.Reserve("os_probe/empty") == nil && os.Publish("os_probe/a", "os_probe/empty") != nil, "os: publish keeps an empty destination")
+    assert(os.Remove("os_probe/empty") == nil, "os: empty cleanup")
+    assert(os.HashFile("os_probe").error != nil, "os: a directory has no file hash")
+    sorted := os.List("os_probe").names
+    assert(length(sorted) == 2 && sorted[0] == "a" && sorted[1] == "p", "os: names are sorted")
+    piped := os.Start(["sh", "-c", "echo piped; exit 4"], os.Piped)
+    assert(piped > 0 && os.Wait(piped, -1) == 4, "os: piped program and its status")
+    slow := os.Start(["sh", "-c", "sleep 30"], os.Inherited)
+    assert(os.Wait(slow, 20) == os.StillRunning, "os: a running program")
+    assert(os.Kill(slow) == -9, "os: kill")
+    assert(os.Wait(os.Start(["os-missing-program"], os.Piped), -1) == 127, "os: a program that cannot start")
+    assert(os.Remove("os_probe/p") == nil && os.Remove("os_probe/a/b/c") == nil && os.Remove("os_probe/a/b") == nil &&
+           os.Remove("os_probe/a") == nil && os.Remove("os_probe") == nil, "os: cleanup")
 }

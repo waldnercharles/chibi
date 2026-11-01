@@ -1,6 +1,6 @@
 package toolchain
 
-import generator "asset_generator:."
+import generator "graph:asset_compiler"
 import os "core:os"
 import strings "core:strings"
 
@@ -56,7 +56,11 @@ pub Build :: () -> int {
     }
     target := "";
     if (target_argument >= 0) {
-        target = build.read_file(arguments[target_argument]);
+        // A missing target file leaves the native target, as it always has.
+        read := os.ReadText(arguments[target_argument]);
+        if (!read.error) {
+            target = read.text;
+        }
     }
     if (!generator.Generate(os.Root(), arguments[0], arguments[1], target, compiler_timeout)) {
         return 1;

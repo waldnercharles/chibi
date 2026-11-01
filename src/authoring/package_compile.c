@@ -149,8 +149,8 @@ static void reach_imports(
         while (at < stop && (*at == ' ' || *at == '\t')) {
             at++;
         }
-        if ((conditional || at == line) && stop - at > 7 && !memcmp(at, "import", 6) &&
-            (at[6] == ' ' || at[6] == '\t')) {
+        if ((conditional || at == line) && stop - at > 7 &&
+            !memcmp(at, "import", 6) && (at[6] == ' ' || at[6] == '\t')) {
             const char *open = memchr(at, '"', (size_t)(stop - at));
             const char *close = open
                                   ? memchr(open + 1, '"', (size_t)(stop - open - 1))

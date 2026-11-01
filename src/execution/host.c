@@ -78,13 +78,9 @@ size_t behavior_function_host_storage_bytes(const behavior_function_context *ctx
     size_t bytes = behavior_function_data_storage_bytes(ctx->data);
 #define VECTOR(values)                                                         \
     ((values) ? sizeof(dyna_hdr) + (size_t)acap(values) * sizeof *(values) : 0)
-    bytes += VECTOR(ctx->queries) + VECTOR(ctx->commands) +
-             VECTOR(ctx->command_arguments) + VECTOR(ctx->command_results) +
-             behavior_function_collection_bytes(ctx);
+    bytes += VECTOR(ctx->commands) + VECTOR(ctx->command_arguments) +
+             VECTOR(ctx->command_results) + behavior_function_collection_bytes(ctx);
 #undef VECTOR
-    for (int i = 0; i < acount(ctx->queries); i++) {
-        bytes += (size_t)ctx->queries[i].snapshot.capacity * sizeof(pin_value);
-    }
     return bytes;
 }
 void behavior_function_prepare_data(
@@ -139,8 +135,8 @@ void behavior_function_prepare_data(
 void behavior_function_prepare_host(const behavior_function *f, behavior_function_context *ctx)
 {
     assert(
-        !acount(ctx->queries) && !acount(ctx->commands) &&
-        !acount(ctx->command_arguments) && !acount(ctx->command_results)
+        !acount(ctx->commands) && !acount(ctx->command_arguments) &&
+        !acount(ctx->command_results)
     );
     ctx->points = f->points;
     ctx->watches = f->watches;
@@ -150,17 +146,6 @@ void behavior_function_prepare_host(const behavior_function *f, behavior_functio
         bool owned = ctx->owned_data || !ctx->data;
         behavior_function_prepare_data(f, ctx->services, &ctx->data);
         ctx->owned_data = owned;
-    }
-    for (int i = 0; i < acount(f->queries); i++) {
-        const behavior_function_query *q = &f->queries[i];
-        apush(
-            ctx->queries,
-            ((behavior_query_binding){
-                .read = q->read,
-                .key = q->key,
-                .service = service(ctx->services, q->service),
-                .snapshot = { .element_type = PIN_HANDLE, .type_name = "ecs.entity" } })
-        );
     }
     for (int i = 0; i < acount(f->commands); i++) {
         const behavior_function_command *c = &f->commands[i];
@@ -189,10 +174,6 @@ void behavior_function_release_host(behavior_function_context *ctx)
 {
     behavior_function_collection_clear(ctx);
     behavior_function_restore_arguments(ctx);
-    for (int i = 0; i < acount(ctx->queries); i++) {
-        free(ctx->queries[i].snapshot.items);
-    }
-    afree(ctx->queries);
     afree(ctx->commands);
     afree(ctx->command_arguments);
     afree(ctx->command_results);
@@ -206,9 +187,6 @@ void behavior_function_release_host(behavior_function_context *ctx)
 void behavior_function_reset_host(behavior_function_context *ctx)
 {
     behavior_function_collection_empty(ctx);
-    for (int i = 0; i < acount(ctx->queries); i++) {
-        free(ctx->queries[i].snapshot.items);
-    }
 #define CLEAR(values)                                                          \
     do {                                                                       \
         if (values) {                                                          \
@@ -216,7 +194,6 @@ void behavior_function_reset_host(behavior_function_context *ctx)
             asetlen(values, 0);                                                \
         }                                                                      \
     } while (0)
-    CLEAR(ctx->queries);
     CLEAR(ctx->commands);
     CLEAR(ctx->command_arguments);
     CLEAR(ctx->command_results);
@@ -229,7 +206,6 @@ void behavior_function_reset_host(behavior_function_context *ctx)
     }
     *ctx = (behavior_function_context){ .data = ctx->data,
                                         .owned_data = ctx->owned_data,
-                                        .queries = ctx->queries,
                                         .commands = ctx->commands,
                                         .command_arguments = ctx->command_arguments,
                                         .command_results = ctx->command_results,
@@ -245,9 +221,6 @@ void behavior_function_rebind_host(
     ctx->services = services;
     if (ctx->data) {
         behavior_function_prepare_data(f, services, &ctx->data);
-    }
-    for (int i = 0; i < acount(f->queries); i++) {
-        ctx->queries[i].service = service(services, f->queries[i].service);
     }
     for (int i = 0; i < acount(f->commands); i++) {
         ctx->commands[i].service = service(services, f->commands[i].command->service);

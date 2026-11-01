@@ -282,19 +282,9 @@ selectors. The counts describe coverage and do not record a pass.
   four malformed byte tags and one rejected NUL name.
 - `build-process`: the helper case adds seven operations on at most seven bytes
   and no processes. Binary-output and file assertions replace text rejection.
-- `ecs-strings`: three cases, each with one entity, at most two components and
-  fixed short strings. Rejected writes preserve payloads, versions and intern
-  statistics; successful writes retain bytes after the original storage changes.
 
 These extensions add no rendering, GPU or network work and no additional child
 process launches.
-
-`ecs-query` runs the ECS query correctness cases plus bounded membership-cache
-and query-planning regressions. They create at most 256 entities, reserve at
-most 2,048 slots, and enumerate at most two 36-by-36-by-36 relationship products
-to check the 1 MiB retention limit. They assert invalidation, live values,
-generation safety, partial-iteration behavior, allocation counts and work
-counters. No files, child processes, engine frames or GPU work run.
 
 `language-ranges` runs seven interval-proof cases on hand-built execution
 functions: proven intervals that remove repeated clamps and checks, unordered
@@ -350,10 +340,8 @@ responses. These cases also run in `short`; the focused command does not
 certify that selector or the groups.
 
 Routine CI and the correctness groups exclude benchmark selectors.
-`chibi build test benchmarks` runs the three benchmarks, or name one:
+`chibi build test benchmarks` runs the benchmarks, or name one:
 
-- `ecs-query-benchmark` times fixed workloads of today's query shapes per
-  visited entity.
 - `native-workload-benchmark` builds the four kernels in
   `test/native_aot/workloads` with `chibi build --native` and the LLVM tools in
   `CHIBI_LLVM_BIN`, checks each program's status against the VM's, and prints the
@@ -364,8 +352,6 @@ Routine CI and the correctness groups exclude benchmark selectors.
   on Linux x86-64, the one target the driver admits, against the Release
   launcher, and skips the builds without `CHIBI_LLVM_BIN`. It takes about
   70 seconds.
-- `scheduler-benchmark` compares identical registration and warm dispatch of
-  12 systems over 128 passes per trial.
 
 Each fixture owns its fixed trial count and reports timings alongside correctness
 assertions. Setup and correctness checks stay outside timed loops; no

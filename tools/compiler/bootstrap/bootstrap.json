@@ -2,12 +2,12 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "5080e588446e76a970e8bc8c902cdf9d73521a0e",
+  "revision": "e50fa32e7dc6ca7eaf00af3f210d5f3f18cbdf55",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 12911051,
-    "sha256": "9d82549eec28ce9852ac8b7014122dbdf27f37d97bb5ebd8e5b72ad7549b8874"
+    "bytes": 12918458,
+    "sha256": "c54b07806430efc02df658f0f1b584900676bbaf93327b7d075ea404a95d53e0"
   },
   "project": "/project",
   "core": "/sdk/core",
@@ -94,8 +94,8 @@
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 184287,
-      "sha256": "155478c564b34357b4d10d8200cb74851c78803f35847767b4fc76b685bd88e0"
+      "bytes": 185638,
+      "sha256": "030bba1820fe44607678d21379ab3573b7bff2ef3e769762ce0a65b5eb46547e"
     },
     {
       "path": "package_compiler/ScalarArrays.chibi",
@@ -219,10 +219,10 @@
       "pointer_size": 8,
       "value_size": 48,
       "payload_offset": 8,
-      "arguments_offset": 168,
-      "results_offset": 208,
-      "delta_seconds_offset": 344,
-      "error_status_offset": 496,
+      "arguments_offset": 160,
+      "results_offset": 200,
+      "delta_seconds_offset": 256,
+      "error_status_offset": 400,
       "type_offset": 0,
       "container_offset": 16,
       "name_offset": 24,
@@ -237,7 +237,7 @@
       "argument_failure": 7,
       "assert_failure": 3
     },
-    6829064003630320227,
+    12807983651649450734,
     [
       "CONSTANT",
       "VARIABLE",

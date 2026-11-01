@@ -135,20 +135,14 @@ static void failure(
 )
 {
     struct sljit_compiler *c = m->compiler;
-    if (!preserve_message && i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN &&
-        i->op != BF_HOST_CALL && i->op != BF_COMPONENT_WRITE &&
-        i->op != BF_INTERN_STRING) {
+    if (!preserve_message && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
         sljit_emit_op1(
             c,
             SLJIT_MOV_P,
             SLJIT_MEM1(m->context),
             offsetof(behavior_function_context, error_message),
             SLJIT_IMM,
-            (sljit_sw)(i->op == BF_QUERY_VARIABLE
-                           ? "Query variable is not bound"
-                       : i->op == BF_COMPONENT_READ
-                           ? "Referenced storage is unavailable"
-                           : i->message)
+            (sljit_sw)i->message
         );
     }
     store_steps(m, offsetof(behavior_function_context, error_steps));
@@ -204,8 +198,9 @@ static void failure(
         SLJIT_IMM,
         reason >= BEHAVIOR_FUNCTION_DATA ? i->pin : -1
     );
-    behavior_jit_return(
-        m,
+    sljit_emit_return(
+        c,
+        SLJIT_MOV32,
         reason == BEHAVIOR_FUNCTION_COMMAND ? SLJIT_MEM1(m->context) : SLJIT_IMM,
         reason == BEHAVIOR_FUNCTION_COMMAND
             ? offsetof(behavior_function_context, error_status)
@@ -298,14 +293,7 @@ typedef struct
     bool arguments, loop;
 } behavior_layout;
 
-static behavior_layout layout(
-    const behavior_function *f,
-    bool inspected,
-    bool scoped,
-    const behavior_function *system,
-    bool shared,
-    int minimum_scratch
-)
+static behavior_layout layout(const behavior_function *f, bool inspected, bool scoped)
 {
     bool integers = acount(f->suspensions) > 0;
     for (int i = 0; i < acount(f->slots); i++) {
@@ -346,7 +334,6 @@ static behavior_layout layout(
     behavior_machine m = { .compiler = NULL,
                            .inspected = inspected,
                            .scoped = scoped,
-                           .system_root = system,
                            .function = f,
                            .registers = registers,
                            .context = saved    ? SLJIT_S0
@@ -367,16 +354,7 @@ static behavior_layout layout(
     int scratch = integers            ? (saved ? 5 : integer_scratch)
                 : arguments && !calls ? 6
                                       : 4;
-    if (scratch < minimum_scratch) {
-        scratch = minimum_scratch;
-    }
-    m.system_registers = system && !saved && !shared;
-    if (m.system_registers) {
-        m.context = SLJIT_S5;
-    }
-    int saved_integer = saved              ? (arguments ? 5 : 3)
-                      : m.system_registers ? 6
-                                           : 0;
+    int saved_integer = saved ? (arguments ? 5 : 3) : 0;
     int saved_locals = 0;
     int *local_registers = scoped
                              ? xcalloc((size_t)(acount(f->locals) + 1), sizeof *local_registers)
@@ -414,35 +392,25 @@ static behavior_layout layout(
     int stack_size = parents + (acount(f->frames) > 1
                                     ? acount(f->frames) * sizeof(sljit_sw)
                                     : 0);
-    m.system_stack = stack_size;
-    if (system && !m.system_registers) {
-        stack_size += 4 * sizeof(sljit_sw);
-    }
     m.locals = locals;
     m.parents = parents;
-    return (behavior_layout){ m,
-                              scratch,
-                              system && saved_integer + saved_locals < 6
-                                  ? 6
-                                  : saved_integer + saved_locals,
-                              saved_float,
-                              stack_size,
-                              arguments,
-                              loop };
+    return (behavior_layout){
+        m,           scratch,    saved_integer + saved_locals,
+        saved_float, stack_size, arguments,
+        loop
+    };
 }
 
 typedef struct
 {
     struct sljit_label **resumes;
-    struct sljit_label *loop;
-    struct sljit_jump **next;
 } behavior_emission;
 
 static behavior_emission emit_body(behavior_layout *layout, struct sljit_compiler *c, int budget_proven)
 {
     behavior_machine m = layout->machine;
     m.compiler = c;
-    const behavior_function *f = m.function, *system = m.system_root;
+    const behavior_function *f = m.function;
     int *uses = NULL;
     bool *targets = NULL;
     if (!m.scoped) {
@@ -453,9 +421,6 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
     bool inspected = m.inspected, arguments = layout->arguments, loop = layout->loop;
     const int *registers = m.registers, *local_registers = m.local_registers;
     int locals = m.locals, parents = m.parents;
-    if (system) {
-        behavior_jit_system_begin(&m);
-    }
     sljit_emit_op1(c, SLJIT_MOV_P, m.context, 0, SLJIT_R0, 0);
     sljit_emit_op1(c, SLJIT_MOV_P, m.variables, 0, SLJIT_MEM1(m.context), offsetof(behavior_function_context, variables));
     behavior_jit_load_variables(&m);
@@ -514,9 +479,7 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
     struct sljit_jump **failures = xcalloc((size_t)acount(f->instructions), sizeof *failures);
     struct sljit_jump **jumps = xcalloc((size_t)acount(f->instructions), sizeof *jumps);
     struct sljit_label **resume_labels = xcalloc((size_t)(acount(f->suspensions) + 1), sizeof *resume_labels);
-    if (!system) {
-        behavior_jit_resume(&m, jumps, resume_labels);
-    }
+    behavior_jit_resume(&m, jumps, resume_labels);
     enter_locals(&m, 0);
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
@@ -586,7 +549,6 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
             continue;
         }
         if (behavior_jit_host_call(&m, i, destination, offset) ||
-            behavior_jit_component(&m, i, destination, offset) ||
             behavior_jit_memory(&m, i, destination, offset) ||
             behavior_jit_integer(&m, i, destination, offset)) {
             continue;
@@ -858,11 +820,7 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
                     sljit_emit_op2(c, SLJIT_ADD, m.steps, 0, m.steps, 0, SLJIT_IMM, f->root_steps);
                 }
                 store_steps(&m, offsetof(behavior_function_context, steps));
-                if (system) {
-                    behavior_jit_system_next(&m);
-                } else {
-                    sljit_emit_return(c, SLJIT_MOV32, SLJIT_IMM, 0);
-                }
+                sljit_emit_return(c, SLJIT_MOV32, SLJIT_IMM, 0);
                 break;
             case BF_CONSTANT:
                 sljit_emit_fop1(
@@ -1085,7 +1043,7 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
     free(failures);
     free(uses);
     free(targets);
-    return (behavior_emission){ resume_labels, m.system_loop, m.system_exits };
+    return (behavior_emission){ resume_labels };
 }
 
 /* The guard uses only expression scratch registers before body entry. R3
@@ -1192,61 +1150,26 @@ static struct sljit_jump **loop_budget_guard(
     return slow;
 }
 
-static void *emit(
-    const behavior_function *f,
-    bool inspected,
-    bool scoped,
-    const behavior_function *const *systems,
-    int count
-)
+static void *emit(const behavior_function *f, bool inspected, bool scoped)
 {
     struct sljit_compiler *c = sljit_create_compiler(NULL);
     if (!c) {
         return NULL;
     }
-    int bodies = count ? count : 1;
-    behavior_layout *layouts = xcalloc((size_t)bodies, sizeof *layouts);
-    behavior_emission *emissions = xcalloc((size_t)bodies, sizeof *emissions);
-    behavior_function *runtime = xcalloc((size_t)bodies, sizeof *runtime);
-    bool shared = false;
-    int scratch = 0;
-    for (int i = 0; i < bodies; i++) {
-        const behavior_function *root = count ? systems[i] : NULL;
-        const behavior_function *body = root ? (root->fast ? root->fast : root) : f;
-        if (!inspected && body->runtime_body) {
-            runtime[i] = *body;
-            runtime[i].instructions = body->runtime_body;
-            body = &runtime[i];
-        }
-        layouts[i] = layout(body, inspected, scoped, root, false, 0);
-        if (layouts[i].scratch > scratch) {
-            scratch = layouts[i].scratch;
-        }
-        shared |= !layouts[i].machine.system_registers;
+    behavior_function runtime = { 0 };
+    const behavior_function *body = f;
+    if (!inspected && body->runtime_body) {
+        runtime = *body;
+        runtime.instructions = body->runtime_body;
+        body = &runtime;
     }
-    int saved = 0, floats = 0, stack = 0;
-    for (int i = 0; i < bodies; i++) {
-        if (count > 1 && ((shared && layouts[i].machine.system_registers) ||
-                          layouts[i].scratch < scratch)) {
-            free((void *)layouts[i].machine.registers);
-            free((void *)layouts[i].machine.local_registers);
-            layouts[i] = layout(layouts[i].machine.function, false, false, systems[i], shared, scratch);
-        }
-        if (layouts[i].saved > saved) {
-            saved = layouts[i].saved;
-        }
-        if (layouts[i].floats > floats) {
-            floats = layouts[i].floats;
-        }
-        if (layouts[i].stack > stack) {
-            stack = layouts[i].stack;
-        }
-    }
+    behavior_layout layouts = layout(body, inspected, scoped);
+    int scratch = layouts.scratch, saved = layouts.saved,
+        floats = layouts.floats, stack = layouts.stack;
     behavior_loop_budget proof;
-    const behavior_function *body = layouts[0].machine.function;
-    bool guarded = !count && !inspected && sizeof(sljit_sw) == 8 &&
+    bool guarded = !inspected && sizeof(sljit_sw) == 8 &&
                    behavior_function_loop_budget(body, &proof);
-    behavior_layout fast_layout = layouts[0];
+    behavior_layout fast_layout = layouts;
     if (guarded) {
         bool immutable_arguments = true;
         for (int pc = 0; pc < acount(body->instructions); pc++) {
@@ -1275,22 +1198,11 @@ static void *emit(
     sljit_emit_enter(
         c,
         0,
-        count ? SLJIT_ARGS4(P, P_R, P_R, P_R, P_R) : SLJIT_ARGS1(32, P_R),
+        SLJIT_ARGS1(32, P_R),
         scratch | SLJIT_ENTER_FLOAT(SLJIT_NUMBER_OF_SCRATCH_FLOAT_REGISTERS),
         saved | SLJIT_ENTER_FLOAT(floats),
         stack
     );
-    if (count) {
-        /* Every body shares the outer loop's four slots. Its local frame can
-         * reuse all preceding stack space once the previous body completes. */
-        for (int i = 0; i < count; i++) {
-            if (!layouts[i].machine.system_registers) {
-                layouts[i].machine.system_stack = stack - 4 * sizeof(sljit_sw);
-            }
-        }
-        layouts[0].machine.compiler = c;
-        behavior_jit_system_enter(&layouts[0].machine);
-    }
     if (guarded) {
         struct sljit_jump **slow = loop_budget_guard(
             c,
@@ -1301,8 +1213,7 @@ static void *emit(
         );
         behavior_emission fast = emit_body(&fast_layout, c, cost_slot);
         free(fast.resumes);
-        afree(fast.next);
-        if (fast_layout.machine.registers != layouts[0].machine.registers) {
+        if (fast_layout.machine.registers != layouts.machine.registers) {
             free((void *)fast_layout.machine.registers);
         }
         free((void *)fast_layout.machine.variable_registers);
@@ -1315,62 +1226,35 @@ static void *emit(
         afree(slow);
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_R3, 0);
     }
-    for (int i = 0; i < bodies; i++) {
-        emissions[i] = emit_body(&layouts[i], c, -1);
-    }
+    behavior_emission emission = emit_body(&layouts, c, -1);
     void *code = NULL;
     if (scoped && behavior_execution_scope_cancelled()) {
         sljit_set_compiler_memory_error(c);
     }
     if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
-        for (int i = 0; i < count; i++) {
-            for (int j = 0; j < acount(emissions[i].next); j++) {
-                sljit_set_label(emissions[i].next[j], emissions[(i + 1) % count].loop);
-            }
-        }
         code = sljit_generate_code(c, 0, NULL);
-        if (code && !count) {
+        if (code) {
             for (int j = 0; j < acount(f->suspensions); j++) {
                 (scoped      ? f->artifact->scoped_addresses
                  : inspected ? f->artifact->inspection_addresses
                              : f->artifact->resume_addresses)
-                    [f->suspensions[j].pc + 1] = sljit_get_label_addr(
-                        emissions[0].resumes[j]
-                    );
+                    [f->suspensions[j].pc + 1] = sljit_get_label_addr(emission.resumes[j]);
             }
         }
     }
-    for (int i = 0; i < bodies; i++) {
-        free((void *)layouts[i].machine.registers);
-        free((void *)layouts[i].machine.local_registers);
-        free(emissions[i].resumes);
-        afree(emissions[i].next);
-    }
-    free(layouts);
-    free(emissions);
-    free(runtime);
+    free((void *)layouts.machine.registers);
+    free((void *)layouts.machine.local_registers);
+    free(emission.resumes);
     sljit_free_compiler(c);
     return code;
 }
 void *behavior_function_jit(const behavior_function *f, bool inspected)
 {
-    return emit(f, inspected, false, NULL, 0);
+    return emit(f, inspected, false);
 }
 void *behavior_function_jit_scoped(const behavior_function *f)
 {
-    return emit(f, true, true, NULL, 0);
-}
-void *behavior_function_jit_system(const behavior_function *f)
-{
-    return behavior_function_compile_sequence(&f, 1);
-}
-void *behavior_function_compile_sequence(const behavior_function *const *functions, int count)
-{
-    assert(count > 0);
-    for (int i = 0; i < count; i++) {
-        assert(functions[i]->batchable);
-    }
-    return emit(NULL, false, false, functions, count);
+    return emit(f, true, true);
 }
 void *behavior_function_guard(const behavior_function *f)
 {
@@ -1441,15 +1325,7 @@ void *behavior_function_guard(const behavior_function *f)
 }
 
 #else
-void *behavior_function_compile_sequence(const behavior_function *const *, int)
-{
-    return NULL;
-}
 void *behavior_function_jit_scoped(const behavior_function *)
-{
-    return NULL;
-}
-void *behavior_function_jit_system(const behavior_function *)
 {
     return NULL;
 }

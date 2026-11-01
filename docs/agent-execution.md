@@ -10,7 +10,7 @@ profile.
 ```sh
 chibi build --target test_tools --target test_language   # the test drivers
 chibi build test --list                                  # every selector and group
-chibi build test ecs-query                               # one selector
+chibi build test language-ranges                          # one selector
 chibi test tools/compiler                                # one package's @test functions
 ```
 

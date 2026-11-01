@@ -16,8 +16,6 @@ void test_language_program_session();
 void test_language_capture();
 void test_numeric_ranges();
 void test_language_host_packages_compiler();
-void test_language_component_write_ir();
-void test_language_component_write_layout();
 void test_language_text_format();
 void test_language_native_census(const char *report);
 void test_language_native_census_flattening();
@@ -60,16 +58,12 @@ int main(int argc, char **argv)
                                     !strcmp(argv[1], "--native-census-flattening");
     bool host_packages_compiler = argc == 2 &&
                                   !strcmp(argv[1], "--host-packages-compiler");
-    bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
-    bool component_write_layout = argc == 2 &&
-                                  !strcmp(argv[1], "--component-write-layout");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
          !record_compatibility && !program && !program_session && !ranges &&
          !integer_shift_counts && !package_compiler_chibi_scalar &&
          !package_compiler_chibi_native && !native_census &&
-         !native_census_flattening && !host_packages_compiler &&
-         !component_write && !component_write_layout && !text_format)) {
+         !native_census_flattening && !host_packages_compiler && !text_format)) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | "
@@ -131,7 +125,6 @@ int main(int argc, char **argv)
             ""
             ""
             ""
-            "--component-write | --component-write-layout | "
             ""
             ""
             "--activation-cache "
@@ -172,10 +165,6 @@ int main(int argc, char **argv)
         test_language_host_packages_compiler();
     } else if (ranges) {
         test_numeric_ranges();
-    } else if (component_write_layout) {
-        test_language_component_write_layout();
-    } else if (component_write) {
-        test_language_component_write_ir();
     } else if (program) {
         test_language_capture();
     } else if (program_session) {

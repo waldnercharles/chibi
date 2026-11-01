@@ -71,7 +71,7 @@ void emit_struct_presentation(
 
 typedef struct
 {
-    int components, services;
+    int services;
 } reflection_counts;
 
 static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
@@ -168,31 +168,6 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
     }
     fprintf(out, "const int %sREGISTRY_ENUM_COUNT = %d;\n\n", symbol_prefix(), acount(ctx->enums));
 
-    int component_count = 0;
-    for (int i = 0; i < acount(ctx->structs); i++) {
-        if (ctx->structs[i].component) {
-            emit_component_accessors(out, &ctx->structs[i]);
-            component_count++;
-        }
-    }
-    if (component_count) {
-        fprintf(out, "const ecs_component_desc *const %sREGISTRY_COMPONENTS[] = {\n", symbol_prefix());
-        for (int i = 0; i < acount(ctx->structs); i++) {
-            if (ctx->structs[i].component) {
-                fprintf(
-                    out,
-                    "    &%sCOMPONENT_%s,\n",
-                    symbol_prefix(),
-                    ctx->structs[i].name
-                );
-            }
-        }
-        fputs("};\n", out);
-    } else {
-        fprintf(out, "const void *const %sREGISTRY_COMPONENTS[1] = { NULL };\n", symbol_prefix());
-    }
-    fprintf(out, "const int %sREGISTRY_COMPONENT_COUNT = %d;\n\n", symbol_prefix(), component_count);
-
     int service_count = 0;
     for (int i = 0; i < acount(ctx->fns); i++) {
         for (int j = 0; j < acount(ctx->fns[i].pname); j++) {
@@ -242,12 +217,12 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
         symbol_prefix(),
         acount(ctx->enums)
     );
-    return (reflection_counts){ component_count, service_count };
+    return (reflection_counts){ service_count };
 }
 
 static reflection_counts declare_reflection(FILE *out, const collect_ctx *ctx)
 {
-    int component_count = 0, service_count = 0;
+    int service_count = 0;
     for (int i = 0; i < acount(ctx->structs); i++) {
         const struct_info *s = &ctx->structs[i];
         fprintf(out, "extern const type_desc %sT_%s;\n", symbol_prefix(), struct_c_name(s));
@@ -255,27 +230,9 @@ static reflection_counts declare_reflection(FILE *out, const collect_ctx *ctx)
         if (!s->component) {
             continue;
         }
-        component_count++;
-        fprintf(out, "extern const ecs_component_desc %sCOMPONENT_%s;\n", symbol_prefix(), s->name);
         if (component_unwrap(s)) {
             fprintf(out, "extern const node_host_call %sUnwrap_%s_execution;\n", symbol_prefix(), s->name);
         }
-        fprintf(out, "extern %s *%s%s_get(ecs_world *, ecs_entity);\n", s->name, symbol_prefix(), s->name);
-        fprintf(
-            out,
-            "extern const %s *%s%s_get_const(const ecs_world *, ecs_entity);\n",
-            s->name,
-            symbol_prefix(),
-            s->name
-        );
-        fprintf(out, "extern int %s%s_has(const ecs_world *, ecs_entity);\n", symbol_prefix(), s->name);
-        fprintf(out, "extern int %s%s_add(ecs_world *, ecs_entity, uint64_t);\n", symbol_prefix(), s->name);
-        fprintf(
-            out,
-            "extern int %s%s_remove(ecs_world *, ecs_entity, uint64_t);\n",
-            symbol_prefix(),
-            s->name
-        );
     }
     const char **services = NULL;
     for (int i = 0; i < acount(ctx->fns); i++) {
@@ -306,7 +263,7 @@ static reflection_counts declare_reflection(FILE *out, const collect_ctx *ctx)
         );
     }
     fprintf(out, "extern const service_desc *const %sREGISTRY_SERVICES[];\n\n", symbol_prefix());
-    return (reflection_counts){ component_count, service_count };
+    return (reflection_counts){ service_count };
 }
 
 static void emit_native_header(FILE *out, const collect_ctx *ctx, bool capabilities)
@@ -331,7 +288,6 @@ static void emit_native_header(FILE *out, const collect_ctx *ctx, bool capabilit
         fputs("#include \"support/arena.h\"\n#include \"support/array.h\"\n", out);
         fputs("#include \"types/array.h\"\n#include \"execution/function.h\"\n", out);
     }
-    fputs("#include \"ecs/ecs.h\"\n", out);
     if (capabilities) {
         fputs("#include \"runtime/native_capabilities.h\"\n", out);
     }

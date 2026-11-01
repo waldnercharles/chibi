@@ -22,7 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-#include "runtime/component_catalog.h"
+#include "runtime/native_types.h"
 #include "test/support/reflected_types.h"
 bool test_source_runtime_active();
 #endif

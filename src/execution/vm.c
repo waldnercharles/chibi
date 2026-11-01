@@ -11,34 +11,21 @@ static bool pure_operation(const behavior_function *f, const behavior_function_i
         case BF_VARIABLE:
         case BF_DELTA:
         case BF_OWNER:
-        case BF_WORLD:
-        case BF_QUERY_VARIABLE:
-        case BF_QUERY:
         case BF_HOST_SERVICE:
         case BF_COMMAND_SERVICE:
         case BF_COMMAND_RESULT:
-        case BF_STATE_SELECT:
         case BF_RANDOM:
         case BF_RANDOM_RANGE:
-        case BF_ENTITY:
-        case BF_COMPONENT:
-        case BF_COMPONENT_READ:
-        case BF_COLUMN:
-        case BF_COLUMN_TRY:
-        case BF_ROW:
-        case BF_RETRIGGER:
         case BF_STORE:
         case BF_STORE_VALUE:
         case BF_STORE_HEADER:
         case BF_STORE_TYPE_NAME:
-        case BF_COMPONENT_WRITE:
         case BF_COMMAND_ARGUMENT:
         case BF_COMMAND_OUTPUT:
         case BF_COMMAND:
         case BF_COMMAND_BEGIN:
         case BF_SUSPEND:
-        case BF_DELAY:
-        case BF_INTERN_STRING: return false;
+        case BF_DELAY: return false;
         default: return true;
     }
 }

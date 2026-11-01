@@ -12,8 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PROGRAM_OWNER 1
-
 struct authoring_program
 {
     authoring_program_options options;
@@ -217,14 +215,8 @@ bool authoring_program_prepare(authoring_program *program, const char *name, boo
     } else {
         program->prepared = execution_program_new(
             (execution_module *)module,
-            NULL,
             program->services
         );
-        if (program->prepared &&
-            !execution_program_attach(program->prepared, PROGRAM_OWNER)) {
-            execution_program_free(program->prepared);
-            program->prepared = NULL;
-        }
     }
     if (!program->prepared) {
         diagnostic(program, FLOW_ERR_STATE, NULL, (position){ 0 }, "Program runtime preparation failed");
@@ -288,8 +280,7 @@ static int invoke(
                                        .prefer_compiled = true,
                                        .inherit = true };
     behavior_execution_scope_begin(&scope);
-    execution_instance *instance = execution_program_instance(program->runtime, PROGRAM_OWNER);
-    int status = execution_instance_call(instance, function, result, 0, 0, UINT_MAX);
+    int status = execution_program_call(program->runtime, function, result, UINT_MAX);
     behavior_execution_scope_end(&scope);
     program->calling = false;
     if (status != FLOW_OK) {

@@ -1,7 +1,6 @@
 #include "package_compiler_chibi.h"
 
 #include "backend.h"
-#include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
 #include "execution/module.h"

@@ -196,8 +196,8 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
     ctx->points = f->points;
     ctx->watches = f->watches;
     ctx->edges = f->edges;
-    bool owned = !ctx->queries && !ctx->commands &&
-                 (acount(f->queries) || acount(f->commands) ||
+    bool owned = !ctx->commands &&
+                 (acount(f->commands) ||
                   (!ctx->data && (acount(f->host_calls) ||
                                   acount(f->data_values) || acount(f->calls))));
     if (owned) {

@@ -1,8 +1,6 @@
 #include "execution/machine.h"
 
-#include "ecs/execution.h"
 #include "execution/borrow.h"
-#include "execution/component_write.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
 #include "execution/random.h"
@@ -50,13 +48,8 @@ static int fail(
     ctx->error_steps = steps;
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
-    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL &&
-        i->op != BF_COMPONENT_WRITE && i->op != BF_INTERN_STRING) {
-        ctx->error_message = i->op == BF_QUERY_VARIABLE
-                               ? "Query variable is not bound"
-                           : i->op == BF_COMPONENT_READ
-                               ? "Referenced storage is unavailable"
-                               : i->message;
+    if (i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
+        ctx->error_message = i->message;
     }
     return reason == BEHAVIOR_FUNCTION_COMMAND   ? ctx->error_status
          : reason == BEHAVIOR_FUNCTION_ARGUMENT  ? FLOW_ERR_ARGUMENT
@@ -361,27 +354,6 @@ int execution_machine_step(execution_machine *m, int pc)
             }
             break;
         }
-        case BF_STATE_SELECT:
-            out->i = ctx->select_state(ctx->value_owner, &f->state_selections[i->target], a.i, b.i);
-            break;
-        case BF_RETRIGGER:
-            out->b = ctx->retrigger(ctx, i->frame, i->target, a.d) != 0;
-            break;
-        case BF_INTERN_STRING: {
-            const ecs_execution_view *world = (const ecs_execution_view *)(uintptr_t)
-                behavior_scalar_bits(b);
-            if (i->type == PIN_STR) {
-                const pin_string *text = behavior_function_intern_text(ctx, world, a.text);
-                if (!text) {
-                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
-                    goto done;
-                }
-                out->text = text;
-            } else {
-                out->str = world->intern_string(world, a.str);
-            }
-            break;
-        }
         case BF_STORE_VALUE:
             if (i->offset == BF_STORE_VALUE_SET_ADD) {
                 ctx->add_set_value(ctx->value_owner, i->target, &ctx->data->values[i->left]);
@@ -462,20 +434,6 @@ int execution_machine_step(execution_machine *m, int pc)
             }
             break;
         }
-        case BF_QUERY: {
-            behavior_query_binding *query = &ctx->queries[i->target];
-            ctx->error_message = query->read(query->service, query->key, &query->snapshot);
-            if (ctx->error_message) {
-                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
-                goto done;
-            }
-            if (BF_POINTER_TYPE == PIN_U64) {
-                out->u64 = (uintptr_t)&query->snapshot;
-            } else {
-                out->u = (uint32_t)(uintptr_t)&query->snapshot;
-            }
-            break;
-        }
         case BF_ARRAY: {
             const pin_value *value = &i->value;
             if (i->target == BF_VARIABLE) {
@@ -537,100 +495,6 @@ int execution_machine_step(execution_machine *m, int pc)
             }
             break;
         case BF_OWNER: out->u64 = ctx->owner; break;
-        case BF_QUERY_VARIABLE:
-            if (!ctx->query_variables) {
-                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
-                goto done;
-            }
-            out->u64 = ctx->query_variables[i->target - 1];
-            ctx->error_message = NULL;
-            break;
-        case BF_WORLD:
-            if (BF_POINTER_TYPE == PIN_U64) {
-                out->u64 = (uintptr_t)(i->target ? ctx->binding_world : ctx->world);
-            } else {
-                out->u = (uint32_t)(uintptr_t)(i->target ? ctx->binding_world
-                                                         : ctx->world);
-            }
-            break;
-        case BF_ENTITY:
-            out->u = ecs_execution_entity(
-                (const ecs_execution_view *)(uintptr_t)behavior_scalar_bits(a),
-                b.u64
-            );
-            break;
-        case BF_COMPONENT_WRITE:
-            ctx->error_message = behavior_component_write(ctx, i, &a.u64, &b.d);
-            if (ctx->error_message) {
-                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
-                goto done;
-            }
-            break;
-        case BF_COMPONENT_READ: {
-            uint32_t row = ctx->world ? ecs_execution_entity(ctx->world, a.u64) : 0;
-            const ecs_execution_column
-                *column = ecs_execution_component(ctx->world, row, i->value.u64);
-            if (!column || column->layout != i->layout || column->stride != i->offset) {
-                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
-                goto done;
-            }
-            memcpy(
-                &out->d,
-                (const char *)column->data + (size_t)row * column->stride + i->target,
-                behavior_scalar_size(i->type)
-            );
-            ctx->error_message = NULL;
-            break;
-        }
-        case BF_COLUMN:
-        case BF_COLUMN_TRY:
-        case BF_COMPONENT: {
-            const ecs_execution_column *column = ctx->columns
-                                                   ? ctx->columns[i->component]
-                                                   : ecs_execution_find_column(
-                                                         (const ecs_execution_view *)(uintptr_t)
-                                                             behavior_scalar_bits(a),
-                                                         i->value.u64
-                                                     );
-            if (i->op == BF_COMPONENT) {
-                column = ecs_execution_present(column, b.u);
-            }
-            if (i->type == PIN_BOOL) {
-                out->b = column != NULL;
-                break;
-            }
-            if (column && (column->layout != i->layout || column->stride != i->offset)) {
-                if (i->op == BF_COLUMN_TRY) {
-                    out->u64 = 0;
-                    break;
-                }
-                result = fail(ctx, i, steps, parents, i->target);
-                goto done;
-            }
-            uintptr_t row = i->op != BF_COMPONENT ? (uintptr_t)column
-                          : column ? (uintptr_t)column->data + b.u * column->stride
-                                   : 0;
-            if (BF_POINTER_TYPE == PIN_U64) {
-                out->u64 = row;
-            } else {
-                out->u = (uint32_t)row;
-            }
-            break;
-        }
-        case BF_ROW: {
-            const ecs_execution_column *column = ecs_execution_present(
-                (const ecs_execution_column *)(uintptr_t)behavior_scalar_bits(a),
-                b.u
-            );
-            uintptr_t row = column ? (uintptr_t)column->data + (size_t)b.u * i->offset
-                                   : 0;
-            if (BF_POINTER_TYPE == PIN_U64) {
-                out->u64 = row;
-            } else {
-                out->u = (uint32_t)row;
-            }
-            break;
-        }
         case BF_LOAD:
         case BF_READ:
             if (i->op == BF_READ && !behavior_scalar_bits(a)) {
@@ -658,9 +522,7 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         case BF_TYPE_NAME: {
             const char *name = i->value.str;
-            if (i->target == BF_OWNER) {
-                name = ctx->owner_type_name;
-            } else if (i->target == BF_VARIABLE) {
+            if (i->target == BF_VARIABLE) {
                 name = ctx->variables[i->left].type_name;
             } else if (
                 i->target == BF_ARGUMENT && i->left < ctx->argument_count &&

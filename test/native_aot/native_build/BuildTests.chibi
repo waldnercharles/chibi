@@ -624,6 +624,16 @@ RunsTheForeignSamples :: (suite: Suite) {
             os.Print(format_text("native build: the {} sample exits {}: {}{}", sample, ran.status, ran.stdout, ran.stderr));
         }
         assert(ran.status == 0, "the sample's asserts hold natively");
+        if (sample == "foreign_posix") {
+            // Keep the empty-environment run above; also exercise PATH lookup
+            // without inheriting the developer's tools or environment.
+            searched := os.Capture(["/usr/bin/env", "-i", "PATH=/bin:/usr/bin", "/bin/sh", "-c", "cd \"$0\" && exec \"$1\"",
+                                    built.game, Printed(result)]);
+            if (searched.status != 0) {
+                os.Print(Path([searched.stdout, searched.stderr]));
+            }
+            assert(searched.status == 0, "the POSIX sample also finds executables on its controlled PATH");
+        }
         // The receipt records the vendor archive by hash.
         program := Printed(result);
         assert(sample != "foreign_vendor" ||

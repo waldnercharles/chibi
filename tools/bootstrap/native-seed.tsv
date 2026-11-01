@@ -1,0 +1,4 @@
+# The native compiler that recovery starts from, one per platform: platform,
+# release tag, asset, SHA-256. It is native stage two, byte-identical to the
+# stage three it compiles. The native-seed workflow publishes it;
+# tools/bootstrap/native-seed.sh fetches it.

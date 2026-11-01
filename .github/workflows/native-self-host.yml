@@ -12,6 +12,7 @@ on:
       - tools/bootstrap/native-seed.tsv
       - tools/graph/**
       - packages/core/**
+      - test/native_aot/link/windows/**
       - .github/workflows/native-self-host.yml
   push:
     branches: [main]
@@ -106,10 +107,40 @@ jobs:
         with:
           name: native-stage-two-windows
           path: ${{ runner.temp }}/stage2
+      - name: Install the LLVM optimizer and code generator
+        # The runner's LLVM installer has clang and lld, not opt and llc.
+        # The full upstream archive supplies those tools; verify its bytes.
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = 'clang+llvm-20.1.8-x86_64-pc-windows-msvc'
+          $archive = "$env:RUNNER_TEMP/llvm.tar.xz"
+          Invoke-WebRequest "https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/$name.tar.xz" -OutFile $archive
+          $sha256 = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sha256 -ne 'f229769f11d6a6edc8ada599c0cda964b7dee6ab1a08c6cf9dd7f513e85b107f') {
+            throw 'LLVM archive SHA-256 differs from the pinned release'
+          }
+          tar -xf $archive -C $env:RUNNER_TEMP "$name/bin"
+          if ($LASTEXITCODE) { throw 'could not extract LLVM tools' }
+          $llvm = "$env:RUNNER_TEMP/$name/bin"
+          foreach ($tool in 'opt', 'llc', 'lld-link') {
+            if (!(Test-Path "$llvm/$tool.exe" -PathType Leaf)) { throw "missing LLVM tool $tool" }
+            & "$llvm/$tool.exe" --version
+            if ($LASTEXITCODE) { throw "LLVM tool $tool is unusable" }
+          }
+          "CHIBI_WINDOWS_LLVM=$llvm" >> $env:GITHUB_ENV
+      - name: Exercise the native Windows object pipeline
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $PWD.Path.Replace('\', '/')
+          $work = $env:RUNNER_TEMP.Replace('\', '/')
+          & "$work/stage2/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/link/windows/Main.chibi" --entry Main --output "$work/windows-objects.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 4
+          if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
+          & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
+          if ($LASTEXITCODE) { throw 'the Windows object regression failed' }
       - name: Build stage three and stage four, and compare them
         run: |
           $ErrorActionPreference = 'Stop'
-          $llvm = 'C:\Program Files\LLVM\bin'
+          $llvm = $env:CHIBI_WINDOWS_LLVM
           $root = $PWD.Path.Replace('\', '/')
           $work = $env:RUNNER_TEMP.Replace('\', '/')
           $stage = "$work/stage2/chibi.exe"

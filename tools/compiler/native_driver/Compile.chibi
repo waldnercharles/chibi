@@ -10,8 +10,10 @@ import strings "core:strings"
 // LLVM module or the first rejection out. It touches no file and no global, so
 // Main runs it natively and the VM-hosted compiler runs it as an entry.
 
+// A large program's module is several pieces, each after the first begun by
+// a `; chibi-piece` line (llvm_native's Pieces).
 pub Output :: union {
-    Rejected(message: string) | Emitted(module: u8[])
+    Rejected(message: string) | Emitted(text: string)
 }
 
 Target :: (triple: string) -> abi.Target {
@@ -85,11 +87,7 @@ pub Module :: (collections: string[], directories: string[], paths: string[], so
         case .Invalid(message):
             return Output.Rejected(strings.Concatenate(["rejected (module): ", message]));
         case .Emitted(text):
-            module: u8[] = [];
-            for (item in strings.Bytes(text)) {
-                module.append(u8(item));
-            }
-            return Output.Emitted(module);
+            return Output.Emitted(text);
     }
 }
 
@@ -103,7 +101,11 @@ pub Compile :: (core: string, paths: string[], sources: string[], triple: string
                 flagged.append(u8(byte));
             }
             return flagged;
-        case .Emitted(module):
+        case .Emitted(text):
+            module: u8[] = [];
+            for (item in strings.Bytes(text)) {
+                module.append(u8(item));
+            }
             return module;
     }
 }

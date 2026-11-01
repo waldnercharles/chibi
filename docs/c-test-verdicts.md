@@ -76,32 +76,63 @@ covered by `types/shift_counts_clamp`), `execution_string_equality_and_iteration
 (covered by `base/byte_preserving_strings`; the string cursor is a VM intrinsic),
 `float_conversion_cases.h` and the `whole-conversion` row are deleted.
 
-### core:os: native samples that `native-build` runs
+### core:os: `test/native_aot/os` (ported; `native-build` runs it)
 
-These test the native core:os, since the VM one goes. The two already differ: a native
-write replaces a file in place, an unknown handle returns -1, and a program that cannot
-start gives 127.
+`test/native_aot/os/processes` and `test/native_aot/os/files` test the native core:os,
+because the VM one goes. `RunsTheForeignSamples` runs them natively on Linux and macOS.
+The two core:os implementations already differ in three ways:
+- a native write replaces a file in place;
+- an unknown handle returns -1;
+- a program that cannot start gives 127.
 
-- Processes:
-  - exit statuses and signals, and 127 for a program that cannot start;
-  - arguments reach the child unchanged;
-  - `Start`, `Wait` and `Kill`: `StillRunning`, a group kill, concurrent children, and a
-    300 kB piped child that does not deadlock;
-  - `Capture` keeps NUL bytes and a whole 1 MiB of output;
-  - `Root`, `RealPath`, `FindExecutable` and `Platform`.
-
-  Source cases are in `build_process.c`.
-- Files:
-  - `Kind` of a directory, file, link, dangling link, FIFO, missing path, and a path below
-    a file;
-  - `List` order and `Stamp`;
-  - `Copy` keeps the mode;
-  - `Rename`, and `Remove` of a non-empty directory or a link;
-  - `Reserve` and `Publish` refuse existing paths;
+What they cover:
+- **processes:**
+  - exit statuses, signals as negative numbers, and 127;
+  - arguments passed unchanged;
+  - separate stdout and stderr;
+  - NUL bytes and a whole 1 MiB of output in `Capture`;
+  - `Start`, `Wait` and `StillRunning`;
+  - `Kill`, including the processes the program started;
+  - two programs at once;
+  - `FindExecutable`, `Root` and `Platform`.
+- **files:**
+  - `Kind` of a folder, file, link, dangling link and FIFO, a missing path, and a path
+    below a file;
+  - `List` in byte order;
+  - `Stamp`;
+  - `Copy` keeping the mode and following links;
+  - `Rename`;
+  - `Remove` of a full folder, a link, or nothing;
+  - `Reserve` and `Publish` refusing any existing path;
   - `MakeDirectory` and `WriteText` failures;
-  - a FIFO or directory read gives NotFound.
-- Hashing and the environment: `HashFile`/`HashText` with a million `a`s, and `Getenv` of
-  a variable set to "".
+  - reads of a folder, FIFO or missing path;
+  - `RealPath`, `HashText`, and `HashFile` of a million `a`s.
+
+The C build host is still in use, so its cases stay until the native build runner replaces
+it. These are the ported `build_process.c` cases, which go with it:
+- `exits_and_spawn_errors`;
+- `argv_cwd_and_explicit_environment`;
+- `descendants_stop_on_timeout_and_leader_exit`;
+- `private_waits_have_limits_and_steps_can_be_killed`;
+- `private_started_steps_run_together`;
+- `private_last_output_preserves_bytes_and_refuses_truncation`;
+- `private_step_output_fills_one_text_value_and_probes_stay_unreported`;
+- `private_values_and_process_snapshots_survive_later_calls`;
+- `private_metadata_reports_kinds_stamps_and_sorted_entries`;
+- `private_copies_renames_and_removals_leave_whole_files`;
+- `private_directory_publication_refuses_existing_paths`;
+- `private_file_reads_preserve_bytes_and_reject_invalid_files`;
+- `private_hashes_match_sha256_vectors`.
+
+They don't port:
+- `private_waits_take_output_in_wait_order`: a native piped child writes to a file, so
+  it has no pipe to fill.
+- `private_atomic_writes_preserve_target_on_rename_failure`: the native write is not
+  atomic.
+- `Getenv` of an empty variable: core:os cannot set a variable for a child.
+- `private_waits_refuse_unknown_and_repeated_handles` and
+  `private_unwaited_and_late_steps_stop`: the two implementations disagree, so these
+  wait on an owner decision.
 
 ### The CLI: `test/graph/ChibiCliTests.chibi` (ported), which drives the built `chibi` like `BuildTests.chibi`
 
@@ -132,7 +163,9 @@ start gives 127.
   - from `program_session.c`: a rejected source or entry keeps the accepted program, a
     broken edit keeps state, and an unreachable package's error is never reported.
 - `chibi build --native` of `test/native_aot/workloads` at O0 and O2
-  (`native_workloads_build_and_run`): a `BuildTests.chibi` case.
+  (`native_workloads_build_and_run`): ported as `BuildTests.chibi`'s
+  `BuildsTheWorkloads`, which checks each kernel's checksum. The timings stay with
+  `native-workload-benchmark` until a Chibi benchmark replaces it.
 
 ### The scalar producer: `tools/compiler/package_compiler/tests`
 

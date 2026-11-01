@@ -56,28 +56,40 @@ Main :: () -> int {
         os.Print(strings.Concatenate(["native: ", gathered.problem]));
         return 2;
     }
-    context := false;
+    pieces: string[] = [];
     switch Module(collections, directories, gathered.paths, gathered.sources, triple, chosen) {
         case .Rejected(message):
             os.Print(strings.Concatenate(["native: ", message]));
             return 1;
-        case .Emitted(module):
-            if (os.WriteBytes(strings.Concatenate([output, ".ll"]), module) != nil) {
-                os.Print(strings.Concatenate(["native: cannot write ", output, ".ll"]));
-                return 2;
-            }
-            context = Takes(module);
+        case .Emitted(text):
+            pieces = Pieces(text);
+    }
+    // Each piece of the module is optimized and compiled to its own object,
+    // as many at once as --jobs, by default every processor.
+    files: string[] = [];
+    objects: string[] = [];
+    for (index in 0..<length(pieces)) {
+        module := format_text("{}.{}.ll", output, index);
+        if (os.WriteText(module, pieces[index]) != nil) {
+            os.Print(strings.Concatenate(["native: cannot write ", module]));
+            return 2;
+        }
+        files.append(module);
+        objects.append(format_text("{}.{}.o", output, index));
     }
     // A program that allocates or formats takes the runtime context, which the
     // start module supplies from libc's allocator on Linux, so it links libc
     // dynamically. Otherwise Linux and Windows programs run with nothing but
     // their own objects; macOS links libSystem, as its programs always have.
+    // The entry is the first piece's, `@chibi_scalar(ptr %ctx` when it takes
+    // the context (the other functions are `@chibi_scalar.N`).
+    context := strings.Contains(pieces[0], "@chibi_scalar(ptr %ctx");
     static := !strings.HasPrefix(triple, "aarch64-apple") && (!context || strings.HasPrefix(triple, "x86_64-pc-windows"));
-    objects := [strings.Concatenate([output, ".o"])];
-    if (host.Object(llvm, strings.Concatenate([output, ".ll"]), objects[0], 2) != nil) {
-        os.Print("native: llc could not emit the object");
+    if (host.Objects(llvm, files, objects, 2, Jobs(arguments)) != nil) {
+        os.Print("native: opt or llc could not emit an object");
         return 2;
     }
+    files.extend(objects);
     start := link.Start(triple, static, context);
     if (start != "") {
         if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil ||
@@ -86,16 +98,54 @@ Main :: () -> int {
             return 2;
         }
         objects.append(strings.Concatenate([output, ".start.o"]));
+        files.extend([strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"])]);
     }
     plan := link.Program(triple, llvm, objects, [], [], [], output, "", static);
     if (host.Link(plan) != nil) {
         os.Print("native: the link failed");
         return 2;
     }
-    for (name in [".ll", ".o", ".start.ll", ".start.o"]) {
-        removed := os.Remove(strings.Concatenate([output, name]));
+    for (name in files) {
+        removed := os.Remove(name);
     }
     return 0;
+}
+
+// The modules of a text llvm_native split into pieces: a `; chibi-piece` line
+// begins each after the first. A module it did not split is one piece.
+Pieces :: (text: string) -> string[] {
+    pieces: string[] = [];
+    for (piece in strings.Split(text, "\n; chibi-piece\n")) {
+        pieces.append(strings.Concatenate([piece, "\n"]));
+    }
+    // The last piece kept its own final line feed.
+    last := length(pieces) - 1;
+    pieces[last] = strings.TrimSuffix(pieces[last], "\n");
+    return pieces;
+}
+
+// The --jobs to compile with, else every processor online; 8 when getconf
+// cannot say, as the toolchain's own count.
+Jobs :: (arguments: string[]) -> int {
+    chosen := Option(arguments, "--jobs", "");
+    if (chosen == "") {
+        online := os.Capture(["getconf", "_NPROCESSORS_ONLN"]);
+        chosen = strings.TrimSpace(online.stdout);
+        if (online.status != 0) {
+            chosen = "";
+        }
+    }
+    count := 0;
+    for (byte in strings.Bytes(chosen)) {
+        if (byte < 48 || byte > 57) {
+            return 8;
+        }
+        count = count * 10 + byte - 48;
+    }
+    if (count < 1) {
+        return 8;
+    }
+    return count;
 }
 
 Option :: (arguments: string[], name: string, fallback: string) -> string {
@@ -272,25 +322,4 @@ Position :: (names: string[], name: string) -> int {
         }
     }
     return 0;
-}
-
-// Whether the module's entry takes the runtime context: its text holds
-// `@chibi_scalar(ptr %ctx` (the other functions are `@chibi_scalar.N`).
-Takes :: (module: u8[]) -> bool {
-    needle := strings.Bytes("@chibi_scalar(ptr %ctx");
-    last := length(module) - length(needle);
-    at := 0;
-    while (at <= last) {
-        if (int(module[at]) == needle[0]) {
-            matched := 1;
-            while (matched < length(needle) && int(module[at + matched]) == needle[matched]) {
-                matched += 1;
-            }
-            if (matched == length(needle)) {
-                return true;
-            }
-        }
-        at += 1;
-    }
-    return false;
 }

@@ -67,6 +67,15 @@ Admitted :: (triple: string, layout: string) -> int {
 // `; chibi-import`, `; chibi-self`), the target lines and declarations and
 // definitions. A module is tens of MB for the compiler, so one pass tests each
 // line's first byte and the readers below walk only these.
+// The lines of the IR file at `path` that start with `;`, `t` or `d`, the ones
+// the driver reads (see Markers), found by grep so the file is never loaded.
+MarkerLines :: (path: string) -> string[] {
+    if (build.probe(["grep", "-E", "^[;td]", path]) > 1) {
+        return [];
+    }
+    return Markers(build.last_stdout());
+}
+
 Markers :: (text: string) -> string[] {
     found: string[] = [];
     for (line in build.lines(text)) {
@@ -348,8 +357,12 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         build.report("native-aot: output and partial must be absent; choose a fresh directory");
         return 2;
     }
-    text := build.read_file(input);
-    if (strings.ByteLength(text) == 0) {
+    // A whole compiler is one module, far past what a build file read takes,
+    // so the module is copied and hashed as a file and read only for its marker
+    // lines, with grep.
+    markers := MarkerLines(input);
+    input_hash := build.hash_file(input);
+    if (length(markers) == 0) {
         build.report("native-aot: empty IR is not an emitted scalar module");
         return 2;
     }
@@ -372,7 +385,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     object := Join([partial, "/object.o"]);
     start := Join([partial, "/start.ll"]);
     start_object := Join([partial, "/start.o"]);
-    if (!build.write_file(source, text)) {
+    if (!build.copy_file(input, source)) {
         return Failed(partial, "IR snapshot", 1);
     }
     passes := "verify";
@@ -391,7 +404,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     target := -1;
     optimized: string[] = [];
     if (build.file_kind(module) == "file") {
-        optimized = Markers(build.read_file(module));
+        optimized = MarkerLines(module);
         target = TargetIn(optimized);
     }
     if (target < 0) {
@@ -402,7 +415,6 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     if (shared) {
         program = Join([partial, "/generation.so"]);
     }
-    markers := Markers(text);
     libraries := LinkedLibraries(markers);
     imported := native_link.SystemImports(markers);
     if (target != 2 && length(imported) > 0) {
@@ -528,7 +540,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         }
         program_hash = build.hash_file(program);
     }
-    if (source_hash != build.hash_text(text) || module_hash == "" || object_hash == "" ||
+    if (source_hash != input_hash || module_hash == "" || object_hash == "" ||
         (executable && ((start_hash == "" && !shared) || program_hash == ""))) {
         return Failed(partial, "output identity", 1);
     }
@@ -894,9 +906,13 @@ Driver :: (host: string, artifact: string, core: string, work: string, target: s
         build.report(Join(["native: the compiler did not compile ", entry_path, ": ", build.last_stderr()]));
         return Finish(work, 1);
     }
-    emitted := build.read_file(module);
-    if (strings.ByteAt(emitted, 0) == 0) {
-        build.report(Join(["native: ", strings.Slice(emitted, 1, strings.ByteLength(emitted))]));
+    // A rejection is a small file that starts with a 0 byte; a module is not.
+    if (build.probe(["od", "-An", "-tx1", "-N1", module]) != 0) {
+        build.report("native: the compiler gave no module");
+        return Finish(work, 1);
+    }
+    if (build.trim(build.last_stdout()) == "00") {
+        build.report(Join(["native: ", strings.Slice(build.read_file(module), 1, 4096)]));
         return Finish(work, 1);
     }
     status := Run([module, output, tools[0], tools[1], tools[2], tools[3]], true, tools[4]);

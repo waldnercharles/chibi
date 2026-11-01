@@ -72,7 +72,7 @@ Main :: () -> int {
     markers: string[] = [];
     if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
         for (piece in pieces) {
-            markers.extend(Markers(strings.Bytes(piece)));
+            markers.extend(Markers(piece));
         }
     }
     // Each piece of the module is optimized and compiled to its own object,
@@ -339,28 +339,25 @@ Position :: (names: string[], name: string) -> int {
 }
 
 // The module's `; chibi-library` and `; chibi-import` lines, which name the
-// system libraries and symbols it takes. One pass over the bytes: a module is
+// system libraries and symbols it takes. One pass over the text: a module is
 // megabytes and only these few lines matter.
-Markers :: (module: u8[]) -> string[] {
+Markers :: (module: string) -> string[] {
     found: string[] = [];
-    needle := strings.Bytes("; chibi-");
-    size := length(module);
+    needle := "; chibi-";
+    width := strings.ByteLength(needle);
+    size := strings.ByteLength(module);
     at := 0;
     while (at < size) {
         end := at;
-        while (end < size && int(module[end]) != 10) {
+        while (end < size && strings.ByteAt(module, end) != 10) {
             end += 1;
         }
-        matched := end - at >= length(needle);
-        for (index in 0..<length(needle)) {
-            matched = matched && int(module[at + index]) == needle[index];
+        matched := end - at >= width;
+        for (index in 0..<width) {
+            matched = matched && strings.ByteAt(module, at + index) == strings.ByteAt(needle, index);
         }
         if (matched) {
-            line: u8[] = [];
-            for (index in at..<end) {
-                line.append(module[index]);
-            }
-            found.append(text_from_bytes(line));
+            found.append(strings.Slice(module, at, end - at));
         }
         at = end + 1;
     }

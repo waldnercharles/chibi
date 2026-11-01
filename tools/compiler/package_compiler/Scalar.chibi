@@ -823,6 +823,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         return NumberConversionType(forest, text, node);
     }
     if (Is(forest, node, syntax.UnaryExpression)) {
+        if (ScalarNegated(Operator(forest, node))) {
+            return BoolStorage;
+        }
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand), 0);
     }
     if (Is(forest, node, syntax.MemberExpression)) {
@@ -1505,6 +1508,15 @@ ScalarConversion :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     own := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, operand, context);
     if (own == storage) {
         return ScalarOperands.Built(rows);
+    }
+    // An optional where a bool is expected is true when it is not nil.
+    if (own == UnionStorage && storage == BoolStorage &&
+        ScalarOptional(types, ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand))) {
+        output := rows;
+        output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
+                       ScalarLiteral(forest, operand, facts.IntType, 0),
+                       ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
+        return ScalarOperands.Built(output);
     }
     converts := [ScalarAt(forest, node, facts.ConvertRow, ScalarTypeOf(storage), mode, 1, "")];
     if (Integer(own) && storage == FloatStorage) {

@@ -275,7 +275,8 @@ int main(int argc, char **argv)
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool native_values = false, box3d = false;
-    bool whole_math = false, whole_integer = false, whole_select = false, persistent_store = false;
+    bool whole_math = false, whole_integer = false, whole_select = false,
+         persistent_store = false;
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     whole_math = argc == 2 && !strcmp(argv[1], "--whole-math");
     whole_integer = argc == 2 && !strcmp(argv[1], "--whole-integer");
@@ -305,7 +306,8 @@ int main(int argc, char **argv)
     tool_init();
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = persistent_store || whole_math || whole_integer || whole_select;
+    source_runtime_active = persistent_store || whole_math || whole_integer ||
+                            whole_select;
     if (source_runtime_active) {
         if (persistent_store) {
             test_persistent_stores();

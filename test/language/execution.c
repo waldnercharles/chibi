@@ -1413,8 +1413,6 @@ TEST_CASE(execution_verifier_rejects_indirect_access_to_array_fields)
     return true;
 }
 
-
-
 TEST_CASE(execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands)
 {
     const pin_type invalid[] = { PIN_F32, PIN_F64, PIN_BOOL, PIN_ENUM, PIN_HANDLE };
@@ -3375,7 +3373,6 @@ TEST_CASE(execution_integer_reports_run_every_site_without_a_fast_body)
     cleanup();
     return true;
 }
-
 
 TEST_CASE(execution_native_string_fields_validate_before_publication)
 {

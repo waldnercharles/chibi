@@ -112,6 +112,19 @@ TestSelectors :: (host: string) {
     assert(bounded.status == 0 && Has(Output(bounded), "types (30s): env "), "an explicit deadline");
     heavy := Verb(host, "test", ["--dry-run", "chibi-cli"]);
     assert(heavy.status == 0 && Has(Output(heavy), "chibi-cli (900s): env "), "a selector's own deadline");
+    // Recovery must get a free worker before the short sample suites, without
+    // adding another invocation of the expensive clean-checkout proof.
+    language := Verb(host, "test", ["--dry-run", "language"]);
+    log = Output(language);
+    compiler := strings.Index(log, "chibi-test-compiler (600s):");
+    recovery := strings.Index(log, "bootstrap-recovery (600s):");
+    samples := strings.Index(log, "chibi-test-samples-base (600s):");
+    assert(language.status == 0 && compiler >= 0 && recovery > compiler && samples > recovery, "long compiler work starts before sample suites");
+    count := 0;
+    for (line in strings.Lines(log)) {
+        if (strings.HasPrefix(line, "bootstrap-recovery (")) { count += 1; }
+    }
+    assert(count == 1, "clean-checkout recovery runs exactly once");
     unknown := Verb(host, "test", ["no-such-selector"]);
     assert(unknown.status != 0 && Has(Output(unknown), "unknown selector 'no-such-selector'"), "an unknown selector");
 }

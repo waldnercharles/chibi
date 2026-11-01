@@ -153,17 +153,20 @@ bool build_io_read(
     if (fstat(fd, &info) || !S_ISREG(info.st_mode) || info.st_size < 0 ||
         info.st_size > BUILD_FILE_LIMIT) {
         close(fd);
-        *error = "build file must be regular data of at most 16 MiB";
+        *error = "build file must be regular data of at most 64 MiB";
         return false;
     }
-    char *text = xmalloc(BUILD_FILE_LIMIT + 1);
+    /* One byte past the size read at the open: a file that grew since is caught
+     * by the read filling the buffer. */
+    size_t capacity = (size_t)info.st_size + 1;
+    char *text = xmalloc(capacity + 1);
     size_t size = 0;
     for (;;) {
         *error = io_ready(deadline, cancelled);
         if (*error) {
             break;
         }
-        size_t remaining = BUILD_FILE_LIMIT + 1 - size;
+        size_t remaining = capacity - size;
         size_t chunk = remaining < BUILD_IO_CHUNK ? remaining : BUILD_IO_CHUNK;
         ssize_t count = read(fd, text + size, chunk);
         if (count < 0) {
@@ -177,8 +180,8 @@ bool build_io_read(
             break;
         }
         size += (size_t)count;
-        if (size > BUILD_FILE_LIMIT) {
-            *error = "build file exceeds 16 MiB";
+        if (size >= capacity) {
+            *error = "build file exceeds 64 MiB";
             break;
         }
     }
@@ -584,7 +587,7 @@ const char *build_io_byte_list(
     const char *error = read_bytes(
         root,
         path,
-        BUILD_TEXT_LIMIT / 5,
+        BUILD_BYTE_LIST_LIMIT,
         deadline,
         cancelled,
         "build byte list input must be a regular file of at most 3.2 MiB",

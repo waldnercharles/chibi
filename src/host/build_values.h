@@ -4,9 +4,15 @@
 #include "support/arena.h"
 #include "types/array.h"
 
-/* One text value: room for a build graph's compile_commands.json, which
- * passed 1 MB at about 580 sources. */
-#define BUILD_TEXT_LIMIT (16 * 1024 * 1024)
+/* One text value or file: room for a build graph's compile_commands.json,
+ * which passed 1 MB at about 580 sources, and for the native driver's LLVM
+ * module of the compiler, measured at 45 MB. The driver reads that module and
+ * the VM builds copies of it, so the bound stays under a quarter of
+ * BUILD_STORAGE_LIMIT, which holds a text and its copies. Natively there is no
+ * such bound. */
+#define BUILD_TEXT_LIMIT (64 * 1024 * 1024)
+/* Bytes a byte list may read: a fifth of 16 MiB, as each takes five text bytes. */
+#define BUILD_BYTE_LIST_LIMIT (16 * 1024 * 1024 / 5)
 #define BUILD_ARRAY_LIMIT (1024 * 1024)
 /* Bound a bank's retained arena blocks. The host reuses its native-result
  * bank after the VM imports a callback's results; root arguments have a

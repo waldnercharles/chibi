@@ -78,7 +78,7 @@ A read of a missing key gives the value type's zero; reads borrow. Writing throu
 ## Plan and state
 
 Done on `codex/native-maps`: native_abi `MapType`, the llvm_native instructions (MapLength, MapGet, MapHas, MapSet, MapDelete,
-MapCopy, MapDrop, MapKeyAt, MapValueAt), validation and emission in `tools/compiler/llvm_native/Maps.chibi`, IR-text tests in
+MapCopy, MapDrop, MapKeyAt, MapValueAt), validation and emission in `tools/compiler/llvm_native/Emit.chibi`, IR-text tests in
 `tests/Maps.chibi` (all of `chibi test tools/compiler` passes). That code is the first draft: 24-byte header, shifting delete.
 Next, in order:
 1. Replace the helper templates with the design above (prototype and a driver, verified with ASan against a model, in

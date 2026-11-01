@@ -1,0 +1,10 @@
+package facts
+
+// The constant count limit applies to a constant expression; a literal count
+// on a variable operand shifts every bit out.
+@test
+Calls :: () {
+    value: i8 = 1;
+    shifted: i8 = Shift(value);
+    assert(shifted == 0, "count 5000");
+}

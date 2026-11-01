@@ -1,0 +1,2 @@
+package facts
+Limit :: () -> i8 { return (i8(0) << 4096) + (i8(1) >> 4096); }

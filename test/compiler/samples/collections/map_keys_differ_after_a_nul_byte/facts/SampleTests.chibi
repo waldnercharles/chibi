@@ -1,0 +1,9 @@
+package facts
+
+// A string key is all of its bytes: keys that differ only after a NUL byte
+// are different keys, and a prefix ending at the NUL is not one of them.
+@test
+Calls :: () {
+    assert(Lookup() == 123, "three distinct keys");
+    assert(!Missing(), "a prefix is a different key");
+}

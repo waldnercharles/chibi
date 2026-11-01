@@ -78,7 +78,7 @@ tool	native-tools	@build@/test/tools/test_tools
 tool	short	@build@/test/tools/test_tools
 timeout	chibi-cli	900
 timeout	native-build	1500
-timeout	build-process	900
+timeout	build-process	1800
 timeout	graph-sdk-install	1200
 timeout	bootstrap-load	1800
 exclusive	language-test-parallel

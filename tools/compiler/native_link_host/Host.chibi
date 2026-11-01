@@ -98,7 +98,9 @@ pub Objects :: (llvm: string, modules: string[], objects: string[], level: int, 
                                             os.Piped);
                 steps[index] = 2;
             } else {
-                removed := os.Remove(Join([objects[index], ".bc"]));
+                if (os.Remove(Join([objects[index], ".bc"])) != nil) {
+                    return Fail(link.CannotWrite, 0);
+                }
                 steps[index] = 3;
                 running -= 1;
                 done += 1;

@@ -106,9 +106,9 @@ ScopedArgument :: struct {
     param: int;
 }
 // The arguments of scoped parameters in the body `node`, in the order the
-// calls appear.
+// calls appear, and with `arrays` those of array parameters too.
 ScopedCalls :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
-                natives: ResolvedNative[], aliases: Name[], package: int, node: int) -> ScopedArgument[] {
+                natives: ResolvedNative[], aliases: Name[], package: int, node: int, arrays: bool) -> ScopedArgument[] {
     found: ScopedArgument[] = [];
     pending: int[] = [node];
     top: int = 1;
@@ -122,7 +122,8 @@ ScopedCalls :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
                 if (GenericOmitted(aliases, argument)) { continue; }
                 index := GenericCallParameter(forest, text, callables, params, aliases, called, at, argument, position);
                 if (called >= 0 && index >= 0 && index < callables[called].count &&
-                    params[callables[called].first + index].reference) {
+                    (params[callables[called].first + index].reference ||
+                     (arrays && params[callables[called].first + index].container == ArrayContainer))) {
                     scoped: ScopedArgument = {value: GenericArgumentValue(forest, argument),
                                               param: callables[called].first + index};
                     found.append(scoped);
@@ -148,7 +149,7 @@ ScopedCalls :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
 ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                     natives: ResolvedNative[], aliases: Name[], package: int, node: int) -> int[] {
     found: int[] = [];
-    for (argument in ScopedCalls(forest, text, callables, params, natives, aliases, package, node)) {
+    for (argument in ScopedCalls(forest, text, callables, params, natives, aliases, package, node, false)) {
         if (Is(forest, argument.value, syntax.AddressExpression)) {
             found.append(argument.value);
         }

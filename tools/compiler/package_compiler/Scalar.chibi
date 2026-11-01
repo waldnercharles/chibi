@@ -3062,22 +3062,35 @@ ScalarWritten :: (scoped: snapshot.SnapshotNode[], text: string, callables: Call
             stored := ScalarStoredNames(scoped, text, body, changed_fields);
             calls := ScopedCalls(scoped, text, callables, marked, natives,
                                  ScalarAliases(callables, documents, links, generic_bindings, function),
-                                 callable.package, body);
+                                 callable.package, body, true);
             for (index in 0..<callable.count) {
                 param := marked[callable.first + index];
-                // An array parameter the function changes is its own.
-                if (!param.reference && param.container == ArrayContainer && !param.written &&
-                    (Holds(mutated, param.name) || Holds(stored, param.name))) {
-                    param.written = true;
-                    marked[callable.first + index] = param;
-                    continue;
+                // An array parameter the function changes is its own, and so
+                // is one it hands on to a parameter that is: the argument is
+                // a move wherever the parameter is dead after the call, and a
+                // copy only where it is not.
+                if (!param.reference && param.container == ArrayContainer && !param.written) {
+                    owned := Holds(mutated, param.name) || Holds(stored, param.name);
+                    for (argument in calls) {
+                        if (!marked[argument.param].reference && marked[argument.param].written &&
+                            ScalarPassedName(scoped, text, argument.value) == param.name) {
+                            owned = true;
+                        }
+                    }
+                    if (owned) {
+                        param.written = true;
+                        marked[callable.first + index] = param;
+                        changed = true;
+                        continue;
+                    }
                 }
                 if (!param.reference || param.written) {
                     continue;
                 }
                 written := Holds(mutated, param.name);
                 for (argument in calls) {
-                    if (marked[argument.param].written && ScalarPassedName(scoped, text, argument.value) == param.name) {
+                    if (marked[argument.param].reference && marked[argument.param].written &&
+                        ScalarPassedName(scoped, text, argument.value) == param.name) {
                         written = true;
                     }
                 }
@@ -3122,7 +3135,7 @@ ScalarLent :: (scoped: snapshot.SnapshotNode[], text: string, callables: Callabl
     // per function is the whole forest times the functions.
     rewritten: int[] = [];
     for (argument in ScopedCalls(scoped, text, callables, params, natives, aliases, callable.package,
-                                 Field(scoped, callable.node, syntax.FieldBody))) {
+                                 Field(scoped, callable.node, syntax.FieldBody), false)) {
         if (Is(scoped, argument.value, syntax.AddressExpression) && !params[argument.param].written) {
             rewritten.append(argument.value);
         }

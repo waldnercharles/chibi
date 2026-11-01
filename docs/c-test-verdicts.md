@@ -103,7 +103,7 @@ start gives 127.
 - Hashing and the environment: `HashFile`/`HashText` with a million `a`s, and `Getenv` of
   a variable set to "".
 
-### The CLI: a Chibi suite that drives the built `chibi`, like `BuildTests.chibi`
+### The CLI: `test/graph/ChibiCliTests.chibi` (ported), which drives the built `chibi` like `BuildTests.chibi`
 
 - `version` and `doctor`, apart from the backend line:
   - `version_reads_the_build_identity`;

@@ -227,13 +227,21 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
     return true;
 }
 
-// A compiled product depends only on its request and the seed that compiles
-// it, so it is kept under their digest in `cache`, a directory shared by every
-// checkout on the machine: a build whose sources did not change copies it
-// instead of compiling the compiler's sources again. An empty `cache` keeps
-// nothing.
-Key :: (seed: string, request: string) -> string {
-    return Digest(Join([files.Digest(seed), "\n", request]));
+// A compiled product depends on its request, the seed that compiles it and the
+// compiler host that runs the seed: the seed calls native functions in the host,
+// its parser included, and the target facts in the request do not identify
+// those implementations. The product is kept under the digest of the three in
+// `cache`, a directory shared by every checkout on the machine: a build whose
+// sources, seed and host did not change copies it instead of compiling the
+// compiler's sources again. An empty `cache` keeps nothing. The key is "" when
+// the host or the seed cannot be read, and no product is made or used then.
+pub Key :: (host: string, seed: string, request: string) -> string {
+    host_digest := files.Digest(host);
+    seed_digest := files.Digest(seed);
+    if (host_digest == "" || seed_digest == "") {
+        return "";
+    }
+    return Digest(Join([host_digest, "\n", seed_digest, "\n", request]));
 }
 
 // The SHA-256 of `text` as 64 lowercase hex digits. Every digest the generator
@@ -242,8 +250,12 @@ Digest :: (text: string) -> string {
     return os.HashText(text);
 }
 
-Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
+pub Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
             cache: string, timeout: string, inputs: string) -> bool {
+    if (key == "") {
+        os.Print("asset compiler: the compiler host or the seed cannot be read");
+        return false;
+    }
     stored := Join([cache, "/", key]);
     if (cache != "" && os.Exists(stored) && !os.Copy(stored, output)) {
         Refresh(stored, Number(Stamp()));
@@ -331,7 +343,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     cache := Location(os.Getenv("CHIBI_ASSET_COMPILER_CACHE"), os.Getenv("XDG_CACHE_HOME"), os.Getenv("HOME"), root);
     os.Print("asset compiler: serialize facade request");
     facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target);
-    facade_key := Key(seed, facade_request);
+    facade_key := Key(host, seed, facade_request);
     kept := [facade_key];
     os.Print(format_text("asset compiler: invoke facade compiler at {} ({} sources, {} bytes)", Stamp(), length(paths),
                          strings.ByteLength(facade_request)));
@@ -346,7 +358,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     } else {
         os.Print("asset compiler: serialize target request");
         target_request := Request("asset_compiler/Compile.chibi", paths, sources, target);
-        target_key := Key(seed, target_request);
+        target_key := Key(host, seed, target_request);
         kept.append(target_key);
         os.Print("asset compiler: invoke target compiler");
         if (!Product(host, seed, closure_entry, target_request, target_key, artifact, cache, compiler_timeout, inputs)) {

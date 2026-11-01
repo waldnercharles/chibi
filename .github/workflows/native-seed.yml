@@ -54,9 +54,10 @@ jobs:
           else
             brew install llvm lld
             LLVM="$(brew --prefix llvm)"
-            # The native driver takes opt, llc and ld.lld from one folder.
+            # The native driver takes opt, llc and the linkers from one folder;
+            # native_link links macOS programs with ld64.lld.
             mkdir -p "$RUNNER_TEMP/llvm-bin"
-            ln -s "$LLVM/bin/opt" "$LLVM/bin/llc" "$(brew --prefix lld)/bin/ld.lld" "$RUNNER_TEMP/llvm-bin/"
+            ln -s "$LLVM/bin/opt" "$LLVM/bin/llc" "$(brew --prefix lld)/bin/ld.lld" "$(brew --prefix lld)/bin/ld64.lld" "$RUNNER_TEMP/llvm-bin/"
             echo "LLVM_BIN=$RUNNER_TEMP/llvm-bin" >> "$GITHUB_ENV"
             echo "LIBCLANG_ROOT=$LLVM" >> "$GITHUB_ENV"
             echo "CC=$LLVM/bin/clang" >> "$GITHUB_ENV"
@@ -94,7 +95,9 @@ jobs:
   publish:
     name: Publish the native compilers
     needs: build
-    if: inputs.publish
+    # Publishes the platforms that built, so one platform's failure does not
+    # hold back the others' pins.
+    if: always() && inputs.publish && needs.build.result != 'cancelled'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
@@ -107,7 +110,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           cd out
-          rm -f native-seed.log
+          ls chibi-native-* > /dev/null
           sha256sum chibi-native-* > SHA256SUMS
           # A tag names one commit's compilers; never replace published assets.
           if ! gh release view "$TAG" > /dev/null 2>&1; then

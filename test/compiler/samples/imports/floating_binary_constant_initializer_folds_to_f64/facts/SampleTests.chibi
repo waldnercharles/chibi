@@ -1,0 +1,8 @@
+package facts
+
+@test
+Calls :: () {
+    actual: f64 = Sum;
+    expected: f64 = 3.0;
+    assert(actual == expected, "floating binary constant initializer folds to f64");
+}

@@ -1,0 +1,5 @@
+package facts
+Hex :: (n: int) -> string { return format_text("{:x}", n); }
+Bad: int : text_byte_length(Hex(255));
+Main :: () -> int { return Bad; }
+// error: 2:48: format_text supports only {} at compile time

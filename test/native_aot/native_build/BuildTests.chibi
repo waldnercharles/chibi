@@ -601,17 +601,24 @@ CopySample :: (from: string, to: string) {
 // the language's numeric rules run natively: each becomes a project whose Main
 // calls the sample's Calls, builds with `chibi build --native` and runs, and
 // its asserts hold when the program exits 0. libc is the foreign library.
-// Each is a folder below test/compiler/samples.
+// core:os's native behavior runs the same way from test/native_aot/os, which
+// the VM cannot run: its core:os is the build host's. Each is a folder below
+// the repository root.
 RunsTheForeignSamples :: (suite: Suite) {
-    for (folder in ["native/foreign_declared", "native/foreign_library", "native/foreign_vendor", "native/foreign_posix",
-                    "native/when_imports", "types/float_to_integer_conversions_truncate_clamp_and_map_nan_to_zero",
-                    "types/integer_to_float_conversions_keep_magnitude_and_sign",
-                    "types/signed_negation_and_comparisons_at_the_edges", "types/bitwise_operators_keep_each_width"]) {
+    samples := "test/compiler/samples/";
+    for (folder in [Path([samples, "native/foreign_declared"]), Path([samples, "native/foreign_library"]),
+                    Path([samples, "native/foreign_vendor"]), Path([samples, "native/foreign_posix"]),
+                    Path([samples, "native/when_imports"]),
+                    Path([samples, "types/float_to_integer_conversions_truncate_clamp_and_map_nan_to_zero"]),
+                    Path([samples, "types/integer_to_float_conversions_keep_magnitude_and_sign"]),
+                    Path([samples, "types/signed_negation_and_comparisons_at_the_edges"]),
+                    Path([samples, "types/bitwise_operators_keep_each_width"]), "test/native_aot/os/processes",
+                    "test/native_aot/os/files"]) {
         sample := strings.BaseName(folder);
         built := Reset(suite, sample, "package main\n");
         target := Path([built.game, "/", sample]);
         Make(target);
-        CopySample(Path([os.Root(), "/test/compiler/samples/", folder]), target);
+        CopySample(Path([os.Root(), "/", folder]), target);
         Write(Path([target, "/facts/Native.chibi"]), "package facts\npub Native :: () -> int {\n    return Calls();\n}\n");
         Write(Path([built.game, "/Main.chibi"]), Path(["package main\nimport facts \"project:", sample, "/facts\"\nMain :: () -> int {\n    return facts.Native();\n}\n"]));
         // The vendor sample opens the font beside the program, which runs in game.
@@ -634,6 +641,30 @@ RunsTheForeignSamples :: (suite: Suite) {
         assert(sample != "foreign_vendor" ||
                Holds(Path([strings.Slice(program, 0, strings.LastIndex(program, "/")), "/receipt.txt"]), "libchibi_vendor_freetype.a\nlibrary-sha256 "),
                "the vendor archive's hash");
+    }
+}
+
+// Each kernel of test/native_aot/workloads builds at O0 and O2 and exits with
+// the checksum its README records. The timings are native-workload-benchmark's.
+BuildsTheWorkloads :: (suite: Suite) {
+    kernels := ["integrate", "collide", "lex", "recurse"];
+    statuses: int[] = [161, 95, 140, 138];
+    for (index in 0..<length(kernels)) {
+        kernel := kernels[index];
+        built := Reset(suite, Path(["workload-", kernel]), Read(Path([os.Root(), "/test/native_aot/workloads/", kernel, "/Main.chibi"])));
+        RealTools(suite, built);
+        for (mode in ["-O0", "-O2"]) {
+            result := Build(suite, suite.built, built, [mode]);
+            if (result.status != 0) {
+                os.Print(result.log);
+            }
+            assert(result.status == 0, "the workload builds");
+            ran := os.Run(In(built.game, Printed(result)));
+            if (ran != statuses[index]) {
+                os.Print(format_text("native build: the {} workload at {} exits {}, not {}", kernel, mode, ran, statuses[index]));
+            }
+            assert(ran == statuses[index], "the workload's checksum");
+        }
     }
 }
 
@@ -961,7 +992,7 @@ Cases :: (llvm: bool) -> string[] {
     if (llvm) {
         names.extend(["RunsWithLLVMAndNoCCompiler", "LinksAVendoredArchive", "CallsThroughAFunctionPointer",
                       "PassesAByteArrayToC", "SwapsARunningLoopKeepingState", "WatchesAndSwapsARunningLoop",
-                      "ReportsAFailedAssert", "FreesWhatItDrops", "FreesTheStringsItDrops", "FormatsTextWithoutTheVM", "RunsTheForeignSamples", "GivesCAnAuthoredFunction", "LinksOtherTargetsWithLLVM",
+                      "ReportsAFailedAssert", "FreesWhatItDrops", "FreesTheStringsItDrops", "FormatsTextWithoutTheVM", "RunsTheForeignSamples", "BuildsTheWorkloads", "GivesCAnAuthoredFunction", "LinksOtherTargetsWithLLVM",
                       "ImportsFromAWindowsSystemLibrary", "AllocatesOnWindowsWithoutLibc", "LinksCoreSysWindows"]);
     }
     return names;
@@ -983,6 +1014,8 @@ RunCase :: (suite: Suite, name: string) {
         RefusesWhatAnInterruptedBuildLeft(suite);
     } else if (name == "RefusesAnIncompleteOutput") {
         RefusesAnIncompleteOutput(suite);
+    } else if (name == "BuildsTheWorkloads") {
+        BuildsTheWorkloads(suite);
     } else if (name == "RunsWithLLVMAndNoCCompiler") {
         RunsWithLLVMAndNoCCompiler(suite);
     } else if (name == "LinksAVendoredArchive") {

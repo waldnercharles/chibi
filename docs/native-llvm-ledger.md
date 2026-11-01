@@ -449,6 +449,39 @@ program (3,000 rounds of built, joined, sliced, kept and early-returned
 strings) makes 99,000 allocations and 99,000 releases, peak live 352 bytes, and
 gives the VM's value; a 150,000-round loop of 2 KB strings runs in 2 MB.
 
+*Stage 4, first part, landed (1 November 2026): moves.* A copy that is the last
+thing to read its source is not made. Three pieces. (1) An array parameter the
+function changes is *its own*: ParameterRow literal 2 (Facts.chibi), so the
+callee no longer copies it at entry, as it did on every call (the stage-two
+build copied the five declaration tables of `DeclarePackage`, 3 MB, 165 times,
+and was at 3 GB after 10 s); the caller's argument is a copy, or a value no one
+else holds. The callee owns the parameter as it owns a local: it appends in
+place, drops it, assigns it, or returns it, which moves it out. (2) The
+lowering moves instead of copying where the source dies: an ArrayCopy of a read
+of an owning variable becomes a read of the variable and the variable is emptied
+(a zero array stored), so nothing drops it twice, when the variable is read
+exactly once by the statement and `Dead` says no path reads it again. `Dead` is
+structural liveness over the rows: an if's arms, a switch's arms (all the
+union's variants count as a default), a loop body which may not run, a return
+that reads nothing and ends the function, an Assign that overwrites the
+variable, and the end of a loop body, which counts as a read unless the variable
+was declared in that body; a break or continue counts as a read. So
+`x = F(x)`, `switch F(x) { case .Done(more): x = more; case .Failed: return }`,
+`y := x` at x's last use and `return Result.Done(items)` of a changed parameter
+copy nothing. (3) The copy of an array that a switch's arm binds from a union
+a call just made is the array itself, when the binding is read once and neither
+it nor the union is read after: the union is dead and nothing drops a union's
+payloads yet. (4) `alias := items` of a lent array parameter that neither the
+alias nor the parameter changes or stores whole is a second name for the same
+array, not a copy (`alias_drops`); one that is changed, or returned through
+another name, still copies. An array stored in a record literal from a lent
+parameter (`context := {forest: forest, ...}`) still copies, and nothing frees
+it: the record's arrays are stage 2's. Measured on macOS: an array
+threaded through 40 rounds of `rows = Grow(rows, round)` and of a
+`switch Step(rows, round)` makes 79 allocations (the growth chain), none of
+them copies, all released; 103 corpus programs at O0 and O2 give the VM's
+values.
+
 Stage 4's list, from core-math's count of 62 `x := big_array` sites in the
 compiler: `output := rows;` in the Scalar operand builders (each copies the
 rows it was passed, then appends, so a function's rows are built in quadratic

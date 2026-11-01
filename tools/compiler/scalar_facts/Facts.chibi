@@ -291,6 +291,10 @@ pub FunctionAddressRow: int : 40;
 // writes the caller's variable, so a callee changes its caller's records and
 // arrays in place. No other function holds a reference: the caller's
 // variable outlives the call, and none is the entry or in a library.
+// A parameter row whose literal is 2 is an array parameter the function
+// changes, which is its own: the caller's argument is an array no one else
+// holds, a copy or one that is moved, so the function appends to it in place
+// and neither copies it at entry nor leaves a copy for its caller to see.
 pub ReferenceType: int : 1048576;
 
 // The value types: int and bool, then the other integer types, then the

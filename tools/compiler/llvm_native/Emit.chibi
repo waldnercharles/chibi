@@ -2474,6 +2474,13 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (Copies(code) || cstrings) {
         out.append("attributes #1 = { noinline nounwind \"no-builtins\" }\n");
     }
+    // Which source function each symbol is, for a backtrace or an allocation
+    // profile to read: `; chibi-function INDEX NAME`.
+    if (length(names) == length(functions)) {
+        for (function in 0..<length(names)) {
+            out.append(format_text("; chibi-function {} {}\n", function, names[function]));
+        }
+    }
     if (debug) {
         out.append(format_text("\n{}", Metadata(target, functions, source, names, lines, columns, mode, compares)));
     }

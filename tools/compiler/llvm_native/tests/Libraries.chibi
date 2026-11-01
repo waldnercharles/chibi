@@ -28,7 +28,7 @@ LibraryExportsWordsAndManifest :: () {
     assert(strings.Contains(text, "@chibi_scalar.export.types.1 = private unnamed_addr constant [4 x i8] [i8 1, i8 2, i8 1, i8 1]"));
     assert(strings.Contains(text, "@chibi_scalar.export.name.1 = private unnamed_addr constant [5 x i8] c\"Pick\\00\""));
     assert(strings.Contains(text, "%chibi.export { ptr @chibi_scalar.export.name.1, i64 -5, ptr @chibi_scalar.export.types.1, i32 3, i32 1, ptr @chibi_scalar.export.1 }"));
-    assert(strings.Contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 4, i32 2, ptr @chibi_scalar.exports }"));
+    assert(strings.Contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 5, i32 2, ptr @chibi_scalar.exports }"));
 }
 @test
 LibraryNeedsAnIdentifierAndOneNameAndIdPerFunction :: () {

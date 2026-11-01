@@ -528,6 +528,19 @@ ReportsAFailedAssert :: (suite: Suite) {
     assert(ran.status == 134 && strings.Contains(ran.stderr, "assertion failed in function"), "a failed assert");
 }
 
+// A loop that builds, copies and drops arrays runs in bounded memory: 40,000
+// rounds allocate about 600 MB in all, under a 200 MB address-space limit, so a
+// missing drop ends the program in a failed allocation. It returns 7.
+FreesWhatItDrops :: (suite: Suite) {
+    source := "package scalar\nMain :: () -> int {\n    total: int = 0;\n    for (round in 0..<40000) {\n        a := Build(1000);\n        total += a[3];\n        b := a;\n        b.append(1);\n        total += length(b) - 1000;\n        c := Sum(Build(10)) + length(Build(5));\n        total += c - 50;\n        if (round % 2 == 0) {\n            d := Build(100);\n            total += d[1];\n            continue;\n        }\n        for (x in Build(3)) {\n            total += x;\n        }\n    }\n    return 7 + total % 200;\n}\nBuild :: (n: int) -> int[] {\n    items: int[] = [];\n    for (i in 0..<n) {\n        items.append(i);\n    }\n    return items;\n}\nSum :: (items: int[]) -> int {\n    total: int = 0;\n    for (item in items) {\n        total += item;\n    }\n    return total;\n}\n";
+    built := Reset(suite, "frees-drops", source);
+    RealTools(suite, built);
+    result := Build(suite, suite.built, built, ["-O2"]);
+    assert(result.status == 0, "the program builds");
+    ran := os.Capture(["/bin/sh", "-c", "ulimit -v 200000; exec \"$0\"", Printed(result)]);
+    assert(ran.status == 7, "the program runs in bounded memory");
+}
+
 // format_text in a program that links no VM: the start module's own formatter
 // makes the text, with each `{}` replaced by the next value.
 FormatsTextWithoutTheVM :: (suite: Suite) {
@@ -875,7 +888,7 @@ ImportsFromAWindowsSystemLibrary :: (suite: Suite) {
     windows := CrossTargets()[1];
     assert(ExecutableFor(program, windows), "a Windows program");
     folder := strings.TrimSuffix(program, "/program.exe");
-    assert(Holds(Path([folder, "/kernel32.def"]), "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCommandLineW\n    GetProcessHeap\n    HeapAlloc\n    GetStdHandle\n    WriteFile\n    GetCurrentProcessId\n    GetTickCount\n"), "the import definition");
+    assert(Holds(Path([folder, "/kernel32.def"]), "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCommandLineW\n    GetProcessHeap\n    HeapAlloc\n    HeapFree\n    GetStdHandle\n    WriteFile\n    GetCurrentProcessId\n    GetTickCount\n"), "the import definition");
     assert(Holds(program, "GetCurrentProcessId") && Holds(program, "GetTickCount"), "the import table");
     BundleProgram(program, windows, "windows-imports.exe");
     result = Build(suite, suite.built, built, ["-O0"]);
@@ -896,7 +909,7 @@ AllocatesOnWindowsWithoutLibc :: (suite: Suite) {
     assert(ExecutableFor(program, windows), "a Windows program");
     folder := strings.TrimSuffix(program, "/program.exe");
     assert(Holds(Path([folder, "/start.ll"]), "call ptr @HeapAlloc(ptr %heap, i32 8, i64 %size)"), "the start module allocates");
-    assert(Holds(Path([folder, "/kernel32.def"]), "    GetProcessHeap\n    HeapAlloc\n    GetStdHandle\n    WriteFile\n"), "the kernel32 imports");
+    assert(Holds(Path([folder, "/kernel32.def"]), "    GetProcessHeap\n    HeapAlloc\n    HeapFree\n    GetStdHandle\n    WriteFile\n"), "the kernel32 imports");
     assert(Holds(program, "HeapAlloc") && !Holds(program, "msvcrt") && !Holds(program, "ucrtbase"), "no C library");
     BundleProgram(program, windows, "windows-heap.exe");
 }
@@ -930,7 +943,7 @@ Cases :: (llvm: bool) -> string[] {
     if (llvm) {
         names.extend(["RunsWithLLVMAndNoCCompiler", "LinksAVendoredArchive", "CallsThroughAFunctionPointer",
                       "PassesAByteArrayToC", "SwapsARunningLoopKeepingState", "WatchesAndSwapsARunningLoop",
-                      "ReportsAFailedAssert", "FormatsTextWithoutTheVM", "RunsTheForeignSamples", "GivesCAnAuthoredFunction", "LinksOtherTargetsWithLLVM",
+                      "ReportsAFailedAssert", "FreesWhatItDrops", "FormatsTextWithoutTheVM", "RunsTheForeignSamples", "GivesCAnAuthoredFunction", "LinksOtherTargetsWithLLVM",
                       "ImportsFromAWindowsSystemLibrary", "AllocatesOnWindowsWithoutLibc", "LinksCoreSysWindows"]);
     }
     return names;
@@ -962,6 +975,8 @@ RunCase :: (suite: Suite, name: string) {
         PassesAByteArrayToC(suite);
     } else if (name == "ReportsAFailedAssert") {
         ReportsAFailedAssert(suite);
+    } else if (name == "FreesWhatItDrops") {
+        FreesWhatItDrops(suite);
     } else if (name == "FormatsTextWithoutTheVM") {
         FormatsTextWithoutTheVM(suite);
     } else if (name == "RunsTheForeignSamples") {

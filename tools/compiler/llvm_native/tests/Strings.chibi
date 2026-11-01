@@ -78,7 +78,7 @@ NoStringCrossesTheExportedEntry :: () {
     assert(strings.Contains(kept, "define internal { ptr, i32, ptr } @chibi_scalar.0() #0 {"));
     assert(!strings.Contains(kept, "@chibi_scalar.export.0"));
     assert(strings.Contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
-    assert(strings.Contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 4, i32 0, ptr @chibi_scalar.exports }"));
+    assert(strings.Contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 5, i32 0, ptr @chibi_scalar.exports }"));
     // Nor does one enter as a parameter of the entry.
     published := [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Constant, 1, 0, 0, 0, 0, 0),
                   Code(native.Publish, 1, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];

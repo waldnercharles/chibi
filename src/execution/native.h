@@ -9,7 +9,7 @@
  * the library's module lets a program's synchronous calls of those functions
  * run the native entry instead of a VM frame. Tasks, inspected calls and
  * every unbound function stay in the VM. */
-#define EXECUTION_NATIVE_ABI 4u
+#define EXECUTION_NATIVE_ABI 5u
 /* The most parameters and results an entry takes: native_abi.ExportParameters,
  * and one result. The emitter exports no function with more. */
 #define EXECUTION_NATIVE_MAX_PARAMETERS 8
@@ -75,6 +75,11 @@ struct execution_native_context
      * its message, as the owner decided for native code (D9). It does not
      * return. */
     void (*index_failed)(execution_native_context *, int32_t index, int32_t length);
+    /* Gives back an allocation the context's `allocate` made, once nothing
+     * refers to it: native code's drops (D10). The call's heap frees every
+     * allocation when the call from the VM returns, so a call from the VM
+     * ignores it; a standalone program frees. It accepts no other pointer. */
+    void (*release)(execution_native_context *, void *allocation);
 };
 /* An entry reads its arguments and writes its results as 64-bit words in
  * declaration order: an integer sign- or zero-extended from its width, a bool

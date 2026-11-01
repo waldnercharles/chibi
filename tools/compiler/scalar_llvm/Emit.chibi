@@ -1271,11 +1271,11 @@ Operated :: (rows: facts.Row[], at: int) -> int {
 // statements it is declared among, a For row's only in its body, and the
 // body ends in a terminating statement.
 ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int, starts: int[], size: int,
-                  is_library: bool) -> string {
+                  is_library: bool, identified: bool) -> string {
     head := heads[function];
     declaration := rows[head];
     if (declaration.name == "" || declaration.text != "" || !Valued(records, declaration.type) || declaration.value != 0 ||
-        (declaration.literal != 0) != is_library || !Located(declaration, starts, size)) {
+        (declaration.literal != 0) != identified || !Located(declaration, starts, size)) {
         return "invalid scalar function row";
     }
     variables: int[] = [];
@@ -1484,6 +1484,12 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
 // accepted rows. The caller must bind the actual trusted producer artifact,
 // source bytes and unchanged result envelope. No source parsing occurs here.
 pub Validate :: (rows: facts.Row[]) -> string {
+    return ValidateWith(rows, false);
+}
+// Validate, or for `shared` the rows of a package that a shared library holds:
+// every function is a library function, though the rows are a package's, which
+// name no library and carry no stable IDs.
+ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
     if (length(rows) < 2) {
         return "scalar module row count is out of bounds";
     }
@@ -1502,7 +1508,8 @@ pub Validate :: (rows: facts.Row[]) -> string {
         document.literal != 0 || document.name == "" || !Unlocated(document)) {
         return "noncanonical accepted scalar module";
     }
-    is_library := document.text != "";
+    identified := document.text != "";
+    is_library := identified || shared;
     records := Records(rows);
     error := ValidRecords(rows, records, starts, size);
     if (error != "") {
@@ -1517,7 +1524,7 @@ pub Validate :: (rows: facts.Row[]) -> string {
         return "scalar module entry must take no parameters and return int";
     }
     for (function in 0..<length(heads)) {
-        failure := ValidFunction(rows, records, heads, function, starts, size, is_library);
+        failure := ValidFunction(rows, records, heads, function, starts, size, is_library, identified);
         if (failure != "") {
             return failure;
         }
@@ -1658,16 +1665,21 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // and a Tag or Payload row extracts its field. A string literal is a
 // constant of the module's text table, one entry per distinct text.
 pub EmitFor :: (target: abi.Target, rows: facts.Row[]) -> Result {
-    return Lower(target, rows, "", false);
+    return Lower(target, rows, "", false, false);
+}
+// Emit the rows of a package as a shared library, the generation of an Edit and
+// Continue loop: its functions are the library's, named by the package's.
+pub EmitShared :: (target: abi.Target, rows: facts.Row[]) -> Result {
+    return Lower(target, rows, "", false, true);
 }
 // Emit with line tables: each instruction is at the position of the
 // statement row it lowers, the function's own row before its first, and the
 // source row names the file, which is in `directory`.
 pub EmitLines :: (rows: facts.Row[], directory: string) -> Result {
-    return Lower(abi.LinuxX64(), rows, directory, true);
+    return Lower(abi.LinuxX64(), rows, directory, true, false);
 }
-Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool) -> Result {
-    error := Validate(rows);
+Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool, shared: bool) -> Result {
+    error := ValidateWith(rows, shared);
     if (error != "") {
         return Result.Invalid(error);
     }

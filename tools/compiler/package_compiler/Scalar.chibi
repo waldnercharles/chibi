@@ -823,6 +823,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         return NumberConversionType(forest, text, node);
     }
     if (Is(forest, node, syntax.UnaryExpression)) {
+        if (ScalarNegated(Operator(forest, node))) {
+            return BoolStorage;
+        }
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand), 0);
     }
     if (Is(forest, node, syntax.MemberExpression)) {
@@ -1505,6 +1508,15 @@ ScalarConversion :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     own := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, operand, context);
     if (own == storage) {
         return ScalarOperands.Built(rows);
+    }
+    // An optional where a bool is expected is true when it is not nil.
+    if (own == UnionStorage && storage == BoolStorage &&
+        ScalarOptional(types, ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand))) {
+        output := rows;
+        output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
+                       ScalarLiteral(forest, operand, facts.IntType, 0),
+                       ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
+        return ScalarOperands.Built(output);
     }
     converts := [ScalarAt(forest, node, facts.ConvertRow, ScalarTypeOf(storage), mode, 1, "")];
     if (Integer(own) && storage == FloatStorage) {
@@ -2948,11 +2960,21 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     }
     return ScalarOperands.Built(rows);
 }
+// The name of a record or union row: its own, or `package.Name` when an
+// earlier row of `named` has it, as another package's declaration may. The
+// scan is over the declared types, which number in the hundreds.
+ScalarDeclaredName :: (declared: TypeDecl, named: string[]) -> string {
+    if (declared.type_name != "" && Holds(named, declared.name)) {
+        return declared.type_name;
+    }
+    return declared.name;
+}
 // The rows of the source's records and unions, in declaration order, then
 // those of the functions' results records: each record of number and bool
 // fields, and each union.
 ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[]) -> ScalarOperands {
     rows: facts.Row[] = [];
+    named: string[] = [];
     position: int = -1;
     for (declared in types) {
         position += 1;
@@ -2964,7 +2986,9 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
             continue;
         }
         if (declared.kind == UnionDecl) {
-            switch ScalarUnion(forest, types, members, declared) {
+            union_name := ScalarDeclaredName(declared, named);
+            named.append(union_name);
+            switch ScalarUnion(forest, types, members, declared, union_name) {
                 case .Failed(diagnostic):
                     return ScalarOperands.Failed(diagnostic);
                 case .Built(union_rows):
@@ -2978,7 +3002,9 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
         if (results) {
             fields = Members(forest, Field(forest, declared.node, syntax.FieldResults));
         }
-        rows.append(ScalarAt(forest, declared.node, facts.RecordRow, 0, 0, declared.count, declared.name));
+        named_as := ScalarDeclaredName(declared, named);
+        named.append(named_as);
+        rows.append(ScalarAt(forest, declared.node, facts.RecordRow, 0, 0, declared.count, named_as));
         for (index in 0..<declared.count) {
             field := members[declared.first + index];
             type := ScalarMemberType(types, members, declared.first + index);
@@ -3006,8 +3032,8 @@ ScalarOptionalRows :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], decla
 // payloads. The variants are `declared`'s, in order, and their payloads are
 // consecutive members.
 ScalarUnion :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[],
-                declared: TypeDecl) -> ScalarOperands {
-    rows: facts.Row[] = [ScalarAt(forest, declared.node, facts.UnionRow, 0, 0, declared.count, declared.name)];
+                declared: TypeDecl, name: string) -> ScalarOperands {
+    rows: facts.Row[] = [ScalarAt(forest, declared.node, facts.UnionRow, 0, 0, declared.count, name)];
     variants: int[] = [];
     for (member in Members(forest, declared.node)) {
         if (Is(forest, member, syntax.UnionVariant)) {

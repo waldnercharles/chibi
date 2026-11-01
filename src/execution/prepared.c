@@ -314,7 +314,6 @@ static uint64_t context_abi()
                               FIELD(inspect),
                               FIELD(points),
                               FIELD(variables),
-                              FIELD(states),
                               FIELD(arguments),
                               FIELD(argument_count),
                               FIELD(arguments_stabilized),
@@ -328,12 +327,8 @@ static uint64_t context_abi()
                               FIELD(exit_requested),
                               FIELD(returned_outcome),
                               FIELD(pending_commands),
-                              FIELD(action_result),
-                              FIELD(complete_action),
                               FIELD(bind_instance),
                               FIELD(commit_instance),
-                              FIELD(store_component),
-                              FIELD(reduce_component),
                               FIELD(delta_seconds),
                               FIELD(steps),
                               FIELD(budget),
@@ -347,7 +342,6 @@ static uint64_t context_abi()
                               FIELD(failure),
                               FIELD(error_message),
                               FIELD(services),
-                              FIELD(queries),
                               FIELD(commands),
                               FIELD(command_arguments),
                               FIELD(command_results),
@@ -356,13 +350,6 @@ static uint64_t context_abi()
                               FIELD(release_local),
                               FIELD(error_status),
                               FIELD(owner),
-                              FIELD(owner_type_name),
-                              FIELD(world),
-                              FIELD(binding_world),
-                              FIELD(columns),
-                              FIELD(query_variables),
-                              FIELD(query_row),
-                              FIELD(query_test),
                               FIELD(module),
                               FIELD(program),
                               FIELD(variable_storage),
@@ -381,12 +368,7 @@ static uint64_t context_abi()
                               FIELD(watches),
                               FIELD(edges),
                               FIELD(watched),
-                              FIELD(watch_storage),
-                              FIELD(select_state),
-                              FIELD(state_inputs),
-                              FIELD(state_transition),
-                              FIELD(retrigger_action),
-                              FIELD(component_membership) };
+                              FIELD(watch_storage) };
 #undef FIELD
     uint64_t hash = UINT64_C(14695981039346656037);
     for (size_t i = 0; i < sizeof fields / sizeof *fields; i++) {
@@ -910,12 +892,6 @@ static bool preparation_budget(prepared_context *c)
 {
     execution_wire *w = &c->wire;
     size_t bytes = execution_module_preparation_bytes(c->plan);
-    size_t effects = execution_module_effects_bytes(c->plan);
-    if (effects > SIZE_MAX - bytes) {
-        w->error = "prepared effects exceed allocation budget";
-        return false;
-    }
-    bytes += effects;
     if (bytes == SIZE_MAX) {
         w->error = "prepared module closure exceeds preparation limit";
         return false;

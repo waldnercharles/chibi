@@ -1,6 +1,5 @@
 #ifndef TEST_REFLECTED_TYPES_H
 #define TEST_REFLECTED_TYPES_H
-#include "ecs/ecs.h"
 #include "types/catalog.h"
 
 typedef struct
@@ -34,6 +33,5 @@ extern const type_desc WHOLE_PAIR_TYPE, WHOLE_RECORD_TYPE;
 extern const type_desc WHOLE_MANAGED_INNER_TYPE, WHOLE_MANAGED_TYPE;
 extern const type_desc WHOLE_ALIAS_SOURCE_TYPE, WHOLE_ALIAS_TARGET_TYPE,
     WHOLE_SEARCH_TYPE;
-extern const ecs_component_desc WHOLE_MANAGED_COMPONENT;
 extern const type_catalog_pack TEST_REFLECTED_TYPES_PACK;
 #endif

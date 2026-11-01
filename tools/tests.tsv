@@ -8,9 +8,6 @@
 tool	types	@build@/test/tools/test_tools	--types
 tool	execution-scope	@build@/test/language/test_language	--execution-scope
 tool	studio-panel-idle	build-studio/bin/studio-acceptance	--panel-idle	--project-root	
-tool	ecs-query	@build@/test/tools/test_tools	--ecs-query
-tool	ecs-strings	@build@/test/tools/test_tools	--ecs-strings
-tool	ecs-query-benchmark	@build@/test/tools/test_tools	--ecs-query-benchmark
 tool	arena	@build@/test/tools/test_tools	--arena
 tool	persistent-store	@build@/test/tools/test_tools	--persistent-store
 tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
@@ -48,7 +45,6 @@ tool	box3d	@build@/test/tools/test_tools	--box3d
 tool	asset-values	@build@/test/tools/test_tools	--asset-values
 tool	fmt	@build@/test/tools/test_tools	--fmt
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
-tool	scheduler-benchmark	@build@/test/tools/test_tools	--scheduler-benchmark
 tool	language-ranges	@build@/test/language/test_language	--ranges
 tool	language-integer-shift-counts	@build@/test/language/test_language	--integer-shift-counts
 tool	chibi-test-compiler	@release@/sdk/chibi	test	tools/compiler
@@ -71,8 +67,6 @@ tool	language-scalar-native	@build@/test/language/test_language	--package-compil
 tool	language-native-census	@build@/test/language/test_language	--native-census
 tool	language-native-census-flattening	@build@/test/language/test_language	--native-census-flattening
 tool	language-host-packages-compiler	@build@/test/language/test_language	--host-packages-compiler
-tool	language-component-write-layout	@build@/test/language/test_language	--component-write-layout
-tool	language-component-write	@build@/test/language/test_language	--component-write
 tool	language-record-compatibility	@build@/test/language/test_language	--record-compatibility
 tool	language-record-document	@build@/test/language/test_language	--record-document
 tool	language-record-values	@build@/test/language/test_language	--record-values
@@ -90,6 +84,6 @@ timeout	bootstrap-load	1800
 exclusive	language-test-parallel
 group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	asset-values	fmt	arena
 group	projects	chibi-cli	native-build
-group	language	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	language-component-write	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	bootstrap-recovery	native-link
+group	language	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	language-integer-shift-counts	compiler-bootstrap	language-native-census-flattening	bootstrap-recovery	native-link
 group	compiler	language-package-compiler-chibi-scalar
-group	benchmarks	ecs-query-benchmark	native-workload-benchmark	scheduler-benchmark
+group	benchmarks	native-workload-benchmark

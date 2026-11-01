@@ -32,8 +32,6 @@ static size_t own_bytes(const behavior_function *f)
     COUNT(slot_kinds);
     COUNT(command_argument_kinds);
     COUNT(command_result_kinds);
-    COUNT(reductions);
-    COUNT(query_diagnostics);
     COUNT(suspensions);
     COUNT(value_roots);
     COUNT(points);
@@ -60,20 +58,9 @@ static size_t own_bytes(const behavior_function *f)
     COUNT(runtime_instructions);
     COUNT(runtime_body);
     COUNT(component_writes);
-    COUNT(component_proofs);
-    COUNT(parallel_reads);
     COUNT(components);
     COUNT(state_selections);
 #undef COUNT
-    for (int i = 0; i < acount(f->component_proofs); i++) {
-        bytes = add(
-            bytes,
-            vector(
-                f->component_proofs[i].components,
-                sizeof *f->component_proofs[i].components
-            )
-        );
-    }
     if (f->integer_reports) {
         bytes = add(bytes, behavior_integer_report_bytes(f->integer_report_sites));
     }

@@ -3,7 +3,6 @@
 #include "execution/intrinsics.h"
 #include "execution/managed.h"
 #include "execution/native.h"
-#include "execution/query.h"
 #include "execution/runner.h"
 #include "execution/service.h"
 #include "execution/status.h"
@@ -303,14 +302,11 @@ static invocation_frame *frame_new(
         .managed_heap = parent->managed_heap,
         .module = parent->module,
         .program = parent->program,
-        .query_row = parent->query_row,
-        .query_test = parent->query_test,
         .call_enter = parent->call_enter,
         .call_leave = parent->call_leave,
         .activation = &frame->activation,
         .variables = parent->variables,
         .data = frame->data,
-        .queries = frame->context.queries,
         .commands = frame->context.commands,
         .command_arguments = frame->context.command_arguments,
         .command_results = frame->context.command_results,
@@ -325,16 +321,6 @@ static invocation_frame *frame_new(
         .begin_command = parent->begin_command,
         .start_task = parent->start_task,
         .release_local = parent->release_local,
-        .action_result = parent->action_result,
-        .complete_action = parent->complete_action,
-        .state_inputs = parent->state_inputs,
-        .state_transition = parent->state_transition,
-        .retrigger_action = parent->retrigger_action,
-        .request_action_break = parent->request_action_break,
-        .take_action_break = parent->take_action_break,
-        .store_component = parent->store_component,
-        .reduce_component = parent->reduce_component,
-        .component_membership = parent->component_membership,
         .failure_observer = parent->failure_observer,
         .bind_instance = parent->bind_instance,
         .commit_instance = parent->commit_instance
@@ -402,14 +388,9 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     context->delta_seconds = root->delta_seconds;
     context->instance_time = root->instance_time;
     context->variables = root->variables;
-    context->states = root->states;
-    context->select_state = root->select_state;
     context->retrigger = root->retrigger;
     context->variable_storage = root->variable_storage;
     context->value_owner = root->value_owner;
-    context->query_variables = root->query_variables;
-    context->query_row = root->query_row;
-    context->query_test = root->query_test;
     context->module = root->module;
     context->program = root->program;
     context->store_value = root->store_value;
@@ -421,9 +402,6 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     context->source_capture = root->source_capture;
     context->watch = root->watch;
     context->trace = root->trace;
-    context->owner_type_name = root->owner_type_name;
-    context->world = root->world;
-    context->binding_world = root->binding_world;
     bool bound = behavior_function_bind(frame->function, context, root->services, root->owner);
     assert(bound);
     (void)bound;
@@ -756,10 +734,6 @@ static void trace_context(
     }
     /* Imported argument banks may themselves live in the managed heap. */
     mark(user, ctx->arguments);
-    if (ctx->query_row) {
-        mark(user, ctx->query_row);
-        pin_value_trace(ctx->query_row, mark, user);
-    }
     trace_values(ctx->arguments, f->argument_kinds, ctx->argument_count, mark, user);
     trace_values(ctx->results, f->result_kinds, f->result_count, mark, user);
     trace_values(ctx->variables, NULL, f->variable_count, mark, user);
@@ -845,13 +819,6 @@ static void visit_context(
                                           : f->locals[index - slots].initial.type;
             behavior_value_kind kind = index < slots ? f->slot_kinds[index]
                                                      : f->locals[index - slots].kind;
-            if (kind == BEHAVIOR_QUERY_CURSOR) {
-                pin_value cursor = { .type = BF_POINTER_TYPE, .u64 = a->values[index] },
-                          query;
-                if (execution_query_cursor_value(cursor, &query)) {
-                    visit(user, &query);
-                }
-            }
             if (kind == BEHAVIOR_REFERENCE) {
                 pin_value reference = { .type = BF_POINTER_TYPE,
                                         .u64 = a->values[index] },
@@ -869,9 +836,6 @@ static void visit_context(
                 visit(user, &value);
             }
         }
-    }
-    if (ctx->query_row) {
-        visit(user, ctx->query_row);
     }
     visit_bank(ctx->arguments, ctx->argument_count, visit, user);
     visit_reference_bank(ctx->arguments, f->argument_kinds, ctx->argument_count, visit, user);
@@ -974,8 +938,6 @@ static void rebind_context(
     const service_binding *services
 )
 {
-    ctx->world = NULL;
-    ctx->binding_world = NULL;
     bool bound = behavior_function_bind(f, ctx, services, ctx->owner);
     assert(bound);
     (void)bound;

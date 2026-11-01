@@ -43,37 +43,11 @@ behavior_function_preparation behavior_function_preparation_bytes(const behavior
     size_t locals = acount(f->locals), data = acount(f->data_values);
     size_t values = sum(slots, locals), pauses = 0;
     bool calls = false;
-    size_t reads = acount(f->parallel_reads), writes = acount(f->component_writes);
     for (int i = 0; i < acount(f->instructions); i++) {
         const behavior_function_instruction *op = &f->instructions[i];
         pauses += op->op == BF_SUSPEND || op->op == BF_DELAY || op->op == BF_POINT ||
                   op->op == BF_SOURCE_POINT || op->op == BF_INVOKE;
         calls |= op->op == BF_INVOKE;
-        if (!f->batchable) {
-            continue;
-        }
-        if (op->op == BF_COMPONENT || op->op == BF_COLUMN ||
-            op->op == BF_COLUMN_TRY || op->op == BF_COMPONENT_READ) {
-            reads = sum(reads, 1);
-        }
-        if (op->op != BF_HOST_CALL) {
-            continue;
-        }
-        if (op->target < 0 || op->target >= acount(f->host_calls)) {
-            return unsupported;
-        }
-        const node_access *a = f->host_calls[op->target].access;
-        if (!a) {
-            continue;
-        }
-        if (a->read_count < 0 || a->write_count < 0) {
-            return unsupported;
-        }
-        reads = sum(reads, (size_t)a->read_count);
-        writes = sum(writes, (size_t)a->write_count);
-        for (int j = 0; a->read_refs && a->read_refs[j]; j++) {
-            reads = sum(reads, 1);
-        }
     }
     if (values > INT_MAX) {
         return unsupported;
@@ -91,8 +65,6 @@ behavior_function_preparation behavior_function_preparation_bytes(const behavior
     retained = sum(retained, sized(count, sizeof(behavior_function_instruction)));
     retained = sum(retained, sized(count, sizeof(behavior_function_instruction)));
     retained = sum(retained, product(count + 1, sizeof(int)));
-    retained = sum(retained, bank(reads, sizeof(uint64_t)));
-    retained = sum(retained, bank(writes, sizeof(uint64_t)));
     /* Verification: provenance headers; defined_operands matrix+row,
      * reached/queued/queue; checked_control incoming+queue. */
     size_t words = slots / 64 + 1;

@@ -1,4 +1,4 @@
-#include "runtime/component_catalog.h"
+#include "runtime/native_types.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"

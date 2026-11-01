@@ -1,6 +1,5 @@
 #include "execution/wasm_emit.h"
 
-#include "ecs/execution.h"
 #include "execution/definition.h"
 #include "execution/machine.h"
 #include "execution/scalar.h"
@@ -11,20 +10,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The ECS scratch locals are refreshed for each checked read. */
 enum
 {
     MACHINE,
     VALUES,
     PC,
     STATUS,
-    CONTEXT,
-    WORLD,
-    ENTITY,
-    GENERATION,
-    COLUMN,
-    MASK,
-    BUCKET
+    CONTEXT
 };
 
 typedef struct
@@ -401,183 +393,6 @@ static void helper(writer *w, int pc)
     byte(w, 0x0b);
 }
 
-static void branch_if(writer *w, int depth)
-{
-    byte(w, 0x0d);
-    unsigned_leb(w, (uint32_t)depth);
-}
-
-static void component_read(writer *w, const behavior_function_instruction *i, int pc)
-{
-    byte(w, 0x02);
-    byte(w, 0x40); /* done */
-    byte(w, 0x02);
-    byte(w, 0x40); /* failed guard */
-    local(w, 0x20, CONTEXT);
-    memory(w, 0x28, offsetof(behavior_function_context, world));
-    local(w, 0x22, WORLD);
-    byte(w, 0x45); /* i32.eqz */
-    branch_if(w, 0);
-    load(w, i->left, PIN_U32);
-    local(w, 0x22, ENTITY);
-    byte(w, 0x45);
-    branch_if(w, 0);
-    local(w, 0x20, ENTITY);
-    local(w, 0x20, WORLD);
-    memory(w, 0x28, offsetof(ecs_execution_view, slot_count));
-    byte(w, 0x4f); /* i32.ge_u */
-    branch_if(w, 0);
-    local(w, 0x20, VALUES);
-    memory(w, 0x28, slot_offset(i->left) + sizeof(uint32_t));
-    local(w, 0x22, GENERATION);
-    byte(w, 0x45);
-    branch_if(w, 0);
-    local(w, 0x20, WORLD);
-    memory(w, 0x28, offsetof(ecs_execution_view, occupied));
-    local(w, 0x20, ENTITY);
-    byte(w, 0x6a); /* i32.add */
-    memory(w, 0x2d, 0);
-    byte(w, 0x45);
-    branch_if(w, 0);
-    local(w, 0x20, WORLD);
-    memory(w, 0x28, offsetof(ecs_execution_view, generations));
-    local(w, 0x20, ENTITY);
-    constant(w, 2);
-    byte(w, 0x74); /* i32.shl */
-    byte(w, 0x6a);
-    memory(w, 0x28, 0);
-    local(w, 0x20, GENERATION);
-    byte(w, 0x47); /* i32.ne */
-    branch_if(w, 0);
-
-    local(w, 0x20, WORLD);
-    memory(w, 0x28, offsetof(ecs_execution_view, capacity));
-    local(w, 0x22, MASK);
-    byte(w, 0x45);
-    branch_if(w, 0);
-    local(w, 0x20, MASK);
-    constant(w, 1);
-    byte(w, 0x6b); /* i32.sub */
-    local(w, 0x22, MASK);
-    uint64_t hash = i->value.u64 * UINT64_C(11400714819323198485);
-    constant(w, (int32_t)(hash ^ (hash >> 32)));
-    byte(w, 0x71); /* i32.and */
-    local(w, 0x21, BUCKET);
-    byte(w, 0x02);
-    byte(w, 0x40); /* found column */
-    byte(w, 0x03);
-    byte(w, 0x40); /* lookup probe */
-    local(w, 0x20, WORLD);
-    memory(w, 0x28, offsetof(ecs_execution_view, lookup));
-    local(w, 0x20, BUCKET);
-    constant(w, 2);
-    byte(w, 0x74);
-    byte(w, 0x6a);
-    memory(w, 0x28, 0);
-    local(w, 0x22, COLUMN);
-    byte(w, 0x45);
-    branch_if(w, 2);
-    local(w, 0x20, COLUMN);
-    constant(w, 1);
-    byte(w, 0x6b);
-    constant(w, sizeof(ecs_execution_column));
-    byte(w, 0x6c); /* i32.mul */
-    local(w, 0x20, WORLD);
-    memory(w, 0x28, offsetof(ecs_execution_view, columns));
-    byte(w, 0x6a);
-    local(w, 0x22, COLUMN);
-    memory(w, 0x29, offsetof(ecs_execution_column, id));
-    byte(w, 0x42); /* i64.const */
-    signed_leb(w, (int64_t)i->value.u64);
-    byte(w, 0x51); /* i64.eq */
-    branch_if(w, 1);
-    local(w, 0x20, BUCKET);
-    constant(w, 1);
-    byte(w, 0x6a);
-    local(w, 0x20, MASK);
-    byte(w, 0x71);
-    local(w, 0x21, BUCKET);
-    byte(w, 0x0c);
-    unsigned_leb(w, 0);
-    byte(w, 0x0b); /* lookup probe */
-    byte(w, 0x0b); /* found column */
-
-    local(w, 0x20, COLUMN);
-    memory(w, 0x28, offsetof(ecs_execution_column, occupancy));
-    local(w, 0x20, ENTITY);
-    constant(w, 6);
-    byte(w, 0x76); /* i32.shr_u */
-    constant(w, 3);
-    byte(w, 0x74);
-    byte(w, 0x6a);
-    memory(w, 0x29, 0);
-    local(w, 0x20, ENTITY);
-    byte(w, 0xad); /* i64.extend_i32_u; shifts mask the count to six bits. */
-    byte(w, 0x88); /* i64.shr_u */
-    byte(w, 0x42);
-    signed_leb(w, 1);
-    byte(w, 0x83); /* i64.and */
-    byte(w, 0x50); /* i64.eqz */
-    branch_if(w, 0);
-    local(w, 0x20, COLUMN);
-    memory(w, 0x29, offsetof(ecs_execution_column, layout));
-    byte(w, 0x42);
-    signed_leb(w, (int64_t)i->layout);
-    byte(w, 0x52); /* i64.ne */
-    branch_if(w, 0);
-    local(w, 0x20, COLUMN);
-    memory(w, 0x28, offsetof(ecs_execution_column, stride));
-    constant(w, (int32_t)i->offset);
-    byte(w, 0x47);
-    branch_if(w, 0);
-
-    local(w, 0x20, VALUES);
-    constant(w, i->type);
-    memory(w, 0x36, (size_t)i->output * sizeof(pin_value) + offsetof(pin_value, type));
-    local(w, 0x20, VALUES);
-    local(w, 0x20, COLUMN);
-    memory(w, 0x28, offsetof(ecs_execution_column, data));
-    local(w, 0x20, ENTITY);
-    constant(w, (int32_t)i->offset);
-    byte(w, 0x6c);
-    byte(w, 0x6a);
-    memory(w, load_op(i->type), (size_t)i->target);
-    memory(w, store_op(i->type), slot_offset(i->output));
-    local(w, 0x20, CONTEXT);
-    constant(w, 0);
-    memory(w, 0x36, offsetof(behavior_function_context, error_message));
-    byte(w, 0x0c);
-    unsigned_leb(w, 1);
-    byte(w, 0x0b); /* failed guard */
-    /* Keep failure metadata in the canonical VM path. Successful reads never
-     * invoke the helper or retain a row pointer between instructions. */
-    helper(w, pc);
-    byte(w, 0x0b); /* done */
-}
-
-static void query_variable(writer *w, const behavior_function_instruction *i, int pc)
-{
-    local(w, 0x20, CONTEXT);
-    memory(w, 0x28, offsetof(behavior_function_context, query_variables));
-    local(w, 0x22, STATUS);
-    byte(w, 0x04);
-    byte(w, 0x40);
-    local(w, 0x20, VALUES);
-    constant(w, PIN_HANDLE);
-    memory(w, 0x36, (size_t)i->output * sizeof(pin_value) + offsetof(pin_value, type));
-    local(w, 0x20, VALUES);
-    local(w, 0x20, STATUS);
-    memory(w, 0x29, (size_t)(i->target - 1) * sizeof(uint64_t));
-    memory(w, 0x37, slot_offset(i->output));
-    local(w, 0x20, CONTEXT);
-    constant(w, 0);
-    memory(w, 0x36, offsetof(behavior_function_context, error_message));
-    byte(w, 0x05);
-    /* The slow failure path publishes the same source and budget diagnostics. */
-    helper(w, pc);
-    byte(w, 0x0b);
-}
-
 bool execution_wasm_emit(
     const behavior_function *f,
     bool inspected,
@@ -605,10 +420,8 @@ bool execution_wasm_emit(
     }
     bool *leader = xcalloc((size_t)count + 1, sizeof(*leader));
     leader[0] = true;
-    bool component_reads = false;
     for (int pc = 0; pc < count; pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
-        component_reads |= i->op == BF_COMPONENT_READ;
         if (i->op == BF_JUMP || i->op == BF_BRANCH) {
             if (i->target < 0 || i->target >= count) {
                 free(leader);
@@ -681,7 +494,7 @@ bool execution_wasm_emit(
     unsigned_leb(&part, 1);
     section(&module, 7, &part);
     unsigned_leb(&code, 1);
-    unsigned_leb(&code, component_reads ? BUCKET : CONTEXT);
+    unsigned_leb(&code, CONTEXT);
     byte(&code, 0x7f);
     local(&code, 0x20, MACHINE);
     memory(&code, 0x28, offsetof(execution_machine, values));
@@ -730,11 +543,7 @@ bool execution_wasm_emit(
                 unsigned_leb(&code, (uint32_t)(block_count - block));
                 break;
             }
-            if (i->op == BF_QUERY_VARIABLE) {
-                query_variable(&code, i, pc);
-            } else if (i->op == BF_COMPONENT_READ) {
-                component_read(&code, i, pc);
-            } else if (direct(f, i)) {
+            if (direct(f, i)) {
                 bool shift = i->op == BF_SHL || i->op == BF_SHR;
                 if (shift) {
                     // Wasm masks raw shift counts, so a count at or past the

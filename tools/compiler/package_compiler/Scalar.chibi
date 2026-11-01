@@ -2867,17 +2867,25 @@ ScalarPassedName :: (scoped: snapshot.SnapshotNode[], text: string, argument: in
 // for the call to pass `x` by reference.
 ScalarLent :: (scoped: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                natives: ResolvedNative[], aliases: Name[], callable: Callable) -> snapshot.SnapshotNode[] {
-    lent := scoped;
+    // The forest is copied only when an argument is rewritten: a copy of it
+    // per function is the whole forest times the functions.
+    rewritten: int[] = [];
     for (argument in ScopedCalls(scoped, text, callables, params, natives, aliases, callable.package,
                                  Field(scoped, callable.node, syntax.FieldBody))) {
-        if (!Is(scoped, argument.value, syntax.AddressExpression) || params[argument.param].written) {
-            continue;
+        if (Is(scoped, argument.value, syntax.AddressExpression) && !params[argument.param].written) {
+            rewritten.append(argument.value);
         }
-        named := scoped[Field(scoped, argument.value, syntax.FieldOperand)];
-        named.parent = scoped[argument.value].parent;
-        named.next_sibling = scoped[argument.value].next_sibling;
-        named.field = scoped[argument.value].field;
-        lent[argument.value] = named;
+    }
+    if (length(rewritten) == 0) {
+        return scoped;
+    }
+    lent := scoped;
+    for (value in rewritten) {
+        named := scoped[Field(scoped, value, syntax.FieldOperand)];
+        named.parent = scoped[value].parent;
+        named.next_sibling = scoped[value].next_sibling;
+        named.field = scoped[value].field;
+        lent[value] = named;
     }
     return lent;
 }

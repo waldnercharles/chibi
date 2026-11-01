@@ -81,3 +81,19 @@ SyntaxErrorIsReportedFirst :: () {
             assert(diagnostic.message != "", "syntax error message");
     }
 }
+
+@test
+ImportsInsideWhenBranchesAreConditional :: () {
+    source := "package demo\nimport t \"core:target\"\nwhen t.Os == 1 {\n    import a \"core:strings\"\n} else when t.Os == 2 {\n    import b \"core:bytes\"\n} else {\n    import c \"core:math\"\n}\nimport d \"project:other\"\n";
+    switch Extracted(source) {
+        case .Accepted(file, imports):
+            assert(length(imports) == 5, "every branch's import");
+            names := ["t", "a", "b", "c", "d"];
+            for (index in 0..<5) {
+                assert(imports[index].alias == names[index], "source order");
+                assert(imports[index].conditional == (index >= 1 && index <= 3), "only branch imports are conditional");
+            }
+        case .Rejected(diagnostic):
+            assert(false, "the imports are valid");
+    }
+}

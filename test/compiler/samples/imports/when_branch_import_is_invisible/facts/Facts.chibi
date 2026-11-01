@@ -1,0 +1,12 @@
+package facts
+
+import target "core:target"
+
+when target.Os == 99 {
+    import bytes "core:bytes"
+}
+
+Count :: () -> int {
+    return length(bytes.FromString("abc"))
+}
+// error: 10:25: Unknown function 'bytes.FromString'

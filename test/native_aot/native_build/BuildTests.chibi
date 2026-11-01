@@ -573,7 +573,7 @@ CopySample :: (from: string, to: string) {
 // `chibi build --native` and runs, and its asserts hold when the program exits
 // 0. libc is the foreign library.
 RunsTheForeignSamples :: (suite: Suite) {
-    for (sample in ["foreign_declared", "foreign_library", "foreign_vendor", "foreign_posix"]) {
+    for (sample in ["foreign_declared", "foreign_library", "foreign_vendor", "foreign_posix", "when_imports"]) {
         built := Reset(suite, sample, "package main\n");
         target := Path([built.game, "/", sample]);
         Make(target);

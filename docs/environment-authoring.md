@@ -41,7 +41,7 @@ candidate, not a merged or deployed editor feature.
   Failed or cancelled work cannot replace the previous result. Image pixels
   remain borrowed and immutable for the job lifetime. Nested derivative sampling
   uses job-owned scratch storage without per-sample allocation.
-- [`bake_material`](material-baking.md) exposes the same evaluator through the
+- `bake_material` exposes the same evaluator through the
   controller. It resolves linked shader libraries and root-owned parameters,
   including local function parameters, and returns channel data, typed semantics,
   resolved inputs and dependency fingerprints. It bounds dimensions, evaluation
@@ -53,7 +53,8 @@ candidate, not a merged or deployed editor feature.
   fragments; the comparison sample is unchanged. This proves CPU behavior.
   It does not establish rendering, collision agreement or persistent edits.
 
-Validation on the candidate:
+Validation on the 2026-10-15 candidate, through the agent targets and the
+automation controller, both since retired:
 
 | Scope | Result |
 | --- | --- |
@@ -444,7 +445,7 @@ character rigging, animation timelines, movie rendering, or voxel caves.
 ## Validation and delivery
 
 Use C/pico_unit checks in the owning dispatchers. Run affected-contract selectors
-and groups, including `make test-native` when applicable, and the relevant
+and groups, including `chibi build test native` when applicable, and the relevant
 builds. Preserve backend, hardware and explicit hold requirements, and report
 build/configuration time separately from test execution.
 

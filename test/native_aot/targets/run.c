@@ -39,6 +39,7 @@ enum
 {
     MAX_ARGUMENTS = 3,
     MAX_CALLS = 1024,
+    MAX_PROGRAM_ARGUMENTS = 8,
     PATH_BYTES = 1024,
     SYMBOL_BYTES = 64
 };
@@ -58,22 +59,38 @@ static const char *bundle, *linker;
 static char directory[PATH_BYTES];
 static int modules, calls_run;
 
-/* Runs argv, an executable and its arguments, and gives its exit status. */
+/* Runs argv, an executable and its arguments (UTF-8), and gives its exit
+ * status. */
 static int run(const char *const argv[])
 {
 #ifdef _WIN32
-    /* _spawnv joins its arguments with spaces, so each is quoted. */
-    char quoted[64][PATH_BYTES + 2];
-    const char *quoted_argv[64];
+    /* _wspawnv joins its arguments with spaces, so each is quoted, and the
+     * program reads them as UTF-16: a narrow _spawnv would pass UTF-8 bytes
+     * through the ANSI code page. */
+    static wchar_t wide[64][PATH_BYTES + 2];
+    const wchar_t *wide_argv[64];
     int count = 0;
     for (; argv[count]; count++) {
+        char quoted[PATH_BYTES + 2];
         assert(count < 63 && !strchr(argv[count], '"'));
-        snprintf(quoted[count], sizeof quoted[count], "\"%s\"", argv[count]);
-        quoted_argv[count] = quoted[count];
+        snprintf(quoted, sizeof quoted, "\"%s\"", argv[count]);
+        int converted = MultiByteToWideChar(
+            CP_UTF8,
+            MB_ERR_INVALID_CHARS,
+            quoted,
+            -1,
+            wide[count],
+            PATH_BYTES + 2
+        );
+        assert(converted > 0);
+        wide_argv[count] = wide[count];
     }
-    quoted_argv[count] = NULL;
+    wide_argv[count] = NULL;
+    wchar_t path[PATH_BYTES];
+    int converted = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, argv[0], -1, path, PATH_BYTES);
+    assert(converted > 0);
     fflush(stdout);
-    return (int)_spawnv(_P_WAIT, argv[0], quoted_argv);
+    return (int)_wspawnv(_P_WAIT, path, wide_argv);
 #else
     pid_t child;
     if (posix_spawn(&child, argv[0], NULL, NULL, (char *const *)argv, environ)) {
@@ -257,7 +274,8 @@ TEST_CASE(every_module_runs_as_on_linux)
 }
 
 /* Runs each program in the bundle's programs.txt, a line `program NAME
- * STATUS` each, and checks its exit status. */
+ * STATUS` each, with the tab-separated UTF-8 arguments that may follow the
+ * status, and checks its exit status. */
 TEST_CASE(every_program_exits_as_listed)
 {
     char list[PATH_BYTES];
@@ -270,15 +288,23 @@ TEST_CASE(every_program_exits_as_listed)
     bool exited = true;
     while (exited && fgets(line, sizeof line, file)) {
         char name[256], program[PATH_BYTES];
-        int expected;
-        REQUIRE(sscanf(line, "program %255s %d", name, &expected) == 2);
+        int expected, used = 0;
+        REQUIRE(sscanf(line, "program %255s %d%n", name, &expected, &used) == 2);
+        const char *arguments[MAX_PROGRAM_ARGUMENTS + 2] = { program };
+        int given = 1;
+        line[strcspn(line, "\r\n")] = 0;
+        for (char *tab = strchr(line + used, '\t'); tab; tab = strchr(tab + 1, '\t')) {
+            REQUIRE(given <= MAX_PROGRAM_ARGUMENTS);
+            *tab = 0;
+            arguments[given++] = tab + 1;
+        }
+        arguments[given] = NULL;
         snprintf(program, sizeof program, "%s/programs/%s", directory, name);
 #ifndef _WIN32
         /* Artifacts keep no file modes. */
         REQUIRE(!chmod(program, 0755));
 #endif
-        const char *const argv[] = { program, NULL };
-        int status = run(argv);
+        int status = run(arguments);
         if (status != expected) {
             fprintf(stderr, "%s: %s exited with %d, expected %d\n", TARGET, name, status, expected);
         }

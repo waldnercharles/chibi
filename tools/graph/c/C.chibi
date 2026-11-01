@@ -1,5 +1,6 @@
 package c
 
+import files "graph:files"
 import os "core:os"
 import strings "core:strings"
 
@@ -85,7 +86,7 @@ RecordText :: (command: string, inputs: string[], output: string) -> string {
         lines.extend([input, os.Stamp(input)]);
     }
     lines.append("");
-    return build.join(lines, "\n");
+    return strings.Join(lines, "\n");
 }
 
 // Whether output was built by command from inputs that have not changed since.
@@ -97,7 +98,7 @@ Current :: (command: string[], output: string) -> bool {
     if (!os.Exists(record) || !os.Exists(output)) {
         return false;
     }
-    lines := build.lines(build.read_file(record));
+    lines := strings.Lines(files.Text(record));
     count := length(command);
     if (length(lines) < count + 2 || lines[count] != "") {
         return false;
@@ -194,8 +195,8 @@ pub Dependencies :: (text: string) -> string[] {
     return paths;
 }
 Unescape :: (path: string) -> string {
-    joined := build.replace(build.replace(path, "\\\r\n", " "), "\\\n", " ");
-    return build.replace(build.replace(build.replace(joined, "\\ ", " "), "\\#", "#"), "$$", "$");
+    joined := strings.ReplaceAll(strings.ReplaceAll(path, "\\\r\n", " "), "\\\n", " ");
+    return strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(joined, "\\ ", " "), "\\#", "#"), "$$", "$");
 }
 
 // Whether a source must compile: its object is missing, or was built by
@@ -231,7 +232,7 @@ pub Start :: (tools: Tools, target: Library, flags: string[], source: string) ->
     return {
         owner: target.name,
         object: object,
-        command: build.join(command, "\n"),
+        command: strings.Join(command, "\n"),
         handle: handle
     };
 }
@@ -245,7 +246,7 @@ pub Finish :: (compile: Running) -> bool {
         }
         return false;
     }
-    inputs := Dependencies(build.read_file(Join([compile.object, ".d"])));
+    inputs := Dependencies(files.Text(Join([compile.object, ".d"])));
     return !os.WriteText(Record(compile.object), RecordText(compile.command, inputs, compile.object));
 }
 
@@ -266,7 +267,7 @@ pub Archive :: (tools: Tools, target: Library, sources: string[], compiled: bool
         return false;
     }
     return os.Run(archive) == 0 && os.Run([tools.ranlib, target.output]) == 0 &&
-           !os.WriteText(Record(target.output), RecordText(build.join(archive, "\n"), objects, target.output));
+           !os.WriteText(Record(target.output), RecordText(strings.Join(archive, "\n"), objects, target.output));
 }
 
 // Copies each header that differs to its place below a staged include root,
@@ -277,7 +278,7 @@ pub StageHeaders :: (root: string, headers: string[], destination: string, kept:
     for (header in headers) {
         from := Join([root, "/", header]);
         to := Join([destination, "/", header]);
-        if (os.Exists(to) && build.hash_file(to) == build.hash_file(from)) {
+        if (os.Exists(to) && files.Digest(to) == files.Digest(from)) {
             continue;
         }
         if (os.MakeDirectory(strings.Slice(to, 0, strings.LastIndex(to, "/"))) || os.Copy(from, to)) {
@@ -292,7 +293,7 @@ pub StageHeaders :: (root: string, headers: string[], destination: string, kept:
 // Removes the files below directory whose path from the staged root, under
 // prefix, no header names.
 RemoveUnlisted :: (directory: string, prefix: string, headers: string[]) -> bool {
-    for (name in build.list_directory(directory)) {
+    for (name in files.Names(directory)) {
         path := Join([directory, "/", name]);
         relative := name;
         if (prefix != "") {
@@ -319,10 +320,10 @@ RemoveUnlisted :: (directory: string, prefix: string, headers: string[]) -> bool
 Quote :: (text: string) -> string {
     // core:strings replaces byte by byte in the interpreter, and few arguments
     // hold a backslash or quote; the host's split finds one natively.
-    if (build.before(text, "\\") == text && build.before(text, "\"") == text) {
+    if (strings.Partition(text, "\\").head == text && strings.Partition(text, "\"").head == text) {
         return Join(["\"", text, "\""]);
     }
-    return Join(["\"", build.replace(build.replace(text, "\\", "\\\\"), "\"", "\\\""), "\""]);
+    return Join(["\"", strings.ReplaceAll(strings.ReplaceAll(text, "\\", "\\\\"), "\"", "\\\""), "\""]);
 }
 
 // An executable's link command, as CMake writes it: the compiler, `flags`, the
@@ -342,7 +343,7 @@ pub LinkEntry :: (command: string[], output: string) -> string {
     for (argument in command) {
         arguments.append(Quote(argument));
     }
-    return Join(["{\"output\": ", Quote(output), ", \"arguments\": [", build.join(arguments, ", "), "]}"]);
+    return Join(["{\"output\": ", Quote(output), ", \"arguments\": [", strings.Join(arguments, ", "), "]}"]);
 }
 
 // A compile_commands.json entry for a source, in the `arguments` form clangd
@@ -354,7 +355,7 @@ pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: str
     }
     return Join([
         "{\"directory\": ", Quote(target.root), ", \"file\": ", Quote(source), ", \"output\": ",
-        Quote(Object(target, source)), ", \"arguments\": [", build.join(arguments, ", "), "]}"
+        Quote(Object(target, source)), ", \"arguments\": [", strings.Join(arguments, ", "), "]}"
     ]);
 }
 
@@ -426,7 +427,7 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
         }
         path := response;
         if (length(responses) > 0) {
-            path = format_text("{0}.{1}", response, length(responses));
+            path = format_text("{}.{}", response, length(responses));
         }
         argument := Join(["@", path]);
         if (strings.ByteLength(argument) + 1 >= bytes) {
@@ -442,10 +443,10 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
         responses.append(path);
         quoted: string[] = [];
         for (i in first..<index) {
-            escaped := build.replace(build.replace(command[i], "\\", "\\\\"), "\"", "\\\"");
+            escaped := strings.ReplaceAll(strings.ReplaceAll(command[i], "\\", "\\\\"), "\"", "\\\"");
             quoted.append(Join(["\"", escaped, "\""]));
         }
-        if (os.WriteText(path, Join([build.join(quoted, "\n"), "\n"]))) {
+        if (os.WriteText(path, Join([strings.Join(quoted, "\n"), "\n"]))) {
             RemoveResponses(responses);
             os.Print(Join(["graph: writing link response failed: ", output]));
             return -1;
@@ -458,7 +459,7 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
         os.Print(Join(["graph: step failed: ", output]));
         return -1;
     }
-    if (os.WriteText(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
+    if (os.WriteText(Record(output), RecordText(strings.Join(command, "\n"), inputs, output))) {
         return -1;
     }
     return 1;
@@ -486,10 +487,10 @@ RemovePreviousResponses :: (response: string) -> bool {
     }
     prefix := Join([name, "."]);
     paths: string[] = [];
-    for (item in build.list_directory(directory)) {
+    for (item in files.Names(directory)) {
         owned := item == name;
         if (strings.HasPrefix(item, prefix)) {
-            suffix := build.after(item, prefix);
+            suffix := strings.Partition(item, prefix).tail;
             owned = suffix != "";
             for (byte in strings.Bytes(suffix)) {
                 if (byte < 48 || byte > 57) {
@@ -522,7 +523,7 @@ pub Step :: (command: string[], inputs: string[], output: string) -> int {
         os.Print(Join(["graph: step failed: ", output]));
         return -1;
     }
-    if (os.WriteText(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
+    if (os.WriteText(Record(output), RecordText(strings.Join(command, "\n"), inputs, output))) {
         return -1;
     }
     return 1;

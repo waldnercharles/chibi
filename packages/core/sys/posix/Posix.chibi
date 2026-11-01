@@ -1,0 +1,828 @@
+package posix
+
+import target "core:target"
+
+// The POSIX calls core:os needs, declared against libc and called from native
+// programs; the VM never runs foreign code. Paths are copied with a NUL into
+// the call's stack buffer (see "Foreign libraries" in docs/code-language.md),
+// so a path of 4096 bytes or more traps. A call that fails returns its libc
+// result unchanged: 0 for success, -1 for failure; errno is not read yet.
+// Getenv, which builds a string from C bytes, waits for allocating text natively.
+//
+// The stat layout and the directory entry's name offset are Linux x86-64's, and
+// Darwin's when the build's destination is Darwin; Linux on other processors is
+// not covered yet.
+
+foreign import libc "system:c"
+
+foreign libc {
+    access :: (path: cstring, mode: i32) -> i32
+    mkdir :: (path: cstring, mode: u32) -> i32
+    unlink :: (path: cstring) -> i32
+    rmdir :: (path: cstring) -> i32
+    rename :: (source: cstring, destination: cstring) -> i32
+    stat :: (path: cstring, buffer: u8[]) -> i32
+    lstat :: (path: cstring, buffer: u8[]) -> i32
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fread :: (buffer: u8[], size: u64, count: u64, stream: rawptr) -> u64
+    fwrite :: (buffer: u8[], size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+    fseek :: (stream: rawptr, offset: i64, whence: i32) -> i32
+    ftell :: (stream: rawptr) -> i64
+    getenv :: (name: cstring) -> rawptr
+    strlen :: (text: rawptr) -> u64
+    memcpy :: (destination: u8[], source: rawptr, count: u64) -> rawptr
+    opendir :: (path: cstring) -> rawptr
+    readdir :: (directory: rawptr) -> rawptr
+    closedir :: (directory: rawptr) -> i32
+    calloc :: (count: u64, size: u64) -> rawptr
+    memmove :: (destination: rawptr, source: u8[], count: u64) -> rawptr
+    pipe :: (descriptors: u8[]) -> i32
+    read :: (descriptor: i32, buffer: u8[], count: u64) -> i64
+    close :: (descriptor: i32) -> i32
+    write :: (descriptor: i32, buffer: u8[], count: u64) -> i64
+    _exit :: (code: i32) -> i32
+    poll :: (descriptors: u8[], count: u64, timeout: i32) -> i32
+    waitpid :: (pid: i32, status: u8[], options: i32) -> i32
+    posix_spawnp :: (pid: u8[], file: cstring, actions: u8[], attributes: u8[], arguments: u8[], environment: rawptr) -> i32
+    posix_spawn_file_actions_addopen :: (actions: u8[], descriptor: i32, path: cstring, flags: i32, mode: u32) -> i32
+    posix_spawnattr_init :: (attributes: u8[]) -> i32
+    posix_spawnattr_setflags :: (attributes: u8[], flags: i16) -> i32
+    posix_spawnattr_setpgroup :: (attributes: u8[], group: i32) -> i32
+    posix_spawnattr_destroy :: (attributes: u8[]) -> i32
+    getcwd :: (buffer: u8[], size: u64) -> rawptr
+    realpath :: (path: cstring, resolved: u8[]) -> rawptr
+    chmod :: (path: cstring, mode: u32) -> i32
+    kill :: (process: i32, signal: i32) -> i32
+    usleep :: (microseconds: u32) -> i32
+    getpid :: () -> i32
+    // Each is declared everywhere and called on its own platform only.
+    renamex_np :: (source: cstring, destination: cstring, flags: u32) -> i32
+    renameat2 :: (source_directory: i32, source: cstring, destination_directory: i32, destination: cstring, flags: u32) -> i32
+    posix_spawn_file_actions_init :: (actions: u8[]) -> i32
+    posix_spawn_file_actions_adddup2 :: (actions: u8[], descriptor: i32, target: i32) -> i32
+    posix_spawn_file_actions_addclose :: (actions: u8[], descriptor: i32) -> i32
+    posix_spawn_file_actions_destroy :: (actions: u8[]) -> i32
+}
+
+// Exports of the program's own start module (tools/compiler/native_link/Start.chibi):
+// the process arguments and the environment its entry received.
+foreign {
+    chibi_argument_count :: () -> i64
+    chibi_argument :: (index: i64, buffer: u8[], size: i64) -> i64
+    chibi_environment :: () -> rawptr
+}
+
+pub KindNone: int : 0;
+pub KindFile: int : 1;
+pub KindDirectory: int : 2;
+pub KindLink: int : 3;
+pub KindOther: int : 4;
+
+StatBytes: int : 256;
+
+when target.Os == target.Darwin {
+    ModeOffset: int : 4;
+    ModeBytes: int : 2;
+    NameOffset: int : 21;
+    DeviceBytes: int : 4;
+    SizeOffset: int : 96;
+    ModifiedOffset: int : 48;
+    ChangedOffset: int : 64;
+    // O_WRONLY | O_CREAT | O_TRUNC
+    WriteNew: int : 1537;
+    // Renames without replacing: RENAME_EXCL.
+    RenameNew :: (source: string, destination: string) -> bool {
+        return renamex_np(source, destination, 4) == 0;
+    }
+    pub Platform :: () -> string {
+        return "Darwin";
+    }
+} else {
+    ModeOffset: int : 24;
+    ModeBytes: int : 4;
+    NameOffset: int : 19;
+    DeviceBytes: int : 8;
+    SizeOffset: int : 48;
+    ModifiedOffset: int : 88;
+    ChangedOffset: int : 104;
+    WriteNew: int : 577;
+    // Renames without replacing: AT_FDCWD for both directories, RENAME_NOREPLACE.
+    RenameNew :: (source: string, destination: string) -> bool {
+        return renameat2(-100, source, -100, destination, 1) == 0;
+    }
+    pub Platform :: () -> string {
+        return "Linux";
+    }
+}
+
+// The device and inode lead the stat record on both platforms.
+InodeOffset: int : 8;
+
+// A directory entry begins with its inode and offset (8 bytes each) and then
+// its record length, two bytes, at 16 on both platforms; the name follows the
+// type at NameOffset.
+RecordLengthOffset: int : 16;
+
+// Whether the path names anything a link points at.
+pub Exists :: (path: string) -> bool {
+    return access(path, 0) == 0;
+}
+
+// The mode bits of the path's stat, -1 when it does not exist. A link is
+// followed unless `link`.
+Mode :: (path: string, link: bool) -> int {
+    buffer: u8[] = [];
+    for index in 0..<StatBytes {
+        buffer.append(0);
+    }
+    status: i32 = 0;
+    if link {
+        status = lstat(path, buffer);
+    } else {
+        status = stat(path, buffer);
+    }
+    if status != 0 {
+        return -1;
+    }
+    mode := 0;
+    for index in 0..<ModeBytes {
+        mode += int(buffer[ModeOffset + index]) << u32(8 * index);
+    }
+    return mode;
+}
+
+// What the path names, KindNone when nothing. A link is not followed.
+pub Kind :: (path: string) -> int {
+    mode := Mode(path, true);
+    if mode < 0 {
+        return KindNone;
+    }
+    format := mode & 61440;
+    if format == 32768 {
+        return KindFile;
+    }
+    if format == 16384 {
+        return KindDirectory;
+    }
+    if format == 40960 {
+        return KindLink;
+    }
+    return KindOther;
+}
+
+// Makes the directory and its missing parents; one that exists already is
+// not an error, but it must be a directory the program can write.
+pub MakeDirectory :: (path: string) -> bool {
+    size := text_byte_length(path);
+    at := 1;
+    while at < size {
+        if text_byte_at(path, at) == 47 {
+            status := mkdir(text_slice(path, 0, at), 493);
+        }
+        at += 1;
+    }
+    status := mkdir(path, 493);
+    mode := Mode(path, false);
+    return mode >= 0 && (mode & 61440) == 16384 && access(path, 3) == 0;
+}
+
+// Makes one new directory whose parent exists; any existing path, a link
+// included, fails.
+pub Reserve :: (path: string) -> bool {
+    return mkdir(path, 493) == 0;
+}
+
+// Renames a prepared directory to a destination that does not exist; the kernel
+// refuses an existing destination, an empty directory included.
+pub Publish :: (source: string, destination: string) -> bool {
+    if Kind(source) != KindDirectory {
+        return false;
+    }
+    return RenameNew(source, destination);
+}
+
+// Removes a file or link, or an empty directory. A path that is not there is
+// not an error.
+pub Remove :: (path: string) -> bool {
+    kind := Kind(path);
+    if kind == KindNone {
+        return true;
+    }
+    if kind == KindDirectory {
+        return rmdir(path) == 0;
+    }
+    return unlink(path) == 0;
+}
+
+pub Rename :: (source: string, destination: string) -> bool {
+    return rename(source, destination) == 0;
+}
+
+// The file's size in bytes, -1 when it cannot be opened.
+pub FileSize :: (path: string) -> int {
+    stream := fopen(path, "rb");
+    if stream == 0 {
+        return -1;
+    }
+    status := fseek(stream, 0, 2);
+    size := ftell(stream);
+    status = fclose(stream);
+    return int(size);
+}
+
+// The file's bytes, including NUL and malformed UTF-8; no bytes when it cannot
+// be read (FileSize tells that from an empty file). Opens through stdio, which
+// takes no variadic arguments, so it is the same call on every platform.
+pub ReadBytes :: (path: string) -> u8[] {
+    buffer: u8[] = [];
+    stream := fopen(path, "rb");
+    if stream == 0 {
+        return buffer;
+    }
+    status := fseek(stream, 0, 2);
+    size := int(ftell(stream));
+    status = fseek(stream, 0, 0);
+    buffer = Block(size);
+    read := fread(buffer, 1, u64(size), stream);
+    status = fclose(stream);
+    if int(read) != size {
+        empty: u8[] = [];
+        return empty;
+    }
+    return buffer;
+}
+
+// Replaces the file with the bytes; false when it cannot be written whole.
+pub WriteBytes :: (path: string, data: u8[]) -> bool {
+    stream := fopen(path, "wb");
+    if stream == 0 {
+        return false;
+    }
+    written := fwrite(data, 1, u64(length(data)), stream);
+    closed := fclose(stream);
+    return int(written) == length(data) && closed == 0;
+}
+
+// The text of the bytes, which may hold NUL and malformed UTF-8.
+pub Text :: (data: u8[]) -> string {
+    return text_from_bytes(data);
+}
+
+// The file's text, "" when it cannot be read.
+pub ReadText :: (path: string) -> string {
+    return text_from_bytes(ReadBytes(path));
+}
+
+// The environment variable's value, "" when it is unset.
+pub Getenv :: (name: string) -> string {
+    value := getenv(name);
+    if value == 0 {
+        return "";
+    }
+    size := int(strlen(value));
+    buffer: u8[] = [];
+    for index in 0..<size {
+        buffer.append(0);
+    }
+    moved := memcpy(buffer, value, u64(size));
+    return text_from_bytes(buffer);
+}
+
+// The names in the directory, in the order the system gives them and without "."
+// and "..". Empty when it cannot be opened (Kind tells a missing directory from
+// an empty one).
+pub List :: (path: string) -> string[] {
+    names: string[] = [];
+    directory := opendir(path);
+    if directory == 0 {
+        return names;
+    }
+    record_at := readdir(directory);
+    while record_at != 0 {
+        // The record length is read from a copy of the entry's head, then
+        // exactly that many bytes are copied, so nothing past the entry is read.
+        head: u8[] = [];
+        for index in 0..<RecordLengthOffset + 2 {
+            head.append(0);
+        }
+        moved := memcpy(head, record_at, u64(RecordLengthOffset + 2));
+        size := int(head[RecordLengthOffset]) + int(head[RecordLengthOffset + 1]) * 256;
+        record: u8[] = [];
+        for index in 0..<size {
+            record.append(0);
+        }
+        moved = memcpy(record, record_at, u64(size));
+        name: u8[] = [];
+        at := NameOffset;
+        while at < length(record) && record[at] != 0 {
+            name.append(record[at]);
+            at += 1;
+        }
+        text := text_from_bytes(name);
+        if text != "." && text != ".." {
+            names.append(text);
+        }
+        record_at = readdir(directory);
+    }
+    status := closedir(directory);
+    return names;
+}
+
+// A finished child process (named Output so the record does not share a name with core:os's Result: the native lane keys records by name): its exit status (the negative signal number when a
+// signal ended it, 127 when the program could not be started) and, for Capture,
+// what it wrote.
+pub Output :: struct {
+    status: int;
+    stdout: string;
+    stderr: string;
+}
+
+// The argument vector `execvp` takes, as bytes: one 8-byte little-endian
+// pointer to each argument's NUL-ended copy, then a null pointer. The copies
+// live in the heap until the program exits.
+Vector :: (command: string[]) -> u8[] {
+    vector: u8[] = [];
+    for argument in command {
+        size := text_byte_length(argument);
+        data: u8[] = [];
+        for index in 0..<size {
+            data.append(u8(text_byte_at(argument, index)));
+        }
+        block := calloc(u64(size + 1), 1);
+        moved := memmove(block, data, u64(size));
+        word := u64(block);
+        for index in 0..<8 {
+            vector.append(u8((word >> u32(8 * index)) & 255));
+        }
+    }
+    for index in 0..<8 {
+        vector.append(0);
+    }
+    return vector;
+}
+
+// What `waitpid` reported as an exit status.
+Decoded :: (status: int) -> int {
+    signal := status & 127;
+    if signal == 0 {
+        return (status >> 8) & 255;
+    }
+    return -signal;
+}
+
+// A zeroed block for a libc structure the program only passes along.
+Block :: (size: int) -> u8[] {
+    return resize([u8(0)], size);
+}
+
+// The 32-bit integer at `at` in `bytes`, little endian.
+Word32 :: (bytes: u8[], at: int) -> int {
+    return int(bytes[at]) + int(bytes[at + 1]) * 256 + int(bytes[at + 2]) * 65536 + int(bytes[at + 3]) * 16777216;
+}
+
+// Starts the program with the prepared file actions, which it destroys, and
+// returns its process id; -1 when it cannot be started. `own_group` puts it in a
+// process group of its own, so Kill reaches what it started too.
+Launch :: (command: string[], actions: u8[], own_group: bool) -> int {
+    pid := Block(8);
+    attributes := Block(512);
+    status := posix_spawnattr_init(attributes);
+    if own_group {
+        status = posix_spawnattr_setflags(attributes, 2);
+        status = posix_spawnattr_setpgroup(attributes, 0);
+    }
+    started := posix_spawnp(pid, command[0], actions, attributes, Vector(command), chibi_environment());
+    status = posix_spawnattr_destroy(attributes);
+    status = posix_spawn_file_actions_destroy(actions);
+    if started != 0 {
+        return -1;
+    }
+    return Word32(pid, 0);
+}
+
+// Starts the program with the command's arguments, keeping this process's
+// standard streams, and returns its process id; -1 when it cannot be started.
+pub Spawn :: (command: string[]) -> int {
+    if length(command) == 0 {
+        return -1;
+    }
+    actions := Block(256);
+    status := posix_spawn_file_actions_init(actions);
+    return Launch(command, actions, false);
+}
+
+// Waits for the process and returns its exit status.
+pub Wait :: (process: int) -> int {
+    status := Block(8);
+    done := waitpid(i32(process), status, 0);
+    if done < 0 {
+        return -1;
+    }
+    return Decoded(Word32(status, 0));
+}
+
+// Runs the program, keeping the standard streams, and returns its exit status;
+// 127 when it cannot be started.
+pub Run :: (command: string[]) -> int {
+    process := Spawn(command);
+    if process < 0 {
+        return 127;
+    }
+    return Wait(process);
+}
+
+// Runs the program with its standard output and error read into the result.
+// Both pipes are read together, so a child filling one cannot stop on the other.
+pub Capture :: (command: string[]) -> Output {
+    result: Output = {status: 127, stdout: "", stderr: ""};
+    if length(command) == 0 {
+        return result;
+    }
+    out := Block(8);
+    err := Block(8);
+    made := pipe(out);
+    made = made + pipe(err);
+    if made != 0 {
+        return result;
+    }
+    out_read := i32(Word32(out, 0));
+    out_write := i32(Word32(out, 4));
+    err_read := i32(Word32(err, 0));
+    err_write := i32(Word32(err, 4));
+    actions := Block(256);
+    status := posix_spawn_file_actions_init(actions);
+    status = posix_spawn_file_actions_adddup2(actions, out_write, 1);
+    status = posix_spawn_file_actions_adddup2(actions, err_write, 2);
+    status = posix_spawn_file_actions_addclose(actions, out_read);
+    status = posix_spawn_file_actions_addclose(actions, err_read);
+    pid := Launch(command, actions, false);
+    status = close(out_write);
+    status = close(err_write);
+    standard: u8[] = [];
+    errors: u8[] = [];
+    if pid >= 0 {
+        // Two pollfd records: descriptor (4 bytes), requested events (2),
+        // returned events (2). POLLIN is 1 and POLLHUP is 16 on both platforms.
+        watched := Block(16);
+        for index in 0..<4 {
+            watched[index] = u8(Word32(out, 0) >> u32(8 * index));
+            watched[8 + index] = u8(Word32(err, 0) >> u32(8 * index));
+        }
+        watched[4] = 1;
+        watched[12] = 1;
+        chunk := Block(4096);
+        open := 2;
+        while open > 0 {
+            ready := poll(watched, 2, -1);
+            if ready < 0 {
+                break;
+            }
+            for stream in 0..<2 {
+                if watched[stream * 8 + 6] != 0 {
+                    descriptor := out_read;
+                    if stream == 1 {
+                        descriptor = err_read;
+                    }
+                    count := read(descriptor, chunk, 4096);
+                    if count <= 0 {
+                        // Closed: stop watching it.
+                        watched[stream * 8 + 3] = 255;
+                        watched[stream * 8 + 2] = 255;
+                        watched[stream * 8 + 1] = 255;
+                        watched[stream * 8] = 255;
+                        open -= 1;
+                    } else {
+                        for index in 0..<int(count) {
+                            if stream == 0 {
+                                standard.append(chunk[index]);
+                            } else {
+                                errors.append(chunk[index]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        result.status = Wait(pid);
+    }
+    status = close(out_read);
+    status = close(err_read);
+    result.stdout = text_from_bytes(standard);
+    result.stderr = text_from_bytes(errors);
+    return result;
+}
+
+// The bytes up to the first NUL, as text.
+Terminated :: (buffer: u8[]) -> string {
+    end := 0;
+    while end < length(buffer) && buffer[end] != 0 {
+        end += 1;
+    }
+    text: u8[] = [];
+    for index in 0..<end {
+        text.append(buffer[index]);
+    }
+    return text_from_bytes(text);
+}
+
+// The directory the program was started in, "" when it cannot be read.
+pub Root :: () -> string {
+    buffer := Block(4096);
+    at := getcwd(buffer, 4096);
+    if at == 0 {
+        return "";
+    }
+    return Terminated(buffer);
+}
+
+// The absolute path with links resolved, "" when the path does not exist.
+pub RealPath :: (path: string) -> string {
+    buffer := Block(4096);
+    at := realpath(path, buffer);
+    if at == 0 {
+        return "";
+    }
+    return Terminated(buffer);
+}
+
+// The little-endian integer of `size` bytes at `at`.
+Word :: (bytes: u8[], at: int, size: int) -> int {
+    value := 0;
+    for index in 0..<size {
+        value += int(bytes[at + index]) << u32(8 * index);
+    }
+    return value;
+}
+
+// `value` in octal.
+Octal :: (value: int) -> string {
+    if value == 0 {
+        return "0";
+    }
+    reversed: u8[] = [];
+    rest := value;
+    while rest > 0 {
+        reversed.append(u8(48 + rest % 8));
+        rest = rest / 8;
+    }
+    digits: u8[] = [];
+    at := length(reversed) - 1;
+    while at >= 0 {
+        digits.append(reversed[at]);
+        at -= 1;
+    }
+    return text_from_bytes(digits);
+}
+
+// `value`, a count of nanoseconds, as nine digits.
+Nanoseconds :: (value: int) -> string {
+    text := format_text("{}", value);
+    while text_byte_length(text) < 9 {
+        text = format_text("0{}", text);
+    }
+    return text;
+}
+
+// Identifies the file's content and metadata for change detection: equal stamps
+// mean the same file untouched. "" when the path does not exist. A link is
+// followed. The text is the build host's, `device:inode:size:mode:mtime:ctime`
+// with the mode in octal and the times as seconds.nanoseconds, so a record
+// either host wrote reads the same for the other.
+pub Stamp :: (path: string) -> string {
+    buffer := Block(StatBytes);
+    if stat(path, buffer) != 0 {
+        return "";
+    }
+    return format_text("{}:{}:{}:{}:{}.{}:{}.{}", Word(buffer, 0, DeviceBytes), Word(buffer, InodeOffset, 8),
+                       Word(buffer, SizeOffset, 8), Octal(Word(buffer, ModeOffset, ModeBytes)),
+                       Word(buffer, ModifiedOffset, 8), Nanoseconds(Word(buffer, ModifiedOffset + 8, 8)),
+                       Word(buffer, ChangedOffset, 8), Nanoseconds(Word(buffer, ChangedOffset + 8, 8)));
+}
+
+// Copies the file's bytes and permission bits to the destination, whose folder
+// exists. The copy is written beside it and renamed over it, so a reader never
+// sees half a file.
+pub Copy :: (source: string, destination: string) -> bool {
+    mode := Mode(source, false);
+    if mode < 0 || (mode & 61440) != 32768 {
+        return false;
+    }
+    data := ReadBytes(source);
+    if length(data) != FileSize(source) {
+        return false;
+    }
+    temporary := format_text("{}.copy-{}", destination, getpid());
+    if !WriteBytes(temporary, data) {
+        status := unlink(temporary);
+        return false;
+    }
+    if chmod(temporary, u32(mode & 511)) != 0 || rename(temporary, destination) != 0 {
+        status := unlink(temporary);
+        return false;
+    }
+    return true;
+}
+
+// Whether the path is a regular file the program may run; a link is followed.
+Executable :: (path: string) -> bool {
+    mode := Mode(path, false);
+    return mode >= 0 && (mode & 61440) == 32768 && access(path, 1) == 0;
+}
+
+// The first executable of that name on PATH, "" when none; a name with a slash
+// is looked up as it is.
+pub FindExecutable :: (name: string) -> string {
+    if name == "" {
+        return "";
+    }
+    size := text_byte_length(name);
+    for index in 0..<size {
+        if text_byte_at(name, index) == 47 {
+            if Executable(name) {
+                return name;
+            }
+            return "";
+        }
+    }
+    search := Getenv("PATH");
+    length_of := text_byte_length(search);
+    at := 0;
+    while at <= length_of {
+        end := at;
+        while end < length_of && text_byte_at(search, end) != 58 {
+            end += 1;
+        }
+        directory := text_slice(search, at, end - at);
+        if directory == "" {
+            directory = ".";
+        }
+        candidate := format_text("{}/{}", directory, name);
+        if Executable(candidate) {
+            return candidate;
+        }
+        at = end + 1;
+    }
+    return "";
+}
+
+// What WaitFor returns for a program that still runs: past any exit status or
+// negative signal number. core:os's StillRunning is this value.
+pub StillRunning: int : 65536;
+
+// Where a started program's output waits for WaitFor: one file per process in
+// the temporary folder, so the process id is the whole handle.
+OutputPath :: (process: int) -> string {
+    folder := Getenv("TMPDIR");
+    if folder == "" {
+        folder = "/tmp";
+    }
+    return format_text("{}/chibi-{}-{}.out", folder, getpid(), process);
+}
+
+// Starts the program in a process group of its own and returns its process id;
+// -1 when it cannot be started. With `piped` its standard output and error go to
+// one file that WaitFor prints when the program ends, keeping the lines of
+// programs that run together apart; otherwise it shares this program's streams.
+pub Start :: (command: string[], piped: bool) -> int {
+    if length(command) == 0 {
+        return -1;
+    }
+    actions := Block(256);
+    status := posix_spawn_file_actions_init(actions);
+    // A program in a group of its own must not read the terminal.
+    status = posix_spawn_file_actions_addopen(actions, 0, "/dev/null", 0, 0);
+    waiting := "";
+    if piped {
+        // The process id is not known before the program starts, so the file
+        // is renamed once it is; the program keeps writing to the same file.
+        // The name is removed first and the file is private (mode 0600), so a
+        // file or link left in the temporary folder is not written through.
+        waiting = OutputPath(0);
+        status = unlink(waiting);
+        status = posix_spawn_file_actions_addopen(actions, 1, waiting, i32(WriteNew), 384);
+        status = posix_spawn_file_actions_adddup2(actions, 1, 2);
+    }
+    process := Launch(command, actions, true);
+    if piped {
+        if process < 0 {
+            status = unlink(waiting);
+        } else if rename(waiting, OutputPath(process)) != 0 {
+            // Its output has no place to wait: stop it rather than lose it.
+            status = kill(i32(0 - process), 9);
+            done := WaitFor(process, -1);
+            return -1;
+        }
+    }
+    return process;
+}
+
+// Prints what a piped program wrote to this program's standard error and
+// removes the file.
+Report :: (process: int) {
+    path := OutputPath(process);
+    if Kind(path) != KindFile {
+        return;
+    }
+    data := ReadBytes(path);
+    if length(data) > 0 {
+        written := write(2, data, u64(length(data)));
+    }
+    status := unlink(path);
+}
+
+// Waits at most `timeout_ms` (negative: for as long as it takes) for the program
+// to end and returns its exit status or the negative signal number that stopped
+// it; StillRunning when the time passed first. A program that could not start
+// has the status 127. A process ends once: waiting again returns -1.
+pub WaitFor :: (process: int, timeout_ms: int) -> int {
+    if process < 0 {
+        return 127;
+    }
+    status := Block(8);
+    waited := 0;
+    done: i32 = 0;
+    if timeout_ms < 0 {
+        done = waitpid(i32(process), status, 0);
+    } else {
+        done = waitpid(i32(process), status, 1);
+        while done == 0 && waited < timeout_ms {
+            usleep(2000);
+            waited += 2;
+            done = waitpid(i32(process), status, 1);
+        }
+    }
+    if done == 0 {
+        return StillRunning;
+    }
+    if done < 0 {
+        return -1;
+    }
+    Report(process);
+    return Decoded(Word32(status, 0));
+}
+
+// Stops the program and everything it started, waits for it and returns what
+// WaitFor would: -9 for a program that was running.
+pub Kill :: (process: int) -> int {
+    if process <= 0 {
+        return 127;
+    }
+    status := kill(i32(0 - process), 9);
+    return WaitFor(process, -1);
+}
+
+// The program's arguments, the first being how it was started. Each is read
+// twice: its length first, then its bytes into a buffer of that size.
+pub Arguments :: () -> string[] {
+    arguments: string[] = [];
+    count := int(chibi_argument_count());
+    for index in 0..<count {
+        none: u8[] = [];
+        size := int(chibi_argument(i64(index), none, 0));
+        if size < 0 {
+            break;
+        }
+        bytes := Block(size);
+        copied := chibi_argument(i64(index), bytes, i64(size));
+        arguments.append(text_from_bytes(bytes));
+    }
+    return arguments;
+}
+
+pub IsFile :: (path: string) -> bool {
+    return Kind(path) == KindFile;
+}
+
+pub IsDirectory :: (path: string) -> bool {
+    return Kind(path) == KindDirectory;
+}
+
+// The bytes of the text, a copy.
+Bytes :: (text: string) -> u8[] {
+    data: u8[] = [];
+    size := text_byte_length(text);
+    for index in 0..<size {
+        data.append(u8(text_byte_at(text, index)));
+    }
+    return data;
+}
+
+// Replaces the file with the text; false when it cannot be written whole.
+pub WriteText :: (path: string, text: string) -> bool {
+    return WriteBytes(path, Bytes(text));
+}
+
+// Writes the line and a newline to standard error, as build reports do; false
+// when it cannot be written whole.
+pub Print :: (line: string) -> bool {
+    data := Bytes(line);
+    data.append(10);
+    written := write(2, data, u64(length(data)));
+    return int(written) == length(data);
+}
+
+// Ends the process with the exit status; it does not return.
+pub Exit :: (code: int) -> int {
+    return int(_exit(i32(code)));
+}

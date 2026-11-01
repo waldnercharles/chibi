@@ -57,13 +57,10 @@ jobs:
       - name: Install graph build dependencies
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends \
-            clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 ccache python3-venv \
+            clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 ccache \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
-          python3 -m venv "$RUNNER_TEMP/graph-sdk-build-tools"
-          "$RUNNER_TEMP/graph-sdk-build-tools/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
-          echo "$RUNNER_TEMP/graph-sdk-build-tools/bin" >> "$GITHUB_PATH"
           install -d -m 700 "$XDG_RUNTIME_DIR"
       - name: Build Release graph products and private hosts
         run: sh tools/build.sh build --jobs "$JOBS" --libclang-root "$LIBCLANG_ROOT" --release --target chibi --target chibi-compile --target chibi-build-host --target chibi-compiler-host
@@ -87,7 +84,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          for route in graph-engine graph-driver graph-discovery graph-asset-cache graph-c graph-sdk graph-build; do
+          for route in graph-engine graph-driver graph-discovery graph-asset-cache graph-os graph-c graph-build; do
             sh tools/build.sh test --build build-sdk-tests --build-host build-release/sdk/chibi-build-host "$route"
           done
       - name: Verify graph SDK packaging and relocation

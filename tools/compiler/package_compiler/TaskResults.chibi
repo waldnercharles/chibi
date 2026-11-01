@@ -126,7 +126,7 @@ TaskResultPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Na
         return false;
     }
     function := node;
-    while (function >= 0 && !Is(forest, function, syntax.FunctionDeclaration) && !Is(forest, function, syntax.Handler)) {
+    while (function >= 0 && !Is(forest, function, syntax.FunctionDeclaration)) {
         function = forest[function].parent;
     }
     if (function < 0) {

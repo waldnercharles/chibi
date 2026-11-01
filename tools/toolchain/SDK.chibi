@@ -1,5 +1,6 @@
 package toolchain
 
+import reads "graph:files"
 import os "core:os"
 import strings "core:strings"
 import files "graph:install"
@@ -66,8 +67,8 @@ Verify :: () -> int {
 }
 Prepare :: (stage: string, entries: string[]) -> bool {
     for (item in entries) {
-        if (!files.CopyTree(build.after(item, "="), Join([stage, "/", build.before(item, "=")]))) {
-            os.Print(Join(["sdk: cannot copy ", build.after(item, "=")]));
+        if (!files.CopyTree(strings.Partition(item, "=").tail, Join([stage, "/", strings.Partition(item, "=").head]))) {
+            os.Print(Join(["sdk: cannot copy ", strings.Partition(item, "=").tail]));
             return false;
         }
     }
@@ -115,7 +116,7 @@ CompilerTools :: () -> int {
     }
     entries := Entries(root, build_dir, third_party);
     for (item in entries) {
-        source := build.after(item, "=");
+        source := strings.Partition(item, "=").tail;
         if (os.IsDirectory(source) &&
             (files.Inside(output, source) || files.Inside(stage, source))) {
             os.Print("sdk: output or staging lies inside a distribution input");
@@ -128,11 +129,11 @@ CompilerTools :: () -> int {
         return 1;
     }
     for (host in ["chibi-build-host", "chibi-compiler-host"]) {
-        record := build.read_file(Join([build_dir, "/sdk/", host, ".chibi-record"]));
+        record := reads.Text(Join([build_dir, "/sdk/", host, ".chibi-record"]));
         for (library_name in ["sljit"]) {
             archive := Join([third_party, "/lib/chibi-vendor/libchibi_vendor_", library_name, ".a"]);
             found := false;
-            for (line in build.lines(record)) {
+            for (line in strings.Lines(record)) {
                 found = found || line == archive;
             }
             if (!found) {
@@ -142,7 +143,7 @@ CompilerTools :: () -> int {
         }
     }
     for (item in entries) {
-        source := build.after(item, "=");
+        source := strings.Partition(item, "=").tail;
         kind := os.Kind(source);
         if (kind != os.KindFile && kind != os.KindDirectory) {
             os.Print(Join(["sdk: missing distribution input ", source]));
@@ -192,14 +193,14 @@ Install :: () -> int {
     }
     entries := InstallEntries(os.Root(), build_dir, engine.ThirdParty(os.Root(), "", ""));
     for (item in entries) {
-        if (os.Kind(build.after(item, "=")) == os.KindNone) {
-            os.Print(Join(["sdk: missing install input ", build.after(item, "=")]));
+        if (os.Kind(strings.Partition(item, "=").tail) == os.KindNone) {
+            os.Print(Join(["sdk: missing install input ", strings.Partition(item, "=").tail]));
             return 1;
         }
     }
     for (item in entries) {
-        if (!files.CopyTree(build.after(item, "="), Join([prefix, "/", build.before(item, "=")]))) {
-            os.Print(Join(["sdk: cannot install ", build.before(item, "=")]));
+        if (!files.CopyTree(strings.Partition(item, "=").tail, Join([prefix, "/", strings.Partition(item, "=").head]))) {
+            os.Print(Join(["sdk: cannot install ", strings.Partition(item, "=").head]));
             return 1;
         }
     }

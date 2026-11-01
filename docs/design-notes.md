@@ -278,16 +278,16 @@ natives. Terrain Lab writes `-> bool` where the name says nothing.
 
 ## The equivalence harness says that a frame differs, not what
 
-`game-equivalence` hashes the ECS world, saves, materials, physics and UI per
-fixed step.
+`game-equivalence`, archived with game projects, hashed the ECS world, saves,
+materials, physics and UI per fixed step.
 
 - Lockstep games check the same kind of per-step checksums. Factorio's desync
   report saves both the client's and the server's game state, a few ticks
   after their checksums diverge, and the cause is found by comparing them.
 
-Change: at the first differing frame, have the observer write that frame's
-component values from both artifacts, as the controller's runtime snapshot
-does. `Diff` then names the first entity and component that differ. The
+Change: at the first differing frame, have the observer write every
+component's values for that frame from both artifacts. `Diff` then names
+the first entity and component that differ. The
 harness replays deterministically, so unlike Factorio it can capture the
 exact frame.
 
@@ -306,7 +306,7 @@ to be removed again.
 
 ## Stage one parses with Tree-sitter
 
-`compiler_syntax_parse` is the C Tree-sitter parser. #420's grammar renames
+The retired `compiler_syntax_parse` was the C Tree-sitter parser; `tools/compiler/source_parser` replaced it. #420's grammar renames
 the node kinds that `Tree.chibi`, `Compile.chibi`, `Body.chibi` and
 `Steps.chibi` read by name.
 

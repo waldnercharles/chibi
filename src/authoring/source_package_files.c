@@ -53,6 +53,12 @@ typedef struct
     source_package_input *files;
     size_t bytes;
     int entries;
+    /* The roots from this index on are collections, whose tests/ folders
+     * belong to their own `chibi test` runs and never to an importer, as Go
+     * leaves a package's _test files out of the packages that import it. */
+    int first_collection;
+    /* Set while a collection root is scanned. */
+    bool skip_tests;
     source_package_load_error *error;
 } package_files;
 
@@ -312,7 +318,8 @@ static bool scan(package_files *files, int fd, const char *path)
         if (S_ISDIR(info.st_mode)) {
             /* Each explicit root has its own checked descriptor walk, even
              * below a hidden directory. Ancestor scans never collect it twice. */
-            if (explicit_root(files, child)) {
+            if (explicit_root(files, child) ||
+                (files->skip_tests && !strcmp(entry->d_name, "tests"))) {
                 continue;
             }
             if (!depth_valid(files, child)) {
@@ -361,6 +368,7 @@ static bool collect(package_files *files)
             }
             return reject(files->error, files->roots[i], "Cannot open canonical package root");
         }
+        files->skip_tests = i >= files->first_collection;
         if (!scan(files, fd, files->roots[i])) {
             return false;
         }
@@ -651,7 +659,10 @@ static bool scan(package_files *files, HANDLE handle, const char *path)
             bool folder = entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
             size_t size = strlen(entry.cFileName);
             bool source = size >= 6 && !strcmp(entry.cFileName + size - 6, ".chibi");
-            if (!(folder && explicit_root(files, child)) && (folder || source)) {
+            bool skipped = folder &&
+                           (explicit_root(files, child) ||
+                            (files->skip_tests && !strcmp(entry.cFileName, "tests")));
+            if (!skipped && (folder || source)) {
                 if (folder && !depth_valid(files, child)) {
                     ok = reject(files->error, child, "Package directory depth limit exceeded");
                     break;
@@ -699,6 +710,7 @@ static bool collect(package_files *files)
         if (!ok) {
             reject(files->error, files->roots[i], "Cannot open canonical package root");
         } else {
+            files->skip_tests = i >= files->first_collection;
             ok = scan(files, handles[acount(handles) - 1], files->roots[i]);
         }
         close_handles(handles);
@@ -764,7 +776,8 @@ bool source_package_files_read(const char *root, source_package_input **files, s
 {
     assert(files && !*files && error);
     *error = (source_package_load_error){ 0 };
-    package_files found = { .error = error };
+    /* Its one root is a collection: the build host's and the core library's. */
+    package_files found = { .error = error, .first_collection = 0 };
     bool ok = add_root(&found, root) && collect(&found);
     if (ok) {
         *files = found.files;
@@ -833,7 +846,7 @@ bool source_package_files_load(
         reject(error, "", "Invalid package filesystem options");
         return false;
     }
-    package_files files = { .error = error };
+    package_files files = { .error = error, .first_collection = 1 };
     bool ok = add_root(&files, options->project_root);
     for (int i = 0; ok && i < options->collection_count; i++) {
         const source_package_collection *collection = &options->collections[i];

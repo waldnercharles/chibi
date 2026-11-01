@@ -32,7 +32,6 @@ void execution_artifact_free(execution_artifact *artifact)
         return;
     }
     behavior_jit_free(artifact->code);
-    behavior_jit_free(artifact->system_code);
     behavior_jit_free(artifact->dispatch);
     behavior_jit_free(artifact->inspection_code);
     behavior_jit_free(artifact->scoped_code);

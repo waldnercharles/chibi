@@ -24,9 +24,7 @@ static bool barrier(const behavior_function *f, const behavior_function_instruct
         case BF_DELAY:
         case BF_INVOKE:
         case BF_COMMAND:
-        case BF_COMMAND_BEGIN:
-        case BF_COMPONENT_WRITE:
-        case BF_QUERY: return true;
+        case BF_COMMAND_BEGIN: return true;
         case BF_HOST_CALL: return !reusable_call(f, i);
         default: return false;
     }

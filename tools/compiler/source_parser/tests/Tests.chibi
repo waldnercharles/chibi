@@ -30,6 +30,17 @@ Rejects :: (text: string, line: int, column: int) {
     }
 }
 
+// A form that left the language is rejected by name.
+IsArchived :: (text: string, form: string) {
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            assert(false, "the parser rejects this archived form");
+        case .Rejected(diagnostic):
+            assert(strings.HasPrefix(diagnostic.message, form), "the diagnostic names the form");
+            assert(strings.Contains(diagnostic.message, "are archived"), "the diagnostic says archived");
+    }
+}
+
 @test
 AcceptsAttributes :: () {
     Accepts("package p\n\n@a\n@b\nR :: struct {\n}\n");
@@ -48,6 +59,11 @@ AcceptsForeignImport :: () {
 @test
 AcceptsForeignBlock :: () {
     Accepts("package p\nforeign import probe \"libprobe.a\"\nforeign probe {\n    chibi_probe_add :: (a: i32, b: i32) -> i32\n    chibi_probe_reset :: ()\n    chibi_probe_open :: (flags: u32) -> rawptr\n}\n");
+}
+
+@test
+AcceptsForeignBlockWithoutLibrary :: () {
+    Accepts("package p\nforeign {\n    chibi_argument_count :: () -> i32\n}\n");
 }
 
 @test
@@ -81,13 +97,35 @@ AcceptsTestFunction :: () {
 }
 
 @test
-AcceptsBehavior :: () {
-    Accepts("Thing :: behavior {\n    Speed: number = 3.0\n    Count := 0\n    on Tick :: (dt: number s) {\n        Step = dt\n    }\n}\n");
+RejectsBehavior :: () {
+    IsArchived("Thing :: behavior {\n    Speed: number = 3.0\n}\n", "behavior declarations");
 }
 
 @test
-AcceptsComponent :: () {
-    Accepts("Charge :: component {\n    level: number\n    rate: 0..10 charge/s\n    speed: m/s\n}\n");
+RejectsComponent :: () {
+    IsArchived("Charge :: component {\n    level: number\n}\n", "component declarations");
+}
+
+@test
+RejectsEventHandlers :: () {
+    IsArchived("Lib :: library {\n    on Tick :: (dt: number s) {\n    }\n}\n", "event handlers");
+    IsArchived("Lib :: library {\n    after Fire () {\n    }\n}\n", "event handlers");
+}
+
+@test
+RejectsBindDeclarations :: () {
+    IsArchived("Lib :: library {\n    bind a = b\n}\n", "bind declarations");
+}
+
+@test
+RejectsEmitAndQueryExpressions :: () {
+    IsArchived("package p\nF :: () {\n    emit target.Hit(1)\n}\n", "emit expressions");
+    IsArchived("package p\nF :: () {\n    rows := query(e: Position)\n}\n", "query expressions");
+}
+
+@test
+RejectsReduceStatements :: () {
+    IsArchived("package p\nF :: () {\n    reduce min(t, v)\n}\n", "reduce statements");
 }
 
 @test
@@ -106,8 +144,8 @@ AcceptsRelationship :: () {
 }
 
 @test
-AcceptsSystem :: () {
-    Accepts("Mover :: system (e: Position from world, c := 1) {\n    e.x += 1\n}\n");
+RejectsSystem :: () {
+    IsArchived("Mover :: system (e: Position from world, c := 1) {\n    e.x += 1\n}\n", "system declarations");
 }
 
 @test
@@ -199,13 +237,11 @@ KindNamesMatchTheirConstants :: () {
 
 @test
 ReadsRenamedWords :: () {
-    text := "package p\n\nwhen A {\n}\n\nF :: (v: view int[], s: self Thing) {\n    reduce min(t, v)\n    reduce max(t, v)\n}\n";
+    text := "package p\n\nwhen A {\n}\n\nF :: (v: view int[], s: self Thing) {\n}\n";
     shape := Shape(text);
     Has(shape, ":when");
     Has(shape, "trait:view");
     Has(shape, "trait:self");
-    Has(shape, "operator:min");
-    Has(shape, "operator:max");
 }
 
 @test

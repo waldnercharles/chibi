@@ -1,0 +1,666 @@
+package windows
+
+// The Windows calls core:os needs, declared against kernel32 and called from
+// native programs; the VM never runs foreign code. It mirrors core:sys/posix:
+// the same names and shapes, so core:os picks one by `target.Os`.
+//
+// Paths and names are UTF-8 strings. The calls take UTF-16, so each string is
+// converted with MultiByteToWideChar and back with WideCharToMultiByte, which
+// keep every path the file system can hold. A string is copied with a NUL into
+// the call's stack buffer, so a path or command line of 4096 bytes or more
+// traps. A call that fails returns false (or -1, or an empty result); the error
+// code is not read yet. Arguments reads GetCommandLineW itself, so it works
+// with any start module.
+
+foreign import kernel32 "system:kernel32"
+
+foreign kernel32 {
+    MultiByteToWideChar :: (page: u32, flags: u32, text: cstring, length: i32, wide: u16[], size: i32) -> i32
+    WideCharToMultiByte :: (page: u32, flags: u32, wide: u16[], length: i32, text: u8[], size: i32, fallback: rawptr, used: rawptr) -> i32
+    GetFileAttributesW :: (path: u16[]) -> u32
+    CreateDirectoryW :: (path: u16[], security: rawptr) -> i32
+    DeleteFileW :: (path: u16[]) -> i32
+    RemoveDirectoryW :: (path: u16[]) -> i32
+    MoveFileExW :: (source: u16[], destination: u16[], flags: u32) -> i32
+    CreateFileW :: (path: u16[], access: u32, share: u32, security: rawptr, creation: u32, flags: u32, template: rawptr) -> u64
+    ReadFile :: (handle: u64, buffer: u8[], count: u32, read: u32[], overlapped: rawptr) -> i32
+    WriteFile :: (handle: u64, buffer: u8[], count: u32, written: u32[], overlapped: rawptr) -> i32
+    GetFileSizeEx :: (handle: u64, size: u8[]) -> i32
+    CloseHandle :: (handle: u64) -> i32
+    GetEnvironmentVariableW :: (name: u16[], buffer: u16[], size: u32) -> u32
+    FindFirstFileW :: (pattern: u16[], data: u16[]) -> u64
+    FindNextFileW :: (handle: u64, data: u16[]) -> i32
+    FindClose :: (handle: u64) -> i32
+    GetCommandLineW :: () -> rawptr
+    lstrlenW :: (text: rawptr) -> i32
+    RtlMoveMemory :: (destination: u16[], source: rawptr, length: u64) -> i32
+    GetStdHandle :: (which: i32) -> u64
+    ExitProcess :: (code: u32) -> u32
+    SetHandleInformation :: (handle: u64, mask: u32, flags: u32) -> i32
+    CreatePipe :: (read: u64[], write: u64[], security: u8[], size: u32) -> i32
+    PeekNamedPipe :: (pipe: u64, buffer: rawptr, size: u32, read: rawptr, available: u32[], left: rawptr) -> i32
+    CreateProcessW :: (application: rawptr, command: u16[], process: rawptr, thread: rawptr, inherit: i32, flags: u32, environment: rawptr, directory: rawptr, startup: u8[], information: u8[]) -> i32
+    WaitForSingleObject :: (handle: u64, milliseconds: u32) -> u32
+    GetExitCodeProcess :: (handle: u64, code: u32[]) -> i32
+}
+
+pub KindNone: int : 0;
+pub KindFile: int : 1;
+pub KindDirectory: int : 2;
+pub KindLink: int : 3;
+pub KindOther: int : 4;
+
+Utf8: u32 : 65001;
+InvalidAttributes: u32 : 4294967295;
+DirectoryAttribute: u32 : 16;
+LinkAttribute: u32 : 1024;
+ReadAccess: u32 : 2147483648;
+WriteAccess: u32 : 1073741824;
+ShareAll: u32 : 7;
+CreateAlways: u32 : 2;
+OpenExisting: u32 : 3;
+ReplaceExisting: u32 : 1;
+ReadChunk: int : 65536;
+FindDataUnits: int : 296;
+FindNameUnit: int : 22;
+FindNameUnits: int : 260;
+Infinite: u32 : 4294967295;
+UseStandardHandles: u32 : 256;
+
+// A zeroed block for a structure the program only passes along.
+Block :: (size: int) -> u8[] {
+    block: u8[] = [];
+    for index in 0..<size {
+        block.append(0);
+    }
+    return block;
+}
+
+// The UTF-16 units of `text` and a terminating NUL.
+Wide :: (text: string) -> u16[] {
+    wide: u16[] = [];
+    size := MultiByteToWideChar(Utf8, 0, text, -1, wide, 0);
+    for index in 0..<int(size) {
+        wide.append(0);
+    }
+    converted := MultiByteToWideChar(Utf8, 0, text, -1, wide, size);
+    assert(converted == size, "the string converts");
+    return wide;
+}
+
+// The text of the first `count` UTF-16 units of `wide`.
+Narrow :: (wide: u16[], count: int) -> string {
+    if count == 0 {
+        return "";
+    }
+    none: u8[] = [];
+    size := WideCharToMultiByte(Utf8, 0, wide, i32(count), none, 0, 0, 0);
+    buffer := Block(int(size));
+    converted := WideCharToMultiByte(Utf8, 0, wide, i32(count), buffer, size, 0, 0);
+    return text_from_bytes(buffer);
+}
+
+// The attribute bits of the path, InvalidAttributes when it does not exist.
+Attributes :: (path: string) -> u32 {
+    return GetFileAttributesW(Wide(path));
+}
+
+// Whether the path names anything.
+pub Exists :: (path: string) -> bool {
+    return Attributes(path) != InvalidAttributes;
+}
+
+// What the path names, KindNone when nothing. A link is not followed.
+pub Kind :: (path: string) -> int {
+    attributes := Attributes(path);
+    if attributes == InvalidAttributes {
+        return KindNone;
+    }
+    if (attributes & LinkAttribute) != 0 {
+        return KindLink;
+    }
+    if (attributes & DirectoryAttribute) != 0 {
+        return KindDirectory;
+    }
+    return KindFile;
+}
+
+pub MakeDirectory :: (path: string) -> bool {
+    return CreateDirectoryW(Wide(path), 0) != 0;
+}
+
+// Removes a file or link, or an empty directory.
+pub Remove :: (path: string) -> bool {
+    if Kind(path) == KindDirectory {
+        return RemoveDirectoryW(Wide(path)) != 0;
+    }
+    return DeleteFileW(Wide(path)) != 0;
+}
+
+// Renames, replacing an existing destination as rename does elsewhere.
+pub Rename :: (source: string, destination: string) -> bool {
+    return MoveFileExW(Wide(source), Wide(destination), ReplaceExisting) != 0;
+}
+
+// The file's size in bytes, -1 when it cannot be opened.
+pub FileSize :: (path: string) -> int {
+    handle := CreateFileW(Wide(path), ReadAccess, ShareAll, 0, OpenExisting, 0, 0);
+    if ~handle == 0 {
+        return -1;
+    }
+    size := Block(8);
+    found := GetFileSizeEx(handle, size);
+    closed := CloseHandle(handle);
+    if found == 0 {
+        return -1;
+    }
+    total := 0;
+    for index in 0..<8 {
+        total += int(size[index]) << u32(8 * index);
+    }
+    return total;
+}
+
+// The file's bytes, including NUL and malformed UTF-8; no bytes when it cannot
+// be read (FileSize tells that from an empty file).
+pub ReadBytes :: (path: string) -> u8[] {
+    contents: u8[] = [];
+    handle := CreateFileW(Wide(path), ReadAccess, ShareAll, 0, OpenExisting, 0, 0);
+    if ~handle == 0 {
+        return contents;
+    }
+    chunk := Block(ReadChunk);
+    read: u32[] = [0];
+    while true {
+        if ReadFile(handle, chunk, u32(ReadChunk), read, 0) == 0 {
+            contents = [];
+            break;
+        }
+        count := int(read[0]);
+        if count == 0 {
+            break;
+        }
+        for index in 0..<count {
+            contents.append(chunk[index]);
+        }
+    }
+    closed := CloseHandle(handle);
+    return contents;
+}
+
+// Replaces the file with the bytes; false when it cannot be written whole.
+pub WriteBytes :: (path: string, data: u8[]) -> bool {
+    handle := CreateFileW(Wide(path), WriteAccess, ShareAll, 0, CreateAlways, 0, 0);
+    if ~handle == 0 {
+        return false;
+    }
+    written: u32[] = [0];
+    done := true;
+    if length(data) > 0 {
+        done = WriteFile(handle, data, u32(length(data)), written, 0) != 0 && int(written[0]) == length(data);
+    }
+    closed := CloseHandle(handle);
+    return done && closed != 0;
+}
+
+// The bytes of the text, a copy.
+Bytes :: (text: string) -> u8[] {
+    data: u8[] = [];
+    size := text_byte_length(text);
+    for index in 0..<size {
+        data.append(u8(text_byte_at(text, index)));
+    }
+    return data;
+}
+
+// Writes the line and a newline to standard error, as build reports do; false
+// when it cannot be written whole.
+pub Print :: (line: string) -> bool {
+    data := Bytes(line);
+    data.append(10);
+    written: u32[] = [0];
+    done := WriteFile(GetStdHandle(-12), data, u32(length(data)), written, 0);
+    return done != 0 && int(written[0]) == length(data);
+}
+
+// Replaces the file with the text; false when it cannot be written whole.
+pub WriteText :: (path: string, text: string) -> bool {
+    return WriteBytes(path, Bytes(text));
+}
+
+pub IsFile :: (path: string) -> bool {
+    return Kind(path) == KindFile;
+}
+
+pub IsDirectory :: (path: string) -> bool {
+    return Kind(path) == KindDirectory;
+}
+
+// Ends the process with the exit status; it does not return.
+pub Exit :: (code: int) -> int {
+    return int(ExitProcess(u32(code)));
+}
+
+// The text of the bytes, which may hold NUL and malformed UTF-8.
+pub Text :: (data: u8[]) -> string {
+    return text_from_bytes(data);
+}
+
+// The file's text, "" when it cannot be read.
+pub ReadText :: (path: string) -> string {
+    return text_from_bytes(ReadBytes(path));
+}
+
+// The environment variable's value, "" when it is unset.
+pub Getenv :: (name: string) -> string {
+    none: u16[] = [];
+    wide := Wide(name);
+    size := GetEnvironmentVariableW(wide, none, 0);
+    if size == 0 {
+        return "";
+    }
+    buffer: u16[] = [];
+    for index in 0..<int(size) {
+        buffer.append(0);
+    }
+    count := GetEnvironmentVariableW(wide, buffer, size);
+    return Narrow(buffer, int(count));
+}
+
+// The names in the directory, in the order the system gives them and without
+// "." and "..". Empty when it cannot be opened (Kind tells a missing directory
+// from an empty one).
+pub List :: (path: string) -> string[] {
+    names: string[] = [];
+    data: u16[] = [];
+    for index in 0..<FindDataUnits {
+        data.append(0);
+    }
+    pattern := Wide(path);
+    pattern[length(pattern) - 1] = 92;
+    pattern.append(42);
+    pattern.append(0);
+    handle := FindFirstFileW(pattern, data);
+    if ~handle == 0 {
+        return names;
+    }
+    more := true;
+    while more {
+        count := 0;
+        while count < FindNameUnits && data[FindNameUnit + count] != 0 {
+            count += 1;
+        }
+        name: u16[] = [];
+        for index in 0..<count {
+            name.append(data[FindNameUnit + index]);
+        }
+        text := Narrow(name, count);
+        if text != "." && text != ".." {
+            names.append(text);
+        }
+        more = FindNextFileW(handle, data) != 0;
+    }
+    closed := FindClose(handle);
+    return names;
+}
+
+// The program's arguments, the first being how it was started, split from the
+// command line by the C runtime's rules: spaces and tabs separate them outside
+// quotes, a quote toggles quoting, 2n backslashes before a quote are n
+// backslashes and a toggle, 2n+1 are n backslashes and a literal quote. The
+// program name keeps its backslashes.
+pub Arguments :: () -> string[] {
+    source := GetCommandLineW();
+    size := int(lstrlenW(source));
+    wide: u16[] = [];
+    for index in 0..<size {
+        wide.append(0);
+    }
+    moved := RtlMoveMemory(wide, source, u64(size) * 2);
+    return Split(Narrow(wide, size));
+}
+
+// The arguments of the command line `line`.
+pub Split :: (line: string) -> string[] {
+    arguments: string[] = [];
+    size := text_byte_length(line);
+    at := 0;
+    first := true;
+    while at < size {
+        while at < size && (text_byte_at(line, at) == 32 || text_byte_at(line, at) == 9) {
+            at += 1;
+        }
+        if at >= size {
+            break;
+        }
+        current: u8[] = [];
+        quoted := false;
+        while at < size {
+            byte := text_byte_at(line, at);
+            if !quoted && (byte == 32 || byte == 9) {
+                break;
+            }
+            if byte == 92 && !first {
+                slashes := 0;
+                while at < size && text_byte_at(line, at) == 92 {
+                    slashes += 1;
+                    at += 1;
+                }
+                if at < size && text_byte_at(line, at) == 34 {
+                    for index in 0..<(slashes / 2) {
+                        current.append(92);
+                    }
+                    if slashes % 2 == 1 {
+                        current.append(34);
+                        at += 1;
+                    }
+                } else {
+                    for index in 0..<slashes {
+                        current.append(92);
+                    }
+                }
+                continue;
+            }
+            if byte == 34 {
+                quoted = !quoted;
+                at += 1;
+                continue;
+            }
+            current.append(u8(byte));
+            at += 1;
+        }
+        first = false;
+        arguments.append(text_from_bytes(current));
+    }
+    return arguments;
+}
+
+// A finished child process: its exit status (-1 when it could not be waited
+// for, 127 when the program could not be started) and, for Capture, what it
+// wrote.
+pub Output :: struct {
+    status: int;
+    stdout: string;
+    stderr: string;
+}
+
+// The argument quoted for a command line, by the C runtime's rules: an argument
+// with a space, tab or quote, or an empty one, is quoted; backslashes before a
+// quote, and at the end of a quoted argument, are doubled.
+Quoted :: (argument: string) -> u8[] {
+    out: u8[] = [];
+    size := text_byte_length(argument);
+    bare := size > 0;
+    for index in 0..<size {
+        byte := text_byte_at(argument, index);
+        if byte == 32 || byte == 9 || byte == 34 {
+            bare = false;
+        }
+    }
+    if bare {
+        for index in 0..<size {
+            out.append(u8(text_byte_at(argument, index)));
+        }
+        return out;
+    }
+    out.append(34);
+    slashes := 0;
+    for index in 0..<size {
+        byte := text_byte_at(argument, index);
+        if byte == 92 {
+            slashes += 1;
+            continue;
+        }
+        if byte == 34 {
+            for each in 0..<(slashes * 2 + 1) {
+                out.append(92);
+            }
+            out.append(34);
+            slashes = 0;
+            continue;
+        }
+        for each in 0..<slashes {
+            out.append(92);
+        }
+        slashes = 0;
+        out.append(u8(byte));
+    }
+    for each in 0..<(slashes * 2) {
+        out.append(92);
+    }
+    out.append(34);
+    return out;
+}
+
+// The command line of the command's arguments, separated by spaces.
+CommandLine :: (command: string[]) -> string {
+    line: u8[] = [];
+    for argument in command {
+        if length(line) > 0 {
+            line.append(32);
+        }
+        line.extend(Quoted(argument));
+    }
+    return text_from_bytes(line);
+}
+
+// A SECURITY_ATTRIBUTES whose handles a child inherits.
+Inheritable :: () -> u8[] {
+    attributes := Block(24);
+    attributes[0] = 24;
+    attributes[16] = 1;
+    return attributes;
+}
+
+// The 64-bit integer at `at` in `bytes`, little endian.
+Word64 :: (bytes: u8[], at: int) -> u64 {
+    value: u64 = 0;
+    for index in 0..<8 {
+        value = value | (u64(bytes[at + index]) << u32(8 * index));
+    }
+    return value;
+}
+
+// The bytes with the 64-bit integer stored at `at`, little endian. Arrays are
+// values, so the caller keeps what this returns.
+Put64 :: (bytes: u8[], at: int, value: u64) -> u8[] {
+    changed := bytes;
+    for index in 0..<8 {
+        changed[at + index] = u8((value >> u32(8 * index)) & 255);
+    }
+    return changed;
+}
+
+// A standard handle made inheritable, or 0 when this process has none, so a
+// child can be given it.
+Shared :: (handle: u64) -> u64 {
+    if handle == 0 || ~handle == 0 {
+        return 0;
+    }
+    marked := SetHandleInformation(handle, 1, 1);
+    if marked == 0 {
+        return 0;
+    }
+    return handle;
+}
+
+// Starts the program with `command`'s arguments, its standard streams being
+// `input`, `output` and `errors` when they are not zero, and returns its
+// process handle; -1 when it cannot be started.
+Create :: (command: string[], input: u64, output: u64, errors: u64) -> int {
+    if length(command) == 0 {
+        return -1;
+    }
+    startup := Block(104);
+    startup[0] = 104;
+    startup[61] = 1;
+    startup = Put64(startup, 80, input);
+    startup = Put64(startup, 88, output);
+    startup = Put64(startup, 96, errors);
+    information := Block(24);
+    started := CreateProcessW(0, Wide(CommandLine(command)), 0, 0, 1, 0, 0, 0, startup, information);
+    if started == 0 {
+        return -1;
+    }
+    thread := Word64(information, 8);
+    closed := CloseHandle(thread);
+    return int(Word64(information, 0));
+}
+
+// Starts the program with the command's arguments, keeping this process's
+// standard streams, and returns its process handle; -1 when it cannot be
+// started.
+pub Spawn :: (command: string[]) -> int {
+    return Create(command, Shared(GetStdHandle(-10)), Shared(GetStdHandle(-11)), Shared(GetStdHandle(-12)));
+}
+
+// Waits for the process, closes its handle and returns its exit status.
+pub Wait :: (process: int) -> int {
+    waited := WaitForSingleObject(u64(process), Infinite);
+    code: u32[] = [0];
+    found := GetExitCodeProcess(u64(process), code);
+    closed := CloseHandle(u64(process));
+    if waited != 0 || found == 0 {
+        return -1;
+    }
+    return int(code[0]);
+}
+
+// Runs the program, keeping the standard streams, and returns its exit status;
+// 127 when it cannot be started.
+pub Run :: (command: string[]) -> int {
+    process := Spawn(command);
+    if process < 0 {
+        return 127;
+    }
+    return Wait(process);
+}
+
+// How many bytes are waiting in the pipe; -1 once it is closed or broken.
+Waiting :: (pipe: u64) -> int {
+    available: u32[] = [0];
+    if PeekNamedPipe(pipe, 0, 0, 0, available, 0) == 0 {
+        return -1;
+    }
+    return int(available[0]);
+}
+
+// Up to `count` of the bytes waiting in the pipe.
+Take :: (pipe: u64, count: int) -> u8[] {
+    wanted := count;
+    if wanted > 4096 {
+        wanted = 4096;
+    }
+    chunk := Block(wanted);
+    read: u32[] = [0];
+    taken: u8[] = [];
+    if ReadFile(pipe, chunk, u32(wanted), read, 0) != 0 {
+        for index in 0..<int(read[0]) {
+            taken.append(chunk[index]);
+        }
+    }
+    return taken;
+}
+
+// Runs the program with its standard output and error read into the result.
+// Both pipes are read together, so a child filling one cannot stop on the other.
+pub Capture :: (command: string[]) -> Output {
+    result: Output = {status: 127, stdout: "", stderr: ""};
+    if length(command) == 0 {
+        return result;
+    }
+    out_read: u64[] = [0];
+    out_write: u64[] = [0];
+    err_read: u64[] = [0];
+    err_write: u64[] = [0];
+    made := CreatePipe(out_read, out_write, Inheritable(), 0);
+    made = made * CreatePipe(err_read, err_write, Inheritable(), 0);
+    if made == 0 {
+        return result;
+    }
+    process := Create(command, Shared(GetStdHandle(-10)), out_write[0], err_write[0]);
+    closed := CloseHandle(out_write[0]);
+    closed = CloseHandle(err_write[0]);
+    standard: u8[] = [];
+    errors: u8[] = [];
+    if process >= 0 {
+        open_out := true;
+        open_err := true;
+        while open_out || open_err {
+            before := length(standard) + length(errors);
+            if open_out {
+                waiting := Waiting(out_read[0]);
+                if waiting < 0 {
+                    open_out = false;
+                } else if waiting > 0 {
+                    standard.extend(Take(out_read[0], waiting));
+                }
+            }
+            if open_err {
+                waiting := Waiting(err_read[0]);
+                if waiting < 0 {
+                    open_err = false;
+                } else if waiting > 0 {
+                    errors.extend(Take(err_read[0], waiting));
+                }
+            }
+            if length(standard) + length(errors) == before && (open_out || open_err) {
+                // Nothing waiting: let the child run for a moment.
+                waited := WaitForSingleObject(u64(process), 10);
+            }
+        }
+        result.status = Wait(process);
+    }
+    closed = CloseHandle(out_read[0]);
+    closed = CloseHandle(err_read[0]);
+    result.stdout = text_from_bytes(standard);
+    result.stderr = text_from_bytes(errors);
+    return result;
+}
+
+// Not implemented yet: each reports failure, as core:os documents for Windows.
+pub Platform :: () -> string {
+    return "Windows";
+}
+
+pub Stamp :: (path: string) -> string {
+    return "";
+}
+
+pub Copy :: (source: string, destination: string) -> bool {
+    return false;
+}
+
+pub Reserve :: (path: string) -> bool {
+    return false;
+}
+
+pub Publish :: (source: string, destination: string) -> bool {
+    return false;
+}
+
+pub RealPath :: (path: string) -> string {
+    return "";
+}
+
+pub Root :: () -> string {
+    return "";
+}
+
+pub FindExecutable :: (name: string) -> string {
+    return "";
+}
+
+pub Start :: (command: string[], piped: bool) -> int {
+    return -1;
+}
+
+pub StillRunning: int : 65536;
+
+pub WaitFor :: (process: int, timeout_ms: int) -> int {
+    return 127;
+}
+
+pub Kill :: (process: int) -> int {
+    return 127;
+}

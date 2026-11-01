@@ -322,37 +322,4 @@ ParseSignatureType :: (c: ^Cursor, n: ^(Node[])) -> int {
     return measured;
 }
 
-// A component field's type: a type, a measured type, or a measure, which is
-// a range with an optional unit or a compound unit alone.
-ParseFieldType :: (c: ^Cursor, n: ^(Node[])) -> int {
-    token := c.token;
-    if (token == tk.Integer || token == tk.Float || token == tk.Sub) {
-        measure := New(n, syntax.Measure);
-        span := New(n, syntax.RangeType);
-        Add(n, span, ParseBound(c, n), syntax.FieldMin);
-        Expect(c, n, span, tk.Ellipsis, syntax.FieldNone);
-        Add(n, span, ParseBound(c, n), syntax.FieldMax);
-        Add(n, measure, span, syntax.FieldRange);
-        if (c.token == tk.Ident) {
-            Add(n, measure, ParseUnit(c, n), syntax.FieldUnit);
-        }
-        return measure;
-    }
-    if (StartsUnit(c, n)) {
-        alone := New(n, syntax.Measure);
-        Add(n, alone, ParseUnit(c, n), syntax.FieldUnit);
-        return alone;
-    }
-    return ParseSignatureType(c, n);
-}
 
-// A number, or a number with a minus sign.
-ParseBound :: (c: ^Cursor, n: ^(Node[])) -> int {
-    if (c.token == tk.Sub) {
-        negative := New(n, syntax.UnaryExpression);
-        Take(c, n, negative, syntax.FieldOperator);
-        Take(c, n, negative, syntax.FieldOperand);
-        return negative;
-    }
-    return Take(c, n, -1, syntax.FieldNone);
-}

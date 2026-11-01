@@ -4,6 +4,7 @@ import snapshot "project:source_snapshot"
 import binding "project:lexical_binding"
 import writer "project:prepared_writer"
 import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
 
 // An optional sequence is physically a union. Its synthetic declaration keeps
 // the success type, so an empty sequence remains distinct from an absent one.
@@ -52,8 +53,8 @@ OptionalWrapStep :: (forest: snapshot.SnapshotNode[], document: int, types: Type
         result.record = record;
         return Step.Emitted([], [], [], [], [], [], [], [], [], 1, result, NoValue(), []);
     }
-    tag := QueryCell(WordStorage, -1, OptionalTag(types, payload));
-    wrapped := QueryCallStep(UnionMakeIntrinsic, [Typed(-1, WordStorage, 0, -1), value],
+    tag := ConstantCell(WordStorage, -1, OptionalTag(types, payload));
+    wrapped := IntrinsicCallStep(UnionMakeIntrinsic, [Typed(-1, WordStorage, 0, -1), value],
                              [tag, TypedCell(payload.storage, payload.container, payload.record)],
                              {storage: UnionStorage, container: 0, record: record}, 1, ops, target, at, node);
     switch wrapped {
@@ -773,43 +774,20 @@ OptionalGuardEnd :: (forest: snapshot.SnapshotNode[], text: string, condition: i
         return -1;
     }
     if Is(forest, node, syntax.UnaryExpression) {
-        operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
-        if operator == "!" || operator == "not" {
+        operator := Operator(forest, node);
+        if operator == tk.Not || operator == tk.NotKeyword {
             return OptionalGuardEnd(forest, text, Field(forest, node, syntax.FieldOperand), name, !truth);
         }
         return -1;
     }
-    if Is(forest, node, syntax.CallExpression) {
-        if !QueryGuardContext(forest, node) {
-            return -1;
-        }
-        function := Text(forest, text, Field(forest, node, syntax.FieldFunction));
-        arguments := Members(forest, Field(forest, node, syntax.FieldArguments));
-        if function == "has" && length(arguments) == 1 {
-            return OptionalGuardEnd(forest, text, arguments[0], name, truth);
-        }
-        if function == "not" && length(arguments) == 1 {
-            return OptionalGuardEnd(forest, text, arguments[0], name, !truth);
-        }
-        latest: int = -1;
-        if (truth && function == "all") || (!truth && function == "any") {
-            for argument in arguments {
-                end := OptionalGuardEnd(forest, text, argument, name, truth);
-                if end > latest {
-                    latest = end;
-                }
-            }
-        }
-        return latest;
-    }
     if !Is(forest, node, syntax.BinaryExpression) {
         return -1;
     }
-    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
+    operator := Operator(forest, node);
     left := Field(forest, node, syntax.FieldLeft);
     right := Field(forest, node, syntax.FieldRight);
-    if (truth && (operator == "&&" || operator == "and")) ||
-       (!truth && (operator == "||" || operator == "or")) {
+    if (truth && (operator == tk.CmpAnd || operator == tk.AndKeyword)) ||
+       (!truth && (operator == tk.CmpOr || operator == tk.OrKeyword)) {
         // Both operands run on this edge. A fresh later test can
         // re-establish presence after an earlier mutation.
         latest := OptionalGuardEnd(forest, text, right, name, truth);
@@ -829,15 +807,14 @@ OptionalGuardEnd :: (forest: snapshot.SnapshotNode[], text: string, condition: i
        !Is(forest, right, syntax.Nil) || Text(forest, text, left) != name {
         return -1;
     }
-    if (truth && operator == "!=") || (!truth && operator == "==") {
+    if (truth && operator == tk.NotEq) || (!truth && operator == tk.CmpEq) {
         return forest[left].end;
     }
     return -1;
 }
 OptionalPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name, node: int) -> bool {
     function := node;
-    while function >= 0 && !Is(forest, function, syntax.FunctionDeclaration) && !Is(forest, function, syntax.Handler) &&
-          !Is(forest, function, syntax.System) {
+    while function >= 0 && !Is(forest, function, syntax.FunctionDeclaration) {
         function = forest[function].parent;
     }
     if function < 0 {
@@ -850,30 +827,14 @@ OptionalPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name
     crossed_for := false;
     while parent >= 0 && parent != function {
         if Is(forest, parent, syntax.BinaryExpression) && Ancestor(forest, Field(forest, parent, syntax.FieldRight), node) {
-            operator := Text(forest, text, Field(forest, parent, syntax.FieldOperator));
-            truth := operator == "&&" || operator == "and";
-            if truth || operator == "||" || operator == "or" {
+            operator := Operator(forest, parent);
+            truth := operator == tk.CmpAnd || operator == tk.AndKeyword;
+            if truth || operator == tk.CmpOr || operator == tk.OrKeyword {
                 condition := Field(forest, parent, syntax.FieldLeft);
                 proof := OptionalGuardEnd(forest, text, condition, binding.name, truth);
                 if proof >= 0 && (binding.node < 0 || forest[binding.node].start < forest[condition].start) &&
                    !OptionalProofChanged(forest, text, parent, proof, forest[node].start, binding.name, aliased) {
                     return true;
-                }
-            }
-        }
-        if Is(forest, parent, syntax.ArgumentList) {
-            call := forest[parent].parent;
-            spelling := Text(forest, text, Field(forest, call, syntax.FieldFunction));
-            if (spelling == "all" || spelling == "any") && QueryGuardContext(forest, call) {
-                for argument in Members(forest, parent) {
-                    if Ancestor(forest, argument, node) {
-                        break;
-                    }
-                    proof := OptionalGuardEnd(forest, text, argument, binding.name, spelling == "all");
-                    if proof >= 0 && !OptionalProofChanged(forest, text, call, proof, forest[node].start,
-                                                           binding.name, aliased) {
-                        return true;
-                    }
                 }
             }
         }
@@ -1003,4 +964,163 @@ OptionalNarrowStep :: (forest: snapshot.SnapshotNode[], text: string, types: Typ
                                         popped, result, retained, extend(marks, more_marks));
             }
     }
+}
+
+Ancestor :: (forest: snapshot.SnapshotNode[], ancestor: int, node: int) -> bool {
+    at := node;
+    while (at >= 0) {
+        if (at == ancestor) {
+            return true;
+        }
+        at = forest[at].parent;
+    }
+    return false;
+}
+// A positive payload pattern is visible in its matching body and in the
+// right side of && after the pattern has matched. It never enters an else.
+PatternScope :: (forest: snapshot.SnapshotNode[], text: string, pattern: int, node: int) -> bool {
+    if (Field(forest, pattern, syntax.FieldNegated) >= 0) {
+        return false;
+    }
+    current := pattern;
+    while (forest[current].parent >= 0) {
+        parent := forest[current].parent;
+        if (Is(forest, parent, syntax.ParenthesizedExpression)) {
+            current = parent;
+            continue;
+        }
+        if (Is(forest, parent, syntax.BinaryExpression)) {
+            operator := Operator(forest, parent);
+            if (operator != tk.CmpAnd && operator != tk.AndKeyword) {
+                return false;
+            }
+            if (Ancestor(forest, Field(forest, parent, syntax.FieldLeft), current) &&
+                Ancestor(forest, Field(forest, parent, syntax.FieldRight), node)) {
+                return true;
+            }
+            current = parent;
+            continue;
+        }
+        if (Field(forest, parent, syntax.FieldCondition) != current) {
+            return false;
+        }
+        if (Is(forest, parent, syntax.IfStatement)) {
+            return Ancestor(forest, Field(forest, parent, syntax.FieldConsequence), node);
+        }
+        if (Is(forest, parent, syntax.WhileStatement)) {
+            return Ancestor(forest, Field(forest, parent, syntax.FieldBody), node);
+        }
+        return false;
+    }
+    return false;
+}
+BooleanPosition :: (forest: snapshot.SnapshotNode[], text: string, expression: int) -> bool {
+    node := expression;
+    while (node >= 0 && forest[node].parent >= 0) {
+        parent := forest[node].parent;
+        if (Is(forest, parent, syntax.ParenthesizedExpression)) {
+            node = parent;
+            continue;
+        }
+        if (Is(forest, parent, syntax.IfStatement) || Is(forest, parent, syntax.WhileStatement)) {
+            return Field(forest, parent, syntax.FieldCondition) == node;
+        }
+        operator := Operator(forest, parent);
+        if (Is(forest, parent, syntax.UnaryExpression)) {
+            return operator == tk.Not || operator == tk.NotKeyword;
+        }
+        return Is(forest, parent, syntax.BinaryExpression) &&
+               (operator == tk.CmpAnd || operator == tk.AndKeyword || operator == tk.CmpOr || operator == tk.OrKeyword);
+    }
+    return false;
+}
+// A nullable pointer or optional converts to its presence in a condition and
+// in a short-circuit operand.
+PresenceStep :: (types: TypeDecl[], step: Step, ops: Ops, target: Target, at: Bases,
+                     node: snapshot.SnapshotNode) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, value, retained, marks):
+            storage := value.storage;
+            if (value.container != 0 || value.record < 0 ||
+                (storage != PointerStorage &&
+                 !IsBoxedOptional(types, {storage: value.storage, container: value.container, record: value.record}))) {
+                return step;
+            }
+            null_slot := at.slot + length(slots);
+            output := null_slot + 1;
+            null_value := ConstantCode(ops, storage, 0, null_slot, node);
+            if (storage == PointerStorage) {
+                null_value.value_record = value.record;
+            }
+            rewritten := code;
+            if ops.debug && IsBoxedOptional(types, {storage: value.storage, container: value.container, record: value.record}) {
+                // Presence is a contextual conversion. The debugger observes
+                // the optional expression itself, as the native frontend does.
+                rewritten.append(WatchCode(ops, value.slot, value.storage, value.container, value.record,
+                                           0, true, node, target));
+            }
+            rewritten.append(null_value);
+            rewritten.append(Instruction(ops.ne, storage, output, value.slot, null_slot, -1, node));
+            null_type := AddressSlot(target);
+            if (storage == PointerStorage) {
+                null_type = ValueLocal(PointerStorage);
+            } else if (storage == UnionStorage) {
+                null_type = ValueLocal(UnionStorage);
+            }
+            added := append(slots, null_type);
+            added.append(ValueLocal(BoolStorage));
+            return Step.Emitted(rewritten, added, locals, cells, hosts, roots, calls, bound, next, popped,
+                                Typed(output, BoolStorage, 0, -1), retained, marks);
+    }
+}
+ConstantCell :: (storage: int, record: int, bits: u64) -> Cell {
+    return {storage: storage, container: 0, record: record, constant: bits, variant: -1, kind: ValueKind};
+}
+// Intrinsic calls keep one typed cell per argument and result. A slot of -2
+// asks for the execution context; a slot of -1 leaves the header's constant.
+IntrinsicCallStep :: (intrinsic: int, arguments: Value[], initial: Cell[], result: ValueType, popped: int,
+                  ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    cells := initial;
+    output_cell: Cell = {storage: result.storage, container: result.container, record: result.record,
+                         constant: 0, variant: -1, kind: ValueKind};
+    cells.append(output_cell);
+    code: Code[] = [];
+    slots: Slot[] = [];
+    index: int = 0;
+    for (argument in arguments) {
+        value := argument.slot;
+        if (value == -2) {
+            context_cell := cells[index];
+            context_cell.kind = AddressKind;
+            cells[index] = context_cell;
+            slots.append(AddressSlot(target));
+            value = at.slot + length(slots) - 1;
+            code.append(Instruction(ops.context, target.pointer_storage, value, 0, 0, 1, node));
+        }
+        if (value >= 0) {
+            stored := argument;
+            stored.slot = value;
+            code.extend(ValueWriteCode(stored, at.cell + index, ops, target, at.slot + length(slots), node));
+            slots.append(AddressSlot(target));
+        }
+        index += 1;
+    }
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(initial),
+                  result_count: 1, written: false};
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    storage := SlotStorage(result.storage, result.container, target);
+    code.extend(CellRead(storage, at.cell + length(initial), ops, target, at.slot + length(slots), node));
+    slots.append(AddressSlot(target));
+    output_slot: Slot = {storage: storage, kind: SlotKind(result.storage, result.container)};
+    slots.append(output_slot);
+    produced := Typed(at.slot + length(slots) - 1, result.storage, result.container, result.record);
+    roots: Root[] = [];
+    if (Pointer(result.storage, result.container)) {
+        root: Root = {slot: produced.slot, storage: result.storage, container: result.container, record: result.record};
+        roots.append(root);
+    }
+    return CellSchemaStep(Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], popped, produced, NoValue(), []),
+                          at.cell + length(initial), ops, target, at, node);
 }

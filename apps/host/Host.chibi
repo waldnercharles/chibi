@@ -1,0 +1,81 @@
+package host
+
+// The host of a native Edit and Continue loop (docs/edit-and-continue.md,
+// "Native code"). It loads the generation `live-0.so` of a library that
+// exports `Main` and `Frame`, calls Main once, then calls Frame until it gives
+// a nonzero status, which is the program's exit status. After each Frame it
+// looks for `next.so`, a later generation: it loads that, moves the retained
+// states the two generations share, swaps it in, and unloads the old one, so
+// the next Frame runs the new code with the state it had. Main is not called
+// again. A generation that fails to load, or lacks Main or Frame, is set
+// aside as `rejected.so` and the running one continues. The generations are
+// files in the working directory because the host reads no strings, and they
+// alternate between `live-0.so` and `live-1.so` so a path is never reloaded
+// while loaded.
+//
+// Every symbol is a plain C function of the library (HostSymbols in
+// llvm_native), since a program with foreign calls only cannot read the
+// manifests.
+
+foreign import libc "system:c"
+
+foreign libc {
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (handle: rawptr, name: cstring) -> rawptr
+    dlclose :: (handle: rawptr) -> i32
+    rename :: (from: cstring, to: cstring) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+    usleep :: (microseconds: u32) -> i32
+}
+
+Main :: () -> int {
+    handle := dlopen("./live-0.so", 2);
+    start: fn() -> i32 = dlsym(handle, "chibi_host_call_Main");
+    frame: fn() -> i32 = dlsym(handle, "chibi_host_call_Frame");
+    started := start();
+    if started != 0 {
+        return int(started);
+    }
+    live := 0;
+    while true {
+        status := frame();
+        if status != 0 {
+            return int(status);
+        }
+        slept := usleep(5000);
+        if access("./next.so", 0) != 0 {
+            continue;
+        }
+        name := "./live-0.so";
+        if live == 0 {
+            name = "./live-1.so";
+        }
+        moved := rename("./next.so", name);
+        incoming := dlopen(name, 2);
+        if incoming == 0 {
+            set_aside := rename(name, "./rejected.so");
+            continue;
+        }
+        next_frame: fn() -> i32 = dlsym(incoming, "chibi_host_call_Frame");
+        old_count: fn() -> i32 = dlsym(handle, "chibi_host_retained_count");
+        old_type: fn(index: i32) -> i32 = dlsym(handle, "chibi_host_retained_type");
+        old_hash: fn(index: i32) -> i64 = dlsym(handle, "chibi_host_retained_hash");
+        old_get: fn(index: i32) -> i64 = dlsym(handle, "chibi_host_retained_get");
+        new_count: fn() -> i32 = dlsym(incoming, "chibi_host_retained_count");
+        new_type: fn(index: i32) -> i32 = dlsym(incoming, "chibi_host_retained_type");
+        new_hash: fn(index: i32) -> i64 = dlsym(incoming, "chibi_host_retained_hash");
+        new_set: fn(index: i32, word: i64) -> i32 = dlsym(incoming, "chibi_host_retained_set");
+        for target in 0..<int(new_count()) {
+            for source in 0..<int(old_count()) {
+                if old_hash(i32(source)) == new_hash(i32(target)) && old_type(i32(source)) == new_type(i32(target)) {
+                    carried := new_set(i32(target), old_get(i32(source)));
+                }
+            }
+        }
+        closed := dlclose(handle);
+        handle = incoming;
+        frame = next_frame;
+        live = 1 - live;
+    }
+    return 0;
+}

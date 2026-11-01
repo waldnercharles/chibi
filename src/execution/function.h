@@ -73,13 +73,6 @@ bool behavior_execution_scope_pure();
 bool behavior_execution_scope_cancelled();
 /* NULL on success, otherwise a stable diagnostic. Called before each VM op. */
 const char *behavior_execution_scope_step();
-typedef enum
-{
-    EXECUTION_REDUCTION_ADD,
-    EXECUTION_REDUCTION_MIN,
-    EXECUTION_REDUCTION_MAX,
-    EXECUTION_REDUCTION_ADD_UNORDERED
-} execution_reduction_op;
 behavior_value_kind behavior_function_kind(const behavior_function *, behavior_value_bank, int index);
 typedef struct
 {
@@ -89,13 +82,6 @@ typedef struct
     uint64_t layout; /* Declared struct layout, including managed values/arrays. */
 } behavior_variable_storage;
 struct service_binding;
-typedef struct
-{
-    node_query_fn read;
-    void *service;
-    const char *key;
-    pin_array snapshot;
-} behavior_query_binding;
 typedef struct
 {
     uint64_t capability_abi;
@@ -134,36 +120,6 @@ typedef struct
     const char *asset_name;
     int start, end, line, column;
 } behavior_function_source;
-enum
-{
-    EXECUTION_COST_ALLOCATE = 1u << 0,
-    EXECUTION_COST_COPY = 1u << 1,
-    EXECUTION_COST_ESCAPE = 1u << 2,
-    EXECUTION_COST_KINDS = 3,
-};
-typedef struct
-{
-    const behavior_function *function;
-    int instruction;
-    uint64_t capability;
-    const char *reason;
-} execution_cost_site;
-typedef struct
-{
-    unsigned proven, possible;
-    bool complete;
-    /* First evidence for each bit above; borrowed from the owning generation. */
-    execution_cost_site proven_sites[EXECUTION_COST_KINDS];
-    execution_cost_site possible_sites[EXECUTION_COST_KINDS];
-} execution_cost_summary;
-/* Derived from normal finalized instructions and transitive linked callees.
- * Proven means an operation exists, not that every branch executes it. Allocate
- * means a dynamic storage request (possibly satisfied by an arena/pool); copy
- * excludes scalar moves; escape means retention beyond the producing frame or
- * expression. Possible covers nullable values, caches, and unknown native code.
- * This bounded structural analysis does not estimate time, counts, complexity,
- * or backend/activation setup costs. No authored annotations are required. */
-execution_cost_summary behavior_function_costs(const behavior_function *);
 typedef enum
 {
     BEHAVIOR_FUNCTION_BUDGET,
@@ -255,7 +211,6 @@ typedef struct behavior_function_context
     const behavior_function_point *points;
     /* The runtime owns distinct variable, argument and result storage. */
     pin_value *variables;
-    pin_value *states; /* Fixed node-state bank for the linked asset generation. */
     const pin_value *arguments;
     int argument_count;
     bool arguments_stabilized;
@@ -272,53 +227,8 @@ typedef struct behavior_function_context
     bool exit_requested;
     uint64_t returned_outcome;
     int pending_commands;
-    const pin_value *(*action_result)(struct behavior_function_context *, uint64_t action, int ordinal);
-    int (*complete_action)(struct behavior_function_context *, uint64_t action, const pin_value *, int count);
-    int (*state_inputs)(struct behavior_function_context *, uint64_t action, int entry, int *demand);
-    int (*state_transition)(
-        struct behavior_function_context *,
-        uint64_t action,
-        int entry,
-        const pin_value *,
-        int count,
-        int *selected
-    );
-    int (*retrigger_action)(
-        struct behavior_function_context *,
-        uint64_t action,
-        double duration,
-        bool *found
-    );
-    int (*request_action_break)(struct behavior_function_context *, uint64_t action);
-    int (*take_action_break)(struct behavior_function_context *, uint64_t action, bool *requested);
-    int (*component_membership)(
-        struct behavior_function_context *,
-        uint64_t entity,
-        uint64_t component,
-        bool add,
-        bool *changed
-    );
     void (*bind_instance)(const struct behavior_function *, struct behavior_function_context *);
     void (*commit_instance)(struct behavior_function_context *);
-    int (*store_component)(
-        struct behavior_function_context *,
-        uint64_t entity,
-        uint64_t component,
-        uint64_t layout,
-        size_t offset,
-        pin_value declared,
-        pin_value value
-    );
-    int (*reduce_component)(
-        struct behavior_function_context *,
-        uint64_t entity,
-        uint64_t component,
-        uint64_t layout,
-        size_t offset,
-        pin_value declared,
-        pin_value value,
-        execution_reduction_op
-    );
     double delta_seconds;
     uintptr_t steps;
     uintptr_t budget;
@@ -337,7 +247,6 @@ typedef struct behavior_function_context
         int status
     );
     const struct service_binding *services;
-    behavior_query_binding *queries;
     behavior_command_binding *commands;
     pin_value *command_arguments;
     pin_value *command_results;
@@ -349,15 +258,8 @@ typedef struct behavior_function_context
     void (*release_local)(struct behavior_function_context *context, pin_value *local);
     int error_status;
     uint64_t owner;
-    const uint64_t *query_variables; /* Current tuple; borrowed instance storage. */
-    const pin_value *query_row;      /* Current scheduled query row. */
-    int (*query_test)(struct behavior_function_context *, int term);
     const struct execution_module *module; /* Immutable producer generation. */
     struct execution_program *program; /* Borrowed evaluator scratch cache owner. */
-    const char *owner_type_name;
-    const struct ecs_execution_view *world, *binding_world;
-    /* Optional column table for a synchronous span with stable ECS storage. */
-    const struct ecs_execution_column *const *columns;
     behavior_variable_storage *variable_storage;
     void *value_owner;
     /* Invocation-owned copies outlive locals, suspension and returned values.
@@ -380,8 +282,6 @@ typedef struct behavior_function_context
     const behavior_function_edge *edges;
     pin_value watched;
     void *watch_storage;
-    /* Keep optional state callbacks after the frequently read context fields. */
-    int (*select_state)(void *owner, const behavior_state_selection *selection, int start, int flags);
 } behavior_function_context;
 /* Borrowed prepared-source origin of the last failure, including outlined
  * callees propagated during unwind. NULL if no origin is available. */
@@ -538,9 +438,6 @@ int behavior_function_run(const behavior_function *function, behavior_function_c
 /* Thread-local scratch-bank initializations for allocation profiling; shared
  * by bytecode and WebAssembly execution. */
 uint64_t behavior_function_vm_allocations();
-/* Caller owns the sequence kernel; all immutable functions must outlive its
- * invocation. Frees with behavior_jit_free. Executes exactly the given order. */
-void *behavior_function_compile_sequence(const behavior_function *const *functions, int count);
 void *behavior_function_entry(const behavior_function *function);
 /* Whether a compiled definition runs on bytecode, past the Wasm JIT's size
  * budget. */
@@ -573,10 +470,5 @@ const behavior_function_source *behavior_function_instruction_source(
 const behavior_function_source *behavior_function_source_at(
     const behavior_function *function,
     int source
-);
-const pin_string *behavior_function_intern_text(
-    behavior_function_context *,
-    const struct ecs_execution_view *,
-    const pin_string *
 );
 #endif

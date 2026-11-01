@@ -500,6 +500,17 @@ pub SplitLines :: (s: string) -> string[] {
     return SplitLinesKeeping(s, 0, -1);
 }
 
+// The lines of s as a reader sees them: split at line feeds, each without a
+// trailing carriage return, and no empty last line after a final terminator,
+// so "" has none and "a\n" has one. SplitLines keeps that empty line.
+pub Lines :: (s: string) -> string[] {
+    lines := SplitLines(s);
+    if (length(lines) > 0 && lines[length(lines) - 1] == "") {
+        return slice(lines, 0, length(lines) - 1);
+    }
+    return lines;
+}
+
 pub SplitLinesN :: (s: string, n: int) -> string[] {
     return SplitLinesKeeping(s, 0, n);
 }
@@ -535,17 +546,27 @@ pub Fields :: (s: string) -> string[] {
     return fields;
 }
 
+// Joins neighbours pairwise, so each byte is copied once per halving of the
+// part count rather than once per later part: joining a source's lines takes
+// O(bytes * log parts), not O(bytes * parts).
 pub Join :: (a: string[], sep: string) -> string {
     if (length(a) == 0) {
         return "";
     }
-    result: string = a[0];
-    i: int = 1;
-    while (i < length(a)) {
-        result = format_text("{}{}{}", result, sep, a[i]);
-        i += 1;
+    parts := a;
+    while (length(parts) > 1) {
+        merged: string[] = [];
+        i: int = 0;
+        while (i + 1 < length(parts)) {
+            merged.append(format_text("{}{}{}", parts[i], sep, parts[i + 1]));
+            i += 2;
+        }
+        if (i < length(parts)) {
+            merged.append(parts[i]);
+        }
+        parts = merged;
     }
-    return result;
+    return parts[0];
 }
 
 pub Concatenate :: (a: string[]) -> string {

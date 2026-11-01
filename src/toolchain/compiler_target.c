@@ -1,6 +1,5 @@
 #include "toolchain/compiler_target.h"
 
-#include "ecs/ecs.h"
 #include "execution/function.h"
 #include "execution/instruction.h"
 #include "execution/prepared.h"
@@ -463,29 +462,6 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const target_in
             yyjson_mut_obj_add_int(doc, field, "read", f->read ? native_index(input, f->read) : -1);
             yyjson_mut_obj_add_str(doc, field, "read_key", f->read_key ? f->read_key : "");
         }
-    }
-    for (int i = 0; i < catalog->relationship_count; i++) {
-        const script_catalog_relationship *relationship = &catalog->relationships[i];
-        yyjson_mut_val *type = yyjson_mut_arr_add_obj(doc, types);
-        yyjson_mut_obj_add_bool(doc, type, "required", false);
-        yyjson_mut_obj_add_int(doc, type, "underlying", -1);
-        yyjson_mut_obj_add_str(doc, type, "name", relationship->name);
-        yyjson_mut_obj_add_uint(doc, type, "id", relationship->id);
-        yyjson_mut_obj_add_uint(doc, type, "layout", 0);
-        yyjson_mut_obj_add_int(doc, type, "storage", PIN_HANDLE);
-        yyjson_mut_obj_add_uint(doc, type, "size", sizeof(uint64_t));
-        yyjson_mut_obj_add_uint(doc, type, "component", relationship->id);
-        yyjson_mut_obj_add_bool(doc, type, "relationship", true);
-        yyjson_mut_obj_add_uint(
-            doc,
-            type,
-            "traits",
-            (relationship->exclusive ? ECS_REL_EXCLUSIVE : 0) |
-                (relationship->traversable ? ECS_REL_TRAVERSABLE : 0)
-        );
-        yyjson_mut_obj_add_bool(doc, type, "error", false);
-        yyjson_mut_obj_add_uint(doc, type, "first", first);
-        yyjson_mut_obj_add_int(doc, type, "count", 0);
     }
 }
 /* Each callable native that combines numbers, and records of them field by

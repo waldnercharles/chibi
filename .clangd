@@ -1,12 +1,11 @@
-# Point clangd at the CMake compilation database.
+# Point clangd at the build graph's compilation database.
 #
-# On macOS `make build` links the Chibi build graph's compilation database,
-# which names every target, to the ignored root-level compile_commands.json;
-# elsewhere CMakeLists.txt exports the active build directory's through it. It contains the real compile flags, including the
-# libclang include directory that find_path() resolved for tools/reflect/reflect.c.
-# Without this file clangd searches
-# only the source tree, fails to resolve <clang-c/Index.h> and <dcimgui.h>, and
-# reports missing-header errors that the actual build does not have.
+# `chibi build` writes BUILD/compile_commands.json for every target and links it
+# to the ignored root-level compile_commands.json. It holds the real compile
+# flags, including the libclang include directory for tools/reflect/reflect.c.
+# Without this file clangd searches only the source tree, fails to resolve
+# <clang-c/Index.h> and <dcimgui.h>, and reports missing-header errors that the
+# actual build does not have.
 #
 # Those false positives are dangerous rather than merely noisy: the tempting fix
 # is to hardcode an absolute include path into the source, which trades a real

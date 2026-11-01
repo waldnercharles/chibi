@@ -2,135 +2,130 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "2f3512802532eaa1c11feb73861cae93374c7b1f",
+  "revision": "e50fa32e7dc6ca7eaf00af3f210d5f3f18cbdf55",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 22643970,
-    "sha256": "587c60ee6a28b382cfd54c59a6a63cc0157e3b2ce7fbe85abf63246801cc5259"
+    "bytes": 12918458,
+    "sha256": "c54b07806430efc02df658f0f1b584900676bbaf93327b7d075ea404a95d53e0"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 208902,
-      "sha256": "9d3e9a626ffb29f53f373f70e4215e4b2c5a5d67f19d49caa083bac5d668f027"
+      "bytes": 214166,
+      "sha256": "06eb4dea60e0b6ca77c89bfbfc51e67c1063a02e1163d0119922936b9cf813c2"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 198587,
-      "sha256": "15997bd6f4c78d9a7de648da2fdcdc196864e351b0624c298112898be0b105f8"
+      "bytes": 194463,
+      "sha256": "3581df055a941d2d6d8bc7b236cf125ff9906e4fb4461215bfe4fd4902d65321"
     },
     {
       "path": "package_compiler/Fallible.chibi",
-      "bytes": 44123,
-      "sha256": "6815d3d65d4a84f1fe5f4de3f1bc4fd3190adda31fa80275ffc7b98a7ac63b23"
+      "bytes": 45191,
+      "sha256": "854dda357549c243c52bf915c3edbc9e8f3ee69af165392c1021e5a2f52663dd"
     },
     {
       "path": "package_compiler/Generics.chibi",
-      "bytes": 62074,
-      "sha256": "9efcd1682b30d1be3e4ca1fc4c293bcccb0babe14cf614dd9af3ed3ec6d9feac"
+      "bytes": 63232,
+      "sha256": "115756e6851bedae11a4537bd750ee61466cb007faaedee043bae91828d1918a"
     },
     {
       "path": "package_compiler/Comptime.chibi",
-      "bytes": 24975,
-      "sha256": "bed36bad297d324f773eaff2c0280ff4ceb4578468b15f91dd071dcb9d94461d"
+      "bytes": 54315,
+      "sha256": "9bea4efdcf45c91565516f8fd656719236c764a00cd6da1c5707f6bb8a16ece0"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 345894,
-      "sha256": "dbb0db23f60c0ba79fd7583a0f45426b653eaed7d006791558283a1c46f2bc41"
+      "bytes": 346800,
+      "sha256": "826383142154f0b81aab3e1cb9e668ed85e78a816f04b290385dbed8f1a704ed"
     },
     {
       "path": "package_compiler/Maps.chibi",
-      "bytes": 29459,
-      "sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00"
+      "bytes": 29608,
+      "sha256": "8b294a0097ffd44729e6028083a378e67a35774bd436aad6b0e765ad80c09ac0"
     },
     {
       "path": "package_compiler/References.chibi",
-      "bytes": 42339,
-      "sha256": "e56e146bc1819be46d817fb66c8cb1f1e9ff1903e2346fed558ee2240033e1ce"
+      "bytes": 47425,
+      "sha256": "73b12d1d370c494b2c327ae4cbb8a30179d13e5f7e12644275ba40f1e70ce848"
     },
     {
       "path": "package_compiler/Pointers.chibi",
-      "bytes": 57365,
-      "sha256": "6e5aeef1691a3442f40e0544f48531237624e5fc1a80769ec02254d6905fdeab"
+      "bytes": 55571,
+      "sha256": "4b14ed3bf8b0ed2159c31bf16223c2efe3d17c30f4fcca4841e880466af4b224"
     },
     {
       "path": "package_compiler/Tasks.chibi",
-      "bytes": 11882,
-      "sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970"
+      "bytes": 11982,
+      "sha256": "03e70cc55f38e8452ebdad281a81de4d2e66e6cbdfe22629c6a80bb10c939a1b"
     },
     {
       "path": "package_compiler/TaskResults.chibi",
-      "bytes": 10491,
-      "sha256": "1e12bfc936591b2bacec62a67d401332fcc55de74a5d64f6f417ae37799af2db"
+      "bytes": 10645,
+      "sha256": "9908c62e1ba238535a48f784ec5f21a3fbc3bb4bc43af90550eefb85072b2c7b"
     },
     {
       "path": "package_compiler/Tree.chibi",
-      "bytes": 2578,
-      "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+      "bytes": 3126,
+      "sha256": "ef1afcb34e44daca594acc90c3863418810043dfd216a3a8a2f39327e8857262"
     },
     {
       "path": "package_compiler/Number.chibi",
-      "bytes": 29513,
-      "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2"
+      "bytes": 29552,
+      "sha256": "b51e8fb09012950eb7c4b4b1e8c86ed833036ef6bb53e01c2392efe6110b2390"
     },
     {
       "path": "package_compiler/Optional.chibi",
-      "bytes": 50797,
-      "sha256": "be8c8d9547c8a57bfae1fad62ad33ce0f6d6950decaa05324c581fcc3d6076d3"
+      "bytes": 57067,
+      "sha256": "e27a6f4d024f45a323d14b1ce7b7e33778709e04d27926ede241399dc2af2411"
     },
     {
       "path": "package_compiler/Sequences.chibi",
-      "bytes": 63260,
-      "sha256": "1d77ba17e97b2546e5efd241349115402110090e8555837368e2610fbccd7311"
-    },
-    {
-      "path": "package_compiler/Queries.chibi",
-      "bytes": 94148,
-      "sha256": "9e3749d78b6a32b93fab8553bc3b8d4df0218736c39f1de6e6c3a129781fbe17"
-    },
-    {
-      "path": "package_compiler/QueryLoops.chibi",
-      "bytes": 12308,
-      "sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588"
+      "bytes": 63916,
+      "sha256": "231f8b808c503da9b726fc42b0bda229bb89513651fe5cdf90c37ca1f4100730"
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 62375,
-      "sha256": "72780eaf67d220c46bb2d9209839f73f8bafdbf8db75c92a92edec7345c296c5"
+      "bytes": 23084,
+      "sha256": "af8f971dc81028ae522e6e70aa824332b0e3c56ca50edeef400df904eb8952bc"
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 163449,
-      "sha256": "66923c904ec0884520f8356cee8277f13a06ecc0d8c139503828a0dacc24ebb5"
+      "bytes": 185638,
+      "sha256": "030bba1820fe44607678d21379ab3573b7bff2ef3e769762ce0a65b5eb46547e"
     },
     {
       "path": "package_compiler/ScalarArrays.chibi",
-      "bytes": 34752,
-      "sha256": "f793673639b94cde84802cca7e6eacc8ca61551ab9a60009f223bceb58b02708"
+      "bytes": 43048,
+      "sha256": "27a875b7080792b8c52860dd5e2d53ea38bb5185a54c8535dce5f724fef89efe"
     },
     {
       "path": "package_compiler/Math.chibi",
-      "bytes": 76853,
-      "sha256": "cdc39b1ae6af757144d2040093f1813e875440a8947de9be27e4478671f9075f"
+      "bytes": 76879,
+      "sha256": "8bdd39e44030258dba667421ca6fab0554ada68495fe611ecd9b1a5a005525ae"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
-      "bytes": 2455,
-      "sha256": "a5c78725395bab50f008be5a7695def663d9cc4abddc6f9083b0ddda49c4f785"
+      "bytes": 12254,
+      "sha256": "381d054bf4dc939c2dde091acd30d810a383b936b6f573988d4eac29015bd7c1"
     },
     {
       "path": "/sdk/core/strings/Strings.chibi",
-      "bytes": 16404,
-      "sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df"
+      "bytes": 17248,
+      "sha256": "6fc25eedd2eee12631d2e22c8d075b82d7ee7561ef329e4c76846add13d44586"
+    },
+    {
+      "path": "json_string/JsonString.chibi",
+      "bytes": 10675,
+      "sha256": "3a57f8b5b66ec6f3f067e5e8613eadf8f7a2010dc76638744ae854e61de36b06"
     },
     {
       "path": "source_snapshot/Snapshot.chibi",
-      "bytes": 15871,
-      "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622"
+      "bytes": 16342,
+      "sha256": "8531bb72026a60588fb20e40dca1aee4c5a1c7fb1f46059675d67064167031fa"
     },
     {
       "path": "source_tokenizer/Tokenizer.chibi",
@@ -139,53 +134,53 @@
     },
     {
       "path": "source_parser/Tree.chibi",
-      "bytes": 8836,
-      "sha256": "14c6dfb8a430bdb7b64698c745ad98d538dc376fcba7d88706f9330dff504a91"
+      "bytes": 9716,
+      "sha256": "eab14b818a037349b04cfa045220fa9df669470306773795a9a4b61647efb80c"
     },
     {
       "path": "source_parser/Types.chibi",
-      "bytes": 11298,
-      "sha256": "68796730c6aa4b5ef2eb578e97b6b2d169abbc95ca1e3d8e27eaf91110bb9cda"
+      "bytes": 11047,
+      "sha256": "05eca2e83b3f1635a699c42953bbc7b4e8381e4dd20876fd258dfe85122df397"
     },
     {
       "path": "source_parser/Expressions.chibi",
-      "bytes": 17908,
-      "sha256": "15b6c6d88b6c93f7fd55bb6f715d33a585b9646b0ba74b3c89c5022eb5770e2d"
+      "bytes": 18832,
+      "sha256": "73fca2c7e098cf0f7d0b1581f92ba52ed36e363e7fde1586a63847685e9fde8e"
     },
     {
       "path": "source_parser/Statements.chibi",
-      "bytes": 12777,
-      "sha256": "5a71c8a8d4c33ff21c5311e5635cea41e6456683be40260226c917fda137b73b"
+      "bytes": 12867,
+      "sha256": "cafa782873eee3b02ea4a6f7246daab835becaf525f5359175f9c0bc6eb87cff"
     },
     {
       "path": "source_parser/Declarations.chibi",
-      "bytes": 25206,
-      "sha256": "fd19d815bc8b65108aeac6e07f06f3ce6389108705ef89270ed877ac59bf0512"
+      "bytes": 22604,
+      "sha256": "7ff7c69935978858b666b71809944286bf37fd6327e6b4934f1a4aecacdd7028"
     },
     {
       "path": "source_parser/Parser.chibi",
-      "bytes": 7864,
-      "sha256": "2ae3d18df9ba62645887ccff8ae4d11485caffb98dc0194dc4e4ccbca3b7c7a2"
+      "bytes": 6473,
+      "sha256": "6bcf35fc78143b66d09b092d07cb72a19d8f5b39914e60c383e946607732dd64"
     },
     {
       "path": "compiler_syntax/Syntax.chibi",
-      "bytes": 346,
-      "sha256": "3b606f6078f43f5be1db2acf228dff488be0843e8410c36d151ede06fcc1fe31"
+      "bytes": 409,
+      "sha256": "8a3470371cd46328114272c010cdf3c6942c83d921d48f98924f09fae0d275b9"
     },
     {
       "path": "package_routes/Routes.chibi",
-      "bytes": 7736,
-      "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+      "bytes": 7763,
+      "sha256": "1148a339db780ba5a63e14fea3eadd2634197ce8d0925baf048248e4b4f44d5a"
     },
     {
       "path": "package_syntax/Extract.chibi",
-      "bytes": 4276,
-      "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+      "bytes": 4973,
+      "sha256": "46b1271b7e144a3169363f88e1a61bfa216b04fb90599ba4aef2370919cf0857"
     },
     {
       "path": "package_graph/Graph.chibi",
-      "bytes": 13271,
-      "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+      "bytes": 13990,
+      "sha256": "c1fbae5b37b4667e1972a6a4685d37e7385623e643cf4402ebb0c6c8e7ff18e0"
     },
     {
       "path": "package_paths/Paths.chibi",
@@ -199,13 +194,13 @@
     },
     {
       "path": "prepared_writer/Writer.chibi",
-      "bytes": 41307,
-      "sha256": "556108d61e9848ab106981dca4612ae0c52736121d3dcf786b95dfcb63822a55"
+      "bytes": 42783,
+      "sha256": "b4c8d6bbf652c9416def9dbee2a2d8d3ab9c2a389e7cb386ceef9cb21868659d"
     },
     {
       "path": "math_types/Types.chibi",
-      "bytes": 9036,
-      "sha256": "db0a52e91c89b97fa91d121d745c3b5607ecee7f76cf4cb6cda8d4173b592e68"
+      "bytes": 9210,
+      "sha256": "5b12167940c4ced9bf0a7871be2c178b394571597cdbeddc8238f58a4002c90d"
     },
     {
       "path": "math_types/Functions.chibi",
@@ -214,8 +209,8 @@
     },
     {
       "path": "scalar_facts/Facts.chibi",
-      "bytes": 22727,
-      "sha256": "088bd04013d00476e3ef06a0b1193e237bd95f9bb7df92207cefad7573be10f4"
+      "bytes": 23395,
+      "sha256": "ad1d31b3bba3eda57fb9e9de9aa46ca74e4775096bba7fc19f7b652ac3c2efc2"
     }
   ],
   "target": [
@@ -224,10 +219,10 @@
       "pointer_size": 8,
       "value_size": 48,
       "payload_offset": 8,
-      "arguments_offset": 168,
-      "delta_seconds_offset": 344,
-      "results_offset": 208,
-      "error_status_offset": 496,
+      "arguments_offset": 160,
+      "results_offset": 200,
+      "delta_seconds_offset": 256,
+      "error_status_offset": 400,
       "type_offset": 0,
       "container_offset": 16,
       "name_offset": 24,
@@ -242,7 +237,7 @@
       "argument_failure": 7,
       "assert_failure": 3
     },
-    6829064003630320227,
+    12807983651649450734,
     [
       "CONSTANT",
       "VARIABLE",
@@ -416,8 +411,16 @@
         "effects": 0
       },
       {
-        "name": "make_array",
+        "name": "text_from_bytes",
         "first": 17,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false,
+        "effects": 0
+      },
+      {
+        "name": "make_array",
+        "first": 19,
         "parameters": 1,
         "results": 1,
         "variadic": true,
@@ -425,7 +428,7 @@
       },
       {
         "name": "get",
-        "first": 19,
+        "first": 21,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -433,14 +436,6 @@
       },
       {
         "name": "length",
-        "first": 22,
-        "parameters": 1,
-        "results": 1,
-        "variadic": false,
-        "effects": 0
-      },
-      {
-        "name": "last_index",
         "first": 24,
         "parameters": 1,
         "results": 1,
@@ -448,7 +443,7 @@
         "effects": 0
       },
       {
-        "name": "is_empty",
+        "name": "last_index",
         "first": 26,
         "parameters": 1,
         "results": 1,
@@ -456,7 +451,7 @@
         "effects": 0
       },
       {
-        "name": "is_not_empty",
+        "name": "is_empty",
         "first": 28,
         "parameters": 1,
         "results": 1,
@@ -464,8 +459,16 @@
         "effects": 0
       },
       {
-        "name": "is_valid_index",
+        "name": "is_not_empty",
         "first": 30,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false,
+        "effects": 0
+      },
+      {
+        "name": "is_valid_index",
+        "first": 32,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -473,7 +476,7 @@
       },
       {
         "name": "contains",
-        "first": 33,
+        "first": 35,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -481,7 +484,7 @@
       },
       {
         "name": "find",
-        "first": 36,
+        "first": 38,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -489,7 +492,7 @@
       },
       {
         "name": "identical",
-        "first": 39,
+        "first": 41,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -497,7 +500,7 @@
       },
       {
         "name": "append",
-        "first": 42,
+        "first": 44,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -505,7 +508,7 @@
       },
       {
         "name": "add_unique",
-        "first": 45,
+        "first": 47,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -513,7 +516,7 @@
       },
       {
         "name": "extend",
-        "first": 48,
+        "first": 50,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -521,7 +524,7 @@
       },
       {
         "name": "set_array_elem",
-        "first": 51,
+        "first": 53,
         "parameters": 3,
         "results": 1,
         "variadic": false,
@@ -529,7 +532,7 @@
       },
       {
         "name": "insert",
-        "first": 55,
+        "first": 57,
         "parameters": 3,
         "results": 1,
         "variadic": false,
@@ -537,7 +540,7 @@
       },
       {
         "name": "remove_index",
-        "first": 59,
+        "first": 61,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -545,7 +548,7 @@
       },
       {
         "name": "remove_item",
-        "first": 62,
+        "first": 64,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -553,14 +556,6 @@
       },
       {
         "name": "clear",
-        "first": 65,
-        "parameters": 1,
-        "results": 1,
-        "variadic": false,
-        "effects": 0
-      },
-      {
-        "name": "reverse",
         "first": 67,
         "parameters": 1,
         "results": 1,
@@ -568,8 +563,16 @@
         "effects": 0
       },
       {
-        "name": "swap",
+        "name": "reverse",
         "first": 69,
+        "parameters": 1,
+        "results": 1,
+        "variadic": false,
+        "effects": 0
+      },
+      {
+        "name": "swap",
+        "first": 71,
         "parameters": 3,
         "results": 1,
         "variadic": false,
@@ -577,7 +580,7 @@
       },
       {
         "name": "resize",
-        "first": 73,
+        "first": 75,
         "parameters": 2,
         "results": 1,
         "variadic": false,
@@ -585,33 +588,9 @@
       },
       {
         "name": "slice",
-        "first": 76,
+        "first": 78,
         "parameters": 3,
         "results": 1,
-        "variadic": false,
-        "effects": 0
-      },
-      {
-        "name": "compiler_json_string",
-        "first": 80,
-        "parameters": 1,
-        "results": 3,
-        "variadic": false,
-        "effects": 0
-      },
-      {
-        "name": "compiler_json_value_string",
-        "first": 84,
-        "parameters": 1,
-        "results": 3,
-        "variadic": false,
-        "effects": 0
-      },
-      {
-        "name": "compiler_syntax_parse",
-        "first": 88,
-        "parameters": 1,
-        "results": 15,
         "variadic": false,
         "effects": 0
       }
@@ -717,6 +696,18 @@
         "name": "Result",
         "storage": 6,
         "container": 1,
+        "c_string": false
+      },
+      {
+        "name": "Value",
+        "storage": 3,
+        "container": 1,
+        "c_string": false
+      },
+      {
+        "name": "Result",
+        "storage": 13,
+        "container": 0,
         "c_string": false
       },
       {
@@ -1096,150 +1087,6 @@
         "storage": 0,
         "container": 1,
         "c_string": false
-      },
-      {
-        "name": "literal",
-        "storage": 13,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "valid",
-        "storage": 1,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "value",
-        "storage": 13,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "byte_length",
-        "storage": 6,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "literal",
-        "storage": 13,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "valid",
-        "storage": 1,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "value",
-        "storage": 13,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "byte_length",
-        "storage": 6,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "text",
-        "storage": 13,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "root",
-        "storage": 6,
-        "container": 0,
-        "c_string": false
-      },
-      {
-        "name": "kinds",
-        "storage": 13,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "starts",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "ends",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "rows",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "columns",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "parents",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "first_children",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "next_siblings",
-        "storage": 6,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "errors",
-        "storage": 1,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "missing",
-        "storage": 1,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "has_errors",
-        "storage": 1,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "fields",
-        "storage": 13,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "is_named",
-        "storage": 1,
-        "container": 1,
-        "c_string": false
-      },
-      {
-        "name": "is_extra",
-        "storage": 1,
-        "container": 1,
-        "c_string": false
       }
     ],
     [
@@ -1255,6 +1102,8 @@
       11058014659850463058,
       1683859838082548203,
       16323488948382029418,
+      15680545488861091003,
+      14978592308995963343,
       9113434692769582988,
       8037792630547010653,
       13611205187560399313,
@@ -1298,13 +1147,7 @@
       14634955569547237247,
       1163729563572031444,
       9047479961286963383,
-      99454087654202719,
-      2237180186179475025,
-      7549062905279916309,
-      9759211591336674878,
-      7549062905279916309,
-      7774473451661455710,
-      17716896529171580466
+      99454087654202719
     ]
   ]
 }

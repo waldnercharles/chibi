@@ -70,7 +70,7 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ .type = PIN_U8, .container = PIN_CONTAINER_ARRAY }))
-#define NATIVE_COMPILER_TEXT_OPERATIONS(X)                                     \
+#define NATIVE_TEXT_OPERATIONS(X)                                              \
     X(FORMAT_TEXT,                                                             \
       NATIVE_FORMAT_TEXT_NAME,                                                 \
       NATIVE_FORMAT_TEXT_SOURCE,                                               \
@@ -106,9 +106,7 @@
       NATIVE_TEXT_BYTES_SOURCE,                                                \
       NATIVE_TEXT_VALUE_INPUTS,                                                \
       NATIVE_TEXT_BYTES_OUTPUTS,                                               \
-      false)
-#define NATIVE_TEXT_OPERATIONS(X)                                              \
-    NATIVE_COMPILER_TEXT_OPERATIONS(X)                                         \
+      false)                                                                   \
     X(TEXT_FROM_BYTES,                                                         \
       NATIVE_TEXT_FROM_BYTES_NAME,                                             \
       NATIVE_TEXT_FROM_BYTES_SOURCE,                                           \
@@ -116,7 +114,4 @@
       NATIVE_FORMAT_TEXT_OUTPUTS,                                              \
       false)
 extern const native_definition_pack NATIVE_TEXT_DEFINITION_PACK;
-/* The compiler seed retains its pinned native catalog. Public packages use
- * NATIVE_TEXT_DEFINITION_PACK, which also includes binary conversion. */
-extern const native_definition_pack NATIVE_COMPILER_TEXT_DEFINITION_PACK;
 #endif

@@ -36,6 +36,14 @@ operations from remaining limits.
 - A scoped pointer parameter can name temporary frame storage, so taking its
   address makes it an ordinary managed pointer instead; `F(pointer)` already
   lends a managed target to a scoped parameter.
+- Indexing a pointer to an array without the caret, `slots[index]`, makes the
+  parameter a managed pointer instead of a scoped one, because the scoped-use
+  check allows only `p^` and `p.member` of the identifier. The native lane then
+  rejects it. `slots^[index]` is scoped, and the compiler's own sources always
+  spell it that way. Found by the W10 probes on 2026-10-31; no source needs the
+  other spelling. Prior art: Odin and Zig index through a pointer to an array
+  with the same syntax as the array itself (Zig auto-dereferences a
+  single-item pointer to an array); Rust does too.
 - A presence guard on a nullable local can be tracked. Repeated mutable field
   reads cannot assume an alias left the field unchanged. Bind the pointer to a
   local before checking and dereferencing it.
@@ -143,7 +151,7 @@ which int cannot hold" for `count * 0.5` and "convert with int(value)" for
 a floating value stored in an integer. Stage one still rejects an untyped
 local such as `i := 0`, though its type is now settled.
 
-The stage-zero formatter widens the gap. `chibi_ctl --format` rewrites
+The stage-zero formatter widened the gap. Its project formatting rewrote
 behavior state `steps: int = 0` as `steps := 0`, which stage one rejects with
 "state needs a number type". The Counter and Controls stories therefore keep
 their declarations as written (#565). gofmt and rustfmt never remove a type
@@ -548,6 +556,16 @@ a byte: `ToLower` slices its letter out of `"abcdefghijklmnopqrstuvwxyz"`.
 Suggestion: `string(bytes)` and `byte[](s)` conversions, and an in-place
 `s = append(s, t)` on a local string, as arrays already update in place.
 
+Update (2026-11-01): `text_from_bytes` now makes a string of a `u8[]`, but
+nothing makes a `u8[]` of a string or joins parts in one pass. The native
+emitter's `out = format_text("{}...", out, ...)` copied about 66 GB to emit the
+compiler's 45.9 MB module, and stage two ran out of memory there. The emitter
+now appends parts to a `string[]` and joins once, which `strings.Join` still
+does pairwise, O(bytes x log parts), because `format_text` takes at most
+twelve arguments. native_driver then copies the text into its `u8[]` result a
+byte at a time, 45.9 M appends. A builder or the two conversions would remove
+both.
+
 ### Stage one cannot compile assert
 
 Stage one. Since #534, stage zero has a pure
@@ -934,6 +952,11 @@ more (`test/graph/DiscoveryTests.chibi`, `CTests.chibi`); the build host now
 says where ("Expected a name, found `entry`"), so it took a rename, not a
 bisection.
 
+The foreign_vendor sample named FreeType's handle `library`, as FreeType's
+C API does; stage one rejects it ("Expected a name, found `library`"), and
+the native build showed only "invalid scalar diagnostic position" until the
+emitter reported the rejection's text. It became `ft`.
+
 The 2026-10-22 flat-query change removes the `join`, `without` and query
 `where` clauses and their keyword reservations. The other examples above
 remain separate parser and diagnostic concerns.
@@ -1299,15 +1322,6 @@ an arbitrary-byte fallback string without persisting it. This limitation belongs
 to the save format, not to the `string` invariant. Lossless binary saved values
 need a separately reviewed encoding/API contract; no replacement or truncation
 is performed at the existing boundary.
-
-### Preview diagnostic JSON still requires UTF-8
-
-Runtime boundary checkpoint (2026-10-21). Execution logs and preview log storage
-retain explicit byte lengths, including embedded NUL. The existing controller
-JSON transport can escape NUL but still cannot serialize malformed UTF-8 as a
-JSON string. Serialization failure remains explicit; bytes are not replaced or
-silently truncated. A lossless transport encoding needs its own response-contract
-review and is not implied by the runtime string invariant.
 
 ### Record construction repeats some string copies
 

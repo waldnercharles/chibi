@@ -5,6 +5,7 @@ import snapshot "project:source_snapshot"
 import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 import strings "core:strings"
+import tk "project:source_tokenizer"
 
 // Compiler-private kind, separate from char14 and collection/optional12..13.
 MathDecl: int : 15;
@@ -221,7 +222,7 @@ MathReferences :: (types: TypeDecl[], record: int, wanted: int) -> bool {
         if (declared.kind == PointerDecl || declared.kind == OptionalDecl || declared.kind == CollectionDecl ||
             declared.kind == MapDecl) {
             at = declared.value_record;
-        } else if (declared.kind == NativeDecl || declared.kind == OptionalComponentDecl) {
+        } else if (declared.kind == NativeDecl) {
             at = declared.parent;
         } else {
             return false;
@@ -519,7 +520,7 @@ MathHamilton :: (left: int[], right: int[], component: int, code: ^(Code[]), slo
 }
 MathBinaryStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
                    members: TypeMember[], constants: ConstDecl[], names: Name[], package: int,
-                   left: Value, right: Value, operator: string, popped: int, ops: Ops, target: Target,
+                   left: Value, right: Value, operator: int, popped: int, ops: Ops, target: Target,
                    at: Bases, node: snapshot.SnapshotNode) -> Step {
     code: Code[] = [];
     slots: Slot[] = [];
@@ -566,7 +567,7 @@ MathBinaryStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             current = combined;
             index += 1;
         }
-        if (operator == "!=") {
+        if (operator == tk.NotEq) {
             opposite := at.slot + length(slots);
             slots.append(ValueLocal(BoolStorage));
             code.append(Instruction(ops.eq, BoolStorage, opposite, current, zero, -1, node));
@@ -581,7 +582,7 @@ MathBinaryStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         result: int = -1;
         if (a_kind == math.Quat) {
             result = MathHamilton(a, b, index, &code, &slots, ops, at, node);
-        } else if (operator == "*" && math.IsMatrix(a_kind) && b_kind != math.Scalar) {
+        } else if (operator == tk.Mul && math.IsMatrix(a_kind) && b_kind != math.Scalar) {
             width := math.Width(a_kind);
             row := index % width;
             column := index / width;
@@ -612,9 +613,9 @@ MathBinaryStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                                     ops, target, MathPast(at, code, slots, 0, 0), node));
     return CleanupSequenceValues(emitted, Held(types, members, values), ops, target, at, node);
 }
-MathNegateStep :: (document: int, types: TypeDecl[], members: TypeMember[], value: Value, operator: string,
+MathNegateStep :: (document: int, types: TypeDecl[], members: TypeMember[], value: Value, operator: int,
                    ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
-    if (operator != "-") {
+    if (operator != tk.Sub) {
         return MathFailure(document, node, "unary math operations support negation");
     }
     kind := MathKind(types, value.record);
@@ -1252,7 +1253,7 @@ MathPlaceType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
                                Field(forest, at, syntax.FieldRight));
         if ((left.storage == StructStorage && MathKind(types, left.record) != 0) ||
             (right.storage == StructStorage && MathKind(types, right.record) != 0)) {
-            switch math.Binary(Text(forest, text, Field(forest, at, syntax.FieldOperator)),
+            switch math.Binary(Operator(forest, at),
                                MathStaticKind(types, left), MathStaticKind(types, right)) {
                 case .Rejected(message):
                     return none;
@@ -1449,7 +1450,7 @@ MathAssignment :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDec
     receiver := destination;
     if (Is(forest, destination, syntax.MemberExpression)) {
         receiver = Field(forest, destination, syntax.FieldObject);
-    } else if (CompoundOperator(Text(forest, text, Field(forest, node, syntax.FieldOperator))) == "") {
+    } else if (CompoundOperator(Operator(forest, node)) == NoOperator) {
         return false;
     }
     type := MathPlaceType(forest, text, types, members, callables, natives, ports, names, package, receiver);
@@ -1570,11 +1571,8 @@ MathAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     if (!MathDistinctDestinations(selection)) {
         return Fail(forest, destination, document, "a writable swizzle cannot repeat a destination component");
     }
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
+    operator := CompoundOperator(Operator(forest, item.node));
     if (item.phase == 0) {
-        if (QueryReadonlyDestination(forest, text, types, members, names, destination)) {
-            return Fail(forest, destination, document, "Query value bindings are read-only; use a component pointer to modify storage");
-        }
         receiver_type := MathPlaceType(forest, text, types, members, callables, natives, ports, names,
                                        package, receiver);
         effects := MathLocationEffects(forest, text, types, members, callables, natives, ports, names, package, receiver);
@@ -1619,7 +1617,7 @@ MathAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
             expected = Expect(Field(forest, item.node, syntax.FieldValue), FloatStorage, 0, -1);
         }
         next.extend([expected, Resume(item.node, MathAssignValue, 0, 0)]);
-        if (operator == "") {
+        if (operator == NoOperator) {
             return Step.Emitted([], [], [], [], [], [], [], [], next, 1, NoValue(), NoValue(), []);
         }
         switch MathProjection(forest, document, types, members, current, selection, selected_kind, 1,
@@ -1633,7 +1631,7 @@ MathAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
         }
     }
     if (item.phase == MathAssignValue) {
-        if (operator == "") {
+        if (operator == NoOperator) {
             return Step.Emitted([], [], [], [], [], [], [], [], [Resume(item.node, MathAssignRead, 0, 0)],
                                 0, NoValue(), NoValue(), []);
         }

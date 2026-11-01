@@ -215,20 +215,20 @@ regimes described by Ryan Juckett.
 ## Validation
 
 Authored `@test` functions beside the package cover ordinary numeric behavior,
-easing and spring transitions. The C package-math selector supplies exact
-nonfinite values and signed zeros, checks rejection and conversion boundaries,
-reads the package sources and checks retirement of the old catalog entries.
-The separate benchmark compares imported scalar calls with inline arithmetic
-and spring record-update forms; its measurements are not a timing gate. The
-[current native checkpoint](evidence/core-math-20261028-integration/RUNTIME-308.md)
-records zero wrapped allocations in the Lerp loops and nonzero allocations in
-both spring loops. Those counters cover the benchmark bodies and their runtime
-work.
+easing and spring transitions:
 
 ```sh
-CHIBI_LANGUAGE_BUILD_DIR=<build> chibi build test language-package-math
-CHIBI_LANGUAGE_BUILD_DIR=<build> chibi build test language-package-math-benchmark
+chibi test packages/core              # or: chibi build test chibi-test-core
 ```
+
+The C package-math selector and its benchmark compiled the package through
+stage zero and were archived with stage zero
+(`archive/test/language/package_math.c`).
+Their exact nonfinite and signed-zero checks, conversion boundaries and
+retirement of the old catalog entries are not re-covered. The
+[2026-10-28 native checkpoint](evidence/core-math-20261028-integration/RUNTIME-308.md)
+recorded zero wrapped allocations in the benchmark's Lerp loops and nonzero
+allocations in both spring loops.
 
 `CHIBI_CORE_MATH_ROOT` selects a math source directory, including the directory
 from an installed SDK. That selection alone does not establish installed-SDK

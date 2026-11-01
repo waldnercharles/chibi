@@ -151,6 +151,16 @@ typedef enum
 #undef FUNCTION_OP
 } behavior_function_op;
 
+/* Instructions the format still names, so its ABI fingerprint holds, but no
+ * function may contain: entity, component, query and state-selection access
+ * left with the ECS. The verifier rejects them. */
+static inline bool behavior_function_retired(behavior_function_op op)
+{
+    return op == BF_WORLD || op == BF_QUERY_VARIABLE || op == BF_QUERY ||
+           op == BF_STATE_SELECT || op == BF_ENTITY || op == BF_COMPONENT ||
+           op == BF_COMPONENT_READ || op == BF_COLUMN || op == BF_COLUMN_TRY ||
+           op == BF_ROW || op == BF_RETRIGGER || op == BF_COMPONENT_WRITE;
+}
 static inline bool behavior_function_bitwise(behavior_function_op op)
 {
     return op >= BF_BIT_AND && op <= BF_SHR;
@@ -178,11 +188,9 @@ static inline bool behavior_function_call(behavior_function_op op)
 {
     return behavior_function_math(op) || op == BF_OWN_NAME ||
            op == BF_COPY_STRING || op == BF_COPY_ARRAY || op == BF_INTERN_STRING ||
-           op == BF_STRING_EQUAL || op == BF_STORE_VALUE || op == BF_QUERY ||
-           op == BF_COMMAND || op == BF_COMMAND_BEGIN || op == BF_HOST_CALL ||
-           op == BF_RANDOM || op == BF_RANDOM_RANGE || op == BF_STATE_SELECT ||
-           op == BF_RETRIGGER || op == BF_SOURCE_POINT ||
-           op == BF_SOURCE_WATCH || op == BF_COMPONENT_WRITE;
+           op == BF_STRING_EQUAL || op == BF_STORE_VALUE || op == BF_COMMAND ||
+           op == BF_COMMAND_BEGIN || op == BF_HOST_CALL || op == BF_RANDOM ||
+           op == BF_RANDOM_RANGE || op == BF_SOURCE_POINT || op == BF_SOURCE_WATCH;
 }
 static inline bool behavior_function_observer(behavior_function_op op)
 {

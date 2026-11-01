@@ -1,6 +1,6 @@
 package graph_c_tests
 
-import c "graph_c:."
+import c "graph:c"
 import os "core:os"
 import strings "core:strings"
 
@@ -40,7 +40,7 @@ pub FailedStep :: () -> int {
 FailedStepNamesOnlyTheOutput :: (host: string, scratch: string) {
     output := Path([scratch, "/expected-step-output.c"]);
     result := os.Capture([host, "--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", os.Root(),
-                          "--source", "test/graph/CTests.chibi", "--core", "packages/core", "--collection", "graph_c=tools/graph/c",
+                          "--source", "test/graph/CTests.chibi", "--core", "packages/core", "--collection", "graph=tools/graph",
                           "--entry", "FailedStep", "--timeout-ms", "30000", "--", output]);
     log := Path([result.stdout, result.stderr]);
     if (log != Path(["graph: step failed: ", output, "\n"])) {

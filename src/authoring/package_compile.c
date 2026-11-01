@@ -131,10 +131,13 @@ static char *imported_directory(
     return directory;
 }
 
+/* An indented import is inside a `when` branch, which the compiler keeps or
+ * drops; `conditional` includes those. */
 static void reach_imports(
     const source_package_snapshot_options *inputs,
     const char *text,
     size_t size,
+    bool conditional,
     char ***reached
 )
 {
@@ -146,8 +149,8 @@ static void reach_imports(
         while (at < stop && (*at == ' ' || *at == '\t')) {
             at++;
         }
-        if (stop - at > 7 && !memcmp(at, "import", 6) &&
-            (at[6] == ' ' || at[6] == '\t')) {
+        if ((conditional || at == line) && stop - at > 7 &&
+            !memcmp(at, "import", 6) && (at[6] == ' ' || at[6] == '\t')) {
             const char *open = memchr(at, '"', (size_t)(stop - at));
             const char *close = open
                                   ? memchr(open + 1, '"', (size_t)(stop - open - 1))
@@ -166,12 +169,14 @@ static void reach_imports(
 }
 
 /* The directories of the packages reachable from `root_directory` through
- * imports, itself first; `first_text` is the root file's text when it is
- * virtual. The caller owns the array and its strings. */
+ * imports, itself first, through those of `when` branches too when
+ * `conditional`; `first_text` is the root file's text when it is virtual. The
+ * caller owns the array and its strings. */
 static char **reached_directories(
     const source_package_snapshot_options *inputs,
     const char *root_directory,
-    const char *first_text
+    const char *first_text,
+    bool conditional
 )
 {
     char **directories = xmalloc((size_t)(inputs->file_count + 1) * sizeof *directories);
@@ -181,12 +186,12 @@ static char **reached_directories(
     char **reached = NULL;
     apush(reached, xstrdup(root_directory));
     if (first_text) {
-        reach_imports(inputs, first_text, strlen(first_text), &reached);
+        reach_imports(inputs, first_text, strlen(first_text), conditional, &reached);
     }
     for (int at = 0; at < acount(reached); at++) {
         for (int i = 0; i < inputs->file_count; i++) {
             if (!strcmp(directories[i], reached[at])) {
-                reach_imports(inputs, inputs->files[i].text, inputs->files[i].size, &reached);
+                reach_imports(inputs, inputs->files[i].text, inputs->files[i].size, conditional, &reached);
             }
         }
     }
@@ -205,7 +210,7 @@ static bool *reachable_files(
     const char *first_text
 )
 {
-    char **reached = reached_directories(inputs, root_directory, first_text);
+    char **reached = reached_directories(inputs, root_directory, first_text, true);
     bool *keep = xcalloc((size_t)(inputs->file_count + 1), sizeof *keep);
     for (int i = 0; i < inputs->file_count; i++) {
         char *directory = directory_of(inputs->files[i].path);
@@ -248,9 +253,11 @@ static bool declares_foreign_import(const char *text, size_t size)
     return false;
 }
 
+/* Only file-level imports count: a package keeps foreign code out of the VM
+ * behind `when target.Native == 1`, whose branch the VM compile drops. */
 bool package_compile_needs_native(const source_package_snapshot_options *inputs, const char *directory)
 {
-    char **reached = reached_directories(inputs, directory, NULL);
+    char **reached = reached_directories(inputs, directory, NULL, false);
     bool native = false;
     for (int i = 0; !native && i < inputs->file_count; i++) {
         char *where = directory_of(inputs->files[i].path);

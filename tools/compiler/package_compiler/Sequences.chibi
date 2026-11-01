@@ -355,7 +355,8 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     operation_code := ConstantCode(ops, IntStorage, u64(operation), operation_slot, node);
     watches.append(operation_code);
     operation_value := Typed(operation_slot, IntStorage, 0, -1);
-    arguments = insert(arguments, 1, operation_value);
+    // slice and extend rather than insert, which the native lane lacks.
+    arguments = extend([arguments[0], operation_value], slice(arguments, 1, length(arguments) - 1));
     shifted: Bases = {pc: at.pc + length(watches), slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
                       call: at.call};
     switch SequenceCallStep(arguments, ArrayMutatePlaceIntrinsic, Typed(-1, BoolStorage, 0, -1), u64(0), false,
@@ -396,8 +397,8 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                       values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
     destination := Field(forest, item.node, syntax.FieldTarget);
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
-    compound := operator != "";
+    operator := CompoundOperator(Operator(forest, item.node));
+    compound := operator != NoOperator;
     if (item.phase == 0) {
         return Step.Emitted([], [], [], [], [], [], [], [],
                             [DestinationVisit(destination), Resume(item.node, 1, 0, 0)],
@@ -755,7 +756,7 @@ StoresLocalElement :: (forest: snapshot.SnapshotNode[], text: string, names: Nam
     object := Field(forest, node, syntax.FieldObject);
     statement := forest[node].parent;
     if (!Is(forest, object, syntax.Identifier) || !Is(forest, statement, syntax.Assignment) ||
-        CompoundOperator(Text(forest, text, Field(forest, statement, syntax.FieldOperator))) != "") {
+        CompoundOperator(Operator(forest, statement)) != NoOperator) {
         return false;
     }
     found := Lookup(names, Text(forest, text, object));

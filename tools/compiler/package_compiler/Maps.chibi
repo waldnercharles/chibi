@@ -3,6 +3,7 @@ package package_compiler
 import snapshot "project:source_snapshot"
 import strings "core:strings"
 import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
 
 // Maps `[K: V]`, lowered to stage zero's map intrinsics: a map is a pointer
 // whose header names its collection type, types[record], a MapDecl. These
@@ -169,10 +170,6 @@ MapStorePhase: int : 11;
 MapDeletePhase: int : 12;
 // The `c` of a map method's later work, which tells it from a call's.
 MapHasMark: int : -1;
-// Whether a binary operator is `not in`, the only one longer than three bytes.
-NotIn :: (forest: snapshot.SnapshotNode[], node: int, operator: string) -> bool {
-    return strings.ByteLength(operator) > 3 && Is(forest, Field(forest, node, syntax.FieldOperator), syntax.NotIn);
-}
 // Whether `node` calls the map method `name`, such as `m.has(k)`: a member
 // of a value, not of a package, as stage zero tells them apart. Every call
 // asks, so the member's length is checked before its text is read.
@@ -216,7 +213,7 @@ LocalMap :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node:
 MapStoreStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], names: Name[],
                  found: int, item: Work, ops: Ops, node: snapshot.SnapshotNode) -> Step {
     destination := Field(forest, item.node, syntax.FieldTarget);
-    if (Text(forest, text, Field(forest, item.node, syntax.FieldOperator)) != "=") {
+    if (Operator(forest, item.node) != tk.Eq) {
         return Fail(forest, item.node, document, "compound map assignment is not supported yet");
     }
     if (LocalMap(forest, text, names, Field(forest, destination, syntax.FieldObject)) < 0) {

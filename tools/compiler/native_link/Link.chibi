@@ -1,0 +1,516 @@
+package native_link
+
+import strings "core:strings"
+
+// The native compiler's link step, without effects: what a program's object
+// files and the vendored archives it uses need to become an executable through
+// LLVM's lld, which is found in the LLVM folder by name (ld.lld on Linux,
+// ld64.lld on macOS, lld-link on Windows), never through PATH. No C compiler
+// or compiler driver takes part: the C runtime's start files come from the
+// system's development files on Linux, the dylibs a macOS program names are
+// small text stubs, and Windows links against the import libraries in the
+// `libpaths` and the LIB variable.
+//
+// Command is the exact argument vector for a plan, tested for every target.
+// native_link_host finds the tools, writes the stubs and runs these vectors.
+
+pub LinuxX64: int : 0;
+pub MacOSArm64: int : 1;
+pub WindowsX64: int : 2;
+
+// What went wrong, by kind; `code` is the failed tool's exit status.
+pub BadTriple: int : 1;
+pub MissingTool: int : 2;
+pub MissingLibc: int : 3;
+pub CannotWrite: int : 4;
+pub ToolFailed: int : 5;
+pub BadPlan: int : 6;
+
+@error
+pub Error :: struct {
+    kind: int;
+    code: int;
+}
+
+// A system library and the symbols a program takes from it: `System` or a
+// library's name on macOS, a DLL's name without `.dll` on Windows.
+pub Import :: struct {
+    name: string;
+    symbols: string[];
+}
+
+// The program to build. `objects` define the platform's entry: `main` when
+// the C library starts the program, `_start` (Windows: mainCRTStartup) when
+// `static` is set and nothing but the objects and archives runs. `archives`
+// are vendored libraries, linked after the objects. `libraries` name system
+// libraries without a prefix or suffix: `m` and `pthread` on Linux, `c++` or
+// `framework:Cocoa` on macOS, `user32.lib` on Windows. `imports` name the
+// symbols the program takes from system libraries: a macOS stub exports them,
+// so dyld binds them in that library, and a Windows import library is written
+// from them. `libpaths` add folders the Windows linker searches. `work` is a
+// folder this plan may write stubs into; `libc` and `interpreter` (Linux, not
+// static) come from Discover. `shared` links a Linux shared library of the
+// objects instead of a program.
+pub Plan :: struct {
+    triple: string;
+    llvm: string;
+    objects: string[];
+    archives: string[];
+    libraries: string[];
+    imports: Import[];
+    libpaths: string[];
+    output: string;
+    work: string;
+    libc: string;
+    interpreter: string;
+    static: bool;
+    shared: bool;
+}
+
+// A plan for the program of these objects and archives: dynamically linked
+// against the system's C library unless `static`. The C library's location is
+// found when the plan is linked.
+pub Program :: (triple: string, llvm: string, objects: string[], archives: string[], libraries: string[],
+                libpaths: string[], output: string, work: string, static: bool) -> Plan {
+    plan: Plan = {triple: triple, llvm: llvm, objects: objects, archives: archives, libraries: libraries, imports: [],
+                  libpaths: libpaths, output: output, work: work, libc: "", interpreter: "", static: static,
+                  shared: false};
+    return plan;
+}
+
+// The target a triple names, -1 for any this link step does not know.
+pub TargetOf :: (triple: string) -> int {
+    if (triple == "x86_64-unknown-linux-gnu") {
+        return LinuxX64;
+    }
+    if (triple == "arm64-apple-macosx11.0.0" || strings.HasPrefix(triple, "aarch64-apple-")) {
+        return MacOSArm64;
+    }
+    if (triple == "x86_64-pc-windows-msvc") {
+        return WindowsX64;
+    }
+    return -1;
+}
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+pub Linker :: (target: int) -> string {
+    if (target == MacOSArm64) {
+        return "ld64.lld";
+    }
+    if (target == WindowsX64) {
+        return "lld-link";
+    }
+    return "ld.lld";
+}
+
+// llc's object for a module: position independent, so it links into a
+// program and a shared library alike. The module names its triple and layout.
+pub ObjectCommand :: (llc: string, module: string, object: string, level: int) -> string[] {
+    optimize := "-O=0";
+    if (level != 0) {
+        optimize = "-O=2";
+    }
+    return [llc, "-filetype=obj", optimize, "-relocation-model=pic", "-o", object, module];
+}
+
+// A macOS dylib's stub for lld: a text file naming the library the program
+// loads and the symbols dyld binds in it. Symbols no stub lists are looked up
+// when the program runs (`-undefined dynamic_lookup`), as a vendored archive's
+// are; this is how a link needs no SDK of its own.
+pub Stub :: (install: string, symbols: string[]) -> string {
+    return Join(["--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '", install,
+                 "'\nexports:\n  - targets: [ arm64-macos ]\n    symbols: [ ", strings.Join(symbols, ", "), " ]\n...\n"]);
+}
+
+// Where the dylib a library name stands for lives on a Mac.
+pub InstallName :: (dependency: string) -> string {
+    if (strings.HasPrefix(dependency, "framework:")) {
+        name := strings.TrimPrefix(dependency, "framework:");
+        return Join(["/System/Library/Frameworks/", name, ".framework/", name]);
+    }
+    if (dependency == "c++") {
+        return "/usr/lib/libc++.1.dylib";
+    }
+    if (dependency == "System") {
+        return "/usr/lib/libSystem.B.dylib";
+    }
+    return Join(["/usr/lib/lib", dependency, ".dylib"]);
+}
+
+// The stub file for a library, in the plan's work folder.
+pub StubPath :: (work: string, dependency: string) -> string {
+    return Join([work, "/", strings.ReplaceAll(strings.ReplaceAll(dependency, ":", "-"), "+", "p"), ".tbd"]);
+}
+
+// The import definition of the DLL `name`, from which lld-link writes its
+// import library, as rustc writes raw-dylib imports, so no Windows SDK is read.
+pub Definition :: (name: string, symbols: string[]) -> string {
+    lines: string[] = [Join(["LIBRARY ", name, ".dll\nEXPORTS\n"])];
+    for (symbol in symbols) {
+        lines.append(Join(["    ", symbol, "\n"]));
+    }
+    return Join(lines);
+}
+
+// Whether `value` spells a library or symbol name a definition can hold:
+// letters, digits and `_ . - @ $`.
+pub ImportName :: (value: string) -> bool {
+    if (value == "") {
+        return false;
+    }
+    for (byte in strings.Bytes(value)) {
+        // Stage one has no character literals: 95 is `_`, 46 `.`, 45 `-`,
+        // 64 `@` and 36 `$`.
+        word := byte == 95 || (byte >= 48 && byte <= 57) || (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122);
+        if (!word && byte != 46 && byte != 45 && byte != 64 && byte != 36) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The system libraries a module's IR imports from, other than libc, once each
+// in order: `; chibi-library system:NAME` names one and
+// `; chibi-import system:NAME SYMBOL` a symbol of it. The symbols are gathered
+// as (library, symbol) pairs first, so no library's list is copied as it
+// grows; a module names a few libraries, so each pair searches them in turn
+// and each library's symbols are one pass over the pairs.
+// The indices of `keys` in key order, equal keys in index order: a bottom-up
+// merge sort that appends and never shifts, so it needs no array insert. A
+// macOS program imports thousands of symbols, so duplicates are found by sorting
+// and searching, not by scanning, and the order of first appearance is kept.
+Ordered :: (keys: string[]) -> int[] {
+    count := length(keys);
+    from: int[] = [];
+    for (index in 0..<count) {
+        from.append(index);
+    }
+    width := 1;
+    while (width < count) {
+        to: int[] = [];
+        start := 0;
+        while (start < count) {
+            middle := start + width;
+            if (middle > count) {
+                middle = count;
+            }
+            end := middle + width;
+            if (end > count) {
+                end = count;
+            }
+            left := start;
+            right := middle;
+            while (left < middle || right < end) {
+                if (right >= end || (left < middle && strings.Compare(keys[from[left]], keys[from[right]]) <= 0)) {
+                    to.append(from[left]);
+                    left += 1;
+                } else {
+                    to.append(from[right]);
+                    right += 1;
+                }
+            }
+            start = end;
+        }
+        from = to;
+        width *= 2;
+    }
+    return from;
+}
+
+// Whether each of `keys` is the first of its value in `keys`.
+Firsts :: (keys: string[]) -> bool[] {
+    order := Ordered(keys);
+    first := resize([false], length(keys));
+    for (at in 0..<length(order)) {
+        if (at == 0 || keys[order[at - 1]] != keys[order[at]]) {
+            first[order[at]] = true;
+        }
+    }
+    return first;
+}
+
+// `keys` in key order.
+Sorted :: (keys: string[]) -> string[] {
+    sorted: string[] = [];
+    for (index in Ordered(keys)) {
+        sorted.append(keys[index]);
+    }
+    return sorted;
+}
+
+// Whether `key` is in `sorted`, by binary search.
+Has :: (sorted: string[], key: string) -> bool {
+    low := 0;
+    high := length(sorted);
+    while (low < high) {
+        middle := low + (high - low) / 2;
+        order := strings.Compare(sorted[middle], key);
+        if (order == 0) {
+            return true;
+        }
+        if (order < 0) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    return false;
+}
+
+pub SystemImports :: (lines: string[]) -> Import[] {
+    names: string[] = [];
+    candidate_owners: int[] = [];
+    candidate_symbols: string[] = [];
+    candidate_keys: string[] = [];
+    named := "; chibi-library system:";
+    imports := "; chibi-import system:";
+    for (line in lines) {
+        library_name := "";
+        symbol := "";
+        if (strings.HasPrefix(line, named)) {
+            library_name = strings.TrimPrefix(line, named);
+        } else if (strings.HasPrefix(line, imports)) {
+            rest := strings.TrimPrefix(line, imports);
+            space := strings.Index(rest, " ");
+            if (space < 0) {
+                continue;
+            }
+            library_name = strings.Slice(rest, 0, space);
+            symbol = strings.Slice(rest, space + 1, strings.ByteLength(rest) - space - 1);
+        } else {
+            continue;
+        }
+        if (library_name == "c") {
+            continue;
+        }
+        at := -1;
+        for (index in 0..<length(names)) {
+            if (names[index] == library_name) {
+                at = index;
+            }
+        }
+        if (at < 0) {
+            names.append(library_name);
+            at = length(names) - 1;
+        }
+        key := Join([library_name, " ", symbol]);
+        if (symbol != "") {
+            candidate_owners.append(at);
+            candidate_symbols.append(symbol);
+            candidate_keys.append(key);
+        }
+    }
+    // Each (library, symbol) once, at its first appearance.
+    owners: int[] = [];
+    symbols: string[] = [];
+    firsts := Firsts(candidate_keys);
+    for (index in 0..<length(candidate_keys)) {
+        if (firsts[index]) {
+            owners.append(candidate_owners[index]);
+            symbols.append(candidate_symbols[index]);
+        }
+    }
+    found: Import[] = [];
+    for (index in 0..<length(names)) {
+        listed: string[] = [];
+        for (pair in 0..<length(owners)) {
+            if (owners[pair] == index) {
+                listed.append(symbols[pair]);
+            }
+        }
+        imported: Import = {name: names[index], symbols: listed};
+        found.append(imported);
+    }
+    return found;
+}
+
+// The index of the library `name` in `imports`, -1 when it is not there.
+Find :: (imports: Import[], name: string) -> int {
+    for (index in 0..<length(imports)) {
+        if (imports[index].name == name) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+// The libraries a plan's link writes stubs for in `work`, in link order, each
+// with the symbols it exports. macOS: libSystem, which dyld requires of every
+// program and whose stub exports dyld's binder, then each of `libraries`.
+// Windows: kernel32 with what the start module imports, when `static`. Then,
+// on both, the plan's imports; Linux links none.
+pub Imports :: (plan: Plan) -> Import[] {
+    target := TargetOf(plan.triple);
+    found: Import[] = [];
+    if (target == MacOSArm64) {
+        libsystem: Import = {name: "System", symbols: ["dyld_stub_binder"]};
+        found.append(libsystem);
+        for (dependency in plan.libraries) {
+            if (Find(found, dependency) < 0) {
+                dependent: Import = {name: dependency, symbols: []};
+                found.append(dependent);
+            }
+        }
+    } else if (target == WindowsX64) {
+        if (plan.static) {
+            found.append(StartImports(plan.triple));
+        }
+    } else {
+        return found;
+    }
+    // Duplicates are found by key: against the symbols already there, then
+    // among the plan's own, in order.
+    held_keys: string[] = [];
+    for (known in found) {
+        for (symbol in known.symbols) {
+            held_keys.append(Join([known.name, " ", symbol]));
+        }
+    }
+    held_keys = Sorted(held_keys);
+    plan_keys: string[] = [];
+    for (imported in plan.imports) {
+        for (symbol in imported.symbols) {
+            plan_keys.append(Join([imported.name, " ", symbol]));
+        }
+    }
+    plan_firsts := Firsts(plan_keys);
+    position := 0;
+    for (imported in plan.imports) {
+        at := Find(found, imported.name);
+        if (at < 0) {
+            added: Import = {name: imported.name, symbols: []};
+            found.append(added);
+            at = length(found) - 1;
+        }
+        changed := found[at];
+        symbols := changed.symbols;
+        for (symbol in imported.symbols) {
+            if (plan_firsts[position] && !Has(held_keys, plan_keys[position])) {
+                symbols.append(symbol);
+            }
+            position += 1;
+        }
+        changed.symbols = symbols;
+        found[at] = changed;
+    }
+    return found;
+}
+
+// The file a stub of Imports is written to: a text stub on macOS, an import
+// definition on Windows.
+pub ImportPath :: (plan: Plan, name: string) -> string {
+    if (TargetOf(plan.triple) == WindowsX64) {
+        return Join([plan.work, "/", name, ".def"]);
+    }
+    return StubPath(plan.work, name);
+}
+
+pub ImportText :: (plan: Plan, stub: Import) -> string {
+    if (TargetOf(plan.triple) == WindowsX64) {
+        return Definition(stub.name, stub.symbols);
+    }
+    return Stub(InstallName(stub.name), stub.symbols);
+}
+
+// The import library lld-link writes from a Windows stub's definition.
+pub ImportLibrary :: (plan: Plan, name: string) -> string {
+    return Join([plan.work, "/", name, ".lib"]);
+}
+
+// The command that turns a stub into what the link reads, after ImportText
+// is written: lld-link's import library on Windows, none (an empty vector) on
+// macOS, which links the stub itself.
+pub ImportCommand :: (plan: Plan, name: string) -> string[] {
+    if (TargetOf(plan.triple) != WindowsX64) {
+        return [];
+    }
+    return [Join([plan.llvm, "/lld-link"]), "-flavor", "link", "/lib", "/nologo",
+            Join(["/def:", ImportPath(plan, name)]), "/machine:x64", Join(["/out:", ImportLibrary(plan, name)])];
+}
+
+// The file the linker writes in `work`, which Link publishes as the plan's
+// output. It has the same name whatever the program is called: a macOS
+// ad-hoc signature carries it, and two links of the same inputs give the
+// same bytes.
+pub Partial :: (plan: Plan) -> string {
+    if (TargetOf(plan.triple) == WindowsX64) {
+        return Join([plan.work, "/a.exe"]);
+    }
+    return Join([plan.work, "/a.out"]);
+}
+
+// Where a Linux system keeps the C library's start files and development
+// library, the files that must all be there, and the dynamic linker's paths,
+// in the order they are tried.
+pub LibcFolders :: () -> string[] {
+    return ["/usr/lib/x86_64-linux-gnu", "/usr/lib64", "/lib/x86_64-linux-gnu", "/usr/lib"];
+}
+pub LibcFiles :: () -> string[] {
+    return ["crt1.o", "crti.o", "crtn.o", "libc.so"];
+}
+pub Interpreters :: () -> string[] {
+    return ["/lib64/ld-linux-x86-64.so.2", "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2", "/usr/lib64/ld-linux-x86-64.so.2"];
+}
+
+// The argument vector that links the plan's program to `to`, Partial(plan)
+// when Link runs it. Each vector names its flavor, so any of lld's names,
+// or lld itself, may run in place of the first argument.
+pub Command :: (plan: Plan, to: string) -> string[] {
+    target := TargetOf(plan.triple);
+    linker := Join([plan.llvm, "/", Linker(target)]);
+    if (target == MacOSArm64) {
+        command := [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
+                    "-dead_strip", "-undefined", "dynamic_lookup", "-e", "_main", "-o", to];
+        command.extend(plan.objects);
+        command.extend(plan.archives);
+        for (stub in Imports(plan)) {
+            command.append(StubPath(plan.work, stub.name));
+        }
+        return command;
+    }
+    if (target == WindowsX64) {
+        command := [linker, "-flavor", "link", "/nologo", "/subsystem:console", "/machine:x64", "/opt:ref", "/Brepro",
+                    Join(["/out:", to])];
+        if (plan.static) {
+            command.extend(["/nodefaultlib", "/entry:mainCRTStartup"]);
+        }
+        for (folder in plan.libpaths) {
+            command.append(Join(["/libpath:", folder]));
+        }
+        command.extend(plan.objects);
+        command.extend(plan.archives);
+        for (stub in Imports(plan)) {
+            command.append(ImportLibrary(plan, stub.name));
+        }
+        command.extend(plan.libraries);
+        return command;
+    }
+    if (plan.shared) {
+        command := [linker, "-flavor", "gnu", "-shared", "--gc-sections", "-o", to];
+        command.extend(plan.objects);
+        command.extend(plan.archives);
+        return command;
+    }
+    if (plan.static) {
+        command := [linker, "-flavor", "gnu", "-static", "--gc-sections", "-e", "_start", "-o", to];
+        command.extend(plan.objects);
+        command.extend(plan.archives);
+        for (dependency in plan.libraries) {
+            command.append(Join(["-l", dependency]));
+        }
+        return command;
+    }
+    command := [linker, "-flavor", "gnu", "--dynamic-linker", plan.interpreter, "--gc-sections", "-o", to,
+                Join([plan.libc, "/crt1.o"]), Join([plan.libc, "/crti.o"])];
+    command.extend(plan.objects);
+    command.extend(plan.archives);
+    command.extend(["-L", plan.libc]);
+    for (dependency in plan.libraries) {
+        command.append(Join(["-l", dependency]));
+    }
+    command.extend(["-lc", Join([plan.libc, "/crtn.o"])]);
+    return command;
+}

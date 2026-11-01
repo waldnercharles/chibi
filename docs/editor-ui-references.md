@@ -37,7 +37,7 @@ ported style applied.
 For each port, record the source's sizes, variants, state and keyboard contract,
 then implement those states in the reusable kit primitive and its authored markup.
 Check the RCSS through the native RmlUi parser and verify the actual rendered states,
-keyboard interactions, and cropped screenshots in `make web`; compare against the
+keyboard interactions, and cropped screenshots in Studio's web build (`chibi-studio`); compare against the
 reference for spacing, alignment, and motion as well as appearance.
 
 ## Map

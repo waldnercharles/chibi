@@ -4,8 +4,8 @@ import writer "project:prepared_writer"
 
 // A module with a row in every table the writer encodes, and values of every
 // shape: a scalar, present and absent structs, unions and arrays, text and a
-// name. The expected length and fingerprint are those the writer gave when it
-// built each row as its own array, before it appended rows to one buffer.
+// name. The expected length and fingerprint are those of format v28, which
+// leaves out the instructions' fields that hold their defaults.
 Val :: (tag: int, container: int, type_name: string, authored: bool, wide: int, text: string, present: bool,
         first: int, count: int) -> writer.Value {
     return {tag: tag, container: container, type_name: type_name, has_type_name: type_name != "",
@@ -63,11 +63,9 @@ Sample :: () -> writer.Module {
          component_bindings: true, component_access: false, spans: 0}];
     roots: writer.Root[] = [{bank: 2, index: 1, shape: 10}];
     instructions: writer.Instruction[] = [
-        {op: 3, type: 6, output: 1, left: 0, right: -1, target: 200, frame: 0, source: 1, stack: -1, pin: 0,
-         offset: 16, indirect: true, component_index: -1, node: 5, value: 0, layout: 0, message: "",
-         has_message: false},
-        {op: 9, type: 0, output: -1, left: 1, right: 2, target: 0, frame: 0, source: 2, stack: 0, pin: 1,
-         offset: 0, indirect: false, component_index: 3, node: 0, value: 11, layout: 2,
+        {op: 3, type: 6, output: 1, left: 0, right: -1, target: 200, source: 1, offset: 16, node: 5, value: 0,
+         message: "", has_message: false},
+        {op: 9, type: 0, output: -1, left: 1, right: 2, target: 0, source: 2, offset: 0, node: 0, value: 11,
          message: "Assertion failed", has_message: true}];
     locals: writer.Local[] = [
         {kind: 1, initial: 11, frame: 0, node: 6, pin: -1, offset: 24, parameter: true, array_default: false,
@@ -119,6 +117,6 @@ Sample :: () -> writer.Module {
 @test
 EveryTableKeepsItsBytes :: () {
     bytes := writer.Write(Sample());
-    assert(length(bytes) == 822);
-    assert(writer.Fingerprint(bytes) == 0xA60FD83F1F2A4EDA);
+    assert(length(bytes) == 802);
+    assert(writer.Fingerprint(bytes) == 0x3D62B8023ADC71B);
 }

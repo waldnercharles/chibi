@@ -53,7 +53,7 @@ pub Supported :: (target: Target) -> bool {
 // Current compiler storage ordinals, not byte widths or foreign type IDs.
 pub BoolStorage: int : 1;
 Int8Storage: int : 2;
-ByteStorage: int : 3;
+pub ByteStorage: int : 3;
 Int16Storage: int : 4;
 Uint16Storage: int : 5;
 pub IntStorage: int : 6;
@@ -125,7 +125,7 @@ pub TextType :: () -> string {
 // The version of the export manifest a library object holds, which the
 // runtime checks before binding it: EXECUTION_NATIVE_ABI in
 // src/execution/native.h.
-pub ExportAbi: int : 4;
+pub ExportAbi: int : 5;
 // The most parameters an entry of that ABI takes:
 // EXECUTION_NATIVE_MAX_PARAMETERS. A function with more stays callable only
 // inside its library.
@@ -166,9 +166,10 @@ pub ValueTag :: (storage: int) -> int {
 // every function of a module that calls the runtime: a pointer to each
 // operation, `format_text(context, values, count, result)` first, then the
 // failure native code ends the call with, or null, then
-// `allocate(context, size)` and `index_failed(context, index, length)`.
+// `allocate(context, size)`, `index_failed(context, index, length)` and
+// `release(context, allocation)`.
 pub ContextType :: () -> string {
-    return "{ ptr, ptr, ptr, ptr }";
+    return "{ ptr, ptr, ptr, ptr, ptr }";
 }
 // The LLVM type of an array: its length, its capacity and its elements, by
 // value. An array of no elements, with a length and capacity of 0 and no

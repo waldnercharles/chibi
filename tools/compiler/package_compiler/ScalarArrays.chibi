@@ -36,7 +36,7 @@ ScalarArrayElement :: (storage: int) -> bool {
 }
 // The array the literal `node` is, from its first element when that names its
 // own storage: a string, a bool, a number conversion such as `u8(0)`, a call of
-// a function of the source, or a variable or a record's field that holds one number, bool or string.
+// a function of the source, or a variable, a record's field or an array's element that holds one number, bool, string, record or union.
 // An element of another form, such as a bare number, has storage 0.
 ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                        names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> ValueType {
@@ -70,6 +70,13 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
         if (field >= 0 && members[field].container == 0) {
             storage = members[field].storage;
             record = members[field].record;
+        }
+    } else if (Is(forest, first, syntax.IndexExpression)) {
+        // An element of an array of numbers, bool, strings, records or unions.
+        held := ScalarArrayShape(forest, text, callables, params, names, types, members, package, Field(forest, first, syntax.FieldObject));
+        if (held.container == ArrayContainer) {
+            storage = held.storage;
+            record = held.record;
         }
     }
     if (!ScalarArrayElement(storage)) {
@@ -112,7 +119,7 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         if (native.operator == facts.ArrayBytes) {
             return {storage: IntStorage, container: ArrayContainer, record: -1};
         }
-        if (native.operator != 0 && native.operator != facts.ArrayContains) {
+        if (native.operator != 0 && native.operator != facts.ArrayContains && native.operator != facts.ArrayText) {
             return ScalarArrayShape(forest, text, callables, params, names, types, members, package, native.array);
         }
     }
@@ -172,6 +179,8 @@ ScalarArrayCall :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         wanted = 1;
     } else if (NameMatches(name, "text_bytes") && Is(forest, function, syntax.Identifier)) {
         operator = facts.ArrayBytes;
+    } else if (NameMatches(name, "text_from_bytes") && Is(forest, function, syntax.Identifier)) {
+        operator = facts.ArrayText;
     }
     if (operator == facts.ArrayBytes) {
         // The argument is a string, not an array.
@@ -208,8 +217,9 @@ ScalarLengthOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     }
     return -1;
 }
-// The array variable that `statement`, an expression statement, changes, or
-// -1: its call is `a.append(x)`, `a.extend(b)` or `a.remove_index(i)` on it.
+// The array that `statement`, an expression statement, changes, or -1: its
+// call is `a.append(x)`, `a.extend(b)`, `a.remove_index(i)` or `a.resize(n)` on a variable
+// `a`, or on an array field `r.f` of a record variable `r`.
 ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, statement: int) -> int {
     call := FirstMember(forest, statement);
@@ -223,14 +233,18 @@ ScalarChangeOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         return -1;
     }
     object := Unparenthesized(forest, Field(forest, function, syntax.FieldObject));
-    if (Is(forest, object, syntax.Identifier) &&
+    if ((Is(forest, object, syntax.Identifier) ||
+         (Is(forest, object, syntax.MemberExpression) &&
+          Is(forest, Unparenthesized(forest, Field(forest, object, syntax.FieldObject)), syntax.Identifier) &&
+          ScalarMember(forest, text, callables, params, names, types, members, package, object) >= 0)) &&
         ScalarArrayShape(forest, text, callables, params, names, types, members, package, object).storage != 0) {
         return object;
     }
     return -1;
 }
 // The Array operator of the method `statement` calls: ArrayPush for append,
-// ArrayExtend for extend and ArrayRemove for remove_index; 0 for any other.
+// ArrayExtend for extend, ArrayRemove for remove_index and ArrayResize for
+// resize; 0 for any other.
 ScalarChangeKind :: (forest: snapshot.SnapshotNode[], text: string, statement: int) -> int {
     function := Field(forest, FirstMember(forest, statement), syntax.FieldFunction);
     if (!Is(forest, function, syntax.MemberExpression)) {
@@ -245,6 +259,9 @@ ScalarChangeKind :: (forest: snapshot.SnapshotNode[], text: string, statement: i
     }
     if (NameMatches(method, "remove_index")) {
         return facts.ArrayRemove;
+    }
+    if (NameMatches(method, "resize")) {
+        return facts.ArrayResize;
     }
     return 0;
 }
@@ -273,6 +290,26 @@ ScalarIterationCopies :: (forest: snapshot.SnapshotNode[], text: string, body: i
     node := Unparenthesized(forest, value);
     return Is(forest, node, syntax.Identifier) &&
            NamePosition(MutatedNames(forest, text, body, []), Text(forest, text, node)) >= 0;
+}
+// The array a loop visits, `node`: ScalarArrayShape's, or for a literal whose
+// first element it cannot type, such as a package constant or a bare number,
+// the storage that element has where it is written, as a local declaration of
+// the literal types it. Storage 0 for any other value.
+ScalarVisitedShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                       callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                       constants: ConstDecl[], node: int) -> ValueType {
+    shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, node);
+    literal := Unparenthesized(forest, node);
+    first := FirstMember(forest, literal);
+    if (shape.storage != 0 || !Is(forest, literal, syntax.ArrayExpression) || first < 0) {
+        return shape;
+    }
+    storage := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, first,
+                                    ConstantExpressionStorage(forest, text, first));
+    if (!ScalarArrayElement(storage)) {
+        return shape;
+    }
+    return {storage: storage, container: ArrayContainer, record: -1};
 }
 // The array variable's type as a facts type, or 0 for a value that is none.
 ScalarArrayHeld :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
@@ -306,7 +343,7 @@ ScalarElementValue :: (forest: snapshot.SnapshotNode[], text: string, callables:
         return ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants, node, shape,
                                  true, rows);
     }
-    if (shape.storage == StructStorage) {
+    if (shape.storage == StructStorage || (shape.storage == UnionStorage && ScalarOptional(types, shape.record))) {
         return ScalarRecordValue(forest, text, callables, params, callable, names, types, members, constants, node,
                                  shape.record, rows);
     }
@@ -450,6 +487,10 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
     }
     object := Field(forest, place, syntax.FieldObject);
     index := Field(forest, place, syntax.FieldIndex);
+    if (!fielded && Is(forest, Unparenthesized(forest, object), syntax.MemberExpression)) {
+        return ScalarFieldElementAssigned(forest, text, callables, params, callable, names, types, members, constants, node,
+                                          rows);
+    }
     shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, object);
     array := ScalarArrayHeld(forest, text, callables, params, names, types, members, callable.package, object);
     element := ScalarElementType(types, shape);
@@ -474,7 +515,7 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
         place_type = element;
     }
     output := rows;
-    operator := ScalarArithmetic(CompoundOperator(Text(forest, text, Field(forest, node, syntax.FieldOperator))));
+    operator := ScalarArithmetic(CompoundOperator(Operator(forest, node)));
     reads := 1;
     if (operator != 0 || fielded) {
         reads = 2;
@@ -515,10 +556,71 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
     output.append(ScalarAt(forest, destination, facts.ArrayRow, array, facts.ArraySet, 3, ""));
     return ScalarOperands.Built(output);
 }
+// The operand rows of the assignment `node` to element `r.f[i]` of an array
+// field of a record variable, after `rows`: a read of `r`, the field read from
+// a second read of `r`, the index, for a compound assignment the element read
+// again, the value converted to the element, their combination, then ArraySet
+// and the record's Update of the field.
+ScalarFieldElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                               callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                               constants: ConstDecl[], node: int, rows: facts.Row[]) -> ScalarOperands {
+    destination := Field(forest, node, syntax.FieldTarget);
+    object := Unparenthesized(forest, Field(forest, destination, syntax.FieldObject));
+    index := Field(forest, destination, syntax.FieldIndex);
+    variable := Unparenthesized(forest, Field(forest, object, syntax.FieldObject));
+    shape := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, object);
+    array := ScalarArrayHeld(forest, text, callables, params, names, types, members, callable.package, object);
+    field := ScalarMember(forest, text, callables, params, names, types, members, callable.package, object);
+    if (array == 0 || field < 0 || !Is(forest, variable, syntax.Identifier) || Is(forest, index, syntax.RangeExpression)) {
+        return ScalarOperands.Failed(Diagnose(forest, destination, 0,
+                                              "scalar proof assigns only elements of array variables"));
+    }
+    record := ScalarRecordOf(forest, text, callables, params, names, types, members, callable.package, variable);
+    place := field - types[record].first;
+    element := ScalarElementType(types, shape);
+    ordinal := ScalarVariable(names, Text(forest, text, variable)).index;
+    read := ScalarAt(forest, variable, facts.ReadRow, ScalarRecordType(types, record), ordinal, 0, "");
+    held := ScalarAt(forest, object, facts.FieldRow, array, place, 1, "");
+    operator := ScalarArithmetic(CompoundOperator(Operator(forest, node)));
+    output := rows;
+    output.extend([read, read, held]);
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, index, index,
+                         IntStorage, IntStorage, facts.Clamp, output) {
+        case .Failed(diagnostic):
+            return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output = built;
+    }
+    if (operator != 0) {
+        output.extend([read, held]);
+        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, index, index,
+                             IntStorage, IntStorage, facts.Clamp, output) {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Built(built):
+                output = built;
+        }
+        output.append(ScalarAt(forest, destination, facts.ArrayRow, element, facts.ArrayGet, 2, ""));
+    }
+    switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                              Field(forest, node, syntax.FieldValue), ScalarElementShape(shape), output) {
+        case .Failed(diagnostic):
+            return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output = built;
+    }
+    if (operator != 0) {
+        output.append(ScalarAt(forest, node, facts.ArithmeticRow, element, operator, 2, ""));
+    }
+    output.append(ScalarAt(forest, destination, facts.ArrayRow, array, facts.ArraySet, 3, ""));
+    output.append(ScalarAt(forest, destination, facts.UpdateRow, ScalarRecordType(types, record), place, 2, ""));
+    return ScalarOperands.Built(output);
+}
 // The operand rows of the statement `a.append(x)`, `a.extend(b)` or
 // `a.remove_index(i)` of array variable `object`, after `rows`: a read of the
 // array, the argument, an element, another array or an int, then the Array
-// row of `operator`.
+// row of `operator`. For an array field `r.f`, the array is r's field read
+// under a read of r, and the record's Update of f follows the Array row.
 ScalarChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
                   constants: ConstDecl[], statement: int, object: int, operator: int,
@@ -530,8 +632,24 @@ ScalarChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarOperands.Failed(Diagnose(forest, call, 0, "scalar proof supports only arrays of numbers, bool, strings, records and unions"));
     }
     output := rows;
-    output.append(ScalarAt(forest, object, facts.ReadRow, array, ScalarVariable(names, Text(forest, text, object)).index,
-                           0, ""));
+    // An array field of a record variable: the record, then the record again
+    // and its field, which the Array row changes and the record's Update takes
+    // back.
+    fielded := Is(forest, object, syntax.MemberExpression);
+    variable := object;
+    field := -1;
+    record := -1;
+    if (fielded) {
+        variable = Unparenthesized(forest, Field(forest, object, syntax.FieldObject));
+        field = ScalarMember(forest, text, callables, params, names, types, members, callable.package, object);
+        record = ScalarRecordOf(forest, text, callables, params, names, types, members, callable.package, variable);
+        ordinal := ScalarVariable(names, Text(forest, text, variable)).index;
+        read := ScalarAt(forest, variable, facts.ReadRow, ScalarRecordType(types, record), ordinal, 0, "");
+        output.extend([read, read, ScalarAt(forest, object, facts.FieldRow, array, field - types[record].first, 1, "")]);
+    } else {
+        output.append(ScalarAt(forest, object, facts.ReadRow, array, ScalarVariable(names, Text(forest, text, object)).index,
+                               0, ""));
+    }
     value := FirstMember(forest, Field(forest, call, syntax.FieldArguments));
     switch ScalarArrayArgument(forest, text, callables, params, callable, names, types, members, constants, value, shape,
                                operator, output) {
@@ -541,6 +659,10 @@ ScalarChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             output = built;
     }
     output.append(ScalarAt(forest, call, facts.ArrayRow, array, operator, 2, ""));
+    if (fielded) {
+        output.append(ScalarAt(forest, object, facts.UpdateRow, ScalarRecordType(types, record), field - types[record].first,
+                               2, ""));
+    }
     return ScalarOperands.Built(output);
 }
 // The rows of `node`, the argument of the array native `operator` on arrays of
@@ -603,6 +725,9 @@ ScalarNativeRows :: (forest: snapshot.SnapshotNode[], text: string, callables: C
             type := array;
             if (native.operator == facts.ArrayContains) {
                 type = facts.BoolType;
+            }
+            if (native.operator == facts.ArrayText) {
+                type = facts.StringType;
             }
             output.append(ScalarAt(forest, node, facts.ArrayRow, type, native.operator, 1 + length(native.arguments), ""));
             return ScalarOperands.Built(output);

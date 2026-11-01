@@ -18,7 +18,7 @@ bool build_io_mkdir(const char *root, const char *path);
 bool build_io_reserve_directory(const char *root, const char *path);
 bool build_io_publish_directory(const char *root, const char *source, const char *destination);
 
-/* Read at most 16 MiB of regular-file bytes. A missing file returns an owned
+/* Read at most 64 MiB of regular-file bytes. A missing file returns an owned
  * empty string; all other failures return false with a static capability
  * diagnostic. Deadline uses chibi_process_now(); cancelled may be NULL. */
 bool build_io_read(
@@ -32,7 +32,7 @@ bool build_io_read(
 );
 
 /* Atomically replace bytes through a temporary file in the destination directory.
- * Data is limited to 16 MiB. Failed writes remove the temporary file. */
+ * Data is limited to 64 MiB. Failed writes remove the temporary file. */
 bool build_io_write(
     const char *root,
     const char *path,
@@ -54,7 +54,7 @@ const char *build_io_stamp(const char *root, const char *path, char stamp[BUILD_
 
 /* A directory's entry names except . and .., sorted by byte, as an owned
  * support/array.h array of owned strings. A missing directory lists no names.
- * Fails beyond 8,192 names or 16 MiB of names. */
+ * Fails beyond 8,192 names or 64 MiB of names. */
 const char *build_io_list(
     const char *root,
     const char *path,

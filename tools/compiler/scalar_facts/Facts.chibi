@@ -191,7 +191,10 @@ package scalar_facts
 // they consume, so each is the last operand of an Assign to a variable of the
 // array's type whose first operand reads that variable: `a[i] = x` is the
 // Assign of `a` with operands that read `a`, then `i`, then `x`, then
-// ArraySet, and `a.append(x)` reads `a`, then `x`, then ArrayPush. ArrayWith
+// ArraySet, and `a.append(x)` reads `a`, then `x`, then ArrayPush. For an array
+// field `r.f` of a record variable `r` the Assign is of `r`: it reads `r`,
+// then `r` and its Field `f`, then the element, then ArrayPush, then the Update
+// of `f`, with ArrayPush before it, so the record takes back the changed array. ArrayWith
 // consumes an array and an element, and ArrayJoin two arrays of one type, to
 // give a new array of the first's elements and then the second's; neither
 // changes what it consumes, as `append(a, x)` and `extend(a, b)` do not. A For row with
@@ -276,6 +279,11 @@ pub ForeignRow: int : 38;
 // reference: the callee's reference parameter reads and writes that variable.
 // Passing a reference parameter on gives the caller's variable on.
 pub RefRow: int : 39;
+// The address of a C-ABI function that calls the function `value`, a word, for
+// a foreign function that takes a function: `name` is the function's, `count`
+// is 0 and `type` is the word. The function's parameters and result are
+// numbers or bools and none of its parameters is a reference.
+pub FunctionAddressRow: int : 40;
 // What a RefRow of `type` pushes on a call's operand stack, and so what a
 // reference parameter of `type` takes: ReferenceType plus the type. A
 // parameter row whose literal is 1 is a reference parameter. Its variable is
@@ -364,6 +372,8 @@ pub ArrayWith: int : 12;
 pub ArrayJoin: int : 13;
 // An array of ints, the bytes of the string it consumes, from 0 to 255.
 pub ArrayBytes: int : 14;
+// A string, the bytes of the array of bytes (u8) it consumes.
+pub ArrayText: int : 15;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range

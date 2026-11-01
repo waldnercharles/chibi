@@ -1,0 +1,3 @@
+package facts
+Typed :: () -> i8 { return (i8(1) << 200) >> 199; }
+Contextual :: () -> i8 { return (1 << 200) >> 199; }

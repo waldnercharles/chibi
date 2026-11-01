@@ -9,8 +9,6 @@
 #include "support/xalloc.h"
 #include "toolchain/compiler_bootstrap.h"
 #include "toolchain/compiler_host.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/record.h"
@@ -56,6 +54,9 @@ static const char ROOT_SOURCE[] =
     "}\n"
     "pub EmitRows :: (target: string, rows: facts.Row[]) -> u8[] {\n"
     "    return scalar.EmitBytesFor(Target(target), rows);\n"
+    "}\n"
+    "pub EmitSize :: (rows: facts.Row[]) -> int {\n"
+    "    return length(scalar.EmitBytesFor(abi.LinuxX64(), rows));\n"
     "}\n"
     "pub ValidateRows :: (rows: facts.Row[]) -> string { return "
     "scalar.Validate(rows); }\n"
@@ -126,12 +127,10 @@ bool scalar_host_open()
     if (producer) {
         return true;
     }
-    const native_definition_pack packs[] = { NATIVE_COMPILER_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK };
     char error[512];
-    native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+    native = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, sizeof error);
     REQUIRE(native);
     target_json = compiler_target_json(native_capabilities_catalog(native), &target_length);
     REQUIRE(target_json);
@@ -299,13 +298,29 @@ bool scalar_host_collect(const char *path, const char *source, arena *storage, p
 
 bool scalar_host_collect_packages(const source_package_input *inputs, int count, arena *storage, pin_value *rows)
 {
+    return scalar_host_collect_collection(NULL, NULL, inputs, count, storage, rows);
+}
+
+bool scalar_host_collect_collection(
+    const char *collection,
+    const char *collection_path,
+    const source_package_input *inputs,
+    int count,
+    arena *storage,
+    pin_value *rows
+)
+{
     REQUIRE(scalar_host_open());
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *arguments = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, arguments);
     yyjson_mut_arr_add_str(doc, arguments, "/project");
-    yyjson_mut_arr_add_arr(doc, arguments);
-    yyjson_mut_arr_add_arr(doc, arguments);
+    yyjson_mut_val *collection_names = yyjson_mut_arr_add_arr(doc, arguments);
+    yyjson_mut_val *collection_paths = yyjson_mut_arr_add_arr(doc, arguments);
+    if (collection) {
+        yyjson_mut_arr_add_str(doc, collection_names, collection);
+        yyjson_mut_arr_add_str(doc, collection_paths, collection_path);
+    }
     yyjson_mut_val *paths = yyjson_mut_arr_add_arr(doc, arguments);
     yyjson_mut_val *sources = yyjson_mut_arr_add_arr(doc, arguments);
     for (int i = 0; i < count; i++) {
@@ -318,6 +333,9 @@ bool scalar_host_collect_packages(const source_package_input *inputs, int count,
         );
     }
     REQUIRE(append_target(doc, arguments));
+    /* No destination: core:target keeps its own text. */
+    yyjson_mut_arr_add_int(doc, arguments, 0);
+    yyjson_mut_arr_add_int(doc, arguments, 0);
     yyjson_doc *result;
     REQUIRE(
         invoke(producer, "project:package_compiler:1:CollectScalarPackages:callable", doc, &result)

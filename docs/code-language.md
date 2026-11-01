@@ -10,9 +10,10 @@ Chibi uses `.chibi` files for functions and gameplay logic. Scenes and project
 configuration use KDL. The `.chibi` source contains the whole executable asset.
 Editors keep graph layout, watches and breakpoints in session.
 
-This overview introduces the language through small examples. Game examples
-assume that the project declares the components, prototypes and input actions
-they use. See [Examples](examples.md) for complete recipes.
+This overview introduces the language through small examples. Behaviors,
+components, systems and queries are archived; see
+[the archived sections](../archive/docs/code-language-behaviors.md). See
+[Examples](examples.md) for complete recipes.
 
 ## Declarations
 
@@ -738,12 +739,34 @@ foreign libc {
 native build links dynamically by default (`chibi build --native --static`
 links none); another `system:` path is not linked yet. Any other path is a
 prebuilt archive, relative to the importing package, that the native build adds
-to the link line and records by hash in its receipt. `foreign alias { ... }`
+to the link line and records by hash in its receipt. `vendor:NAME` is the
+archive `libchibi_vendor_NAME.a` in the SDK's `lib/chibi-vendor`, the one pinned
+third-party archive the engine itself links, so a program binds FreeType, box3d
+or another vendored library without shipping a copy. Odin's `vendor:` packages
+bind prebuilt libraries the same way, each beside its package; here the SDK owns
+the archives, and a changed archive rebuilds the program that links it. A name
+the SDK does not hold fails the build and names it. A build tree stages only
+`vendor:freetype` so far; an installed SDK holds the archives its build tree stages. `foreign alias { ... }`
 declares the library's functions by signature alone. A function's name is its
-C symbol.
+C symbol. A block with no library, `foreign { ... }`, declares symbols that the
+program's own objects define, such as its start module's exports, as Odin does.
+The link resolves them, and no library, libSystem stub or Windows import library
+lists them.
+
+```chibi
+foreign import freetype "vendor:freetype"
+
+foreign freetype {
+    FT_Init_FreeType :: (library: u64[]) -> i32
+}
+```
+
+The array is the out-pointer: `FT_Init_FreeType(library)` fills `library[0]`
+with the handle, an opaque 64-bit word that later calls take as a `u64`.
+test/compiler/samples/native/foreign_vendor opens a font this way.
 
 Parameters and results are integers, floats, `bool` and `rawptr`, an opaque
-64-bit word. A parameter may also be `cstring`, which takes any string. The call
+64-bit word that an authored function can also take, return and hold. A parameter may also be `cstring`, which takes any string. The call
 copies it with a NUL into a 4096-byte stack buffer and passes the buffer, so the
 cost is one small copy, visible in the declaration, with no heap allocation. A
 string of 4096 bytes or more, or one that holds a NUL byte, traps instead of
@@ -787,8 +810,13 @@ A call through a null address traps. A foreign function may return a function ty
 to a function type without a cast, which is how one `dlsym` declaration serves
 every signature. The parameters and result follow the foreign rules above. A
 runtime address cannot yet be passed to an authored function's `fn` parameter;
-call it where the local is. An authored function cannot yet be turned into a
-function value for C to call.
+call it where the local is. Passing an authored function by name where a foreign function takes an `fn`
+parameter gives C an adapter the compiler generates for it, at no cost to the
+call: `thrd_create(thread, Worker, 41)`. The function's signature must match the
+parameter's, in the foreign types above. The adapter runs the function with the
+program's single runtime context, so a function that C calls on another thread
+must not allocate, assert or fail while another thread can; a C callback is
+plain data in, plain data out.
 
 Planned after that: `@variadic` with the number of fixed arguments for
 variadic C functions, foreign functions without a result, and data symbols.
@@ -879,11 +907,16 @@ Example :: library {
 
 `when` at package scope keeps the declarations of the branch whose constant
 condition holds, so one source can pick a value or a function per target. The
-condition reads literals and the constants of imported packages; `core:target`
-supplies `Os`, `Arch` and `PointerBits` beside `Linux`, `Darwin`, `Windows`,
-`X86_64` and `Arm64`. Conditions combine `==`, `!=`, `<`, `<=`, `>`, `>=`,
-`and`, `or` and `not`. A branch that is not kept is parsed but never
-compiled.
+condition reads literals and the constants of the file's own imports;
+`core:target` supplies `Os`, `Arch` and `PointerBits` beside `Linux`, `Darwin`,
+`Windows`, `X86_64` and `Arm64`, and `Native`, which is 1 in native code and 0
+in the VM. Conditions combine `==`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or` and
+`not`. A branch that is not kept is parsed but never compiled.
+
+A branch may import packages. Its imports bind for the whole file when the
+branch is kept, and a package that only unkept branches import is not
+compiled, so branches may import different packages under one name. Two kept
+branches may not bind the same name.
 
 ```chibi
 package files
@@ -895,6 +928,12 @@ when target.Os == target.Darwin {
     StatSizeOffset: int : 72
 } else {
     StatSizeOffset: int : 48
+}
+
+when target.Native == 1 {
+    import sys "core:sys/posix"
+} else {
+    import sys "project:files/hosted"
 }
 ```
 
@@ -1028,240 +1067,10 @@ Captured and escaping functions remain separate work. Their later admission
 must preserve the selected shared mutable lexical-binding semantics; this
 capture-free stage does not change that decision.
 
-## Behaviors and state
-
-A behavior reacts to events on an entity. `self` names that entity.
-Declarations at the behavior root persist between events.
-
-```chibi
-Lifetime :: behavior {
-    elapsed: number = 0.0
-    lifetime: number = 3.0
-
-    on Tick :: (dt: s) {
-        elapsed += dt
-        if elapsed >= lifetime {
-            destroy_entity(self)
-        }
-    }
-}
-```
-
-A handler lists the payload fields that it reads, with their types. Fields
-match by name, so a handler can list a subset in any order. A handler that
-reads no payload fields writes `()`.
-
-```chibi
-Timer :: behavior {
-    elapsed: number = 0.0
-
-    on Begin :: () {
-        elapsed = 0.0
-    }
-
-    on Tick :: (dt: s) {
-        elapsed += dt
-    }
-}
-```
-
-A handler cannot read unlisted payload fields or `event`. The handler can change a payload parameter only when the event declares a
-reference. A written unit must match
-the payload field's unit.
-
-`emit` sends an event to one entity. The target comes first, as the receiver
-of a method call; `emit Damage(target, amount, self)` means the same as
-`emit target.Damage(amount, self)`. `await emit` waits for the target's
-handlers.
-
-```chibi
-Spikes :: behavior {
-    target: entity = 0
-
-    on Begin :: () {
-        emit target.Damage(1, self)
-    }
-}
-```
-
-An explicit `retain` binding keeps private state in the enclosing behavior
-attachment or system registration. A helper call does not create a new owner.
-
-```chibi
-Counter :: behavior {
-    visits: retain int = 0
-}
-```
-
-Use components for entity-visible state. Use invocation locals for temporary
-work. All matches of one system share its retained state.
-
-Live replacement preserves matching retained values, and new bindings use
-their defaults. A reload always applies. A retained value whose type changed
-is converted: record fields match by name, new fields and fields that cannot
-convert take their defaults, removed fields are dropped, and numbers convert
-as `T(value)` does, even when that loses precision. Items of an array convert
-the same way, except that they cannot take a new field's default yet. A
-retained value that cannot be converted, or that keeps a pointer to a record
-whose layout changed, restarts from its default. Replacement cancels old
-continuations and tasks. An explicit restart resets all of the owner's
-retained state.
-
-## Components and systems
-
-A component declares data attached to an entity.
-
-```chibi
-Health :: component {
-    current: int
-    maximum: int
-}
-```
-
-Paths read and write reflected component fields. A component path used as a
-condition tests whether the component exists.
-
-```chibi
-Damage :: behavior {
-    on Begin :: () {
-        if self.Health && self.Health.current > 0 {
-            self.Health.current -= 1
-        }
-    }
-}
-```
-
-A system runs its body for each matching query row. Its flat header declares
-component bindings, relationship generators, computed values and `if` filters.
-A component value is a read-only snapshot for that row; a pointer binding
-accesses the stored component. `?` makes a component binding optional.
-
-```chibi
-EmitterControl :: system(
-    emitter: ^ParticleEmitter,
-    trigger: Aim?,
-    if !Collider,
-) {
-    if trigger {
-        emitter.Active = trigger.Firing
-    }
-    emitter.Rate += dt
-}
-```
-
-Every system runs on Tick and has a read-only local `dt` in seconds. Pass it
-explicitly to helpers that need it. Behavior event handlers continue to list
-the payload fields they read.
-An empty `system()` header keeps manual registration: it runs for its attached
-entity and does not create a world query.
-
-`in` generates one row for each relationship target. `from` binds a component
-on a source already in the row. A required component excludes rows where it
-is absent. A computed binding uses ordinary `:=` inference or an explicit
-type and initializer. Header expressions are pure and cannot suspend.
-Pass values explicitly to header helpers, such as `Alive(health.current)`;
-helpers cannot implicitly capture the header's bindings or enclosing locals.
-
-```chibi
-DamageTargets :: system(
-    damage: Damage,
-    target: entity in self.Targets,
-    health: ^Health from target,
-    if health.current > 0,
-    amount := damage.amount,
-) {
-    health.current -= amount
-}
-```
-
-Names become available from left to right. A failed `if` skips the remaining
-header entries for that row. Assigning a field of a component value is an
-error; use a pointer binding when the component should change. Pointer fields
-inside a copied value keep their ordinary shared-target semantics.
-
-The same description can be used explicitly as an iterable query:
-
-```chibi
-Combat :: behavior {
-    ApplyDamage :: () {
-        matches := query(
-            damage: Damage,
-            target in self.Targets,
-            health: ^Health from target,
-            if health.current > 0,
-        )
-        for row in matches {
-            row.health.current -= row.damage.amount
-        }
-    }
-}
-```
-
-Query descriptions capture outer values when constructed. Each loop has its
-own iteration state and releases it when the loop completes or exits.
-Component references resolve current storage while their original component
-incarnation exists. Removing the component or destroying its entity or world
-permanently invalidates the reference; later access fails with a runtime
-diagnostic. Re-adding a component creates a new identity. An existing reference
-never reattaches to a reused entity slot.
-A `from` binding selects its component when the row is admitted. Changing
-the relationship during a suspended invocation does not retarget its pointer;
-the next invocation binds the new target.
-
-System-body locals belong to each complete root/target tuple. They survive
-suspension until that invocation completes. Entity state belongs in components
-when it must outlive the invocation. Structural tuple loss cancels that tuple's
-work; failing a value filter does not cancel work that is already suspended.
-
-A reduction collects contributions to a numeric component field. It publishes
-them after the system batch completes.
-
-```chibi
-ApplyDamage :: system(projectile: Projectile) {
-    reduce projectile.Target.Health.current += -projectile.Damage
-}
-```
-
-A reduction producer cannot otherwise read or write the reduced component.
-Ordinary reductions replay contributions in stable system/query order.
-
-## Input and named entities
-
-Input actions come from the project's input map. `.held` stays true while a
-source is down. `.pressed` is true for the fixed step after a press.
-
-```chibi
-BoostEmitter :: behavior {
-    on Tick :: () {
-        self.ParticleEmitter.Active = input.Boost.held
-    }
-}
-```
-
-`globals` exposes scene entities with authored global names. An unknown name is
-a source error. A declared name absent from the current scene is a runtime error.
-
-```chibi
-CameraFollow :: behavior {
-    on Tick :: () {
-        self.Transform = globals.Player.Transform
-    }
-}
-```
-
-A global member is a read-only entity reference. Its writable components can
-still change. Assigning a global entity to a variable captures its current
-handle rather than a live binding.
-
-A root-level `bind` maintains a component field as its sources change.
-
-```chibi
-LinkedEmitter :: behavior {
-    bind self.ParticleEmitter.Active = input.Boost.held
-}
-```
-
 ## Waiting and tasks
+
+The examples below sit in `behavior` blocks, which are archived; the task rules
+apply to waiting functions in packages.
 
 `await` suspends the current continuation until an operation completes.
 Other engine work continues. An awaited call can declare its result.
@@ -1390,12 +1199,10 @@ PickPastTheEnd :: () {
 }
 ```
 
-Run tests and format source with the command line tools.
+Run tests with the command line tool.
 
 ```sh
 chibi test path/to/packages
-chibi fmt path/to/project
-chibi check path/to/project
 ```
 
 Independent tests run in parallel by default, with private execution state and

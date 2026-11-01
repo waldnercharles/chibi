@@ -156,9 +156,10 @@ mean native, since `scalar_llvm` and `Driver.Object` must also take the function
 | --- | ---: | --- |
 | W10 pointers: read-only by value (#1084), writes by reference (#1084 slice 2) | 178 | landed, census not rerun |
 | W2 functions without a result (most pointer writers are void) | 13 | sdk-cmake |
-| W14 `compiler_json_value_string`, `compiler_json_string` | 33 | builtin-math, `foreign import` |
+| W14 `compiler_json_value_string`, `compiler_json_string` | 33 | landed (#1126, Chibi `json_string`), census not rerun |
 | W9 optionals and record fields of map, pointer or optional type | 7 | sdk-cmake |
 | `insert` on arrays | 1 | open |
+| Converge `core:sys/os` into `core:os`: one package whose bodies are `build.*` on the VM and `core:sys/posix` or `core:sys/windows` natively under `core:os`'s signatures, chosen by a package-level `when`. Needs (1) imports in a kept `when` branch bound by the VM compile (repro: `else { import bytes "core:bytes" ... bytes.FromString(...) }` fails "Unknown function 'bytes.FromString'" while an import in an unkept branch is fine), (2) a `core:target` fact for native vs VM, (3) tuples holding an array (`List`, `ReadBytes`) native, or those two lose their `Error?` first. Then delete `core:sys/os` and Reach's path resolution | 2 packages | open |
 | Producer passes but native emission untested over the closure | unknown | W22 driver: compile the 973 through `Driver.Object` and list the rejections |
 | Maps (W8), `string[]` literals in natives, host catalog calls | open | not yet counted |
 | Stage-one driver: `tools/compiler/native_driver/Main.chibi`, a program that compiles a compiler folder to a native executable | none written | core-math |
@@ -251,8 +252,6 @@ needs. Each one says who uses it and what replacing it requires.
 
 | Capability | Code | Callers | Replacement criterion |
 | --- | --- | --- | --- |
-| Tree-sitter parse to snapshot | `src/toolchain/compiler_syntax.c` | compiler host, `Compile`, `CollectScalar` | A native parser or a narrow generated binding that gives the same snapshot. |
-| JSON decoding natives | `src/toolchain/compiler_json.c` | package compiler, host transport | Chibi decoder with the same results, or a generated binding. |
 | Compiler host invocation | `src/toolchain/compiler_host.c` | `Run.ps1`, build host, C tests | Native compiler entry points (M7). |
 | Bootstrap and closure artifacts | `src/toolchain/compiler_bootstrap.c`, `compiler_artifact.c` | `chibi build bootstrap-artifact`, recovery | Native stage chain with fixed-point evidence (M7). |
 | Target layout facts | `src/toolchain/compiler_target.c` | `Target` argument | Target description owned in Chibi, checked against the platform ABI (M5). |
@@ -279,11 +278,186 @@ decision.
 | D4 | Budget and recursion | Native loops and recursion run unchecked, as Odin's and Rust's do: an endless loop runs until its host or test deadline stops it, and no `mustprogress` lets LLVM remove it. Recursion has no depth limit: every native function probes its stack (`"probe-stack"="inline-asm"`, or `__chkstk` on Windows), so an overflow always faults in the guard page. A host that calls `stack_overflow_init` reports that fault as "stack overflow" and aborts, as Rust's runtime does; so far only the Linux native test host does. The VM keeps its instruction budget, which stops runaway scripts in the editor, and stage zero's VM output keeps its 64-call limit; stage one's has no limit yet. (Owner, 25 October 2026.) | Cancellation and scheduler interaction (M6). The named overflow report in production hosts: a standalone program the driver links installs no handler and ends with SIGSEGV, and no engine host runs native code yet. Threads other than the one that ran `stack_overflow_init`. On macOS and Windows, recursion below 64 calls and a program with a 256 KiB frame run in CI; deep recursion and overflow are untested. | decided for M3 |
 | D5 | Native ABI | An explicit target, ownership and effect contract. Probes use a validation-only adapter, and internal ownership follows D10. Inside a module `bool` is a plain `i1`. An exported or foreign `bool` parameter or result is `zeroext i1`, as clang passes C's `_Bool` on Linux, macOS and Windows and as rustc and Odin pass theirs (owner, 27 October 2026). Windows code that uses floating point references `_fltused`, which the MSVC runtime defines; a program linked without it must define it. | The exported and foreign ABI of aggregates and strings, and the calling conventions they need (W14, W16). | open, needed for M5 |
 | D6 | Failure handling | Observable errors, effects and cleanup are preserved. A failed assert fails the call from the VM, as the VM's own assert fails a behavior call, rather than aborting as Odin does (owner, 28 October 2026; W11, #774). Native code stores the failure in the context and returns through every native frame, each caller checking the slot after a call of a function that can fail; native functions hold nothing to clean up, since the call's heap is freed when it returns. | Failures other than asserts (a `format_text` error still aborts, and D9's indexes); a native program's report, with W17 and W19. | implemented for asserts in VM calls |
-| D7 | Targets and defaults | Prove each target, and keep current behavior working. `native_abi` admits `x86_64-unknown-linux-gnu`, `arm64-apple-macosx11.0.0` (versioned, so the object records its platform, as Odin's default does) and `x86_64-pc-windows-msvc`, and `Driver.Target` admits each with the layout LLVM 18 gives it; `Driver.Object` emits objects for all three, and `Driver.Build` links programs for all three on Linux with `ld.lld` (W18). Line tables (W19) and libraries (W16) are Linux x86-64 only, and the emitter rejects them for the other two. The x86-64 layouts are the same from LLVM 18 to 21; the arm64 one changes with the major, so another major's arm64 layout is rejected. | The pinned LLVM for macOS and Windows hosts (CI builds their objects and programs with Linux's LLVM 18) and when native output becomes a default. | open, M6 and M8 |
+| D7 | Targets and defaults | Prove each target, and keep current behavior working. `native_abi` admits `x86_64-unknown-linux-gnu`, `arm64-apple-macosx11.0.0` (versioned, so the object records its platform, as Odin's default does) and `x86_64-pc-windows-msvc`, and `Driver.Target` admits each with the layouts LLVM 18 to 23 give it, as measured; `Driver.Object` emits objects for all three, and `Driver.Build` links programs for all three on Linux or macOS with `ld.lld` (W18). Line tables (W19) and libraries (W16) are Linux x86-64 only, and the emitter rejects them for the other two. The x86-64 layouts are the same from LLVM 18 to 23; the arm64 one changed with LLVM 19 and 22, and each measured layout is admitted. | The pinned LLVM for macOS and Windows hosts (CI builds their objects and programs with Linux's LLVM 18) and when native output becomes a default. | open, M6 and M8 |
 | D8 | Regression budget | `Run.ps1` caps at 96 sources and 240 seconds (#683 raised it from 180). M1 reached 96, and W27 brought the corpus to 90 by dropping the cases on each side of the size limits. M2's folded-constant sources and its generated width and floating modules go in the C selector (`FOLDED_SOURCES`, `widths_agree`, `floats_agree`). | A measured larger cap. | M2 cases in the C selector; cap open |
 | D9 | Out-of-range indexes | Native code panics, as Rust's and Odin's does: it ends the program with a named message. The VM keeps its recoverable error for the editor. The owner declined reading a zero value and dropping the write. (Owner, 26 October 2026.) | The message and the host hook it reports through, with D6. | decided for M4 |
-| D10 | Native ownership | Native code has no ownership scheme of its own. It calls the runtime's value operations (copy, drop, make unique, allocate) at the copies and drops the compiler certifies, through a hidden first context parameter, `execution_native_context`, a table of the runtime's operations, as Odin's context carries its allocator. A library therefore leaves no symbol for its host to define: a `chibi_rt_*` symbol, the first plan, would need the player to export it to `dlopen`ed objects on Linux, macOS and Windows alike (changed with W5, 27 October 2026). It reads strings inline. An array is a native value, `{ length, capacity, elements }`, whose elements the context's `allocate` gives and the call's heap frees, so native code reads and writes it inline, as it does a string; the VM's arrays reach native code through runtime spans when W16 passes them. An array is a value, as in the VM: the producer copies where two variables would otherwise share elements, and a call lends its argument, which the callee cannot change. An index outside an array calls the context's `index_failed`, which ends the program (D9). The context's frame carries the heap and the failure slot (W11); what the runtime gives a call lives until the call from the VM returns, and native functions never suspend, so the heap collects only while execution is quiescent. | Lands with M4c; arrays and maps wait for #695 and #694. | set for M4c |
-| D11 | Calls from the VM into native code | A native library source (`Name :: library { ... }` of plain functions) compiles to an object that exports one symbol, `chibi_natives_<Name>`, a manifest of its pure scalar functions; every function is internal, and one wrapper per word signature reads and writes the words, as rustc and Odin export a crate's or package's API and keep the rest internal. Each export names a function by its stable ID (`script_catalog_id("symbol", "<library path>:1:<name>:callable")`, which its prepared module records) and its exact parameter and result types, and its entry reads and writes 64-bit words: integers sign- or zero-extended, `bool` as 0 or 1, `number` and `f64` as their bits. `execution_natives_bind` (`src/execution/native.c`) binds an export only to the effect-free authored function with that ID and signature, and rejects the whole manifest otherwise. A program given the table runs bound synchronous calls natively; tasks, inspected calls and unbound functions stay in the VM, and the editor binds nothing. The player loads every `<Library>` object in `natives/` under the resource root and binds its manifest to the module that defines its first export, once, after publication and before the first scene (`source_bind_natives`). `chibi export --native` builds the objects: the native driver's `Libraries` entry compiles each library source with `CollectScalar` and the emitter's `EmitLibrary`, optimizes at O2 and links a shared object with `ld.lld`; a library the emitter rejects stays in the VM with its diagnostic, and any other failure fails the export. Under export ABI 2 (W5) every entry takes the call's runtime context first, and `execution_natives_new` takes the VM's operations from the host, which owns the runtime. Export ABI 3 (W11) adds the context's failure slot, so a host of ABI 2 rejects a library that writes it. Export ABI 4 (W7) adds the context's `allocate` and `index_failed` operations, which arrays use. The program's context layout and the prepared ABI do not change. | Records, strings and arrays at the boundary (W5), and libraries for macOS and Windows (D7). | implemented on Linux x86-64 |
+| D10 | Native ownership (drops: see Native drops below) | Native code has no ownership scheme of its own. It calls the runtime's value operations (copy, drop, make unique, allocate) at the copies and drops the compiler certifies, through a hidden first context parameter, `execution_native_context`, a table of the runtime's operations, as Odin's context carries its allocator. A library therefore leaves no symbol for its host to define: a `chibi_rt_*` symbol, the first plan, would need the player to export it to `dlopen`ed objects on Linux, macOS and Windows alike (changed with W5, 27 October 2026). It reads strings inline. An array is a native value, `{ length, capacity, elements }`, whose elements the context's `allocate` gives and the call's heap frees, so native code reads and writes it inline, as it does a string; the VM's arrays reach native code through runtime spans when W16 passes them. An array is a value, as in the VM: the producer copies where two variables would otherwise share elements, and a call lends its argument, which the callee cannot change. An index outside an array calls the context's `index_failed`, which ends the program (D9). The context's frame carries the heap and the failure slot (W11); what the runtime gives a call lives until the call from the VM returns, and native functions never suspend, so the heap collects only while execution is quiescent. | Lands with M4c; arrays and maps wait for #695 and #694. | set for M4c |
+| D11 | Calls from the VM into native code | A native library source (`Name :: library { ... }` of plain functions) compiles to an object that exports one symbol, `chibi_natives_<Name>`, a manifest of its pure scalar functions; every function is internal, and one wrapper per word signature reads and writes the words, as rustc and Odin export a crate's or package's API and keep the rest internal. Each export names a function by its stable ID (`script_catalog_id("symbol", "<library path>:1:<name>:callable")`, which its prepared module records) and its exact parameter and result types, and its entry reads and writes 64-bit words: integers sign- or zero-extended, `bool` as 0 or 1, `number` and `f64` as their bits. `execution_natives_bind` (`src/execution/native.c`) binds an export only to the effect-free authored function with that ID and signature, and rejects the whole manifest otherwise. A program given the table runs bound synchronous calls natively; tasks, inspected calls and unbound functions stay in the VM, and the editor binds nothing. The player loads every `<Library>` object in `natives/` under the resource root and binds its manifest to the module that defines its first export, once, after publication and before the first scene (`source_bind_natives`). `chibi export --native` builds the objects: the native driver's `Libraries` entry compiles each library source with `CollectScalar` and the emitter's `EmitLibrary`, optimizes at O2 and links a shared object with `ld.lld`; a library the emitter rejects stays in the VM with its diagnostic, and any other failure fails the export. Under export ABI 2 (W5) every entry takes the call's runtime context first, and `execution_natives_new` takes the VM's operations from the host, which owns the runtime. Export ABI 3 (W11) adds the context's failure slot, so a host of ABI 2 rejects a library that writes it. Export ABI 4 (W7) adds the context's `allocate` and `index_failed` operations, which arrays use. Export ABI 5 (native drops) adds `release`, which a call from the VM ignores, as its heap frees everything when the call returns. The program's context layout and the prepared ABI do not change. | Records, strings and arrays at the boundary (W5), and libraries for macOS and Windows (D7). | implemented on Linux x86-64 |
+
+## Native drops (D10 amendment, 31 October 2026)
+
+D10 leaves every allocation of a native program to "the call's heap", freed
+when the call from the VM returns. A standalone native program is one call, so
+it never frees: the compiler's second stage allocated 94 GB in 35 s. This
+amendment gives native code drops, without a collector, in four stages that
+land separately. Each stage is complete and tested before the next starts.
+
+**What owns memory.** A native heap object is an array's elements buffer or a
+string's bytes. Nothing else allocates.
+
+- An *array value* `{ length, capacity, elements }` owns its elements buffer
+  uniquely (D10: the producer copies where two variables would share it). The
+  buffer owns what its elements own: dropping an array drops each element that
+  owns, then releases the buffer. The empty array (capacity 0) owns nothing.
+- A *record* or *union value* is an aggregate; it owns what its fields and
+  payloads own. Dropping one is its fields' drops, a union's by tag.
+- A *string value* `{ bytes, length, owner }` is a shared, reference-counted
+  view. `owner` is the runtime's `pin_text_owner` (`src/types/text.c`: an
+  atomic count, the length, then the bytes), or null for a literal, which is
+  static and exempt: no count is read or written for a null owner. `TextDrop`
+  and `TextTake` views share their string's owner, so a view keeps the bytes
+  alive. A copy of a descriptor that is stored retains its owner; a drop
+  releases it, and the count reaching 0 releases the allocation.
+- A scalar owns nothing.
+
+**Borrowed and fresh values.** Every operand row gives a value that is either
+*borrowed* (+0: a Read of a variable or parameter, a Field or Payload of one, an
+ArrayGet, a literal, a lent argument) or *fresh* (+1, owned by whoever takes
+it: ArrayNew, ArrayCopy, ArrayWith, ArrayJoin, ArraySlice, ArrayResize,
+ArrayBytes, ArrayText, Format, a Call or ForeignCall result, and a Make or Zero
+of an owning type built from fresh parts). A consumer takes one of three
+stances, and the lowering inserts the matching operation:
+
+1. *Stores* (Local, Assign, Update, Make payload, ArrayNew/ArrayPush element,
+   Return). A fresh value moves in. A borrowed value of an owning type is
+   copied (array: ArrayCopy, which the producer already emits; string:
+   retain), so the store owns what it holds.
+2. *Reads* (ArrayLength, ArrayGet, comparisons, TextLength). A fresh operand is
+   dropped after the row. A row that makes a view of a string (TextDrop,
+   TextTake) retains the owner, as a store does, and drops a fresh operand.
+3. *Lends* (a Call's arguments). The callee neither drops nor keeps a lent
+   argument and cannot change it (D10): a written array or record parameter is
+   already the callee's copy, which is its own local, dropped at its scope end.
+   A fresh argument is dropped by the caller after the call returns.
+
+**Where drops are emitted.** In scalar_llvm's lowering, from the rows alone: a
+Local row opens a variable in its scope, and the structured rows give every
+exit.
+
+- *Assign* to an owning variable drops the old value after the new value is
+  computed, so `a = f(a)` and `s = s` are safe.
+- *Scope end*: at an EndRow, and on every Break, Continue and Return that
+  leaves scopes, each owning local of the scopes left is dropped, innermost
+  and latest first. A Return's value is computed first; a Return whose value
+  is a Read of a local moves that local out and skips its drop.
+- *Discarded fresh values* (a call statement's hidden local `_`, a fresh
+  operand a reading row consumed) are dropped at the row that consumes them.
+- *Growth*: ArrayPush and ArrayExtend that move the elements to a larger
+  allocation release the old buffer once the elements are copied. A shrinking
+  ArrayResize or ArrayRemove drops the elements it removes.
+- A failure (D6, D9) ends the call or the program; nothing is dropped on that
+  path, which the VM's heap and the process exit reclaim.
+
+**The runtime's part.** The context gains `release(context, pointer)` (export
+ABI 5). The VM's call heap implements it as the no-op it needs, since it frees
+the call's allocations when the call returns; the standalone start module
+implements it with `free` and `allocate` with `calloc`. Strings the native
+code makes (ArrayText and Format) are allocated through a
+new `new_text(context, length)` that returns a `pin_text_owner` with count 1, so
+the result is the runtime's own shared string and crosses the VM boundary
+(W16) without a copy. Native retain and release are inline `atomicrmw` on the
+owner's first word, and release calls the context when the count reaches 0.
+
+**Drop glue.** A type that owns gets one generated function `@drop.T(ptr %ctx,
+T %value)` per module, in the order its types first need it: arrays loop over
+their elements with the element type's glue (scalars have none, so an array
+of scalars is one `release`), records and unions call their fields', a string
+is a null test, a decrement and a release. Types that own nothing emit
+nothing, so scalar-only modules are unchanged.
+
+**`x := arr`.** The VM copies on write; the native lane copies eagerly at
+`x := arr` (ArrayCopy), which is correct with drops (both own their buffers)
+but O(n) where the VM shares. The amendment keeps the eager copy and adds one
+elision for later: when `arr` is a local that nothing reads after the
+statement in its scope, the copy is a move, and `arr`'s drop is skipped. The
+rows have no liveness today, so the elision is its own stage and its own
+measurement; until then the cost is the copy and the temporary's drop.
+
+**Stages and tests.**
+
+1. Arrays of scalars and bool: `release` in the context, growth frees the old
+   buffer, Assign, scope-end and discarded-temporary drops, `x := arr`'s copy
+   dropped with its variable.
+2. Arrays of strings and records, records and unions with array fields: drop
+   glue. Strings are still unowned here (their bytes are never freed), so no
+   count exists yet and the elements' string parts drop nothing.
+3. Reference-counted strings: `new_text`, retain on store, release on drop.
+4. Move elision for `x := arr` and returns of locals' fields.
+
+Every stage adds corpus cases that run under ASan on Linux at O0 and O2 with
+no leak and no double free (a leak is a failure: `detect_leaks=1`), and the
+stage that adds a kind of allocation adds a memory-bounded case: a loop of a
+million iterations that builds and drops a value of that kind runs under an
+address-space limit far below what the iterations allocate together (stage 1:
+arrays; stage 3: strings), so a missing drop is an out-of-memory failure.
+Locally (macOS) the same programs run through the native driver at O0 and O2
+with `leaks` and the limit.
+
+*Stage 1, landed (31 October 2026).* Context ABI 5 with `release`; the
+standalone start modules free with `free` (`HeapFree` on Windows); llvm_native's
+`ArrayDrop` (a null buffer is skipped) and an owning ArrayPush/ArrayExtend that
+gives back the old buffer when it grows (instruction `literal` 1; an array
+field's append keeps literal 0, since a copy of its record shares the buffer);
+scalar_llvm's lowering tracks owning variables per scope and fresh array slots.
+A Local owns a fresh array (an ArrayNew/Copy/With/Join/Slice/Resize/Bytes or a
+call's result) and borrows any other, so a union arm's payload binding is
+never dropped; a discarded call result (`_`) is dropped at once. Drops run at
+a scope's end when control reaches it, before a Break or Continue leaves it, and
+before a Return, which skips the variable it returns; an Assign of a fresh
+array drops the old value after the new one is made; an Arrayed loop owns the
+fresh array it visits in a local of its own; a fresh array a row only reads
+(length, get, contains, slice, resize, with, join, copy, text, a lent argument)
+is dropped after the row. Measured on macOS under ASan at O0 and O2 with a
+counting context: 780,000 allocations and as many releases for a 40,000-round
+loop of builds, copies, appends, fresh temporaries, continue, and loops over
+fresh arrays; 242,856 and 242,856 for the `array_drops` shapes at 2,000
+rounds, with no error. Arrays inside records, unions and other arrays, and
+strings, wait for stages 2 and 3.
+
+An owning variable whose array a record takes without a copy (the named
+results of a function are built that way) stops dropping it: the Update or Make
+that takes it marks the variable, and a Return skips it. All 100 programs of
+the scalar corpus ran at O0 and O2 under ASan on macOS with the context's
+release poisoning what it frees, and each gave the VM's value; that run found
+`a.extend(a)` reading the buffer it had just given back (an owning extend now
+gives the old elements back after it copies the other array's) and the
+named-results case above.
+
+*Stage 3, landed (1 November 2026), ahead of stage 2.* Strings hold references
+to the runtime's `pin_text_owner` (an atomic count, the length, then the bytes
+and a NUL): `ArrayText` makes one with a count of 1; literals, text the host
+owns and `format_text` results keep a null owner, which has nothing to count.
+`TextRetain` and `TextRelease` (llvm_native, through module helpers `retain`,
+`free`, `retain_range` and `free_range`) add and give back a reference; the last
+one hands the owner to the context's `release`. In scalar_llvm a variable that
+holds a string owns one reference: a fresh string (a call's result, `ArrayText`,
+`Format`) moves in, any other is retained; an Assign gives the old value back
+after taking the new one; a Return moves the returned variable out or retains a
+borrowed value; a fresh string left over at the end of a statement, a
+temporary, is released there, after the statement's stores, so a slice (a view
+sharing the owner) that was stored has retained it first. A string stored in a
+record, union or array element is retained and, in all but an array of strings,
+never released: those containers leak their strings, which is safe (a count too
+high, never too low). An array of strings is complete: its copies (copy, slice,
+resize, extend, with, join) retain each element, a set or remove releases the
+one it replaces, and dropping the array releases them all, so the compiler's
+`Join`, `Concatenate` and token lists are bounded. Not tracked yet: a string made
+on the right of `&&` or `||` (it exists on some paths only), so it stays
+unreleased; `format_text` results; strings in records and unions (stage 2).
+Measured on macOS, O0 and O2, ASan with released memory poisoned: the `strs`
+program (3,000 rounds of built, joined, sliced, kept and early-returned
+strings) makes 99,000 allocations and 99,000 releases, peak live 352 bytes, and
+gives the VM's value; a 150,000-round loop of 2 KB strings runs in 2 MB.
+
+Stage 4's list, from core-math's count of 62 `x := big_array` sites in the
+compiler: `output := rows;` in the Scalar operand builders (each copies the
+rows it was passed, then appends, so a function's rows are built in quadratic
+time), `known`, `declared`, `records` and `fields := types` or `members`,
+`scoped := forest` (once per call of ScopedTargets and ScalarModule),
+`marked := callables`, and the union_members and signature_reader packages. Two
+moves remove most: no copy at `x := y` when neither is written afterwards, and a
+move when `y` is a parameter that is dead after the assignment. Both need
+liveness the rows do not carry yet.
 
 ## Baseline and measurements
 

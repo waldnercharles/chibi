@@ -1,7 +1,75 @@
 package asset_compiler_stage
 
+import files "graph:files"
 import os "core:os"
+import target "core:target"
 import strings "core:strings"
+
+// Writes `output` as a C file declaring the array `symbol` with the input's
+// bytes, sixteen to a row, and `symbol_size`. An output that already holds
+// exactly this text is left alone so nothing rebuilds from it; true when it was
+// written. The build host has it as a native; a native program writes the same
+// text itself.
+when target.Native == 1 {
+    Digit :: (nibble: int) -> u8 {
+        if (nibble < 10) {
+            return u8(48 + nibble);
+        }
+        return u8(87 + nibble);
+    }
+
+    // Appends the bytes of `text` to `out` in place.
+    Spell :: (out: u8[], text: string) {
+        for (index in 0..<text_byte_length(text)) {
+            out.append(u8(text_byte_at(text, index)));
+        }
+    }
+
+    WriteBlob :: (input: string, output: string, symbol: string) -> bool {
+        read := os.ReadBytes(input);
+        if (read.error != nil) {
+            return false;
+        }
+        out: u8[] = [];
+        Spell(out, format_text("#include <stddef.h>\n\nconst unsigned char {}[] = {\n    ", symbol));
+        for (index in 0..<length(read.data)) {
+            if (index > 0 && index % 16 == 0) {
+                out.append(10);
+                for (indent in 0..<4) {
+                    out.append(32);
+                }
+            }
+            out.append(48);
+            out.append(120);
+            out.append(Digit(int(read.data[index]) / 16));
+            out.append(Digit(int(read.data[index]) % 16));
+            out.append(44);
+            if (index + 1 < length(read.data) && (index + 1) % 16 != 0) {
+                out.append(32);
+            }
+        }
+        Spell(out, format_text("\n};\nconst size_t {}_size = sizeof {};\n", symbol, symbol));
+        before := os.ReadBytes(output);
+        if (before.error == nil && length(before.data) == length(out)) {
+            same := true;
+            for (index in 0..<length(out)) {
+                same = same && before.data[index] == out[index];
+            }
+            if (same) {
+                return false;
+            }
+        }
+        partial := format_text("{}.partial", output);
+        if (os.WriteBytes(partial, out) != nil || os.Rename(partial, output) != nil) {
+            return false;
+        }
+        return true;
+    }
+} else {
+    WriteBlob :: (input: string, output: string, symbol: string) -> bool {
+        return build.embed_file(input, output, symbol);
+    }
+}
 
 // Retain each fragment once per level, not every growing prefix.
 Join :: (parts: string[]) -> string {
@@ -24,34 +92,16 @@ Join :: (parts: string[]) -> string {
     return parts[0];
 }
 
+// A request quotes every source it carries, about 2 MB, so each byte costs
+// only integer tests; text between escapes is copied in runs.
 Quote :: (text: string) -> string {
     parts := ["\""];
     start: int = 0;
     index: int = 0;
     for (value in strings.Bytes(text)) {
-        escape := "";
-        if (value == 34) {
-            escape = "\\\"";
-        }
-        if (value == 92) {
-            escape = "\\\\";
-        }
-        if (value == 10) {
-            escape = "\\n";
-        }
-        if (value == 13) {
-            escape = "\\r";
-        }
-        if (value == 9) {
-            escape = "\\t";
-        }
-        if (value < 32 && escape == "") {
-            digits := "0123456789abcdef";
-            escape = Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
-        }
-        if (escape != "") {
+        if (value < 32 || value == 34 || value == 92) {
             parts.append(strings.Slice(text, start, index - start));
-            parts.append(escape);
+            parts.append(Escape(value));
             start = index + 1;
         }
         index += 1;
@@ -59,6 +109,27 @@ Quote :: (text: string) -> string {
     parts.append(strings.Slice(text, start, index - start));
     parts.append("\"");
     return Join(parts);
+}
+
+// The JSON escape of a quote, a backslash or a control byte.
+Escape :: (value: int) -> string {
+    if (value == 34) {
+        return "\\\"";
+    }
+    if (value == 92) {
+        return "\\\\";
+    }
+    if (value == 10) {
+        return "\\n";
+    }
+    if (value == 13) {
+        return "\\r";
+    }
+    if (value == 9) {
+        return "\\t";
+    }
+    digits := "0123456789abcdef";
+    return Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
 }
 
 Array :: (values: string[]) -> string {
@@ -71,7 +142,7 @@ Array :: (values: string[]) -> string {
 
 Sources :: (folder: string) -> string[] {
     paths: string[] = [];
-    for (name in build.list_directory(folder)) {
+    for (name in files.Names(folder)) {
         path := Join([folder, "/", name]);
         if (os.IsDirectory(path)) {
             for (nested in Sources(path)) {
@@ -86,8 +157,7 @@ Sources :: (folder: string) -> string[] {
 
 pub InventoryDirectories :: () -> string[] {
     return ["tools/compiler/package_compiler", "tools/compiler/scalar_facts", "tools/compiler/asset_compiler",
-            "tools/compiler/asset_source", "tools/compiler/asset_packaging", "packages/core", "packages/game",
-            "tools/graph/asset_compiler", "tools/compiler/cost_explanations", "tools/compiler/math_types"];
+            "packages/core", "tools/graph/asset_compiler", "tools/compiler/math_types"];
 }
 
 pub Inventory :: (root: string) -> string {
@@ -104,17 +174,15 @@ Read :: (root: string, paths: string[]) -> string[] {
     sources: string[] = [];
     for (path in paths) {
         if (strings.HasPrefix(path, "/sdk/core/")) {
-            sources.append(build.read_file(Join([root, "/packages/core/", strings.Slice(path, 10, strings.ByteLength(path))])));
-        } else if (strings.HasPrefix(path, "/sdk/game/")) {
-            sources.append(build.read_file(Join([root, "/packages/game/", strings.Slice(path, 10, strings.ByteLength(path))])));
+            sources.append(files.Text(Join([root, "/packages/core/", strings.Slice(path, 10, strings.ByteLength(path))])));
         } else {
-            sources.append(build.read_file(Join([root, "/tools/compiler/", path])));
+            sources.append(files.Text(Join([root, "/tools/compiler/", path])));
         }
     }
     return sources;
 }
 
-Request :: (first: string, paths: string[], sources: string[], target: string, game: bool) -> string {
+Request :: (first: string, paths: string[], sources: string[], target: string) -> string {
     ordered_paths := [first];
     ordered_sources: string[] = [];
     index: int = 0;
@@ -135,14 +203,11 @@ Request :: (first: string, paths: string[], sources: string[], target: string, g
         }
         index += 1;
     }
-    target = build.trim(target);
+    target = strings.TrimSpace(target);
     if (!strings.HasPrefix(target, "[") || !strings.HasSuffix(target, "]")) {
         return "";
     }
     collections := "[\"/project\",[\"core\"],[\"/sdk/core\"],";
-    if (game) {
-        collections = "[\"/project\",[\"core\",\"game\"],[\"/sdk/core\",\"/sdk/game\"],";
-    }
     return Join([collections, Array(ordered_paths), ",", Array(ordered_sources),
                  ",false,", strings.Slice(target, 1, strings.ByteLength(target) - 2), "]"]);
 }
@@ -168,7 +233,13 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
 // instead of compiling the compiler's sources again. An empty `cache` keeps
 // nothing.
 Key :: (seed: string, request: string) -> string {
-    return build.hash_text(Join([build.hash_file(seed), "\n", request]));
+    return Digest(Join([files.Digest(seed), "\n", request]));
+}
+
+// The SHA-256 of `text` as 64 lowercase hex digits. Every digest the generator
+// takes goes through here.
+Digest :: (text: string) -> string {
+    return os.HashText(text);
 }
 
 Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
@@ -195,7 +266,7 @@ Product :: (host: string, seed: string, callable: string, request: string, key: 
 // Whole seconds from the system clock, for the phase timings the log reports.
 Stamp :: () -> string {
     clock := os.Capture(["date", "+%s"]);
-    return build.trim(clock.stdout);
+    return strings.TrimSpace(clock.stdout);
 }
 
 // Explicit filesystem snapshots and atomic products; source compilation and
@@ -209,9 +280,9 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     stamps: string[] = [];
     // Capture non-text snapshot inputs before any host invocation reads them.
     for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json",
-                  "tools/graph/asset_compiler/Generate.chibi", "tools/graph/asset_compiler/Cache.chibi", "tools/compiler/asset_compiler/CompilerSources.txt",
+                  "tools/graph/asset_compiler/Generate.chibi", "tools/graph/asset_compiler/Cache.chibi", "tools/graph/files/Files.chibi", "tools/compiler/asset_compiler/CompilerSources.txt",
                   "tools/toolchain/AssetCompiler.chibi"]) {
-        checksum := build.hash_file(Join([root, "/", path]));
+        checksum := files.Digest(Join([root, "/", path]));
         records.append(Join(["{\"path\":", Quote(path), ",\"sha256\":", Quote(checksum), "}"]));
         stamps.append(Join([checksum, " ", path, "\n"]));
     }
@@ -219,18 +290,18 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     if (os.MakeDirectory(folder) || os.Run([host, "--target-json", native_facts]) != 0) {
         return false;
     }
-    native_target := build.trim(build.read_file(native_facts));
+    native_target := strings.TrimSpace(files.Text(native_facts));
     if (target == "") {
         target = native_target;
     }
     paths: string[] = [];
-    for (path in build.lines(build.read_file(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"])))) {
+    for (path in strings.Lines(files.Text(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"])))) {
         if (path != "") {
             paths.append(path);
         }
     }
     for (directory in ["package_compiler"]) {
-        for (file in build.list_directory(Join([root, "/tools/compiler/", directory]))) {
+        for (file in files.Names(Join([root, "/tools/compiler/", directory]))) {
             path := Join([directory, "/", file]);
             found := false;
             for (item in paths) {
@@ -244,18 +315,11 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         }
     }
     // Compiler implementation dependencies are explicit in CompilerSources.txt.
-    // Public core sources are packaged below, without entering the seed target.
-    for (directory in ["asset_compiler", "asset_source", "asset_packaging"]) {
-        for (file in build.list_directory(Join([root, "/tools/compiler/", directory]))) {
-            if (strings.HasSuffix(file, ".chibi")) {
-                paths.append(Join([directory, "/", file]));
-            }
+    for (file in files.Names(Join([root, "/tools/compiler/asset_compiler"]))) {
+        if (strings.HasSuffix(file, ".chibi")) {
+            paths.append(Join(["asset_compiler/", file]));
         }
     }
-    for (path in Sources(Join([root, "/packages/game"]))) {
-        paths.append(Join(["/sdk/game/", path]));
-    }
-    paths.append("cost_explanations/Explain.chibi");
     sources := Read(root, paths);
     inputs := Join([folder, "/input.json"]);
     facade := Join([folder, "/native_facade.chibip"]);
@@ -266,7 +330,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     closure_entry := "0x140a9546d9e8c296"; // package_compiler.CompileClosure
     cache := Location(os.Getenv("CHIBI_ASSET_COMPILER_CACHE"), os.Getenv("XDG_CACHE_HOME"), os.Getenv("HOME"), root);
     os.Print("asset compiler: serialize facade request");
-    facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target, true);
+    facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target);
     facade_key := Key(seed, facade_request);
     kept := [facade_key];
     os.Print(format_text("asset compiler: invoke facade compiler at {} ({} sources, {} bytes)", Stamp(), length(paths),
@@ -281,7 +345,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         }
     } else {
         os.Print("asset compiler: serialize target request");
-        target_request := Request("asset_compiler/Compile.chibi", paths, sources, target, true);
+        target_request := Request("asset_compiler/Compile.chibi", paths, sources, target);
         target_key := Key(seed, target_request);
         kept.append(target_key);
         os.Print("asset compiler: invoke target compiler");
@@ -292,67 +356,37 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     if (os.IsDirectory(cache)) {
         Evict(cache, Budget, kept);
     }
-    // Keep the complete public library snapshot separate from compiler inputs.
-    // Retain original compiled source bytes so the final hash check still
-    // rejects a file changed during generation.
-    for (relative in Sources(Join([root, "/packages/core"]))) {
-        path := Join(["/sdk/core/", relative]);
-        found := false;
-        for (item in paths) {
-            if (item == path) {
-                found = true;
-            }
-        }
-        if (!found) {
-            captured := Read(root, [path]);
-            paths.append(path);
-            sources.append(captured[0]);
-        }
+    // The resource is the artifact's address and size; C never sees source text.
+    os.Print("asset compiler: write resource");
+    resource := Join([folder, "/asset_compiler_packaged.c"]);
+    text := Join(["#include \"authoring/asset_compiler_host.h\"\n#include \"asset_compiler_blob.inc\"\n",
+                  "const asset_compiler_options *asset_compiler_packaged_options() {\n",
+                  "static const asset_compiler_options options = {\n",
+                  ".compiler = asset_compiler_blob, .compiler_length = sizeof asset_compiler_blob\n};\n",
+                  "return &options;\n}\n"]);
+    if (os.WriteText(Join([resource, ".tmp"]), text) || os.Rename(Join([resource, ".tmp"]), resource)) {
+        return false;
     }
-    library_paths: string[] = [];
-    library_sources: string[] = [];
     index: int = 0;
-    while (index < length(paths)) {
-        if (strings.HasPrefix(paths[index], "/sdk/core/") || strings.HasPrefix(paths[index], "/sdk/game/")) {
-            library_paths.append(paths[index]);
-            library_sources.append(sources[index]);
-        }
-        index += 1;
-    }
-    os.Print("asset compiler: serialize packaging request");
-    if (os.WriteText(inputs, Join(["[", Array(library_paths), ",", Array(library_sources), "]"]))) {
-        return false;
-    }
-    // The same stable package-symbol hash used by all prepared entry IDs.
-    id := u64(14695981039346656037);
-    for (value in strings.Bytes("package-symbol:project:asset_compiler:1:Packaged:callable")) {
-        id = (id ^ u64(value)) * u64(1099511628211);
-    }
-    os.Print(format_text("asset compiler: invoke packaging at {}", Stamp()));
-    if (!Invoke(host, facade, format_text("0x{:016x}", id), inputs, Join([folder, "/asset_compiler_packaged.c.tmp"]), compiler_timeout) ||
-        os.Rename(Join([folder, "/asset_compiler_packaged.c.tmp"]), Join([folder, "/asset_compiler_packaged.c"]))) {
-        return false;
-    }
-    os.Print(format_text("asset compiler: packaging ready at {}", Stamp()));
-    index = 0;
     while (index < length(paths)) {
         path := paths[index];
         disk := Join(["tools/compiler/", path]);
         if (strings.HasPrefix(path, "/sdk/")) {
             disk = Join(["packages/", strings.Slice(path, 5, strings.ByteLength(path))]);
         }
-        stamps.append(Join([build.hash_text(sources[index]), " ", disk, "\n"]));
-        records.append(Join(["{\"path\":", Quote(disk), ",\"sha256\":", Quote(build.hash_text(sources[index])), "}"]));
+        digest := Digest(sources[index]);
+        stamps.append(Join([digest, " ", disk, "\n"]));
+        records.append(Join(["{\"path\":", Quote(disk), ",\"sha256\":", Quote(digest), "}"]));
         index += 1;
     }
     manifest := Join(["{\"format\":1,\"artifact\":\"asset_compiler.chibip\",\"artifact_sha256\":",
-                      Quote(build.hash_file(artifact)), ",\"resource_sha256\":",
-                      Quote(build.hash_file(Join([folder, "/asset_compiler_packaged.c"]))),
+                      Quote(files.Digest(artifact)), ",\"resource_sha256\":",
+                      Quote(files.Digest(Join([folder, "/asset_compiler_packaged.c"]))),
                       ",\"target\":", target, ",\"sources\":[", strings.Join(records, ","), "]}\n"]);
     for (stamp in stamps) {
-        checksum := build.before(stamp, " ");
-        path := build.trim(build.after(stamp, " "));
-        if (build.hash_file(Join([root, "/", path])) != checksum) {
+        checksum := strings.Partition(stamp, " ").head;
+        path := strings.TrimSpace(strings.Partition(stamp, " ").tail);
+        if (files.Digest(Join([root, "/", path])) != checksum) {
             os.Print(Join(["asset compiler source changed during generation: ", path]));
             return false;
         }
@@ -370,7 +404,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     }
     os.Print("asset compiler: embed artifact");
     blob := Join([folder, "/asset_compiler_blob.inc"]);
-    build.embed_file(artifact, blob, "asset_compiler_blob");
+    embedded := WriteBlob(artifact, blob, "asset_compiler_blob");
     if (!os.Exists(blob)) {
         return false;
     }

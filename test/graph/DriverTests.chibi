@@ -1,5 +1,6 @@
 package graph_driver_tests
 
+import engine "graph:engine"
 import os "core:os"
 import strings "core:strings"
 
@@ -44,8 +45,19 @@ EngineBuildSteps :: (host: string) {
     log = Plan(host, ["--release", "--target", "chibi"]);
     assert(Has(log, "--profile release") && !Has(log, "--profile sanitizer"), "a Release build");
     assert(!Has(log, "--asset-generator-hosts") && Has(log, "build-release/compile_commands.json"), "borrows nothing");
-    log = Plan(host, ["--debug", "--all"]);
-    assert(Has(log, "--profile debug") && !Has(log, "--target chibi "), "a Debug build of everything");
+    log = Plan(host, ["--debug"]);
+    assert(Has(log, "--profile debug") && !Has(log, "--target chibi ") && !Has(log, "--target test_tools"), "a Debug build of everything: no target is named");
+    log = Plan(host, ["--target", "chibi"]);
+    assert(Has(log, "--target chibi --target chibi-build-host"), "a named target and the build host");
+}
+
+// A build without --target names none: the graph builds every product and test
+// driver, and a target it names is one the graph knows.
+DefaultTargets :: (host: string) {
+    log := Plan(host, ["--release"]);
+    assert(!Has(log, "--target "), "the default names no target");
+    named := Plan(host, ["--release", "--target", "chibi"]);
+    assert(engine.TargetError(strings.Fields(named), engine.Targets()) == "", "the graph knows each named target");
 }
 
 // A build runs its steps on every processor online unless --jobs says otherwise.
@@ -81,11 +93,41 @@ TestSelectors :: (host: string) {
     assert(unknown.status != 0 && Has(Output(unknown), "unknown selector 'no-such-selector'"), "an unknown selector");
 }
 
+// Whether `test` ran `name` alone: every selector it had started had reported
+// when it started `name`, and it started none until `name` reported.
+RanAlone :: (log: string, name: string) -> bool {
+    running := 0;
+    seen := false;
+    alone := false;
+    for (line in strings.Lines(log)) {
+        words := strings.Split(line, " ");
+        if (length(words) < 2) {
+            continue;
+        }
+        if (words[0] == "RUN") {
+            if (alone || (words[1] == name && running != 0)) {
+                return false;
+            }
+            running += 1;
+            if (words[1] == name) {
+                seen = true;
+                alone = true;
+            }
+        } else if (words[0] == "PASS" || words[0] == "FAIL") {
+            running -= 1;
+            if (words[1] == name) {
+                alone = false;
+            }
+        }
+    }
+    return seen;
+}
+
 // `test` runs up to --jobs selectors together, an `exclusive` one alone, and
 // stops one at its deadline. The selectors are shell commands in a scratch
 // tests.tsv: `a` and `b` each wait for the other to start, so they pass only
-// when they overlap, and `after` passes only when the exclusive `alone` ended
-// before it started.
+// when they overlap; the exclusive `alone` waits while `after` and `slow` fill
+// the free slots, then runs with nothing beside it.
 TestScheduling :: (host: string) {
     source := os.Root();
     scratch := format_text("{}/.chibi/graph-driver", source);
@@ -93,7 +135,7 @@ TestScheduling :: (host: string) {
     rows := ["tool\ta\tsh\t-c\ttouch a.started; until [ -e b.started ]; do sleep 0.05; done",
              "tool\tb\tsh\t-c\ttouch b.started; until [ -e a.started ]; do sleep 0.05; done",
              "tool\talone\tsh\t-c\tsleep 0.5; touch alone.done",
-             "tool\tafter\tsh\t-c\ttest -e alone.done",
+             "tool\tafter\tsh\t-c\ttrue",
              "tool\tslow\tsh\t-c\tsleep 30",
              "timeout\ta\t20", "timeout\tb\t20", "timeout\tslow\t1", "exclusive\talone", ""];
     assert(os.WriteText(format_text("{}/tools/tests.tsv", scratch), strings.Join(rows, "\n")) == nil, "the scratch table");
@@ -104,8 +146,32 @@ TestScheduling :: (host: string) {
     result := os.Capture(command);
     log := Output(result);
     assert(result.status != 0 && Has(log, "PASS a\n") && Has(log, "PASS b\n"), "overlapping selectors");
-    assert(Has(log, "PASS alone\n") && Has(log, "PASS after\n"), "an exclusive selector runs alone");
+    assert(Has(log, "PASS alone\n") && Has(log, "PASS after\n") && RanAlone(log, "alone"), "an exclusive selector runs alone");
     assert(Has(log, "FAIL slow (timed out after 1s)\n") && Has(log, "5 tests, 1 failed"), "a selector's deadline");
+    assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed");
+}
+
+// `census` fails on build tooling outside archive/ and counts the C that
+// remains, in a scratch repository of its own.
+Census :: (host: string) {
+    source := os.Root()
+    scratch := format_text("{}/.chibi/graph-census", source)
+    assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(scratch) == nil, "the scratch root")
+    assert(os.MakeDirectory(format_text("{}/archive", scratch)) == nil, "the archive directory")
+    assert(os.WriteText(format_text("{}/a.c", scratch), "int a;\nint b;\n") == nil, "a C file")
+    assert(os.WriteText(format_text("{}/b.mm", scratch), "x\n") == nil, "a shim")
+    assert(os.WriteText(format_text("{}/archive/CMakeLists.txt", scratch), "x\n") == nil, "archived tooling")
+    assert(os.Run(["git", "-C", scratch, "init", "-q"]) == 0 && os.Run(["git", "-C", scratch, "add", "-A"]) == 0, "the scratch repository")
+    command := [host, "--compiler", format_text("{}/tools/compiler", source), "--compiler-core", format_text("{}/packages/core", source),
+                "--root", scratch, "--source", format_text("{}/tools/toolchain/Driver.chibi", source),
+                "--core", format_text("{}/packages/core", source), "--entry", "Main", "--timeout-ms", "50000", "--", "build", "census"]
+    result := os.Capture(command)
+    log := Output(result)
+    assert(result.status == 0 && Has(log, "census: shim 1 b.mm\n") && Has(log, "1 first-party C files, 2 lines, 1 C++/Objective-C shims, 0 build tooling files"), "archived tooling is allowed");
+    assert(os.WriteText(format_text("{}/Makefile", scratch), "all:\n") == nil && os.Run(["git", "-C", scratch, "add", "-A"]) == 0, "a Makefile");
+    result = os.Capture(command)
+    log = Output(result)
+    assert(result.status != 0 && Has(log, "census: build tooling outside archive/: Makefile\n"), "a Makefile fails the census");
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed");
 }
 
@@ -137,9 +203,11 @@ pub Run :: () -> int {
     assert(length(arguments) == 1, "the build host's path");
     host := arguments[0];
     EngineBuildSteps(host);
+    DefaultTargets(host);
     BuildJobs(host);
     TestSelectors(host);
     TestScheduling(host);
+    Census(host);
     OtherVerbs(host);
     return 0;
 }

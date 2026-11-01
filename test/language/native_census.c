@@ -8,13 +8,12 @@
 #include "runtime/arrays_definition.h"
 #include "runtime/native_definitions.h"
 #include "runtime/text_definition.h"
+#include "scalar_host.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_bootstrap.h"
 #include "toolchain/compiler_host.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/map.h"
@@ -22,11 +21,13 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <yyjson.h>
@@ -183,6 +184,7 @@ typedef struct
 {
     const char *function, *path, *callee;
     char *message, *excerpt;
+    char *native; /* What scalar_llvm said of an accepted function, or NULL. */
     int category;
     bool imports, constants;
     int decl, callee_decl; /* Into decls; -1 when there is no callee. */
@@ -225,12 +227,14 @@ static void forget_rows()
     for (int i = 0; i < acount(rows); i++) {
         free(rows[i].message);
         free(rows[i].excerpt);
+        free(rows[i].native);
     }
     afree(rows);
 }
 static void cleanup()
 {
     unload();
+    scalar_host_close();
     compiler_host_free(compiler);
     compiler = NULL;
     native_capabilities_free(native);
@@ -291,6 +295,21 @@ static int imported_package(const char *path)
     }
     if (starts(path, "core:")) {
         snprintf(dir, sizeof dir, "/sdk/core/%s/", path + 5);
+        return package_of(dir);
+    }
+    /* Another collection's package, `graph:x`, is the folder graph/x, and
+     * `graph:.` its root, as CHIBI_CENSUS_PATHS lays them out. */
+    const char *colon = strchr(path, ':');
+    if (colon && colon != path) {
+        snprintf(
+            dir,
+            sizeof dir,
+            "%.*s/%s%s",
+            (int)(colon - path),
+            path,
+            strcmp(colon + 1, ".") ? colon + 1 : "",
+            strcmp(colon + 1, ".") ? "/" : ""
+        );
         return package_of(dir);
     }
     return -1;
@@ -801,8 +820,45 @@ static void build_free(census_build *build)
  * message and the bytes [start, end) it covers. CollectScalar takes the
  * project, the path, the text, then the target, instruction names, natives,
  * ports and identities, which are parts 0 and 2 to 5 of the target JSON. */
-static bool collect_scalar(const char *text, char **message, int *start, int *end, bool *accepted)
+/* What scalar_llvm says of the producer's `rows_json`: its Validate message,
+ * "emission produced no bytes", or NULL when the rows lower to an object. */
+static bool lower_rows(yyjson_val *rows_json, char **native_message)
 {
+    *native_message = NULL;
+    for (int step = 0; step < 2; step++) {
+        yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+        yyjson_mut_val *arguments = yyjson_mut_arr(doc);
+        yyjson_mut_doc_set_root(doc, arguments);
+        yyjson_mut_arr_append(arguments, yyjson_val_mut_copy(doc, rows_json));
+        yyjson_doc *result;
+        /* The call frees `doc`. */
+        REQUIRE(scalar_host_consumer(step ? "EmitSize" : "ValidateRows", doc, &result));
+        yyjson_val *value = yyjson_arr_get(yyjson_doc_get_root(result), 0);
+        const char *said = step ? "emission produced no bytes" : yyjson_get_str(value);
+        size_t said_length = step ? strlen(said) : yyjson_get_len(value);
+        bool done = step ? yyjson_get_sint(value) == 0 : said_length != 0;
+        if (done) {
+            *native_message = xmalloc(said_length + 1);
+            memcpy(*native_message, said, said_length);
+            (*native_message)[said_length] = 0;
+        }
+        yyjson_doc_free(result);
+        if (done) {
+            return true;
+        }
+    }
+    return true;
+}
+static bool collect_scalar(
+    const char *text,
+    char **message,
+    char **native_message,
+    int *start,
+    int *end,
+    bool *accepted
+)
+{
+    *native_message = NULL;
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *arguments = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, arguments);
@@ -853,6 +909,9 @@ static bool collect_scalar(const char *text, char **message, int *start, int *en
         (*message)[said_length] = 0;
         *start = yyjson_get_int(yyjson_obj_get(verdict, "start"));
         *end = yyjson_get_int(yyjson_obj_get(verdict, "end"));
+    }
+    if (*accepted) {
+        REQUIRE(lower_rows(rows_json, native_message));
     }
     yyjson_doc_free(produced);
     return true;
@@ -998,12 +1057,12 @@ static bool census_function(int function)
     int *functions = NULL;
     apush(functions, function);
     census_build build = { 0 };
-    char *message = NULL;
+    char *message = NULL, *native_message = NULL;
     int start = 0, end = 0;
     bool accepted;
     for (;;) {
         build_source(&build, functions);
-        bool collected = collect_scalar(build.text, &message, &start, &end, &accepted);
+        bool collected = collect_scalar(build.text, &message, &native_message, &start, &end, &accepted);
         if (!collected) {
             fprintf(
                 stderr,
@@ -1040,7 +1099,8 @@ static bool census_function(int function)
             build.text
         );
     }
-    census_row row = { .function = decls[function].name,
+    census_row row = { .native = native_message,
+                       .function = decls[function].name,
                        .path = files[decls[function].source].path,
                        .category = CENSUS_NATIVE,
                        .imports = build.imports,
@@ -1087,11 +1147,9 @@ static bool prepare()
         return true;
     }
     const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_JSON_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK };
+                                             NATIVE_ARRAY_DEFINITION_PACK };
     char error[512];
-    native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+    native = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, sizeof error);
     REQUIRE(native);
     target_json = compiler_target_json(native_capabilities_catalog(native), &target_length);
     REQUIRE(target_json);
@@ -1106,6 +1164,13 @@ static bool prepare()
         fprintf(stderr, "native census bootstrap: %s\n", error);
     }
     REQUIRE(compiler);
+    /* The workers share the consumer, so compile it before they fork. */
+    REQUIRE(scalar_host_open());
+    yyjson_mut_doc *warm = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(warm, yyjson_mut_arr(warm));
+    yyjson_doc *warmed;
+    REQUIRE(scalar_host_consumer("TextType", warm, &warmed));
+    yyjson_doc_free(warmed);
     return true;
 }
 /* Reads the `count` sources of `in`, which outlive the census of them. */
@@ -1196,6 +1261,31 @@ static void write_summary(FILE *out)
             }
         }
     }
+    int lowered = 0;
+    for (int i = 0; i < acount(rows); i++) {
+        lowered += rows[i].category == CENSUS_NATIVE && !rows[i].native;
+    }
+    fprintf(
+        out,
+        "\nOf the %d that pass the producer, %d lower to an object through "
+        "`scalar_llvm`. Each rejection of the rest:\n\n"
+        "| `scalar_llvm` message | Functions |\n| --- | ---: |\n",
+        count_of(CENSUS_NATIVE),
+        lowered
+    );
+    for (int i = 0; i < acount(rows); i++) {
+        bool first = rows[i].native != NULL;
+        for (int j = 0; first && j < i; j++) {
+            first = !rows[j].native || strcmp(rows[j].native, rows[i].native);
+        }
+        int count = 0;
+        for (int j = i; first && j < acount(rows); j++) {
+            count += rows[j].native && !strcmp(rows[j].native, rows[i].native);
+        }
+        if (first) {
+            fprintf(out, "| %s | %d |\n", rows[i].native, count);
+        }
+    }
     fprintf(
         out,
         "\nThe census flattens two features, so neither is ever a first "
@@ -1261,7 +1351,9 @@ static void write_report(FILE *out)
             r->excerpt ? "`" : "",
             r->excerpt ? r->excerpt : "",
             r->excerpt ? "`" : "",
-            r->message ? r->message : ""
+            r->message  ? r->message
+            : r->native ? r->native
+                        : ""
         );
     }
 }
@@ -1470,8 +1562,8 @@ static bool write_rows(const char *path)
     for (int i = 0; ok && i < acount(rows); i++) {
         const census_row *r = &rows[i];
         int32_t head[5] = { r->decl, r->callee_decl, r->category, r->imports, r->constants };
-        ok = fwrite(head, sizeof head, 1, out) == 1 &&
-             write_text(out, r->message) && write_text(out, r->excerpt);
+        ok = fwrite(head, sizeof head, 1, out) == 1 && write_text(out, r->message) &&
+             write_text(out, r->excerpt) && write_text(out, r->native);
     }
     return out && !fclose(out) && ok;
 }
@@ -1496,13 +1588,15 @@ static bool read_rows(const char *path)
                                 .constants = head[4],
                                 .decl = head[0],
                                 .callee_decl = head[1] };
-            ok = read_text(in, &row.message) && read_text(in, &row.excerpt);
+            ok = read_text(in, &row.message) && read_text(in, &row.excerpt) &&
+                 read_text(in, &row.native);
         }
         if (ok) {
             apush(rows, row);
         } else {
             free(row.message);
             free(row.excerpt);
+            free(row.native);
         }
     }
     return !fclose(in) && ok;
@@ -1543,9 +1637,10 @@ static bool census_parallel(const int *functions, int count, int jobs)
     return ok;
 }
 
-TEST_CASE(native_census_covers_every_compiler_function)
+/* The census of every function in `in`. A folder census may pass none. */
+static bool census_all(const source_package_input *in, int count, bool require_native)
 {
-    REQUIRE(prepare() && load(SOURCES, SOURCE_COUNT));
+    REQUIRE(prepare() && load(in, count));
     int *wanted = NULL;
     for (int i = 0; i < acount(decls); i++) {
         if (decls[i].kind == DECL_FUNCTION) {
@@ -1562,7 +1657,7 @@ TEST_CASE(native_census_covers_every_compiler_function)
     }
     afree(wanted);
     REQUIRE(counted);
-    if (acount(rows) != functions || count_of(CENSUS_NATIVE) == 0) {
+    if (acount(rows) != functions || (require_native && count_of(CENSUS_NATIVE) == 0)) {
         fprintf(
             stderr,
             "census: %d rows for %d functions, %d pass\n",
@@ -1571,7 +1666,7 @@ TEST_CASE(native_census_covers_every_compiler_function)
             count_of(CENSUS_NATIVE)
         );
     }
-    REQUIRE(acount(rows) == functions && count_of(CENSUS_NATIVE) > 0);
+    REQUIRE(acount(rows) == functions && (!require_native || count_of(CENSUS_NATIVE) > 0));
     write_summary(stdout);
     if (report_path) {
         FILE *out = fopen(report_path, "w");
@@ -1580,6 +1675,11 @@ TEST_CASE(native_census_covers_every_compiler_function)
         REQUIRE(!fclose(out));
     }
     forget_rows();
+    return true;
+}
+TEST_CASE(native_census_covers_every_compiler_function)
+{
+    REQUIRE(census_all(SOURCES, SOURCE_COUNT, true));
     return true;
 }
 
@@ -1615,9 +1715,101 @@ static bool census_only(const char *names)
     forget_rows();
     return true;
 }
+/* CHIBI_CENSUS_PATHS=PREFIX=DIRECTORY[,PREFIX=DIRECTORY...] takes the census
+ * over the .chibi files below each directory instead of the compiler's: a file's
+ * path is PREFIX and its path below the directory, and a package is its folder.
+ * A directory that is a file adds that file under the path PREFIX. For the
+ * build programs: `tools/toolchain/Driver.chibi=tools/toolchain/Driver.chibi,
+ * /sdk/core/os/Os.chibi=packages/core/os/Os.chibi`. Test folders and files
+ * are left out. */
+static source_package_input *folder_files;
+static int folder_name_order(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+/* Reads one file as the census source with the path `virtual`. */
+static bool folder_file(const char *real, const char *virtual)
+{
+    FILE *in = fopen(real, "rb");
+    REQUIRE(in);
+    char *text = NULL;
+    size_t size = 0, got;
+    do {
+        text = xrealloc(text, size + 65537);
+        got = fread(text + size, 1, 65536, in);
+        size += got;
+    } while (got == 65536);
+    fclose(in);
+    text[size] = 0;
+    apush(folder_files, ((source_package_input){ xstrdup(virtual), text, size }));
+    return true;
+}
+static bool is_chibi_source(const char *name)
+{
+    size_t length = strlen(name);
+    return length > 6 && !strcmp(name + length - 6, ".chibi") &&
+           (length < 12 || strcmp(name + length - 12, "Tests.chibi"));
+}
+static bool folder_add(const char *prefix, const char *directory, const char *relative)
+{
+    char path[PATH_MAX];
+    snprintf(path, sizeof path, "%s/%s", directory, relative);
+    DIR *dir = opendir(path);
+    REQUIRE(dir);
+    char **names = NULL;
+    for (struct dirent *entry; (entry = readdir(dir));) {
+        if (entry->d_name[0] != '.') {
+            apush(names, xstrdup(entry->d_name));
+        }
+    }
+    closedir(dir);
+    qsort(names, (size_t)acount(names), sizeof *names, folder_name_order);
+    bool ok = true;
+    for (int i = 0; ok && i < acount(names); i++) {
+        char child[PATH_MAX], below[PATH_MAX], virtual[PATH_MAX];
+        snprintf(child, sizeof child, "%s/%s", path, names[i]);
+        snprintf(below, sizeof below, "%s%s%s", relative, *relative ? "/" : "", names[i]);
+        struct stat info;
+        ok = !stat(child, &info);
+        if (ok && S_ISDIR(info.st_mode)) {
+            ok = !strcmp(names[i], "tests") || folder_add(prefix, directory, below);
+        } else if (ok && is_chibi_source(names[i])) {
+            snprintf(virtual, sizeof virtual, "%s%s", prefix, below);
+            ok = folder_file(child, virtual);
+        }
+        free(names[i]);
+    }
+    afree(names);
+    return ok;
+}
+static bool census_folders(const char *spec)
+{
+    char *list = xstrdup(spec);
+    for (char *pair = strtok(list, ","); pair; pair = strtok(NULL, ",")) {
+        char *equals = strchr(pair, '=');
+        REQUIRE(equals);
+        *equals = 0;
+        struct stat info;
+        REQUIRE(!stat(equals + 1, &info));
+        if (S_ISREG(info.st_mode)) {
+            /* One file; its name is the end of PREFIX, which names the folder. */
+            REQUIRE(folder_file(equals + 1, pair));
+        } else {
+            REQUIRE(folder_add(pair, equals + 1, ""));
+        }
+    }
+    free(list);
+    REQUIRE(acount(folder_files) > 0);
+    return census_all(folder_files, acount(folder_files), false);
+}
 void test_language_native_census(const char *report)
 {
     report_path = report;
+    if (getenv("CHIBI_CENSUS_PATHS")) {
+        census_folders(getenv("CHIBI_CENSUS_PATHS"));
+        cleanup();
+        return;
+    }
     if (getenv("CHIBI_CENSUS_ONLY")) {
         census_only(getenv("CHIBI_CENSUS_ONLY"));
         cleanup();

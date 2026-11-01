@@ -16,6 +16,16 @@ Editing, rename, completion/hover/highlighting and prototype-source editing for 
 - `src/authoring/source_prototype_edit*`: prototype source edits.
 - `test/authoring/source_edit.c`: their test.
 
+## Asset source compiler services (authoring, compiler)
+
+The asset-source reader and writer, parameter and prototype editing, and the cost-explanation report ran on the packaged compiler's asset entry points, which only archived games and Studio called. The packaged compiler itself stays: `tools/compiler/asset_compiler/Compile.chibi` still holds `CompilePackages` and `RejectPackages`, which `chibi test`, `chibi run` and `chibi-compile` take every package closure from, and `src/authoring/asset_compiler_host.c` still runs it (`asset_compiler_compile_closure[_cached]`). The packaged resource no longer carries a copy of the SDK's core and game sources.
+
+- `tools/compiler/asset_source/`, `tools/compiler/asset_packaging/`, `tools/compiler/cost_explanations/`, `tools/compiler/asset_compiler/Cache.chibi`: the Chibi sides, and the asset entry points of `tools/compiler/asset_compiler/Compile.chibi` (the archived copy is the whole file before they were cut).
+- `src/authoring/asset_compiler_host*`: the whole host before it was reduced to the closure compile (`asset_source_read`, `asset_source_write`, the asset cache and the packaged library snapshot).
+- `test/language/asset_compiler_host.c`, `test/language/portable_asset_source.h.in`, `test/fixtures/portable-byte-asset/`: their tests.
+- `packages/game/`: `game:assets` and the documentation package, which only the asset source used.
+- `docs/cost-explanations.md`.
+
 ## Source formatter and documentation site (authoring)
 
 `chibi fmt` / `chibi-compile --format` and `chibi doc` / `chibi-compile --docs` ran on the C front end. They are archived while the compiler moves to Chibi.
@@ -75,7 +85,7 @@ Game projects are archived, so nothing in the toolchain reads project content an
 
 With games archived, the compiler path includes nothing of the game runtime. These leave with their tests; the standalone native catalog (`host_native_standalone_catalog_new`) is the only catalog the toolchain builds:
 
-- `src/runtime`: audio (+analysis), physics, physics3d, materials (all `material_*`), particles, save, terrain storage, tilemap, ui (+`ui/`), url, visibility, visual parts/transform, transform propagation, input (engine, source, definition), player, engine, world, `camera`, `declared_components`, `math`, `type_definitions`; `behaviors/{entities*,entity_query,scene_flow*,tilemap_definition}`, `fields/*`, `geometry/*` (meshes, distance transform, terrain volume), `scenes/*` (physics, prototypes, scene prepared), `images/*` kept only as far as the shader catalog needs, `shaders/*`, `models/*` and `systems/access` where unreferenced.
+- `src/runtime`: audio (+analysis), physics, physics3d, materials (all `material_*`), particles, save, terrain storage, tilemap, ui (+`ui/`), url, visibility, visual parts/transform, transform propagation, input (engine, source, definition), player, engine, world, `camera`, `declared_components`, `math`, `type_definitions`; `behaviors/{entities*,entity_query,scene_flow*,tilemap_definition}`, `fields/*`, `geometry/*` (meshes, distance transform, terrain volume), `scenes/*` (physics, prototypes, scene prepared), `images/*` kept only as far as the shader catalog needs, `shaders/*`, `models/*` and `systems/access` where unreferenced. `src/support/exponential.h` follows the material, field and debris code that includes it.
 - `host_native_default_catalog_new` and the game packs it assembled (`audio`, `entities`, `tilemap`, `fields`, `state`, `save`, `terrain_storage`, `scene`, `particles`, `ui`, `url`, `physics*`, `materials`, `visibility`, `input`), `authoring/renderer_catalog`, `authoring/image_prepare`.
 - Tests: `test/runtime/{materials,material_*,particles}.c`, `test/tools/{physics,physics3d,native,native_catalog,transforms,tilemap*,terrain_*,material_surface_mesh,audio_analysis,shader_bake,shader_source_debug,scene_prepared}.c`, `test/language/{field_runtime,record_services}.c`, `test/authoring/sky_files.c`, and `test/tools/test_policy.c` (the policy runner's own test; `chibi build test` replaces it). The `materials` test group and its Make/CI entries go too.
 - Lost functionality: simulation, rendering inputs, audio, saves, tilemaps, particles, terrain, game ECS scheduling and the native catalog for games. The VM keeps ECS queries (`src/ecs`), the scheduler and the source publication code it needs.
@@ -172,3 +182,37 @@ Archived because no toolchain program (`chibi`, `chibi-compile`, `chibi-build-ho
 ## The source registry runtime (src/runtime/behaviors)
 
 `source.[ch]`, `source_internal.h`, `source_publication.c` and `source_profile.c` (the registry that attached stage-zero-era behavior modules to entities, ran their systems and published edits for Studio Live), `package_stage`/`package_stage_budget`/`package_load` in `package.[ch]`, and `test/language/headless_consumer.[ch]` with its `test_behavior_consumer` target are archived. Kept: `package.c`'s read side (`package_read_budget`, `package_collection`), `module_set.c` and `event_catalog.c`. Not re-covered: registration ownership, Begin/Tick/Destroy payload dispatch and removal through the registry (the headless consumer's two cases). Edit and Continue is proven through `authoring/program.c` (`execution_program_prepare_replace`), not through the registry.
+
+## Unused Chibi analyzers (tools/compiler, 2026-10-31)
+
+- `tools/compiler/shader_source` (shader lowering for the archived shader graph), `effect_analysis` (behavior effect
+  rows) and `unit_analysis` (unit-of-measure checks over `unit_algebra`). Nothing outside their own folders imported
+  them; they were Chibi ports of analyzers whose C callers were archived with the renderer and the game runtime.
+  `unit_algebra` stays: `signature_reader` uses it.
+
+## ECS forms and their Chibi emitters (2026-10-31)
+
+Behaviors (`behavior`, `on`/`after` handlers, `bind`, `self`), `component` and `system` declarations, `query` expressions and loops, `emit` and `reduce` are no longer part of the language. `tools/compiler/source_parser` rejects each with "<form> are archived: behaviors, components, systems and queries have left the language"; the source parser `@test`s check the rejection. `library` blocks, tasks and functions stay.
+
+- Removed from `tools/compiler/package_compiler`: `Queries.chibi`, `QueryLoops.chibi`, and the behavior, system, query and optional-component branches of `Behavior`, `Body`, `Steps`, `Compile`, `Optional`, `Pointers`, `Math`, `Generics`, `Fallible`, `References`, `Tasks` and `TaskResults`. The prepared writer still emits empty component and query tables; its format is unchanged.
+- Kept and renamed out of `Queries.chibi` because other forms use them: `Ancestor`, `PatternScope`, `BooleanPosition`, `PresenceStep`, `ConstantCell`, `IntrinsicCallStep`.
+- `test/fixtures/{content,declared-components,environment-authoring,feature-coverage,language,material-contracts,studio,studio-workspace,systems,terrain-lab}`: the game-project fixtures (behaviors, systems, components, prototypes, relationships and the libraries beside them). No retained test read them. `test/fixtures/{graph,native-abi,portable-byte-asset}` stay.
+- `docs/code-language.md` sections "Behaviors and state", "Components and systems" and "Input and named entities" moved to `archive/docs/code-language-behaviors.md`.
+- Still in the tree, not yet archived: the prototype, relationship and template declarations and the action, event and macro declarations; the C ECS runtime (step two).
+
+## The C behavior runtime: ECS, queries, systems and the program scheduler (2026-10-31)
+
+The compiler no longer emits behaviors, systems, queries, component access, actions or reductions (see "ECS forms and their Chibi emitters"), so the C code that ran them is archived.
+
+- `src/ecs/`: the world, component storage, relationships, hierarchy, query planner and generated component descriptors (`component_catalog`).
+- `src/runtime/systems/scheduler.[ch]` and `test/tools/scheduler_benchmark.c`.
+- `src/execution/`: `query`, `jit_system`, `jit_component`, `update`, `update_jit`, `parallel` (the parallel-safety proof), `component`, `component_write.h`, `ecs_reader`, `inspection.h`, and the instance machinery of `program*.c` (`program_activation`, `_bindings`, `_commands`, `_inspection`, `_locals`, `_observers`, `_storage`, `_tasks`). The pre-change `program.c`, `program_internal.h`, `program_preflight.c`, `module_effects.c` and the whole of `test/language/execution.c` are kept beside them.
+- Tests: `test/tools/ecs*.c`, `test/language/component_write_ir.c`, `test/prepared_fixture.h`, and the ECS, action, cost-model and effect cases of `test/language/execution.c`.
+- `src/execution/module_effects.c` lost the effect summary (`execution_module_effects`) and the cost model (`execution_module_costs`, `behavior_function_costs`); argument sharing and task dependencies stay.
+- `tools/reflect` no longer emits component descriptors and accessors; `src/runtime/component_catalog.h` became `src/runtime/native_types.h` with only `TYPE_PACK`.
+
+`execution_program` is now a plain registration: a module, its retained states and imports, the services its calls see and one managed heap. `execution_program_call` runs a zero-argument int or void function to completion and refuses a wait or a task. The debugger (`execution_inspector`), profile observer, rows, events, bindings and the owner/instance model are gone with it. Edit and Continue (`prepare_replace`/`commit_replace`) keeps state by stable id.
+
+Kept in the prepared format for now, so the wire is unchanged: the query, description, binding, action and event tables and the component, query and state-selection arrays of a function. A module that fills any of them, or a function that is a handler, system or action, fails to finish with "archived". The opcode names (`WORLD`, `ENTITY`, `COMPONENT*`, `COLUMN*`, `ROW`, `QUERY*`, `STATE_SELECT`, `RETRIGGER`, `INTERN_STRING`) stay in the instruction list so the ABI fingerprint holds; the verifier rejects them. Removing the tables and opcodes is the next format bump.
+
+This change moves the compiler target (the `behavior_function_context` layout, so `arguments_offset`, `results_offset`, `delta_seconds_offset` and `error_status_offset`, and the prepared ABI fingerprint), so the checked-in seed and the pinned first build host and compiler runtime are stale: re-pin them as for any native-catalog change.

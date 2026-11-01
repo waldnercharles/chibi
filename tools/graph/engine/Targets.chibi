@@ -1,5 +1,6 @@
 package engine
 
+import files "graph:files"
 import os "core:os"
 import strings "core:strings"
 
@@ -12,25 +13,24 @@ import strings "core:strings"
 // with no sources only publishes headers, as CMake's INTERFACE libraries do.
 pub Targets :: () -> string[] {
     targets := [
-        "chibi_support", "chibi_types", "chibi_asset_values", "chibi_value_document", "chibi_capabilities", "chibi_ecs",
+        "chibi_support", "chibi_types", "chibi_asset_values", "chibi_value_document", "chibi_capabilities",
         "chibi_events", "chibi_execution_contract", "chibi_tasks", "chibi_input_action",
         "chibi_native_capabilities",
         "chibi_selection_capabilities", "chibi_set_capabilities",
-        "chibi_comparison_capabilities", "chibi_conversion_capabilities", "chibi_host_native_catalog", "chibi_host_clock", "chibi_scheduling", "chibi_fmt", "chibi_json", "chibi_asset_json",
+        "chibi_comparison_capabilities", "chibi_conversion_capabilities", "chibi_host_native_catalog", "chibi_host_clock", "chibi_fmt", "chibi_json", "chibi_asset_json",
         "chibi_text_capabilities", "chibi_array_capabilities",
-        "chibi_builtin_fonts",
         "chibi_math",
         "chibi_execution", "chibi_core_capabilities", "chibi_behavior_runtime", "chibi_native_prepared",
         "chibi_vector_capabilities", "chibi_math_capabilities",
         "chibi_arithmetic_capabilities", "chibi_native_types", "chibi_native_bindings", "chibi_task_pool_runtime", "chibi_host_native_default",
 
         "chibi_source_catalog", "chibi_program", "chibi_build_host", "chibi-build-host", "chibi_compiler_host",
-        "chibi-compiler-host", "chibi_asset_compiler_host", "chibi_application", "chibi", "chibi_compiler_syntax", "chibi_compiler_json"
+        "chibi-compiler-host", "chibi_asset_compiler_host", "chibi_application", "chibi"
     ];
     // The native products and full test drivers share the platform's archive.
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
         // test_language's object library, which it links.
-        targets.extend(["chibi-compile", "chibi_asset_compiler_consumer", "test_language"]);
+        targets.extend(["chibi-compile", "test_language"]);
         // The tooling tests' consumers, several over the archive's headers.
         targets.extend(ToolConsumers());
         targets.append("test_tools");
@@ -47,33 +47,10 @@ Files :: (target: string) -> string[] {
         return ["src/authoring/asset_compiler_host.c", "src/authoring/package_compile.c",
                 "src/support/binary_cache.c", "build/sdk/generated/assets/asset_compiler_packaged.c"];
     }
-    if (target == "chibi_asset_compiler_consumer") {
-        return ["test/language/asset_compiler_host.c"];
-    }
     if (target == "reflect") {
         return [
             "tools/reflect/reflect.c", "tools/reflect/collect.c", "tools/reflect/identity.c", "tools/reflect/emit.c",
             "tools/reflect/emit_function.c", "tools/reflect/emit_component.c", "tools/reflect/emit_catalog.c"
-        ];
-    }
-    if (target == "chibi_builtin_fonts") {
-        return [
-            "build/sdk/generated/fonts/editor_nerd_symbols_font.c",
-            "build/sdk/generated/fonts/editor_ui_font.c",
-            "build/sdk/generated/fonts/editor_ui_bold_font.c",
-            "build/sdk/generated/fonts/editor_ui_medium_font.c",
-            "build/sdk/generated/fonts/editor_ui_semibold_font.c",
-            "build/sdk/generated/fonts/editor_ui_numeric_font.c",
-            "build/sdk/generated/fonts/studio_regular_font.c",
-            "build/sdk/generated/fonts/studio_medium_font.c",
-            "build/sdk/generated/fonts/studio_semibold_font.c",
-            "build/sdk/generated/fonts/studio_bold_font.c",
-            "build/sdk/generated/fonts/studio_numeric_font.c",
-            "build/sdk/generated/fonts/editor_noto_sans_font.c",
-            "build/sdk/generated/fonts/editor_noto_sans_semibold_font.c",
-            "build/sdk/generated/fonts/editor_noto_sans_bold_font.c",
-            "build/sdk/generated/fonts/editor_inconsolata_font.c",
-            "build/sdk/generated/fonts/editor_code_font.c"
         ];
     }
     if (target == "chibi_support") {
@@ -84,7 +61,7 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_types") {
         return [
             "src/types/type.c", "src/types/schema.c", "src/types/catalog.c", "src/types/array.c", "src/types/text.c", "src/types/map.c",
-            "src/types/record.c", "src/types/copy.c", "src/types/trace.c", "src/types/union.c",
+            "src/types/record.c", "src/types/trace.c", "src/types/union.c",
             "src/types/index.c", "src/types/value_format.c", "src/types/value_wire.c"
         ];
     }
@@ -99,11 +76,6 @@ Files :: (target: string) -> string[] {
             "src/capabilities/catalog.c", "src/capabilities/catalog_snapshot.c",
             "src/capabilities/catalog_values.c", "src/capabilities/definition.c",
             "src/capabilities/operation.c"
-        ];
-    }
-    if (target == "chibi_ecs") {
-        return [
-            "src/ecs/ecs.c", "src/ecs/relationship.c", "src/ecs/hierarchy.c", "src/ecs/query.c"
         ];
     }
     if (target == "chibi_events") {
@@ -132,9 +104,6 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_host_clock") {
         return ["src/host/clock.c", "src/host/clock_package.c"];
     }
-    if (target == "chibi_scheduling") {
-        return ["src/runtime/systems/scheduler.c"];
-    }
     if (target == "chibi_fmt") {
         return ["third_party/fmt/fmt.c"];
     }
@@ -153,28 +122,24 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_execution") {
         return [
             "src/execution/artifact.c", "src/execution/backend.c", "src/execution/borrow.c",
-            "src/execution/call.c", "src/execution/component.c",
-            "src/execution/ecs_reader.c", "src/execution/function.c", "src/execution/function_builder.c",
+            "src/execution/call.c", "src/execution/function.c", "src/execution/function_builder.c",
             "src/execution/host.c",
-            "src/execution/integer_report.c", "src/execution/intrinsics.c", "src/execution/query.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
-            "src/execution/jit_component.c", "src/execution/jit_host_call.c", "src/execution/jit_integer.c",
+            "src/execution/integer_report.c", "src/execution/intrinsics.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
+            "src/execution/jit_host_call.c", "src/execution/jit_integer.c",
             "src/execution/jit_memory.c", "src/execution/jit_registers.c", "src/execution/jit_suspend.c",
-            "src/execution/jit_system.c", "src/execution/jit_watch.c", "src/execution/log.c",
+            "src/execution/jit_watch.c", "src/execution/log.c",
             "src/execution/machine.c", "src/execution/module.c", "src/execution/module_effects.c",
             "src/execution/native.c",
-            "src/execution/opt.c", "src/execution/parallel.c", "src/execution/preparation_budget.c",
+            "src/execution/opt.c", "src/execution/preparation_budget.c",
             "src/execution/prepared.c", "src/execution/prepared_function.c", "src/execution/prepared_record.c",
-            "src/execution/program.c", "src/execution/program_inspection.c",
-            "src/execution/program_activation.c", "src/execution/program_observers.c",
-            "src/execution/program_bindings.c", "src/execution/program_commands.c",
-            "src/execution/program_locals.c", "src/execution/program_storage.c",
-            "src/execution/program_migrate.c", "src/execution/program_preflight.c", "src/execution/program_tasks.c",
+            "src/execution/program.c", "src/execution/program_migrate.c",
+            "src/execution/program_preflight.c",
             "src/execution/range_opt.c",
             "src/execution/reads.c", "src/execution/request.c", "src/execution/runner.c",
             "src/execution/scalar_lowering_plan.c", "src/execution/scalarize.c",
             "src/execution/source_debug.c", "src/execution/state.c", "src/execution/storage.c",
-            "src/execution/suspend.c", "src/execution/time.c", "src/execution/vm.c",
-            "src/execution/update_jit.c", "src/execution/wasm_emit.c", "src/execution/wasm_jit.c"
+            "src/execution/suspend.c", "src/execution/task.c", "src/execution/time.c", "src/execution/vm.c",
+            "src/execution/wasm_emit.c", "src/execution/wasm_jit.c"
         ];
     }
     if (target == "chibi_core_capabilities") {
@@ -225,7 +190,6 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_compiler_host") {
         return [
             "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
-            "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
             "src/toolchain/compiler_target.c", "src/toolchain/compiler_bootstrap.c", "src/support/sha256.c",
             "src/support/binary_cache.c"
         ];
@@ -247,12 +211,6 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi") {
         return ["src/host/chibi_main.c"];
-    }
-    if (target == "chibi_compiler_syntax") {
-        return ["src/toolchain/compiler_syntax.c"];
-    }
-    if (target == "chibi_compiler_json") {
-        return ["src/toolchain/compiler_json.c"];
     }
     if (target == "chibi-compile") {
         return [
@@ -286,7 +244,6 @@ Files :: (target: string) -> string[] {
             "test/language/execution.c",
             "test/language/capture.c",
             "test/language/ranges.c",
-            "test/language/component_write_ir.c",
             "test/language/text_format.c", "test/language/host_packages_compiler.c",
             "test/language/program_session.c",
             "test/language/package_compiler_chibi.c",
@@ -298,9 +255,7 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_sdk_contracts") {
         return [
-            "test/tools/types.c", "test/tools/ecs.c", "test/tools/ecs_relationship.c",
-            "test/tools/ecs_hierarchy.c", "test/tools/ecs_world.c", "test/tools/ecs_query.c",
-            "test/tools/ecs_query_benchmark.c"
+            "test/tools/types.c"
         ];
     }
     if (target == "chibi_native_consumer") {
@@ -318,19 +273,14 @@ Files :: (target: string) -> string[] {
             "test/runtime/persistent_store.c", "test/support/reflected_types.c"
         ];
     }
-    if (target == "chibi_source_features_consumer") {
-        return [
-            "test/tools/scheduler_benchmark.c"
-        ];
-    }
     if (target == "test_tools") {
         return [
             "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
-            "test/tools/fixture.c", "test/tools/execution_policy.c",
-            "test/tools/chibi_cli.c", "test/tools/native_build.c", "test/tools/native_workloads.c",
+            "test/tools/fixture.c",
+            "test/tools/chibi_cli.c", "test/tools/native_workloads.c",
             "test/tools/collab.c",
             "test/tools/web_storage.c", "test/tools/browser.c",
-            "test/tools/wasm_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
+            "test/tools/wasm_browser.c", "test/support/arena.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/build_process.c",
             "test/tools/compiler_bootstrap.c",
@@ -370,7 +320,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_types") {
         return [
-            "types/annotate.h", "types/array.h", "types/catalog.h", "types/copy.h", "types/map.h",
+            "types/annotate.h", "types/array.h", "types/catalog.h", "types/map.h",
             "types/record.h", "types/pointer.h", "types/query.h", "types/schema.h", "types/scalar.h", "types/state_machine.h", "types/trace.h", "types/type.h",
             "types/union.h", "types/value.h", "types/text.h", "types/value_format.h", "types/value_wire.h"
         ];
@@ -384,16 +334,12 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_capabilities") {
         return ["capabilities/catalog.h", "capabilities/catalog_snapshot.h", "capabilities/definition.h"];
     }
-    if (target == "chibi_ecs") {
-        return ["ecs/ecs.h", "ecs/execution.h"];
-    }
     if (target == "chibi_events") {
         return ["runtime/events.h"];
     }
     if (target == "chibi_execution_contract") {
         return [
-            "execution/arguments.h", "execution/backend.h", "execution/borrow.h", "execution/component.h",
-            "execution/diagnostic.h", "execution/managed.h", "execution/function.h", "execution/host.h",
+            "execution/arguments.h", "execution/backend.h", "execution/borrow.h", "execution/diagnostic.h", "execution/managed.h", "execution/function.h", "execution/host.h",
             "execution/instruction.h", "execution/log.h", "execution/operation.h", "execution/random.h",
             "execution/request.h", "execution/scalar.h",
             "execution/service.h", "execution/source_debug.h", "execution/state.h", "execution/status.h",
@@ -429,9 +375,6 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_host_clock") {
         return ["host/clock.h", "host/clock_package.h"];
     }
-    if (target == "chibi_scheduling") {
-        return ["runtime/systems/scheduler.h"];
-    }
     if (target == "chibi_json") {
         return ["yyjson.h"];
     }
@@ -449,11 +392,10 @@ pub PublicHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_execution") {
         return [
-            "execution/component_write.h", "execution/delay.h", "execution/ecs_reader.h",
-            "execution/function_builder.h", "execution/inspection.h", "execution/integer_report.h",
+            "execution/delay.h", "execution/function_builder.h", "execution/integer_report.h",
             "execution/intrinsics.h",
             "execution/map_intrinsics.h", "execution/module.h", "execution/module_builder.h",
-            "execution/native.h", "execution/prepared.h", "execution/task.h", "execution/update.h"
+            "execution/native.h", "execution/prepared.h", "execution/task.h"
         ];
     }
     if (target == "chibi_core_capabilities") {
@@ -478,7 +420,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["runtime/arithmetic.h", "runtime/arithmetic_definition.h"];
     }
     if (target == "chibi_native_types") {
-        return ["runtime/component_catalog.h", "runtime/components.h"];
+        return ["runtime/native_types.h", "runtime/components.h"];
     }
     if (target == "chibi_task_pool_runtime") {
         return ["runtime/task_pool.h"];
@@ -500,16 +442,13 @@ pub PublicHeaders :: (target: string) -> string[] {
 // libraries share, which CMake stages for none of them alone.
 pub PrivateHeaders :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_host") {
-        return ["authoring/asset_compiler_host_internal.h", "support/binary_cache.h", "support/sha256.h"];
+        return ["support/binary_cache.h", "support/sha256.h"];
     }
     if (target == "chibi_types") {
-        return ["types/array_internal.h", "types/copy_internal.h"];
+        return ["types/array_internal.h"];
     }
     if (target == "chibi_asset_values") {
         return ["support/float_text.h"];
-    }
-    if (target == "chibi_ecs") {
-        return ["ecs/ecs_internal.h"];
     }
     if (target == "chibi_native_capabilities") {
         return ["capabilities/catalog_index.h"];
@@ -534,20 +473,12 @@ pub PrivateHeaders :: (target: string) -> string[] {
         return [
             "support/binary_cache.h", "support/file_io.h", "support/sha256.h", "toolchain/compiler_artifact.h",
             "toolchain/compiler_bootstrap.h",
-            "toolchain/compiler_host.h", "toolchain/compiler_json.h", "toolchain/compiler_syntax.h",
-            "toolchain/compiler_target.h"
+            "toolchain/compiler_host.h", "toolchain/compiler_target.h"
         ];
     }
     if (target == "chibi_launcher") {
         return ["host/application.h", "host/application_tools.h", "host/application_io.h",
-                "host/process.h",
-                "toolchain/compiler_syntax.h", "toolchain/compiler_json.h"];
-    }
-    if (target == "chibi_compiler-syntax") {
-        return ["toolchain/compiler_syntax.h"];
-    }
-    if (target == "chibi_compiler-json") {
-        return ["toolchain/compiler_json.h"];
+                "host/process.h"];
     }
     if (target == "chibi_compiler-target") {
         return ["toolchain/compiler_artifact.h", "toolchain/compiler_target.h"];
@@ -563,7 +494,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
 // The headers in src/DIRECTORY, as paths below src/.
 HeadersIn :: (directory: string) -> string[] {
     headers: string[] = [];
-    for (name in build.list_directory(Join([os.Root(), "/src/", directory]))) {
+    for (name in files.Names(Join([os.Root(), "/src/", directory]))) {
         if (strings.HasSuffix(name, ".h")) {
             headers.append(Join([directory, "/", name]));
         }
@@ -594,8 +525,7 @@ ToolConsumers :: () -> string[] {
     return [
         "chibi_sdk_contracts",
         "chibi_native_consumer", "chibi_asset_values_consumer",
-        "chibi_source_runtime_consumer",
-        "chibi_source_features_consumer", "chibi_program_consumer"
+        "chibi_source_runtime_consumer", "chibi_program_consumer"
     ];
 }
 
@@ -642,8 +572,7 @@ pub Includes :: (target: string) -> string[] {
         return [
             "build/test/tools/testing/include", "public/program", "public/source_catalog",
             "public/support",
-            "public/capabilities", "public/types", "public/execution", "public/execution_contract",
-            "public/ecs", "public/tasks", "public/native_capabilities", "public/input_action", "public/asset_values",
+            "public/capabilities", "public/types", "public/execution", "public/execution_contract", "public/tasks", "public/native_capabilities", "public/input_action", "public/asset_values",
             "public/behavior_runtime", "public/events",
             "public/core_capabilities"
         ];
@@ -652,32 +581,23 @@ pub Includes :: (target: string) -> string[] {
         return [
             "public/program", "public/source_catalog",
             "public/support", "public/capabilities",
-            "public/types", "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/types", "public/execution", "public/execution_contract", "public/tasks",
             "public/native_capabilities", "public/input_action",
             "public/asset_values",
             "public/behavior_runtime", "public/events", "public/asset_compiler_host"
         ];
     }
-    if (target == "chibi_asset_compiler_consumer") {
-        return ["build/test/language/testing/include", "public/asset_compiler_host", "public/asset_values",
-                "public/support", "public/behavior_runtime", "public/execution", "public/types",
-                "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events"];
-    }
     if (target == "chibi_asset_compiler_host") {
         return [
             "public/asset_compiler_host", "private/asset_compiler_host", "build/sdk/generated/assets",
             "third_party/yyjson", "public/asset_values", "public/support", "public/compiler_host",
-            "public/behavior_runtime", "public/execution", "public/types", "public/execution_contract", "public/capabilities",
-            "public/ecs", "public/tasks", "public/events", "public/asset_json", "public/json",
+            "public/behavior_runtime", "public/execution", "public/types", "public/execution_contract", "public/capabilities", "public/tasks", "public/events", "public/asset_json", "public/json",
             "public/source_catalog", "private/compiler-target", "public/native_prepared",
             "public/native_capabilities"
         ];
     }
     if (target == "reflect") {
         return ["public/capabilities", "public/types", "public/support", "public/execution_contract"];
-    }
-    if (target == "chibi_builtin_fonts") {
-        return ["public/builtin_fonts"];
     }
     if (target == "chibi_support") {
         return ["public/support"];
@@ -693,9 +613,6 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_capabilities") {
         return ["public/capabilities", "public/types", "public/support"];
-    }
-    if (target == "chibi_ecs") {
-        return ["public/ecs", "private/ecs", "public/types", "public/support"];
     }
     if (target == "chibi_events") {
         return ["public/events", "public/types", "public/support"];
@@ -740,12 +657,6 @@ pub Includes :: (target: string) -> string[] {
         return ["public/host_clock", "public/native_capabilities", "public/capabilities", "public/types",
                 "public/support", "public/execution_contract"];
     }
-    if (target == "chibi_scheduling") {
-        return [
-            "public/scheduling", "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
-            "public/tasks"
-        ];
-    }
     if (target == "chibi_fmt") {
         return ["third_party/fmt"];
     }
@@ -770,26 +681,25 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_execution") {
         return [
             "public/execution", "private/execution", "private/types",
-            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks"
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/tasks"
         ];
     }
     if (target == "chibi_core_capabilities") {
         return [
             "public/core_capabilities", "public/native_capabilities", "public/capabilities", "public/types",
-            "public/support", "public/execution_contract", "public/execution", "public/ecs", "public/tasks"
+            "public/support", "public/execution_contract", "public/execution", "public/tasks"
         ];
     }
     if (target == "chibi_behavior_runtime") {
         return [
             "public/behavior_runtime", "public/execution", "public/types", "public/support",
-            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events"
+            "public/execution_contract", "public/capabilities", "public/tasks", "public/events"
         ];
     }
     if (target == "chibi_native_prepared") {
         return [
             "public/native_prepared", "public/native_capabilities", "public/capabilities", "public/types",
-            "public/support", "public/execution_contract", "public/behavior_runtime", "public/execution",
-            "public/ecs", "public/tasks", "public/events", "public/input_action"
+            "public/support", "public/execution_contract", "public/behavior_runtime", "public/execution", "public/tasks", "public/events", "public/input_action"
         ];
     }
     if (target == "chibi_vector_capabilities") {
@@ -801,24 +711,24 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_math_capabilities") {
         return [
             "public/math_capabilities", "public/native_capabilities", "public/capabilities", "public/types",
-            "public/support", "public/execution_contract", "public/execution", "public/ecs", "public/tasks"
+            "public/support", "public/execution_contract", "public/execution", "public/tasks"
         ];
     }
     if (target == "chibi_arithmetic_capabilities") {
         return [
             "public/arithmetic_capabilities", "public/native_capabilities", "public/capabilities",
-            "public/types", "public/support", "public/execution_contract", "public/execution", "public/ecs",
+            "public/types", "public/support", "public/execution_contract", "public/execution",
             "public/tasks"
         ];
     }
     if (target == "chibi_native_types") {
         return [
-            "public/native_types", "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities"
+            "public/native_types", "public/types", "public/support", "public/execution_contract", "public/capabilities"
         ];
     }
     if (target == "chibi_native_bindings") {
         return [
-            "public/native_bindings", "public/native_types", "public/ecs", "public/types", "public/support",
+            "public/native_bindings", "public/native_types", "public/types", "public/support",
             "public/execution_contract", "public/capabilities", "public/native_capabilities"
         ];
     }
@@ -834,7 +744,7 @@ pub Includes :: (target: string) -> string[] {
             "public/capabilities", "public/types", "public/support", "public/execution_contract",
             "public/core_capabilities", "public/array_capabilities", "public/selection_capabilities", "public/set_capabilities",
             "public/comparison_capabilities", "public/conversion_capabilities", "public/text_capabilities",
-            "public/native_bindings", "public/native_types", "public/ecs", "public/execution", "public/tasks", "public/behavior_runtime",
+            "public/native_bindings", "public/native_types", "public/execution", "public/tasks", "public/behavior_runtime",
             "public/events", "public/vector_capabilities", "public/math_capabilities", "public/arithmetic_capabilities",
             "public/asset_values",
             "public/task_pool_runtime",
@@ -846,7 +756,7 @@ pub Includes :: (target: string) -> string[] {
             "public/source_catalog", "private/source_catalog", "third_party/yyjson",
             "public/support",
             "public/capabilities", "public/types", "public/execution",
-            "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
+            "public/execution_contract", "public/tasks", "public/native_capabilities",
             "public/input_action",
             "public/asset_values", "public/behavior_runtime",
             "public/events", "public/json"
@@ -856,7 +766,7 @@ pub Includes :: (target: string) -> string[] {
         return [
             "private/build-host", "private/compiler-host", "third_party/yyjson", "public/compiler_host",
             "public/behavior_runtime", "public/execution", "public/types", "public/support",
-            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
+            "public/execution_contract", "public/capabilities", "public/tasks", "public/events",
             "public/native_prepared", "public/native_capabilities",
             "public/text_capabilities", "public/array_capabilities"
         ];
@@ -864,14 +774,14 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
         return [
             "private/build-host", "public/compiler_host", "public/behavior_runtime", "public/execution",
-            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/tasks",
             "public/events"
         ];
     }
     if (target == "chibi_compiler_host") {
         return [
             "private/compiler-host", "third_party/yyjson", "public/compiler_host", "public/behavior_runtime",
-            "public/execution", "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs",
+            "public/execution", "public/types", "public/support", "public/execution_contract", "public/capabilities",
             "public/tasks", "public/events", "public/native_prepared", "public/native_capabilities", "public/text_capabilities", "public/array_capabilities",
             "public/value_document", "public/asset_values", "public/asset_json", "public/json"
         ];
@@ -879,7 +789,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi-compiler-host") {
         return [
             "private/compiler-host", "third_party/yyjson", "public/compiler_host", "public/behavior_runtime",
-            "public/execution", "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs",
+            "public/execution", "public/types", "public/support", "public/execution_contract", "public/capabilities",
             "public/tasks", "public/events", "public/asset_values", "public/json"
         ];
     }
@@ -887,10 +797,10 @@ pub Includes :: (target: string) -> string[] {
         return [
             "private/launcher", "third_party/yyjson", "public/program", "public/source_catalog",
             "public/support", "public/capabilities", "public/types", "public/execution",
-            "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
+            "public/execution_contract", "public/tasks", "public/native_capabilities",
             "public/input_action",
             "public/asset_values", "public/behavior_runtime",
-            "public/events", "public/native_types", "public/scheduling",
+            "public/events", "public/native_types",
             "public/task_pool_runtime", "public/native_prepared",
             "public/host_native_default", "public/host_native_catalog", "public/core_capabilities",
             "public/text_capabilities", "public/array_capabilities", "public/json"
@@ -900,36 +810,22 @@ pub Includes :: (target: string) -> string[] {
         return [
             "private/launcher", "public/program", "public/source_catalog",
             "public/support",
-            "public/capabilities", "public/types", "public/execution", "public/execution_contract",
-            "public/ecs", "public/tasks", "public/native_capabilities", "public/input_action", "public/asset_values",
+            "public/capabilities", "public/types", "public/execution", "public/execution_contract", "public/tasks", "public/native_capabilities", "public/input_action", "public/asset_values",
             "public/behavior_runtime", "public/events",
-            "public/native_types", "public/scheduling", "public/task_pool_runtime", "public/native_prepared", "public/host_native_default", "public/host_native_catalog", "public/core_capabilities",
+            "public/native_types", "public/task_pool_runtime", "public/native_prepared", "public/host_native_default", "public/host_native_catalog", "public/core_capabilities",
             "public/text_capabilities", "public/array_capabilities", "public/json"
-        ];
-    }
-    if (target == "chibi_compiler_syntax") {
-        return [
-            "private/compiler-syntax", "public/support",
-            "public/native_capabilities", "public/capabilities", "public/types", "public/execution_contract"
-        ];
-    }
-    if (target == "chibi_compiler_json") {
-        return [
-            "private/compiler-json", "public/json", "public/native_capabilities", "public/capabilities",
-            "public/types", "public/support", "public/execution_contract"
         ];
     }
     if (target == "chibi-compile") {
         return [
             "private/compiler-target", "public/source_catalog",
             "public/support", "public/capabilities", "public/types", "public/execution",
-            "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
+            "public/execution_contract", "public/tasks", "public/native_capabilities",
             "public/input_action",
             "public/asset_values", "public/behavior_runtime",
-            "public/events", "public/native_types", "public/scheduling", "public/task_pool_runtime", "public/native_prepared", "public/asset_json",
+            "public/events", "public/native_types", "public/task_pool_runtime", "public/native_prepared", "public/asset_json",
             "public/json", "public/asset_compiler_host", "public/compiler_host",
-            "public/host_native_default", "public/host_native_catalog", "private/compiler-json",
-            "private/compiler-syntax"
+            "public/host_native_default", "public/host_native_catalog"
         ];
     }
     if (target == "test_host") {
@@ -946,27 +842,27 @@ pub Includes :: (target: string) -> string[] {
             "build/test/language/testing/include", "public/host_clock", "public/native_capabilities",
             "public/capabilities", "public/types", "public/support", "public/execution_contract",
             "public/tasks", "public/program", "public/source_catalog",
-            "public/execution", "public/ecs",
+            "public/execution",
             "public/input_action",
             "public/asset_values", "public/behavior_runtime",
             "public/events", "public/task_pool_runtime", "public/conversion_capabilities", "public/json",
             "public/asset_json", "public/native_prepared", "public/compiler_host",
-            "public/asset_compiler_host", "public/math_capabilities", "public/native_types", "public/scheduling", "public/value_document", "public/array_capabilities", "public/text_capabilities",
+            "public/asset_compiler_host", "public/math_capabilities", "public/native_types", "public/value_document", "public/array_capabilities", "public/text_capabilities",
             "public/arithmetic_capabilities", "public/core_capabilities"
         ];
     }
     if (target == "chibi_sdk_contracts") {
         return [
             "build/test/tools/testing/include", "public/execution_contract", "public/types",
-            "public/support", "public/capabilities", "public/ecs", "public/value_document", "public/asset_values",
+            "public/support", "public/capabilities", "public/value_document", "public/asset_values",
             "public/native_types", "public/native_capabilities"
         ];
     }
     if (target == "chibi_native_consumer") {
         return [
             "build/test/tools/testing/include", "public/behavior_runtime", "public/execution", "public/types", "public/support",
-            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
-            "public/native_types", "public/native_capabilities", "public/scheduling",
+            "public/execution_contract", "public/capabilities", "public/tasks", "public/events",
+            "public/native_types", "public/native_capabilities",
             "public/task_pool_runtime",
             "public/asset_values",
             "public/input_action",
@@ -986,36 +882,21 @@ pub Includes :: (target: string) -> string[] {
         return [
             "build/test/tools/testing/include",
             "public/support",
-            "public/capabilities", "public/types", "public/execution", "public/execution_contract",
-            "public/ecs", "public/tasks", "public/native_capabilities", "public/asset_values",
+            "public/capabilities", "public/types", "public/execution", "public/execution_contract", "public/tasks", "public/native_capabilities", "public/asset_values",
             "public/behavior_runtime", "public/events",
             "public/arithmetic_capabilities", "public/host_native_default",
             "public/host_native_catalog", "public/native_types"
-        ];
-    }
-    if (target == "chibi_source_features_consumer") {
-        return [
-            "build/test/tools/testing/include", "public/source_catalog",
-            "public/support",
-            "public/capabilities", "public/types", "public/execution",
-            "public/execution_contract", "public/ecs", "public/tasks", "public/native_capabilities",
-            "public/input_action",
-            "public/asset_values",
-            "public/behavior_runtime", "public/events",
-            "public/native_types", "public/scheduling", "public/task_pool_runtime", "public/native_prepared",
-            "public/json",
-            "public/host_native_default", "public/host_native_catalog", "public/math_capabilities"
         ];
     }
     if (target == "test_tools") {
         return [
             ".", "src", "third_party/yyjson", "third-party/source/cute_framework/tools",
             "public/behavior_runtime", "public/execution", "public/types", "public/support",
-            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
+            "public/execution_contract", "public/capabilities", "public/tasks", "public/events",
             "public/value_document", "public/asset_values", "public/program",
             "public/source_catalog",
             "public/native_capabilities", "public/input_action",
-            "public/core_capabilities", "private/build-host", "public/compiler_host", "public/array_capabilities", "public/native_types", "public/scheduling", "public/task_pool_runtime", "public/native_prepared",
+            "public/core_capabilities", "private/build-host", "public/compiler_host", "public/array_capabilities", "public/native_types", "public/task_pool_runtime", "public/native_prepared",
             "public/comparison_capabilities", "public/conversion_capabilities", "public/host_native_default",
             "public/host_native_catalog", "public/asset_json", "public/json", "public/arithmetic_capabilities", "public/math_capabilities", "public/vector_capabilities"
         ];
@@ -1084,19 +965,6 @@ CommonSystemIncludes :: (target: string) -> string[] {
     if (target == "chibi_source_runtime_consumer") {
         return ["public/math"];
     }
-    if (target == "chibi_source_features_consumer") {
-        return [
-            "public/math",
-            "third-party/include/chibi/vendor/cute/1",
-            "third-party/include/chibi/vendor/cute/2",
-            "third-party/include/chibi/vendor/cute/3",
-            "third-party/include/chibi/vendor/cute/4",
-            "third-party/include/chibi/vendor/cute/5",
-            "third-party/include/chibi/vendor/physfs_static/1",
-            "third-party/include/chibi/vendor/SDL3_Headers/1",
-            "third-party/include/chibi/vendor/SDL3_Headers/2"
-        ];
-    }
     if (target == "test_tools") {
         return [
             "public/math",
@@ -1135,13 +1003,13 @@ pub Defines :: (target: string) -> string[] {
     }
     if (target == "test_language") {
         return [
-            "CHIBI_PACKAGE_TEST_POOL=1", "CHIBI_TEST_ASSET_COMPILER_HOST=1", "CHIBI_TEST_ENKITS=1",
+            "CHIBI_PACKAGE_TEST_POOL=1", "CHIBI_TEST_ENKITS=1",
             "CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS", "ENKITS_TASK_PRIORITIES_NUM=3"
         ];
     }
     if (target == "chibi_sdk_contracts") {
         return [
-            "CHIBI_TEST_SOURCE_FEATURES=1", "CHIBI_TEST_SOURCE_RUNTIME=1"
+            "CHIBI_TEST_SOURCE_RUNTIME=1"
         ];
     }
     if (target == "chibi_native_consumer") {
@@ -1150,24 +1018,13 @@ pub Defines :: (target: string) -> string[] {
             "CHIBI_TEST_PREPARATION=1"
         ];
     }
-    if (target == "chibi_source_features_consumer") {
-        return [
-            "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC", "CHIBI_SOURCE_ROOT=\"{source_root}\"",
-            "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int"
-        ];
-    }
     if (target == "test_tools") {
         return [
             "CF_RUNTIME_SHADER_COMPILATION", "CF_STATIC",
             "CHIBI_POLICY_WORKER_PATH=\"{program:policy_worker}\"",
             "CHIBI_SOURCE_ROOT=\"{source_root}\"", "CHIBI_TEST_ASSET_VALUES=1",
-            "CHIBI_TEST_AUTHORING_DOCUMENTS=1", "CHIBI_TEST_BOX3D=1",
-            "CHIBI_TEST_BUILD_PROCESS=1", "CHIBI_TEST_COMPILER_ARTIFACT=1", "CHIBI_TEST_C_EXPORT=1",
-            "CHIBI_TEST_FMT=1", "CHIBI_TEST_NATIVE_RUNTIME=1",
-            "CHIBI_TEST_PNG_ENCODING=1", "CHIBI_TEST_PREVIEW=1",
-            "CHIBI_TEST_PREVIEW_COMPONENTS=1", "CHIBI_TEST_PROGRAM=1",
-            "CHIBI_TEST_SCENE_SNAPSHOT_READ=1",
-            "CHIBI_TEST_SOURCE_FEATURES=1",
+            "CHIBI_TEST_BOX3D=1", "CHIBI_TEST_BUILD_PROCESS=1", "CHIBI_TEST_COMPILER_ARTIFACT=1",
+            "CHIBI_TEST_FMT=1", "CHIBI_TEST_NATIVE_RUNTIME=1", "CHIBI_TEST_PROGRAM=1",
             "CHIBI_TEST_SOURCE_RUNTIME=1",
             "IMGUI_USE_WCHAR32", "ImDrawIdx=unsigned int", "_DARWIN_C_SOURCE", "_DEFAULT_SOURCE",
             "_POSIX_C_SOURCE=200809L"
@@ -1210,9 +1067,6 @@ pub Options :: (target: string) -> string[] {
     if (target == "test_language") {
         return ["-UNDEBUG"];
     }
-    if (target == "chibi_asset_compiler_consumer") {
-        return ["-UNDEBUG"];
-    }
     if (target == "chibi_sdk_contracts") {
         return ["-UNDEBUG"];
     }
@@ -1223,9 +1077,6 @@ pub Options :: (target: string) -> string[] {
         return ["-UNDEBUG"];
     }
     if (target == "chibi_source_runtime_consumer") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "chibi_source_features_consumer") {
         return ["-UNDEBUG"];
     }
     if (target == "test_tools") {
@@ -1246,10 +1097,8 @@ LanguageTestsOverSource :: () -> string[] {
     return [
         "src/host/process.c", "src/host/native_libraries.c", "src/host/stack_overflow.c",
         "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
-        "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
         "src/toolchain/compiler_target.c",
         "test/language/capture.c",
-        "test/language/component_write_ir.c",
         "test/language/execution.c", "test/language/execution_scope.c",
         "test/language/host_packages_compiler.c",
         "test/language/native_census.c", "test/language/scalar_host.c",
@@ -1269,9 +1118,6 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
     if (target == "test_language" &&
         (file == "test/language/host_packages_compiler.c" || file == "test/language/native_census.c" ||
          file == "test/language/scalar_host.c")) {
-        return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
-    }
-    if (target == "test_tools" && file == "test/tools/native_build.c") {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     return [];
@@ -1322,11 +1168,9 @@ pub Configures :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
             "third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h",
-            "test/prepared_fixture.h=test/prepared_fixture.h",
             "test/parallel.h=test/parallel.h",
             "package_core_source.h=test/language/package_core_source.h.in",
             "host_packages_source.h=test/language/host_packages_source.h.in",
-            "portable_asset_source.h=test/language/portable_asset_source.h.in",
             "package_graph_chibi_source.h=test/language/package_graph_chibi_source.h.in",
             "syntax_chibi_source.h=test/language/syntax_chibi_source.h.in",
             "package_syntax_chibi_source.h=test/language/package_syntax_chibi_source.h.in",
@@ -1342,7 +1186,6 @@ pub Configures :: (target: string) -> string[] {
     if (target == "chibi_tools_testing") {
         return [
             "third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h",
-            "test/prepared_fixture.h=test/prepared_fixture.h",
             "test/tools/fixture.h=test/tools/fixture.h",
             "test/support/reflected_types.h=test/support/reflected_types.h",
             "export_compiler.h=test/tools/export_compiler.h.in"
@@ -1360,7 +1203,6 @@ pub Configures :: (target: string) -> string[] {
 pub Substitutions :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
-            "CHIBI_PORTABLE_ASSET_BYTES=bytes:test/fixtures/portable-byte-asset/Build.chibi",
             "CHIBI_COMPILER_SYNTAX_BYTES=bytes:tools/compiler/compiler_syntax/Syntax.chibi",
             "CHIBI_CORE_STRINGS_BYTES=bytes:packages/core/strings/Strings.chibi",
             "CHIBI_CORE_TIME_BYTES=bytes:packages/core/time/Time.chibi",
@@ -1370,8 +1212,6 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_LLVM_NATIVE_BYTES=bytes:tools/compiler/llvm_native/Emit.chibi",
             "CHIBI_NATIVE_ABI_BYTES=bytes:tools/compiler/native_abi/Abi.chibi",
             "CHIBI_PACKAGE_COMPILER_BEHAVIOR_BYTES=bytes:tools/compiler/package_compiler/Behavior.chibi",
-            "CHIBI_PACKAGE_COMPILER_QUERIES_BYTES=bytes:tools/compiler/package_compiler/Queries.chibi",
-            "CHIBI_PACKAGE_COMPILER_QUERYLOOPS_BYTES=bytes:tools/compiler/package_compiler/QueryLoops.chibi",
             "CHIBI_PACKAGE_COMPILER_BODY_BYTES=bytes:tools/compiler/package_compiler/Body.chibi",
             "CHIBI_PACKAGE_COMPILER_GENERICS_BYTES=bytes:tools/compiler/package_compiler/Generics.chibi",
             "CHIBI_PACKAGE_COMPILER_COMPTIME_BYTES=bytes:tools/compiler/package_compiler/Comptime.chibi",
@@ -1428,34 +1268,6 @@ pub Generator :: (target: string) -> string {
     return "";
 }
 
-// Files a target embeds as byte arrays: `OUTPUT=SYMBOL=INPUT` writes the
-// generated source OUTPUT, a `build/` path as Files names it, defining SYMBOL
-// with the bytes of INPUT below the source root, as cmake/embed_binary.cmake
-// does.
-pub Embeds :: (target: string) -> string[] {
-    if (target == "chibi_builtin_fonts") {
-        return [
-            "build/sdk/generated/fonts/editor_nerd_symbols_font.c=editor_nerd_symbols_font=third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf",
-            "build/sdk/generated/fonts/editor_ui_font.c=editor_ui_font=third_party/fonts/inter/Inter.ttf",
-            "build/sdk/generated/fonts/editor_ui_bold_font.c=editor_ui_bold_font=third_party/fonts/inter/Inter-Bold.ttf",
-            "build/sdk/generated/fonts/editor_ui_medium_font.c=editor_ui_medium_font=third_party/fonts/inter/Inter-Medium.ttf",
-            "build/sdk/generated/fonts/editor_ui_semibold_font.c=editor_ui_semibold_font=third_party/fonts/inter/Inter-SemiBold.ttf",
-            "build/sdk/generated/fonts/editor_ui_numeric_font.c=editor_ui_numeric_font=third_party/fonts/inter/Inter-Numeric.ttf",
-            "build/sdk/generated/fonts/studio_regular_font.c=studio_regular_font=third_party/fonts/geist/Geist-Regular.ttf",
-            "build/sdk/generated/fonts/studio_medium_font.c=studio_medium_font=third_party/fonts/geist/Geist-Medium.ttf",
-            "build/sdk/generated/fonts/studio_semibold_font.c=studio_semibold_font=third_party/fonts/geist/Geist-SemiBold.ttf",
-            "build/sdk/generated/fonts/studio_bold_font.c=studio_bold_font=third_party/fonts/geist/Geist-Bold.ttf",
-            "build/sdk/generated/fonts/studio_numeric_font.c=studio_numeric_font=third_party/fonts/geist/Geist-Numeric.ttf",
-            "build/sdk/generated/fonts/editor_noto_sans_font.c=editor_noto_sans_font=third_party/fonts/noto-sans/NotoSans-Regular.ttf",
-            "build/sdk/generated/fonts/editor_noto_sans_semibold_font.c=editor_noto_sans_semibold_font=third_party/fonts/noto-sans/NotoSans-SemiBold.ttf",
-            "build/sdk/generated/fonts/editor_noto_sans_bold_font.c=editor_noto_sans_bold_font=third_party/fonts/noto-sans/NotoSans-Bold.ttf",
-            "build/sdk/generated/fonts/editor_inconsolata_font.c=editor_inconsolata_font=third_party/fonts/inconsolata/Inconsolata-Regular.ttf",
-            "build/sdk/generated/fonts/editor_code_font.c=editor_code_font=third_party/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"
-        ];
-    }
-    return [];
-}
-
 // The directory below the build directory CMake writes an executable to, as
 // the CMake subdirectory that declares it or its RUNTIME_OUTPUT_DIRECTORY
 // places it; empty for the build directory itself.
@@ -1476,7 +1288,8 @@ pub ProgramDirectory :: (target: string) -> string {
 // Files a target installs into the build tree, `DESTINATION=SOURCE`, as roo
 // CMakeLists.txt configures them: a directory SOURCE copies every file below
 // it. The launcher's players, `chibi version`, `chibi test` and `chibi doc`
-// read ../share/chibi as installed ones do.
+// read ../share/chibi as installed ones do, and `vendor:freetype` reads
+// ../lib/chibi-vendor, where an SDK keeps its prebuilt archives.
 // build/sdk/chibi_engine_metadata.json is the build identity (Identity).
 pub Resources :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
@@ -1490,7 +1303,9 @@ pub Resources :: (target: string) -> string[] {
         return [
             "build/share/chibi/engine.json=build/sdk/chibi_engine_metadata.json",
             "build/share/chibi/apps/chibi=apps/chibi",
-            "build/share/chibi/core=packages/core"
+            "build/share/chibi/apps/host=apps/host",
+            "build/share/chibi/core=packages/core",
+            "build/lib/chibi-vendor/libchibi_vendor_freetype.a=third-party/lib/chibi-vendor/libchibi_vendor_freetype.a"
         ];
     }
     return [];
@@ -1553,7 +1368,7 @@ pub LinksCxx :: (target: string) -> bool {
 // The libraries whose objects executables link directly, as CMake's OBJECT
 // libraries, rather than archive.
 pub ObjectLibrary :: (target: string) -> bool {
-    return target == "chibi_application" || target == "chibi_build_host" || target == "chibi_asset_compiler_consumer" ||
+    return target == "chibi_application" || target == "chibi_build_host" ||
            Listed(ToolConsumers(), target);
 }
 
@@ -1566,14 +1381,11 @@ pub LinkedObjects :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
         return ["chibi_build_host"];
     }
-    if (target == "test_language") {
-        return ["chibi_asset_compiler_consumer"];
-    }
     if (target == "test_tools") {
         return [
             "chibi_sdk_contracts", "chibi_program_consumer", "chibi_native_consumer",
             "chibi_asset_values_consumer", "chibi_source_runtime_consumer",
-            "chibi_source_features_consumer", "chibi_build_host"
+            "chibi_build_host"
         ];
     }
     return [];
@@ -1610,7 +1422,7 @@ pub Links :: (target: string) -> string[] {
         return [
             "chibi_compiler_host",
             "chibi_support", "chibi_value_document", "chibi_asset_json", "chibi_asset_values", "chibi_json", "chibi_native_prepared",
-            "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
+            "chibi_behavior_runtime", "chibi_execution",
             "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events",
             "chibi_text_capabilities", "chibi_fmt", "chibi_array_capabilities", "chibi_native_capabilities",
             "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
@@ -1620,7 +1432,7 @@ pub Links :: (target: string) -> string[] {
         return [
             "chibi_compiler_host",
             "chibi_asset_values", "chibi_json",
-            "chibi_native_prepared", "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
+            "chibi_native_prepared", "chibi_behavior_runtime", "chibi_execution",
             "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events",
             "chibi_text_capabilities", "chibi_fmt", "chibi_array_capabilities", "chibi_native_capabilities",
             "chibi_capabilities", "chibi_value_document", "chibi_types", "chibi_asset_json",
@@ -1631,18 +1443,15 @@ pub Links :: (target: string) -> string[] {
         return [
             "chibi_program", "chibi_source_catalog",
             "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
-            "chibi_scheduling",
-            "chibi_builtin_fonts",
             "chibi_host_native_default", "chibi_host_native_catalog",
             "chibi_selection_capabilities",
             "chibi_set_capabilities", "chibi_comparison_capabilities", "chibi_conversion_capabilities",
             "chibi_native_bindings", "chibi_vector_capabilities",
-            "chibi_math_capabilities", "chibi_arithmetic_capabilities", "chibi_value_document", "chibi_asset_values", "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a", "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_behavior_runtime", "chibi_events", "chibi_native_types",
-            "chibi_core_capabilities", "chibi_execution", "chibi_ecs",
+            "chibi_math_capabilities", "chibi_arithmetic_capabilities", "chibi_value_document", "chibi_asset_values", "chibi_behavior_runtime", "chibi_events", "chibi_native_types",
+            "chibi_core_capabilities", "chibi_execution",
             "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_text_capabilities", "chibi_fmt",
             "chibi_array_capabilities", "chibi_task_pool_runtime",
-            "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++", "chibi_compiler_syntax",
-            "chibi_compiler_json", "chibi_json", "chibi_native_capabilities", "chibi_capabilities",
+            "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++", "chibi_json", "chibi_native_capabilities", "chibi_capabilities",
             "chibi_types", "chibi_support", "-lm"
         ];
     }
@@ -1663,18 +1472,16 @@ pub Links :: (target: string) -> string[] {
         return [
             "chibi_behavior_runtime",
             "chibi_asset_json", "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
-            "chibi_scheduling",
             "chibi_host_native_default",
-            "chibi_host_native_catalog", "chibi_native_bindings", "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a", "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a",
-            "chibi_builtin_fonts",
-            "chibi_compiler_syntax", "chibi_compiler_json", "chibi_task_pool_runtime",
+            "chibi_host_native_catalog", "chibi_native_bindings",
+            "chibi_task_pool_runtime",
             "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
             "chibi_source_catalog", "chibi_text_capabilities", "chibi_fmt",
             "chibi_array_capabilities", "chibi_core_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities", "chibi_comparison_capabilities",
             "chibi_conversion_capabilities", "chibi_vector_capabilities", "chibi_math_capabilities",
             "chibi_arithmetic_capabilities", "chibi_value_document", "chibi_json", "chibi_behavior_runtime", "chibi_events",
             "chibi_native_capabilities", "chibi_asset_values", "chibi_execution",
-            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_native_types", "chibi_ecs",
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_native_types",
             "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
         ];
     }
@@ -1688,10 +1495,8 @@ pub Links :: (target: string) -> string[] {
             "chibi_behavior_runtime", "chibi_text_capabilities",
             "chibi_arithmetic_capabilities", "chibi_core_capabilities",
             "chibi_asset_compiler_host",
-            "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
-            "chibi_scheduling", "chibi_host_native_default", "chibi_host_native_catalog", "chibi_native_bindings", "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a",
+            "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared", "chibi_host_native_default", "chibi_host_native_catalog", "chibi_native_bindings",
             "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
-            "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a",
 
 
             "chibi_conversion_capabilities", "chibi_math_capabilities",
@@ -1699,9 +1504,9 @@ pub Links :: (target: string) -> string[] {
             "chibi_arithmetic_capabilities", "chibi_core_capabilities",
             "chibi_asset_values", "chibi_comparison_capabilities",
             "chibi_vector_capabilities", "chibi_selection_capabilities", "chibi_set_capabilities",
-            "chibi_native_types", "chibi_builtin_fonts",
-            "chibi_compiler_syntax", "chibi_compiler_json", "chibi_json",
-            "chibi_native_capabilities", "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
+            "chibi_native_types",
+            "chibi_json",
+            "chibi_native_capabilities", "chibi_behavior_runtime", "chibi_execution",
             "chibi_capabilities", "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events",
             "chibi_types", "chibi_support", "-lm"
         ];
@@ -1717,32 +1522,19 @@ pub Links :: (target: string) -> string[] {
             "chibi_arithmetic_capabilities",
             "chibi_task_pool_runtime", "chibi_math_capabilities", "chibi_vector_capabilities",
             "chibi_native_types",
-            "third-party/lib/chibi-vendor/libchibi_vendor_cute.a", "-framework", "IOKit", "-framework",
-            "Security", "-framework", "QuartzCore", "-framework", "MetalKit", "-framework", "Network",
-            "-framework", "VideoToolbox", "-framework", "CoreMedia", "-framework", "CoreVideo", "-framework",
-            "CoreFoundation", "third-party/lib/chibi-vendor/libchibi_vendor_physfs_static.a", "-framework",
-            "IOKit", "-framework", "Foundation", "third-party/lib/chibi-vendor/libchibi_vendor_SDL3_static.a",
-            "-framework", "CoreMedia", "-framework", "CoreVideo", "-framework", "Cocoa", "-Xlinker",
-            "-weak_framework", "-Xlinker", "UniformTypeIdentifiers", "-framework", "IOKit", "-framework",
-            "ForceFeedback", "-framework", "Carbon", "-framework", "CoreAudio", "-framework", "AudioToolbox",
-            "-framework", "AVFoundation", "-framework", "Foundation", "-framework", "GameController",
-            "-framework", "Metal", "-framework", "QuartzCore", "-Xlinker", "-weak_framework", "-Xlinker",
-            "CoreHaptics", "third-party/lib/chibi-vendor/libchibi_vendor_rmlui_core.a",
-            "third-party/lib/chibi-vendor/libchibi_vendor_freetype.a", "-framework", "Metal", "-framework",
-            "Foundation", "chibi_source_catalog",
+            "chibi_source_catalog",
             "chibi_host_native_default", "chibi_host_native_catalog",
-            "chibi_native_bindings", "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a", "chibi_scheduling",
+            "chibi_native_bindings", "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a",
             "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
-            "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_native_prepared",
-            "chibi_asset_json", "chibi_builtin_fonts",
-            "chibi_compiler_syntax", "chibi_compiler_json",
+            "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_native_prepared",
+            "chibi_asset_json",
             "chibi_behavior_runtime",
             "chibi_json", "chibi_native_types", "chibi_value_document", "chibi_core_capabilities", "chibi_array_capabilities",
             "chibi_comparison_capabilities", "chibi_conversion_capabilities",
             "chibi_arithmetic_capabilities", "chibi_math_capabilities",
             "chibi_vector_capabilities", "chibi_events", "chibi_asset_values", "chibi_text_capabilities",
             "chibi_fmt", "chibi_selection_capabilities", "chibi_set_capabilities",
-            "chibi_execution", "chibi_ecs",
+            "chibi_execution",
             "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_native_capabilities",
             "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
         ];

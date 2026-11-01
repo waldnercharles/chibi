@@ -1,9 +1,0 @@
-package facts
-F :: () -> i8 { return (1 << 200) >> 199; }
-
-@test
-ContextualCounts :: () {
-    actual: i8 = F();
-    expected: i8 = 2;
-    assert(actual == expected);
-}

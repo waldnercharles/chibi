@@ -1,7 +1,6 @@
 #include "package_compiler_chibi.h"
 
 #include "backend.h"
-#include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
 #include "execution/module.h"
@@ -27,12 +26,9 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_host.h"
-#include "toolchain/compiler_json.h"
-#include "toolchain/compiler_syntax.h"
 #include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/catalog.h"
-#include "types/copy.h"
 #include "types/map.h"
 #include "types/record.h"
 #include "types/text.h"
@@ -1715,7 +1711,7 @@ static bool asserted_rows(pin_value *rows)
                    strstr(
                        ir,
                        "p7:\n  %fail7.at = getelementptr inbounds { ptr, ptr, "
-                       "ptr, ptr }, ptr %ctx, i32 0, i32 1\n"
+                       "ptr, ptr, ptr }, ptr %ctx, i32 0, i32 1\n"
                        "  store ptr @chibi_scalar.failure.0.7, ptr "
                        "%fail7.at\n  br label %failed\n"
                    ) &&
@@ -2148,6 +2144,99 @@ TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
     REQUIRE(spans);
     return true;
 }
+/* A package set may import a collection's packages, such as core:strings,
+ * whose files lie among the inputs under the collection's path. */
+TEST_CASE(package_compiler_scalar_rows_span_collection_packages)
+{
+    REQUIRE(prepare());
+    static const source_package_input packages[] = {
+        { .path = "Main.chibi",
+          .text = "package main\nimport strings \"core:strings\"\n"
+                  "Main :: () -> int { return strings.ByteLength(\"hello\"); "
+                  "}\n" },
+        { .path = "/sdk/core/strings/Strings.chibi",
+          .text = "package strings\npub ByteLength :: (value: string) -> int "
+                  "{ return text_byte_length(value); }\n" },
+    };
+    pin_value produced;
+    REQUIRE(
+        scalar_host_collect_collection("core", "/sdk/core", packages, 2, &detached, &produced)
+    );
+    const pin_array *rows = produced.ptr;
+    REQUIRE(produced.container == PIN_CONTAINER_ARRAY && rows->count > 1);
+    if (rows->count == 2) {
+        fprintf(
+            stderr,
+            "scalar collection: %s\n",
+            pin_text(scalar_field(guard_row(&produced, 1), "text")).bytes
+        );
+    }
+    REQUIRE(rows->count > 2);
+    REQUIRE(validated(&produced, ""));
+    char *ir;
+    REQUIRE(target_ir("LinuxX64", &produced, &ir) && ir);
+    bool spans = strstr(ir, "define internal i32 @chibi_scalar.1(") != NULL;
+    free(ir);
+    REQUIRE(spans);
+    return true;
+}
+/* A rejection inside an imported package lies in the joined source its rows
+ * hold, at the declaration that caused it. */
+TEST_CASE(package_compiler_scalar_rejections_lie_in_package_sets)
+{
+    REQUIRE(prepare());
+    static const source_package_input packages[] = {
+        { .path = "Main.chibi",
+          .text = "package main\nimport lib \"project:lib\"\n"
+                  "Main :: () -> int { return lib.Add(1, 2); }\n" },
+        { .path = "lib/Lib.chibi",
+          .text = "package lib\npub Add :: (a: int, b: int) -> int { return a "
+                  "+ b; }\n"
+                  "pub Table :: struct { m: [int: int]; }\n" },
+    };
+    pin_value produced;
+    REQUIRE(scalar_host_collect_packages(packages, 2, &detached, &produced));
+    const pin_array *rows = produced.ptr;
+    REQUIRE(rows->count == 2);
+    REQUIRE(scalar_field(&rows->items[1], "kind").i == SCALAR_REJECTION_ROW);
+    const char *joined = pin_text(scalar_field(&rows->items[0], "text")).bytes;
+    int start = (int)scalar_field(&rows->items[1], "start").i;
+    int end = (int)scalar_field(&rows->items[1], "end").i;
+    REQUIRE(start > (int)strlen(packages[0].text) && end <= (int)strlen(joined));
+    REQUIRE(!strncmp(joined + start, "m: [int: int];", (size_t)(end - start)));
+    return true;
+}
+/* A scoped pointer passed on to a function of another file of its package is
+ * decided whatever order the files were read in: here lib/Z.chibi, whose
+ * declarations come first, passes its cursor to lib/A.chibi, which sorts first
+ * by path, so the declarations in file order do not ascend. */
+TEST_CASE(package_compiler_scalar_scopes_pointers_across_unordered_files)
+{
+    REQUIRE(prepare());
+    static const source_package_input packages[] = {
+        { .path = "Main.chibi",
+          .text = "package main\nimport lib \"project:lib\"\n"
+                  "Main :: () -> int { x: lib.Cursor = {pos: 1}; return "
+                  "lib.Relay(&x); }\n" },
+        { .path = "lib/Z.chibi",
+          .text = "package lib\npub Cursor :: struct { pos: int; }\n"
+                  "pub Relay :: (c: ^Cursor) -> int { return Step(c); }\n" },
+        { .path = "lib/A.chibi", .text = "package lib\nStep :: (c: ^Cursor) -> int { c.pos += 1; return c.pos; }\n" },
+    };
+    pin_value produced;
+    REQUIRE(scalar_host_collect_packages(packages, 3, &detached, &produced));
+    const pin_array *rows = produced.ptr;
+    if (rows->count == 2) {
+        fprintf(
+            stderr,
+            "scalar pointers: %s\n",
+            pin_text(scalar_field(guard_row(&produced, 1), "text")).bytes
+        );
+    }
+    REQUIRE(rows->count > 2);
+    REQUIRE(validated(&produced, ""));
+    return true;
+}
 /* llvm_native's call and float contracts: definitions, argument order,
  * floating encodings and conversions, and the malformed or cyclic plans it
  * rejects before writing IR. */
@@ -2532,7 +2621,7 @@ static bool native_module_ir(const char *target, const native_module *m, char **
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 81
+    SCALAR_ACCEPTED_CASES = 97
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -3210,6 +3299,23 @@ typedef int32_t (*scalar_entry)();
 typedef int32_t (*scalar_runtime_entry)(execution_native_context *);
 typedef int64_t (*scalar_adapter)(const int64_t *);
 
+/* The allocations a native entry makes and gives back, which stand in for the
+ * call's heap: real calloc and free, so an ASan build reports a double free or
+ * a use after free in the drops (D10), and the counts show a leak. */
+static size_t entry_allocations, entry_releases;
+static void *counted_allocate(execution_native_context *, size_t size)
+{
+    entry_allocations++;
+    void *memory = calloc(1, size ? size : 1);
+    assert(memory);
+    return memory;
+}
+static void counted_release(execution_native_context *, void *allocation)
+{
+    entry_releases++;
+    free(allocation);
+}
+
 static int library_child(const char *library, int count, char **specs)
 {
     if (count == 2 && !strcmp(specs[0], "continue")) {
@@ -3249,8 +3355,16 @@ static int library_child(const char *library, int count, char **specs)
                 &frame,
                 (execution_native_runtime){ NATIVE_FORMAT_TEXT_HOST.value }
             );
+            frame.context.allocate = counted_allocate;
+            frame.context.release = counted_release;
+            entry_allocations = entry_releases = 0;
             value = ((scalar_runtime_entry)function)(&frame.context);
             execution_native_frame_free(&frame);
+            /* A case about drops lets nothing go. */
+            if (strstr(library, "_drops") && entry_allocations != entry_releases) {
+                fprintf(stderr, "native scalar leak: %zu allocations, %zu releases\n", entry_allocations, entry_releases);
+                return 1;
+            }
         } else {
             value = adapter ? ((scalar_adapter)function)(arguments)
                             : ((scalar_entry)function)();
@@ -4919,6 +5033,9 @@ void test_language_package_compiler_chibi_scalar()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_scalar_rows_span_imported_packages);
+    RUN_TEST_CASE(package_compiler_scalar_rows_span_collection_packages);
+    RUN_TEST_CASE(package_compiler_scalar_scopes_pointers_across_unordered_files);
+    RUN_TEST_CASE(package_compiler_scalar_rejections_lie_in_package_sets);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
     RUN_TEST_CASE(package_compiler_scalar_retains_library_states);

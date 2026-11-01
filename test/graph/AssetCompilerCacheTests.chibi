@@ -1,6 +1,6 @@
 package asset_compiler_cache_tests
 
-import cache "asset_generator:."
+import cache "graph:asset_compiler"
 import os "core:os"
 import strings "core:strings"
 

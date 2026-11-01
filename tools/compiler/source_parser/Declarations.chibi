@@ -152,16 +152,12 @@ ParseDeclaration :: (c: ^Cursor, n: ^(Node[])) -> int {
         return ParseComputation(c, n, syntax.EventDeclaration);
     }
     if (token == tk.Bind) {
-        binding := New(n, syntax.BindDeclaration);
-        Take(c, n, binding, syntax.FieldNone);
-        Add(n, binding, ParseBinary(c, n, OrPower), syntax.FieldTarget);
-        Expect(c, n, binding, tk.Eq, syntax.FieldNone);
-        Add(n, binding, ParseBinary(c, n, OrPower), syntax.FieldValue);
-        End(c, n, binding);
-        return binding;
+        Archived(c, n, "bind declarations");
+        return New(n, syntax.Error);
     }
     if (token == tk.On || token == tk.After) {
-        return ParseHandler(c, n);
+        Archived(c, n, "event handlers");
+        return New(n, syntax.Error);
     }
     if (token == tk.Macro) {
         definition := New(n, syntax.MacroDeclaration);
@@ -235,44 +231,7 @@ ParseComputation :: (c: ^Cursor, n: ^(Node[]), kind: int) -> int {
     return declaration;
 }
 
-// `on Event :: (payload) { ... }` and `after Action (results) { ... }`.
-ParseHandler :: (c: ^Cursor, n: ^(Node[])) -> int {
-    handler := New(n, syntax.Handler);
-    entering := c.token == tk.On;
-    Take(c, n, handler, syntax.FieldKind);
-    Add(n, handler, ParseHandlerName(c, n), syntax.FieldName);
-    if (entering) {
-        Expect(c, n, handler, tk.ColonColon, syntax.FieldBinding);
-        Add(n, handler, ParseParameters(c, n), syntax.FieldParameters);
-    } else if (c.token == tk.OpenParen) {
-        Add(n, handler, ParseParameters(c, n), syntax.FieldParameters);
-    }
-    Add(n, handler, ParseBlock(c, n), syntax.FieldBody);
-    return handler;
-}
 
-ParseHandlerName :: (c: ^Cursor, n: ^(Node[])) -> int {
-    token := c.token;
-    first: int = -1;
-    if (token == tk.Entry) {
-        first = Take(c, n, -1, syntax.FieldNone);
-        n^[first].kind = syntax.BuiltinReference;
-        n^[first].named = true;
-    } else if (token == tk.State || token == tk.Event) {
-        first = New(n, syntax.BuiltinReference);
-        Take(c, n, first, syntax.FieldNone);
-    } else {
-        first = TakeNameAlone(c, n);
-    }
-    while (!c.failed && c.token == tk.Period) {
-        member := New(n, syntax.MemberExpression);
-        Add(n, member, first, syntax.FieldObject);
-        Take(c, n, member, syntax.FieldNone);
-        TakeMember(c, n, member, syntax.FieldMember);
-        first = member;
-    }
-    return first;
-}
 
 // A declaration that starts with a name, `offset` tokens in after a `pub`.
 ParseNamed :: (c: ^Cursor, n: ^(Node[]), offset: int, public: bool) -> int {
@@ -301,16 +260,19 @@ ParseNamed :: (c: ^Cursor, n: ^(Node[]), offset: int, public: bool) -> int {
 // `Name :: ...` by what follows the double colon.
 ParseNamedValue :: (c: ^Cursor, n: ^(Node[]), offset: int, public: bool, third: int) -> int {
     if (third == tk.Behavior && !public) {
-        return ParseBehaviorLike(c, n, syntax.Behavior, false);
+        Archived(c, n, "behavior declarations");
+        return New(n, syntax.Error);
     }
     if (third == tk.Library && !public) {
         return ParseBehaviorLike(c, n, syntax.Library, true);
     }
     if (third == tk.System && !public) {
-        return ParseSystem(c, n);
+        Archived(c, n, "system declarations");
+        return New(n, syntax.Error);
     }
     if (third == tk.Component && !public) {
-        return ParseComponent(c, n);
+        Archived(c, n, "component declarations");
+        return New(n, syntax.Error);
     }
     if (third == tk.Prototype && !public) {
         return ParsePrototype(c, n);
@@ -407,7 +369,8 @@ ParseResults :: (c: ^Cursor, n: ^(Node[]), owner: int) {
 
 // `foreign import alias "path"` names a prebuilt library, and `foreign alias {
 // Name :: (parameters) -> result ... }` declares the C functions it provides,
-// each by signature alone, as Odin's foreign blocks do.
+// each by signature alone, as Odin's foreign blocks do. A block with no library,
+// `foreign { ... }`, declares C symbols the program's own objects define.
 ParseForeign :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (Peek(c, n, 1) == tk.Import) {
         imported := New(n, syntax.ForeignImportDeclaration);
@@ -424,7 +387,9 @@ ParseForeign :: (c: ^Cursor, n: ^(Node[])) -> int {
     }
     block := New(n, syntax.ForeignBlock);
     Take(c, n, block, syntax.FieldNone);
-    TakeName(c, n, block, syntax.FieldLibrary);
+    if (c.token != tk.OpenBrace) {
+        TakeName(c, n, block, syntax.FieldLibrary);
+    }
     Expect(c, n, block, tk.OpenBrace, syntax.FieldNone);
     while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
         Add(n, block, ParseForeignFunction(c, n), syntax.FieldNone);
@@ -563,103 +528,9 @@ ParseDeclarationBody :: (c: ^Cursor, n: ^(Node[]), shared: bool) -> int {
     return body;
 }
 
-// `Name :: system (query) { ... }`.
-ParseSystem :: (c: ^Cursor, n: ^(Node[])) -> int {
-    runner := New(n, syntax.System);
-    TakeName(c, n, runner, syntax.FieldName);
-    Expect(c, n, runner, tk.ColonColon, syntax.FieldNone);
-    Take(c, n, runner, syntax.FieldNone);
-    Add(n, runner, ParseQueryList(c, n), syntax.FieldParameters);
-    Add(n, runner, ParseCallableBody(c, n, syntax.SystemBody), syntax.FieldBody);
-    return runner;
-}
 
-// `( parameter | name in source | name := value | if condition, ... )`.
-ParseQueryList :: (c: ^Cursor, n: ^(Node[])) -> int {
-    list := New(n, syntax.QueryList);
-    Expect(c, n, list, tk.OpenParen, syntax.FieldNone);
-    while (!c.failed && c.token != tk.CloseParen && c.token != tk.EOF) {
-        Add(n, list, ParseQueryItem(c, n), syntax.FieldNone);
-        if (!Accept(c, n, list, tk.Comma, syntax.FieldNone)) {
-            break;
-        }
-    }
-    Expect(c, n, list, tk.CloseParen, syntax.FieldNone);
-    return list;
-}
 
-ParseQueryItem :: (c: ^Cursor, n: ^(Node[])) -> int {
-    if (c.token == tk.If) {
-        guard := New(n, syntax.QueryGuard);
-        Take(c, n, guard, syntax.FieldNone);
-        Add(n, guard, ParseBinary(c, n, OrPower), syntax.FieldCondition);
-        return guard;
-    }
-    next := Peek(c, n, 1);
-    if (next == tk.ColonEq) {
-        binding := New(n, syntax.QueryBinding);
-        TakeName(c, n, binding, syntax.FieldName);
-        Take(c, n, binding, syntax.FieldNone);
-        Add(n, binding, ParseBinary(c, n, OrPower), syntax.FieldValue);
-        return binding;
-    }
-    if (next == tk.In) {
-        generator := New(n, syntax.QueryGenerator);
-        TakeName(c, n, generator, syntax.FieldName);
-        Take(c, n, generator, syntax.FieldNone);
-        Add(n, generator, ParseBinary(c, n, OrPower), syntax.FieldSource);
-        return generator;
-    }
-    following := SkipType(n, c.pos + 2, c.final);
-    if (next == tk.Colon && following >= 0 && n^[following].token == tk.Eq) {
-        binding := New(n, syntax.QueryBinding);
-        TakeName(c, n, binding, syntax.FieldName);
-        Take(c, n, binding, syntax.FieldNone);
-        Add(n, binding, ParseType(c, n), syntax.FieldType);
-        Take(c, n, binding, syntax.FieldNone);
-        Add(n, binding, ParseBinary(c, n, OrPower), syntax.FieldValue);
-        return binding;
-    }
-    if (next == tk.Colon && following >= 0 && n^[following].token == tk.In) {
-        generator := New(n, syntax.QueryGenerator);
-        TakeName(c, n, generator, syntax.FieldName);
-        Take(c, n, generator, syntax.FieldNone);
-        Add(n, generator, ParseType(c, n), syntax.FieldType);
-        Take(c, n, generator, syntax.FieldNone);
-        Add(n, generator, ParseBinary(c, n, OrPower), syntax.FieldSource);
-        return generator;
-    }
-    parameter := New(n, syntax.Parameter);
-    TakeName(c, n, parameter, syntax.FieldName);
-    Expect(c, n, parameter, tk.Colon, syntax.FieldNone);
-    Add(n, parameter, ParseSignatureType(c, n), syntax.FieldType);
-    if (c.token == tk.From) {
-        Take(c, n, parameter, syntax.FieldNone);
-        Add(n, parameter, ParseBinary(c, n, OrPower), syntax.FieldSource);
-    }
-    return parameter;
-}
 
-// `Name :: holder { field: Type ... }`.
-ParseComponent :: (c: ^Cursor, n: ^(Node[])) -> int {
-    holder := New(n, syntax.Component);
-    TakeName(c, n, holder, syntax.FieldName);
-    Expect(c, n, holder, tk.ColonColon, syntax.FieldNone);
-    Take(c, n, holder, syntax.FieldNone);
-    body := New(n, syntax.ComponentBody);
-    Expect(c, n, body, tk.OpenBrace, syntax.FieldNone);
-    while (!c.failed && c.token != tk.CloseBrace && c.token != tk.EOF) {
-        field := New(n, syntax.ComponentField);
-        TakeMember(c, n, field, syntax.FieldName);
-        Expect(c, n, field, tk.Colon, syntax.FieldNone);
-        Add(n, field, ParseFieldType(c, n), syntax.FieldType);
-        End(c, n, field);
-        Add(n, body, field, syntax.FieldNone);
-    }
-    Expect(c, n, body, tk.CloseBrace, syntax.FieldNone);
-    Add(n, holder, body, syntax.FieldBody);
-    return holder;
-}
 
 // `Name :: template [(bases)] { Component { field: value } ... }`.
 ParsePrototype :: (c: ^Cursor, n: ^(Node[])) -> int {

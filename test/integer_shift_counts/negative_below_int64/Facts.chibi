@@ -1,4 +1,0 @@
-package facts
-F :: () -> i8 { return i8(1) << (0 - 9223372036854775807 - 2); }
-
-// error: 2:34: Shift count must not be negative

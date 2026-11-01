@@ -312,3 +312,15 @@ PartitionKeepsLaterMatchesInTail :: () {
     assert(format_text("{}|{}|{}", parts.head, parts.match, parts.tail) == "a|=|b=c");
     return;
 }
+
+@test
+LinesDropTheEmptyLineAfterAFinalTerminator :: () {
+    none: string[] = [];
+    AssertParts(strings.Lines(""), none, "0:");
+    AssertParts(strings.Lines("a"), ["a"], "1:a");
+    AssertParts(strings.Lines("a\n"), ["a"], "1:a");
+    AssertParts(strings.Lines("a\r\n"), ["a"], "1:a");
+    AssertParts(strings.Lines("\n"), [""], "1:");
+    AssertParts(strings.Lines("a\n\nb\n"), ["a", "", "b"], "3:a||b");
+    AssertParts(strings.Lines("a\r\nb\nc\r"), ["a", "b", "c"], "3:a|b|c");
+}

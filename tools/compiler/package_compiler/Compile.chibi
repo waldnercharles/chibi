@@ -479,9 +479,13 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 libraries.append(Text(forest, text, Field(forest, member, syntax.FieldAlias)));
                 paths.append(strings.Slice(spelled, 1, strings.ByteLength(spelled) - 2));
             } else if (Is(forest, member, syntax.ForeignBlock)) {
-                alias := Text(forest, text, Field(forest, member, syntax.FieldLibrary));
+                alias := "";
                 path: string = "";
-                known := false;
+                // A block with no library declares symbols of the program's own objects.
+                known := Field(forest, member, syntax.FieldLibrary) < 0;
+                if (!known) {
+                    alias = Text(forest, text, Field(forest, member, syntax.FieldLibrary));
+                }
                 for (index in 0..<length(libraries)) {
                     if (libraries[index] == alias) {
                         path = paths[index];
@@ -835,7 +839,7 @@ Complete :: (ops: Ops) -> bool {
     return true;
 }
 // The storage of a scalar type, any of which a record field may hold: an
-// integer, bool or string; 0 for any other.
+// integer, bool, string or rawptr; 0 for any other.
 ScalarStorage :: (text: string) -> int {
     integer: int = Int8Storage;
     while (integer <= WordStorage) {
@@ -852,6 +856,10 @@ ScalarStorage :: (text: string) -> int {
     }
     if (text == "string") {
         return TextStorage;
+    }
+    // An opaque 64-bit word, the C pointer a foreign function takes and gives.
+    if (text == "rawptr") {
+        return WordStorage;
     }
     if (text == "number" || text == "f32") {
         return FloatStorage;
@@ -1021,6 +1029,10 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
         declared := CharIndex(table^);
         if (declared < 0) { return none; }
         return ReadTypeSuffixes(forest, node, table, {storage: IntStorage, container: 0, record: declared}, package, view);
+    } else if (name == "rawptr") {
+        // The opaque 64-bit word a foreign function takes or returns, also the
+        // type of an authored function's parameter, result or local.
+        return ReadTypeSuffixes(forest, node, table, {storage: WordStorage, container: 0, record: -1}, package, view);
     } else if (ScalarStorage(name) != 0) {
         return ReadTypeSuffixes(forest, node, table, {storage: ScalarStorage(name), container: 0, record: -1},
                                 package, view);
@@ -1263,20 +1275,42 @@ AssemblyFailure :: (document: int, message: string) -> Assembly {
     return Assembly.Rejected(diagnostic);
 }
 
-// Every record, union and function of each package, dependencies first, so
-// a package's declarations follow those of every package it imports.
+// The declarations of a compile's active packages, dependencies first, with
+// the order they were declared in and the imports and edges that bind: the
+// file-level ones, and those of the `when` branches the active packages keep.
+Active :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Declared(callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+               constants: ConstDecl[], order: int[], links: graph.Binding[], edges: graph.Edge[])
+}
+// Every record, union and function of each active package, dependencies
+// first, so a package's declarations follow those of every package it imports.
+// The root and every project package are active, even when no other project
+// package imports them, and so is what their bound imports reach; a
+// collection package enters only through one. `order` is the graph's, over
+// every import, which snapshot validation checks whole.
 pub Declare :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
-                files_of: int[], order: int[], imports: snapshot.ResolvedImport[], links: graph.Binding[],
-                target: Target) -> Declarations {
+                files_of: int[], order: int[], edges: graph.Edge[], root: int, imports: snapshot.ResolvedImport[],
+                links: graph.Binding[], target: Target) -> Active {
     no_types: TypeDecl[] = [];
     no_members: TypeMember[] = [];
-    return DeclareSeeded(forest, documents, packages, files_of, order, imports, links, target, no_types, no_members);
+    return DeclareSeeded(forest, documents, packages, files_of, order, edges, root, imports, links, target, no_types,
+                         no_members);
 }
 // Declare for packages that share the native types `seed_types` and their
 // fields `seed_members`, which come first in the tables.
+//
+// An import inside a `when` branch binds only if the branch is kept. A
+// package's conditions read its file-level imports, so once those are
+// declared its branches are chosen, its kept imports bound and their packages
+// made active, and it is declared after them. `order` puts every import's
+// package first, so each sweep declares what is ready, and a package waits
+// one sweep for each conditional import that activates a package before it;
+// there are a few such imports, so a few sweeps.
 DeclareSeeded :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
-                  files_of: int[], order: int[], imports: snapshot.ResolvedImport[], links: graph.Binding[],
-                  target: Target, seed_types: TypeDecl[], seed_members: TypeMember[]) -> Declarations {
+                  files_of: int[], order: int[], edges: graph.Edge[], root: int,
+                  imports: snapshot.ResolvedImport[], links: graph.Binding[], target: Target, seed_types: TypeDecl[],
+                  seed_members: TypeMember[]) -> Active {
     callables: Callable[] = [];
     params: Param[] = [];
     types: TypeDecl[] = seed_types;
@@ -1284,35 +1318,187 @@ DeclareSeeded :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
     constants: ConstDecl[] = [];
     switch DeclareMath(forest, documents, types, members, target) {
         case .Failed(message):
-            return Declarations.Failed({start: 0, end: 0, line: 1, column: 1, document: 0, message: message});
+            return Active.Failed({start: 0, end: 0, line: 1, column: 1, document: 0, message: message});
         case .Read(math_types, math_members):
             types = math_types;
             members = math_members;
     }
-    for (package in order) {
-        files := slice(files_of, packages[package].member_start, packages[package].member_count);
-        switch DeclarePackage(forest, documents, files, package, packages[package].name, links, target, callables,
-                              params, types, members, constants) {
-            case .Failed(diagnostic):
-                return Declarations.Failed(diagnostic);
-            case .Collected(more_callables, more_params, more_types, more_members, more_constants):
-                callables = more_callables;
-                params = more_params;
-                types = more_types;
-                members = more_members;
-                constants = more_constants;
-        }
-        // An import alias may not name a declaration of its package.
-        for (link in links) {
-            if (Position(files, link.file) >= 0 &&
-                (FindType(types, package, link.name) >= 0 || FindCallable(callables, package, link.name) >= 0 ||
-                 FindConstant(constants, package, link.name) >= 0)) {
-                return Declarations.Failed(snapshot.Diagnostic(snapshot.ImportRange(imports[link.import_index]),
-                                                               "Package import alias conflicts with a package declaration"));
-            }
+    count := length(packages);
+    bound: graph.Binding[] = [];
+    for (link in links) {
+        if (!link.conditional) {
+            bound.append(link);
         }
     }
-    return Declarations.Collected(callables, params, types, members, constants);
+    kept: graph.Edge[] = [];
+    for (edge in edges) {
+        if (!edge.conditional) {
+            kept.append(edge);
+        }
+    }
+    active := resize([false], count);
+    chosen := resize([false], count);
+    declared := resize([false], count);
+    pending: int[] = [];
+    for (package in 0..<count) {
+        identity := documents[files_of[packages[package].member_start]].identity;
+        // paths[0] still names the requested root, including a direct compile
+        // of a collection package with no project package in its snapshot.
+        if (package == root || strings.HasPrefix(identity, "project:")) {
+            active[package] = true;
+            pending.append(package);
+        }
+    }
+    Activate(kept, &active, &pending);
+    selected: int[] = [];
+    progress := true;
+    while (progress) {
+        progress = false;
+        for (package in order) {
+            if (!active[package] || declared[package]) {
+                continue;
+            }
+            files := slice(files_of, packages[package].member_start, packages[package].member_count);
+            if (!chosen[package]) {
+                if (!Ready(edges, declared, package, true)) {
+                    continue;
+                }
+                switch KeptImports(forest, documents, files, package, bound, constants, imports) {
+                    case .Failed(diagnostic):
+                        return Active.Failed(diagnostic);
+                    case .Kept(indices):
+                        for (link in links) {
+                            if (link.conditional && indices.contains(link.import_index)) {
+                                for (other in bound) {
+                                    if (other.file == link.file && other.name == link.name) {
+                                        return Active.Failed(snapshot.Diagnostic(snapshot.ImportRange(imports[link.import_index]),
+                                                                                 "Duplicate file-local import binding"));
+                                    }
+                                }
+                                bound.append(link);
+                            }
+                        }
+                        for (index in indices) {
+                            to := PackageAt(packages, imports[index].directory);
+                            edge: graph.Edge = {from: package, to: to, import_index: index, conditional: false};
+                            kept.append(edge);
+                            if (!active[to]) {
+                                active[to] = true;
+                                pending.append(to);
+                            }
+                        }
+                        Activate(kept, &active, &pending);
+                }
+                chosen[package] = true;
+                progress = true;
+            }
+            if (!Ready(kept, declared, package, false)) {
+                continue;
+            }
+            switch DeclarePackage(forest, documents, files, package, packages[package].name, bound, target, callables,
+                                  params, types, members, constants) {
+                case .Failed(diagnostic):
+                    return Active.Failed(diagnostic);
+                case .Collected(more_callables, more_params, more_types, more_members, more_constants):
+                    callables = more_callables;
+                    params = more_params;
+                    types = more_types;
+                    members = more_members;
+                    constants = more_constants;
+            }
+            // An import alias may not name a declaration of its package.
+            for (link in bound) {
+                if (Position(files, link.file) >= 0 &&
+                    (FindType(types, package, link.name) >= 0 || FindCallable(callables, package, link.name) >= 0 ||
+                     FindConstant(constants, package, link.name) >= 0)) {
+                    return Active.Failed(snapshot.Diagnostic(snapshot.ImportRange(imports[link.import_index]),
+                                                             "Package import alias conflicts with a package declaration"));
+                }
+            }
+            declared[package] = true;
+            selected.append(package);
+            progress = true;
+        }
+    }
+    // Every active package is declared: the graph has no cycle, so a sweep
+    // that declares nothing has nothing waiting.
+    for (package in order) {
+        assert(!active[package] || declared[package], "an active package is declared");
+    }
+    return Active.Declared(callables, params, types, members, constants, selected, bound, kept);
+}
+// Marks active what the pending packages reach through `edges`, draining
+// `pending`.
+Activate :: (edges: graph.Edge[], active: ^(bool[]), pending: ^(int[])) {
+    next: int = 0;
+    while (next < length(pending^)) {
+        from := pending^[next];
+        for (edge in edges) {
+            if (edge.from == from && !active^[edge.to]) {
+                active^[edge.to] = true;
+                pending.append(edge.to);
+            }
+        }
+        next += 1;
+    }
+    pending^ = [];
+}
+// Whether every package `package` imports through `edges` is declared; with
+// `certain`, only through file-level imports. A compile has tens of packages
+// and a few hundred edges, so a sweep's checks are some thousands of steps.
+Ready :: (edges: graph.Edge[], declared: bool[], package: int, certain: bool) -> bool {
+    for (edge in edges) {
+        if (edge.from == package && edge.to != package && (!certain || !edge.conditional) && !declared[edge.to]) {
+            return false;
+        }
+    }
+    return true;
+}
+// The package whose files are in `directory`.
+PackageAt :: (packages: graph.Package[], directory: string) -> int {
+    for (index in 0..<length(packages)) {
+        if (packages[index].directory == directory) {
+            return index;
+        }
+    }
+    assert(false, "an import names a package of the graph");
+    return -1;
+}
+Kept :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Kept(indices: int[])
+}
+// The conditional imports of the package's files that the branches its
+// conditions select hold, by their index in `imports`.
+KeptImports :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[], package: int,
+                links: graph.Binding[], constants: ConstDecl[], imports: snapshot.ResolvedImport[]) -> Kept {
+    indices: int[] = [];
+    for (file in files) {
+        document := documents[file];
+        conditional := false;
+        for (index in document.first_import..<document.first_import + document.import_count) {
+            conditional = conditional || imports[index].conditional;
+        }
+        if (!conditional) {
+            continue;
+        }
+        switch SelectMembers(forest, documents, links, constants, package, file) {
+            case .Failed(diagnostic):
+                return Kept.Failed(diagnostic);
+            case .Chosen(nodes):
+                for (node in nodes) {
+                    if (!Is(forest, node, syntax.ImportDeclaration)) {
+                        continue;
+                    }
+                    for (index in document.first_import..<document.first_import + document.import_count) {
+                        if (imports[index].conditional && imports[index].range_start == forest[node].start) {
+                            indices.append(index);
+                        }
+                    }
+                }
+        }
+    }
+    return Kept.Kept(indices);
 }
 // Package-scope `when`. A package's declarations are its file's members with
 // each `when condition { ... } else { ... }` replaced by the members of the
@@ -1334,9 +1520,9 @@ Selected :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Chosen(nodes: int[])
 }
-ComparisonOperator :: (operator: string) -> bool {
-    return operator == "==" || operator == "!=" || operator == "<" || operator == "<=" || operator == ">" ||
-           operator == ">=";
+ComparisonOperator :: (operator: int) -> bool {
+    return operator == tk.CmpEq || operator == tk.NotEq || operator == tk.Lt || operator == tk.LtEq || operator == tk.Gt ||
+           operator == tk.GtEq;
 }
 FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
                   package: int, node: int) -> Decided {
@@ -1357,14 +1543,14 @@ FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
         }
         return Decided.No;
     }
-    operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
+    operator := Operator(forest, value);
     // `not (condition)` reads as a call of `not`, as the grammar keeps both.
     negated := Is(forest, value, syntax.CallExpression) && Text(forest, text, Field(forest, value, syntax.FieldFunction)) == "not";
     operand := Field(forest, value, syntax.FieldOperand);
     if (negated) {
         operand = FirstMember(forest, Field(forest, value, syntax.FieldArguments));
     }
-    if (negated || (Is(forest, value, syntax.UnaryExpression) && (operator == "not" || operator == "!"))) {
+    if (negated || (Is(forest, value, syntax.UnaryExpression) && (operator == tk.NotKeyword || operator == tk.Not))) {
         switch FoldCondition(forest, text, file, constants, aliases, package, operand) {
             case .Failed(diagnostic):
                 return Decided.Failed(diagnostic);
@@ -1379,8 +1565,8 @@ FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
     if (!Is(forest, value, syntax.BinaryExpression)) {
         return Decided.Failed(Diagnose(forest, node, file, "a when condition must be constant"));
     }
-    if (operator == "and" || operator == "&&" || operator == "or" || operator == "||") {
-        conjunction := operator == "and" || operator == "&&";
+    if (operator == tk.AndKeyword || operator == tk.CmpAnd || operator == tk.OrKeyword || operator == tk.CmpOr) {
+        conjunction := operator == tk.AndKeyword || operator == tk.CmpAnd;
         switch FoldCondition(forest, text, file, constants, aliases, package, Field(forest, value, syntax.FieldLeft)) {
             case .Failed(diagnostic):
                 return Decided.Failed(diagnostic);
@@ -1421,15 +1607,15 @@ FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
     same := left == right;
     ordered := i64(wrap: left) < i64(wrap: right);
     taken := false;
-    if (operator == "==") {
+    if (operator == tk.CmpEq) {
         taken = same;
-    } else if (operator == "!=") {
+    } else if (operator == tk.NotEq) {
         taken = !same;
-    } else if (operator == "<") {
+    } else if (operator == tk.Lt) {
         taken = ordered;
-    } else if (operator == "<=") {
+    } else if (operator == tk.LtEq) {
         taken = ordered || same;
-    } else if (operator == ">") {
+    } else if (operator == tk.Gt) {
         taken = !ordered && !same;
     } else {
         taken = !ordered;
@@ -1928,6 +2114,19 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             member = ChosenAt(chosen, chosen_at);
         }
     }
+    // Which pointer parameters are scoped depends on the functions they are
+    // passed to, in any file of the package, so the package decides it at once.
+    declared_functions: int[] = [];
+    declared_texts: string[] = [];
+    for (file in files) {
+        for (member in ChosenMembers(selected, selected_starts, selected_counts, files, file)) {
+            if (Is(forest, member, syntax.FunctionDeclaration)) {
+                declared_functions.append(member);
+                declared_texts.append(documents[file].text);
+            }
+        }
+    }
+    scopes := ScopedParameters(forest, declared_texts, declared_functions);
     for (file in files) {
         text := documents[file].text;
         solid := SolidOffsets(text);
@@ -1957,7 +2156,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     continue;
                 }
                 switch FunctionSignature(forest, text, documents[file].key, solid, &types, aliases, package, file,
-                                         member, name, length(params)) {
+                                         member, name, length(params), scopes) {
                     case .Failed(diagnostic):
                         return Declarations.Failed(diagnostic);
                     case .Read(callable, added):
@@ -2071,12 +2270,12 @@ ConversionType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> 
     }
     return storage;
 }
-Arithmetic :: (operator: string) -> bool {
-    return operator == "+" || operator == "-" || operator == "*" || operator == "/" || operator == "%" ||
-           operator == "&" || operator == "|" || operator == "^";
+Arithmetic :: (operator: int) -> bool {
+    return operator == tk.Add || operator == tk.Sub || operator == tk.Mul || operator == tk.Quo || operator == tk.Mod ||
+           operator == tk.And || operator == tk.Or || operator == tk.Xor;
 }
-Shift :: (operator: string) -> bool {
-    return operator == "<<" || operator == ">>";
+Shift :: (operator: int) -> bool {
+    return operator == tk.Shl || operator == tk.Shr;
 }
 // Whether `node` is a constant integer expression: integer literals, the
 // package's constants and an import's, parentheses, conversions to integer
@@ -2103,9 +2302,9 @@ ConstantExpression :: (forest: snapshot.SnapshotNode[], text: string, constants:
         }
         return ConstantExpression(forest, text, constants, aliases, package, argument);
     }
-    operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
+    operator := Operator(forest, value);
     if (Is(forest, value, syntax.UnaryExpression)) {
-        return (operator == "+" || operator == "-" || operator == "~") &&
+        return (operator == tk.Add || operator == tk.Sub || operator == tk.Complement) &&
                ConstantExpression(forest, text, constants, aliases, package, Field(forest, value, syntax.FieldOperand));
     }
     return Is(forest, value, syntax.BinaryExpression) && (Arithmetic(operator) || Shift(operator)) &&
@@ -2140,7 +2339,7 @@ ConstantType :: (forest: snapshot.SnapshotNode[], text: string, constants: Const
         return 0;
     }
     left := ConstantType(forest, text, constants, aliases, package, Field(forest, value, syntax.FieldLeft));
-    if (left != 0 || Shift(Text(forest, text, Field(forest, value, syntax.FieldOperator)))) {
+    if (left != 0 || Shift(Operator(forest, value))) {
         return left;
     }
     return ConstantType(forest, text, constants, aliases, package, Field(forest, value, syntax.FieldRight));
@@ -2151,8 +2350,7 @@ ConstantType :: (forest: snapshot.SnapshotNode[], text: string, constants: Const
 UntypedStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     literal := Unparenthesized(forest, node);
     while (Is(forest, literal, syntax.UnaryExpression) &&
-           (Text(forest, text, Field(forest, literal, syntax.FieldOperator)) == "+" ||
-            Text(forest, text, Field(forest, literal, syntax.FieldOperator)) == "-")) {
+           (Operator(forest, literal) == tk.Add || Operator(forest, literal) == tk.Sub)) {
         literal = Unparenthesized(forest, Field(forest, literal, syntax.FieldOperand));
     }
     if (Is(forest, literal, syntax.Number) && Floating(InferredNumberStorage(forest, text, literal))) {
@@ -2279,8 +2477,8 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
                     return Folding.Folded(FloatingBits(FloatingBits(bits, inner, converted), converted, storage));
             }
         }
-        operator := Text(forest, text, Field(forest, value, syntax.FieldOperator));
-        if (Is(forest, value, syntax.UnaryExpression) && (operator == "+" || operator == "-")) {
+        operator := Operator(forest, value);
+        if (Is(forest, value, syntax.UnaryExpression) && (operator == tk.Add || operator == tk.Sub)) {
             switch FoldConstant(forest, text, file, constants, aliases, package,
                                 Field(forest, value, syntax.FieldOperand), storage) {
                 case .Failed(diagnostic):
@@ -2288,7 +2486,7 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
                 case .Waiting:
                     return Folding.Waiting;
                 case .Folded(bits):
-                    if (operator == "-") {
+                    if (operator == tk.Sub) {
                         sign: u64 = 0x8000000000000000;
                         if (storage == FloatStorage) {
                             sign = 0x80000000;
@@ -2325,7 +2523,7 @@ Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants
     }
     // A literal, `-` on one included, so the most negative value is one.
     signed_literal := Is(forest, node, syntax.UnaryExpression) &&
-                      Text(forest, text, Field(forest, node, syntax.FieldOperator)) == "-" &&
+                      Operator(forest, node) == tk.Sub &&
                       Is(forest, Field(forest, node, syntax.FieldOperand), syntax.Number);
     if (Is(forest, node, syntax.Number) || signed_literal) {
         switch ParseNumber(forest, text, node) {
@@ -2360,15 +2558,16 @@ Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants
     if (!unary && !Is(forest, node, syntax.BinaryExpression)) {
         return Evaluated.Failed(Diagnose(forest, node, file, "constant value must be an integer expression"));
     }
-    operator := Text(forest, text, Field(forest, node, syntax.FieldOperator));
+    operator := Operator(forest, node);
     if (!unary && Shift(operator)) {
         return EvaluateShift(forest, text, file, constants, aliases, package, node, storage);
     }
-    if ((unary && operator != "+" && operator != "-" && operator != "~") || (!unary && !Arithmetic(operator))) {
+    if ((unary && operator != tk.Add && operator != tk.Sub && operator != tk.Complement) || (!unary && !Arithmetic(operator))) {
         return Evaluated.Failed(Diagnose(forest, node, file,
-                                         format_text("constant operator '{}' is not supported yet", operator)));
+                                         format_text("constant operator '{}' is not supported yet",
+                                                     Text(forest, text, Field(forest, node, syntax.FieldOperator)))));
     }
-    if (unary && operator == "-" && !Signed(storage)) {
+    if (unary && operator == tk.Sub && !Signed(storage)) {
         return Evaluated.Failed(Diagnose(forest, node, file, "Cannot negate an unsigned constant"));
     }
     operands: int[] = [Field(forest, node, syntax.FieldOperand)];
@@ -2398,25 +2597,25 @@ Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants
                 }
         }
     }
-    if (unary && operator == "-") {
+    if (unary && operator == tk.Sub) {
         value = ExactNegate(value);
-    } else if (unary && operator == "~" && Signed(storage)) {
+    } else if (unary && operator == tk.Complement && Signed(storage)) {
         value = ExactSubtract(ExactNegate(value), ExactOf(false, 1));
-    } else if (unary && operator == "~") {
+    } else if (unary && operator == tk.Complement) {
         // An unsigned type's complement is its largest value less this one.
         value = ExactSubtract(ExactMax(storage), value);
-    } else if (!unary && operator == "+") {
+    } else if (!unary && operator == tk.Add) {
         // A unary plus keeps its operand.
         value = ExactAdd(value, right);
-    } else if (operator == "-") {
+    } else if (operator == tk.Sub) {
         value = ExactSubtract(value, right);
-    } else if (operator == "*") {
+    } else if (operator == tk.Mul) {
         value = ExactMultiply(value, right);
-    } else if (operator == "/" || operator == "%") {
+    } else if (operator == tk.Quo || operator == tk.Mod) {
         if (ExactZero(right)) {
             return Evaluated.Failed(Diagnose(forest, node, file, "Constant division by zero"));
         }
-        value = ExactDivide(value, right, operator == "%");
+        value = ExactDivide(value, right, operator == tk.Mod);
     } else if (!unary) {
         value = ExactBitwise(operator, value, right);
     }
@@ -2467,7 +2666,7 @@ EvaluateShift :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
         return Evaluated.Failed(Diagnose(forest, count, file, "Constant shift count is too large"));
     }
     bits := int(LowBits(Magnitude(shift)));
-    if (Text(forest, text, Field(forest, node, syntax.FieldOperator)) == ">>") {
+    if (Operator(forest, node) == tk.Shr) {
         return Evaluated.Value(ExactShiftRight(value, bits));
     }
     shifted := ExactShiftLeft(value, bits);
@@ -2582,7 +2781,8 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
 // The signature of the function `member` named `name`, its params numbered
 // from `first`. Named results include text, arrays and boxed optionals.
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], table: ^(TypeDecl[]),
-                      aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
+                      aliases: Name[], package: int, file: int, member: int, name: string, first: int,
+                      scopes: ScopeTable) -> Signature {
     attributes := DeclarationAttributes(forest, text, file, member, "test");
     if (length(attributes) > 0) {
         return Signature.Failed(attributes[0]);
@@ -2601,7 +2801,14 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
         }
         // A scoped pointer parameter takes a reference to its target.
         pointer := PointerAnnotation(forest, type_node);
-        reference := pointer >= 0 && ScopedPointer(forest, text, member, parameter, []);
+        reference := false;
+        if (pointer >= 0) {
+            // The table lists the pointer parameters of declared functions. A
+            // signature without a body, such as a callable parameter's, has no
+            // uses that could make its pointer managed.
+            verdict := ScopedVerdict(scopes, parameter);
+            reference = verdict == 1 || (verdict < 0 && Field(forest, member, syntax.FieldBody) < 0);
+        }
         if (reference) {
             type_node = Field(forest, pointer, syntax.FieldTarget);
         }
@@ -2718,13 +2925,6 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
     if (record >= 0 && types[record].kind == CollectionDecl) {
         return SequenceHeader({storage: storage, container: container, record: record}, types);
     }
-    if (storage == QueryStorage && record >= 0) {
-        described := ScalarValue(storage, 0);
-        described.container = container;
-        described.type_name = types[record].type_name;
-        described.has_type_name = true;
-        return described;
-    }
     if (container != 0) {
         value := ScalarValue(storage, 0);
         value.container = container;
@@ -2753,7 +2953,7 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
     if (storage != StructStorage) {
         return ScalarValue(storage, 0);
     }
-    if (types[record].kind == NativeDecl || types[record].kind == OptionalComponentDecl) {
+    if (types[record].kind == NativeDecl) {
         return {tag: StructStorage, container: 0, type_name: types[record].type_name, has_type_name: true,
                 authored: false, wide: layouts[record], text: "", has_text: false, present: false, first: 0, count: 0};
     }
@@ -2849,43 +3049,6 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
     }
     return seen;
 }
-// Every project package is a checked root, even when another project package
-// does not import it. Collection packages enter the compile only through an
-// import from one of those roots. Keep graph indices and dependency order;
-// snapshot validation still checks the complete structural graph.
-ActivePackageOrder :: (documents: snapshot.Document[], packages: graph.Package[], files_of: int[],
-                       order: int[], edges: graph.Edge[], root: int) -> int[] {
-    active := resize([false], length(packages));
-    pending: int[] = [];
-    package: int = 0;
-    while (package < length(packages)) {
-        identity := documents[files_of[packages[package].member_start]].identity;
-        // paths[0] still names the requested root, including a direct compile
-        // of a collection package with no project package in its snapshot.
-        if (package == root || strings.HasPrefix(identity, "project:")) {
-            active[package] = true;
-            pending.append(package);
-        }
-        package += 1;
-    }
-    next: int = 0;
-    while (next < length(pending)) {
-        for (edge in edges) {
-            if (edge.from == pending[next] && !active[edge.to]) {
-                active[edge.to] = true;
-                pending.append(edge.to);
-            }
-        }
-        next += 1;
-    }
-    selected: int[] = [];
-    for (listed in order) {
-        if (active[listed]) {
-            selected.append(listed);
-        }
-    }
-    return selected;
-}
 // The closure of every package, each a prepared module, rooted at package
 // `root`. Dependencies come first, so an importer has every module it imports.
 Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
@@ -2955,7 +3118,7 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
         switch Assemble(forest, documents, package, files_of[packages[package].member_start], package_names,
                         package_ids, fingerprints,
                         Reachable(edges, length(packages), package), links, callables, params, types, members, constants,
-                        natives, ports, identities, native_effects, effects, ops, target, abi, Game.Package, prepared, [],
+                        natives, ports, identities, native_effects, effects, ops, target, abi, Game.Package, prepared,
                         PackageStates(retained, retained_owners, callables, package)) {
             case .Rejected(diagnostic):
                 return Result.Rejected(diagnostic);
@@ -3258,7 +3421,7 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                                          identities, extend(GenericAliases(Aliases(links, callable.document), generic_bindings, index),
                                                             RetainedNames(retained, retained_owners, callables, package, index)),
                                          [], [], [], index, solid,
-                                         undeclared, meaning, context, generic, ops, target, []);
+                                         undeclared, meaning, context, generic, ops, target);
                     switch body {
                         case .Failed(diagnostic):
                             return Preparation.Failed(diagnostic);
@@ -3286,22 +3449,16 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     }
     return Preparation.Read(bodies);
 }
-// A body may declare the sequence and optional types it uses in `table`. A
-// query evaluator's analysis covers its parameter list, which holds the
-// query's predicate; every other callable's covers its body.
+// A body may declare the sequence and optional types it uses in `table`.
 FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[],
                  params: Param[], table: ^(TypeDecl[]), members: TypeMember[], constants: ConstDecl[],
                  natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[], aliases: Name[],
                  operators: NumericOperator[], makes: NativeMake[], make_fields: int[], index: int,
                  solid: int[], undeclared: u64, meaning: u64, context: BodyContext, generic_updates: int[],
-                 ops: Ops, target: Target, query_specs: QuerySpec[]) -> Body {
+                 ops: Ops, target: Target) -> Body {
     callable := callables[index];
     document := documents[callable.document];
-    generated_query := QueryEvaluator(query_specs, index) >= 0;
     analysis_body := Field(forest, callable.node, syntax.FieldBody);
-    if (generated_query) {
-        analysis_body = Field(forest, callable.node, syntax.FieldParameters);
-    }
     if (analysis_body < 0) {
         return Body.Failed(Diagnose(forest, callable.node, callable.document,
                                     format_text("Callable '{}' has no body", callable.name)));
@@ -3322,8 +3479,7 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     }
     emitted := EmitBody(forest, document.text, callable.document, callables, params, table, members, constants,
                         body_natives, ports, identities, operators, makes, make_fields, aliases, document.key, solid,
-                        undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target,
-                        query_specs);
+                        undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target);
     switch emitted {
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
             // Read current resolved return types, including imported source
@@ -3337,7 +3493,7 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
                 }
             }
             if requires_check {
-                problems := FallibleBody(forest, documents, callables, params, table^, callable, facts, generated_query);
+                problems := FallibleBody(forest, documents, callables, params, table^, callable, facts);
                 if length(problems) > 0 {
                     return Body.Failed(problems[0]);
                 }
@@ -3352,7 +3508,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
              members: TypeMember[], constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[],
              identities: u64[], native_effects: int[], callable_effects: int[], ops: Ops, target: Target,
-             abi: u64, game: Game, prepared: Body[], query_specs: QuerySpec[], retained: StateDecl[]) -> Assembly {
+             abi: u64, game: Game, prepared: Body[], retained: StateDecl[]) -> Assembly {
     identity := package_names[package];
     module := package_ids[package];
     // A behavior's states, the event each of its functions handles, the
@@ -3420,7 +3576,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         assembled.append(kept);
         index: int = -1;
         if (kept && (declared.kind == RecordDecl || declared.kind == MathDecl || declared.kind == NativeDecl ||
-                     declared.kind == QueryDecl || (declared.kind == PointerDecl && declared.key == 0))) {
+                     (declared.kind == PointerDecl && declared.key == 0))) {
             index = requirement_count;
             requirement_count += 1;
         }
@@ -3431,10 +3587,6 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     for (declared in types) {
         layouts.append(int(0));
         tags.append(int(0));
-        if (declared.kind == OptionalComponentDecl) {
-            layouts[length(layouts) - 1] = layouts[declared.parent];
-            continue;
-        }
         if (!assembled[length(layouts) - 1]) {
             continue;
         }
@@ -3477,7 +3629,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 fields.append(field);
                 at += 1;
             }
-        } else if ((declared.kind == PointerDecl && declared.key == 0) || declared.kind == QueryDecl) {
+        } else if (declared.kind == PointerDecl && declared.key == 0) {
             wide.append(declared.id);
             pointer_requirement: writer.Requirement = {id: length(wide) - 1, layout: 0, storage: declared.storage,
                                                        name: declared.type_name, size: target.pointer_size,
@@ -3544,29 +3696,18 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     }
                 }
                 base := length(spans);
-                // Event payload slots remain part of the physical handler ABI.
-                // A system reads dt from context and declares no source parameter.
-                system_payload := handler >= 0 && Is(forest, callable.node, syntax.System);
                 argument_count := callable.count;
-                if (system_payload) {
-                    argument_count = game_events[handler].count;
-                }
                 spans.append(Range(length(values), argument_count));
                 at: int = 0;
                 while (at < argument_count) {
-                    if (system_payload) {
-                        field := game_fields[game_events[handler].first + at];
-                        values.append(ScalarValue(field.storage, 0));
-                    } else {
-                        values.append(ParamHeader(params[callable.first + at], types, layouts, target));
-                    }
+                    values.append(ParamHeader(params[callable.first + at], types, layouts, target));
                     at += 1;
                 }
                 spans.append(Range(length(ints), argument_count));
                 at = 0;
                 while (at < argument_count) {
                     kind: int = 0;
-                    if (!system_payload && params[callable.first + at].reference) {
+                    if (params[callable.first + at].reference) {
                         kind = ReferenceKind;
                     }
                     ints.append(kind);
@@ -3657,9 +3798,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     }
                     values.append(value);
                     row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
-                                               left: code.left, right: code.right, target: code.target, frame: 0, source: origins[pc],
-                                               stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: node_id,
-                                               value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
+                                               left: code.left, right: code.right, target: code.target, source: origins[pc],
+                                               offset: code.offset, node: node_id, value: length(values) - 1,
+                                               message: code.message, has_message: code.has_message};
                     instructions.append(row);
                     pc += 1;
                 }
@@ -3897,9 +4038,6 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     // Stage zero's handler ID: the source, the handler's offset and its kind.
                     handled_event := game_events[handler];
                     function_kind := HandlerFunction;
-                    if (Is(forest, callable.node, syntax.System)) {
-                        function_kind = 3;
-                    }
                     wide.append(binding.ID("function", format_text("{}:{}:{}", identity,
                                                                    forest[callable.node].start, function_kind)));
                     wide.append(handled_event.id);
@@ -3911,8 +4049,6 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                          effects: length(wide) - 1, body: length(references) - 2,
                                          subscription: length(references) - 1};
                     entries.append(row);
-                } else if (QueryEvaluator(query_specs, index) >= 0) {
-                    // Evaluators are reached through descriptions.
                 } else if (source_mode) {
                     // A behavior's member procedure is a symbol of its source's scope.
                     // Stage zero lets every authored function wait.
@@ -4013,51 +4149,6 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     system_root: int = -1;
     system_variables: int = 0;
     system_description: int = 0;
-    for (described in query_specs) {
-        clause_roots: int[] = [];
-        query_base := length(queries);
-        query_terms := QueryTerms(forest, documents[first_document].text, types, members, params, described);
-        for (term in query_terms) {
-            children := length(ints);
-            child_count: int = 0;
-            if (term.left >= 0) {
-                ints.append(query_base + term.left);
-                child_count += 1;
-            }
-            if (term.right >= 0) {
-                ints.append(query_base + term.right);
-                child_count += 1;
-            }
-            wide.append(term.source_relationship);
-            relation_index := length(wide) - 1;
-            wide.append(term.component);
-            query_term: writer.Query = {kind: term.kind, required: term.required,
-                                        component_id: length(wide) - 1, source_relationship: relation_index,
-                                        source_traversal: term.source_traversal, source_variable: term.source_variable,
-                                        target_variable: term.target_variable, predicate: -1, first: children, count: child_count};
-            if (term.root) {
-                clause_roots.append(length(queries));
-            }
-            queries.append(query_term);
-        }
-        children := length(ints);
-        ints.extend(clause_roots);
-        all: writer.Query = {kind: 1, required: false, component_id: 0, source_relationship: 0, source_traversal: 0,
-                             source_variable: 0, target_variable: 0, predicate: -1,
-                             first: children, count: length(clause_roots)};
-        root := length(queries);
-        queries.append(all);
-        values.append(Header(QueryStorage, 0, described.row, types, layouts));
-        references.append(Own(described.evaluator - first_own));
-        description: writer.QueryDescription = {query_root: root, query_variable_count: described.variables,
-                                                row_type: length(values) - 1, evaluate: length(references) - 1};
-        descriptions.append(description);
-        if (Is(forest, described.node, syntax.System)) {
-            system_root = root;
-            system_variables = described.variables;
-            system_description = length(descriptions);
-        }
-    }
     return Assembly.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, target.pointer_size, wide, values, ints, requirements,
                                                                        fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,
                                                                        locals, parameters, frames, sources, layouts_table, data, hosts, commands, calls,
@@ -4135,9 +4226,9 @@ TargetPackagePath :: (collection_names: string[], collection_paths: string[], pa
     return false;
 }
 // The constants of core:target for a platform: os 1 Linux, 2 Darwin, 3 Windows;
-// arch 1 x86-64, 2 Arm64.
-TargetPackageText :: (os: int, arch: int, pointer_bits: int) -> string {
-    return format_text("package target\n\npub Linux: int : 1\npub Darwin: int : 2\npub Windows: int : 3\n\npub X86_64: int : 1\npub Arm64: int : 2\n\npub Os: int : {}\npub Arch: int : {}\npub PointerBits: int : {}\n", os, arch, pointer_bits);
+// arch 1 x86-64, 2 Arm64; native 1 for a native program, 0 for the VM.
+TargetPackageText :: (os: int, arch: int, pointer_bits: int, native: int) -> string {
+    return format_text("package target\n\npub Linux: int : 1\npub Darwin: int : 2\npub Windows: int : 3\n\npub X86_64: int : 1\npub Arm64: int : 2\n\npub Os: int : {}\npub Arch: int : {}\npub PointerBits: int : {}\n\npub Native: int : {}\n", os, arch, pointer_bits, native);
 }
 CompileInput :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                  sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
@@ -4175,7 +4266,7 @@ CompileResolved :: (project: string, collection_names: string[], collection_path
     while (index < length(paths)) {
         text := sources[index];
         if (os != 0 && TargetPackagePath(collection_names, collection_paths, paths[index])) {
-            text = TargetPackageText(os, arch, target.pointer_size * 8);
+            text = TargetPackageText(os, arch, target.pointer_size * 8, 0);
         }
         input: snapshot.Input = {path: paths[index], text: text, has_path: true, has_text: true};
         inputs.append(input);
@@ -4202,13 +4293,12 @@ CompileResolved :: (project: string, collection_names: string[], collection_path
                 case .Rejected(error, cycle):
                     return InputFailure(-1, "package graph is invalid");
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
-                    active_order := ActivePackageOrder(documents, packages, files_of, order, edges, file_packages[0]);
-                    switch DeclareSeeded(nodes, documents, packages, files_of, active_order, imports, links, target,
-                                         seed_types, seed_members) {
+                    switch DeclareSeeded(nodes, documents, packages, files_of, order, edges, file_packages[0], imports, links,
+                                         target, seed_types, seed_members) {
                         case .Failed(diagnostic):
                             return Result.Rejected(diagnostic);
-                        case .Collected(callables, params, types, members, constants):
-                            return Link(nodes, documents, packages, files_of, file_packages[0], active_order, edges, links,
+                        case .Declared(callables, params, types, members, constants, active_order, bound, kept):
+                            return Link(nodes, documents, packages, files_of, file_packages[0], active_order, kept, bound,
                                         callables, params, types, members, constants, resolved_natives, resolved_ports, identities, native_effects, ops, target,
                                         abi);
                     }

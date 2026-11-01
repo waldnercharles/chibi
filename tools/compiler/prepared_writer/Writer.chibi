@@ -2,7 +2,7 @@ package prepared_writer
 
 import strings "core:strings"
 
-// Prepared format v22, written exactly as execution_prepared_write encodes a
+// Prepared format v28, written exactly as execution_prepared_write encodes a
 // module of authored functions, or of a behavior's states and event handlers.
 // Every 64-bit payload (ids, layouts, scalar bits, union tags) is an index into
 // the module's `wide` pool, whose entry 0 is zero for an absent payload.
@@ -16,7 +16,7 @@ import strings "core:strings"
 // time to the module's buffer, so no row builds an array of its own.
 
 Magic: u64 : 0x4348494249505245;
-Version: int : 27;
+Version: int : 28;
 
 // A value. `wide` holds scalar bits, a union tag or a struct layout; nested
 // struct fields, union payloads and array items are values[first, first + count),
@@ -126,6 +126,9 @@ pub Root :: struct {
     index: int;
     shape: int;
 }
+// An instruction. Its frame, stack (-1), pin, indirect flag, component index
+// and layout always hold their defaults in what the compiler writes, so they
+// are not fields here and their bits stay clear in the row's mask.
 pub Instruction :: struct {
     op: int;
     type: int;
@@ -133,16 +136,10 @@ pub Instruction :: struct {
     left: int;
     right: int;
     target: int;
-    frame: int;
     source: int;
-    stack: int;
-    pin: int;
     offset: int;
-    indirect: bool;
-    component_index: int;
     node: int;
     value: int;
-    layout: int;
     message: string;
     has_message: bool;
 }
@@ -522,6 +519,17 @@ PointBytes :: (out: ^(u8[]), v: Point, wide: u64[]) {
     Int(out, v.kind);
     Flag(out, v.completion);
 }
+// An instruction's fields that mostly hold their default follow a mask of the
+// ones that differ from it, in this bit order, as prepared_function.c reads
+// them. A value is default when it encodes as five zero bytes: a single flow
+// value without a name. Bits 16 to 256 and 1024 (frame, stack, pin, indirect,
+// component, layout) are never set.
+InstructionRight: int : 1;
+InstructionTarget: int : 2;
+InstructionOffset: int : 4;
+InstructionValue: int : 8;
+InstructionNode: int : 512;
+InstructionMessage: int : 2048;
 // An instruction with its value, layout and message.
 InstructionBytes :: (out: ^(u8[]), v: Instruction, wide: u64[], pool: u8[], starts: int[], sizes: int[],
                      items: string[], slots: int[]) {
@@ -529,19 +537,48 @@ InstructionBytes :: (out: ^(u8[]), v: Instruction, wide: u64[], pool: u8[], star
     Int(out, v.type);
     Int(out, v.output);
     Int(out, v.left);
-    Int(out, v.right);
-    Int(out, v.target);
-    Int(out, v.frame);
     Int(out, v.source);
-    Int(out, v.stack);
-    Int(out, v.pin);
-    Varint(out, u64(v.offset));
-    Flag(out, v.indirect);
-    Int(out, v.component_index);
-    Varint(out, wide[v.node]);
-    out.extend(slice(pool, starts[v.value], sizes[v.value]));
-    Varint(out, wide[v.layout]);
-    Text(out, v.message, v.has_message, items, slots);
+    value := starts[v.value];
+    empty := sizes[v.value] == 5 && pool[value] == 0 && pool[value + 1] == 0 && pool[value + 2] == 0 &&
+             pool[value + 3] == 0 && pool[value + 4] == 0;
+    fields: int = 0;
+    if (v.right != 0) {
+        fields = fields | InstructionRight;
+    }
+    if (v.target != 0) {
+        fields = fields | InstructionTarget;
+    }
+    if (v.offset != 0) {
+        fields = fields | InstructionOffset;
+    }
+    if (!empty) {
+        fields = fields | InstructionValue;
+    }
+    if (wide[v.node] != 0) {
+        fields = fields | InstructionNode;
+    }
+    if (v.has_message) {
+        fields = fields | InstructionMessage;
+    }
+    Varint(out, u64(fields));
+    if ((fields & InstructionRight) != 0) {
+        Int(out, v.right);
+    }
+    if ((fields & InstructionTarget) != 0) {
+        Int(out, v.target);
+    }
+    if ((fields & InstructionOffset) != 0) {
+        Varint(out, u64(v.offset));
+    }
+    if ((fields & InstructionValue) != 0) {
+        out.extend(slice(pool, value, sizes[v.value]));
+    }
+    if ((fields & InstructionNode) != 0) {
+        Varint(out, wide[v.node]);
+    }
+    if ((fields & InstructionMessage) != 0) {
+        Text(out, v.message, true, items, slots);
+    }
 }
 LocalBytes :: (out: ^(u8[]), v: Local, wide: u64[], pool: u8[], starts: int[], sizes: int[]) {
     Int(out, v.kind);

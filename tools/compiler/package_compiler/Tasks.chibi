@@ -50,7 +50,6 @@ WaitingCallables :: (forest: snapshot.SnapshotNode[], callables: Callable[]) -> 
     index: int = 0;
     while (index < length(marked)) {
         row := marked[index];
-        // Query evaluators are expressions, not declarations, and never wait.
         body := Field(forest, row.node, syntax.FieldBody);
         if (body >= 0) {
             row.waits = WaitingBody(forest, body);
@@ -116,7 +115,7 @@ TaskCommandStep :: (forest: snapshot.SnapshotNode[], document: int, values: Valu
         popped = 1;
     }
     if (command == JoinCommand) {
-        cells.append(QueryCell(WordStorage, -1, success_tag));
+        cells.append(ConstantCell(WordStorage, -1, success_tag));
         count = 2;
     }
     if (command == CancelAfterCommand || command == DelayCommand) {

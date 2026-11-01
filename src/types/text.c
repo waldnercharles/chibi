@@ -2,7 +2,6 @@
 
 #include "support/arena.h"
 #include "support/xalloc.h"
-#include "types/copy_internal.h"
 
 #include <assert.h>
 #include <stdatomic.h>
@@ -116,7 +115,6 @@ const char *pin_value_text(arena *storage, pin_value *out, const char *bytes, si
     owner->length = (uint32_t)length;
     memcpy(owner->bytes, bytes, length);
     owner->bytes[length] = 0;
-    pin_copy_record(PIN_COPY_TEXT, length + 1);
     return store_descriptor(
         storage,
         out,

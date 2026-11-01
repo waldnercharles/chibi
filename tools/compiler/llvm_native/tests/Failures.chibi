@@ -37,10 +37,10 @@ FailuresPropagateContextAndReturnZero :: () {
     assert(strings.Contains(text, "@chibi_scalar.failure.1.3 = private unnamed_addr constant { i64, i32, i32 } { i64 77, i32 3, i32 9 }\n"));
     assert(strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
     assert(strings.Contains(text, "  %v1 = call i32 @chibi_scalar.1(ptr %ctx)\n"));
-    assert(strings.Contains(text, "  %failure1.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 1\n  %failure1 = load ptr, ptr %failure1.at\n  %failed1 = icmp ne ptr %failure1, null\n  br i1 %failed1, label %failed, label %p2\n"));
+    assert(strings.Contains(text, "  %failure1.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 1\n  %failure1 = load ptr, ptr %failure1.at\n  %failed1 = icmp ne ptr %failure1, null\n  br i1 %failed1, label %failed, label %p2\n"));
     assert(strings.Contains(text, "define internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n"));
     assert(strings.Contains(text, "  br i1 %a2, label %p4, label %p3\n"));
-    assert(strings.Contains(text, "p3:\n  %fail3.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 1\n  store ptr @chibi_scalar.failure.1.3, ptr %fail3.at\n  br label %failed\n"));
+    assert(strings.Contains(text, "p3:\n  %fail3.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 1\n  store ptr @chibi_scalar.failure.1.3, ptr %fail3.at\n  br label %failed\n"));
     assert(strings.Contains(text, "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  unreachable\n}\n\ndefine internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n"));
     assert(strings.Contains(text, "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  unreachable\n}\n\nattributes #0 = { "));
 }
@@ -57,7 +57,7 @@ FailureCanEndFunctionBody :: () {
     code := Failures();
     code[10] = code[7];
     text := Emitted(FailureModule(code, false));
-    assert(strings.Contains(text, "p6:\n  %fail6.at = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 1\n"));
+    assert(strings.Contains(text, "p6:\n  %fail6.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 1\n"));
 }
 @test
 NativeProgramCannotFail :: () {

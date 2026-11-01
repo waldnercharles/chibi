@@ -15,12 +15,7 @@ void test_language_execution_scope();
 void test_language_program_session();
 void test_language_capture();
 void test_numeric_ranges();
-#ifdef CHIBI_TEST_ASSET_COMPILER_HOST
-void test_language_asset_compiler_host();
-#endif
 void test_language_host_packages_compiler();
-void test_language_component_write_ir();
-void test_language_component_write_layout();
 void test_language_text_format();
 void test_language_native_census(const char *report);
 void test_language_native_census_flattening();
@@ -51,7 +46,6 @@ int main(int argc, char **argv)
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool program_session = argc == 2 && !strcmp(argv[1], "--program-session");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
-    bool asset_compiler_host = argc == 2 && !strcmp(argv[1], "--asset-compiler-host");
     bool package_compiler_chibi_scalar = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-scalar");
     bool package_compiler_chibi_native = argc == 2 &&
@@ -62,92 +56,19 @@ int main(int argc, char **argv)
                                     !strcmp(argv[1], "--native-census-flattening");
     bool host_packages_compiler = argc == 2 &&
                                   !strcmp(argv[1], "--host-packages-compiler");
-    bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
-    bool component_write_layout = argc == 2 &&
-                                  !strcmp(argv[1], "--component-write-layout");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!execution && !execution_scope && !record_values && !record_document &&
          !record_compatibility && !program && !program_session && !ranges &&
-         !asset_compiler_host && !package_compiler_chibi_scalar &&
+         !package_compiler_chibi_scalar &&
          !package_compiler_chibi_native && !native_census &&
-         !native_census_flattening && !host_packages_compiler &&
-         !component_write && !component_write_layout && !text_format)) {
+         !native_census_flattening && !host_packages_compiler && !text_format)) {
         fprintf(
             stderr,
-            "Usage: %s --test-parallel | "
-            "--execution | "
-            "--execution-scope  "
-            "  "
-            "| --program | --program-session | "
-            ""
-            ""
-            ""
-            ""
-            ""
-            "--ranges | "
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            "--package-compiler-chibi-types -imports "
-            "-fallible "
-            "-math-native "
-            "| "
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            "--package-compiler-chibi-scalar | "
+            "Usage: %s --test-parallel | --execution | --execution-scope | --program | "
+            "--program-session | --ranges | --package-compiler-chibi-scalar | "
             "--package-compiler-chibi-native | --native-census [report] | "
-            "--native-census-flattening | "
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            ""
-            "--package-imports -compiler | "
-            ""
-            ""
-            ""
-            ""
-            "--component-write | --component-write-layout | "
-            ""
-            ""
-            "--activation-cache "
-            "| "
-            "--binding-benchmark "
-            "| "
-            ""
-            ""
-            ""
-            ""
-            "--text-format | "
-            ""
-            "--record-values | "
-            "--record-document | "
-            "--record-compatibility\n",
+            "--native-census-flattening | --host-packages-compiler | --text-format | "
+            "--record-values | --record-document | --record-compatibility\n",
             argv[0]
         );
         return 2;
@@ -171,19 +92,8 @@ int main(int argc, char **argv)
         test_language_native_census_flattening();
     } else if (host_packages_compiler) {
         test_language_host_packages_compiler();
-    } else if (asset_compiler_host) {
-#ifdef CHIBI_TEST_ASSET_COMPILER_HOST
-        test_language_asset_compiler_host();
-#else
-        fprintf(stderr, "asset compiler host component unavailable on this platform/configuration\n");
-        return 1;
-#endif
     } else if (ranges) {
         test_numeric_ranges();
-    } else if (component_write_layout) {
-        test_language_component_write_layout();
-    } else if (component_write) {
-        test_language_component_write_ir();
     } else if (program) {
         test_language_capture();
     } else if (program_session) {

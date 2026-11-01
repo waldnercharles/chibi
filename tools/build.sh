@@ -6,8 +6,14 @@ set -eu
 root=$(cd "$(dirname "$0")/.." && pwd -P)
 cd "$root"
 [ "${1:-}" = build ] && shift
+# A host built before the pinned first build host last changed may read
+# another native catalog or prepared format than the seed, which re-pins it.
+pinned=$(git log -1 --format=%ct -- tools/bootstrap/hosts.tsv 2>/dev/null || true)
 usable() {
-    [ -x "$1" ] && [ "$("$1" --protocol-version 2>/dev/null)" = 15 ]
+    [ -x "$1" ] && [ "$("$1" --protocol-version 2>/dev/null)" = 15 ] || return 1
+    [ -z "$pinned" ] || [ "$(date -r "$1" +%s)" -ge "$pinned" ] && return 0
+    echo "tools/build.sh: not using $1, built before tools/bootstrap/hosts.tsv last changed" >&2
+    return 1
 }
 host=${CHIBI_BUILD_HOST:-}
 if [ -z "$host" ]; then

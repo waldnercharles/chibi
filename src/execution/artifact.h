@@ -23,7 +23,7 @@ typedef struct
      * its size budget. */
     bool interpreted;
     atomic_uint inspection_state, scoped_state;
-    void *code, *system_code, *dispatch, *inspection_code, *scoped_code;
+    void *code, *dispatch, *inspection_code, *scoped_code;
     uintptr_t *resume_addresses, *inspection_addresses, *scoped_addresses;
     struct execution_wasm_jit *wasm_jit;
 } execution_artifact;

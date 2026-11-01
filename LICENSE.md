@@ -26,8 +26,7 @@ in the table take precedence over broader rows.
 | `tools/reflect/`, `tools/docs/`, `tools/collab/config.js.in` | LGPL-3.0-only |
 | First-party material in `docs/` and `test/`, except the three listed MIT snippets | LGPL-3.0-only |
 | The three explicitly marked snippets in `docs/code-language.md` listed below | MIT |
-| `src/toolchain/` except the four shared library files below | GPL-3.0-only |
-| `src/toolchain/compiler_json.c`, `src/toolchain/compiler_json.h`, `src/toolchain/compiler_syntax.c`, `src/toolchain/compiler_syntax.h` | LGPL-3.0-only |
+| `src/toolchain/` | GPL-3.0-only |
 | The `src/host/` tool files listed below | GPL-3.0-only |
 | `tools/compiler/`, including its bootstrap compiler, and `tools/toolchain/` | GPL-3.0-only |
 | `third_party/` and other material with existing third-party notices | Their existing licenses; not relicensed here |

@@ -230,10 +230,9 @@ CallArgument :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
 }
 // A `^T` parameter whose callers' addresses never outlive the call, as stage
 // zero decides it: not nullable, and its body only dereferences it, reads its
-// target's members or passes it on to another such parameter of a sibling
-// callable. It takes a reference to the caller's location; any other use
-// makes it an ordinary managed pointer.
-ScopedDepth: int : 64;
+// target's members or passes it on to another such parameter of a function of
+// its package (ScopedParameters). It takes a reference to the caller's location;
+// any other use makes it an ordinary managed pointer.
 
 // The `^T` a parameter annotation spells, possibly measured, or -1 when it
 // adds `?`, `[]` or a trait.
@@ -260,63 +259,6 @@ CallableDeclaration :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     return Is(forest, node, syntax.FunctionDeclaration) || Is(forest, node, syntax.MacroDeclaration) ||
            Is(forest, node, syntax.LambdaExpression);
 }
-// The declaration a plain call names among its caller's siblings, or -1.
-SiblingCallable :: (forest: snapshot.SnapshotNode[], text: string, caller: int, callee: int) -> int {
-    if (!Is(forest, callee, syntax.Identifier)) {
-        return -1;
-    }
-    for (sibling in Members(forest, forest[caller].parent)) {
-        if (CallableDeclaration(forest, sibling) &&
-            Text(forest, text, Field(forest, sibling, syntax.FieldName)) == Text(forest, text, callee)) {
-            return sibling;
-        }
-    }
-    return -1;
-}
-// Whether `argument`, a use of a parameter of `caller`, passes to a scoped
-// pointer parameter of a sibling callable.
-ScopedForward :: (forest: snapshot.SnapshotNode[], text: string, caller: int, argument: int,
-                  visiting: int[]) -> bool {
-    at := argument;
-    list := forest[at].parent;
-    while (Is(forest, list, syntax.ParenthesizedExpression)) {
-        at = list;
-        list = forest[list].parent;
-    }
-    label: int = -1;
-    if (Is(forest, list, syntax.NamedArgument) ||
-        (Is(forest, list, syntax.TypedArgument) && Field(forest, list, syntax.FieldValue) == at)) {
-        label = Field(forest, list, syntax.FieldName);
-        at = list;
-        list = forest[list].parent;
-    }
-    if (!Is(forest, list, syntax.ArgumentList) || !Is(forest, forest[list].parent, syntax.CallExpression)) {
-        return false;
-    }
-    callee := SiblingCallable(forest, text, caller, Field(forest, forest[list].parent, syntax.FieldFunction));
-    if (callee < 0) {
-        return false;
-    }
-    position: int = 0;
-    for (current in Members(forest, list)) {
-        if (current == at) {
-            break;
-        }
-        if (!Is(forest, current, syntax.NamedArgument) && !Is(forest, current, syntax.TypedArgument)) {
-            position += 1;
-        }
-    }
-    slot: int = 0;
-    for (parameter in Members(forest, Field(forest, callee, syntax.FieldParameters))) {
-        if ((label < 0 && slot == position) ||
-            (label >= 0 && Text(forest, text, label) == Text(forest, text, Field(forest, parameter, syntax.FieldName)))) {
-            return PointerAnnotation(forest, Field(forest, parameter, syntax.FieldType)) >= 0 &&
-                   ScopedPointer(forest, text, callee, parameter, visiting);
-        }
-        slot += 1;
-    }
-    return false;
-}
 // Whether `node` spells a name in `parent` rather than reading a value.
 SpellsName :: (forest: snapshot.SnapshotNode[], parent: int, node: int) -> bool {
     return Is(forest, parent, syntax.ArgumentName) || Is(forest, parent, syntax.TypeName) ||
@@ -324,14 +266,30 @@ SpellsName :: (forest: snapshot.SnapshotNode[], parent: int, node: int) -> bool 
            (Is(forest, parent, syntax.ForStatement) && Field(forest, parent, syntax.FieldKey) == node);
 }
 BindingForm :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
-    return Is(forest, node, syntax.LocalDeclaration) || Is(forest, node, syntax.ForStatement) ||
-           Is(forest, node, syntax.QueryGenerator);
+    return Is(forest, node, syntax.LocalDeclaration) || Is(forest, node, syntax.ForStatement);
 }
-// Whether each use of the parameter `name` of `caller` in `body` keeps its
-// address inside the call. A local of the same spelling makes it managed,
-// which keeps the analysis simple.
-ScopedUses :: (forest: snapshot.SnapshotNode[], text: string, caller: int, body: int, name: string,
-               visiting: int[]) -> bool {
+// The scoped pointer parameters of a package's functions, decided together.
+// `nodes` lists their parameter nodes in ascending order, each with a verdict in
+// `scoped`. A table without nodes decides nothing, and the callers fall back to
+// the one function's own analysis.
+ScopeTable :: struct {
+    nodes: int[];
+    scoped: bool[];
+}
+NoScopes :: () -> ScopeTable {
+    return {nodes: [], scoped: []};
+}
+// What `ScopedWalk` finds in the uses of a parameter: whether one makes it
+// managed, and each use that hands its address to a call.
+ScopeWalk :: struct {
+    escapes: bool;
+    forwards: int[];
+}
+// The uses of the parameter `name` in `body`: whether one makes it managed (a
+// local of the same spelling, or an address that escapes), and each use that
+// passes its address to a call, for ScopedParameters to follow into the callee.
+ScopedWalk :: (forest: snapshot.SnapshotNode[], text: string, body: int, name: string) -> ScopeWalk {
+    found: ScopeWalk = {escapes: false, forwards: []};
     pending: int[] = [body];
     while (length(pending) > 0) {
         at := pending[length(pending) - 1];
@@ -348,14 +306,13 @@ ScopedUses :: (forest: snapshot.SnapshotNode[], text: string, caller: int, body:
         parent := forest[at].parent;
         if (SpellsName(forest, parent, at)) {
             if (BindingForm(forest, parent)) {
-                return false;
+                found.escapes = true;
+                return found;
             }
             continue;
         }
         if (!Is(forest, parent, syntax.DereferenceExpression) && !Is(forest, parent, syntax.MemberExpression)) {
-            if (!ScopedForward(forest, text, caller, at, visiting)) {
-                return false;
-            }
+            found.forwards.append(at);
             continue;
         }
         place := parent;
@@ -366,27 +323,229 @@ ScopedUses :: (forest: snapshot.SnapshotNode[], text: string, caller: int, body:
             place = forest[place].parent;
         }
         outer := forest[place].parent;
-        if (Is(forest, outer, syntax.AddressExpression) && !ScopedForward(forest, text, caller, outer, visiting)) {
-            return false;
+        if (Is(forest, outer, syntax.AddressExpression)) {
+            found.forwards.append(outer);
         }
     }
-    return true;
+    return found;
 }
-// Whether `parameter` of `declaration` is a scoped pointer. Recursion keeps
-// whatever the other uses decide.
-ScopedPointer :: (forest: snapshot.SnapshotNode[], text: string, declaration: int, parameter: int,
-                  visiting: int[]) -> bool {
-    for (each in visiting) {
-        if (each == parameter) {
-            return true;
+// The functions of a package that have a pointer parameter: their names, the
+// text of their documents, their declarations, and the index in the package's
+// parameter list of each one's first parameter.
+ScopeFunctions :: struct {
+    names: string[];
+    texts: string[];
+    declarations: int[];
+    first: int[];
+}
+// The index, in the package's parameter list, of the pointer parameter that the
+// call `argument` is an argument of passes to, or -1 when it passes to anything
+// else: a function without a pointer there, or one of another package.
+ScopedTarget :: (forest: snapshot.SnapshotNode[], text: string, functions: ScopeFunctions, argument: int) -> int {
+    at := argument;
+    list := forest[at].parent;
+    while (Is(forest, list, syntax.ParenthesizedExpression)) {
+        at = list;
+        list = forest[list].parent;
+    }
+    label: int = -1;
+    if (Is(forest, list, syntax.NamedArgument) ||
+        (Is(forest, list, syntax.TypedArgument) && Field(forest, list, syntax.FieldValue) == at)) {
+        label = Field(forest, list, syntax.FieldName);
+        at = list;
+        list = forest[list].parent;
+    }
+    if (!Is(forest, list, syntax.ArgumentList) || !Is(forest, forest[list].parent, syntax.CallExpression)) {
+        return -1;
+    }
+    called := Field(forest, forest[list].parent, syntax.FieldFunction);
+    if (!Is(forest, called, syntax.Identifier)) {
+        return -1;
+    }
+    spelled := Text(forest, text, called);
+    function: int = -1;
+    for (index in 0..<length(functions.names)) {
+        if (functions.names[index] == spelled) {
+            function = index;
+            break;
         }
     }
-    if (length(visiting) == ScopedDepth) {
-        return false;
+    if (function < 0) {
+        return -1;
     }
-    body := Field(forest, declaration, syntax.FieldBody);
-    return body < 0 || ScopedUses(forest, text, declaration, body,
-                                  Text(forest, text, Field(forest, parameter, syntax.FieldName)), append(visiting, parameter));
+    position: int = 0;
+    for (current in Members(forest, list)) {
+        if (current == at) {
+            break;
+        }
+        if (!Is(forest, current, syntax.NamedArgument) && !Is(forest, current, syntax.TypedArgument)) {
+            position += 1;
+        }
+    }
+    slot: int = 0;
+    for (parameter in Members(forest, Field(forest, functions.declarations[function], syntax.FieldParameters))) {
+        if ((label < 0 && slot == position) ||
+            (label >= 0 && Text(forest, text, label) == Text(forest, functions.texts[function],
+                                                              Field(forest, parameter, syntax.FieldName)))) {
+            if (PointerAnnotation(forest, Field(forest, parameter, syntax.FieldType)) < 0) {
+                return -1;
+            }
+            return functions.first[function] + slot;
+        }
+        slot += 1;
+    }
+    return -1;
+}
+// The indices of `declarations` in ascending order of node: a bottom-up merge
+// sort. A package's files arrive in the order of their paths, which is not the
+// order of their nodes when the sources were read in another, so the
+// declarations of the files in turn need not ascend.
+Ascending :: (declarations: int[]) -> int[] {
+    count := length(declarations);
+    from: int[] = [];
+    for (index in 0..<count) {
+        from.append(index);
+    }
+    width := 1;
+    while (width < count) {
+        to: int[] = [];
+        start := 0;
+        while (start < count) {
+            middle := start + width;
+            if (middle > count) {
+                middle = count;
+            }
+            end := middle + width;
+            if (end > count) {
+                end = count;
+            }
+            left := start;
+            right := middle;
+            while (left < middle || right < end) {
+                if (right >= end || (left < middle && declarations[from[left]] <= declarations[from[right]])) {
+                    to.append(from[left]);
+                    left += 1;
+                } else {
+                    to.append(from[right]);
+                    right += 1;
+                }
+            }
+            start = end;
+        }
+        from = to;
+        width *= 2;
+    }
+    return from;
+}
+// Which pointer parameters of `declarations`, function declarations in
+// any order, take a reference to the caller's location: those whose
+// uses only dereference them, read fields through them, or pass them on to such
+// a parameter. The decision is the greatest fixed point of the passing edges,
+// one pass over every function instead of a search into each callee from each
+// use. `texts` holds the document text of each declaration.
+ScopedParameters :: (forest: snapshot.SnapshotNode[], texts: string[], declarations: int[]) -> ScopeTable {
+    nodes: int[] = [];
+    names: string[] = [];
+    pointers: bool[] = [];
+    owners: int[] = [];
+    functions: ScopeFunctions = {names: [], texts: [], declarations: [], first: []};
+    previous: int = -1;
+    for (at in Ascending(declarations)) {
+        declaration := declarations[at];
+        assert(declaration > previous, "a function is declared once");
+        previous = declaration;
+        text := texts[at];
+        any := false;
+        for (parameter in Members(forest, Field(forest, declaration, syntax.FieldParameters))) {
+            if (PointerAnnotation(forest, Field(forest, parameter, syntax.FieldType)) >= 0) {
+                any = true;
+            }
+        }
+        if (!any) {
+            continue;
+        }
+        owner := length(functions.names);
+        functions.names.append(Text(forest, text, Field(forest, declaration, syntax.FieldName)));
+        functions.texts.append(text);
+        functions.declarations.append(declaration);
+        functions.first.append(length(nodes));
+        for (parameter in Members(forest, Field(forest, declaration, syntax.FieldParameters))) {
+            nodes.append(parameter);
+            names.append(Text(forest, text, Field(forest, parameter, syntax.FieldName)));
+            pointers.append(PointerAnnotation(forest, Field(forest, parameter, syntax.FieldType)) >= 0);
+            owners.append(owner);
+        }
+    }
+    scoped: bool[] = [];
+    edge_from: int[] = [];
+    edge_to: int[] = [];
+    for (index in 0..<length(nodes)) {
+        verdict := pointers[index];
+        if (verdict) {
+            owner := owners[index];
+            body := Field(forest, functions.declarations[owner], syntax.FieldBody);
+            if (body >= 0) {
+                text := functions.texts[owner];
+                walked := ScopedWalk(forest, text, body, names[index]);
+                verdict = !walked.escapes;
+                for (use in walked.forwards) {
+                    target := ScopedTarget(forest, text, functions, use);
+                    if (target < 0) {
+                        verdict = false;
+                    } else if (target != index) {
+                        edge_from.append(index);
+                        edge_to.append(target);
+                    }
+                }
+            }
+        }
+        scoped.append(verdict);
+    }
+    changed := true;
+    while (changed) {
+        changed = false;
+        for (edge in 0..<length(edge_from)) {
+            if (scoped[edge_from[edge]] && !scoped[edge_to[edge]]) {
+                scoped[edge_from[edge]] = false;
+                changed = true;
+            }
+        }
+    }
+    return {nodes: nodes, scoped: scoped};
+}
+// The scoped pointer parameters of the functions beside `member`, those of its
+// parent's other members: a library's, a behavior's, or a document's.
+SiblingScopes :: (forest: snapshot.SnapshotNode[], text: string, member: int) -> ScopeTable {
+    declarations: int[] = [];
+    texts: string[] = [];
+    for (sibling in Members(forest, forest[member].parent)) {
+        if (Is(forest, sibling, syntax.FunctionDeclaration)) {
+            declarations.append(sibling);
+            texts.append(text);
+        }
+    }
+    return ScopedParameters(forest, texts, declarations);
+}
+// 1 when the table decides that `parameter` is scoped, 0 when it decides it is
+// managed, and -1 when the table does not list it.
+ScopedVerdict :: (table: ScopeTable, parameter: int) -> int {
+    low: int = 0;
+    high: int = length(table.nodes);
+    while (low < high) {
+        middle := (low + high) / 2;
+        if (table.nodes[middle] < parameter) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    if (low == length(table.nodes) || table.nodes[low] != parameter) {
+        return -1;
+    }
+    if (table.scoped[low]) {
+        return 1;
+    }
+    return 0;
 }
 // Whether `names` holds `name`.
 Holds :: (names: string[], name: string) -> bool {
@@ -527,8 +686,8 @@ PlaceAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: int
         slots.append(DescriptorSlot(target));
         code.append(DescriptorCode(ops, target, binding.index, descriptor, node));
     }
-    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator)));
-    if (operator != "") {
+    operator := CompoundOperator(Operator(forest, item.node));
+    if (operator != NoOperator) {
         op := BinaryOp(ops, operator);
         if (op < 0 || Comparison(ops, op) || !Numeric(binding.storage) || binding.container != 0 ||
             !Single(stored, binding.storage)) {
@@ -786,7 +945,7 @@ ReferenceFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     reached := base + 3;
     stored := value;
     if (item.c == 1) {
-        op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, syntax.FieldOperator))));
+        op := BinaryOp(ops, CompoundOperator(Operator(forest, item.node)));
         if (op < 0 || Comparison(ops, op) || !(Integer(field.storage) || Floating(field.storage)) ||
             !Single(stored, field.storage)) {
             return Fail(forest, item.node, document, "compound assignment needs number operands of its type");

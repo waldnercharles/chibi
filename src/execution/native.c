@@ -23,7 +23,8 @@ _Static_assert(offsetof(execution_native_context, format_text) == 0, "context fo
 _Static_assert(offsetof(execution_native_context, failure) == sizeof(void *), "context failure");
 _Static_assert(offsetof(execution_native_context, allocate) == 2 * sizeof(void *), "context allocate");
 _Static_assert(offsetof(execution_native_context, index_failed) == 3 * sizeof(void *), "context index_failed");
-_Static_assert(sizeof(execution_native_context) == 4 * sizeof(void *), "context size");
+_Static_assert(offsetof(execution_native_context, release) == 4 * sizeof(void *), "context release");
+_Static_assert(sizeof(execution_native_context) == 5 * sizeof(void *), "context size");
 /* And FailureType() these. */
 _Static_assert(offsetof(execution_native_failure, function) == 0, "failure function");
 _Static_assert(offsetof(execution_native_failure, start) == 8, "failure start");
@@ -260,6 +261,8 @@ static void *allocate(execution_native_context *context, size_t size)
     execution_native_frame *frame = (execution_native_frame *)context;
     return arena_alloc(&frame->heap, size);
 }
+/* The call's heap frees every allocation when the call returns. */
+static void release(execution_native_context *, void *) {}
 static _Noreturn void index_failed(execution_native_context *, int32_t index, int32_t length)
 {
     fprintf(stderr, "native array index %d is out of range for length %d\n", index, length);
@@ -269,7 +272,8 @@ void execution_native_frame_init(execution_native_frame *frame, execution_native
 {
     *frame = (execution_native_frame){ .context = { .format_text = format_text,
                                                     .allocate = allocate,
-                                                    .index_failed = index_failed },
+                                                    .index_failed = index_failed,
+                                                    .release = release },
                                        .runtime = runtime };
 }
 void execution_native_frame_free(execution_native_frame *frame)

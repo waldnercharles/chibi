@@ -1896,11 +1896,12 @@ ForeignValid :: (slots: int[], arguments: int[], texts: string[], item: Instruct
     }
     return true;
 }
-// The declaration of each foreign symbol the module calls, once.
-ForeignDeclarations :: (functions: Function[], slots: int[], code: Instruction[], arguments: int[],
-                        texts: string[]) -> string {
+// The declaration of each foreign symbol functions [first, last) call, once.
+ForeignDeclarations :: (functions: Function[], first: int, last: int, slots: int[], code: Instruction[],
+                        arguments: int[], texts: string[]) -> string {
     out: string[] = [];
-    for (shape in functions) {
+    for (function in first..<last) {
+        shape := functions[function];
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
             if (item.op != ForeignCall || item.left == 1) {
@@ -1932,9 +1933,11 @@ ForeignTexts :: (slots: int[], arguments: int[], item: Instruction) -> int {
     }
     return count;
 }
-// Whether any function of the module passes a string to a foreign call.
-Cstrings :: (functions: Function[], slots: int[], code: Instruction[], arguments: int[]) -> bool {
-    for (shape in functions) {
+// Whether any of functions [first, last) passes a string to a foreign call.
+Cstrings :: (functions: Function[], first: int, last: int, slots: int[], code: Instruction[],
+             arguments: int[]) -> bool {
+    for (function in first..<last) {
+        shape := functions[function];
         own_slots := Part(slots, shape.first_slot, shape.slots);
         own := Part(arguments, shape.first_argument, shape.arguments);
         for (pc in 0..<shape.code) {
@@ -2018,12 +2021,17 @@ FailureSymbol :: (function: int, pc: int) -> string {
 }
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
                  code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-                 mode: int, step_budget: int, runtime: bool, fallible: bool[]) -> string {
+                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool) -> string {
     shape := functions[function];
     result := shape.result;
+    // A function another piece of the module calls is a hidden symbol the
+    // link joins; the others stay internal to their piece.
     linkage := "";
     if (function != 0 || mode == NoEntry) {
         linkage = "internal ";
+        if (shared) {
+            linkage = "hidden ";
+        }
     }
     listed: string[] = [];
     if (runtime) {
@@ -2165,10 +2173,11 @@ Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
     }
     return fallible;
 }
-// Each Fail's constant: its function's stable ID and its source range.
-Failures :: (functions: Function[], code: Instruction[]) -> string {
+// Each Fail's constant in functions [first, last): its function's stable ID
+// and its source range.
+Failures :: (functions: Function[], code: Instruction[], first: int, last: int) -> string {
     out: string[] = [];
-    for (function in 0..<length(functions)) {
+    for (function in first..<last) {
         shape := functions[function];
         for (pc in 0..<shape.code) {
             item := code[shape.first_code + pc];
@@ -2230,9 +2239,10 @@ RetainedStates :: (code: Instruction[]) -> Instruction[] {
     }
     return states;
 }
-// Each state's global, which starts at its value. A state's load numbers it
-// by its place among the loads, and a store names a state of the module.
-StateGlobals :: (code: Instruction[]) -> string {
+// Each state's global, with `linkage`, which starts at its value. A state's
+// load numbers it by its place among the loads, and a store names a state of
+// the module.
+StateGlobals :: (code: Instruction[], linkage: string) -> string {
     out: string[] = [];
     for (item in RetainedStates(code)) {
         initial := item.literal;
@@ -2241,7 +2251,7 @@ StateGlobals :: (code: Instruction[]) -> string {
         } else if (!abi.Floating(item.type)) {
             initial = Spelled(initial, item.type);
         }
-        out.append(format_text("@{} = internal global {} {}\n", StateSymbol(item.target), StateStorage(item.type),
+        out.append(format_text("@{} = {} global {} {}\n", StateSymbol(item.target), linkage, StateStorage(item.type),
                                initial));
     }
     return strings.Join(out, "");
@@ -2409,82 +2419,225 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (runtime && mode == MainEntry) {
         return Result.Rejected(-1, "a native program cannot call the runtime yet");
     }
-    // No host-derived data layout: the explicit LLVM target selects it. No
-    // raw pointer or foreign ABI is admitted yet, and records stay internal.
-    out: string[] = [format_text("target triple = \"{}\"\n\n", target.triple)];
-    for (index in 0..<length(records)) {
-        record := records[index];
-        types: string[] = [];
-        for (field in 0..<record.count) {
-            types.append(TypeName(fields[record.first + field]));
-        }
-        out.append(format_text("%record{} = type { {} }\n", index, strings.Join(types, ", ")));
-    }
-    for (index in 0..<length(texts)) {
-        out.append(format_text("@{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n", TextSymbol(index),
-                               strings.ByteLength(texts[index]) + 1, Escaped(texts[index])));
-    }
-    out.append(format_text("{}{}declare void @llvm.trap()\n{}{}", StateGlobals(code), Failures(functions, code),
-                           Declarations(code), ForeignDeclarations(functions, slots, code, arguments, texts)));
     debug := source.file != "";
     compares := Compares(code);
     fallible := Fallible(functions, code);
+    // A program splits into pieces that opt and llc compile at once; a
+    // library's manifests and line tables' metadata name every function, so
+    // those stay one piece.
+    bounds := Pieces(functions, mode != NoEntry && !debug);
+    pieces := length(bounds) - 1;
+    home: int[] = [];
+    for (piece in 0..<pieces) {
+        for (function in bounds[piece]..<bounds[piece + 1]) {
+            home.append(piece);
+        }
+    }
+    // The functions another piece calls or takes the address of.
+    shared := resize([false], length(functions));
     for (function in 0..<length(functions)) {
-        text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
-                             texts, mode, step_budget, runtime, fallible);
+        shape := functions[function];
+        for (pc in shape.first_code..<shape.first_code + shape.code) {
+            item := code[pc];
+            if ((item.op == Call || item.op == FunctionAddress) && home[item.left] != home[function]) {
+                shared[item.left] = true;
+            }
+        }
+    }
+    states := RetainedStates(code);
+    out: string[] = [];
+    for (piece in 0..<pieces) {
+        first := bounds[piece];
+        last := bounds[piece + 1];
+        held := code;
+        if (pieces > 1) {
+            start := functions[first].first_code;
+            held = Codes(code, start, functions[last - 1].first_code + functions[last - 1].code - start);
+            // native_link.Pieces splits a module at this line.
+            if (piece > 0) {
+                out.append("; chibi-piece\n");
+            }
+        }
+        // No host-derived data layout: the explicit LLVM target selects it. No
+        // raw pointer or foreign ABI is admitted yet, and records stay internal.
+        out.append(format_text("target triple = \"{}\"\n\n", target.triple));
+        for (index in 0..<length(records)) {
+            record := records[index];
+            types: string[] = [];
+            for (field in 0..<record.count) {
+                types.append(TypeName(fields[record.first + field]));
+            }
+            out.append(format_text("%record{} = type { {} }\n", index, strings.Join(types, ", ")));
+        }
+        // One piece holds every text; each of several, the ones it reads.
+        wanted := resize([false], length(texts));
+        for (index in 0..<length(texts)) {
+            wanted[index] = pieces == 1;
+        }
+        for (item in held) {
+            if (item.op == Constant && item.type == abi.TextStorage) {
+                wanted[int(item.literal)] = true;
+            }
+        }
+        for (index in 0..<length(texts)) {
+            if (wanted[index]) {
+                out.append(format_text("@{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n", TextSymbol(index),
+                                       strings.ByteLength(texts[index]) + 1, Escaped(texts[index])));
+            }
+        }
+        // The first of several pieces defines the retained states, which the
+        // others declare.
+        if (pieces == 1) {
+            out.append(StateGlobals(code, "internal"));
+        } else if (piece == 0) {
+            out.append(StateGlobals(code, "hidden"));
+        } else {
+            out.append(StateDeclarations(states, held));
+        }
+        out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, first, last),
+                               Declarations(held),
+                               ForeignDeclarations(functions, first, last, slots, code, arguments, texts)));
+        out.append(Callees(functions, parameters, held, home, piece, mode, runtime));
+        for (function in first..<last) {
+            text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
+                                 texts, mode, step_budget, runtime, fallible, shared[function]);
+            if (debug) {
+                text = Located(text, Subprogram(function), Location(length(functions), compares,
+                                                                    functions[function].first_code));
+            }
+            out.append(format_text("\n{}", text));
+        }
+        callbacks := CallbackAdapters(functions, parameters, held, mode, runtime);
+        if (callbacks != "") {
+            if (runtime) {
+                out.append(format_text("\n@chibi_context = external global {}\n", abi.ContextType()));
+            }
+            out.append(callbacks);
+        }
+        // Each piece has its own copy of the helpers its functions call.
+        if (Compares(held)) {
+            text := TextEqual();
+            if (debug) {
+                text = Located(text, Subprogram(length(functions)), Location(length(functions), true, length(code)));
+            }
+            out.append(format_text("\n{}", text));
+        }
+        copies := Copies(held);
+        if (copies) {
+            out.append(format_text("\n{}", ArrayCopyHelper()));
+        }
+        if (Zeroes(held)) {
+            out.append(format_text("\n{}", ArrayZeroHelper()));
+        }
+        if (Counts(held)) {
+            out.append(format_text("\n{}", TextHelpers()));
+        }
+        cstrings := Cstrings(functions, first, last, slots, code, arguments);
+        if (cstrings) {
+            out.append(format_text("\n{}", CstringHelper()));
+        }
+        // Recursion is unchecked, as Rust's is: each function probes every page
+        // of its frame, so running out of stack faults in the guard page below
+        // it, which the host reports as a stack overflow.
+        out.append("\nattributes #0 = { ");
+        out.append(abi.StackProbe(target));
+        out.append(" }\n");
+        if (copies || cstrings) {
+            out.append("attributes #1 = { noinline nounwind \"no-builtins\" }\n");
+        }
+        // Which source function each symbol is, for a backtrace or an
+        // allocation profile to read: `; chibi-function INDEX NAME`.
+        if (length(names) == length(functions)) {
+            for (function in first..<last) {
+                out.append(format_text("; chibi-function {} {}\n", function, names[function]));
+            }
+        }
         if (debug) {
-            text = Located(text, Subprogram(function), Location(length(functions), compares,
-                                                                functions[function].first_code));
+            out.append(format_text("\n{}", Metadata(target, functions, source, names, lines, columns, mode, compares)));
         }
-        out.append(format_text("\n{}", text));
-    }
-    callbacks := CallbackAdapters(functions, parameters, code, mode, runtime);
-    if (callbacks != "") {
-        if (runtime) {
-            out.append(format_text("\n@chibi_context = external global {}\n", abi.ContextType()));
-        }
-        out.append(callbacks);
-    }
-    if (compares) {
-        text := TextEqual();
-        if (debug) {
-            text = Located(text, Subprogram(length(functions)), Location(length(functions), true, length(code)));
-        }
-        out.append(format_text("\n{}", text));
-    }
-    if (Copies(code)) {
-        out.append(format_text("\n{}", ArrayCopyHelper()));
-    }
-    if (Zeroes(code)) {
-        out.append(format_text("\n{}", ArrayZeroHelper()));
-    }
-    if (Counts(code)) {
-        out.append(format_text("\n{}", TextHelpers()));
-    }
-    cstrings := Cstrings(functions, slots, code, arguments);
-    if (cstrings) {
-        out.append(format_text("\n{}", CstringHelper()));
-    }
-    // Recursion is unchecked, as Rust's is: each function probes every page
-    // of its frame, so running out of stack faults in the guard page below
-    // it, which the host reports as a stack overflow.
-    out.append("\nattributes #0 = { ");
-    out.append(abi.StackProbe(target));
-    out.append(" }\n");
-    if (Copies(code) || cstrings) {
-        out.append("attributes #1 = { noinline nounwind \"no-builtins\" }\n");
-    }
-    // Which source function each symbol is, for a backtrace or an allocation
-    // profile to read: `; chibi-function INDEX NAME`.
-    if (length(names) == length(functions)) {
-        for (function in 0..<length(names)) {
-            out.append(format_text("; chibi-function {} {}\n", function, names[function]));
-        }
-    }
-    if (debug) {
-        out.append(format_text("\n{}", Metadata(target, functions, source, names, lines, columns, mode, compares)));
     }
     return Result.Emitted(strings.Join(out, ""));
+}
+
+// Instructions per piece of a split module, and the most pieces: about
+// 37 for the compiler's 300,000, enough to keep 14 cores busy as the pieces
+// finish unevenly. The count depends on the module alone, never on the
+// machine, so every build of the same sources writes the same pieces.
+PieceInstructions: int : 8192;
+MostPieces: int : 64;
+// Where each piece's functions start, then the function count: contiguous
+// runs in source order, so neighbouring functions, which call each other
+// most, share a piece, each of about the same instruction count.
+Pieces :: (functions: Function[], split: bool) -> int[] {
+    total := 0;
+    for (shape in functions) {
+        total += shape.code;
+    }
+    count := (total + PieceInstructions - 1) / PieceInstructions;
+    if (count > MostPieces) {
+        count = MostPieces;
+    }
+    bounds: int[] = [0];
+    if (split && count > 1) {
+        held := 0;
+        for (function in 0..<length(functions) - 1) {
+            held += functions[function].code;
+            if (length(bounds) < count && held * count >= total * length(bounds)) {
+                bounds.append(function + 1);
+            }
+        }
+    }
+    bounds.append(length(functions));
+    return bounds;
+}
+// The declarations of the functions in other pieces that `held`, piece
+// `piece`'s code, calls or takes the address of, in function order.
+Callees :: (functions: Function[], parameters: int[], held: Instruction[], home: int[], piece: int, mode: int,
+            runtime: bool) -> string {
+    wanted := resize([false], length(functions));
+    for (item in held) {
+        if ((item.op == Call || item.op == FunctionAddress) && home[item.left] != piece) {
+            wanted[item.left] = true;
+        }
+    }
+    out: string[] = [];
+    for (function in 0..<length(functions)) {
+        if (!wanted[function]) {
+            continue;
+        }
+        shape := functions[function];
+        listed: string[] = [];
+        if (runtime) {
+            listed.append("ptr");
+        }
+        for (index in 0..<shape.parameters) {
+            listed.append(TypeName(parameters[shape.first_parameter + index]));
+        }
+        linkage := "hidden ";
+        if (function == 0 && mode != NoEntry) {
+            linkage = "";
+        }
+        out.append(format_text("declare {}{} @{}({})\n", linkage, TypeName(shape.result), Symbol(function, mode),
+                               strings.Join(listed, ", ")));
+    }
+    return strings.Join(out, "");
+}
+// The retained states `held` reads or writes, which another piece defines.
+StateDeclarations :: (states: Instruction[], held: Instruction[]) -> string {
+    wanted := resize([false], length(states));
+    for (item in held) {
+        if (item.op == StateLoad || item.op == StateStore) {
+            wanted[item.target] = true;
+        }
+    }
+    out: string[] = [];
+    for (index in 0..<length(states)) {
+        if (wanted[index]) {
+            out.append(format_text("@{} = external hidden global {}\n", StateSymbol(index),
+                                   StateStorage(states[index].type)));
+        }
+    }
+    return strings.Join(out, "");
 }
 
 // Whether line tables name every function and place every instruction.

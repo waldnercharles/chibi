@@ -1382,7 +1382,10 @@ TEST_CASE(execution_costs_verify_intrinsics_and_follow_recursive_calls)
                                             .body = function };
         execution_module module = { .plan = { .functions = &entry,
                                               .function_count = 1 } };
-        REQUIRE(execution_module_build_effects(&module));
+        REQUIRE(execution_module_build_effects(
+            &module,
+            execution_module_effects_bytes(&module.plan)
+        ));
         execution_effect_summary effects = execution_module_effects(&module);
         REQUIRE(effects.declared && effects.parallel_safe && effects.deterministic);
         REQUIRE(!effects.structural && !effects.host_sink && !effects.world_read);
@@ -4431,7 +4434,10 @@ TEST_CASE(execution_managed_pointer_access_is_not_query_or_parallel_safe)
                                             .body = function };
         execution_module module = { .plan = { .functions = &entry,
                                               .function_count = 1 } };
-        REQUIRE(execution_module_build_effects(&module));
+        REQUIRE(execution_module_build_effects(
+            &module,
+            execution_module_effects_bytes(&module.plan)
+        ));
         REQUIRE(!execution_module_effects(&module).parallel_safe);
         free(module.effect_ids);
         if (i) {

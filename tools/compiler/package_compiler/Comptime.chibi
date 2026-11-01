@@ -226,6 +226,10 @@ CtIsArray :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, nod
     }
     return false;
 }
+// Whether values of `storage` are numbers or bools.
+CtScalar :: (storage: int) -> bool {
+    return Integer(storage) || Floating(storage) || storage == BoolStorage;
+}
 // The row type of a declared type: the element storage of an array, `CtRecord`
 // plus the declaration of a record, 0 for any other type.
 CtRowType :: (storage: int, container: int, record: int) -> int {
@@ -241,7 +245,7 @@ CtRowType :: (storage: int, container: int, record: int) -> int {
 // record that declares nothing else.
 CtRowOk :: (context: ^CtContext, kind: int) -> bool {
     if (kind < CtRecord) {
-        return Integer(kind) || kind == BoolStorage;
+        return CtScalar(kind);
     }
     declaration := context.types[kind - CtRecord];
     if (declaration.kind != RecordDecl) {
@@ -250,7 +254,7 @@ CtRowOk :: (context: ^CtContext, kind: int) -> bool {
     at := declaration.first;
     while (at < declaration.first + declaration.count) {
         member := context.members[at];
-        if (member.container != 0 || (!Integer(member.storage) && member.storage != BoolStorage)) {
+        if (member.container != 0 || !CtScalar(member.storage)) {
             return false;
         }
         at += 1;
@@ -297,6 +301,9 @@ CtEval :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth:
     if (typed == 0) {
         typed = want;
     }
+    if (typed == 0 && Floating(UntypedStorage(context.forest, text, node))) {
+        typed = UntypedStorage(context.forest, text, node);
+    }
     if (typed == 0) {
         typed = IntStorage;
     }
@@ -341,7 +348,7 @@ CtEvalArray :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, d
                 if (storage == 0) {
                     storage = kind;
                 }
-                if (kind != storage && !Widens(kind, storage)) {
+                if (kind != storage && !CtWidens(kind, storage)) {
                     return CtResult.Failed(CtFail(context, element, file, "array elements differ in type"));
                 }
                 elements.append(CtWidened(item, kind, storage));
@@ -387,7 +394,7 @@ CtRecordLiteral :: (context: ^CtContext, package: int, file: int, frame: ^CtFram
             case .Elements(more, other):
                 return CtResult.Failed(CtFail(context, initializer, file, "compile-time records hold numbers and bools only"));
             case .Value(item, storage):
-                if (storage != kind && !Widens(storage, kind)) {
+                if (storage != kind && !CtWidens(storage, kind)) {
                     return CtResult.Failed(CtFail(context, initializer, file, "field value differs from its type"));
                 }
                 values[index - declaration.first] = CtWidened(item, storage, kind);
@@ -496,7 +503,7 @@ CtCall :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth:
     while (index < length(arguments)) {
         param := context.params[callable.first + index];
         row := CtRowType(param.storage, param.container, param.record);
-        if ((row == 0 && (param.container != 0 || (!Integer(param.storage) && param.storage != BoolStorage))) ||
+        if ((row == 0 && (param.container != 0 || !CtScalar(param.storage))) ||
             (row != 0 && !CtRowOk(context, row)) || param.reference ||
             Is(context.forest, arguments[index], syntax.NamedArgument)) {
             return CtResult.Failed(CtFail(context, arguments[index], file,
@@ -529,7 +536,7 @@ CtCall :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth:
                 case .Elements(values, kind):
                     return CtResult.Failed(CtFail(context, arguments[index], file, "the argument must be a number"));
                 case .Value(value, storage):
-                    if (storage != param.storage && !Widens(storage, param.storage)) {
+                    if (storage != param.storage && !CtWidens(storage, param.storage)) {
                         return CtResult.Failed(CtFail(context, arguments[index], file,
                                                       format_text("Mismatched integer types {} and {}; convert one operand",
                                                                   TypeName(storage), TypeName(param.storage))));
@@ -546,7 +553,15 @@ CtCall :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth:
 }
 // `value` of type `from` as a value of the wider type `to`.
 CtWidened :: (value: u64, from: int, to: int) -> u64 {
+    if (Floating(from) && Floating(to)) {
+        return FloatingBits(value, from, to);
+    }
     return ExactWrapped(ExactStored(value, from), to);
+}
+// Whether a value of type `from` converts to `to` without loss: an integer to
+// a wider one, a float to a wider float.
+CtWidens :: (from: int, to: int) -> bool {
+    return Widens(from, to) || FloatWidens(from, to);
 }
 // Runs function `callee` with its arguments in `frame`.
 CtRun :: (context: ^CtContext, callee: int, frame: ^CtFrame, depth: int) -> CtResult {
@@ -554,7 +569,7 @@ CtRun :: (context: ^CtContext, callee: int, frame: ^CtFrame, depth: int) -> CtRe
     file := callable.document;
     row := CtRowType(callable.result, callable.result_container, callable.result_record);
     if (callable.result == 0 || callable.results != 0 ||
-        (row == 0 && (callable.result_container != 0 || (!Integer(callable.result) && callable.result != BoolStorage))) ||
+        (row == 0 && (callable.result_container != 0 || !CtScalar(callable.result))) ||
         (row != 0 && !CtRowOk(context, row))) {
         return CtResult.Failed(CtFail(context, callable.node, file,
                                       "compile-time execution needs a function with one integer, bool, array or record result"));
@@ -690,7 +705,7 @@ CtStatement :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, d
             case .Elements(values, kind):
                 return CtFlow.Failed(CtFail(context, value, file, "returned value differs from the result type"));
             case .Value(returned, storage):
-                if (storage != function.result && !Widens(storage, function.result)) {
+                if (storage != function.result && !CtWidens(storage, function.result)) {
                     return CtFlow.Failed(CtFail(context, value, file, "returned value differs from the result type"));
                 }
                 return CtFlow.Returned(CtWidened(returned, storage, function.result), function.result);
@@ -755,7 +770,7 @@ CtDeclaration :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame,
     declared := Field(forest, statement, syntax.FieldType);
     if (declared >= 0) {
         want = CtDeclared(context, package, Text(forest, text, declared));
-        if (want == 0 || (want > 0 && !Integer(want) && want != BoolStorage) ||
+        if (want == 0 || (want > 0 && !CtScalar(want)) ||
             (want < 0 && !CtRowOk(context, -want))) {
             return CtFlow.Failed(CtFail(context, declared, file,
                                         "compile-time locals are integers, bools, and arrays and records of them"));
@@ -793,7 +808,7 @@ CtDeclaration :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame,
         case .Elements(values, kind):
             return CtFlow.Failed(CtFail(context, value, file, "local value differs from its type"));
         case .Value(initial, storage):
-            if (want != 0 && storage != want && !Widens(storage, want)) {
+            if (want != 0 && storage != want && !CtWidens(storage, want)) {
                 return CtFlow.Failed(CtFail(context, value, file, "local value differs from its type"));
             }
             if (want == 0) {
@@ -897,7 +912,7 @@ CtAssignment :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, 
         case .Elements(values, other):
             return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
         case .Value(assigned, storage):
-            if (storage != kind && !Widens(storage, kind)) {
+            if (storage != kind && !CtWidens(storage, kind)) {
                 return CtFlow.Failed(CtFail(context, statement, file, "assigned value differs from its local"));
             }
             current: u64 = 0;
@@ -907,9 +922,14 @@ CtAssignment :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, 
                 current = frame.bits[at];
             }
             result := CtWidened(assigned, storage, kind);
-            if (operator != NoOperator) {
+            if (operator != NoOperator && Floating(kind)) {
+                if (operator != tk.Add && operator != tk.Sub && operator != tk.Mul && operator != tk.Quo) {
+                    return CtFlow.Failed(CtFail(context, statement, file, "compound assignment on a float needs + - * or /"));
+                }
+                result = FloatArithmetic(operator, current, result, kind);
+            } else if (operator != NoOperator) {
                 if (!Integer(kind)) {
-                    return CtFlow.Failed(CtFail(context, statement, file, "compound assignment needs integer operands"));
+                    return CtFlow.Failed(CtFail(context, statement, file, "compound assignment needs number operands"));
                 }
                 operand := ExactStored(result, kind);
                 if ((operator == tk.Quo || operator == tk.Mod) && ExactZero(operand)) {
@@ -960,7 +980,7 @@ CtAppend :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, dept
         case .Elements(values, other):
             return CtFlow.Failed(CtFail(context, statement, file, "array elements differ in type"));
         case .Value(item, storage):
-            if (storage != kind && !Widens(storage, kind)) {
+            if (storage != kind && !CtWidens(storage, kind)) {
                 return CtFlow.Failed(CtFail(context, statement, file, "array elements differ in type"));
             }
             row := frame.arrays[at].items;

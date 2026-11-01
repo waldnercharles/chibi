@@ -1,0 +1,6 @@
+# errors (native Edit and Continue, goal item 6 / VM gate 4)
+- Branch claude/shared-programs (draft PR, last pushed commit: see `git log -1` on origin/claude/shared-programs). Worktree: .worktrees/edit-and-continue/chibi.
+- Done on main: retain locals (VM #1022), native retained states + host symbols (#1019/#1027/#1137), loop host apps/host + `build --native --shared` + `run --native --watch` (#1155/#1168), discarded calls (#1185), rawptr params (#1203), driver collection fix (#1206), converted retained types via chibi_host_retained_set_as (#1318).
+- In flight: nothing running. WIP (unbuilt) on the branch: scalar_llvm EmitShared/ValidateWith. Item-6 tests (BuildTests SwapsARunningLoopKeepingState, WatchesAndSwapsARunningLoop, ConvertsARetainedStateWhoseTypeChanged) have not been seen green on a completed main run.
+- Next: finish package-form generations (ids = index in Lower, native_emitter Emit target 3, driver shared branch picks it when LibraryName is ""), then retained records (flag + leaf states, lowering in scalar_llvm), then libraries with a libc-backed context so strings/arrays work under the host, then retained strings (ptr/len/owner states).
+- Local-only: ~/ec-h (Linux cross-build harness: sdk.sh, recover.sh, sysroot, llvm links; rebuildable, convenient not required), /tmp scratch (irrelevant), build-release dirs in the two worktrees.

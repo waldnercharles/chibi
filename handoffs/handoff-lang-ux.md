@@ -1,0 +1,6 @@
+# lang-ux handoff (2026-11-02)
+- Branch claude/native-chibi, draft PR https://github.com/waldnercharles/chibi/pull/1323, last pushed commit 291117a41 (WIP, does not compile yet).
+- Done and merged today: #1153, #1154, #1176, #1182, #1221, #1275, #1285, #1287, #1288, #1297 (no-C-compiler CI job). #1297's Engine job was red only on main's two selectors, fixed by the CI keeper in #1311.
+- In flight: gate 4, the native chibi CLI in tools/compiler/native_driver (Cli.chibi, Test.chibi, Main.chibi split into Build/Emit, core:os WriteOutput/ProgramPath). No CI runs of mine are pending.
+- Next step: rename Cli.chibi's `Compile` to `CompileSubject`, recompile with `sh tools/bootstrap/native-seed.sh macos-arm64 OUT` (pinned seed) and fix name clashes; then try `chibi test test/compiler/samples/imports` natively (67 tests on the VM); then `run --watch` after gate 2's shared libraries and errors' E&C; then the SDK switch and VM path deletion. old-formats asked whether to stack the asset-compiler deletion on my PR or after it; I would do it after (answer pending).
+- Only on local disk: /tmp/native-seed/chibi (pinned seed, refetchable), /tmp/llvm-bin (symlinks to llvm@22 opt/llc and lld@22 ld.lld), /tmp/np scratch programs, /tmp/minpath (PATH without C compilers), /tmp/rt/chibi-compiler-host (refetchable with tools/bootstrap/runtime.sh). None matters.

@@ -103,11 +103,16 @@ Each step lands on its own and leaves the build working.
 
 1. Done: the text helpers (#1204), `core:os` on the VM and natively (#1281), the residual `build.*`
    calls in the programs, and every build program compiling natively.
-2. Done for the driver and the graph's commands: the same output on both paths. Next, a real build
-   of the engine with the native graph, then the SDK install and the asset compiler.
-3. Add the runner cache to `chibi build`: compile the closure with the native driver, link it,
-   publish it by rename under `.chibi/build-runner/<key>`, and `exec` it.
-4. Delete `chibi-build-host`, `src/host/build*.c` and `process.c`, the `build.*` catalog and the
+2. Done: the same output on both paths, and a real build: `chibi build --release --target
+   chibi-compiler-host --target chibi-build-host` with the native graph builds 96 C sources into working hosts in 8 s
+   (ccache warm), and a rerun's planning costs 0.07 s.
+3. Done: the runner cache. With `--native-driver PATH` (the native compiler driver) and `--llvm DIR`, `chibi build`
+   compiles each authored program it runs (`Build.chibi`, `Graph.chibi`, `SDK.chibi`, ...) once into
+   `.chibi/build-runner/KEY/` and runs that; the key is the stamps of `tools/toolchain`, `tools/graph` and
+   `packages/core`, the driver, `llc` and the target. A compile that fails falls back to the build host, which
+   is also how the native Driver itself starts until a seed ships the native driver. The VM's `build.environment`
+   allows only a few names, so these are options, not environment variables.
+4. Ship the native driver as the seed (the CI keeper), start `chibi build` from it, then delete `chibi-build-host`, `src/host/build*.c` and `process.c`, the `build.*` catalog and the
    pinned first host; `tools/bootstrap.sh` then fetches the seed compiler, not a host.
 
 ## Open decisions

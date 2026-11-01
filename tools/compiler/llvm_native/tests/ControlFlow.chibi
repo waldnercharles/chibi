@@ -146,3 +146,40 @@ UseThatControlNeverReachesIsAccepted :: () {
     empty: int[] = [];
     Emitted(Emit([Function(6, 0, 0, 3, 0, 9, 0, 0)], empty, [1, 6, 6], code, empty));
 }
+// A CHECK, then a chain of `count` - 1 jumps, each to the next instruction,
+// then `last`: many instructions in little text.
+Chained :: (count: int, last: native.Instruction[]) -> native.Instruction[] {
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0)];
+    for (pc in 1..<count) {
+        code.append(Code(native.Jump, 0, 0, 0, 0, pc + 1, 0));
+    }
+    code.extend(last);
+    return code;
+}
+// A program past the piece size splits into pieces of whole functions, each a
+// module with its target: the entry's piece calls the other piece's function
+// through a hidden declaration, and that function is hidden, not internal.
+@test
+LargeProgramSplitsIntoPieces :: () {
+    code := Chained(4100, [Code(native.Call, 6, 0, 1, 0, 0, 0), Code(native.Publish, 6, 0, 0, 0, 0, 0),
+                           Code(native.Return, 0, 0, 0, 0, 0, 0)]);
+    code.extend(Chained(4100, [Code(native.Constant, 6, 0, 0, 0, 0, 7), Code(native.Publish, 6, 0, 0, 0, 0, 0),
+                               Code(native.Return, 0, 0, 0, 0, 0, 0)]));
+    empty: int[] = [];
+    text := Emitted(Emit([Function(6, 0, 0, 1, 0, 4103, 0, 0), Function(6, 0, 1, 1, 4103, 4103, 0, 0)], empty, [6, 6],
+                         code, empty));
+    pieces := strings.Split(text, "\n; chibi-piece\n");
+    assert(length(pieces) == 2, "two pieces");
+    assert(strings.HasPrefix(pieces[0], "target triple") && strings.HasPrefix(pieces[1], "target triple"),
+           "each piece is a module");
+    assert(strings.Contains(pieces[0], "declare hidden i32 @chibi_scalar.1()\n"), "the caller declares the callee");
+    assert(strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar() #0 {"), "the entry is in the first piece");
+    assert(strings.Contains(pieces[1], "\ndefine hidden i32 @chibi_scalar.1() #0 {"), "the callee is hidden");
+}
+// Below the piece size a program is one module, with no piece line.
+@test
+SmallProgramIsOneModule :: () {
+    empty: int[] = [];
+    text := Emitted(Emit([Function(6, 0, 0, 1, 0, 4, 0, 0)], empty, [6], RecursiveCode(), empty));
+    assert(!strings.Contains(text, "; chibi-piece"), "one module");
+}

@@ -1,0 +1,11 @@
+package facts
+Wide: f64 : Narrow;
+Narrow: number : 1.5;
+pub ForwardWiden :: (unused: number) -> f64 { return Wide; }
+Zero: number : 0.0;
+Negative: number : -Zero;
+NegativeWide: f64 : Negative;
+pub NegativeZeroAlias :: (unused: number) -> bool { return NegativeWide == 0.0 && 1.0 / NegativeWide < 0.0; }
+Tiny: number : 1.40129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125e-45;
+TinyWide: f64 : Tiny;
+pub SubnormalWiden :: (unused: number) -> bool { return TinyWide == 1.40129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125e-45; }

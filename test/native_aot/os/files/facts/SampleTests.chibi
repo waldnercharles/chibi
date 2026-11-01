@@ -1,0 +1,63 @@
+package facts
+
+import os "core:os"
+
+// core:os's files natively: kinds without following links, byte-ordered
+// listings, stamps, copies that keep the mode and follow links, renames,
+// removal, Reserve and Publish refusing any existing path, failed writes and
+// reads, and SHA-256 of files and text.
+@test
+Calls :: () {
+    assert(os.Run(["/bin/rm", "-rf", "os_files"]) == 0, "a fresh folder");
+    assert(os.MakeDirectory("os_files/a/b") == nil && os.MakeDirectory("os_files/a/b") == nil, "nested folders, twice");
+    assert(os.WriteText("os_files/file", "text") == nil && os.WriteText("os_files/B", "") == nil, "files");
+    assert(os.MakeDirectory("os_files/file/below") != nil, "no folder below a file");
+    assert(os.WriteText("os_files/a", "x") != nil && os.WriteText("os_files/missing/x", "x") != nil, "no write onto a folder or into a missing one");
+    assert(os.Run(["/bin/ln", "-s", "file", "os_files/link"]) == 0 && os.Run(["/bin/ln", "-s", "nothing", "os_files/dangling"]) == 0 &&
+           os.Run(["/usr/bin/mkfifo", "os_files/fifo"]) == 0, "links and a FIFO");
+
+    assert(os.Kind("os_files/a") == os.KindDirectory && os.Kind("os_files/file") == os.KindFile, "a folder and a file");
+    assert(os.Kind("os_files/link") == os.KindLink && os.Kind("os_files/dangling") == os.KindLink, "links are not followed");
+    assert(os.Kind("os_files/fifo") == os.KindOther, "a FIFO");
+    assert(os.Kind("os_files/missing") == os.KindNone && os.Kind("os_files/file/below") == os.KindNone, "nothing there");
+    listed := os.List("os_files");
+    names := listed.names;
+    assert(listed.error == nil && length(names) == 6 && names[0] == "B" && names[1] == "a" && names[2] == "dangling" &&
+           names[3] == "fifo" && names[4] == "file" && names[5] == "link", "byte order");
+    assert(os.List("os_files/file").error != nil, "a file has no listing");
+
+    stamp := os.Stamp("os_files/file");
+    assert(stamp != "" && os.Stamp("os_files/missing") == "", "stamps");
+    assert(os.WriteText("os_files/file", "longer text") == nil && os.Stamp("os_files/file") != stamp, "a change changes the stamp");
+
+    assert(os.WriteText("os_files/tool", "#!/bin/sh\nexit 3\n") == nil && os.Run(["/bin/chmod", "751", "os_files/tool"]) == 0, "a tool");
+    assert(os.Copy("os_files/tool", "os_files/a/tool") == nil && os.Run(["os_files/a/tool"]) == 3, "a copy keeps the mode");
+    assert(os.Copy("os_files/link", "os_files/a/copied") == nil && os.Kind("os_files/a/copied") == os.KindFile, "a copy follows a link");
+    assert(os.ReadText("os_files/a/copied").text == "longer text", "the link's file");
+    assert(os.Copy("os_files/missing", "os_files/a/none") != nil, "no copy of nothing");
+    assert(os.Rename("os_files/a/copied", "os_files/a/renamed") == nil && !os.Exists("os_files/a/copied") &&
+           os.Kind("os_files/a/renamed") == os.KindFile, "rename");
+
+    assert(os.Remove("os_files/a") != nil, "a folder with files stays");
+    assert(os.Remove("os_files/link") == nil && os.Kind("os_files/file") == os.KindFile, "removing a link keeps its file");
+    assert(os.Remove("os_files/link") == nil, "removing what is gone");
+
+    assert(os.Reserve("os_files/new") == nil, "reserve");
+    assert(os.Reserve("os_files/new") != nil && os.Reserve("os_files/dangling") != nil && os.Reserve("os_files/missing/x") != nil,
+           "reserve refuses an existing path, a dangling link and a missing parent");
+    assert(os.Reserve("os_files/empty") == nil, "an empty folder");
+    assert(os.Publish("os_files/new", "os_files/a") != nil && os.Publish("os_files/new", "os_files/empty") != nil &&
+           os.Publish("os_files/new", "os_files/dangling") != nil, "publish refuses any existing destination");
+    assert(os.Publish("os_files/new", "os_files/published") == nil && os.IsDirectory("os_files/published") &&
+           !os.Exists("os_files/new"), "publish");
+
+    assert(os.ReadText("os_files/a").error != nil && os.ReadText("os_files/missing").error != nil &&
+           os.ReadText("os_files/fifo").error != nil, "only a file reads");
+    assert(os.RealPath("os_files/missing") == "" && os.RealPath("os_files/dangling") == "", "no real path for nothing");
+
+    assert(os.HashText("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256 of text");
+    assert(os.Run(["/bin/sh", "-c", "head -c 1000000 /dev/zero | tr '\\000' a > os_files/million"]) == 0, "a million a's");
+    assert(os.HashFile("os_files/million").digest == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0", "SHA-256 of a file");
+    assert(os.HashFile("os_files/missing").error != nil, "no hash of nothing");
+    assert(os.Run(["/bin/rm", "-rf", "os_files"]) == 0, "cleaned up");
+}

@@ -76,3 +76,4 @@ build-wasm-language/
 build-wasm-language-threads/
 # The bootstrap seed is a release asset that tools/bootstrap/seed.sh fetches.
 /tools/compiler/bootstrap/compiler.chibip
+/.chibi/

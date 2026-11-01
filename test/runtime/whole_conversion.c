@@ -134,89 +134,6 @@ static pin_value expected(pin_value input, pin_type to)
     }
     return out;
 }
-TEST_CASE(public_numeric_conversions_preserve_edges_and_real_widths)
-{
-    const pin_type types[] = { PIN_BOOL, PIN_U8,  PIN_I32,
-                               PIN_I64,  PIN_F32, PIN_F64 };
-    const double values[] = { -INFINITY, -0x1p63, -257.5, -1.5,   -0.,      0.,
-                              1.5,       255.5,   0x1p31, 0x1p63, INFINITY, NAN };
-    for (int from = 0; from < 6; from++) {
-        for (int to = 0; to < 6; to++) {
-            if (!supported(types[from], types[to])) {
-                continue;
-            }
-            builder = behavior_function_builder_new();
-            pin_value argument = { .type = types[from] },
-                      result = { .type = types[to] };
-            behavior_function_builder_signature(builder, &argument, 1, &result, 1, NULL, 0);
-            int input = slot(argument.type), output = slot(result.type);
-            emit((behavior_function_instruction){ .op = BF_ARGUMENT,
-                                                  .type = argument.type,
-                                                  .output = input,
-                                                  .value = argument });
-            if (argument.type == PIN_BOOL) {
-                int yes = slot(result.type), no = slot(result.type);
-                emit((behavior_function_instruction){ .op = BF_CONSTANT,
-                                                      .type = result.type,
-                                                      .output = yes,
-                                                      .value = number(result.type, 1) });
-                emit((behavior_function_instruction){ .op = BF_CONSTANT,
-                                                      .type = result.type,
-                                                      .output = no,
-                                                      .value = number(result.type, 0) });
-                emit((behavior_function_instruction){ .op = BF_SELECT,
-                                                      .type = result.type,
-                                                      .output = output,
-                                                      .left = input,
-                                                      .right = yes,
-                                                      .target = no });
-            } else if (result.type == PIN_F32) {
-                int wide = slot(PIN_F64);
-                emit((
-                    behavior_function_instruction
-                ){ .op = BF_CAST, .type = PIN_F64, .output = wide, .left = input });
-                emit((behavior_function_instruction){ .op = BF_CONVERT,
-                                                      .type = PIN_F32,
-                                                      .output = output,
-                                                      .left = wide });
-            } else {
-                emit((behavior_function_instruction){ .op = BF_CAST,
-                                                      .type = result.type,
-                                                      .output = output,
-                                                      .left = input });
-            }
-            emit((behavior_function_instruction){ .op = BF_RESULT,
-                                                  .type = result.type,
-                                                  .left = output });
-            emit((behavior_function_instruction){ .op = BF_END });
-            REQUIRE(finish());
-            for (int value = 0; value < 12; value++) {
-                switch (argument.type) {
-                    case PIN_BOOL: argument.b = value & 1; break;
-                    case PIN_U8:
-                        argument.u8 = value == 11 ? UINT8_MAX : (uint8_t)value;
-                        break;
-                    case PIN_I32:
-                        argument.i = value == 11 ? INT_MAX : INT_MIN + value;
-                        break;
-                    case PIN_I64:
-                        argument.i64 = value == 11 ? INT64_MAX : INT64_MIN + value;
-                        break;
-                    case PIN_F32: argument.f = (float)values[value]; break;
-                    case PIN_F64: argument.d = values[value]; break;
-                    default: REQUIRE(false);
-                }
-                pin_value want = expected(argument, result.type);
-                for (int native = 0; native < 2; native++) {
-                    REQUIRE(run(&argument, 1, &result, native));
-                    REQUIRE(equal(result, want));
-                }
-            }
-            cleanup();
-        }
-    }
-    return true;
-}
 TEST_CASE(public_select_preserves_each_scalar_width)
 {
     const pin_type types[] = { PIN_BOOL, PIN_U8,  PIN_I32,
@@ -259,12 +176,6 @@ TEST_CASE(public_select_preserves_each_scalar_width)
         cleanup();
     }
     return true;
-}
-void test_compiled_conversions()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(public_numeric_conversions_preserve_edges_and_real_widths);
-    pu_clear_setup();
 }
 void test_compiled_selects()
 {

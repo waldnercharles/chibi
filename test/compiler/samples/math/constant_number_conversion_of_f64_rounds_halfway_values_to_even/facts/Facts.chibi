@@ -1,0 +1,9 @@
+package facts
+Lower: number : number(f64(16777217.0));
+pub RoundLower :: (unused: number) -> number { return Lower; }
+Upper: number : number(f64(16777219.0));
+pub RoundUpper :: (unused: number) -> number { return Upper; }
+Negative: number : number(f64(-16777217.0));
+pub RoundNegative :: (unused: number) -> number { return Negative; }
+Tie: number : number(f64(7.00649232162408535461864791644958065640130970938257885878534141944895541342930300743319094181060791015625e-46));
+pub SubnormalTieToZero :: (unused: number) -> bool { return Tie == 0.0 && 1.0 / Tie > 0.0; }

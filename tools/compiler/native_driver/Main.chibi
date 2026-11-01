@@ -113,7 +113,21 @@ PackageFiles :: (folder: string) -> string[] {
             files.append(name);
         }
     }
-    return files;
+    // In name order, as the VM-side listing gives: the order of a package's
+    // files is the order of its declarations, which the compiler's passes
+    // (ScopedParameters wants them ascending) and its output depend on, and
+    // a directory's own order is not stable across machines.
+    ranked := resize([""], length(files));
+    for (name in files) {
+        rank := 0;
+        for (other in files) {
+            if (strings.Compare(other, name) < 0) {
+                rank += 1;
+            }
+        }
+        ranked[rank] = name;
+    }
+    return ranked;
 }
 
 // The sources of the closure: the package's own files, Main.chibi first, then

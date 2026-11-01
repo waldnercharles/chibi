@@ -387,8 +387,8 @@ graph.
 The private primitives expose exact arguments, platform and root paths,
 executable lookup, bounded regular-text reads, atomic writes, directory creation,
 last-process output, the file primitives below and string/array operations. File
-and text values are limited to 16 MiB, enough for a build graph's
-`compile_commands.json`, arrays to 8,192 entries and 16 MiB of text, and
+and text values are limited to 64 MiB, enough for a build graph's
+`compile_commands.json` and the native driver's 45 MB module of the compiler, arrays to 8,192 entries and 64 MiB of text, and
 each helper bank to 256 MiB of retained arena blocks. Native-result storage is
 reused on the next callback after the VM imports the results; invocation
 arguments remain in their own bank. Last-output accessors
@@ -478,7 +478,7 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   lines, so validation compares whole fields without another split. The VM
   imports native results before another callback reuses the helper bank;
   checking more records does not retain every old native line buffer. The
-  helper bank's 256 MiB retained-block bound, 16 MiB text bound and 8,192-entry
+  helper bank's 256 MiB retained-block bound, 64 MiB text bound and 8,192-entry
   array bound remain in force.
 - Headers a library publishes are staged below `BUILD/sdk/public/COMPONENT`,
   and those only its sources include below `BUILD/sdk/private/COMPONENT`, as

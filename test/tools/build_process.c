@@ -2062,10 +2062,10 @@ TEST_CASE(private_file_reads_preserve_bytes_and_reject_invalid_files)
     static const char *diagnostics[] = {
         NULL,
         NULL,
-        "build file must be regular data of at most 16 MiB",
+        "build file must be regular data of at most 64 MiB",
         NULL,
-        "build file must be regular data of at most 16 MiB",
-        "build file must be regular data of at most 16 MiB",
+        "build file must be regular data of at most 64 MiB",
+        "build file must be regular data of at most 64 MiB",
     };
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;

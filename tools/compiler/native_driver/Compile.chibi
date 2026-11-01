@@ -77,6 +77,18 @@ pub Module :: (collections: string[], directories: string[], paths: string[], so
     }
     rows := compiler.CollectScalarProgram("/project", collections, directories, paths, sources, TargetFacts(), Names(),
                                           Natives(), Ports(), Identities(), os, arch, chosen);
+    return EmitRows(paths, sources, rows, Target(triple), directory);
+}
+
+// The existing single-source library producer; package libraries and line
+// tables are not supported here. The driver admits only Linux x86-64.
+LibraryModule :: (path: string, source: string) -> Output {
+    rows := compiler.CollectScalar("/project", path, source, TargetFacts(), Names(), Natives(), Ports(), Identities());
+    return EmitRows([path], [source], rows, abi.LinuxX64(), "");
+}
+
+// Both producers return the same facts rows and rejection contract.
+EmitRows :: (paths: string[], sources: string[], rows: facts.Row[], target: abi.Target, directory: string) -> Output {
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
         rejected := rows[length(rows) - 1];
         return Output.Rejected(strings.Concatenate(["rejected ", FunctionAt(rows[0].text, rejected.start), ": ",
@@ -84,7 +96,7 @@ pub Module :: (collections: string[], directories: string[], paths: string[], so
     }
     emitted: scalar.Result = scalar.Result.Invalid("");
     if (directory == "") {
-        emitted = scalar.EmitFor(Target(triple), rows);
+        emitted = scalar.EmitFor(target, rows);
     } else {
         emitted = scalar.EmitLines(rows, directory);
     }

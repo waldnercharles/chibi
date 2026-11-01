@@ -12,7 +12,8 @@ import strings "core:strings"
 // compiles package NAME of the project at DIR (default native_driver), or the
 // one program FILE, and the core and collection packages it imports to the
 // native program FILE. --level is opt's and llc's (default 2). --lines adds
-// line tables (Linux x86-64). --static refuses a program that needs libc,
+// line tables (Linux x86-64). Linux links libc dynamically by default.
+// --static refuses a program that needs libc,
 // which a program that allocates does; --shared links a library source as a
 // Linux shared object, as the Edit and Continue player loads one. A
 // `; chibi-library` line's archive (native_link.Archive) is linked after the
@@ -92,8 +93,18 @@ Main :: () -> int {
     if (lines) {
         directory = route.Visible(folder);
     }
+    compiled: Output = Output.Rejected("");
+    if (shared) {
+        if (length(gathered.paths) != 1 || chosen != "") {
+            os.Print("native: a shared library takes one source and no --entry");
+            return 1;
+        }
+        compiled = LibraryModule(gathered.paths[0], gathered.sources[0]);
+    } else {
+        compiled = Module(collections, seen, gathered.paths, gathered.sources, triple, chosen, directory);
+    }
     pieces: string[] = [];
-    switch Module(collections, seen, gathered.paths, gathered.sources, triple, chosen, directory) {
+    switch compiled {
         case .Rejected(message):
             os.Print(strings.Concatenate(["native: ", message]));
             return 1;
@@ -132,8 +143,28 @@ Main :: () -> int {
             archives.append(archive);
         }
     }
+    // A program that allocates or formats takes the runtime context, which the
+    // start module supplies from libc's allocator on Linux, so it links libc
+    // dynamically. Linux defaults to libc even without a context; --static
+    // opts out. Windows uses kernel32, and macOS always links libSystem.
+    // The entry is the first piece's, defined as `@chibi_scalar(ptr %ctx)`
+    // when it takes the context (the other functions are `@chibi_scalar.N`).
+    // Definitions start a line; a text constant never does.
+    context := strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar(ptr %ctx)");
+    static := windows || (linux && Flag(arguments, "--static"));
+    if (Flag(arguments, "--static") && linux && context) {
+        os.Print("native: a program that allocates links libc dynamically; omit --static");
+        return 2;
+    }
+    // A library's module is its manifest and functions, with no entry.
+    is_library := strings.Contains(pieces[0], "\n@chibi_natives_");
+    if (shared != is_library) {
+        os.Print("native: --shared builds a library source, and only it");
+        return 2;
+    }
     // Each piece of the module is optimized and compiled to its own object,
-    // as many at once as --jobs, by default every processor.
+    // as many at once as --jobs, by default every processor. Reject incompatible
+    // options above before writing any intermediate output.
     files: string[] = [];
     objects: string[] = [];
     for (index in 0..<length(pieces)) {
@@ -144,25 +175,6 @@ Main :: () -> int {
         }
         files.append(module);
         objects.append(format_text("{}.{}.o", output, index));
-    }
-    // A program that allocates or formats takes the runtime context, which the
-    // start module supplies from libc's allocator on Linux, so it links libc
-    // dynamically. Otherwise Linux and Windows programs run with nothing but
-    // their own objects; macOS links libSystem, as its programs always have.
-    // The entry is the first piece's, defined as `@chibi_scalar(ptr %ctx)`
-    // when it takes the context (the other functions are `@chibi_scalar.N`).
-    // Definitions start a line; a text constant never does.
-    context := strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar(ptr %ctx)");
-    static := !strings.HasPrefix(triple, "aarch64-apple") && (!context || windows);
-    if (Flag(arguments, "--static") && linux && context) {
-        os.Print("native: a program that allocates links libc dynamically; omit --static");
-        return 2;
-    }
-    // A library's module is its manifest and functions, with no entry.
-    library := strings.Contains(pieces[0], "\n@chibi_natives_");
-    if (shared != library) {
-        os.Print("native: --shared builds a library source, and only it");
-        return 2;
     }
     optimization := 2;
     if (level == "0") {

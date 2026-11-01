@@ -326,6 +326,10 @@ ScalarLiteral :: (forest: snapshot.SnapshotNode[], node: int, type: int, bits: u
 // The facts type of a number, bool or string storage, 0 for any other. The
 // facts types are consecutive from facts.IntType in this order.
 ScalarTypeOf :: (storage: int) -> int {
+    // A task handle is a word.
+    if (storage == TaskStorage) {
+        return facts.WordType;
+    }
     storages := [IntStorage, BoolStorage, Int8Storage, ByteStorage, Int16Storage, Uint16Storage, UintStorage,
                  Int64Storage, WordStorage, FloatStorage, DoubleStorage, TextStorage];
     for (index in 0..<length(storages)) {
@@ -366,6 +370,10 @@ ScalarRecordType :: (types: TypeDecl[], record: int) -> int {
 // a record or union the source declares, or an array of numbers, bool or
 // strings; 0 for any other.
 ScalarValueType :: (types: TypeDecl[], storage: int, container: int, record: int) -> int {
+    // A task handle is a word whatever its function, which `record` names.
+    if (storage == TaskStorage && container == 0) {
+        return facts.WordType;
+    }
     if (container == ArrayContainer) {
         return ScalarArrayType(types, storage, record);
     }
@@ -750,9 +758,37 @@ ScalarSpelled :: (left: int, right: int) -> int {
 // a context, so an untyped shifted value there is int. A number literal,
 // untyped constant expression or operator over untyped literals alone takes
 // `context`, 0 when there is none.
+// The function whose task the expression `node` holds: a call of a waiting function,
+// or a variable that holds a task; -1 for any other.
+ScalarTaskCallee :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                     callable: Callable, node: int) -> int {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.CallExpression)) {
+        return CalledFunction(forest, text, callables, [], names, callable.package, value);
+    }
+    if (Is(forest, value, syntax.Identifier) && Lookup(names, Text(forest, text, value)) >= 0) {
+        held := names[Lookup(names, Text(forest, text, value))];
+        if (held.storage == TaskStorage && held.container == 0) {
+            return held.record;
+        }
+    }
+    return -1;
+}
 ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, context: int) -> int {
     node := ScalarTarget(forest, operand);
+    if (Is(forest, node, syntax.AwaitExpression)) {
+        // The result of the waiting function it awaits; a task's is a union.
+        awaited := Unparenthesized(forest, Field(forest, node, syntax.FieldValue));
+        if (!Is(forest, awaited, syntax.CallExpression)) {
+            return 0;
+        }
+        function := ScalarTaskCallee(forest, text, callables, names, callable, awaited);
+        if (function < 0 || !callables[function].waits) {
+            return 0;
+        }
+        return callables[function].result;
+    }
     if (Is(forest, node, syntax.UnaryExpression) && Operator(forest, node) == tk.Add) {
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand),
                                     context);
@@ -792,6 +828,10 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     if (Is(forest, node, syntax.CallExpression)) {
         callee := CalledFunction(forest, text, callables, [], names, callable.package, node);
         if (callee >= 0) {
+            // A call of a waiting function that is not awaited starts a task.
+            if (callables[callee].waits && !ImmediatelyAwaited(forest, node)) {
+                return TaskStorage;
+            }
             return callables[callee].result;
         }
         callee_foreign := ScalarForeignDeclaration(forest, text, node);
@@ -888,6 +928,17 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     node := ScalarTarget(forest, operand);
     if (Is(forest, node, syntax.UnaryExpression) && Operator(forest, node) == tk.Add) {
         return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand),
+                             expected, rows);
+    }
+    if (Is(forest, node, syntax.AwaitExpression)) {
+        awaited := Unparenthesized(forest, Field(forest, node, syntax.FieldValue));
+        function := ScalarTaskCallee(forest, text, callables, names, callable, awaited);
+        if (function < 0 || !callables[function].waits || !Is(forest, awaited, syntax.CallExpression)) {
+            return ScalarOperands.Failed(Diagnose(forest, node, 0,
+                                                  "scalar proof awaits a call of a waiting function, or a task as a statement"));
+        }
+        // The call is awaited: its rows give the result.
+        return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, awaited,
                              expected, rows);
     }
     if (Is(forest, node, syntax.MemberExpression)) {
@@ -1205,7 +1256,15 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         output.append(omitted);
         count += 1;
     }
-    output.append(ScalarAt(forest, node, facts.CallRow, type, callee, count, target.name));
+    call := ScalarAt(forest, node, facts.CallRow, type, callee, count, target.name);
+    if (target.waits) {
+        // A waiting function runs inline when awaited, and otherwise as a task.
+        call.literal = i64(facts.CallSpawned);
+        if (ImmediatelyAwaited(forest, node)) {
+            call.literal = i64(facts.CallAwaited);
+        }
+    }
+    output.append(call);
     return ScalarOperands.Built(output);
 }
 // The row of `argument`, `&x` or a scoped parameter `x` passed on, for the
@@ -2129,6 +2188,10 @@ ScalarDiscarded :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
                     types: TypeDecl[], callable: Callable, statement: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     call := FirstMember(forest, statement);
+    // `await F(...)` as a statement discards F's result.
+    if (Is(forest, statement, syntax.ExpressionStatement) && Is(forest, call, syntax.AwaitExpression)) {
+        call = Unparenthesized(forest, Field(forest, call, syntax.FieldValue));
+    }
     if (!Is(forest, statement, syntax.ExpressionStatement) || !Is(forest, call, syntax.CallExpression)) {
         return none;
     }
@@ -2136,6 +2199,11 @@ ScalarDiscarded :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
     if (callee >= 0) {
         target := callables[callee];
         found: ValueType = {storage: target.result, container: target.result_container, record: target.result_record};
+        // `F(...)` of a waiting F starts a task, and its handle is discarded.
+        if (target.waits && !ImmediatelyAwaited(forest, call)) {
+            found = {storage: TaskStorage, container: 0, record: callee};
+            return found;
+        }
         if (ScalarValueType(types, found.storage, found.container, found.record) == 0) {
             return none;
         }
@@ -2356,6 +2424,58 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                     return ScalarOperands.Failed(diagnostic);
                 case .Built(returned):
                     rows.extend(returned);
+            }
+            continue;
+        }
+        if (Is(forest, statement, syntax.YieldStatement)) {
+            // The turn is given up; the row gives int 0, a local nothing reads.
+            rows.append(ScalarAt(forest, statement, facts.LocalRow, facts.IntType, variables, 1, "_"));
+            rows.append(ScalarAt(forest, statement, facts.YieldRow, facts.IntType, 0, 0, ""));
+            variables += 1;
+            continue;
+        }
+        if (Is(forest, statement, syntax.ExpressionStatement) &&
+            Is(forest, FirstMember(forest, statement), syntax.AwaitExpression) &&
+            !Is(forest, Unparenthesized(forest, Field(forest, FirstMember(forest, statement), syntax.FieldValue)),
+                syntax.CallExpression)) {
+            // `await handle` as a statement waits for the task and discards its result.
+            handle := Field(forest, FirstMember(forest, statement), syntax.FieldValue);
+            if (ScalarTaskCallee(forest, text, callables, names, callable, handle) < 0 ||
+                ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
+                                     handle, 0) != TaskStorage) {
+                return ScalarOperands.Failed(Diagnose(forest, handle, 0, "scalar proof awaits only a task"));
+            }
+            switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, handle,
+                                 TaskStorage, []) {
+                case .Failed(diagnostic):
+                    return ScalarOperands.Failed(diagnostic);
+                case .Built(built):
+                    rows.append(ScalarAt(forest, statement, facts.LocalRow, facts.IntType, variables, length(built) + 1, "_"));
+                    rows.extend(built);
+                    rows.append(ScalarAt(forest, FirstMember(forest, statement), facts.AwaitRow, facts.IntType, 0, 1, ""));
+                    variables += 1;
+            }
+            continue;
+        }
+        if (Is(forest, statement, syntax.CancelStatement)) {
+            if (Field(forest, statement, syntax.FieldDuration) >= 0) {
+                return ScalarOperands.Failed(Diagnose(forest, statement, 0, "scalar proof does not support cancel after yet"));
+            }
+            handle := Field(forest, statement, syntax.FieldValue);
+            held := ScalarTaskCallee(forest, text, callables, names, callable, handle);
+            if (held < 0 || ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
+                                                 handle, 0) != TaskStorage) {
+                return ScalarOperands.Failed(Diagnose(forest, handle, 0, "scalar proof cancels only a task"));
+            }
+            switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, handle,
+                                 TaskStorage, []) {
+                case .Failed(diagnostic):
+                    return ScalarOperands.Failed(diagnostic);
+                case .Built(built):
+                    rows.append(ScalarAt(forest, statement, facts.LocalRow, facts.IntType, variables, length(built) + 1, "_"));
+                    rows.extend(built);
+                    rows.append(ScalarAt(forest, statement, facts.CancelRow, facts.IntType, 0, 1, ""));
+                    variables += 1;
             }
             continue;
         }
@@ -2581,6 +2701,9 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 record = shape.record;
             } else if (storage == StructStorage || storage == UnionStorage) {
                 record = ScalarDeclaredRecord(forest, text, callables, params, names, types, members, callable, statement);
+            } else if (storage == TaskStorage) {
+                // The function whose task the variable holds.
+                record = ScalarTaskCallee(forest, text, callables, names, callable, Field(forest, statement, syntax.FieldValue));
             }
             name := Text(forest, text, declared);
             type := ScalarValueType(types, storage, container, record);

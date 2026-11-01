@@ -1017,7 +1017,9 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
         texted := (operand.kind == facts.LiteralRow && operand.type == facts.StringType) ||
                   operand.kind == facts.ForeignRow;
         if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
-            !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
+            !Within(operand, scope) ||
+            (operand.kind != facts.LiteralRow && operand.kind != facts.CallRow && operand.literal != 0) ||
+            (operand.kind == facts.CallRow && (operand.literal < 0 || operand.literal > i64(facts.CallSpawned)))) {
             return "invalid scalar operand row";
         }
         if (operand.kind == facts.LiteralRow) {
@@ -1100,13 +1102,28 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                     return "scalar function address needs a function of numbers and bools";
                 }
             }
+        } else if (operand.kind == facts.YieldRow) {
+            if (operand.name != "" || operand.count != 0 || operand.value != 0 || operand.type != facts.IntType) {
+                return "scalar yield differs from its operands";
+            }
+        } else if (operand.kind == facts.AwaitRow || operand.kind == facts.CancelRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || operand.value != 0 || base < floor ||
+                stack[base] != facts.WordType || operand.type != facts.IntType) {
+                return "scalar task operation differs from its operands";
+            }
+            stack = slice(stack, 0, base);
         } else if (operand.kind == facts.CallRow) {
             if (operand.value < 0 || operand.value >= length(heads)) {
                 return "scalar call names no function of the module";
             }
             callee := rows[heads[operand.value]];
             base := length(stack) - operand.count;
-            if (operand.name != callee.name || operand.type != callee.type || operand.count != callee.count ||
+            wanted_type := callee.type;
+            if (operand.literal == i64(facts.CallSpawned)) {
+                wanted_type = facts.WordType;
+            }
+            if (operand.name != callee.name || operand.type != wanted_type || operand.count != callee.count ||
                 base < floor) {
                 return "scalar call differs from its callee's signature";
             }
@@ -2115,8 +2132,20 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.FunctionAddressRow) {
                     item = Op(native.FunctionAddress, type, slot, operand.value, 0, 0);
+                } else if (operand.kind == facts.YieldRow) {
+                    // The turn is given up first; the row gives int 0, the constant.
+                    body.append(Op(native.Suspend, 0, 0, 0, 0, 0));
+                } else if (operand.kind == facts.AwaitRow || operand.kind == facts.CancelRow) {
+                    base := length(stack) - 1;
+                    task_op := native.Cancel;
+                    if (operand.kind == facts.AwaitRow) {
+                        task_op = native.AwaitHandle;
+                    }
+                    body.append(Op(task_op, 0, 0, stack[base], 0, 0));
+                    stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.CallRow) {
                     item = Op(native.Call, type, slot, operand.value, shape.arguments, operand.count);
+                    item.literal = operand.literal;
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
                         arguments.append(stack[base + argument]);

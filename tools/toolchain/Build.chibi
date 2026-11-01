@@ -163,10 +163,41 @@ PrepareThirdParty :: (buildDir: string) -> int {
     }
     return 0;
 }
+// The folder of vendored libraries (lib/chibi-vendor) in the Release archive
+// this host's target pins, "" when none is pinned.
+VendorFolder :: () -> string {
+    target := ThirdPartyTarget();
+    manifest := os.ReadText(Join([os.Root(), "/third_party/archives.tsv"]));
+    if (manifest.error) {
+        return "";
+    }
+    for (line in strings.Lines(manifest.text)) {
+        if (strings.HasPrefix(line, "#") || strings.Partition(line, "\t").head != target) {
+            continue;
+        }
+        variant := strings.Partition(strings.Partition(line, "\t").tail, "\t").head;
+        if (variant == "release") {
+            sha256 := strings.Partition(strings.Partition(strings.Partition(line, "\t").tail, "\t").tail, "\t").tail;
+            return Join([ThirdPartyCache(), "/", sha256, "/lib/chibi-vendor"]);
+        }
+    }
+    return "";
+}
 Build :: () -> int {
     arguments := os.Arguments();
+    if (length(arguments) == 2 && arguments[0] == "vendor") {
+        // Prepares the archives and prints where the Release one keeps its libraries.
+        status := PrepareThirdParty(arguments[1]);
+        folder := VendorFolder();
+        if (status != 0 || folder == "") {
+            os.Print("no vendored libraries are pinned for this host");
+            return 1;
+        }
+        os.Print(folder);
+        return 0;
+    }
     if (length(arguments) != 2 || arguments[0] != "third-party") {
-        os.Print("usage: third-party BUILD_DIR");
+        os.Print("usage: third-party BUILD_DIR | vendor BUILD_DIR");
         return 2;
     }
     return PrepareThirdParty(arguments[1]);

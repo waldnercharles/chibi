@@ -219,6 +219,18 @@ Opens :: (kind: int) -> bool {
 Loop :: (kind: int) -> bool {
     return kind == facts.WhileRow || kind == facts.ForRow;
 }
+// The type of member `index` of record type `type`, or -1 when `type` is no record of the module or has no such
+// member.
+RecordMemberType :: (rows: facts.Row[], records: int[], type: int, index: i64) -> int {
+    if (type < facts.RecordType || type - facts.RecordType >= length(records)) {
+        return -1;
+    }
+    head := records[type - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow || index < 0 || index >= i64(rows[head].count)) {
+        return -1;
+    }
+    return rows[head + 1 + int(index)].type;
+}
 // Whether `row` is a loop over an array, and whether it also names the index.
 Arrayed :: (row: facts.Row) -> bool {
     return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray) || Keyed(row));
@@ -1031,8 +1043,14 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar read differs from its variable";
             }
         } else if (operand.kind == facts.RefRow) {
+            // A literal of 1 + n makes it a reference to field n of the record variable, a number or a bool.
+            field := -1;
+            if (operand.literal != 0 && Holds(visible, operand.value)) {
+                field = RecordMemberType(rows, records, variables[operand.value], operand.literal - 1);
+            }
             if (operand.name != "" || operand.count != 0 || !Holds(visible, operand.value) ||
-                variables[operand.value] != operand.type) {
+                (operand.literal == 0 && variables[operand.value] != operand.type) ||
+                (operand.literal != 0 && (field < 0 || field != operand.type || (!Number(field) && field != facts.BoolType)))) {
                 return "scalar reference differs from its variable";
             }
             stack.append(facts.ReferenceType + operand.type);
@@ -1072,7 +1090,8 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.UnaryRow) {
             base := length(stack) - 1;
-            negates := Integer(operand.type) && (operand.value == facts.Negate || operand.value == facts.Complement);
+            negates := (Integer(operand.type) && (operand.value == facts.Negate || operand.value == facts.Complement)) ||
+                       (facts.Floating(operand.type) && operand.value == facts.Negate);
             nots := operand.type == facts.BoolType && operand.value == facts.Not;
             if (operand.name != "" || operand.count != 1 || (!negates && !nots) || base < floor ||
                 stack[base] != operand.type) {
@@ -2082,7 +2101,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     slot += 1;
                 } else if (operand.kind == facts.RefRow) {
                     slots[length(slots) - 1] = native.RefType + type;
-                    if (Referenced(rows, head, operand.value)) {
+                    if (operand.literal != 0) {
+                        // The address of a field of the variable's record, or of the record a reference parameter
+                        // points to.
+                        held := locals[places[operand.value]];
+                        item = Op(native.FieldAddress, native.RefType + type, slot, places[operand.value], held, 0);
+                        if (Referenced(rows, head, operand.value)) {
+                            item.right = held - native.RefType;
+                            item.target = 1;
+                        }
+                        item.literal = operand.literal - 1;
+                    } else if (Referenced(rows, head, operand.value)) {
                         item = Op(native.Local, native.RefType + type, slot, places[operand.value], 0, 0);
                     } else {
                         item = Op(native.LocalAddress, native.RefType + type, slot, places[operand.value], 0, 0);

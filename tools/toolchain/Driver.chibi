@@ -861,10 +861,9 @@ NativeVendorSample :: (arguments: string[]) -> int {
         os.Print(Join(["native-vendor-sample: stage ", sdk, " and ", project]))
         return Step("native-build", NativeBuild(host, compiler_host, llvm, project, Join([sdk, "/share/chibi/core"]), target), dry)
     }
-    for (command in [["rm", "-rf", work], ["mkdir", "-p", Join([sdk, "/share/chibi"]), Join([sdk, "/lib"]), sample]]) {
-        if (Step("stage", command, false) != 0) {
-            return 1
-        }
+    if (Step("stage", ["rm", "-rf", work], false) != 0 ||
+        Step("stage", ["mkdir", "-p", Join([sdk, "/share/chibi"]), Join([sdk, "/lib"]), sample], false) != 0) {
+        return 1
     }
     vendored := os.Capture(extend(Program(host, "tools/toolchain/Build.chibi", "Build", [], "1800000"), ["vendor", Join([work, "/third-party"])]))
     // A program's reports are its standard error.
@@ -878,12 +877,10 @@ NativeVendorSample :: (arguments: string[]) -> int {
         os.Print(format_text("native-vendor-sample: no vendored libraries (status {}, folder '{}'): {}{}", vendored.status, folder, strings.TrimSpace(vendored.stdout), strings.TrimSpace(vendored.stderr)))
         return 1
     }
-    for (command in [["ln", "-s", Absolute("packages/core"), Join([sdk, "/share/chibi/core"])],
-                     ["ln", "-s", folder, Join([sdk, "/lib/chibi-vendor"])],
-                     ["ln", "-s", Absolute("third_party/fonts/inter/Inter.ttf"), Join([project, "/Inter.ttf"])]]) {
-        if (Step("stage", command, false) != 0) {
-            return 1
-        }
+    if (Step("stage", ["ln", "-s", Absolute("packages/core"), Join([sdk, "/share/chibi/core"])], false) != 0 ||
+        Step("stage", ["ln", "-s", folder, Join([sdk, "/lib/chibi-vendor"])], false) != 0 ||
+        Step("stage", ["ln", "-s", Absolute("third_party/fonts/inter/Inter.ttf"), Join([project, "/Inter.ttf"])], false) != 0) {
+        return 1
     }
     text := os.ReadText(Absolute("test/compiler/samples/native/foreign_vendor/facts/SampleTests.chibi"))
     if (text.error) {

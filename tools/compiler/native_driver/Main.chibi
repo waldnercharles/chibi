@@ -57,6 +57,7 @@ Main :: () -> int {
         return 2;
     }
     context := false;
+    markers: string[] = [];
     switch Module(collections, directories, gathered.paths, gathered.sources, triple, chosen) {
         case .Rejected(message):
             os.Print(strings.Concatenate(["native: ", message]));
@@ -67,6 +68,9 @@ Main :: () -> int {
                 return 2;
             }
             context = Takes(module);
+            if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+                markers = Markers(module);
+            }
     }
     // A program that allocates or formats takes the runtime context, which the
     // start module supplies from libc's allocator on Linux, so it links libc
@@ -88,6 +92,9 @@ Main :: () -> int {
         objects.append(strings.Concatenate([output, ".start.o"]));
     }
     plan := link.Program(triple, llvm, objects, [], [], [], output, "", static);
+    // Only a Windows program takes system libraries by name: lld-link needs an
+    // import library for each, which the macOS and Linux links do without.
+    plan.imports = link.SystemImports(markers);
     if (host.Link(plan) != nil) {
         os.Print("native: the link failed");
         return 2;
@@ -293,4 +300,33 @@ Takes :: (module: u8[]) -> bool {
         at += 1;
     }
     return false;
+}
+
+// The module's `; chibi-library` and `; chibi-import` lines, which name the
+// system libraries and symbols it takes. One pass over the bytes: a module is
+// megabytes and only these few lines matter.
+Markers :: (module: u8[]) -> string[] {
+    found: string[] = [];
+    needle := strings.Bytes("; chibi-");
+    size := length(module);
+    at := 0;
+    while (at < size) {
+        end := at;
+        while (end < size && int(module[end]) != 10) {
+            end += 1;
+        }
+        matched := end - at >= length(needle);
+        for (index in 0..<length(needle)) {
+            matched = matched && int(module[at + index]) == needle[index];
+        }
+        if (matched) {
+            line: u8[] = [];
+            for (index in at..<end) {
+                line.append(module[index]);
+            }
+            found.append(text_from_bytes(line));
+        }
+        at = end + 1;
+    }
+    return found;
 }

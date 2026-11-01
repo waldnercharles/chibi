@@ -214,7 +214,8 @@ NativeRunners :: (host: string) {
 // real driver without compiling the compiler or invoking LLVM. Accepted hashes
 // reach a deliberately failing runner, so these are not native proof claims.
 NativeFixedPoint :: (host: string) {
-    scratch := format_text("{}/.chibi/graph-native-fixed-point", os.Root())
+    // CI checkouts live below /home/runner/: an ancestor is not a runner output.
+    scratch := format_text("{}/.chibi/graph-native-fixed-point/runner", os.Root())
     assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(scratch) == nil, "the scratch root")
     seed := format_text("{}/seed", scratch)
     assert(os.Run(["cp", "test/graph/fixtures/native-stage.sh", seed]) == 0 && os.Run(["chmod", "+x", seed]) == 0, "the controlled seed")

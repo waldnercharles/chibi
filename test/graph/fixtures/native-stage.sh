@@ -10,7 +10,7 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 case "$output" in
-    */runner/*) echo 'fixture reached runner' >&2; exit 23 ;;
+    */runner/driver|*/runner/graph) echo 'fixture reached runner' >&2; exit 23 ;;
     */stage[234]/chibi) work=${output%/stage?/*} ;;
     *) exit 24 ;;
 esac

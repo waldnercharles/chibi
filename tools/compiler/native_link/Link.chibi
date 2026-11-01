@@ -106,6 +106,15 @@ pub Linker :: (target: int) -> string {
     return "ld.lld";
 }
 
+// opt's optimized bitcode of a module, at the level llc compiles it with.
+pub OptimizeCommand :: (opt: string, module: string, bitcode: string, level: int) -> string[] {
+    passes := "-passes=default<O0>";
+    if (level != 0) {
+        passes = "-passes=default<O2>";
+    }
+    return [opt, passes, "-o", bitcode, module];
+}
+
 // llc's object for a module: position independent, so it links into a
 // program and a shared library alike. The module names its triple and layout.
 pub ObjectCommand :: (llc: string, module: string, object: string, level: int) -> string[] {

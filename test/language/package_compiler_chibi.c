@@ -7,7 +7,6 @@
 #include "execution/module_internal.h"
 #include "execution/prepared.h"
 #include "execution/status.h"
-#include "float_conversion_cases.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arithmetic_definition.h"
 #include "runtime/arrays_definition.h"
@@ -2621,7 +2620,7 @@ static bool native_module_ir(const char *target, const native_module *m, char **
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 101
+    SCALAR_ACCEPTED_CASES = 106
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on

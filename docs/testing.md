@@ -144,7 +144,7 @@ tree and reported as `FAIL NAME (timed out after Ns)`; the others still run.
 CI runs the `projects language` invocation with `--jobs 3` on Linux (4 cores,
 16 GB) and `--jobs 2` on macOS (3 cores, 7 GB).
 
-The `projects` group runs `chibi-cli` and `native-build` against the Release
+The `projects` group runs `chibi-cli`, `chibi-cli-authored` and `native-build` against the Release
 `chibi` launcher in `build-release/sdk/`, with its `chibi-compile` beside it.
 `native-build` links real programs only when `CHIBI_LLVM_BIN` names the LLVM
 tools; without it, LLVM stand-ins cover the process contract.
@@ -154,6 +154,10 @@ fake sibling and the built launcher; `chibi test` through the real
 `chibi-compile` beside it; `build --native` argument forwarding; and programs
 run from files and directories, with `--watch`, cancellation and child
 processes.
+
+`chibi-cli-authored` (`test/graph/ChibiCliTests.chibi`) runs the `chibi-cli`
+cases that outlive the VM, through the same launcher, for its native
+replacement.
 
 `chibi build test <name>` runs one selector against the drivers in `build/` and
 the Release tools in `build-release/`; `--build`, `--release-build` and
@@ -169,7 +173,7 @@ The groups of `tools/tests.tsv`:
 | Group | Current coverage |
 | --- | --- |
 | `native` | CPU `test_tools` and build-graph selectors with checked-in inputs. |
-| `projects` | The Release `chibi` launcher (`chibi-cli`) and its native builds (`native-build`). |
+| `projects` | The Release `chibi` launcher (`chibi-cli`, `chibi-cli-authored`) and its native builds (`native-build`). |
 | `language` | `test_language` selectors, `chibi test` over the compiler, `core` and the compiler samples, and stage-one bootstrap and recovery. |
 | `compiler` | The scalar package-compiler route. |
 | `wasm` | The browser `test_language` build under Node. No build currently produces `build-wasm-language`. |

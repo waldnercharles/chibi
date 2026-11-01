@@ -1,0 +1,5 @@
+package facts
+Wide: f64 : 16777217.0;
+pub Fold :: (value: f64) -> number { return Wide; }
+
+// error: 3:38: returned value differs from the result type

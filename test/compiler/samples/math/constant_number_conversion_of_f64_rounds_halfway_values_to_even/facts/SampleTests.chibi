@@ -1,0 +1,10 @@
+package facts
+
+// constant number conversion of f64 rounds halfway values to even
+@test
+Calls :: () {
+    assert(RoundLower(1.5) == 16777216.0, "16777217 rounds down to 16777216");
+    assert(RoundUpper(1.5) == 16777220.0, "16777219 rounds up to 16777220");
+    assert(RoundNegative(1.5) == -16777216.0, "-16777217 rounds to -16777216");
+    assert(SubnormalTieToZero(1.5), "half the smallest subnormal rounds to +0.0");
+}

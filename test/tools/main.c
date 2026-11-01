@@ -68,7 +68,6 @@ void test_program_sdk();
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
 void test_compiled_integers();
-void test_compiled_conversions();
 void test_compiled_selects();
 void test_persistent_stores();
 static bool source_runtime_active;
@@ -276,12 +275,11 @@ int main(int argc, char **argv)
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool native_values = false, box3d = false;
-    bool whole_math = false, whole_integer = false, whole_conversion = false,
-         whole_select = false, persistent_store = false;
+    bool whole_math = false, whole_integer = false, whole_select = false,
+         persistent_store = false;
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     whole_math = argc == 2 && !strcmp(argv[1], "--whole-math");
     whole_integer = argc == 2 && !strcmp(argv[1], "--whole-integer");
-    whole_conversion = argc == 2 && !strcmp(argv[1], "--whole-conversion");
     persistent_store = argc == 2 && !strcmp(argv[1], "--persistent-store");
     whole_select = argc == 2 && !strcmp(argv[1], "--whole-select");
 #endif
@@ -293,13 +291,13 @@ int main(int argc, char **argv)
 #endif
     if (argc != 1 && !collab && !web_storage && !wasm_browser &&
         !native_values && !arena && !types && !box3d && !persistent_store &&
-        !whole_math && !whole_integer && !whole_conversion && !whole_select) {
+        !whole_math && !whole_integer && !whole_select) {
         fprintf(
             stderr,
             "Usage: %s [--collab | --web-storage | "
             "--wasm-browser | --arena | --types | "
             "--native-values | --box3d | --persistent-store | --whole-math | "
-            "--whole-integer | --whole-conversion | --whole-select | "
+            "--whole-integer | --whole-select | "
             "--asset-values | --fmt]\n",
             argv[0]
         );
@@ -309,7 +307,7 @@ int main(int argc, char **argv)
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     source_runtime_active = persistent_store || whole_math || whole_integer ||
-                            whole_conversion || whole_select;
+                            whole_select;
     if (source_runtime_active) {
         if (persistent_store) {
             test_persistent_stores();
@@ -317,8 +315,6 @@ int main(int argc, char **argv)
             test_compiled_math();
         } else if (whole_integer) {
             test_compiled_integers();
-        } else if (whole_conversion) {
-            test_compiled_conversions();
         } else if (whole_select) {
             test_compiled_selects();
         }

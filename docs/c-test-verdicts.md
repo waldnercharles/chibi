@@ -134,7 +134,7 @@ They don't port:
   `private_unwaited_and_late_steps_stop`: the two implementations disagree, so these
   wait on an owner decision.
 
-### The CLI: a Chibi suite that drives the built `chibi`, like `BuildTests.chibi`
+### The CLI: `test/graph/ChibiCliTests.chibi` (ported), which drives the built `chibi` like `BuildTests.chibi`
 
 - `version` and `doctor`, apart from the backend line:
   - `version_reads_the_build_identity`;

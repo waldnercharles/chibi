@@ -88,7 +88,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: asset-compiler-v2-${{ runner.os }}-
       # Recovered compilers, keyed inside by everything that decides their bytes
       # (docs/self-hosting-build.md), so the newest snapshot is always safe to use.
       - name: Restore recovered compilers
@@ -198,7 +199,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
       # The cache has no eviction; drop entries no build rewrote for three days.
       - name: Prune old recovered compilers
         if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -255,7 +256,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: asset-compiler-v2-${{ runner.os }}-
       # Recovered compilers, keyed inside by everything that decides their bytes
       # (docs/self-hosting-build.md), so the newest snapshot is always safe to use.
       - name: Restore recovered compilers
@@ -345,7 +347,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
       # The cache has no eviction; drop entries no build rewrote for three days.
       - name: Prune old recovered compilers
         if: always() && steps.release-build.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -475,7 +477,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: asset-compiler-v2-${{ runner.os }}-
       # Recovered compilers, keyed inside by everything that decides their bytes
       # (docs/self-hosting-build.md), so the newest snapshot is always safe to use.
       - name: Restore recovered compilers

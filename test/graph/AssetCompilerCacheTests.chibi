@@ -77,11 +77,77 @@ RefreshRewritesAnOldProductOnly :: () {
     Clean(directory);
 }
 
+// A stand-in compiler host: it counts its invocations in `host.calls` and writes
+// `marker` to the output, the last argument, as the real host writes the product.
+FakeHost :: (host: string, marker: string) {
+    script := format_text("#!/bin/sh\nset -eu\nprintf x >> \"$0.calls\"\nwhile [ \"$#\" -gt 1 ]; do shift; done\nprintf '{}' > \"$1\"\n", marker);
+    assert(os.WriteText(host, script) == nil, "a fake host");
+    assert(os.Run(["chmod", "+x", host]) == 0, "executable");
+}
+
+Text :: (path: string) -> string {
+    read := os.ReadText(path);
+    assert(read.error == nil, "a readable file");
+    return read.text;
+}
+
+Calls :: (host: string) -> string {
+    return Text(format_text("{}.calls", host));
+}
+
+// The seed calls natives in the host, so the host's bytes are part of a product's
+// identity: the same seed, request and target under another host rebuilds.
+KeyBindsTheHostTheSeedAndTheRequest :: () {
+    directory := Fresh();
+    host := format_text("{}/host", directory);
+    seed := format_text("{}/seed", directory);
+    assert(os.WriteText(seed, "seed") == nil, "a seed");
+    FakeHost(host, "first");
+    first := cache.Key(host, seed, "request");
+    assert(first != "" && first == cache.Key(host, seed, "request"), "a stable key");
+    copied := format_text("{}/copy", directory);
+    assert(os.Copy(host, copied) == nil && cache.Key(copied, seed, "request") == first, "equal bytes at another path");
+    FakeHost(host, "second");
+    assert(cache.Key(host, seed, "request") != first, "a host-only change");
+    assert(cache.Key(host, seed, "other") != cache.Key(host, seed, "request"), "a changed request");
+    assert(os.WriteText(seed, "other seed") == nil && cache.Key(host, seed, "request") != first, "a changed seed");
+    assert(cache.Key(format_text("{}/missing", directory), seed, "request") == "", "a missing host");
+    assert(cache.Key(host, format_text("{}/missing", directory), "request") == "", "a missing seed");
+    Clean(directory);
+}
+
+// A product is reused under its key and made again under another; without a
+// key nothing runs and nothing is written.
+ProductsFollowTheirKeys :: () {
+    directory := Fresh();
+    host := format_text("{}/host", directory);
+    seed := format_text("{}/seed", directory);
+    store := format_text("{}/store", directory);
+    output := format_text("{}/output", directory);
+    inputs := format_text("{}/input", directory);
+    assert(os.WriteText(seed, "seed") == nil, "a seed");
+    FakeHost(host, "first");
+    assert(!cache.Product(host, seed, "entry", "request", "", output, store, "1000", inputs), "no key, no product");
+    assert(!os.Exists(output) && !os.Exists(store) && !os.Exists(inputs) && !os.Exists(format_text("{}.calls", host)), "nothing ran or was written");
+    first := cache.Key(host, seed, "request");
+    assert(cache.Product(host, seed, "entry", "request", first, output, store, "1000", inputs), "a product");
+    assert(Calls(host) == "x" && Text(output) == "first", "made once");
+    assert(os.Remove(output) == nil && cache.Product(host, seed, "entry", "request", first, output, store, "1000", inputs), "a hit");
+    assert(Calls(host) == "x" && Text(output) == "first", "a hit runs nothing");
+    FakeHost(host, "second");
+    second := cache.Key(host, seed, "request");
+    assert(cache.Product(host, seed, "entry", "request", second, output, store, "1000", inputs), "another host");
+    assert(Calls(host) == "xx" && Text(output) == "second", "made again under the new host's key");
+    Clean(directory);
+}
+
 pub Run :: () -> int {
     LocationPrefersTheOverrideThenTheMachineCache();
     StampsReadSizeAndModifiedTime();
     EvictionRemovesTheOldestUnkeptFirst();
     EvictionStopsWhenOnlyKeptProductsRemain();
     RefreshRewritesAnOldProductOnly();
+    KeyBindsTheHostTheSeedAndTheRequest();
+    ProductsFollowTheirKeys();
     return 0;
 }

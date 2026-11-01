@@ -93,11 +93,41 @@ TestSelectors :: (host: string) {
     assert(unknown.status != 0 && Has(Output(unknown), "unknown selector 'no-such-selector'"), "an unknown selector");
 }
 
+// Whether `test` ran `name` alone: every selector it had started had reported
+// when it started `name`, and it started none until `name` reported.
+RanAlone :: (log: string, name: string) -> bool {
+    running := 0;
+    seen := false;
+    alone := false;
+    for (line in strings.Lines(log)) {
+        words := strings.Split(line, " ");
+        if (length(words) < 2) {
+            continue;
+        }
+        if (words[0] == "RUN") {
+            if (alone || (words[1] == name && running != 0)) {
+                return false;
+            }
+            running += 1;
+            if (words[1] == name) {
+                seen = true;
+                alone = true;
+            }
+        } else if (words[0] == "PASS" || words[0] == "FAIL") {
+            running -= 1;
+            if (words[1] == name) {
+                alone = false;
+            }
+        }
+    }
+    return seen;
+}
+
 // `test` runs up to --jobs selectors together, an `exclusive` one alone, and
 // stops one at its deadline. The selectors are shell commands in a scratch
 // tests.tsv: `a` and `b` each wait for the other to start, so they pass only
-// when they overlap, and `after` passes only when the exclusive `alone` ended
-// before it started.
+// when they overlap; the exclusive `alone` waits while `after` and `slow` fill
+// the free slots, then runs with nothing beside it.
 TestScheduling :: (host: string) {
     source := os.Root();
     scratch := format_text("{}/.chibi/graph-driver", source);
@@ -105,7 +135,7 @@ TestScheduling :: (host: string) {
     rows := ["tool\ta\tsh\t-c\ttouch a.started; until [ -e b.started ]; do sleep 0.05; done",
              "tool\tb\tsh\t-c\ttouch b.started; until [ -e a.started ]; do sleep 0.05; done",
              "tool\talone\tsh\t-c\tsleep 0.5; touch alone.done",
-             "tool\tafter\tsh\t-c\ttest -e alone.done",
+             "tool\tafter\tsh\t-c\ttrue",
              "tool\tslow\tsh\t-c\tsleep 30",
              "timeout\ta\t20", "timeout\tb\t20", "timeout\tslow\t1", "exclusive\talone", ""];
     assert(os.WriteText(format_text("{}/tools/tests.tsv", scratch), strings.Join(rows, "\n")) == nil, "the scratch table");
@@ -116,7 +146,7 @@ TestScheduling :: (host: string) {
     result := os.Capture(command);
     log := Output(result);
     assert(result.status != 0 && Has(log, "PASS a\n") && Has(log, "PASS b\n"), "overlapping selectors");
-    assert(Has(log, "PASS alone\n") && Has(log, "PASS after\n"), "an exclusive selector runs alone");
+    assert(Has(log, "PASS alone\n") && Has(log, "PASS after\n") && RanAlone(log, "alone"), "an exclusive selector runs alone");
     assert(Has(log, "FAIL slow (timed out after 1s)\n") && Has(log, "5 tests, 1 failed"), "a selector's deadline");
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed");
 }

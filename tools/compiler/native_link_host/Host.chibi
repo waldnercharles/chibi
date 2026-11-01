@@ -1,7 +1,7 @@
 package native_link_host
 
 import link "project:native_link"
-import os "core:sys/os"
+import os "core:os"
 import strings "core:strings"
 
 // The effects of the link step: finding the LLVM tools and the C library's
@@ -73,7 +73,7 @@ pub Discover :: (plan: link.Plan) -> link.Plan {
 }
 
 Write :: (path: string, text: string) -> bool {
-    return os.WriteText(path, text);
+    return os.WriteText(path, text) == nil;
 }
 
 // The link itself, with the stubs written into plan.work.
@@ -107,19 +107,19 @@ Build :: (plan: link.Plan) -> link.Error? {
         }
     }
     partial := link.Partial(ready);
-    if (os.Exists(partial) && !os.Remove(partial)) {
+    if (os.Exists(partial) && os.Remove(partial) != nil) {
         return Fail(link.CannotWrite, 0);
     }
     command := link.Command(ready, partial);
     command[0] = Tool(plan.llvm, link.Linker(target));
     status := os.Run(command);
     if (status != 0) {
-        if (os.Exists(partial) && !os.Remove(partial)) {
+        if (os.Exists(partial) && os.Remove(partial) != nil) {
             return Fail(link.CannotWrite, 0);
         }
         return Fail(link.ToolFailed, status);
     }
-    if (!os.Rename(partial, plan.output)) {
+    if (os.Rename(partial, plan.output) != nil) {
         return Fail(link.CannotWrite, 0);
     }
     return nil;
@@ -149,7 +149,7 @@ pub Link :: (plan: link.Plan) -> link.Error? {
         own = true;
     }
     if (os.Kind(ready.work) == os.KindNone) {
-        if (!os.MakeDirectory(ready.work)) {
+        if (os.MakeDirectory(ready.work) != nil) {
             return Fail(link.CannotWrite, 0);
         }
     } else {
@@ -158,10 +158,10 @@ pub Link :: (plan: link.Plan) -> link.Error? {
     failure := Build(ready);
     cleaned := true;
     for (path in Leftovers(ready)) {
-        cleaned = cleaned && (!os.Exists(path) || os.Remove(path));
+        cleaned = cleaned && (!os.Exists(path) || os.Remove(path) == nil);
     }
     if (own) {
-        cleaned = cleaned && (!os.Exists(ready.work) || os.Remove(ready.work));
+        cleaned = cleaned && (!os.Exists(ready.work) || os.Remove(ready.work) == nil);
     }
     if (failure != nil) {
         return failure;

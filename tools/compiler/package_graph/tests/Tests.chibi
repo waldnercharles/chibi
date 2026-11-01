@@ -10,10 +10,10 @@ F :: (path: string, directory: string, name: string) -> graph.File {
 }
 // An import with an explicit alias; Default leaves the alias to the directory.
 I :: (file: int, directory: string, alias: string) -> graph.Import {
-    return {file: file, directory: directory, alias: alias, explicit_alias: true};
+    return {file: file, directory: directory, alias: alias, explicit_alias: true, conditional: false};
 }
 Default :: (file: int, directory: string) -> graph.Import {
-    return {file: file, directory: directory, alias: "", explicit_alias: false};
+    return {file: file, directory: directory, alias: "", explicit_alias: false, conditional: false};
 }
 Files :: () -> graph.File[] {
     return [F("/project/app/z.chibi", "/project/app", "app"), F("/project/app/a.chibi", "/project/app", "app"),
@@ -190,6 +190,33 @@ DuplicateAliasReportsBothImports :: () {
                       graph.DuplicateImport);
     assert(error.file == 0 && error.related_file == 0);
     assert(error.import_index == 1 && error.related_import == 0);
+}
+
+// Conditional imports may share an alias, which the compiler checks among the
+// branches it keeps; one of them may not share a file-level import's alias.
+// An edge is conditional only when every import that makes it is.
+@test
+ConditionalImportsMayShareAnAlias :: () {
+    when_math := I(0, "/project/math", "lib");
+    when_math.conditional = true;
+    when_nested := I(0, "/project/app/nested", "lib");
+    when_nested.conditional = true;
+    built := Accepted(graph.Build(Files(), [when_math, when_nested]));
+    switch built {
+        case .Accepted(packages, members, files, order, edges, bindings):
+            assert(length(bindings) == 2 && bindings[0].conditional && bindings[1].conditional, "both bind conditionally");
+            assert(length(edges) == 2 && edges[0].conditional && edges[1].conditional, "both edges are conditional");
+        case .Rejected(error, cycle):
+            assert(false, "the graph is valid");
+    }
+    Rejected(graph.Build(Files(), [I(0, "/project/math", "lib"), when_nested]), graph.DuplicateImport);
+    built = Accepted(graph.Build(Files(), [when_math, I(0, "/project/math", "numbers")]));
+    switch built {
+        case .Accepted(packages, members, files, order, edges, bindings):
+            assert(length(edges) == 1 && !edges[0].conditional && edges[0].import_index == 1, "a file-level import makes it certain");
+        case .Rejected(error, cycle):
+            assert(false, "the graph is valid");
+    }
 }
 
 @test

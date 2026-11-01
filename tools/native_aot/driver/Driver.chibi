@@ -923,15 +923,17 @@ Driver :: (host: string, artifact: string, core: string, work: string, target: s
 }
 
 // The names an import line of `text` takes from `collection`: each
-// `import alias "collection:name"`.
+// `import alias "collection:name"`, with the indented ones of `when`
+// branches, so the snapshot holds every package a kept branch may import.
 ImportedFrom :: (text: string, collection: string) -> string[] {
     found: string[] = [];
     prefix := Join([collection, ":"]);
     for (line in build.lines(text)) {
-        if (!strings.HasPrefix(line, "import ")) {
+        trimmed := strings.TrimSpace(line);
+        if (!strings.HasPrefix(trimmed, "import ")) {
             continue;
         }
-        parts := strings.Split(line, "\"");
+        parts := strings.Split(trimmed, "\"");
         if (length(parts) >= 3 && strings.HasPrefix(parts[1], prefix)) {
             found.append(strings.TrimPrefix(parts[1], prefix));
         }

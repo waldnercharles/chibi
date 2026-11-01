@@ -1074,7 +1074,10 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         }
         ends = row.kind == facts.ReturnRow;
         earliest = row.end;
-        if (subject) {
+        // A switch's subject local shares its range with the switch, and the
+        // copies of written array parameters share the one byte that opens the
+        // body: no statement starts there but the next copy.
+        if (subject || (row.kind == facts.LocalRow && row.end - row.start == 1)) {
             earliest = row.start;
         }
         if (row.kind == facts.LocalRow) {

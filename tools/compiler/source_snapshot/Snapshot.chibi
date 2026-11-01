@@ -89,6 +89,8 @@ pub ResolvedImport :: struct {
     alias_column: int;
     alias_document: int;
     directory: string;
+    // Inside a `when` branch (package_syntax.Import).
+    conditional: bool;
 }
 pub Result :: union {
     Accepted(roots: routes.Root[], documents: Document[], nodes: SnapshotNode[],
@@ -217,7 +219,8 @@ Resolved :: (imported: extract.Import, directory: string) -> ResolvedImport {
             path_document: imported.path_document,
             alias_start: imported.alias_start, alias_end: imported.alias_end,
             alias_line: imported.alias_line, alias_column: imported.alias_column,
-            alias_document: imported.alias_document, directory: directory};
+            alias_document: imported.alias_document, directory: directory,
+            conditional: imported.conditional};
 }
 GraphFailure :: (error: graph.Error, cycle: int[], documents: Document[],
                  nodes: SnapshotNode[], imports: ResolvedImport[]) -> Result {
@@ -386,7 +389,8 @@ pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[
                 case .Accepted(directory):
                     imports.append(Resolved(imported, directory));
                     graphImport: graph.Import = {file: imported.file, directory: directory,
-                                                 alias: imported.alias, explicit_alias: imported.explicit_alias};
+                                                 alias: imported.alias, explicit_alias: imported.explicit_alias,
+                                                 conditional: imported.conditional};
                     graphImports.append(graphImport);
             }
             document.import_count += 1;

@@ -763,7 +763,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     if (Is(forest, node, syntax.String)) {
         return TextStorage;
     }
-    if (ScalarVariantMade(forest, text, callables, names, callable.package, node) && ScalarUnionOf(forest, text, callables, names, types, callable.package, node) >= 0) {
+    if (ScalarVariantMade(forest, text, callables, names, callable.package, node) && ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
         return UnionStorage;
     }
     named := ConstantOf(forest, text, constants, names, callable.package, node);
@@ -823,6 +823,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         return NumberConversionType(forest, text, node);
     }
     if (Is(forest, node, syntax.UnaryExpression)) {
+        if (ScalarNegated(Operator(forest, node))) {
+            return BoolStorage;
+        }
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand), 0);
     }
     if (Is(forest, node, syntax.MemberExpression)) {
@@ -948,7 +951,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
     }
     if (storage == UnionStorage && !arrayed && !fielded) {
-        held := ScalarUnionOf(forest, text, callables, names, types, callable.package, node);
+        held := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, node);
         type = ScalarRecordType(types, held);
         if (held >= 0 && ScalarVariantMade(forest, text, callables, names, callable.package, node)) {
             return ScalarVariant(forest, text, callables, params, callable, names, types, members, constants, node, held, rows);
@@ -1318,7 +1321,7 @@ ScalarIs :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[
     if (FirstMember(forest, Field(forest, pattern, syntax.FieldBindings)) >= 0) {
         return ScalarOperands.Failed(Diagnose(forest, pattern, 0, "scalar proof binds payloads only in switch arms"));
     }
-    held := ScalarUnionOf(forest, text, callables, names, types, callable.package, value);
+    held := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, value);
     output := rows;
     switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, value, UnionStorage,
                          output) {
@@ -1348,6 +1351,14 @@ ScalarHeldUnion :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         if (field >= 0 && members[field].storage == UnionStorage && members[field].container == 0) {
             return members[field].record;
         }
+    }
+    // An element of an array of unions.
+    if (Is(forest, value, syntax.IndexExpression)) {
+        element := ScalarArrayShape(forest, text, callables, params, names, types, members, package, Field(forest, value, syntax.FieldObject));
+        if (element.storage == UnionStorage && element.container == ArrayContainer) {
+            return element.record;
+        }
+        return -1;
     }
     return ScalarUnionOf(forest, text, callables, names, types, package, value);
 }
@@ -1497,6 +1508,15 @@ ScalarConversion :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     own := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, operand, context);
     if (own == storage) {
         return ScalarOperands.Built(rows);
+    }
+    // An optional where a bool is expected is true when it is not nil.
+    if (own == UnionStorage && storage == BoolStorage &&
+        ScalarOptional(types, ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, operand))) {
+        output := rows;
+        output.extend([ScalarAt(forest, operand, facts.TagRow, facts.IntType, 0, 1, ""),
+                       ScalarLiteral(forest, operand, facts.IntType, 0),
+                       ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
+        return ScalarOperands.Built(output);
     }
     converts := [ScalarAt(forest, node, facts.ConvertRow, ScalarTypeOf(storage), mode, 1, "")];
     if (Integer(own) && storage == FloatStorage) {
@@ -1804,7 +1824,7 @@ ScalarDeclaredRecord :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (found >= 0) {
             return found;
         }
-        return ScalarUnionOf(forest, text, callables, names, types, callable.package, value);
+        return ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, value);
     }
     table := types;
     return ReadType(forest, text, &table, names, callable.package, declared).record;
@@ -1937,7 +1957,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             // or a hidden local that holds it.
             subject := Unparenthesized(forest, value);
             if (!Is(forest, subject, syntax.Identifier)) {
-                held := ScalarUnionOf(forest, text, callables, names, types, callable.package, value);
+                held := ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, value);
                 if (held < 0) {
                     return ScalarPlan.Failed(Diagnose(forest, value, 0, "scalar proof switches only on unions of the source"));
                 }
@@ -2940,11 +2960,21 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     }
     return ScalarOperands.Built(rows);
 }
+// The name of a record or union row: its own, or `package.Name` when an
+// earlier row of `named` has it, as another package's declaration may. The
+// scan is over the declared types, which number in the hundreds.
+ScalarDeclaredName :: (declared: TypeDecl, named: string[]) -> string {
+    if (declared.type_name != "" && Holds(named, declared.name)) {
+        return declared.type_name;
+    }
+    return declared.name;
+}
 // The rows of the source's records and unions, in declaration order, then
 // those of the functions' results records: each record of number and bool
 // fields, and each union.
 ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[]) -> ScalarOperands {
     rows: facts.Row[] = [];
+    named: string[] = [];
     position: int = -1;
     for (declared in types) {
         position += 1;
@@ -2956,7 +2986,9 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
             continue;
         }
         if (declared.kind == UnionDecl) {
-            switch ScalarUnion(forest, types, members, declared) {
+            union_name := ScalarDeclaredName(declared, named);
+            named.append(union_name);
+            switch ScalarUnion(forest, types, members, declared, union_name) {
                 case .Failed(diagnostic):
                     return ScalarOperands.Failed(diagnostic);
                 case .Built(union_rows):
@@ -2970,7 +3002,9 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
         if (results) {
             fields = Members(forest, Field(forest, declared.node, syntax.FieldResults));
         }
-        rows.append(ScalarAt(forest, declared.node, facts.RecordRow, 0, 0, declared.count, declared.name));
+        named_as := ScalarDeclaredName(declared, named);
+        named.append(named_as);
+        rows.append(ScalarAt(forest, declared.node, facts.RecordRow, 0, 0, declared.count, named_as));
         for (index in 0..<declared.count) {
             field := members[declared.first + index];
             type := ScalarMemberType(types, members, declared.first + index);
@@ -2998,8 +3032,8 @@ ScalarOptionalRows :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], decla
 // payloads. The variants are `declared`'s, in order, and their payloads are
 // consecutive members.
 ScalarUnion :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[],
-                declared: TypeDecl) -> ScalarOperands {
-    rows: facts.Row[] = [ScalarAt(forest, declared.node, facts.UnionRow, 0, 0, declared.count, declared.name)];
+                declared: TypeDecl, name: string) -> ScalarOperands {
+    rows: facts.Row[] = [ScalarAt(forest, declared.node, facts.UnionRow, 0, 0, declared.count, name)];
     variants: int[] = [];
     for (member in Members(forest, declared.node)) {
         if (Is(forest, member, syntax.UnionVariant)) {
@@ -3319,7 +3353,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
     for (index in 0..<length(paths)) {
         source := sources[index];
         if (os != 0 && TargetPackagePath(collection_names, collection_paths, paths[index])) {
-            source = TargetPackageText(os, arch, target.pointer_size * 8);
+            source = TargetPackageText(os, arch, target.pointer_size * 8, 1);
         }
         input: snapshot.Input = {path: paths[index], text: source, has_path: true, has_text: true};
         inputs.append(input);
@@ -3369,10 +3403,8 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                         return ScalarFailure(path, shown_text,
                                              Diagnose(shown_nodes, document.syntax_root, 0, "scalar proof requires one package without imports"));
                     }
-                    active := order;
                     roots_named: string[] = [document.identity];
                     if (packaged) {
-                        active = ActivePackageOrder(documents, packages, files_of, order, edges, file_packages[0]);
                         roots_named = [];
                         for (listed in packages) {
                             roots_named.append(documents[files_of[listed.member_start]].identity);
@@ -3396,15 +3428,16 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                         quiet.effects = 0;
                         text_natives[index] = quiet;
                     }
-                    switch Declare(nodes, documents, packages, files_of, active, imports, links, target) {
+                    switch Declare(nodes, documents, packages, files_of, order, edges, file_packages[0], imports, links,
+                                   target) {
                         case .Failed(diagnostic):
                             return ScalarFailed(packaged, path, text, documents, diagnostic);
-                        case .Collected(callables, params, types, members, constants):
+                        case .Declared(callables, params, types, members, constants, active, bound, kept):
                             // Use the ordinary compiler's concrete functions and bindings. The
                             // scalar pass then checks its existing pure numeric domain.
                             table := types;
                             effects := resize([int(0)], length(text_natives));
-                            switch SpecializePackages(nodes, documents, active, links, roots_named,
+                            switch SpecializePackages(nodes, documents, active, bound, roots_named,
                                                       WaitingCallables(nodes, callables), params, &table, members,
                                                       constants, text_natives, text_ports, text_identities,
                                                       BodyContext.Known(effects), ops, target) {
@@ -3422,7 +3455,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                     // Import aliases name a package set's qualified calls; a lone source has none.
                                     module_links: graph.Binding[] = [];
                                     if (packaged) {
-                                        module_links = links;
+                                        module_links = bound;
                                     }
                                     scalar_nodes := nodes;
                                     scalar_text := text;

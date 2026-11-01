@@ -29,9 +29,9 @@ package_collection *package_compile(
     package_compile_error *error
 );
 
-/* Whether the package in `directory`, or a package it imports, declares
- * `foreign import`. Such a package is native only: the VM never runs foreign
- * code and cannot prepare it, so `chibi test` skips it. */
+/* Whether the package in `directory`, or a package it imports outside a
+ * `when` branch, declares `foreign import`. Such a package is native only: the
+ * VM never runs foreign code and cannot prepare it, so `chibi test` skips it. */
 bool package_compile_needs_native(const source_package_snapshot_options *inputs, const char *directory);
 
 /* The path of the source a compiled closure names `label`: `project:REL` is

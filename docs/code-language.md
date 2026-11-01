@@ -907,11 +907,16 @@ Example :: library {
 
 `when` at package scope keeps the declarations of the branch whose constant
 condition holds, so one source can pick a value or a function per target. The
-condition reads literals and the constants of imported packages; `core:target`
-supplies `Os`, `Arch` and `PointerBits` beside `Linux`, `Darwin`, `Windows`,
-`X86_64` and `Arm64`. Conditions combine `==`, `!=`, `<`, `<=`, `>`, `>=`,
-`and`, `or` and `not`. A branch that is not kept is parsed but never
-compiled.
+condition reads literals and the constants of the file's own imports;
+`core:target` supplies `Os`, `Arch` and `PointerBits` beside `Linux`, `Darwin`,
+`Windows`, `X86_64` and `Arm64`, and `Native`, which is 1 in native code and 0
+in the VM. Conditions combine `==`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or` and
+`not`. A branch that is not kept is parsed but never compiled.
+
+A branch may import packages. Its imports bind for the whole file when the
+branch is kept, and a package that only unkept branches import is not
+compiled, so branches may import different packages under one name. Two kept
+branches may not bind the same name.
 
 ```chibi
 package files
@@ -923,6 +928,12 @@ when target.Os == target.Darwin {
     StatSizeOffset: int : 72
 } else {
     StatSizeOffset: int : 48
+}
+
+when target.Native == 1 {
+    import sys "core:sys/posix"
+} else {
+    import sys "project:files/hosted"
 }
 ```
 

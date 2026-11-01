@@ -44,7 +44,7 @@ pub ReflectionOptions :: (arguments: string[]) -> (options: string[], error: str
         if (!definitions) {
             if ((argument != "--build" && argument != "--jobs" && argument != "--libclang-root") ||
                 index == length(arguments) || strings.HasPrefix(arguments[index], "--") || arguments[index] == "") {
-                return (options, format_text("graph: invalid native reflection option '{0}'", argument));
+                return (options, format_text("graph: invalid native reflection option '{}'", argument));
             }
             if (argument == "--libclang-root" && libclang == "") {
                 libclang = arguments[index];
@@ -64,7 +64,7 @@ pub ReflectionOptions :: (arguments: string[]) -> (options: string[], error: str
         }
         mapped := NativeToolchainOption(definition);
         if (length(mapped) != 2) {
-            return (options, format_text("graph: unsupported native reflection toolchain argument '{0}'", definition));
+            return (options, format_text("graph: unsupported native reflection toolchain argument '{}'", definition));
         }
         options = extend(mapped, options);
     }

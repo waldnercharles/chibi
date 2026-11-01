@@ -45,9 +45,9 @@ replaces them.
 
 | Need | Why the runner needs it | State |
 | --- | --- | --- |
-| Arrays, strings, records, `Error?` results and fields in the native producer | the programs are arrays of strings and `Error?` throughout | landed, except an optional as an operand of `||` and `&&` (below) |
-| Imports across files and collections | `graph:` packages | not yet: the native driver compiles one package folder and its `project:` and `core:` imports |
-| A named entry | a build program has several (`Build`, `Libraries`, `Install`, ...) and the producer reads the first function of the first file | not yet |
+| Arrays, strings, records, `Error?` results and fields in the native producer | the programs are arrays of strings and `Error?` throughout | landed; an optional is true when it is not nil as an operand of `||` and `&&` too |
+| Imports across files and collections | `graph:` packages | the native driver takes `--source FILE` and `--collection NAME=DIR` |
+| A named entry | a build program has several (`Build`, `Libraries`, `Install`, ...) and the producer reads the first function of the first file | the native driver takes `--entry NAME` |
 | `core:os` over libc | files, directories, processes, environment, hashing | every call the programs make has a native body (below) |
 | A native runtime without C | strings and arrays the native code calls | exists: the start module supplies the runtime context from libc's allocator |
 | Compile and link from `chibi build` with no `cc` | the runner cache | the native driver compiles and `native_link` links, on every platform (the Windows `core:sys/windows` bodies are not run yet) |
@@ -76,19 +76,23 @@ The sample `test/compiler/samples/native/foreign_posix` runs every row natively.
 ## State
 
 Probe: the native driver (`tools/compiler/native_driver`, built by `tools/native_aot/Driver.chibi`
-as stage one) compiles a package folder and links it with `native_link`:
+as stage one) compiles a package folder, or one program, and links it with `native_link`:
 
 ```
-stage-one --compiler tools/compiler --core packages/core --output OUT --llvm DIR --package P --target TRIPLE
+stage-one --compiler tools/compiler --core packages/core --output OUT --llvm DIR --target TRIPLE \
+          (--package P | --source FILE [--entry NAME] [--collection NAME=DIR]...)
 ```
 
-- `tools/toolchain/Driver.chibi` (`chibi build` itself), copied to a package of its own with `Main`
-  first, compiles and links natively and prints the same commands as the VM for `build --dry-run --target
-  test_language` and `build install --dry-run`. The program is 255 KB and runs without the build host.
-- `Build.chibi`, `Graph.chibi` and `SDK.chibi` stop at an `Error?` call or field as an operand of
-  `||` (`if (os.MakeDirectory(d) || os.Copy(a, b))`, `hashed.error || ...`): the producer types the
-  `||` expression by its operands, so a union operand makes it a union. `if (e)`, `!e` and
-  `e != nil` already work.
+- All five build programs compile and link natively: `Driver.chibi` (255 KB), `Build.chibi`,
+  `Graph.chibi` (`Libraries` and `SDKReflect`, 0.9 MB), `SDK.chibi` and `AssetCompiler.chibi`.
+- `Driver.chibi` prints the same commands as the VM for `build --dry-run --target test_language`
+  and `build install --dry-run`.
+- `Graph.chibi Libraries --commands-only on` writes the same compile and link commands natively
+  and on the VM (the build directory's name aside), in 0.9 s against minutes on the VM, and builds a
+  C library.
+- `chibi build`'s `native-self-host` verb compiles `Driver.chibi` and `Graph.chibi` with the
+  stage-two driver and compares their dry-run and command output with the VM's (`native runner`).
+  `Build.chibi`, `SDK.chibi` and `AssetCompiler.chibi` are checked by hand so far.
 - The C census (`test_language --native-census`) predates `when` and `foreign import` and cannot
   read `core:os` any more; the native driver is the probe. Retire the census's package mode
   when item 4 archives it.
@@ -97,16 +101,13 @@ stage-one --compiler tools/compiler --core packages/core --output OUT --llvm DIR
 
 Each step lands on its own and leaves the build working.
 
-1. Done: the text helpers (#1204), `core:os` on the VM (#1182, ...) and natively, the residual
-   `build.*` calls in the programs, and a Driver that compiles natively.
-2. Type `||` and `&&` as bool in the producer, give the native driver `--source`, `--entry` and
-   `--collection`, then compile `Build.chibi`, `Graph.chibi`, `SDK.chibi` and `AssetCompiler.chibi`
-   natively and fix what the producer says about them one wall at a time.
-3. Run the same builds on both paths until their outputs match: the compile and link commands of
-   `Graph.chibi Libraries --commands-only on`, then a real build.
-4. Add the runner cache to `chibi build`: compile the closure with the native driver, link it,
+1. Done: the text helpers (#1204), `core:os` on the VM and natively (#1281), the residual `build.*`
+   calls in the programs, and every build program compiling natively.
+2. Done for the driver and the graph's commands: the same output on both paths. Next, a real build
+   of the engine with the native graph, then the SDK install and the asset compiler.
+3. Add the runner cache to `chibi build`: compile the closure with the native driver, link it,
    publish it by rename under `.chibi/build-runner/<key>`, and `exec` it.
-5. Delete `chibi-build-host`, `src/host/build*.c` and `process.c`, the `build.*` catalog and the
+4. Delete `chibi-build-host`, `src/host/build*.c` and `process.c`, the `build.*` catalog and the
    pinned first host; `tools/bootstrap.sh` then fetches the seed compiler, not a host.
 
 ## Open decisions

@@ -4,6 +4,7 @@ build-sdk/
 /build-sdk-tests/
 /build-sdk-tests-cmake/
 build-language/
+build-native-self-host/
 .worktrees/
 # A second build tree, so verifying a build cannot relink the binary a manual
 # verification session is running out of build/.

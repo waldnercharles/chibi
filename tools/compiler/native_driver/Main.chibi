@@ -19,9 +19,19 @@ import strings "core:strings"
 // the closure and emitting each function group can run on worker threads once
 // core:thread exists; the order of everything it writes is the source order.
 
+// A command word first is the `chibi` command line (Cli.chibi); flags first are the stage
+// contract above, which `chibi run` and `chibi build --native` also drive.
 // The entry comes first: a package set's entry is its first file's first function.
 Main :: () -> int {
     arguments := os.Arguments();
+    if (length(arguments) > 0 && !strings.HasPrefix(arguments[0], "--")) {
+        return Cli(arguments);
+    }
+    return Build(arguments);
+}
+
+// Compiles what the stage flags in `arguments` name to a native executable.
+Build :: (arguments: string[]) -> int {
     project := Option(arguments, "--compiler", "");
     core := Option(arguments, "--core", "");
     output := Option(arguments, "--output", "");
@@ -56,8 +66,15 @@ Main :: () -> int {
         os.Print(strings.Concatenate(["native: ", gathered.problem]));
         return 2;
     }
+    return Emit(collections, directories, gathered.paths, gathered.sources, triple, chosen, llvm, output, Jobs(arguments));
+}
+
+// Compiles the closure `paths` and `sources` to the native executable `output`, with the
+// LLVM tools in `llvm`: 0 succeeded, 1 the sources were rejected, 2 the machine was unusable.
+Emit :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+         chosen: string, llvm: string, output: string, jobs: int) -> int {
     pieces: string[] = [];
-    switch Module(collections, directories, gathered.paths, gathered.sources, triple, chosen) {
+    switch Module(collections, directories, paths, sources, triple, chosen) {
         case .Rejected(message):
             os.Print(strings.Concatenate(["native: ", message]));
             return 1;
@@ -85,7 +102,7 @@ Main :: () -> int {
     // the context (the other functions are `@chibi_scalar.N`).
     context := strings.Contains(pieces[0], "@chibi_scalar(ptr %ctx");
     static := !strings.HasPrefix(triple, "aarch64-apple") && (!context || strings.HasPrefix(triple, "x86_64-pc-windows"));
-    if (host.Objects(llvm, files, objects, 2, Jobs(arguments)) != nil) {
+    if (host.Objects(llvm, files, objects, 2, jobs) != nil) {
         os.Print("native: opt or llc could not emit an object");
         return 2;
     }
@@ -187,12 +204,13 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
     return found;
 }
 
-// The .chibi files directly in a package folder, in the listing's order.
-PackageFiles :: (folder: string) -> string[] {
+// The .chibi files directly in a package folder, in the listing's order; test files
+// (named ...Tests.chibi) only when `tests`.
+PackageFiles :: (folder: string, tests: bool) -> string[] {
     files: string[] = [];
     listed := os.List(folder);
     for (name in listed.names) {
-        if (strings.HasSuffix(name, ".chibi") && !strings.HasSuffix(name, "Tests.chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
+        if (strings.HasSuffix(name, ".chibi") && (tests || !strings.HasSuffix(name, "Tests.chibi")) && os.IsFile(strings.Concatenate([folder, "/", name]))) {
             files.append(name);
         }
     }
@@ -225,6 +243,23 @@ Inputs :: struct {
 }
 
 Gather :: (project: string, collections: string[], directories: string[], package: string, source: string) -> Inputs {
+    return GatherWith(project, collections, directories, package, source, {folder: "", name: "", text: "", entry_name: "", entry_text: ""});
+}
+
+// A package under test: its folder, the test files it also takes, and one more file, `name`
+// holding `text`, that is not on disk, the test dispatcher. A nonempty `entry_text` is the
+// entry package, one file `entry_name` that is not on disk either, whose imports resolve
+// against the project folder.
+Extra :: struct {
+    folder: string;
+    name: string;
+    text: string;
+    entry_name: string;
+    entry_text: string;
+}
+
+GatherWith :: (project: string, collections: string[], directories: string[], package: string, source: string,
+               extra: Extra) -> Inputs {
     found: Inputs = {paths: [], sources: [], problem: ""};
     seen: string[] = [strings.Concatenate(["project:", package])];
     folders: string[] = [strings.Concatenate([project, "/", package])];
@@ -233,8 +268,16 @@ Gather :: (project: string, collections: string[], directories: string[], packag
     kinds.extend(collections);
     next := 0;
     while (next < length(folders)) {
-        files := PackageFiles(folders[next]);
-        if (next == 0 && source != "") {
+        files := PackageFiles(folders[next], folders[next] == extra.folder);
+        if (extra.folder != "" && folders[next] == extra.folder) {
+            files.append(extra.name);
+        }
+        if (next == 0 && extra.entry_text != "") {
+            // The entry text of the caller, alone.
+            folders[0] = project;
+            files = [extra.entry_name];
+            prefixes[0] = "";
+        } else if (next == 0 && source != "") {
             // One program: its file alone, whatever else its folder holds.
             slash := strings.LastIndex(source, "/");
             folders[0] = ".";
@@ -257,16 +300,21 @@ Gather :: (project: string, collections: string[], directories: string[], packag
         }
         for (file in files) {
             location := strings.Concatenate([folders[next], "/", file]);
-            if (!os.Exists(location)) {
-                found.problem = strings.Concatenate(["cannot read ", location]);
-                return found;
+            text := extra.text;
+            if (next == 0 && extra.entry_text != "") {
+                text = extra.entry_text;
+            } else if (extra.folder == "" || folders[next] != extra.folder || file != extra.name) {
+                if (!os.Exists(location)) {
+                    found.problem = strings.Concatenate(["cannot read ", location]);
+                    return found;
+                }
+                read := os.ReadText(location);
+                if (read.error != nil) {
+                    found.problem = strings.Concatenate(["cannot read ", location]);
+                    return found;
+                }
+                text = read.text;
             }
-            read := os.ReadText(location);
-            if (read.error != nil) {
-                found.problem = strings.Concatenate(["cannot read ", location]);
-                return found;
-            }
-            text := read.text;
             found.paths.append(strings.Concatenate([prefixes[next], file]));
             found.sources.append(text);
             for (kind in kinds) {

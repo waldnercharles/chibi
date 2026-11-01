@@ -95,9 +95,10 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W22 | Native stage one and stage two | W1 to W14 as the census requires | the bootstrap generation | LLVM lane with the generation coordinator | no | a native stage one builds stage two and a checking rebuild with identical or normalized bytes, and the corpus gives the same results as the VM stages | no | none | decided: no C-frontend delegation |
 | W23 | Recovery and installed proof without `cmake`, `clang` or `gcc` | W18, W22 | CI recovery job | LLVM lane | no | a CI job with those executables unavailable goes from a clean checkout through stage one and stage two and links a checked game | no | none | decided: clean installed recovery |
 | W24 | Game scenarios | none | game fixtures | proposed lane | yes | deterministic scenarios for each feature the inventory finds in games | no | none | decided |
-| W25 | Native game execution | W16, W14, W7 | W16's bridge | LLVM lane | no | representative scenes run with native functions and give the VM's traces; tasks stay in the VM (D10) | no | none | decided: D10, native functions never suspend |
+| W25 | Native game execution | W16, W14, W7 | W16's bridge | LLVM lane | no | representative scenes run with native functions and give the VM's traces; tasks follow D12 (W28) | no | none | decided: D10, a native function that does not wait never suspends; waiting functions are D12's coroutines |
 | W26 | Default adoption and removal | all of the above | stable command defaults | owner decision | no | the toolchain inventory's deletion requirements for each removed path | no | none | open: the owner decides the switch |
 | W27 | Remove the producer's size limits | none | the limits in `Facts.chibi` | LLVM lane | no | each census function rejected by a limit passes the producer or stops at another package's feature, and modules past the old limits agree at O0 and O2 | yes (#754) | none | decided: removed, as Rust and Odin have none; the validator keeps structural checks |
+| W28 | Native tasks | W7, W10 | D12's coroutine frame and the scheduler package `core:tasks` | LLVM lane | no | a native program with `await delay`, `yield`, a task handle and `cancel` runs at O0 and O2 and gives the VM's trace; cancelling at each suspension runs the drops of what the task holds and leaks nothing under ASan | no | none | proposed: D12, stages in Native tasks |
 
 Lanes:
 
@@ -214,7 +215,7 @@ three are built from different folders and compared byte for byte.
 | Source diagnostics and positions | `Diagnose`, `scalar_facts` rows | native for the subset | native trap locations | debug info | corpus excerpts, `Validate` positions |
 | Effects, hosts, roots | `ScalarEmits`, `src/execution/module_effects.c` | stage one | effect calls (M8) | game runtime | `ScalarEmits` rejects any but a record's construction, copies and field writes, a union's construction, tests and payload reads, and their roots |
 | Entities, components, systems, queries | `Behavior.chibi`, `src/ecs` | stage one (behaviors) | game SDK ABI (M8) | ECS runtime | none |
-| Waiting and tasks | `src/execution/program_tasks.c` | stage zero | coroutine lowering (M8) | scheduler | none |
+| Waiting and tasks | `Tasks.chibi`, `TaskResults.chibi`; the VM's `src/execution/suspend.c` | stage one (VM) | coroutine lowering (D12, W28) | the Chibi scheduler `core:tasks` | none |
 | Behavior replacement and hot reload | `src/execution` | stage zero | stays on the VM; ORC/JIT is separate (obligation E) | none | none |
 | Anonymous functions and closures | none | excluded | none | none | none |
 | Array, union and nested-record fields in records | none | excluded | none | none | none |
@@ -283,6 +284,7 @@ decision.
 | D9 | Out-of-range indexes | Native code panics, as Rust's and Odin's does: it ends the program with a named message. The VM keeps its recoverable error for the editor. The owner declined reading a zero value and dropping the write. (Owner, 26 October 2026.) | The message and the host hook it reports through, with D6. | decided for M4 |
 | D10 | Native ownership (drops: see Native drops below) | Native code has no ownership scheme of its own. It calls the runtime's value operations (copy, drop, make unique, allocate) at the copies and drops the compiler certifies, through a hidden first context parameter, `execution_native_context`, a table of the runtime's operations, as Odin's context carries its allocator. A library therefore leaves no symbol for its host to define: a `chibi_rt_*` symbol, the first plan, would need the player to export it to `dlopen`ed objects on Linux, macOS and Windows alike (changed with W5, 27 October 2026). It reads strings inline. An array is a native value, `{ length, capacity, elements }`, whose elements the context's `allocate` gives and the call's heap frees, so native code reads and writes it inline, as it does a string; the VM's arrays reach native code through runtime spans when W16 passes them. An array is a value, as in the VM: the producer copies where two variables would otherwise share elements, and a call lends its argument, which the callee cannot change. An index outside an array calls the context's `index_failed`, which ends the program (D9). The context's frame carries the heap and the failure slot (W11); what the runtime gives a call lives until the call from the VM returns, and native functions never suspend, so the heap collects only while execution is quiescent. | Lands with M4c; arrays and maps wait for #695 and #694. | set for M4c |
 | D11 | Calls from the VM into native code | A native library source (`Name :: library { ... }` of plain functions) compiles to an object that exports one symbol, `chibi_natives_<Name>`, a manifest of its pure scalar functions; every function is internal, and one wrapper per word signature reads and writes the words, as rustc and Odin export a crate's or package's API and keep the rest internal. Each export names a function by its stable ID (`script_catalog_id("symbol", "<library path>:1:<name>:callable")`, which its prepared module records) and its exact parameter and result types, and its entry reads and writes 64-bit words: integers sign- or zero-extended, `bool` as 0 or 1, `number` and `f64` as their bits. `execution_natives_bind` (`src/execution/native.c`) binds an export only to the effect-free authored function with that ID and signature, and rejects the whole manifest otherwise. A program given the table runs bound synchronous calls natively; tasks, inspected calls and unbound functions stay in the VM, and the editor binds nothing. The player loads every `<Library>` object in `natives/` under the resource root and binds its manifest to the module that defines its first export, once, after publication and before the first scene (`source_bind_natives`). `chibi export --native` builds the objects: the native driver's `Libraries` entry compiles each library source with `CollectScalar` and the emitter's `EmitLibrary`, optimizes at O2 and links a shared object with `ld.lld`; a library the emitter rejects stays in the VM with its diagnostic, and any other failure fails the export. Under export ABI 2 (W5) every entry takes the call's runtime context first, and `execution_natives_new` takes the VM's operations from the host, which owns the runtime. Export ABI 3 (W11) adds the context's failure slot, so a host of ABI 2 rejects a library that writes it. Export ABI 4 (W7) adds the context's `allocate` and `index_failed` operations, which arrays use. Export ABI 5 (native drops) adds `release`, which a call from the VM ignores, as its heap frees everything when the call returns. The program's context layout and the prepared ABI do not change. | Records, strings and arrays at the boundary (W5), and libraries for macOS and Windows (D7). | implemented on Linux x86-64 |
+| D12 | Native tasks | The owner keeps "Waiting and tasks" (docs/code-language.md) when Chibi becomes native-only and the VM goes (1 November 2026), with no first-party C. Each waiting function compiles to an LLVM coroutine in the switched-resume form; `await` and `yield` are its suspension points; a scheduler written in Chibi resumes the ready ones. Stackful fibers, a compiler-made state machine, threads and a VM that stays for tasks were compared and set aside (Native tasks below). | The owner's call on the three open points in Native tasks below: who owns a task now the ECS owner model is archived, what a swap does to tasks suspended in the old generation, and the LLVM versions to support (`llvm.coro.end` differs between LLVM 18 and 22). | proposed |
 
 ## Native drops (D10 amendment, 31 October 2026)
 
@@ -458,6 +460,124 @@ time), `known`, `declared`, `records` and `fields := types` or `members`,
 moves remove most: no copy at `x := y` when neither is written afterwards, and a
 move when `y` is a parameter that is dead after the assignment. Both need
 liveness the rows do not carry yet.
+
+## Native tasks (D12, 1 November 2026)
+
+Status: proposed, not implemented. The owner wants "Waiting and tasks" kept
+when the VM is deleted and wants no first-party C. This section compares the
+ways to run tasks natively, picks one, and lists what the owner decides. The
+feasibility evidence below was produced by hand-written IR through `opt` and
+`llc`; no Chibi compiler change exists yet.
+
+**What must keep working** (docs/code-language.md). A function is *waiting*
+when its body has `await` or `yield` (`WaitingBody`, `Tasks.chibi`). An
+unawaited call of a waiting function starts a task that runs to its first
+suspension and then continues beside its caller. `await call` runs the callee
+inline and gives its result; `await handle` gives `T | Cancelled`. `yield`
+resumes on the next update; `delay(seconds)` resumes at the engine time it
+adds to `now`. `cancel handle` stops the task and its children; `cancel handle
+after seconds` is relative to the task's start; `if handle` tests that it is
+running. Cancelling a running parent cancels its children; a parent that
+finishes leaves them running.
+
+**The options.**
+
+| Option | For | Against |
+| --- | --- | --- |
+| LLVM coroutines, switched-resume (chosen) | LLVM does the hard part (liveness, frame layout, splitting) for years; every suspension is already marked in Chibi source; a frame is exactly the live values, on the heap, so a million sleepers cost their frames, not their stacks; D4's stack probes stay as they are; the destroy edge gives cancellation a place to run drops; works on all three targets from IR alone; the coroutine pass is part of `default<O0>` and `default<O2>` | the intrinsics' signatures change between LLVM versions (below); the frame allocator is the runtime's, so the frame is a heap object with a drop; harder to debug a frame than a stack |
+| Stackful fibers (Windows `CreateFiber`, emitted context switches, `ucontext`) | any call may suspend; nothing to lower | a stack per task (commit, guard pages, D4's probes per stack); cancellation has nothing to unwind with no exceptions, so it needs a checked return after every call or it leaks D10's drops; one switch routine per target in assembly or a platform library; a suspended stack is opaque to Edit and Continue |
+| A state machine made by the Chibi compiler (Rust's `async`, C#) | no dependency on LLVM's coroutine lowering; the frame is a Chibi record Edit and Continue could read | the compiler needs liveness across suspensions, a frame layout and loops, switches and drops that span suspensions: that is the work LLVM already does; the kept fallback if LLVM's lowering proves unreliable across the supported versions |
+| OS threads | no lowering | nondeterministic; breaks the single-thread rule of Edit and Continue |
+| Keep the VM for tasks | no work | contradicts native-only |
+
+**Feasibility, measured on 1 November 2026.** A hand-written module with one
+waiting function that holds a value across two suspensions lowers with plain
+`opt -passes="default<O0>"` and `default<O2>` and `llc` for
+`x86_64-unknown-linux-gnu`, `arm64-apple-macosx` and `x86_64-pc-windows-msvc`
+(LLVM 22 and 23), and needs no library. The ramp function runs to the first
+suspension, as an unawaited Chibi call does. Run on arm64 macOS at O0 and O2, a
+caller that resumes it once and then destroys it sees the second suspension
+reached and the cleanup block run, so the value's drop runs on cancellation.
+`coro.end` returns `void` in LLVM 22 and 23 and `i1` in LLVM 18, and a wrong
+declaration fails the verifier, so the emitter must know the target LLVM
+version or support one range. LLVM 18, which the Linux CI installs, is not yet
+tested.
+
+**The design.**
+
+- *Frames.* A waiting function `F` compiles to a ramp `F(args) -> frame` with
+  `presplitcoroutine`, `coro.id`, `coro.alloc`, `coro.begin`, and a
+  `coro.free` in the cleanup block; the frame comes from the context's
+  `allocate` and is released with it (D10). `coro.promise` holds the result and
+  the fallible status (D6). The LLVM passes split it into `F.resume`,
+  `F.destroy` and `F.cleanup`.
+- *Suspension.* `await delay(s)`, `yield`, `await handle` and an awaited call
+  of a waiting function each store a *wake condition* in the running task's
+  record (a time, the next update, another task) and then `coro.suspend`.
+  `await F(args)` in a waiting caller creates `F`'s frame and loops: while the
+  frame is not done, the caller suspends and, when resumed, resumes the frame
+  again. A resume therefore walks the chain of awaits from the root to the
+  innermost frame, one hop per level. At O2 LLVM's coroutine elision turns a
+  frame whose lifetime nests in its caller's into part of the caller's frame.
+- *Tasks and handles.* A task is a row in the scheduler's table: root frame,
+  wake condition, state (running, done, cancelled), start time, deadline,
+  parent, and a result slot of the result type's size. A `task(T)` handle is a
+  typed index with a generation, 0 for none (AGENTS.md, handles). The table is
+  an array of plain records, drained by index: the scheduler never keeps a
+  pointer to a row across a spawn.
+- *The scheduler* is Chibi code in `core:tasks`: `Update(now)` moves the tasks
+  whose condition holds, in spawn order, and resumes each once; `yield` waits
+  for the next `Update`, `delay` for `now + seconds` as of the call. Time is
+  an argument, so a test drives it with a fake clock and runs are
+  deterministic. The package needs four compiler intrinsics over a frame word:
+  `resume`, `done`, `destroy` and `promise`. The host loop calls `Update`
+  after each `Frame`.
+- *Cancellation and drops.* `cancel` marks the task and calls `destroy` on its
+  root frame. At each suspension the destroy edge leaves the function as an
+  early `return` would: first `destroy` on the awaited inner frame, then the
+  drops D10 already certifies for the locals live at that point. A task's
+  unawaited children are other rows, cancelled by the scheduler through the
+  parent link, never through frames. A deadline (`cancel after`) is checked by
+  `Update` against the start time.
+- *Failure.* A failed assert in a task is D6's failure in the context: the
+  resume returns, the scheduler stops, and the host reports it as it reports
+  a failed `Frame`.
+- *Edit and Continue.* A suspended frame's resume and destroy pointers are in
+  the generation that made it. A swap leaves those frames in the old code, as
+  "a frame already executing finishes in the old code" does, and the host
+  keeps the old library loaded until its last frame is gone. New spawns use
+  the new code. This pins an old library for as long as a task lives, such as
+  a loop of `await delay` that `Main` started and nothing will start again.
+
+**Open points for the owner.**
+
+1. *Ownership.* The old rule, that removing an entity or system registration
+   stops its tasks, has no referent now ECS is archived. Proposal: the
+   program owns every task; a task ends when it finishes, is cancelled, or the
+   program exits; scopes that cancel their tasks when they end (as Trio's
+   nurseries and Kotlin's scopes do) come later as library code, if wanted.
+   The component-dependency rule for pointer arguments goes with ECS.
+2. *A swap and live tasks.* Keep them to completion in the old code
+   (proposed), cancel them at every swap, or cancel only those whose code
+   touches `retain` state. The old code's `retain` globals are not migrated
+   back, so an old frame that writes retained state after the swap writes a
+   copy nobody reads; the proposal needs that case named and probably
+   rejected at compile time for waiting functions.
+3. *LLVM versions.* D7 admits LLVM 18 to 23. Supporting the 18 `coro.end` and
+   the later one means a version switch in the emitter, or a minimum of 22.
+
+**Stages**, each landing with its tests:
+
+1. This decision and the feasibility evidence.
+2. `core:tasks` with the four intrinsics, tested with hand-built frames from a
+   fixture module: spawn, `Update`, `yield`, `delay` with a fake clock, `cancel`,
+   at O0 and O2.
+3. The emitter: a waiting function becomes a coroutine; the facts carry the
+   suspension rows; D10's drops on the destroy edge.
+4. The front end: an unawaited call, `await` of a call and of a handle, `yield`,
+   `delay`, `cancel`, `cancel after`, `if handle`, `task(T)`.
+5. Generation pinning in the host loop, and the owner's decision on point 2.
+6. The VM's task paths deleted with the VM (W26).
 
 ## Baseline and measurements
 

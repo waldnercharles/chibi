@@ -181,6 +181,13 @@ pub ContextType :: () -> string {
 pub ArrayType :: () -> string {
     return "{ i32, i32, ptr }";
 }
+// The LLVM type of a map, by value: its entry count, its entries' capacity, its
+// entries and its index (docs/native-maps.md). The zero map has a count and
+// capacity of 0 and no entries or index. The header is 24 bytes, pinned by
+// the tests, because every map in a table of records pays it.
+pub MapType :: () -> string {
+    return "{ i32, i32, ptr, ptr }";
+}
 // The LLVM type of execution_native_failure: the stable ID of the function
 // whose assert failed, and the assert's source range.
 pub FailureType :: () -> string {

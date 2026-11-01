@@ -135,7 +135,7 @@ Files :: (target: string) -> string[] {
             "src/execution/program.c", "src/execution/program_migrate.c",
             "src/execution/program_preflight.c",
             "src/execution/range_opt.c",
-            "src/execution/reads.c", "src/execution/request.c", "src/execution/runner.c",
+            "src/execution/reads.c", "src/execution/runner.c",
             "src/execution/scalar_lowering_plan.c", "src/execution/scalarize.c",
             "src/execution/source_debug.c", "src/execution/state.c", "src/execution/storage.c",
             "src/execution/suspend.c", "src/execution/task.c", "src/execution/time.c", "src/execution/vm.c",
@@ -341,7 +341,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return [
             "execution/arguments.h", "execution/backend.h", "execution/borrow.h", "execution/diagnostic.h", "execution/managed.h", "execution/function.h", "execution/host.h",
             "execution/instruction.h", "execution/log.h", "execution/operation.h", "execution/random.h",
-            "execution/request.h", "execution/scalar.h",
+            "execution/scalar.h",
             "execution/service.h", "execution/source_debug.h", "execution/state.h", "execution/status.h",
             "execution/value_kind.h"
         ];

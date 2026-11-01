@@ -847,10 +847,10 @@ Example :: library {
 }
 ```
 
-Compile-time execution supports integer and bool values, arrays of them,
-records of them, authored calls, locals, assignment, `if`, `while`, `for`,
-`break`, `continue` and `return`. It does not support floats, strings,
-closures or native calls.
+Compile-time execution supports integer, bool and floating values, arrays of
+them, records of them, authored calls, locals, assignment, `if`, `while`, `for`,
+`break`, `continue` and `return`. It does not support strings, closures or
+native calls.
 Each evaluation has a 65,536-step budget and a 128-call limit.
 A constant initializer may call such a function, `Size :: Factorial(5)`, and
 may combine calls with arithmetic and conversions; a `when` condition may not
@@ -864,7 +864,15 @@ take and return arrays, and an index outside the array is a compilation error.
 array` and `for index, value in array` loop over a range or an array; loops
 iterate by value, so a `for` over a `ref` is rejected.
 
-A record whose fields are all integers and bools is a value too: `p: Point =
+Floating values follow IEEE 754 binary32 and binary64 with round-to-nearest-even,
+computed in integers by the compiler so every host gets the same bits: `+`, `-`,
+`*` and `/` round once with no fused operation, extended precision or flush of
+subnormals, division by zero is an infinity, an invalid operation is the quiet
+NaN with a zero payload, and a comparison with NaN is false (`!=` is true). The
+same arithmetic folds constants: `Tenths: f64 : 0.1 + 0.2`. `%` and conversion of
+a float to an integer are not constant yet.
+
+A record whose fields are all integers, floats and bools is a value too: `p: Point =
 {x: 1, y: 2}` (each field once, in any order), `p.x` to read, `p.x = v` or
 `p.x += v` to change a field, and a record may be passed to and returned from
 a function. A record with an array, string or record field is rejected where a

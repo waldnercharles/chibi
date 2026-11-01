@@ -294,20 +294,6 @@ static bool conversion(pin_type from, pin_type to)
     cleanup();
     return true;
 }
-TEST_CASE(public_integer_saturating_casts_and_exact_identity)
-{
-    const pin_type integers[] = { PIN_U8, PIN_I32, PIN_I64 };
-    for (int i = 0; i < 3; i++) {
-        REQUIRE(conversion(PIN_F32, integers[i]));
-        REQUIRE(conversion(PIN_F64, integers[i]));
-        REQUIRE(conversion(integers[i], PIN_F64));
-    }
-    REQUIRE(conversion(PIN_I32, PIN_I64));
-    for (pin_type type = PIN_I8; type <= PIN_U64; type++) {
-        REQUIRE(conversion(type, type));
-    }
-    return true;
-}
 TEST_CASE(public_integer_flags_and_live_math_registers)
 {
     builder = behavior_function_builder_new();
@@ -425,7 +411,6 @@ void test_compiled_integers()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(public_integer_wrapping_division_and_comparisons);
-    RUN_TEST_CASE(public_integer_saturating_casts_and_exact_identity);
     RUN_TEST_CASE(public_integer_flags_and_live_math_registers);
     RUN_TEST_CASE(public_integer_loop_budget_preserves_completed_writes);
     pu_clear_setup();

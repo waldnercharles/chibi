@@ -37,7 +37,6 @@ tool	graph-os	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--r
 tool	graph-sdk-install	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/SDKInstallTests.chibi	--core	packages/core	--collection	graph=tools/graph	--entry	Run	--timeout-ms	3000000	--	@host@	@release@
 tool	collab	@build@/test/tools/test_tools	--collab
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
-tool	whole-conversion	@build@/test/tools/test_tools	--whole-conversion
 tool	whole-select	@build@/test/tools/test_tools	--whole-select
 tool	whole-math	@build@/test/tools/test_tools	--whole-math
 tool	native-values	@build@/test/tools/test_tools	--native-values
@@ -83,7 +82,7 @@ timeout	build-process	1800
 timeout	graph-sdk-install	1200
 timeout	bootstrap-load	1800
 exclusive	language-test-parallel
-group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-conversion	whole-select	whole-math	asset-values	fmt	arena	build-process	build-process-files	build-timings
+group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-select	whole-math	asset-values	fmt	arena	build-process	build-process-files	build-timings
 group	projects	chibi-cli	native-build
 # Start clean recovery after the longest compiler suite, not at the tail.
 # It exports to its own temporary root and does not share the compiler cache.

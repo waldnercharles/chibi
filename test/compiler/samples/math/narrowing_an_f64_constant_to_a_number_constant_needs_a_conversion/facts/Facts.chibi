@@ -1,0 +1,6 @@
+package facts
+Wide: f64 : 16777217.0;
+Narrow: number : Wide;
+pub Fold :: (value: f64) -> number { return Narrow; }
+
+// error: 3:18: a constant of another type needs a conversion

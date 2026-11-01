@@ -1,0 +1,10 @@
+package facts
+
+// number conversion of f64 overflows to infinity and keeps NaN and negative zero
+@test
+Calls :: () {
+    assert(Overflow(1e300), "1e300 becomes positive infinity");
+    assert(NegativeOverflow(-1e300), "-1e300 becomes negative infinity");
+    assert(NotANumber(1.5), "NaN stays NaN");
+    assert(NegativeZero(1.5), "-0.0 keeps its sign");
+}

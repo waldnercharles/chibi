@@ -1,0 +1,33 @@
+package facts
+Lerp :: (a: f64, b: f64, t: f64) -> f64 { return a + (b - a) * t; }
+Mean :: (values: f64[]) -> f64 {
+    sum: f64 = 0.0;
+    for value in values {
+        sum += value;
+    }
+    return sum / f64(length(values));
+}
+Halved :: (value: f32) -> f32 { return value / 2.0; }
+Below :: (a: f64, b: f64) -> int {
+    if (a < b) {
+        return 1;
+    }
+    return 0;
+}
+Scaled :: (factor: f64) -> f64 {
+    value: f64 = 1.5;
+    value *= factor;
+    value -= 0.5;
+    return value;
+}
+Quarter: f64 : Lerp(10.0, 20.0, 0.25);
+Average: f64 : Mean([1.0, 2.0, 6.0]);
+Tenths: f64 : 0.1 + 0.2;
+Thirds: f32 : 1.0 / 3.0;
+Infinite: f64 : 1.0 / 0.0;
+Overflow: f64 : 1.0e308 * 10.0;
+Invalid: f64 : 0.0 / 0.0;
+Subnormal: f64 : 2.2250738585072014e-308 / 2.0;
+Half: f32 : Halved(5.0);
+Scale: f64 : Scaled(4.0);
+Ordered: int : Below(1.5, 2.5) * 10 + Below(2.5, 1.5);

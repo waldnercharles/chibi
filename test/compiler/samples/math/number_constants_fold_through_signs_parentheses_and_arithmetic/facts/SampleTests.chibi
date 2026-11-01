@@ -1,0 +1,10 @@
+package facts
+
+// number constants fold through signs, parentheses and arithmetic
+@test
+Calls :: () {
+    assert(NamedBodyArithmetic(1.5) == 3.0, "named constant in body arithmetic");
+    assert(ConvertParenthesizedNegative(1.5) == -1.5, "f64(-(1.5))");
+    assert(ConvertParenthesizedPositive(1.5) == 1.5, "number(+((1.5)))");
+    assert(ConvertNestedNegative(1.5) == 1.5, "f64(-(-1.5))");
+}

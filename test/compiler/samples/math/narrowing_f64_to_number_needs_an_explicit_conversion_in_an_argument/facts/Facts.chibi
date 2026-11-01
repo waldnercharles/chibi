@@ -1,0 +1,5 @@
+package facts
+Take :: (value: number) -> number { return value; }
+pub Fold :: (value: f64) -> number { return Take(value); }
+
+// error: 3:45: argument differs from its parameter type

@@ -1889,7 +1889,7 @@ ConstantOf :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDe
     if (Is(forest, node, syntax.CallExpression) || Is(forest, node, syntax.IndexExpression)) {
         return FindMemo(constants, node);
     }
-    if (Is(forest, node, syntax.MemberExpression)) {
+    if (Is(forest, node, syntax.MemberExpression) || Is(forest, node, syntax.BinaryExpression)) {
         found := FindMemo(constants, node);
         if (found >= 0) {
             return found;

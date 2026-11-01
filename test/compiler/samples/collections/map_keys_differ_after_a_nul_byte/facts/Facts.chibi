@@ -1,0 +1,13 @@
+package facts
+Lookup :: () -> int {
+    counts: [string: int] = [:];
+    counts["a\u0000b"] = 1;
+    counts["a\u0000c"] = 2;
+    counts["a"] = 3;
+    return counts["a\u0000b"] * 100 + counts["a\u0000c"] * 10 + counts["a"];
+}
+Missing :: () -> bool {
+    counts: [string: int] = [:];
+    counts["a\u0000b"] = 1;
+    return counts.has("a") || counts.has("a\u0000");
+}

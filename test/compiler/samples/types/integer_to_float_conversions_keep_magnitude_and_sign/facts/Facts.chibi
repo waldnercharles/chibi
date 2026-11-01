@@ -1,0 +1,8 @@
+package facts
+U64ToF64 :: (x: u64) -> f64 { return f64(x); }
+I64ToF64 :: (x: i64) -> f64 { return f64(x); }
+I32ToU64 :: (x: i32) -> u64 { return u64(x); }
+I32ToU64Wrapped :: (x: i32) -> u64 { return u64(wrap: x); }
+NegativeZero :: (x: f64) -> f64 { return x * -1.0; }
+Narrow :: (x: f64) -> number { return number(x); }
+Reciprocal :: (x: f64) -> f64 { return 1.0 / x; }

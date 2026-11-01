@@ -176,6 +176,15 @@ lane rejects the sources and 2 for a usage error; on a rejection the first stder
 packages and the LLVM tools, never on a path, a time or a process id, since stage two and stage
 three are built from different folders and compared byte for byte.
 
+A stage also takes `--jobs N`, by default every processor online. llvm_native splits a program of
+more than 8,192 instructions into pieces of whole functions (the compiler's is about 35), a count
+fixed by the module and never by the machine. Each piece is `opt -passes=default<O2>` and then
+`llc -O=2`, at most N pieces at once, and lld links the objects in piece order, so `--jobs` doesn't
+change the program's bytes. A function another piece calls is `hidden` rather than `internal`, and
+the first piece defines the retained states, which the other pieces declare. Locally (14 cores,
+LLVM 22), the compiler's back end took 155 s as one `llc -O2` of the unoptimized module and takes
+about 10 s as 35 pieces. Stage two went from 310 s to 141 s and stage three took 122 s.
+
 ## Features
 
 | Feature | Semantic owner | State | Native gap | Runtime need | Selector and evidence |

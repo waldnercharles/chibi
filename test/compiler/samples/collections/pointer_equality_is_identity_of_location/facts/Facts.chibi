@@ -1,0 +1,7 @@
+package facts
+Pair :: struct { a: int; b: int; }
+Same :: () -> bool { value: Pair = {a: 1, b: 2}; return &value.a == &value.a; }
+OtherField :: () -> bool { value: Pair = {a: 1, b: 1}; return &value.a == &value.b; }
+OtherRecord :: () -> bool { one: Pair = {a: 1, b: 2}; two: Pair = {a: 1, b: 2}; return &one.a == &two.a; }
+Relayed :: () -> bool { value: Pair = {a: 1, b: 2}; p := &value.b; q := p; return p == q && p != &value.a; }
+NilPointers :: () -> bool { p: ^int? = nil; q: ^int? = nil; return p == q; }

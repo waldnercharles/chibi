@@ -1,0 +1,20 @@
+package facts
+
+// Negating the signed minimum wraps to itself, and every comparison holds at
+// the type's bounds: 1 is <, 2 <=, 4 >, 8 >=, 16 ==, 32 !=.
+@test
+Calls :: () {
+    min32: i32 = -2147483647 - 1;
+    max32: i32 = 2147483647;
+    min64: i64 = -9223372036854775807 - 1;
+    max64: i64 = 9223372036854775807;
+    assert(NegateI32(min32) == min32 && NegateI32(max32) == -2147483647, "i32 negation");
+    assert(NegateI64(min64) == min64 && NegateI64(max64) == -9223372036854775807, "i64 negation");
+    assert(Compare32(min32, max32) == 1 + 2 + 32, "i32 min against max");
+    assert(Compare32(max32, min32) == 4 + 8 + 32, "i32 max against min");
+    assert(Compare32(max32, max32) == 2 + 8 + 16, "i32 max against itself");
+    assert(Compare64(min64, max64) == 1 + 2 + 32, "i64 min against max");
+    assert(Compare64(max64, min64) == 4 + 8 + 32, "i64 max against min");
+    assert(Compare64(min64, min64) == 2 + 8 + 16, "i64 min against itself");
+    assert(CompareU64(18446744073709551615, 0) == 4 && CompareU64(0, 18446744073709551615) == 1, "u64 compares unsigned");
+}

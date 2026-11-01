@@ -1,0 +1,15 @@
+package facts
+
+// Integer-to-float conversion rounds to the nearest value; integer narrowing
+// clamps unless it wraps; a negative zero keeps its sign through narrowing.
+@test
+Calls :: () {
+    assert(U64ToF64(18446744073709551615) == 18446744073709551616.0, "u64's maximum rounds to 2^64");
+    assert(I64ToF64(-9223372036854775807 - 1) == -9223372036854775808.0, "i64's minimum is exact");
+    assert(I32ToU64(-1) == 0, "a negative value clamps to 0");
+    assert(I32ToU64Wrapped(-1) == 18446744073709551615, "wrap keeps the low bits");
+    zero := NegativeZero(0.0);
+    assert(zero == 0.0 && Reciprocal(zero) < 0.0, "negative zero");
+    narrowed := Narrow(zero);
+    assert(narrowed == 0.0 && Reciprocal(f64(narrowed)) < 0.0, "narrowing keeps the sign of zero");
+}

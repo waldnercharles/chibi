@@ -134,9 +134,10 @@ until it returns a nonzero status, which is the exit status, and swaps `next.so`
 Frames: it matches the retained states of the two generations by name hash and type
 (`chibi_host_retained_*`), sets the new generation's, and unloads the old one. A generation that
 fails to build is reported and the running one continues; one that fails to load is set aside as
-`rejected.so`. The test `native_build_watches_and_swaps_a_running_loop` edits a running loop and
-checks the exit status that only a surviving count gives; `native_build_swaps_a_running_loop_keeping_state`
-does the same with the editor played by the test. Not done: integer conversion on a type change
+`rejected.so`. The `native-build` case `WatchesAndSwapsARunningLoop`
+(`test/native_aot/native_build/BuildTests.chibi`) edits a running loop and checks the exit status that
+only a surviving count gives; `SwapsARunningLoopKeepingState` does the same with the editor played by the
+test. Not done: integer conversion on a type change
 (the host resets it), a source that is a program rather than a `library` block, other targets.
 
 ## Limits

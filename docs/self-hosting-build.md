@@ -896,6 +896,21 @@ and the manifest pins the closure's SHA-256, so a damaged closure is refused
 before it loads. Its target is the value layout and prepared ABI rather than an
 operating system, so one artifact serves every host with that ABI.
 
+### Native compiler seed
+
+The native compiler is native stage two of `chibi build native-self-host`,
+which the verb checks is byte-identical to the stage three it compiles. The
+Native compiler seed workflow (`native-seed.yml`, dispatched by hand) builds it
+on Linux x64 and macOS arm64 and, with `publish`, releases it as
+`chibi-native-PLATFORM` under the tag `native-seed-COMMIT` and prints the pins.
+`tools/bootstrap/native-seed.tsv` records them (platform, tag, asset, SHA-256),
+and `tools/bootstrap/native-seed.sh PLATFORM OUTPUT` fetches and checks one.
+Once a platform is pinned, that workflow and the Native self-host workflow pass
+it as `--stage-one`, so recovery starts from the native seed: it compiles the
+current sources to stage two, stage two compiles them to stage three, and the
+two must be byte-identical. The bytecode seed above stays only until the VM is
+deleted.
+
 ### Three-platform compiler recovery proof
 
 The `Compiler self-build` workflow in `.github/workflows/compiler-recovery.yml`

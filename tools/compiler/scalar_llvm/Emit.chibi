@@ -677,6 +677,11 @@ Inside :: (rows: facts.Row[], records: int[], at: int, v: int, nested: bool) -> 
 Dead :: (rows: facts.Row[], records: int[], at: int, last: int, v: int, openers: int[], opened: int[],
          opened_at: int[]) -> bool {
     kind := rows[at].kind;
+    // The statement's operands are already evaluated, and a return ends the
+    // function after them.
+    if (kind == facts.ReturnRow) {
+        return true;
+    }
     cur := Following(rows, at);
     if (Opens(kind)) {
         found := Inside(rows, records, at, v, false);
@@ -688,6 +693,12 @@ Dead :: (rows: facts.Row[], records: int[], at: int, last: int, v: int, openers:
         }
         cur = Closed(rows, at) + 1;
     }
+    return DeadFrom(rows, records, cur, last, v, openers, opened, opened_at);
+}
+// Whether variable `v` is dead from the row `cur` on, as Dead says it.
+DeadFrom :: (rows: facts.Row[], records: int[], cur_from: int, last: int, v: int, openers: int[], opened: int[],
+             opened_at: int[]) -> bool {
+    cur := cur_from;
     for (turn in 0..<last) {
         stop := BlockEnd(rows, cur, last);
         found := Touches(rows, records, cur, stop, v, false);
@@ -727,24 +738,102 @@ Without :: (values: int[], removed: int) -> int[] {
     }
     return kept;
 }
-// The instructions that drop the arrays of the owning variables vars[from...],
-// latest first, but for `skips` and any whose type is 0 (an array that moved
-// into a record), each read from its local into slots from
-// `slot`; with `held`, then the hidden array locals of the open loops that own
-// theirs. Dropped gives their slots' types, in the same order.
+// What dropping variables takes: instructions, and the types of the slots they use.
 Drops :: struct {
     code: native.Instruction[];
     slot_types: int[];
 }
-DropAll :: (vars: int[], types: int[], places: int[], from: int, skips: int[], frames: Frame[], held: bool, slot: int) -> Drops {
+// The arrays a union type holds in its payloads: for each, the variant's tag,
+// the payload's field in the union's record and the array's native type.
+Payloads :: struct {
+    tags: int[];
+    fields: int[];
+    types: int[];
+}
+UnionPayloads :: (rows: facts.Row[], records: int[], type: int) -> Payloads {
+    found: Payloads = {tags: [], fields: [], types: []};
+    head := UnionHead(rows, records, type);
+    if (head < 0) {
+        return found;
+    }
+    at := head + 1;
+    for (ordinal in 0..<rows[head].count) {
+        variant := rows[at];
+        for (field in at + 1..<at + variant.count + 1) {
+            member := NativeType(rows[field].type);
+            if (ArrayTyped(member)) {
+                found.tags.append(ordinal);
+                found.fields.append(rows[field].value + 1);
+                found.types.append(member);
+            }
+        }
+        at += variant.count + 1;
+    }
+    return found;
+}
+// Whether `type` is a union that holds an array in some payload.
+HoldsArrays :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    payloads := UnionPayloads(rows, records, type);
+    return length(payloads.tags) > 0;
+}
+// The instructions that drop the arrays the union of record `type` holds, as the
+// variant its tag names does: each payload array is dropped when the tag is its
+// variant's. The union is in slot `held`, or in the local `place` when `held`
+// is -1 (loaded into the slot `next`). `base` is where the instructions go in the
+// function's code, which the branches over each drop aim at.
+UnionDrop :: (payloads: Payloads, type: int, place: int, held: int, next: int, base: int) -> Drops {
+    found: Drops = {code: [], slot_types: []};
+    source := held;
+    at := next;
+    if (source < 0) {
+        found.code.append(Op(native.Local, type, at, place, 0, 0));
+        found.slot_types.append(type);
+        source = at;
+        at += 1;
+    }
+    integer := NativeType(facts.IntType);
+    for (index in 0..<length(payloads.tags)) {
+        tag := Op(native.Extract, integer, at, source, type, 0);
+        tag.literal = i64(0);
+        expected := Op(native.Constant, integer, at + 1, 0, 0, 0);
+        expected.literal = i64(payloads.tags[index]);
+        // Skip the payload's drop but for the tag's variant: the six
+        // instructions below, from the tag to the drop.
+        past := base + length(found.code) + 6;
+        payload := Op(native.Extract, payloads.types[index], at + 3, source, type, 0);
+        payload.literal = i64(payloads.fields[index]);
+        found.code.extend([tag, expected, Op(native.Ne, integer, at + 2, at, at + 1, 0),
+                           Op(native.Branch, 0, 0, at + 2, 0, past), payload,
+                           Op(native.ArrayDrop, payloads.types[index], 0, at + 3, 0, 0)]);
+        found.slot_types.extend([integer, integer, abi.BoolStorage, payloads.types[index]]);
+        at += 4;
+    }
+    return found;
+}
+// The instructions that drop the arrays of the owning variables vars[from...],
+// latest first, but for `skips` and any whose type is 0 (an array that moved
+// into a record), each read from its local into slots from
+// `slot`; with `held`, then the hidden array locals of the open loops that own
+// theirs. A variable of a union type drops the arrays its variant holds. Dropped
+// gives their slots' types, in the same order; `base` is where the code goes.
+DropAll :: (rows: facts.Row[], records: int[], vars: int[], types: int[], places: int[], from: int, skips: int[],
+            frames: Frame[], held: bool, slot: int, base: int) -> Drops {
     found: Drops = {code: [], slot_types: []};
     at := length(vars) - 1;
     next := slot;
     while (at >= from) {
         if (types[at] != 0 && !Holds(skips, vars[at])) {
-            found.code.extend([Op(native.Local, types[at], next, places[vars[at]], 0, 0), Giving(types[at], next)]);
-            found.slot_types.append(types[at]);
-            next += 1;
+            payloads := UnionPayloads(rows, records, types[at]);
+            if (length(payloads.tags) > 0) {
+                glue := UnionDrop(payloads, types[at], places[vars[at]], -1, next, base + length(found.code));
+                found.code.extend(glue.code);
+                found.slot_types.extend(glue.slot_types);
+                next += length(glue.slot_types);
+            } else {
+                found.code.extend([Op(native.Local, types[at], next, places[vars[at]], 0, 0), Giving(types[at], next)]);
+                found.slot_types.append(types[at]);
+                next += 1;
+            }
         }
         at -= 1;
     }
@@ -1621,6 +1710,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
     // The open statement an End, Else or Case row belongs to, plus one; 0 for
     // any other row.
     openers: int[] = resize([int(0)], length(rows));
+    // The open statement each row lies in, plus one; 0 at the top level.
+    parents: int[] = resize([int(0)], length(rows));
     for (function in 0..<length(heads)) {
         head := heads[function];
         declaration := rows[head];
@@ -1686,8 +1777,30 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
         last := Last(rows, heads, function);
         walk := at;
         open_rows: int[] = [];
+        // The variables of a union type that something other than a call's
+        // result or a variant made fresh is stored in, or that anything reads
+        // but for its tag and
+        // payloads: the union such a variable holds may share its payloads
+        // with another place.
+        stale_unions: int[] = [];
         while (walk < last) {
             kind := rows[walk].kind;
+            parents[walk] = 0;
+            if (length(open_rows) > 0) {
+                parents[walk] = open_rows[length(open_rows) - 1] + 1;
+            }
+            if ((kind == facts.LocalRow || kind == facts.AssignRow) && rows[walk].count > 0 &&
+                rows[walk + rows[walk].count].kind != facts.CallRow && rows[walk + rows[walk].count].kind != facts.MakeRow &&
+                UnionHead(rows, declared, rows[walk].type) >= 0) {
+                stale_unions.append(rows[walk].value);
+            }
+            for (operand in walk + 1..<walk + 1 + rows[walk].count) {
+                if (rows[operand].kind == facts.ReadRow && UnionHead(rows, declared, rows[operand].type) >= 0 &&
+                    (operand + 1 >= walk + 1 + rows[walk].count ||
+                     (rows[operand + 1].kind != facts.TagRow && rows[operand + 1].kind != facts.PayloadRow))) {
+                    stale_unions.append(rows[operand].value);
+                }
+            }
             if (kind == facts.EndRow) {
                 openers[walk] = open_rows[length(open_rows) - 1] + 1;
                 open_rows = slice(open_rows, 0, length(open_rows) - 1);
@@ -1712,7 +1825,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             if (row.kind == facts.ElseRow) {
                 frame := frames[top];
                 if (!ends) {
-                    drops := DropAll(owned_vars, owned_types, places, frame.owned, [], frames, false, slot);
+                    drops := DropAll(rows, declared, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
                     slots.extend(drops.slot_types);
                     slot += length(drops.slot_types);
                     body.extend(drops.code);
@@ -1734,7 +1847,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 // ends, and its failed test reaches the next.
                 frame := frames[top];
                 if (frame.armed && !ends) {
-                    drops := DropAll(owned_vars, owned_types, places, frame.owned, [], frames, false, slot);
+                    drops := DropAll(rows, declared, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
                     slots.extend(drops.slot_types);
                     slot += length(drops.slot_types);
                     body.extend(drops.code);
@@ -1783,7 +1896,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 frames = slice(frames, 0, top);
                 at += 1;
                 if (!ends) {
-                    drops := DropAll(owned_vars, owned_types, places, frame.owned, [], frames, false, slot);
+                    drops := DropAll(rows, declared, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
                     slots.extend(drops.slot_types);
                     slot += length(drops.slot_types);
                     body.extend(drops.code);
@@ -1862,7 +1975,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 while (!Loop(frames[loop].kind)) {
                     loop -= 1;
                 }
-                drops := DropAll(owned_vars, owned_types, places, frames[loop].owned, [], frames, false, slot);
+                drops := DropAll(rows, declared, owned_vars, owned_types, places, frames[loop].owned, [], frames, false, slot, length(body));
                 slots.extend(drops.slot_types);
                 slot += length(drops.slot_types);
                 body.extend(drops.code);
@@ -1897,6 +2010,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             any_vars: int[] = [];
             payload_slots: int[] = [];
             payload_vars: int[] = [];
+            payload_fields: int[] = [];
             // Each open logical's row after its right operands, its local,
             // its jump past them and its slot.
             closes: int[] = [];
@@ -2043,6 +2157,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                             if (any_slots[at_read] == stack[base]) {
                                 payload_slots.append(slot);
                                 payload_vars.append(any_vars[at_read]);
+                                payload_fields.append(operand.value + 1);
                             }
                         }
                     }
@@ -2222,6 +2337,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                 // only, so it is not tracked: it stays unreleased.
                 if (FreshArray(operand) && (length(closes) == 0 || type != abi.TextStorage)) {
                     fresh.append(slot);
+                } else if ((operand.kind == facts.CallRow || operand.kind == facts.MakeRow) &&
+                           HoldsArrays(rows, declared, type)) {
+                    // A union that holds arrays and that nothing else holds.
+                    fresh.append(slot);
                 }
                 stack.append(slot);
                 slot += 1;
@@ -2392,7 +2511,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                         moved.append(read_vars[at_read]);
                     }
                 }
-                drops := DropAll(owned_vars, owned_types, places, 0, moved, frames, true, slot);
+                drops := DropAll(rows, declared, owned_vars, owned_types, places, 0, moved, frames, true, slot, length(body));
                 slots.extend(drops.slot_types);
                 slot += length(drops.slot_types);
                 body.extend(drops.code);
@@ -2440,18 +2559,61 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     owned_vars.append(row.value);
                     owned_types.append(type);
                 }
-                // The arm that binds an array payload of the union a call just
-                // made owns it: nothing else frees a union's payloads, and the
-                // union is dead after the switch.
-                for (at_payload in 0..<length(payload_slots)) {
-                    if (payload_slots[at_payload] == value && ArrayTyped(type) &&
-                        Holds(temp_subjects, payload_vars[at_payload]) && !Holds(owned_vars, row.value)) {
+                // A variable holding a fresh union that holds arrays owns it, unless it is
+                // read for more than its tag and payloads or addressed; a discarded one is
+                // dropped at once.
+                if (Holds(fresh, value) && !ArrayTyped(type) && HoldsArrays(rows, declared, type)) {
+                    fresh = Without(fresh, value);
+                    if (row.name == "_") {
+                        glue := UnionDrop(UnionPayloads(rows, declared, type), type, 0, value, slot, length(body));
+                        slots.extend(glue.slot_types);
+                        slot += length(glue.slot_types);
+                        body.extend(glue.code);
+                    } else if (!Holds(stale_unions, row.value) && !Referenced(rows, head, row.value)) {
                         owned_vars.append(row.value);
                         owned_types.append(type);
                     }
                 }
-                if (row.literal == i64(facts.SwitchSubject) && rows[first + row.count - 1].kind == facts.CallRow) {
-                    temp_subjects.append(row.value);
+                // The arm that binds an array payload of an owned union takes it over when
+                // nothing reads the union's payloads after the switch: the binding owns the array
+                // and the union's field is emptied, so that its drop frees nothing twice.
+                for (at_payload in 0..<length(payload_slots)) {
+                    if (payload_slots[at_payload] != value || !ArrayTyped(type) || Holds(owned_vars, row.value)) {
+                        continue;
+                    }
+                    source := payload_vars[at_payload];
+                    union_at := -1;
+                    for (at_own in 0..<length(owned_vars)) {
+                        if (owned_vars[at_own] == source && owned_types[at_own] != 0 && !ArrayTyped(owned_types[at_own])) {
+                            union_at = at_own;
+                        }
+                    }
+                    if (union_at < 0) {
+                        continue;
+                    }
+                    taken := Holds(temp_subjects, source);
+                    if (!taken && parents[at] > 0 && rows[parents[at] - 1].kind == facts.SwitchRow) {
+                        taken = DeadFrom(rows, declared, Closed(rows, parents[at] - 1) + 1, last, source, openers,
+                                         decl_vars, decl_rows);
+                    }
+                    if (taken) {
+                        owned_vars.append(row.value);
+                        owned_types.append(type);
+                        union_type := owned_types[union_at];
+                        slots.extend([union_type, type, union_type]);
+                        empty := Op(native.Constant, type, slot + 1, 0, 0, 0);
+                        emptied := Op(native.Insert, union_type, slot + 2, slot, slot + 1, 0);
+                        emptied.literal = i64(payload_fields[at_payload]);
+                        body.extend([Op(native.Local, union_type, slot, places[source], 0, 0), empty, emptied,
+                                     Op(native.Save, union_type, 0, slot + 2, 0, places[source])]);
+                        slot += 3;
+                    }
+                }
+                if (row.literal == i64(facts.SwitchSubject)) {
+                    // A call's result: the arm that binds a payload takes it over.
+                    if (rows[first + row.count - 1].kind == facts.CallRow) {
+                        temp_subjects.append(row.value);
+                    }
                 }
                 local += 1;
             } else if (row.kind == facts.AssignRow && Referenced(rows, head, row.value)) {
@@ -2471,6 +2633,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     body.extend([Op(native.Local, type, slot, places[row.value], 0, 0),
                                  Op(native.ArrayDrop, type, 0, slot, 0, 0)]);
                     slot += 1;
+                } else if (!ArrayTyped(type) && Holds(owned_vars, row.value) && Holds(fresh, value) &&
+                           HoldsArrays(rows, declared, type)) {
+                    fresh = Without(fresh, value);
+                    glue := UnionDrop(UnionPayloads(rows, declared, type), type, places[row.value], -1, slot, length(body));
+                    slots.extend(glue.slot_types);
+                    slot += length(glue.slot_types);
+                    body.extend(glue.code);
                 }
                 body.append(Op(native.Save, type, 0, value, 0, places[row.value]));
                 // A retained variable's state follows it.

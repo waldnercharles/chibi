@@ -2978,6 +2978,30 @@ ScalarViewLocal :: (forest: snapshot.SnapshotNode[], text: string, body: int, li
     }
     return true;
 }
+// How many times the body `node` mentions the name `name`.
+ScalarNameUses :: (forest: snapshot.SnapshotNode[], text: string, node: int, name: string) -> int {
+    found := 0;
+    pending: int[] = [node];
+    top: int = 1;
+    while (top > 0) {
+        top -= 1;
+        at := pending[top];
+        if (Is(forest, at, syntax.Identifier) && Text(forest, text, at) == name) {
+            found += 1;
+        }
+        child := forest[at].first_child;
+        while (child >= 0) {
+            if (top < length(pending)) {
+                pending[top] = child;
+            } else {
+                pending.append(child);
+            }
+            top += 1;
+            child = forest[child].next_sibling;
+        }
+    }
+    return found;
+}
 // The names a body stores whole where a copy would be made: as the value of an
 // assignment or a local, a returned value, a record literal's field, or a union
 // variant's payload. A field that `changed_fields` lacks, of a literal that
@@ -3071,11 +3095,19 @@ ScalarWritten :: (scoped: snapshot.SnapshotNode[], text: string, callables: Call
                 // copy only where it is not.
                 if (!param.reference && param.container == ArrayContainer && !param.written) {
                     owned := Holds(mutated, param.name) || Holds(stored, param.name);
+                    // A parameter the function only hands on: every mention of
+                    // it is an argument for a parameter that is the callee's
+                    // own. One it also reads is lent on, as a table is, rather
+                    // than copied at each call that hands it on.
+                    handed := 0;
                     for (argument in calls) {
                         if (!marked[argument.param].reference && marked[argument.param].written &&
                             ScalarPassedName(scoped, text, argument.value) == param.name) {
-                            owned = true;
+                            handed += 1;
                         }
+                    }
+                    if (!owned && handed > 0 && ScalarNameUses(scoped, text, body, param.name) == handed) {
+                        owned = true;
                     }
                     if (owned) {
                         param.written = true;

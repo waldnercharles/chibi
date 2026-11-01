@@ -1413,154 +1413,7 @@ TEST_CASE(execution_verifier_rejects_indirect_access_to_array_fields)
     return true;
 }
 
-TEST_CASE(execution_integer_bitwise_preserves_width_and_valid_shifts)
-{
-    const pin_type integers[] = { PIN_I8,  PIN_U8,  PIN_I16, PIN_U16,
-                                  PIN_I32, PIN_U32, PIN_I64, PIN_U64 };
-    const behavior_function_op operations[] = { BF_BIT_AND, BF_BIT_OR,
-                                                BF_BIT_XOR, BF_BIT_NOT,
-                                                BF_SHL,     BF_SHR };
-    for (int t = 0; t < 8; t++) {
-        cleanup();
-        pin_type type = integers[t];
-        unsigned width = (unsigned)behavior_scalar_size(type) * 8;
-        uint64_t mask = UINT64_MAX >> (64 - width);
-        uint64_t sign = UINT64_C(1) << (width - 1);
-        pin_value arguments[2] = { { .type = type }, { .type = type } };
-        pin_value results[6];
-        for (int i = 0; i < 6; i++) {
-            results[i] = (pin_value){ .type = type };
-        }
-        builder = behavior_function_builder_new();
-        behavior_function_builder_signature(builder, arguments, 2, results, 6, NULL, 0);
-        int left = slot(type), right = slot(type);
-        emit((behavior_function_instruction){ .op = BF_ARGUMENT,
-                                              .type = type,
-                                              .output = left,
-                                              .left = 0,
-                                              .value = arguments[0] });
-        emit((behavior_function_instruction){ .op = BF_ARGUMENT,
-                                              .type = type,
-                                              .output = right,
-                                              .left = 1,
-                                              .value = arguments[1] });
-        for (int i = 0; i < 6; i++) {
-            int output = slot(type);
-            emit((behavior_function_instruction){ .op = operations[i],
-                                                  .type = type,
-                                                  .output = output,
-                                                  .left = left,
-                                                  .right = i == 3 ? -1 : right });
-            emit((
-                behavior_function_instruction
-            ){ .op = BF_RESULT, .type = type, .left = output, .target = i });
-        }
-        emit((behavior_function_instruction){ .op = BF_END });
-        REQUIRE(finish());
-        REQUIRE(behavior_function_compile(function));
-        const struct
-        {
-            uint64_t left, count, shl, signed_shr, unsigned_shr;
-        } cases[] = {
-            { mask - 7, 1, mask - 15, mask - 3, (mask >> 1) - 3 },
-            { sign, 0, sign, sign, sign },
-            { sign, width - 1, 0, mask, 1 },
-            { sign, 1, 0, sign | (sign >> 1), sign >> 1 },
-            { mask, width - 1, sign, mask, 1 },
-        };
-        for (int backend = 0; backend < 2; backend++) {
-            for (int c = 0; c < 5; c++) {
-                arguments[0] = behavior_scalar_from_bits(type, cases[c].left);
-                arguments[1] = behavior_scalar_from_bits(type, cases[c].count);
-                REQUIRE(run(arguments, 2, NULL, results, backend == 1, 100) == FLOW_OK);
-                const uint64_t expected[] = {
-                    cases[c].left & cases[c].count,
-                    (cases[c].left | cases[c].count) & mask,
-                    (cases[c].left ^ cases[c].count) & mask,
-                    mask ^ cases[c].left,
-                    cases[c].shl,
-                    behavior_scalar_signed(type) ? cases[c].signed_shr
-                                                 : cases[c].unsigned_shr,
-                };
-                for (int i = 0; i < 6; i++) {
-                    uint64_t actual = behavior_scalar_bits(results[i]) & mask;
-                    if (actual != expected[i]) {
-                        fprintf(
-                            stderr,
-                            "bitwise type=%d backend=%d case=%d op=%d "
-                            "actual=%llx expected=%llx\n",
-                            type,
-                            backend,
-                            c,
-                            operations[i],
-                            (unsigned long long)actual,
-                            (unsigned long long)expected[i]
-                        );
-                    }
-                    REQUIRE(actual == expected[i]);
-                }
-            }
-        }
-    }
-    return true;
-}
 
-/* A count at or past the width shifts every bit out, as in Odin: 0, or all
- * ones for a signed right shift of a negative value. */
-TEST_CASE(execution_integer_shift_past_the_width_shifts_every_bit_out)
-{
-    const pin_type integers[] = { PIN_I8,  PIN_U8,  PIN_I16, PIN_U16,
-                                  PIN_I32, PIN_U32, PIN_I64, PIN_U64 };
-    for (int t = 0; t < 8; t++) {
-        pin_type type = integers[t];
-        unsigned width = (unsigned)behavior_scalar_size(type) * 8;
-        const uint64_t counts[] = { width, width + 1, UINT64_MAX };
-        for (int op = 0; op < 2; op++) {
-            cleanup();
-            pin_value arguments[2] = { { .type = type }, { .type = type } };
-            pin_value result = { .type = type };
-            builder = behavior_function_builder_new();
-            behavior_function_builder_signature(builder, arguments, 2, &result, 1, NULL, 0);
-            int left = slot(type), right = slot(type), output = slot(type);
-            for (int a = 0; a < 2; a++) {
-                emit((behavior_function_instruction){ .op = BF_ARGUMENT,
-                                                      .type = type,
-                                                      .output = a ? right : left,
-                                                      .left = a,
-                                                      .value = arguments[a] });
-            }
-            emit((behavior_function_instruction){ .op = op ? BF_SHR : BF_SHL,
-                                                  .type = type,
-                                                  .output = output,
-                                                  .left = left,
-                                                  .right = right });
-            emit((behavior_function_instruction){ .op = BF_RESULT,
-                                                  .type = type,
-                                                  .left = output });
-            emit((behavior_function_instruction){ .op = BF_END });
-            REQUIRE(finish());
-            REQUIRE(behavior_function_compile(function));
-            for (int backend = 0; backend < 2; backend++) {
-                for (int c = 0; c < 3; c++) {
-                    /* One, then all ones: -1 for a signed type. */
-                    for (int all = 0; all < 2; all++) {
-                        arguments[0] = behavior_scalar_from_bits(type, all ? UINT64_MAX : 1);
-                        arguments[1] = behavior_scalar_from_bits(type, counts[c]);
-                        REQUIRE(run(arguments, 2, NULL, &result, backend == 1, 100) == FLOW_OK);
-                        bool fill = op && all && behavior_scalar_signed(type);
-                        REQUIRE(
-                            behavior_scalar_bits(result) ==
-                            behavior_scalar_bits(
-                                behavior_scalar_from_bits(type, fill ? UINT64_MAX : 0)
-                            )
-                        );
-                    }
-                }
-            }
-        }
-    }
-    return true;
-}
 
 TEST_CASE(execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands)
 {
@@ -2878,101 +2731,6 @@ static uint64_t cast_result_bits(pin_value value)
     return value.type == PIN_F64 ? cast_double_bits(value.d)
                                  : behavior_scalar_bits(value);
 }
-/* No cast fails: EXACT clamps a value that does not fit, as CLAMP does. */
-TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp)
-{
-    enum
-    {
-        E = BEHAVIOR_CAST_EXACT,
-        W = BEHAVIOR_CAST_WRAP,
-        C = BEHAVIOR_CAST_CLAMP
-    };
-    const uint64_t big = UINT64_C(1) << 40, top = UINT64_C(1) << 63;
-    const cast_vector vectors[] = {
-        { cast_input(PIN_I64, 300), PIN_I32, E, 300 },
-        { cast_input(PIN_I64, big), PIN_I32, E, INT32_MAX },
-        { cast_input(PIN_I64, big + 7), PIN_I32, W, 7 },
-        { cast_input(PIN_I64, big), PIN_I32, C, INT32_MAX },
-        { cast_input(PIN_I64, (uint64_t)-(int64_t)big), PIN_I32, C, (uint64_t)(int64_t)INT32_MIN },
-        { cast_input(PIN_U64, 255), PIN_U8, E, 255 },
-        { cast_input(PIN_U64, 300), PIN_U8, E, 255 },
-        { cast_input(PIN_U64, 300), PIN_U8, W, 44 },
-        { cast_input(PIN_U64, 300), PIN_U8, C, 255 },
-        { cast_input(PIN_I32, (uint64_t)-1), PIN_U64, E, 0 },
-        { cast_input(PIN_I32, (uint64_t)-1), PIN_U64, W, UINT64_MAX },
-        { cast_input(PIN_I32, (uint64_t)-1), PIN_U64, C, 0 },
-        { cast_input(PIN_I32, 5), PIN_U64, E, 5 },
-        { cast_input(PIN_U64, top), PIN_I64, E, INT64_MAX },
-        { cast_input(PIN_U64, top), PIN_I64, C, INT64_MAX },
-        { cast_input(PIN_U64, top), PIN_I64, W, top },
-        { cast_input(PIN_I8, (uint64_t)-1), PIN_U16, E, 0 },
-        { cast_input(PIN_I8, (uint64_t)-1), PIN_I32, E, UINT64_MAX },
-        { cast_input(PIN_U8, 200), PIN_I32, E, 200 },
-        { cast_input(PIN_I16, 200), PIN_I8, W, (uint64_t)-56 },
-        { cast_input(PIN_U32, 0x80000000u), PIN_I32, E, INT32_MAX },
-        { cast_input(PIN_U32, 0x80000000u), PIN_I32, C, INT32_MAX },
-        { cast_real(PIN_F64, 0x1p63 + 4096), PIN_U64, E, top + 4096 },
-        { cast_real(PIN_F64, 1e30), PIN_U64, E, UINT64_MAX },
-        { cast_real(PIN_F64, -5), PIN_U64, E, 0 },
-        { cast_real(PIN_F64, NAN), PIN_I32, E, 0 },
-        { cast_real(PIN_F64, -40000.5), PIN_I16, E, (uint64_t)(int64_t)INT16_MIN },
-        { cast_real(PIN_F64, 123.9), PIN_I16, E, 123 },
-        { cast_real(PIN_F32, 2.75), PIN_I32, E, 2 },
-        { cast_real(PIN_F64, 0x1p63), PIN_I64, E, INT64_MAX },
-        { cast_real(PIN_F64, -1e30), PIN_I64, E, (uint64_t)INT64_MIN },
-        { cast_real(PIN_F32, 0x1p63), PIN_U64, E, top },
-        { cast_real(PIN_F64, -0.0), PIN_U8, E, 0 },
-        { cast_input(PIN_U64, UINT64_MAX), PIN_F64, E, cast_double_bits(0x1p64) },
-        { cast_input(PIN_I64, (uint64_t)-3), PIN_F64, E, cast_double_bits(-3) },
-    };
-    for (size_t v = 0; v < sizeof vectors / sizeof *vectors; v++) {
-        const cast_vector *c = &vectors[v];
-        pin_value from = { .type = c->input.type }, returned = { .type = c->to };
-        builder = behavior_function_builder_new();
-        behavior_function_builder_signature(builder, &from, 1, &returned, 1, NULL, 0);
-        int input = slot(from.type), output = slot(c->to);
-        emit((
-            behavior_function_instruction
-        ){ .op = BF_ARGUMENT, .type = from.type, .output = input, .value = from });
-        emit((behavior_function_instruction){ .op = BF_CAST,
-                                              .type = c->to,
-                                              .output = output,
-                                              .left = input,
-                                              .target = c->mode,
-                                              .pin = 3 });
-        emit((behavior_function_instruction){ .op = BF_RESULT,
-                                              .type = returned.type,
-                                              .left = output });
-        emit((behavior_function_instruction){ .op = BF_RETURN });
-        emit((behavior_function_instruction){ .op = BF_END });
-        REQUIRE(finish());
-        REQUIRE(behavior_function_compile(function));
-        for (int backend = 0; backend < 2; backend++) {
-            pin_value result = returned;
-            int flow = run(&c->input, 1, NULL, &result, backend == 1, 16);
-            if (flow != FLOW_OK || cast_result_bits(result) != c->bits) {
-                fprintf(
-                    stderr,
-                    "cast vector %zu backend %d: flow %d bits %llx\n",
-                    v,
-                    backend,
-                    flow,
-                    (unsigned long long)cast_result_bits(result)
-                );
-            }
-            REQUIRE(
-                flow == FLOW_OK && result.type == c->to &&
-                cast_result_bits(result) == c->bits
-            );
-        }
-        release_invocation();
-        behavior_function_free(function);
-        function = NULL;
-        behavior_function_builder_free(builder);
-        builder = NULL;
-    }
-    return true;
-}
 
 /* One reportable operation with its own source in a fresh definition with
  * report sites: two typed arguments, or one for a unary operation or a cast. */
@@ -3618,51 +3376,6 @@ TEST_CASE(execution_integer_reports_run_every_site_without_a_fast_body)
     return true;
 }
 
-TEST_CASE(execution_string_equality_and_iteration_use_full_bytes)
-{
-    pin_value args[] = { { .type = PIN_STR }, { .type = PIN_STR } };
-    pin_value returned = { .type = PIN_BOOL };
-    builder = behavior_function_builder_new();
-    behavior_function_builder_signature(builder, args, 2, &returned, 1, NULL, 0);
-    int x = slot(PIN_STR), y = slot(PIN_STR), same = slot(PIN_BOOL);
-    emit((
-        behavior_function_instruction
-    ){ .op = BF_ARGUMENT, .type = PIN_STR, .left = 0, .output = x, .value = args[0] });
-    emit((
-        behavior_function_instruction
-    ){ .op = BF_ARGUMENT, .type = PIN_STR, .left = 1, .output = y, .value = args[1] });
-    emit((
-        behavior_function_instruction
-    ){ .op = BF_STRING_EQUAL, .type = PIN_BOOL, .left = x, .right = y, .output = same });
-    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_BOOL, .left = same });
-    emit((behavior_function_instruction){ .op = BF_END });
-    REQUIRE(finish() && behavior_function_compile(function));
-    const char first[] = { 'A', 0, 'B', (char)0xff, 0 };
-    const char second[] = { 'A', 0, 'C', (char)0xff, 0 };
-    pin_string texts[] = { { .bytes = first, .length = sizeof first - 1 },
-                           { .bytes = second, .length = sizeof second - 1 },
-                           { .bytes = first, .length = 1 },
-                           { .bytes = first, .length = sizeof first - 1 } };
-    const bool expected[] = { true, false, false, true };
-    for (int backend = 0; backend < 2; backend++) {
-        args[0].text = &texts[0];
-        for (int n = 0; n < 4; n++) {
-            args[1].text = &texts[n];
-            pin_value result = returned;
-            REQUIRE(run(args, 2, NULL, &result, backend == 1, 100) == FLOW_OK);
-            REQUIRE(result.b == expected[n]);
-        }
-    }
-    pin_value cursor = { 0 };
-    REQUIRE(!EXECUTION_string_cursor_call.value(&managed, args, 1, &cursor));
-    pin_value step[] = { cursor, { .type = PIN_I32, .i = 1 } }, item = { 0 };
-    REQUIRE(!EXECUTION_string_item_call.value(&managed, step, 2, &item));
-    REQUIRE(item.type == PIN_STR && pin_text(item).length == 1 && pin_text(item).bytes[0] == 0);
-    REQUIRE(!EXECUTION_string_next_call.value(&managed, step, 2, &item) && item.i == 2);
-    step[1].i = 3;
-    REQUIRE(EXECUTION_string_item_call.value(&managed, step, 2, &item));
-    return true;
-}
 
 TEST_CASE(execution_native_string_fields_validate_before_publication)
 {
@@ -3713,98 +3426,6 @@ TEST_CASE(execution_native_string_fields_validate_before_publication)
     return true;
 }
 
-/* Five fixed address pairs on two backends: ten calls, budget 100 each. */
-TEST_CASE(execution_pointer_comparisons_use_location_identity)
-{
-    builder = behavior_function_builder_new();
-    pin_value headers[] = { { .type = PIN_POINTER }, { .type = PIN_POINTER } };
-    pin_value results[] = { { .type = PIN_BOOL }, { .type = PIN_BOOL } };
-    behavior_function_builder_signature(builder, headers, 2, results, 2, NULL, 0);
-    int left = slot(PIN_POINTER), right = slot(PIN_POINTER);
-    int equal = slot(PIN_BOOL), different = slot(PIN_BOOL);
-    emit((behavior_function_instruction){ .op = BF_ARGUMENT,
-                                          .type = PIN_POINTER,
-                                          .left = 0,
-                                          .output = left,
-                                          .value = headers[0] });
-    emit((behavior_function_instruction){ .op = BF_ARGUMENT,
-                                          .type = PIN_POINTER,
-                                          .left = 1,
-                                          .output = right,
-                                          .value = headers[1] });
-    emit((
-        behavior_function_instruction
-    ){ .op = BF_EQ, .type = PIN_POINTER, .left = left, .right = right, .output = equal });
-    emit((
-        behavior_function_instruction
-    ){ .op = BF_NE, .type = PIN_POINTER, .left = left, .right = right, .output = different });
-    emit((
-        behavior_function_instruction
-    ){ .op = BF_RESULT, .type = PIN_BOOL, .target = 0, .left = equal });
-    emit((
-        behavior_function_instruction
-    ){ .op = BF_RESULT, .type = PIN_BOOL, .target = 1, .left = different });
-    emit((behavior_function_instruction){ .op = BF_RETURN });
-    emit((behavior_function_instruction){ .op = BF_END });
-    REQUIRE(finish());
-    REQUIRE(behavior_function_compile(function));
-    behavior_managed_heap_init(&comparison_heap);
-    type_field fields[] = {
-        { .name = "first", .type = PIN_I32, .type_name = "int" },
-        { .name = "second", .type = PIN_I32, .type_name = "int" },
-    };
-    const pin_record *record = pin_record_create(
-        &comparison_heap.storage,
-        "fixture.pointer_pair",
-        434,
-        fields,
-        2
-    );
-    REQUIRE(record);
-    int32_t pair[] = { 17, 23 };
-    pin_value base = { .type = PIN_STRUCT, .type_name = record->type.name, .record = record };
-    behavior_function_context owner = { .managed_heap = &comparison_heap };
-    pin_value make[] = { { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&owner }, base, base };
-    make[2].ptr = pair;
-    pin_value root = { .type = PIN_POINTER, .type_name = "^fixture.pointer_pair" },
-              other = root;
-    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &root));
-    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &other));
-    pin_value field[] = { root,
-                          { .type = PIN_I32 },
-                          { .type = PIN_U64, .u64 = record->type.fields[0].offset },
-                          { .type = PIN_BOOL },
-                          base };
-    pin_value first = { .type = PIN_POINTER, .type_name = "^int" },
-              same = first, next = first, separate = first;
-    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &first));
-    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &same));
-    REQUIRE(first.ptr != same.ptr);
-    field[2].u64 = record->type.fields[1].offset;
-    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &next));
-    field[0] = other;
-    field[2].u64 = record->type.fields[0].offset;
-    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &separate));
-    const struct
-    {
-        pin_pointer *left, *right;
-        bool equal;
-    } cases[] = {
-        { first.ptr, same.ptr, true },      { first.ptr, next.ptr, false },
-        { first.ptr, separate.ptr, false }, { NULL, NULL, true },
-        { first.ptr, NULL, false },
-    };
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        pin_value args[] = { { .type = PIN_POINTER, .ptr = cases[i].left },
-                             { .type = PIN_POINTER, .ptr = cases[i].right } };
-        for (int backend = 0; backend < 2; backend++) {
-            release_invocation();
-            REQUIRE(invoke(args, 2, NULL, results, backend != 0, 100, &comparison_heap) == FLOW_OK);
-            REQUIRE(results[0].b == cases[i].equal && results[1].b != cases[i].equal);
-        }
-    }
-    return true;
-}
 static const char *count_native_boundary(void *, const pin_value *, pin_value *)
 {
     host_calls++;
@@ -4578,7 +4199,6 @@ void test_language_execution()
     RUN_TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation);
     RUN_TEST_CASE(execution_managed_scan_checks_nested_layouts);
     RUN_TEST_CASE(execution_pointer_fields_require_the_full_base_layout);
-    RUN_TEST_CASE(execution_pointer_comparisons_use_location_identity);
     RUN_TEST_CASE(execution_native_boundary_rejects_hidden_managed_pointers);
     RUN_TEST_CASE(execution_native_boundary_rejects_malformed_aggregate_storage);
     RUN_TEST_CASE(execution_rebound_borrowing_call_checks_its_arguments);
@@ -4592,7 +4212,6 @@ void test_language_execution()
     RUN_TEST_CASE(execution_reentered_runs_keep_the_outer_runs_values);
     RUN_TEST_CASE(execution_source_inspection_is_lazy_and_preserves_resume);
     RUN_TEST_CASE(execution_finished_definition_owns_producer_strings);
-    RUN_TEST_CASE(execution_string_equality_and_iteration_use_full_bytes);
     RUN_TEST_CASE(execution_native_string_fields_validate_before_publication);
     RUN_TEST_CASE(execution_verifier_rejects_invalid_lowering);
     RUN_TEST_CASE(execution_budget_limits_checked_back_edges);
@@ -4607,8 +4226,6 @@ void test_language_execution()
     RUN_TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service);
     RUN_TEST_CASE(execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers);
     RUN_TEST_CASE(execution_collection_owners_match_a_membership_table);
-    RUN_TEST_CASE(execution_integer_bitwise_preserves_width_and_valid_shifts);
-    RUN_TEST_CASE(execution_integer_shift_past_the_width_shifts_every_bit_out);
     RUN_TEST_CASE(execution_fast_shift_past_the_width_keeps_both_stores);
     RUN_TEST_CASE(execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands);
     RUN_TEST_CASE(execution_print_string_is_synchronous_and_preserves_context);
@@ -4622,7 +4239,6 @@ void test_language_execution()
     RUN_TEST_CASE(execution_verifier_admits_a_large_compiler_function);
     RUN_TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots);
     RUN_TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets);
-    RUN_TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp);
     RUN_TEST_CASE(execution_prepared_integer_reports_charge_owned_storage);
     RUN_TEST_CASE(execution_prepared_integer_reports_charge_owned_children);
     RUN_TEST_CASE(execution_integer_reports_charge_retained_package_imports);

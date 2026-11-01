@@ -597,16 +597,21 @@ CopySample :: (from: string, to: string) {
     }
 }
 
-// The foreign samples, which the VM skips as native only, run natively: each
-// becomes a project whose Main calls the sample's Calls, builds with
-// `chibi build --native` and runs, and its asserts hold when the program exits
-// 0. libc is the foreign library.
+// The foreign samples, which the VM skips as native only, and the samples of
+// the language's numeric rules run natively: each becomes a project whose Main
+// calls the sample's Calls, builds with `chibi build --native` and runs, and
+// its asserts hold when the program exits 0. libc is the foreign library.
+// Each is a folder below test/compiler/samples.
 RunsTheForeignSamples :: (suite: Suite) {
-    for (sample in ["foreign_declared", "foreign_library", "foreign_vendor", "foreign_posix", "when_imports"]) {
+    for (folder in ["native/foreign_declared", "native/foreign_library", "native/foreign_vendor", "native/foreign_posix",
+                    "native/when_imports", "types/float_to_integer_conversions_truncate_clamp_and_map_nan_to_zero",
+                    "types/integer_to_float_conversions_keep_magnitude_and_sign",
+                    "types/signed_negation_and_comparisons_at_the_edges", "types/bitwise_operators_keep_each_width"]) {
+        sample := strings.BaseName(folder);
         built := Reset(suite, sample, "package main\n");
         target := Path([built.game, "/", sample]);
         Make(target);
-        CopySample(Path([os.Root(), "/test/compiler/samples/native/", sample]), target);
+        CopySample(Path([os.Root(), "/test/compiler/samples/", folder]), target);
         Write(Path([target, "/facts/Native.chibi"]), "package facts\npub Native :: () -> int {\n    return Calls();\n}\n");
         Write(Path([built.game, "/Main.chibi"]), Path(["package main\nimport facts \"project:", sample, "/facts\"\nMain :: () -> int {\n    return facts.Native();\n}\n"]));
         // The vendor sample opens the font beside the program, which runs in game.

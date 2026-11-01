@@ -396,8 +396,49 @@ ScopedTarget :: (forest: snapshot.SnapshotNode[], text: string, functions: Scope
     }
     return -1;
 }
+// The indices of `declarations` in ascending order of node: a bottom-up merge
+// sort. A package's files arrive in the order of their paths, which is not the
+// order of their nodes when the sources were read in another, so the
+// declarations of the files in turn need not ascend.
+Ascending :: (declarations: int[]) -> int[] {
+    count := length(declarations);
+    from: int[] = [];
+    for (index in 0..<count) {
+        from.append(index);
+    }
+    width := 1;
+    while (width < count) {
+        to: int[] = [];
+        start := 0;
+        while (start < count) {
+            middle := start + width;
+            if (middle > count) {
+                middle = count;
+            }
+            end := middle + width;
+            if (end > count) {
+                end = count;
+            }
+            left := start;
+            right := middle;
+            while (left < middle || right < end) {
+                if (right >= end || (left < middle && declarations[from[left]] <= declarations[from[right]])) {
+                    to.append(from[left]);
+                    left += 1;
+                } else {
+                    to.append(from[right]);
+                    right += 1;
+                }
+            }
+            start = end;
+        }
+        from = to;
+        width *= 2;
+    }
+    return from;
+}
 // Which pointer parameters of `declarations`, function declarations in
-// ascending node order, take a reference to the caller's location: those whose
+// any order, take a reference to the caller's location: those whose
 // uses only dereference them, read fields through them, or pass them on to such
 // a parameter. The decision is the greatest fixed point of the passing edges,
 // one pass over every function instead of a search into each callee from each
@@ -409,11 +450,9 @@ ScopedParameters :: (forest: snapshot.SnapshotNode[], texts: string[], declarati
     owners: int[] = [];
     functions: ScopeFunctions = {names: [], texts: [], declarations: [], first: []};
     previous: int = -1;
-    for (at in 0..<length(declarations)) {
+    for (at in Ascending(declarations)) {
         declaration := declarations[at];
-        if (declaration <= previous) {
-            return NoScopes();
-        }
+        assert(declaration > previous, "a function is declared once");
         previous = declaration;
         text := texts[at];
         any := false;

@@ -895,6 +895,128 @@ NativeRunner :: (stage: string, llvm: string, work: string, target: string, host
     return 0
 }
 
+// The command that builds the project in `root` natively, as `chibi build --native` does: the
+// native driver program under `build_host`, with the packages of `core` and the compiler host
+// that runs the compiler's prepared closure.
+NativeBuild :: (build_host: string, compiler_host: string, llvm: string, root: string, core: string, target: string) -> string[] {
+    tools := Absolute("tools/native_aot")
+    return [
+        build_host, "--root", tools, "--source", Join([tools, "/Driver.chibi"]),
+        "--collection", Join(["native_aot=", tools, "/driver"]),
+        "--collection", Join(["native_link=", Absolute("tools/compiler"), "/native_link"]), "--core", Absolute("packages/core"), "--compiler", Absolute("tools/compiler"), "--compiler-core",
+        Absolute("packages/core"), "--entry", "Native", "--timeout-ms", "3600000", "--", compiler_host,
+        Absolute("tools/compiler"), core, root, llvm, "2", "none", target
+    ]
+}
+
+// The FreeType sample (test/compiler/samples/native/foreign_vendor) as a program: the @test mark
+// goes and Calls returns 0, since a program's functions have a result.
+VendorProgram :: (sample: string) -> string {
+    lines: string[] = []
+    for (line in strings.SplitLines(sample)) {
+        if (line != "@test") {
+            lines = extend(lines, [line])
+        }
+    }
+    last := length(lines) - 1
+    while (last > 0 && lines[last] != "}") {
+        last = last - 1
+    }
+    text := ""
+    for (index in 0..<length(lines)) {
+        if (index == last) {
+            text = Join([text, "    return 0\n}\n"])
+        } else if (lines[index] == "Calls :: () {") {
+            text = Join([text, "Calls :: () -> int {\n"])
+        } else {
+            text = Join([text, lines[index], "\n"])
+        }
+    }
+    return text
+}
+
+// Links the `vendor:` FreeType program against the prebuilt archives and runs it, with the native
+// build that compiles no C: the compiler host and the LLVM tools are the only toolchain. The SDK
+// layout the driver reads vendored archives from (share/chibi/core beside lib/chibi-vendor) is
+// staged in --work from the checkout's core and the pinned third-party archive.
+NativeVendorSample :: (arguments: string[]) -> int {
+    dry := Flag(arguments, "--dry-run")
+    llvm := Option(arguments, "--llvm", "")
+    compiler_host := Absolute(Option(arguments, "--compiler-host", ""))
+    work := Absolute(Option(arguments, "--work", "build-native-vendor-sample"))
+    if (llvm == "" || Option(arguments, "--compiler-host", "") == "") {
+        os.Print("native-vendor-sample: pass --llvm DIR and --compiler-host PATH")
+        return 2
+    }
+    host := PrivateHost(arguments, dry)
+    if (host == "") {
+        return 1
+    }
+    target := "x86_64-unknown-linux-gnu"
+    if (os.Platform() == "Darwin") {
+        target = "aarch64-apple-darwin"
+    }
+    sdk := Join([work, "/sdk"])
+    project := Join([work, "/project"])
+    sample := Join([project, "/foreign_vendor/facts"])
+    if (dry) {
+        os.Print(Join(["native-vendor-sample: stage ", sdk, " and ", project]))
+        return Step("native-build", NativeBuild(host, compiler_host, llvm, project, Join([sdk, "/share/chibi/core"]), target), dry)
+    }
+    if (Step("stage", ["rm", "-rf", work], false) != 0 ||
+        Step("stage", ["mkdir", "-p", Join([sdk, "/share/chibi"]), Join([sdk, "/lib"]), sample], false) != 0) {
+        return 1
+    }
+    vendored := os.Capture(extend(Program(arguments, host, "tools/toolchain/Build.chibi", "Build", [], "1800000"), ["vendor", Join([work, "/third-party"])]))
+    // A program's reports are its standard error.
+    folder := ""
+    for (line in strings.SplitLines(vendored.stderr)) {
+        if (strings.HasPrefix(line, "/")) {
+            folder = strings.TrimSpace(line)
+        }
+    }
+    if (vendored.status != 0 || folder == "") {
+        os.Print(format_text("native-vendor-sample: no vendored libraries (status {}, folder '{}'): {}{}", vendored.status, folder, strings.TrimSpace(vendored.stdout), strings.TrimSpace(vendored.stderr)))
+        return 1
+    }
+    if (Step("stage", ["ln", "-s", Absolute("packages/core"), Join([sdk, "/share/chibi/core"])], false) != 0 ||
+        Step("stage", ["ln", "-s", folder, Join([sdk, "/lib/chibi-vendor"])], false) != 0 ||
+        Step("stage", ["ln", "-s", Absolute("third_party/fonts/inter/Inter.ttf"), Join([project, "/Inter.ttf"])], false) != 0) {
+        return 1
+    }
+    text := os.ReadText(Absolute("test/compiler/samples/native/foreign_vendor/facts/SampleTests.chibi"))
+    if (text.error) {
+        os.Print("native-vendor-sample: cannot read the foreign_vendor sample")
+        return 1
+    }
+    if (os.WriteText(Join([sample, "/SampleTests.chibi"]), VendorProgram(text.text)) != nil ||
+        os.WriteText(Join([sample, "/Native.chibi"]), "package facts\npub Native :: () -> int {\n    return Calls()\n}\n") != nil ||
+        os.WriteText(Join([project, "/Main.chibi"]), "package main\nimport facts \"project:foreign_vendor/facts\"\nMain :: () -> int {\n    return facts.Native()\n}\n") != nil) {
+        os.Print("native-vendor-sample: cannot write the project")
+        return 1
+    }
+    began := Clock()
+    built := os.Capture(NativeBuild(host, compiler_host, llvm, project, Join([sdk, "/share/chibi/core"]), target))
+    os.Print(format_text("native-vendor-sample: build {} s, exit {}", Clock() - began, built.status))
+    program := NativeProgram(built.stderr)
+    if (built.status != 0 || program == "") {
+        os.Print(Join(["native-vendor-sample: the build failed: ", strings.TrimSpace(built.stderr)]))
+        return 1
+    }
+    receipt := os.ReadText(Join([strings.Slice(program, 0, strings.LastIndex(program, "/")), "/receipt.txt"]))
+    if (receipt.error || !strings.Contains(receipt.text, "libchibi_vendor_freetype.a")) {
+        os.Print("native-vendor-sample: the receipt does not record the vendored archive")
+        return 1
+    }
+    ran := Step("run", ["sh", "-c", Join(["cd '", project, "' && '", program, "'"])], false)
+    if (ran != 0) {
+        os.Print("native-vendor-sample: the program failed")
+        return 1
+    }
+    os.Print("native-vendor-sample: the FreeType program linked the vendored archive and ran")
+    return 0
+}
+
 // Proves goal item 1: the native stage one compiles tools/compiler to stage
 // two, stage two compiles it to stage three, and the two are byte-identical.
 // Prints each stage's wall time and, for item 9, the VM-hosted self-build's
@@ -917,24 +1039,26 @@ NativeSelfHost :: (arguments: string[]) -> int {
         os.Print(Join(["native-self-host: first function the native lane rejects: ", FirstRejection()]))
         return 1
     }
-    status := ReleaseBuild(arguments, ["chibi-build-host", "chibi-compiler-host"], dry)
-    if (status != 0) {
-        return status
-    }
+    // The prebuilt hosts (--build-host, --compiler-host) stand in for the C builds of
+    // chibi-build-host and chibi-compiler-host, so a machine with no C compiler can run
+    // the native stages.
     releases := Absolute(Option(arguments, "--release-build", "build-release"))
+    build_host := Join([releases, "/sdk/chibi-build-host"])
     compiler_host := Join([releases, "/sdk/chibi-compiler-host"])
+    if (Option(arguments, "--build-host", "") != "" && Option(arguments, "--compiler-host", "") != "") {
+        build_host = Absolute(Option(arguments, "--build-host", ""))
+        compiler_host = Absolute(Option(arguments, "--compiler-host", ""))
+    } else {
+        status := ReleaseBuild(arguments, ["chibi-build-host", "chibi-compiler-host"], dry)
+        if (status != 0) {
+            return status
+        }
+    }
     target := "x86_64-unknown-linux-gnu"
     if (os.Platform() == "Darwin") {
         target = "aarch64-apple-darwin"
     }
-    tools := Absolute("tools/native_aot")
-    build_one := [
-        Join([releases, "/sdk/chibi-build-host"]), "--root", tools, "--source", Join([tools, "/Driver.chibi"]),
-        "--collection", Join(["native_aot=", tools, "/driver"]),
-        "--collection", Join(["native_link=", Absolute("tools/compiler"), "/native_link"]), "--core", Absolute("packages/core"), "--compiler", Absolute("tools/compiler"), "--compiler-core",
-        Absolute("packages/core"), "--entry", "Native", "--timeout-ms", "3600000", "--", compiler_host,
-        Absolute("tools/compiler"), Absolute("packages/core"), driver, llvm, "2", "none", target
-    ]
+    build_one := NativeBuild(build_host, compiler_host, llvm, driver, Absolute("packages/core"), target)
     stage_one := Join([driver, "/build/native/stage-one"])
     if (prebuilt != "") {
         stage_one = Absolute(prebuilt)
@@ -952,26 +1076,52 @@ NativeSelfHost :: (arguments: string[]) -> int {
     }
     two := Join([work, "/stage2"])
     three := Join([work, "/stage3"])
-    status = NativeStage("stage-two", stage_one, two, llvm, target, dry)
+    status := NativeStage("stage-two", stage_one, two, llvm, target, dry)
     if (status != 0) {
         return status
+    }
+    if (Flag(arguments, "--stage-two-only")) {
+        os.Print("native-self-host: stage two built")
+        return 0
     }
     status = NativeStage("stage-three", Join([two, "/chibi"]), three, llvm, target, dry)
     if (status != 0) {
         return status
     }
+    fixed := Join([two, "/chibi"])
+    proof := "stage two and stage three are byte-identical"
     if (!dry) {
         digest_two := Digest(Join([two, "/chibi"]))
         digest_three := Digest(Join([three, "/chibi"]))
         os.Print(Join(["stage two sha256 ", digest_two]))
         os.Print(Join(["stage three sha256 ", digest_three]))
-        if (digest_two == "" || digest_two != digest_three) {
+        if (digest_two == "" || (digest_two != digest_three && prebuilt == "")) {
             os.Print("native-self-host: stage two and stage three differ")
             return 1
         }
+        // A prebuilt stage one, such as the pinned native seed, may be an older
+        // compiler: its stage two then differs from the stage three the current
+        // compiler gives, and the fixed point is stage three, which stage four
+        // must reproduce.
+        if (digest_two != digest_three) {
+            four := Join([work, "/stage4"])
+            status = NativeStage("stage-four", Join([three, "/chibi"]), four, llvm, target, dry)
+            if (status != 0) {
+                return status
+            }
+            digest_four := Digest(Join([four, "/chibi"]))
+            os.Print(Join(["stage four sha256 ", digest_four]))
+            if (digest_four != digest_three) {
+                os.Print("native-self-host: stage three and stage four differ")
+                return 1
+            }
+            fixed = Join([three, "/chibi"])
+            proof = "stage three and stage four are byte-identical"
+        }
+        os.Print(Join(["native-self-host: the fixed point is ", fixed]))
     }
     if (!dry) {
-        status = NativeRunner(Join([two, "/chibi"]), llvm, work, target, Join([releases, "/sdk/chibi-build-host"]), !Flag(arguments, "--skip-vm"))
+        status = NativeRunner(fixed, llvm, work, target, build_host, !Flag(arguments, "--skip-vm"))
         if (status != 0) {
             return status
         }
@@ -987,7 +1137,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
         }
     }
     if (!dry) {
-        os.Print("native-self-host: stage two and stage three are byte-identical")
+        os.Print(Join(["native-self-host: ", proof]))
     }
     return 0
 }
@@ -1076,7 +1226,8 @@ Usage :: () -> int {
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
     os.Print("       build format [--check] | clean | census | publish-seed | native-census | native-evidence --build DIR --output DIR --nm PATH --sha SHA --sanitizers ON|OFF ...")
-    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--work DIR] [--release-build DIR] [--skip-vm] [--dry-run]")
+    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--skip-vm] [--dry-run]")
+    os.Print("       build native-vendor-sample --llvm DIR --compiler-host PATH [--work DIR] [--dry-run]")
     os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
     os.Print("       build sdk-reflect [--reflect-build DIR] [-- NATIVE ARGUMENTS]")
     return 2
@@ -1128,6 +1279,9 @@ Main :: () -> int {
     }
     if (verb == "native-census") {
         return NativeCensus(arguments)
+    }
+    if (verb == "native-vendor-sample") {
+        return NativeVendorSample(arguments)
     }
     if (verb == "native-self-host") {
         return NativeSelfHost(arguments)

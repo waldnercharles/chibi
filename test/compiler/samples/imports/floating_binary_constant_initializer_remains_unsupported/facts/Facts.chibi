@@ -1,4 +1,0 @@
-package facts
-Bad: f64 : 1.0 + 2.0;
-
-// error: 2:12: floating constant initializer is not supported yet

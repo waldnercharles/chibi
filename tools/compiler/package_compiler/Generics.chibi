@@ -1181,7 +1181,7 @@ InstantiateRecords :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         for (item in Members(forest, body)) {
                             field: TypeMember = {name: Text(forest, documents[template_document].text, Field(forest, item, syntax.FieldName)),
                                                  storage: 0, container: 0, record: -1, offset: 0, writable: true,
-                                                 c_string: false, constant: false, read: -1, read_key: ""};
+                                                 c_string: false, constant: false, read: -1, read_key: "", fixed: false};
                             members.append(field);
                         }
                         declared.count = length(members) - declared.first;

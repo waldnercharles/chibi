@@ -79,13 +79,20 @@ pub Check :: (rows: facts.Row[]) -> int {
 }
 
 // The entry's definition: a module that calls the runtime, to format text,
-// fail an assert or work with arrays, takes the context first.
+// fail an assert, work with arrays or release strings, takes the context first.
 Entry :: (rows: facts.Row[]) -> string {
+    texted := false;
     for (row in rows) {
         if ((row.kind == facts.TextRow && row.value == facts.TextFormat) || row.kind == facts.AssertRow ||
             Allocates(row)) {
             return "define i32 @chibi_scalar(ptr %ctx)";
         }
+        texted = texted || row.type == facts.StringType;
+    }
+    if (texted) {
+        // A string a call returns or a local holds is released through the
+        // context, which the rows do not say; either entry is right.
+        return "define i32 @chibi_scalar(";
     }
     return "define i32 @chibi_scalar()";
 }

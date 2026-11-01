@@ -197,7 +197,7 @@ DeclareMath :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
             while (component < math.Components(kind)) {
                 members.append({name: MathFieldName(kind, component), storage: FloatStorage, container: 0,
                                 record: -1, offset: component * 4, writable: true, c_string: false,
-                                constant: false, read: -1, read_key: ""});
+                                constant: false, read: -1, read_key: "", fixed: false});
                 component += 1;
             }
             declared: TypeDecl = {name: name, type_name: name, package: -1, node: -1, kind: MathDecl,

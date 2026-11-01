@@ -474,9 +474,18 @@ it nor the union is read after: the union is dead and nothing drops a union's
 payloads yet. (4) `alias := items` of a lent array parameter that neither the
 alias nor the parameter changes or stores whole is a second name for the same
 array, not a copy (`alias_drops`); one that is changed, or returned through
-another name, still copies. An array stored in a record literal from a lent
-parameter (`context := {forest: forest, ...}`) still copies, and nothing frees
-it: the record's arrays are stage 2's. Measured on macOS: an array
+another name, still copies. (5) A record literal that names a lent array
+parameter borrows it, with no copy, when no function of the module changes that
+field (`ScalarChangedFields`: assignment, delete, `&` and changing-method
+targets, by field name), the record's type is neither returned nor held by
+another type, and the literal initializes a local used only through its fields,
+`&` and call arguments (`ScalarViewLocal`); the parameter then stays lent
+instead of becoming the callee's own (`view_drops`; `TypeMember.fixed`). This
+is `FoldCalling`'s `CtContext`, which copied eight tables per constant. Arrays
+a record still holds by copy are never freed: stage 2. Measured on macOS, the
+native stage-two compiler no longer allocates 22 GB in 3 s: it reaches
+`ScalarFunction` in 14 s and ends in 226 s with a peak of 10.4 GB, all of it
+leaked record arrays and copies. Measured on macOS: an array
 threaded through 40 rounds of `rows = Grow(rows, round)` and of a
 `switch Step(rows, round)` makes 79 allocations (the growth chain), none of
 them copies, all released; 103 corpus programs at O0 and O2 give the VM's

@@ -77,6 +77,15 @@ Markers :: (text: string) -> string[] {
     }
     return found;
 }
+// The marker lines of the IR file at `path`, found by grep: a module of the
+// compiler has over a million lines, more than a build array holds, so it is
+// never split whole. grep ends with status 1 when no line matches.
+LinesOf :: (path: string) -> string[] {
+    if (build.probe(["/usr/bin/grep", "-E", "^[;td]", path]) > 1) {
+        return [];
+    }
+    return Markers(build.last_stdout());
+}
 pub Target :: (text: string) -> int {
     return TargetIn(Markers(text));
 }
@@ -391,7 +400,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     target := -1;
     optimized: string[] = [];
     if (build.file_kind(module) == "file") {
-        optimized = Markers(build.read_file(module));
+        optimized = LinesOf(module);
         target = TargetIn(optimized);
     }
     if (target < 0) {
@@ -402,7 +411,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     if (shared) {
         program = Join([partial, "/generation.so"]);
     }
-    markers := Markers(text);
+    markers := LinesOf(input);
     libraries := LinkedLibraries(markers);
     imported := native_link.SystemImports(markers);
     if (target != 2 && length(imported) > 0) {

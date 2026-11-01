@@ -1,6 +1,5 @@
 package os
 
-import bytes "core:bytes"
 import target "core:target"
 
 // Files, directories, processes and the environment, as Odin's core:os offers
@@ -157,6 +156,10 @@ when target.Native == 1 {
         written := sys.Print(line);
     }
 } else {
+    // Only the VM bodies convert text and bytes; a native program must not
+    // import core:bytes (core:strings formats text, which links the runtime).
+    import bytes "core:bytes"
+
 // What the path names, KindNone when nothing. A link is not followed.
 pub Kind :: (path: string) -> int {
     kind := build.file_kind(path);

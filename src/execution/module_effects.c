@@ -228,6 +228,29 @@ static bool plain(pin_value v)
     return type && type_is_plain(type);
 }
 static origin slot_origin(const behavior_function *, int, int, int, int *);
+/* What a host bank slot's address refers to. */
+static origin host_slot_origin(const behavior_function_instruction *i)
+{
+    return (origin){ .bank = i->target == 0 ? i->left + 1 : 0,
+                     .private = i->target == 0,
+                     .readable = true,
+                     .extent = sizeof(pin_value) };
+}
+/* slot_origin of a write's address. The instruction before a write usually
+ * defines its address as a host bank slot; then this gives slot_origin's
+ * result and charges its two steps without the call, which a backward walk
+ * otherwise makes for every write it passes. */
+static origin address_origin(const behavior_function *f, int pc, int slot, int depth, int *steps)
+{
+    const behavior_function_instruction *before = pc > 0 ? &f->instructions[pc - 1]
+                                                         : NULL;
+    if (before && before->op == BF_HOST_SLOT && before->output == slot && slot >= 0 &&
+        slot < acount(f->slots) && depth <= EFFECT_DEPTH && *steps >= 2) {
+        *steps -= 2;
+        return host_slot_origin(before);
+    }
+    return slot_origin(f, pc, slot, depth, steps);
+}
 static bool control_write(const behavior_function_instruction *, origin);
 static bool collection_header_fixed(const behavior_function *, int bank, int depth, int *steps);
 static bool same_origin(origin a, origin b)
@@ -255,7 +278,7 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
         }
         crossing |= i->op == BF_BRANCH || i->op == BF_JUMP || i->op == BF_ENTER;
         if (i->op == BF_WRITE) {
-            origin address = slot_origin(f, j, i->right, depth + 1, steps);
+            origin address = address_origin(f, j, i->right, depth + 1, steps);
             if (!address.bank) {
                 if (control_write(i, address) || address.private) {
                     continue;
@@ -552,11 +575,7 @@ static origin slot_origin(const behavior_function *f, int pc, int slot, int dept
             }
             case BF_CONSTANT:
                 return (origin){ .constant = true, .bits = i->value.u64 };
-            case BF_HOST_SLOT:
-                return (origin){ .bank = i->target == 0 ? i->left + 1 : 0,
-                                 .private = i->target == 0,
-                                 .readable = true,
-                                 .extent = sizeof(pin_value) };
+            case BF_HOST_SLOT: return host_slot_origin(i);
             case BF_LOAD: {
                 origin address = slot_origin(f, j, i->left, depth + 1, steps);
                 if (address.bank && address.offset <= offsetof(pin_value, d) &&
@@ -706,7 +725,7 @@ static bool context_uses(const behavior_function *f, int slot, int *steps)
         if (i->op != BF_WRITE || !left || right || third) {
             return false;
         }
-        origin address = slot_origin(f, pc, i->right, 0, steps);
+        origin address = address_origin(f, pc, i->right, 0, steps);
         if (!address.bank || address.offset > offsetof(pin_value, d) ||
             i->offset != offsetof(pin_value, d) - address.offset ||
             !context_bank(f, address.bank - 1)) {
@@ -824,7 +843,7 @@ static bool collection_header_fixed(const behavior_function *f, int bank, int de
         if (i->op != BF_WRITE) {
             continue;
         }
-        origin address = slot_origin(f, pc, i->right, depth + 1, steps);
+        origin address = address_origin(f, pc, i->right, depth + 1, steps);
         if (address.bank != bank + 1) {
             continue;
         }
@@ -872,7 +891,7 @@ static bool owned_collection(const behavior_function *f, origin target, int *ste
         if (i->op != BF_WRITE) {
             continue;
         }
-        origin address = slot_origin(f, pc, i->right, 0, steps);
+        origin address = address_origin(f, pc, i->right, 0, steps);
         if (address.bank != target.bank) {
             continue;
         }

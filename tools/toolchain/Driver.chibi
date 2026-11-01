@@ -967,7 +967,7 @@ NativeVendorSample :: (arguments: string[]) -> int {
         Step("stage", ["mkdir", "-p", Join([sdk, "/share/chibi"]), Join([sdk, "/lib"]), sample], false) != 0) {
         return 1
     }
-    vendored := os.Capture(extend(Program(host, "tools/toolchain/Build.chibi", "Build", [], "1800000"), ["vendor", Join([work, "/third-party"])]))
+    vendored := os.Capture(extend(Program(arguments, host, "tools/toolchain/Build.chibi", "Build", [], "1800000"), ["vendor", Join([work, "/third-party"])]))
     // A program's reports are its standard error.
     folder := ""
     for (line in strings.SplitLines(vendored.stderr)) {

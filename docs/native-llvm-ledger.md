@@ -423,6 +423,32 @@ release poisoning what it frees, and each gave the VM's value; that run found
 gives the old elements back after it copies the other array's) and the
 named-results case above.
 
+*Stage 3, landed (1 November 2026), ahead of stage 2.* Strings hold references
+to the runtime's `pin_text_owner` (an atomic count, the length, then the bytes
+and a NUL): `ArrayText` makes one with a count of 1; literals, text the host
+owns and `format_text` results keep a null owner, which has nothing to count.
+`TextRetain` and `TextRelease` (llvm_native, through module helpers `retain`,
+`free`, `retain_range` and `free_range`) add and give back a reference; the last
+one hands the owner to the context's `release`. In scalar_llvm a variable that
+holds a string owns one reference: a fresh string (a call's result, `ArrayText`,
+`Format`) moves in, any other is retained; an Assign gives the old value back
+after taking the new one; a Return moves the returned variable out or retains a
+borrowed value; a fresh string left over at the end of a statement, a
+temporary, is released there, after the statement's stores, so a slice (a view
+sharing the owner) that was stored has retained it first. A string stored in a
+record, union or array element is retained and, in all but an array of strings,
+never released: those containers leak their strings, which is safe (a count too
+high, never too low). An array of strings is complete: its copies (copy, slice,
+resize, extend, with, join) retain each element, a set or remove releases the
+one it replaces, and dropping the array releases them all, so the compiler's
+`Join`, `Concatenate` and token lists are bounded. Not tracked yet: a string made
+on the right of `&&` or `||` (it exists on some paths only), so it stays
+unreleased; `format_text` results; strings in records and unions (stage 2).
+Measured on macOS, O0 and O2, ASan with released memory poisoned: the `strs`
+program (3,000 rounds of built, joined, sliced, kept and early-returned
+strings) makes 99,000 allocations and 99,000 releases, peak live 352 bytes, and
+gives the VM's value; a 150,000-round loop of 2 KB strings runs in 2 MB.
+
 Stage 4's list, from core-math's count of 62 `x := big_array` sites in the
 compiler: `output := rows;` in the Scalar operand builders (each copies the
 rows it was passed, then appends, so a function's rows are built in quadratic

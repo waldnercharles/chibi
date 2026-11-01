@@ -541,6 +541,19 @@ FreesWhatItDrops :: (suite: Suite) {
     assert(ran.status == 7, "the program runs in bounded memory");
 }
 
+// A loop that makes strings from bytes and drops them runs in bounded memory:
+// 150,000 rounds make 2 KB each, about 300 MB in all, under a 200 MB
+// address-space limit. It returns 7.
+FreesTheStringsItDrops :: (suite: Suite) {
+    source := "package scalar\nMain :: () -> int {\n    for (round in 0..<150000) {\n        s := Make(2000);\n        t := s;\n        u := text_slice(t, 1, 5);\n        if (text_byte_at(s, 1999) != 97 || text_byte_length(u) != 5) {\n            return 1;\n        }\n    }\n    return 7;\n}\nMake :: (n: int) -> string {\n    bytes: u8[] = [];\n    for (i in 0..<n) {\n        bytes.append(u8(97));\n    }\n    return text_from_bytes(bytes);\n}\n";
+    built := Reset(suite, "frees-strings", source);
+    RealTools(suite, built);
+    result := Build(suite, suite.built, built, ["-O2"]);
+    assert(result.status == 0, "the program builds");
+    ran := os.Capture(["/bin/sh", "-c", "ulimit -v 200000; exec \"$0\"", Printed(result)]);
+    assert(ran.status == 7, "the program runs in bounded memory");
+}
+
 // format_text in a program that links no VM: the start module's own formatter
 // makes the text, with each `{}` replaced by the next value.
 FormatsTextWithoutTheVM :: (suite: Suite) {
@@ -943,7 +956,7 @@ Cases :: (llvm: bool) -> string[] {
     if (llvm) {
         names.extend(["RunsWithLLVMAndNoCCompiler", "LinksAVendoredArchive", "CallsThroughAFunctionPointer",
                       "PassesAByteArrayToC", "SwapsARunningLoopKeepingState", "WatchesAndSwapsARunningLoop",
-                      "ReportsAFailedAssert", "FreesWhatItDrops", "FormatsTextWithoutTheVM", "RunsTheForeignSamples", "GivesCAnAuthoredFunction", "LinksOtherTargetsWithLLVM",
+                      "ReportsAFailedAssert", "FreesWhatItDrops", "FreesTheStringsItDrops", "FormatsTextWithoutTheVM", "RunsTheForeignSamples", "GivesCAnAuthoredFunction", "LinksOtherTargetsWithLLVM",
                       "ImportsFromAWindowsSystemLibrary", "AllocatesOnWindowsWithoutLibc", "LinksCoreSysWindows"]);
     }
     return names;
@@ -977,6 +990,8 @@ RunCase :: (suite: Suite, name: string) {
         ReportsAFailedAssert(suite);
     } else if (name == "FreesWhatItDrops") {
         FreesWhatItDrops(suite);
+    } else if (name == "FreesTheStringsItDrops") {
+        FreesTheStringsItDrops(suite);
     } else if (name == "FormatsTextWithoutTheVM") {
         FormatsTextWithoutTheVM(suite);
     } else if (name == "RunsTheForeignSamples") {

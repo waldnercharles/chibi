@@ -231,6 +231,33 @@ Receipt :: (fixture: Fixture) -> string {
     return Read(Path([fixture.output, "/receipt.txt"]));
 }
 
+// More marker bytes than a process probe captures: target admission must
+// still see the final triple, rather than a truncated grep result.
+MarkerBytesDoNotUseProcessCapture :: (scratch: string) {
+    fixture := Reset(scratch, "large marker result");
+    Write(fixture.input, Path([strings.Repeat("; padding\n", 120000), Read(fixture.input)]));
+    status := Drive(fixture, false, "0");
+    assert(status == 0, "marker bytes beyond the probe cap still admit the target");
+    assert(Equals(Path([fixture.output, "/object.o"]), "controlled object\n"), "the large-marker object publishes");
+}
+
+// The optimizer consumes the reserved snapshot, then changes the original.
+// Link metadata and the receipt must describe that same snapshot's bytes.
+LinkMarkersComeFromTheSnapshot :: (scratch: string) {
+    fixture := Reset(scratch, "marker snapshot");
+    archive := Path([fixture.root, "/snapshot archive.a"]);
+    Write(archive, "controlled archive\n");
+    original := Path([Read(fixture.input), "; link ", archive, "\n"]);
+    Write(fixture.input, original);
+    Write(Path([fixture.root, "/action"]), "replace-input\n");
+    status := Drive(fixture, true, "0");
+    assert(status == 0, "the snapshotted program builds");
+    assert(Equals(fixture.input, "changed original after snapshot\n"), "the optimizer changed only the original");
+    assert(Equals(Path([fixture.output, "/source.ll"]), original), "the source snapshot is preserved");
+    assert(strings.Contains(Read(Path([fixture.root, "/linker tool.argv"])), Path([archive, "\n"])), "the link uses the snapshot's archive");
+    assert(strings.Contains(Receipt(fixture), Path(["library ", archive, "\nlibrary-sha256 "])), "the receipt names the snapshot's archive");
+}
+
 PublicationPreservesExistingFilesAndStalePartialBytes :: (scratch: string) {
     for (executable in [false, true]) {
         name := "object preservation";
@@ -379,6 +406,8 @@ ChangedToolIdentityPreventsPublicationAfterObjectCreation :: (scratch: string) {
 pub Publication :: () -> int {
     arguments := os.Arguments();
     scratch := arguments[0];
+    MarkerBytesDoNotUseProcessCapture(scratch);
+    LinkMarkersComeFromTheSnapshot(scratch);
     PublicationPreservesExistingFilesAndStalePartialBytes(scratch);
     ObjectRelocatesToolsWithSpacesWithoutALinkerOrPath(scratch);
     ExecutableLinksWithTheNamedLinkerAndStartObject(scratch);

@@ -347,13 +347,16 @@ ScalarOptional :: (types: TypeDecl[], held: int) -> bool {
 }
 // The facts type of record or union `record`: RecordType plus its place among
 // the source's records and unions, or 0 for one the source does not declare.
+// The count reads ScalarDeclares' fields in place: a call per earlier type was
+// most of the producer's time on the VM.
 ScalarRecordType :: (types: TypeDecl[], record: int) -> int {
     if (record < 0 || !ScalarDeclares(types, types[record])) {
         return 0;
     }
     ordinal: int = 0;
     for (index in 0..<record) {
-        if (ScalarDeclares(types, types[index])) {
+        kind := types[index].kind;
+        if (kind == OptionalDecl || ((kind == RecordDecl || kind == UnionDecl) && types[index].node >= 0)) {
             ordinal += 1;
         }
     }

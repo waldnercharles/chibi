@@ -337,7 +337,11 @@ instead of one host array for a compiler-sized module. Cases cover metadata
 across chunk boundaries, long retained/discarded lines, LF, CRLF, trailing CR
 and unterminated final metadata. Native line splitting and searching avoid
 per-byte VM dispatch while the retained marker list preserves source order. Build-host
-string, array, storage and process limits remain unchanged.
+string, array, storage and process limits remain unchanged. Additional publication
+cases put target metadata beyond 1 MiB of marker bytes (the process-probe output
+cap) and change the original input after optimization of its reserved snapshot.
+The link argv and receipt must still name the snapshot's archive; marker reads
+do not depend on grep, process output or a later re-read of the original input.
 
 `fixtures/stage-tool.sh` supplies the controlled `opt`, `llc` and linker: it
 rejects malformed argument shapes, records each argument on its own line and

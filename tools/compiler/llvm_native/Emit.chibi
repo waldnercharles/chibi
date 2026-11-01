@@ -216,7 +216,15 @@ pub ArrayText: int : 56;
 // array with no elements owns no memory and is skipped. The elements it
 // refers to own nothing the drop frees (D10, native drops).
 pub ArrayDrop: int : 57;
-pub InstructionCount: int : 58;
+// A string whose owner is not null holds one reference to it, a runtime
+// pin_text_owner: an atomic count, the length and the bytes, which ArrayText
+// makes with a count of 1. TextRetain adds a reference for the left slot's
+// string, and TextRelease gives one back, returning the owner to the context's
+// `release` when it was the last. A null owner (a literal, or text the host
+// owns and outlives the call) has nothing to count. Neither gives anything.
+pub TextRetain: int : 58;
+pub TextRelease: int : 59;
+pub InstructionCount: int : 60;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -236,8 +244,8 @@ Unary :: (op: int) -> bool {
 }
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
-           (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == StateStore || op == Deref ||
-           op == Poke;
+           (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
+           op == TextRelease || op == StateStore || op == Deref || op == Poke;
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -283,7 +291,8 @@ ReadsTarget :: (op: int) -> bool {
 // an allocation.
 ArrayCalls :: (op: int) -> bool {
     return op == ArrayGet || op == ArraySet || op == ArrayPush || op == ArrayCopy || op == ArrayExtend ||
-           op == ArraySlice || op == ArrayResize || op == ArrayBytes || op == ArrayText || op == ArrayDrop;
+           op == ArraySlice || op == ArrayResize || op == ArrayBytes || op == ArrayText || op == ArrayDrop ||
+           op == TextRelease || op == ArrayRemove;
 }
 // Whether an instruction reads argument slots: a call's or a format's.
 ReadsArguments :: (op: int) -> bool {
@@ -834,6 +843,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                                      item.type != slots[item.left])) {
             return Result.Rejected(base + pc, "native array drop differs from its operand");
         }
+        if ((item.op == TextRetain || item.op == TextRelease) &&
+            (!Index(item.left, length(slots)) || slots[item.left] != abi.TextStorage)) {
+            return Result.Rejected(base + pc, "native text reference differs from its operand");
+        }
         if ((item.op == ArrayPush || item.op == ArrayExtend) && item.literal != 0 && item.literal != 1) {
             return Result.Rejected(base + pc, "native array growth ownership is not 0 or 1");
         }
@@ -1235,6 +1248,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, StateWrite(item, pc));
     } else if (item.op == ArrayDrop) {
         out = format_text("{}{}", out, ArrayDropped(item, pc));
+    } else if (item.op == TextRetain || item.op == TextRelease) {
+        out = format_text("{}{}", out, TextCounted(item, pc));
     } else if (item.op == ArrayBytes) {
         out = format_text("{}{}", out, ArrayBytesRead(item, pc));
     } else if (item.op == ArrayText) {
@@ -1297,6 +1312,54 @@ Sized :: (name: string, type: int) -> string {
     out := format_text("  %{}.at = getelementptr {}, ptr null, i32 1\n", name, TypeName(type));
     return format_text("{}  %{} = ptrtoint ptr %{}.at to i64\n", out, name, name);
 }
+// A reference added to, or given back from, the owner of the string in the
+// left slot, by the module's helpers.
+TextCounted :: (item: Instruction, pc: int) -> string {
+    text := abi.TextType();
+    out := Load(format_text("t{}", pc), abi.TextStorage, "s", item.left);
+    out = format_text("{}  %owner{} = extractvalue {} %t{}, 2\n", out, pc, text, pc);
+    if (item.op == TextRetain) {
+        return format_text("{}  call void @chibi_scalar.retain(ptr %owner{})\n", out, pc);
+    }
+    return format_text("{}  call void @chibi_scalar.free(ptr %ctx, ptr %owner{})\n", out, pc);
+}
+// Whether an array of `type` holds strings, which each hold a reference.
+Holding :: (type: int) -> bool {
+    return type == ArrayType + abi.TextStorage;
+}
+// The helpers a module that counts references calls: one reference added to or
+// given back from an owner (null has none), and the same for the owner of each
+// of `count` strings from `data` on.
+TextHelpers :: () -> string {
+    out := "define internal void @chibi_scalar.retain(ptr %owner) {\nentry:\n  %counted = icmp ne ptr %owner, null\n";
+    out = format_text("{}  br i1 %counted, label %count, label %done\ncount:\n", out);
+    out = format_text("{}  %before = atomicrmw add ptr %owner, i64 1 monotonic\n  br label %done\ndone:\n  ret void\n}}\n", out);
+    out = format_text("{}define internal void @chibi_scalar.free(ptr %ctx, ptr %owner) {{\nentry:\n", out);
+    out = format_text("{}  %counted = icmp ne ptr %owner, null\n  br i1 %counted, label %count, label %done\ncount:\n", out);
+    out = format_text("{}  %before = atomicrmw sub ptr %owner, i64 1 acq_rel\n  %last = icmp eq i64 %before, 1\n", out);
+    out = format_text("{}  br i1 %last, label %release, label %done\nrelease:\n", out);
+    out = format_text("{}  %at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 4\n  %give = load ptr, ptr %at\n", out, abi.ContextType());
+    out = format_text("{}  call void %give(ptr %ctx, ptr %owner)\n  br label %done\ndone:\n  ret void\n}}\n", out);
+    out = format_text("{}define internal void @chibi_scalar.retain_range(ptr %data, i32 %count) {{\nentry:\n  br label %head\n", out);
+    out = format_text("{}head:\n  %index = phi i32 [ 0, %entry ], [ %next, %body ]\n  %end = icmp eq i32 %index, %count\n", out);
+    out = format_text("{}  br i1 %end, label %done, label %body\nbody:\n  %offset = zext i32 %index to i64\n", out);
+    out = format_text("{}  %at = getelementptr inbounds {}, ptr %data, i64 %offset, i32 2\n  %owner = load ptr, ptr %at\n", out, abi.TextType());
+    out = format_text("{}  call void @chibi_scalar.retain(ptr %owner)\n  %next = add i32 %index, 1\n  br label %head\ndone:\n  ret void\n}}\n", out);
+    out = format_text("{}define internal void @chibi_scalar.free_range(ptr %ctx, ptr %data, i32 %count) {{\nentry:\n  br label %head\n", out);
+    out = format_text("{}head:\n  %index = phi i32 [ 0, %entry ], [ %next, %body ]\n  %end = icmp eq i32 %index, %count\n", out);
+    out = format_text("{}  br i1 %end, label %done, label %body\nbody:\n  %offset = zext i32 %index to i64\n", out);
+    out = format_text("{}  %at = getelementptr inbounds {}, ptr %data, i64 %offset, i32 2\n  %owner = load ptr, ptr %at\n", out, abi.TextType());
+    return format_text("{}  call void @chibi_scalar.free(ptr %ctx, ptr %owner)\n  %next = add i32 %index, 1\n  br label %head\ndone:\n  ret void\n}}\n", out);
+}
+// Whether `code` counts references, so the module has the helpers.
+Counts :: (code: Instruction[]) -> bool {
+    for (item in code) {
+        if (item.op == TextRetain || item.op == TextRelease || item.op == ArrayDrop || Holding(item.type)) {
+            return true;
+        }
+    }
+    return false;
+}
 // The context's release of the elements of the array in the left slot, unless
 // it has none.
 ArrayDropped :: (item: Instruction, pc: int) -> string {
@@ -1304,7 +1367,11 @@ ArrayDropped :: (item: Instruction, pc: int) -> string {
     out := Load(format_text("a{}", pc), item.type, "s", item.left);
     out = format_text("{}  %data{} = extractvalue {} %a{}, 2\n  %held{} = icmp ne ptr %data{}, null\n", out, pc, array, pc,
                       pc, pc);
+    out = format_text("{}  %length{} = extractvalue {} %a{}, 0\n", out, pc, array, pc);
     out = format_text("{}  br i1 %held{}, label %drop{}, label %kept{}\ndrop{}:\n", out, pc, pc, pc, pc);
+    if (Holding(item.type)) {
+        out = format_text("{}  call void @chibi_scalar.free_range(ptr %ctx, ptr %data{}, i32 %length{})\n", out, pc, pc);
+    }
     out = format_text("{}{}", out, ContextCall(format_text("release{}", pc), 4));
     return format_text("{}  call void %release{}(ptr %ctx, ptr %data{})\n  br label %kept{}\nkept{}:\n", out, pc, pc, pc, pc);
 }
@@ -1388,6 +1455,9 @@ ArrayRead :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %data{} = extractvalue {} %a{}, 2\n  %offset{} = zext i32 %b{} to i64\n", out, pc, array, pc,
                       pc, pc);
     out = format_text("{}  %at{} = getelementptr inbounds {}, ptr %data{}, i64 %offset{}\n", out, pc, type, pc, pc);
+    if (item.op == ArraySet && Holding(item.type)) {
+        out = format_text("{}  call void @chibi_scalar.free_range(ptr %ctx, ptr %at{}, i32 1)\n", out, pc);
+    }
     if (item.op == ArrayGet) {
         out = format_text("{}  %v{} = load {}, ptr %at{}\n", out, pc, type, pc);
         return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
@@ -1468,6 +1538,9 @@ ArrayExtended :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %added{} = zext i32 %extra{} to i64\n  %extent{} = mul i64 %added{}, %size{}\n", out, pc, pc,
                       pc, pc, pc);
     out = format_text("{}  call void @chibi_scalar.copy(ptr %at{}, ptr %source{}, i64 %extent{})\n", out, pc, pc, pc);
+    if (Holding(item.type)) {
+        out = format_text("{}  call void @chibi_scalar.retain_range(ptr %at{}, i32 %extra{})\n", out, pc, pc);
+    }
     out = format_text("{}{}", out, ArrayStaleFree(item, pc));
     out = format_text("{}  %longer{} = insertvalue {} %a{}, i32 %total{}, 0\n", out, pc, array, pc, pc);
     out = format_text("{}  %roomy{} = insertvalue {} %longer{}, i32 %space{}, 1\n", out, pc, array, pc, pc);
@@ -1502,6 +1575,9 @@ ArraySliced :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %skip{} = zext i32 %first{} to i64\n", out, pc, pc);
     out = format_text("{}  %from{} = getelementptr inbounds {}, ptr %data{}, i64 %skip{}\n", out, pc, type, pc, pc);
     out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %from{}, i64 %bytes{})\n", out, pc, pc, pc);
+    if (Holding(item.type)) {
+        out = format_text("{}  call void @chibi_scalar.retain_range(ptr %fresh{}, i32 %n{})\n", out, pc, pc);
+    }
     out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
     out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %clone{} ]\n", out, pc, pc, pc, pc);
     out = format_text("{}  %sized{} = insertvalue {} zeroinitializer, i32 %n{}, 0\n", out, pc, array, pc);
@@ -1529,6 +1605,9 @@ ArrayResized :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %keep{} = zext i32 %kept{} to i64\n  %held{} = mul i64 %keep{}, %width{}\n", out, pc, pc, pc,
                       pc, pc);
     out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %held{})\n", out, pc, pc, pc);
+    if (Holding(item.type)) {
+        out = format_text("{}  call void @chibi_scalar.retain_range(ptr %fresh{}, i32 %kept{})\n", out, pc, pc);
+    }
     out = format_text("{}  %rest{} = getelementptr inbounds i8, ptr %fresh{}, i64 %held{}\n", out, pc, pc, pc);
     out = format_text("{}  %fill{} = sub i64 %bytes{}, %held{}\n", out, pc, pc, pc);
     out = format_text("{}  call void @chibi_scalar.zero(ptr %rest{}, i64 %fill{})\n", out, pc, pc);
@@ -1568,8 +1647,8 @@ ArrayBytesRead :: (item: Instruction, pc: int) -> string {
     return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
 }
 // A new string of the bytes of the left slot's array of bytes, empty when the
-// array is: they are copied to an allocation of the context's, which the
-// string borrows and nothing frees.
+// array is: they are copied to an allocation of the context's that the string
+// owns, with a count of 1, and none for an empty string.
 ArrayTextRead :: (item: Instruction, pc: int) -> string {
     array := abi.ArrayType();
     text := abi.TextType();
@@ -1578,13 +1657,19 @@ ArrayTextRead :: (item: Instruction, pc: int) -> string {
                       array, pc);
     out = format_text("{}  %none{} = icmp eq i32 %n{}, 0\n", out, pc, pc);
     out = format_text("{}  br i1 %none{}, label %done{}, label %make{}\nmake{}:\n", out, pc, pc, pc, pc);
-    out = format_text("{}  %bytes{} = zext i32 %n{} to i64\n", out, pc, pc);
-    out = format_text("{}{}", out, Allocated(format_text("fresh{}", pc), format_text("%bytes{}", pc)));
+    // The owner is the runtime's pin_text_owner: a count of 1, the length, then
+    // the bytes and a NUL, which the allocation's zeros give.
+    out = format_text("{}  %bytes{} = zext i32 %n{} to i64\n  %total{} = add i64 %bytes{}, 17\n", out, pc, pc, pc, pc);
+    out = format_text("{}{}", out, Allocated(format_text("owner{}", pc), format_text("%total{}", pc)));
+    out = format_text("{}  store i64 1, ptr %owner{}\n  %size.at{} = getelementptr inbounds i8, ptr %owner{}, i64 8\n", out, pc, pc, pc);
+    out = format_text("{}  store i32 %n{}, ptr %size.at{}\n  %fresh{} = getelementptr inbounds i8, ptr %owner{}, i64 12\n", out, pc, pc, pc, pc);
     out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %bytes{})\n", out, pc, pc, pc);
     out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
     out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %make{} ]\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %held{} = phi ptr [ null, %p{} ], [ %owner{}, %make{} ]\n", out, pc, pc, pc, pc);
     out = format_text("{}  %at{} = insertvalue {} zeroinitializer, ptr %buffer{}, 0\n", out, pc, text, pc);
-    out = format_text("{}  %v{} = insertvalue {} %at{}, i32 %n{}, 1\n", out, pc, text, pc, pc);
+    out = format_text("{}  %sized{} = insertvalue {} %at{}, i32 %n{}, 1\n", out, pc, text, pc, pc);
+    out = format_text("{}  %v{} = insertvalue {} %sized{}, ptr %held{}, 2\n", out, pc, text, pc, pc);
     return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
 }
 // Whether an element of the array loaded as %a<pc> equals the value in the
@@ -1631,6 +1716,9 @@ ArrayRemoved :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %after{} = add i32 %b{}, 1\n  %tail{} = sub i32 %length{}, %after{}\n", out, pc, pc, pc, pc, pc);
     out = format_text("{}  %to{} = zext i32 %b{} to i64\n  %from{} = zext i32 %after{} to i64\n", out, pc, pc, pc, pc);
     out = format_text("{}  %hole{} = getelementptr inbounds {}, ptr %data{}, i64 %to{}\n", out, pc, type, pc, pc);
+    if (Holding(item.type)) {
+        out = format_text("{}  call void @chibi_scalar.free_range(ptr %ctx, ptr %hole{}, i32 1)\n", out, pc);
+    }
     out = format_text("{}  %next{} = getelementptr inbounds {}, ptr %data{}, i64 %from{}\n", out, pc, type, pc, pc);
     out = format_text("{}  %count{} = zext i32 %tail{} to i64\n  %bytes{} = mul i64 %count{}, %width{}\n", out, pc, pc,
                       pc, pc, pc);
@@ -1654,6 +1742,9 @@ ArrayCopied :: (item: Instruction, pc: int) -> string {
     out = format_text("{}{}", out, Allocated(format_text("fresh{}", pc), format_text("%bytes{}", pc)));
     out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %bytes{})\n", out,
                       pc, pc, pc);
+    if (Holding(item.type)) {
+        out = format_text("{}  call void @chibi_scalar.retain_range(ptr %fresh{}, i32 %length{})\n", out, pc, pc);
+    }
     out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
     out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %clone{} ]\n", out, pc, pc, pc, pc);
     out = format_text("{}  %sized{} = insertvalue {} %a{}, i32 %length{}, 1\n", out, pc, array, pc, pc);
@@ -2366,6 +2457,9 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     }
     if (Zeroes(code)) {
         out.append(format_text("\n{}", ArrayZeroHelper()));
+    }
+    if (Counts(code)) {
+        out.append(format_text("\n{}", TextHelpers()));
     }
     cstrings := Cstrings(functions, slots, code, arguments);
     if (cstrings) {

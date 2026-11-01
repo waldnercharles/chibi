@@ -487,7 +487,7 @@ Shared :: (handle: u64) -> u64 {
 // Starts the program with `command`'s arguments, its standard streams being
 // `input`, `output` and `errors` when they are not zero, and returns its
 // process handle; -1 when it cannot be started.
-Start :: (command: string[], input: u64, output: u64, errors: u64) -> int {
+Create :: (command: string[], input: u64, output: u64, errors: u64) -> int {
     if length(command) == 0 {
         return -1;
     }
@@ -511,7 +511,7 @@ Start :: (command: string[], input: u64, output: u64, errors: u64) -> int {
 // standard streams, and returns its process handle; -1 when it cannot be
 // started.
 pub Spawn :: (command: string[]) -> int {
-    return Start(command, Shared(GetStdHandle(-10)), Shared(GetStdHandle(-11)), Shared(GetStdHandle(-12)));
+    return Create(command, Shared(GetStdHandle(-10)), Shared(GetStdHandle(-11)), Shared(GetStdHandle(-12)));
 }
 
 // Waits for the process, closes its handle and returns its exit status.
@@ -578,7 +578,7 @@ pub Capture :: (command: string[]) -> Output {
     if made == 0 {
         return result;
     }
-    process := Start(command, Shared(GetStdHandle(-10)), out_write[0], err_write[0]);
+    process := Create(command, Shared(GetStdHandle(-10)), out_write[0], err_write[0]);
     closed := CloseHandle(out_write[0]);
     closed = CloseHandle(err_write[0]);
     standard: u8[] = [];
@@ -616,4 +616,51 @@ pub Capture :: (command: string[]) -> Output {
     result.stdout = text_from_bytes(standard);
     result.stderr = text_from_bytes(errors);
     return result;
+}
+
+// Not implemented yet: each reports failure, as core:os documents for Windows.
+pub Platform :: () -> string {
+    return "Windows";
+}
+
+pub Stamp :: (path: string) -> string {
+    return "";
+}
+
+pub Copy :: (source: string, destination: string) -> bool {
+    return false;
+}
+
+pub Reserve :: (path: string) -> bool {
+    return false;
+}
+
+pub Publish :: (source: string, destination: string) -> bool {
+    return false;
+}
+
+pub RealPath :: (path: string) -> string {
+    return "";
+}
+
+pub Root :: () -> string {
+    return "";
+}
+
+pub FindExecutable :: (name: string) -> string {
+    return "";
+}
+
+pub Start :: (command: string[], piped: bool) -> int {
+    return -1;
+}
+
+pub StillRunning: int : 65536;
+
+pub WaitFor :: (process: int, timeout_ms: int) -> int {
+    return 127;
+}
+
+pub Kill :: (process: int) -> int {
+    return 127;
 }

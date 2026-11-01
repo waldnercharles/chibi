@@ -685,12 +685,12 @@ Digest :: (path: string) -> string {
 // --core DIR --output FILE --llvm DIR` writes a native executable with the same
 // interface; exit 1 means the native lane rejected the sources, and the first
 // stderr line then names the first rejected function.
-NativeStage :: (name: string, stage: string, directory: string, llvm: string, dry: bool) -> int {
+NativeStage :: (name: string, stage: string, directory: string, llvm: string, target: string, dry: bool) -> int {
     status := Step(name, ["sh", "-c", Join(["rm -rf '", directory, "' && mkdir -p '", directory, "'"])], dry)
     if (status != 0) {
         return status
     }
-    command := [stage, "--compiler", Absolute("tools/compiler"), "--core", Absolute("packages/core"), "--output", Join([directory, "/chibi"]), "--llvm", llvm]
+    command := [stage, "--compiler", Absolute("tools/compiler"), "--core", Absolute("packages/core"), "--output", Join([directory, "/chibi"]), "--llvm", llvm, "--target", target]
     began := Clock()
     if (dry) {
         return Step(name, command, dry)
@@ -701,6 +701,80 @@ NativeStage :: (name: string, stage: string, directory: string, llvm: string, dr
         os.Print(Join([name, " rejected: ", strings.TrimSpace(ran.stderr)]))
     }
     return ran.status
+}
+
+// Compiles the program `source` (entry `function`) to the native executable
+// `folder`/`name` with the native driver `stage`; `more` are further driver options.
+NativeCompile :: (stage: string, llvm: string, folder: string, target: string, name: string, source: string,
+                  function: string, more: string[]) -> int {
+    command := [
+        stage, "--compiler", Absolute("tools/compiler"), "--core", Absolute("packages/core"), "--source", Absolute(source),
+        "--entry", function, "--output", Join([folder, "/", name]), "--llvm", llvm, "--target", target
+    ]
+    began := Clock()
+    built := os.Capture(extend(command, more))
+    os.Print(format_text("native runner: {} compiled in {} s, exit {}", name, Clock() - began, built.status))
+    if (built.status != 0) {
+        os.Print(Join(["native runner: ", name, " rejected: ", strings.TrimSpace(built.stderr)]))
+    }
+    return built.status
+}
+
+// Proves the native build runner: stage one compiles this driver and the graph
+// program (`Graph.chibi Libraries`, which reads the `graph` collection) to native
+// executables, and each prints what the VM-hosted program prints: the driver its
+// dry-run commands, the graph its compile and link commands.
+NativeRunner :: (stage: string, llvm: string, work: string, target: string, host: string, graph_too: bool) -> int {
+    folder := Join([work, "/runner"])
+    status := Step("runner-folder", ["sh", "-c", Join(["rm -rf '", folder, "' && mkdir -p '", folder, "'"])], false)
+    if (status != 0) {
+        return status
+    }
+    if (NativeCompile(stage, llvm, folder, target, "driver", "tools/toolchain/Driver.chibi", "Main", []) != 0 ||
+        NativeCompile(stage, llvm, folder, target, "graph", "tools/toolchain/Graph.chibi", "Libraries",
+                      ["--collection", Join(["graph=", Absolute("tools/graph")])]) != 0) {
+        return 1
+    }
+    dry := ["build", "--dry-run", "--target", "chibi-compiler-host", "--build", Join([folder, "/dry-build"])]
+    vm := os.Capture(extend(Program(host, "tools/toolchain/Driver.chibi", "Main", [], "600000"), dry))
+    native := os.Capture(extend([Join([folder, "/driver"])], dry))
+    if (vm.status != 0 || vm.status != native.status || vm.stdout != native.stdout || vm.stderr != native.stderr) {
+        os.Print("native runner: the native driver's dry run fails or differs from the VM's")
+        os.Print(Join(["vm: ", vm.stdout, vm.stderr]))
+        os.Print(Join(["native: ", native.stdout, native.stderr]))
+        return 1
+    }
+    os.Print("native runner: the dry-run commands match")
+    if (!graph_too) {
+        return 0
+    }
+    graph := ["--profile", "release", "--jobs", "2", "--commands-only", "on", "--target", "chibi-compiler-host"]
+    vm_commands := Join([folder, "/vm"])
+    native_commands := Join([folder, "/native"])
+    vm = os.Capture(extend(extend(Program(host, "tools/toolchain/Graph.chibi", "Libraries", ["graph=tools/graph"], "1800000"), graph), ["--build", vm_commands]))
+    native = os.Capture(extend(extend([Join([folder, "/graph"])], graph), ["--build", native_commands]))
+    if (vm.status != 0 || native.status != 0) {
+        os.Print(format_text("native runner: the graph exits {} natively and {} on the VM: {}{}", native.status, vm.status, native.stderr, vm.stderr))
+        return 1
+    }
+    for (name in ["compile_commands.json", "link_commands.json"]) {
+        a := os.ReadText(Join([vm_commands, "/", name]))
+        if (a.error) {
+            os.Print(Join(["native runner: the VM's graph wrote no ", name]))
+            return 1
+        }
+        b := os.ReadText(Join([native_commands, "/", name]))
+        if (b.error) {
+            os.Print(Join(["native runner: the native graph wrote no ", name]))
+            return 1
+        }
+        if (strings.ReplaceAll(a.text, vm_commands, "/BUILD") != strings.ReplaceAll(b.text, native_commands, "/BUILD")) {
+            os.Print(Join(["native runner: ", name, " differs between the native graph and the VM's"]))
+            return 1
+        }
+    }
+    os.Print("native runner: the graph's compile and link commands match")
+    return 0
 }
 
 // Proves goal item 1: the native stage one compiles tools/compiler to stage
@@ -760,11 +834,11 @@ NativeSelfHost :: (arguments: string[]) -> int {
     }
     two := Join([work, "/stage2"])
     three := Join([work, "/stage3"])
-    status = NativeStage("stage-two", stage_one, two, llvm, dry)
+    status = NativeStage("stage-two", stage_one, two, llvm, target, dry)
     if (status != 0) {
         return status
     }
-    status = NativeStage("stage-three", Join([two, "/chibi"]), three, llvm, dry)
+    status = NativeStage("stage-three", Join([two, "/chibi"]), three, llvm, target, dry)
     if (status != 0) {
         return status
     }
@@ -776,6 +850,12 @@ NativeSelfHost :: (arguments: string[]) -> int {
         if (digest_two == "" || digest_two != digest_three) {
             os.Print("native-self-host: stage two and stage three differ")
             return 1
+        }
+    }
+    if (!dry) {
+        status = NativeRunner(Join([two, "/chibi"]), llvm, work, target, Join([releases, "/sdk/chibi-build-host"]), !Flag(arguments, "--skip-vm"))
+        if (status != 0) {
+            return status
         }
     }
     if (!Flag(arguments, "--skip-vm")) {
@@ -848,7 +928,11 @@ Census :: () -> int {
         if (!is_c && !is_shim) {
             continue
         }
-        lines := strings.Count(build.read_file(Absolute(path)), "\n")
+        read := os.ReadText(Absolute(path))
+        lines := 0
+        if (!read.error) {
+            lines = strings.Count(read.text, "\n")
+        }
         if (is_c) {
             c_files = c_files + 1
             c_lines = c_lines + lines

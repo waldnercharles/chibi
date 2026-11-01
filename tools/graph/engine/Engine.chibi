@@ -1,7 +1,9 @@
 package engine
 
 import c "graph:c"
+import files "graph:files"
 import os "core:os"
+import target "core:target"
 import strings "core:strings"
 
 // Builds the engine's libraries, which Targets.chibi describes, with the C
@@ -97,7 +99,7 @@ pub ClangResourceInclude :: (libclang_library: string) -> string {
     major := strings.Slice(version, 0, digits);
     found := "";
     resources := Join([library_dir, "/clang"]);
-    for (name in build.list_directory(resources)) {
+    for (name in files.Names(resources)) {
         if (major != "" && name != major && !strings.HasPrefix(name, Join([major, "."]))) {
             continue;
         }
@@ -206,6 +208,37 @@ LinkLibraries :: (source_root: string, build_dir: string, target: string, profil
     return libraries;
 }
 
+// `0xNN,` for each byte of the file, the initializer list of a C array. The
+// build host has it as a native; a native program writes the same text itself.
+when target.Native == 1 {
+    Digit :: (nibble: int) -> u8 {
+        if (nibble < 10) {
+            return u8(48 + nibble);
+        }
+        return u8(87 + nibble);
+    }
+
+    ByteList :: (path: string) -> string {
+        read := os.ReadBytes(path);
+        if (read.error != nil) {
+            return "";
+        }
+        out: u8[] = [];
+        for (byte in read.data) {
+            out.append(48);
+            out.append(120);
+            out.append(Digit(int(byte) / 16));
+            out.append(Digit(int(byte) % 16));
+            out.append(44);
+        }
+        return text_from_bytes(out);
+    }
+} else {
+    ByteList :: (path: string) -> string {
+        return build.byte_list(path);
+    }
+}
+
 Join :: (parts: string[]) -> string {
     return strings.Join(parts, "");
 }
@@ -248,12 +281,12 @@ Rewrite :: (source_root: string, build_dir: string, third_party: string, target:
         if (!os.Exists(input)) {
             return false;
         }
-        code := build.read_file(input);
+        code := files.Text(input);
         for (rename in Renames(target)) {
             code = strings.ReplaceAll(code, strings.Partition(rename, "=").head, strings.Partition(rename, "=").tail);
         }
         output := Join([HeaderRoot(build_dir, target, "private"), "/", strings.Partition(rewrite, "=").head]);
-        if (os.Exists(output) && build.read_file(output) == code) {
+        if (os.Exists(output) && files.Text(output) == code) {
             continue;
         }
         if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/"))) || os.WriteText(output, code)) {
@@ -323,7 +356,7 @@ Expand :: (source_root: string, build_dir: string, profile: Profile, define: str
         return text;
     }
     rest := strings.Partition(text, "{sha256:").tail;
-    sha256 := build.hash_file(Join([source_root, "/", strings.Partition(rest, "}").head]));
+    sha256 := files.Digest(Join([source_root, "/", strings.Partition(rest, "}").head]));
     return Join([strings.Partition(text, "{sha256:").head, sha256, strings.Partition(rest, "}").tail]);
 }
 
@@ -337,7 +370,7 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
         if (!os.Exists(input)) {
             return false;
         }
-        text := build.read_file(input);
+        text := files.Text(input);
         if (strings.HasSuffix(input, ".in")) {
             parts := Substituted(source_root, build_dir, profile, target, text);
             if (length(parts) == 0) {
@@ -346,7 +379,7 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
             text = strings.Join(parts, "");
         }
         output := Join([HeaderRoot(build_dir, target, "private"), "/", strings.Partition(configure, "=").head]);
-        if (os.Exists(output) && build.read_file(output) == text) {
+        if (os.Exists(output) && files.Text(output) == text) {
             continue;
         }
         if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/"))) || os.WriteText(output, text)) {
@@ -358,7 +391,7 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
 
 // The shared SDK version authority, also read by the CMake compatibility path.
 pub SDKVersion :: (source_root: string) -> string {
-    return strings.TrimSpace(build.read_file(Join([source_root, "/sdk/VERSION"])));
+    return strings.TrimSpace(files.Text(Join([source_root, "/sdk/VERSION"])));
 }
 
 // The build identity document sdk/artifact_formats.cmake writes, which
@@ -412,7 +445,7 @@ FormatRecord :: (source_root: string, fields: string[]) -> string {
             codecs := ["execution/prepared_function.c", "execution/prepared_record.c"];
             for (source in codecs) {
                 implementation.append(Join(["{\"source\": \"src/", source, "\", \"sha256\": \"",
-                                            build.hash_file(Join([source_root, "/src/", source])), "\"}"]));
+                                            files.Digest(Join([source_root, "/src/", source])), "\"}"]));
             }
             parts.extend([", \"implementation\": [", strings.Join(implementation, ", "), "]"]);
         }
@@ -425,9 +458,9 @@ FormatRecord :: (source_root: string, fields: string[]) -> string {
 // is a copy of the one below src/.
 Owner :: (source_root: string, source: string, header: string) -> string {
     return Join([
-        "\"source\": \"src/", source, "\", \"sha256\": \"", build.hash_file(Join([source_root, "/src/", source])),
+        "\"source\": \"src/", source, "\", \"sha256\": \"", files.Digest(Join([source_root, "/src/", source])),
         "\", \"header\": \"src/", header, "\", \"header_sha256\": \"",
-        build.hash_file(Join([source_root, "/src/", header])), "\""
+        files.Digest(Join([source_root, "/src/", header])), "\""
     ]);
 }
 
@@ -435,7 +468,7 @@ Owner :: (source_root: string, source: string, header: string) -> string {
 // declares, or empty when it declares none.
 Version :: (path: string, define: string) -> string {
     prefix := Join(["#define ", define, " "]);
-    for (line in strings.Lines(build.read_file(path))) {
+    for (line in strings.Lines(files.Text(path))) {
         if (!strings.HasPrefix(line, prefix)) {
             continue;
         }
@@ -458,7 +491,7 @@ pub WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) 
     if (text == "") {
         return false;
     }
-    if (os.Exists(path) && build.read_file(path) == text) {
+    if (os.Exists(path) && files.Text(path) == text) {
         return true;
     }
     if (os.MakeDirectory(Join([build_dir, "/sdk"])) || os.WriteText(path, text)) {
@@ -470,7 +503,7 @@ pub WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) 
 // Removes a file, or a directory and what is below it.
 RemoveTree :: (path: string) -> bool {
     if (os.IsDirectory(path)) {
-        for (name in build.list_directory(path)) {
+        for (name in files.Names(path)) {
             if (!RemoveTree(Join([path, "/", name]))) {
                 return false;
             }
@@ -484,13 +517,13 @@ RemoveTree :: (path: string) -> bool {
 // removed, so a file deleted from the source is gone from the copy.
 pub CopyChanged :: (from: string, to: string) -> bool {
     if (os.IsDirectory(from)) {
-        names := build.list_directory(from);
+        names := files.Names(from);
         for (name in names) {
             if (!CopyChanged(Join([from, "/", name]), Join([to, "/", name]))) {
                 return false;
             }
         }
-        for (held in build.list_directory(to)) {
+        for (held in files.Names(to)) {
             kept := false;
             for (name in names) {
                 kept = kept || name == held;
@@ -501,7 +534,7 @@ pub CopyChanged :: (from: string, to: string) -> bool {
         }
         return true;
     }
-    if (os.Exists(to) && build.hash_file(to) == build.hash_file(from)) {
+    if (os.Exists(to) && files.Digest(to) == files.Digest(from)) {
         return true;
     }
     if (os.MakeDirectory(strings.Slice(to, 0, strings.LastIndex(to, "/"))) || os.Copy(from, to)) {
@@ -513,7 +546,7 @@ pub CopyChanged :: (from: string, to: string) -> bool {
 // The .chibi files below a directory, by path.
 ChibiSources :: (directory: string) -> string[] {
     sources: string[] = [];
-    for (name in build.list_directory(directory)) {
+    for (name in files.Names(directory)) {
         path := Join([directory, "/", name]);
         if (os.IsDirectory(path)) {
             sources.extend(ChibiSources(path));
@@ -551,7 +584,7 @@ WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> 
         listed := ChibiSources(Join([source_root, "/", strings.Partition(source_list, "=").tail]));
         text := Join([strings.Join(Sorted(listed), "\n"), "\n"]);
         output := Resolve(source_root, build_dir, "", strings.Partition(source_list, "=").head);
-        if (os.Exists(output) && build.read_file(output) == text) {
+        if (os.Exists(output) && files.Text(output) == text) {
             continue;
         }
         if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/"))) || os.WriteText(output, text)) {
@@ -585,7 +618,7 @@ Configured :: (target: string) -> string[] {
 // named .chibi and nested packages are not members of this package.
 TestSources :: (directory: string) -> string[] {
     names: string[] = [];
-    for (name in build.list_directory(directory)) {
+    for (name in files.Names(directory)) {
         if (strings.HasSuffix(name, ".chibi") &&
             !os.IsDirectory(Join([directory, "/", name]))) {
             names.append(name);
@@ -612,7 +645,7 @@ TestSubstitution :: (source_root: string, value: string) -> string {
         symbol := format_text("{}_{}", prefix, index);
         if (kind == "test-sources") {
             lines.append(Join(["static const char ", symbol, "[] = { ",
-                               build.byte_list(Join([directory, "/", names[index]])), " 0 };\n"]));
+                               ByteList(Join([directory, "/", names[index]])), " 0 };\n"]));
         } else {
             lines.append(Join(["    PACKAGE_COMPILER_SOURCE(\"", identity, "/", names[index],
                                "\", ", symbol, "), \\\n"]));
@@ -651,9 +684,9 @@ Substitute :: (source_root: string, build_dir: string, profile: Profile, value: 
     }
     path := Join([source_root, "/", strings.Partition(value, ":").tail]);
     if (strings.Partition(value, ":").head == "bytes") {
-        return build.byte_list(path);
+        return ByteList(path);
     }
-    text := strings.ReplaceAll(build.read_file(path), "\\", "\\\\");
+    text := strings.ReplaceAll(files.Text(path), "\\", "\\\\");
     text = strings.ReplaceAll(text, "\"", "\\\"");
     return strings.ReplaceAll(text, "\n", "\\n\"\n\"");
 }
@@ -746,10 +779,10 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
     command := [build_host, "--compiler", "tools/compiler",
                 "--compiler-core", "packages/core", "--root", root,
                 "--source", "tools/toolchain/AssetCompiler.chibi", "--core", "packages/core",
-                "--collection", "asset_generator=tools/graph/asset_compiler", "--entry", "Build", "--timeout-ms", timeout, "--",
+                "--collection", "graph=tools/graph", "--entry", "Build", "--timeout-ms", timeout, "--",
                 compiler_host, output];
     inputs := [build_host, compiler_host];
-    for (directory in ["tools/compiler", "packages/core", "tools/graph/asset_compiler"]) {
+    for (directory in ["tools/compiler", "packages/core", "tools/graph/asset_compiler", "tools/graph/files"]) {
         inputs.extend(ChibiSources(Join([root, "/", directory])));
     }
     for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json",
@@ -763,7 +796,7 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
     }
     inventory := Join([output, "/input-inventory.txt"]);
     listing := strings.Join(inputs, "\n");
-    if (!os.Exists(inventory) || build.read_file(inventory) != listing) {
+    if (!os.Exists(inventory) || files.Text(inventory) != listing) {
         if (os.MakeDirectory(output) || os.WriteText(inventory, listing)) {
             return -1;
         }

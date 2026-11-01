@@ -1528,6 +1528,62 @@ ComparisonOperator :: (operator: int) -> bool {
     return operator == tk.CmpEq || operator == tk.NotEq || operator == tk.Lt || operator == tk.LtEq || operator == tk.Gt ||
            operator == tk.GtEq;
 }
+// The floating type that compares two operands, 0 when they are not floating:
+// the type of either, left first, else the spelled type of a floating literal.
+ComparisonStorage :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], aliases: Name[],
+                      package: int, left: int, right: int) -> int {
+    typed := ConstantType(forest, text, constants, aliases, package, left);
+    if (typed == 0) {
+        typed = ConstantType(forest, text, constants, aliases, package, right);
+    }
+    if (typed == 0 && Floating(UntypedStorage(forest, text, left))) {
+        typed = UntypedStorage(forest, text, left);
+    }
+    if (typed == 0 && Floating(UntypedStorage(forest, text, right))) {
+        typed = UntypedStorage(forest, text, right);
+    }
+    if (Floating(typed)) {
+        return typed;
+    }
+    return 0;
+}
+// A comparison of floating operands of `storage`: ordered by value, with NaN
+// unequal to everything and unordered.
+FoldFloatComparison :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[],
+                        aliases: Name[], package: int, value: int, operator: int, storage: int) -> Decided {
+    left: u64 = 0;
+    switch FoldConstant(forest, text, file, constants, aliases, package, Field(forest, value, syntax.FieldLeft), storage) {
+        case .Failed(diagnostic):
+            return Decided.Failed(diagnostic);
+        case .Waiting:
+            return Decided.Waiting;
+        case .Folded(bits):
+            left = bits;
+    }
+    right: u64 = 0;
+    switch FoldConstant(forest, text, file, constants, aliases, package, Field(forest, value, syntax.FieldRight), storage) {
+        case .Failed(diagnostic):
+            return Decided.Failed(diagnostic);
+        case .Waiting:
+            return Decided.Waiting;
+        case .Folded(bits):
+            right = bits;
+    }
+    order := FloatCompare(left, right, storage);
+    taken := false;
+    if (operator == tk.CmpEq) {
+        taken = order == 0;
+    } else if (operator == tk.NotEq) {
+        taken = order != 0;
+    } else if (order != 2) {
+        taken = (operator == tk.Lt && order < 0) || (operator == tk.LtEq && order <= 0) ||
+                (operator == tk.Gt && order > 0) || (operator == tk.GtEq && order >= 0);
+    }
+    if (taken) {
+        return Decided.Yes;
+    }
+    return Decided.No;
+}
 FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
                   package: int, node: int) -> Decided {
     value := Unparenthesized(forest, node);
@@ -1589,6 +1645,11 @@ FoldCondition :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
     }
     if (!ComparisonOperator(operator)) {
         return Decided.Failed(Diagnose(forest, node, file, "a when condition must be constant"));
+    }
+    operands := ComparisonStorage(forest, text, constants, aliases, package, Field(forest, value, syntax.FieldLeft),
+                                  Field(forest, value, syntax.FieldRight));
+    if (Floating(operands)) {
+        return FoldFloatComparison(forest, text, file, constants, aliases, package, value, operator, operands);
     }
     left: u64 = 0;
     switch FoldConstant(forest, text, file, constants, aliases, package, Field(forest, value, syntax.FieldLeft), IntStorage) {
@@ -2499,6 +2560,30 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
                     }
                     return Folding.Folded(bits);
             }
+        }
+        if (Is(forest, value, syntax.BinaryExpression) &&
+            (operator == tk.Add || operator == tk.Sub || operator == tk.Mul || operator == tk.Quo)) {
+            left: u64 = 0;
+            switch FoldConstant(forest, text, file, constants, aliases, package, Field(forest, value, syntax.FieldLeft),
+                                storage) {
+                case .Failed(diagnostic):
+                    return Folding.Failed(diagnostic);
+                case .Waiting:
+                    return Folding.Waiting;
+                case .Folded(bits):
+                    left = bits;
+            }
+            right: u64 = 0;
+            switch FoldConstant(forest, text, file, constants, aliases, package, Field(forest, value, syntax.FieldRight),
+                                storage) {
+                case .Failed(diagnostic):
+                    return Folding.Failed(diagnostic);
+                case .Waiting:
+                    return Folding.Waiting;
+                case .Folded(bits):
+                    right = bits;
+            }
+            return Folding.Folded(FloatArithmetic(operator, left, right, storage));
         }
         return Folding.Failed(Diagnose(forest, value, file, "floating constant initializer is not supported yet"));
     }

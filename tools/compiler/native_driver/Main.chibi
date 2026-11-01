@@ -86,10 +86,13 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
     found: string[] = [];
     prefix := strings.Concatenate([collection, ":"]);
     for (line in strings.SplitLines(text)) {
-        if (!strings.HasPrefix(line, "import ")) {
+        // The indented imports of a `when` branch count too, so the snapshot
+        // holds every package a kept branch may import.
+        trimmed := strings.TrimSpace(line);
+        if (!strings.HasPrefix(trimmed, "import ")) {
             continue;
         }
-        parts := strings.Split(line, "\"");
+        parts := strings.Split(trimmed, "\"");
         if (length(parts) >= 3 && strings.HasPrefix(parts[1], prefix)) {
             found.append(strings.TrimPrefix(parts[1], prefix));
         }

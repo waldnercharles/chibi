@@ -378,7 +378,7 @@ pub Split :: (line: string) -> string[] {
 // A finished child process: its exit status (-1 when it could not be waited
 // for, 127 when the program could not be started) and, for Capture, what it
 // wrote.
-pub Result :: struct {
+pub Output :: struct {
     status: int;
     stdout: string;
     stderr: string;
@@ -564,8 +564,8 @@ Take :: (pipe: u64, count: int) -> u8[] {
 
 // Runs the program with its standard output and error read into the result.
 // Both pipes are read together, so a child filling one cannot stop on the other.
-pub Capture :: (command: string[]) -> Result {
-    result: Result = {status: 127, stdout: "", stderr: ""};
+pub Capture :: (command: string[]) -> Output {
+    result: Output = {status: 127, stdout: "", stderr: ""};
     if length(command) == 0 {
         return result;
     }

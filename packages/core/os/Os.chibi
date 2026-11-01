@@ -126,6 +126,8 @@ when target.Native == 1 {
         return nil;
     }
 
+    // The names in a directory, in the order the OS lists them: unspecified, and
+    // different from the VM's. A caller that needs one order sorts.
     pub List :: (path: string) -> (names: string[], error: Error?) {
         if (sys.Kind(path) != KindDirectory) {
             empty: string[] = [];
@@ -272,7 +274,9 @@ pub Publish :: (source: string, destination: string) -> Error? {
     return nil;
 }
 
-// The names in a directory, in the order the host lists them.
+// The names in a directory, in the order unspecified here: the build host sorts
+// them by name today, a native program gets the OS order. A caller that needs
+// one order sorts.
 pub List :: (path: string) -> (names: string[], error: Error?) {
     if (Kind(path) != KindDirectory) {
         empty: string[] = [];

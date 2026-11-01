@@ -2621,7 +2621,7 @@ static bool native_module_ir(const char *target, const native_module *m, char **
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 96
+    SCALAR_ACCEPTED_CASES = 97
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -3361,7 +3361,7 @@ static int library_child(const char *library, int count, char **specs)
             value = ((scalar_runtime_entry)function)(&frame.context);
             execution_native_frame_free(&frame);
             /* A case about drops lets nothing go. */
-            if (strstr(library, "array_drops") && entry_allocations != entry_releases) {
+            if (strstr(library, "_drops") && entry_allocations != entry_releases) {
                 fprintf(stderr, "native scalar leak: %zu allocations, %zu releases\n", entry_allocations, entry_releases);
                 return 1;
             }

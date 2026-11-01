@@ -890,6 +890,41 @@ SwapsARunningLoopKeepingState :: (suite: Suite) {
     assert(status == 7, "the swapped Frame kept its state");
 }
 
+// Runs the library `first` under the loop host, publishes `edited` as the next
+// generation while it runs, and gives the status the host stops with.
+SwappedStatus :: (suite: Suite, name: string, first: string, edited: string) -> int {
+    built := Reset(suite, Path([name, "-host"]), Read(Path([os.Root(), "/apps/host/Host.chibi"])));
+    RealTools(suite, built);
+    result := Build(suite, suite.built, built, ["-O0"]);
+    assert(result.status == 0, "the loop host builds");
+    host := Printed(result);
+    run := Path([suite.folder, "/", name, "-run"]);
+    Make(run);
+    Generation(suite, Path([name, "-first"]), first, Path([run, "/live-0.so"]));
+    process := os.Start(In(run, host), os.Inherited);
+    assert(Waited(process, 50) == os.StillRunning, "the host runs the first generation");
+    Generation(suite, Path([name, "-edited"]), edited, Path([run, "/pending.so"]));
+    assert(os.Rename(Path([run, "/pending.so"]), Path([run, "/next.so"])) == nil, "the next generation is published");
+    status := Waited(process, 90000);
+    if (status == os.StillRunning) {
+        status = os.Kill(process);
+    }
+    return status;
+}
+
+// A retained state whose type changed converts as the language converts: an
+// int count becomes an f64 and a 5,000,000,000 i64 clamps into an int. The
+// edited Frame returns 7 only when both did, 3 when the count restarted and 4
+// when the clamp did not happen.
+ConvertsARetainedStateWhoseTypeChanged :: (suite: Suite) {
+    if (os.Platform() != "Linux") {
+        return;
+    }
+    first := "Loop :: library {\n    Main :: () -> int { return 0; }\n    Frame :: () -> int {\n        count: retain int = 0;\n        big: retain i64 = 5000000000;\n        count += 1;\n        return 0;\n    }\n}\n";
+    edited := "Loop :: library {\n    Main :: () -> int { return 9; }\n    Frame :: () -> int {\n        count: retain f64 = 0.5;\n        big: retain int = 0;\n        count += 1.0;\n        if count < 3.0 { return 3; }\n        if big != 2147483647 { return 4; }\n        return 7;\n    }\n}\n";
+    assert(SwappedStatus(suite, "converts", first, edited) == 7, "the states converted across the swap");
+}
+
 // `chibi run --native --watch`: the CLI builds the loop host and the first
 // generation of the source, runs the host, and when the source is saved while
 // the loop runs, rebuilds it and publishes the next generation, which the host
@@ -991,7 +1026,7 @@ Cases :: (llvm: bool) -> string[] {
               "RefusesAnIncompleteOutput"];
     if (llvm) {
         names.extend(["RunsWithLLVMAndNoCCompiler", "LinksAVendoredArchive", "CallsThroughAFunctionPointer",
-                      "PassesAByteArrayToC", "SwapsARunningLoopKeepingState", "WatchesAndSwapsARunningLoop",
+                      "PassesAByteArrayToC", "SwapsARunningLoopKeepingState", "ConvertsARetainedStateWhoseTypeChanged", "WatchesAndSwapsARunningLoop",
                       "ReportsAFailedAssert", "FreesWhatItDrops", "FreesTheStringsItDrops", "FormatsTextWithoutTheVM", "RunsTheForeignSamples", "BuildsTheWorkloads", "GivesCAnAuthoredFunction", "LinksOtherTargetsWithLLVM",
                       "ImportsFromAWindowsSystemLibrary", "AllocatesOnWindowsWithoutLibc", "LinksCoreSysWindows"]);
     }
@@ -1040,6 +1075,8 @@ RunCase :: (suite: Suite, name: string) {
         LinksOtherTargetsWithLLVM(suite);
     } else if (name == "SwapsARunningLoopKeepingState") {
         SwapsARunningLoopKeepingState(suite);
+    } else if (name == "ConvertsARetainedStateWhoseTypeChanged") {
+        ConvertsARetainedStateWhoseTypeChanged(suite);
     } else if (name == "WatchesAndSwapsARunningLoop") {
         WatchesAndSwapsARunningLoop(suite);
     } else if (name == "ImportsFromAWindowsSystemLibrary") {
@@ -1095,9 +1132,14 @@ pub Run :: () -> int {
         os.Print("native build: set CHIBI_LLVM_BIN to link with real LLVM tools");
     }
     names := Cases(suite.llvm != "");
+    // Each case's exit status by its index in names, so the report follows
+    // Cases' order rather than the order the cases finish in.
+    statuses: int[] = [];
+    for (index in 0..<length(names)) {
+        statuses.append(0);
+    }
     running: int[] = [];
-    owners: string[] = [];
-    failed: string[] = [];
+    owners: int[] = [];
     next := 0;
     while (next < length(names) || length(running) > 0) {
         while (next < length(names) && length(running) < 4) {
@@ -1106,27 +1148,33 @@ pub Run :: () -> int {
                                      Path([os.Root(), "/test/native_aot/native_build/BuildTests.chibi"]), "--core",
                                      Path([os.Root(), "/packages/core"]), "--entry", "One", "--timeout-ms", "1200000", "--",
                                      folder, built, suite.launcher, names[next]], os.Inherited));
-            owners.append(names[next]);
+            owners.append(next);
             next += 1;
         }
         still: int[] = [];
-        kept: string[] = [];
+        kept: int[] = [];
         for (index in 0..<length(running)) {
             status := os.Wait(running[index], 50);
             if (status == os.StillRunning) {
                 still.append(running[index]);
                 kept.append(owners[index]);
-            } else if (status != 0) {
-                failed.append(owners[index]);
+            } else {
+                statuses[owners[index]] = status;
             }
         }
         running = still;
         owners = kept;
     }
-    for (name in failed) {
-        os.Print(Path(["native build: ", name, " FAILED"]));
+    failures := 0;
+    for (index in 0..<length(names)) {
+        if (statuses[index] == 0) {
+            os.Print(Path(["native build: ", names[index], " passed"]));
+        } else {
+            os.Print(Path(["native build: ", names[index], " FAILED"]));
+            failures += 1;
+        }
     }
-    assert(length(failed) == 0, "every case passes");
+    assert(failures == 0, "every case passes");
     assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the scratch cleanup");
     return 0;
 }

@@ -2,6 +2,7 @@ package native_driver
 
 import link "project:native_link"
 import host "project:native_link_host"
+import route "project:driver_paths"
 import os "core:os"
 import strings "core:strings"
 
@@ -36,6 +37,7 @@ Main :: () -> int {
     }
     collections: string[] = ["core"];
     directories: string[] = [core];
+    seen: string[] = [route.Visible(core)];
     for (declared in Values(arguments, "--collection")) {
         equals := strings.Index(declared, "=");
         if (equals <= 0) {
@@ -44,12 +46,13 @@ Main :: () -> int {
         }
         name := strings.Slice(declared, 0, equals);
         directory := strings.Slice(declared, equals + 1, strings.ByteLength(declared) - equals - 1);
-        if (!strings.HasPrefix(directory, "/") || Contains(collections, name)) {
+        if (!strings.HasPrefix(route.Visible(directory), "/") || Contains(collections, name)) {
             os.Print(strings.Concatenate(["native: --collection takes a new name and an absolute directory, not ", declared]));
             return 2;
         }
         collections.append(name);
         directories.append(directory);
+        seen.append(route.Visible(directory));
     }
     gathered := Gather(project, collections, directories, package, source);
     if (gathered.problem != "") {
@@ -57,12 +60,20 @@ Main :: () -> int {
         return 2;
     }
     pieces: string[] = [];
-    switch Module(collections, directories, gathered.paths, gathered.sources, triple, chosen) {
+    switch Module(collections, seen, gathered.paths, gathered.sources, triple, chosen) {
         case .Rejected(message):
             os.Print(strings.Concatenate(["native: ", message]));
             return 1;
         case .Emitted(text):
             pieces = Pieces(text);
+    }
+    // Only a Windows program names system libraries in its `; chibi-library`
+    // and `; chibi-import` lines; any piece may hold them.
+    markers: string[] = [];
+    if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+        for (piece in pieces) {
+            markers.extend(Markers(piece));
+        }
     }
     // Each piece of the module is optimized and compiled to its own object,
     // as many at once as --jobs, by default every processor.
@@ -101,6 +112,9 @@ Main :: () -> int {
         files.extend([strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"])]);
     }
     plan := link.Program(triple, llvm, objects, [], [], [], output, "", static);
+    // Only a Windows program takes system libraries by name: lld-link needs an
+    // import library for each, which the macOS and Linux links do without.
+    plan.imports = link.SystemImports(markers);
     if (host.Link(plan) != nil) {
         os.Print("native: the link failed");
         return 2;
@@ -293,7 +307,7 @@ Gather :: (project: string, collections: string[], directories: string[], packag
                         if (name != ".") {
                             folder = strings.Concatenate([root, "/", name]);
                         }
-                        prefixes.append(strings.Concatenate([folder, "/"]));
+                        prefixes.append(strings.Concatenate([route.Visible(folder), "/"]));
                     }
                     folders.append(folder);
                 }
@@ -322,4 +336,30 @@ Position :: (names: string[], name: string) -> int {
         }
     }
     return 0;
+}
+
+// The module's `; chibi-library` and `; chibi-import` lines, which name the
+// system libraries and symbols it takes. One pass over the text: a module is
+// megabytes and only these few lines matter.
+Markers :: (module: string) -> string[] {
+    found: string[] = [];
+    needle := "; chibi-";
+    width := strings.ByteLength(needle);
+    size := strings.ByteLength(module);
+    at := 0;
+    while (at < size) {
+        end := at;
+        while (end < size && strings.ByteAt(module, end) != 10) {
+            end += 1;
+        }
+        matched := end - at >= width;
+        for (index in 0..<width) {
+            matched = matched && strings.ByteAt(module, at + index) == strings.ByteAt(needle, index);
+        }
+        if (matched) {
+            found.append(strings.Slice(module, at, end - at));
+        }
+        at = end + 1;
+    }
+    return found;
 }

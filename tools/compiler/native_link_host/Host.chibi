@@ -3,6 +3,7 @@ package native_link_host
 import link "project:native_link"
 import os "core:os"
 import strings "core:strings"
+import target "core:target"
 
 // The effects of the link step: finding the LLVM tools and the C library's
 // start files, writing the macOS stubs and running the tools. Everything it
@@ -41,73 +42,105 @@ pub Object :: (llvm: string, module: string, object: string, level: int) -> link
     return nil;
 }
 
-// Each module optimized by opt and compiled by llc to its object, at most
-// `jobs` modules at once, so the pieces of a split module use the machine's
-// cores; `object + ".bc"` holds the optimized bitcode in between and is
-// removed. The objects depend on the modules alone, whatever `jobs` is. The
-// first failure stops the others.
-pub Objects :: (llvm: string, modules: string[], objects: string[], level: int, jobs: int) -> link.Error? {
-    opt := Tool(llvm, "opt");
-    llc := Tool(llvm, "llc");
-    if (opt == "" || llc == "") {
-        return Fail(link.MissingTool, 0);
-    }
-    // Each module's step: 0 waiting, 1 optimizing, 2 compiling, 3 done.
-    count := length(modules);
-    steps := resize([int(0)], count);
-    processes := resize([int(0)], count);
-    next := 0;
-    running := 0;
-    done := 0;
-    while (done < count) {
-        while (running < jobs && next < count) {
-            processes[next] = os.Start(link.OptimizeCommand(opt, modules[next], Join([objects[next], ".bc"]), level),
-                                       os.Piped);
-            steps[next] = 1;
-            running += 1;
-            next += 1;
+// Windows has synchronous processes but no Start/Wait/Kill implementation yet.
+// Keep the same optimizer and code generator rather than calling those stubs.
+// The platform choice is compile time; the parallel path below is unchanged.
+when target.Native == 1 and target.Os == target.Windows {
+    pub Objects :: (llvm: string, modules: string[], objects: string[], level: int, jobs: int) -> link.Error? {
+        opt := Tool(llvm, "opt");
+        if (opt == "" || Tool(llvm, "llc") == "") {
+            return Fail(link.MissingTool, 0);
         }
-        // A slice on the oldest running module, then a look at the others,
-        // so a short one frees its place while a long one runs.
-        oldest := 0;
-        while (steps[oldest] == 0 || steps[oldest] == 3) {
-            oldest += 1;
-        }
-        for (index in oldest..<next) {
-            if (steps[index] != 1 && steps[index] != 2) {
-                continue;
-            }
-            wait := 0;
-            if (index == oldest) {
-                wait = 20;
-            }
-            status := os.Wait(processes[index], wait);
-            if (status == os.StillRunning) {
-                continue;
-            }
+        for (index in 0..<length(modules)) {
+            bitcode := Join([objects[index], ".bc"]);
+            status := os.Run(link.OptimizeCommand(opt, modules[index], bitcode, level));
             if (status != 0) {
-                for (other in 0..<next) {
-                    if (other != index && (steps[other] == 1 || steps[other] == 2)) {
-                        stopped := os.Kill(processes[other]);
-                    }
+                if (os.Exists(bitcode)) {
+                    removed := os.Remove(bitcode);
                 }
                 return Fail(link.ToolFailed, status);
             }
-            if (steps[index] == 1) {
-                processes[index] = os.Start(link.ObjectCommand(llc, Join([objects[index], ".bc"]), objects[index], level),
-                                            os.Piped);
-                steps[index] = 2;
-            } else {
-                if (os.Remove(Join([objects[index], ".bc"])) != nil) {
-                    return Fail(link.CannotWrite, 0);
-                }
-                steps[index] = 3;
-                running -= 1;
-                done += 1;
+            failure := Object(llvm, bitcode, objects[index], level);
+            removed := os.Remove(bitcode);
+            if (failure != nil) {
+                return failure;
+            }
+            if (removed != nil) {
+                return Fail(link.CannotWrite, 0);
             }
         }
+        return nil;
     }
-    return nil;
+} else {
+    // Each module optimized by opt and compiled by llc to its object, at most
+    // `jobs` modules at once, so the pieces of a split module use the machine's
+    // cores; `object + ".bc"` holds the optimized bitcode in between and is
+    // removed. The objects depend on the modules alone, whatever `jobs` is. The
+    // first failure stops the others.
+    pub Objects :: (llvm: string, modules: string[], objects: string[], level: int, jobs: int) -> link.Error? {
+        opt := Tool(llvm, "opt");
+        llc := Tool(llvm, "llc");
+        if (opt == "" || llc == "") {
+            return Fail(link.MissingTool, 0);
+        }
+        // Each module's step: 0 waiting, 1 optimizing, 2 compiling, 3 done.
+        count := length(modules);
+        steps := resize([int(0)], count);
+        processes := resize([int(0)], count);
+        next := 0;
+        running := 0;
+        done := 0;
+        while (done < count) {
+            while (running < jobs && next < count) {
+                processes[next] = os.Start(link.OptimizeCommand(opt, modules[next], Join([objects[next], ".bc"]), level),
+                                           os.Piped);
+                steps[next] = 1;
+                running += 1;
+                next += 1;
+            }
+            // A slice on the oldest running module, then a look at the others,
+            // so a short one frees its place while a long one runs.
+            oldest := 0;
+            while (steps[oldest] == 0 || steps[oldest] == 3) {
+                oldest += 1;
+            }
+            for (index in oldest..<next) {
+                if (steps[index] != 1 && steps[index] != 2) {
+                    continue;
+                }
+                wait := 0;
+                if (index == oldest) {
+                    wait = 20;
+                }
+                status := os.Wait(processes[index], wait);
+                if (status == os.StillRunning) {
+                    continue;
+                }
+                if (status != 0) {
+                    for (other in 0..<next) {
+                        if (other != index && (steps[other] == 1 || steps[other] == 2)) {
+                            stopped := os.Kill(processes[other]);
+                        }
+                    }
+                    return Fail(link.ToolFailed, status);
+                }
+                if (steps[index] == 1) {
+                    processes[index] = os.Start(link.ObjectCommand(llc, Join([objects[index], ".bc"]), objects[index], level),
+                                                os.Piped);
+                    steps[index] = 2;
+                } else {
+                    if (os.Remove(Join([objects[index], ".bc"])) != nil) {
+                        return Fail(link.CannotWrite, 0);
+                    }
+                    steps[index] = 3;
+                    running -= 1;
+                    done += 1;
+                }
+            }
+        }
+        return nil;
+    }
+
 }
 
 // The folder with the C library's start files and development library, and

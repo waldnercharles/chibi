@@ -12,6 +12,7 @@ on:
       - tools/bootstrap/native-seed.tsv
       - tools/graph/**
       - packages/core/**
+      - test/native_aot/link/windows/**
       - .github/workflows/native-self-host.yml
   push:
     branches: [main]
@@ -27,8 +28,9 @@ jobs:
   native-self-host:
     # Goal items 1 and 9: native stage one builds stage two, stage two builds
     # stage three, the two are byte-identical, and each stage's wall time is
-    # printed next to the VM-hosted self-build's. Red until the native lane
-    # accepts the whole compiler (W22); the log names the first rejected function.
+    # printed next to the VM-hosted self-build's. The log names the first
+    # function the native lane rejects. Stage two is also cross-linked for
+    # Windows (--windows) for the job below.
     name: Native self-host (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -55,8 +57,16 @@ jobs:
             sh tools/bootstrap/native-seed.sh linux-x64 "$RUNNER_TEMP/native-seed/chibi"
             stage_one=(--stage-one "$RUNNER_TEMP/native-seed/chibi")
           fi
-          sh tools/build.sh build native-self-host --llvm /usr/lib/llvm-18/bin --libclang-root /usr/lib/llvm-18 --jobs 4 "${stage_one[@]}" 2>&1 \
+          sh tools/build.sh build native-self-host --llvm /usr/lib/llvm-18/bin --libclang-root /usr/lib/llvm-18 --jobs 4 "${stage_one[@]}" --windows "$RUNNER_TEMP/windows" 2>&1 \
             | tee "$RUNNER_TEMP/native-self-host.log"
+      - name: Keep stage two for Windows
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-stage-two-windows
+          path: ${{ runner.temp }}/windows/chibi.exe
+          if-no-files-found: error
+          retention-days: 1
       - name: Summarize the proof
         if: always()
         shell: bash
@@ -73,3 +83,79 @@ jobs:
         with:
           name: native-self-host-log
           path: ${{ runner.temp }}/native-self-host.log
+
+  native-self-host-windows:
+    # Goal item 8: the Windows stage two, cross-linked above with lld-link, the
+    # import libraries and core:sys/windows, builds the compiler on windows-2022
+    # with that runner's LLVM (stage three), and stage three builds it again
+    # (stage four). The two are byte-identical. Stage two is not compared: the
+    # Linux job's llc is another version than this runner's.
+    name: Native self-host (Windows)
+    needs: native-self-host
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Preserve the sources' bytes on checkout
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-stage-two-windows
+          path: ${{ runner.temp }}/stage2
+      - name: Install the LLVM optimizer and code generator
+        # The runner's LLVM installer has clang and lld, not opt and llc.
+        # The full upstream archive supplies those tools; verify its bytes.
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = 'clang+llvm-20.1.8-x86_64-pc-windows-msvc'
+          $archive = "$env:RUNNER_TEMP/llvm.tar.xz"
+          Invoke-WebRequest "https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/$name.tar.xz" -OutFile $archive
+          $sha256 = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sha256 -ne 'f229769f11d6a6edc8ada599c0cda964b7dee6ab1a08c6cf9dd7f513e85b107f') {
+            throw 'LLVM archive SHA-256 differs from the pinned release'
+          }
+          tar -xf $archive -C $env:RUNNER_TEMP "$name/bin"
+          if ($LASTEXITCODE) { throw 'could not extract LLVM tools' }
+          $llvm = "$env:RUNNER_TEMP/$name/bin"
+          foreach ($tool in 'opt', 'llc', 'lld-link') {
+            if (!(Test-Path "$llvm/$tool.exe" -PathType Leaf)) { throw "missing LLVM tool $tool" }
+            & "$llvm/$tool.exe" --version
+            if ($LASTEXITCODE) { throw "LLVM tool $tool is unusable" }
+          }
+          "CHIBI_WINDOWS_LLVM=$llvm" >> $env:GITHUB_ENV
+      - name: Exercise the native Windows object pipeline
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $PWD.Path.Replace('\', '/')
+          $work = $env:RUNNER_TEMP.Replace('\', '/')
+          & "$work/stage2/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/link/windows/Main.chibi" --entry Main --output "$work/windows-objects.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 4
+          if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
+          & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
+          if ($LASTEXITCODE) { throw 'the Windows object regression failed' }
+      - name: Build stage three and stage four, and compare them
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $llvm = $env:CHIBI_WINDOWS_LLVM
+          $root = $PWD.Path.Replace('\', '/')
+          $work = $env:RUNNER_TEMP.Replace('\', '/')
+          $stage = "$work/stage2/chibi.exe"
+          $log = @()
+          foreach ($number in 3, 4) {
+            New-Item -ItemType Directory -Force "$work/stage$number" | Out-Null
+            $began = Get-Date
+            & $stage --compiler "$root/tools/compiler" --core "$root/packages/core" --output "$work/stage$number/chibi.exe" --llvm $llvm --target x86_64-pc-windows-msvc
+            if ($LASTEXITCODE) { throw "stage $number exited $LASTEXITCODE" }
+            $stage = "$work/stage$number/chibi.exe"
+            $digest = (Get-FileHash $stage -Algorithm SHA256).Hash.ToLowerInvariant()
+            $log += "stage $number sha256 $digest ($([int]((Get-Date) - $began).TotalSeconds) s)"
+          }
+          $log | ForEach-Object { $_; $_ >> $env:GITHUB_STEP_SUMMARY }
+          if ((Get-FileHash "$work/stage3/chibi.exe").Hash -ne (Get-FileHash "$work/stage4/chibi.exe").Hash) {
+            throw 'native-self-host (Windows): stage three and stage four differ'
+          }
+          'native-self-host (Windows): stage three and stage four are byte-identical'

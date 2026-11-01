@@ -1088,18 +1088,40 @@ NativeSelfHost :: (arguments: string[]) -> int {
     if (status != 0) {
         return status
     }
+    fixed := Join([two, "/chibi"])
+    proof := "stage two and stage three are byte-identical"
     if (!dry) {
         digest_two := Digest(Join([two, "/chibi"]))
         digest_three := Digest(Join([three, "/chibi"]))
         os.Print(Join(["stage two sha256 ", digest_two]))
         os.Print(Join(["stage three sha256 ", digest_three]))
-        if (digest_two == "" || digest_two != digest_three) {
+        if (digest_two == "" || (digest_two != digest_three && prebuilt == "")) {
             os.Print("native-self-host: stage two and stage three differ")
             return 1
         }
+        // A prebuilt stage one, such as the pinned native seed, may be an older
+        // compiler: its stage two then differs from the stage three the current
+        // compiler gives, and the fixed point is stage three, which stage four
+        // must reproduce.
+        if (digest_two != digest_three) {
+            four := Join([work, "/stage4"])
+            status = NativeStage("stage-four", Join([three, "/chibi"]), four, llvm, target, dry)
+            if (status != 0) {
+                return status
+            }
+            digest_four := Digest(Join([four, "/chibi"]))
+            os.Print(Join(["stage four sha256 ", digest_four]))
+            if (digest_four != digest_three) {
+                os.Print("native-self-host: stage three and stage four differ")
+                return 1
+            }
+            fixed = Join([three, "/chibi"])
+            proof = "stage three and stage four are byte-identical"
+        }
+        os.Print(Join(["native-self-host: the fixed point is ", fixed]))
     }
     if (!dry) {
-        status = NativeRunner(Join([two, "/chibi"]), llvm, work, target, build_host, !Flag(arguments, "--skip-vm"))
+        status = NativeRunner(fixed, llvm, work, target, build_host, !Flag(arguments, "--skip-vm"))
         if (status != 0) {
             return status
         }
@@ -1115,7 +1137,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
         }
     }
     if (!dry) {
-        os.Print("native-self-host: stage two and stage three are byte-identical")
+        os.Print(Join(["native-self-host: ", proof]))
     }
     return 0
 }

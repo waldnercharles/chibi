@@ -78,7 +78,10 @@ jobs:
         shell: bash
         run: |
           mkdir out
-          cp build-native-self-host/stage2/chibi "out/chibi-native-${{ matrix.platform }}"
+          # Stage two, or stage three when a seeded stage two came from an older compiler.
+          fixed=$(sed -n 's/^native-self-host: the fixed point is //p' "$RUNNER_TEMP/native-seed.log")
+          test -x "$fixed"
+          cp "$fixed" "out/chibi-native-${{ matrix.platform }}"
           { echo '### Native compiler (${{ matrix.platform }})'; echo '```'; grep -E '^(stage|native-self-host)' "$RUNNER_TEMP/native-seed.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:

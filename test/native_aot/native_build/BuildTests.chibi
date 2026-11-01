@@ -351,7 +351,7 @@ LinksMacOSAndWindowsPrograms :: (suite: Suite) {
     folder = strings.TrimSuffix(program, "/program.exe");
     imports := Path(["-flavor\nlink\n/lib\n/nologo\n/def:", folder, ".partial/kernel32.def\n/machine:x64\n/out:", folder, ".partial/kernel32.lib\n"]);
     assert(Read(Path([built.tools, "/ld.lld.lib.argv"])) == imports, "the import library");
-    link = Path(["-flavor\nlink\n/nologo\n/subsystem:console\n/machine:x64\n/opt:ref\n/Brepro\n/out:", folder,
+    link = Path(["-flavor\nlink\n/nologo\n/subsystem:console\n/machine:x64\n/opt:ref\n/Brepro\n/stack:67108864\n/out:", folder,
                  ".partial/a.exe\n/nodefaultlib\n/entry:mainCRTStartup\n", folder, ".partial/object.o\n", folder,
                  ".partial/start.o\n", folder, ".partial/kernel32.lib\n"]);
     assert(Read(Path([built.tools, "/ld.lld.argv"])) == link, "the Windows link");

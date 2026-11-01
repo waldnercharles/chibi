@@ -81,7 +81,7 @@ executes fixed argument vectors:
      object.o start.o System.tbd`.
    - Windows x64: `ld.lld -flavor link /lib /nologo /def:kernel32.def
      /machine:x64 /out:kernel32.lib`, then `ld.lld -flavor link /nologo
-     /subsystem:console /machine:x64 /opt:ref /Brepro /out:a.exe
+     /subsystem:console /machine:x64 /opt:ref /Brepro /stack:67108864 /out:a.exe
      /nodefaultlib /entry:mainCRTStartup object.o start.o kernel32.lib`.
 
    The driver runs the linker it resolved, which may be lld's generic driver;

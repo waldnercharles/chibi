@@ -62,14 +62,6 @@ const type_desc WHOLE_MANAGED_TYPE = { .name = "ManagedRecord",
                                        .size = sizeof(whole_managed),
                                        .fields = fields,
                                        .field_count = 3 };
-const ecs_component_desc WHOLE_MANAGED_COMPONENT = {
-    .id = UINT64_C(0xabcdef1234),
-    .name = "ManagedRecord",
-    .key = "test.ManagedRecord",
-    .element_size = sizeof(whole_managed),
-    .type = &WHOLE_MANAGED_TYPE
-};
-
 static const type_field alias_fields[] = {
     { .name = "x",
       .type = PIN_F32,

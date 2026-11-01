@@ -105,19 +105,6 @@ typedef struct
     int *values; /* Slots followed by locals, in the activation's scalar storage. */
     behavior_value_root *roots; /* Aggregate shapes for the live saved values. */
 } behavior_function_suspension;
-/* A read-only entity reduction has a checked prelude, one cursor loop and a
- * private accumulator. Publication uses these regions to fuse compatible scans. */
-typedef struct
-{
-    int begin, loop, body, next, end;
-    int pointer, index, entity, index_local, count_local;
-    uint64_t graph_id, node_id, pin_id;
-} behavior_reduction;
-typedef struct
-{
-    uint64_t *components;
-    bool result;
-} behavior_component_proof;
 /* Whether a call may pass arguments without copying them; zero is unknown. */
 typedef enum
 {
@@ -135,8 +122,6 @@ struct behavior_function
     pin_value *argument_defaults, *result_defaults, *variable_defaults;
     behavior_value_kind *argument_kinds, *result_kinds, *slot_kinds;
     behavior_value_kind *command_argument_kinds, *command_result_kinds;
-    behavior_reduction *reductions;
-    compile_diagnostic *query_diagnostics;
     behavior_function_suspension *suspensions;
     behavior_value_root *value_roots;
     behavior_function_point *points;
@@ -148,9 +133,6 @@ struct behavior_function
     bool readonly_collections;
     /* Some host call builds a returned local in the caller's storage. */
     bool builds_results;
-    /* It reads components, or takes a reference that may name one, so a call
-     * binds the execution world. */
-    bool binds_world;
     behavior_argument_sharing argument_sharing;
     /* No result reaches what the function's arguments or state reach, as
      * execution_prepare_argument_sharing proves with its verdict. */
@@ -192,9 +174,6 @@ struct behavior_function
     unsigned pure_depth_limit;
     bool component_bindings, component_access;
     uint64_t *component_writes;
-    behavior_component_proof *component_proofs;
-    uint64_t *parallel_reads;
-    bool parallel;
     struct behavior_function_component *components;
     behavior_state_selection *state_selections;
 };
@@ -299,8 +278,6 @@ int behavior_record_check_find(const behavior_record_check *, int count, const p
  * SIZE_MAX leaves it unbounded. */
 bool behavior_function_finalize(behavior_function *function, size_t arena_budget);
 bool behavior_function_own(behavior_function *function);
-void behavior_function_parallel_proof(behavior_function *function);
-void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
 /* Gives this definition and its owned definitions report sites, dropping
  * their fast bodies, before any backend compiles them (integer_report.c). */
@@ -346,7 +323,7 @@ void behavior_function_prepare_borrows(behavior_function *function);
 #define BEHAVIOR_BORROW_NESTED_BYTES ((size_t)1 << 20)
 /* The bytes of one function's borrow facts. */
 size_t behavior_function_borrow_bytes(const behavior_function *function);
-/* Sets what a frozen function's body implies: builds_results and binds_world. */
+/* Sets what a frozen function's body implies: builds_results. */
 void behavior_function_note_derived(behavior_function *function);
 /* The instructions control may reach next from `pc`; returns their count. */
 int behavior_function_successors(const behavior_function *function, int pc, int targets[2]);

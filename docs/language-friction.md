@@ -556,6 +556,16 @@ a byte: `ToLower` slices its letter out of `"abcdefghijklmnopqrstuvwxyz"`.
 Suggestion: `string(bytes)` and `byte[](s)` conversions, and an in-place
 `s = append(s, t)` on a local string, as arrays already update in place.
 
+Update (2026-11-01): `text_from_bytes` now makes a string of a `u8[]`, but
+nothing makes a `u8[]` of a string or joins parts in one pass. The native
+emitter's `out = format_text("{}...", out, ...)` copied about 66 GB to emit the
+compiler's 45.9 MB module, and stage two ran out of memory there. The emitter
+now appends parts to a `string[]` and joins once, which `strings.Join` still
+does pairwise, O(bytes x log parts), because `format_text` takes at most
+twelve arguments. native_driver then copies the text into its `u8[]` result a
+byte at a time, 45.9 M appends. A builder or the two conversions would remove
+both.
+
 ### Stage one cannot compile assert
 
 Stage one. Since #534, stage zero has a pure

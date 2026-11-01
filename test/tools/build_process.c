@@ -2102,12 +2102,16 @@ TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
     memset(text, 'r', limit);
     primitive_file("primitive-limit", text, limit);
     free(text);
-    char many_lines[2 * 8193];
-    for (int i = 0; i < 8193; i++) {
+    /* One line past the array limit, so build.lines refuses it. */
+    size_t lines = BUILD_ARRAY_LIMIT + 1;
+    char *many_lines = malloc(2 * lines);
+    assert(many_lines);
+    for (size_t i = 0; i < lines; i++) {
         many_lines[2 * i] = 'a';
         many_lines[2 * i + 1] = '\n';
     }
-    primitive_file("primitive-many-lines", many_lines, sizeof many_lines);
+    primitive_file("primitive-many-lines", many_lines, 2 * lines);
+    free(many_lines);
     static const char *sources[] = {
         "package limit\nBuild :: () -> int { "
         "if(!build.write_file(\"primitive-limit-copy\",build.read_file("

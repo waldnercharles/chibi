@@ -1,6 +1,5 @@
 #include "execution/function_builder.h"
 
-#include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
 #include "execution/preparation_budget.h"
@@ -218,12 +217,6 @@ int behavior_function_builder_host(
 {
     assert(argument_count >= 0 && result_count >= 0);
     behavior_function *f = b->function;
-    /* Relationship reads need the execution world even when the function never
-     * accesses an ordinary component column. This flag also publishes the
-     * required ecs.world service and survives prepared-function serialization. */
-    if (call == &EXECUTION_query_target_call || call == &EXECUTION_query_source_call) {
-        f->component_access = true;
-    }
     int index = acount(f->host_calls), first = acount(f->data_values);
     for (int i = 0; i < argument_count; i++) {
         data_value(f, arguments[i]);
@@ -823,9 +816,6 @@ static const char *verify_instruction(const behavior_function *f, int pc)
         case BF_INVOKE:
             CHECK(index_valid(i->left, acount(f->calls)), "invalid function invocation");
             break;
-        case BF_QUERY:
-            CHECK(index_valid(i->target, acount(f->queries)) && i->type == BF_POINTER_TYPE, "invalid query");
-            break;
         case BF_COMMAND_SERVICE:
             CHECK(index_valid(i->target, acount(f->commands)) && i->type == BF_POINTER_TYPE, "invalid command service");
             break;
@@ -869,22 +859,9 @@ static const char *verify_instruction(const behavior_function *f, int pc)
             CHECK(i->op == BF_COMMAND_RESULT || SLOT(i->left, i->type), "invalid command store type");
             break;
         }
-        case BF_STATE_SELECT:
-            CHECK(
-                index_valid(i->target, acount(f->state_selections)) && i->type == PIN_I32 &&
-                    SLOT(i->left, PIN_I32) && SLOT(i->right, PIN_I32),
-                "invalid state selection"
-            );
-            break;
         case BF_DELTA: CHECK(i->type == PIN_F32, "DELTA requires float"); break;
         case BF_OWNER:
             CHECK(i->type == PIN_HANDLE || i->type == PIN_U64, "OWNER requires handle");
-            break;
-        case BF_QUERY_VARIABLE:
-            CHECK(i->type == PIN_HANDLE && i->target >= 1 && i->target <= ECS_QUERY_VARS, "invalid query variable");
-            break;
-        case BF_WORLD:
-            CHECK(i->type == BF_POINTER_TYPE && (i->target == 0 || i->target == 1), "invalid world selector");
             break;
         case BF_CONTEXT:
             CHECK(
@@ -917,53 +894,19 @@ static const char *verify_instruction(const behavior_function *f, int pc)
                 "invalid pointer index"
             );
             break;
+        case BF_WORLD:
+        case BF_QUERY_VARIABLE:
+        case BF_QUERY:
+        case BF_STATE_SELECT:
         case BF_ENTITY:
-            CHECK(
-                i->type == PIN_U32 && SLOT(i->left, BF_POINTER_TYPE) &&
-                    (SLOT(i->right, PIN_HANDLE) || SLOT(i->right, PIN_U64)),
-                "invalid entity lookup"
-            );
-            break;
-        case BF_COMPONENT_READ:
-        case BF_COMPONENT_WRITE:
-            CHECK(index_valid(i->component, acount(f->components)), "invalid scalar component binding");
-            CHECK(
-                !f->components[i->component].binding && i->value.type == PIN_U64 &&
-                    i->value.u64 == f->components[i->component].id,
-                "scalar component ID differs from current-world binding"
-            );
-            CHECK(
-                (SLOT(i->left, PIN_HANDLE) || SLOT(i->left, PIN_U64)) &&
-                    i->type >= PIN_BOOL && i->type <= PIN_F64 &&
-                    (i->op != BF_COMPONENT_WRITE || SLOT(i->right, i->type)),
-                "invalid scalar component operands"
-            );
-            CHECK(
-                i->layout && i->offset && i->target >= 0 &&
-                    fits((size_t)i->target, behavior_scalar_size(i->type), i->offset),
-                "invalid scalar component field range"
-            );
-            break;
         case BF_COMPONENT:
+        case BF_COMPONENT_READ:
         case BF_COLUMN:
         case BF_COLUMN_TRY:
-            CHECK(index_valid(i->component, acount(f->components)), "invalid component binding");
-            CHECK(
-                SLOT(i->left, BF_POINTER_TYPE) &&
-                    (i->op != BF_COMPONENT || SLOT(i->right, PIN_U32)) &&
-                    (i->type == BF_POINTER_TYPE || i->type == PIN_BOOL),
-                "invalid component operands"
-            );
-            CHECK(i->value.u64 == f->components[i->component].id, "component ID differs from binding");
-            CHECK(i->type == PIN_BOOL || (i->offset && i->layout), "missing component layout");
-            CHECK(index_valid(i->target, BEHAVIOR_FUNCTION_COMMAND + 1), "invalid component failure kind");
-            break;
         case BF_ROW:
-            CHECK(
-                i->type == BF_POINTER_TYPE && SLOT(i->left, BF_POINTER_TYPE) &&
-                    SLOT(i->right, PIN_U32) && i->offset,
-                "invalid component row"
-            );
+        case BF_RETRIGGER:
+        case BF_COMPONENT_WRITE:
+            CHECK(false, "entity and component instructions are archived");
             break;
         case BF_CAST:
             CHECK(behavior_scalar_cast_supported(f->slots[i->left], i->type), "invalid numeric cast");
@@ -1072,7 +1015,6 @@ static const char *verify_instruction(const behavior_function *f, int pc)
          * these internal lowering operations. Never accept dangling indices. */
         case BF_ENTER:
         case BF_LEAVE:
-        case BF_RETRIGGER:
         case BF_POINT:
         case BF_WATCH_BEGIN:
         case BF_WATCH_RESET:
@@ -1482,54 +1424,6 @@ static bool intrinsic_schema(
                 }
             }
             return true;
-        case EXECUTION_INTRINSIC_STATE_DEMAND:
-            return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, PIN_U64) && INPUT(2, PIN_I32) && OUTPUT(PIN_I32);
-        case EXECUTION_INTRINSIC_STATE_TRANSITION:
-            if (count < 3 || count > 6 || !INPUT(0, BF_POINTER_TYPE) ||
-                !INPUT(1, PIN_U64) || !INPUT(2, PIN_I32) || !OUTPUT(PIN_I32)) {
-                return false;
-            }
-            for (int i = 3; i < count; i++) {
-                if (!INPUT(i, PIN_BOOL) && !INPUT(i, PIN_I32)) {
-                    return false;
-                }
-            }
-            return true;
-        case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
-            return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, PIN_U64) && INPUT(2, PIN_F64) && OUTPUT(PIN_BOOL);
-        case EXECUTION_INTRINSIC_QUERY_TEST:
-            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, PIN_I32) && OUTPUT(PIN_BOOL);
-        case EXECUTION_INTRINSIC_QUERY_MAKE:
-            return count >= 2 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, PIN_I32) && OUTPUT(PIN_QUERY);
-        case EXECUTION_INTRINSIC_QUERY_BEGIN:
-            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, PIN_QUERY) && OUTPUT(BF_POINTER_TYPE);
-        case EXECUTION_INTRINSIC_QUERY_NEXT:
-            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, BF_POINTER_TYPE) && host->result_count == 2 &&
-                   OUTPUT(PIN_BOOL) &&
-                   scalar_bank(f->data_values[host->result_first + 1].initial, PIN_QUERY);
-        case EXECUTION_INTRINSIC_QUERY_END:
-            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
-        case EXECUTION_INTRINSIC_QUERY_ROW_GET:
-            return count == 2 && INPUT(0, PIN_QUERY) && INPUT(1, PIN_I32);
-        case EXECUTION_INTRINSIC_QUERY_CURRENT_ROW:
-            return count == 1 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_QUERY);
-        case EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT:
-            return count == 6 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_HANDLE) &&
-                   INPUT(2, PIN_U64) && values[3].initial.type == PIN_STRUCT &&
-                   same_type(values[3].initial, output) && INPUT(4, PIN_U64) &&
-                   INPUT(5, PIN_U64);
-        case EXECUTION_INTRINSIC_COMPONENT_POINTER:
-            return count == 6 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_HANDLE) &&
-                   INPUT(2, PIN_U64) && values[3].initial.type == PIN_STRUCT &&
-                   value_type_valid(records, values[3].initial) &&
-                   INPUT(4, PIN_U64) && INPUT(5, PIN_U64) && OUTPUT(PIN_POINTER);
         case EXECUTION_INTRINSIC_POINTER_MAKE:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
                    same_type(values[1].initial, values[2].initial) &&
@@ -1562,12 +1456,6 @@ static bool intrinsic_schema(
                    INPUT(0, BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_REFERENCE_WRITE:
             return count == 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
-        case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
-            return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
-                   values[1].initial.container == PIN_CONTAINER_SINGLE &&
-                   values[1].initial.type >= PIN_I8 &&
-                   values[1].initial.type <= PIN_F64 && INPUT(2, PIN_I32) &&
-                   OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_LOCAL_RELEASE:
             return count == 1 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_ARRAY_PUSH:
@@ -1586,29 +1474,6 @@ static bool intrinsic_schema(
             return count == 3 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_MAP_DELETE:
             return count == 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
-        case EXECUTION_INTRINSIC_ACTION_READ:
-            return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, PIN_U64) && INPUT(2, PIN_I32);
-        case EXECUTION_INTRINSIC_ACTION_COMPLETE:
-            return count >= 2 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, PIN_U64) && OUTPUT(PIN_BOOL);
-        case EXECUTION_INTRINSIC_COMPONENT_HAS:
-            return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, PIN_HANDLE) && INPUT(2, PIN_U64) && OUTPUT(PIN_BOOL);
-        case EXECUTION_INTRINSIC_QUERY_SOURCE:
-            return count == 5 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, PIN_HANDLE) && INPUT(2, PIN_U64) &&
-                   INPUT(3, PIN_U64) && INPUT(4, PIN_I32) && OUTPUT(PIN_HANDLE);
-        case EXECUTION_INTRINSIC_QUERY_TARGET:
-            return count == 4 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_HANDLE) &&
-                   INPUT(2, PIN_U64) && INPUT(3, PIN_I32) && OUTPUT(PIN_HANDLE);
-        case EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP:
-            return count == 4 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_HANDLE) &&
-                   INPUT(2, PIN_U64) && INPUT(3, PIN_BOOL) && OUTPUT(PIN_BOOL);
-        case EXECUTION_INTRINSIC_BREAK_REQUEST:
-        case EXECUTION_INTRINSIC_BREAK_TAKE:
-            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
-                   INPUT(1, PIN_U64) && OUTPUT(PIN_BOOL);
         default: return false;
     }
 #undef INPUT
@@ -1643,19 +1508,13 @@ static bool context_address(size_t offset)
         FIELD(inspection_user)
         FIELD(points)
         FIELD(variables)
-        FIELD(states)
         FIELD(arguments)
         FIELD(results)
         FIELD(error_message)
         FIELD(services)
-        FIELD(queries)
         FIELD(commands)
         FIELD(command_arguments)
         FIELD(command_results)
-        FIELD(owner_type_name)
-        FIELD(world)
-        FIELD(binding_world)
-        FIELD(columns)
         FIELD(variable_storage)
         FIELD(value_owner)
         FIELD(value_storage)
@@ -2001,34 +1860,14 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_REFERENCE_KEY:
                 case EXECUTION_INTRINSIC_REFERENCE_READ:
                 case EXECUTION_INTRINSIC_REFERENCE_WRITE:
-                case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
                 case EXECUTION_INTRINSIC_LOCAL_RELEASE:
                 case EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE:
                 case EXECUTION_INTRINSIC_REFERENCE_UNION:
                 case EXECUTION_INTRINSIC_MAP_DELETE_PLACE:
                     expected = BEHAVIOR_REFERENCE;
                     break;
-                case EXECUTION_INTRINSIC_QUERY_TEST:
-                case EXECUTION_INTRINSIC_QUERY_MAKE:
-                case EXECUTION_INTRINSIC_QUERY_BEGIN:
-                case EXECUTION_INTRINSIC_QUERY_NEXT:
-                case EXECUTION_INTRINSIC_QUERY_END:
-                case EXECUTION_INTRINSIC_QUERY_CURRENT_ROW:
-                case EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT:
-                case EXECUTION_INTRINSIC_COMPONENT_POINTER:
                 case EXECUTION_INTRINSIC_POINTER_MAKE:
                 case EXECUTION_INTRINSIC_REFERENCE_MAKE:
-                case EXECUTION_INTRINSIC_ACTION_READ:
-                case EXECUTION_INTRINSIC_ACTION_COMPLETE:
-                case EXECUTION_INTRINSIC_COMPONENT_HAS:
-                case EXECUTION_INTRINSIC_QUERY_SOURCE:
-                case EXECUTION_INTRINSIC_QUERY_TARGET:
-                case EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP:
-                case EXECUTION_INTRINSIC_BREAK_REQUEST:
-                case EXECUTION_INTRINSIC_BREAK_TAKE:
-                case EXECUTION_INTRINSIC_STATE_DEMAND:
-                case EXECUTION_INTRINSIC_STATE_TRANSITION:
-                case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
                 case EXECUTION_INTRINSIC_ARRAY_PUSH:
                 case EXECUTION_INTRINSIC_ARRAY_STORE:
                 case EXECUTION_INTRINSIC_ARRAY_EXTEND:
@@ -2037,10 +1876,6 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                     expected = BEHAVIOR_ADDRESS;
                     break;
             }
-        }
-        if ((id == EXECUTION_INTRINSIC_QUERY_NEXT || id == EXECUTION_INTRINSIC_QUERY_END) &&
-            i == 1) {
-            expected = BEHAVIOR_QUERY_CURSOR;
         }
         if (id == EXECUTION_INTRINSIC_REFERENCE_MAKE && i == 4) {
             expected = BEHAVIOR_ADDRESS;
@@ -2051,9 +1886,6 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
     }
     if (id == EXECUTION_INTRINSIC_STRING_CURSOR) {
         return result == BEHAVIOR_STRING_CURSOR;
-    }
-    if (id == EXECUTION_INTRINSIC_QUERY_BEGIN) {
-        return result == BEHAVIOR_QUERY_CURSOR;
     }
     return result == (id == EXECUTION_INTRINSIC_POINTER_REFERENCE ||
                               id == EXECUTION_INTRINSIC_REFERENCE_UNION ||
@@ -2727,7 +2559,6 @@ behavior_function *behavior_function_builder_finish(behavior_function_builder *b
         snprintf(error, size, "suspension live sets exceed preparation budget");
         return NULL;
     }
-    behavior_function_parallel_proof(f);
     if (b->decoded) {
         if (!behavior_function_own_decoded(f, b->arena_budget)) {
             snprintf(error, size, "prepared descriptor ownership exceeds budget");

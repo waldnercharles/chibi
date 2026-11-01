@@ -19,19 +19,7 @@ typedef enum
     EXECUTION_INTRINSIC_REFERENCE_FIELD = 4,
     EXECUTION_INTRINSIC_REFERENCE_READ = 5,
     EXECUTION_INTRINSIC_REFERENCE_WRITE = 6,
-    EXECUTION_INTRINSIC_ACTION_READ = 7,
-    EXECUTION_INTRINSIC_ACTION_COMPLETE = 8,
-    EXECUTION_INTRINSIC_COMPONENT_HAS = 9,
-    EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP = 10,
-    EXECUTION_INTRINSIC_BREAK_REQUEST = 11,
-    EXECUTION_INTRINSIC_BREAK_TAKE = 12,
-    EXECUTION_INTRINSIC_STATE_DEMAND = 15,
-    EXECUTION_INTRINSIC_STATE_TRANSITION = 16,
-    EXECUTION_INTRINSIC_RETRIGGER_ACTION = 17,
     EXECUTION_INTRINSIC_LOCAL_RELEASE = 18,
-    EXECUTION_INTRINSIC_QUERY_SOURCE = 19,
-    EXECUTION_INTRINSIC_QUERY_TARGET = 23,
-    EXECUTION_INTRINSIC_REFERENCE_REDUCE = 25,
     EXECUTION_INTRINSIC_UNION_MAKE = 20,
     EXECUTION_INTRINSIC_UNION_TEST = 21,
     EXECUTION_INTRINSIC_UNION_GET = 22,
@@ -69,17 +57,8 @@ typedef enum
     EXECUTION_INTRINSIC_REFERENCE_UNION = 60,
     EXECUTION_INTRINSIC_MAP_DELETE_PLACE = 61,
     EXECUTION_INTRINSIC_SEQUENCE_BORROW = 62,
-    /* 63-79 are free. Query operations own 80-95 in the coordinated intrinsic
-     * registry. */
-    EXECUTION_INTRINSIC_QUERY_MAKE = 80,
-    EXECUTION_INTRINSIC_QUERY_BEGIN = 81,
-    EXECUTION_INTRINSIC_QUERY_NEXT = 82,
-    EXECUTION_INTRINSIC_QUERY_END = 83,
-    EXECUTION_INTRINSIC_QUERY_ROW_GET = 84,
-    EXECUTION_INTRINSIC_COMPONENT_POINTER = 85,
-    EXECUTION_INTRINSIC_QUERY_CURRENT_ROW = 86,
-    EXECUTION_INTRINSIC_QUERY_TEST = 87,
-    EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT = 88,
+    /* 63-79 and 80-95 are free: the entity, component, query, action and
+     * reduction operations that held them left with the ECS. */
 } execution_intrinsic;
 /* A host capability id with this bit runs its intrinsic in the caller's
  * storage, where a function builds the locals it returns: construct, array
@@ -100,8 +79,6 @@ static inline bool execution_intrinsic_in_result(uint64_t id)
                UINT64_C(0x4348494900000000) &&
            (id & EXECUTION_INTRINSIC_IN_RESULT) != 0;
 }
-extern const node_host_call EXECUTION_state_demand_call,
-    EXECUTION_state_transition_call, EXECUTION_retrigger_action_call;
 extern const node_host_call EXECUTION_snapshot_call;
 extern const node_host_call EXECUTION_value_copy_call,
     EXECUTION_value_drop_call, EXECUTION_array_mutate_place_call,
@@ -146,29 +123,12 @@ extern const node_host_call EXECUTION_union_keep_call;
 extern const node_host_call EXECUTION_pointer_make_call,
     EXECUTION_pointer_read_call, EXECUTION_pointer_write_call,
     EXECUTION_pointer_field_call, EXECUTION_pointer_reference_call;
-/* (context, entity, component id, pointee header, layout hash, size). Missing components yield a
- * null pointer; required query bindings establish presence before this call. */
-extern const node_host_call EXECUTION_component_pointer_call;
 extern const node_host_call EXECUTION_reference_make_call;
 extern const node_host_call EXECUTION_reference_field_call;
 extern const node_host_call EXECUTION_reference_key_call;
 extern const node_host_call EXECUTION_reference_read_call;
 extern const node_host_call EXECUTION_reference_write_call;
-extern const node_host_call EXECUTION_reference_reduce_call;
-extern const node_host_call EXECUTION_action_read_call;
-extern const node_host_call EXECUTION_action_complete_call;
-extern const node_host_call EXECUTION_break_request_call, EXECUTION_break_take_call;
 extern const node_host_call EXECUTION_local_release_call;
-extern const node_host_call EXECUTION_component_has_call,
-    EXECUTION_component_membership_call;
-extern const node_host_call EXECUTION_query_source_call;
-extern const node_host_call EXECUTION_query_target_call;
-extern const node_host_call EXECUTION_query_make_call, EXECUTION_query_begin_call,
-    EXECUTION_query_next_call, EXECUTION_query_end_call,
-    EXECUTION_query_row_get_call, EXECUTION_query_current_row_call,
-    EXECUTION_query_test_call, EXECUTION_component_snapshot_call;
-extern const node_access EXECUTION_component_read_access,
-    EXECUTION_component_membership_access;
 extern const node_access EXECUTION_assignment_access, EXECUTION_value_access,
     EXECUTION_sequence_read_access;
 size_t execution_value_size(pin_value);

@@ -1,7 +1,6 @@
 #include "package_compiler_chibi.h"
 
 #include "backend.h"
-#include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
 #include "execution/module.h"
@@ -2205,6 +2204,37 @@ TEST_CASE(package_compiler_scalar_rejections_lie_in_package_sets)
     int end = (int)scalar_field(&rows->items[1], "end").i;
     REQUIRE(start > (int)strlen(packages[0].text) && end <= (int)strlen(joined));
     REQUIRE(!strncmp(joined + start, "m: [int: int];", (size_t)(end - start)));
+    return true;
+}
+/* A scoped pointer passed on to a function of another file of its package is
+ * decided whatever order the files were read in: here lib/Z.chibi, whose
+ * declarations come first, passes its cursor to lib/A.chibi, which sorts first
+ * by path, so the declarations in file order do not ascend. */
+TEST_CASE(package_compiler_scalar_scopes_pointers_across_unordered_files)
+{
+    REQUIRE(prepare());
+    static const source_package_input packages[] = {
+        { .path = "Main.chibi",
+          .text = "package main\nimport lib \"project:lib\"\n"
+                  "Main :: () -> int { x: lib.Cursor = {pos: 1}; return "
+                  "lib.Relay(&x); }\n" },
+        { .path = "lib/Z.chibi",
+          .text = "package lib\npub Cursor :: struct { pos: int; }\n"
+                  "pub Relay :: (c: ^Cursor) -> int { return Step(c); }\n" },
+        { .path = "lib/A.chibi", .text = "package lib\nStep :: (c: ^Cursor) -> int { c.pos += 1; return c.pos; }\n" },
+    };
+    pin_value produced;
+    REQUIRE(scalar_host_collect_packages(packages, 3, &detached, &produced));
+    const pin_array *rows = produced.ptr;
+    if (rows->count == 2) {
+        fprintf(
+            stderr,
+            "scalar pointers: %s\n",
+            pin_text(scalar_field(guard_row(&produced, 1), "text")).bytes
+        );
+    }
+    REQUIRE(rows->count > 2);
+    REQUIRE(validated(&produced, ""));
     return true;
 }
 /* llvm_native's call and float contracts: definitions, argument order,
@@ -5004,6 +5034,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_scalar_rows_span_imported_packages);
     RUN_TEST_CASE(package_compiler_scalar_rows_span_collection_packages);
+    RUN_TEST_CASE(package_compiler_scalar_scopes_pointers_across_unordered_files);
     RUN_TEST_CASE(package_compiler_scalar_rejections_lie_in_package_sets);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);

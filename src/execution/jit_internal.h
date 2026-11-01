@@ -3,25 +3,13 @@
 #include "execution/definition.h"
 #include "support/array.h"
 
-/* Checked publication takes pointers to both scalar operands. Register-backed
- * operands therefore also need stack cells, before locals and parent frames. */
+/* The stack cells of the slots no register holds, before locals and parent frames. */
 static inline int behavior_jit_stack_slots(const behavior_function *f, const int *registers)
 {
     int count = 0;
     for (int slot = 0; slot < acount(f->slots); slot++) {
         if (!registers[slot]) {
             count = slot + 1;
-        }
-    }
-    for (int pc = 0; pc < acount(f->instructions); pc++) {
-        const behavior_function_instruction *i = &f->instructions[pc];
-        if (i->op == BF_COMPONENT_WRITE) {
-            if (i->left >= count) {
-                count = i->left + 1;
-            }
-            if (i->right >= count) {
-                count = i->right + 1;
-            }
         }
     }
     return count;
@@ -65,18 +53,10 @@ typedef struct
     const int *registers, *local_registers, *variable_registers;
     int context, steps, variables, arguments, argument_count;
     int locals, parents;
-    int system_stack;
-    const behavior_function *system_root;
-    struct sljit_label *system_loop;
-    struct sljit_jump **system_exits;
-    bool countdown, inspected, scoped, system_registers;
+    bool countdown, inspected, scoped;
     const int *single_uses;
     const bool *branch_targets;
 } behavior_machine;
-void behavior_jit_system_enter(behavior_machine *machine);
-void behavior_jit_system_begin(behavior_machine *machine);
-void behavior_jit_system_next(behavior_machine *machine);
-void behavior_jit_return(const behavior_machine *machine, int source, sljit_sw offset);
 bool behavior_jit_watch(const behavior_machine *machine, const behavior_function_instruction *instruction);
 bool behavior_jit_host_call(
     const behavior_machine *machine,
@@ -136,12 +116,6 @@ bool behavior_jit_integer(
 );
 int behavior_jit_integer_move(pin_type type);
 int behavior_jit_result_fields(const behavior_machine *machine, int pc);
-bool behavior_jit_component(
-    const behavior_machine *m,
-    const behavior_function_instruction *i,
-    int dest,
-    sljit_sw offset
-);
 bool behavior_jit_memory(
     const behavior_machine *m,
     const behavior_function_instruction *i,

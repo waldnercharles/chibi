@@ -397,7 +397,6 @@ static bool load_closure(behavior_backend backend, const native_capabilities *ta
         }
     }
     REQUIRE(app_module && execution_module_backend(app_module) == backend);
-    REQUIRE(execution_module_effects(app_module).host_sink);
     return true;
 }
 

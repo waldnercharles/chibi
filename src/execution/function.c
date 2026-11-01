@@ -1,4 +1,3 @@
-#include "ecs/execution.h"
 #include "execution/borrow.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
@@ -313,117 +312,15 @@ invalid:
 
 void behavior_function_note_derived(behavior_function *f)
 {
-    f->binds_world = f->component_access;
-    for (int i = 0; i < acount(f->argument_kinds); i++) {
-        f->binds_world |= f->argument_kinds[i] == BEHAVIOR_REFERENCE;
-    }
     f->builds_results = false;
     for (int i = 0; i < acount(f->host_calls); i++) {
         f->builds_results |= execution_intrinsic_in_result(f->host_calls[i].capability_id);
-        const behavior_function_host_call *host = &f->host_calls[i];
-        const node_host_call *canonical = execution_intrinsic_resolve(host->capability_id);
-        const node_host_call *actual = host->call;
-        bool intrinsic = canonical &&
-                         host->capability_abi ==
-                             execution_intrinsic_abi(host->capability_id) &&
-                         actual->invoke == canonical->invoke &&
-                         actual->value == canonical->value &&
-                         actual->context == canonical->context &&
-                         actual->action == canonical->action &&
-                         actual->service == canonical->service &&
-                         actual->missing_service == canonical->missing_service &&
-                         actual->optional_service == canonical->optional_service &&
-                         actual->variadic == canonical->variadic &&
-                         actual->reusable == canonical->reusable;
-        execution_intrinsic kind = intrinsic
-                                     ? execution_intrinsic_kind(host->capability_id)
-                                     : 0;
-        f->binds_world |= kind == EXECUTION_INTRINSIC_QUERY_BEGIN ||
-                          kind == EXECUTION_INTRINSIC_QUERY_NEXT ||
-                          kind == EXECUTION_INTRINSIC_QUERY_SOURCE ||
-                          kind == EXECUTION_INTRINSIC_QUERY_TARGET ||
-                          kind == EXECUTION_INTRINSIC_COMPONENT_HAS ||
-                          kind == EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP ||
-                          kind == EXECUTION_INTRINSIC_COMPONENT_POINTER ||
-                          kind == EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT;
-        if (kind == EXECUTION_INTRINSIC_REFERENCE_MAKE &&
-            f->data_values[host->first + 2].initial.i == LANGUAGE_REFERENCE_COMPONENT) {
-            f->binds_world = true;
-        }
     }
     /* A result moves only when execution_builds_safely proves that nothing
      * else changes or shares what the function builds there. */
     f->builds_results = f->builds_results && execution_builds_safely(f);
 }
 
-static bool preserves_components_uncached(const behavior_function *f, const uint64_t *components, int count)
-{
-    for (int pc = 0; pc < acount(f->instructions); pc++) {
-        if (f->instructions[pc].op == BF_COMPONENT_WRITE) {
-            /* The publication callback is an observable storage boundary,
-             * independently of optional producer component-write metadata. */
-            return false;
-        }
-    }
-    for (int i = 0; i < count; i++) {
-        for (int j = 0; j < acount(f->component_writes); j++) {
-            if (f->component_writes[j] == components[i]) {
-                return false;
-            }
-        }
-    }
-    for (int i = 0; i < acount(f->host_calls); i++) {
-        const node_access *a = f->host_calls[i].access;
-        if (!a || (a->flags & NODE_EFFECT_STRUCTURAL)) {
-            return false;
-        }
-        for (int j = 0; j < a->write_count; j++) {
-            for (int k = 0; k < count; k++) {
-                if (a->writes[j] == components[k]) {
-                    return false;
-                }
-            }
-        }
-    }
-    return true;
-}
-
-bool behavior_function_preserves_components(const behavior_function *f, const uint64_t *components, int count)
-{
-    if (!f || !f->batchable) {
-        return false;
-    }
-    for (int i = 0; i < acount(f->component_proofs); i++) {
-        const behavior_component_proof *proof = &f->component_proofs[i];
-        if (acount(proof->components) != count) {
-            continue;
-        }
-        bool same = true;
-        for (int j = 0; j < count; j++) {
-            if (proof->components[j] != components[j]) {
-                same = false;
-                break;
-            }
-        }
-        if (same) {
-            return proof->result;
-        }
-    }
-    /* Published functions are immutable. Keep the proof cache mutable so
-     * repeated query-scope checks do not rescan a function generation. */
-    behavior_component_proof proof = {
-        .result = preserves_components_uncached(f, components, count)
-    };
-    for (int i = 0; i < count; i++) {
-        apush(proof.components, components[i]);
-    }
-    apush(((behavior_function *)f)->component_proofs, proof);
-    return proof.result;
-}
-bool behavior_function_batchable(const behavior_function *f)
-{
-    return f && f->batchable;
-}
 bool behavior_function_uses_storage(const behavior_function *f)
 {
     return f->uses_storage;
@@ -463,8 +360,6 @@ void behavior_function_free(behavior_function *f)
         behavior_function_free(f->definitions[i]);
     }
     afree(f->definitions);
-    afree(f->reductions);
-    afree(f->query_diagnostics);
     execution_artifact_free(f->artifact);
     afree(f->points);
     afree(f->watches);
@@ -499,11 +394,6 @@ void behavior_function_free(behavior_function *f)
     afree(f->state_selections);
     afree(f->calls);
     afree(f->component_writes);
-    for (int i = 0; i < acount(f->component_proofs); i++) {
-        afree(f->component_proofs[i].components);
-    }
-    afree(f->component_proofs);
-    afree(f->parallel_reads);
     afree(f->components);
     afree(f->data_values);
     afree(f->commands);
@@ -667,27 +557,6 @@ static const pin_string *copy_text(void *storage, const pin_string *text)
     assert(!error);
     (void)error;
     return value.text;
-}
-const pin_string *behavior_function_intern_text(
-    behavior_function_context *context,
-    const ecs_execution_view *world,
-    const pin_string *text
-)
-{
-    pin_value source = { .type = PIN_STR, .text = text }, result;
-    const char *bytes;
-    context->error_message = pin_text_cstring(context->value_storage, source, &bytes, NULL);
-    if (context->error_message) {
-        return NULL;
-    }
-    const char *interned = world->intern_string(world, bytes);
-    context->error_message = pin_value_text(
-        context->value_storage,
-        &result,
-        interned,
-        pin_text(source).length
-    );
-    return context->error_message ? NULL : result.text;
 }
 static pin_array *copy_array(void *storage, const pin_array *array)
 {
@@ -1146,61 +1015,6 @@ void behavior_function_prepare_results(const behavior_function *f, pin_value *re
 size_t behavior_function_watch_size(const behavior_function *f)
 {
     return f->watch_size;
-}
-
-static void read_component(uint64_t **ids, uint64_t id)
-{
-    for (int i = 0; i < acount(*ids); i++) {
-        if ((*ids)[i] == id) {
-            return;
-        }
-    }
-    apush(*ids, id);
-}
-static void read_components(const behavior_function *f, const behavior_function ***seen, uint64_t **ids)
-{
-    for (int i = 0; i < acount(*seen); i++) {
-        if ((*seen)[i] == f) {
-            return;
-        }
-    }
-    apush(*seen, f);
-    for (int i = 0; i < acount(f->components); i++) {
-        read_component(ids, f->components[i].id);
-    }
-    if (acount(f->queries)) {
-        read_component(ids, 0);
-    }
-    for (int i = 0; i < acount(f->host_calls); i++) {
-        const node_access *access = f->host_calls[i].access;
-        if (!access) {
-            read_component(ids, 0);
-            continue;
-        }
-        for (int j = 0; j < access->read_count; j++) {
-            read_component(ids, access->reads[j]);
-        }
-        for (int j = 0; access->read_refs && access->read_refs[j]; j++) {
-            read_component(ids, *access->read_refs[j]);
-        }
-    }
-    for (int i = 0; i < acount(f->calls); i++) {
-        read_components(f->calls[i].function, seen, ids);
-    }
-}
-int behavior_function_component_reads(const behavior_function *f, uint64_t *out, int capacity)
-{
-    assert(f && capacity >= 0 && (!capacity || out));
-    const behavior_function **seen = NULL;
-    uint64_t *ids = NULL;
-    read_components(f, &seen, &ids);
-    int count = acount(ids);
-    for (int i = 0; i < count && i < capacity; i++) {
-        out[i] = ids[i];
-    }
-    afree(seen);
-    afree(ids);
-    return count;
 }
 
 void behavior_managed_heap_init(behavior_managed_heap *heap)
@@ -1942,4 +1756,16 @@ void behavior_managed_heap_safepoint(
     if (allocated >= heap->call_collection_bytes && allocated >= 2 * kept) {
         behavior_managed_heap_collect(heap, function, root);
     }
+}
+bool behavior_function_bind(
+    const behavior_function *f,
+    behavior_function_context *ctx,
+    const service_binding *services,
+    uint64_t owner
+)
+{
+    assert(f->frozen);
+    ctx->owner = owner;
+    ctx->services = services;
+    return true;
 }

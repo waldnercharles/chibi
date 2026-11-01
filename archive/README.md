@@ -199,3 +199,20 @@ Behaviors (`behavior`, `on`/`after` handlers, `bind`, `self`), `component` and `
 - `test/fixtures/{content,declared-components,environment-authoring,feature-coverage,language,material-contracts,studio,studio-workspace,systems,terrain-lab}`: the game-project fixtures (behaviors, systems, components, prototypes, relationships and the libraries beside them). No retained test read them. `test/fixtures/{graph,native-abi,portable-byte-asset}` stay.
 - `docs/code-language.md` sections "Behaviors and state", "Components and systems" and "Input and named entities" moved to `archive/docs/code-language-behaviors.md`.
 - Still in the tree, not yet archived: the prototype, relationship and template declarations and the action, event and macro declarations; the C ECS runtime (step two).
+
+## The C behavior runtime: ECS, queries, systems and the program scheduler (2026-10-31)
+
+The compiler no longer emits behaviors, systems, queries, component access, actions or reductions (see "ECS forms and their Chibi emitters"), so the C code that ran them is archived.
+
+- `src/ecs/`: the world, component storage, relationships, hierarchy, query planner and generated component descriptors (`component_catalog`).
+- `src/runtime/systems/scheduler.[ch]` and `test/tools/scheduler_benchmark.c`.
+- `src/execution/`: `query`, `jit_system`, `jit_component`, `update`, `update_jit`, `parallel` (the parallel-safety proof), `component`, `component_write.h`, `ecs_reader`, `inspection.h`, and the instance machinery of `program*.c` (`program_activation`, `_bindings`, `_commands`, `_inspection`, `_locals`, `_observers`, `_storage`, `_tasks`). The pre-change `program.c`, `program_internal.h`, `program_preflight.c`, `module_effects.c` and the whole of `test/language/execution.c` are kept beside them.
+- Tests: `test/tools/ecs*.c`, `test/language/component_write_ir.c`, `test/prepared_fixture.h`, and the ECS, action, cost-model and effect cases of `test/language/execution.c`.
+- `src/execution/module_effects.c` lost the effect summary (`execution_module_effects`) and the cost model (`execution_module_costs`, `behavior_function_costs`); argument sharing and task dependencies stay.
+- `tools/reflect` no longer emits component descriptors and accessors; `src/runtime/component_catalog.h` became `src/runtime/native_types.h` with only `TYPE_PACK`.
+
+`execution_program` is now a plain registration: a module, its retained states and imports, the services its calls see and one managed heap. `execution_program_call` runs a zero-argument int or void function to completion and refuses a wait or a task. The debugger (`execution_inspector`), profile observer, rows, events, bindings and the owner/instance model are gone with it. Edit and Continue (`prepare_replace`/`commit_replace`) keeps state by stable id.
+
+Kept in the prepared format for now, so the wire is unchanged: the query, description, binding, action and event tables and the component, query and state-selection arrays of a function. A module that fills any of them, or a function that is a handler, system or action, fails to finish with "archived". The opcode names (`WORLD`, `ENTITY`, `COMPONENT*`, `COLUMN*`, `ROW`, `QUERY*`, `STATE_SELECT`, `RETRIGGER`, `INTERN_STRING`) stay in the instruction list so the ABI fingerprint holds; the verifier rejects them. Removing the tables and opcodes is the next format bump.
+
+This change moves the compiler target (the `behavior_function_context` layout, so `arguments_offset`, `results_offset`, `delta_seconds_offset` and `error_status_offset`, and the prepared ABI fingerprint), so the checked-in seed and the pinned first build host and compiler runtime are stale: re-pin them as for any native-catalog change.

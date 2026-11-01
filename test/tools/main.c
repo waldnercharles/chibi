@@ -61,13 +61,6 @@ void test_tool_collab();
 void test_tool_web_storage();
 void test_tool_wasm_browser();
 void test_tool_types();
-void test_tool_ecs();
-void test_tool_ecs_strings();
-void test_tool_ecs_relationships();
-void test_tool_ecs_hierarchy();
-void test_tool_ecs_world();
-void test_tool_ecs_query();
-void test_tool_ecs_query_benchmark();
 void test_arena();
 #ifdef CHIBI_TEST_PROGRAM
 void test_program_sdk();
@@ -83,10 +76,6 @@ bool test_source_runtime_active()
 {
     return source_runtime_active;
 }
-#endif
-#ifdef CHIBI_TEST_SOURCE_FEATURES
-void test_tool_scheduler_benchmark();
-void test_tool_scheduler();
 #endif
 #ifdef CHIBI_TEST_BOX3D
 void test_box3d();
@@ -281,40 +270,20 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
-    if (argc == 2 && !strcmp(argv[1], "--ecs-strings")) {
-        tool_init();
-        pu_display_time(true);
-        test_tool_ecs_strings();
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-    if (argc == 2 && !strcmp(argv[1], "--ecs-query")) {
-        tool_init();
-        pu_display_time(true);
-        test_tool_ecs_query();
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
     bool collab = argc == 2 && !strcmp(argv[1], "--collab");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
-    bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool native_values = false, box3d = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, persistent_store = false;
-    bool system_schedule = false, scheduler_benchmark = false;
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     whole_math = argc == 2 && !strcmp(argv[1], "--whole-math");
     whole_integer = argc == 2 && !strcmp(argv[1], "--whole-integer");
     whole_conversion = argc == 2 && !strcmp(argv[1], "--whole-conversion");
     persistent_store = argc == 2 && !strcmp(argv[1], "--persistent-store");
     whole_select = argc == 2 && !strcmp(argv[1], "--whole-select");
-#endif
-#ifdef CHIBI_TEST_SOURCE_FEATURES
-    system_schedule = argc == 2 && !strcmp(argv[1], "--system-schedule");
-    scheduler_benchmark = argc == 2 && !strcmp(argv[1], "--scheduler-benchmark");
 #endif
 #ifdef CHIBI_TEST_BOX3D
     box3d = argc == 2 && !strcmp(argv[1], "--box3d");
@@ -323,18 +292,15 @@ int main(int argc, char **argv)
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
 #endif
     if (argc != 1 && !collab && !web_storage && !wasm_browser &&
-        !query_benchmark && !native_values && !arena && !types && !box3d &&
-        !persistent_store && !whole_math && !whole_integer && !whole_conversion &&
-        !whole_select && !system_schedule && !scheduler_benchmark) {
+        !native_values && !arena && !types && !box3d && !persistent_store &&
+        !whole_math && !whole_integer && !whole_conversion && !whole_select) {
         fprintf(
             stderr,
-            "Usage: %s [--collab | --ecs-query | --ecs-strings | --web-storage "
-            "| "
-            "--wasm-browser | --ecs-query-benchmark | --arena | --types | "
+            "Usage: %s [--collab | --web-storage | "
+            "--wasm-browser | --arena | --types | "
             "--native-values | --box3d | --persistent-store | --whole-math | "
             "--whole-integer | --whole-conversion | --whole-select | "
-            "--system-schedule | --scheduler-benchmark | --asset-values | "
-            "--fmt]\n",
+            "--asset-values | --fmt]\n",
             argv[0]
         );
         return 2;
@@ -342,18 +308,10 @@ int main(int argc, char **argv)
     tool_init();
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = system_schedule || scheduler_benchmark ||
-                            persistent_store || whole_math || whole_integer ||
+    source_runtime_active = persistent_store || whole_math || whole_integer ||
                             whole_conversion || whole_select;
     if (source_runtime_active) {
-#ifdef CHIBI_TEST_SOURCE_FEATURES
-        if (system_schedule) {
-            test_tool_scheduler();
-        } else if (scheduler_benchmark) {
-            test_tool_scheduler_benchmark();
-        } else
-#endif
-            if (persistent_store) {
+        if (persistent_store) {
             test_persistent_stores();
         } else if (whole_math) {
             test_compiled_math();
@@ -388,8 +346,6 @@ int main(int argc, char **argv)
         test_tool_collab();
     } else if (web_storage) {
         test_tool_web_storage();
-    } else if (query_benchmark) {
-        test_tool_ecs_query_benchmark();
     } else if (types) {
         test_tool_types();
     } else if (arena) {
@@ -398,11 +354,6 @@ int main(int argc, char **argv)
         test_tool_types();
     } else {
         test_tool_types();
-        test_tool_ecs();
-        test_tool_ecs_relationships();
-        test_tool_ecs_hierarchy();
-        test_tool_ecs_world();
-        test_tool_ecs_query();
         test_tool_collab();
     }
     pu_print_stats();

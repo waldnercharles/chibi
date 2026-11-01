@@ -433,7 +433,7 @@ pub TargetError :: (arguments: string[], targets: string[]) -> string {
             found = found || arguments[i + 1] == target;
         }
         if (!found) {
-            return format_text("graph: unknown target '{0}'", arguments[i + 1]);
+            return format_text("graph: unknown target '{}'", arguments[i + 1]);
         }
     }
     return "";

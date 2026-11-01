@@ -427,7 +427,7 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
         }
         path := response;
         if (length(responses) > 0) {
-            path = format_text("{0}.{1}", response, length(responses));
+            path = format_text("{}.{}", response, length(responses));
         }
         argument := Join(["@", path]);
         if (strings.ByteLength(argument) + 1 >= bytes) {

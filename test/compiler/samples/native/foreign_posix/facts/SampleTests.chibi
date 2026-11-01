@@ -92,6 +92,15 @@ Calls :: () {
     assert(os.Wait(slow, 20) == os.StillRunning, "os: a running program")
     assert(os.Kill(slow) == -9, "os: kill")
     assert(os.Wait(os.Start(["os-missing-program"], os.Piped), -1) == 127, "os: a program that cannot start")
+    // An optional is true when it is not nil, also as an operand of || and &&.
+    failed := os.Reserve("os_probe/p") || os.Reserve("os_probe/a")
+    assert(failed, "os: an optional as an operand of ||")
+    assert(os.Reserve("os_probe/q") == nil && !(os.Remove("os_probe/q") && true), "os: an optional as an operand of &&")
+    held := os.HashFile("os_probe/none")
+    assert(held.error || held.digest != "", "os: an optional field as an operand of ||")
+    clean := os.Remove("os_probe/none")
+    assert(!(clean || clean) && !(clean && clean), "os: nil operands make || and && false")
+    assert((os.Reserve("os_probe/p") && os.Reserve("os_probe/a")) && (clean || os.Reserve("os_probe/p")), "os: both operands set make && true, and || chains")
     assert(os.Remove("os_probe/p") == nil && os.Remove("os_probe/a/b/c") == nil && os.Remove("os_probe/a/b") == nil &&
            os.Remove("os_probe/a") == nil && os.Remove("os_probe") == nil, "os: cleanup")
 }

@@ -1,0 +1,144 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Main sets key 5 to 7 in an empty int map, reads the key, tests for it,
+// counts and reads the entry at position 0, deletes the key from the map,
+// copies and drops the copy, and returns the value plus the count: 7 + 1.
+Maps :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 2150, 0, 0, 0, 0, 0),
+            Code(native.Constant, 6, 1, 0, 0, 0, 5),
+            Code(native.Constant, 6, 2, 0, 0, 0, 7),
+            Code(native.Constant, 6, 3, 0, 0, 0, 0),
+            Code(native.MapSet, 2150, 4, 0, 1, 2, 1),
+            Code(native.MapGet, 6, 5, 4, 1, 0, 2150),
+            Code(native.MapHas, 1, 6, 4, 1, 0, 2150),
+            Code(native.MapLength, 6, 7, 4, 0, 0, 2150),
+            Code(native.MapKeyAt, 6, 8, 4, 3, 0, 2150),
+            Code(native.MapValueAt, 6, 9, 4, 3, 0, 2150),
+            Code(native.MapDelete, 2150, 10, 4, 1, 0, 1),
+            Code(native.MapCopy, 2150, 11, 10, 0, 0, 0),
+            Code(native.MapDrop, 2150, 0, 11, 0, 0, 0),
+            Code(native.Add, 6, 12, 5, 7, 0, 0),
+            Code(native.Publish, 6, 0, 12, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+MapModule :: (code: native.Instruction[]) -> native.Result {
+    return Emit([Function(6, 0, 0, 13, 0, 17, 0, 0)], [], [2150, 6, 6, 6, 2150, 6, 1, 6, 6, 6, 2150, 2150, 6], code, []);
+}
+MapOperands :: () -> string { return "native map operation differs from its operands"; }
+ChangedMap :: (row: int, item: native.Instruction) {
+    Rejects(MapModule(Changed(Maps(), row, item)), MapOperands());
+}
+
+// A map is the runtime's three words and an index, and each operation on it
+// calls its type's helpers, named by the type.
+@test
+MapsCallTheHelpersOfTheirType :: () {
+    text := Emitted(MapModule(Maps()));
+    assert(abi.MapType() == "{ i32, i32, ptr, ptr }");
+    assert(strings.Contains(text, "%s4 = alloca { i32, i32, ptr, ptr }\n"));
+    assert(strings.Contains(text, "%v5 = call { i32, i32, ptr, ptr } @chibi_map.2150.set(ptr %ctx, { i32, i32, ptr, ptr } %m5, i32 %k5, i32 %c5, i1 true)\n"));
+    assert(strings.Contains(text, "%v6 = call i32 @chibi_map.2150.get({ i32, i32, ptr, ptr } %m6, i32 %k6)\n"));
+    assert(strings.Contains(text, "%v7 = call i1 @chibi_map.2150.has({ i32, i32, ptr, ptr } %m7, i32 %k7)\n"));
+    assert(strings.Contains(text, "%v8 = extractvalue { i32, i32, ptr, ptr } %m8, 0\n  store i32 %v8, ptr %s7\n"));
+    assert(strings.Contains(text, "%v11 = call { i32, i32, ptr, ptr } @chibi_map.2150.delete(ptr %ctx, { i32, i32, ptr, ptr } %m11, i32 %k11, i1 true)\n"));
+    assert(strings.Contains(text, "%v12 = call { i32, i32, ptr, ptr } @chibi_map.2150.copy(ptr %ctx, { i32, i32, ptr, ptr } %m12)\n"));
+    assert(strings.Contains(text, "call void @chibi_map.2150.drop(ptr %ctx, { i32, i32, ptr, ptr } %m13)\n"));
+    assert(strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
+}
+// A position outside the map ends the program through the context, as an
+// array's index does, and a position inside reads the entry's field.
+@test
+MapPositionsAreCheckedAndReadEntryFields :: () {
+    text := Emitted(MapModule(Maps()));
+    assert(strings.Contains(text, "%in9 = icmp ult i32 %b9, %length9\n  br i1 %in9, label %inside9, label %outside9\noutside9:\n"));
+    assert(strings.Contains(text, "call void %index9(ptr %ctx, i32 %b9, i32 %length9)\n  unreachable\ninside9:\n"));
+    assert(strings.Contains(text, "%at9 = getelementptr inbounds { i32, i32 }, ptr %data9, i64 %offset9, i32 0\n  %v9 = load i32, ptr %at9\n"));
+    assert(strings.Contains(text, "%at10 = getelementptr inbounds { i32, i32 }, ptr %data10, i64 %offset10, i32 1\n  %v10 = load i32, ptr %at10\n"));
+}
+// The helpers appear once, with the layout docs/native-maps.md pins: an entry
+// is { key, value }, a slot { hash, entry + 1 } with 0 for empty, and the
+// index holds its slot count before the slots.
+@test
+MapHelpersKeepTheirLayout :: () {
+    text := Emitted(MapModule(Maps()));
+    assert(strings.Count(text, "define internal i32 @chibi_map.2150.find(") == 1);
+    assert(strings.Count(text, "define internal void @chibi_map.place(") == 1);
+    assert(strings.Contains(text, "%sp = getelementptr inbounds { i32, i32 }, ptr %base, i64 %poff\n"));
+    assert(strings.Contains(text, "%base = getelementptr inbounds i8, ptr %index, i64 8\n"));
+    assert(strings.Contains(text, "%ek = getelementptr inbounds { i32, i32 }, ptr %buffer, i64 %coff, i32 0\n"));
+    assert(strings.Contains(text, "%big = icmp ugt i32 %n, 8\n"));
+    assert(strings.Contains(text, "%crowded = icmp ugt i32 %load, %room3\n"));
+    assert(strings.Contains(text, "%newcap = select i1 %none, i32 4, i32 %double\n"));
+    assert(!strings.Contains(text, "memcpy"));
+    assert(!strings.Contains(text, "chibi_scalar.text_equal"));
+}
+@test
+MapGetsRejectAKeyOfAnotherType :: () {
+    ChangedMap(6, Code(native.MapGet, 6, 5, 4, 6, 0, 2150));
+}
+@test
+MapSetsRejectAValueOfAnotherType :: () {
+    ChangedMap(5, Code(native.MapSet, 2150, 4, 0, 1, 6, 1));
+}
+@test
+MapSetsRejectAnOwnershipOtherThanZeroOrOne :: () {
+    ChangedMap(5, Code(native.MapSet, 2150, 4, 0, 1, 2, 2));
+}
+@test
+MapReadsRejectATypeTheMapDoesNotHave :: () {
+    ChangedMap(8, Code(native.MapLength, 6, 7, 4, 0, 0, 2151));
+}
+@test
+MapPositionsRejectANonInt :: () {
+    ChangedMap(9, Code(native.MapKeyAt, 6, 8, 4, 6, 0, 2150));
+}
+// A float is no key: NaN equals nothing.
+@test
+MapsRejectAFloatKey :: () {
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, 2154, 0, 0, 0, 0, 0),
+             Code(native.MapLength, 6, 1, 0, 0, 0, 2154),
+             Code(native.Publish, 6, 0, 1, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    Rejects(Emit([Function(6, 0, 0, 2, 0, 5, 0, 0)], [], [2154, 6], code, []),
+            "native scalar slot cannot hold a managed value or pointer");
+}
+
+// Main sets the string key "key" to 7 and reads it back.
+TextMaps :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 2157, 0, 0, 0, 0, 0),
+            Code(native.Constant, 13, 1, 0, 0, 0, 0),
+            Code(native.Constant, 6, 2, 0, 0, 0, 7),
+            Code(native.MapSet, 2157, 3, 0, 1, 2, 1),
+            Code(native.MapGet, 6, 4, 3, 1, 0, 2157),
+            Code(native.Publish, 6, 0, 4, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+TextMapModule :: (code: native.Instruction[]) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    texts: string[] = ["key"];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 5, 0, 8, 0, 0)], empty, [2157, 13, 6, 2157, 6], empty, code, empty,
+                       records, empty, texts, source, names, empty, empty, false, 1);
+}
+// A string key hashes its bytes and compares by them; the map keeps one
+// reference to a key it takes, gives back the one a repeat key brings, and
+// retains the strings it copies.
+@test
+StringKeysHashAndCompareBytesAndCountReferences :: () {
+    text := Emitted(TextMapModule(TextMaps()));
+    assert(strings.Contains(text, "define internal i32 @chibi_map.2157.hash({ ptr, i32, ptr } %key) {\nentry:\n  %wide = call i64 @chibi_map.text_hash({ ptr, i32, ptr } %key)\n"));
+    assert(strings.Contains(text, "%same = call i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a, { ptr, i32, ptr } %b)\n"));
+    assert(strings.Contains(text, "define internal i1 @chibi_scalar.text_equal("));
+    assert(strings.Contains(text, "%o.rk = extractvalue { ptr, i32, ptr } %key, 2\n  call void @chibi_scalar.free(ptr %ctx, ptr %o.rk)\n"));
+    assert(strings.Contains(text, "%o.rk = extractvalue { ptr, i32, ptr } %rkv, 2\n  call void @chibi_scalar.retain(ptr %o.rk)\n"));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.retain(ptr %owner) {\n"));
+}

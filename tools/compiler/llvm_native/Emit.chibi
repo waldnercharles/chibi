@@ -224,7 +224,46 @@ pub ArrayDrop: int : 57;
 // owns and outlives the call) has nothing to count. Neither gives anything.
 pub TextRetain: int : 58;
 pub TextRelease: int : 59;
-pub InstructionCount: int : 60;
+// A map type is MapType + value * 16 + key (Maps.chibi, docs/native-maps.md): an
+// LLVM { i32, i32, ptr, ptr }, its count, its entries' capacity, the entries in
+// insertion order and an index over them, by value. Its key is a bool, an
+// integer or a string and its value a scalar, a string or a record. Its zero,
+// the Constant of literal 0, is the empty map, which owns no memory. A map is a
+// value, so a producer copies with MapCopy where it would share, and every
+// instruction that changes a map consumes the one it reads. The instructions
+// that read a map name its type: in `type` when they give a map, in `literal`
+// when they do not.
+pub MapType: int : 2048;
+// output = the entry count of the left slot's map, an int.
+pub MapLength: int : 60;
+// output = the value of the right slot's key in the left slot's map, of type,
+// or the value type's zero when the map has no such key.
+pub MapGet: int : 61;
+// output = whether the left slot's map has the right slot's key, a bool.
+pub MapHas: int : 62;
+// output = the left slot's map with the right slot's key given the value in slot
+// `target`; type is the map type. A new key goes last, and an old one keeps its
+// place. The map takes one reference of a string key and one of a string value;
+// a key already present gives the new key's back. Literal 1 gives back the
+// allocations a growth replaces.
+pub MapSet: int : 63;
+// output = the left slot's map without the right slot's key, the entries after
+// it moved down, or as it is for a key it lacks; type is the map type. It
+// borrows the key. Literal 1 gives back the allocations the removal replaces.
+pub MapDelete: int : 64;
+// output = a map of its own allocations equal to the left slot's; type is the
+// map type.
+pub MapCopy: int : 65;
+// Gives the left slot's map's allocations, and each string it holds, back to the
+// context. It gives nothing; type is the map type.
+pub MapDrop: int : 66;
+// output = the key of the right slot's int position among the left slot's map's
+// entries in insertion order, of type; a position outside the map ends the
+// program.
+pub MapKeyAt: int : 67;
+// output = the value of the entry at the right slot's int position, of type.
+pub MapValueAt: int : 68;
+pub InstructionCount: int : 69;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -234,7 +273,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
 }
 Produces :: (op: int) -> bool {
     return op <= Local || op == LocalAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
-           op == ForeignCall || op == StateLoad || op == FunctionAddress;
+           op == ForeignCall || op == StateLoad || op == FunctionAddress || (op >= MapLength && op <= MapValueAt && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
@@ -245,7 +284,7 @@ Unary :: (op: int) -> bool {
 ReadsLeft :: (op: int) -> bool {
     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
-           op == TextRelease || op == StateStore || op == Deref || op == Poke;
+           op == TextRelease || op == StateStore || op == Deref || op == Poke || (op >= MapLength && op <= MapValueAt);
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -275,7 +314,8 @@ Fits :: (literal: i64, type: int) -> bool {
 }
 ReadsRight :: (op: int) -> bool {
     return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
-           ArrayReadsRight(op);
+           ArrayReadsRight(op) || (op >= MapGet && op <= MapDelete && op != MapCopy && op != MapDrop) || op == MapKeyAt ||
+           op == MapValueAt;
 }
 // Whether an array instruction reads a right slot: an index, an element,
 // another array or a length.
@@ -285,7 +325,7 @@ ArrayReadsRight :: (op: int) -> bool {
 // Whether an instruction reads the slot its target names: an array store's
 // value or a slice's count.
 ReadsTarget :: (op: int) -> bool {
-    return op == ArraySet || op == ArraySlice;
+    return op == ArraySet || op == ArraySlice || op == MapSet;
 }
 // Whether an array instruction calls the runtime context: an index check, or
 // an allocation.
@@ -318,6 +358,9 @@ Held :: (records: Record[], type: int) -> bool {
 // Whether `type` is a scalar, a string, one of the module's records or an
 // array of one of them.
 Valued :: (records: Record[], type: int) -> bool {
+    if (type >= MapType) {
+        return MapShaped(records, type);
+    }
     if (type >= ArrayType) {
         return ElementType(records, type) != 0;
     }
@@ -327,6 +370,9 @@ Valued :: (records: Record[], type: int) -> bool {
 TypeName :: (type: int) -> string {
     if (type >= RefType) {
         return "ptr";
+    }
+    if (type >= MapType) {
+        return abi.MapType();
     }
     if (type >= ArrayType) {
         return abi.ArrayType();
@@ -853,6 +899,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (((item.op >= ArrayLength && item.op <= ArrayBytes) || item.op == ArrayText) && !ArrayValid(records, slots, item)) {
             return Result.Rejected(base + pc, "native array operation differs from its operands");
         }
+        if (item.op >= MapLength && item.op <= MapValueAt && !MapValid(records, slots, item)) {
+            return Result.Rejected(base + pc, "native map operation differs from its operands");
+        }
         if (item.op >= TextLength && item.op <= TextTake && !TextValid(slots, item)) {
             return Result.Rejected(base + pc, "native text read differs from its operands");
         }
@@ -1254,6 +1303,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, ArrayBytesRead(item, pc));
     } else if (item.op == ArrayText) {
         out = format_text("{}{}", out, ArrayTextRead(item, pc));
+    } else if (item.op >= MapLength && item.op <= MapValueAt) {
+        out = format_text("{}{}", out, MapRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
         out = format_text("{}{}", out, ArrayRead(item, pc));
     } else if (item.op >= TextLength && item.op <= TextTake) {
@@ -1355,6 +1406,9 @@ TextHelpers :: () -> string {
 Counts :: (code: Instruction[]) -> bool {
     for (item in code) {
         if (item.op == TextRetain || item.op == TextRelease || item.op == ArrayDrop || Holding(item.type)) {
+            return true;
+        }
+        if (item.op >= MapLength && item.op <= MapValueAt && MapHolds(MapUsed(item))) {
             return true;
         }
     }
@@ -2145,7 +2199,7 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
 // Whether `code` calls the runtime.
 Runtime :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == Format || item.op == Fail || ArrayCalls(item.op)) {
+        if (item.op == Format || item.op == Fail || ArrayCalls(item.op) || MapCalls(item.op)) {
             return true;
         }
     }
@@ -2274,7 +2328,8 @@ StatesNumbered :: (code: Instruction[]) -> bool {
 // Whether `code` moves array elements, which the module's copy does.
 Copies :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains)) {
+        if (item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains) ||
+            item.op == MapSet || item.op == MapDelete || item.op == MapCopy) {
             return true;
         }
     }
@@ -2342,6 +2397,9 @@ Compares :: (code: Instruction[]) -> bool {
             return true;
         }
         if (item.op == ArrayContains && item.literal == i64(abi.TextStorage)) {
+            return true;
+        }
+        if (item.op >= MapLength && item.op <= MapValueAt && MapKey(MapUsed(item)) == abi.TextStorage) {
             return true;
         }
     }
@@ -2523,6 +2581,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             out.append(format_text("\n{}", text));
         }
         copies := Copies(held);
+        out.append(MapModule(held));
         if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
         }

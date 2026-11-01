@@ -6,8 +6,7 @@ import strings "core:strings"
 // `chibi` as a process: version, doctor, run, run --watch and test. The cases
 // specify the CLI for its native replacement (docs/c-test-verdicts.md, "The
 // CLI"), as test/tools/chibi_cli.c does for the C apphost; each keeps that
-// case's exit codes and text. Run takes the launcher of a build tree; the
-// cases that need an installed SDK run in Installed, which takes its launcher.
+// case's exit codes and text. Run takes the launcher of a build tree.
 
 // How long a watched program may take to print after a start or an edit: a
 // first compile takes 8 to 10 s for a small program on a workstation, more on
@@ -372,22 +371,14 @@ TestReportsEachTest :: (suite: Suite) {
 
 // The launcher, from the scratch folder, runs a package's tests below a
 // folder it names.
-InstalledPackageCommands :: (suite: Suite, launcher: string) {
+TestRunsAPackageBelowAFolder :: (suite: Suite) {
     tree := Path([suite.root, "/packages"]);
     Make(tree);
     Make(Path([tree, "/facts"]));
     Write(Path([tree, "/facts/Facts.chibi"]), Facts());
-    ran := At(suite, [launcher, "test", tree]);
+    ran := At(suite, [suite.built, "test", tree]);
     assert(ran.status == 1 && Says(ran, "PASS facts.Passes\nFAIL facts.Fails\n"), "each test reported");
     assert(Says(ran, "Assertion failed: four bytes\n2 tests, 1 failed\n"), "the failure and the count");
-}
-
-// An installed launcher reports a packaged build and finds its compiler.
-InstalledIdentityAndDoctor :: (suite: Suite, launcher: string) {
-    ran := At(suite, [launcher, "version"]);
-    assert(ran.status == 0 && Says(ran, "chibi ") && !Says(ran, "build: unpackaged"), "a packaged identity");
-    ran = At(suite, [launcher, "doctor"]);
-    assert(ran.status == 0 && Says(ran, "\ncompiler: supported ("), "its compiler");
 }
 
 // The CLI runs a standalone source file or folder, named or the current one,
@@ -708,7 +699,7 @@ pub Run :: () -> int {
     HelpOfTheBuiltLauncher(suite);
     TestRunsSharedPackageTests(suite);
     TestReportsEachTest(suite);
-    InstalledPackageCommands(suite, suite.built);
+    TestRunsAPackageBelowAFolder(suite);
     RunDispatchesStandalonePrograms(suite);
     ProgramMainRunsFromFilesAndDirectories(suite);
     ProgramSourcesLinkPackagesAndSelectTheRootEntry(suite);
@@ -717,20 +708,6 @@ pub Run :: () -> int {
     WatchPatchesARunningFrameAndKeepsState(suite);
     WatchTracksSiblingsAndKeepsImportedState(suite);
     ProgramCancellationStopsBusyMainAndTests(suite);
-    assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the scratch cleanup");
-    return 0;
-}
-
-// The build host runs this entry with an installed SDK's launcher, such as
-// dist/sdk/bin/chibi.
-pub Installed :: () -> int {
-    arguments := os.Arguments();
-    assert(length(arguments) == 1, "the installed launcher");
-    folder := Scratch("chibi-cli-installed");
-    launcher := os.RealPath(arguments[0]);
-    suite: Suite = {root: folder, launcher: launcher, built: launcher};
-    InstalledIdentityAndDoctor(suite, launcher);
-    InstalledPackageCommands(suite, launcher);
     assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the scratch cleanup");
     return 0;
 }

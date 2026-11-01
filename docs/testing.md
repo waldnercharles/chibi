@@ -157,8 +157,7 @@ processes.
 
 `chibi-cli-authored` (`test/graph/ChibiCliTests.chibi`) runs the `chibi-cli`
 cases that outlive the VM, through the same launcher, for its native
-replacement. Its `Installed` entry takes an installed launcher, as
-`chibi-cli-installed` does.
+replacement.
 
 `chibi build test <name>` runs one selector against the drivers in `build/` and
 the Release tools in `build-release/`; `--build`, `--release-build` and

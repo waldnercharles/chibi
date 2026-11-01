@@ -1,0 +1,5 @@
+package vm
+
+pub Which :: () -> int {
+    return 0
+}

@@ -11,11 +11,15 @@ pub File :: struct {
     directory: string;
     name: string;
 }
+// A conditional import is inside a `when` branch: its binding and edge hold
+// only if the compiler keeps that branch, so two conditional imports of one
+// file may share an alias, which the compiler checks among the kept ones.
 pub Import :: struct {
     file: int;
     directory: string;
     alias: string;
     explicit_alias: bool;
+    conditional: bool;
 }
 pub Package :: struct {
     directory: string;
@@ -28,11 +32,14 @@ pub Binding :: struct {
     file: int;
     target: int;
     import_index: int;
+    conditional: bool;
 }
+// Conditional when every import that makes it is.
 pub Edge :: struct {
     from: int;
     to: int;
     import_index: int;
+    conditional: bool;
 }
 pub Error :: struct {
     code: int;
@@ -224,20 +231,24 @@ pub Build :: (files: File[], imports: Import[]) -> Graph {
                             related_file: -1, related_import: -1, cycle_count: 0}, cycle);
         }
         if (!blank) {
-            binding: Binding = {name: alias, file: imported.file, target: target, import_index: i};
+            binding: Binding = {name: alias, file: imported.file, target: target, import_index: i,
+                                conditional: imported.conditional};
             bindings.append(binding);
         }
         from := filePackages[imported.file];
-        exists := false;
-        for (edge in edges) {
-            if (edge.from == from && edge.to == target) {
-                exists = true;
+        exists := -1;
+        for (index in 0..<length(edges)) {
+            if (edges[index].from == from && edges[index].to == target) {
+                exists = index;
                 break;
             }
         }
-        if (!exists) {
-            edge: Edge = {from: from, to: target, import_index: i};
+        if (exists < 0) {
+            edge: Edge = {from: from, to: target, import_index: i, conditional: imported.conditional};
             edges.append(edge);
+        } else if (edges[exists].conditional && !imported.conditional) {
+            certain: Edge = {from: from, to: target, import_index: i, conditional: false};
+            edges[exists] = certain;
         }
         i += 1;
     }
@@ -247,7 +258,7 @@ pub Build :: (files: File[], imports: Import[]) -> Graph {
     while (i < length(bindings)) {
         a := bindings[i - 1];
         b := bindings[i];
-        if (a.file == b.file && a.name == b.name) {
+        if (a.file == b.file && a.name == b.name && !(a.conditional && b.conditional)) {
             if (duplicate < 0 || b.import_index < bindings[duplicate].import_index) {
                 duplicate = i;
             }

@@ -907,8 +907,10 @@ on Linux x64 and macOS arm64 and, with `publish`, releases it as
 and `tools/bootstrap/native-seed.sh PLATFORM OUTPUT` fetches and checks one.
 Once a platform is pinned, that workflow and the Native self-host workflow pass
 it as `--stage-one`, so recovery starts from the native seed: it compiles the
-current sources to stage two, stage two compiles them to stage three, and the
-two must be byte-identical. The bytecode seed above stays only until the VM is
+current sources to stage two, and stage two compiles them to stage three. A
+seed older than the sources gives a stage two built by the older compiler, so
+when the two differ, stage three compiles stage four and those two must be
+byte-identical; the verb prints which stage is the fixed point. The bytecode seed above stays only until the VM is
 deleted.
 
 ### Three-platform compiler recovery proof

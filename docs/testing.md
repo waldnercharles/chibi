@@ -144,12 +144,6 @@ tree and reported as `FAIL NAME (timed out after Ns)`; the others still run.
 CI runs the `projects language` invocation with `--jobs 3` on Linux (4 cores,
 16 GB) and `--jobs 2` on macOS (3 cores, 7 GB).
 
-The language group queues `bootstrap-recovery` immediately after the longer
-compiler suite, before the short sample suites. Recovery exports to its own
-temporary root and does not share the compiler cache, so it can use an earlier
-free worker without changing its clean-checkout proof. Keep it in the group
-exactly once: adding it as an explicit selector as well would run it twice.
-
 The `projects` group runs `chibi-cli`, `chibi-cli-authored` and `native-build` against the Release
 `chibi` launcher in `build-release/sdk/`, with its `chibi-compile` beside it.
 `native-build` links real programs only when `CHIBI_LLVM_BIN` names the LLVM

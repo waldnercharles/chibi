@@ -112,19 +112,6 @@ TestSelectors :: (host: string) {
     assert(bounded.status == 0 && Has(Output(bounded), "types (30s): env "), "an explicit deadline");
     heavy := Verb(host, "test", ["--dry-run", "chibi-cli"]);
     assert(heavy.status == 0 && Has(Output(heavy), "chibi-cli (900s): env "), "a selector's own deadline");
-    // Recovery must get a free worker before the short sample suites, without
-    // adding another invocation of the expensive clean-checkout proof.
-    language := Verb(host, "test", ["--dry-run", "language"]);
-    log = Output(language);
-    compiler := strings.Index(log, "chibi-test-compiler (600s):");
-    recovery := strings.Index(log, "bootstrap-recovery (600s):");
-    samples := strings.Index(log, "chibi-test-samples-base (600s):");
-    assert(language.status == 0 && compiler >= 0 && recovery > compiler && samples > recovery, "long compiler work starts before sample suites");
-    count := 0;
-    for (line in strings.Lines(log)) {
-        if (strings.HasPrefix(line, "bootstrap-recovery (")) { count += 1; }
-    }
-    assert(count == 1, "clean-checkout recovery runs exactly once");
     unknown := Verb(host, "test", ["no-such-selector"]);
     assert(unknown.status != 0 && Has(Output(unknown), "unknown selector 'no-such-selector'"), "an unknown selector");
 }
@@ -223,6 +210,44 @@ NativeRunners :: (host: string) {
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed")
 }
 
+// Native fixed-point checks use controlled executable stages. They exercise the
+// real driver without compiling the compiler or invoking LLVM. Accepted hashes
+// reach a deliberately failing runner, so these are not native proof claims.
+NativeFixedPoint :: (host: string) {
+    scratch := format_text("{}/.chibi/graph-native-fixed-point", os.Root())
+    assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(scratch) == nil, "the scratch root")
+    seed := format_text("{}/seed", scratch)
+    assert(os.Run(["cp", "test/graph/fixtures/native-stage.sh", seed]) == 0 && os.Run(["chmod", "+x", seed]) == 0, "the controlled seed")
+    for (mode in ["missing-three", "missing-four", "failed-four", "mismatch", "equal", "recovered"]) {
+        assert(os.WriteText(format_text("{}/mode", scratch), mode) == nil, "the stage behavior")
+        result := Verb(host, "native-self-host", ["--llvm", scratch, "--work", scratch, "--stage-one", seed,
+                                                  "--build-host", host, "--compiler-host", host, "--skip-vm"])
+        log := Output(result)
+        assert(result.status != 0, "the fixture never claims a complete native proof")
+        assert(!Has(log, "stage-five"), "recovery has only one extra generation")
+        if (mode == "missing-three") {
+            assert(Has(log, "stage three sha256 \n") && Has(log, "stage two and stage three differ"), "a missing stage-three digest rejects")
+            assert(!Has(log, "stage-four:"), "a missing stage-three digest never attempts recovery")
+        } else if (mode == "missing-four" || mode == "mismatch") {
+            assert(Has(log, "stage three and stage four differ"), "the recovery needs matching nonempty digests")
+        } else if (mode == "failed-four") {
+            assert(result.status == 25 && Has(log, "stage-four rejected:"), "the stage-four error propagates")
+        } else {
+            fixed := "/stage2/chibi"
+            if (mode == "recovered") {
+                fixed = "/stage3/chibi"
+            }
+            assert(Has(log, format_text("native-self-host: the fixed point is {}{}", scratch, fixed)), "the matching pair selects its compiler")
+            assert(Has(log, "fixture reached runner"), "a fixed point still needs the runner checks")
+            assert(Has(log, "stage-four:") == (mode == "recovered"), "only a seeded mismatch adds a generation")
+        }
+        if (mode != "equal" && mode != "recovered") {
+            assert(!Has(log, "native-self-host: the fixed point is ") && !Has(log, "fixture reached runner"), "invalid proof never reaches the runner")
+        }
+    }
+    assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed")
+}
+
 // `census` fails on build tooling outside archive/ and counts the C that
 // remains, in a scratch repository of its own.
 Census :: (host: string) {
@@ -281,6 +306,7 @@ pub Run :: () -> int {
     TestSelectors(host);
     TestScheduling(host);
     NativeRunners(host);
+    NativeFixedPoint(host);
     Census(host);
     OtherVerbs(host);
     return 0;

@@ -34,6 +34,7 @@ Main :: () -> int {
         os.Print(strings.Concatenate(["native: ", gathered.problem]));
         return 2;
     }
+    context := false;
     switch Module(core, gathered.paths, gathered.sources, triple) {
         case .Rejected(message):
             os.Print(strings.Concatenate(["native: ", message]));
@@ -43,16 +44,19 @@ Main :: () -> int {
                 os.Print(strings.Concatenate(["native: cannot write ", output, ".ll"]));
                 return 2;
             }
+            context = Takes(module);
     }
-    // A Linux or Windows program runs with nothing but its own objects; macOS
-    // links libSystem, as its programs always have.
-    static := !strings.HasPrefix(triple, "aarch64-apple");
+    // A program that allocates or formats takes the runtime context, which the
+    // start module supplies from libc's allocator on Linux, so it links libc
+    // dynamically. Otherwise Linux and Windows programs run with nothing but
+    // their own objects; macOS links libSystem, as its programs always have.
+    static := !strings.HasPrefix(triple, "aarch64-apple") && (!context || strings.HasPrefix(triple, "x86_64-pc-windows"));
     objects := [strings.Concatenate([output, ".o"])];
     if (host.Object(llvm, strings.Concatenate([output, ".ll"]), objects[0], 2) != nil) {
         os.Print("native: llc could not emit the object");
         return 2;
     }
-    start := link.Start(triple, static, false);
+    start := link.Start(triple, static, context);
     if (start != "") {
         if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil ||
             host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), 2) != nil) {
@@ -86,10 +90,13 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
     found: string[] = [];
     prefix := strings.Concatenate([collection, ":"]);
     for (line in strings.SplitLines(text)) {
-        if (!strings.HasPrefix(line, "import ")) {
+        // The indented imports of a `when` branch count too, so the snapshot
+        // holds every package a kept branch may import.
+        trimmed := strings.TrimSpace(line);
+        if (!strings.HasPrefix(trimmed, "import ")) {
             continue;
         }
-        parts := strings.Split(line, "\"");
+        parts := strings.Split(trimmed, "\"");
         if (length(parts) >= 3 && strings.HasPrefix(parts[1], prefix)) {
             found.append(strings.TrimPrefix(parts[1], prefix));
         }
@@ -176,4 +183,25 @@ Gather :: (project: string, core: string, package: string) -> Inputs {
         next += 1;
     }
     return found;
+}
+
+// Whether the module's entry takes the runtime context: its text holds
+// `@chibi_scalar(ptr %ctx` (the other functions are `@chibi_scalar.N`).
+Takes :: (module: u8[]) -> bool {
+    needle := strings.Bytes("@chibi_scalar(ptr %ctx");
+    last := length(module) - length(needle);
+    at := 0;
+    while (at <= last) {
+        if (int(module[at]) == needle[0]) {
+            matched := 1;
+            while (matched < length(needle) && int(module[at + matched]) == needle[matched]) {
+                matched += 1;
+            }
+            if (matched == length(needle)) {
+                return true;
+            }
+        }
+        at += 1;
+    }
+    return false;
 }

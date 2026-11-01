@@ -77,24 +77,6 @@ Markers :: (text: string) -> string[] {
     }
     return found;
 }
-// The marker lines of the module file at `path`, as Markers reads them from its
-// text. The compiler's module is tens of MB, past what the host reads whole, so
-// grep selects the lines.
-FileMarkers :: (path: string) -> string[] {
-    found: string[] = [];
-    if (build.probe(["grep", "-a", "-E", "^[;td]", path]) > 1) {
-        return found;
-    }
-    return build.lines(build.last_stdout());
-}
-// Whether the file at `path` starts with the 0 byte that flags a rejection's text.
-Flagged :: (path: string) -> bool {
-    if (build.probe(["head", "-c", "1", path]) != 0) {
-        return false;
-    }
-    flag := build.last_stdout();
-    return strings.ByteLength(flag) == 1 && strings.ByteAt(flag, 0) == 0;
-}
 pub Target :: (text: string) -> int {
     return TargetIn(Markers(text));
 }
@@ -366,8 +348,8 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         build.report("native-aot: output and partial must be absent; choose a fresh directory");
         return 2;
     }
-    markers := FileMarkers(input);
-    if (length(markers) == 0) {
+    text := build.read_file(input);
+    if (strings.ByteLength(text) == 0) {
         build.report("native-aot: empty IR is not an emitted scalar module");
         return 2;
     }
@@ -390,7 +372,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     object := Join([partial, "/object.o"]);
     start := Join([partial, "/start.ll"]);
     start_object := Join([partial, "/start.o"]);
-    if (!build.copy_file(input, source)) {
+    if (!build.write_file(source, text)) {
         return Failed(partial, "IR snapshot", 1);
     }
     passes := "verify";
@@ -409,7 +391,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     target := -1;
     optimized: string[] = [];
     if (build.file_kind(module) == "file") {
-        optimized = FileMarkers(module);
+        optimized = Markers(build.read_file(module));
         target = TargetIn(optimized);
     }
     if (target < 0) {
@@ -420,6 +402,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
     if (shared) {
         program = Join([partial, "/generation.so"]);
     }
+    markers := Markers(text);
     libraries := LinkedLibraries(markers);
     imported := native_link.SystemImports(markers);
     if (target != 2 && length(imported) > 0) {
@@ -545,7 +528,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         }
         program_hash = build.hash_file(program);
     }
-    if (source_hash != build.hash_file(input) || module_hash == "" || object_hash == "" ||
+    if (source_hash != build.hash_text(text) || module_hash == "" || object_hash == "" ||
         (executable && ((start_hash == "" && !shared) || program_hash == ""))) {
         return Failed(partial, "output identity", 1);
     }
@@ -911,8 +894,8 @@ Driver :: (host: string, artifact: string, core: string, work: string, target: s
         build.report(Join(["native: the compiler did not compile ", entry_path, ": ", build.last_stderr()]));
         return Finish(work, 1);
     }
-    if (Flagged(module)) {
-        emitted := build.read_file(module);
+    emitted := build.read_file(module);
+    if (strings.ByteAt(emitted, 0) == 0) {
         build.report(Join(["native: ", strings.Slice(emitted, 1, strings.ByteLength(emitted))]));
         return Finish(work, 1);
     }
@@ -1233,12 +1216,12 @@ pub Native :: () -> int {
         build.report(Join([source, ":", build.read_file(diagnostic)]));
         return Finish(work, 1);
     }
+    emitted := build.read_file(module);
     libraries := false;
-    for (line in FileMarkers(module)) {
+    for (line in Markers(emitted)) {
         libraries = libraries || strings.HasPrefix(line, "; chibi-library ");
     }
     if (libraries) {
-        emitted := build.read_file(module);
         resolved := ResolveLibraries(emitted, root, vendor);
         if (resolved == "" || !build.write_file(module, resolved)) {
             return Finish(work, 1);

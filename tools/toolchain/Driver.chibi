@@ -398,16 +398,33 @@ Test :: (arguments: string[]) -> int {
         stdio = os.Piped
     }
     running: Running[] = []
-    next := 0
+    // Selectors start in order, but one that must run alone waits for the
+    // pool to drain while later ones fill free slots, so it never leaves the
+    // other jobs idle behind a long selector.
+    started: bool[] = []
+    while (length(started) < length(selected)) {
+        started = extend(started, [false])
+    }
+    remaining := length(selected)
     failed := 0
-    while (next < length(selected) || length(running) > 0) {
-        while (next < length(selected) && length(running) < jobs &&
-               (length(running) == 0 || (!Exclusive(rows, selected[next]) && !Exclusive(rows, selected[running[0].index])))) {
+    while (remaining > 0 || length(running) > 0) {
+        while (remaining > 0 && length(running) < jobs &&
+               (length(running) == 0 || !Exclusive(rows, selected[running[0].index]))) {
+            next := -1
+            for (i in 0..<length(selected)) {
+                if (next < 0 && !started[i] && (length(running) == 0 || !Exclusive(rows, selected[i]))) {
+                    next = i
+                }
+            }
+            if (next < 0) {
+                break
+            }
             os.Print(format_text("RUN {}", selected[next]))
             command := TestCommand(Row(rows, "tool", selected[next]), directory, releases, host)
-            started: Running = {index: next, process: os.Start(command, stdio), waited: 0}
-            running.append(started)
-            next += 1
+            job: Running = {index: next, process: os.Start(command, stdio), waited: 0}
+            running.append(job)
+            started[next] = true
+            remaining -= 1
         }
         // Wait a slice for the oldest, then poll the rest, so a short selector
         // frees its slot while a long one runs. Only a slice that passes in

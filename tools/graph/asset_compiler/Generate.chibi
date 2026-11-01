@@ -2,7 +2,6 @@ package asset_compiler_stage
 
 import os "core:os"
 import strings "core:strings"
-import sha "core:hash/sha256"
 
 // Retain each fragment once per level, not every growing prefix.
 Join :: (parts: string[]) -> string {
@@ -25,34 +24,16 @@ Join :: (parts: string[]) -> string {
     return parts[0];
 }
 
+// A request quotes every source it carries, about 2 MB, so each byte costs
+// only integer tests; text between escapes is copied in runs.
 Quote :: (text: string) -> string {
     parts := ["\""];
     start: int = 0;
     index: int = 0;
     for (value in strings.Bytes(text)) {
-        escape := "";
-        if (value == 34) {
-            escape = "\\\"";
-        }
-        if (value == 92) {
-            escape = "\\\\";
-        }
-        if (value == 10) {
-            escape = "\\n";
-        }
-        if (value == 13) {
-            escape = "\\r";
-        }
-        if (value == 9) {
-            escape = "\\t";
-        }
-        if (value < 32 && escape == "") {
-            digits := "0123456789abcdef";
-            escape = Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
-        }
-        if (escape != "") {
+        if (value < 32 || value == 34 || value == 92) {
             parts.append(strings.Slice(text, start, index - start));
-            parts.append(escape);
+            parts.append(Escape(value));
             start = index + 1;
         }
         index += 1;
@@ -60,6 +41,27 @@ Quote :: (text: string) -> string {
     parts.append(strings.Slice(text, start, index - start));
     parts.append("\"");
     return Join(parts);
+}
+
+// The JSON escape of a quote, a backslash or a control byte.
+Escape :: (value: int) -> string {
+    if (value == 34) {
+        return "\\\"";
+    }
+    if (value == 92) {
+        return "\\\\";
+    }
+    if (value == 10) {
+        return "\\n";
+    }
+    if (value == 13) {
+        return "\\r";
+    }
+    if (value == 9) {
+        return "\\t";
+    }
+    digits := "0123456789abcdef";
+    return Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
 }
 
 Array :: (values: string[]) -> string {
@@ -163,7 +165,16 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
 // instead of compiling the compiler's sources again. An empty `cache` keeps
 // nothing.
 Key :: (seed: string, request: string) -> string {
-    return sha.Hex(Join([build.hash_file(seed), "\n", request]));
+    return Digest(Join([build.hash_file(seed), "\n", request]));
+}
+
+// The SHA-256 of `text` as 64 lowercase hex digits, computed by the build
+// host. sha256.Hex gives the same digest, but on the build host's VM it costs
+// about 7 µs a byte: 28 s of this generator's 30 s for the 4 MB it hashes. Use
+// sha256.Hex again once build programs run natively (#1204's native build
+// runner plan); every digest the generator takes goes through here.
+Digest :: (text: string) -> string {
+    return build.hash_text(text);
 }
 
 Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
@@ -298,8 +309,9 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         if (strings.HasPrefix(path, "/sdk/")) {
             disk = Join(["packages/", strings.Slice(path, 5, strings.ByteLength(path))]);
         }
-        stamps.append(Join([sha.Hex(sources[index]), " ", disk, "\n"]));
-        records.append(Join(["{\"path\":", Quote(disk), ",\"sha256\":", Quote(sha.Hex(sources[index])), "}"]));
+        digest := Digest(sources[index]);
+        stamps.append(Join([digest, " ", disk, "\n"]));
+        records.append(Join(["{\"path\":", Quote(disk), ",\"sha256\":", Quote(digest), "}"]));
         index += 1;
     }
     manifest := Join(["{\"format\":1,\"artifact\":\"asset_compiler.chibip\",\"artifact_sha256\":",

@@ -1944,6 +1944,21 @@ TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection)
 
 /* The result bit runs eligible intrinsics in caller storage. Union payloads
  * remain independent values, including repeated sources and nested unions. */
+/* Effect analysis compares intrinsic ids with EXECUTION_INTRINSIC_ID
+ * constants, so each intrinsic's call must have exactly that id. */
+TEST_CASE(execution_intrinsic_ids_are_their_kinds)
+{
+    int found = 0;
+    for (int kind = 0; kind <= EXECUTION_INTRINSIC_SEQUENCE_BORROW; kind++) {
+        const node_host_call *call = execution_intrinsic_call((execution_intrinsic)kind);
+        if (call) {
+            REQUIRE(execution_intrinsic_id(call) == EXECUTION_INTRINSIC_ID(kind));
+            found++;
+        }
+    }
+    REQUIRE(found > 0);
+    return true;
+}
 TEST_CASE(execution_intrinsics_build_in_result_storage)
 {
     uint64_t push = execution_intrinsic_id(&EXECUTION_array_push_call),
@@ -4570,6 +4585,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_borrowing_call_arguments_validate_at_definition);
     RUN_TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles);
     RUN_TEST_CASE(execution_union_extraction_checks_dynamic_payload_type);
+    RUN_TEST_CASE(execution_intrinsic_ids_are_their_kinds);
     RUN_TEST_CASE(execution_intrinsics_build_in_result_storage);
     RUN_TEST_CASE(execution_branches_state_and_host_calls);
     RUN_TEST_CASE(execution_runs_without_authored_calls_count_as_running);

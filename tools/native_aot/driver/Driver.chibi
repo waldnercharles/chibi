@@ -60,23 +60,71 @@ Admitted :: (triple: string, layout: string) -> int {
     return -1;
 }
 
-// Only LLVM's verified, canonical textual output is inspected. This admits
-// declared target metadata, not source semantics or arbitrary LLVM syntax.
-// The result is the admitted target's index, or -1.
+Newline: int : 10;
+CarriageReturn: int : 13;
+// At most one line per byte, well below the host array cap in every call.
+MarkerChunkBytes: int : 65536;
+
 // The lines of a module the link reads: comments (`; link`, `; chibi-library`,
 // `; chibi-import`, `; chibi-self`), the target lines and declarations and
-// definitions. A module is tens of MB for the compiler, so one pass tests each
-// line's first byte and the readers below walk only these.
+// definitions. Bounded chunks keep the host array independent of the module's
+// total line count; native splitting/searching avoids per-byte VM dispatch.
 Markers :: (text: string) -> string[] {
     found: string[] = [];
-    for (line in build.lines(text)) {
-        first := strings.ByteAt(line, 0);
-        if (first == 59 || first == 116 || first == 100) {
-            found.append(line);
+    size := strings.ByteLength(text);
+    start := 0;
+    while (start < size) {
+        chunk := strings.Slice(text, start, MarkerChunkBytes);
+        lines := build.lines(chunk);
+        count := length(lines);
+        end := start + strings.ByteLength(chunk);
+        if (end < size && strings.ByteAt(text, end - 1) != Newline) {
+            // Re-read only the incomplete last line in the next chunk. The
+            // host removed one trailing CR, including at a chunk boundary.
+            count -= 1;
+            tail := strings.ByteLength(lines[count]);
+            if (strings.ByteAt(text, end - 1) == CarriageReturn) {
+                tail += 1;
+            }
+            end -= tail;
+        }
+        if (count > 0) {
+            for (index in 0..<count) {
+                line := lines[index];
+                first := strings.ByteAt(line, 0);
+                if (first == 59 || first == 116 || first == 100) {
+                    found.append(line);
+                }
+            }
+            start = end;
+        } else {
+            // A line longer than a chunk: native searches skip its body,
+            // then only a retained line is copied once from the original.
+            end = start + strings.ByteLength(chunk);
+            while (end < size) {
+                part := strings.Slice(text, end, MarkerChunkBytes);
+                head := build.before(part, "\n");
+                end += strings.ByteLength(head);
+                if (strings.ByteLength(head) < strings.ByteLength(part)) {
+                    break;
+                }
+            }
+            first := strings.ByteAt(text, start);
+            if (first == 59 || first == 116 || first == 100) {
+                bytes := end - start;
+                if (strings.ByteAt(text, end - 1) == CarriageReturn) {
+                    bytes -= 1;
+                }
+                found.append(strings.Slice(text, start, bytes));
+            }
+            start = end + 1;
         }
     }
     return found;
 }
+// Only LLVM's verified, canonical textual output is inspected. This admits
+// declared target metadata, not source semantics or arbitrary LLVM syntax.
+// The result is the admitted target's index, or -1.
 pub Target :: (text: string) -> int {
     return TargetIn(Markers(text));
 }

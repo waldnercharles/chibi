@@ -330,6 +330,15 @@ publication. With `CHIBI_LLVM_BIN` set it also links the scalar fixture for
 the host with real LLVM tools at O0 and O2 and runs each program to exit
 status 42. CI runs it on Linux and on macOS.
 
+The target-admission regression also places the final target line after
+a gap of 1,048,577 newline bytes, then adds a late duplicate target that must
+still reject. This exercises the production marker reader with bounded chunks
+instead of one host array for a compiler-sized module. Cases cover metadata
+across chunk boundaries, long retained/discarded lines, LF, CRLF, trailing CR
+and unterminated final metadata. Native line splitting and searching avoid
+per-byte VM dispatch while the retained marker list preserves source order. Build-host
+string, array, storage and process limits remain unchanged.
+
 `fixtures/stage-tool.sh` supplies the controlled `opt`, `llc` and linker: it
 rejects malformed argument shapes, records each argument on its own line and
 uses absolute utility paths. Its object bytes are a marker, not an ELF object,

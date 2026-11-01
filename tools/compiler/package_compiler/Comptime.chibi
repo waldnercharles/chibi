@@ -4,6 +4,8 @@ import snapshot "project:source_snapshot"
 import graph "project:package_graph"
 import syntax "project:syntax_diagnostics"
 import tk "project:source_tokenizer"
+import json "project:json_string"
+import strings "core:strings"
 
 // Compile-time execution of authored functions. A constant initializer may
 // call a function of any package whose parameters and result are integers,
@@ -30,6 +32,8 @@ CtContext :: struct {
     constants: ConstDecl[];
     types: TypeDecl[];
     members: TypeMember[];
+    // The text values of the run: a string is the index of its bytes here.
+    texts: string[];
     steps: int;
 }
 // The locals of one activation, innermost last. A local's storage is its
@@ -111,12 +115,101 @@ CtCallee :: (context: ^CtContext, package: int, file: int, call: int) -> int {
     }
     return -1;
 }
-// Whether `call` is `length(array)`.
-CtLength :: (context: ^CtContext, package: int, file: int, call: int) -> bool {
+// The operations a compile-time call performs itself: `length` of an array or
+// a string, and the byte operations of text.
+CtLengthOf: int : 1;
+CtByteLength: int : 2;
+CtByteAt: int : 3;
+CtSliceOf: int : 4;
+CtBytesOf: int : 5;
+CtFormatText: int : 6;
+// Which of them `call` is, 0 for none.
+CtIntrinsic :: (context: ^CtContext, package: int, file: int, call: int) -> int {
     function := Field(context.forest, call, syntax.FieldFunction);
-    return Is(context.forest, call, syntax.CallExpression) && Is(context.forest, function, syntax.Identifier) &&
-           Text(context.forest, context.documents[file].text, function) == "length" &&
-           CtCallee(context, package, file, call) < 0;
+    if (!Is(context.forest, call, syntax.CallExpression) || !Is(context.forest, function, syntax.Identifier) ||
+        CtCallee(context, package, file, call) >= 0) {
+        return 0;
+    }
+    name := Text(context.forest, context.documents[file].text, function);
+    if (name == "length") {
+        return CtLengthOf;
+    }
+    if (name == "text_byte_length") {
+        return CtByteLength;
+    }
+    if (name == "text_byte_at") {
+        return CtByteAt;
+    }
+    if (name == "text_slice") {
+        return CtSliceOf;
+    }
+    if (name == "text_bytes") {
+        return CtBytesOf;
+    }
+    if (name == "format_text") {
+        return CtFormatText;
+    }
+    return 0;
+}
+// The record declaration whose fields `object` reads, -1 when it is no record:
+// a record local or a call that returns a record.
+CtObjectRecord :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, object: int) -> int {
+    local := CtArrayLocal(context, file, frame, object);
+    if (local >= 0 && -frame.storages[local] >= CtRecord) {
+        return -frame.storages[local] - CtRecord;
+    }
+    if (!Is(context.forest, object, syntax.CallExpression)) {
+        return -1;
+    }
+    callee := CtCallee(context, package, file, object);
+    if (callee >= 0 && context.callables[callee].result == StructStorage &&
+        context.callables[callee].result_container == 0) {
+        return context.callables[callee].result_record;
+    }
+    return -1;
+}
+// Whether `node` is a text expression here: a string literal, a text local, a
+// call, field or element of text, or a `format_text` or `text_slice` call.
+CtIsText :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, node: int) -> bool {
+    forest := context.forest;
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.String)) {
+        return true;
+    }
+    if (Is(forest, value, syntax.Identifier)) {
+        at := CtLookup(frame, Text(forest, context.documents[file].text, value));
+        return at >= 0 && frame.storages[at] == TextStorage;
+    }
+    if (Is(forest, value, syntax.CallExpression)) {
+        callee := CtCallee(context, package, file, value);
+        if (callee >= 0) {
+            return context.callables[callee].result == TextStorage && context.callables[callee].result_container == 0;
+        }
+        code := CtIntrinsic(context, package, file, value);
+        return code == CtSliceOf || code == CtFormatText;
+    }
+    if (Is(forest, value, syntax.MemberExpression)) {
+        record := CtObjectRecord(context, package, file, frame, Unparenthesized(forest, Field(forest, value, syntax.FieldObject)));
+        if (record < 0) {
+            return false;
+        }
+        index := FindField(context.types, context.members, record,
+                           Text(forest, context.documents[file].text, Field(forest, value, syntax.FieldMember)));
+        return index >= 0 && context.members[index].storage == TextStorage && context.members[index].container == 0;
+    }
+    if (Is(forest, value, syntax.IndexExpression)) {
+        object := Unparenthesized(forest, Field(forest, value, syntax.FieldObject));
+        local := CtArrayLocal(context, file, frame, object);
+        if (local >= 0) {
+            return -frame.storages[local] == TextStorage;
+        }
+        if (Is(forest, object, syntax.CallExpression)) {
+            callee := CtCallee(context, package, file, object);
+            return callee >= 0 && context.callables[callee].result == TextStorage &&
+                   context.callables[callee].result_container == ArrayContainer;
+        }
+    }
+    return false;
 }
 // Whether `node` reads a field of a record local or of a call's record result.
 CtFieldRead :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, node: int) -> bool {
@@ -143,7 +236,13 @@ CtCollect :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, nod
     }
     if (Is(context.forest, node, syntax.IndexExpression) || CtFieldRead(context, package, file, frame, node) ||
         (Is(context.forest, node, syntax.CallExpression) &&
-         (CtCallee(context, package, file, node) >= 0 || CtLength(context, package, file, node)))) {
+         (CtCallee(context, package, file, node) >= 0 || CtIntrinsic(context, package, file, node) != 0))) {
+        out.append(node);
+        return;
+    }
+    if (Is(context.forest, node, syntax.BinaryExpression) && ComparisonOperator(Operator(context.forest, node)) &&
+        (CtIsText(context, package, file, frame, Field(context.forest, node, syntax.FieldLeft)) ||
+         CtIsText(context, package, file, frame, Field(context.forest, node, syntax.FieldRight)))) {
         out.append(node);
         return;
     }
@@ -228,7 +327,7 @@ CtIsArray :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, nod
 }
 // Whether values of `storage` are numbers or bools.
 CtScalar :: (storage: int) -> bool {
-    return Integer(storage) || Floating(storage) || storage == BoolStorage;
+    return Integer(storage) || Floating(storage) || storage == BoolStorage || storage == TextStorage;
 }
 // The row type of a declared type: the element storage of an array, `CtRecord`
 // plus the declaration of a record, 0 for any other type.
@@ -266,6 +365,9 @@ CtRowOk :: (context: ^CtContext, kind: int) -> bool {
 CtEval :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int,
            want: int) -> CtResult {
     text := context.documents[file].text;
+    if (CtIsText(context, package, file, frame, node)) {
+        return CtEvalText(context, package, file, frame, depth, node);
+    }
     memo: ConstDecl[] = [];
     reads: int[] = [];
     CtCollect(context, package, file, frame, node, &reads);
@@ -425,19 +527,253 @@ CtReadField :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, d
             return CtResult.Value(values[index - context.types[record].first], context.members[index].storage);
     }
 }
+// A new text value of the run: its index.
+CtIntern :: (context: ^CtContext, value: string) -> u64 {
+    context.texts.append(value);
+    return u64(length(context.texts) - 1);
+}
+// The value of a text expression: the index of its bytes.
+CtEvalText :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int) -> CtResult {
+    forest := context.forest;
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.String)) {
+        decoded := json.Value(Text(forest, context.documents[file].text, value));
+        if (!decoded.valid) {
+            return CtResult.Failed(CtFail(context, value, file, "Invalid string literal"));
+        }
+        return CtResult.Value(CtIntern(context, decoded.value), TextStorage);
+    }
+    if (Is(forest, value, syntax.Identifier)) {
+        at := CtLookup(frame, Text(forest, context.documents[file].text, value));
+        if (at >= 0 && frame.storages[at] == TextStorage) {
+            return CtResult.Value(frame.bits[at], TextStorage);
+        }
+    }
+    if (Is(forest, value, syntax.CallExpression) || Is(forest, value, syntax.MemberExpression) ||
+        Is(forest, value, syntax.IndexExpression)) {
+        return CtRead(context, package, file, frame, depth, value);
+    }
+    return CtResult.Failed(CtFail(context, node, file, "a compile-time text is a literal, a local or a call"));
+}
+// `left == right` or `left != right` over text.
+CtReadComparison :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int,
+                     node: int) -> CtResult {
+    operator := Operator(context.forest, node);
+    if (operator != tk.CmpEq && operator != tk.NotEq) {
+        return CtResult.Failed(CtFail(context, node, file, "text compares with == and !="));
+    }
+    switch CtEvalText(context, package, file, frame, depth, Field(context.forest, node, syntax.FieldLeft)) {
+        case .Failed(diagnostic):
+            return CtResult.Failed(diagnostic);
+        case .Waiting:
+            return CtResult.Waiting;
+        case .Elements(more, other):
+            return CtResult.Failed(CtFail(context, node, file, "text compares with text"));
+        case .Value(left, kind):
+            switch CtEvalText(context, package, file, frame, depth, Field(context.forest, node, syntax.FieldRight)) {
+                case .Failed(diagnostic):
+                    return CtResult.Failed(diagnostic);
+                case .Waiting:
+                    return CtResult.Waiting;
+                case .Elements(more, other):
+                    return CtResult.Failed(CtFail(context, node, file, "text compares with text"));
+                case .Value(right, other):
+                    same := context.texts[int(left)] == context.texts[int(right)];
+                    if (same == (operator == tk.CmpEq)) {
+                        return CtResult.Value(1, BoolStorage);
+                    }
+                    return CtResult.Value(0, BoolStorage);
+            }
+    }
+}
+// The decimal digits of `value` of integer type `kind`, with a sign if negative.
+CtDecimal :: (value: u64, kind: int) -> string {
+    exact := ExactStored(value, kind);
+    digits := format_text("{}", LowBits(Magnitude(exact)));
+    if (ExactNegative(exact)) {
+        return format_text("-{}", digits);
+    }
+    return digits;
+}
+// `format_text(template, arguments...)` with `{}` for the next argument, which
+// is text, an integer or a bool, and `{{` and `}}` for the braces.
+CtReadFormat :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int,
+                 call: int) -> CtResult {
+    arguments := Members(context.forest, Field(context.forest, call, syntax.FieldArguments));
+    if (length(arguments) == 0) {
+        return CtResult.Failed(CtFail(context, call, file, "format_text needs a template"));
+    }
+    template: string = "";
+    switch CtEvalText(context, package, file, frame, depth, arguments[0]) {
+        case .Failed(diagnostic):
+            return CtResult.Failed(diagnostic);
+        case .Waiting:
+            return CtResult.Waiting;
+        case .Elements(more, other):
+            return CtResult.Failed(CtFail(context, arguments[0], file, "format_text takes a text template"));
+        case .Value(slot, kind):
+            template = context.texts[int(slot)];
+    }
+    pieces: string[] = [];
+    for argument in slice(arguments, 1, length(arguments) - 1) {
+        if (CtIsText(context, package, file, frame, argument)) {
+            switch CtEvalText(context, package, file, frame, depth, argument) {
+                case .Failed(diagnostic):
+                    return CtResult.Failed(diagnostic);
+                case .Waiting:
+                    return CtResult.Waiting;
+                case .Elements(more, other):
+                    return CtResult.Failed(CtFail(context, argument, file, "format_text takes text"));
+                case .Value(slot, kind):
+                    pieces.append(context.texts[int(slot)]);
+            }
+            continue;
+        }
+        switch CtEval(context, package, file, frame, depth, argument, 0) {
+            case .Failed(diagnostic):
+                return CtResult.Failed(diagnostic);
+            case .Waiting:
+                return CtResult.Waiting;
+            case .Elements(more, other):
+                return CtResult.Failed(CtFail(context, argument, file, "format_text takes text, integers and bools here"));
+            case .Value(value, kind):
+                if (kind == BoolStorage) {
+                    if (value != 0) {
+                        pieces.append("true");
+                    } else {
+                        pieces.append("false");
+                    }
+                } else if (Integer(kind)) {
+                    pieces.append(CtDecimal(value, kind));
+                } else {
+                    return CtResult.Failed(CtFail(context, argument, file,
+                                                  "format_text takes text, integers and bools here"));
+                }
+        }
+    }
+    output := "";
+    size := strings.ByteLength(template);
+    used := 0;
+    at := 0;
+    while (at < size) {
+        byte := strings.ByteAt(template, at);
+        next := strings.ByteAt(template, at + 1);
+        if (byte == 123 && next == 123) {
+            output = format_text("{}{}", output, "{");
+            at += 2;
+        } else if (byte == 125 && next == 125) {
+            output = format_text("{}{}", output, "}");
+            at += 2;
+        } else if (byte == 123 && next == 125) {
+            if (used >= length(pieces)) {
+                return CtResult.Failed(CtFail(context, call, file, "format_text has fewer arguments than placeholders"));
+            }
+            output = format_text("{}{}", output, pieces[used]);
+            used += 1;
+            at += 2;
+        } else if (byte == 123 || byte == 125) {
+            return CtResult.Failed(CtFail(context, arguments[0], file, "format_text supports only {} at compile time"));
+        } else {
+            output = format_text("{}{}", output, strings.Slice(template, at, 1));
+            at += 1;
+        }
+    }
+    if (used != length(pieces)) {
+        return CtResult.Failed(CtFail(context, call, file, "format_text has more arguments than placeholders"));
+    }
+    return CtResult.Value(CtIntern(context, output), TextStorage);
+}
+// The text operations: `text_byte_length(text)`, `text_byte_at(text, index)`,
+// `text_slice(text, start, count)` and `text_bytes(text)`, `code` of them.
+CtReadText :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, call: int,
+               code: int) -> CtResult {
+    arguments := Members(context.forest, Field(context.forest, call, syntax.FieldArguments));
+    wanted := 1;
+    if (code == CtByteAt) {
+        wanted = 2;
+    } else if (code == CtSliceOf) {
+        wanted = 3;
+    }
+    if (length(arguments) != wanted) {
+        return CtResult.Failed(CtFail(context, call, file, "a text operation needs its arguments"));
+    }
+    subject: string = "";
+    switch CtEvalText(context, package, file, frame, depth, arguments[0]) {
+        case .Failed(diagnostic):
+            return CtResult.Failed(diagnostic);
+        case .Waiting:
+            return CtResult.Waiting;
+        case .Elements(more, other):
+            return CtResult.Failed(CtFail(context, arguments[0], file, "a text operation takes text"));
+        case .Value(slot, kind):
+            subject = context.texts[int(slot)];
+    }
+    if (code == CtByteLength) {
+        return CtResult.Value(u64(strings.ByteLength(subject)), IntStorage);
+    }
+    if (code == CtBytesOf) {
+        bytes: u64[] = [];
+        for byte in strings.Bytes(subject) {
+            bytes.append(u64(byte));
+        }
+        return CtResult.Elements(bytes, IntStorage);
+    }
+    numbers: int[] = [];
+    for argument in slice(arguments, 1, wanted - 1) {
+        switch CtEval(context, package, file, frame, depth, argument, IntStorage) {
+            case .Failed(diagnostic):
+                return CtResult.Failed(diagnostic);
+            case .Waiting:
+                return CtResult.Waiting;
+            case .Elements(more, other):
+                return CtResult.Failed(CtFail(context, argument, file, "a text offset is a number"));
+            case .Value(number, kind):
+                if (!Integer(kind)) {
+                    return CtResult.Failed(CtFail(context, argument, file, "a text offset is a number"));
+                }
+                signed := ExactStored(number, kind);
+                if (ExactNegative(signed)) {
+                    numbers.append(-1);
+                } else {
+                    numbers.append(int(LowBits(Magnitude(signed))));
+                }
+        }
+    }
+    if (code == CtByteAt) {
+        found := strings.ByteAt(subject, numbers[0]);
+        if (found < 0) {
+            return CtResult.Value(ExactWrapped(ExactOf(true, 1), IntStorage), IntStorage);
+        }
+        return CtResult.Value(u64(found), IntStorage);
+    }
+    return CtResult.Value(CtIntern(context, strings.Slice(subject, numbers[0], numbers[1])), TextStorage);
+}
 // Evaluates a node CtCollect found: a call, `length(array)`, `array[index]` or
 // `record.field`.
 CtRead :: (context: ^CtContext, package: int, file: int, frame: ^CtFrame, depth: int, node: int) -> CtResult {
     if (Is(context.forest, node, syntax.MemberExpression)) {
         return CtReadField(context, package, file, frame, depth, node);
     }
-    if (Is(context.forest, node, syntax.CallExpression) && !CtLength(context, package, file, node)) {
+    if (Is(context.forest, node, syntax.BinaryExpression)) {
+        return CtReadComparison(context, package, file, frame, depth, node);
+    }
+    code := CtIntrinsic(context, package, file, node);
+    if (Is(context.forest, node, syntax.CallExpression) && code == 0) {
         return CtCall(context, package, file, frame, depth, node);
+    }
+    if (Is(context.forest, node, syntax.CallExpression) && code == CtFormatText) {
+        return CtReadFormat(context, package, file, frame, depth, node);
+    }
+    if (Is(context.forest, node, syntax.CallExpression) && code != CtLengthOf) {
+        return CtReadText(context, package, file, frame, depth, node, code);
     }
     if (Is(context.forest, node, syntax.CallExpression)) {
         arguments := Members(context.forest, Field(context.forest, node, syntax.FieldArguments));
         if (length(arguments) != 1) {
-            return CtResult.Failed(CtFail(context, node, file, "length takes one array"));
+            return CtResult.Failed(CtFail(context, node, file, "length takes one array or string"));
+        }
+        if (CtIsText(context, package, file, frame, arguments[0])) {
+            return CtReadText(context, package, file, frame, depth, node, CtByteLength);
         }
         switch CtEvalArray(context, package, file, frame, depth, arguments[0], 0) {
             case .Failed(diagnostic):
@@ -1152,7 +1488,7 @@ FoldCalling :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
     text := documents[file].text;
     aliases := Aliases(links, file);
     context: CtContext = {forest: forest, documents: documents, links: links, callables: callables, params: params,
-                          constants: constants, types: types, members: members, steps: 0};
+                          constants: constants, types: types, members: members, texts: [], steps: 0};
     frame: CtFrame = {names: [], bits: [], storages: [], arrays: []};
     reads: int[] = [];
     CtCollect(&context, package, file, &frame, node, &reads);

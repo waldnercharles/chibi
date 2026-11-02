@@ -24,4 +24,5 @@ rejected_status=$?
 set -e
 [ "$rejected_status" -eq 1 ] || { cat "$work/rejected.log"; exit 1; }
 awk '/Optional component requires a presence guard before member access/ { found=1 } END { exit !found }' "$work/rejected.log"
+sh "$repo/test/native_aot/managed_values/run.sh" "$stage" "$llvm" '' "$repo/test/native_aot/optionals/fixtures/facts/Ownership.chibi"
 printf '%s\n' 'native optional values passed'

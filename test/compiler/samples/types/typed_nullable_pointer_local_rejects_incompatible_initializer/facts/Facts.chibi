@@ -1,0 +1,9 @@
+package facts
+
+Read :: () -> int {
+    earlier: int? = 3;
+    invalid: ^int? = 1;
+    return 0;
+}
+
+// error: 5:5: local value differs from its type

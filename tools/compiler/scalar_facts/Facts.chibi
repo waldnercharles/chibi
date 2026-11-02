@@ -197,7 +197,10 @@ package scalar_facts
 // of `f`, with ArrayPush before it, so the record takes back the changed array. ArrayWith
 // consumes an array and an element, and ArrayJoin two arrays of one type, to
 // give a new array of the first's elements and then the second's; neither
-// changes what it consumes, as `append(a, x)` and `extend(a, b)` do not. A For row with
+// changes what it consumes, as `append(a, x)` and `extend(a, b)` do not.
+// ArrayWithout consumes an array and an int index to give an independent array
+// without that element, or a copy of all elements for an index outside it.
+// A For row with
 // RangeArray declares variable `value`, of its element `type` and `name`,
 // and its one operand is the array it iterates, whose elements the body
 // cannot change. With RangeKeyed the variable after it is the int index of the
@@ -300,10 +303,19 @@ pub FunctionAddressRow: int : 40;
 pub YieldRow: int : 41;
 pub AwaitRow: int : 42;
 pub CancelRow: int : 43;
+// Consumes an optional union, Nil | Some(value), and gives its payload type.
+// A Nil ends a standalone program with UnwrappedNil; value/name/literal are zero/empty.
+pub UnwrapRow: int : 44;
 // CancelAfter consumes a task handle and an f64 duration. Delay consumes an
 // f64 duration and suspends until it expires. Both give int 0.
 pub CancelAfterRow: int : 46;
 pub DelayRow: int : 47;
+// A handle await gives its structural T | Cancelled union. `value` names
+// the waiting function and `literal` its success variant ordinal.
+pub AwaitResultRow: int : 49;
+pub TaskRunningRow: int : 51;
+// A source void waiting function has no success payload despite its internal int.
+pub FunctionVoid: int : 1;
 pub CallPlain: int : 0;
 pub CallAwaited: int : 1;
 pub CallSpawned: int : 2;
@@ -343,6 +355,8 @@ pub FloatType: int : 10;
 pub DoubleType: int : 11;
 // An immutable string of bytes.
 pub StringType: int : 12;
+// An owning observer of program-owned execution, never an integer value.
+pub TaskType: int : 13;
 // The d-th record or union of the module is type RecordType + d.
 pub RecordType: int : 32;
 // An array of type T is ArrayType + T.
@@ -406,6 +420,8 @@ pub TextLength: int : 1;
 pub TextByte: int : 2;
 pub TextSlice: int : 3;
 pub TextFormat: int : 4;
+// Consume one string, print its bytes and a newline; internal result is int 0.
+pub TextPrint: int : 5;
 
 // Array operators.
 pub ArrayNew: int : 1;
@@ -425,6 +441,8 @@ pub ArrayJoin: int : 13;
 pub ArrayBytes: int : 14;
 // A string, the bytes of the array of bytes (u8) it consumes.
 pub ArrayText: int : 15;
+// A new array without the int-indexed element; an invalid index copies all elements.
+pub ArrayWithout: int : 16;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range
@@ -484,6 +502,7 @@ pub Floating :: (type: int) -> bool {
 // integer type, any bits for a word or double, 32 bits for a float and 0 for
 // a string, whose value is its text.
 pub Fits :: (literal: i64, type: int) -> bool {
+    if (type == TaskType) { return literal == 0; }
     if (type == StringType) {
         return literal == 0;
     }

@@ -102,6 +102,17 @@ Main :: () -> int {
     globals := format_text("\n@map_test.expected_index = internal constant i1 {}\n", expected_index);
     runtime_text := runtime.text;
     if (mode == "source") {
+        // Source modules need only their declared map types. The direct
+        // kernels exercise integer-map capacity bounds independently.
+        bounds := strings.Index(runtime_text, "define internal i1 @map_test.bounds(");
+        main := strings.Index(runtime_text, "\ndefine i32 @main(");
+        if (bounds < 0 || main < bounds) {
+            os.Print("native maps: the test runtime has no bounds section");
+            return 2;
+        }
+        runtime_text = strings.Concatenate([strings.Slice(runtime_text, 0, bounds),
+            "define internal i1 @map_test.bounds(ptr %ctx) { ret i1 true }\n",
+            strings.Slice(runtime_text, main, strings.ByteLength(runtime_text) - main)]);
         runtime_text = strings.Concatenate([runtime_text,
             "\ndefine void @chibi_native_step() { ret void }\n",
             "define void @chibi_native_failure(i32 %kind) noreturn { call void @exit(i32 134)\n unreachable }\n"]);

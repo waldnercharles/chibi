@@ -49,8 +49,8 @@ pub Import :: struct {
 // so dyld binds them in that library, and a Windows import library is written
 // from them. `libpaths` add folders the Windows linker searches. `work` is a
 // folder this plan may write stubs into; `libc` and `interpreter` (Linux, not
-// static) come from Discover. `shared` links a Linux shared library of the
-// objects instead of a program.
+// static) come from Discover. `shared` links a Linux shared library or macOS
+// dylib of the objects instead of a program.
 pub Plan :: struct {
     triple: string;
     llvm: string;
@@ -514,7 +514,10 @@ pub Command :: (plan: Plan, to: string) -> string[] {
     linker := Join([plan.llvm, "/", Linker(target)]);
     if (target == MacOSArm64) {
         command := [linker, "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
-                    "-dead_strip", "-undefined", "dynamic_lookup", "-e", "_main", "-o", to];
+                    "-dead_strip", "-undefined", "dynamic_lookup"];
+        if (plan.shared) { command.append("-dylib"); }
+        else { command.extend(["-e", "_main"]); }
+        command.extend(["-o", to]);
         command.extend(plan.objects);
         command.extend(plan.archives);
         for (stub in Imports(plan)) {

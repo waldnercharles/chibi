@@ -220,6 +220,21 @@ LinuxSharedLibrariesLinkOnlyTheObjects :: () {
 }
 
 @test
+MacSharedLibrariesHaveNoProcessEntry :: () {
+    plan := Plan3("aarch64-apple-darwin", [], [], false);
+    plan.shared = true;
+    plan.objects = ["/w/a.o"];
+    Same(link.Command(plan, "/w/generation.so"),
+         ["/llvm/ld64.lld", "-flavor", "darwin", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0",
+          "-dead_strip", "-undefined", "dynamic_lookup", "-dylib", "-o", "/w/generation.so", "/w/a.o", "/v/libbox3d.a",
+          "/w/stubs/System.tbd"]);
+    module := link.SharedContext(plan.triple, true);
+    assert(strings.Contains(module, "@chibi_context = hidden global"), "the runtime belongs to its generation");
+    assert(strings.Contains(module, "define i32 @chibi_host_set_process("), "the host supplies argv and environment");
+    assert(!strings.Contains(module, "define i32 @main("), "a shared image has no process entry");
+}
+
+@test
 EveryStartModuleExportsTheArgumentFunctions :: () {
     for (triple in ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"]) {
         module := link.Start(triple, false, false);
@@ -287,6 +302,7 @@ LibraryLinesNameArchives :: () {
 
 // Source-only entry for the native formatting regression's import consumer.
 pub Run :: () -> int {
+    MacSharedLibrariesHaveNoProcessEntry();
     WindowsLibrariesExportWhatTheStartModulesImport();
     StartModulesKeepTheProcessArguments();
     return 0;

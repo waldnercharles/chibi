@@ -2,6 +2,7 @@ package scalar_llvm_tests
 
 import facts "project:scalar_facts"
 import scalar "project:scalar_llvm"
+import abi "project:native_abi"
 import strings "core:strings"
 
 Row :: (kind: int, type: int, value: int, count: int, name: string, start: int, end: int, line: int,
@@ -221,12 +222,64 @@ ScalarCallModesAreBounded :: () {
         assert(scalar.Validate(TaskFacts(mode, false)) == "invalid scalar operand row");
     }
 }
+ScalarArrayWithoutOperandsAreValidated :: () {
+    source := Accepted();
+    array := facts.ArrayType + facts.IntType;
+    rows := [source[0], source[1], source[2],
+             Row(facts.LocalRow, array, 0, 5, "values", 35, 56, 2, 21),
+             Literal(facts.IntType, 1, 35, 36, 2, 21),
+             Literal(facts.IntType, 2, 35, 36, 2, 21),
+             Row(facts.ArrayRow, array, facts.ArrayNew, 2, "", 35, 36, 2, 21),
+             Literal(facts.IntType, 0, 35, 36, 2, 21),
+             Row(facts.ArrayRow, array, facts.ArrayWithout, 2, "", 35, 36, 2, 21),
+             Row(facts.ReturnRow, 0, 0, 2, "", 56, 57, 2, 42),
+             Row(facts.ReadRow, array, 0, 0, "", 56, 57, 2, 42),
+             Row(facts.ArrayRow, facts.IntType, facts.ArrayLength, 1, "", 56, 57, 2, 42)];
+    assert(scalar.Validate(rows) == "");
+    expected := "scalar array operation differs from its operands";
+    assert(scalar.Validate(Changed(rows, 7, Type, facts.BoolType)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Count, 1)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Type, facts.IntType)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Value, facts.ArrayWithout + 1)) == expected);
+}
+ScalarForceUnwrapRequiresAnOptionalAndAProgramRuntime :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    optional := facts.RecordType;
+    rows := [original[0], original[1],
+             TaskFact(facts.UnionRow, 0, 0, 2, "optional", 0, 1),
+             TaskFact(facts.VariantRow, 0, 0, 0, "Nil", 0, 1),
+             TaskFact(facts.VariantRow, 0, 1, 1, "Some", 0, 1),
+             TaskFact(facts.MemberRow, facts.IntType, 0, 0, "value", 0, 1),
+             TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+             TaskFact(facts.ReturnRow, 0, 0, 3, "", 2, 10),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 3, 4),
+             TaskFact(facts.MakeRow, optional, 1, 1, "", 4, 5),
+             TaskFact(facts.UnwrapRow, facts.IntType, 0, 1, "", 5, 6)];
+    assert(scalar.Validate(rows) == "");
+    expected := "scalar force unwrap differs from its optional";
+    assert(scalar.Validate(Changed(rows, 10, Type, facts.BoolType)) == expected);
+    assert(scalar.Validate(Changed(rows, 10, Count, 0)) == expected);
+    assert(scalar.Validate(Changed(rows, 10, Value, 1)) == expected);
+    assert(scalar.Validate(Renamed(rows, 3, "Empty", "")) == expected);
+    switch scalar.EmitFor(abi.LinuxX64(), rows) {
+        case .Invalid(message): assert(message == "typed failures require a standalone native program");
+        case .Rejected(projected): assert(false);
+        case .Emitted(text): assert(false);
+    }
+    switch scalar.EmitProgramFor(abi.LinuxX64(), rows, "") {
+        case .Invalid(message): assert(false);
+        case .Rejected(projected): assert(false);
+        case .Emitted(text): assert(strings.Contains(text, "call void @chibi_native_failure(i32 7)"));
+    }
+}
 
 pub Tests :: () -> int {
     ScalarPlainCallsCannotUseWaitingFunctions();
     ScalarAwaitedCallsMustNameWaitingFunctions();
     ScalarFunctionAddressesCannotNameWaitingFunctions();
     ScalarCallModesAreBounded();
+    ScalarArrayWithoutOperandsAreValidated();
+    ScalarForceUnwrapRequiresAnOptionalAndAProgramRuntime();
     text := Emitted(Accepted());
     if (!strings.Contains(text, "define i32 @chibi_scalar()") ||
         !strings.Contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1)") ||

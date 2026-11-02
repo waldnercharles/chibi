@@ -4,7 +4,7 @@ import os "core:os"
 import strings "core:strings"
 import target "core:target"
 
-when target.Os == target.Linux {
+when target.Os == target.Linux || target.Os == target.Darwin {
     import process "core:sys/posix"
 }
 
@@ -69,11 +69,11 @@ WatchHost :: (core: string) -> string {
 
 // Main runs once in the host. Every later generation takes effect between
 // Frames; a rejected edit leaves the running generation and its state intact.
-when target.Os == target.Linux {
+when target.Os == target.Linux || target.Os == target.Darwin {
 WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, invocation: CliInvocation,
                  tail: string[]) -> int {
-    if (triple != "x86_64-unknown-linux-gnu") {
-        Complain("run --watch requires the native Linux x86-64 shared-library target");
+    if (!SharedTarget(triple) || !HostTarget(triple)) {
+        Complain("run --watch requires the current host's native shared-library target");
         return 2;
     }
     host_source := WatchHost(core);
@@ -164,7 +164,7 @@ WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, i
 } else {
 WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, invocation: CliInvocation,
                  tail: string[]) -> int {
-    Complain("run --watch requires the native Linux x86-64 shared-library target");
+    Complain("run --watch supports Linux x86-64 and macOS arm64");
     return 2;
 }
 }

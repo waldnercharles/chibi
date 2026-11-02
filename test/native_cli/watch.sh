@@ -13,7 +13,7 @@ cleanup() {
     if [ -n "$process" ] && kill -0 "$process" 2>/dev/null; then
         # The native host shares the CLI's foreground group for Ctrl-C. This
         # test terminates only its owned children when a check fails.
-        for child in $(ps -o pid= --ppid "$process"); do
+        for child in $(ps -axo pid=,ppid= | awk -v parent="$process" '$2 == parent { print $1 }'); do
             kill "$child" 2>/dev/null || :
         done
         kill "$process" 2>/dev/null || :
@@ -69,19 +69,24 @@ cp "$root/test/native_cli/fixtures/watch_first.chibi" "$work/project/Main.chibi"
 export CHIBI_CORE="$root/packages/core"
 export CHIBI_LLVM_BIN="$llvm"
 export CHIBI_NATIVE_HOST_SOURCE="$root/apps/host/Host.chibi"
-"$driver" run --watch -O0 --llvm "$llvm" "$work/project" >"$log" 2>&1 &
+target=x86_64-unknown-linux-gnu
+if [ "$(uname -s)" = Darwin ]; then target=arm64-apple-macosx11.0.0; fi
+"$driver" run --watch -O0 --llvm "$llvm" --target "$target" "$work/project" >"$log" 2>&1 &
 process=$!
 live=$work/project/build/native/watch
 wait_file "$live/ready"
 printf 'package live\nMain :: () -> int { invalid }\n' >"$work/project/Main.chibi"
 wait_log 'native: rejected'
 kill -0 "$process" 2>/dev/null || fail 'the CLI exited after rejecting an edit'
+cp "$root/test/native_cli/fixtures/watch_middle.chibi" "$work/project/Main.chibi"
+wait_file "$live/middle-ready"
 cp "$root/test/native_cli/fixtures/watch_second.chibi" "$work/project/Main.chibi"
 wait_file "$live/done"
 finish 42
 [ "$(cat "$live/main-count")" = x ] || fail 'Main ran more than once'
 [ "$(cat "$live/task-done")" = old ] || fail 'a retired generation did not complete its task in the old code'
-printf 'native watch: rejected edit, record migration, retained string, Main-once and retired task passed\n'
+[ ! -f "$live/cancelled-task-ran" ] || fail 'a cancelled task resumed'
+printf 'native watch: rejected edit, two accepted swaps, record/string migration, Main-once and retired/cancelled tasks passed\n'
 
 # Both import failures recover by adding a source inside an existing folder.
 # Main is left untouched while the missing source is restored or first created.

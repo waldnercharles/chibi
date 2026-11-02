@@ -1,5 +1,7 @@
 package host
 
+import target "core:target"
+
 // The native Edit and Continue host loads live-0.so, calls Main once, and
 // calls Frame until its nonzero result ends the program. A next.so generation
 // replaces code between Frames. Named retained leaves migrate before the next
@@ -7,6 +9,9 @@ package host
 // Retired generations keep their code and state until their tasks finish.
 
 RetainedText: int : 12;
+RtldNow: i32 : 2;
+DarwinRtldLocal: i32 : 4;
+DarwinRtldFirst: i32 : 256;
 
 foreign import libc "system:c"
 
@@ -26,8 +31,20 @@ foreign {
     chibi_environment :: () -> rawptr
 }
 
+// Darwin defaults to global symbol visibility. Keep each generation local,
+// and restrict handle lookups to that image rather than its dependencies.
+when target.Os == target.Darwin {
+    OpenGeneration :: (path: string) -> rawptr {
+        return dlopen(path, RtldNow | DarwinRtldLocal | DarwinRtldFirst);
+    }
+} else {
+    OpenGeneration :: (path: string) -> rawptr {
+        return dlopen(path, RtldNow);
+    }
+}
+
 Main :: () -> int {
-    handle := dlopen("./live-0.so", 2);
+    handle := OpenGeneration("./live-0.so");
     if handle == 0 {
         return 2;
     }
@@ -84,7 +101,7 @@ Main :: () -> int {
         if moved != 0 {
             continue;
         }
-        incoming := dlopen(name, 2);
+        incoming := OpenGeneration(name);
         if incoming == 0 {
             set_aside := rename(name, "./rejected.so");
             continue;

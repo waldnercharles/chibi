@@ -79,24 +79,20 @@ ChangedArray :: (row: int, item: native.Instruction) {
 ArraysAllocateThroughTheContextAndCheckIndexes :: () {
     text := Emitted(ArrayModule(Arrays()));
     assert(strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
-    assert(strings.Contains(text, "%full3 = icmp eq i32 %length3, %capacity3\n  br i1 %full3, label %grow3, label %room3\ngrow3:\n"));
-    assert(strings.Contains(text, "%grown3 = select i1 %none3, i32 4, i32 %double3\n"));
-    assert(strings.Contains(text, "%fresh3.allocate.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2\n"));
-    assert(strings.Contains(text, "%fresh3 = call ptr %fresh3.allocate(ptr %ctx, i64 %bytes3)\n"));
-    assert(strings.Contains(text, "call void @chibi_scalar.copy(ptr %fresh3, ptr %data3, i64 %moved3)\n"));
-    assert(strings.Contains(text, "%buffer3 = phi ptr [ %data3, %p3 ], [ %fresh3, %grow3 ]\n"));
+    assert(strings.Contains(text, "call { i32, i32, ptr, ptr } @chibi_array.1030.unique(ptr %ctx, { i32, i32, ptr, ptr } %a3, i32 %next3, i1 false)\n"));
+    assert(strings.Contains(text, "%owner.allocate.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 2\n"));
+    assert(strings.Contains(text, "%owner = call ptr %owner.allocate(ptr %ctx, i64 %total)\n"));
     assert(strings.Contains(text, "%in5 = icmp ult i32 %b5, %length5\n  br i1 %in5, label %inside5, label %outside5\noutside5:\n"));
     assert(strings.Contains(text, "%index5.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 3\n"));
     assert(strings.Contains(text, "call void %index5(ptr %ctx, i32 %b5, i32 %length5)\n  unreachable\ninside5:\n"));
     assert(strings.Contains(text, "%at5 = getelementptr inbounds i32, ptr %data5, i64 %offset5\n  %c5 = load i32, ptr %s1\n  store i32 %c5, ptr %at5\n"));
     assert(strings.Contains(text, "%v6 = load i32, ptr %at6\n"));
-    assert(strings.Contains(text, "%length7 = extractvalue { i32, i32, ptr } %a7, 0\n  store i32 %length7, ptr %s6\n"));
-    assert(strings.Contains(text, "%none8 = icmp eq i32 %length8, 0\n  br i1 %none8, label %done8, label %clone8\nclone8:\n"));
-    assert(strings.Contains(text, "%buffer8 = phi ptr [ null, %p8 ], [ %fresh8, %clone8 ]\n"));
+    assert(strings.Contains(text, "%length7 = extractvalue { i32, i32, ptr, ptr } %a7, 0\n  store i32 %length7, ptr %s6\n"));
+    assert(strings.Contains(text, "call { i32, i32, ptr, ptr } @chibi_array.1030.clone(ptr %ctx, { i32, i32, ptr, ptr } %a8, i32 %length8)\n"));
     assert(strings.Contains(text, "define internal void @chibi_scalar.copy(ptr %to, ptr %from, i64 %bytes) #1 {\n"));
     assert(strings.Contains(text, "attributes #1 = { noinline nounwind \"no-builtins\" }\n"));
     assert(!strings.Contains(text, "memcpy"));
-    assert(strings.Contains(text, "%s0 = alloca { i32, i32, ptr }\n"));
+    assert(strings.Contains(text, "%s0 = alloca { i32, i32, ptr, ptr }\n"));
 }
 // Main as Arrays gives it, with the copy's array dropped after its length and
 // the first append owning its elements, which it gives back when it grows.
@@ -115,13 +111,12 @@ DroppedModule :: (code: native.Instruction[]) -> native.Result {
 @test
 ArrayDropsGiveElementsBackThroughTheContext :: () {
     text := Emitted(DroppedModule(Dropped()));
-    assert(strings.Contains(text, "%data10 = extractvalue { i32, i32, ptr } %a10, 2\n  %held10 = icmp ne ptr %data10, null\n"));
-    assert(strings.Contains(text, "br i1 %held10, label %drop10, label %kept10\ndrop10:\n"));
-    assert(strings.Contains(text, "%release10.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n"));
-    assert(strings.Contains(text, "call void %release10(ptr %ctx, ptr %data10)\n  br label %kept10\nkept10:\n"));
-    assert(strings.Contains(text, "%had3 = icmp ne ptr %data3, null\n  br i1 %had3, label %free3, label %freed3\nfree3:\n"));
-    assert(strings.Contains(text, "call void %giveback3(ptr %ctx, ptr %data3)\n  br label %freed3\nfreed3:\n  br label %room3\nroom3:\n"));
-    assert(strings.Contains(text, "%buffer3 = phi ptr [ %data3, %p3 ], [ %fresh3, %freed3 ]\n"));
+    assert(strings.Contains(text, "call void @chibi_array.1030.drop(ptr %ctx, { i32, i32, ptr, ptr } %a10)\n"));
+    assert(strings.Contains(text, "%owner = extractvalue { i32, i32, ptr, ptr } %value, 3\n"));
+    assert(strings.Contains(text, "%before = atomicrmw sub ptr %owner, i64 1 acq_rel\n"));
+    assert(strings.Contains(text, "call void %give(ptr %ctx, ptr %owner)\n"));
+    assert(strings.Contains(text, "call { i32, i32, ptr, ptr } @chibi_array.1030.unique(ptr %ctx, { i32, i32, ptr, ptr } %a3, i32 %next3, i1 true)\n"));
+
 }
 // An owning extend gives the old allocation back only after it has copied the
 // other array's elements, which may be its own: `a.extend(a)`.
@@ -136,10 +131,11 @@ OwningExtendGivesTheOldElementsBackAfterTheCopy :: () {
              Code(native.Publish, 6, 0, 4, 0, 0, 0),
              Code(native.Return, 0, 0, 0, 0, 0, 0)];
     text := Emitted(Emit([Function(6, 0, 0, 5, 0, 8, 0, 0)], [], [1030, 6, 1030, 1030, 6], code, []));
-    assert(strings.Contains(text, "%stale4 = phi ptr [ null, %p4 ], [ %data4, %grow4 ]\n"));
-    assert(strings.Contains(text, "call void @chibi_scalar.copy(ptr %at4, ptr %source4, i64 %extent4)\n  %gone4 = icmp ne ptr %stale4, null\n"));
-    assert(strings.Contains(text, "call void %giveback4(ptr %ctx, ptr %stale4)\n  br label %freed4\nfreed4:\n"));
-    assert(strings.Contains(text, "%buffer4 = phi ptr [ %data4, %p4 ], [ %fresh4, %grow4 ]\n"));
+    assert(strings.Contains(text, "%growing4 = and i1 %alias4, %grow4\n"));
+    assert(strings.Contains(text, "call void @chibi_scalar.retain(ptr %other4)\n"));
+    assert(strings.Contains(text, "call void @chibi_scalar.copy(ptr %at4, ptr %source4, i64 %bytes4)\n"));
+    assert(strings.Contains(text, "call void @chibi_array.1030.drop(ptr %ctx, { i32, i32, ptr, ptr } %o4)\n"));
+
 }
 @test
 ArrayDropNeedsAnArray :: () {
@@ -261,7 +257,7 @@ ArrayNativesCopyAndZeroWithoutLibraryCalls :: () {
 @test
 ArrayExtendGrowsToItsTotal :: () {
     text := Emitted(NativesModule(ArrayNatives()));
-    assert(strings.Contains(text, "%total6 = add i32 %length6, %extra6\n  %full6 = icmp ugt i32 %total6, %capacity6\n"));
+    assert(strings.Contains(text, "%total6 = add i32 %length6, %extra6\n"));
 }
 @test
 ArraySliceClampsAndResizeZeroes :: () {
@@ -272,7 +268,7 @@ ArraySliceClampsAndResizeZeroes :: () {
 @test
 ArrayRemoveMovesDownAndContainsScans :: () {
     text := Emitted(NativesModule(ArrayNatives()));
-    assert(strings.Contains(text, "%size13 = phi i32 [ %length13, %p13 ], [ %shorter13, %cut13 ]\n"));
+    assert(strings.Contains(text, "%v13 = phi { i32, i32, ptr, ptr } [ %a13, %p13 ], [ %trimmed13, %cut13 ]\n"));
     assert(strings.Contains(text, "%v14 = phi i1 [ false, %missing14 ], [ true, %found14 ]\n"));
     assert(strings.Contains(text, "%same14 = icmp eq i32 %item14, %w14\n"));
 }

@@ -8,17 +8,18 @@ its SHA-256 before use. A cached seed is verified again on every invocation.
 LLVM/LLD 22 or newer is required. The tools come from `--llvm DIR`,
 `CHIBI_LLVM_BIN`, or the directory containing `opt` on `PATH`. The directory must contain `opt`, `llc` and the platform's linker:
 `ld.lld` on Linux, `ld64.lld` on macOS. The supported native default platforms
-are Linux x64 and macOS arm64. Windows filesystem and cache operations now
-use kernel32 and have cross-link checks, but still need a Windows execution
-result. Windows also needs a verified seed and asynchronous process operations
-before this entry can select it.
+are Linux x64 and macOS arm64. Windows filesystem, cache and asynchronous process
+operations use kernel32 and have Windows execution checks. Selecting Windows
+through this entry still requires a verified seed and the authored runner's
+Windows path, temporary-directory, cleanup and receipt integration.
 
 Windows metadata stamps can stay equal across rapid same-size rewrites. The
 native compiler's output cache and the shell entry hash source and tool bytes.
-The authored runner still uses metadata stamps for source and tool identity,
-and the C graph/evidence checks use them too. Those consumers need content
-verification before enabling the Windows build runner. The source watcher is
-currently Linux-only; its Windows port must also account for this limit.
+The C graph and evidence checks use content fingerprints and sorted directory
+inventories on Windows. The authored runner still uses metadata stamps for
+source and tool identity; it needs the same content verification before Windows
+can use it. The source watcher runs on Linux and macOS; its Windows port must
+also account for this limit.
 
 ```
 CHIBI_LLVM_BIN=/path/to/llvm/bin sh tools/build.sh build --release
@@ -52,6 +53,10 @@ compiler service. Building or installing them does not discover a C compiler or
 start a VM host. The installed CLI finds core and graph packages relative to its
 own prefix. A project's `Build.chibi` is compiled through the native content cache
 and its `Main` runs with the build arguments.
+
+The pinned seed builds the current compiler first. That compiler builds the
+asset service, whose runtime helpers may be newer than the seed. Selecting the
+asset service or a target that uses it also selects the current compiler.
 
 Explicit legacy C test and bootstrap targets remain while their consumers move.
 The old bytecode bootstrap comparison is requested only with `--compare-vm`.

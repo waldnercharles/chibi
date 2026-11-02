@@ -169,12 +169,13 @@ Parse :: (arguments: string[]) -> CliInvocation {
     located := false;
     targeted := false;
     optimized := false;
+    projected := false;
     while (index < length(arguments)) {
         argument := arguments[index];
         if (argument == "") {
             return Invalid(invocation, format_text("A {} path must not be empty", command));
         }
-        valued := argument == "--llvm" || argument == "--target";
+        valued := argument == "--llvm" || argument == "--target" || (command == "test" && argument == "--root");
         if (valued && (index + 1 >= length(arguments) || arguments[index + 1] == "" || IsOption(arguments[index + 1]))) {
             return Invalid(invocation, format_text("{} needs a nonempty value", argument));
         }
@@ -187,6 +188,10 @@ Parse :: (arguments: string[]) -> CliInvocation {
             index += 1;
             invocation.llvm = arguments[index];
             located = true;
+        } else if (command == "test" && argument == "--root" && !projected) {
+            index += 1;
+            invocation.root = arguments[index];
+            projected = true;
         } else if (compilable && argument == "--target" && index + 1 < length(arguments) && !targeted) {
             index += 1;
             invocation.target = arguments[index];
@@ -230,7 +235,7 @@ Usage :: (program: string) -> string {
         "whose program is program.exe, instead. Native code supports a subset of\n",
         "the language so far; a source outside it fails with the first unsupported form.\n",
         "test runs each @test function of the packages below ROOT, the working\n",
-        "directory without one, and fails when one fails.\n",
+        "directory without one, and fails when one fails. --root DIR resolves project imports.\n",
         "run compiles a program natively and calls Main, or --entry NAME.\n",
         "--root DIR resolves project imports; --collection NAME=DIR adds a package collection.\n",
         "--core DIR selects core packages for this run without changing the environment.\n",
@@ -528,7 +533,7 @@ RunProgram :: (invocation: CliInvocation, tail: string[]) -> int {
         return 2;
     }
     triple := Default(invocation.target, HostTriple());
-    if (triple != HostTriple()) {
+    if (!HostTarget(triple)) {
         Complain("run requires the host target; use build --native to cross-compile");
         return 2;
     }

@@ -16,7 +16,7 @@ ScalarMapType :: (types: TypeDecl[], record: int) -> int {
     value := ScalarTypeOf(declared.value_storage);
     if (declared.value_storage == StructStorage) { value = ScalarRecordType(types, declared.value_record); }
     if ((facts.Bits(key) == 0 && key != facts.BoolType && key != facts.StringType) ||
-        value == 0 || declared.value_container != 0 ||
+        value == 0 || declared.value_storage == TaskStorage || declared.value_container != 0 ||
         (declared.value_record >= 0 && declared.value_storage != StructStorage)) {
         return 0;
     }
@@ -58,19 +58,6 @@ ScalarLocalMap :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     return -1;
 }
 
-// Direct changes and forwarded scoped writers. A scoped parameter may alias
-// another parameter of its caller even when their source names differ.
-ScalarMapChanges :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
-                     names: Name[], package: int, node: int) -> string[] {
-    changed := MutatedNames(forest, text, node, AddressedNames(forest, text, node, []));
-    for (argument in ScopedCalls(forest, text, callables, params, [], names, package, node, false)) {
-        param := params[argument.param];
-        if (!param.written || param.container != MapContainer) { continue; }
-        name := ScalarPassedName(forest, text, argument.value);
-        if (name != "" && !changed.contains(name)) { changed.append(name); }
-    }
-    return changed;
-}
 ScalarMapSnapshot :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable,
                       names: Name[], types: TypeDecl[], object: int, changed: string[]) -> bool {
     node := Unparenthesized(forest, object);
@@ -180,8 +167,10 @@ ScalarMapReadRows :: (forest: snapshot.SnapshotNode[], text: string, callables: 
                       constants: ConstDecl[], node: int, read: ScalarMapCall, rows: facts.Row[]) -> ScalarOperands {
     record := ScalarMapShape(forest, text, callables, names, types, callable.package, read.object);
     output := rows;
+    changed := EvaluationChanges(forest, text, callables, params, [], names, callable.package, read.key, true);
+    copied := ScalarMapSnapshot(forest, text, params, callable, names, types, read.object, changed);
     switch ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
-                          read.object, record, false, output) {
+                          read.object, record, copied, output) {
         case .Failed(diagnostic):
             return ScalarOperands.Failed(diagnostic);
         case .Built(built):

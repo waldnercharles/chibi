@@ -5,6 +5,44 @@ based on `b46f391b7`. The review branch is PR #1331. The owner's checkout and
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
+## Current checkpoint, 2 November
+
+`c32f5d6b6` is pushed to PR #1331. Its exact pinned macOS seed compiles the
+complete source in 40.93 seconds; the resulting compiler passes the CLI and
+129-name collision regression in 6.44 seconds. The immediately preceding
+native output change passes all 410 compiler tests in 22.05 seconds and its
+O0/O2 byte/readiness/rejection suite in 1.76 seconds.
+
+The next local integration includes managed record maps, typed nil unwrap,
+numeric task results, task-command rejection inside tests, typed effect
+metadata, process output/cancellation, and shared array backing. Each slice
+has focused execution evidence; combined acceptance is still pending. Array
+source copies stay eager until foreign mutation leases are implemented.
+Native test-worker scheduling and macOS reload are being completed in their
+own lanes. The LLVM WebAssembly compiler passes exact artifact and lifetime
+checks; its public browser facade and optional SDK archive are still being
+connected.
+
+Windows source `585e40829` reaches a strict stage-four/five fixed point after
+one explicitly permitted transition from the older pinned bootstrap. Both
+binaries have SHA-256
+`d9a56bde96fdce41d9b9c335f5120dc4ec659c8aad62ddf0641d4eb9e909f96f`.
+The subsequent asset compiler build fails with illegal instruction
+`0xC000001D`. The retained compiler and exact source are under diagnosis;
+this is not Windows product acceptance.
+
+The evidence below is chronological. Older counts and gates describe their
+named revisions, not the latest integration. Remaining deletion gates are:
+
+- Validate the combined installed compiler, CLI, native asset companion and
+  SDK/Studio consumers on each supported platform; resolve the Windows trap.
+- Finish test-runner parity and migrate the remaining graph/test consumers.
+- Complete managed suspended values/results, task dependencies, and retained
+  arrays/unions/handles. Foreign array loans must preserve mutation and lifetime.
+- Replace the program/application execution APIs and browser runtime consumers.
+- Publish verified platform seeds only after their acceptance checks, then
+  delete obsolete hosts, recovery artifacts and VM paths with no remaining users.
+
 ## Order of work
 
 1. Make the SHA-256-verified native seed the normal build entry and make native
@@ -231,3 +269,27 @@ Remaining runtime consumers include `application.*`, `program.open/update/call`
 and browser compilation/execution. The current WebAssembly JIT still delegates
 some operations to VM stepping. These need working replacements before their
 VM support, APIs or recovery assets can be deleted.
+
+At the next checkpoint, `975dbd72d`, the optional-value fix and scoped map-alias
+fix are integrated. Its compiler source reproduced identical macOS arm64
+executables: SHA-256
+`efd11e1e9fd61aa03f5c02ce711c1202ba73500dc23721cd68d238bfe94369bd`.
+The two builds took 78.23 s and 61.52 s under ambient load. Subsequent local
+commits through `3520eaef0` changed graph/docs/CI and asset test fixtures, not
+the compiler inputs used for that proof.
+
+CI at `975dbd72d` found the native asset product was still compiled by the old
+pinned seed, which cannot emit the new quota-scope helpers. Local graph proofs
+had supplied a current compiler and therefore missed this dependency. The
+fix `b1f484167` makes the freshly built compiler a prerequisite of the asset
+service and records that compiler in its receipt. The exact old-seed product
+graph passed in 144.25 seconds and its warm repeat in 0.15 seconds; combined
+CI is checking the corrected graph.
+
+The second quiet performance window ran from 17:00:40 to 17:05:14 UTC. All
+migration lanes drained before it and resumed afterward. Four balanced pairs
+measured removal of `StatementStep` type-table snapshots: mean wall time fell
+from 35.02 s to 31.49 s and mean CPU time from 63.93 s to 60.69 s; all eight
+outputs matched the frozen compiler. The focused commit is `7d798d802` in
+PR #1333, composed as `aa2affbea` with the task type-compatibility fix. These are
+compiler measurements, not complete installed-toolchain equivalence results.

@@ -36,8 +36,7 @@ foreign libc {
     opendir :: (path: cstring) -> rawptr
     readdir :: (directory: rawptr) -> rawptr
     closedir :: (directory: rawptr) -> i32
-    calloc :: (count: u64, size: u64) -> rawptr
-    memmove :: (destination: rawptr, source: u8[], count: u64) -> rawptr
+    memchr :: (buffer: u8[], value: i32, count: u64) -> rawptr
     pipe :: (descriptors: u8[]) -> i32
     read :: (descriptor: i32, buffer: u8[], count: u64) -> i64
     close :: (descriptor: i32) -> i32
@@ -275,6 +274,11 @@ pub ReadText :: (path: string) -> string {
     return text_from_bytes(ReadBytes(path));
 }
 
+// Whether the variable exists, including one whose value is empty.
+pub HasEnv :: (name: string) -> bool {
+    return getenv(name) != 0;
+}
+
 // The environment variable's value, "" when it is unset.
 pub Getenv :: (name: string) -> string {
     value := getenv(name);
@@ -339,26 +343,40 @@ pub Output :: struct {
     stderr: string;
 }
 
-// The argument vector `execvp` takes, as bytes: one 8-byte little-endian
-// pointer to each argument's NUL-ended copy, then a null pointer. The copies
-// live in the heap until the program exits.
+// One managed allocation holds the argv pointer table and every NUL-ended
+// argument after it. Passing the complete buffer to posix_spawnp borrows both
+// together until spawn returns; no raw allocation survives each launch.
+// Pointers are 8-byte little-endian words on the supported POSIX targets.
 Vector :: (command: string[]) -> u8[] {
-    vector: u8[] = [];
+    header := (u64(length(command)) + 1) * 8;
+    size := header;
     for argument in command {
-        size := text_byte_length(argument);
-        data: u8[] = [];
-        for index in 0..<size {
-            data.append(u8(text_byte_at(argument, index)));
-        }
-        block := calloc(u64(size + 1), 1);
-        moved := memmove(block, data, u64(size));
-        word := u64(block);
-        for index in 0..<8 {
-            vector.append(u8((word >> u32(8 * index)) & 255));
-        }
+        size += u64(text_byte_length(argument)) + 1;
     }
-    for index in 0..<8 {
-        vector.append(0);
+    if size > 2147483647 {
+        empty: u8[] = [];
+        return empty;
+    }
+    vector := Block(int(size));
+    // The first byte is zero before filling, so memchr returns this buffer's
+    // address with its actual C signature and no unchecked pointer cast.
+    address := memchr(vector, 0, 1);
+    offset := int(header);
+    for argument, at in command {
+        length := text_byte_length(argument);
+        for index in 0..<length {
+            byte := u8(text_byte_at(argument, index));
+            if byte == 0 {
+                empty: u8[] = [];
+                return empty;
+            }
+            vector[offset + index] = byte;
+        }
+        word := u64(address) + u64(offset);
+        for index in 0..<8 {
+            vector[at * 8 + index] = u8((word >> u32(8 * index)) & 255);
+        }
+        offset += length + 1;
     }
     return vector;
 }
@@ -386,6 +404,11 @@ Word32 :: (bytes: u8[], at: int) -> int {
 // returns its process id; -1 when it cannot be started. `own_group` puts it in a
 // process group of its own, so Kill reaches what it started too.
 Launch :: (command: string[], actions: u8[], own_group: bool) -> int {
+    vector := Vector(command);
+    if length(vector) == 0 {
+        destroyed := posix_spawn_file_actions_destroy(actions);
+        return -1;
+    }
     pid := Block(8);
     attributes := Block(512);
     status := posix_spawnattr_init(attributes);
@@ -393,7 +416,7 @@ Launch :: (command: string[], actions: u8[], own_group: bool) -> int {
         status = posix_spawnattr_setflags(attributes, 2);
         status = posix_spawnattr_setpgroup(attributes, 0);
     }
-    started := posix_spawnp(pid, command[0], actions, attributes, Vector(command), chibi_environment());
+    started := posix_spawnp(pid, command[0], actions, attributes, vector, chibi_environment());
     status = posix_spawnattr_destroy(attributes);
     status = posix_spawn_file_actions_destroy(actions);
     if started != 0 {
@@ -733,6 +756,42 @@ pub Start :: (command: string[], piped: bool) -> int {
     return process;
 }
 
+// Starts a process with stdout and stderr in separate caller-owned
+// files. Empty stdout inherits the stream. Parent folders exist, and nonempty
+// paths are distinct. Attached children share their parent's process group;
+// others own a group for Kill to stop. Existing
+// files are truncated with private permissions for newly created files.
+// WaitFor/Kill retain their usual process semantics and leave these files
+// for the caller to read and remove. Failure to start returns -1.
+pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string, attached: bool = false) -> int {
+    if length(command) == 0 || stderr_path == "" || stdout_path == stderr_path {
+        return -1;
+    }
+    actions := Block(256);
+    status := posix_spawn_file_actions_init(actions);
+    if status != 0 {
+        return -1;
+    }
+    status = posix_spawn_file_actions_addopen(actions, 0, "/dev/null", 0, 0);
+    if status == 0 && stdout_path != "" {
+        status = posix_spawn_file_actions_addopen(actions, 1, stdout_path, i32(WriteNew), 384);
+    }
+    if status == 0 {
+        status = posix_spawn_file_actions_addopen(actions, 2, stderr_path, i32(WriteNew), 384);
+    }
+    if status != 0 {
+        destroyed := posix_spawn_file_actions_destroy(actions);
+        return -1;
+    }
+    process := Launch(command, actions, !attached);
+    if process > 0 {
+        // A dead ancestor may have left an automatic Piped report under a
+        // reused PID. This process owns caller paths, never that report.
+        discarded := unlink(OutputPath(process));
+    }
+    return process;
+}
+
 // Prints what a piped program wrote to this program's standard error and
 // removes the file.
 Report :: (process: int) {
@@ -785,6 +844,12 @@ pub Kill :: (process: int) -> int {
         return 127;
     }
     status := kill(i32(0 - process), 9);
+    if status != 0 {
+        // An attached child belongs to its parent's cancellation group.
+        // Killing its handle still stops/reaps that child; the parent group
+        // owns cancellation of any descendants it started.
+        status = kill(i32(process), 9);
+    }
     return WaitFor(process, -1);
 }
 

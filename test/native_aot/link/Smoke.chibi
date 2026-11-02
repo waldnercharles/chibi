@@ -171,7 +171,7 @@ Ensure :: (path: string) -> bool {
 
 // With CHIBI_NATIVE_BUNDLE set (CI's Linux job), links the program for the other targets, which
 // the native-targets job runs on macOS and Windows: `bundle/<directory>/programs/arguments`
-// listed twice in programs.txt, run without arguments and with the two above separated by
+// listed twice in native-link-programs.txt, run without arguments and with the two above separated by
 // tabs. The macOS program links against stubs and the Windows one is static (kernel32 from a
 // generated library), so neither needs an SDK.
 Bundle :: (llvm: string, work: string, bundle: string, triple: string, directory: string) -> int {
@@ -188,6 +188,10 @@ Bundle :: (llvm: string, work: string, bundle: string, triple: string, directory
     if (!Ensure(folder) || !Ensure(bundle) || !Ensure(target) || !Ensure(programs)) {
         return Fail("cannot prepare the bundle folders");
     }
+    list := Join([target, "/native-link-programs.txt"]);
+    if (os.Remove(list) != nil) {
+        return Fail("cannot remove the old native-link program list");
+    }
     archive := Compile(llvm, folder, triple, windows, suffix);
     if (archive == "") {
         return 1;
@@ -198,14 +202,9 @@ Bundle :: (llvm: string, work: string, bundle: string, triple: string, directory
     if (failure != nil) {
         return Fail(format_text("the {} program did not link, kind {} code {}", directory, failure.kind, failure.code));
     }
-    listed := os.ReadText(Join([target, "/programs.txt"]));
-    text := "";
-    if (listed.error == nil) {
-        text = listed.text;
-    }
-    lines := Join([text, "program ", name, " 42\n", "program ", name, " 42\t", SpacedArgument(), "\t", WideArgument(), "\n"]);
-    if (os.WriteText(Join([target, "/programs.txt"]), lines) != nil) {
-        return Fail("cannot write programs.txt");
+    lines := Join(["program ", name, " 42\n", "program ", name, " 42\t", SpacedArgument(), "\t", WideArgument(), "\n"]);
+    if (os.WriteText(list, lines) != nil) {
+        return Fail("cannot write native-link-programs.txt");
     }
     return 0;
 }

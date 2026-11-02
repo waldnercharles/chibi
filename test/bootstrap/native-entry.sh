@@ -6,11 +6,12 @@ root=$(cd "$(dirname "$0")/../.." && pwd -P)
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/chibi-native-entry.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 checkout=$scratch/'checkout with spaces'
-mkdir -p "$checkout/tools/toolchain" "$checkout/tools/bootstrap" "$checkout/packages/core/sample" "$checkout/llvm"
+mkdir -p "$checkout/tools/toolchain" "$checkout/tools/bootstrap" "$checkout/tools/graph/sample" "$checkout/packages/core/sample" "$checkout/llvm"
 cp "$root/tools/build.sh" "$checkout/tools/build.sh"
 cp "$root/tools/bootstrap/native-seed.sh" "$checkout/tools/bootstrap/native-seed.sh"
 printf 'package driver\n' > "$checkout/tools/toolchain/Driver.chibi"
 printf 'package sample\n' > "$checkout/packages/core/sample/Sample.chibi"
+printf 'package sample\n' > "$checkout/tools/graph/sample/Sample.chibi"
 printf '#!/bin/sh\nexit 93\n' > "$checkout/tools/bootstrap.sh"
 printf '#!/bin/sh\nexit 94\n' > "$checkout/tools/bootstrap/seed.sh"
 for tool in opt llc ld.lld ld64.lld; do
@@ -67,13 +68,16 @@ count 2
 printf '// changed\n' >> packages/core/sample/Sample.chibi
 entry census
 count 3
-printf 'package sample\n' > packages/core/sample/Extra.chibi
+printf '// changed\n' >> tools/graph/sample/Sample.chibi
 entry census
 count 4
+printf 'package sample\n' > packages/core/sample/Extra.chibi
+entry census
+count 5
 rm packages/core/sample/Extra.chibi
 entry census
-count 4 # Returns to the exact previously cached input set.
-next=5
+count 5 # Returns to the exact previously cached input set.
+next=6
 for tool in compiler llvm/opt llvm/llc llvm/ld.lld llvm/ld64.lld; do
     printf '\n# changed\n' >> "$tool"
     entry census

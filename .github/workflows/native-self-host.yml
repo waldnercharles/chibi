@@ -23,7 +23,9 @@ on:
       - test/native_aot/diagnostics/**
       - test/native_aot/test_attributes/**
       - test/native_aot/optionals/**
+      - test/native_aot/asset_compiler/**
       - test/native_aot/tasks/**
+      - test/native_aot/task_busy/**
       - test/native_aot/maps/**
       - test/native_aot/map_programs/**
       - test/bootstrap/**
@@ -40,6 +42,7 @@ on:
       - test/native_aot/link/windows/**
       - test/native_aot/native_driver/**
       - test/native_aot/text_format/**
+      - test/native_aot/output/**
       - .github/native-llvm.sh
       - .github/workflows/native-self-host.yml
   push:
@@ -105,7 +108,9 @@ jobs:
           sh test/native_aot/native_driver/cache.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
           sh test/native_aot/native_driver/minimum.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native scalar text formatting
-        run: sh test/native_aot/text_format/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+        run: |
+          sh test/native_aot/text_format/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+          sh test/native_aot/output/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native diagnostic coordinates
         timeout-minutes: 5
         run: sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
@@ -118,6 +123,8 @@ jobs:
         run: sh test/native_aot/test_attributes/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native typed failures and quota scopes
         run: sh test/native_aot/failures/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native test task effects
+        run: sh test/native_aot/task_busy/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native optional values
         run: sh test/native_aot/optionals/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native build entry and runner failures
@@ -158,7 +165,9 @@ jobs:
     # import libraries and core:sys/windows, builds the compiler on windows-2022
     # with that runner's LLVM (stage three), and stage three builds it again
     # (stage four). The two are byte-identical. Stage two is not compared: the
-    # Linux job's llc is another version than this runner's.
+    # Linux job's llc is another version than this runner's. An explicitly pinned
+    # older source may need one extra generation, as native seed recovery does;
+    # it must reproduce stage four exactly and keeps all binaries for inspection.
     name: Native self-host (Windows)
     needs: native-self-host
     if: >-
@@ -297,29 +306,75 @@ jobs:
         with:
           path: ${{ runner.temp }}/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin
           key: ${{ steps.llvm-cache.outputs.cache-primary-key }}
-      - name: Build stage three and stage four, and compare them
+      - name: Build the Windows compiler to a fixed point
+        id: windows-fixed-point
+        env:
+          BOOTSTRAP_RUN: ${{ inputs.windows_bootstrap_run }}
+          BOOTSTRAP_COMMIT: ${{ inputs.windows_bootstrap_commit }}
         run: |
           $ErrorActionPreference = 'Stop'
           $llvm = $env:CHIBI_WINDOWS_LLVM
           $root = $PWD.Path.Replace('\', '/')
           $work = $env:RUNNER_TEMP.Replace('\', '/')
           $stage = "$work/stage2/chibi.exe"
-          $log = @()
-          foreach ($number in 3, 4) {
+          $hashes = @{}
+          function Compare-CompilerBytes($left, $right) {
+            $a = [IO.File]::ReadAllBytes($left)
+            $b = [IO.File]::ReadAllBytes($right)
+            Write-Host "Compiler sizes: $left = $($a.Length), $right = $($b.Length)"
+            $shown = 0
+            for ($offset = 0; $offset -lt [Math]::Min($a.Length, $b.Length) -and $shown -lt 16; $offset++) {
+              if ($a[$offset] -ne $b[$offset]) {
+                Write-Host ('Compiler difference at 0x{0:x}: {1:x2} != {2:x2}' -f $offset, $a[$offset], $b[$offset])
+                $shown++
+              }
+            }
+          }
+          foreach ($number in 3, 4, 5) {
+            if ($number -eq 5) {
+              if ($hashes[3] -eq $hashes[4]) { break }
+              Compare-CompilerBytes "$work/stage3/chibi.exe" "$work/stage4/chibi.exe"
+              if (!$env:BOOTSTRAP_RUN -or !$env:BOOTSTRAP_COMMIT -or $env:BOOTSTRAP_COMMIT -eq $env:GITHUB_SHA) {
+                throw 'native-self-host (Windows): stage three and stage four differ'
+              }
+              Write-Host 'Explicit older bootstrap: require stage four and stage five to be byte-identical'
+            }
             New-Item -ItemType Directory -Force "$work/stage$number" | Out-Null
             $began = Get-Date
-            & $stage --compiler "$root/tools/compiler" --core "$root/packages/core" --output "$work/stage$number/chibi.exe" --llvm $llvm --target x86_64-pc-windows-msvc
+            & $stage --compiler "$root/tools/compiler" --core "$root/packages/core" --output "$work/stage$number/chibi.exe" --llvm $llvm --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -FilePath "$work/stage$number/compiler.log"
             if ($LASTEXITCODE) { throw "stage $number exited $LASTEXITCODE" }
             $stage = "$work/stage$number/chibi.exe"
             $digest = (Get-FileHash $stage -Algorithm SHA256).Hash.ToLowerInvariant()
-            $log += "stage $number sha256 $digest ($([int]((Get-Date) - $began).TotalSeconds) s)"
+            $hashes[$number] = $digest
+            "stage $number sha256 $digest ($([int]((Get-Date) - $began).TotalSeconds) s)" | Tee-Object -FilePath "$work/windows-fixed-point.log" -Append | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
           }
-          $log | ForEach-Object { $_; $_ >> $env:GITHUB_STEP_SUMMARY }
-          if ((Get-FileHash "$work/stage3/chibi.exe").Hash -ne (Get-FileHash "$work/stage4/chibi.exe").Hash) {
-            throw 'native-self-host (Windows): stage three and stage four differ'
+          if ($hashes.ContainsKey(5)) {
+            if ($hashes[4] -ne $hashes[5]) {
+              Compare-CompilerBytes "$work/stage4/chibi.exe" "$work/stage5/chibi.exe"
+              throw 'native-self-host (Windows): stage four and stage five differ'
+            }
+            'native-self-host (Windows): stage four and stage five are byte-identical' | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          } else {
+            'native-self-host (Windows): stage three and stage four are byte-identical' | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
           }
-          'native-self-host (Windows): stage three and stage four are byte-identical'
+      - name: Keep Windows fixed-point evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-windows-fixed-point
+          path: |
+            ${{ runner.temp }}/stage3
+            ${{ runner.temp }}/stage4
+            ${{ runner.temp }}/stage5
+            ${{ runner.temp }}/windows-fixed-point.log
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Check the native Windows asset compiler and C consumer
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: |
+          & ./test/native_aot/asset_compiler/Bridge.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Exercise the native Windows object pipeline
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $root = $PWD.Path.Replace('\', '/')
@@ -328,13 +383,19 @@ jobs:
           if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
           & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
           if ($LASTEXITCODE) { throw 'the Windows object regression failed' }
+      - name: Check the native Windows build runner
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: |
+          & ./test/bootstrap/native-runner.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Check native Windows formatting, task timing, math and SDK paths
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $root = $PWD.Path.Replace('\', '/')
           $work = $env:RUNNER_TEMP.Replace('\', '/')
           $cases = @(
             @{ name = 'text-format'; source = 'test/native_aot/text_format/Main.chibi' },
+            @{ name = 'print'; source = 'test/native_aot/output/Main.chibi' },
             @{ name = 'task-timing'; source = 'test/native_aot/tasks/cases/timing/Main.chibi' },
             @{ name = 'square-root'; source = 'test/native_aot/math_scalar/SquareRoot.chibi' },
             @{ name = 'shadow-root'; source = 'test/native_aot/math_scalar/Shadow.chibi' },

@@ -11,5 +11,5 @@ pub WebAssemblyContext :: () -> string {
     formatter := Join([numbers, FormatGrammar(), FormatModifiers(), FormatRenderer(), FormatWalk()]);
     formatter = strings.Replace(formatter, "define internal void @chibi_format_text", "define void @chibi_format_text", 1);
     return Join(["target triple = \"wasm32-unknown-emscripten\"\n",
-                 "declare ptr @chibi_allocate(ptr, i64)\n", formatter]);
+                 "declare ptr @chibi_allocate(ptr, i64)\n", formatter, OutputRuntime(false, true)]);
 }

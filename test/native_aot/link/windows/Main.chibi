@@ -147,6 +147,9 @@ Processes :: (work: string) {
     status = os.Wait(slow, 20);
     assert(slow > 0 && status == os.StillRunning, "a timed wait preserves a running process");
     status = os.Kill(slow);
+    if status != -9 {
+        os.Print(format_text("running process cancellation returned {}", status));
+    }
     assert(status == -9, "cancel a running process");
     status = os.Wait(slow, -1);
     assert(status == -1, "cancellation consumes its handle");

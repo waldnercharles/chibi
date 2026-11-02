@@ -3272,7 +3272,7 @@ ScalarRetainedNames :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
 ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[], params: Param[],
                 table: ^(TypeDecl[]), body_optionals: ^(int[]), members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
-                identities: u64[], aliases: Name[], retained: Name[]) -> syntax.Diagnostic {
+                identities: u64[], aliases: Name[], retained: Name[], summary: ^ScalarEffectSummary) -> syntax.Diagnostic {
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
@@ -3299,6 +3299,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                             "scalar proof requires a callable body");
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
+            if (summary.wanted) { ScalarBodyEffects(summary, function, callables[function].waits, effects, ops, code, hosts, calls); }
             while (length(body_optionals^) < length(table^)) { body_optionals.append(0); }
             for (cell in cells) {
                 if (cell.storage == UnionStorage && cell.container == 0 && ScalarOptional(table^, cell.record)) {
@@ -3671,7 +3672,7 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
                  params: Param[], input_types: TypeDecl[], input_members: TypeMember[], constants: ConstDecl[], ops: Ops,
                  target: Target, natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[],
                  is_library: bool, generic_bindings: GenericBinding[], documents: snapshot.Document[],
-                 links: graph.Binding[]) -> ScalarOperands {
+                 links: graph.Binding[], summary: ^ScalarEffectSummary) -> ScalarOperands {
     types := input_types;
     members := input_members;
     // Native collection does not use Link, which normally adds these unions.
@@ -3746,7 +3747,7 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         }
         emitted := ScalarEmits(scoped, text, key, callables, marked, &checked, &body_optionals, members, used, solid, function,
                                ops, target, natives, ports, identities, aliases,
-                               ScalarRetainedNames(scoped, text, checked, callables[function]));
+                               ScalarRetainedNames(scoped, text, checked, callables[function]), summary);
         if (emitted.message != "") { return ScalarOperands.Failed(emitted); }
     }
     switch ScalarResults(callables, params, checked, members, body_optionals) {
@@ -4063,8 +4064,9 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
     }
     members: TypeMember[] = [];
     constants: ConstDecl[] = [];
+    summary: ScalarEffectSummary = {wanted: false, natives: [], direct: [], waiting: [], calls: []};
     switch ScalarModule(forest, text, path, callables, params, empty_types, members, constants, ops, target, natives,
-                        ports, identities, true, [], [], []) {
+                        ports, identities, true, [], [], [], &summary) {
         case .Failed(diagnostic):
             return ScalarFailure(path, text, diagnostic);
         case .Built(rows):
@@ -4204,6 +4206,15 @@ pub CollectScalarProgram :: (project: string, collection_names: string[], collec
 ScalarCollect :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                   sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
                   identities: u64[], packaged: bool, os: int, arch: int, chosen: string) -> facts.Row[] {
+    summary: ScalarEffectSummary = {wanted: false, natives: [], direct: [], waiting: [], calls: []};
+    return ScalarCollectWithEffects(project, collection_names, collection_paths, paths, sources, target, names,
+                                    natives, ports, identities, packaged, os, arch, chosen, &summary);
+}
+
+ScalarCollectWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                             sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
+                             identities: u64[], packaged: bool, os: int, arch: int, chosen: string,
+                             summary: ^ScalarEffectSummary) -> facts.Row[] {
     if (length(paths) == 0 || length(paths) != length(sources) || length(collection_names) != length(collection_paths) ||
         (!packaged && length(paths) != 1)) {
         return ScalarFailure("", "", ScalarStart("scalar proof requires matching paths and sources"));
@@ -4333,6 +4344,9 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                             text_ports = declared_ports;
                             text_identities = declared_identities;
                     }
+                    if (summary.wanted) {
+                        for (native in text_natives) { summary.natives.append(native.effects); }
+                    }
                     for (index in text_count..<length(text_natives)) {
                         quiet := text_natives[index];
                         quiet.effects = 0;
@@ -4386,7 +4400,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                     }
                                     switch ScalarModule(scalar_nodes, scalar_text, document.key, entered, concrete_params, table,
                                                         members, constants, ops, target, text_natives, text_ports, text_identities,
-                                                        false, bindings, scalar_documents, module_links) {
+                                                        false, bindings, scalar_documents, module_links, summary) {
                                         case .Failed(diagnostic):
                                             // The native check already used joined nodes; its range
                                             // must not receive the document offset a second time.

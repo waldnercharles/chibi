@@ -1,62 +1,55 @@
 # Native toolchain continuation
 
-The November 2 handoff is being integrated on `codex/native-default-20261102`,
-based on `b46f391b7`. The review branch is PR #1331. The owner's checkout and
+The November 2 handoff is published as PR #1331 on `codex/native-default-20261102`,
+frozen at `1aaf0ef3e`. The next batch is being composed on
+`codex/native-runtime-completion-20261102`. The owner's checkout and
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
 ## Current checkpoint, 2 November
 
-`c32f5d6b6` is pushed to PR #1331. Its exact pinned macOS seed compiles the
-complete source in 40.93 seconds; the resulting compiler passes the CLI and
-129-name collision regression in 6.44 seconds. The immediately preceding
-native output change passes all 410 compiler tests in 22.05 seconds and its
-O0/O2 byte/readiness/rejection suite in 1.76 seconds.
+At published `1aaf0ef3e`, no-C-compiler, compiler self-build, Linux native
+self-host, build-alone and SDK relocation CI pass. Windows stages three and
+four reproduce exactly with SHA-256
+`f291fa77d17b5ce34d9dbc6171bbbfd3f6ca47d07c8ba9912ecfbe79ea0f5459`.
+The original long Unicode-path asset compiler build also succeeds. Its next
+step rejects unnamed C stub parameters under strict C11; that is fixed in
+the new batch at `1a3dff070`, awaiting another Windows execution.
 
-The local integration at `1a7a1002f` passes all 414 compiler tests in 18.80
-seconds and the combined O0/O2 task, managed-record, array, map, optional,
-failure, test-Busy and output suites. Native CLI acceptance takes 7.68 seconds,
-macOS watch 4.83 seconds, and optimized generation swaps 9.24 seconds. Its
-consecutive self-builds take 57.50 and 61.02 seconds and have identical SHA-256
-`76a2d9e55610ce9f5f50bd73a69c1408b0167752e32b01c833f9dfbcc500f4a7`.
-These timings include concurrent work and are acceptance evidence, not a
-controlled performance comparison.
+General CI at that published revision is not green: it exposes native
+language admission, CLI diagnostics/reload and old host-test assumptions.
+The complete failing selector log is retained at
+`/tmp/chibi-engine-1aaf-failed.log`. These failures are migration work, not
+grounds to restore automatic fallback or omit surviving behavior checks.
 
-Native test scheduling is integrated at `90cf79af4`: typed effects allow pure
-tests to overlap, effectful tests run alone, output remains in source order,
-and generated wrappers preserve waiting/spawning rejection and step budgets.
-Its lane passes the exact pinned-seed build, all 414 compiler tests, and real
-worker/cancellation/waiting cases. Combined checkpoint validation is running.
-Array source copies stay eager until foreign mutation leases are implemented.
-The LLVM WebAssembly compiler passes exact artifact and lifetime checks; its
-public browser facade and optional SDK archive are still being connected.
+The combined local source at `337204e12` passes all 416 compiler tests in
+18.27 seconds, CLI/worker/assertion/generic checks in 23.67 seconds, map
+poison/allocation checks in 38.38 seconds, managed/foreign checks in 11.20
+seconds and optional-union checks in 25.88 seconds. Consecutive self-builds
+take 62.05 and 58.15 seconds and have identical SHA-256
+`a7aa0e4a1ba6d6d731c5ce2ce997c284a867d7441a02104c63b65c01992b29b5`.
+These concurrent timings are acceptance evidence, not controlled comparisons.
 
-At pushed `c32f5d6b6`, no-C-compiler, compiler self-build and Linux native
-self-host CI pass. General CI found stale SDK product/evidence expectations,
-the pinned seed's compile-only CLI at selector launch, and a macOS import
-fixture missing the failure runtime's `write` and `_exit`. The import fixture
-is corrected locally; SDK and shared selector bootstrap changes are underway.
-
-Windows source `585e40829` reaches a strict stage-four/five fixed point after
-one explicitly permitted transition from the older pinned bootstrap. Both
-binaries have SHA-256
-`d9a56bde96fdce41d9b9c335f5120dc4ec659c8aad62ddf0641d4eb9e909f96f`.
-The subsequent asset compiler build fails with illegal instruction
-`0xC000001D`. A shorter-path replay with the retained compiler succeeds.
-The original long link command crosses the foreign CString bound; counted
-UTF-8 conversion and a 16 KiB Unicode argument regression are integrated at
-`ed9c3384b`, with failed-object cleanup at `6fa5c88e7`. Replay of the original
-Windows request remains required; this is not Windows product acceptance.
+The next batch through `520b40a52` integrates foreign array loans, readonly
+array snapshots, owned aggregate copy results, named-result collision and
+grouped-float fixes, Windows loader/FFI fixtures, and the optional LLVM Wasm
+compiler SDK. Its plain and pthread archives execute in actual Chrome;
+`docs/evidence/native-wasm-browser-20261102.md` records the lane artifact
+identities and limits. The unused C application launcher is deleted.
+Combined validation of this newer source remains required.
 
 The evidence below is chronological. Older counts and gates describe their
 named revisions, not the latest integration. Remaining deletion gates are:
 
-- Validate the combined installed compiler, CLI, native asset companion and
-  SDK/Studio consumers on each supported platform; resolve the Windows trap.
-- Finish test-runner parity and migrate the remaining graph/test consumers.
-- Complete managed suspended values/results, task dependencies, and retained
-  arrays/unions/handles. Foreign array loans must preserve mutation and lifetime.
-- Replace the program/application execution APIs and browser runtime consumers.
+- Finish native language and ownership parity, including live pointer forms,
+  array-backed records/maps and managed suspended/retained values.
+- Complete the 17 authored CLI survivor cases and three live Edit-and-Continue
+  behaviors from `docs/c-test-verdicts.md`; port surviving scalar/C test cases.
+- Migrate old host-based build/link tests and remaining live graph consumers.
+- Validate the combined installed compiler, CLI, asset companion and optional
+  browser SDK on each supported platform, including Windows execution.
+- Retire remaining prepared-runtime consumers. The obsolete C session ABI and
+  already archived engine/Studio services do not need replacement adapters.
 - Publish verified platform seeds only after their acceptance checks, then
   delete obsolete hosts, recovery artifacts and VM paths with no remaining users.
 
@@ -142,29 +135,21 @@ have focused passing checks in the final source tree. The next CI run verifies
 them together; its status is recorded in the PR. Cross-linking alone is not
 runtime validation.
 
-## Gates before deleting the hosts or VM
+## Retirement scope
 
-- Verify the combined installed native CLI/compiler, SDK companion and Studio
-  packaging on supported platforms. The desktop product graph and asset compiler
-  have been replaced; remaining legacy consumers still need removal.
-- Complete native typed failure reporting and `core:testing.ExpectFailure`;
-  preserve the existing failure categories and imported-test behavior.
-- Complete maps: managed/nested values and expression alias lifetimes. Authored
-  iteration is implemented; numeric record values await combined integration.
-  Equality, compound writes and inferred map literals also reject in the
-  ordinary compiler, so they are not native parity gates.
-- Complete tasks: handle result unions, managed suspended
-  values, component dependencies and complete failure behavior.
-- Complete retained-state parity for managed records, arrays, unions and task
-  handles, and validate reload/watch beyond Linux x64.
-- Publish a verified native Windows seed, validate parallel object compilation
-  and the new redirected streams on Windows, and complete
-  remaining SDK/Studio platform coverage. Compiler execution and self-reproduction
-  on Windows now have CI proof.
+The current deletion gates are listed at the top. The authoritative survivor
+inventory is `docs/c-test-verdicts.md`, together with the workspace's
+`handoffs/goal.md` and `handoffs/vm-deletion.md`; inspect current consumers
+before each deletion. Archived engine, renderer, game and Studio services
+stay archived. The old C program-session API goes with the VM; preserve the
+three live reload behaviors without recreating that API.
 
-Do not remove the VM, host sources or recovery assets while those consumers
-still depend on them. This branch removes the build-entry fallback; it does
-not claim that the full retirement is complete.
+Native typed expected failures, scheduling and foreign array loans are
+implemented. Standalone runtime diagnostics, live managed value forms and
+reload/watch platform coverage still need completion. Automatic build-entry
+fallback is removed; remaining explicit recovery assets and VM dependencies
+are not yet retired. Completion means their deletion, verified platform seeds
+and passing combined behavior checks on the final source revision.
 
 ## Parallel performance work
 

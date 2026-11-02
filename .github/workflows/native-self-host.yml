@@ -9,6 +9,7 @@ on:
       - test/native_aot/diagnostics/**
       - test/native_aot/test_attributes/**
       - test/bootstrap/**
+      - test/native_cli/**
       - tools/build.sh
       - tools/native_aot/**
       - tools/toolchain/Driver.chibi
@@ -89,6 +90,8 @@ jobs:
         run: |
           sh test/bootstrap/native-entry.sh
           sh test/bootstrap/native-runner.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native CLI programs
+        run: sh test/native_cli/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Summarize the proof
         if: always()
         shell: bash

@@ -443,6 +443,9 @@ pub ArrayBytes: int : 14;
 pub ArrayText: int : 15;
 // A new array without the int-indexed element; an invalid index copies all elements.
 pub ArrayWithout: int : 16;
+// A foreign argument loan, consuming a numeric array or a reference to its
+// writable descriptor. It keeps the evaluated value alive until the C call.
+pub ArrayLoan: int : 17;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range
@@ -473,6 +476,9 @@ pub RangeMap: int : 16;
 // becomes a float only through double, so it has two Convert rows.
 pub Clamp: int : 0;
 pub Wrap: int : 1;
+// Integer to nominal char: reject values outside Unicode scalar numbers
+// before narrowing to the existing i32 representation.
+pub CheckedChar: int : 2;
 
 // The bits of an integer type, 0 for bool or any other.
 pub Bits :: (type: int) -> int {

@@ -110,6 +110,10 @@ static package_test_failure_kind failure_kind(const char *message)
     if (!strcmp(message, "shared instruction budget exhausted")) {
         return PACKAGE_TEST_FAILURE_BUDGET_EXHAUSTED;
     }
+    /* CharConversionStep emits an assertion guard with this custom text. */
+    if (!strcmp(message, "Value does not fit in char")) {
+        return PACKAGE_TEST_FAILURE_ASSERTION_FAILED;
+    }
     for (int kind = 1; kind < PACKAGE_TEST_FAILURE_COUNT; kind++) {
         const char *text = FAILURE_TEXTS[kind].text;
         size_t length = strlen(text);

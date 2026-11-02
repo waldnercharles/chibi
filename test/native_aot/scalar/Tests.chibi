@@ -240,7 +240,7 @@ ScalarArrayWithoutOperandsAreValidated :: () {
     assert(scalar.Validate(Changed(rows, 7, Type, facts.BoolType)) == expected);
     assert(scalar.Validate(Changed(rows, 8, Count, 1)) == expected);
     assert(scalar.Validate(Changed(rows, 8, Type, facts.IntType)) == expected);
-    assert(scalar.Validate(Changed(rows, 8, Value, facts.ArrayWithout + 1)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Value, facts.ArrayLoan + 1)) == expected);
 }
 ScalarForceUnwrapRequiresAnOptionalAndAProgramRuntime :: () {
     original := TaskFacts(facts.CallPlain, false);
@@ -272,6 +272,31 @@ ScalarForceUnwrapRequiresAnOptionalAndAProgramRuntime :: () {
         case .Emitted(text): assert(strings.Contains(text, "call void @chibi_native_failure(i32 7)"));
     }
 }
+ScalarCharacterConversionsCheckIntegerOperands :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    rows := [original[0], original[1],
+             TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+             TaskFact(facts.ReturnRow, 0, 0, 2, "", 2, 10),
+             TaskFact(facts.LiteralRow, facts.WordType, 0, 0, "", 3, 4),
+             TaskFact(facts.ConvertRow, facts.IntType, facts.CheckedChar, 1, "", 4, 5)];
+    assert(scalar.Validate(rows) == "");
+    expected := "scalar conversion is not one the runtime implements";
+    assert(scalar.Validate(Changed(rows, 4, Type, facts.BoolType)) == expected);
+    assert(scalar.Validate(Changed(rows, 4, Type, facts.FloatType)) == expected);
+    assert(scalar.Validate(Changed(rows, 5, Type, facts.UintType)) == expected);
+    assert(scalar.Validate(Changed(rows, 5, Count, 0)) == expected);
+    assert(scalar.Validate(Changed(rows, 5, Value, facts.CheckedChar + 1)) == expected);
+    switch scalar.EmitFor(abi.LinuxX64(), rows) {
+        case .Invalid(message): assert(false);
+        case .Rejected(projected): assert(false);
+        case .Emitted(text): assert(strings.Contains(text, "icmp ule i64"));
+    }
+    switch scalar.EmitProgramFor(abi.LinuxX64(), rows, "") {
+        case .Invalid(message): assert(false);
+        case .Rejected(projected): assert(false);
+        case .Emitted(text): assert(strings.Contains(text, "call void @chibi_native_failure(i32 4)"));
+    }
+}
 
 pub Tests :: () -> int {
     ScalarPlainCallsCannotUseWaitingFunctions();
@@ -280,6 +305,7 @@ pub Tests :: () -> int {
     ScalarCallModesAreBounded();
     ScalarArrayWithoutOperandsAreValidated();
     ScalarForceUnwrapRequiresAnOptionalAndAProgramRuntime();
+    ScalarCharacterConversionsCheckIntegerOperands();
     text := Emitted(Accepted());
     if (!strings.Contains(text, "define i32 @chibi_scalar()") ||
         !strings.Contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1)") ||

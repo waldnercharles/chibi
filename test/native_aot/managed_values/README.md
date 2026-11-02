@@ -31,3 +31,15 @@ array copies remain eager until foreign calls carry writable-place leases; no
 array descriptor currently crosses the generation host's scalar/text ABI.
 A unique writable loan also appends inside existing capacity without creating
 another allocation; this catches repeated copying of compiler record fields.
+
+Foreign buffers carry an owned argument snapshot and its writable descriptor
+cell until the call. The source regression uses actual libc calls to check an
+earlier buffer surviving replacement by a later argument, ordinary parameter
+isolation, scoped writes and temporary arrays. The native probe writes through
+one of two aliases of the same cell while reading the other, after a later
+ordinary array copy; both C pointers must agree and the copy must stay unchanged.
+Source foreign record fields remain rejected until recursive array-backed
+record ownership is available. Indexed places also need a writable path resolved
+after later argument evaluation. Locals and temporary arrays are supported.
+The rejected Box fixture keeps the caller-unchanged assertion as an acceptance
+case for the next ownership step.

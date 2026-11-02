@@ -147,6 +147,64 @@ ForeignBuffersRejectMapsAndScopedReferences :: () {
         Rejects(result, ForeignMismatch());
     }
 }
+LoanCode :: (array: int) -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, array, 0, 0, 0, 0, 0),
+            Code(native.ArrayLoan, array, 1, 0, 0, 1, 0),
+            Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0),
+            Code(native.Publish, abi.IntStorage, 0, 2, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+LoanModule :: (array: int, code: native.Instruction[]) -> native.Result {
+    return Emit([Function(abi.IntStorage, 0, 0, 3, 0, length(code), 0, 0)], [], [array, array, abi.IntStorage], code, []);
+}
+@test
+ForeignBufferLoansValidateTypePlaceModeAndLiteral :: () {
+    array := native.ArrayType + abi.IntStorage;
+    expected := "native foreign buffer loan differs from its array or place";
+    code := LoanCode(array);
+    bad := code[2];
+    bad.target = 0;
+    Rejects(LoanModule(array, Changed(code, 2, bad)), expected);
+    bad = code[2]; bad.left = 2;
+    Rejects(LoanModule(array, Changed(code, 2, bad)), expected);
+    bad = code[2]; bad.target = 3;
+    Rejects(LoanModule(array, Changed(code, 2, bad)), expected);
+    bad = code[2]; bad.literal = 1;
+    Rejects(LoanModule(array, Changed(code, 2, bad)), expected);
+    bad = code[2]; bad.right = 1;
+    Rejects(LoanModule(array, Changed(code, 2, bad)), expected);
+    for (element in [abi.BoolStorage, abi.TextStorage]) {
+        unsupported := native.ArrayType + element;
+        Rejects(LoanModule(unsupported, LoanCode(unsupported)), expected);
+    }
+    Rejects(LoanModule(array, code), "native foreign buffer loan belongs to one call argument");
+}
+@test
+ForeignBufferLoansHaveOneCallConsumer :: () {
+    array := native.ArrayType + abi.IntStorage;
+    for (same_call in [false, true]) {
+        code := LoanCode(array);
+        code = slice(code, 0, 3);
+        count := 1;
+        if (same_call) { count = 2; }
+        code.append(Code(native.ForeignCall, abi.IntStorage, 2, 0, 0, count, 0));
+        slots := [array, array, abi.IntStorage];
+        result := 2;
+        if (!same_call) {
+            code.append(Code(native.ForeignCall, abi.IntStorage, 3, 0, 1, 1, 0));
+            slots.append(abi.IntStorage);
+            result = 3;
+        }
+        code.extend([Code(native.Publish, abi.IntStorage, 0, result, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)]);
+        empty: int[] = [];
+        records: native.Record[] = [];
+        source: native.Source = {file: "", directory: ""};
+        emitted := native.Emit(abi.LinuxX64(), [Function(abi.IntStorage, 0, 0, length(slots), 0, length(code), 0, 2)],
+            empty, slots, empty, code, [1, 1], records, empty, ["probe"], source, [], empty, empty, false, 1);
+        Rejects(emitted, "native foreign buffer loan belongs to one call argument");
+    }
+}
 // A string is copied with its NUL to a stack buffer the callee reads as a C string.
 @test
 ForeignStringArgumentIsCopiedWithItsNul :: () {

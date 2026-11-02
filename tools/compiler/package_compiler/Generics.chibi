@@ -847,22 +847,24 @@ SpecializePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             index += 1;
         }
     }
+    return GenericPlan.Ready(concrete, params, GenericRemapBindings(bindings, remap));
+}
+
+// Owners and callable-valued bindings use function ordinals. A permutation of
+// concrete functions remaps those two fields together; types and syntax nodes
+// stay in their original tables. Provisional unowned constants do not survive.
+GenericRemapBindings :: (bindings: GenericBinding[], remap: int[]) -> GenericBinding[] {
     final_bindings: GenericBinding[] = [];
-    index: int = 0;
-    while (index < length(bindings)) {
-        row := bindings[index];
-        if (row.owner < 0) {
-            index += 1;
-            continue;
-        }
+    for (binding in bindings) {
+        if (binding.owner < 0) { continue; }
+        row := binding;
         row.owner = remap[row.owner];
         if (row.place == GenericCallPlace || row.place == GenericFunctionPlace) {
             row.index = remap[row.index];
         }
         final_bindings.append(row);
-        index += 1;
     }
-    return GenericPlan.Ready(concrete, params, final_bindings);
+    return final_bindings;
 }
 
 GenericCheck :: union {

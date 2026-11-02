@@ -873,6 +873,7 @@ ScalarTaskCallee :: (forest: snapshot.SnapshotNode[], text: string, callables: C
 ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, context: int) -> int {
     original := Unparenthesized(forest, operand);
+    if (Is(forest, original, syntax.Nil) && context == PointerStorage) { return PointerStorage; }
     if (Is(forest, original, syntax.AddressExpression)) {
         record := ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, original);
         if (ScalarPointerType(types, record) != 0) { return PointerStorage; }
@@ -1057,6 +1058,11 @@ ScalarTarget :: (forest: snapshot.SnapshotNode[], operand: int) -> int {
 ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], operand: int, expected: int, rows: facts.Row[]) -> ScalarOperands {
     original := Unparenthesized(forest, operand);
+    if (Is(forest, original, syntax.Nil) && expected == PointerStorage) {
+        output := rows;
+        output.append(ScalarLiteral(forest, original, facts.PointerType, 0));
+        return ScalarOperands.Built(output);
+    }
     if (Is(forest, original, syntax.AddressExpression)) {
         return ScalarPointerAddress(forest, text, callables, params, callable, names, types, members, constants, original, rows);
     }
@@ -1298,7 +1304,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         operator := ScalarComparison(Operator(forest, node));
         equality := operator == facts.Equal || operator == facts.NotEqual;
         if (!Integer(compared) && !Floating(compared) &&
-            !((compared == BoolStorage || compared == TextStorage) && equality)) {
+            !((compared == BoolStorage || compared == TextStorage || compared == PointerStorage) && equality)) {
             return ScalarOperands.Failed(Diagnose(forest, node, 0, "scalar proof compares only number operands"));
         }
         compare := ScalarAt(forest, node, facts.CompareRow, facts.BoolType, operator, 2, "");
@@ -1963,6 +1969,12 @@ ScalarConversion :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         output.append(ScalarAt(forest, node, facts.TaskRunningRow, facts.BoolType, 0, 1, ""));
         return ScalarOperands.Built(output);
     }
+    if (own == PointerStorage && storage == BoolStorage) {
+        output := rows;
+        output.extend([ScalarLiteral(forest, operand, facts.PointerType, 0),
+            ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.NotEqual, 2, "")]);
+        return ScalarOperands.Built(output);
+    }
     // Before presence is known, a bool context tests the optional's tag.
     // The ordinary checker narrows a proven bool payload first, so false
     // remains false inside its guard. Nil comparisons still inspect the tag.
@@ -2590,7 +2602,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (storage == PointerStorage) {
         record := ScalarDeclaredRecord(forest, text, callables, params, names, types, members, callable, statement);
         if (value < 0 || ScalarPointerType(types, record) == 0 || Is(forest, statement, syntax.StateDeclaration)) {
-            return ScalarPlan.Failed(Diagnose(forest, statement, 0, "native managed pointer locals require a non-null numeric or bool value and cannot be retained"));
+            return ScalarPlan.Failed(Diagnose(forest, statement, 0, "native managed pointer locals require a numeric or bool pointee and cannot be retained"));
         }
         return ScalarPlan.Pointer(value);
     }

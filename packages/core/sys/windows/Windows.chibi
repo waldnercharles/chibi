@@ -155,6 +155,13 @@ pub CloseLibrary :: (module: rawptr) -> bool {
     return FreeLibrary(module) != 0;
 }
 
+// The current process cannot signal while this call runs. Its pseudo-handle
+// is borrowed, so pausing needs no owned handle, timer or per-call allocation.
+pub Pause :: (milliseconds: int) -> bool {
+    if (milliseconds < 0) { return false; }
+    return WaitForSingleObject(GetCurrentProcess(), u32(milliseconds)) == WaitTimeout;
+}
+
 // The text of the first `count` UTF-16 units of `wide`.
 Narrow :: (wide: u16[], count: int) -> string {
     if count == 0 {

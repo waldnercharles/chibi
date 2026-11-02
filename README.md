@@ -69,9 +69,10 @@ not call `Main` again. Invalid edits report diagnostics and keep the last valid
 code running. See [program reload](docs/guide/toolchain.md#reload-a-program)
 for a complete example.
 
-The CLI is itself an ordinary Chibi program in
-[apps/chibi/Main.chibi](apps/chibi/Main.chibi). The native launcher locates the
-SDK and starts its `Main`; command parsing and reload policy live in Chibi.
+The CLI is compiled from
+[tools/compiler/native_driver](tools/compiler/native_driver). It finds core and
+graph packages beside the installed SDK, compiles programs natively, and runs
+them. Command parsing and reload policy live in Chibi.
 
 ## Run a project
 

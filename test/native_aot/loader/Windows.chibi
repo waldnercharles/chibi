@@ -3,6 +3,10 @@ package windows_loader
 import windows "core:sys/windows"
 
 Main :: () -> int {
+    invalid_pause := windows.Pause(-1);
+    assert(!invalid_pause, "a negative pause is rejected");
+    paused := windows.Pause(0);
+    assert(paused, "an immediate pause succeeds");
     missing := windows.OpenLibrary("chibi-missing-generation.dll");
     assert(missing == 0, "a missing generation is rejected");
     module := windows.OpenLibrary("kernel32.dll");

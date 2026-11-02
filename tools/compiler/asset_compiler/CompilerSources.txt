@@ -15,6 +15,7 @@ package_compiler/Optional.chibi
 package_compiler/Sequences.chibi
 package_compiler/Behavior.chibi
 package_compiler/Scalar.chibi
+package_compiler/ScalarForeign.chibi
 package_compiler/ScalarArrays.chibi
 package_compiler/ScalarEffects.chibi
 package_compiler/ScalarMaps.chibi

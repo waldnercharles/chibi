@@ -59,8 +59,12 @@ mkdir -p "$work/package first" "$work/package edited" "$work/host"
 cp "$root/test/native_aot/generations/First.chibi" "$work/package first/Main.chibi"
 cp "$root/test/native_aot/generations/Edited.chibi" "$work/package edited/Main.chibi"
 must_build "$work/package first" shared
-cp "$root/apps/host/Host.chibi" "$work/host/Main.chibi"
-must_build "$work/host" ''
+if ! "$compiler" --compiler "$root/apps/host" --core "$root/packages/core" \
+    --source "$root/apps/host/Host.chibi" --entry Main --output "$work/host/host" \
+    --llvm "$llvm" --target "$triple" --level "$level" > "$work/host/build.log" 2>&1; then
+    cat "$work/host/build.log" >&2
+    exit 1
+fi
 host=$(output "$work/host")
 
 wait_marker() {

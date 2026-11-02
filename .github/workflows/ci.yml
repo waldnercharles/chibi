@@ -100,9 +100,8 @@ jobs:
           path: .chibi/compiler-cache
           key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: compiler-cache-${{ runner.os }}-
-      # chibi-cli runs chibi-compile too slowly under sanitizers. The
-      # chibi launcher target also builds chibi-compile. bootstrap-load needs
-      # the Release test_tools: it recovers the compiler in process.
+      # Retained host comparisons use the Release chibi-compile dependency of
+      # test_tools. bootstrap-load also recovers the compiler in process there.
       - name: Build an unsanitized chibi launcher (Release)
         id: release-build
         env:
@@ -275,13 +274,13 @@ jobs:
           path: .chibi/compiler-cache
           key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: compiler-cache-${{ runner.os }}-
-      # Retained host-process and native-link oracles still require an
-      # explicit Release build host alongside the native CLI.
+      # Retained host-process and native-link comparisons still require the
+      # Release build host and compiler alongside the native CLI.
       - name: Build an unsanitized chibi launcher (Release)
         id: release-build
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
-        run: sh tools/build.sh build --release --target chibi --target chibi-build-host --target chibi-compiler-host --libclang-root "$LLVM"
+        run: sh tools/build.sh build --release --target chibi --target chibi-build-host --target chibi-compiler-host --target chibi-compile --libclang-root "$LLVM"
       # The Release build host runs the outer Build and Graph programs, which
       # plan the selected Debug build. Release hosts also generate the asset
       # compiler resource; products and test drivers retain the selected profile.

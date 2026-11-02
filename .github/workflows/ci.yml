@@ -58,6 +58,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Install the native LLVM tools
+        run: sh .github/native-llvm.sh
       - name: Select CI native profile
         run: sh .github/native-profile.sh
       - name: Install build dependencies
@@ -159,7 +161,7 @@ jobs:
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native
-          CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin sh tools/build.sh test --build-host build-release/sdk/chibi-build-host --jobs 3 bootstrap-load projects language
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host --jobs 3 bootstrap-load projects language
       # Linux x86-64 only. It also builds each module it runs for macOS arm64
       # and Windows x64, and native-targets runs them there, so it and the
       # steps below run even when a selector above failed. The programs
@@ -170,7 +172,7 @@ jobs:
         env:
           UBSAN_OPTIONS: halt_on_error=1
           CHIBI_NATIVE_BUNDLE: ${{ runner.temp }}/native-bundle
-        run: CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin sh tools/build.sh test --build-host build-release/sdk/chibi-build-host language-scalar-native
+        run: sh tools/build.sh test --build-host build-release/sdk/chibi-build-host language-scalar-native
       - name: Keep the macOS and Windows native modules
         if: always() && steps.scalar-native.outcome == 'success'
         uses: actions/upload-artifact@v4
@@ -230,17 +232,15 @@ jobs:
       XDG_RUNTIME_DIR: /tmp/chibi-runtime
     steps:
       - uses: actions/checkout@v4
+      - name: Install the native LLVM tools
+        run: sh .github/native-llvm.sh
       - name: Select CI native profile
         run: sh .github/native-profile.sh
       - name: Install build dependencies
         run: |
-          brew install llvm lld ccache
-          LLVM="$(brew --prefix llvm)"
+          brew install ccache
+          LLVM="$(brew --prefix llvm@22)"
           echo "LLVM=$LLVM" >> "$GITHUB_ENV"
-          # The native driver takes opt, llc and ld.lld from one folder.
-          mkdir -p "$RUNNER_TEMP/llvm-bin"
-          ln -s "$LLVM/bin/opt" "$LLVM/bin/llc" "$(brew --prefix lld)/bin/ld.lld" "$RUNNER_TEMP/llvm-bin/"
-          echo "CHIBI_LLVM_BIN=$RUNNER_TEMP/llvm-bin" >> "$GITHUB_ENV"
           echo "CC=$LLVM/bin/clang" >> "$GITHUB_ENV"
           echo "CXX=$LLVM/bin/clang++" >> "$GITHUB_ENV"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
@@ -337,7 +337,7 @@ jobs:
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native native-aot-driver native-build
-          CHIBI_LLVM_BIN= sh tools/build.sh test --build-host build-release/sdk/chibi-build-host --jobs 2 chibi-cli language
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host --jobs 2 chibi-cli language
       - name: Preserve build logs and timings
         if: always()
         uses: actions/upload-artifact@v4
@@ -479,6 +479,8 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Install the native LLVM tools
+        run: sh .github/native-llvm.sh
       - name: Select CI native profile
         run: sh .github/native-profile.sh
       - name: Verify clean source candidate
@@ -539,14 +541,16 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: No Make, CMake or Python build files outside archive/, and the C that remains
-        run: sh tools/build.sh census
+      - name: Install the native LLVM tools
+        run: sh .github/native-llvm.sh
       - name: Install LLVM and the platform libraries
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends \
             clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev lld-18 llvm-18 ccache \
             libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+      - name: No Make, CMake or Python build files outside archive/, and the C that remains
+        run: sh tools/build.sh census
       - name: chibi build
         run: sh tools/build.sh build --release --libclang-root "$LIBCLANG_ROOT"
       - name: Every product and test driver was built

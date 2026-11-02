@@ -48,6 +48,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Install the native LLVM tools
+        run: sh .github/native-llvm.sh
       - name: Select CI native profile
         run: sh .github/native-profile.sh
       - name: Verify clean source candidate
@@ -102,7 +104,7 @@ jobs:
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" "$CHIBI_BUILD_HOST" "$CHIBI_COMPILER_HOST" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           # Groups retain their existing coverage and admission policy; they
           # remain sequential because fixtures and build outputs are shared.
-          CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin sh tools/build.sh test --build build-sdk-tests --build-host build-sdk-tests/sdk/chibi-build-host native projects language
+          sh tools/build.sh test --build build-sdk-tests --build-host build-sdk-tests/sdk/chibi-build-host native projects language
       - name: Verify sources remain unchanged
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"

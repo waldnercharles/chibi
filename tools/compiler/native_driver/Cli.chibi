@@ -291,7 +291,7 @@ LlvmFolder :: (requested: string) -> string {
 }
 
 NeedsLlvm :: () -> string {
-    return "pass --llvm DIR, the folder of opt, llc and lld, or set CHIBI_LLVM_BIN";
+    return "pass --llvm DIR with LLVM 22 or newer opt, llc and lld, or set CHIBI_LLVM_BIN";
 }
 
 // The names of the LLVM tools a native build runs.
@@ -343,7 +343,12 @@ Doctor :: () -> int {
             }
         }
         if (!llvm_broken) {
-            Report("llvm tools", "supported", llvm);
+            problem := LlvmProblem(llvm, HostTriple());
+            if (problem == "") {
+                Report("llvm tools", "supported", llvm);
+            } else {
+                llvm_broken = Report("llvm tools", "broken", problem);
+            }
         }
         broken = broken || llvm_broken;
     }

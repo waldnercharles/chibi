@@ -157,6 +157,11 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
         os.Print("native: a shared library has no line tables or static link yet; --level is 0 or 2");
         return 2;
     }
+    tool_problem := LlvmProblem(llvm, triple);
+    if (tool_problem != "") {
+        os.Print(strings.Concatenate(["native: ", tool_problem]));
+        return 2;
+    }
     directory := "";
     if (options.lines) {
         directory = route.Visible(options.folder);

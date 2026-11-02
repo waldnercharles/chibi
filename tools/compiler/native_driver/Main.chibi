@@ -29,7 +29,12 @@ import strings "core:strings"
 
 // The entry comes first: a package set's entry is its first file's first function.
 Main :: () -> int {
-    return Build(os.Arguments());
+    arguments := os.Arguments();
+    if (length(arguments) == 0 || arguments[0] == "--help" || arguments[0] == "--watch" ||
+        !strings.HasPrefix(arguments[0], "--")) {
+        return Cli(arguments);
+    }
+    return Build(arguments);
 }
 
 // The stage flags are also the native CLI build contract.

@@ -1,0 +1,67 @@
+package native_cli_test
+
+import os "core:os"
+import strings "core:strings"
+
+// A real native CLI and its LLVM folder, plus a fresh scratch directory, are
+// supplied by the build selector. Every command below compiles and runs native code.
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) {
+        os.Print("usage: native-cli-test CHIBI LLVM SCRATCH");
+        return 2;
+    }
+    chibi := arguments[0];
+    llvm := arguments[1];
+    scratch := arguments[2];
+    assert(os.IsDirectory(scratch), "scratch directory exists");
+    version := os.Capture([chibi, "version"]);
+    assert(version.status == 0 && strings.HasPrefix(version.stdout, "chibi native\n"), "native version uses stdout");
+    help := os.Capture([chibi, "--help"]);
+    assert(help.status == 0 && strings.HasPrefix(help.stdout, "Usage: chibi"), "CLI help uses the CLI dispatch");
+
+    source := strings.Concatenate([scratch, "/main with spaces.chibi"]);
+    text := "package sample\nimport os \"core:os\"\n\nHelper :: () -> int { return 99; }\nMain :: () -> int {\n    arguments := os.Arguments();\n    assert(length(arguments) == 3, \"three arguments\");\n    assert(arguments[0] == \"first\" && arguments[1] == \"a b\" && arguments[2] == \"--watch\", \"arguments survive\");\n    os.WriteOutput(\"native run\\n\");\n    return 7;\n}\n";
+    Write(source, text);
+    ran := os.Capture([chibi, "run", "-O0", "--llvm", llvm, source, "--", "first", "a b", "--watch"]);
+    assert(ran.status == 7 && ran.stdout == "native run\n", "run selects Main and passes arguments and exit status");
+    invalid := os.Capture([chibi, "run", "--llvm"]);
+    assert(invalid.status == 2 && strings.Contains(invalid.stderr, "--llvm needs a nonempty value"), "missing option value is diagnosed");
+
+    build_source := strings.Concatenate([scratch, "/BuildProgram.chibi"]);
+    Write(build_source, "package sample\nHelper :: () -> int { return 99; }\nMain :: () -> int { return 3; }\n");
+    built := os.Capture([chibi, "build", "--native", "-O0", "--llvm", llvm, build_source]);
+    assert(built.status == 0, "native build compiles a file at O0");
+    again := os.Capture([chibi, "build", "--native", "-O0", "--llvm", llvm, build_source]);
+    assert(again.status == 0 && strings.Contains(again.stderr, "is up to date"), "native build reuses its verified output");
+
+    tests := strings.Concatenate([scratch, "/tests"]);
+    made := os.MakeDirectory(tests);
+    assert(made == nil, "make test package");
+    test_source := strings.Concatenate([tests, "/SampleTests.chibi"]);
+    Write(test_source, "package checks\n@test\nPass :: () { value: int = 2; assert(value + 2 == 4, \"arithmetic\"); }\n@test\nFail :: () { assert(false, \"expected failure\"); }\n");
+    tested := os.Capture([chibi, "test", "-O0", "--llvm", llvm, tests]);
+    assert(tested.status == 1, "a failed native test fails the command");
+    assert(strings.Contains(tested.stdout, "PASS project.Pass") && strings.Contains(tested.stdout, "FAIL project.Fail"), "test outcomes include both isolated processes");
+    assert(strings.Contains(tested.stdout, "expected failure") && strings.Contains(tested.stdout, "2 tests, 1 failed"), "native assertion retains source diagnostic and totals");
+    Write(test_source, "package checks\n@test\n// A comment does not detach the attribute.\nPass :: () { value: int = 2; assert(value + 2 == 4, \"arithmetic\"); }\n");
+    passed := os.Capture([chibi, "test", "-O0", "--llvm", llvm, tests]);
+    assert(passed.status == 0 && strings.Contains(passed.stdout, "1 tests, 0 failed"), "a native test suite succeeds");
+    Write(test_source, "package checks\n@test\nInvalid :: (argument: int) {}\n");
+    malformed := os.Capture([chibi, "test", "-O0", "--llvm", llvm, tests]);
+    assert(malformed.status == 1 && strings.Contains(malformed.stderr, "A @test function takes no parameters and returns nothing"), "invalid test attributes are rejected");
+    Write(test_source, "package facts\nBuild :: () -> int[] { xs: int[] = []; xs = xs.append(1); return xs; }\n\n// error: 2:45: append changes the array; call it as a statement on a name\n");
+    expected := os.Capture([chibi, "test", "-O0", "--llvm", llvm, tests]);
+    assert(expected.status == 0 && strings.Contains(expected.stdout, "PASS project.compile_error"), "compile-error tests compare native source coordinates");
+
+    Write(source, "package broken\nMain :: () -> int { return missing; }\n");
+    rejected := os.Capture([chibi, "run", "--llvm", llvm, source]);
+    assert(rejected.status == 1 && rejected.stdout == "" && strings.Contains(rejected.stderr, "native: rejected"), "rejected source cannot execute a stale program");
+    os.Print("native CLI: run, build cache, arguments, assertions and rejections passed");
+    return 0;
+}
+
+Write :: (path: string, text: string) {
+    written := os.WriteText(path, text);
+    assert(written == nil, "write fixture source");
+}

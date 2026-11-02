@@ -3,15 +3,18 @@ package task_results
 Main :: () -> int {
     handle := Worker(9);
     alias := handle;
+    if (handle) { } else { return 1; }
     result := await handle;
+    if (handle) { return 2; }
     if (result is Cancelled) { return 3; }
     else { if (result != 9) { return 4; } }
     again := await alias;
     if (again is Cancelled) { return 5; }
     else { if (again != 9) { return 6; } }
 
+    // Different producers with the same success type are interchangeable.
     // Replacement and self-assignment retain before releasing the old value.
-    handle = Worker(23);
+    handle = Other();
     handle = handle;
     other := await handle;
     if (other is Cancelled) { return 7; }
@@ -20,6 +23,7 @@ Main :: () -> int {
     stopped := Worker(88);
     stop_alias := stopped;
     cancel stopped
+    if (stop_alias) { return 9; }
     absent := await stop_alias;
     if (absent is not Cancelled) { return 10; }
     absent_again := await stopped;
@@ -28,7 +32,7 @@ Main :: () -> int {
     empty := Nothing();
     done := await empty;
     if (done is Cancelled) { return 12; }
-    empty = Nothing();
+    empty = NothingElse();
     done_again := await empty;
     if (done_again is Cancelled) { return 13; }
 

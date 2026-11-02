@@ -59,10 +59,10 @@ exports preserve the existing no-argument polling ABI.
 This is a tested subset, not the VM deletion gate. Managed coroutine values,
 task-valued parameters, component dependencies, and full task failure propagation
 still need native implementations. Task parameters remain closed until cancelling
-an active ancestor can unwind every live call safely. The runtime
-stores the canonical success type, with void distinct from its internal int
-result. Running-handle conditions and assignment across different producers
-remain separate source-producer gaps. The rejection
+an active ancestor can unwind every live call safely. The source producer
+uses the canonical success type to make handles from different producers
+interchangeable, with void distinct from its internal int result. The rejection
 cases keep cross-type assignments and unsupported task parameters/managed frames
-from compiling as successful programs. LLVM versions
+from compiling as successful programs. Running-handle conditions test the
+scheduler phase rather than whether the observer bits are nonzero. LLVM versions
 before 22 are unsupported.

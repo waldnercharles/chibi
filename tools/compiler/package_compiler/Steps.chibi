@@ -926,7 +926,19 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 stored = Typed(at.slot + length(slots) - 1, binding.storage, 0, -1);
             }
             if (!Accepts(types, binding.storage, binding.container, binding.record, stored)) {
-                return Fail(forest, item.node, document, "assigned value differs from its local");
+                // Producers with the same success type give interchangeable
+                // task observers; callable ordinals are not source types.
+                same_task := binding.storage == TaskStorage && binding.container == 0 && Single(stored, TaskStorage) &&
+                             binding.record >= 0 && binding.record < length(callables) &&
+                             stored.record >= 0 && stored.record < length(callables);
+                if (same_task) {
+                    same_task = callables[binding.record].waits && callables[stored.record].waits &&
+                                TaskSuccessTag(callables[binding.record], table^, params) ==
+                                TaskSuccessTag(callables[stored.record], table^, params);
+                }
+                if (!same_task) {
+                    return Fail(forest, item.node, document, "assigned value differs from its local");
+                }
             }
             if (binding.place == CellPlace) {
                 // A fresh value or a temporary replaces the cell's payload

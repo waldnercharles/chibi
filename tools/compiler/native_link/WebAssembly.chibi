@@ -1,0 +1,15 @@
+package native_link
+
+import strings "core:strings"
+
+// The browser host supplies allocation, failure and quota operations. Reuse
+// the standalone formatter, with the Wasm C ABI's 32-bit size_t for snprintf.
+// The formatter's own allocation contract remains a checked 64-bit byte count.
+pub WebAssemblyContext :: () -> string {
+    numbers := strings.ReplaceAll(FormatNumbers(false), "ptr, i64", "ptr, i32");
+    numbers = strings.ReplaceAll(numbers, "ptr %buffer, i64 256", "ptr %buffer, i32 256");
+    formatter := Join([numbers, FormatGrammar(), FormatModifiers(), FormatRenderer(), FormatWalk()]);
+    formatter = strings.Replace(formatter, "define internal void @chibi_format_text", "define void @chibi_format_text", 1);
+    return Join(["target triple = \"wasm32-unknown-emscripten\"\n",
+                 "declare ptr @chibi_allocate(ptr, i64)\n", formatter]);
+}

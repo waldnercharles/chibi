@@ -2872,6 +2872,9 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (!abi.Supported(target)) {
         return Result.Rejected(-1, "unsupported native target");
     }
+    if (abi.Same(target, abi.WebAssembly32()) && Tasks(code)) {
+        return Result.Rejected(-1, "native WebAssembly tasks have no runtime yet");
+    }
     if (!Layout(functions, parameters, slots, locals, code, arguments)) {
         return Result.Rejected(-1, "unsupported native scalar signature or table size");
     }

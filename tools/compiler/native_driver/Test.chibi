@@ -379,7 +379,7 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
         return result;
     }
     options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: false,
-                             folder: root, keep_module: false};
+                             folder: root, keep_module: false, emit_llvm: false};
     built := EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, "Main", llvm, program, Jobs([]), options);
     if (built != 0) {
         Complain(strings.Concatenate(["test: cannot compile ", label]));

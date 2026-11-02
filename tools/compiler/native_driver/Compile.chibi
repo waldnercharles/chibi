@@ -18,13 +18,24 @@ pub Output :: union {
 }
 
 Target :: (triple: string) -> abi.Target {
+    if (triple == "wasm32-unknown-emscripten") { return abi.WebAssembly32(); }
     if (strings.HasPrefix(triple, "aarch64-apple")) {
         return abi.MacOSArm64();
     }
     if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
         return abi.WindowsX64();
     }
-    return abi.LinuxX64();
+    if (triple == "x86_64-unknown-linux-gnu") { return abi.LinuxX64(); }
+    return {triple: triple, pointer_bits: 0};
+}
+
+// Scalar lowering needs the destination pointer width for core:target and
+// foreign pointer-sized scalars. These are not a prepared VM layout for Wasm.
+PointerFacts :: (target: abi.Target) -> compiler.Target {
+    facts := TargetFacts();
+    facts.pointer_size = target.pointer_bits / 8;
+    if (target.pointer_bits == 32) { facts.pointer_storage = 7; }
+    return facts;
 }
 
 // The function whose declaration lies last before byte `at` of `text`.
@@ -46,13 +57,13 @@ FunctionAt :: (text: string, at: int) -> string {
 // followed by a newline when it lacks one, as the producer joins them.
 // source_size ends at the last retained document when parsing stopped early.
 Where :: (collections: string[], directories: string[], paths: string[], sources: string[],
-          os: int, arch: int, source_size: int, at: int) -> string {
+          os: int, arch: int, pointer_bits: int, source_size: int, at: int) -> string {
     offset := 0;
     for (index in 0..<length(paths)) {
         text := sources[index];
         if (compiler.TargetPackagePath(collections, directories, paths[index])) {
             // Match the producer's actual source, not the on-disk target template.
-            text = compiler.TargetPackageText(os, arch, TargetFacts().pointer_size * 8, 1);
+            text = compiler.TargetPackageText(os, arch, pointer_bits, 1);
         }
         size := strings.ByteLength(text);
         if (!strings.HasSuffix(text, "\n")) {
@@ -89,6 +100,8 @@ pub ModuleShared :: (collections: string[], directories: string[], paths: string
 
 ModuleWith :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
                chosen: string, directory: string, shared: bool) -> Output {
+    target := Target(triple);
+    if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
     os := 1;
     arch := 1;
     if (strings.HasPrefix(triple, "aarch64-apple")) {
@@ -96,10 +109,13 @@ ModuleWith :: (collections: string[], directories: string[], paths: string[], so
         arch = 2;
     } else if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
         os = 3;
+    } else if (triple == "wasm32-unknown-emscripten") {
+        os = 4;
+        arch = 3;
     }
-    rows := compiler.CollectScalarProgram("/project", collections, directories, paths, sources, TargetFacts(), Names(),
+    rows := compiler.CollectScalarProgram("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
                                           Natives(), Ports(), Identities(), os, arch, chosen);
-    return EmitRows(collections, directories, paths, sources, os, arch, rows, Target(triple), directory, shared);
+    return EmitRows(collections, directories, paths, sources, os, arch, rows, target, directory, shared);
 }
 
 // The parser distinguishes library declarations from package generations,
@@ -134,7 +150,7 @@ EmitRows :: (collections: string[], directories: string[], paths: string[], sour
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
         rejected := rows[length(rows) - 1];
         return Output.Rejected(strings.Concatenate(["rejected ", FunctionAt(rows[0].text, rejected.start), ": ",
-                                                    rejected.text, " (", Where(collections, directories, paths, sources, os, arch,
+                                                    rejected.text, " (", Where(collections, directories, paths, sources, os, arch, target.pointer_bits,
                                                                               strings.ByteLength(rows[0].text), rejected.start), ")"]));
     }
     emitted: scalar.Result = scalar.Result.Invalid("");

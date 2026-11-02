@@ -39,8 +39,32 @@ replacement passes. The existing Wasm JIT imports `execution_machine_step` and
 has an inspection bytecode fallback, so it cannot remove the VM. A replacement
 needs a real native LLVM wasm32 target, a 32-bit runtime context and allocation
 shim, explicit request/result callbacks, and the same closure/diagnostic/quota
-regressions. LLVM's wasm backend is available locally; the authored native
-compiler currently admits only the three verified desktop 64-bit targets.
+regressions.
+
+The `wasm32-unknown-emscripten` native target emits 32-bit LLVM through
+`--emit-llvm --output FILE`. The file is a module bundle; each
+`; chibi-piece` line begins another independently compiled module. This mode
+does not need LLVM installed on the machine that emits it. Wasm requires this
+mode and an external linker; it never enters a desktop link plan.
+Wasm task programs are rejected until a browser scheduler is verified.
+
+`asset_wasm/Main.chibi` uses the desktop request parser and package compiler
+with borrowed host callbacks instead of OS imports. `asset_compiler_wasm.c`
+supplies the 32-bit context and owns every temporary for one synchronous call.
+Quota and cancellation unwind to that call through native Wasm longjmp support.
+Link with Emscripten `-sSUPPORT_LONGJMP=wasm` and
+`-sSTACK_OVERFLOW_CHECK=2`; the latter checks shadow-stack assignments instead
+of desktop page probes. The formatter reuses the desktop implementation with
+the Wasm C ABI's 32-bit `snprintf` size parameter.
+
+`test/native_aot/asset_compiler/wasm.sh DRIVER LLVM_BIN EMCC NODE` builds and
+runs the real LLVM Wasm compiler. It compares the same closure digest,
+diagnostics, rich catalogs and rejection behavior, checks numeric formatting
+and embedded NUL bytes, then reuses one module through quota exhaustion and
+cancellation followed by successful compiles with balanced allocations.
+The Node filesystem adapter is test code; the compiler imports no filesystem.
+The existing browser facade and SDK Web packaging remain on the old path
+until the linked compiler object is supplied at their build boundary.
 
 `test/native_aot/asset_compiler/run.sh` exercises the relocated native service
 with an authored test driver and no runtime toolchain. Its optional reference

@@ -83,6 +83,10 @@ Child :: (arguments: string[]) -> int {
                "asynchronous arguments survive Windows quoting");
         return 71;
     }
+    if mode == "child-long-arguments" {
+        assert(length(arguments) == 2 && arguments[1] == LongArgument(), "long Unicode arguments survive Windows conversion");
+        return 83;
+    }
     if mode == "child-output" {
         output: u8[] = [97, 0, 98];
         os.WriteOutput(text_from_bytes(output));
@@ -99,6 +103,14 @@ Child :: (arguments: string[]) -> int {
         assert(process > 0, "start with caller-owned output files");
         status := os.Wait(process, -1);
         assert(status == 7, "redirected output preserves the exit status");
+        return 0;
+    }
+    if mode == "child-redirected-inherited" {
+        process := windows.StartRedirected([os.ProgramPath(), "child-output"], "", arguments[1]);
+        assert(process > 0 && os.Wait(process, -1) == 7, "inherit stdout while capturing stderr");
+        failed := windows.StartRedirected([os.ProgramPath(), "child-exit7"], "", arguments[2]);
+        assert(failed < 0, "inherited stdout survives a failed stderr open");
+        os.WriteOutput("live");
         return 0;
     }
     if mode == "child-slow" {
@@ -123,6 +135,14 @@ Child :: (arguments: string[]) -> int {
         return 0;
     }
     return 2;
+}
+
+// Exceeds the foreign CString limit in UTF-8 while remaining below Win32's
+// 32,767 UTF-16-unit command line limit.
+LongArgument :: () -> string {
+    argument := "ü";
+    for index in 0..<13 { argument = strings.Concatenate([argument, argument]); }
+    return argument;
 }
 
 Handles :: () -> u32 {
@@ -165,6 +185,9 @@ Processes :: (work: string) {
     assert(status == -1, "a completed handle cannot be waited twice");
     status = os.Kill(passed);
     assert(status == -1, "a completed handle cannot be killed");
+    passed = os.Start([program, "child-long-arguments", LongArgument()], os.Inherited);
+    status = os.Wait(passed, -1);
+    assert(passed > 0 && status == 83, "counted Unicode command lines exceed 4 KiB without a CString trap");
     first := os.Start([program, "child-exit7"], os.Piped);
     second := os.Start([program, "child-exit5"], os.Inherited);
     assert(first > 0 && second > 0 && first != second, "two processes have independent handles");
@@ -200,6 +223,11 @@ Processes :: (work: string) {
     assert(captured.status == 0 && captured.stdout == "" && captured.stderr == "" &&
            os.ReadText(standard).text == text_from_bytes(output) && os.ReadText(errors).text == "error\n",
            "redirected streams stay separate and binary, without automatic reporting or deletion");
+    captured = os.Capture([program, "child-redirected-inherited", errors,
+                           strings.Concatenate([work, "/missing-parent/errors"])]);
+    inherited: u8[] = [97, 0, 98, 108, 105, 118, 101];
+    assert(captured.status == 0 && captured.stdout == text_from_bytes(inherited) && captured.stderr == "" &&
+           os.ReadText(errors).text == "error\n", "inherited stdout remains live and stderr stays caller-owned");
     slow = windows.StartRedirected([program, "child-slow"], standard, errors);
     status = os.Wait(slow, 20);
     assert(slow > 0 && status == os.StillRunning, "a redirected wait can time out");

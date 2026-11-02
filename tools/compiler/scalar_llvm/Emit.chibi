@@ -508,7 +508,7 @@ Last :: (rows: facts.Row[], heads: int[], function: int) -> int {
 // or its start and count; 0 for no operator. A TextFormat row's count says
 // how many it consumes.
 TextOperands :: (operator: int) -> int {
-    if (operator == facts.TextLength) {
+    if (operator == facts.TextLength || operator == facts.TextPrint) {
         return 1;
     }
     if (operator == facts.TextByte) {
@@ -1465,6 +1465,25 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar payload read differs from its union";
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.UnwrapRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || operand.value != 0 || base < floor) {
+                return "scalar force unwrap differs from its optional";
+            }
+            head := UnionHead(rows, records, stack[base]);
+            if (head < 0 || rows[head].count != 2) {
+                return "scalar force unwrap differs from its optional";
+            }
+            none := VariantOf(rows, head, 0);
+            some := VariantOf(rows, head, 1);
+            if (rows[none].name != "Nil" || rows[none].count != 0 || rows[some].name != "Some" ||
+                rows[some].count != 1 || rows[some + 1].type != operand.type) {
+                return "scalar force unwrap differs from its optional";
+            }
+            if (!CountedRecord(rows, records, operand.type)) {
+                return "native force unwrap payloads with containers require recursive ownership";
+            }
+            stack = slice(stack, 0, base);
         } else if (operand.kind == facts.MapRow) {
             error := ValidMap(rows, records, at, row, last, operand, stack, floor);
             if (error != "") {
@@ -2177,6 +2196,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     if (rows[1].kind == facts.RejectionRow) {
         return Result.Rejected(rows);
     }
+    if (!program) {
+        for (row in rows) {
+            if (row.kind == facts.UnwrapRow) {
+                return Result.Invalid("typed failures require a standalone native program");
+            }
+        }
+    }
     generation := shared && rows[1].text == "";
     functions: native.Function[] = [];
     parameters: int[] = [];
@@ -2756,9 +2782,23 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.FieldRow || operand.kind == facts.TagRow ||
-                           operand.kind == facts.PayloadRow) {
+                           operand.kind == facts.PayloadRow || operand.kind == facts.UnwrapRow) {
                     // A union's tag is its field 0, and its payloads follow.
                     base := length(stack) - 1;
+                    if (operand.kind == facts.UnwrapRow) {
+                        // The payload is read only on Some, after the typed failure exit.
+                        held := stack[base];
+                        slots[length(slots) - 1] = integer;
+                        slots.extend([integer, abi.BoolStorage, type]);
+                        tag := Op(native.Extract, integer, slot, held, slots[shape.first_slot + held], 0);
+                        some := Op(native.Constant, integer, slot + 1, 0, 0, 0);
+                        some.literal = 1;
+                        failed := Op(native.TypedFail, 0, 0, 0, 0, 0);
+                        failed.literal = 7;
+                        body.extend([tag, some, Op(native.Eq, integer, slot + 2, slot, slot + 1, 0),
+                                     Op(native.Branch, 0, 0, slot + 2, 0, length(body) + 5), failed]);
+                        slot += 3;
+                    }
                     if (operand.kind == facts.PayloadRow) {
                         for (at_read in 0..<length(any_slots)) {
                             if (any_slots[at_read] == stack[base]) {
@@ -2770,7 +2810,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     item = Op(native.Extract, type, slot, stack[base], slots[shape.first_slot + stack[base]], 0);
                     item.literal = i64(operand.value);
-                    if (operand.kind == facts.PayloadRow) {
+                    if (operand.kind == facts.PayloadRow || operand.kind == facts.UnwrapRow) {
                         item.literal += 1;
                     }
                     stack = slice(stack, 0, base);
@@ -3027,6 +3067,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (operand.kind == facts.TextRow) {
                     base := length(stack) - operand.count;
                     item = Op(native.TextLength, type, slot, stack[base], 0, 0);
+                    if (operand.value == facts.TextPrint) { item.op = native.Print; }
                     if (operand.value == facts.TextByte) {
                         item = Op(native.TextByte, type, slot, stack[base], stack[base + 1], 0);
                     }
@@ -3072,7 +3113,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // direct returns use the existing owned-variable move.
                     projected := index + 1 < first + row.count &&
                                  (rows[index + 1].kind == facts.FieldRow || rows[index + 1].kind == facts.PayloadRow ||
-                                  rows[index + 1].kind == facts.TagRow);
+                                  rows[index + 1].kind == facts.TagRow || rows[index + 1].kind == facts.UnwrapRow);
                     if (!projected && !(row.kind == facts.ReturnRow && row.count == 1)) {
                         kept := RecordRefs(rows, declared, operand.type, slot, slot + 1 + extra, true);
                         slots.extend(kept.slot_types);
@@ -3122,7 +3163,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     fresh.append(slot);
                 }
-                if ((operand.kind == facts.FieldRow || operand.kind == facts.PayloadRow || operand.kind == facts.TagRow) &&
+                if ((operand.kind == facts.FieldRow || operand.kind == facts.PayloadRow || operand.kind == facts.TagRow ||
+                     operand.kind == facts.UnwrapRow) &&
                     TrackedRecord(managed, item.right)) {
                     // A later operand may replace even a non-temporary base.
                     kept := RecordRefs(rows, declared, operand.type, slot, slot + 1 + extra, true);

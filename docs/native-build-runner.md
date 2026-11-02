@@ -18,7 +18,7 @@ native compiler's output cache and the shell entry hash source and tool bytes.
 The C graph and evidence checks use content fingerprints and sorted directory
 inventories on Windows. The authored runner still uses metadata stamps for
 source and tool identity; it needs the same content verification before Windows
-can use it. The source watcher is currently Linux-only; its Windows port must
+can use it. The source watcher runs on Linux and macOS; its Windows port must
 also account for this limit.
 
 ```

@@ -1,0 +1,22 @@
+package native_test_quota_tasks
+
+import os "core:os"
+foreign {
+    chibi_native_scope_begin :: (steps: u64) -> int
+    chibi_native_scope_end :: () -> int
+}
+Begin :: () -> int { return chibi_native_scope_begin(1000000); }
+End :: () -> int { return chibi_native_scope_end(); }
+Mark :: () -> int { os.Print("quota task finished"); return 0; }
+Worker :: () -> int { yield
+    Mark();
+    return 7;
+}
+Main :: () -> int {
+    Begin();
+    pending := Worker();
+    value := await pending;
+    if (value is Cancelled) { return 1; }
+    else { if (value != 7) { return 2; } }
+    return End();
+}

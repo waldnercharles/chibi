@@ -21,6 +21,11 @@ Run :: () -> int {
            os.Run(["chmod", "+x", opt, llc]) == 0, "the stub tools");
     assert(host.Objects(work, ["good"], [first], 0, 1) == nil, "a successful object");
     assert(os.IsFile(first) && !os.Exists(strings.Join([first, ".bc"], "")), "successful bitcode is removed");
+    assert(os.WriteText(llc, "#!/bin/sh\nexit 23\n") == nil, "the failing code generator");
+    rejected := host.Objects(work, ["good"], [first], 0, 1);
+    assert(rejected != nil && rejected.kind == link.ToolFailed && rejected.code == 23 &&
+           !os.Exists(strings.Join([first, ".bc"], "")), "failed code generation removes bitcode and retains its status");
+    assert(os.WriteText(llc, "#!/bin/sh\n: > \"$5\"\n") == nil, "restore the successful code generator");
     for (module in ["failed", "cleanup"]) {
         failure := host.Objects(work, [module, "slow"], [first, slow], 0, 2);
         if (failure != nil) {

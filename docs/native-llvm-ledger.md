@@ -3,18 +3,50 @@
 ## Current integration, 2 November 2026
 
 The native-default change series is in [PR #1331](https://github.com/waldnercharles/chibi/pull/1331).
-The compiler now self-hosts natively, and the default build and installed tools
-use the verified native compiler. The combined compiler at `975dbd72d`
-reproduces identical bytes on macOS arm64; cross-platform CI for that revision
-is still in progress. The direct native compiler test inventory passes 403 of
-408 tests, with five unit-algebra tests awaiting array operations.
+The verified native compiler drives the default build and installed tools.
+At `3c7d1d52e`, all 410 compiler tests pass directly through native execution
+in 22.05 seconds, including the original 408-test inventory. At `c32f5d6b6`,
+the pinned macOS seed builds the complete compiler in 40.93 seconds, and that
+compiler passes the native CLI suite in 6.44 seconds. Fresh combined
+cross-platform fixed-point and installed-product checks remain required.
 
-Native desktop asset compilation, task timing, map iteration, retained string
-records, optional values and typed failures have implementation and focused
-tests. Task results, broader managed ownership, complete test-runner parity and
-remaining platform coverage are still being integrated. Program/application
-runtime APIs and browser execution still use the VM. See [PLAN.md](../PLAN.md)
-for current commits, validation and deletion gates.
+The continuation includes numeric task results, typed nil-unwrap failures,
+scalar/string record maps, shared array backing, synchronous `print_string`,
+and typed test-effect collection. The array producer still copies eagerly;
+foreign mutation leases and broader managed ownership are not yet complete.
+Individual changes have focused O0/O2 and ownership checks; the latest combined
+source is awaiting its next execution pass. Native test-worker integration,
+macOS reload integration and the browser SDK compiler archive are in progress.
+
+Windows source `585e40829` reproduces identical stage-four/five binaries,
+SHA-256 `d9a56bde96fdce41d9b9c335f5120dc4ec659c8aad62ddf0641d4eb9e909f96f`.
+Its subsequent native asset-compiler build traps with `0xC000001D`; Windows
+acceptance and seed publication remain blocked on that diagnosis and the
+remaining runtime probes. Program/application APIs and browser execution
+still use the VM. See [PLAN.md](../PLAN.md) for evidence and deletion gates.
+
+Native shared generations and `run --watch` now run on Linux x86-64 and macOS
+arm64. The real compiler and host tests cover retained scalar/string records,
+rejected edits, Main running once, and tasks finishing or failing in their
+original generation. The generation suite runs at O0 and O2. Windows shared
+generation loading remains a separate platform gate.
+
+### Native quota scopes
+
+Ordinary standalone closures run without a quota. A closure containing a call
+to `chibi_native_scope_begin` or `chibi_native_test_begin` gets shared checks at
+function-entry CHECK points and backward branches. Calls within the closure
+consume the same counter.
+
+Native test begin arms 100,000,000 checkpoints. Explicit scope begin takes a
+`u64` checkpoint count; scope end returns execution to the unbounded state.
+These counts describe native checkpoints, not VM or LLVM instructions. An
+unexpected budget exhaustion exits with status 125. If the current test expects
+`BudgetExhausted`, that failure ends the test successfully with status 0.
+
+This does not add a native recursion-depth ceiling. Stack overflow handling is
+separate. Typed failures and quotas in shared libraries and live generations
+remain unproven; the standalone proofs do not cover those modes.
 
 The milestone tables and census below preserve the earlier rollout's evidence
 and main-branch status; they do not describe the current integration branch.
@@ -303,7 +335,7 @@ decision.
 | D1 | Integer arithmetic | No integer operation fails at run time (owner, 24 October 2026, approving the integer semantics thread's contract): overflow wraps, `x / 0` is 0, `x % 0` is `x`, `MIN / -1` is `MIN`, `MIN % -1` is 0, a shift at or past the width gives 0 or the sign fill, `T(v)` between integers clamps and `T(wrap: v)` wraps. Mixed integer types, signed shift counts, inexact or out-of-range constants and a constant zero divisor are compile errors. Development builds report each site; shipped native code has no checks. | none | decided for M2 |
 | D2 | Comparing two untyped literals | Follow stage zero. | none: each literal takes its spelled type. | decided in M1 |
 | D3 | Floating math | `number` is a 32-bit float everywhere, on the CPU and the GPU, and `f64` appears only where a type spells it, such as long timers and the engine's total time. Float arithmetic is IEEE at its type's width: nothing computes at reduced precision or is fast-math-like. Typed `f32` to `f64` widening may be implicit. Typed `f64` to `f32` narrowing needs an explicit `number(value)` or `f32(value)` at assignments, arguments and returns alike, and rounds to nearest, ties to even: overflow gives a signed infinity, and NaN stays NaN with no payload guarantee. Nothing panics, clamps or checks precision. Untyped literals stay contextual, and one past the `number` range needs an explicit `f64` context, such as a declaration, `f64(value)` or an argument whose typed operands select an `f64` overload. Helpers stay Odin-style, with no blanket finite checks. Game code spells `number` and `int`, and sized types take Odin's names (`i8`-`u64`, `f32`, `f64`). (Owner, 24 October 2026.) | #687 gave stage one conversions, implicit widening and typed floating constants. Project version 35 makes `number` 32-bit, renames the sized types and the conversions to `number(value)` and `f64(value)`, and rejects implicit narrowing in stage zero and stage one; its migration renames them in sources and graph pins. Changing `number` from 64 to 32 bits moves recorded results in their low bits. Native lowering of `number` and `f64` arithmetic, comparisons and conversions is in the scalar path, IEEE at width with no fast-math flags. The engine has no total-time native yet; one should return `f64`. | implemented |
-| D4 | Budget and recursion | Native loops and recursion run unchecked, as Odin's and Rust's do: an endless loop runs until its host or test deadline stops it, and no `mustprogress` lets LLVM remove it. Recursion has no depth limit: every native function probes its stack (`"probe-stack"="inline-asm"`, or `__chkstk` on Windows), so an overflow always faults in the guard page. A host that calls `stack_overflow_init` reports that fault as "stack overflow" and aborts, as Rust's runtime does; so far only the Linux native test host does. The VM keeps its instruction budget, which stops runaway scripts in the editor, and stage zero's VM output keeps its 64-call limit; stage one's has no limit yet. (Owner, 25 October 2026.) | Cancellation and scheduler interaction (M6). The named overflow report in production hosts: a standalone program the driver links installs no handler and ends with SIGSEGV, and no engine host runs native code yet. Threads other than the one that ran `stack_overflow_init`. On macOS and Windows, recursion below 64 calls and a program with a 256 KiB frame run in CI; deep recursion and overflow are untested. | decided for M3 |
+| D4 | Budget and recursion | The original M3 default leaves ordinary native closures unbounded: an endless loop runs until its host or test deadline stops it, and no `mustprogress` lets LLVM remove it. The current standalone exceptions are [native quota scopes](#native-quota-scopes). Recursion has no depth limit: every native function probes its stack (`"probe-stack"="inline-asm"`, or `__chkstk` on Windows), so an overflow always faults in the guard page. A host that calls `stack_overflow_init` reports that fault as "stack overflow" and aborts, as Rust's runtime does; so far only the Linux native test host does. The VM keeps its instruction budget, which stops runaway scripts in the editor, and stage zero's VM output keeps its 64-call limit; stage one's has no limit yet. (Owner, 25 October 2026.) | Cancellation and scheduler interaction (M6). The named overflow report in production hosts: a standalone program the driver links installs no handler and ends with SIGSEGV, and no engine host runs native code yet. Threads other than the one that ran `stack_overflow_init`. On macOS and Windows, recursion below 64 calls and a program with a 256 KiB frame run in CI; deep recursion and overflow are untested. | decided for M3 |
 | D5 | Native ABI | An explicit target, ownership and effect contract. Probes use a validation-only adapter, and internal ownership follows D10. Inside a module `bool` is a plain `i1`. An exported or foreign `bool` parameter or result is `zeroext i1`, as clang passes C's `_Bool` on Linux, macOS and Windows and as rustc and Odin pass theirs (owner, 27 October 2026). Windows code that uses floating point references `_fltused`, which the MSVC runtime defines; a program linked without it must define it. | The exported and foreign ABI of aggregates and strings, and the calling conventions they need (W14, W16). | open, needed for M5 |
 | D6 | Failure handling | Observable errors, effects and cleanup are preserved. A failed assert fails the call from the VM, as the VM's own assert fails a behavior call, rather than aborting as Odin does (owner, 28 October 2026; W11, #774). Native code stores the failure in the context and returns through every native frame, each caller checking the slot after a call of a function that can fail; native functions hold nothing to clean up, since the call's heap is freed when it returns. | Failures other than asserts (a `format_text` error still aborts, and D9's indexes); a native program's report, with W17 and W19. | implemented for asserts in VM calls |
 | D7 | Targets and defaults | Prove each target, and keep current behavior working. `native_abi` admits `x86_64-unknown-linux-gnu`, `arm64-apple-macosx11.0.0` (versioned, so the object records its platform, as Odin's default does) and `x86_64-pc-windows-msvc`, and `Driver.Target` admits each with the layouts LLVM 18 to 23 give it, as measured; `Driver.Object` emits objects for all three, and `Driver.Build` links programs for all three on Linux or macOS with `ld.lld` (W18). Line tables (W19) and libraries (W16) are Linux x86-64 only, and the emitter rejects them for the other two. The x86-64 layouts are the same from LLVM 18 to 23; the arm64 one changed with LLVM 19 and 22, and each measured layout is admitted. | The pinned LLVM for macOS and Windows hosts (CI builds their objects and programs with Linux's LLVM 18) and when native output becomes a default. | open, M6 and M8 |

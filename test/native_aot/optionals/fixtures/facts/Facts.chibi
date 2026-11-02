@@ -46,3 +46,8 @@ NamedOptionalResult :: () {
     result := Try();
     if (result.error) { assert(result.error.kind == 42); } else { assert(false); }
 }
+@test
+ForceValues :: () {
+    result := Main();
+    assert(result == 0);
+}

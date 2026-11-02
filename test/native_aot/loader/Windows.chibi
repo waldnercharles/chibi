@@ -1,0 +1,19 @@
+package windows_loader
+
+import windows "core:sys/windows"
+
+Main :: () -> int {
+    missing := windows.OpenLibrary("chibi-missing-generation.dll");
+    assert(missing == 0, "a missing generation is rejected");
+    module := windows.OpenLibrary("kernel32.dll");
+    assert(module != 0, "the platform library opens");
+    absent := windows.LibrarySymbol(module, "chibi_missing_generation_symbol");
+    assert(absent == 0, "a missing symbol is rejected");
+    address := windows.LibrarySymbol(module, "GetCurrentProcessId");
+    assert(address != 0, "the process function is found");
+    process_id: fn() -> u32 = address;
+    assert(process_id() != 0, "a loaded function runs");
+    closed := windows.CloseLibrary(module);
+    assert(closed, "the owned loader reference is released");
+    return 0;
+}

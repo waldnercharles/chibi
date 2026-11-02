@@ -218,6 +218,11 @@ when target.Native == 1 {
         return {status: captured.status, stdout: captured.stdout, stderr: captured.stderr};
     }
 
+    // Whether the environment contains the name, including an empty value.
+    pub HasEnv :: (name: string) -> bool {
+        return sys.HasEnv(name);
+    }
+
     pub Getenv :: (name: string) -> string {
         return sys.Getenv(name);
     }
@@ -344,6 +349,16 @@ when target.Native == 1 {
 
     pub Start :: (command: string[], stdio: int) -> int {
         return sys.Start(command, stdio == Piped);
+    }
+
+    // Starts a process with caller-owned output files, whose parent folders
+    // exist. Empty stdout_path inherits stdout; stderr_path names a file.
+    // Wait/Kill leave files in place for the caller to read and remove.
+    // An attached child shares the parent's cancellation group; Kill stops
+    // that child, while cancelling its parent group also stops descendants.
+    // Failure is -1.
+    pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string, attached: bool = false) -> int {
+        return sys.StartRedirected(command, stdout_path, stderr_path, attached);
     }
 
     pub Wait :: (process: int, timeout_ms: int) -> int {
@@ -565,6 +580,11 @@ pub Kill :: (process: int) -> int {
 // The first executable of that name on PATH, "" when none.
 pub FindExecutable :: (name: string) -> string {
     return build.find_executable(name);
+}
+
+// Whether the environment contains the name, including an empty value.
+pub HasEnv :: (name: string) -> bool {
+    return build.environment_names().contains(name);
 }
 
 // The variable's value, "" when it is unset.

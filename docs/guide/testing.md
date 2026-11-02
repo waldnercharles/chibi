@@ -37,12 +37,15 @@ Keep tests beside the package functions they check.
 
 ## Parallel execution
 
-No CI setup is needed: independent tests run on a bounded thread pool by default.
+No CI setup is needed: independent tests run on a bounded worker pool by default.
 The compiler infers which test closures have no external effects, including
 called and imported functions. Those tests have private invocation storage.
 Tests with random, host, state or other external effects run alone, between
 completed parallel spans. Results and failures are printed in source order,
 not completion order. The instruction limit remains per test.
+
+The native toolchain runs each test in a separate process. Effectful tests
+forward output as it is written; cancellation stops their active child processes.
 
 The pool uses the runtime default: up to eight hardware threads (performance
 cores on supported macOS hosts). For serial debugging, or when CI already

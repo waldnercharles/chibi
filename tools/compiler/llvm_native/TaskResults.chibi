@@ -3,6 +3,9 @@ package llvm_native
 import abi "project:native_abi"
 import strings "core:strings"
 
+TaskWaitEffect: int : 0;
+TaskSpawnEffect: int : 1;
+
 // Numeric task frames may also hold task observers and plain result unions.
 // Owning records need the shared per-type lifecycle before this gate opens.
 TaskFrameValue :: (records: Record[], fields: int[], type: int, observer: bool) -> bool {
@@ -29,9 +32,9 @@ TaskResultValid :: (records: Record[], fields: int[], slots: int[], item: Instru
 }
 // The pending wait owns an observer until the scheduler has resumed this
 // continuation, so a successful promise remains live throughout its read.
-TaskResultInstruction :: (item: Instruction, pc: int) -> string {
+TaskResultInstruction :: (item: Instruction, pc: int, testing: bool) -> string {
     type := TypeName(item.type);
-    out := format_text("p{}:\n", pc);
+    out := format_text("p{}:\n{}", pc, TaskTestGuard(testing, TaskWaitEffect));
     out = format_text("{}{}", out, Load(format_text("h{}", pc), TaskType, "s", item.left));
     out = format_text("{}  %done{} = call i1 @chibi_tasks.finished(i64 %h{})\n", out, pc, pc);
     out = format_text("{}  br i1 %done{}, label %p{}.result, label %p{}.wait\np{}.wait:\n", out, pc, pc, pc, pc);
@@ -66,4 +69,12 @@ TaskFrameCleanup :: (shape: Function, locals: int[], code: Instruction[], prefix
         out.append(format_text("  %{}.s{} = load i64, ptr %s{}\n  store i64 0, ptr %s{}\n  call void @chibi_tasks.release(i64 %{}.s{})\n", prefix, item.output, item.output, item.output, prefix, item.output));
     }
     return strings.Join(out, "");
+}
+
+// Only closures that can arm a generated test scope carry these calls. The
+// runtime returns while unarmed and stops the test at a named task command
+// or spawn. It uses an unclassified failure, independent of ExpectFailure.
+TaskTestGuard :: (testing: bool, kind: int) -> string {
+    if (!testing) { return ""; }
+    return format_text("  call void @chibi_native_test_busy(i32 {})\n", kind);
 }

@@ -34,7 +34,7 @@ Main :: () -> int {
     assert(format_text("{}|{}|{:d}", true, false, true) == "true|false|1", "boolean defaults and numeric modifiers");
     single: f32 = 1.25;
     negative: f64 = -0.0;
-    assert(format_text("{}|{:.1f}|{:e}|{:a}", single, int(42), single, single) == "1.25|42.0|1.250000e+00|0x1.4p+0", "float defaults and numeric promotion");
+    assert(format_text("{}|{:.1f}|{:e}|{:.1a}", single, int(42), single, single) == "1.25|42.0|1.250000e+00|0x1.4p+0", "float defaults and numeric promotion");
     assert(format_text("{}", negative) == "-0", "negative zero");
     clipped := format_text("{:.255f}", pi);
     assert(strings.ByteLength(clipped) == 255 && strings.HasPrefix(clipped, "3.14159"), "numeric rendering is bounded");

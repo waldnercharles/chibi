@@ -318,7 +318,7 @@ ExecutableLinksMacOSPrograms :: (scratch: string) {
     assert(Equals(Path([fixture.root, "/linker tool.argv"]), link), "the macOS link's argv");
     stub := Read(Path([output, "/System.tbd"]));
     assert(strings.Contains(stub, "install-name: '/usr/lib/libSystem.B.dylib'\n"), "the stub names libSystem");
-    assert(strings.Contains(stub, "symbols: [ dyld_stub_binder, _abs, _memcpy, _memmove, _memset ]"), "the stub exports what the program imports");
+    assert(strings.Contains(stub, "symbols: [ dyld_stub_binder, _abs, _write, __exit, _memcpy, _memmove, _memset ]"), "the stub exports the program and failure runtime imports");
     start := Read(Path([output, "/start.ll"]));
     assert(strings.Contains(start, "target triple = \"arm64-apple-macosx11.0.0\"") && strings.Contains(start, "define i32 @main(i32 %argc, ptr %argv, ptr %envp) {"), "dyld calls main");
 }

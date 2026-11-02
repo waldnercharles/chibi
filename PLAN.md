@@ -5,6 +5,61 @@ based on `b46f391b7`. The review branch is PR #1331. The owner's checkout and
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
+## Current checkpoint, 2 November
+
+`c32f5d6b6` is pushed to PR #1331. Its exact pinned macOS seed compiles the
+complete source in 40.93 seconds; the resulting compiler passes the CLI and
+129-name collision regression in 6.44 seconds. The immediately preceding
+native output change passes all 410 compiler tests in 22.05 seconds and its
+O0/O2 byte/readiness/rejection suite in 1.76 seconds.
+
+The local integration at `1a7a1002f` passes all 414 compiler tests in 18.80
+seconds and the combined O0/O2 task, managed-record, array, map, optional,
+failure, test-Busy and output suites. Native CLI acceptance takes 7.68 seconds,
+macOS watch 4.83 seconds, and optimized generation swaps 9.24 seconds. Its
+consecutive self-builds take 57.50 and 61.02 seconds and have identical SHA-256
+`76a2d9e55610ce9f5f50bd73a69c1408b0167752e32b01c833f9dfbcc500f4a7`.
+These timings include concurrent work and are acceptance evidence, not a
+controlled performance comparison.
+
+Native test scheduling is integrated at `90cf79af4`: typed effects allow pure
+tests to overlap, effectful tests run alone, output remains in source order,
+and generated wrappers preserve waiting/spawning rejection and step budgets.
+Its lane passes the exact pinned-seed build, all 414 compiler tests, and real
+worker/cancellation/waiting cases. Combined checkpoint validation is running.
+Array source copies stay eager until foreign mutation leases are implemented.
+The LLVM WebAssembly compiler passes exact artifact and lifetime checks; its
+public browser facade and optional SDK archive are still being connected.
+
+At pushed `c32f5d6b6`, no-C-compiler, compiler self-build and Linux native
+self-host CI pass. General CI found stale SDK product/evidence expectations,
+the pinned seed's compile-only CLI at selector launch, and a macOS import
+fixture missing the failure runtime's `write` and `_exit`. The import fixture
+is corrected locally; SDK and shared selector bootstrap changes are underway.
+
+Windows source `585e40829` reaches a strict stage-four/five fixed point after
+one explicitly permitted transition from the older pinned bootstrap. Both
+binaries have SHA-256
+`d9a56bde96fdce41d9b9c335f5120dc4ec659c8aad62ddf0641d4eb9e909f96f`.
+The subsequent asset compiler build fails with illegal instruction
+`0xC000001D`. A shorter-path replay with the retained compiler succeeds.
+The original long link command crosses the foreign CString bound; counted
+UTF-8 conversion and a 16 KiB Unicode argument regression are integrated at
+`ed9c3384b`, with failed-object cleanup at `6fa5c88e7`. Replay of the original
+Windows request remains required; this is not Windows product acceptance.
+
+The evidence below is chronological. Older counts and gates describe their
+named revisions, not the latest integration. Remaining deletion gates are:
+
+- Validate the combined installed compiler, CLI, native asset companion and
+  SDK/Studio consumers on each supported platform; resolve the Windows trap.
+- Finish test-runner parity and migrate the remaining graph/test consumers.
+- Complete managed suspended values/results, task dependencies, and retained
+  arrays/unions/handles. Foreign array loans must preserve mutation and lifetime.
+- Replace the program/application execution APIs and browser runtime consumers.
+- Publish verified platform seeds only after their acceptance checks, then
+  delete obsolete hosts, recovery artifacts and VM paths with no remaining users.
+
 ## Order of work
 
 1. Make the SHA-256-verified native seed the normal build entry and make native
@@ -243,13 +298,15 @@ the compiler inputs used for that proof.
 CI at `975dbd72d` found the native asset product was still compiled by the old
 pinned seed, which cannot emit the new quota-scope helpers. Local graph proofs
 had supplied a current compiler and therefore missed this dependency. The
-graph lane is fixing the product ordering and compiler receipt so the current
-native compiler builds the asset service. This remains a default-build gate.
+fix `b1f484167` makes the freshly built compiler a prerequisite of the asset
+service and records that compiler in its receipt. The exact old-seed product
+graph passed in 144.25 seconds and its warm repeat in 0.15 seconds; combined
+CI is checking the corrected graph.
 
 The second quiet performance window ran from 17:00:40 to 17:05:14 UTC. All
 migration lanes drained before it and resumed afterward. Four balanced pairs
 measured removal of `StatementStep` type-table snapshots: mean wall time fell
 from 35.02 s to 31.49 s and mean CPU time from 63.93 s to 60.69 s; all eight
 outputs matched the frozen compiler. The focused commit is `7d798d802` in
-PR #1333, pending composition with the task type-compatibility fix. These are
+PR #1333, composed as `aa2affbea` with the task type-compatibility fix. These are
 compiler measurements, not complete installed-toolchain equivalence results.

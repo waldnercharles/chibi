@@ -1,4 +1,10 @@
 package loop
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+}
 Detail :: struct { label: string; }
 Progress :: struct { count: int; text: string; detail: Detail; }
 Main :: () -> int { return 0; }
@@ -15,7 +21,13 @@ Frame :: () -> int {
     snapshot := note;
     note = format_text("value {}", progress.count);
     assert(text_byte_length(snapshot) > 0);
+    if progress.count == 3 { Ready(); }
     return 0;
+}
+
+Ready :: () {
+    stream := fopen("generation-ready", "wb");
+    closed := fclose(stream);
 }
 
 Increment :: (progress: ^Progress) -> int {

@@ -14,9 +14,8 @@ Library :: (target: abi.Target, name: string, names: string[], ids: i64[]) -> na
 }
 Malformed :: () -> string { return "native library needs an identifier and a name and ID for each function"; }
 RepeatedName :: () -> string { return "native library names each function once"; }
-LinuxOnly :: () -> string { return "native libraries are Linux x86-64 only"; }
 // A library exports each function through a wrapper and a manifest of their
-// names, IDs and word types, and only on Linux x86-64.
+// names, IDs and word types.
 @test
 LibraryExportsWordsAndManifest :: () {
     ids: i64[] = [11, -5];
@@ -45,8 +44,11 @@ LibraryNamesEachFunctionOnce :: () {
     Rejects(Library(abi.LinuxX64(), "Lib", ["Main", "Pick"], shared), RepeatedName());
 }
 @test
-LibrariesRejectOtherTargetsThanLinuxX64 :: () {
+LibrariesAcceptLinuxAndMacOSTargets :: () {
     ids: i64[] = [11, -5];
-    Rejects(Library(abi.MacOSArm64(), "Lib", ["Main", "Pick"], ids), LinuxOnly());
-    Rejects(Library(abi.WindowsX64(), "Lib", ["Main", "Pick"], ids), LinuxOnly());
+    text := Emitted(Library(abi.MacOSArm64(), "Lib", ["Main", "Pick"], ids));
+    assert(strings.Contains(text, "target triple = \"arm64-apple-macosx11.0.0\""));
+    assert(strings.Contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 5, i32 2,"));
+    Rejects(Library(abi.WindowsX64(), "Lib", ["Main", "Pick"], ids),
+            "native libraries require Linux x86-64 or macOS arm64");
 }

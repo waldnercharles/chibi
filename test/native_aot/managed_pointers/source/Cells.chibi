@@ -1,0 +1,104 @@
+package managed_scalar_cells
+
+Main :: () -> int {
+    pointers_value := Pointers();
+    count_value := Count();
+    assert(pointers_value == 595 && count_value == 27);
+    returned := Make(40);
+    returned^ += 2;
+    alias := &returned^;
+    Bump(alias);
+    Bump(&returned^);
+    read_value := Read(returned);
+    assert(read_value == 44 && alias^ == 44);
+    Relay(&returned);
+    relayed := ReadRelay(&returned);
+    assert(relayed == 45);
+    same_cell := ReadAfter(returned, alias);
+    assert(same_cell == 9 && returned^ == 9);
+    once_value := Once();
+    assert(once_value == 13139901);
+    iterated := IteratedCells();
+    assert(iterated == 21);
+    early := EarlyCells(true);
+    other_early := EarlyCells(false);
+    assert(early[0]^ == 1 && other_early[1]^ == 2);
+    branched := BranchCells();
+    assert(branched == 3);
+    historical := ManyCells(2);
+    historical_value := Historical(historical, &historical);
+    assert(historical_value == 1 && length(historical) == 0);
+    flag := false;
+    flag_pointer := &flag;
+    flag_pointer^ = true;
+    assert(flag && flag_pointer^);
+    decimal: f64 = 1.25;
+    decimal_pointer := &decimal;
+    decimal_pointer^ *= 2;
+    assert(decimal == 2.5);
+    small: u8 = 250;
+    small_pointer := &small;
+    small_pointer^ += u8(10);
+    assert(small == 4);
+    return 0;
+}
+// The two unchanged language-rule kernels retain their literal oracles.
+Pointers :: () -> int { value: int = 1; other: int = 9; original: ^int[] = [&value]; copied := original; copied[0]^ = 5; copied[0] = &other; return original[0]^ * 100 + copied[0]^ * 10 + value; }
+Count :: () -> int { x: int = 1; y: int = 2; ps: ^int[] = [&x]; ps.append(&y); ps[1]^ = 7; return length(ps) * 10 + y; }
+Make :: (value: int) -> ^int { return &value; }
+Bump :: (pointer: ^int) { pointer^ += 1; }
+Read :: (pointer: ^int) -> int { return pointer^; }
+Select :: (calls: ^int) -> int { calls^ += 1; return 0; }
+Repoint :: (pointers: ^(^int[]), next: ^int) -> int { pointers^[0] = next; return 3; }
+Once :: () -> int {
+    value := 10;
+    other := 99;
+    pointers: ^int[] = [&value];
+    saved := pointers;
+    calls := 0;
+    pointers[Select(&calls)]^ += Repoint(&pointers, &other);
+    return value * 1000000 + saved[0]^ * 10000 + pointers[0]^ * 100 + calls;
+}
+
+Relay :: (pointer: ^^int) { Bump(pointer^); }
+ReadRelay :: (pointer: ^^int) -> int { return Read(pointer^); }
+ManyCells :: (count: int) -> ^int[] {
+    pointers: ^int[] = [];
+    for index in 0..<count { pointers.append(Make(index + 1)); }
+    return pointers;
+}
+ClearCells :: (pointers: ^(^int[])) { pointers^ = []; }
+IteratedCells :: () -> int {
+    pointers := ManyCells(6);
+    total := 0;
+    for pointer in pointers {
+        ClearCells(&pointers);
+        for index in 0..<2000 { discarded := Make(index); }
+        total += pointer^;
+    }
+    return total;
+}
+
+ReadAfter :: (read: ^int, changed: ^int) -> int { changed^ = 9; return read^; }
+EarlyCells :: (choice: bool) -> ^int[] {
+    values := ManyCells(2);
+    if choice { return values; }
+    return values;
+}
+BranchCells :: () -> int {
+    values := ManyCells(3);
+    total := 0;
+    for value in values {
+        ClearCells(&values);
+        total += value^;
+        if value^ == 1 { continue; }
+        break;
+    }
+    for index in 0..<2000 { discarded := Make(index); }
+    return total;
+}
+Historical :: (read: ^int[], changed: ^(^int[])) -> int {
+    ClearCells(changed);
+    for index in 0..<2000 { discarded := Make(index); }
+    return read[0]^;
+}

@@ -87,7 +87,7 @@ define internal ptr @managed_test.new(ptr %heap, i64 %value, i1 %external) {
 entry:
   %bytes = ptrtoint ptr getelementptr (%managed_test.node, ptr null, i32 1) to i64
   %cell = call ptr @chibi_managed.new(ptr @managed_test.context, ptr %heap, i64 %bytes,
-                                    ptr @managed_test.trace, ptr @managed_test.drop)
+                                    ptr @managed_test.trace, ptr @managed_test.drop, i32 0)
   %payload = getelementptr %chibi.managed.cell, ptr %cell, i32 1
   %value.at = getelementptr %managed_test.node, ptr %payload, i32 0, i32 2
   store i64 %value, ptr %value.at

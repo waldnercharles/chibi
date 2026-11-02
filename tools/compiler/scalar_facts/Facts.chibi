@@ -319,6 +319,19 @@ pub DelayRow: int : 47;
 // the waiting function and `literal` its success variant ordinal.
 pub AwaitResultRow: int : 49;
 pub TaskRunningRow: int : 51;
+// Managed pointer reads/writes take one/two operands and give their scalar
+// pointee value. `value` is ManagedRead/ManagedWrite; literal retains the full
+// semantic pointee identity as u64 bits, independent of module type ordinals.
+pub ManagedRow: int : 52;
+// A zero-arity address of variable `value`, giving PointerType. The variable
+// is promoted to one typed heap cell from initialization; literal is the same
+// semantic identity every address/read/write of that pointee carries.
+pub ManagedAddressRow: int : 53;
+pub ManagedRead: int : 2;
+pub ManagedWrite: int : 3;
+// A descriptor lent to a scoped parameter resolves its current scalar
+// target without copying it. Its output is ReferenceType plus that scalar.
+pub ManagedBorrow: int : 4;
 // A source void waiting function has no success payload despite its internal int.
 pub FunctionVoid: int : 1;
 pub CallPlain: int : 0;
@@ -362,6 +375,9 @@ pub DoubleType: int : 11;
 pub StringType: int : 12;
 // An owning observer of program-owned execution, never an integer value.
 pub TaskType: int : 13;
+// An identity-preserving managed cell descriptor, distinct from a scoped
+// ReferenceType. Its exact semantic pointee identity travels in the value.
+pub PointerType: int : 14;
 // The d-th record or union of the module is type RecordType + d.
 pub RecordType: int : 32;
 // An array of type T is ArrayType + T.

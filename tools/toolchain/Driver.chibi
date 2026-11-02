@@ -421,21 +421,28 @@ Deadline :: (rows: string[], name: string, fallback: string) -> string {
 
 // The command one selector runs: its row's words with the build directories
 // filled in, under the environment the test drivers read.
-TestCommand :: (row: string, directory: string, releases: string, host: string) -> string[] {
+TestCommand :: (row: string, directory: string, releases: string, host: string, native: string, llvm: string) -> string[] {
     fields := Fields(row)
+    build_directory := Absolute(directory)
+    release_directory := Absolute(releases)
+    host_path := Absolute(host)
+    native_path := Absolute(native)
+    llvm_directory := Absolute(llvm)
+    root := os.Root()
     command := [
         "env",
-        Join(["CHIBI_TOOLS_BUILD_DIR=", Absolute(directory), "/test/tools"]),
-        Join(["CHIBI_LANGUAGE_BUILD_DIR=", Absolute(directory), "/test/language"]),
-        Join(["CHIBI_BUILD_HOST=", Absolute(host)]),
-        Join(["CHIBI_CLI=", Absolute(releases), "/sdk/chibi"]),
-        Join(["CHIBI_COMPILE=", Absolute(releases), "/sdk/chibi-compile"]),
-        Join(["CHIBI_RELEASE_COMPILER_HOST=", Absolute(releases), "/sdk/chibi-compiler-host"]),
-        Join(["CHIBI_RELEASE_LANGUAGE_BUILD_DIR=", Absolute(releases), "/test/language"])
+        Join(["CHIBI_TOOLS_BUILD_DIR=", build_directory, "/test/tools"]),
+        Join(["CHIBI_LANGUAGE_BUILD_DIR=", build_directory, "/test/language"]),
+        Join(["CHIBI_BUILD_HOST=", host_path]),
+        Join(["CHIBI_CLI=", release_directory, "/sdk/chibi"]),
+        Join(["CHIBI_COMPILE=", release_directory, "/sdk/chibi-compile"]),
+        Join(["CHIBI_RELEASE_COMPILER_HOST=", release_directory, "/sdk/chibi-compiler-host"]),
+        Join(["CHIBI_RELEASE_LANGUAGE_BUILD_DIR=", release_directory, "/test/language"])
     ]
     for (i in 2..<length(fields)) {
-        word := strings.ReplaceAll(strings.ReplaceAll(fields[i], "@host@", Absolute(host)), "@root@", os.Root())
-        word = strings.ReplaceAll(strings.ReplaceAll(word, "@build@", Absolute(directory)), "@release@", Absolute(releases))
+        word := strings.ReplaceAll(strings.ReplaceAll(fields[i], "@host@", host_path), "@root@", root)
+        word = strings.ReplaceAll(strings.ReplaceAll(word, "@build@", build_directory), "@release@", release_directory)
+        word = strings.ReplaceAll(strings.ReplaceAll(word, "@native@", native_path), "@llvm@", llvm_directory)
         command = extend(command, [word])
     }
     return command
@@ -476,6 +483,8 @@ Test :: (arguments: string[]) -> int {
     directory := Option(arguments, "--build", "build")
     releases := Option(arguments, "--release-build", "build-release")
     host := Option(arguments, "--build-host", Join([directory, "/sdk/chibi-build-host"]))
+    native := Option(arguments, "--native-driver", "")
+    llvm := Option(arguments, "--llvm", "")
     jobs := Count(Option(arguments, "--jobs", "1"))
     seconds := Option(arguments, "--timeout", "600")
     if (Count(seconds) < 1) {
@@ -491,6 +500,20 @@ Test :: (arguments: string[]) -> int {
     if (length(selected) == 0) {
         return 2
     }
+    // Native rows fail closed before any selector starts. Dry-run accepts
+    // proposed paths so its exact commands remain reviewable.
+    needs_native := false
+    for (name in selected) {
+        needs_native = needs_native || strings.Contains(Row(rows, "tool", name), "@native@")
+    }
+    if (needs_native && !Flag(arguments, "--dry-run")) {
+        native = os.RealPath(native)
+        llvm = os.RealPath(llvm)
+        if (native == "" || !os.IsFile(native) || llvm == "" || !os.IsDirectory(llvm)) {
+            os.Print("test: native selectors need --native-driver PROGRAM and --llvm DIR")
+            return 2
+        }
+    }
     for (name in selected) {
         if (strings.Contains(Row(rows, "tool", name), "@host@")) {
             status := LegacySeed("tools/compiler/bootstrap", Flag(arguments, "--dry-run"))
@@ -502,7 +525,7 @@ Test :: (arguments: string[]) -> int {
     }
     if (Flag(arguments, "--dry-run")) {
         for (name in selected) {
-            command := TestCommand(Row(rows, "tool", name), directory, releases, host)
+            command := TestCommand(Row(rows, "tool", name), directory, releases, host, native, llvm)
             os.Print(format_text("{} ({}s): {}", name, Deadline(rows, name, seconds), strings.Join(command, " ")))
         }
         return 0
@@ -535,7 +558,7 @@ Test :: (arguments: string[]) -> int {
                 break
             }
             os.Print(format_text("RUN {}", selected[next]))
-            command := TestCommand(Row(rows, "tool", selected[next]), directory, releases, host)
+            command := TestCommand(Row(rows, "tool", selected[next]), directory, releases, host, native, llvm)
             job: Running = {index: next, process: os.Start(command, stdio), waited: 0}
             running.append(job)
             started[next] = true

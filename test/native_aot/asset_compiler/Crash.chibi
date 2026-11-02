@@ -1,0 +1,12 @@
+package asset_crash_fixture
+import os "core:os"
+
+// A real native service process that fails after starting output publication.
+// The facade must reap it and remove every file owned by the invocation.
+Main :: () -> int {
+    arguments := os.Arguments();
+    partial := os.WriteText(format_text("{}.partial", arguments[1]), "incomplete");
+    assert(partial == nil, "create partial closure");
+    assert(false, "injected native compiler failure");
+    return 0;
+}

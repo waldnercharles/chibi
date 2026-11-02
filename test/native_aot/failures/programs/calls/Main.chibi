@@ -1,0 +1,4 @@
+package quota
+foreign { chibi_native_scope_begin :: (steps: u64) -> int }
+Main :: () -> int { chibi_native_scope_begin(2); One(); One(); One(); return 99; }
+One :: () {}

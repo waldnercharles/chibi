@@ -61,7 +61,7 @@ if [ ! -x "$native_driver" ]; then
     printf 'tools/build.sh: native build entry needs executable %s\n' "$native_driver" >&2
     exit 2
 fi
-# The core sources, entry and four tool binaries decide its bytes. Hash
+# The core and graph sources, entry and four tool binaries decide its bytes. Hash
 # contents, not mtimes, so restored checkouts and in-place edits invalidate.
 # Full hashes also name the cache; a partial compile is never published.
 if command -v sha256sum >/dev/null 2>&1; then
@@ -72,12 +72,12 @@ fi
 mkdir -p .chibi/build-entry
 work=$(mktemp -d "$root/.chibi/build-entry/work.XXXXXX")
 trap 'rm -rf "$work"' EXIT
-printf '%s\n' 'chibi-native-build-entry 2 LLVM22' "$triple" "$native_driver" "$llvm" > "$work/inputs"
+printf '%s\n' 'chibi-native-build-entry 3 LLVM22 graph' "$triple" "$native_driver" "$llvm" > "$work/inputs"
 $digest tools/toolchain/Driver.chibi "$native_driver" "$llvm/opt" "$llvm/llc" "$llvm/$linker" >> "$work/inputs"
 # The fixed digest command above includes shasum's two arguments.
 # shellcheck disable=SC2086
-find packages/core -type f -name '*.chibi' -exec $digest {} + > "$work/core"
-LC_ALL=C sort "$work/core" >> "$work/inputs"
+find packages/core tools/graph -type f -name '*.chibi' -exec $digest {} + > "$work/sources"
+LC_ALL=C sort "$work/sources" >> "$work/inputs"
 hashed=$($digest "$work/inputs")
 key=${hashed%% *}
 case "$key" in
@@ -109,6 +109,7 @@ if [ ! -x "$cached/driver" ]; then
     done
     "$native_driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/tools/toolchain/Driver.chibi" --entry Main --output "$work/driver" \
+        --collection "graph=$root/tools/graph" \
         --llvm "$llvm" --target "$triple"
     test -x "$work/driver"
     mkdir -p "$cached"

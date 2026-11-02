@@ -19,6 +19,7 @@ CliInvocation :: struct {
     entry: string;
     collections: string[];
     llvm: string;
+    core: string;
     target: string;
     mode: string;
     error: string;
@@ -33,7 +34,7 @@ CliInvocation :: struct {
 }
 
 NewInvocation :: (command: string) -> CliInvocation {
-    return {command: command, path: "", root: "", entry: "Main", collections: [], llvm: "", target: "", mode: "2", error: "", tail_first: 0, valid: true,
+    return {command: command, path: "", root: "", entry: "Main", collections: [], llvm: "", core: "", target: "", mode: "2", error: "", tail_first: 0, valid: true,
             help: false, watch: false, native: false, debug: false, static_link: false, shared: false};
 }
 
@@ -80,13 +81,15 @@ ParseRun :: (arguments: string[], first: int) -> CliInvocation {
         } else if (argument == "-g" && !invocation.debug) {
             invocation.debug = true;
         } else if (argument == "--llvm" || argument == "--target" || argument == "--entry" ||
-                   argument == "--collection" || argument == "--root") {
+                   argument == "--collection" || argument == "--root" || argument == "--core") {
             if (index + 1 >= length(arguments) || arguments[index + 1] == "" || IsOption(arguments[index + 1])) {
                 return Invalid(invocation, format_text("{} needs a nonempty value", argument));
             }
             index += 1;
             if (argument == "--llvm") {
                 invocation.llvm = arguments[index];
+            } else if (argument == "--core") {
+                invocation.core = arguments[index];
             } else if (argument == "--target") {
                 invocation.target = arguments[index];
             } else if (argument == "--entry") {
@@ -230,6 +233,7 @@ Usage :: (program: string) -> string {
         "directory without one, and fails when one fails.\n",
         "run compiles a program natively and calls Main, or --entry NAME.\n",
         "--root DIR resolves project imports; --collection NAME=DIR adds a package collection.\n",
+        "--core DIR selects core packages for this run without changing the environment.\n",
         "Distinct source/entry combinations own separate cached programs. Arguments come after\n",
         "PATH or --, and it needs the LLVM tools as build --native does.\n"]);
 }
@@ -280,13 +284,13 @@ HostTriple :: () -> string {
 CoreFolder :: () -> string {
     chosen := os.Getenv("CHIBI_CORE");
     if (chosen != "") {
-        return os.RealPath(chosen);
-    }
-    program := os.ProgramPath();
-    if (program == "") {
+        resolved := os.RealPath(chosen);
+        if (resolved != "" && os.IsDirectory(resolved)) { return resolved; }
         return "";
     }
-    beside := os.RealPath(strings.Concatenate([Directory(program), "/../share/chibi/core"]));
+    sdk := SdkFolder();
+    if (sdk == "") { return ""; }
+    beside := os.RealPath(strings.Concatenate([sdk, "/core"]));
     if (beside != "" && os.IsDirectory(beside)) {
         return beside;
     }
@@ -311,7 +315,7 @@ LlvmTools :: () -> string[] {
     return ["opt", "llc", link.Linker(link.TargetOf(HostTriple()))];
 }
 
-Version :: () -> int {
+DevelopmentVersion :: () -> int {
     Say("chibi native");
     Say(strings.Concatenate(["compiler: ", Default(os.ProgramPath(), "unknown")]));
     Say(strings.Concatenate(["target: ", HostTriple()]));
@@ -325,22 +329,24 @@ Report :: (name: string, status: string, detail: string) -> bool {
 
 Doctor :: () -> int {
     broken := false;
+    installed := IdentityLayout();
+    if (installed) { broken = InspectIdentity(); }
     program := os.ProgramPath();
     if (program == "") {
         broken = Report("compiler", "broken", "the program's own path is unknown");
-    } else {
+    } else if (!installed) {
         Report("compiler", "supported", program);
     }
     core := CoreFolder();
     if (core == "") {
         broken = Report("sdk", "broken", "no share/chibi/core beside the program; set CHIBI_CORE") || broken;
-    } else {
+    } else if (!installed) {
         Report("sdk", "supported", core);
     }
     triple := HostTriple();
-    if (triple == "aarch64-apple-darwin" || triple == "x86_64-unknown-linux-gnu") {
+    if (!installed && (triple == "aarch64-apple-darwin" || triple == "x86_64-unknown-linux-gnu")) {
         Report("platform", "supported", triple);
-    } else {
+    } else if (!installed) {
         Report("platform", "unavailable", format_text("{}: native programs are built, not run, here", triple));
     }
     llvm := LlvmFolder("");
@@ -507,8 +513,13 @@ RunProgram :: (invocation: CliInvocation, tail: string[]) -> int {
         return 2;
     }
     core := CoreFolder();
-    if (core == "") {
-        Complain("cannot find the SDK's share/chibi/core; set CHIBI_CORE");
+    if (invocation.core != "") { core = os.RealPath(invocation.core); }
+    if (core == "" || !os.IsDirectory(core)) {
+        if (invocation.core != "") {
+            Complain(strings.Concatenate(["run: cannot find core directory: ", invocation.core]));
+        } else {
+            Complain("cannot find the SDK's share/chibi/core; set CHIBI_CORE");
+        }
         return 2;
     }
     subject := Resolve(Default(invocation.path, "."));
@@ -568,10 +579,19 @@ BuildNative :: (invocation: CliInvocation) -> int {
     return Build(arguments);
 }
 
-// A checkout's build entry is found from the working directory, as a project build is.
+// The nearest Build.chibi is a project's authored build entry. An engine
+// checkout instead uses its toolchain driver, which owns graph options.
 BuildCommand :: (arguments: string[]) -> int {
     root := os.Root();
-    while (root != "" && !os.IsFile(strings.Concatenate([root, "/tools/toolchain/Driver.chibi"]))) {
+    source := "";
+    checkout := false;
+    while (root != "") {
+        source = strings.Concatenate([root, "/Build.chibi"]);
+        if (os.IsFile(source)) { break; }
+        if (os.IsFile(strings.Concatenate([root, "/tools/toolchain/Driver.chibi"]))) {
+            checkout = true;
+            break;
+        }
         parent := Directory(root);
         if (parent == root) {
             root = "";
@@ -580,7 +600,7 @@ BuildCommand :: (arguments: string[]) -> int {
         root = parent;
     }
     if (root == "") {
-        Complain("chibi build: no tools/toolchain/Driver.chibi in this directory or its parents");
+        Complain("chibi build: no Build.chibi in this directory or its parents");
         return 2;
     }
     llvm := LlvmFolder(Option(arguments, "--llvm", ""));
@@ -588,9 +608,26 @@ BuildCommand :: (arguments: string[]) -> int {
         Complain(strings.Concatenate(["build needs LLVM: ", NeedsLlvm()]));
         return 2;
     }
-    command: string[] = ["sh", strings.Concatenate([root, "/tools/build.sh"]), "build"];
+    command: string[] = [];
+    if (checkout) {
+        command = ["sh", strings.Concatenate([root, "/tools/build.sh"]), "build"];
+        command.extend(Tail(arguments, 1));
+        command.extend(["--native-driver", os.ProgramPath(), "--llvm", llvm]);
+        return ExitStatus(os.Run(command));
+    }
+    core := CoreFolder();
+    if (core == "") { Complain("build: cannot find share/chibi/core; set CHIBI_CORE"); return 2; }
+    invocation := NewInvocation("run");
+    sdk := SdkFolder();
+    graph := strings.Concatenate([sdk, "/graph"]);
+    if (sdk != "" && os.IsDirectory(graph)) {
+        invocation.collections.append(strings.Concatenate(["graph=", graph]));
+    }
+    subject: Subject = {project: root, source: source, package: ".", problem: ""};
+    compiled := CompileProgram(subject, core, llvm, HostTriple(), "", invocation);
+    if (compiled.status != 0) { return compiled.status; }
+    command = [compiled.path];
     command.extend(Tail(arguments, 1));
-    command.extend(["--native-driver", os.ProgramPath(), "--llvm", llvm]);
     return ExitStatus(os.Run(command));
 }
 

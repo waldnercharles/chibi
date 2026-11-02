@@ -1223,6 +1223,7 @@ pub Native :: () -> int {
     }
     source := Join([root, "/", names[0]]);
     text := build.read_file(source);
+    generation := shared && LibraryName(text) == "";
     // The other .chibi files below the folder, but its build output, are the
     // packages the source imports.
     packages: string[] = [];
@@ -1332,7 +1333,7 @@ pub Native :: () -> int {
         build.report(Join(["native: the compiler host gave a malformed target: ", target_json]));
         return Finish(work, 1);
     }
-    if (base != root) {
+    if (base != root && !generation) {
         return Driver(host, artifact, core, work, target_json, entry_path, packages, package_texts, text, arguments[7],
                       output, program, [opt, llc, lld, mode, linkage]);
     }
@@ -1367,6 +1368,9 @@ pub Native :: () -> int {
     // directory.
     callable := "0xcd64c452c8ed1e6f";
     argument := format_text("{}", destination);
+    if (generation) {
+        argument = "3";
+    }
     if (debug == "lines") {
         callable = "0xaf22e1821461cc9c";
         argument = Quote(root);
@@ -1381,8 +1385,10 @@ pub Native :: () -> int {
     // A library source takes the rows alone, and its rejection is its own.
     rejection := "0x6ae396cf0d691de";
     if (shared) {
-        callable = "0xe37e475ee6152694";
-        input = rows;
+        if (!generation) {
+            callable = "0xe37e475ee6152694";
+            input = rows;
+        }
         rejection = "0x33c99518aadf27a3";
     }
     if (Invoke(host, emitter, callable, input, module, "120000") != 0) {

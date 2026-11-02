@@ -74,70 +74,84 @@ status 1.
 
 ## Native code
 
-The goal is the same behavior with no VM: a native program's loop picks up edited code at a
-safe point with its state intact, and `Main` does not run again. This section is the design;
-`Status` below says what has landed. It follows Odin's hot-reload template (code in a
-reloaded shared library, state in host memory) and Live++/.NET EnC's rule that a bad edit
-never damages the running program.
+The preceding sections describe VM-backed sessions. The native path uses a Chibi host
+(`apps/host/Host.chibi`) and shared libraries loaded through `foreign import`. It currently
+runs on Linux x86-64. `Main` runs once, and a saved edit changes the next `Frame` without
+restarting the process.
 
-**Generations.** Each successful native build of the program is a *generation*: a shared
-library (`.so`, `.dylib`, `.dll`) with a unique file name, so the loader never returns the
-previous copy. A generation exports a manifest (`chibi_natives_<Name>`, as native libraries
-do) listing `Main`, `Frame` and the state schema. The host owns the state; no generation
-owns anything that outlives it.
+Each successful build is a generation, loaded from a unique `.so` path. A generation owns
+its retained globals and libc-backed runtime context. The host validates an incoming
+generation, migrates state into it, then switches the active `Frame` entry between calls.
+A running `Frame` finishes before the switch. Suspended tasks keep running in their
+original generation; the host keeps that library loaded and polls its tasks between
+active Frames. Once its tasks finish, the host releases its scheduler and retained state
+and unloads it. Program exit cancels tasks in every remaining generation.
 
-**State is a set of words.** A `retain` local of a native function is a state of its
-library: a global that starts at its initializer, which the variable loads where it is
-declared and writes through on every assignment (`StateLoad` and `StateStore` in
-`llvm_native`). Each generation exports a second manifest, `chibi_retained_<Name>`, with
-each state's name (`Frame.count`), its scalar type, and `get` and `set` entries that move all
-states as 64-bit words in manifest order. The host owns the state between generations: it
-reads the old generation's words, migrates them, and sets them in the new one. Retained
-states are numbers and bools with a literal initializer. A function that takes or returns a
-record of scalars is also exported in `chibi_state_<Name>` with the record's field schema.
-
-**The safe point is between `Frame` calls.** The host loop is: load generation 1, build
-the initial state, call `Main` once, then call `Frame(state)` repeatedly. When a new
-generation is built, the host loads it, validates it, and swaps it in before the next
-`Frame`; a frame that is running finishes in the generation it started in. The old library
-is closed after the swap. Nothing executes inside a generation that is being replaced.
-
-**Migration by schema.** The host compares the old and new schemas field by field, by name:
+Retained numbers, bools and standalone strings use `Function.variable` keys. Numeric/bool
+records use one key per leaf, such as `Frame.position.x`, so migration follows field names
+rather than layout. Scalar values transfer as words; strings copy their bytes into the
+incoming generation before the original library can unload. The host reads and writes
+state through the generation's `chibi_host_retained_*` symbols.
 
 | Change | Result |
 | --- | --- |
-| Same name and scalar type | Value kept. |
-| New field | Starts from its initializer. |
-| Removed field | Dropped. |
-| Same name, another number or bool type | Converted as the language converts: an integer clamps to the new range, a float truncates toward zero and saturates, NaN is 0, a bool is a number's inequality to zero. |
-| Same name, any other change (a string or record became a number, say) | Reset to the initializer. |
+| Same leaf key and type | Value kept. |
+| New field or retained binding | Starts from its initializer. |
+| Removed field or binding | Not copied; its original storage is released when that generation unloads. |
+| Same leaf key, another number or bool type | Converted as the language converts: integers clamp, float-to-integer conversions truncate and saturate with NaN becoming 0, and numbers convert to bool by inequality to zero. |
+| Same leaf key changes between a string and a scalar | Incoming generation rejected; the running generation continues. |
 
-A migration never partly applies: the new state is built whole, then swapped.
-
-**Failure leaves the old generation running.** A build that fails to compile or link, a
-library that fails to load, a manifest of another ABI, a missing `Frame`, or a schema the
-host cannot map is reported once as `file:line:col: message` (or the loader's reason) and
-the running generation continues. The next good build applies. A `Frame` that fails at run
-time pauses the loop, as in the VM.
-
-**Where it runs.** The host loop is Chibi code (`apps/chibi`), loading libraries through
-`foreign import`, so nothing about it depends on the C VM. Until `foreign import` lands the
-VM session above remains the implementation behind `chibi --watch`.
+The host checks incompatible leaf types before writing incoming state. Compile, link,
+load or required-entry failures leave the accepted generation running, so a later valid
+edit can apply. A loaded candidate that fails validation is set aside as `rejected.so`.
+Native assertion failures in `Main`, `Frame` or a polled task terminate the host with
+status 134. The VM's pause-and-resume behavior above does not apply to the native host.
 
 ### Status
 
 Native programs do this on Linux x86-64: `chibi run --native --watch [-O0|-O2] [--llvm DIR] PATH`
-builds the library source in PATH's folder as a generation (`chibi build --native --shared`), runs
+builds the library or package source in PATH's folder as a generation (`chibi build --native --shared`), runs
 it under the loop host (`apps/host/Host.chibi`, written in Chibi and built natively), and rebuilds
 and publishes each saved edit as the next generation. The host calls `Main` once, calls `Frame`
 until it returns a nonzero status, which is the exit status, and swaps `next.so` in between two
 Frames: it matches the retained states of the two generations by name hash and type
-(`chibi_host_retained_*`), sets the new generation's, and unloads the old one. A generation that
-fails to build is reported and the running one continues; one that fails to load is set aside as
+(`chibi_host_retained_*`) and sets the new generation's. The old generation unloads once
+its tasks finish. A generation that fails to build is reported and the running one
+continues; one that fails to load is set aside as
 `rejected.so`. The `native-build` case `WatchesAndSwapsARunningLoop`
 (`test/native_aot/native_build/BuildTests.chibi`) edits a running loop and checks the exit status that
 only a surviving count gives; `SwapsARunningLoopKeepingState` does the same with the editor played by the
-test. Not done: a source that is a program rather than a `library` block, other targets.
+test. Ordinary packages build as generations when they define
+zero-argument `Main` and `Frame` with an int result ABI (`() -> int`; a non-entry
+void `Frame` also has the existing int-zero adaptation). `Main` and `Frame` cannot wait;
+other functions may start supported tasks. The isolated real-driver test
+`test/native_aot/generations/run.sh` swaps a package while inserting a function and a retained
+binding, and changing retained numeric types. Retained keys remain `Function.variable` names;
+package generation function IDs are local indices, not stable prepared-artifact identities.
+Duplicate function names across imported packages are rejected rather than aliased.
+
+Package generations have a private libc-backed runtime context, so arrays, string
+operations and assertions keep their native behavior. An assertion failure exits the host
+with status 134. Retained numbers, bools, standalone strings and numeric/bool records migrate by
+named leaves. Record fields can be reordered or added; a new leaf takes its initializer.
+Initializers must be scalar/string literals or constant record construction. Arrays,
+unions, task handles and records containing strings remain unsupported as retained state. Changing a shared leaf
+between a string and a scalar rejects the incoming generation before state is written.
+Strings are copied into the incoming generation, including strings whose bytes originally
+lived in the old object's constant data.
+
+The legacy `library` form keeps its scalar-literal retained-state ABI: its bulk word
+manifest exposes initialized numbers and bools before any function runs. Record and
+string retained state uses ordinary package generations and the per-key native host API;
+lazy or managed states expose no legacy bulk manifest.
+
+A retired generation stays loaded while its tasks are pending. The host polls those tasks
+between active Frames, then cancels/releases their scheduler storage and retained values
+before unloading the generation. On program exit it cancels every generation's tasks.
+`test/native_aot/generations/run.sh NATIVE_COMPILER LLVM_BIN` exercises native package
+reloads, numeric conversions, record field migration, retained strings, incompatible
+schema rejection, runtime allocation and assertions. The VM and C hosts remain until the
+other migration gates pass.
 
 ## Limits
 

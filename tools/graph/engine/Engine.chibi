@@ -597,6 +597,13 @@ WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> 
 // Installs a target's resources into the build tree (Resources).
 Install :: (source_root: string, build_dir: string, third_party: string, target: string) -> bool {
     for (resource in Resources(target)) {
+        // This tree is a runnable legacy compiler distribution. Prepare its
+        // pinned bytecode before copying, including host-only SDK builds.
+        if (strings.Partition(resource, "=").tail == "tools/compiler" &&
+            os.Run(["sh", Join([source_root, "/tools/bootstrap/seed.sh"])]) != 0) {
+            os.Print("graph: preparing the legacy compiler resources failed");
+            return false;
+        }
         if (!CopyChanged(Resolve(source_root, build_dir, third_party, strings.Partition(resource, "=").tail),
                          Resolve(source_root, build_dir, third_party, strings.Partition(resource, "=").head))) {
             return false;

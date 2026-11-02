@@ -269,8 +269,9 @@ when target.Native == 1 {
         return resolved;
     }
 
-    // Identifies the file's content and metadata for change detection: equal
-    // stamps mean the same file untouched. "" when the path does not exist.
+    // The file's identity and metadata for change detection; filesystem clocks
+    // can give rapid same-size rewrites equal stamps. HashFile verifies content.
+    // "" when the path does not exist.
     pub Stamp :: (path: string) -> string {
         return sys.Stamp(path);
     }
@@ -385,8 +386,9 @@ pub Exists :: (path: string) -> bool {
     return build.file_exists(path);
 }
 
-// Identifies the file's content and metadata for change detection: equal
-// stamps mean the same file untouched. "" when the path does not exist.
+// The file's identity and metadata for change detection; filesystem clocks
+// can give rapid same-size rewrites equal stamps. HashFile verifies content.
+// "" when the path does not exist.
 pub Stamp :: (path: string) -> string {
     return build.file_stamp(path);
 }

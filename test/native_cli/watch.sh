@@ -11,8 +11,8 @@ log=$work/watch.log
 cleanup() {
     status=$?
     if [ -n "$process" ] && kill -0 "$process" 2>/dev/null; then
-        # The native host shares the CLI's foreground group for Ctrl-C. This
-        # test terminates only its owned children when a check fails.
+        # The CLI supervises its native host group. This test terminates only
+        # its owned processes when a check fails.
         for child in $(ps -axo pid=,ppid= | awk -v parent="$process" '$2 == parent { print $1 }'); do
             kill "$child" 2>/dev/null || :
         done

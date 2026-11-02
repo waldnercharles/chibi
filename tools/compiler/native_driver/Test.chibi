@@ -162,7 +162,7 @@ Dispatcher :: (package: string, names: string[]) -> string {
 // The root program of one package's tests: runs the test named by its first argument.
 RootProgram :: (relative: string) -> string {
     return strings.Concatenate(["package tests\n\nimport tested \"project:", relative, "\"\nimport os \"core:os\"\nimport strings \"core:strings\"\n\n",
-        "foreign import runtime \"system:c\"\nforeign runtime {\n    chibi_native_test_begin :: () -> int\n    chibi_native_test_end :: () -> int\n}\n\n",
+        "foreign {\n    chibi_native_test_begin :: () -> int\n    chibi_native_test_end :: () -> int\n}\n\n",
         "Main :: () -> int {\n    arguments := os.Arguments();\n    index := 0;\n    for (byte in strings.Bytes(arguments[0])) {\n        index = index * 10 + byte - 48;\n    }\n",
         "    chibi_native_test_begin();\n    tested.ChibiRunTest(index);\n    return chibi_native_test_end();\n}\n"]);
 }

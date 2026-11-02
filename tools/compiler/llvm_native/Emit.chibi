@@ -1323,7 +1323,7 @@ Spelled :: (literal: i64, type: int) -> i64 {
     return literal - (i64(1) << u32(bits));
 }
 EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[], texts: string[],
-                    coroutine: bool, record_owners: bool[]) -> string {
+                    coroutine: bool, program: bool, record_owners: bool[]) -> string {
     out := format_text("p{}:\n", pc);
     type := TypeName(item.type);
     if (item.op == Constant && item.type == abi.TextStorage) {
@@ -1355,10 +1355,14 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Load(format_text("return{}", pc), result, "result", 0));
         return format_text("{}{}", out, format_text("  ret {} %return{}\n", TypeName(result), pc));
     } else if (item.op == Branch) {
+        if (program && item.target <= pc) { out = format_text("{}  call void @chibi_native_step()\n", out); }
         out = format_text("{}{}", out, Load(format_text("a{}", pc), 1, "s", item.left));
         return format_text("{}{}", out, format_text("  br i1 %a{}, label %p{}, label %p{}\n", pc, item.target, pc + 1));
     } else if (item.op == Jump) {
+        if (program && item.target <= pc) { out = format_text("{}  call void @chibi_native_step()\n", out); }
         return format_text("{}{}", out, format_text("  br label %p{}\n", item.target));
+    } else if (item.op == Check && program) {
+        out = format_text("{}  call void @chibi_native_step()\n", out);
     } else if (item.op == Check) {
         // CHECKs, not LLVM instructions, consume the caller's positive bound.
         // Compare before subtracting: exactly N CHECKs may pass a budget N.
@@ -2035,15 +2039,30 @@ NoEntry: int : 2;
 // A scalar entry that is a coroutine: its ramp is internal and chibi_scalar is a
 // function that runs it and the tasks until it finishes.
 CoroutineEntry: int : 3;
+ProgramEntry: int : 4;
+ProgramCoroutineEntry: int : 5;
+ProgramMode :: (mode: int) -> bool {
+    return mode == ProgramEntry || mode == ProgramCoroutineEntry;
+}
+// Unarmed programs retain their fast loops. Only a source closure that can
+// begin a scope needs shared quota calls; the start shim alone cannot arm one.
+ScopedProgram :: (code: Instruction[], texts: string[]) -> bool {
+    for (item in code) {
+        if (item.op != ForeignCall || item.left != 0) { continue; }
+        name := texts[int(item.literal)];
+        if (name == "chibi_native_scope_begin" || name == "chibi_native_test_begin") { return true; }
+    }
+    return false;
+}
 // The entry's symbol, or an internal function's.
 Symbol :: (function: int, mode: int) -> string {
     if (function == 0 && mode == MainEntry) {
         return "main";
     }
-    if (function == 0 && mode == ScalarEntry) {
+    if (function == 0 && (mode == ScalarEntry || mode == ProgramEntry)) {
         return "chibi_scalar";
     }
-    if (function == 0 && mode == CoroutineEntry) {
+    if (function == 0 && (mode == CoroutineEntry || mode == ProgramCoroutineEntry)) {
         return "chibi_scalar.ramp";
     }
     return format_text("chibi_scalar.{}", function);
@@ -2378,14 +2397,14 @@ AwaitHandleInstruction :: (item: Instruction, pc: int) -> string {
 }
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
                  code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool, waiting: bool[], record_owners: bool[]) -> string {
+                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool, waiting: bool[], scoped: bool, record_owners: bool[]) -> string {
     shape := functions[function];
     coroutine := waiting[function];
     result := shape.result;
     // A function another piece of the module calls is a hidden symbol the
     // link joins; the others stay internal to their piece.
     linkage := "";
-    if (function != 0 || mode == NoEntry || mode == CoroutineEntry) {
+    if (function != 0 || mode == NoEntry || mode == CoroutineEntry || mode == ProgramCoroutineEntry) {
         linkage = "internal ";
         if (shared) {
             linkage = "hidden ";
@@ -2477,7 +2496,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if (item.op == Format) {
             out.append(FormatInstruction(own_slots, own, item, pc));
         } else {
-            out.append(EmitInstruction(item, pc, result, records, fields, texts, coroutine, record_owners));
+            out.append(EmitInstruction(item, pc, result, records, fields, texts, coroutine, scoped, record_owners));
         }
     }
     // A function fails with its result's zero, which no caller reads; a coroutine
@@ -2850,10 +2869,11 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         return Result.Rejected(-1, "a native program cannot call the runtime yet");
     }
     // A waiting entry is a coroutine that chibi_scalar runs with the tasks.
-    if (Tasks(code) && mode == ScalarEntry) {
-        mode = CoroutineEntry;
+    if (Tasks(code) && (mode == ScalarEntry || mode == ProgramEntry)) {
+        if (mode == ProgramEntry) { mode = ProgramCoroutineEntry; } else { mode = CoroutineEntry; }
     }
     debug := source.file != "";
+    scoped := ProgramMode(mode) && ScopedProgram(code, texts);
     compares := Compares(code);
     fallible := Fallible(functions, code);
     // A program splits into pieces that opt and llc compile at once; a
@@ -2929,6 +2949,9 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         } else {
             out.append(StateDeclarations(states, held));
         }
+        if (ProgramMode(mode)) {
+            out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\n");
+        }
         out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, first, last),
                                Declarations(held),
                                ForeignDeclarations(functions, first, last, slots, code, arguments, texts)));
@@ -2938,7 +2961,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         out.append(Callees(functions, parameters, held, home, piece, mode, runtime));
         for (function in first..<last) {
             text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
-                                 texts, mode, step_budget, runtime, fallible, shared[function], waiting, record_owners);
+                                 texts, mode, step_budget, runtime, fallible, shared[function], waiting, scoped, record_owners);
             if (debug) {
                 text = Located(text, Subprogram(function), Location(length(functions), compares,
                                                                     functions[function].first_code));
@@ -2947,7 +2970,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         }
         if (Tasks(held)) {
             out.append(format_text("\n{}", TaskScheduler()));
-            if (mode == CoroutineEntry) {
+            if (mode == CoroutineEntry || mode == ProgramCoroutineEntry) {
                 out.append(format_text("\n{}", CoroutineEntryFunction(functions[0].result, waiting[0])));
             }
         }
@@ -2967,7 +2990,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             out.append(format_text("\n{}", text));
         }
         copies := Copies(held);
-        out.append(MapModule(held, false));
+        out.append(MapModule(held, ProgramMode(mode)));
         if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
         }
@@ -3196,6 +3219,15 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
     }
     return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source, names,
                   lines, columns, mode, step_budget);
+}
+
+// Standalone programs use one runtime scope across every function and loop.
+// Embedded modules keep Emit's caller-provided CHECK budget and context ABI.
+pub EmitProgram :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
+             code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
+             source: Source, names: string[], lines: int[], columns: int[]) -> Result {
+    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source, names,
+                  lines, columns, ProgramEntry, 1);
 }
 
 // Whether `name` can end a C symbol: an ASCII letter or `_`, then letters,

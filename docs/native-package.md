@@ -19,11 +19,18 @@ or ship `projects/*`.
 chibi build install --prefix ~/.local
 ```
 
-`install` builds the Release `chibi`, `chibi-compile`, `chibi-build-host` and
-`chibi-compiler-host` and installs `bin/chibi`, `bin/chibi-compile`, the
-private hosts in `libexec/chibi` and the compiler, core and build resources in
-`share/chibi` (`tools/toolchain/SDK.chibi`). `chibi build test
-graph-sdk-install` checks the installation.
+`install` builds the Release native `chibi` and `chibi-asset-compiler` products.
+It installs the same native compiler as `bin/chibi` and `bin/chibi-compile`,
+the asset compiler as `libexec/chibi/chibi-asset-compiler`, and authored compiler,
+core, graph and build resources in `share/chibi`. The distribution contains no
+VM hosts or bootstrap bytecode. `tools/toolchain/SDK.chibi` owns the layout;
+`chibi build test graph-sdk-install` checks staging, relocation and the installed
+commands with `CHIBI_CORE` unset and the legacy hosts absent.
+
+`CompilerTools` publishes a fresh prefix through a private sibling stage and
+refuses to replace an existing prefix or staging directory. The normal `install`
+overlays the owned SDK paths and removes retired private hosts and bytecode
+resources. It refuses resource symlinks before writing products.
 
 ## Deployment identity
 

@@ -2,6 +2,7 @@ package driver
 
 import os "core:os"
 import strings "core:strings"
+import engine "graph:engine"
 
 // The engine's one build command, `chibi build` in an engine checkout. It
 // is compiled by the verified native seed and cached by tools/build.sh.
@@ -10,13 +11,12 @@ import strings "core:strings"
 //   build [--release|--debug|--profile NAME] [--build DIR] [--release-build DIR]
 //         [--target NAME]... [--jobs N (default: every processor)]
 //         [--host PATH] [--libclang-root DIR] [--reflect PATH]
-//         [--asset-generator-hosts DIR] [--debug-optimization 0|1]
+//         [--debug-optimization 0|1]
 //         [--debug-frame-pointers on|off] [--native-driver PATH --llvm DIR] [--dry-run]
 //
 // A sanitized build in `build` is the default; --release builds `build-release`
-// and --debug `build-debug`. Without --target it builds every product and test
-// driver, as `zig build` runs its install step; --target names a subset (and
-// the build host the graph needs). --dry-run prints the
+// and --debug `build-debug`. Without --target it builds the native compiler
+// and asset service; --target names a graph subset. --dry-run prints the
 // commands instead of running them. With --native-driver and --llvm the authored
 // programs this starts run as native executables kept under .chibi/build-runner
 // (see Runner). The other verbs are `test`, `install`,
@@ -249,46 +249,34 @@ Jobs :: (arguments: string[]) -> string {
     return count
 }
 
-// Builds a profile, first the Release hosts a non-Release graph borrows to
-// generate the asset compiler, which a Debug host cannot do from a cold tree
-// within its deadline.
+// Builds native products by default. Explicit C graph targets use their
+// requested profile and the same native asset compiler service.
 Build :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     profile := Profile(arguments)
     directory := Option(arguments, "--build", DefaultDirectory(profile))
     jobs := Jobs(arguments)
-    releases := Option(arguments, "--release-build", "build-release")
-    host := Absolute(Option(arguments, "--host", Join([directory, "/sdk/chibi-build-host"])))
-    generators := Option(arguments, "--asset-generator-hosts", "")
-    if (generators == "" && profile != "release") {
-        nested := [
-            "--release", "--build", releases, "--host", host, "--jobs", jobs, "--target", "chibi-build-host",
-            "--target", "chibi-compiler-host"
-        ]
-        for (name in ["--native-driver", "--llvm"]) {
-            if (Option(arguments, name, "") != "") {
-                nested = extend(nested, [name, Option(arguments, name, "")])
-            }
+    targets := Values(arguments, "--target")
+    if (length(targets) == 0) { targets = engine.NativeProducts() }
+    needs_archive := engine.NeedsThirdParty(targets)
+    native_only := true
+    for (target in targets) {
+        native_only = native_only && length(engine.NativeArguments(target)) != 0
+        for (resource in engine.Resources(target)) {
+            needs_archive = needs_archive || strings.HasPrefix(strings.Partition(resource, "=").tail, "third-party/")
         }
-        if (dry) {
-            nested = extend(nested, ["--dry-run"])
-        }
-        status := Build(nested)
-        if (status != 0) {
-            return status
-        }
-        generators = Absolute(Join([releases, "/sdk"]))
     }
-    third_party := Program(arguments, "tools/toolchain/Build.chibi", "Build", [])
-    if (length(third_party) == 0) {
-        return 1
-    }
-    status := Step("third-party", extend(third_party, ["third-party", directory]), dry)
-    if (status != 0) {
-        return status
+    status := 0
+    if (needs_archive) {
+        third_party := Program(arguments, "tools/toolchain/Build.chibi", "Build", [])
+        if (length(third_party) == 0) { return 1 }
+        command := extend(third_party, ["third-party", directory])
+        if (native_only) { command.append("release") }
+        status = Step("third-party", command, dry)
+        if (status != 0) { return status }
     }
     graph := ["--build", Absolute(directory), "--profile", profile]
-    for (name in ["--libclang-root", "--reflect"]) {
+    for (name in ["--libclang-root", "--reflect", "--native-driver", "--llvm"]) {
         value := Option(arguments, name, "")
         if (value != "") {
             graph = extend(graph, [name, Absolute(value)])
@@ -301,12 +289,8 @@ Build :: (arguments: string[]) -> int {
         }
     }
     graph = extend(graph, ["--jobs", jobs])
-    if (generators != "") {
-        graph = extend(graph, ["--asset-generator-hosts", Absolute(generators)])
-    }
     graph = extend(graph, ["--all-commands", "on"])
-    // Without --target everything builds, as `zig build` runs its install step.
-    targets := Values(arguments, "--target")
+    // Targets have one authority in the authored engine graph.
     for (target in targets) {
         graph = extend(graph, ["--target", target])
     }
@@ -631,9 +615,10 @@ GraphStep :: (arguments: string[], name: string, source: string, function: strin
     return Step(name, command, dry)
 }
 
-// The Release hosts and tools an install or a release-only verb needs.
+// The Release products an install or a release-only verb needs.
 ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
     nested := ["--release", "--release-build", Option(arguments, "--release-build", "build-release"),
+               "--build", Option(arguments, "--release-build", "build-release"),
                "--jobs", Jobs(arguments)]
     for (name in ["--host", "--libclang-root", "--reflect", "--native-driver", "--llvm"]) {
         value := Option(arguments, name, "")
@@ -651,11 +636,11 @@ ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
 }
 
 // Installs the Release products into --prefix (default ~/.local):
-// bin/chibi, bin/chibi-compile, the private hosts in libexec/chibi and share/chibi.
+// bin/chibi, its compiler alias, the native asset service and authored resources.
 Install :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     releases := Absolute(Option(arguments, "--release-build", "build-release"))
-    status := ReleaseBuild(arguments, ["chibi", "chibi-compile", "chibi-build-host", "chibi-compiler-host"], dry)
+    status := ReleaseBuild(arguments, engine.NativeProducts(), dry)
     if (status != 0) {
         return status
     }
@@ -836,7 +821,8 @@ NativeRunner :: (stage: string, llvm: string, work: string, target: string, host
     if (status != 0) {
         return status
     }
-    if (NativeCompile(stage, llvm, folder, target, "driver", "tools/toolchain/Driver.chibi", "Main", []) != 0 ||
+    if (NativeCompile(stage, llvm, folder, target, "driver", "tools/toolchain/Driver.chibi", "Main",
+                      ["--collection", Join(["graph=", Absolute("tools/graph")])]) != 0 ||
         NativeCompile(stage, llvm, folder, target, "graph", "tools/toolchain/Graph.chibi", "Libraries",
                       ["--collection", Join(["graph=", Absolute("tools/graph")])]) != 0) {
         return 1
@@ -846,7 +832,7 @@ NativeRunner :: (stage: string, llvm: string, work: string, target: string, host
     if (!compare_vm) {
         return Step("native runner", extend([Join([folder, "/driver"])], dry), false)
     }
-    vm := os.Capture(extend(HostProgram(host, "tools/toolchain/Driver.chibi", "Main", [], "600000"), dry))
+    vm := os.Capture(extend(HostProgram(host, "tools/toolchain/Driver.chibi", "Main", ["graph=tools/graph"], "600000"), dry))
     native := os.Capture(extend([Join([folder, "/driver"])], dry))
     if (vm.status != 0 || vm.status != native.status || vm.stdout != native.stdout || vm.stderr != native.stderr) {
         os.Print("native runner: the native driver's dry run fails or differs from the VM's")

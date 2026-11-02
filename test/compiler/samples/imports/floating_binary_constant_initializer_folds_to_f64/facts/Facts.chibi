@@ -1,0 +1,2 @@
+package facts
+Sum: f64 : 1.0 + 2.0;

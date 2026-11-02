@@ -1095,7 +1095,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
         digest_three := Digest(Join([three, "/chibi"]))
         os.Print(Join(["stage two sha256 ", digest_two]))
         os.Print(Join(["stage three sha256 ", digest_three]))
-        if (digest_two == "" || (digest_two != digest_three && prebuilt == "")) {
+        if (digest_two == "" || digest_three == "" || (digest_two != digest_three && prebuilt == "")) {
             os.Print("native-self-host: stage two and stage three differ")
             return 1
         }
@@ -1111,7 +1111,7 @@ NativeSelfHost :: (arguments: string[]) -> int {
             }
             digest_four := Digest(Join([four, "/chibi"]))
             os.Print(Join(["stage four sha256 ", digest_four]))
-            if (digest_four != digest_three) {
+            if (digest_four == "" || digest_four != digest_three) {
                 os.Print("native-self-host: stage three and stage four differ")
                 return 1
             }

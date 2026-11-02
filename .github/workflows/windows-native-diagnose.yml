@@ -1,0 +1,127 @@
+name: Windows native diagnosis
+# Temporary exact-source crash reproduction. This does not replace fresh-source
+# self-host proof or publish a seed. Remove it after the captured failure is fixed.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/windows-self-build]
+    paths:
+      - .github/workflows/windows-native-diagnose.yml
+      - .github/windows-asset-diagnose.ps1
+      - .github/native-llvm-windows.ps1
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 585e408295d1ee250c0397670c1b536d29afd02b
+          path: frozen
+          persist-credentials: false
+      - name: Validate the exact compiler producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/41490730505" | ConvertFrom-Json
+          if ($LASTEXITCODE -or $run.head_sha -ne '585e408295d1ee250c0397670c1b536d29afd02b' -or
+              $run.repository.full_name -ne $env:GITHUB_REPOSITORY -or $run.path -ne '.github/workflows/native-self-host.yml' -or
+              $run.status -ne 'completed') { throw 'Retained compiler producer identity differs' }
+          $jobs = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/41490730505/jobs?per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE) { throw 'Cannot inspect the retained fixed point' }
+          $proof = @($jobs.jobs | Where-Object { $_.name -eq 'Native self-host (Windows)' })
+          $fixed = @($proof.steps | Where-Object { $_.name -eq 'Build the Windows compiler to a fixed point' -and $_.conclusion -eq 'success' })
+          if ($proof.Count -ne 1 -or $fixed.Count -ne 1) { throw 'Producer did not prove its Windows fixed point' }
+          $artifacts = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/41490730505/artifacts" | ConvertFrom-Json
+          if ($LASTEXITCODE) { throw 'Cannot inspect the retained compiler artifact' }
+          $artifact = @($artifacts.artifacts | Where-Object { $_.id -eq 13164298659 -and $_.name -eq 'native-windows-fixed-point' -and !$_.expired })
+          if ($artifact.Count -ne 1 -or $artifact[0].workflow_run.head_sha -ne $run.head_sha) { throw 'Retained compiler artifact differs' }
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: 13164298659
+          run-id: 41490730505
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/retained
+          merge-multiple: true
+      - name: Verify the retained fixed-point bytes
+        id: retained
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = 'd9a56bde96fdce41d9b9c335f5120dc4ec659c8aad62ddf0641d4eb9e909f96f'
+          foreach ($number in 4, 5) {
+            $actual = (Get-FileHash "$env:RUNNER_TEMP/retained/stage$number/chibi.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $expected) { throw "Retained stage$number SHA-256 differs" }
+          }
+          "Diagnostic compiler source585e408295d1ee250c0397670c1b536d29afd02b stage4==5 sha256 $expected" >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/cache/restore@v4
+        id: llvm-cache
+        with:
+          path: ${{ runner.temp }}/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin
+          key: llvm-windows-x64-22.1.8-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
+      - name: Install verified LLVM if needed
+        if: steps.llvm-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 15
+        run: '& ./harness/.github/native-llvm-windows.ps1'
+      - name: Check the LLVM tools
+        id: llvm
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $llvm = "$env:RUNNER_TEMP/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin"
+          foreach ($tool in 'opt', 'llc', 'lld-link') {
+            & "$llvm/$tool.exe" --version
+            if ($LASTEXITCODE) { throw "LLVM tool $tool is unusable" }
+          }
+          "CHIBI_WINDOWS_LLVM=$llvm" >> $env:GITHUB_ENV
+      - name: Reproduce exact asset compiler failure with a mini dump
+        run: |
+          & ./harness/.github/windows-asset-diagnose.ps1 -Compiler "$env:RUNNER_TEMP/retained/stage4/chibi.exe" -Source "$PWD/frozen" -Llvm $env:CHIBI_WINDOWS_LLVM -Output "$env:RUNNER_TEMP/asset-diagnose"
+      - name: Keep the exact compiler crash evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-asset-diagnose
+          path: ${{ runner.temp }}/asset-diagnose
+          retention-days: 1
+          if-no-files-found: warn
+      - name: Run the current Windows OS and object regression
+        if: ${{ !cancelled() && steps.retained.outcome == 'success' && steps.llvm.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = "$PWD/harness".Replace('\', '/')
+          $work = $env:RUNNER_TEMP.Replace('\', '/')
+          & "$work/retained/stage4/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/link/windows/Main.chibi" --collection "graph=$root/tools/graph" --entry Main --output "$work/windows-objects.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 4
+          if ($LASTEXITCODE) { throw 'Could not compile the Windows OS regression' }
+          & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
+          if ($LASTEXITCODE) { throw 'The Windows OS regression failed' }
+      - name: Run the current authored Windows build runner
+        if: ${{ !cancelled() && steps.retained.outcome == 'success' && steps.llvm.outcome == 'success' }}
+        run: |
+          & ./harness/test/bootstrap/native-runner.ps1 -Compiler "$env:RUNNER_TEMP/retained/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+      - name: Run current scalar platform regressions
+        if: ${{ !cancelled() && steps.retained.outcome == 'success' && steps.llvm.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = "$PWD/harness".Replace('\', '/')
+          $work = $env:RUNNER_TEMP.Replace('\', '/')
+          foreach ($source in 'test/native_aot/text_format/Main.chibi', 'test/native_aot/tasks/cases/timing/Main.chibi', 'test/native_aot/math_scalar/SquareRoot.chibi', 'test/native_aot/math_scalar/Shadow.chibi', 'test/bootstrap/fixtures/InstallPaths.chibi') {
+            foreach ($level in 0, 2) {
+              $output = "$work/scalar-probe.exe"
+              & "$work/retained/stage4/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/$source" --collection "graph=$root/tools/graph" --entry Main --output $output --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 2 --level $level
+              if ($LASTEXITCODE) { throw "Could not compile $source O$level" }
+              & $output
+              if ($LASTEXITCODE) { throw "$source O$level failed" }
+              "PASS diagnostic Windows $source O$level" >> $env:GITHUB_STEP_SUMMARY
+            }
+          }

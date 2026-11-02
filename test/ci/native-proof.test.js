@@ -15,7 +15,7 @@ for (const [full, bootstrapRun] of [['false', ''], ['false', '123'], ['true', ''
       fs.mkdirSync(root);
       fs.mkdirSync(logs);
       const checks = ['native_aot/native_driver/run.sh', 'native_aot/native_driver/cache.sh',
-        'native_aot/native_driver/minimum.sh', 'native_aot/text_format/run.sh', 'native_aot/output/run.sh',
+        'native_aot/native_driver/minimum.sh', 'native_aot/text_format/run.sh', 'native_aot/link/memory.sh', 'native_aot/output/run.sh',
         'native_aot/diagnostics/run.sh', 'native_aot/generations/run.sh', 'native_aot/test_attributes/run.sh',
         'native_aot/failures/run.sh', 'native_aot/task_busy/run.sh', 'native_aot/optionals/run.sh',
         'bootstrap/native-entry.sh', 'bootstrap/native-runner.sh', 'native_aot/tasks/run.sh',

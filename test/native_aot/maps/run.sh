@@ -20,16 +20,19 @@ done
 sh "$root/test/native_aot/map_programs/run.sh" "$compiler" "$llvm" "$work/programs"
 # Compile authored source once, then run its emitted module through the same
 # poisoned allocator and zero-outstanding-allocation check as the facts probes.
-mkdir -p "$work/source-project"
-cp "$root/test/native_aot/map_programs/Ownership.chibi" "$work/source-project/Ownership.chibi"
-if source_build=$("$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-    --root "$work/source-project" --entry Main --llvm "$llvm" --target "$triple" --jobs 2 2>&1); then
-    :
-else
-    printf '%s\n' "$source_build" >&2
-    exit 1
-fi
-source_program=${source_build#native: }
-source_program=${source_program% is up to date}
-cp "${source_program%/program}/source.ll" "$work/source.ll"
-"$work/probe" "$work" "$llvm" "$root/test/native_aot/maps/Runtime.ll" source
+for name in Ownership Effects; do
+    project=$work/source-project/$name
+    mkdir -p "$project"
+    cp "$root/test/native_aot/map_programs/$name.chibi" "$project/$name.chibi"
+    if source_build=$("$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        --root "$project" --entry Main --llvm "$llvm" --target "$triple" --jobs 2 2>&1); then
+        :
+    else
+        printf '%s\n' "$source_build" >&2
+        exit 1
+    fi
+    source_program=${source_build#native: }
+    source_program=${source_program% is up to date}
+    cp "${source_program%/program}/source.ll" "$work/source.ll"
+    "$work/probe" "$work" "$llvm" "$root/test/native_aot/maps/Runtime.ll" source
+done

@@ -449,6 +449,9 @@ FactText :: (value: string) -> facts.Row {
 FactRead :: (type: int, variable: int) -> facts.Row {
     return Fact(facts.ReadRow, type, variable, 0, 0, "");
 }
+FactReference :: (type: int, variable: int) -> facts.Row {
+    return Fact(facts.RefRow, type, variable, 0, 0, "");
+}
 FactMap :: (op: int, type: int, mapped: int, count: int) -> facts.Row {
     literal := mapped;
     if (op == facts.MapNew || op == facts.MapCopy || op == facts.MapSet || op == facts.MapDelete) {
@@ -493,7 +496,7 @@ FactModule :: () -> facts.Row[] {
     FactStatement(&table, "n := m;", facts.LocalRow, mapped, 1, "n",
                   [FactRead(mapped, 0), FactMap(facts.MapCopy, mapped, 0, 1)]);
     FactStatement(&table, "m[1] = 99;", facts.AssignRow, mapped, 0, "",
-                  [FactRead(mapped, 0), FactInt(1), FactInt(99), FactMap(facts.MapSet, mapped, 0, 3)]);
+                  [FactReference(mapped, 0), FactInt(1), FactInt(99), FactMap(facts.MapSet, mapped, 0, 3)]);
     FactAssert(&table, "assert(m[1] == 99);",
                [FactRead(mapped, 0), FactInt(1), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(99)]);
     FactAssert(&table, "assert(n[1] == 7);",
@@ -501,13 +504,13 @@ FactModule :: () -> facts.Row[] {
     FactAssert(&table, "assert(m[93] == 0);",
                [FactRead(mapped, 0), FactInt(93), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(0)]);
     FactStatement(&table, "delete m[2];", facts.AssignRow, mapped, 0, "",
-                  [FactRead(mapped, 0), FactInt(2), FactMap(facts.MapDelete, mapped, 0, 2)]);
+                  [FactReference(mapped, 0), FactInt(2), FactMap(facts.MapDelete, mapped, 0, 2)]);
     FactAssert(&table, "assert(length(m) == 1);",
                [FactRead(mapped, 0), FactMap(facts.MapLength, facts.IntType, mapped, 1), FactInt(1)]);
     FactAssert(&table, "assert(length(n) == 2);",
                [FactRead(mapped, 1), FactMap(facts.MapLength, facts.IntType, mapped, 1), FactInt(2)]);
     FactStatement(&table, "m[2] = 22;", facts.AssignRow, mapped, 0, "",
-                  [FactRead(mapped, 0), FactInt(2), FactInt(22), FactMap(facts.MapSet, mapped, 0, 3)]);
+                  [FactReference(mapped, 0), FactInt(2), FactInt(22), FactMap(facts.MapSet, mapped, 0, 3)]);
     FactAssert(&table, "assert(m[2] == 22);",
                [FactRead(mapped, 0), FactInt(2), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(22)]);
     FactAssert(&table, "assert(m.has(2));",
@@ -541,7 +544,7 @@ FactModule :: () -> facts.Row[] {
     FactAssert(&table, "assert(length(dups) == 1);",
                [FactRead(text_map, 6), FactMap(facts.MapLength, facts.IntType, text_map, 1), FactInt(1)]);
     FactStatement(&table, "s[key] = label;", facts.AssignRow, text_map, 2, "",
-                  [FactRead(text_map, 2), FactRead(facts.StringType, 4), FactRead(facts.StringType, 5),
+                  [FactReference(text_map, 2), FactRead(facts.StringType, 4), FactRead(facts.StringType, 5),
                    FactMap(facts.MapSet, text_map, 0, 3)]);
     FactAssert(&table, "assert(s[\"a\\u0000b\"] == \"new\");",
                [FactRead(text_map, 2), FactText("a\u0000b"), FactMap(facts.MapGet, facts.StringType, text_map, 2),

@@ -58,6 +58,41 @@ ScalarLocalMap :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     return -1;
 }
 
+// Direct changes and forwarded scoped writers. A scoped parameter may alias
+// another parameter of its caller even when their source names differ.
+ScalarMapChanges :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                     names: Name[], package: int, node: int) -> string[] {
+    changed := MutatedNames(forest, text, node, AddressedNames(forest, text, node, []));
+    for (argument in ScopedCalls(forest, text, callables, params, [], names, package, node, false)) {
+        param := params[argument.param];
+        if (!param.written || param.container != MapContainer) { continue; }
+        name := ScalarPassedName(forest, text, argument.value);
+        if (name != "" && !changed.contains(name)) { changed.append(name); }
+    }
+    return changed;
+}
+ScalarMapSnapshot :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable,
+                      names: Name[], types: TypeDecl[], object: int, changed: string[]) -> bool {
+    node := Unparenthesized(forest, object);
+    if (!Is(forest, node, syntax.Identifier)) { return false; }
+    name := Text(forest, text, node);
+    if (changed.contains(name)) { return true; }
+    found := Lookup(names, name);
+    if (found < 0 || names[found].index < 0 || names[found].index >= callable.count ||
+        !params[callable.first + names[found].index].reference) { return false; }
+    mapped := ScalarMapType(types, names[found].record);
+    for (written in changed) {
+        other := Lookup(names, written);
+        if (other >= 0 && names[other].index >= 0 && names[other].index < callable.count) {
+            param := params[callable.first + names[other].index];
+            if (param.reference && param.container == MapContainer && ScalarMapType(types, param.record) == mapped) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // A map read, literal or call. Copies are explicit when another variable or
 // a returned value will own a borrowed descriptor.
 ScalarMapValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
@@ -218,11 +253,10 @@ ScalarMapChanged :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     record := ScalarMapShape(forest, text, callables, names, types, callable.package, object);
     output := rows;
-    switch ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
-                          object, record, false, output) {
-        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
-        case .Built(built): output = built;
-    }
+    // Capture the place, not its descriptor: key/value evaluation may replace
+    // the map before the mutation reads its current contents.
+    output.append(ScalarAt(forest, object, facts.RefRow, ScalarMapType(types, record),
+                           ScalarVariable(names, Text(forest, text, object)).index, 0, ""));
     switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
                          change.key, change.key, types[record].key, types[record].key, facts.Clamp, output) {
         case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);

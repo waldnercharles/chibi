@@ -1041,7 +1041,9 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
         }
         return "";
     }
-    if (stack[base] != mapped) {
+    input := mapped;
+    if (changed) { input += facts.ReferenceType; }
+    if (stack[base] != input) {
         return mismatch;
     }
     if ((operand.value == facts.MapLength || operand.value == facts.MapSpan) && operand.type != facts.IntType) {
@@ -1069,7 +1071,7 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
         return mismatch;
     }
     if (changed && (rows[at].kind != facts.AssignRow || base != 0 || row != last - 1 ||
-                    rows[at + 1].kind != facts.ReadRow || rows[at + 1].value != rows[at].value)) {
+                    rows[at + 1].kind != facts.RefRow || rows[at + 1].value != rows[at].value)) {
         return "scalar map change is not the assignment of its map";
     }
     return "";
@@ -2751,6 +2753,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             slot += 1;
                         }
                     } else {
+                        if (op == facts.MapSet || op == facts.MapDelete) {
+                            slots.append(type);
+                            body.append(Op(native.Deref, type, slot, stack[base], 0, 0));
+                            stack[base] = slot;
+                            slot += 1;
+                        }
                         item = MapLowered(operand, type, slot, stack, base);
                         if (op == facts.MapSet) {
                             for (kept in [stack[base + 1], stack[base + 2]]) {

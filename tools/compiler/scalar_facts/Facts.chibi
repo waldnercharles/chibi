@@ -304,11 +304,14 @@ pub CallPlain: int : 0;
 pub CallAwaited: int : 1;
 pub CallSpawned: int : 2;
 // A postfix map operation. New consumes alternating key/value operands;
-// changes consume map, key and optionally value, and give the replacement map.
+// changes consume a map place, key and optionally value, and give the replacement map.
 // Reads use `literal` for their input map type and `type` for their result.
 // A map's assignment or declaration copies through MapCopy before sharing.
+// MapSet/MapDelete consume a reference to the target variable, then the key
+// and optional value. The operation reads that place after its arguments,
+// so a call in the key/value may replace the map before the change applies.
 pub MapRow: int : 50;
-// What a RefRow of `type` pushes on a call's operand stack, and so what a
+// What a RefRow of `type` pushes on the operand stack, and so what a
 // reference parameter of `type` takes: ReferenceType plus the type. A
 // parameter row whose literal is 1 is a reference parameter. Its variable is
 // of its `type` for every other row, and reading or writing it reads or

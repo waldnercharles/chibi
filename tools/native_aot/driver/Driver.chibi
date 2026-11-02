@@ -622,7 +622,7 @@ pub Run :: (arguments: string[], executable: bool, linkage: string) -> int {
         plan.shared = true;
     }
     if (target == 2) {
-        plan.imports = imported;
+        plan.imports = native_link.SystemImports(build.concat(markers, Markers(start_text)));
     }
     // The libSystem stub exports what the module and the start module import,
     // which dyld binds there.

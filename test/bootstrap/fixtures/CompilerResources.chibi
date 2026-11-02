@@ -15,7 +15,7 @@ Main :: () -> int {
         debug_optimization: "", debug_frame_pointers: false, architecture: "", sysroot: "",
         warnings: false, sanitizers: "", debug_compilation_dir: "", libclang_include: "",
         opengl_library: "", opengl_include: "", glx_library: "", libclang_library: "",
-        clang_resource_include: "", third_party: "", reflect: "", asset_generator_hosts: ""
+        clang_resource_include: "", third_party: "", reflect: ""
     };
     if (engine.Build(tools, profile, arguments[0], arguments[1], ["chibi-build-host"]) < 0) {
         return 1;

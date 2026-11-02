@@ -50,7 +50,9 @@ run() {
 run
 test "$(cat native-ran)" = ok
 find .chibi/build-runner -type f -perm -100 -exec shasum -a 256 {} + | sort > "$scratch/before"
-test "$(wc -l < "$scratch/before" | tr -d ' ')" = 2
+# This fixture target needs only Graph; native products no longer prepare
+# third-party archives unless their registered resources request them.
+test "$(wc -l < "$scratch/before" | tr -d ' ')" = 1
 rm native-ran
 run
 test "$(cat native-ran)" = ok
@@ -70,7 +72,34 @@ cp "$scratch/graph" tools/toolchain/Graph.chibi
 run
 test "$(cat native-ran)" = ok
 test ! -e build-release/sdk/chibi-build-host
-printf 'native runner: execution, reuse, rejection, cleanup and retry passed\n'
+# A compiler that sees an edit during its invocation must not publish under
+# the pre-edit identity, even when it successfully writes an executable.
+export RUNNER_FIXTURE_PROGRAM
+RUNNER_FIXTURE_PROGRAM=$(find "$PWD/.chibi/build-runner" -type f -name Graph-Libraries -print | head -n 1)
+cat > "$scratch/mutating-compiler" <<'MUTATE'
+#!/bin/sh
+set -eu
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = --output ]; then output=$2; shift; fi
+    shift
+done
+cp "$RUNNER_FIXTURE_PROGRAM" "$output"
+printf '\n' >> tools/toolchain/Graph.chibi
+MUTATE
+chmod +x "$scratch/mutating-compiler"
+rm native-ran
+if "$scratch/driver" build --release --target fixture --native-driver "$scratch/mutating-compiler" \
+    --llvm "$llvm" > "$scratch/mutated" 2>&1; then
+    echo 'runner accepted inputs changed during compilation' >&2
+    exit 1
+fi
+grep -q 'input changed during compilation' "$scratch/mutated"
+test ! -e native-ran
+test -z "$(find .chibi/build-runner -maxdepth 1 -name 'work.*' -print)"
+cp "$scratch/graph" tools/toolchain/Graph.chibi
+run
+test "$(cat native-ran)" = ok
+printf 'native runner: execution, reuse, rejection, cleanup and in-flight edits passed\n'
 
 # Legacy consumers prepare their bytecode seed explicitly. Native selectors,
 # native build programs and native-only recovery never request it.

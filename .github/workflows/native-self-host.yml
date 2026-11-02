@@ -301,6 +301,7 @@ jobs:
           path: ${{ runner.temp }}/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin
           key: ${{ steps.llvm-cache.outputs.cache-primary-key }}
       - name: Build the Windows compiler to a fixed point
+        id: windows-fixed-point
         env:
           BOOTSTRAP_RUN: ${{ inputs.windows_bootstrap_run }}
           BOOTSTRAP_COMMIT: ${{ inputs.windows_bootstrap_commit }}
@@ -363,9 +364,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
       - name: Check the native Windows asset compiler and C consumer
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
           & ./test/native_aot/asset_compiler/Bridge.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Exercise the native Windows object pipeline
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $root = $PWD.Path.Replace('\', '/')
@@ -374,7 +377,12 @@ jobs:
           if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
           & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
           if ($LASTEXITCODE) { throw 'the Windows object regression failed' }
+      - name: Check the native Windows build runner
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
+        run: |
+          & ./test/bootstrap/native-runner.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Check native Windows formatting, task timing, math and SDK paths
+        if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $root = $PWD.Path.Replace('\', '/')

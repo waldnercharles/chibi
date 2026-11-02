@@ -490,10 +490,14 @@ pub SwitchSubject: int : 1;
 // and its result is the updated whole record. Arguments finish before the
 // current field descriptor is read; the final Assign targets that record.
 // A Local row whose `literal` is Retained declares a retained number, bool,
-// standalone string or numeric/bool record. Its operands construct a constant initial
+// string, numeric/bool array or plain record of those values. Initial array
+// leaves are empty; the other operands construct a constant initial
 // value. Native lowering migrates record leaves by their field paths under
 // Function.variable, so reordering fields does not change their identities.
 pub Retained: int : 2;
+// A plain-record IntType MemberRow uses this literal flag for char; a retained
+// IntType LocalRow combines it with Retained. Other kinds keep their literals.
+pub CharNominal: int : 4;
 
 // A For row's range flags. RangeArray stands alone or with RangeKeyed,
 // which declares the next variable, an int, as the index of the element.

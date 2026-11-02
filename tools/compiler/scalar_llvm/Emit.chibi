@@ -350,7 +350,8 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
         for (field in 0..<record.count) {
             member := rows[head + 1 + field];
             if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Stored(records, member.type) ||
-                member.value != field || member.count != 0 || member.literal != 0 || !Located(member, starts, size) ||
+                member.value != field || member.count != 0 ||
+                (member.literal != 0 && (member.literal != i64(facts.CharNominal) || member.type != facts.IntType)) || !Located(member, starts, size) ||
                 !Within(member, record)) {
                 return "invalid scalar record member row";
             }
@@ -1676,15 +1677,28 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         mapped := MapIterated(row);
         // A local holding the union a switch is on, followed by that switch.
         subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
-        retained := row.kind == facts.LocalRow && row.literal == i64(facts.Retained);
+        retained := row.kind == facts.LocalRow &&
+                    (row.literal == i64(facts.Retained) || row.literal == i64(facts.Retained | facts.CharNominal));
         if (retained && ManagedVariable(boxes.boxed, row.value)) {
             return "native retained managed cells require execution-family roots and generation pinning";
+        }
+        if (retained && row.literal == i64(facts.Retained | facts.CharNominal) && row.type != facts.IntType) {
+            return "invalid scalar statement row";
+        }
+        if (retained && row.literal == i64(facts.Retained | facts.CharNominal) && row.count == 1 &&
+            at + 1 < length(rows) && rows[at + 1].kind == facts.LiteralRow &&
+            (rows[at + 1].literal < 0 || rows[at + 1].literal > 1114111 ||
+             (rows[at + 1].literal >= 55296 && rows[at + 1].literal <= 57343))) {
+            return "native character state initial value is not a Unicode scalar";
         }
         if (retained && identified && (!Scalar(row.type) || row.count != 1 || rows[at + 1].kind != facts.LiteralRow)) {
             return "native library retained states require scalar literal initializers; use a package generation for other retained values";
         }
         if (retained && row.type >= facts.RecordType && !Retainable(rows, records, row.type)) {
-            return "native retained records require scalar, string or plain record fields";
+            return "native retained values require scalars, strings, plain records or numeric/bool arrays";
+        }
+        if (retained && !RetainedInitializer(rows, at)) {
+            return "native retained initializers require constant values and empty arrays";
         }
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
@@ -1782,8 +1796,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
                                         row.literal > i64(facts.RangeExclusive + facts.RangeReverse))) ||
                 (arrayed && (row.type >= facts.ArrayType || !Valued(records, facts.ArrayType + row.type))) ||
                 (mapped && row.type < facts.MapType) ||
-                (retained && (!Retainable(rows, records, row.type) ||
-                              !RetainedInitializer(rows, at))) ||
+                (retained && !Retainable(rows, records, row.type)) ||
                 (subject && (UnionHead(rows, records, row.type) < 0 || at + row.count + 1 >= last ||
                              rows[at + row.count + 1].kind != facts.SwitchRow ||
                              rows[at + row.count + 1].start != row.start || rows[at + row.count + 1].end != row.end))) {
@@ -1868,6 +1881,7 @@ Retainable :: (rows: facts.Row[], records: int[], type: int) -> bool {
     if (Scalar(type) || type == facts.StringType) {
         return true;
     }
+    if (type >= facts.ArrayType && type < facts.MapType) { return Scalar(type - facts.ArrayType); }
     if (type < facts.RecordType || type >= facts.ArrayType) {
         return false;
     }
@@ -1888,6 +1902,7 @@ Retainable :: (rows: facts.Row[], records: int[], type: int) -> bool {
 RetainedInitializer :: (rows: facts.Row[], at: int) -> bool {
     for (index in at + 1..<at + 1 + rows[at].count) {
         kind := rows[index].kind;
+        if (kind == facts.ArrayRow && rows[index].value == facts.ArrayNew && rows[index].count == 0) { continue; }
         if (kind != facts.LiteralRow && kind != facts.ZeroRow && kind != facts.UpdateRow && kind != facts.ConvertRow) {
             return false;
         }
@@ -1901,19 +1916,36 @@ RetainedCode :: struct {
     texts: string[];
     value: int;
     states: int;
+    array_fields: int[];
+    array_states: int[];
+    characters: bool[];
+}
+// Direct array leaves are indexed once when their binding is lowered.
+RetainedArrayState :: (variables: int[], fields: int[], states: int[], variable: int, field: int) -> int {
+    low := 0;
+    high := length(variables);
+    while (low < high) {
+        middle := low + (high - low) / 2;
+        if (variables[middle] < variable || (variables[middle] == variable && fields[middle] < field)) { low = middle + 1; }
+        else { high = middle; }
+    }
+    if (low < length(variables) && variables[low] == variable && fields[low] == field) { return states[low]; }
+    return -1;
 }
 // Flatten records once during lowering; the frame executes one load/store
 // per scalar or string leaf. StateLoad.left is its initializer slot plus one.
 RetainedValue :: (rows: facts.Row[], records: int[], type: int, value: int, name: string,
-                  state_index: int, text: int, slot: int, read: bool) -> RetainedCode {
-    lowered: RetainedCode = {types: [], code: [], texts: [], value: value, states: 0};
+                  state_index: int, text: int, slot: int, read: bool, character: bool = false) -> RetainedCode {
+    lowered: RetainedCode = {types: [], code: [], texts: [], value: value, states: 0, array_fields: [], array_states: [], characters: []};
     native_type := NativeType(type);
-    if (type < facts.RecordType) {
+    if (type < facts.RecordType || (type >= facts.ArrayType && type < facts.MapType)) {
         if (read) {
             lowered.types.append(native_type);
             lowered.code.append(Op(native.StateLoad, native_type, slot, value + 1, text, state_index));
             lowered.texts.append(name);
             lowered.value = slot;
+            lowered.characters.append(character);
+            if (type >= facts.ArrayType) { lowered.array_fields.append(-1); lowered.array_states.append(state_index); }
         } else {
             lowered.code.append(Op(native.StateStore, native_type, 0, value, 0, state_index));
         }
@@ -1936,11 +1968,16 @@ RetainedValue :: (rows: facts.Row[], records: int[], type: int, value: int, name
         extract := Op(native.Extract, NativeType(member.type), current, value, native_type, 0);
         extract.literal = i64(member.value);
         lowered.code.append(extract);
+        if (read && member.type >= facts.ArrayType && member.type < facts.MapType) {
+            lowered.array_fields.append(member.value);
+            lowered.array_states.append(state_index + lowered.states);
+        }
         leaf := RetainedValue(rows, records, member.type, current, format_text("{}.{}", name, member.name),
-                              state_index + lowered.states, text + length(lowered.texts), current + 1, read);
+                              state_index + lowered.states, text + length(lowered.texts), current + 1, read, member.literal == i64(facts.CharNominal));
         lowered.types.extend(leaf.types);
         lowered.code.extend(leaf.code);
         lowered.texts.extend(leaf.texts);
+        lowered.characters.extend(leaf.characters);
         lowered.states += leaf.states;
         if (read) {
             next := slot + length(lowered.types);
@@ -2251,6 +2288,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     if (pointer_program && !program) {
         return Result.Invalid("managed pointer roots require a standalone native program");
     }
+    state_characters: bool[] = [];
     if (!program) {
         for (row in rows) {
             if (row.kind == facts.UnwrapRow) {
@@ -2321,8 +2359,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         places: int[] = [];
         // The variables that are retained states, and their states.
         retained_variables: int[] = [];
+        retained_published: int[] = [];
         retained_states: int[] = [];
         retained_types: int[] = [];
+        retained_array_variables: int[] = [];
+        retained_array_fields: int[] = [];
+        retained_array_states: int[] = [];
         reference_slots: int[] = [];
         reference_variables: int[] = [];
         slot: int = 0;
@@ -3198,6 +3240,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (op == facts.ArraySet) {
                         mutation = Op(native.ArraySet, array, changed, current, stack[base + 1], argument);
                     }
+                    state_index := RetainedArrayState(retained_array_variables, retained_array_fields, retained_array_states,
+                        rows[at].value, int(operand.literal) - 1);
+                    if (state_index >= 0 && op != facts.ArrayResize) {
+                        // No source code runs before the following mutation
+                        // and publication. Keep the local owner while dropping
+                        // the extra global lease, so unique backing can grow.
+                        slots.append(array);
+                        body.extend([Op(native.Constant, array, address + 3, 0, 0, 0),
+                            Op(native.StateStore, array, 0, address + 3, 0, state_index)]);
+                        extra += 1;
+                    }
                     body.append(mutation);
                     // Resize returns an independent backing rather than
                     // consuming its input, unlike the in-place operations.
@@ -3294,6 +3347,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             slots.append(type);
                             item = Op(native.ArrayLoan, type, slot + 1, slot, input, 0);
                             slot += 1;
+                            if (length(retained_variables) > 0) {
+                                origin := SortedIndex(reference_slots, input);
+                                if (origin >= 0 && SortedIndex(retained_variables, reference_variables[origin]) >= 0) {
+                                    reference_slots.append(slot);
+                                    reference_variables.append(reference_variables[origin]);
+                                }
+                            }
                         } else {
                             mode := 2;
                             if (Holds(fresh, input)) { mode = 1; fresh = Without(fresh, input); }
@@ -3333,6 +3393,25 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             extra = 0;
                         }
                     } else {
+                        if ((op == facts.ArrayPush || op == facts.ArrayExtend || op == facts.ArraySet || op == facts.ArrayRemove) &&
+                            base == 0 && index == first + row.count - 1 && length(retained_array_variables) > 0) {
+                            origin := SortedIndex(any_slots, stack[base]);
+                            if (origin >= 0 && any_vars[origin] == rows[at].value) {
+                                state_index := RetainedArrayState(retained_array_variables, retained_array_fields, retained_array_states,
+                                    rows[at].value, -1);
+                                if (state_index >= 0) {
+                                    // A later argument may replace the binding.
+                                    // Resolve its current owning local only now.
+                                    current := slot + 1 + extra;
+                                    slots.extend([type, type]);
+                                    body.extend([Op(native.Local, type, current, places[rows[at].value], 0, 0),
+                                        Op(native.Constant, type, current + 1, 0, 0, 0),
+                                        Op(native.StateStore, type, 0, current + 1, 0, state_index)]);
+                                    stack[base] = current;
+                                    extra += 2;
+                                }
+                            }
+                        }
                         item = ArrayLowered(operand, type, slot, stack, base);
                         if (moving >= 0) {
                             item = Op(native.Local, type, slot, places[moving], 0, 0);
@@ -3561,9 +3640,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     moving = -1;
                 }
-                if (item.op == native.Call) {
-                    // A scoped call can mutate a retained local through a
-                    // reference. Publish it before any later expression calls
+                if (length(retained_variables) > 0 && (item.op == native.Call || item.op == native.ForeignCall)) {
+                    // A scoped call or writable foreign loan can mutate a
+                    // retained local. Publish it before later expression calls
                     // or control-flow exits, while the binding is in scope.
                     for (argument in 0..<item.target) {
                         passed := arguments[shape.first_argument + item.right + argument];
@@ -3571,7 +3650,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         if (origin < 0) { continue; }
                         variable := reference_variables[origin];
                         retained := SortedIndex(retained_variables, variable);
-                        if (retained < 0) { continue; }
+                        if (retained < 0 || retained_published[retained] == index + 1) { continue; }
+                        retained_published[retained] = index + 1;
                         held_type := NativeType(retained_types[retained]);
                         slots.append(held_type);
                         body.append(Op(native.Local, held_type, slot, places[variable], 0, 0));
@@ -3610,7 +3690,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         held_by = read_vars[at_read];
                     }
                 }
-                if (row.kind == facts.LocalRow && (row.name == "_" || row.literal == i64(facts.Retained))) {
+                if (row.kind == facts.LocalRow && (row.name == "_" || row.literal == i64(facts.Retained) ||
+                    row.literal == i64(facts.Retained | facts.CharNominal))) {
                     keeps = false;
                 } else if (row.kind == facts.ReturnRow && held_by >= 0 && Holds(owned_vars, held_by)) {
                     // The variable returned moves out.
@@ -3637,7 +3718,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             }
             record_keeps := TrackedRecord(managed, slots[shape.first_slot + value]) &&
                             (row.kind == facts.LocalRow || row.kind == facts.AssignRow || row.kind == facts.ReturnRow);
-            if (record_keeps && row.kind == facts.LocalRow && (row.name == "_" || row.literal == i64(facts.Retained))) {
+            if (record_keeps && row.kind == facts.LocalRow && (row.name == "_" || row.literal == i64(facts.Retained) ||
+                row.literal == i64(facts.Retained | facts.CharNominal))) {
                 record_keeps = false;
             }
             if (record_keeps) {
@@ -3850,10 +3932,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     fail.target = length(texts);
                 }
                 body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]);
-            } else if (row.kind == facts.LocalRow && row.literal == i64(facts.Retained)) {
+            } else if (row.kind == facts.LocalRow && (row.literal == i64(facts.Retained) ||
+                       row.literal == i64(facts.Retained | facts.CharNominal))) {
                 type := NativeType(row.type);
                 lowered := RetainedValue(rows, declared, row.type, value, format_text("{}.{}", declaration.name, row.name),
-                                         states, length(texts), slot, true);
+                                         states, length(texts), slot, true, row.literal == i64(facts.Retained | facts.CharNominal));
+                state_characters.extend(lowered.characters);
                 if (rows[1].text != "") {
                     // The legacy word manifest reads defaults before Frame.
                     // Its validated scalar literal is an eager global, while
@@ -3871,8 +3955,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 locals.append(type);
                 places.append(local);
                 retained_variables.append(row.value);
+                retained_published.append(0);
                 retained_states.append(states - lowered.states);
                 retained_types.append(row.type);
+                for (field in 0..<length(lowered.array_fields)) {
+                    retained_array_variables.append(row.value);
+                    retained_array_fields.append(lowered.array_fields[field]);
+                    retained_array_states.append(lowered.array_states[field]);
+                }
                 body.append(Op(native.Save, type, 0, lowered.value, 0, local));
                 local += 1;
                 // The frame's snapshot and the global state own independent
@@ -3881,7 +3971,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     body.append(Op(native.TextRetain, type, 0, lowered.value, 0, 0));
                     owned_vars.append(row.value);
                     owned_types.append(type);
-                } else if (TrackedRecord(managed, type)) {
+                } else if (TrackedRecord(managed, type) || (type >= native.ArrayType && type < native.MapType)) {
                     kept := KeepValue(managed, row.type, lowered.value, slot);
                     slots.extend(kept.slot_types);
                     body.extend(kept.code);
@@ -4141,8 +4231,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         if (generation) {
             library_name = "generation";
         }
-        emitted = native.EmitLibrary(target, library_name, names, ids, functions, parameters, slots, locals,
-                                     code, arguments, records, fields, texts, 1, field_names, entries);
+        emitted = native.EmitLibraryStates(target, library_name, names, ids, functions, parameters, slots, locals,
+                                     code, arguments, records, fields, texts, 1, field_names, entries, state_characters);
     }
     switch emitted {
         case .Rejected(instruction, message):

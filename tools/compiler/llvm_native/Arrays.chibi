@@ -124,6 +124,7 @@ ArrayUses :: (code: Instruction[]) -> int[] {
         if (item.op == ArrayDrop || item.op == ValueDrop) { flags = ArrayDropping; }
         if (item.op == ArrayCopy) { flags = ArrayAllocation | ArrayCloning; }
         if (item.op == ValueCopy) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing; }
+        if (item.op == StateLoad || item.op == StateStore) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing; }
         if (item.op == ArrayLoan) {
             flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation;
             if (item.target != 1) { flags |= ArraySharing; }

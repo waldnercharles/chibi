@@ -312,6 +312,14 @@ Cases :: () -> Case[] {
         // A union a function is lent keeps its payloads for the caller: the arm that binds one of a parameter (`Total`) or
         // of a local that is also passed on (`built`) borrows it, and frees nothing.
         Accepted("param_union_drops", "package scalar\nResult :: union {\n    Failed(code: int) | Built(rows: int[])\n}\nMain :: () -> int {\n    total: int = 0;\n    out: int[] = [];\n    for (round in 0..<30) {\n        built := Make(round);\n        total += Total(built);\n        switch built {\n            case .Failed(code):\n                total += code;\n            case .Built(rows):\n                out.extend(rows);\n                total += length(rows);\n        }\n        if (round % 10 == 9) {\n            total += length(out);\n            out = [];\n        }\n    }\n    return total % 251;\n}\nMake :: (n: int) -> Result {\n    if (n % 7 == 0) {\n        return Result.Failed(n);\n    }\n    rows: int[] = [];\n    for (i in 0..<n % 5 + 1) {\n        rows.append(i);\n    }\n    return Result.Built(rows);\n}\nTotal :: (result: Result) -> int {\n    switch result {\n        case .Failed(code):\n            return code;\n        case .Built(rows):\n            return length(rows) + rows[0];\n    }\n}\n", 114, "Main,Make,Total", ""),
+        // Unary minus on a float or a double (`-x`) flips the sign (`fneg`), as the VM's negation does.
+        Accepted("float_negation", "package scalar\nMain :: () -> int {\n    x: f64 = 2.5;\n    y: f32 = 1.5;\n    z: f64 = -x + 10.0;\n    w: f32 = -y * 2.0;\n    n: int = 7;\n    back: f64 = -(-x);\n    return int(z) + int(-w) + int(-(x * x)) + (-n) + int(back * 4.0) + 100;\n}\n", 107, "Main", ""),
+        // A reference to a local's field (`&point.x`) is lent to a callee that changes it, and the local sees the change.
+        Accepted("field_reference", "package scalar\nPoint :: struct {\n    x: int;\n    y: int;\n}\nMain :: () -> int {\n    point: Point = {x: 3, y: 4};\n    a := Bump(&point.x, 10);\n    b := Bump(&point.y, 20);\n    return (point.x * 100 + point.y + a + b) % 251;\n}\nBump :: (value: ^int, by: int) -> int {\n    value^ += by;\n    return 1;\n}\n", 71, "Main,Bump", ""),
+        // A reference to a record parameter's field points into the caller's record.
+        Accepted("field_reference_forwarded", "package scalar\nPoint :: struct {\n    x: int;\n    y: int;\n}\nMain :: () -> int {\n    point: Point = {x: 3, y: 4};\n    count := Update(&point);\n    return (point.x * 100 + point.y + count) % 251;\n}\nUpdate :: (point: ^Point) -> int {\n    return Bump(&point.x, 10) + Bump(&point.y, 20);\n}\nBump :: (value: ^int, by: int) -> int {\n    value^ += by;\n    return 1;\n}\n", 71, "Main,Update,Bump", ""),
+        // Field addresses keep each scalar width and type, including bool and floating point.
+        Accepted("field_reference_scalars", "package scalar\nValues :: struct {\n    a: f64;\n    b: f32;\n    flag: bool;\n    wide: i64;\n    small: u8;\n}\nMain :: () -> int {\n    values: Values = {a: 2.5, b: 1.5, flag: false, wide: 5, small: 3};\n    Change(&values.a, &values.b, &values.flag, &values.wide, &values.small);\n    total := int(-values.a * 4.0) + int(values.b * 2.0) + int(values.wide) + int(values.small);\n    if (values.flag) { total += 100; }\n    return total;\n}\nChange :: (a: ^f64, b: ^f32, flag: ^bool, wide: ^i64, small: ^u8) {\n    a^ = -a^;\n    b^ = -b^;\n    flag^ = !flag^;\n    wide^ += 7;\n    small^ += 1;\n}\n", 123, "Main,Change", ""),
         // A loop over an array literal whose first element is a package constant, then one of a conversion.
         Accepted("for_array_literal_constants", "package scalar\nFirst: int : 3;\nSecond: int : 40;\nMain :: () -> int {\n    total: int = 0;\n    for (kind in [First, Second, 500]) { total += kind; }\n    for (n in [int(1), 2]) { total += n * 10000; }\n    return total;\n}\n", 30543, "Main", ""),
         // An element of an array of unions is a local, and a switch takes it apart. 2 + 7 + 100.
@@ -699,10 +707,10 @@ pub Check :: (rows: facts.Row[]) -> int {
     if (Names(rows) != expected.functions) {
         return -8;
     } // "functions differ"
-    // A 64-bit word is not modeled by this evaluation; the VMs and the native code give its value.
+    // A 64-bit word and a float's negation are not modeled by this evaluation; the VMs and the native code give the value.
     wide := false;
     for (row in rows) {
-        wide = wide || row.type == facts.WordType;
+        wide = wide || row.type == facts.WordType || (row.kind == facts.UnaryRow && facts.Floating(row.type));
     }
     empty: i64[] = [];
     // Arrays, references and loops are evaluated by the VMs and the native code, which

@@ -1124,7 +1124,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
         param := params[target.first + count];
         if (param.reference && param.written) {
-            switch ScalarReferenceArgument(forest, text, names, types, argument, param, output) {
+            switch ScalarReferenceArgument(forest, text, callables, params, callable, names, types, members, argument, param, output) {
                 case .Failed(diagnostic):
                     return ScalarOperands.Failed(diagnostic);
                 case .Built(built):
@@ -1210,11 +1210,33 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
 }
 // The row of `argument`, `&x` or a scoped parameter `x` passed on, for the
 // written scoped parameter `param`: a RefRow of the variable.
-ScalarReferenceArgument :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], types: TypeDecl[],
+ScalarReferenceArgument :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                            callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
                             argument: int, param: Param, rows: facts.Row[]) -> ScalarOperands {
     name := ScalarPassedName(forest, text, argument);
     found := Lookup(names, name);
     type := ScalarValueType(types, param.storage, param.container, param.record);
+    // `&point.x`: a number or bool field of a record variable.
+    place := Unparenthesized(forest, argument);
+    if (Is(forest, place, syntax.AddressExpression)) {
+        place = Unparenthesized(forest, Field(forest, place, syntax.FieldOperand));
+    }
+    if (name == "" && Is(forest, place, syntax.MemberExpression) &&
+        Is(forest, Unparenthesized(forest, Field(forest, place, syntax.FieldObject)), syntax.Identifier)) {
+        object := Lookup(names, Text(forest, text, Unparenthesized(forest, Field(forest, place, syntax.FieldObject))));
+        field := ScalarMember(forest, text, callables, params, names, types, members, callable.package, place);
+        if (object >= 0 && field >= 0 && names[object].storage == StructStorage && names[object].container == 0 &&
+            members[field].container == 0 && type != 0 && ScalarMemberType(types, members, field) == type &&
+            (Integer(members[field].storage) || Floating(members[field].storage) || members[field].storage == BoolStorage)) {
+            record := ScalarRecordOf(forest, text, callables, params, names, types, members, callable.package,
+                                     Field(forest, place, syntax.FieldObject));
+            reference := ScalarAt(forest, argument, facts.RefRow, type, names[object].index, 0, "");
+            reference.literal = i64(field - types[record].first + 1);
+            output := rows;
+            output.append(reference);
+            return ScalarOperands.Built(output);
+        }
+    }
     if (name == "" || found < 0 || type == 0) {
         return ScalarOperands.Failed(Diagnose(forest, argument, 0,
                                               "scalar proof passes only a variable by reference"));
@@ -3121,9 +3143,15 @@ ScalarWritten :: (scoped: snapshot.SnapshotNode[], text: string, callables: Call
                 }
                 written := Holds(mutated, param.name);
                 for (argument in calls) {
-                    if (marked[argument.param].reference && marked[argument.param].written &&
-                        ScalarPassedName(scoped, text, argument.value) == param.name) {
-                        written = true;
+                    if (marked[argument.param].reference && marked[argument.param].written) {
+                        place := Unparenthesized(scoped, argument.value);
+                        if (Is(scoped, place, syntax.AddressExpression)) {
+                            place = Field(scoped, place, syntax.FieldOperand);
+                        }
+                        // Lending a field for a write also changes its enclosing record.
+                        if (RootName(scoped, text, place) == param.name) {
+                            written = true;
+                        }
                     }
                 }
                 if (written) {

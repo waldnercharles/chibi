@@ -17,6 +17,7 @@ on:
       - tools/graph/**
       - packages/core/**
       - test/native_aot/link/windows/**
+      - test/native_aot/native_driver/**
       - .github/native-llvm.sh
       - .github/workflows/native-self-host.yml
   push:
@@ -74,6 +75,10 @@ jobs:
           path: ${{ runner.temp }}/windows/chibi.exe
           if-no-files-found: error
           retention-days: 1
+      - name: Check native driver options and cache
+        run: |
+          sh test/native_aot/native_driver/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+          sh test/native_aot/native_driver/cache.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native diagnostic coordinates
         timeout-minutes: 5
         run: sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"

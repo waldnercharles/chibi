@@ -1333,7 +1333,7 @@ Spelled :: (literal: i64, type: int) -> i64 {
     return literal - (i64(1) << u32(bits));
 }
 EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[], texts: string[],
-                    coroutine: bool) -> string {
+                    coroutine: bool, record_owners: bool[]) -> string {
     out := format_text("p{}:\n", pc);
     type := TypeName(item.type);
     if (item.op == Constant && item.type == abi.TextStorage) {
@@ -1415,7 +1415,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else if (item.op == StateStore) {
         out = format_text("{}{}", out, StateWrite(item, pc));
     } else if (item.op == ArrayDrop) {
-        out = format_text("{}{}", out, ArrayDropped(item, pc));
+        out = format_text("{}{}", out, ArrayDropped(item, pc, record_owners));
     } else if (item.op == TextRetain || item.op == TextRelease) {
         out = format_text("{}{}", out, TextCounted(item, pc));
     } else if (item.op == ArrayBytes) {
@@ -1425,7 +1425,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     } else if (item.op >= MapLength && item.op <= MapLiveAt) {
         out = format_text("{}{}", out, MapRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
-        out = format_text("{}{}", out, ArrayRead(item, pc));
+        out = format_text("{}{}", out, ArrayRead(item, pc, record_owners));
     } else if (item.op >= TextLength && item.op <= TextTake) {
         out = format_text("{}{}", out, TextRead(item, pc));
     } else if (item.type == abi.TextStorage) {
@@ -1500,6 +1500,84 @@ TextCounted :: (item: Instruction, pc: int) -> string {
 Holding :: (type: int) -> bool {
     return type == ArrayType + abi.TextStorage;
 }
+// String-owner paths within a plain aggregate. Array backing has a separate
+// ownership operation and therefore ends this walk.
+RecordTextPaths :: (records: Record[], fields: int[], type: int, path: string, found: string[]) -> string[] {
+    if (type == abi.TextStorage) { found.append(path); return found; }
+    if (type < RecordType || type >= ArrayType) { return found; }
+    record := records[type - RecordType];
+    for (index in 0..<record.count) {
+        next := format_text("{}, i32 {}", path, index);
+        found = RecordTextPaths(records, fields, fields[record.first + index], next, found);
+    }
+    return found;
+}
+CountedRecordType :: (records: Record[], fields: int[], type: int) -> bool {
+    if (type < RecordType) { return true; }
+    if (type >= ArrayType) { return false; }
+    record := records[type - RecordType];
+    for (index in record.first..<record.first + record.count) {
+        if (!CountedRecordType(records, fields, fields[index])) { return false; }
+    }
+    return true;
+}
+RecordHasText :: (records: Record[], fields: int[], type: int) -> bool {
+    if (type == abi.TextStorage) { return true; }
+    if (type < RecordType || type >= ArrayType) { return false; }
+    record := records[type - RecordType];
+    for (index in record.first..<record.first + record.count) {
+        if (RecordHasText(records, fields, fields[index])) { return true; }
+    }
+    return false;
+}
+RecordOwners :: (records: Record[], fields: int[]) -> bool[] {
+    owners := resize([false], length(records));
+    for (index in 0..<length(records)) {
+        type := RecordType + index;
+        owners[index] = CountedRecordType(records, fields, type) && RecordHasText(records, fields, type);
+    }
+    return owners;
+}
+ArrayRefs :: (record_owners: bool[], type: int, data: string, count: string, keep: bool) -> string {
+    if (Holding(type)) {
+        if (keep) { return format_text("  call void @chibi_scalar.retain_range(ptr {}, i32 {})\n", data, count); }
+        return format_text("  call void @chibi_scalar.free_range(ptr %ctx, ptr {}, i32 {})\n", data, count);
+    }
+    element := type - ArrayType;
+    if (element < RecordType || element >= ArrayType || element - RecordType >= length(record_owners) ||
+        !record_owners[element - RecordType]) {
+        return "";
+    }
+    operation := "drop";
+    if (keep) { operation = "keep"; }
+    return format_text("  call void @chibi_record.{}.{}_range(ptr %ctx, ptr {}, i32 {})\n", element, operation, data, count);
+}
+RecordRanges :: (code: Instruction[], records: Record[], fields: int[], record_owners: bool[]) -> string {
+    used := resize([false], length(records));
+    for (item in code) {
+        element := item.type - ArrayType;
+        if (element >= RecordType && element < ArrayType && element - RecordType < length(records)) {
+            used[element - RecordType] = true;
+        }
+    }
+    out: string[] = [];
+    for (index in 0..<length(records)) {
+        if (!used[index] || !record_owners[index]) { continue; }
+        type := RecordType + index;
+        paths := RecordTextPaths(records, fields, type, "", []);
+        for (operation in ["keep", "drop"]) {
+            out.append(format_text("define internal void @chibi_record.{}.{}_range(ptr %ctx, ptr %data, i32 %count) {{\nentry:\n  br label %head\n", type, operation));
+            out.append("head:\n  %index = phi i32 [ 0, %entry ], [ %next, %body ]\n  %done = icmp eq i32 %index, %count\n  br i1 %done, label %exit, label %body\nbody:\n  %offset = zext i32 %index to i64\n");
+            for (leaf in 0..<length(paths)) {
+                out.append(format_text("  %at{} = getelementptr inbounds {}, ptr %data, i64 %offset{}, i32 2\n  %owner{} = load ptr, ptr %at{}\n", leaf, TypeName(type), paths[leaf], leaf, leaf));
+                if (operation == "keep") { out.append(format_text("  call void @chibi_scalar.retain(ptr %owner{})\n", leaf)); }
+                else { out.append(format_text("  call void @chibi_scalar.free(ptr %ctx, ptr %owner{})\n", leaf)); }
+            }
+            out.append("  %next = add i32 %index, 1\n  br label %head\nexit:\n  ret void\n}\n");
+        }
+    }
+    return strings.Join(out, "");
+}
 // The helpers a module that counts references calls: one reference added to or
 // given back from an owner (null has none), and the same for the owner of each
 // of `count` strings from `data` on.
@@ -1539,16 +1617,14 @@ Counts :: (code: Instruction[]) -> bool {
 }
 // The context's release of the elements of the array in the left slot, unless
 // it has none.
-ArrayDropped :: (item: Instruction, pc: int) -> string {
+ArrayDropped :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
     array := abi.ArrayType();
     out := Load(format_text("a{}", pc), item.type, "s", item.left);
     out = format_text("{}  %data{} = extractvalue {} %a{}, 2\n  %held{} = icmp ne ptr %data{}, null\n", out, pc, array, pc,
                       pc, pc);
     out = format_text("{}  %length{} = extractvalue {} %a{}, 0\n", out, pc, array, pc);
     out = format_text("{}  br i1 %held{}, label %drop{}, label %kept{}\ndrop{}:\n", out, pc, pc, pc, pc);
-    if (Holding(item.type)) {
-        out = format_text("{}  call void @chibi_scalar.free_range(ptr %ctx, ptr %data{}, i32 %length{})\n", out, pc, pc);
-    }
+    out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%data{}", pc), format_text("%length{}", pc), false));
     out = format_text("{}{}", out, ContextCall(format_text("release{}", pc), 4));
     return format_text("{}  call void %release{}(ptr %ctx, ptr %data{})\n  br label %kept{}\nkept{}:\n", out, pc, pc, pc, pc);
 }
@@ -1589,7 +1665,7 @@ ArrayGrownFrom :: (item: Instruction, pc: int) -> string {
 // copy of its elements. A read or write is only inside the array, so none
 // passes the elements, and an append that fills the array moves its elements
 // to an allocation twice the size, or four elements.
-ArrayRead :: (item: Instruction, pc: int) -> string {
+ArrayRead :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
     array := abi.ArrayType();
     // Every array type is the same LLVM type.
     out := Load(format_text("a{}", pc), ArrayType + abi.IntStorage, "s", item.left);
@@ -1598,25 +1674,25 @@ ArrayRead :: (item: Instruction, pc: int) -> string {
         return format_text("{}{}", out, Store(format_text("%length{}", pc), item.type, "s", item.output));
     }
     if (item.op == ArrayCopy) {
-        return format_text("{}{}", out, ArrayCopied(item, pc));
+        return format_text("{}{}", out, ArrayCopied(item, pc, record_owners));
     }
     if (item.op == ArrayPush) {
         return format_text("{}{}", out, ArrayPushed(item, pc));
     }
     if (item.op == ArrayExtend) {
-        return format_text("{}{}", out, ArrayExtended(item, pc));
+        return format_text("{}{}", out, ArrayExtended(item, pc, record_owners));
     }
     if (item.op == ArraySlice) {
-        return format_text("{}{}", out, ArraySliced(item, pc));
+        return format_text("{}{}", out, ArraySliced(item, pc, record_owners));
     }
     if (item.op == ArrayResize) {
-        return format_text("{}{}", out, ArrayResized(item, pc));
+        return format_text("{}{}", out, ArrayResized(item, pc, record_owners));
     }
     if (item.op == ArrayContains) {
         return format_text("{}{}", out, ArrayFound(item, pc));
     }
     if (item.op == ArrayRemove) {
-        return format_text("{}{}", out, ArrayRemoved(item, pc));
+        return format_text("{}{}", out, ArrayRemoved(item, pc, record_owners));
     }
     element := item.type;
     if (item.op == ArraySet) {
@@ -1632,8 +1708,8 @@ ArrayRead :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %data{} = extractvalue {} %a{}, 2\n  %offset{} = zext i32 %b{} to i64\n", out, pc, array, pc,
                       pc, pc);
     out = format_text("{}  %at{} = getelementptr inbounds {}, ptr %data{}, i64 %offset{}\n", out, pc, type, pc, pc);
-    if (item.op == ArraySet && Holding(item.type)) {
-        out = format_text("{}  call void @chibi_scalar.free_range(ptr %ctx, ptr %at{}, i32 1)\n", out, pc);
+    if (item.op == ArraySet) {
+        out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%at{}", pc), "1", false));
     }
     if (item.op == ArrayGet) {
         out = format_text("{}  %v{} = load {}, ptr %at{}\n", out, pc, type, pc);
@@ -1681,7 +1757,7 @@ ArrayPushed :: (item: Instruction, pc: int) -> string {
 // the array in the right slot, in the allocation the first has when it has
 // room, and otherwise in one of twice the size, or as many elements as it
 // needs.
-ArrayExtended :: (item: Instruction, pc: int) -> string {
+ArrayExtended :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
     array := abi.ArrayType();
     element := item.type - ArrayType;
     type := TypeName(element);
@@ -1715,9 +1791,7 @@ ArrayExtended :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %added{} = zext i32 %extra{} to i64\n  %extent{} = mul i64 %added{}, %size{}\n", out, pc, pc,
                       pc, pc, pc);
     out = format_text("{}  call void @chibi_scalar.copy(ptr %at{}, ptr %source{}, i64 %extent{})\n", out, pc, pc, pc);
-    if (Holding(item.type)) {
-        out = format_text("{}  call void @chibi_scalar.retain_range(ptr %at{}, i32 %extra{})\n", out, pc, pc);
-    }
+    out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%at{}", pc), format_text("%extra{}", pc), true));
     out = format_text("{}{}", out, ArrayStaleFree(item, pc));
     out = format_text("{}  %longer{} = insertvalue {} %a{}, i32 %total{}, 0\n", out, pc, array, pc, pc);
     out = format_text("{}  %roomy{} = insertvalue {} %longer{}, i32 %space{}, 1\n", out, pc, array, pc, pc);
@@ -1727,7 +1801,7 @@ ArrayExtended :: (item: Instruction, pc: int) -> string {
 // A new array of the elements of the array loaded as %a<pc> from the start in
 // the right slot, as many as the count in slot `target`, each clamped to the
 // array, or the empty array for none.
-ArraySliced :: (item: Instruction, pc: int) -> string {
+ArraySliced :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
     array := abi.ArrayType();
     element := item.type - ArrayType;
     type := TypeName(element);
@@ -1752,9 +1826,7 @@ ArraySliced :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %skip{} = zext i32 %first{} to i64\n", out, pc, pc);
     out = format_text("{}  %from{} = getelementptr inbounds {}, ptr %data{}, i64 %skip{}\n", out, pc, type, pc, pc);
     out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %from{}, i64 %bytes{})\n", out, pc, pc, pc);
-    if (Holding(item.type)) {
-        out = format_text("{}  call void @chibi_scalar.retain_range(ptr %fresh{}, i32 %n{})\n", out, pc, pc);
-    }
+    out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%fresh{}", pc), format_text("%n{}", pc), true));
     out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
     out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %clone{} ]\n", out, pc, pc, pc, pc);
     out = format_text("{}  %sized{} = insertvalue {} zeroinitializer, i32 %n{}, 0\n", out, pc, array, pc);
@@ -1764,7 +1836,7 @@ ArraySliced :: (item: Instruction, pc: int) -> string {
 }
 // A new array of the length in the right slot, 0 if it is negative: the first
 // elements of the array loaded as %a<pc>, then zeros.
-ArrayResized :: (item: Instruction, pc: int) -> string {
+ArrayResized :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
     array := abi.ArrayType();
     element := item.type - ArrayType;
     out := Load(format_text("b{}", pc), abi.IntStorage, "s", item.right);
@@ -1782,9 +1854,7 @@ ArrayResized :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %keep{} = zext i32 %kept{} to i64\n  %held{} = mul i64 %keep{}, %width{}\n", out, pc, pc, pc,
                       pc, pc);
     out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %held{})\n", out, pc, pc, pc);
-    if (Holding(item.type)) {
-        out = format_text("{}  call void @chibi_scalar.retain_range(ptr %fresh{}, i32 %kept{})\n", out, pc, pc);
-    }
+    out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%fresh{}", pc), format_text("%kept{}", pc), true));
     out = format_text("{}  %rest{} = getelementptr inbounds i8, ptr %fresh{}, i64 %held{}\n", out, pc, pc, pc);
     out = format_text("{}  %fill{} = sub i64 %bytes{}, %held{}\n", out, pc, pc, pc);
     out = format_text("{}  call void @chibi_scalar.zero(ptr %rest{}, i64 %fill{})\n", out, pc, pc);
@@ -1881,7 +1951,7 @@ ArrayFound :: (item: Instruction, pc: int) -> string {
 }
 // The array loaded as %a<pc> without its element at the index in the right
 // slot, the elements after it moved down, if the index is inside it.
-ArrayRemoved :: (item: Instruction, pc: int) -> string {
+ArrayRemoved :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
     array := abi.ArrayType();
     element := item.type - ArrayType;
     type := TypeName(element);
@@ -1893,9 +1963,7 @@ ArrayRemoved :: (item: Instruction, pc: int) -> string {
     out = format_text("{}  %after{} = add i32 %b{}, 1\n  %tail{} = sub i32 %length{}, %after{}\n", out, pc, pc, pc, pc, pc);
     out = format_text("{}  %to{} = zext i32 %b{} to i64\n  %from{} = zext i32 %after{} to i64\n", out, pc, pc, pc, pc);
     out = format_text("{}  %hole{} = getelementptr inbounds {}, ptr %data{}, i64 %to{}\n", out, pc, type, pc, pc);
-    if (Holding(item.type)) {
-        out = format_text("{}  call void @chibi_scalar.free_range(ptr %ctx, ptr %hole{}, i32 1)\n", out, pc);
-    }
+    out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%hole{}", pc), "1", false));
     out = format_text("{}  %next{} = getelementptr inbounds {}, ptr %data{}, i64 %from{}\n", out, pc, type, pc, pc);
     out = format_text("{}  %count{} = zext i32 %tail{} to i64\n  %bytes{} = mul i64 %count{}, %width{}\n", out, pc, pc,
                       pc, pc, pc);
@@ -1907,7 +1975,7 @@ ArrayRemoved :: (item: Instruction, pc: int) -> string {
 }
 // An array of its own allocation holding the elements of the array loaded as
 // %a<pc>, or the empty array for an empty one.
-ArrayCopied :: (item: Instruction, pc: int) -> string {
+ArrayCopied :: (item: Instruction, pc: int, record_owners: bool[]) -> string {
     array := abi.ArrayType();
     element := item.type - ArrayType;
     out := format_text("  %data{} = extractvalue {} %a{}, 2\n", pc, array, pc);
@@ -1919,9 +1987,7 @@ ArrayCopied :: (item: Instruction, pc: int) -> string {
     out = format_text("{}{}", out, Allocated(format_text("fresh{}", pc), format_text("%bytes{}", pc)));
     out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %bytes{})\n", out,
                       pc, pc, pc);
-    if (Holding(item.type)) {
-        out = format_text("{}  call void @chibi_scalar.retain_range(ptr %fresh{}, i32 %length{})\n", out, pc, pc);
-    }
+    out = format_text("{}{}", out, ArrayRefs(record_owners, item.type, format_text("%fresh{}", pc), format_text("%length{}", pc), true));
     out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
     out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %clone{} ]\n", out, pc, pc, pc, pc);
     out = format_text("{}  %sized{} = insertvalue {} %a{}, i32 %length{}, 1\n", out, pc, array, pc, pc);
@@ -2324,7 +2390,7 @@ AwaitHandleInstruction :: (item: Instruction, pc: int) -> string {
 }
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
                  code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool, waiting: bool[]) -> string {
+                 mode: int, step_budget: int, runtime: bool, fallible: bool[], shared: bool, waiting: bool[], record_owners: bool[]) -> string {
     shape := functions[function];
     coroutine := waiting[function];
     result := shape.result;
@@ -2430,7 +2496,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         } else if (item.op == Format) {
             out.append(FormatInstruction(own_slots, own, item, pc));
         } else {
-            out.append(EmitInstruction(item, pc, result, records, fields, texts, coroutine));
+            out.append(EmitInstruction(item, pc, result, records, fields, texts, coroutine, record_owners));
         }
     }
     // A function fails with its result's zero, which no caller reads; a coroutine
@@ -2832,6 +2898,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         }
     }
     states := RetainedStates(code);
+    record_owners := RecordOwners(records, fields);
     out: string[] = [];
     for (piece in 0..<pieces) {
         first := bounds[piece];
@@ -2890,7 +2957,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         out.append(Callees(functions, parameters, held, home, piece, mode, runtime));
         for (function in first..<last) {
             text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
-                                 texts, mode, step_budget, runtime, fallible, shared[function], waiting);
+                                 texts, mode, step_budget, runtime, fallible, shared[function], waiting, record_owners);
             if (debug) {
                 text = Located(text, Subprogram(function), Location(length(functions), compares,
                                                                     functions[function].first_code));
@@ -2933,8 +3000,9 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         if (Zeroes(held)) {
             out.append(format_text("\n{}", ArrayZeroHelper()));
         }
-        if (Counts(held)) {
-            out.append(format_text("\n{}", TextHelpers()));
+        record_ranges := RecordRanges(held, records, fields, record_owners);
+        if (Counts(held) || record_ranges != "") {
+            out.append(format_text("\n{}{}", TextHelpers(), record_ranges));
         }
         cstrings := Cstrings(functions, first, last, slots, code, arguments);
         if (cstrings) {

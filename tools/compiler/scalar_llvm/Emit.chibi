@@ -786,6 +786,66 @@ Drops :: struct {
     code: native.Instruction[];
     slot_types: int[];
 }
+// Every counted aggregate owns its string leaves independently, including
+// nested records and unions. Unused union fields are zero descriptors.
+RecordRefs :: (rows: facts.Row[], records: int[], type: int, held: int, next: int, keep: bool) -> Drops {
+    found: Drops = {code: [], slot_types: []};
+    if (type == facts.StringType) {
+        op := native.TextRelease;
+        if (keep) { op = native.TextRetain; }
+        found.code.append(Op(op, abi.TextStorage, 0, held, 0, 0));
+        return found;
+    }
+    if (type < facts.RecordType || type >= facts.ArrayType) { return found; }
+    head := records[type - facts.RecordType];
+    for (field in head + 1..<After(rows, head)) {
+        member := rows[field];
+        if (member.kind != facts.MemberRow || Scalar(member.type)) { continue; }
+        at := next + length(found.slot_types);
+        extract := Op(native.Extract, NativeType(member.type), at, held, NativeType(type), 0);
+        extract.literal = i64(member.value);
+        if (rows[head].kind == facts.UnionRow) { extract.literal += 1; }
+        found.code.append(extract);
+        found.slot_types.append(NativeType(member.type));
+        nested := RecordRefs(rows, records, member.type, at, at + 1, keep);
+        found.code.extend(nested.code);
+        found.slot_types.extend(nested.slot_types);
+    }
+    return found;
+}
+TrackedRecord :: (managed: bool[], type: int) -> bool {
+    return type >= facts.RecordType && type < facts.ArrayType &&
+           type - facts.RecordType < length(managed) && managed[type - facts.RecordType];
+}
+// Plain record leaves can be counted without allocating or copying bytes.
+// Containers/unions acquire the same recursive operations in their element
+// paths; this table keeps scalar lowering's per-operand lookup constant-time.
+TextRecord :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    if (type == facts.StringType) { return true; }
+    if (type < facts.RecordType || type >= facts.ArrayType) { return false; }
+    head := records[type - facts.RecordType];
+    for (field in head + 1..<After(rows, head)) {
+        if (rows[field].kind == facts.MemberRow && TextRecord(rows, records, rows[field].type)) { return true; }
+    }
+    return false;
+}
+CountedRecord :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    if (Scalar(type) || type == facts.StringType) { return true; }
+    if (type < facts.RecordType || type >= facts.ArrayType) { return false; }
+    head := records[type - facts.RecordType];
+    for (field in head + 1..<After(rows, head)) {
+        if (rows[field].kind == facts.MemberRow && !CountedRecord(rows, records, rows[field].type)) { return false; }
+    }
+    return true;
+}
+ManagedRecords :: (rows: facts.Row[], records: int[]) -> bool[] {
+    found := resize([false], length(records));
+    for (index in 0..<length(records)) {
+        type := facts.RecordType + index;
+        found[index] = CountedRecord(rows, records, type) && TextRecord(rows, records, type);
+    }
+    return found;
+}
 // The arrays a union type holds in its payloads: for each, the variant's tag,
 // the payload's field in the union's record and the array's native type.
 Payloads :: struct {
@@ -859,7 +919,7 @@ UnionDrop :: (payloads: Payloads, type: int, place: int, held: int, next: int, b
 // `slot`; with `held`, then the hidden array locals of the open loops that own
 // theirs. A variable of a union type drops the arrays its variant holds. Dropped
 // gives their slots' types, in the same order; `base` is where the code goes.
-DropAll :: (rows: facts.Row[], records: int[], vars: int[], types: int[], places: int[], from: int, skips: int[],
+DropAll :: (rows: facts.Row[], records: int[], managed: bool[], vars: int[], types: int[], places: int[], from: int, skips: int[],
             frames: Frame[], held: bool, slot: int, base: int) -> Drops {
     found: Drops = {code: [], slot_types: []};
     at := length(vars) - 1;
@@ -867,7 +927,14 @@ DropAll :: (rows: facts.Row[], records: int[], vars: int[], types: int[], places
     while (at >= from) {
         if (types[at] != 0 && !Holds(skips, vars[at])) {
             payloads := UnionPayloads(rows, records, types[at]);
-            if (length(payloads.tags) > 0) {
+            if (TrackedRecord(managed, types[at])) {
+                found.code.append(Op(native.Local, types[at], next, places[vars[at]], 0, 0));
+                found.slot_types.append(types[at]);
+                glue := RecordRefs(rows, records, types[at], next, next + 1, false);
+                found.code.extend(glue.code);
+                found.slot_types.extend(glue.slot_types);
+                next += 1 + length(glue.slot_types);
+            } else if (length(payloads.tags) > 0) {
                 glue := UnionDrop(payloads, types[at], places[vars[at]], -1, next, base + length(found.code));
                 found.code.extend(glue.code);
                 found.slot_types.extend(glue.slot_types);
@@ -1507,7 +1574,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             return "native library retained states require scalar literal initializers; use a package generation for other retained values";
         }
         if (retained && row.type >= facts.RecordType && !Retainable(rows, records, row.type)) {
-            return "native retained records hold only numbers and bools; retain strings separately";
+            return "native retained records require scalar, string or plain record fields";
         }
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
@@ -1700,7 +1767,7 @@ Retainable :: (rows: facts.Row[], records: int[], type: int) -> bool {
     }
     for (field in head + 1..<After(rows, head)) {
         if (rows[field].kind == facts.MemberRow &&
-            (rows[field].type == facts.StringType || !Retainable(rows, records, rows[field].type))) {
+            !Retainable(rows, records, rows[field].type)) {
             return false;
         }
     }
@@ -2070,6 +2137,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     lines: int[] = [];
     columns: int[] = [];
     declared := Records(rows);
+    managed := ManagedRecords(rows, declared);
     for (head in declared) {
         record: native.Record = {first: length(fields), count: 0};
         if (rows[head].kind == facts.UnionRow) {
@@ -2139,7 +2207,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         addressed_parameters := resize([false], declaration.count);
         for (index in head + declaration.count + 1..<Last(rows, heads, function)) {
             operand := rows[index];
-            if (operand.kind == facts.RefRow && operand.value < declaration.count) {
+            if ((operand.kind == facts.RefRow || operand.kind == facts.AssignRow) && operand.value < declaration.count) {
                 addressed_parameters[operand.value] = true;
             }
         }
@@ -2153,8 +2221,14 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             locals.append(type);
             body.extend([Op(native.Argument, type, slot, index, 0, 0), Op(native.Save, type, 0, slot, 0, local)]);
             places.append(local);
-            if (type == abi.TextStorage && addressed_parameters[index]) {
-                body.append(Op(native.TextRetain, type, 0, slot, 0, 0));
+            if ((type == abi.TextStorage || TrackedRecord(managed, type)) && addressed_parameters[index]) {
+                if (type == abi.TextStorage) { body.append(Op(native.TextRetain, type, 0, slot, 0, 0)); }
+                else {
+                    glue := RecordRefs(rows, declared, type, slot, slot + 1, true);
+                    slots.extend(glue.slot_types);
+                    body.extend(glue.code);
+                    slot += length(glue.slot_types);
+                }
                 owned_vars.append(index);
                 owned_types.append(type);
             }
@@ -2229,7 +2303,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             if (row.kind == facts.ElseRow) {
                 frame := frames[top];
                 if (!ends) {
-                    drops := DropAll(rows, declared, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
+                    drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
                     slots.extend(drops.slot_types);
                     slot += length(drops.slot_types);
                     body.extend(drops.code);
@@ -2251,7 +2325,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 // ends, and its failed test reaches the next.
                 frame := frames[top];
                 if (frame.armed && !ends) {
-                    drops := DropAll(rows, declared, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
+                    drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
                     slots.extend(drops.slot_types);
                     slot += length(drops.slot_types);
                     body.extend(drops.code);
@@ -2300,7 +2374,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 frames = slice(frames, 0, top);
                 at += 1;
                 if (!ends) {
-                    drops := DropAll(rows, declared, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
+                    drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, frame.owned, [], frames, false, slot, length(body));
                     slots.extend(drops.slot_types);
                     slot += length(drops.slot_types);
                     body.extend(drops.code);
@@ -2379,7 +2453,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 while (!Loop(frames[loop].kind)) {
                     loop -= 1;
                 }
-                drops := DropAll(rows, declared, owned_vars, owned_types, places, frames[loop].owned, [], frames, false, slot, length(body));
+                drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, frames[loop].owned, [], frames, false, slot, length(body));
                 slots.extend(drops.slot_types);
                 slot += length(drops.slot_types);
                 body.extend(drops.code);
@@ -2475,6 +2549,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 item: native.Instruction = {op: native.Constant, type: type, output: slot, left: 0, right: 0,
                                             target: 0, literal: operand.literal};
                 retained_element := false;
+                retained_record := false;
+                record_inputs: int[] = [];
                 if (operand.kind == facts.LiteralRow && operand.type == facts.StringType) {
                     // A repeated literal or default shares one entry.
                     item.literal = i64(length(texts));
@@ -2518,7 +2594,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     item = Op(native.Local, type, slot, places[operand.value], 0, 0);
                     any_slots.append(slot);
                     any_vars.append(operand.value);
-                    if (Owning(type) && Holds(owned_vars, operand.value)) {
+                    if ((Owning(type) || TrackedRecord(managed, type)) && Holds(owned_vars, operand.value)) {
                         reads.append(slot);
                         read_vars.append(operand.value);
                     }
@@ -2627,12 +2703,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     base := length(stack) - operand.count;
                     for (field in 0..<operand.count) {
                         for (at_read in 0..<length(reads)) {
-                            if (reads[at_read] == stack[base + field]) {
+                            if (reads[at_read] == stack[base + field] && !TrackedRecord(managed, type) &&
+                                !TrackedRecord(managed, slots[shape.first_slot + stack[base + field]])) {
                                 escaped.append(read_vars[at_read]);
                             }
                         }
                         if (slots[shape.first_slot + stack[base + field]] == abi.TextStorage) {
                             stored.append(stack[base + field]);
+                        }
+                        if (TrackedRecord(managed, slots[shape.first_slot + stack[base + field]])) {
+                            record_inputs.append(stack[base + field]);
                         }
                         body.append(item);
                         slots.append(type);
@@ -2644,12 +2724,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (operand.kind == facts.UpdateRow) {
                     base := length(stack) - 2;
                     for (at_read in 0..<length(reads)) {
-                        if (reads[at_read] == stack[base + 1]) {
+                        if (reads[at_read] == stack[base + 1] && !TrackedRecord(managed, type) &&
+                            !TrackedRecord(managed, slots[shape.first_slot + stack[base + 1]])) {
                             escaped.append(read_vars[at_read]);
                         }
                     }
-                    if (slots[shape.first_slot + stack[base + 1]] == abi.TextStorage) {
+                    if (slots[shape.first_slot + stack[base + 1]] == abi.TextStorage && !TrackedRecord(managed, type)) {
                         stored.append(stack[base + 1]);
+                    }
+                    if (!TrackedRecord(managed, type) && TrackedRecord(managed, slots[shape.first_slot + stack[base + 1]])) {
+                        record_inputs.append(stack[base + 1]);
                     }
                     item = Op(native.Insert, type, slot, stack[base], stack[base + 1], 0);
                     item.literal = i64(operand.value);
@@ -2739,6 +2823,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             pending.append(stack[base]);
                             // Keep a string result before dropping its temporary array.
                             retained_element = op == facts.ArrayGet && type == abi.TextStorage;
+                            retained_record = op == facts.ArrayGet && TrackedRecord(managed, type);
                         }
                     }
                     if ((op == facts.ArrayJoin || op == facts.ArrayExtend) && Holds(fresh, stack[base + 1])) {
@@ -2747,6 +2832,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // The strings an array takes as elements.
                     if (op == facts.ArrayNew) {
                         for (element in 0..<operand.count) {
+                            if (TrackedRecord(managed, type - native.ArrayType)) { record_inputs.append(stack[base + element]); }
                             if (slots[shape.first_slot + stack[base + element]] == abi.TextStorage) {
                                 stored.append(stack[base + element]);
                             }
@@ -2755,6 +2841,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if ((op == facts.ArrayPush || op == facts.ArrayWith) &&
                         slots[shape.first_slot + stack[base + 1]] == abi.TextStorage) {
                         stored.append(stack[base + 1]);
+                    }
+                    if ((op == facts.ArrayPush || op == facts.ArrayWith) && TrackedRecord(managed, type - native.ArrayType)) {
+                        record_inputs.append(stack[base + 1]);
                     }
                     if (op == facts.ArraySet && slots[shape.first_slot + stack[base + 2]] == abi.TextStorage) {
                         stored.append(stack[base + 2]);
@@ -2824,6 +2913,18 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     stack = slice(stack, 0, base);
                 }
+                extra := 0;
+                if (operand.kind == facts.ArrayRow && operand.value == facts.ArraySet &&
+                    TrackedRecord(managed, slots[shape.first_slot + item.target])) {
+                    // The replaced element may be the incoming value itself.
+                    if (Holds(fresh, item.target)) { fresh = Without(fresh, item.target); }
+                    else {
+                        kept := RecordRefs(rows, declared, slots[shape.first_slot + item.target], item.target, slot + 1, true);
+                        slots.extend(kept.slot_types);
+                        body.extend(kept.code);
+                        extra += length(kept.slot_types);
+                    }
+                }
                 for (kept in stored) {
                     if (Holds(fresh, kept)) {
                         fresh = Without(fresh, kept);
@@ -2833,6 +2934,100 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
                 stored = [];
                 body.append(item);
+                // Inserts into an owned record transfer the unchanged leaves.
+                // A borrowed base is copied by retaining the resulting leaves.
+                // Take incoming references before releasing the overwritten
+                // field, including self-assignment and aliased nested records.
+                if (operand.kind == facts.UpdateRow && TrackedRecord(managed, type)) {
+                    member := MemberType(rows, declared, operand.type, operand.value);
+                    if (Holds(fresh, item.left)) {
+                        if (Holds(fresh, item.right)) { fresh = Without(fresh, item.right); }
+                        else {
+                            kept := RecordRefs(rows, declared, member, item.right, slot + 1, true);
+                            slots.extend(kept.slot_types);
+                            body.extend(kept.code);
+                            extra += length(kept.slot_types);
+                        }
+                        if (!Scalar(member)) {
+                            old := slot + 1 + extra;
+                            slots.append(NativeType(member));
+                            extract := Op(native.Extract, NativeType(member), old, item.left, type, 0);
+                            extract.literal = i64(operand.value);
+                            body.append(extract);
+                            dropped := RecordRefs(rows, declared, member, old, old + 1, false);
+                            slots.extend(dropped.slot_types);
+                            body.extend(dropped.code);
+                            extra += 1 + length(dropped.slot_types);
+                        }
+                        fresh = Without(fresh, item.left);
+                    } else {
+                        kept := RecordRefs(rows, declared, operand.type, slot, slot + 1, true);
+                        slots.extend(kept.slot_types);
+                        body.extend(kept.code);
+                        extra += length(kept.slot_types);
+                        if (Holds(fresh, item.right)) {
+                            dropped := RecordRefs(rows, declared, member, item.right, slot + 1 + extra, false);
+                            slots.extend(dropped.slot_types);
+                            body.extend(dropped.code);
+                            extra += length(dropped.slot_types);
+                            fresh = Without(fresh, item.right);
+                        }
+                    }
+                    fresh.append(slot);
+                }
+                if ((operand.kind == facts.FieldRow || operand.kind == facts.PayloadRow || operand.kind == facts.TagRow) &&
+                    TrackedRecord(managed, item.right) && Holds(fresh, item.left)) {
+                    // An extracted managed value outlives its temporary base.
+                    kept := RecordRefs(rows, declared, operand.type, slot, slot + 1 + extra, true);
+                    slots.extend(kept.slot_types);
+                    body.extend(kept.code);
+                    extra += length(kept.slot_types);
+                    if (type == abi.TextStorage && length(closes) > 0) { logical_strings.append(slot); }
+                    else if (type == abi.TextStorage || TrackedRecord(managed, type)) { fresh.append(slot); }
+                    dropped := RecordRefs(rows, declared, item.right, item.left, slot + 1 + extra, false);
+                    slots.extend(dropped.slot_types);
+                    body.extend(dropped.code);
+                    extra += length(dropped.slot_types);
+                    fresh = Without(fresh, item.left);
+                }
+                if (item.op == native.Call) {
+                    for (argument in 0..<item.target) {
+                        passed := arguments[shape.first_argument + item.right + argument];
+                        held := slots[shape.first_slot + passed];
+                        if (TrackedRecord(managed, held) && Holds(fresh, passed)) {
+                            dropped := RecordRefs(rows, declared, held, passed, slot + 1 + extra, false);
+                            slots.extend(dropped.slot_types);
+                            body.extend(dropped.code);
+                            extra += length(dropped.slot_types);
+                            fresh = Without(fresh, passed);
+                        }
+                    }
+                    if (TrackedRecord(managed, type)) { fresh.append(slot); }
+                }
+                if (operand.kind == facts.ArrayRow || operand.kind == facts.MakeRow || operand.kind == facts.UpdateRow) {
+                    // Uncounted composites keep their existing lifetime until
+                    // recursive array-backing ownership replaces that path.
+                    // A counted child must not die while that parent holds it.
+                    for (input in record_inputs) {
+                        held := slots[shape.first_slot + input];
+                        if (!TrackedRecord(managed, held)) { continue; }
+                        if (Holds(fresh, input)) { fresh = Without(fresh, input); }
+                        else {
+                            kept := RecordRefs(rows, declared, held, input, slot + 1 + extra, true);
+                            slots.extend(kept.slot_types);
+                            body.extend(kept.code);
+                            extra += length(kept.slot_types);
+                        }
+                    }
+                }
+                if (operand.kind == facts.MakeRow && TrackedRecord(managed, type)) { fresh.append(slot); }
+                if (retained_record) {
+                    kept := RecordRefs(rows, declared, operand.type, slot, slot + 1 + extra, true);
+                    slots.extend(kept.slot_types);
+                    body.extend(kept.code);
+                    extra += length(kept.slot_types);
+                    fresh.append(slot);
+                }
                 if (retained_element) {
                     body.append(Op(native.TextRetain, abi.TextStorage, 0, slot, 0, 0));
                 }
@@ -2853,7 +3048,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     fresh.append(slot);
                 }
                 stack.append(slot);
-                slot += 1;
+                slot += 1 + extra;
                 if (moving >= 0) {
                     for (at_var in 0..<length(owned_vars)) {
                         if (owned_vars[at_var] == moving) {
@@ -2934,10 +3129,44 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                              Op(native.TextRelease, abi.TextStorage, 0, slot, 0, 0)]);
                 slot += 1;
             }
+            record_keeps := TrackedRecord(managed, slots[shape.first_slot + value]) &&
+                            (row.kind == facts.LocalRow || row.kind == facts.AssignRow || row.kind == facts.ReturnRow);
+            if (record_keeps && row.kind == facts.LocalRow && (row.name == "_" || row.literal == i64(facts.Retained))) {
+                record_keeps = false;
+            }
+            if (record_keeps) {
+                type := slots[shape.first_slot + value];
+                returning_owner := false;
+                if (row.kind == facts.ReturnRow) {
+                    for (at_read in 0..<length(reads)) {
+                        returning_owner = returning_owner || (reads[at_read] == value && Holds(owned_vars, read_vars[at_read]));
+                    }
+                }
+                if (Holds(fresh, value)) { fresh = Without(fresh, value); }
+                else if (!returning_owner) {
+                    kept := RecordRefs(rows, declared, type, value, slot, true);
+                    slots.extend(kept.slot_types);
+                    body.extend(kept.code);
+                    slot += length(kept.slot_types);
+                }
+                if (row.kind == facts.AssignRow && !Referenced(rows, head, row.value) && Holds(owned_vars, row.value)) {
+                    slots.append(type);
+                    body.append(Op(native.Local, type, slot, places[row.value], 0, 0));
+                    dropped := RecordRefs(rows, declared, type, slot, slot + 1, false);
+                    slots.extend(dropped.slot_types);
+                    body.extend(dropped.code);
+                    slot += 1 + length(dropped.slot_types);
+                }
+            }
             leftover: int[] = [];
             for (temporary in fresh) {
                 if (slots[shape.first_slot + temporary] == abi.TextStorage) {
                     body.append(Op(native.TextRelease, abi.TextStorage, 0, temporary, 0, 0));
+                } else if (TrackedRecord(managed, slots[shape.first_slot + temporary])) {
+                    dropped := RecordRefs(rows, declared, slots[shape.first_slot + temporary], temporary, slot, false);
+                    slots.extend(dropped.slot_types);
+                    body.extend(dropped.code);
+                    slot += length(dropped.slot_types);
                 } else {
                     leftover.append(temporary);
                 }
@@ -3100,7 +3329,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         moved.append(read_vars[at_read]);
                     }
                 }
-                drops := DropAll(rows, declared, owned_vars, owned_types, places, 0, moved, frames, true, slot, length(body));
+                drops := DropAll(rows, declared, managed, owned_vars, owned_types, places, 0, moved, frames, true, slot, length(body));
                 slots.extend(drops.slot_types);
                 slot += length(drops.slot_types);
                 body.extend(drops.code);
@@ -3135,10 +3364,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 retained_types.append(row.type);
                 body.append(Op(native.Save, type, 0, lowered.value, 0, local));
                 local += 1;
-                // The local borrows the retained string. Its assignment path
-                // owns replacement strings, while StateStore keeps its own.
+                // The frame's snapshot and the global state own independent
+                // references, so replacement cannot invalidate local copies.
                 if (type == abi.TextStorage) {
                     body.append(Op(native.TextRetain, type, 0, lowered.value, 0, 0));
+                    owned_vars.append(row.value);
+                    owned_types.append(type);
+                } else if (TrackedRecord(managed, type)) {
+                    kept := RecordRefs(rows, declared, row.type, lowered.value, slot, true);
+                    slots.extend(kept.slot_types);
+                    body.extend(kept.code);
+                    slot += length(kept.slot_types);
                     owned_vars.append(row.value);
                     owned_types.append(type);
                 }
@@ -3160,7 +3396,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         owned_types.append(type);
                     }
                 }
-                if (keeps) {
+                if (keeps || record_keeps) {
                     owned_vars.append(row.value);
                     owned_types.append(type);
                 }
@@ -3226,7 +3462,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 type := NativeType(row.type);
                 slots.append(native.RefType + type);
                 body.append(Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0));
-                if (type == abi.TextStorage || (type >= native.MapType && type < native.RefType && Holds(fresh, value))) {
+                if (TrackedRecord(managed, type)) {
+                    pointer := slot;
+                    slots.append(type);
+                    body.append(Op(native.Deref, type, slot + 1, pointer, 0, 0));
+                    dropped := RecordRefs(rows, declared, row.type, slot + 1, slot + 2, false);
+                    slots.extend(dropped.slot_types);
+                    body.extend(dropped.code);
+                    body.append(Op(native.Poke, type, 0, pointer, value, 0));
+                    slot += 2 + length(dropped.slot_types);
+                } else if (type == abi.TextStorage || (type >= native.MapType && type < native.RefType && Holds(fresh, value))) {
                     // A replacement owns fresh allocations. The old map must
                     // be dropped after the value has finished reading it.
                     // In-place MapSet/Delete results are consumed descriptors,

@@ -1,0 +1,44 @@
+package windows_objects
+
+import host "project:native_link_host"
+import os "core:os"
+import strings "core:strings"
+
+// The Windows native compiler must run the real opt and llc commands, not the
+// still-unsupported asynchronous core:os calls. Invoke with LLVM_BIN WORK_DIR.
+Main :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 2, "LLVM directory and work directory");
+    llvm := arguments[0];
+    work := arguments[1];
+    module := strings.Concatenate([work, "/sample.ll"]);
+    object := strings.Concatenate([work, "/sample.o"]);
+    bitcode := strings.Concatenate([object, ".bc"]);
+    text := "target triple = \"x86_64-pc-windows-msvc\"\ndefine i32 @answer() { ret i32 71 }\n";
+    written := os.WriteText(module, text);
+    assert(written == nil, "write a real LLVM module");
+    failure := host.Objects(llvm, [module], [object], 2, 4);
+    assert(failure == nil, "opt and llc succeed");
+    emitted := os.ReadBytes(object);
+    assert(emitted.error == nil && length(emitted.data) > 0, "a nonempty object");
+    assert(!os.Exists(bitcode), "the intermediate bitcode is removed");
+    removed := os.Remove(object);
+    assert(removed == nil, "remove object");
+    written = os.WriteText(module, "not LLVM IR\n");
+    assert(written == nil, "write rejected LLVM input");
+    failure = host.Objects(llvm, [module], [object], 2, 4);
+    assert(failure != nil, "invalid LLVM fails");
+    assert(!os.Exists(object) && !os.Exists(bitcode), "no output or bitcode on rejection");
+    text = "target triple = \"x86_64-pc-windows-msvc\"\ndefine i32 @answer() {\n  call void asm sideeffect \"chibi_invalid_instruction\", \"\"()\n  ret i32 71\n}\n";
+    written = os.WriteText(module, text);
+    assert(written == nil, "write valid IR with invalid target assembly");
+    failure = host.Objects(llvm, [module], [object], 2, 4);
+    assert(failure != nil, "llc failure is not success");
+    assert(!os.Exists(bitcode), "failed code generation still removes bitcode");
+    failure = host.Objects(strings.Concatenate([work, "/missing-llvm"]), [module], [object], 2, 4);
+    assert(failure != nil, "missing tools fail");
+    removed = os.Remove(module);
+    assert(removed == nil, "remove module");
+    os.Print("PASS native object pipeline");
+    return 0;
+}

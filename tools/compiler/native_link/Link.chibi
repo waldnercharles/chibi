@@ -523,8 +523,11 @@ pub Command :: (plan: Plan, to: string) -> string[] {
         return command;
     }
     if (target == WindowsX64) {
+        // The stack reserve is 64 MiB: Windows defaults to 1 MiB, where Linux and
+        // macOS give a program 8 MiB, and the compiler recurses over deep syntax.
+        // The reserve is address space; pages are committed as the stack grows.
         command := [linker, "-flavor", "link", "/nologo", "/subsystem:console", "/machine:x64", "/opt:ref", "/Brepro",
-                    Join(["/out:", to])];
+                    "/stack:67108864", Join(["/out:", to])];
         if (plan.static) {
             command.extend(["/nodefaultlib", "/entry:mainCRTStartup"]);
         }

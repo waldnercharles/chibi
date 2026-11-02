@@ -798,6 +798,14 @@ Digest :: (path: string) -> string {
     return hashed.digest
 }
 
+// The name of the program a stage writes for `target`.
+StageProgram :: (target: string) -> string {
+    if (strings.HasPrefix(target, "x86_64-pc-windows")) {
+        return "/chibi.exe"
+    }
+    return "/chibi"
+}
+
 // Runs one stage compiler in a clean directory and prints its wall time.
 // The stage contract (docs/native-llvm-ledger.md, W22): `STAGE --compiler DIR
 // --core DIR --output FILE --llvm DIR` writes a native executable with the same
@@ -808,7 +816,7 @@ NativeStage :: (name: string, stage: string, directory: string, llvm: string, ta
     if (status != 0) {
         return status
     }
-    command := [stage, "--compiler", Absolute("tools/compiler"), "--core", Absolute("packages/core"), "--output", Join([directory, "/chibi"]), "--llvm", llvm, "--target", target]
+    command := [stage, "--compiler", Absolute("tools/compiler"), "--core", Absolute("packages/core"), "--output", Join([directory, StageProgram(target)]), "--llvm", llvm, "--target", target]
     began := Clock()
     if (dry) {
         return Step(name, command, dry)
@@ -1120,6 +1128,21 @@ NativeSelfHost :: (arguments: string[]) -> int {
         }
         os.Print(Join(["native-self-host: the fixed point is ", fixed]))
     }
+    // Goal item 8: stage two, cross-linked for Windows with lld-link and the import
+    // libraries. The windows-2022 job runs it to build stage three, then stage four,
+    // and requires the two to match; each is built there by the one LLVM that
+    // job installs, so the digests are comparable where stage two's is not.
+    windows := Option(arguments, "--windows", "")
+    if (windows != "") {
+        folder := Absolute(windows)
+        status = NativeStage("stage-two-windows", Join([two, "/chibi"]), folder, llvm, "x86_64-pc-windows-msvc", dry)
+        if (status != 0) {
+            return status
+        }
+        if (!dry) {
+            os.Print(Join(["stage two windows sha256 ", Digest(Join([folder, StageProgram("x86_64-pc-windows-msvc")]))]))
+        }
+    }
     if (!dry) {
         status = NativeRunner(fixed, llvm, work, target, build_host, !Flag(arguments, "--skip-vm"))
         if (status != 0) {
@@ -1226,7 +1249,7 @@ Usage :: () -> int {
     os.Print("       build test [--build DIR] [--release-build DIR] [--build-host PATH] [--jobs N] [--timeout SECONDS] [--list] [--dry-run] NAME...")
     os.Print("       build install [--prefix DIR] [--release-build DIR]")
     os.Print("       build format [--check] | clean | census | publish-seed | native-census | native-evidence --build DIR --output DIR --nm PATH --sha SHA --sanitizers ON|OFF ...")
-    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--skip-vm] [--dry-run]")
+    os.Print("       build native-self-host --llvm DIR [--stage-one PROGRAM] [--windows DIR] [--work DIR] [--release-build DIR] [--build-host PATH --compiler-host PATH] [--stage-two-only] [--skip-vm] [--dry-run]")
     os.Print("       build native-vendor-sample --llvm DIR --compiler-host PATH [--work DIR] [--dry-run]")
     os.Print("       build bootstrap-artifact | bootstrap-recover [--release-build DIR]")
     os.Print("       build sdk-reflect [--reflect-build DIR] [-- NATIVE ARGUMENTS]")

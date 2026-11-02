@@ -402,7 +402,7 @@ Positionals :: (arguments: string[]) -> string[] {
         if (skip) {
             skip = false
         } else if (argument == "--build" || argument == "--release-build" || argument == "--jobs" ||
-            argument == "--build-host" || argument == "--timeout") {
+            argument == "--build-host" || argument == "--timeout" || argument == "--native-driver" || argument == "--llvm") {
             skip = true
         } else if (!strings.HasPrefix(argument, "--")) {
             names = extend(names, [argument])

@@ -108,6 +108,8 @@ TestSelectors :: (host: string) {
     log = Output(planned);
     assert(planned.status == 0 && Has(log, "types (600s): env "), "the default deadline");
     assert(Has(log, "/out/test/tools/test_tools --chibi-cli /") && Has(log, "CHIBI_CLI=") && Has(log, "/rel/sdk/chibi "), "the selector command");
+    native := Verb(host, "test", ["--dry-run", "--native-driver", "/native driver", "--llvm", "/LLVM tools", "types"]);
+    assert(native.status == 0 && Has(Output(native), "types (600s): env "), "native entry options are not test selectors");
     bounded := Verb(host, "test", ["--dry-run", "--timeout", "30", "chibi-cli", "types"]);
     assert(bounded.status == 0 && Has(Output(bounded), "types (30s): env "), "an explicit deadline");
     heavy := Verb(host, "test", ["--dry-run", "chibi-cli"]);

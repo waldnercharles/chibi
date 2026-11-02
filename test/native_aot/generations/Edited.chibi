@@ -1,0 +1,16 @@
+package loop
+
+// Main must not run again. Adding a function changes Frame's generation ID.
+Main :: () -> int { return 9; }
+Added :: () -> int { return 7; }
+
+Frame :: () -> int {
+    // Inserting a state changes the old states' indices, not their name keys.
+    flag: retain int = 7;
+    count: retain f64 = 0.5;
+    big: retain int = 0;
+    count += 1.0;
+    if count < 3.0 { return 3; }
+    if big != 2147483647 { return 4; }
+    return flag;
+}

@@ -1,6 +1,8 @@
 package graph_build_tests
 
 import os "core:os"
+import process "project:test/graph/native_process"
+import programs "graph:programs"
 import strings "core:strings"
 
 // Graph builds with the discovered Debug toolchain. The support cases build
@@ -22,9 +24,8 @@ Append :: (path: string, text: string) {
 }
 
 Graph :: struct {
-    host: string;
-    // The checkout, whose compiler and compiler cache every run uses.
-    source: string;
+    compiler: string;
+    llvm: string;
     root: string;
     build_dir: string;
 }
@@ -32,13 +33,13 @@ Graph :: struct {
 // Runs the graph's Libraries entry: the number of sources it compiled, or -1
 // when it failed.
 Build :: (graph: Graph, options: string[]) -> int {
-    command := ["env", Path(["CHIBI_COMPILER_CACHE=", graph.source, "/.chibi/compiler-cache"]), graph.host,
-                "--compiler", Path([graph.source, "/tools/compiler"]), "--compiler-core", Path([graph.source, "/packages/core"]),
-                "--root", graph.root, "--source", "tools/toolchain/Graph.chibi", "--core", "packages/core",
-                "--collection", "graph=tools/graph", "--entry", "Libraries", "--timeout-ms", "300000", "--",
+    // The cloned graph and its relative source paths run from the cloned root.
+    program := programs.Build(graph.root, graph.compiler, graph.llvm, "tools/toolchain/Graph.chibi", "Libraries", ["graph=tools/graph"]);
+    if (program == "") { return -1; }
+    command := ["/bin/sh", "-c", "cd \"$1\" && shift && exec \"$@\"", "graph-build", graph.root, program,
                 "--build", graph.build_dir, "--jobs", "8"];
     command.extend(options);
-    result := os.Capture(command);
+    result := process.Capture(command, 300000);
     log := Path([result.stdout, result.stderr]);
     if (result.status != 0) {
         return -1;
@@ -132,11 +133,10 @@ SupportArchiveLinks :: (graph: Graph, scratch: string) {
     assert(os.Run([binary]) == 0, "the program runs");
 }
 
-// An executable publishes no headers, so building one leaves every header its
-// libraries staged in place. A compiler that always fails stops the run after
-// staging.
+// Staging an executable with no headers keeps the support headers staged
+// alongside it. A failing C compiler stops the run after that staging.
 ExecutablesStageNoHeaders :: (graph: Graph) {
-    assert(Build(graph, ["--profile", "debug", "--compiler", "/usr/bin/false", "--target", "chibi"]) == -1, "the build fails");
+    assert(Build(graph, ["--profile", "debug", "--compiler", "/usr/bin/false", "--target", "chibi_support", "--target", "policy_worker"]) == -1, "the build fails");
     assert(os.IsFile(Path([graph.build_dir, "/sdk/public/support/support/arena.h"])), "the staged header stays");
 }
 
@@ -153,18 +153,21 @@ Clone :: (source: string, root: string) {
     }
 }
 
-// The build host runs this entry with its own path as the one argument.
+// The selector supplies the native compiler and LLVM directory.
 pub Run :: () -> int {
     arguments := os.Arguments();
-    assert(length(arguments) == 1, "the build host's path");
+    assert(length(arguments) == 2, "the native compiler and LLVM directory");
+    compiler := os.RealPath(arguments[0]);
+    llvm := os.RealPath(arguments[1]);
+    assert(compiler != "" && llvm != "", "the native toolchain exists");
     source := os.Root();
     scratch := Path([source, "/.chibi/graph-build"]);
     assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(scratch) == nil, "the scratch directory");
-    launcher: Graph = {host: arguments[0], source: source, root: source, build_dir: Path([scratch, "/launcher"])};
+    launcher: Graph = {compiler: compiler, llvm: llvm, root: source, build_dir: Path([scratch, "/launcher"])};
     ExecutablesStageNoHeaders(launcher);
     clone := Path([scratch, "/source"]);
     Clone(source, clone);
-    support: Graph = {host: arguments[0], source: source, root: clone, build_dir: Path([scratch, "/incremental"])};
+    support: Graph = {compiler: compiler, llvm: llvm, root: clone, build_dir: Path([scratch, "/incremental"])};
     SupportRebuildsOnlyWhatChanged(support);
     SupportFailedCompileIsRetried(support);
     SupportArchiveLinks(support, scratch);

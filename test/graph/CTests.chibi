@@ -2,6 +2,8 @@ package graph_c_tests
 
 import c "graph:c"
 import os "core:os"
+import process "project:test/graph/native_process"
+import programs "graph:programs"
 import strings "core:strings"
 
 // Steps, links and dependency files of tools/graph/c. The compiler and linked programs are real; only the
@@ -37,17 +39,30 @@ pub FailedStep :: () -> int {
     return 0;
 }
 
-FailedStepNamesOnlyTheOutput :: (host: string, scratch: string) {
+FailedStepNamesOnlyTheOutput :: (compiler: string, llvm: string, scratch: string) {
     output := Path([scratch, "/expected-step-output.c"]);
-    result := os.Capture([host, "--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", os.Root(),
-                          "--source", "test/graph/CTests.chibi", "--core", "packages/core", "--collection", "graph=tools/graph",
-                          "--entry", "FailedStep", "--timeout-ms", "30000", "--", output]);
+    program := programs.Build(os.Root(), compiler, llvm, "test/graph/CTests.chibi", "FailedStep", ["graph=tools/graph"]);
+    assert(program != "", "the failed-step entry compiles natively");
+    result := process.Capture([program, output], 30000);
     log := Path([result.stdout, result.stderr]);
     if (log != Path(["graph: step failed: ", output, "\n"])) {
         os.Print(log);
     }
     assert(result.status == 0 && log == Path(["graph: step failed: ", output, "\n"]), "the step's diagnostic");
     assert(!os.Exists(output) && !os.Exists(Path([output, ".chibi-record"])), "a failed step leaves no output or record");
+}
+
+// Capturing a real child keeps both streams and its exit status. A deadline
+// stops the child's process group before a delayed descendant writes anything.
+CapturedChildrenKeepDeadlines :: (scratch: string) {
+    completed := process.Capture(["/bin/sh", "-c", "printf captured; printf diagnostic >&2; exit 9"], 30000);
+    assert(completed.status == 9 && completed.stdout == "captured" && completed.stderr == "diagnostic",
+           "a captured child preserves its streams and status");
+    marker := Path([scratch, "/late-child"]);
+    timed := process.Capture(["/bin/sh", "-c", "(sleep 0.2; printf late > \"$1\") & wait", "deadline", marker], 20);
+    assert(timed.status == 124 && strings.Contains(timed.stderr, "child timed out"), "the child deadline");
+    slept := os.Run(["sleep", "0.25"]);
+    assert(slept == 0 && !os.Exists(marker), "a timed-out descendant stays stopped");
 }
 
 // link_commands.json keeps empty arguments and escapes quotes and backslashes.
@@ -260,15 +275,16 @@ LinkResponses :: (scratch: string) {
     LongLinks(fixture, source, quoted);
 }
 
-// The build host runs this entry with its own path as the one argument.
+// The selector supplies the native compiler and LLVM directory.
 pub Run :: () -> int {
     arguments := os.Arguments();
-    assert(length(arguments) == 1, "the build host's path");
+    assert(length(arguments) == 2, "the native compiler and LLVM directory");
     scratch := Path([os.Root(), "/.chibi/graph-c"]);
     assert(os.Run(["rm", "-rf", scratch]) == 0 && Make(scratch), "the scratch directory");
+    CapturedChildrenKeepDeadlines(scratch);
     LinkEntriesKeepEveryArgument();
     DependencyFilesListPrerequisites();
-    FailedStepNamesOnlyTheOutput(arguments[0], scratch);
+    FailedStepNamesOnlyTheOutput(arguments[0], arguments[1], scratch);
     LinkResponses(scratch);
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch cleanup");
     return 0;

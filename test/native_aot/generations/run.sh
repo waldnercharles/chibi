@@ -127,6 +127,13 @@ cp "$root/test/native_aot/generations/LibraryFirst.chibi" "$work/library first/M
 must_build "$work/library first" shared
 swap "$work/library first" "$work/library edited" "$work/library run" ''
 
+# The retired C EnC fixture's library had Frame alone. Missing Main adapts to
+# initial success; the incoming Main still must not run after the state swap.
+mkdir -p "$work/library without main"
+sed '/    Main :: () -> int { return 0; }/d' "$work/library first/Main.chibi" > "$work/library without main/Main.chibi"
+must_build "$work/library without main" shared
+swap "$work/library without main" "$work/library edited" "$work/library without main run" ''
+
 # A sibling import must use package collection, not the executable-only fast
 # driver. Its public helper is called from Frame in the resulting shared object.
 mkdir -p "$work/imports/game" "$work/imports/math" "$work/import run"

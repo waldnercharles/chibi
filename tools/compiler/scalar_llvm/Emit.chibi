@@ -2546,6 +2546,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 retained_element := false;
                 retained_record := false;
                 record_inputs: int[] = [];
+                extra := 0;
                 if (operand.kind == facts.LiteralRow && operand.type == facts.StringType) {
                     // A repeated literal or default shares one entry.
                     item.literal = i64(length(texts));
@@ -2729,11 +2730,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     base := length(stack) - MapOperands(operand);
                     op := operand.value;
                     if (op == facts.MapNew) {
-                        // Take every string reference before inserting. A
+                        // Take every owned reference before inserting. A
                         // duplicate literal key may replace and release an
                         // earlier value during the first sequence of sets.
                         for (index in 0..<operand.count) {
                             kept := stack[base + index];
+                            held := slots[shape.first_slot + kept];
+                            if (TrackedRecord(managed, held)) {
+                                if (Holds(fresh, kept)) { fresh = Without(fresh, kept); }
+                                else {
+                                    owned := RecordRefs(rows, declared, held, kept, slot + 1 + extra, true);
+                                    slots.extend(owned.slot_types);
+                                    body.extend(owned.code);
+                                    extra += length(owned.slot_types);
+                                }
+                            }
                             if (slots[shape.first_slot + kept] == abi.TextStorage) {
                                 if (Holds(fresh, kept)) {
                                     fresh = Without(fresh, kept);
@@ -2748,16 +2759,31 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             value := stack[base + pair * 2 + 1];
                             body.append(item);
                             slots.append(type);
-                            item = Op(native.MapSet, type, slot + 1, slot, key, value);
+                            item = Op(native.MapSet, type, slot + 1 + extra, slot, key, value);
                             item.literal = 1;
-                            slot += 1;
+                            slot += 1 + extra;
+                            extra = 0;
                         }
                     } else {
+                        if (op == facts.MapSet) {
+                            kept := stack[base + 2];
+                            held := slots[shape.first_slot + kept];
+                            if (TrackedRecord(managed, held)) {
+                                if (Holds(fresh, kept)) { fresh = Without(fresh, kept); }
+                                else {
+                                    owned := RecordRefs(rows, declared, held, kept, slot + 1 + extra, true);
+                                    slots.extend(owned.slot_types);
+                                    body.extend(owned.code);
+                                    extra += length(owned.slot_types);
+                                }
+                            }
+                        }
                         if (op == facts.MapSet || op == facts.MapDelete) {
                             slots.append(type);
                             body.append(Op(native.Deref, type, slot, stack[base], 0, 0));
                             stack[base] = slot;
-                            slot += 1;
+                            slot += 1 + extra;
+                            extra = 0;
                         }
                         item = MapLowered(operand, type, slot, stack, base);
                         if (op == facts.MapSet) {
@@ -2773,6 +2799,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         if (op != facts.MapSet && op != facts.MapDelete && Holds(fresh, stack[base])) {
                             pending.append(stack[base]);
                         }
+                        retained_record = (op == facts.MapGet || op == facts.MapValueAt) && TrackedRecord(managed, type);
                         // A string read borrows from its map. Retain it before
                         // a fresh input map is dropped, then track the result
                         // as fresh so the statement either keeps or releases it.
@@ -2814,11 +2841,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         op == facts.ArrayJoin || op == facts.ArrayCopy || op == facts.ArrayText) {
                         if (Holds(fresh, stack[base])) {
                             pending.append(stack[base]);
-                            // Keep a string result before dropping its temporary array.
-                            retained_element = op == facts.ArrayGet && type == abi.TextStorage;
-                            retained_record = op == facts.ArrayGet && TrackedRecord(managed, type);
                         }
                     }
+                    // A later operand can replace even a borrowed element's
+                    // array or slot, so acquire its value at the read.
+                    retained_element = op == facts.ArrayGet && type == abi.TextStorage;
+                    retained_record = op == facts.ArrayGet && TrackedRecord(managed, type);
                     if ((op == facts.ArrayJoin || op == facts.ArrayExtend) && Holds(fresh, stack[base + 1])) {
                         pending.append(stack[base + 1]);
                     }
@@ -2906,7 +2934,6 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     stack = slice(stack, 0, base);
                 }
-                extra := 0;
                 if (operand.kind == facts.ArrayRow && operand.value == facts.ArraySet &&
                     TrackedRecord(managed, slots[shape.first_slot + item.target])) {
                     // The replaced element may be the incoming value itself.

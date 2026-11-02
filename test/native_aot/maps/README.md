@@ -41,5 +41,11 @@ and reload it after key/value evaluation. These run under the poisoned allocator
 Read, `has`, `in` and `not in` evaluate their receiver before a key callback.
 Replacing the original map during that callback preserves the captured value,
 including through aliased scoped parameters and binary string keys.
+Managed record values share the aggregate lifecycle for nested scalar/string
+fields. Copy, replacement, deletion, growth/shrink, temporary results and loop
+exits must retain each live payload and release it once. Array-backed record
+values remain rejected until their recursive backing ownership is available.
+Borrowed string and record array elements also survive later literal callbacks
+that replace the source element before the map is constructed.
 
 A growth/shrink regression builds 4096 entries, deletes all but 64 and checks that logical entry/index capacity shrinks with the live map. Capacity planning near 2^30 is checked without allocating those buffers.

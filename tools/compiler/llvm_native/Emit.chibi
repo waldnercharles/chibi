@@ -3017,7 +3017,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             out.append(format_text("\n{}", text));
         }
         copies := Copies(held);
-        out.append(MapModule(held, ProgramMode(mode)));
+        out.append(MapModule(held, ProgramMode(mode), record_owners));
         if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
         }
@@ -3934,10 +3934,10 @@ pub MapOf :: (key: int, value: int) -> int {
 MapKeyed :: (key: int) -> bool {
     return key == abi.BoolStorage || Integer(key) || key == abi.TextStorage;
 }
-// Scalars and records of scalar leaves copy safely by value. Owning leaves
-// require recursive keep/drop before map operations may accept them.
+// Scalar/string records share the value lifecycle. Array-backed and task
+// fields remain outside this recursively checked payload domain.
 MapPlainValue :: (records: Record[], fields: int[], type: int) -> bool {
-    if (abi.ScalarType(type) != "") { return true; }
+    if (type == abi.TextStorage || abi.ScalarType(type) != "") { return true; }
     if (type < RecordType || type >= ArrayType || type - RecordType >= length(records)) { return false; }
     record := records[type - RecordType];
     for (at in record.first..<record.first + record.count) {
@@ -4093,9 +4093,16 @@ MapHelper :: (op: int) -> string {
     return "has";
 }
 
-// LLVM text that releases, or adds a reference to, the owner of the string
-// `value`, a name unique in the function by `tag`.
-MapOwner :: (call: string, value: string, tag: string) -> string {
+// A copied payload acquires its owned leaves before another map can drop
+// them. `tag` makes the returned copied value unique within the helper.
+MapOwner :: (call: string, value: string, tag: string, type: int) -> string {
+    if (type != abi.TextStorage) {
+        if (call == "retain") {
+            return format_text("  %c.{} = call {} @chibi_value.{}.copy(ptr %ctx, {} {})\n", tag,
+                               TypeName(type), type, TypeName(type), value);
+        }
+        return format_text("  call void @chibi_value.{}.drop(ptr %ctx, {} {})\n", type, TypeName(type), value);
+    }
     text := abi.TextType();
     out := format_text("  %o.{} = extractvalue {} {}, 2\n", tag, text, value);
     if (call == "retain") {
@@ -4105,7 +4112,7 @@ MapOwner :: (call: string, value: string, tag: string) -> string {
 }
 // The reference changes for the live entry just copied or being dropped.
 // Copy's `ymove` block ends in `yretained`, which its loop's phi names.
-MapEach :: (call: string, entries: string, prefix: string, key: int, value: int) -> string {
+MapEach :: (call: string, entries: string, prefix: string, key: int, value: int, owners: bool[]) -> string {
     offset := "%xoff";
     if (call == "retain") {
         offset = "%woff";
@@ -4114,12 +4121,15 @@ MapEach :: (call: string, entries: string, prefix: string, key: int, value: int)
     if (key == abi.TextStorage) {
         out = format_text("  %{}k = getelementptr inbounds $E, ptr {}, i64 {}, i32 0\n", prefix, entries, offset);
         out = format_text("{}  %{}kv = load $K, ptr %{}k\n{}", out, prefix, prefix,
-                          MapOwner(call, format_text("%{}kv", prefix), format_text("{}k", prefix)));
+                          MapOwner(call, format_text("%{}kv", prefix), format_text("{}k", prefix), key));
     }
-    if (value == abi.TextStorage) {
+    if (ValueOwned(value, owners)) {
         out = format_text("{}  %{}v = getelementptr inbounds $E, ptr {}, i64 {}, i32 1\n", out, prefix, entries, offset);
         out = format_text("{}  %{}vv = load $V, ptr %{}v\n{}", out, prefix, prefix,
-                          MapOwner(call, format_text("%{}vv", prefix), format_text("{}v", prefix)));
+                          MapOwner(call, format_text("%{}vv", prefix), format_text("{}v", prefix), value));
+        if (value != abi.TextStorage && call == "retain") {
+            out = format_text("{}  store $V %c.{}v, ptr %{}v\n", out, prefix, prefix);
+        }
     }
     if (call == "retain") {
         out = format_text("{}  br label %yretained\nyretained:\n", out);
@@ -4257,11 +4267,11 @@ MapShared :: () -> string {
 
 // The helpers of map type `type`, named `@chibi_map.<type>.<helper>`: hash,
 // same, find, get, has, set, delete, copy and drop.
-MapHelpers :: (type: int, native_program: bool) -> string {
+MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
     key := MapKey(type);
     value := MapValue(type);
     keyed := key == abi.TextStorage;
-    valued := value == abi.TextStorage;
+    valued := ValueOwned(value, owners);
     prehash := "  %wide = zext $K %key to i64";
     same := "  %same = icmp eq $K %a, %b";
     missing := "  ret $V zeroinitializer";
@@ -4279,14 +4289,14 @@ MapHelpers :: (type: int, native_program: bool) -> string {
     replaced: string[] = [];
     deleted: string[] = [];
     if (valued) {
-        replaced.append(format_text("  %old = load $V, ptr %rv\n{}", MapOwner("release", "%old", "rv")));
+        replaced.append(format_text("  %old = load $V, ptr %rv\n{}", MapOwner("release", "%old", "rv", value)));
         deleted.append(format_text("  %dv = getelementptr inbounds $E, ptr %hole, i32 0, i32 1\n  %dvv = load $V, ptr %dv\n{}",
-                                   MapOwner("release", "%dvv", "dv")));
+                                   MapOwner("release", "%dvv", "dv", value)));
     }
     if (keyed) {
-        replaced.append(MapOwner("release", "%key", "rk"));
+        replaced.append(MapOwner("release", "%key", "rk", key));
         deleted.append(format_text("  %dk = getelementptr inbounds $E, ptr %hole, i32 0, i32 0\n  %dkv = load $K, ptr %dk\n{}",
-                                   MapOwner("release", "%dkv", "dk")));
+                                   MapOwner("release", "%dkv", "dk", key)));
     }
     text := strings.Join([
         "define internal i32 @chibi_map.$N.hash($K %key) {",
@@ -4747,8 +4757,8 @@ MapHelpers :: (type: int, native_program: bool) -> string {
     text = strings.ReplaceAll(text, "$MISSING", missing);
     text = strings.ReplaceAll(text, "$REPLACED", strings.TrimSuffix(strings.Join(replaced, ""), "\n"));
     text = strings.ReplaceAll(text, "$DELETED", strings.TrimSuffix(strings.Join(deleted, ""), "\n"));
-    text = strings.ReplaceAll(text, "$RETAINED", strings.TrimSuffix(MapEach("retain", "%fresh", "r", key, value), "\n"));
-    text = strings.ReplaceAll(text, "$RELEASED", strings.TrimSuffix(MapEach("release", "%entries", "x", key, value), "\n"));
+    text = strings.ReplaceAll(text, "$RETAINED", strings.TrimSuffix(MapEach("retain", "%fresh", "r", key, value, owners), "\n"));
+    text = strings.ReplaceAll(text, "$RELEASED", strings.TrimSuffix(MapEach("release", "%entries", "x", key, value, owners), "\n"));
     text = strings.ReplaceAll(text, "$M", abi.MapType());
     text = strings.ReplaceAll(text, "$E", format_text("{ {}, {}, i32 }", TypeName(key), TypeName(value)));
     text = strings.ReplaceAll(text, "$K", TypeName(key));
@@ -4756,14 +4766,14 @@ MapHelpers :: (type: int, native_program: bool) -> string {
     return format_text("{}\n", strings.ReplaceAll(text, "$N", format_text("{}", type)));
 }
 // The helpers of the map types `code` works on, once each.
-MapModule :: (code: Instruction[], native_program: bool) -> string {
+MapModule :: (code: Instruction[], native_program: bool, owners: bool[]) -> string {
     types := MapTypes(code);
     if (length(types) == 0) {
         return "";
     }
     out: string[] = [MapShared()];
     for (type in types) {
-        out.append(MapHelpers(type, native_program));
+        out.append(MapHelpers(type, native_program, owners));
     }
     return format_text("\n{}", strings.Join(out, "\n"));
 }

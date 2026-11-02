@@ -69,8 +69,12 @@ the program's root, which is the working directory natively and `--root` on the 
 | `Run`, `Capture`, `Start`, `Wait`, `Kill` | `build.run`, `probe`, `start`, `wait_for`, `kill` | `posix_spawnp` with a process group of its own and `/dev/null` as input for `Start`; `waitpid` polled in 2 ms steps for a timeout; `kill(-pid)`. A piped program writes its output and error to one private file named for its process id in `$TMPDIR` (else `/tmp`), which `Wait` prints to standard error when the program ends, as one stream; a program never waited for leaves its file |
 
 `Environment` and `ProgramDirectory` have no callers in the programs and no native body. On Windows
-`Stamp`, `Copy`, `Reserve`, `Publish`, `RealPath`, `Root`, `FindExecutable`, `Start`, `Wait` and `Kill` report
-failure until `core:sys/windows` has them.
+the filesystem and executable-discovery calls have kernel32 bodies. Stamps include the volume, file identity,
+size, permissions, write time and metadata-change time. Reserved directories publish without replacing an
+occupied name, and copies replace their destination only after the full copy succeeds. The regression in
+`test/native_aot/link/windows/Main.chibi` covers those contracts and canonical paths through a directory junction;
+it cross-links, but Windows execution is still pending. `Start`, `Wait` and `Kill` still report failure there,
+so the Windows compiler uses synchronous `Run` for opt and llc.
 The sample `test/compiler/samples/native/foreign_posix` runs every row natively.
 
 ## State

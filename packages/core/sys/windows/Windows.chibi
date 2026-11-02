@@ -1,14 +1,15 @@
 package windows
 
+import strings "core:strings"
+
 // The Windows calls core:os needs, declared against kernel32 and called from
 // native programs; the VM never runs foreign code. It mirrors core:sys/posix:
 // the same names and shapes, so core:os picks one by `target.Os`.
 //
 // Paths and names are UTF-8 strings. The calls take UTF-16, so each string is
 // converted with MultiByteToWideChar and back with WideCharToMultiByte, which
-// keep every path the file system can hold. A string is copied with a NUL into
-// the call's stack buffer, so a path or command line of 4096 bytes or more
-// traps. A call that fails returns false (or -1, or an empty result); the error
+// keep Unicode paths. Each call borrows a NUL-terminated UTF-16 array. A call
+// that fails returns false (or -1, or an empty result); the error
 // code is not read yet. Arguments reads GetCommandLineW itself, so it works
 // with any start module.
 
@@ -26,6 +27,12 @@ foreign kernel32 {
     ReadFile :: (handle: u64, buffer: u8[], count: u32, read: u32[], overlapped: rawptr) -> i32
     WriteFile :: (handle: u64, buffer: u8[], count: u32, written: u32[], overlapped: rawptr) -> i32
     GetFileSizeEx :: (handle: u64, size: u8[]) -> i32
+    GetFileInformationByHandle :: (handle: u64, information: u8[]) -> i32
+    GetFileInformationByHandleEx :: (handle: u64, kind: i32, information: u8[], size: u32) -> i32
+    GetFinalPathNameByHandleW :: (handle: u64, path: u16[], size: u32, flags: u32) -> u32
+    GetCurrentDirectoryW :: (size: u32, path: u16[]) -> u32
+    GetCurrentProcessId :: () -> u32
+    CopyFileW :: (source: u16[], destination: u16[], no_replace: i32) -> i32
     CloseHandle :: (handle: u64) -> i32
     GetEnvironmentVariableW :: (name: u16[], buffer: u16[], size: u32) -> u32
     FindFirstFileW :: (pattern: u16[], data: u16[]) -> u64
@@ -66,6 +73,15 @@ FindNameUnit: int : 22;
 FindNameUnits: int : 260;
 Infinite: u32 : 4294967295;
 UseStandardHandles: u32 : 256;
+BackupSemantics: u32 : 33554432;
+ReadOnlyAttribute: u32 : 1;
+FileBasicInfo: i32 : 0;
+FileInformationBytes: int : 52;
+FileBasicBytes: int : 40;
+FileTimeTicks: i64 : 10000000;
+FileTimeEpochSeconds: i64 : 11644473600;
+Slash: int : 47;
+Backslash: int : 92;
 
 // A zeroed block for a structure the program only passes along.
 Block :: (size: int) -> u8[] {
@@ -126,12 +142,24 @@ pub Kind :: (path: string) -> int {
 }
 
 pub MakeDirectory :: (path: string) -> bool {
-    return CreateDirectoryW(Wide(path), 0) != 0;
+    for index in 1..<text_byte_length(path) {
+        byte := text_byte_at(path, index);
+        if byte == Slash || byte == Backslash {
+            made := CreateDirectoryW(Wide(text_slice(path, 0, index)), 0);
+        }
+    }
+    made := CreateDirectoryW(Wide(path), 0);
+    attributes := Attributes(path);
+    return attributes != InvalidAttributes && (attributes & DirectoryAttribute) != 0;
 }
 
 // Removes a file or link, or an empty directory.
 pub Remove :: (path: string) -> bool {
-    if Kind(path) == KindDirectory {
+    kind := Kind(path);
+    if kind == KindNone {
+        return true;
+    }
+    if kind == KindDirectory || (kind == KindLink && (Attributes(path) & DirectoryAttribute) != 0) {
         return RemoveDirectoryW(Wide(path)) != 0;
     }
     return DeleteFileW(Wide(path)) != 0;
@@ -618,39 +646,167 @@ pub Capture :: (command: string[]) -> Output {
     return result;
 }
 
-// Not implemented yet: each reports failure, as core:os documents for Windows.
 pub Platform :: () -> string {
     return "Windows";
 }
 
+// The unsigned DWORD at the Win32 structure's byte offset.
+Word32 :: (bytes: u8[], at: int) -> u64 {
+    value: u64 = 0;
+    for index in 0..<4 {
+        value = value | (u64(bytes[at + index]) << u32(8 * index));
+    }
+    return value;
+}
+
+// FILETIME's 100 ns ticks since 1601, as Unix seconds.nanoseconds. No access
+// time enters a stamp, so reading or hashing a file leaves its stamp alone.
+FileTime :: (ticks: u64) -> string {
+    nanoseconds := format_text("{}", (i64(ticks) % FileTimeTicks) * 100);
+    while text_byte_length(nanoseconds) < 9 {
+        nanoseconds = strings.Concatenate(["0", nanoseconds]);
+    }
+    return format_text("{}.{}", i64(ticks) / FileTimeTicks - FileTimeEpochSeconds, nanoseconds);
+}
+
+// Same fields as POSIX stamps: volume:file-id:size:mode:modified:changed.
+// Identity and size come from BY_HANDLE_FILE_INFORMATION. FILE_BASIC_INFO
+// supplies the metadata change time, which LastWriteTime alone misses.
 pub Stamp :: (path: string) -> string {
-    return "";
+    handle := CreateFileW(Wide(path), 0, ShareAll, 0, OpenExisting, BackupSemantics, 0);
+    if ~handle == 0 {
+        return "";
+    }
+    information := Block(FileInformationBytes);
+    basic := Block(FileBasicBytes);
+    found := GetFileInformationByHandle(handle, information);
+    changed := GetFileInformationByHandleEx(handle, FileBasicInfo, basic, u32(FileBasicBytes));
+    closed := CloseHandle(handle);
+    if found == 0 || changed == 0 || closed == 0 {
+        return "";
+    }
+    identity := (Word32(information, 44) << u32(32)) | Word32(information, 48);
+    size := (Word32(information, 32) << u32(32)) | Word32(information, 36);
+    attributes := u32(Word32(information, 0));
+    mode := "100666";
+    if (attributes & DirectoryAttribute) != 0 {
+        mode = "40777";
+    }
+    if (attributes & ReadOnlyAttribute) != 0 {
+        mode = "100444";
+        if (attributes & DirectoryAttribute) != 0 {
+            mode = "40555";
+        }
+    }
+    return format_text("{}:{}:{}:{}:{}:{}", Word32(information, 28), identity, size, mode,
+                       FileTime(Word64(basic, 16)), FileTime(Word64(basic, 24)));
 }
 
+// The kernel copies into a private directory beside the destination, then
+// renames the complete file. A failed copy leaves the old destination intact.
 pub Copy :: (source: string, destination: string) -> bool {
-    return false;
+    attributes := Attributes(source);
+    if attributes == InvalidAttributes || (attributes & DirectoryAttribute) != 0 {
+        return false;
+    }
+    work := format_text("{}.copy-{}", destination, int(GetCurrentProcessId()));
+    if !Reserve(work) {
+        return false;
+    }
+    temporary := strings.Concatenate([work, "/file"]);
+    copied := CopyFileW(Wide(source), Wide(temporary), 1) != 0;
+    if copied {
+        copied = Rename(temporary, destination);
+    }
+    removed := Remove(temporary);
+    closed := Remove(work);
+    return copied && removed && closed;
 }
 
+// CreateDirectoryW refuses every existing path, unlike MakeDirectory.
 pub Reserve :: (path: string) -> bool {
-    return false;
+    return CreateDirectoryW(Wide(path), 0) != 0;
 }
 
+// Without MOVEFILE_REPLACE_EXISTING, the kernel rejects every occupied name,
+// including an empty directory. No check-then-rename race can replace one.
 pub Publish :: (source: string, destination: string) -> bool {
-    return false;
+    if Kind(source) != KindDirectory {
+        return false;
+    }
+    return MoveFileExW(Wide(source), Wide(destination), 0) != 0;
 }
 
 pub RealPath :: (path: string) -> string {
-    return "";
+    handle := CreateFileW(Wide(path), 0, ShareAll, 0, OpenExisting, BackupSemantics, 0);
+    if ~handle == 0 {
+        return "";
+    }
+    none: u16[] = [];
+    size := GetFinalPathNameByHandleW(handle, none, 0, 0);
+    if size == 0 {
+        closed := CloseHandle(handle);
+        return "";
+    }
+    buffer := resize([u16(0)], int(size) + 1);
+    count := GetFinalPathNameByHandleW(handle, buffer, u32(length(buffer)), 0);
+    closed := CloseHandle(handle);
+    if count == 0 || int(count) >= length(buffer) || closed == 0 {
+        return "";
+    }
+    normalized := strings.ReplaceAll(Narrow(buffer, int(count)), "\\", "/");
+    if strings.HasPrefix(normalized, "//?/UNC/") {
+        return strings.Concatenate(["//", strings.TrimPrefix(normalized, "//?/UNC/")]);
+    }
+    return strings.TrimPrefix(normalized, "//?/");
 }
 
 pub Root :: () -> string {
-    return "";
+    none: u16[] = [];
+    size := GetCurrentDirectoryW(0, none);
+    if size == 0 {
+        return "";
+    }
+    buffer := resize([u16(0)], int(size));
+    count := GetCurrentDirectoryW(size, buffer);
+    if count == 0 || count >= size {
+        return "";
+    }
+    return strings.ReplaceAll(Narrow(buffer, int(count)), "\\", "/");
 }
 
+// Look only on PATH, or use a name containing a directory as supplied. Windows
+// native programs use .exe or .com; command scripts require an explicit shell.
 pub FindExecutable :: (name: string) -> string {
+    if name == "" {
+        return "";
+    }
+    directories := strings.Split(Getenv("PATH"), ";");
+    explicit := strings.ContainsAny(name, "/\\:");
+    if explicit {
+        directories = [""];
+    }
+    for directory in directories {
+        folder := strings.Trim(directory, "\"");
+        candidate := name;
+        if !explicit {
+            if folder == "" {
+                folder = ".";
+            }
+            candidate = strings.Concatenate([folder, "/", name]);
+        }
+        for suffix in ["", ".exe", ".com"] {
+            path := strings.Concatenate([candidate, suffix]);
+            attributes := Attributes(path);
+            if attributes != InvalidAttributes && (attributes & DirectoryAttribute) == 0 {
+                return path;
+            }
+        }
+    }
     return "";
 }
 
+// Asynchronous process operations still report failure.
 pub Start :: (command: string[], piped: bool) -> int {
     return -1;
 }

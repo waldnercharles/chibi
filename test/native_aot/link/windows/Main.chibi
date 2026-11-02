@@ -3,6 +3,7 @@ package windows_objects
 import host "project:native_link_host"
 import c "graph:c"
 import evidence "graph:evidence"
+import install "graph:install"
 import os "core:os"
 import strings "core:strings"
 import windows "core:sys/windows"
@@ -348,6 +349,11 @@ Files :: (llvm: string, work: string) {
     linked := os.Capture(["cmd.exe", "/d", "/c", "mklink", "/J", junction, strings.Concatenate([folder, "/parents"])]);
     assert(linked.status == 0 && os.Kind(junction) == os.KindLink, "create a directory junction");
     assert(os.RealPath(junction) == os.RealPath(strings.Concatenate([folder, "/parents"])), "canonical paths resolve junctions");
+    assert(install.CanonicalPath(strings.Concatenate([junction, "/../source.txt"])) == canonical,
+           "SDK canonicalization resolves a junction before its parent component");
+    contained := install.CanonicalPath(strings.Concatenate([junction, "/child/missing"]));
+    assert(install.Inside(contained, nested) && !install.Inside(canonical, nested),
+           "SDK containment follows Windows file identities and stops at a drive root");
     removed = os.Remove(junction);
     assert(removed == nil && os.IsDirectory(nested), "removing a junction keeps its target");
     for path in [file, copied, empty, published, nested, strings.Concatenate([folder, "/parents"]), folder] {

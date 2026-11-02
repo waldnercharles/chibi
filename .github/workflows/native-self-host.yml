@@ -23,6 +23,7 @@ on:
       - test/native_aot/diagnostics/**
       - test/native_aot/test_attributes/**
       - test/native_aot/optionals/**
+      - test/native_aot/asset_compiler/**
       - test/native_aot/tasks/**
       - test/native_aot/maps/**
       - test/native_aot/map_programs/**
@@ -319,6 +320,9 @@ jobs:
             throw 'native-self-host (Windows): stage three and stage four differ'
           }
           'native-self-host (Windows): stage three and stage four are byte-identical'
+      - name: Check the native Windows asset compiler and C consumer
+        run: |
+          & ./test/native_aot/asset_compiler/Bridge.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Exercise the native Windows object pipeline
         run: |
           $ErrorActionPreference = 'Stop'

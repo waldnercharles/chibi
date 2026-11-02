@@ -557,10 +557,13 @@ jobs:
         run: sh tools/build.sh census
       - name: chibi build
         run: sh tools/build.sh build --release --libclang-root "$LIBCLANG_ROOT"
-      - name: Every product and test driver was built
+      - name: Default native products were built
         run: |
-          for product in sdk/chibi sdk/chibi-compile sdk/chibi-build-host sdk/chibi-compiler-host test/tools/test_tools test/language/test_language; do
+          for product in sdk/chibi sdk/chibi-compile sdk/chibi-asset-compiler; do
             test -x "build-release/$product" || { echo "missing build-release/$product"; exit 1; }
+          done
+          for host in chibi-build-host chibi-compiler-host; do
+            test ! -e "build-release/sdk/$host" || { echo "unexpected private host $host"; exit 1; }
           done
       - name: Preserve failed build diagnostics
         if: failure()

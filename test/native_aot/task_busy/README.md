@@ -15,3 +15,7 @@ no Busy calls in its emitted IR.
 
 Generated `chibi test` dispatch and VM/native differential outcomes belong to
 the native CLI test suite. This probe isolates the runtime instruction guards.
+
+The scalar foreign-call fixture now admits real libc abs calls before and after
+suspension. Malformed declarations of the program-owned test helpers remain
+rejected against their actual zero-argument int ABI in every caller.

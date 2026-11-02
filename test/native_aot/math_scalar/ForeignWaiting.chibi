@@ -1,0 +1,29 @@
+package scalar_foreign_waiting
+
+import target "core:target"
+foreign import libc "system:c"
+foreign libc {
+    abs :: (value: i32) -> i32
+    dlsym :: (module: rawptr, name: cstring) -> rawptr
+}
+when target.Os == target.Darwin {
+    ResolveAbsolute :: () -> rawptr { return dlsym(u64(wrap: -2), "abs"); }
+} else {
+    ResolveAbsolute :: () -> rawptr { return dlsym(0, "abs"); }
+}
+Main :: () -> int {
+    sine := sin_precise(f64(1e20));
+    rounded := round(f64(-2.5));
+    absolute: fn(value: i32) -> i32 = ResolveAbsolute();
+    first := abs(-7);
+    yield;
+    cosine := cos_precise(f64(1e20));
+    if (!(sine > -0.645251285265782 && sine < -0.645251285265779)) { return 1; }
+    if (!(cosine > 0.763970404441727 && cosine < 0.763970404441730)) { return 2; }
+    if (!(rounded == -3.0 && first == 7)) { return 3; }
+    if (!(absolute(-35) == 35)) { return 4; }
+    power := pow(f64(3.0), f64(2.0));
+    yield;
+    if (!(power == 9.0 && exp(f64(0.0)) == 1.0)) { return 5; }
+    return 0;
+}

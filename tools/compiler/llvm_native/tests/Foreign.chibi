@@ -67,6 +67,22 @@ ForeignSymbolMayNotBeTheEntry :: () {
 ForeignArgumentsPastTheTableAreRejected :: () {
     ChangedForeign(Code(native.ForeignCall, 6, 2, 0, 1, 2, 0), [6, 6, 6], ["chibi_probe_add"], ForeignMismatch());
 }
+// A user declaration cannot alter the program-owned test helpers' real ABI,
+// even when it occurs in an ordinary synchronous function.
+@test
+TestRuntimeForeignHelpersKeepTheirDeclaredABI :: () {
+    for (symbol in ["chibi_native_test_index", "chibi_native_test_begin", "chibi_native_test_end"]) {
+        Rejects(ForeignModule(Foreigns(), [6, 6, 6], [symbol]), ForeignMismatch());
+        code := Foreigns();
+        code[3] = Code(native.ForeignCall, abi.WordStorage, 2, 0, 0, 0, 0);
+        code[4] = Code(native.Publish, abi.WordStorage, 0, 2, 0, 0, 0);
+        Rejects(ForeignResultModule(abi.WordStorage, code, [6, 6, abi.WordStorage], [symbol]), ForeignMismatch());
+        code[3] = Code(native.ForeignCall, abi.IntStorage, 2, 0, 0, 0, 0);
+        code[4] = Code(native.Publish, abi.IntStorage, 0, 2, 0, 0, 0);
+        Emitted(ForeignModule(code, [6, 6, 6], [symbol]));
+    }
+}
+
 // Main calls the address in slot 0 with 40 and 2 and returns the result.
 Indirects :: () -> native.Instruction[] {
     return [Code(native.Check, 0, 0, 0, 0, 0, 0),

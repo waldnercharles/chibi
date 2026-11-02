@@ -4,6 +4,11 @@ import link "project:native_link"
 import host "project:native_link_host"
 import os "core:os"
 import strings "core:strings"
+import target "core:target"
+
+when target.Os == target.Linux || target.Os == target.Darwin {
+    import process "core:sys/posix"
+}
 
 // The `chibi` command line: `version`, `doctor`, `build --native`, `test` and
 // `run`. The compiler is this program, so a command compiles in-process with
@@ -497,6 +502,9 @@ CompileSubject :: (subject: Subject, core: string, llvm: string, triple: string,
 
 // The program's own exit status as the command's, which fits 0..255.
 ExitStatus :: (status: int) -> int {
+    if (status < 0 && (target.Os == target.Linux || target.Os == target.Darwin)) {
+        return 128 - status;
+    }
     if (status < 0 || status > 255) {
         Complain("Main returned an exit status outside 0..255");
         return 1;
@@ -544,7 +552,19 @@ RunProgram :: (invocation: CliInvocation, tail: string[]) -> int {
     }
     command: string[] = [compiled.path];
     command.extend(tail);
-    return ExitStatus(os.Run(command));
+    return ExitStatus(RunChild(command));
+}
+
+when target.Os == target.Linux || target.Os == target.Darwin {
+RunChild :: (command: string[]) -> int {
+    scope := process.ForegroundStart(command);
+    if (scope.pid == 0) { Complain(strings.Concatenate(["run: ", scope.problem])); return 2; }
+    status := process.ForegroundWait(&scope, -1);
+    if (scope.problem != "") { Complain(strings.Concatenate(["run: ", scope.problem])); }
+    return status;
+}
+} else {
+RunChild :: (command: string[]) -> int { return os.Run(command); }
 }
 
 // `chibi build --native`: compiles the program to ROOT/build/native/O2-HASH/program, which

@@ -27,6 +27,9 @@ gate. Windows linking is checked separately from actual Windows execution.
 The facts boundary currently expresses reversed foreign arguments only for a
 direct two-argument call. Operand evaluation stays in source order; lowering
 reorders the two completed value slots. General named-call permutations remain
-a separate lowering gate. Direct libm calls inside waiting functions also remain
-blocked by the native emitter's existing foreign-call restriction; nonwaiting
-math helpers can be called from a waiting function.
+a separate lowering gate. Synchronous foreign calls with scalar-by-value
+arguments and results can run before and after suspension. This includes math
+calls and direct/indirect scalar C calls; it does not admit borrowed strings or
+array buffers into coroutine frames. The existing typed effects and frame
+ownership checks still apply. An immediate-ready authored test exercises the
+same path without beginning a task command.

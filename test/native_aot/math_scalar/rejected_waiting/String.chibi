@@ -1,0 +1,7 @@
+package rejected_waiting_string
+foreign import libc "system:c"
+foreign libc { strlen :: (text: cstring) -> u64 }
+Main :: () -> int {
+    yield;
+    return int(strlen("borrowed"));
+}

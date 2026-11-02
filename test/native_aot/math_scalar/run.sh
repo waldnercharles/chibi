@@ -13,7 +13,7 @@ esac
 work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-math-scalar.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 for level in 0 2; do
-    for source in SquareRoot Shadow Kernels KernelShadow; do
+    for source in SquareRoot Shadow Kernels KernelShadow KernelWaiting ForeignWaiting; do
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
             --source "$root/test/native_aot/math_scalar/$source.chibi" --entry Main \
             --output "$work/$source-$level" --llvm "$llvm" --target "$target" --level "$level" --jobs 1
@@ -23,7 +23,20 @@ for level in 0 2; do
         --root "$root/test/compiler/samples/base" \
         "$root/test/compiler/samples/base/grouped_signed_floating_literals/facts" > "$work/grouped.log" 2>&1 || { cat "$work/grouped.log"; exit 1; }
     awk '/^PASS project[.]Calls$/ { found=1 } END { exit !found }' "$work/grouped.log"
+    CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" \
+        "$root/test/native_aot/math_scalar/ready_tests" > "$work/ready.log" 2>&1 || { cat "$work/ready.log"; exit 1; }
+    grep -F 'PASS project.ScalarMathMayFinishBeforeWaiting' "$work/ready.log" > /dev/null
     printf 'PASS native scalar math widths, precision, argument order and shadow O%s\n' "$level"
+done
+for source in "$root"/test/native_aot/math_scalar/rejected_waiting/*.chibi; do
+    if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        --source "$source" --entry Main --output "$work/rejected" --llvm "$llvm" \
+        --target "$target" > "$work/rejected.log" 2>&1; then
+        echo 'native scalar math: borrowed managed input entered a waiting frame' >&2
+        exit 1
+    fi
+    grep -F 'native waiting frames cannot own managed values or pointers yet' "$work/rejected.log" > /dev/null
+    test ! -e "$work/rejected"
 done
 if [ -n "$reference" ]; then
     for source in SquareRoot Kernels; do

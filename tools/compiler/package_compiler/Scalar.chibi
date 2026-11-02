@@ -4350,6 +4350,12 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                     // natives to the body check. A native build owns its effects, so the
                     // proof treats them as it treats the text natives.
                     text_count := length(text_natives);
+                    if (target.pointer_size == 4) {
+                        rejected := ScalarWasmForeignABI(nodes, documents);
+                        if (rejected.message != "") {
+                            return ScalarFailed(packaged, path, text, documents, rejected);
+                        }
+                    }
                     switch ForeignNatives(nodes, documents, text_natives, text_ports, text_identities,
                                           resize([int(0)], text_count)) {
                         case .Failed(diagnostic):

@@ -331,6 +331,20 @@ Files :: (llvm: string, work: string) {
     assert(made != nil, "reserve refuses an existing directory");
     made = os.Reserve(file);
     assert(made != nil, "reserve refuses an existing file");
+    first := os.TemporaryDirectory(folder);
+    second := os.TemporaryDirectory(folder);
+    assert(first.error == nil && second.error == nil && first.path != second.path &&
+           install.Parent(first.path) == os.RealPath(folder) && os.IsDirectory(second.path),
+           "temporary directories are distinct and stay beside their publish destination");
+    moved := strings.Concatenate([folder, "/published-temporary"]);
+    failure = os.Publish(first.path, moved);
+    assert(failure == nil && os.IsDirectory(moved), "private directories publish on the same filesystem");
+    missing := os.TemporaryDirectory(strings.Concatenate([folder, "/missing-parent"]));
+    assert(missing.error != nil && missing.path == "", "temporary directory failures are explicit");
+    for path in [moved, second.path] {
+        removed = os.Remove(path);
+        assert(removed == nil, "remove private temporary directories");
+    }
     empty := strings.Concatenate([folder, "/empty"]);
     made = os.Reserve(empty);
     assert(made == nil, "reserve an empty destination");

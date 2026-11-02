@@ -755,6 +755,12 @@ Substituted :: (source_root: string, build_dir: string, profile: Profile, target
 // same whichever build's hosts generate it. Sibling outputs are tracked
 // inputs so deleting one regenerates the resource.
 AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string) -> int {
+    // The generator still runs through the VM host. Prepare its seed before
+    // building the hosts, whose installed compiler resources copy that seed.
+    if (os.Run(["sh", Join([root, "/tools/bootstrap/seed.sh"])]) != 0) {
+        os.Print("asset compiler: preparing the legacy compiler seed failed");
+        return -1;
+    }
     prerequisites: string[] = [];
     for (target in Targets()) {
         if (target == "chibi-build-host" || target == "chibi-compiler-host" ||

@@ -1,0 +1,6 @@
+package loop
+Main :: () -> int { return 9; }
+Frame :: () -> int {
+    note: retain int = 0;
+    return 8;
+}

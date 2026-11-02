@@ -76,6 +76,12 @@ Step :: (name: string, command: string[], dry: bool) -> int {
     return status
 }
 
+// Only commands that invoke a retained VM host need its bytecode seed.
+// Native build programs and native compiler recovery do not use this artifact.
+LegacySeed :: (artifact: string, dry: bool) -> int {
+    return Step("legacy-seed", ["sh", "tools/bootstrap/seed.sh", artifact], dry)
+}
+
 Profile :: (arguments: string[]) -> string {
     named := Option(arguments, "--profile", "")
     if (named != "") {
@@ -501,6 +507,15 @@ Test :: (arguments: string[]) -> int {
     if (length(selected) == 0) {
         return 2
     }
+    for (name in selected) {
+        if (strings.Contains(Row(rows, "tool", name), "@host@")) {
+            status := LegacySeed("tools/compiler/bootstrap", Flag(arguments, "--dry-run"))
+            if (status != 0) {
+                return status
+            }
+            break
+        }
+    }
     if (Flag(arguments, "--dry-run")) {
         for (name in selected) {
             command := TestCommand(Row(rows, "tool", name), directory, releases, host)
@@ -682,6 +697,10 @@ Bootstrap :: (arguments: string[], mode: string) -> int {
     artifact := Option(arguments, "--artifact", "tools/compiler/bootstrap")
     base := ["--bootstrap", artifact, "--compiler", "tools/compiler", "--core", "packages/core"]
     status := ReleaseBuild(arguments, ["chibi-compiler-host"], dry)
+    if (status != 0) {
+        return status
+    }
+    status = LegacySeed(artifact, dry)
     if (status != 0) {
         return status
     }
@@ -1071,6 +1090,12 @@ NativeSelfHost :: (arguments: string[]) -> int {
         }
         if (!dry) {
             os.Print(Join(["stage two windows sha256 ", Digest(Join([folder, StageProgram("x86_64-pc-windows-msvc")]))]))
+        }
+    }
+    if (compare_vm) {
+        status = LegacySeed("tools/compiler/bootstrap", dry)
+        if (status != 0) {
+            return status
         }
     }
     if (!dry) {

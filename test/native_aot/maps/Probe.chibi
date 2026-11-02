@@ -1,0 +1,674 @@
+package native_map_probe
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import host "project:native_link_host"
+import link "project:native_link"
+import os "core:os"
+import strings "core:strings"
+
+// Run the real map emitter against ordered lists of expected keys and values.
+// The generated program also counts every context allocation and release.
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 4) {
+        os.Print("usage: probe WORK LLVM RUNTIME positive|tombstone-key|tombstone-value|facts|readonly");
+        return 2;
+    }
+    work := arguments[0];
+    llvm := arguments[1];
+    runtime := os.ReadText(arguments[2]);
+    if (runtime.error) {
+        os.Print("native maps: the test runtime did not read");
+        return 2;
+    }
+    mode := arguments[3];
+    test: Test = {code: [], slots: [], locals: [], texts: [], checks: 0};
+    Emit(&test, native.Check, 0, 0, 0, 0, 0, 0);
+    expected_index := "false";
+    returned := -1;
+    if (mode == "positive") {
+        Integers(&test);
+        Churn(&test);
+        Texts(&test);
+    } else if (mode == "tombstone-key" || mode == "tombstone-value") {
+        expected_index = "true";
+        Tombstone(&test, mode == "tombstone-value");
+    } else if (mode == "readonly") {
+        type := native.MapOf(abi.IntStorage, abi.IntStorage);
+        map := Constant(&test, type, 0);
+        returned = Read(&test, native.MapLength, abi.IntStorage, map, 0, type);
+    } else if (mode == "facts") {
+        // The independent facts consumer is emitted after choosing its target.
+    } else {
+        os.Print("native maps: unknown probe mode");
+        return 2;
+    }
+    if (returned < 0) {
+        returned = Constant(&test, abi.IntStorage, 0);
+    }
+    Emit(&test, native.Publish, abi.IntStorage, 0, returned, 0, 0, 0);
+    Emit(&test, native.Return, 0, 0, 0, 0, 0, 0);
+    function: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0, first_slot: 0,
+        slots: length(test.slots), first_local: 0, locals: length(test.locals), first_code: 0,
+        code: length(test.code), first_argument: 0, arguments: 0};
+    target := abi.LinuxX64();
+    if (os.Platform() == "Darwin") {
+        target = abi.MacOSArm64();
+    }
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    text := "";
+    if (mode == "facts") {
+        rows := FactModule();
+        for (row in rows) {
+            if (row.kind == facts.AssertRow) {
+                test.checks += 1;
+            }
+        }
+        FactRejections(rows);
+        switch scalar.EmitFor(target, rows) {
+            case .Rejected(rejected):
+                os.Print("native maps: accepted facts were rejected");
+                return 1;
+            case .Invalid(message):
+                os.Print(format_text("native maps: invalid facts: {}", message));
+                return 1;
+            case .Emitted(emitted):
+                text = emitted;
+        }
+    } else {
+        switch native.Emit(target, [function], empty, test.slots, test.locals, test.code, empty, records, empty,
+                           test.texts, source, names, empty, empty, false, 1) {
+            case .Rejected(instruction, message):
+                os.Print(format_text("map probe rejected at {}: {}", instruction, message));
+                return 1;
+            case .Emitted(emitted):
+                text = emitted;
+        }
+    }
+    module := format_text("{}/maps-{}.ll", work, mode);
+    globals := format_text("\n@map_test.expected_index = internal constant i1 {}\n", expected_index);
+    runtime_text := runtime.text;
+    if (!strings.Contains(text, "@chibi_scalar(ptr %ctx)")) {
+        runtime_text = strings.ReplaceAll(runtime_text, "call i32 @chibi_scalar(ptr @map_test.context)",
+                                         "call i32 @chibi_scalar()");
+    }
+    written := os.WriteText(module, strings.Concatenate([text, globals, runtime_text]));
+    if (written) {
+        os.Print("native maps: the test module did not write");
+        return 2;
+    }
+    for (level in [int(0), 2]) {
+        object := format_text("{}/maps-{}-O{}.o", work, mode, level);
+        output := format_text("{}/maps-{}-O{}", work, mode, level);
+        compiled := host.Objects(llvm, [module], [object], level, 1);
+        if (compiled) {
+            os.Print("native maps: LLVM did not compile the map module");
+            return 1;
+        }
+        plan := link.Program(target.triple, llvm, [object], [], [], [], output, "", false);
+        if (os.Platform() == "Darwin") {
+            libsystem: link.Import = {name: "System", symbols: ["malloc", "free", "printf", "abort", "exit"]};
+            plan.imports = [libsystem];
+        }
+        linked := host.Link(plan);
+        if (linked) {
+            os.Print("native maps: the map program did not link");
+            return 1;
+        }
+        status := os.Run([output]);
+        if (status != 0) {
+            os.Print(format_text("native maps: {} at O{} failed with {}", mode, level, status));
+            return 1;
+        }
+    }
+    os.Print(format_text("native maps: {} at O0 and O2 passed, {} assertion sites", mode, test.checks));
+    return 0;
+}
+
+Test :: struct {
+    code: native.Instruction[];
+    slots: int[];
+    locals: int[];
+    texts: string[];
+    checks: int;
+}
+
+Emit :: (test: ^Test, op: int, type: int, output: int, left: int, right: int, target: int, literal: i64) {
+    instruction: native.Instruction = {op: op, type: type, output: output, left: left, right: right,
+        target: target, literal: literal};
+    test.code.append(instruction);
+}
+Value :: (test: ^Test, op: int, type: int, left: int, right: int, target: int, literal: i64) -> int {
+    slot := length(test.slots);
+    test.slots.append(type);
+    Emit(test, op, type, slot, left, right, target, literal);
+    return slot;
+}
+Constant :: (test: ^Test, type: int, value: int) -> int {
+    return Value(test, native.Constant, type, 0, 0, 0, i64(value));
+}
+Text :: (test: ^Test, text: string) -> int {
+    index := length(test.texts);
+    test.texts.append(text);
+    return Constant(test, abi.TextStorage, index);
+}
+Read :: (test: ^Test, op: int, type: int, map: int, key: int, map_type: int) -> int {
+    return Value(test, op, type, map, key, 0, i64(map_type));
+}
+Set :: (test: ^Test, map: int, key: int, value: int, type: int) -> int {
+    return Value(test, native.MapSet, type, map, key, value, 1);
+}
+Delete :: (test: ^Test, map: int, key: int, type: int) -> int {
+    return Value(test, native.MapDelete, type, map, key, 0, 1);
+}
+Drop :: (test: ^Test, map: int, type: int) {
+    Emit(test, native.MapDrop, type, 0, map, 0, 0, 0);
+}
+Equal :: (test: ^Test, actual: int, expected: int, type: int) {
+    result := length(test.slots);
+    test.slots.append(abi.BoolStorage);
+    Emit(test, native.Eq, type, result, actual, expected, 0, 0);
+    next := length(test.code) + 2;
+    Emit(test, native.Branch, 0, 0, result, 0, next, 0);
+    test.checks += 1;
+    Emit(test, native.Fail, 0, 0, test.checks, test.checks + 1, 0, 1);
+}
+Integer :: (test: ^Test, actual: int, expected: int) {
+    literal := Constant(test, abi.IntStorage, expected);
+    Equal(test, actual, literal, abi.IntStorage);
+}
+Boolean :: (test: ^Test, actual: int, expected: bool) {
+    value := 0;
+    if (expected) {
+        value = 1;
+    }
+    literal := Constant(test, abi.BoolStorage, value);
+    Equal(test, actual, literal, abi.BoolStorage);
+}
+
+// Expected insertion order is a plain list, independent of the map's index,
+// tombstones and compaction thresholds. Iteration checks each live position.
+Ordered :: (test: ^Test, map: int, type: int, keys: int[], values: int[]) {
+    array_type := native.ArrayType + abi.IntStorage;
+    expected_keys := Constant(test, array_type, 0);
+    expected_values := Constant(test, array_type, 0);
+    for (index in 0..<length(keys)) {
+        key := Constant(test, abi.IntStorage, keys[index]);
+        value := Constant(test, abi.IntStorage, values[index]);
+        expected_keys = Value(test, native.ArrayPush, array_type, expected_keys, key, 0, 1);
+        expected_values = Value(test, native.ArrayPush, array_type, expected_values, value, 0, 1);
+    }
+    Integer(test, Read(test, native.MapLength, abi.IntStorage, map, 0, type), length(keys));
+    span := Read(test, native.MapSpan, abi.IntStorage, map, 0, type);
+    Boolean(test, Read(test, native.MapLiveAt, abi.BoolStorage, map, span, type), false);
+    Boolean(test, Read(test, native.MapLiveAt, abi.BoolStorage, map, Constant(test, abi.IntStorage, -1), type), false);
+    position_local := length(test.locals);
+    ordinal_local := position_local + 1;
+    test.locals.append(abi.IntStorage);
+    test.locals.append(abi.IntStorage);
+    zero := Constant(test, abi.IntStorage, 0);
+    one := Constant(test, abi.IntStorage, 1);
+    Emit(test, native.Save, abi.IntStorage, 0, zero, 0, position_local, 0);
+    Emit(test, native.Save, abi.IntStorage, 0, zero, 0, ordinal_local, 0);
+    loop := length(test.code);
+    position := Value(test, native.Local, abi.IntStorage, position_local, 0, 0, 0);
+    inside := length(test.slots);
+    test.slots.append(abi.BoolStorage);
+    Emit(test, native.Lt, abi.IntStorage, inside, position, span, 0, 0);
+    into := length(test.code);
+    Emit(test, native.Branch, 0, 0, inside, 0, 0, 0);
+    leaving := length(test.code);
+    Emit(test, native.Jump, 0, 0, 0, 0, 0, 0);
+    body := length(test.code);
+    live := Read(test, native.MapLiveAt, abi.BoolStorage, map, position, type);
+    alive := length(test.code);
+    Emit(test, native.Branch, 0, 0, live, 0, 0, 0);
+    skip := length(test.code);
+    Emit(test, native.Jump, 0, 0, 0, 0, 0, 0);
+    read := length(test.code);
+    ordinal := Value(test, native.Local, abi.IntStorage, ordinal_local, 0, 0, 0);
+    actual_key := Read(test, native.MapKeyAt, abi.IntStorage, map, position, type);
+    actual_value := Read(test, native.MapValueAt, abi.IntStorage, map, position, type);
+    wanted_key := Value(test, native.ArrayGet, abi.IntStorage, expected_keys, ordinal, 0, 0);
+    wanted_value := Value(test, native.ArrayGet, abi.IntStorage, expected_values, ordinal, 0, 0);
+    Equal(test, actual_key, wanted_key, abi.IntStorage);
+    Equal(test, actual_value, wanted_value, abi.IntStorage);
+    Equal(test, Read(test, native.MapGet, abi.IntStorage, map, actual_key, type), wanted_value, abi.IntStorage);
+    Boolean(test, Read(test, native.MapHas, abi.BoolStorage, map, actual_key, type), true);
+    next_ordinal := Value(test, native.Add, abi.IntStorage, ordinal, one, 0, 0);
+    Emit(test, native.Save, abi.IntStorage, 0, next_ordinal, 0, ordinal_local, 0);
+    step := length(test.code);
+    next_position := Value(test, native.Add, abi.IntStorage, position, one, 0, 0);
+    Emit(test, native.Save, abi.IntStorage, 0, next_position, 0, position_local, 0);
+    Emit(test, native.Jump, 0, 0, 0, 0, loop, 0);
+    done := length(test.code);
+    patched := test.code;
+    instruction := patched[into];
+    instruction.target = body;
+    patched[into] = instruction;
+    instruction = patched[leaving];
+    instruction.target = done;
+    patched[leaving] = instruction;
+    instruction = patched[alive];
+    instruction.target = read;
+    patched[alive] = instruction;
+    instruction = patched[skip];
+    instruction.target = step;
+    patched[skip] = instruction;
+    test.code = patched;
+    count := Value(test, native.Local, abi.IntStorage, ordinal_local, 0, 0, 0);
+    Integer(test, count, length(keys));
+    Emit(test, native.ArrayDrop, array_type, 0, expected_keys, 0, 0, 0);
+    Emit(test, native.ArrayDrop, array_type, 0, expected_values, 0, 0, 0);
+}
+
+Integers :: (test: ^Test) {
+    type := native.MapOf(abi.IntStorage, abi.IntStorage);
+    map := Constant(test, type, 0);
+    missing := Constant(test, abi.IntStorage, 93);
+    Integer(test, Read(test, native.MapGet, abi.IntStorage, map, missing, type), 0);
+    Boolean(test, Read(test, native.MapHas, abi.BoolStorage, map, missing, type), false);
+    map = Delete(test, map, missing, type);
+    keys: int[] = [];
+    values: int[] = [];
+    for (index in 0..<12) {
+        key := Constant(test, abi.IntStorage, index);
+        value := Constant(test, abi.IntStorage, 100 + index);
+        map = Set(test, map, key, value, type);
+        keys.append(index);
+        values.append(100 + index);
+    }
+    key_three := Constant(test, abi.IntStorage, 3);
+    replacement := Constant(test, abi.IntStorage, 900);
+    map = Set(test, map, key_three, replacement, type);
+    values[3] = 900;
+    Ordered(test, map, type, keys, values);
+    copy := Value(test, native.MapCopy, type, map, 0, 0, 0);
+    for (key in [int(2), 5, 7, 8, 9]) {
+        map = Delete(test, map, Constant(test, abi.IntStorage, key), type);
+    }
+    map = Set(test, map, Constant(test, abi.IntStorage, 5), Constant(test, abi.IntStorage, 505), type);
+    Ordered(test, map, type, [0, 1, 3, 4, 6, 10, 11, 5], [100, 101, 900, 104, 106, 110, 111, 505]);
+    Ordered(test, copy, type, keys, values);
+    Drop(test, map, type);
+    Integer(test, Read(test, native.MapGet, abi.IntStorage, copy, key_three, type), 900);
+    Drop(test, copy, type);
+}
+
+Churn :: (test: ^Test) {
+    type := native.MapOf(abi.IntStorage, abi.IntStorage);
+    map := Constant(test, type, 0);
+    keys: int[] = [];
+    values: int[] = [];
+    for (index in 0..<64) {
+        map = Set(test, map, Constant(test, abi.IntStorage, index), Constant(test, abi.IntStorage, index * 7), type);
+    }
+    for (index in 0..<64) {
+        if (index % 3 != 0) {
+            map = Delete(test, map, Constant(test, abi.IntStorage, index), type);
+        } else {
+            keys.append(index);
+            values.append(index * 7);
+        }
+    }
+    for (index in 0..<64) {
+        if (index % 3 == 1) {
+            map = Set(test, map, Constant(test, abi.IntStorage, index), Constant(test, abi.IntStorage, 1000 + index), type);
+            keys.append(index);
+            values.append(1000 + index);
+        }
+    }
+    Ordered(test, map, type, keys, values);
+    copy := Value(test, native.MapCopy, type, map, 0, 0, 0);
+    for (index in 0..<64) {
+        map = Delete(test, map, Constant(test, abi.IntStorage, index), type);
+    }
+    Integer(test, Read(test, native.MapLength, abi.IntStorage, map, 0, type), 0);
+    map = Set(test, map, Constant(test, abi.IntStorage, 111), Constant(test, abi.IntStorage, 222), type);
+    Ordered(test, map, type, [111], [222]);
+    Drop(test, map, type);
+    Ordered(test, copy, type, keys, values);
+    Drop(test, copy, type);
+}
+
+OwnedText :: (test: ^Test, text: string) -> int {
+    array_type := native.ArrayType + abi.ByteStorage;
+    array := Constant(test, array_type, 0);
+    for (byte in strings.Bytes(text)) {
+        value := Constant(test, abi.ByteStorage, byte);
+        array = Value(test, native.ArrayPush, array_type, array, value, 0, 1);
+    }
+    output := Value(test, native.ArrayText, abi.TextStorage, array, 0, 0, 0);
+    Emit(test, native.ArrayDrop, array_type, 0, array, 0, 0, 0);
+    return output;
+}
+
+Texts :: (test: ^Test) {
+    type := native.MapOf(abi.TextStorage, abi.TextStorage);
+    map := Constant(test, type, 0);
+    key := OwnedText(test, "a\u0000b");
+    value := OwnedText(test, "first");
+    map = Set(test, map, key, value, type);
+    copy := Value(test, native.MapCopy, type, map, 0, 0, 0);
+    map = Set(test, map, OwnedText(test, "a\u0000b"), OwnedText(test, "second"), type);
+    borrowed := Text(test, "a\u0000b");
+    other := Text(test, "a\u0000c");
+    first := Text(test, "first");
+    second := Text(test, "second");
+    Equal(test, Read(test, native.MapGet, abi.TextStorage, map, borrowed, type), second, abi.TextStorage);
+    Equal(test, Read(test, native.MapGet, abi.TextStorage, copy, borrowed, type), first, abi.TextStorage);
+    Boolean(test, Read(test, native.MapHas, abi.BoolStorage, copy, other, type), false);
+    Equal(test, Read(test, native.MapGet, abi.TextStorage, copy, other, type), Text(test, ""), abi.TextStorage);
+    Drop(test, map, type);
+    Equal(test, Read(test, native.MapGet, abi.TextStorage, copy, borrowed, type), first, abi.TextStorage);
+    copy = Delete(test, copy, borrowed, type);
+    Integer(test, Read(test, native.MapLength, abi.IntStorage, copy, 0, type), 0);
+    Drop(test, copy, type);
+    map = Constant(test, type, 0);
+    for (index in 0..<12) {
+        name := format_text("key{}", index);
+        content := format_text("value{}", index);
+        map = Set(test, map, OwnedText(test, name), OwnedText(test, content), type);
+    }
+    for (index in 0..<12) {
+        if (index % 3 == 0) {
+            map = Delete(test, map, Text(test, format_text("key{}", index)), type);
+        }
+    }
+    copy = Value(test, native.MapCopy, type, map, 0, 0, 0);
+    Drop(test, map, type);
+    for (index in 0..<12) {
+        name := Text(test, format_text("key{}", index));
+        content := "";
+        if (index % 3 != 0) {
+            content = format_text("value{}", index);
+        }
+        Equal(test, Read(test, native.MapGet, abi.TextStorage, copy, name, type), Text(test, content), abi.TextStorage);
+    }
+    Drop(test, copy, type);
+}
+
+// A single removal above the small-map threshold leaves one dead position.
+// Reading its key or value must end through the runtime's index failure.
+Tombstone :: (test: ^Test, value: bool) {
+    type := native.MapOf(abi.IntStorage, abi.IntStorage);
+    map := Constant(test, type, 0);
+    for (index in 0..<12) {
+        map = Set(test, map, Constant(test, abi.IntStorage, index), Constant(test, abi.IntStorage, 100 + index), type);
+    }
+    removed := Constant(test, abi.IntStorage, 3);
+    map = Delete(test, map, removed, type);
+    Boolean(test, Read(test, native.MapLiveAt, abi.BoolStorage, map, removed, type), false);
+    op := native.MapKeyAt;
+    if (value) {
+        op = native.MapValueAt;
+    }
+    ignored := Read(test, op, abi.IntStorage, map, removed, type);
+    Drop(test, map, type);
+}
+
+// Canonical representation fixtures use real source text and monotonically
+// increasing statement ranges. They exercise the consumer independently of
+// the producer, which has its own authored-source cases.
+FactTable :: struct {
+    rows: facts.Row[];
+    source: string;
+}
+Fact :: (kind: int, type: int, value: int, count: int, literal: i64, text: string) -> facts.Row {
+    return {kind: kind, type: type, value: value, count: count, literal: literal, name: "", text: text,
+            start: 0, end: 0, line: 0, column: 0};
+}
+FactInt :: (value: int) -> facts.Row {
+    return Fact(facts.LiteralRow, facts.IntType, 0, 0, i64(value), "");
+}
+FactText :: (value: string) -> facts.Row {
+    return Fact(facts.LiteralRow, facts.StringType, 0, 0, 0, value);
+}
+FactRead :: (type: int, variable: int) -> facts.Row {
+    return Fact(facts.ReadRow, type, variable, 0, 0, "");
+}
+FactMap :: (op: int, type: int, mapped: int, count: int) -> facts.Row {
+    literal := mapped;
+    if (op == facts.MapNew || op == facts.MapCopy || op == facts.MapSet || op == facts.MapDelete) {
+        literal = 0;
+    }
+    return Fact(facts.MapRow, type, op, count, i64(literal), "");
+}
+FactStatement :: (table: ^FactTable, source: string, kind: int, type: int, variable: int, name: string,
+                  operands: facts.Row[]) {
+    start := strings.ByteLength(table.source);
+    table.source = strings.Concatenate([table.source, source]);
+    end := strings.ByteLength(table.source);
+    statement := Fact(kind, type, variable, length(operands), 0, "");
+    statement.name = name;
+    statement.start = start;
+    statement.end = end;
+    statement.line = 1;
+    statement.column = start + 1;
+    table.rows.append(statement);
+    for (given in operands) {
+        operand := given;
+        operand.start = start;
+        operand.end = end;
+        operand.line = 1;
+        operand.column = start + 1;
+        table.rows.append(operand);
+    }
+}
+FactAssert :: (table: ^FactTable, source: string, operands: facts.Row[]) {
+    compared := operands;
+    compared.append(Fact(facts.CompareRow, facts.BoolType, facts.Equal, 2, 0, ""));
+    FactStatement(table, source, facts.AssertRow, 0, 0, "", compared);
+}
+FactModule :: () -> facts.Row[] {
+    table: FactTable = {rows: [Fact(facts.SourceRow, 0, 0, 0, 0, ""),
+                              Fact(facts.DocumentRow, 0, 0, 0, 0, ""),
+                              Fact(facts.FunctionRow, facts.IntType, 0, 0, 0, "")],
+                       source: "package maps Main :: () -> int {"};
+    mapped := facts.MapType + facts.IntType * 16 + facts.IntType;
+    FactStatement(&table, "m: [int: int] = [1: 7, 2: 11];", facts.LocalRow, mapped, 0, "m",
+                  [FactInt(1), FactInt(7), FactInt(2), FactInt(11), FactMap(facts.MapNew, mapped, 0, 4)]);
+    FactStatement(&table, "n := m;", facts.LocalRow, mapped, 1, "n",
+                  [FactRead(mapped, 0), FactMap(facts.MapCopy, mapped, 0, 1)]);
+    FactStatement(&table, "m[1] = 99;", facts.AssignRow, mapped, 0, "",
+                  [FactRead(mapped, 0), FactInt(1), FactInt(99), FactMap(facts.MapSet, mapped, 0, 3)]);
+    FactAssert(&table, "assert(m[1] == 99);",
+               [FactRead(mapped, 0), FactInt(1), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(99)]);
+    FactAssert(&table, "assert(n[1] == 7);",
+               [FactRead(mapped, 1), FactInt(1), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(7)]);
+    FactAssert(&table, "assert(m[93] == 0);",
+               [FactRead(mapped, 0), FactInt(93), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(0)]);
+    FactStatement(&table, "delete m[2];", facts.AssignRow, mapped, 0, "",
+                  [FactRead(mapped, 0), FactInt(2), FactMap(facts.MapDelete, mapped, 0, 2)]);
+    FactAssert(&table, "assert(length(m) == 1);",
+               [FactRead(mapped, 0), FactMap(facts.MapLength, facts.IntType, mapped, 1), FactInt(1)]);
+    FactAssert(&table, "assert(length(n) == 2);",
+               [FactRead(mapped, 1), FactMap(facts.MapLength, facts.IntType, mapped, 1), FactInt(2)]);
+    FactStatement(&table, "m[2] = 22;", facts.AssignRow, mapped, 0, "",
+                  [FactRead(mapped, 0), FactInt(2), FactInt(22), FactMap(facts.MapSet, mapped, 0, 3)]);
+    FactAssert(&table, "assert(m[2] == 22);",
+               [FactRead(mapped, 0), FactInt(2), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(22)]);
+    FactAssert(&table, "assert(m.has(2));",
+               [FactRead(mapped, 0), FactInt(2), FactMap(facts.MapHas, facts.BoolType, mapped, 2),
+                Fact(facts.LiteralRow, facts.BoolType, 0, 0, 1, "")]);
+    // Owned strings come from byte arrays. Map stores retain borrowed local
+    // strings, copied maps retain them, and replacement drops them exactly once.
+    text_map := facts.MapType + facts.StringType * 16 + facts.StringType;
+    FactStatement(&table, "s: [string: string] = [\"a\\u0000b\": \"first\"];", facts.LocalRow, text_map, 2, "s",
+                  [FactText("a\u0000b"), FactText("first"), FactMap(facts.MapNew, text_map, 0, 2)]);
+    FactStatement(&table, "t := s;", facts.LocalRow, text_map, 3, "t",
+                  [FactRead(text_map, 2), FactMap(facts.MapCopy, text_map, 0, 1)]);
+    bytes := facts.ArrayType + facts.ByteType;
+    FactStatement(&table, "key := text_from_bytes([u8(97), 0, 98]);", facts.LocalRow, facts.StringType, 4, "key",
+                  [Fact(facts.LiteralRow, facts.ByteType, 0, 0, 97, ""),
+                   Fact(facts.LiteralRow, facts.ByteType, 0, 0, 0, ""),
+                   Fact(facts.LiteralRow, facts.ByteType, 0, 0, 98, ""),
+                   Fact(facts.ArrayRow, bytes, facts.ArrayNew, 3, 0, ""),
+                   Fact(facts.ArrayRow, facts.StringType, facts.ArrayText, 1, 0, "")]);
+    FactStatement(&table, "label := text_from_bytes([u8(110), 101, 119]);", facts.LocalRow, facts.StringType, 5, "label",
+                  [Fact(facts.LiteralRow, facts.ByteType, 0, 0, 110, ""),
+                   Fact(facts.LiteralRow, facts.ByteType, 0, 0, 101, ""),
+                   Fact(facts.LiteralRow, facts.ByteType, 0, 0, 119, ""),
+                   Fact(facts.ArrayRow, bytes, facts.ArrayNew, 3, 0, ""),
+                   Fact(facts.ArrayRow, facts.StringType, facts.ArrayText, 1, 0, "")]);
+    // Duplicate keys must take every borrowed reference before the first
+    // insertion can replace and release an earlier pair.
+    FactStatement(&table, "dups: [string: string] = [key: label, key: label];", facts.LocalRow, text_map, 6, "dups",
+                  [FactRead(facts.StringType, 4), FactRead(facts.StringType, 5),
+                   FactRead(facts.StringType, 4), FactRead(facts.StringType, 5), FactMap(facts.MapNew, text_map, 0, 4)]);
+    FactAssert(&table, "assert(length(dups) == 1);",
+               [FactRead(text_map, 6), FactMap(facts.MapLength, facts.IntType, text_map, 1), FactInt(1)]);
+    FactStatement(&table, "s[key] = label;", facts.AssignRow, text_map, 2, "",
+                  [FactRead(text_map, 2), FactRead(facts.StringType, 4), FactRead(facts.StringType, 5),
+                   FactMap(facts.MapSet, text_map, 0, 3)]);
+    FactAssert(&table, "assert(s[\"a\\u0000b\"] == \"new\");",
+               [FactRead(text_map, 2), FactText("a\u0000b"), FactMap(facts.MapGet, facts.StringType, text_map, 2),
+                FactText("new")]);
+    for (flag in [false, true]) {
+        bit: i64 = 0;
+        if (flag) { bit = 1; }
+        FactAssert(&table, "assert((flag && s[key] == label) == flag);",
+                   [Fact(facts.LiteralRow, facts.BoolType, 0, 0, bit, ""),
+                    Fact(facts.LogicalRow, facts.BoolType, facts.LogicalAnd, 5, 0, ""),
+                    FactRead(text_map, 2), FactRead(facts.StringType, 4),
+                    FactMap(facts.MapGet, facts.StringType, text_map, 2), FactRead(facts.StringType, 5),
+                    Fact(facts.CompareRow, facts.BoolType, facts.Equal, 2, 0, ""),
+                    Fact(facts.LiteralRow, facts.BoolType, 0, 0, bit, "")]);
+    }
+    for (flag in [false, true]) {
+        bit: i64 = 0;
+        if (flag) { bit = 1; }
+        FactAssert(&table, "assert((true && (flag && s[key] == label)) == flag);",
+                   [Fact(facts.LiteralRow, facts.BoolType, 0, 0, 1, ""),
+                    Fact(facts.LogicalRow, facts.BoolType, facts.LogicalAnd, 7, 0, ""),
+                    Fact(facts.LiteralRow, facts.BoolType, 0, 0, bit, ""),
+                    Fact(facts.LogicalRow, facts.BoolType, facts.LogicalAnd, 5, 0, ""),
+                    FactRead(text_map, 2), FactRead(facts.StringType, 4),
+                    FactMap(facts.MapGet, facts.StringType, text_map, 2), FactRead(facts.StringType, 5),
+                    Fact(facts.CompareRow, facts.BoolType, facts.Equal, 2, 0, ""),
+                    Fact(facts.LiteralRow, facts.BoolType, 0, 0, bit, "")]);
+    }
+    FactAssert(&table, "assert(t[\"a\\u0000b\"] == \"first\");",
+               [FactRead(text_map, 3), FactText("a\u0000b"), FactMap(facts.MapGet, facts.StringType, text_map, 2),
+                FactText("first")]);
+    FactStatement(&table, "s = [:];", facts.AssignRow, text_map, 2, "", [FactMap(facts.MapNew, text_map, 0, 0)]);
+    FactAssert(&table, "assert(key == \"a\\u0000b\");", [FactRead(facts.StringType, 4), FactText("a\u0000b")]);
+    FactAssert(&table, "assert(label == \"new\");", [FactRead(facts.StringType, 5), FactText("new")]);
+    FactAssert(&table, "assert(([\"x\": text_from_bytes([u8(116), 109, 112])])[\"x\"] == \"tmp\");",
+               [FactText("x"), Fact(facts.LiteralRow, facts.ByteType, 0, 0, 116, ""),
+                Fact(facts.LiteralRow, facts.ByteType, 0, 0, 109, ""),
+                Fact(facts.LiteralRow, facts.ByteType, 0, 0, 112, ""),
+                Fact(facts.ArrayRow, bytes, facts.ArrayNew, 3, 0, ""),
+                Fact(facts.ArrayRow, facts.StringType, facts.ArrayText, 1, 0, ""),
+                FactMap(facts.MapNew, text_map, 0, 2), FactText("x"),
+                FactMap(facts.MapGet, facts.StringType, text_map, 2), FactText("tmp")]);
+    reset_call := Fact(facts.CallRow, facts.IntType, 1, 1, 0, "");
+    reset_call.name = "Reset";
+    FactStatement(&table, "_ := Reset(&m);", facts.LocalRow, facts.IntType, 7, "_",
+                  [Fact(facts.RefRow, mapped, 0, 0, 0, ""), reset_call]);
+    FactAssert(&table, "assert(m[8] == 80);",
+               [FactRead(mapped, 0), FactInt(8), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(80)]);
+    FactAssert(&table, "assert(m[1] == 0);",
+               [FactRead(mapped, 0), FactInt(1), FactMap(facts.MapGet, facts.IntType, mapped, 2), FactInt(0)]);
+    FactStatement(&table, "return 0;", facts.ReturnRow, 0, 0, "", [FactInt(0)]);
+    table.source = strings.Concatenate([table.source, "}"]);
+    main_end := strings.ByteLength(table.source);
+    reset_start := main_end;
+    header := "Reset :: (map: ^([int: int])) -> int {";
+    reset := Fact(facts.FunctionRow, facts.IntType, 0, 1, 0, "");
+    reset.name = "Reset";
+    reset.start = reset_start;
+    reset.line = 1;
+    reset.column = reset_start + 1;
+    parameter := Fact(facts.ParameterRow, mapped, 0, 0, 1, "");
+    parameter.name = "map";
+    parameter.start = reset_start;
+    parameter.end = reset_start + strings.ByteLength(header);
+    parameter.line = 1;
+    parameter.column = reset_start + 1;
+    helper: FactTable = {rows: [reset, parameter], source: strings.Concatenate([table.source, header])};
+    FactStatement(&helper, "map^ = [8: 80];", facts.AssignRow, mapped, 0, "",
+                  [FactInt(8), FactInt(80), FactMap(facts.MapNew, mapped, 0, 2)]);
+    FactStatement(&helper, "return 0;", facts.ReturnRow, 0, 0, "", [FactInt(0)]);
+    helper.source = strings.Concatenate([helper.source, "}"]);
+    helper_rows := helper.rows;
+    reset.end = strings.ByteLength(helper.source);
+    helper_rows[0] = reset;
+    table.rows.extend(helper_rows);
+    table.source = helper.source;
+    rows := table.rows;
+    source := rows[0];
+    source.name = "MapFacts.chibi";
+    source.text = table.source;
+    rows[0] = source;
+    document := rows[1];
+    document.name = "project:MapFacts.chibi";
+    rows[1] = document;
+    function := rows[2];
+    function.name = "Main";
+    function.end = main_end;
+    function.line = 1;
+    function.column = 1;
+    rows[2] = function;
+    return rows;
+}
+FactRejections :: (accepted: facts.Row[]) {
+    for (which in 0..<6) {
+        rows := accepted;
+        changed := false;
+        for (at in 3..<length(rows)) {
+            row := rows[at];
+            if (row.kind != facts.MapRow) {
+                continue;
+            }
+            if (which == 0 && row.value == facts.MapSet) {
+                key := rows[at - 2];
+                key.type = facts.BoolType;
+                key.literal = 1;
+                rows[at - 2] = key;
+                changed = true;
+            } else if (which == 1 && row.value == facts.MapSet) {
+                row.count = 2;
+                rows[at] = row;
+                changed = true;
+            } else if (which == 2 && row.value == facts.MapGet) {
+                row.type = facts.BoolType;
+                rows[at] = row;
+                changed = true;
+            } else if (which == 3 && row.value == facts.MapSet) {
+                statement := rows[at - 4];
+                statement.kind = facts.ReturnRow;
+                statement.type = 0;
+                rows[at - 4] = statement;
+                changed = true;
+            } else if (which == 4 && row.value == facts.MapNew) {
+                row.count = 3;
+                rows[at] = row;
+                changed = true;
+            } else if (which == 5 && row.value == facts.MapGet) {
+                row.literal += i64(1) << u32(32);
+                rows[at] = row;
+                changed = true;
+            }
+            if (changed) {
+                break;
+            }
+        }
+        assert(changed, "the malformed map fixture changes one contract");
+        error := scalar.Validate(rows);
+        expected := "scalar map operation differs from its operands";
+        if (which == 3) {
+            expected = "scalar map change is not the assignment of its map";
+        }
+        if (error != expected) {
+            os.Print(format_text("map rejection {}: expected {}, got {}", which, expected, error));
+            assert(false, "the malformed map facts report their contract");
+        }
+    }
+}

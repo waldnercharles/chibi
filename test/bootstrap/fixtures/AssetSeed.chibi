@@ -1,0 +1,24 @@
+package asset_seed_test
+
+import c "graph:c"
+import engine "graph:engine"
+import os "core:os"
+
+// Exercise the real asset-generation boundary. A failed seed must stop it
+// before it attempts to build or invoke the legacy compiler hosts.
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 2) { return 2; }
+    tools: c.Tools = {launcher: "", compiler: "", cxx_compiler: "", archiver: "", ranlib: "", jobs: 1};
+    profile: engine.Profile = {
+        compiler: "", cxx_compiler: "", compiler_id: "", build_type: "Release",
+        debug_optimization: "", debug_frame_pointers: false, architecture: "", sysroot: "",
+        warnings: false, sanitizers: "", debug_compilation_dir: "", libclang_include: "",
+        opengl_library: "", opengl_include: "", glx_library: "", libclang_library: "",
+        clang_resource_include: "", third_party: "", reflect: "", asset_generator_hosts: ""
+    };
+    if (engine.Build(tools, profile, arguments[0], arguments[1], ["chibi_asset_compiler_host"]) < 0) {
+        return 1;
+    }
+    return 0;
+}

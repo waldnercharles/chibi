@@ -34,12 +34,14 @@ status 1 leaves OUTPUT alone and writes document, line and column as decimal
 lines followed by the diagnostic's message bytes. Status 2 reports a request or
 environment error on stderr. The C facade supplies fresh private paths.
 
-The Emscripten branch retains the original embedded compiler until a browser
-replacement passes. The existing Wasm JIT imports `execution_machine_step` and
-has an inspection bytecode fallback, so it cannot remove the VM. A replacement
-needs a real native LLVM wasm32 target, a 32-bit runtime context and allocation
-shim, explicit request/result callbacks, and the same closure/diagnostic/quota
-regressions.
+The Emscripten C facade uses the LLVM-compiled authored compiler. The optional
+`chibi-asset-compiler-wasm` target packages plain and pthread archives with the
+matching public header, and `chibi build install --with-wasm` installs them as
+a relocatable SDK component. See [browser asset compiler](native-wasm-asset-compiler.md)
+for the toolchain, imported CMake targets and validation commands. This removes
+the compiler's embedded bytecode host. The runtime's existing Wasm JIT still
+imports `execution_machine_step` and has an inspection bytecode fallback, so
+runtime VM retirement remains a separate gate.
 
 The `wasm32-unknown-emscripten` native target emits 32-bit LLVM through
 `--emit-llvm --output FILE`. The file is a module bundle; each
@@ -57,14 +59,17 @@ Link with Emscripten `-sSUPPORT_LONGJMP=wasm` and
 of desktop page probes. The formatter reuses the desktop implementation with
 the Wasm C ABI's 32-bit `snprintf` size parameter.
 
-`test/native_aot/asset_compiler/wasm.sh DRIVER LLVM_BIN EMCC NODE` builds and
-runs the real LLVM Wasm compiler. It compares the same closure digest,
+`test/native_aot/asset_compiler/wasm.sh DRIVER NATIVE_LLVM_BIN EMCC WASM_LLVM_BIN NODE`
+builds and runs the real LLVM Wasm compiler. It compares the same closure digest,
 diagnostics, rich catalogs and rejection behavior, checks numeric formatting
 and embedded NUL bytes, then reuses one module through quota exhaustion and
 cancellation followed by successful compiles with balanced allocations.
 The Node filesystem adapter is test code; the compiler imports no filesystem.
-The existing browser facade and SDK Web packaging remain on the old path
-until the linked compiler object is supplied at their build boundary.
+Both public archive variants also pass real Chrome execution, including
+simultaneous cancellation and recovery in browser workers. The
+[named browser evidence](evidence/native-wasm-browser-20261102.md) records the
+archive identities and limits. Browser-renderer and Studio acceptance remain
+separate from these compiler checks.
 
 `test/native_aot/asset_compiler/run.sh` exercises the relocated native service
 with an authored test driver and no runtime toolchain. Its optional reference

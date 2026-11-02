@@ -1167,6 +1167,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_LEXICAL_BINDING_BYTES=bytes:tools/compiler/lexical_binding/Binding.chibi",
             "CHIBI_LLVM_NATIVE_BYTES=bytes:tools/compiler/llvm_native/Emit.chibi",
             "CHIBI_LLVM_NATIVE_TASKS_BYTES=bytes:tools/compiler/llvm_native/Tasks.chibi",
+            "CHIBI_LLVM_NATIVE_TASK_TIMING_BYTES=bytes:tools/compiler/llvm_native/TaskTiming.chibi",
             "CHIBI_NATIVE_ABI_BYTES=bytes:tools/compiler/native_abi/Abi.chibi",
             "CHIBI_PACKAGE_COMPILER_BEHAVIOR_BYTES=bytes:tools/compiler/package_compiler/Behavior.chibi",
             "CHIBI_PACKAGE_COMPILER_BODY_BYTES=bytes:tools/compiler/package_compiler/Body.chibi",

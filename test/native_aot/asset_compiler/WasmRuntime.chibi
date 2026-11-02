@@ -1,0 +1,13 @@
+package wasm_runtime_test
+
+import os "core:os"
+import runtime "graph:asset_wasm_runtime"
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 4, "runtime generator arguments");
+    text := runtime.Module(arguments[0], arguments[1], arguments[2], true);
+    if (text == "") { return 1; }
+    if (os.WriteText(arguments[3], text) != nil) { return 1; }
+    return 0;
+}

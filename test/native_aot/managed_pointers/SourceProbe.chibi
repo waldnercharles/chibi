@@ -1,0 +1,60 @@
+package managed_source_probe
+
+import abi "project:native_abi"
+import link "project:native_link"
+import host "project:native_link_host"
+import os "core:os"
+import strings "core:strings"
+
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) < 4) { return 2; }
+    work := args[0];
+    llvm := args[1];
+    audit := os.ReadText(args[2]);
+    if (audit.error) { return 2; }
+    target := abi.LinuxX64();
+    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    start := format_text("{}/source-audit-start.ll", work);
+    if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, false)))) { return 2; }
+    for (index in 3..<length(args)) {
+        source := os.ReadText(args[index]);
+        if (source.error) { return 2; }
+        text := strings.ReplaceAll(source.text, "define i32 @chibi_scalar(ptr %ctx)",
+            "define i32 @managed_source.entry(ptr %ctx)");
+        // ScopedAliases has no managed values but still proves the scoped
+        // reference ABI. Its audit also needs the poison intrinsic.
+        if (!strings.Contains(text, "declare void @llvm.memset.p0.i64(")) {
+            text = strings.Concatenate([text, "\ndeclare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\n"]);
+        }
+        for (forced in [false, true]) {
+            current := text;
+            if (forced) {
+                current = strings.ReplaceAll(current, "call void @chibi_managed.safepoint(",
+                    "call void @chibi_managed.collect(");
+            }
+            module := format_text("{}/source-audit-{}-{}.ll", work, index, forced);
+            if (os.WriteText(module, strings.Concatenate([current, audit.text]))) { return 2; }
+            for (level in [int(0), 2]) {
+                output := format_text("{}/source-audit-{}-{}-O{}", work, index, forced, level);
+                objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
+                if (host.Objects(llvm, [module, start], objects, level, 1)) { return 1; }
+                plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
+                if (os.Platform() == "Darwin") {
+                    runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "write", "dprintf", "printf", "abort"]};
+                    plan.imports = [runtime];
+                }
+                if (host.Link(plan)) { return 1; }
+                result := os.Capture([output]);
+                if (result.status != 0) {
+                    os.Print(format_text("managed source {} force={} O{} status={} {}{}", args[index], forced, level,
+                        result.status, result.stdout, result.stderr));
+                    return 1;
+                }
+                os.Print(format_text("PASS managed source {} force={} O{} poisoned balance", args[index], forced, level));
+                os.Print(result.stdout);
+            }
+        }
+    }
+    return 0;
+}

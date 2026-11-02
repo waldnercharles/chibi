@@ -9,6 +9,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* The generated Wasm facade uses the public C layout directly. */
+_Static_assert(sizeof(void *) == 4 && sizeof(asset_compiler_options) == 24, "Wasm32 options ABI");
+_Static_assert(
+    offsetof(asset_compiler_options, compile_budget) == 8 &&
+        offsetof(asset_compiler_options, cancelled) == 16 &&
+        offsetof(asset_compiler_options, user) == 20,
+    "Wasm32 option fields"
+);
+_Static_assert(
+    sizeof(asset_compiler_diagnostic) == 792 &&
+        offsetof(asset_compiler_diagnostic, message) == 20 &&
+        offsetof(asset_compiler_diagnostic, source) == 276 &&
+        offsetof(asset_compiler_diagnostic, source_truncated) == 788,
+    "Wasm32 diagnostic ABI"
+);
+
 static void balanced(void)
 {
 #ifdef CHIBI_ASSET_COMPILER_WASM_TEST
@@ -34,6 +50,29 @@ static bool cancel_during_compile(void *user)
     return ++*calls >= 16;
 }
 
+typedef struct
+{
+    const char *request;
+    size_t length;
+    bool attempted;
+} reentry;
+
+static bool attempt_reentry(void *user)
+{
+    reentry *nested = user;
+    if (!nested->attempted) {
+        nested->attempted = true;
+        asset_compiler_diagnostic diagnostic;
+        size_t length = 99;
+        unsigned char *bytes = compile_request(nested->request, nested->length, &length, NULL, &diagnostic);
+        assert(
+            !bytes && !length &&
+            !strcmp(diagnostic.message, "The package compiler is already running on this thread")
+        );
+    }
+    return false;
+}
+
 #ifdef CHIBI_ASSET_COMPILER_WASM_PUBLIC
 static bool cancel_during_cache_read(void *user)
 {
@@ -55,6 +94,15 @@ static int reused(const char *request, size_t count, const char *cache)
     unsigned char *reference = compile_request(request, count, &length, &options, &diagnostic);
     assert(reference && length == 329);
     balanced();
+    reentry nested = { .request = request, .length = count };
+    options = (asset_compiler_options){ .cancelled = attempt_reentry, .user = &nested };
+    unsigned char *reentered = compile_request(request, count, &length, &options, &diagnostic);
+    assert(
+        nested.attempted && reentered && length == 329 &&
+        !memcmp(reentered, reference, length)
+    );
+    balanced();
+    free(reentered);
     for (unsigned round = 0; round < 16; round++) {
         options.compile_budget = 1;
         unsigned char *bytes = compile_request(request, count, &length, &options, &diagnostic);

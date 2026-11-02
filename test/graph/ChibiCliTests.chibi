@@ -4,9 +4,8 @@ import os "core:os"
 import strings "core:strings"
 
 // `chibi` as a process: version, doctor, run, run --watch and test. The cases
-// specify the CLI for its native replacement (docs/c-test-verdicts.md, "The
-// CLI"), as test/tools/chibi_cli.c does for the C apphost; each keeps that
-// case's exit codes and text. Run takes the launcher of a build tree.
+// preserve the public CLI behaviors listed in docs/c-test-verdicts.md.
+// Run takes a built or installed native CLI and checks its exit codes and text.
 
 // How long a watched program may take to print after a start or an edit: a
 // first compile takes 8 to 10 s for a small program on a workstation, more on
@@ -170,7 +169,7 @@ Defined :: (path: string, name: string) -> string {
     return "";
 }
 
-// The scratch folder's launcher copy, as chibi_cli.c's setup assembles it.
+// The scratch folder's launcher copy with its own resources and compiler stub.
 NewSuite :: (folder: string, built: string) -> Suite {
     suite: Suite = {root: folder, launcher: Path([folder, "/bin/chibi"]), built: built};
     bin := strings.Slice(built, 0, strings.LastIndex(built, "/"));
@@ -686,7 +685,7 @@ Scratch :: (name: string) -> string {
     return os.RealPath(folder);
 }
 
-// The build host runs this entry with the launcher of a build tree.
+// The native selector runs this entry with a built or installed CLI.
 pub Run :: () -> int {
     arguments := os.Arguments();
     assert(length(arguments) == 1, "the build tree's launcher");

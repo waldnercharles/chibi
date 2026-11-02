@@ -1,0 +1,4 @@
+package rejected_foreign_array
+Main :: () -> int { value := 1; pointers: ^int[] = [&value]; return Touch(pointers); }
+foreign import libc "system:c"
+foreign libc { Touch :: (pointers: ^int[]) -> int }

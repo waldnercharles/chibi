@@ -87,11 +87,13 @@ original generation; the host keeps that library loaded and polls its tasks betw
 active Frames. Once its tasks finish, the host releases its scheduler and retained state
 and unloads it. Program exit cancels tasks in every remaining generation.
 
-Retained numbers, bools and standalone strings use `Function.variable` keys. Numeric/bool
-records use one key per leaf, such as `Frame.position.x`, so migration follows field names
-rather than layout. Scalar values transfer as words; strings copy their bytes into the
-incoming generation before the original library can unload. The host reads and writes
-state through the generation's `chibi_host_retained_*` symbols.
+Retained numbers, bools, chars, strings and flat numeric/bool arrays use
+`Function.variable` keys. Plain records use one key per leaf, such as
+`Frame.position.x`, so migration follows field names rather than layout. Imported
+functions have canonical package prefixes, keeping their retained keys distinct.
+Scalar values transfer as words. Strings and arrays copy into the incoming
+generation's allocator before the original library can unload. The host reads and
+writes state through the generation's `chibi_host_retained_*` symbols.
 
 | Change | Result |
 | --- | --- |
@@ -100,6 +102,7 @@ state through the generation's `chibi_host_retained_*` symbols.
 | Removed field or binding | Not copied; its original storage is released when that generation unloads. |
 | Same leaf key, another number or bool type | Converted as the language converts: integers clamp, float-to-integer conversions truncate and saturate with NaN becoming 0, and numbers convert to bool by inequality to zero. |
 | Same leaf key changes between a string and a scalar | Incoming generation rejected; the running generation continues. |
+| Array element type or char/int identity changes | Incoming generation rejected; the running generation continues. |
 
 The host checks incompatible leaf types before writing incoming state. Compile, link,
 load or required-entry failures leave the accepted generation running, so a later valid
@@ -121,30 +124,41 @@ continues; one that fails to load is set aside as
 `rejected.so`. The `native-build` case `WatchesAndSwapsARunningLoop`
 (`test/native_aot/native_build/BuildTests.chibi`) edits a running loop and checks the exit status that
 only a surviving count gives; `SwapsARunningLoopKeepingState` does the same with the editor played by the
-test. Ordinary packages build as generations when they define
-zero-argument `Main` and `Frame` with an int result ABI (`() -> int`; a non-entry
-void `Frame` also has the existing int-zero adaptation). `Main` and `Frame` cannot wait;
-other functions may start supported tasks. The isolated real-driver test
-`test/native_aot/generations/run.sh` swaps a package while inserting a function and a retained
-binding, and changing retained numeric types. Retained keys remain `Function.variable` names;
-package generation function IDs are local indices, not stable prepared-artifact identities.
-Duplicate function names across imported packages are rejected rather than aliased.
+test. Ordinary package generations adapt zero-argument `Main` and `Frame` with
+int or void results. Either entry can be absent. A generation without a runnable
+entry pauses with a notice until another accepted edit supplies one. `Main` runs
+at most once during the session; it is not rerun after an accepted swap. Neither
+entry can wait; other functions may start supported tasks. The isolated real-driver
+test `test/native_aot/generations/run.sh` swaps a package while inserting functions
+and retained bindings, changing numeric types and reordering imports. Function
+IDs are local indices, while retained keys include the function's canonical
+package identity.
 
 Package generations have a private libc-backed runtime context, so arrays, string
-operations and assertions keep their native behavior. An assertion failure exits the host
-with status 134. Retained numbers, bools, strings and plain records containing those values migrate by
-named leaves. Record fields can be reordered or added; a new leaf takes its initializer.
-Initializers must be scalar/string literals or constant record construction. Arrays,
-unions and task handles remain unsupported as retained state. Local record snapshots own their string
-references, so replacing a retained field keeps earlier snapshots valid. Changing a shared leaf
-between a string and a scalar rejects the incoming generation before state is written.
-Strings are copied into the incoming generation, including strings whose bytes originally
-lived in the old object's constant data.
+operations and assertions keep their native behavior. Retained numbers, bools,
+chars, strings and flat numeric/bool arrays migrate by named leaves. Plain records
+can contain numbers, bools, strings and those arrays. Record fields can be
+reordered or added; a new
+leaf takes its initializer. Initializers must be literals, empty arrays or
+constant record construction. Managed arrays, nominal scalar arrays such as
+`char[]`, unions and task handles remain unsupported as retained state. Scalar
+chars keep their nominal identity and reject int/char migration, even though both
+use i32 storage. Source record char fields remain outside the ordinary
+record checker's admitted types; the facts representation preserves their nominal
+identity when a lower-level client supplies them.
+
+Local snapshots own their array and string references, so replacing a retained
+field keeps earlier snapshots valid. Direct retained arrays and direct array
+fields release the extra global lease while mutating their local owner, then
+publish it before subsequent source code runs. The allocation regression bounds
+4,096 appends to at most 16 backing allocations. Nested record array leaves can be copied, edited and
+assigned back; direct nested array mutation remains unsupported. The host checks
+all shared leaf types and array schemas before copying any incoming state.
 
 The legacy `library` form keeps its scalar-literal retained-state ABI: its bulk word
-manifest exposes initialized numbers and bools before any function runs. Record and
-string retained state uses ordinary package generations and the per-key native host API;
-lazy or managed states expose no legacy bulk manifest.
+manifest exposes initialized numbers and bools before any function runs. Records,
+strings and arrays use ordinary package generations and the per-key native host
+API. Lazy, managed or nominal char state exposes no legacy bulk manifest.
 
 A retired generation stays loaded while its tasks are pending. The host polls those tasks
 between active Frames, then cancels/releases their scheduler storage and retained values

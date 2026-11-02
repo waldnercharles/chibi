@@ -8,7 +8,48 @@ Main :: () -> int {
     assert(value.marker == 7);
     value.numbers[ResetIndex(&value)] = 99;
     assert(value.numbers[0] == 7 && value.numbers[1] == 99 && value.marker == 7);
+    ProjectionReads();
     return 0;
 }
 Reset :: (value: ^Box) -> int { value^ = {numbers: [int(7), 8], marker: 7}; return 9; }
 ResetIndex :: (value: ^Box) -> int { value^ = {numbers: [int(7), 8], marker: 7}; return 1; }
+
+ProjectionNested :: struct { numbers: int[]; message: string; }
+Projection :: struct { number: int; flag: bool; numbers: int[]; message: string; nested: ProjectionNested; }
+ProjectionText :: (number: int) -> string { return text_from_bytes([u8(65), 0, u8(number)]); }
+MakeProjection :: (number: int) -> Projection {
+    return {number: number, flag: number != 0, numbers: [number, number + 1], message: ProjectionText(number),
+            nested: {numbers: [number, number + 1], message: ProjectionText(number)}};
+}
+ProjectionRows :: (number: int) -> Projection[] { return [MakeProjection(number)]; }
+ResetProjection :: (rows: ^(Projection[])) -> int { rows^ = ProjectionRows(99); return 0; }
+ProjectionReads :: () {
+    // Reading a scalar must not release the borrowed element or its siblings.
+    rows := ProjectionRows(17);
+    assert(rows[0].number == 17);
+    assert(text_byte_at(rows[0].message, 2) == 17);
+    assert(rows[0].flag);
+    assert(rows[0].nested.numbers[1] == 18 && text_byte_at(rows[0].nested.message, 2) == 17);
+
+    // A temporary array may die only after all record bytes have been loaded.
+    number := ProjectionRows(23)[0].number;
+    present := ProjectionRows(1)[0].flag;
+    absent := ProjectionRows(0)[0].flag;
+    assert(number == 23 && present && !absent);
+
+    // Selected managed fields and escaping records still acquire ownership.
+    text := ProjectionRows(29)[0].message;
+    numbers := ProjectionRows(31)[0].numbers;
+    escaped := ProjectionRows(37)[0];
+    assert(text_byte_at(text, 2) == 29 && numbers[1] == 32);
+    assert(escaped.number == 37 && text_byte_at(escaped.message, 2) == 37);
+    assert(escaped.nested.numbers[1] == 38 && text_byte_at(escaped.nested.message, 2) == 37);
+
+    // The receiver snapshot is chosen before an index callback replaces it.
+    assert(rows[ResetProjection(&rows)].number == 17);
+    assert(rows[0].number == 99 && text_byte_at(rows[0].message, 2) == 99);
+    for i in 0..<4 {
+        assert(i % 2 == 0 || ProjectionRows(i)[0].number == i);
+        assert(i % 2 == 1 || !ProjectionRows(0)[0].flag);
+    }
+}

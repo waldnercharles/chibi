@@ -33,6 +33,11 @@ rows of `tools/tests.tsv` run it over the compiler (`tools/compiler`), `core`
 `test/standard_library/time`, `test/packages/portable_consumer` and each
 registered folder of `test/compiler/samples`, all in the `language` group.
 
+`chibi-test-samples-native` stages the whole native sample folder in a private
+working directory with `Main.chibi` and `Inter.ttf`. It uses the selected SDK's
+core and FreeType archive even when `CHIBI_CORE` names another source tree.
+Missing SDK resources or the font fail before the sample tests run.
+
 The compiler's packages keep their tests beside them in `tools/compiler/*/tests`:
 the tokenizer, parser, package paths, routes, syntax and graph, source snapshot,
 type relations, unit algebra, prepared writer, shader source, asset packaging and
@@ -152,7 +157,7 @@ CI runs `bootstrap-load projects language` with `--jobs 3` on Linux and
 `chibi-cli language` with `--jobs 2` on macOS. Other groups retain their explicit
 invocations and worker limits.
 
-The `projects` group runs `chibi-cli`, `chibi-cli-authored` and `native-build`
+The `projects` group runs `chibi-cli` and `native-build`
 against the Release native `chibi` in `build-release/sdk/`, plus the
 `native-build-entry` regression. `chibi` implements build/run/test directly.
 The explicitly requested `chibi-compile`, `chibi-build-host` and
@@ -161,14 +166,12 @@ not default native products.
 `native-build` links real programs only when `CHIBI_LLVM_BIN` names the LLVM
 tools; without it, LLVM stand-ins cover the process contract.
 
-`chibi-cli` runs twenty-three launcher cases: `version` and `doctor`, over a
-fake sibling and the built CLI; `chibi test` through controlled launcher
-fixtures and the built native compiler; `build --native` argument forwarding;
-and programs run from files and directories, with `--watch`, cancellation and
-child processes.
-
-`chibi-cli-authored` (`test/graph/ChibiCliTests.chibi`) runs the `chibi-cli`
-cases through controlled launcher fixtures and the built native CLI.
+`chibi-cli` compiles and runs `test/graph/ChibiCliTests.chibi` natively, then
+runs the POSIX signal and terminal cases in `test/native_cli/foreground.py`.
+The suite covers identity and diagnosis, source and package dispatch, test
+reporting, relocation, physical diagnostics, watch edits and retained state,
+cancellation, child-group cleanup and terminal suspend/resume. It requires LLVM.
+`chibi-cli-process` runs the process and terminal cases alone.
 
 `chibi build test <name>` runs one selector against the drivers in `build/` and
 the Release tools in `build-release/`; `--build`, `--release-build` and
@@ -184,7 +187,7 @@ The groups of `tools/tests.tsv`:
 | Group | Current coverage |
 | --- | --- |
 | `native` | CPU `test_tools` and build-graph selectors with checked-in inputs. |
-| `projects` | The Release native `chibi` (`chibi-cli`, `chibi-cli-authored`), native builds (`native-build`) and native build entry (`native-build-entry`). |
+| `projects` | The Release native `chibi` (`chibi-cli`), native builds (`native-build`) and native build entry (`native-build-entry`). |
 | `language` | `test_language` selectors, `chibi test` over the compiler, `core` and the compiler samples, and stage-one bootstrap and recovery. |
 | `compiler` | The scalar package-compiler route. |
 | `wasm` | The browser `test_language` build under Node. No build currently produces `build-wasm-language`. |
@@ -436,13 +439,11 @@ retry a failed compile alone and link an archive that runs, plus a launcher
 build whose failing compiler leaves the staged headers in place. `graph-build`
 compiles about fifteen C files and takes about 2.5 minutes.
 
-`chibi-cli-installed` runs an installed launcher in place, `dist/sdk/bin/chibi`,
-so run `chibi build install --prefix dist/sdk` first. Its cases cover `version`
-and `doctor`, `chibi test` on package trees, including one that imports the
-installed `core:` collection, and programs run from files and directories, with
-`--watch`, cancellation and child processes.
+`chibi-cli-installed` runs the same native CLI and process suite against
+`dist/sdk/bin/chibi`; run `chibi build install --prefix dist/sdk` first.
 
-`build-process` and `chibi-cli-installed` are in no group; run them by name.
+`build-process`, `chibi-cli-process` and `chibi-cli-installed` are in no group;
+run them by name.
 Windows does not build or select the private host.
 
 ## Batch validation (CUT62)

@@ -1,0 +1,135 @@
+package public_watch_proof
+
+import os "core:os"
+import strings "core:strings"
+import target "core:target"
+
+foreign import libc "system:c"
+foreign libc { killpg :: (pid: i32, signal: i32) -> i32 }
+
+Inputs :: struct { compiler: string; root: string; llvm: string; work: string; triple: string; level: string; }
+Running :: struct { pid: int; status: int; }
+
+Poll :: (running: ^Running, timeout: int) -> bool {
+    if (running^.pid <= 0) { return false; }
+    status := os.Wait(running^.pid, timeout);
+    if (status == os.StillRunning) { return true; }
+    running^.pid = 0;
+    running^.status = status;
+    return false;
+}
+Marker :: (running: ^Running, path: string) -> bool {
+    for (attempt in 0..<3000) {
+        if (!Poll(running, 10)) { return false; }
+        if (os.Exists(path)) { return true; }
+    }
+    return false;
+}
+Diagnostic :: (running: ^Running, path: string, expected: string) -> bool {
+    for (attempt in 0..<3000) {
+        if (!Poll(running, 10)) { return false; }
+        log := os.ReadText(path);
+        if (log.error == nil && strings.Contains(log.text, expected)) { return true; }
+    }
+    return false;
+}
+Ended :: (running: ^Running, expected: int) -> bool {
+    return !Poll(running, 30000) && running^.status == expected;
+}
+when target.Os == target.Linux || target.Os == target.Darwin {
+Stop :: (running: ^Running) {
+    if (running^.pid <= 0) { return; }
+    // The owned CLI keeps its PID reserved until Wait. Give its foreground
+    // scope a chance to stop/reap the host before forcing the wrapper down.
+    signalled := killpg(i32(running^.pid), 15);
+    if (!Poll(running, 3000)) { return; }
+    stopped := os.Kill(running^.pid);
+    running^.pid = 0;
+    running^.status = stopped;
+}
+} else {
+Stop :: (running: ^Running) {
+    if (running^.pid <= 0) { return; }
+    stopped := os.Kill(running^.pid);
+    running^.pid = 0;
+    running^.status = stopped;
+}
+}
+Source :: (inputs: Inputs, project: string, name: string) -> bool {
+    source := strings.Concatenate([inputs.root, "/test/native_aot/loader/watch/", name, ".chibi"]);
+    return os.Copy(source, strings.Concatenate([project, "/Main.chibi"])) == nil;
+}
+Project :: (inputs: Inputs, project: string) -> bool {
+    return os.MakeDirectory(project) == nil &&
+           os.Copy(strings.Concatenate([inputs.root, "/test/native_aot/loader/watch/Shared.chibi"]), strings.Concatenate([project, "/Shared.chibi"])) == nil &&
+           Source(inputs, project, "First");
+}
+Live :: (project: string) -> string { return strings.Concatenate([project, "/build/native/watch"]); }
+Start :: (inputs: Inputs, project: string, running: ^Running) -> bool {
+    command := [inputs.compiler, "run", "--watch", "--core", strings.Concatenate([inputs.root, "/packages/core"]),
+                "--llvm", inputs.llvm, "--target", inputs.triple, strings.Concatenate(["-O", inputs.level]), project];
+    child := os.StartRedirected(command, strings.Concatenate([project, ".stdout.log"]), strings.Concatenate([project, ".stderr.log"]));
+    running^.pid = child;
+    running^.status = os.StillRunning;
+    if (child < 0) { running^.pid = 0; running^.status = 127; }
+    return child >= 0;
+}
+Released :: (directory: string) -> bool {
+    if (target.Os == target.Windows) {
+        listed := os.List(directory);
+        if (listed.error != nil) { return false; }
+        for (name in listed.names) { if (strings.HasSuffix(name, ".so")) { return false; } }
+    }
+    return true;
+}
+
+// Failed expectations return through Main's owned-child cleanup. The inputs
+// are ordinary files and the only execution entry is the public native CLI.
+Exercise :: (inputs: Inputs, running: ^Running) -> string {
+    project := strings.Concatenate([inputs.work, "/project"]);
+    if (!Project(inputs, project) || !Start(inputs, project, running)) { return "start the public CLI"; }
+    live := Live(project);
+    if (!Marker(running, strings.Concatenate([live, "/ready-first"]))) { return "initial readiness"; }
+    image := strings.Concatenate([live, "/live-0.so"]);
+    before := os.HashFile(image);
+    if (before.error != nil) { return "hash the accepted image"; }
+    for (name in ["RejectedSource", "RejectedEntry"]) {
+        expected := "rejected_source";
+        if (name == "RejectedEntry") { expected = "zero-argument int ABI"; }
+        if (!Source(inputs, project, name) || !Diagnostic(running, strings.Concatenate([project, ".stderr.log"]), expected)) { return strings.Concatenate([name, " diagnostic"]); }
+        checked := os.HashFile(image);
+        if (checked.error != nil || checked.digest != before.digest) { return "a rejected edit replaced the active image"; }
+    }
+    if (!Source(inputs, project, "BadSchema")) { return "write the incompatible schema"; }
+    rejected := strings.Concatenate([live, "/rejected.so"]);
+    if (!Marker(running, rejected) || os.Exists(strings.Concatenate([live, "/bad-schema-ran"]))) { return "discard the incompatible schema"; }
+    if (os.Remove(rejected) != nil) { return "release the rejected image"; }
+    if (!Source(inputs, project, "Middle") || !Marker(running, strings.Concatenate([live, "/ready-middle"]))) { return "first accepted update"; }
+    if (target.Os == target.Windows && !os.Exists(image)) { return "the pending old task lost its image"; }
+    if (os.WriteText(strings.Concatenate([live, "/release-task"]), "resume") != nil ||
+        !Marker(running, strings.Concatenate([live, "/ready-after-task"]))) { return "the original-generation task did not complete"; }
+    if (target.Os == target.Windows && os.Exists(image)) { return "the completed old task kept its image"; }
+    if (!Source(inputs, project, "Second") || !Ended(running, 42)) { return "final public Frame status is not 42"; }
+    if (os.Exists(strings.Concatenate([live, "/main-restarted"])) || os.Exists(strings.Concatenate([live, "/task-new"])) ||
+        os.Exists(strings.Concatenate([live, "/cancelled-ran"])) || !os.Exists(strings.Concatenate([live, "/task-old"]))) { return "Main-once or task ownership"; }
+    if (!Released(live)) { return "the CLI left mapped generation images"; }
+    restart := strings.Concatenate([inputs.work, "/restart"]);
+    if (!Project(inputs, restart) || os.MakeDirectory(Live(restart)) != nil ||
+        os.WriteText(strings.Concatenate([Live(restart), "/finish-first"]), "stop") != nil) { return "prepare a fresh restart"; }
+    if (!Start(inputs, restart, running) || !Ended(running, 43)) { return "fresh public restart status is not 43"; }
+    if (!os.Exists(strings.Concatenate([Live(restart), "/main-started"])) || os.Exists(strings.Concatenate([Live(restart), "/task-old"])) ||
+        os.Exists(strings.Concatenate([Live(restart), "/cancelled-ran"])) || !Released(Live(restart))) { return "fresh restart initialization/cancellation/cleanup"; }
+    return "";
+}
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 6) { os.Print("usage: PublicWatchProof COMPILER CHECKOUT LLVM WORK TRIPLE LEVEL"); return 2; }
+    inputs: Inputs = {compiler: arguments[0], root: arguments[1], llvm: arguments[2], work: arguments[3], triple: arguments[4], level: arguments[5]};
+    if (os.Exists(inputs.work) || os.MakeDirectory(inputs.work) != nil) { os.Print("public watch proof needs a new working directory"); return 2; }
+    running: Running = {pid: 0, status: 0};
+    problem := Exercise(inputs, &running);
+    Stop(&running);
+    if (problem != "") { os.Print(strings.Concatenate(["FAIL public native watch: ", problem])); return 1; }
+    os.Print("PASS public native watch: source/entry/schema rejection, two swaps, state, original/cancelled tasks, restart and image release");
+    return 0;
+}

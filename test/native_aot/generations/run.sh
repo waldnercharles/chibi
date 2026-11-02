@@ -127,6 +127,13 @@ cp "$root/test/native_aot/generations/LibraryFirst.chibi" "$work/library first/M
 must_build "$work/library first" shared
 swap "$work/library first" "$work/library edited" "$work/library run" ''
 
+# The retired C EnC fixture's library had Frame alone. Missing Main adapts to
+# initial success; the incoming Main still must not run after the state swap.
+mkdir -p "$work/library without main"
+sed '/    Main :: () -> int { return 0; }/d' "$work/library first/Main.chibi" > "$work/library without main/Main.chibi"
+must_build "$work/library without main" shared
+swap "$work/library without main" "$work/library edited" "$work/library without main run" ''
+
 # A sibling import must use package collection, not the executable-only fast
 # driver. Its public helper is called from Frame in the resulting shared object.
 mkdir -p "$work/imports/game" "$work/imports/math" "$work/import run"
@@ -430,4 +437,71 @@ status=0
 (cd "$work/collection/run" && timeout 30 "$host") || status=$?
 test "$status" -eq 37
 echo 'native generations: reachable collections, physical diagnostics and rejected-image preservation passed'
+
+# Array leaves carry a strict element schema and copy into the incoming
+# allocator. A rejected schema never replaces the running generation.
+mkdir -p "$work/array first" "$work/array edited" "$work/array rejected" "$work/array run"
+cp "$root/test/native_aot/generations/ArrayFirst.chibi" "$work/array first/Main.chibi"
+cp "$root/test/native_aot/generations/ArrayEdited.chibi" "$work/array edited/Main.chibi"
+printf 'package rejected_schema\nFrame :: () -> int { values: retain f64[] = []; return 99; }\n' \
+    > "$work/array rejected/Main.chibi"
+must_build "$work/array first" shared
+cp "$(output "$work/array first")" "$work/array run/live-0.so"
+(cd "$work/array run" && exec timeout 90 "$host") > "$work/array run/host.log" 2>&1 &
+child=$!
+wait_marker "$work/array run/array-ready" "$work/array run/host.log"
+must_build "$work/array rejected" shared
+cp "$(output "$work/array rejected")" "$work/array run/pending.so"
+mv "$work/array run/pending.so" "$work/array run/next.so"
+wait_marker "$work/array run/rejected.so" "$work/array run/host.log"
+# The same i32 storage cannot make char and int migration compatible.
+# Every rejected edit leaves the old code live.
+for declaration in 'character: retain int = -1;' 'count: retain char = char(65);'; do
+    rm "$work/array run/rejected.so"
+    printf 'package rejected_nominal\nFrame :: () -> int { %s return 99; }\n' "$declaration" \
+        > "$work/array rejected/Main.chibi"
+    must_build "$work/array rejected" shared
+    cp "$(output "$work/array rejected")" "$work/array run/pending.so"
+    mv "$work/array run/pending.so" "$work/array run/next.so"
+    wait_marker "$work/array run/rejected.so" "$work/array run/host.log"
+done
+must_build "$work/array edited" shared
+cp "$(output "$work/array edited")" "$work/array run/pending.so"
+mv "$work/array run/pending.so" "$work/array run/next.so"
+status=0
+wait "$child" || status=$?
+child=
+if [ "$status" -ne 7 ]; then
+    cat "$work/array run/host.log" >&2
+    echo "retained array swap: expected 7 after schema rejection, got $status" >&2
+    exit 1
+fi
+echo 'native generations: numeric/bool arrays, strict schemas and fresh initializers passed'
+
+project="$work/array edited"
+prior=$(output "$project")
+cp "$prior" "$work/prior.so"
+printf 'package rejected\nFrame :: () -> int { values: retain int[] = [1]; return 0; }\n' > "$project/Main.chibi"
+rejected 'native retained initializers require constant values and empty arrays'
+printf 'package rejected\nFrame :: () -> int { values: retain string[] = []; return 0; }\n' > "$project/Main.chibi"
+rejected 'native retained arrays require'
+printf 'package rejected\nFrame :: () -> int { values: retain char[] = []; return 0; }\n' > "$project/Main.chibi"
+rejected 'scalar proof supports only number, bool and string values'
+printf 'package rejected\nInner :: struct { values: char[]; }\nOuter :: struct { inner: Inner; }\nFrame :: () -> int { value: retain Outer = {inner: {values: []}}; return 0; }\n' > "$project/Main.chibi"
+rejected 'record fields require a scalar, pointer, record, union or array of those types'
+printf 'package rejected\nHolder :: struct { character: char; }\nFrame :: () -> int { value: retain Holder = {character: char(65)}; return 0; }\n' > "$project/Main.chibi"
+rejected 'record fields require a scalar, pointer, record, union or array of those types'
+
+printf 'package rejected\nInner :: struct { values: int[]; }\nOuter :: struct { inner: Inner; }\nFrame :: () -> int { value: retain Outer = {inner: {values: []}}; value.inner.values.append(1); return 0; }\n' > "$project/Main.chibi"
+rejected 'scalar proof supports only locals, assignments, asserts, if statements, switches, loops and returns'
+
+# The raw library ABI proves migration allocates independent backing before
+# dropping its old root, and releases every state owner even on repeated close.
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/generations/ArrayProbe.chibi" --entry Main \
+    --output "$work/array-probe" --llvm "$llvm" --target "$triple" --level 2 --jobs 1
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/generations/ArrayGrowth.chibi" --entry Main \
+    --emit-llvm --output "$work/array-growth-source.ll" --target "$triple" --jobs 1
+"$work/array-probe" "$work" "$llvm" "$root/test/native_aot/managed_values/Audit.ll" "$work/array-growth-source.ll"
 echo 'native package generations: passed'

@@ -35,7 +35,7 @@ ln -s "$llvm/llc" "$work/llvm/llc"
 ln -s "$llvm/$linker" "$work/llvm/$linker"
 export CHIBI_VALUE_LLVM=$llvm CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
 for level in 0 2; do
-    for source in Records Foreign Backed Growth Fields; do
+    for source in Records Foreign Backed Growth Fields Clock; do
         input=$root/test/native_aot/managed_values/$source.chibi
         if [ "$source" = Records ]; then input=$records_source; fi
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \

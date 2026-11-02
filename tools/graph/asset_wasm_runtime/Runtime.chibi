@@ -1,0 +1,64 @@
+package asset_wasm_runtime
+
+import os "core:os"
+import strings "core:strings"
+
+AsciiZero :: 48
+
+// Read one compiler-emitted integer constant, rejecting a changed probe shape.
+ProbeConstant :: (module: string, name: string) -> int {
+    value := -1;
+    for (line in strings.Lines(module)) {
+        if (!strings.HasPrefix(line, strings.Concatenate(["@", name, " = "]))) { continue; }
+        if (value != -1) { return -1; }
+        marker := " constant i32 ";
+        start := strings.Index(line, marker);
+        if (start < 0) { return -1; }
+        start += strings.ByteLength(marker);
+        value = 0;
+        count := 0;
+        for (index in start..<strings.ByteLength(line)) {
+            digit := strings.ByteAt(line, index) - AsciiZero;
+            if (digit < 0 || digit > 9) { break; }
+            value = value * 10 + digit;
+            if (value > 4096) { return -1; }
+            count += 1;
+        }
+        if (count == 0) { return -1; }
+    }
+    return value;
+}
+
+// The probe contains SDK type metadata only. None of its C is linked into the
+// product. LLVM's direct setjmp/longjmp calls use that SDK's opaque jump buffer.
+pub Module :: (root: string, emcc: string, work: string, testing: bool) -> string {
+    probe := strings.Concatenate([work, "/jump-abi.c"]);
+    module := strings.Concatenate([work, "/jump-abi.ll"]);
+    if (os.WriteText(probe, "#include <setjmp.h>\nconst unsigned chibi_wasm_jump_bytes = sizeof(jmp_buf);\nconst unsigned chibi_wasm_jump_alignment = _Alignof(jmp_buf);\n") != nil) { return ""; }
+    if (os.Run([emcc, "-std=c11", "-S", "-emit-llvm", probe, "-o", module]) != 0) { return ""; }
+    read := os.ReadText(module);
+    if (read.error != nil) { return ""; }
+    bytes := ProbeConstant(read.text, "chibi_wasm_jump_bytes");
+    alignment := ProbeConstant(read.text, "chibi_wasm_jump_alignment");
+    if (bytes <= 0 || alignment <= 0 || alignment > 16 || (alignment & (alignment - 1)) != 0) {
+        os.Print("asset wasm: unsupported SDK jump-buffer ABI"); return "";
+    }
+    source := os.ReadText(strings.Concatenate([root, "/tools/graph/asset_wasm_runtime/Runtime.ll"]));
+    if (source.error != nil) { return ""; }
+    text := strings.ReplaceAll(source.text, "@JUMP_BYTES@", format_text("{}", bytes));
+    allocate := "";
+    release := "";
+    if (testing) {
+        allocate = "  %live = load i32, ptr @chibi_wasm_live\n  %live.next = add i32 %live, 1\n  store i32 %live.next, ptr @chibi_wasm_live";
+        release = "  %live = load i32, ptr @chibi_wasm_live\n  %has.live = icmp ne i32 %live, 0\n  call void @chibi_wasm_require(i1 %has.live)\n  %live.next = sub i32 %live, 1\n  store i32 %live.next, ptr @chibi_wasm_live";
+        text = strings.Concatenate([text, "\ndefine i32 @asset_compiler_wasm_test_allocations() {\n  %count = load i32, ptr @chibi_wasm_live\n  ret i32 %count\n}\n"]);
+    }
+    text = strings.ReplaceAll(text, "; @COUNT_ALLOCATE@", allocate);
+    return strings.ReplaceAll(text, "; @COUNT_RELEASE@", release);
+}
+
+pub Identity :: (digest: string) -> string {
+    assert(strings.ByteLength(digest) == 64, "a SHA256 payload identity");
+    return strings.Concatenate(["target triple = \"wasm32-unknown-emscripten\"\n@chibi_wasm_identity = private constant [65 x i8] c\"", digest,
+        "\\00\"\ndefine ptr @asset_compiler_wasm_identity() {\n  ret ptr @chibi_wasm_identity\n}\n"]);
+}

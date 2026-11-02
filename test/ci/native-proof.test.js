@@ -20,7 +20,7 @@ for (const [full, bootstrapRun] of [['false', ''], ['false', '123'], ['true', ''
         'native_aot/failures/run.sh', 'native_aot/task_busy/run.sh', 'native_aot/optionals/run.sh',
         'native_aot/fallible/run.sh',
         'bootstrap/native-entry.sh', 'bootstrap/native-runner.sh', 'native_aot/tasks/run.sh',
-        'native_aot/math_scalar/run.sh', 'native_aot/characters/run.sh', 'native_aot/managed_values/run.sh',
+        'native_aot/math_scalar/run.sh', 'native_aot/math_builtin/select.sh', 'native_aot/characters/run.sh', 'native_aot/nested_arrays/run.sh', 'native_aot/managed_values/run.sh',
         'native_aot/managed_pointers/run.sh', 'native_aot/maps/run.sh',
         'native_cli/run.sh', 'native_cli/watch.sh'];
       for (const directory of ['tools/bootstrap', 'tools/graph', 'packages/core', 'llvm', '.github/ci', 'build/sdk', 'build-release/sdk',

@@ -1,0 +1,149 @@
+package managed_native_probe
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import host "project:native_link_host"
+import link "project:native_link"
+import os "core:os"
+import strings "core:strings"
+
+Op :: (op: int, type: int, output: int, left: int, right: int, literal: i64) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: right, target: 0, literal: literal};
+}
+Emit :: (target: abi.Target, slots: int[], code: native.Instruction[], embedded: bool,
+         records: native.Record[], fields: int[]) -> native.Result {
+    shape: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0,
+        first_slot: 0, slots: length(slots), first_local: 0, locals: 0, first_code: 0, code: length(code),
+        first_argument: 0, arguments: 0};
+    source: native.Source = {file: "", directory: ""};
+    empty: int[] = [];
+    if (embedded) {
+        return native.Emit(target, [shape], empty, slots, empty, code, empty, records, fields, [], source, [], empty, empty, false, 1);
+    }
+    return native.EmitProgram(target, [shape], empty, slots, empty, code, empty, records, fields, [], source, [], empty, empty);
+}
+Rejected :: (target: abi.Target, slots: int[], code: native.Instruction[], embedded: bool,
+             records: native.Record[], fields: int[], expected: string) -> bool {
+    switch Emit(target, slots, code, embedded, records, fields) {
+        case .Emitted(text): os.Print(strings.Concatenate(["accepted invalid managed IR: ", expected])); return false;
+        case .Rejected(instruction, message):
+            if (!strings.Contains(message, expected)) { os.Print(message); return false; }
+    }
+    return true;
+}
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) != 4) { return 2; }
+    work := args[0];
+    llvm := args[1];
+    fixture := os.ReadText(args[2]);
+    if (fixture.error) { return 2; }
+    audit := os.ReadText(args[3]);
+    if (audit.error) { return 2; }
+    target := abi.LinuxX64();
+    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    number := abi.IntStorage;
+    pointer := native.PointerType;
+    reference := native.RefType + number;
+    array := native.ArrayType + pointer;
+    // A negative tag pins full u64 identity bits through the signed literal.
+    slots := [number, pointer, reference, number, abi.BoolStorage, pointer, abi.BoolStorage, array, array, number];
+    code := [Op(native.Constant, number, 0, 0, 0, 7),
+        Op(native.ManagedNew, pointer, 1, 0, number, -123),
+        Op(native.ManagedAddress, reference, 2, 1, 0, -123),
+        Op(native.Deref, number, 3, 2, 0, 0),
+        Op(native.Eq, pointer, 4, 1, 1, 0),
+        {op: native.Branch, type: 0, output: 0, left: 4, right: 0, target: 7, literal: 0},
+        Op(native.TypedFail, 0, 0, 0, 0, 4),
+        Op(native.ManagedNew, pointer, 5, 0, number, -123),
+        Op(native.Ne, pointer, 6, 1, 5, 0),
+        {op: native.Branch, type: 0, output: 0, left: 6, right: 0, target: 11, literal: 0},
+        Op(native.TypedFail, 0, 0, 0, 0, 4),
+        Op(native.Constant, array, 7, 0, 0, 0),
+        Op(native.ValueCopy, array, 8, 7, 0, 0),
+        Op(native.ValueDrop, array, 0, 8, 0, 0),
+        Op(native.Sub, number, 9, 3, 0, 0),
+        Op(native.Publish, number, 0, 9, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)];
+    no_records: native.Record[] = [];
+    empty: int[] = [];
+    if (!Rejected(target, slots, code, true, no_records, empty, "standalone collector owner") ||
+        !Rejected(abi.WebAssembly32(), slots, code, false, no_records, empty, "WebAssembly managed pointers") ||
+        !Rejected(target, slots, code, false, [{first: 0, count: 1}], [pointer], "aggregate roots")) { return 1; }
+    invalid := code;
+    wrong := invalid[1];
+    wrong.literal = 0;
+    invalid[1] = wrong;
+    if (!Rejected(target, slots, invalid, false, no_records, empty, "identity is invalid")) { return 1; }
+    invalid = code;
+    invalid[1] = Op(native.Constant, pointer, 1, 0, 0, 1);
+    if (!Rejected(target, slots, invalid, false, no_records, empty, "outside its type")) { return 1; }
+    invalid = code;
+    wrong = invalid[1];
+    wrong.right = abi.TextStorage;
+    invalid[1] = wrong;
+    if (!Rejected(target, slots, invalid, false, no_records, empty, "initializer differs")) { return 1; }
+    pin_slots := [number, array, pointer];
+    pinned := [Op(native.Constant, number, 0, 0, 0, 7), Op(native.Constant, array, 1, 0, 0, 0),
+        Op(native.Jump, 0, 0, 0, 0, 0), Op(native.ManagedPin, array, 0, 1, 0, 0),
+        Op(native.ManagedNew, pointer, 2, 0, number, -123), Op(native.ManagedUnpin, 0, 0, 0, 0, 0),
+        Op(native.Publish, number, 0, 0, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)];
+    jump := pinned[2];
+    jump.target = 3;
+    pinned[2] = jump;
+    switch Emit(target, pin_slots, pinned, false, no_records, empty) {
+        case .Rejected(instruction, message): os.Print(message); return 1;
+        case .Emitted(text): {}
+    }
+    for (destination in [int(4), 5]) {
+        invalid = pinned;
+        jump.target = destination;
+        invalid[2] = jump;
+        if (!Rejected(target, pin_slots, invalid, false, no_records, empty, "cannot enter a collector pin region")) { return 1; }
+    }
+    invalid = pinned;
+    wrong = invalid[5];
+    wrong.right = 1;
+    invalid[5] = wrong;
+    if (!Rejected(target, pin_slots, invalid, false, no_records, empty, "close in reverse order")) { return 1; }
+    invalid = pinned;
+    wrong = invalid[3];
+    wrong.left = 0;
+    invalid[3] = wrong;
+    if (!Rejected(target, pin_slots, invalid, false, no_records, empty, "owning array place")) { return 1; }
+    text := "";
+    switch Emit(target, slots, code, false, no_records, empty) {
+        case .Rejected(instruction, message): os.Print(message); return 1;
+        case .Emitted(module): text = module;
+    }
+    text = strings.ReplaceAll(text, "define i32 @chibi_scalar(ptr %ctx)", "define i32 @managed_native.entry(ptr %ctx)");
+    text = strings.ReplaceAll(text, "call void @chibi_managed.trace.pointer(ptr %heap, ptr %at)",
+        "call void @managed_runtime.visit(ptr %heap, ptr %at)");
+    start := strings.Concatenate([work, "/native-start.ll"]);
+    if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, false)))) { return 2; }
+    for (mode in ["positive", "wrong_tag", "wrong_storage", "wrong_range", "nil", "wrong_owner", "array_owner", "epoch_wrap"]) {
+        module := format_text("{}/native-{}.ll", work, mode);
+        body := format_text("\ndefine i32 @managed_source.entry(ptr %ctx) {{\n  %native = call i32 @managed_native.entry(ptr %ctx)\n  %runtime = call i32 @managed_runtime.{}(ptr %ctx)\n  %result = or i32 %native, %runtime\n  ret i32 %result\n}}\n", mode);
+        if (os.WriteText(module, strings.Concatenate([text, fixture.text, body, audit.text]))) { return 2; }
+        for (level in [int(0), 2]) {
+            output := format_text("{}/native-{}-O{}", work, mode, level);
+            objects := [strings.Concatenate([output, ".o"]), strings.Concatenate([output, "-start.o"])];
+            if (host.Objects(llvm, [module, start], objects, level, 1)) { return 1; }
+            plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
+            if (os.Platform() == "Darwin") {
+                runtime: link.Import = {name: "System", symbols: ["malloc", "calloc", "free", "printf", "write", "dprintf", "abort"]};
+                plan.imports = [runtime];
+            }
+            if (host.Link(plan)) { return 1; }
+            result := os.Capture([output]);
+            valid := result.status == 0;
+            if (mode != "positive" && mode != "epoch_wrap") {
+                valid = result.status == 134 && strings.Contains(result.stderr, "native failure: another failure");
+            }
+            if (mode == "epoch_wrap") { valid = result.status != 0; }
+            if (!valid) { os.Print(format_text("managed native {} O{} status{} {}{}", mode, level, result.status, result.stdout, result.stderr)); return 1; }
+            os.Print(format_text("PASS managed native {} O{}", mode, level));
+            if (mode == "positive") { os.Print(result.stdout); }
+        }
+    }
+    return 0;
+}

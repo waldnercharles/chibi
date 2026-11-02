@@ -77,6 +77,8 @@ static const char *const environment_names[] = {
     "CHIBI_BOOTSTRAP_SEED",
     /* The LLVM tools the native driver links with, as test/native_aot reads. */
     "CHIBI_LLVM_BIN",
+    "CHIBI_EMCC",
+    "CHIBI_WASM_LLVM_BIN",
     /* Where language-scalar-native leaves the macOS and Windows modules CI
      * runs there. */
     "CHIBI_NATIVE_BUNDLE",

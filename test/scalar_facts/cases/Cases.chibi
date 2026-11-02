@@ -333,7 +333,7 @@ Cases :: () -> Case[] {
         // A switch on a call evaluates it once, and the arms bind its payloads.
         Accepted("switch_on_call", "package scalar\nShape :: union { Dot | Box(w: int, h: int) | Line(items: int[]) }\nMain :: () -> int { return Sizes(0) + Sizes(1) * 10 + Sizes(2) * 100; }\nMake :: (kind: int) -> Shape {\n    if (kind == 0) { return Shape.Dot; }\n    if (kind == 1) { return Shape.Box(3, 4); }\n    items: int[] = [5, 6, 7];\n    return Shape.Line(items);\n}\nSizes :: (kind: int) -> int {\n    switch Make(kind) {\n        case .Dot: return 1;\n        case .Box(w, h): return w * h;\n        case .Line(items): return length(items);\n    }\n}\n", 421, "Main,Make,Sizes", ""),
         Rejected("array_main_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires its first function to return int or nothing", "int[]"),
-        Rejected("nested_arrays", "package scalar\nMain :: () -> int {\n    rows: int[][] = [[1]];\n    return 1;\n}\n", "scalar proof supports only arrays of numbers, bool, strings, records and unions with a value", "rows: int[][] = [[1]];")];
+        Accepted("nested_arrays", "package scalar\nMain :: () -> int {\n    rows: int[][] = [[1]];\n    return 1;\n}\n", 1, "Main", "")];
 }
 pub Count :: () -> int {
     return length(Cases());
@@ -350,6 +350,10 @@ pub CaseName :: (index: int) -> string {
 pub ExpectedValue :: (index: int) -> int {
     cases := Cases();
     return cases[index].value;
+}
+pub IsAccepted :: (index: int) -> bool {
+    cases := Cases();
+    return cases[index].accepted;
 }
 Excerpt :: (text: string, row: facts.Row) -> string {
     return strings.Slice(text, row.start, row.end - row.start);

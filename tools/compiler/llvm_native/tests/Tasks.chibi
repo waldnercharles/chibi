@@ -35,8 +35,11 @@ AwaitedCallsRequireACoroutine :: () {
 @test
 UnusedInstructionNumbersRemainRejected :: () {
     code := TaskCalls(native.CallPlain, false);
-    code[1] = Code(native.Suspend - 1, abi.IntStorage, 0, 0, 0, 0, 0);
-    Rejects(TaskCallModule(code), "unsupported native scalar instruction");
+    // 83 remains reserved; 76–79 now carry collector operations.
+    for (op in [int(83), native.InstructionCount]) {
+        code[1] = Code(op, abi.IntStorage, 0, 0, 0, 0, 0);
+        Rejects(TaskCallModule(code), "unsupported native scalar instruction");
+    }
 }
 @test
 FunctionAddressesCannotUseACoroutineRamp :: () {

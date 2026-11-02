@@ -23,6 +23,7 @@ on:
       - test/native_aot/diagnostics/**
       - test/native_aot/test_attributes/**
       - test/native_aot/optionals/**
+      - test/native_aot/characters/**
       - test/native_aot/asset_compiler/**
       - test/native_aot/tasks/**
       - test/native_aot/task_busy/**
@@ -135,6 +136,8 @@ jobs:
         run: sh test/native_aot/tasks/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native scalar math
         run: sh test/native_aot/math_scalar/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native characters and UTF-8
+        run: sh test/native_aot/characters/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native managed values
         run: sh test/native_aot/managed_values/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native maps

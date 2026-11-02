@@ -8,6 +8,7 @@ on:
       - tools/compiler/**
       - test/native_aot/diagnostics/**
       - tools/native_aot/**
+      - test/native_aot/generations/**
       - tools/toolchain/Driver.chibi
       - tools/toolchain/Graph.chibi
       - tools/bootstrap/native-seed.tsv
@@ -61,6 +62,11 @@ jobs:
       - name: Check native diagnostic coordinates
         timeout-minutes: 5
         run: sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" /usr/lib/llvm-18/bin
+      - name: Exercise numeric package generations
+        timeout-minutes: 5
+        run: |
+          sh test/native_aot/generations/run.sh "$PWD/build-release/sdk/chibi-build-host" \
+            "$PWD/build-release/sdk/chibi-compiler-host" /usr/lib/llvm-18/bin
       - name: Summarize the proof
         if: always()
         shell: bash

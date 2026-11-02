@@ -1,0 +1,10 @@
+package loop
+
+Main :: () -> int { return 0; }
+
+Frame :: () -> int {
+    count: retain int = 0;
+    big: retain i64 = 5000000000;
+    count += 1;
+    return 0;
+}

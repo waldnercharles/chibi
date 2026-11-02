@@ -2143,7 +2143,7 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
 // Whether `code` calls the runtime.
-Runtime :: (code: Instruction[]) -> bool {
+pub Runtime :: (code: Instruction[]) -> bool {
     for (item in code) {
         if (item.op == Format || item.op == Fail || ArrayCalls(item.op)) {
             return true;

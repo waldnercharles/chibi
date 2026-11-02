@@ -68,8 +68,8 @@ entry of capacity, and about 16 bytes per live entry in a map that has just grow
 
 ## Keys and values
 
-Keys: ints of every width, bool, string; floats are not keys (NaN). Authored values are scalars, strings and records whose leaves are numbers, bools or strings. Record values use the shared value copy/drop helpers.
-The native emitter also owns int[] payloads through the shared array lifecycle; authored admission stays closed until projected writes and foreign buffers preserve that ownership. Other container payloads and array-backed records remain rejected. A map owns its strings:
+Keys: ints of every width, bool, string; floats are not keys (NaN). Authored values are scalars, strings, int[] arrays and records whose leaves are numbers, bools or strings. Record values use the shared value copy/drop helpers.
+Int[] payloads use the shared array lifecycle. Reads acquire an owned descriptor, map copies retain their payload backing, and projected writes make that backing unique after their callback arguments finish. Other container payloads and array-backed records remain rejected. A map owns its strings:
 `MapSet` consumes one reference of a string key and of a string value (a repeated key's new key is released, the replaced
 value is released), `MapDelete` releases the entry's strings, `MapCopy` retains them, `MapDrop` releases them (D10).
 A read of a missing scalar or string key gives the value type's zero; a native int[] read gives an empty array. A missing record key fails with `MapKeyAbsent`.
@@ -87,4 +87,4 @@ Implemented:
 
 The authored producer admits typed literals, variable copies, indexing, assignment, `in`/`not in`, `has`, deletion, parameters, results and insertion-order iteration. Read-only parameters borrow; changed by-value parameters receive a private copy. Iteration snapshots a map when the body can change it. `test/native_aot/map_programs` runs these as real source programs, including reference replacement, numeric record values and string reads from temporary returned maps.
 
-Remaining native parity work includes array-backed record values, nested containers and cross-platform runtime coverage. Map equality, compound writes and inferred map literal types are rejected by the ordinary authored compiler too; they are not native-only parity gaps. Host and VM retirement still requires migrating their remaining consumers.
+Projected int[] updates support append, extend, remove_index, resize and element assignment. Compound mapped-array element assignments and projected foreign buffers remain rejected. Remaining native parity work includes those forms, array-backed record values, other nested containers and cross-platform runtime coverage. Map equality, compound writes and inferred map literal types are rejected by the ordinary authored compiler too; they are not native-only parity gaps. Host and VM retirement still requires migrating their remaining consumers.

@@ -934,7 +934,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (ScalarNegated(Operator(forest, node))) {
             return BoolStorage;
         }
-        return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand), 0);
+        return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand), context);
     }
     if (Is(forest, node, syntax.MemberExpression)) {
         projected := ScalarProjected(forest, text, callables, params, names, callable.package, node);

@@ -65,7 +65,7 @@ With no path, `chibi run` runs the package in the working directory.
 
 ## Reload a program
 
-On Linux x86-64, add `--watch` to reload a program between calls to `Frame`:
+On Linux x86-64 or macOS arm64, add `--watch` to reload a program between frames:
 
 ```sh
 chibi --watch Reload.chibi
@@ -73,10 +73,12 @@ chibi run --watch Reload.chibi
 chibi Reload.chibi --watch
 ```
 
-`Main` runs once. Native watched programs provide zero-argument `Main` and
-`Frame` functions returning `int`. The host calls `Frame` about 60 times a
-second. Return 0 to continue, or a nonzero exit status to stop. Use `retain`
-for a value that should survive edits and calls. Save this as `Reload.chibi`:
+`Main` runs once at startup when present. A watched program provides `Main`,
+`Frame`, or both, taking no arguments and returning nothing or an `int`. The
+host calls `Frame` repeatedly when present. Return 0 or no result
+to continue, or a nonzero exit status to stop. Adding or removing either
+function during an edit does not call `Main` again. Use `retain` for a value
+that should survive edits and calls. Save this as `Reload.chibi`:
 
 ```chibi
 package reload

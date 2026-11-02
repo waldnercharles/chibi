@@ -937,6 +937,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (callee_foreign >= 0) {
             return ScalarForeignResult(forest, text, callee_foreign);
         }
+        if (ScalarMathCall(forest, text, node)) {
+            return ScalarMathStorage(forest, text, callables, params, callable, names, types, members, constants, node);
+        }
         if (ScalarSquareRoot(forest, text, node)) {
             return FloatStorage;
         }
@@ -1278,6 +1281,9 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     if (callee < 0 && ScalarTextOperator(forest, text, node) != 0) {
         return ScalarText(forest, text, callables, params, callable, names, types, members, constants, node, output);
+    }
+    if (callee < 0 && ScalarMathCall(forest, text, node)) {
+        return ScalarMathOperands(forest, text, callables, params, callable, names, types, members, constants, node, output);
     }
     if (callee < 0 && ScalarSquareRoot(forest, text, node)) {
         // EmitBody has checked the built-in's positional f32 argument.
@@ -3253,9 +3259,9 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], lent: bool) -
 }
 // SCRIPT_EFFECT_HOST: a synchronous output action.
 NativePrintEffect: int : 8;
-// The text, output and array builtins this producer lowers.
+// The text, output, array and scalar math natives this producer lowers.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
-    return NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
+    return NativeNameMatches(native, "fmod") || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
            NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text") ||
            NativeNameMatches(native, "print_string") ||
            NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||
@@ -4401,6 +4407,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
     text_natives := ScalarTextNatives(resolved);
     text_ports := ScalarTextPorts(resolved, resolved_ports);
     text_identities := ScalarTextIdentities(resolved, identities);
+    ScalarMathCatalog(&text_natives, &text_ports, &text_identities);
     // The bootstrap catalog contains data functions only. Printing is a void
     // action, supplied here for the ordinary body checker and lowered below.
     // These private identities never cross the prepared/runtime ABI.

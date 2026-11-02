@@ -298,7 +298,25 @@ ScalarCharacterConversionsCheckIntegerOperands :: () {
     }
 }
 
+// Reversed remainder consumes the source-order values but exchanges only
+// their use at the operation. It is a floating native operation, not integer %.
+ScalarReversedRemainderChecksFloatingOperands :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    rows := [original[0], original[1],
+             TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+             TaskFact(facts.LocalRow, facts.DoubleType, 0, 3, "value", 2, 10),
+             TaskFact(facts.LiteralRow, facts.DoubleType, 0, 0, "", 3, 4),
+             TaskFact(facts.LiteralRow, facts.DoubleType, 0, 0, "", 4, 5),
+             TaskFact(facts.ArithmeticRow, facts.DoubleType, facts.ReversedRemainder, 2, "", 5, 6),
+             TaskFact(facts.ReturnRow, 0, 0, 1, "", 11, 13),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 12, 13)];
+    assert(scalar.Validate(rows) == "");
+    for (index in 3..<7) { rows = Changed(rows, index, Type, facts.IntType); }
+    assert(scalar.Validate(rows) == "scalar arithmetic differs from its number operands");
+}
+
 pub Tests :: () -> int {
+    ScalarReversedRemainderChecksFloatingOperands();
     ScalarPlainCallsCannotUseWaitingFunctions();
     ScalarAwaitedCallsMustNameWaitingFunctions();
     ScalarFunctionAddressesCannotNameWaitingFunctions();

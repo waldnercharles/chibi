@@ -32,3 +32,4 @@ if [ -n "$reference" ]; then
     "$reference" --project-root "$work/reference" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
     cat "$work/reference.log"
 fi
+sh "$root/test/native_aot/math_scalar/remainder.sh" "$compiler" "$llvm" "$reference"

@@ -211,10 +211,15 @@ SystemImportsReadTheModulesMarkers :: () {
 }
 
 @test
-LinuxSharedLibrariesLinkOnlyTheObjects :: () {
+LinuxSharedLibrariesLinkDependenciesWithoutStartFiles :: () {
     plan := Plan("x86_64-unknown-linux-gnu", false);
     plan.shared = true;
     plan.objects = ["/w/a.o"];
+    Same(link.Command(plan, "/w/a.out"),
+         ["/llvm/ld.lld", "-flavor", "gnu", "-shared", "--gc-sections", "-o", "/w/a.out", "/w/a.o", "/v/libbox3d.a",
+          "-L", "/usr/lib/x86_64-linux-gnu", "-lm"]);
+    plan.libraries = [];
+    plan.libc = "";
     Same(link.Command(plan, "/w/a.out"),
          ["/llvm/ld.lld", "-flavor", "gnu", "-shared", "--gc-sections", "-o", "/w/a.out", "/w/a.o", "/v/libbox3d.a"]);
 }

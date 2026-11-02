@@ -1,0 +1,4 @@
+package scalar_remainder_shadow
+
+fmod :: () -> int { return 42; }
+Main :: () -> int { assert(fmod() == 42); return 0; }

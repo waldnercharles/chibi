@@ -1,0 +1,66 @@
+package native_process_test
+
+import os "core:os"
+import target "core:target"
+import strings "core:strings"
+
+foreign import kernel32 "system:kernel32"
+foreign kernel32 {
+    SetEnvironmentVariableW :: (name: u16[], value: u16[]) -> i32
+}
+foreign import libc "system:c"
+foreign libc {
+    setenv :: (name: cstring, value: cstring, replace: i32) -> i32
+    unsetenv :: (name: cstring) -> i32
+}
+
+when target.Os == target.Windows {
+    PrepareEnvironment :: () -> bool {
+        // CHIBI_NATIVE_ENV, an empty value, and CHIBI_NATIVE_ABSENT, unset.
+        present: u16[] = [67, 72, 73, 66, 73, 95, 78, 65, 84, 73, 86, 69, 95, 69, 78, 86, 0];
+        absent: u16[] = [67, 72, 73, 66, 73, 95, 78, 65, 84, 73, 86, 69, 95, 65, 66, 83, 69, 78, 84, 0];
+        empty: u16[] = [0];
+        none: u16[] = [];
+        return SetEnvironmentVariableW(present, empty) != 0 && SetEnvironmentVariableW(absent, none) != 0;
+    }
+} else {
+    PrepareEnvironment :: () -> bool {
+        return setenv("CHIBI_NATIVE_ENV", "", 1) == 0 && unsetenv("CHIBI_NATIVE_ABSENT") == 0;
+    }
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) > 0 && arguments[0] == "child") {
+        assert(length(arguments) == 4 && arguments[1] == "a b" && arguments[2] == "", "spaced and empty process arguments");
+        assert(strings.ByteLength(arguments[3]) == 4096 && strings.ByteAt(arguments[3], 4095) == 120, "long argument storage survives spawn");
+        os.WriteOutput("separate stdout\n");
+        os.Print("separate stderr");
+        return 7;
+    }
+    if (length(arguments) != 2) {
+        os.Print("usage: native-process-test SELF SCRATCH");
+        return 2;
+    }
+    prepared := PrepareEnvironment();
+    assert(prepared, "prepare this process's environment");
+    assert(os.HasEnv("CHIBI_NATIVE_ENV") && os.Getenv("CHIBI_NATIVE_ENV") == "", "an empty variable is present");
+    assert(!os.HasEnv("CHIBI_NATIVE_ABSENT"), "an absent variable is absent");
+    if (target.Os == target.Windows) {
+        assert(os.HasEnv("chibi_native_env"), "Windows variable names ignore case");
+    }
+    output := format_text("{}/redirected.stdout", arguments[1]);
+    error := format_text("{}/redirected.stderr", arguments[1]);
+    process := os.StartRedirected([arguments[0], "child", "a b", "", strings.Repeat("x", 4096)], output, error);
+    assert(process > 0, "start a redirected process");
+    finished := os.Wait(process, -1);
+    assert(finished == 7, "wait returns the child's status");
+    stdout := os.ReadText(output);
+    stderr := os.ReadText(error);
+    assert(stdout.error == nil && stdout.text == "separate stdout\n", "stdout stays in its caller-owned file");
+    assert(stderr.error == nil && stderr.text == "separate stderr\n", "stderr stays separate");
+    removed_output := os.Remove(output);
+    removed_error := os.Remove(error);
+    assert(removed_output == nil && removed_error == nil, "the caller removes its output files");
+    return 0;
+}

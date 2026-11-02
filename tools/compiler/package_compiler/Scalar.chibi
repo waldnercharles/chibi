@@ -370,6 +370,9 @@ ScalarRecordType :: (types: TypeDecl[], record: int) -> int {
 // a record or union the source declares, or an array of numbers, bool or
 // strings; 0 for any other.
 ScalarValueType :: (types: TypeDecl[], storage: int, container: int, record: int) -> int {
+    // The ordinary checker keeps char nominal and checks its conversions.
+    // Its proven Unicode scalar uses the existing i32 ABI.
+    if (CharType(types, storage, container, record)) { return facts.IntType; }
     // A task observer keeps its success identity in source metadata.
     if (storage == TaskStorage && container == 0) {
         return facts.TaskType;
@@ -891,14 +894,15 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
             }
             return callables[callee].result;
         }
-        callee_foreign := ScalarForeignDeclaration(forest, text, node);
-        if (callee_foreign >= 0) {
-            return ScalarForeignResult(forest, text, callee_foreign);
-        }
         callee_proc := ScalarProcCallee(forest, text, names, node);
         if (callee_proc >= 0) {
             shape := ProcShape(forest, text, callee_proc);
             return shape[length(shape) - 1];
+        }
+        if (ScalarCharacter(forest, text, node)) { return IntStorage; }
+        callee_foreign := ScalarForeignDeclaration(forest, text, node);
+        if (callee_foreign >= 0) {
+            return ScalarForeignResult(forest, text, callee_foreign);
         }
         if (ScalarSquareRoot(forest, text, node)) {
             return FloatStorage;
@@ -1051,15 +1055,17 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     if (Is(forest, node, syntax.CallExpression) &&
         CalledFunction(forest, text, callables, [], names, callable.package, node) < 0) {
-        callee_foreign := ScalarForeignDeclaration(forest, text, node);
-        if (callee_foreign >= 0) {
-            return ScalarForeignRows(forest, text, callables, params, callable, names, types, members, constants, node,
-                                     callee_foreign, rows);
-        }
         callee_proc := ScalarProcCallee(forest, text, names, node);
         if (callee_proc >= 0) {
             return ScalarProcRows(forest, text, callables, params, callable, names, types, members, constants, node,
                                   callee_proc, rows);
+        }
+        callee_foreign := ScalarForeignDeclaration(forest, text, node);
+        // As CallStep resolves it, a procedure can shadow char but a
+        // foreign declaration cannot replace that conversion.
+        if (callee_foreign >= 0 && !ScalarCharacter(forest, text, node)) {
+            return ScalarForeignRows(forest, text, callables, params, callable, names, types, members, constants, node,
+                                     callee_foreign, rows);
         }
     }
     native := ScalarArrayCall(forest, text, callables, params, names, types, members, callable.package, node);
@@ -1247,6 +1253,18 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarSides(forest, text, callables, params, callable, names, types, members, constants,
                            node, [argument], [FloatStorage], FloatStorage, row, output);
     }
+    if (callee < 0 && ScalarCharacter(forest, text, node)) {
+        // EmitBody rejects invalid constants, non-integer dynamic inputs and
+        // named arguments. Keep the original width until the scalar check.
+        argument := FirstMember(forest, Field(forest, node, syntax.FieldArguments));
+        switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                             argument, IntStorage, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+        output.append(ScalarAt(forest, node, facts.ConvertRow, facts.IntType, facts.CheckedChar, 1, ""));
+        return ScalarOperands.Built(output);
+    }
     if ((!Is(forest, Field(forest, node, syntax.FieldFunction), syntax.Identifier) &&
          !Is(forest, Field(forest, node, syntax.FieldFunction), syntax.MemberExpression)) || callee < 0) {
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, node, syntax.FieldFunction), 0,
@@ -1424,6 +1442,10 @@ ScalarReferenceArgument :: (forest: snapshot.SnapshotNode[], text: string, calla
 ScalarSquareRoot :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     callee := Field(forest, node, syntax.FieldFunction);
     return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "sqrt";
+}
+ScalarCharacter :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    callee := Field(forest, node, syntax.FieldFunction);
+    return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "char";
 }
 // The Text operator of `node` when it calls text_byte_length, text_byte_at,
 // text_slice or format_text by name, 0 otherwise. When no function of the

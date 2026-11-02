@@ -473,6 +473,9 @@ pub RangeMap: int : 16;
 // becomes a float only through double, so it has two Convert rows.
 pub Clamp: int : 0;
 pub Wrap: int : 1;
+// Integer to nominal char: reject values outside Unicode scalar numbers
+// before narrowing to the existing i32 representation.
+pub CheckedChar: int : 2;
 
 // The bits of an integer type, 0 for bool or any other.
 pub Bits :: (type: int) -> int {

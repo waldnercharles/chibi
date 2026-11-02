@@ -125,3 +125,15 @@ HostSymbolsReachFunctionsAndStatesWithoutMemory :: () {
     assert(strings.Contains(text, "define i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  %words = alloca [1 x i64]\n"));
     assert(strings.Contains(text, "define i32 @chibi_host_retained_set(i32 %i, i64 %v) #0 {\n"));
 }
+
+// A state whose type changed is set from a word of its old type through a
+// function that converts as the language does, for every pair of numbers and bools.
+@test
+HostSymbolsConvertAStateOfAnotherType :: () {
+    text := Emitted(CounterLibrary(Counter()));
+    assert(strings.Contains(text, "define i32 @chibi_host_retained_set_as(i32 %i, i32 %from, i64 %v) #0 {\n"));
+    assert(strings.Contains(text, "define i64 @chibi_scalar.convert(i32 %from, i32 %to, i64 %v) #0 {\n"));
+    assert(strings.Contains(text, "f1t11:\n"));
+    assert(strings.Contains(text, "f11t8:\n"));
+    assert(strings.Contains(text, "declare i32 @llvm.fptosi.sat.i32.f64(double)\n"));
+}

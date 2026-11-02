@@ -1529,6 +1529,23 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
             return failure;
         }
     }
+    if (shared && !identified) {
+        main := false;
+        frame := false;
+        for (head in heads) {
+            declaration := rows[head];
+            if (declaration.name == "Main" || declaration.name == "Frame") {
+                if (declaration.count != 0 || declaration.type != facts.IntType) {
+                    return "native package generations require Main and Frame with a zero-argument int ABI";
+                }
+                main = main || declaration.name == "Main";
+                frame = frame || declaration.name == "Frame";
+            }
+        }
+        if (!main || !frame) {
+            return "native package generations require Main and Frame";
+        }
+    }
     return "";
 }
 
@@ -1686,6 +1703,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     if (rows[1].kind == facts.RejectionRow) {
         return Result.Rejected(rows);
     }
+    generation := shared && rows[1].text == "";
     functions: native.Function[] = [];
     parameters: int[] = [];
     slots: int[] = [];
@@ -1727,7 +1745,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     for (function in 0..<length(heads)) {
         head := heads[function];
         declaration := rows[head];
-        ids.append(declaration.literal);
+        // Package generations have no prepared-artifact identities. These IDs
+        // belong only to this generation; retained states still use their names.
+        id := declaration.literal;
+        if (generation) {
+            id = i64(function);
+        }
+        ids.append(id);
         result := NativeType(declaration.type);
         shape: native.Function = {result: result, first_parameter: length(parameters),
                                   parameters: declaration.count, first_slot: length(slots), slots: 0,
@@ -2715,13 +2739,23 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     if (debug) {
         source = {file: rows[0].name, directory: directory};
     }
-    // A library's Document row names it.
+    // The numeric loop host has no runtime context. Do not publish a generation
+    // whose host-call wrappers would be absent, or weaken its assertions.
+    if (generation && native.Runtime(code)) {
+        return Result.Invalid("native package generations require a runtime-free numeric program");
+    }
+    // A library's Document row names it; a package generation has its own
+    // manifest name, not a prepared artifact's stable library identity.
     emitted: native.Result = native.Result.Rejected(-1, "");
-    if (rows[1].text == "") {
+    if (rows[1].text == "" && !generation) {
         emitted = native.Emit(target, functions, parameters, slots, locals, code, arguments, records, fields, texts,
                               source, names, lines, columns, false, 1);
     } else {
-        emitted = native.EmitLibrary(target, rows[1].text, names, ids, functions, parameters, slots, locals,
+        library_name := rows[1].text;
+        if (generation) {
+            library_name = "generation";
+        }
+        emitted = native.EmitLibrary(target, library_name, names, ids, functions, parameters, slots, locals,
                                      code, arguments, records, fields, texts, 1, field_names);
     }
     switch emitted {

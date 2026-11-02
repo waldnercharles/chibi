@@ -2143,7 +2143,7 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
 // Whether `code` calls the runtime.
-Runtime :: (code: Instruction[]) -> bool {
+pub Runtime :: (code: Instruction[]) -> bool {
     for (item in code) {
         if (item.op == Format || item.op == Fail || ArrayCalls(item.op)) {
             return true;
@@ -3126,14 +3126,81 @@ HostTable :: (symbol: string, type: string, results: string[]) -> string {
     out.append(format_text("none:\n  ret {} 0\n}\n", type));
     return strings.Join(out, "");
 }
+// The block of ConvertWord that carries a word of storage `source` as one of
+// storage `target`, as the language converts: an integer clamps to the new
+// range, a float truncates toward zero and saturates, NaN is 0, and a bool is
+// a number's inequality to zero or 0 and 1. `from` and `to` are the export types.
+ConvertBlock :: (from: int, to: int, source: int, target: int) -> string {
+    pc := from * 16 + to;
+    out := format_text("f{}t{}:\n", from, to);
+    if (from == to) {
+        return format_text("{}  ret i64 %v\n", out);
+    }
+    decoded := source;
+    if (source == abi.BoolStorage) {
+        out = format_text("{}{}  %a{} = zext i1 %b{} to i32\n", out, FromWord(format_text("b{}", pc), "%v", source), pc, pc);
+        decoded = abi.IntStorage;
+    } else {
+        out = format_text("{}{}", out, FromWord(format_text("a{}", pc), "%v", source));
+    }
+    if (target == abi.BoolStorage) {
+        if (abi.Floating(decoded)) {
+            out = format_text("{}  %w{} = fcmp une {} %a{}, 0.0\n", out, pc, abi.ScalarType(decoded), pc);
+        } else {
+            out = format_text("{}  %w{} = icmp ne {} %a{}, 0\n", out, pc, abi.ScalarType(decoded), pc);
+        }
+        return format_text("{}{}  ret i64 %r{}\n", out, ToWord(format_text("r{}", pc), format_text("%w{}", pc), target), pc);
+    }
+    item: Instruction = {op: Convert, type: target, output: 0, left: 0, right: decoded, target: 0, literal: 0};
+    out = format_text("{}{}", out, Conversion(item, pc));
+    return format_text("{}{}  ret i64 %r{}\n", out, ToWord(format_text("r{}", pc), format_text("%v{}", pc), target), pc);
+}
+// A function that carries a state's word from export type %from to %to, a
+// pair of the numbers and bools, and any other pair unchanged.
+ConvertWord :: () -> string {
+    storages := abi.ExportOrder();
+    sources: string[] = [];
+    arms: string[] = [];
+    for (from in 1..length(storages)) {
+        targets: string[] = [];
+        sources.append(format_text("i32 {}, label %src{}", from, from));
+        arms.append(format_text("src{}:\n", from));
+        for (to in 1..length(storages)) {
+            targets.append(format_text("i32 {}, label %f{}t{}", to, from, to));
+        }
+        arms.append(format_text("  switch i32 %to, label %same [{}]\n", strings.Join(targets, " ")));
+    }
+    for (from in 1..length(storages)) {
+        for (to in 1..length(storages)) {
+            arms.append(ConvertBlock(from, to, storages[from - 1], storages[to - 1]));
+        }
+    }
+    head := format_text("define i64 @chibi_scalar.convert(i32 %from, i32 %to, i64 %v) #0 {\nentry:\n  switch i32 %from, label %same [{}]\n",
+                        strings.Join(sources, " "));
+    return format_text("{}{}same:\n  ret i64 %v\n}\n", head, strings.Join(arms, ""));
+}
+// The saturating intrinsics ConvertWord calls, each declared once.
+ConvertDeclarations :: () -> string {
+    items: Instruction[] = [];
+    for (source in [abi.FloatStorage, abi.DoubleStorage]) {
+        for (target in abi.ExportOrder()) {
+            if (Integer(target)) {
+                item: Instruction = {op: Convert, type: target, output: 0, left: 0, right: source, target: 0, literal: 0};
+                items.append(item);
+            }
+        }
+    }
+    return Declarations(items);
+}
 // Plain C-ABI symbols for a host that can call but cannot read memory, such
 // as a program in a language with foreign calls only, which cannot walk a
 // manifest. `chibi_host_call_<Function>` calls a function whose types
 // HostCallable admits, in a library that calls no runtime. The state accessors
 // of a library are `chibi_host_retained_count`, `_type` and `_hash` (NameHash
 // of the name) by index, and `_get` and `_set`, which move one state as its
-// word, `_set` giving 1 for an index that names a state; a library without
-// states has none.
+// word, `_set` giving 1 for an index that names a state, and `_set_as`, which
+// sets one from a word of another export type `from`, converted as the language
+// converts (ConvertWord); a library without states has none.
 HostSymbols :: (names: string[], functions: Function[], parameters: int[], code: Instruction[], texts: string[],
                 runtime: bool) -> string {
     out: string[] = [];
@@ -3169,6 +3236,7 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
     if (count == 0) {
         out.append("\ndefine i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  ret i64 0\n}\n");
         out.append("\ndefine i32 @chibi_host_retained_set(i32 %i, i64 %v) #0 {\nentry:\n  ret i32 0\n}\n");
+        out.append("\ndefine i32 @chibi_host_retained_set_as(i32 %i, i32 %from, i64 %v) #0 {\nentry:\n  ret i32 0\n}\n");
         return strings.Join(out, "");
     }
     out.append(format_text("\ndefine i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  %words = alloca [{} x i64]\n", count));
@@ -3180,6 +3248,11 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
     out.append("  call void @chibi_scalar.retained.get(ptr null, ptr null, ptr %words)\n");
     out.append("  %at = getelementptr inbounds i64, ptr %words, i32 %i\n  store i64 %v, ptr %at\n");
     out.append("  call void @chibi_scalar.retained.set(ptr null, ptr %words, ptr null)\n  ret i32 1\nnone:\n  ret i32 0\n}\n");
+    out.append(format_text("\n{}\n{}", ConvertDeclarations(), ConvertWord()));
+    out.append("\ndefine i32 @chibi_host_retained_set_as(i32 %i, i32 %from, i64 %v) #0 {\nentry:\n");
+    out.append("  %to = call i32 @chibi_host_retained_type(i32 %i)\n");
+    out.append("  %w = call i64 @chibi_scalar.convert(i32 %from, i32 %to, i64 %v)\n");
+    out.append("  %r = call i32 @chibi_host_retained_set(i32 %i, i64 %w)\n  ret i32 %r\n}\n");
     return strings.Join(out, "");
 }
 // A library module: each function is internal, and the symbols it exports are

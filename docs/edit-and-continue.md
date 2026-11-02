@@ -109,8 +109,8 @@ is closed after the swap. Nothing executes inside a generation that is being rep
 | Same name and scalar type | Value kept. |
 | New field | Starts from its initializer. |
 | Removed field | Dropped. |
-| Same name, other integer type | Converted, clamped to the new type's range. |
-| Same name, any other type change | Reset to the initializer. |
+| Same name, another number or bool type | Converted as the language converts: an integer clamps to the new range, a float truncates toward zero and saturates, NaN is 0, a bool is a number's inequality to zero. |
+| Same name, any other change (a string or record became a number, say) | Reset to the initializer. |
 
 A migration never partly applies: the new state is built whole, then swapped.
 
@@ -127,7 +127,7 @@ VM session above remains the implementation behind `chibi --watch`.
 ### Status
 
 Native programs do this on Linux x86-64: `chibi run --native --watch [-O0|-O2] [--llvm DIR] PATH`
-builds the library source in PATH's folder as a generation (`chibi build --native --shared`), runs
+builds the library or numeric package source in PATH's folder as a generation (`chibi build --native --shared`), runs
 it under the loop host (`apps/host/Host.chibi`, written in Chibi and built natively), and rebuilds
 and publishes each saved edit as the next generation. The host calls `Main` once, calls `Frame`
 until it returns a nonzero status, which is the exit status, and swaps `next.so` in between two
@@ -137,8 +137,19 @@ fails to build is reported and the running one continues; one that fails to load
 `rejected.so`. The `native-build` case `WatchesAndSwapsARunningLoop`
 (`test/native_aot/native_build/BuildTests.chibi`) edits a running loop and checks the exit status that
 only a surviving count gives; `SwapsARunningLoopKeepingState` does the same with the editor played by the
-test. Not done: integer conversion on a type change
-(the host resets it), a source that is a program rather than a `library` block, other targets.
+test. Ordinary packages also build as numeric generations when they define
+zero-argument `Main` and `Frame` with an int result ABI (`() -> int`; a non-entry
+void `Frame` also has the existing int-zero adaptation). The isolated real-driver test
+`test/native_aot/generations/run.sh` swaps a package while inserting a function and a retained
+binding, and changing retained numeric types. Retained keys remain `Function.variable` names;
+package generation function IDs are local indices, not stable prepared-artifact identities.
+Duplicate function names across imported packages are rejected rather than aliased.
+
+This package checkpoint requires runtime-free code: arrays, runtime string operations and
+assertions that need a runtime context are rejected before publishing a generation, not silently
+disabled. Retained records, strings and arrays, a libc runtime context, and other targets are
+not covered. The existing library-form path is unchanged; this does not remove the VM or the
+C build/compiler hosts.
 
 ## Limits
 

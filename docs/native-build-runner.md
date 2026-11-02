@@ -112,6 +112,11 @@ Each step lands on its own and leaves the build working.
    `packages/core`, the driver, `llc` and the target. A compile that fails falls back to the build host, which
    is also how the native Driver itself starts until a seed ships the native driver. The VM's `build.environment`
    allows only a few names, so these are options, not environment variables.
+   `tools/build.sh` with both options also starts `Driver.chibi` natively, without first fetching a C build host or
+   bytecode seed. Its entry is cached in `.chibi/build-entry/` by the full SHA-256 of the driver and core sources,
+   native compiler, LLVM tools and target. A failed compile is not cached and does not silently fall back to the VM.
+   This is only an entry-point replacement: the build graph still fetches or builds C hosts where its products and
+   asset generator require them. Without `--native-driver`, the existing host bootstrap is unchanged.
 4. Ship the native driver as the seed (the CI keeper), start `chibi build` from it, then delete `chibi-build-host`, `src/host/build*.c` and `process.c`, the `build.*` catalog and the
    pinned first host; `tools/bootstrap.sh` then fetches the seed compiler, not a host.
 

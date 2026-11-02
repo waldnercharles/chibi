@@ -7,6 +7,7 @@ on:
     paths:
       - tools/compiler/**
       - tools/native_aot/**
+      - test/native_aot/generations/**
       - tools/toolchain/Driver.chibi
       - tools/toolchain/Graph.chibi
       - tools/bootstrap/native-seed.tsv
@@ -57,6 +58,11 @@ jobs:
           fi
           sh tools/build.sh build native-self-host --llvm /usr/lib/llvm-18/bin --libclang-root /usr/lib/llvm-18 --jobs 4 "${stage_one[@]}" 2>&1 \
             | tee "$RUNNER_TEMP/native-self-host.log"
+      - name: Exercise numeric package generations
+        timeout-minutes: 5
+        run: |
+          sh test/native_aot/generations/run.sh "$PWD/build-release/sdk/chibi-build-host" \
+            "$PWD/build-release/sdk/chibi-compiler-host" /usr/lib/llvm-18/bin
       - name: Summarize the proof
         if: always()
         shell: bash

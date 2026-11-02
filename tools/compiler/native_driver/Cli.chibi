@@ -490,7 +490,10 @@ BuildNative :: (invocation: CliInvocation) -> int {
     }
     root := os.RealPath(Default(invocation.path, "."));
     arguments: string[] = ["--compiler", root, "--core", core, "--root", root, "--llvm", llvm,
-                            "--target", Default(invocation.target, HostTriple()), "--entry", "Main", "--level", invocation.mode];
+                            "--target", Default(invocation.target, HostTriple()), "--level", invocation.mode];
+    if (!invocation.shared) {
+        arguments.extend(["--entry", "Main"]);
+    }
     if (invocation.debug) {
         arguments.append("--lines");
     }

@@ -82,22 +82,45 @@ ExpectedError :: (text: string) -> string {
 }
 
 TestScan :: struct {
+    package: string;
     names: string[];
     attributed: bool;
     problem: string;
 }
 
+TestAttribute :: (nodes: syntax.Node[], fields: int[], text: string, attribute: int) -> bool {
+    member := nodes[attribute].first_child;
+    while (member >= 0) {
+        if (fields[member] == syntax.FieldName) {
+            value := nodes[member];
+            return strings.Slice(text, value.start, value.end - value.start) == "test";
+        }
+        member = nodes[member].next_sibling;
+    }
+    return false;
+}
+
 // The compiler's parser owns attribute syntax. Comments and whitespace between
 // an attribute and its declaration do not change which function is a test.
 ScanTests :: (text: string) -> TestScan {
-    found: TestScan = {names: [], attributed: false, problem: ""};
+    found: TestScan = {package: "", names: [], attributed: false, problem: ""};
     switch raw.Parse(text) {
         case .Rejected(diagnostic):
             found.problem = format_text("{}:{}: {}", diagnostic.line, diagnostic.column, diagnostic.message);
         case .Parsed(nodes, fields, named, extra, root):
             for (index in 0..<length(nodes)) {
                 if (nodes[index].kind == syntax.Attribute) {
-                    found.attributed = true;
+                    found.attributed = found.attributed || TestAttribute(nodes, fields, text, index);
+                }
+                if (nodes[index].kind == syntax.PackageHeader) {
+                    member := nodes[index].first_child;
+                    while (member >= 0) {
+                        if (fields[member] == syntax.FieldName) {
+                            value := nodes[member];
+                            found.package = strings.Slice(text, value.start, value.end - value.start);
+                        }
+                        member = nodes[member].next_sibling;
+                    }
                 }
                 if (nodes[index].kind != syntax.FunctionDeclaration) {
                     continue;
@@ -111,14 +134,7 @@ ScanTests :: (text: string) -> TestScan {
                         name = strings.Slice(text, node.start, node.end - node.start);
                     }
                     if (node.kind == syntax.Attribute) {
-                        attribute := node.first_child;
-                        while (attribute >= 0) {
-                            if (fields[attribute] == syntax.FieldName) {
-                                value := nodes[attribute];
-                                test = test || strings.Slice(text, value.start, value.end - value.start) == "test";
-                            }
-                            attribute = nodes[attribute].next_sibling;
-                        }
+                        test = test || TestAttribute(nodes, fields, text, member);
                     }
                     member = node.next_sibling;
                 }
@@ -128,16 +144,6 @@ ScanTests :: (text: string) -> TestScan {
             }
     }
     return found;
-}
-
-// The package a file declares on its first line, "" when it declares none.
-DeclaredPackage :: (text: string) -> string {
-    for (line in strings.SplitLines(text)) {
-        if (strings.HasPrefix(line, "package ")) {
-            return strings.TrimSpace(strings.TrimPrefix(line, "package "));
-        }
-    }
-    return "";
 }
 
 // The file the dispatcher goes in, and its text: ChibiRunTest(index) calls the index'th test.
@@ -317,15 +323,15 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
             result.compiled = false;
             return result;
         }
-        if (package == "") {
-            package = DeclaredPackage(read.text);
-        }
         expected := ExpectedError(read.text);
         if (expected != "" && rejected == "") {
             rejected = expected;
             rejected_file = file;
         }
         scanned := ScanTests(read.text);
+        if (package == "") {
+            package = scanned.package;
+        }
         if (expected == "" && scanned.problem != "" && strings.Contains(read.text, "@test")) {
             Complain(strings.Concatenate([folder, "/", file, ":", scanned.problem]));
             result.compiled = false;
@@ -355,7 +361,10 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
         return result;
     }
     program := strings.Concatenate([scratch, "/program"]);
-    if (os.Run(["rm", "-rf", scratch]) != 0 || !MakeFolders(scratch)) {
+    if (os.Exists(scratch)) {
+        CacheDiscard(scratch);
+    }
+    if (os.Exists(scratch) || !MakeFolders(scratch)) {
         Complain(strings.Concatenate(["cannot make ", scratch]));
         result.compiled = false;
         return result;

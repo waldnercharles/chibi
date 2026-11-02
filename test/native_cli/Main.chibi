@@ -34,6 +34,12 @@ Main :: () -> int {
     assert(built.status == 0, "native build compiles a file at O0");
     again := os.Capture([chibi, "build", "--native", "-O0", "--llvm", llvm, build_source]);
     assert(again.status == 0 && strings.Contains(again.stderr, "is up to date"), "native build reuses its verified output");
+    if (os.Platform() == "Linux") {
+        library_source := strings.Concatenate([scratch, "/Library.chibi"]);
+        Write(library_source, "Probe :: library { Main :: () -> int { return 42; } }\n");
+        shared := os.Capture([chibi, "build", "--native", "-O0", "--shared", "--llvm", llvm, library_source]);
+        assert(shared.status == 0, "native CLI builds a shared library without selecting a program entry");
+    }
 
     tests := strings.Concatenate([scratch, "/tests"]);
     made := os.MakeDirectory(tests);
@@ -44,9 +50,14 @@ Main :: () -> int {
     assert(tested.status == 1, "a failed native test fails the command");
     assert(strings.Contains(tested.stdout, "PASS project.Pass") && strings.Contains(tested.stdout, "FAIL project.Fail"), "test outcomes include both isolated processes");
     assert(strings.Contains(tested.stdout, "expected failure") && strings.Contains(tested.stdout, "2 tests, 1 failed"), "native assertion retains source diagnostic and totals");
-    Write(test_source, "package checks\n@test\n// A comment does not detach the attribute.\nPass :: () { value: int = 2; assert(value + 2 == 4, \"arithmetic\"); }\n");
+    Write(test_source, " \tpackage\tchecks\n@test\n// A comment does not detach the attribute.\nPass :: () { value: int = 2; assert(value + 2 == 4, \"arithmetic\"); }\n");
     passed := os.Capture([chibi, "test", "-O0", "--llvm", llvm, tests]);
     assert(passed.status == 0 && strings.Contains(passed.stdout, "1 tests, 0 failed"), "a native test suite succeeds");
+    if (os.Platform() != "Windows") {
+        environment := os.FindExecutable("env");
+        without_path := os.Capture([environment, "PATH=", chibi, "test", "-O0", "--llvm", llvm, tests]);
+        assert(without_path.status == 0 && strings.Contains(without_path.stdout, "1 tests, 0 failed"), "native tests need no host commands in PATH");
+    }
     Write(test_source, "package checks\n@test\nInvalid :: (argument: int) {}\n");
     malformed := os.Capture([chibi, "test", "-O0", "--llvm", llvm, tests]);
     assert(malformed.status == 1 && strings.Contains(malformed.stderr, "A @test function takes no parameters and returns nothing"), "invalid test attributes are rejected");

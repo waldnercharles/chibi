@@ -52,6 +52,9 @@ foreign kernel32 {
     FindNextFileW :: (handle: u64, data: u16[]) -> i32
     FindClose :: (handle: u64) -> i32
     GetCommandLineW :: () -> rawptr
+    LoadLibraryW :: (path: u16[]) -> rawptr
+    GetProcAddress :: (module: rawptr, name: cstring) -> rawptr
+    FreeLibrary :: (module: rawptr) -> i32
     lstrlenW :: (text: rawptr) -> i32
     RtlMoveMemory :: (destination: u16[], source: rawptr, length: u64) -> i32
     GetStdHandle :: (which: i32) -> u64
@@ -138,6 +141,18 @@ Wide :: (text: string) -> u16[] {
     converted := MultiByteToWideChar(Utf8, 0, bytes, i32(length(bytes)), wide, size);
     assert(converted == size, "the string converts");
     return wide;
+}
+
+// A successful open owns one loader reference. Symbol addresses stay valid
+// until the matching CloseLibrary; a failed open or lookup returns null.
+pub OpenLibrary :: (path: string) -> rawptr {
+    return LoadLibraryW(Wide(path));
+}
+pub LibrarySymbol :: (module: rawptr, name: string) -> rawptr {
+    return GetProcAddress(module, name);
+}
+pub CloseLibrary :: (module: rawptr) -> bool {
+    return FreeLibrary(module) != 0;
 }
 
 // The text of the first `count` UTF-16 units of `wide`.

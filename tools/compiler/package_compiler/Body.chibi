@@ -113,6 +113,9 @@ UpdateFact: int : 0;
 NativeFact: int : 1;
 CallFact: int : 2;
 WriteFact: int : 3;
+// The destination cell of an unmanaged scalar copied into a result bank.
+// `node` is the copy's source occurrence; `target` is the body-local cell.
+ResultCopyCellFact: int : 4;
 UnknownWrite: int : -1;
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
@@ -903,8 +906,8 @@ DirectiveFacts :: (forest: snapshot.SnapshotNode[], context: BodyContext, direct
         kind = NativeFact;
         target = item.a;
     }
-    if (kind == UpdateFact) {
-        fact: SemanticFact = {node: item.node, kind: UpdateFact, target: target};
+    if (kind == UpdateFact || kind == ResultCopyCellFact) {
+        fact: SemanticFact = {node: item.node, kind: kind, target: target};
         recorded.append(fact);
         return SemanticState.Read(summary, recorded);
     }

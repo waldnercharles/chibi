@@ -10,3 +10,7 @@ short-circuit operands and nil comparisons. A separate real-source fixture
 checks parenthesized members in logical operands, arguments and negation.
 An optional third argument names the retained ordinary compiler for the same
 runtime controls.
+
+Three original record-alias cases run at both optimization levels. A result-bank
+copy fixture checks independent i8/u64/bool/f64 values, mutation and shadowed
+locals. The ordinary reference runs the same accepted cases.

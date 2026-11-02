@@ -34,6 +34,12 @@ for name in fallible_complete_outcomes_can_be_returned \
         "$samples/$name/facts" > "$work/case.log" 2>&1 || { cat "$work/case.log"; exit 1; }
     grep -q '^PASS .*Calls$' "$work/case.log"
 done
+# A pointer-shaped named result remains rejected at the ordinary signature
+# boundary; copied-cell provenance does not admit unsupported header shapes.
+CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" \
+    --root "$root/test/compiler/samples/collections" \
+    "$root/test/compiler/samples/collections/managed_pointer_named_result/facts" > "$work/case.log" 2>&1 || { cat "$work/case.log"; exit 1; }
+grep -q '^PASS .*compile_error$' "$work/case.log"
 test "$negative" -gt 0
 printf 'PASS native fallible ownership: %s original diagnostics and seven positive controls\n' "$negative"
 
@@ -52,18 +58,35 @@ for level in 0 2; do
             "$samples/$name/facts" > "$work/case.log" 2>&1 || { cat "$work/case.log"; exit 1; }
         grep -q '^PASS .*Calls$' "$work/case.log"
     done
+    for name in fallible_tuple_aliases_preserve_checking \
+                fallible_shadowed_member_accepts_its_own_presence_guard \
+                fallible_sibling_assignments_permit_actual_error_handling; do
+        CHIBI_CORE="$root/packages/core" "$compiler" test --llvm "$llvm" -O"$level" --root "$samples" \
+            "$samples/$name/facts" > "$work/case.log" 2>&1 || { cat "$work/case.log"; exit 1; }
+        grep -q '^PASS .*Calls$' "$work/case.log"
+    done
+    "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        --source "$root/test/native_aot/fallible/result_copies/Main.chibi" --entry Main --output "$work/result-copies" \
+        --llvm "$llvm" --target "$target" --level "$level"
+    "$work/result-copies"
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
         --source "$root/test/native_aot/fallible/Parenthesized.chibi" --entry Main --output "$work/parenthesized" \
         --llvm "$llvm" --target "$target" --level "$level"
     "$work/parenthesized"
-    printf 'PASS native optional bool projections: seven original samples and parenthesized operands at O%s\n' "$level"
+    printf 'PASS native optional bool and result-copy values at O%s\n' "$level"
 done
 if [ -n "$reference" ]; then
     for name in $booleans; do
         "$reference" --project-root "$samples/$name/facts" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
         grep -F 'PASS' "$work/reference.log" > /dev/null
     done
+    for name in fallible_tuple_aliases_preserve_checking \
+                fallible_shadowed_member_accepts_its_own_presence_guard \
+                fallible_sibling_assignments_permit_actual_error_handling; do
+        "$reference" --project-root "$samples/$name/facts" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
+        grep -F 'PASS' "$work/reference.log" > /dev/null
+    done
     "$reference" --project-root "$root/test/native_aot/fallible" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
     grep -F 'PASS' "$work/reference.log" > /dev/null
-    printf 'PASS ordinary optional bool reference: seven original samples and parenthesized operands\n'
+    printf 'PASS ordinary optional bool and result-copy references\n'
 fi

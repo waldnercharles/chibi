@@ -75,7 +75,18 @@ Files :: (llvm: string, work: string) {
     failure = os.Copy(strings.Concatenate([folder, "/missing"]), copied);
     assert(failure != nil && os.HashFile(copied).digest == hashed.digest, "failed copy preserves prior output");
     written = os.WriteText(file, "changed");
-    assert(written == nil && os.Stamp(file) != before, "a write changes the stamp");
+    assert(written == nil, "same-size rewrite succeeds");
+    rewritten := os.HashFile(file);
+    assert(rewritten.error == nil && rewritten.digest == os.HashText("changed") && rewritten.digest != hashed.digest,
+           "content hashes notice a same-size rewrite independently of timestamp resolution");
+    // A filesystem's clock may give rapid same-size writes equal metadata.
+    // Change size to test the stamp without sleeping or assuming a clock tick.
+    written = os.WriteText(file, "changed size");
+    assert(written == nil, "size-changing rewrite succeeds");
+    changed_stamp := os.Stamp(file);
+    changed_fields := strings.Split(changed_stamp, ":");
+    assert(changed_stamp != before && length(changed_fields) == 6 && changed_fields[2] == "12",
+           "a size change changes the metadata stamp");
     root := os.Root();
     canonical := os.RealPath(file);
     assert(root != "" && os.IsDirectory(root) && os.RealPath(root) == os.RealPath("."), "root is the current directory");
@@ -94,7 +105,7 @@ Files :: (llvm: string, work: string) {
     failure = os.Publish(slot, empty);
     assert(failure != nil && os.IsDirectory(slot) && os.IsDirectory(empty), "publish preserves an occupied empty directory");
     failure = os.Publish(slot, file);
-    assert(failure != nil && os.IsDirectory(slot) && os.ReadText(file).text == "changed", "publish preserves an occupied file");
+    assert(failure != nil && os.IsDirectory(slot) && os.ReadText(file).text == "changed size", "publish preserves an occupied file");
     published := strings.Concatenate([folder, "/published"]);
     failure = os.Publish(slot, published);
     assert(failure == nil && !os.Exists(slot) && os.IsDirectory(published), "publish moves to a vacant name");

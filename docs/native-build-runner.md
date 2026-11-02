@@ -13,6 +13,13 @@ use kernel32 and have cross-link checks, but still need a Windows execution
 result. Windows also needs a verified seed and asynchronous process operations
 before this entry can select it.
 
+Windows metadata stamps can stay equal across rapid same-size rewrites. The
+native compiler's output cache and the shell entry hash source and tool bytes.
+The authored runner still uses metadata stamps for source and tool identity,
+and the C graph/evidence checks use them too. Those consumers need content
+verification before enabling the Windows build runner. The source watcher is
+currently Linux-only; its Windows port must also account for this limit.
+
 ```
 CHIBI_LLVM_BIN=/path/to/llvm/bin sh tools/build.sh build --release
 sh tools/build.sh test --llvm /path/to/llvm/bin --list

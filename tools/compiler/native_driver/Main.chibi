@@ -422,15 +422,16 @@ Inputs :: struct {
 }
 
 Gather :: (project: string, collections: string[], directories: string[], package: string, source: string) -> Inputs {
-    return GatherWith(project, collections, directories, package, source, {folder: "", name: "", text: "", entry_name: "", entry_text: ""});
+    return GatherWith(project, collections, directories, package, source, {folder: "", collection: "", name: "", text: "", entry_name: "", entry_text: ""});
 }
 
 // A package under test: its folder, the test files it also takes, and one more file, `name`
 // holding `text`, that is not on disk, the test dispatcher. A nonempty `entry_text` is the
-// entry package, one file `entry_name` that is not on disk either, whose imports resolve
-// against the project folder.
+// first file of the package under test, `entry_name`, also not on disk.
+// `collection` identifies that package through its existing project/core route.
 Extra :: struct {
     folder: string;
+    collection: string;
     name: string;
     text: string;
     entry_name: string;
@@ -444,7 +445,15 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
     folders: string[] = [strings.Concatenate([project, "/", package])];
     prefixes: string[] = [strings.Concatenate([package, "/"])];
     if (package == ".") {
+        folders[0] = project;
         prefixes[0] = "";
+    }
+    if (extra.entry_text != "") {
+        folders[0] = extra.folder;
+        seen[0] = strings.Concatenate([extra.collection, ":", package]);
+        if (extra.collection != "project") {
+            prefixes[0] = strings.Concatenate([route.Visible(extra.folder), "/"]);
+        }
     }
     kinds: string[] = ["project"];
     kinds.extend(collections);
@@ -455,10 +464,11 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
             files.append(extra.name);
         }
         if (next == 0 && extra.entry_text != "") {
-            // The entry text of the caller, alone.
-            folders[0] = project;
-            files = [extra.entry_name];
-            prefixes[0] = strings.Concatenate([package, "/"]);
+            // The generated entry belongs to the tested package itself.
+            // Its real files and dispatcher follow in the same namespace.
+            ordered: string[] = [extra.entry_name];
+            ordered.extend(files);
+            files = ordered;
         } else if (next == 0 && source != "") {
             // One program: its file alone, whatever else its folder holds.
             slash := strings.LastIndex(source, "/");
@@ -492,7 +502,7 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
         for (file in files) {
             location := strings.Concatenate([folders[next], "/", file]);
             text := extra.text;
-            if (next == 0 && extra.entry_text != "") {
+            if (next == 0 && extra.entry_text != "" && file == extra.entry_name) {
                 text = extra.entry_text;
             } else if (extra.folder == "" || folders[next] != extra.folder || file != extra.name) {
                 if (!os.Exists(location)) {
@@ -521,8 +531,13 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
                     seen.append(key);
                     folder := "";
                     if (kind == "project") {
-                        folder = strings.Concatenate([project, "/", name]);
-                        prefixes.append(strings.Concatenate([name, "/"]));
+                        folder = project;
+                        prefix := "";
+                        if (name != ".") {
+                            folder = strings.Concatenate([project, "/", name]);
+                            prefix = strings.Concatenate([name, "/"]);
+                        }
+                        prefixes.append(prefix);
                     } else {
                         // A collection's package is its folder below the collection's
                         // directory, `NAME:.` the directory itself, and its files are

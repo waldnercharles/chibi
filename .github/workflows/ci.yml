@@ -490,6 +490,8 @@ jobs:
           if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
           & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
           if ($LASTEXITCODE) { throw 'the Windows object regression failed' }
+          & ./test/native_aot/link/Memory.ps1 -Compiler "$work/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+          if ($LASTEXITCODE) { throw 'the Windows compiler memory runtime probe failed' }
       - name: Check the native Windows build runner
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |

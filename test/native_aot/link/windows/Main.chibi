@@ -220,14 +220,20 @@ Processes :: (work: string) {
     assert(written == nil, "prepare the previous redirected errors");
     captured = os.Capture([program, "child-redirected", standard, errors]);
     output: u8[] = [97, 0, 98];
+    standard_read := os.ReadText(standard);
+    assert(standard_read.error == nil, "read redirected stdout");
+    errors_read := os.ReadText(errors);
+    assert(errors_read.error == nil, "read redirected stderr");
     assert(captured.status == 0 && captured.stdout == "" && captured.stderr == "" &&
-           os.ReadText(standard).text == text_from_bytes(output) && os.ReadText(errors).text == "error\n",
+           standard_read.text == text_from_bytes(output) && errors_read.text == "error\n",
            "redirected streams stay separate and binary, without automatic reporting or deletion");
     captured = os.Capture([program, "child-redirected-inherited", errors,
                            strings.Concatenate([work, "/missing-parent/errors"])]);
     inherited: u8[] = [97, 0, 98, 108, 105, 118, 101];
+    inherited_errors_read := os.ReadText(errors);
+    assert(inherited_errors_read.error == nil, "read inherited launch stderr");
     assert(captured.status == 0 && captured.stdout == text_from_bytes(inherited) && captured.stderr == "" &&
-           os.ReadText(errors).text == "error\n", "inherited stdout remains live and stderr stays caller-owned");
+           inherited_errors_read.text == "error\n", "inherited stdout remains live and stderr stays caller-owned");
     slow = windows.StartRedirected([program, "child-slow"], standard, errors);
     status = os.Wait(slow, 20);
     assert(slow > 0 && status == os.StillRunning, "a redirected wait can time out");
@@ -334,7 +340,9 @@ GraphCache :: (work: string) {
     assert(strings.Contains(evidence.ReadRecord(output), "stale input/output"),
            "evidence refuses changed content even when its metadata matches");
     stepped = c.Step(command, [folder, source], output);
-    assert(stepped == 1 && os.ReadText(output).text == "after!",
+    rebuilt := os.ReadText(output);
+    assert(rebuilt.error == nil, "read the rebuilt graph output");
+    assert(stepped == 1 && rebuilt.text == "after!",
            "changed content rebuilds even when its metadata matches");
     assert(evidence.ReadRecord(output) == "", "the rebuilt record proves the current bytes");
     written = os.WriteText(output, "broken");
@@ -343,7 +351,9 @@ GraphCache :: (work: string) {
     assert(strings.Contains(evidence.ReadRecord(output), "stale input/output"),
            "evidence refuses an output with changed content");
     stepped = c.Step(command, [folder, source], output);
-    assert(stepped == 1 && os.ReadText(output).text == "after!",
+    repaired := os.ReadText(output);
+    assert(repaired.error == nil, "read the repaired graph output");
+    assert(stepped == 1 && repaired.text == "after!",
            "a modified output is rebuilt too");
     added := strings.Concatenate([folder, "/added.chibi"]);
     written = os.WriteText(added, "new source");
@@ -389,9 +399,15 @@ Files :: (llvm: string, work: string) {
     written = os.WriteText(copied, "previous output");
     assert(written == nil, "write previous output");
     failure := os.Copy(file, copied);
-    assert(failure == nil && os.HashFile(copied).digest == hashed.digest, "copy replaces a complete file");
+    assert(failure == nil, "copy replaces a complete file");
+    copied_hash := os.HashFile(copied);
+    assert(copied_hash.error == nil, "hash the copied output");
+    assert(copied_hash.digest == hashed.digest, "copied bytes match the source");
     failure = os.Copy(strings.Concatenate([folder, "/missing"]), copied);
-    assert(failure != nil && os.HashFile(copied).digest == hashed.digest, "failed copy preserves prior output");
+    assert(failure != nil, "copy refuses a missing source");
+    preserved_hash := os.HashFile(copied);
+    assert(preserved_hash.error == nil, "hash output after failed copy");
+    assert(preserved_hash.digest == hashed.digest, "failed copy preserves prior output");
     written = os.WriteText(file, "changed");
     assert(written == nil, "same-size rewrite succeeds");
     rewritten := os.HashFile(file);
@@ -419,7 +435,9 @@ Files :: (llvm: string, work: string) {
     assert(made != nil, "reserve refuses an existing file");
     first := os.TemporaryDirectory(folder);
     second := os.TemporaryDirectory(folder);
-    assert(first.error == nil && second.error == nil && first.path != second.path &&
+    assert(first.error == nil, "reserve the first private directory");
+    assert(second.error == nil, "reserve the second private directory");
+    assert(first.path != second.path &&
            install.Parent(first.path) == os.RealPath(folder) && os.IsDirectory(second.path),
            "temporary directories are distinct and stay beside their publish destination");
     moved := strings.Concatenate([folder, "/published-temporary"]);
@@ -437,7 +455,10 @@ Files :: (llvm: string, work: string) {
     failure = os.Publish(slot, empty);
     assert(failure != nil && os.IsDirectory(slot) && os.IsDirectory(empty), "publish preserves an occupied empty directory");
     failure = os.Publish(slot, file);
-    assert(failure != nil && os.IsDirectory(slot) && os.ReadText(file).text == "changed size", "publish preserves an occupied file");
+    assert(failure != nil, "publish refuses an occupied file");
+    preserved := os.ReadText(file);
+    assert(preserved.error == nil, "read the occupied file");
+    assert(os.IsDirectory(slot) && preserved.text == "changed size", "publish preserves an occupied file");
     published := strings.Concatenate([folder, "/published"]);
     failure = os.Publish(slot, published);
     assert(failure == nil && !os.Exists(slot) && os.IsDirectory(published), "publish moves to a vacant name");

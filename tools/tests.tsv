@@ -50,11 +50,11 @@ tool	asset-values	@build@/test/tools/test_tools	--asset-values
 tool	fmt	@build@/test/tools/test_tools	--fmt
 tool	language-test-parallel	@build@/test/language/test_language	--test-parallel
 tool	language-ranges	@build@/test/language/test_language	--ranges
-tool	chibi-test-compiler	@release@/sdk/chibi	test	tools/compiler
+tool	chibi-test-compiler	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/tools/compiler
 tool	chibi-test-core	@release@/sdk/chibi	test	packages/core
-tool	chibi-test-integer-arithmetic	@release@/sdk/chibi	test	test/integer_arithmetic
-tool	chibi-test-core-strings	@release@/sdk/chibi	test	test/core_strings
-tool	chibi-test-time	@release@/sdk/chibi	test	test/standard_library/time
+tool	chibi-test-integer-arithmetic	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/integer_arithmetic
+tool	chibi-test-core-strings	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/core_strings
+tool	chibi-test-time	env	CHIBI_CORE=@root@/packages/core	@compiler@	test	--llvm	@llvm@	@root@/test/standard_library/time
 tool	chibi-test-portable-consumer	@release@/sdk/chibi	test	test/packages/portable_consumer
 tool	chibi-test-samples-base	@release@/sdk/chibi	test	test/compiler/samples/base
 tool	chibi-test-samples-collections	@release@/sdk/chibi	test	test/compiler/samples/collections

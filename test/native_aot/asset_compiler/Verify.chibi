@@ -67,6 +67,10 @@ Main :: () -> int {
     port := "{\"name\":\"Result\",\"storage\":9,\"container\":0,\"c_string\":false,\"nominal\":0,\"has_default\":false,\"default_owner\":false,\"default_supported\":false,\"default_bits\":18446744073709551615,\"default_text\":\"\"}";
     rich_suffix := Path([",[", native, "],[", port, "],[18446744073709551615,18446744073709551615],[],[],0,2,2,[0]]"]);
     unsigned_catalog := Invoke(fixture, "unsigned-catalog", Path([prefix, catalog, rich_suffix]), 0, "unchanged");
+    native_type := "{\"required\":false,\"underlying\":-1,\"name\":\"UnusedNamespace\",\"id\":18446744073709551615,\"layout\":18446744073709551615,\"storage\":0,\"size\":0,\"component\":0,\"first\":0,\"count\":1,\"relationship\":false,\"traits\":0,\"error\":false}";
+    native_field := "{\"name\":\"field\",\"storage\":6,\"offset\":0,\"writable\":false,\"c_string\":false,\"record\":-1,\"constant\":false,\"read\":-1,\"read_key\":\"\"}";
+    typed_suffix := Path([",[],[],[],[", native_type, "],[", native_field, "],0,2,2,[]]"]);
+    typed_catalog := Invoke(fixture, "typed-catalog", Path([prefix, catalog, typed_suffix]), 0, "unchanged");
     cases := [
         strings.Replace(request, "false", "\"false\"", 1),
         strings.ReplaceAll(request, "12807983651649450734", "18446744073709551616"),
@@ -82,6 +86,16 @@ Main :: () -> int {
     ];
     for (bad, index in cases) {
         invalid := Invoke(fixture, format_text("invalid-{}", index), bad, 2, "unchanged");
+    }
+    limited := Path([fixture.folder, "/limited.chibip"]);
+    limited_diagnostic := Path([fixture.folder, "/limited.diagnostic"]);
+    Write(limited, "unchanged");
+    Write(limited_diagnostic, "unchanged");
+    for (budget in ["1", "0", "-1", "18446744073709551616", "words"]) {
+        expected := 2;
+        if (budget == "1") { expected = 125; }
+        ran := os.Capture([fixture.program, Path([fixture.folder, "/simple.json"]), limited, limited_diagnostic, budget]);
+        assert(ran.status == expected && Read(limited) == "unchanged" && Read(limited_diagnostic) == "unchanged", "quota rejection preserves output files");
     }
     // A failed publication removes the temporary file and preserves a directory.
     directory := Path([fixture.folder, "/cannot-replace"]);

@@ -6,14 +6,28 @@ import syntax "project:syntax_diagnostics"
 import os "core:os"
 import strings "core:strings"
 
+foreign import scope "system:c"
+foreign scope {
+    chibi_native_scope_begin :: (steps: u64) -> int
+    chibi_native_scope_end :: () -> int
+}
+
 // The packaged compiler service takes the runtime's reflected catalog request
 // unchanged. A successful output is the same prepared closure the runtime
 // already reads. Rejections are one diagnostic, not a second compile.
 Main :: () -> int {
     arguments := os.Arguments();
-    if (length(arguments) != 3) {
-        os.Print("usage: chibi-asset-compiler REQUEST OUTPUT DIAGNOSTIC");
+    if (length(arguments) < 3 || length(arguments) > 4) {
+        os.Print("usage: chibi-asset-compiler REQUEST OUTPUT DIAGNOSTIC [BUDGET]");
         return 2;
+    }
+    budget: u64 = 4000000000;
+    if (length(arguments) == 4) {
+        budget = request.Budget(arguments[3]);
+        if (budget == 0) {
+            os.Print(format_text("asset compiler: invalid positive step budget {}", arguments[3]));
+            return 2;
+        }
     }
     input := os.ReadText(arguments[0]);
     if (input.error != nil) {
@@ -25,9 +39,14 @@ Main :: () -> int {
         os.Print(format_text("asset compiler: invalid catalog request {}", arguments[0]));
         return 2;
     }
-    switch compiler.CompileCatalogResult(value.project, value.collections, value.roots, value.paths, value.sources,
+    armed := chibi_native_scope_begin(budget);
+    assert(armed == 0, "native compiler scope begins");
+    compiled := compiler.CompileCatalogResult(value.project, value.collections, value.roots, value.paths, value.sources,
         value.debug, value.target, value.abi, value.names, value.natives, value.ports, value.identities,
-        value.types, value.fields, value.entity, value.os, value.arch, value.effects) {
+        value.types, value.fields, value.entity, value.os, value.arch, value.effects);
+    ended := chibi_native_scope_end();
+    assert(ended == 0, "native compiler scope ends");
+    switch compiled {
         case .Rejected(diagnostic):
             if (!WriteDiagnostic(diagnostic, arguments[2])) {
                 os.Print(format_text("asset compiler: cannot write {}", arguments[2]));

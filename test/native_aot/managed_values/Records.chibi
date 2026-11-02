@@ -21,6 +21,10 @@ Main :: () -> int {
     from_temporary := Make(3).message;
     assert(text_byte_at(from_temporary, 2) == 3);
     assert(Check(Make(4)) == 4);
+    aliased := Make(1);
+    assert(aliased.message == Replace(&aliased));
+    aliased = Make(1);
+    assert(SnapshotBeforeCall(aliased, Change(&aliased)));
     for i in 0..<20 {
         local := Make(i);
         if i == 7 { continue; }
@@ -67,6 +71,12 @@ Addressed :: (value: Value) -> Value { result := Change(&value); return value; }
 Check :: (value: Value) -> int { assert(text_byte_at(value.message, 2) == 4); return 4; }
 MakeInner :: (i: int) -> Inner { return {text: Text(i)}; }
 CheckWrapped :: (value: Wrapped, i: int) -> bool { return value.flag && text_byte_at(value.inner.text, 2) == i; }
+Replace :: (value: ^Value) -> string {
+    expected := Text(1);
+    value.message = Text(2);
+    return expected;
+}
+SnapshotBeforeCall :: (value: Value, ignored: int) -> bool { return text_byte_at(value.message, 2) == 1; }
 
 ReturnArray :: () -> Value[] { return [Make(5)]; }
 Choose :: (i: int) -> Choice { return Choice.Some(Make(i)); }

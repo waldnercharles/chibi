@@ -66,3 +66,13 @@ CHIBI_CORE=$root/packages/core "$scratch/array-arguments" "$compiler" "$llvm" "$
     --source "$root/test/native_cli/PackageEntries.chibi" --entry Main --output "$scratch/package-entries" \
     --llvm "$llvm" --target "$target"
 CHIBI_CORE=$root/packages/core "$scratch/package-entries" "$compiler" "$llvm" "$scratch/programs"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/ExitStatuses.chibi" --entry Main --output "$scratch/exit-statuses" \
+    --llvm "$llvm" --target "$target"
+CHIBI_CORE=$root/packages/core "$scratch/exit-statuses" "$compiler" "$llvm" "$scratch/programs"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/RunAssertions.chibi" --entry Main --output "$scratch/run-assertions" \
+    --llvm "$llvm" --target "$target"
+CHIBI_CORE=$root/packages/core "$scratch/run-assertions" "$compiler" "$llvm" "$scratch/programs"

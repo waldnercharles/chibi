@@ -1,0 +1,39 @@
+package map_iteration_ownership
+
+Make :: () -> [string: string] {
+    key := text_from_bytes([u8(107), 0, 121]);
+    value := text_from_bytes([u8(118), 97, 108, 117, 101]);
+    made: [string: string] = [key: value, "second": value];
+    return made;
+}
+Escape :: () -> string {
+    for (key, value in Make()) {
+        return value;
+    }
+    return "";
+}
+Borrowed :: (value: string) -> string { return value; }
+Main :: () -> int {
+    escaped := Escape();
+    assert(escaped == "value");
+    assert(Borrowed(escaped) == "value");
+    values := Make();
+    copied := values;
+    seen: int = 0;
+    for (key, value in values) {
+        delete values[key];
+        assert(value == "value");
+        saved := value;
+        assert(saved == escaped);
+        seen += 1;
+    }
+    assert(seen == 2 && copied.has("second") && !values.has("second"));
+    for (key, value in Make()) { break; }
+    for (value in Make()) { continue; }
+    // The test runtime also exercises the real int-map growth/shrink helpers.
+    numbers: [int: int] = [1: 10];
+    numbers[2] = 20;
+    delete numbers[1];
+    assert(numbers[2] == 20);
+    return 0;
+}

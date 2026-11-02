@@ -2053,7 +2053,8 @@ ScalarPlan :: union {
     Failed(diagnostic: syntax.Diagnostic) | Converted(value: int, context: int, storage: int) | Compound(storage: int) |
     Range(first: int, last: int) | Record(value: int, record: int) | Member(record: int, field: int) |
     Tagged(subject: int) | Subject(value: int, held: int) | Array(value: int, shape: ValueType, copied: bool) | Element | Changed(object: int, operator: int) |
-    Iterated(value: int, copied: bool) | Mapped(value: int, record: int, copied: bool) |
+    Iterated(value: int, copied: bool) | MapIterated(value: int, record: int, copied: bool) |
+    Mapped(value: int, record: int, copied: bool) |
     MapEdited(change: ScalarMapCall) | Bare
 }
 // The plan of `statement`'s operands: a return's value, widened to the result
@@ -2102,6 +2103,15 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         first := Field(forest, statement, syntax.FieldFirst);
         if (first < 0) {
             visited := Field(forest, statement, syntax.FieldValue);
+            map := ScalarMapShape(forest, text, callables, names, types, callable.package, visited);
+            if (map >= 0 && Field(forest, statement, syntax.FieldReference) < 0 &&
+                Field(forest, statement, syntax.FieldReverse) < 0) {
+                body := Field(forest, statement, syntax.FieldBody);
+                changed := MutatedNames(forest, text, body, AddressedNames(forest, text, body, []));
+                copied := Is(forest, Unparenthesized(forest, visited), syntax.Identifier) &&
+                          NamePosition(changed, Text(forest, text, Unparenthesized(forest, visited))) >= 0;
+                return ScalarPlan.MapIterated(visited, map, copied);
+            }
             if (visited >= 0 && Field(forest, statement, syntax.FieldReference) < 0 &&
                 ScalarArrayType(types, ScalarVisitedShape(forest, text, callables, params, callable, names, types, members,
                                                           constants, visited).storage,
@@ -2110,7 +2120,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
                 return ScalarPlan.Iterated(visited, ScalarIterationCopies(forest, text, Field(forest, statement, syntax.FieldBody),
                                                                            visited));
             }
-            return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof iterates only int ranges and arrays of numbers, bool and strings"));
+            return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof iterates only int ranges, arrays and scalar maps"));
         }
         return ScalarPlan.Range(first, Field(forest, statement, syntax.FieldLast));
     }
@@ -2594,6 +2604,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         hidden_held: int = -1;
         appended: int = -1;
         iterated := false;
+        map_iterated := -1;
         switch ScalarPlanned(forest, text, callables, params, callable, names, types, members, constants, statement, written,
                              kept_whole) {
             case .Failed(diagnostic):
@@ -2683,6 +2694,10 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 built = ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants, value,
                                           ScalarVisitedShape(forest, text, callables, params, callable, names, types, members, constants, value), copied,
                                           operands);
+            case .MapIterated(value, record, copied):
+                map_iterated = record;
+                built = ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
+                                       value, record, copied, operands);
             case .Bare:
                 built = ScalarOperands.Built(operands);
         }
@@ -2711,6 +2726,14 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 element := IntStorage;
                 element_record := -1;
                 row = ScalarAt(forest, statement, facts.ForRow, facts.IntType, variables, count, name);
+                if (map_iterated >= 0) {
+                    map := types[map_iterated];
+                    element = map.value_storage;
+                    if (keyed) { element = map.key; }
+                    row.type = ScalarMapType(types, map_iterated);
+                    row.literal = i64(facts.RangeMap);
+                    if (keyed) { row.literal += i64(facts.RangeKeyed); }
+                }
                 if (iterated) {
                     visited := ScalarVisitedShape(forest, text, callables, params, callable, names, types, members, constants,
                                                   Field(forest, statement, syntax.FieldValue));
@@ -2722,7 +2745,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                         row.literal += i64(facts.RangeKeyed);
                     }
                 }
-                if (!iterated && Text(forest, text, Field(forest, statement, syntax.FieldBound)) == "..<") {
+                if (!iterated && map_iterated < 0 && Text(forest, text, Field(forest, statement, syntax.FieldBound)) == "..<") {
                     row.literal += i64(facts.RangeExclusive);
                 }
                 if (Field(forest, statement, syntax.FieldReverse) >= 0) {
@@ -2734,8 +2757,10 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 names.append(binding);
                 variables += 1;
                 if (keyed) {
+                    keyed_storage := IntStorage;
+                    if (map_iterated >= 0) { keyed_storage = types[map_iterated].value_storage; }
                     index: Name = {owned: false, name: Text(forest, text, Field(forest, statement, syntax.FieldName)), place: LocalPlace,
-                                   index: variables, storage: IntStorage, container: 0, record: -1, writable: false,
+                                   index: variables, storage: keyed_storage, container: 0, record: -1, writable: false,
                                    node: Field(forest, statement, syntax.FieldName)};
                     names.append(index);
                     variables += 1;
@@ -3012,7 +3037,8 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> string {
                  ArrayPushIntrinsic, ArrayStoreIntrinsic, ArrayMutateIntrinsic, ArrayMutatePlaceIntrinsic,
                  SequenceGetIntrinsic, SequenceLengthIntrinsic, SequenceBorrowIntrinsic, SequenceCloneIntrinsic,
                  ArrayExtendIntrinsic, SequenceSliceIntrinsic, MapMakeIntrinsic, MapGetIntrinsic, MapHasIntrinsic,
-                 MapStoreIntrinsic, MapDeleteIntrinsic, MapDeletePlaceIntrinsic, ReferenceKeyIntrinsic];
+                 MapStoreIntrinsic, MapDeleteIntrinsic, MapDeletePlaceIntrinsic, MapItemIntrinsic,
+                 ReferenceKeyIntrinsic];
     for (host in hosts) {
         // A text native, the only natives EmitBody is given.
         if (host.intrinsic == 0 && host.linked >= 0) {

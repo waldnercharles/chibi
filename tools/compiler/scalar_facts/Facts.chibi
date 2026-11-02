@@ -431,12 +431,16 @@ pub SwitchSubject: int : 1;
 // Function.variable, so reordering fields does not change their identities.
 pub Retained: int : 2;
 
-// A For row's range flags; RangeArray stands alone or with RangeKeyed, which
-// declares the next variable, an int, as the index of the element.
+// A For row's range flags. RangeArray stands alone or with RangeKeyed,
+// which declares the next variable, an int, as the index of the element.
 pub RangeExclusive: int : 1;
 pub RangeReverse: int : 2;
 pub RangeArray: int : 4;
 pub RangeKeyed: int : 8;
+// A map loop's type is the map type. Its bindings are the value alone, or
+// with RangeKeyed the key followed by the value, in insertion order. Its
+// operand is borrowed unless the producer supplies a snapshot copy.
+pub RangeMap: int : 16;
 
 // Conversions between integer types: `T(value)` clamps the value to T, and
 // `T(wrap: value)` keeps its low bits. A floating value converts to an

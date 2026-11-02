@@ -35,7 +35,19 @@ pub Fingerprint :: (path: string) -> string {
     if (stamp == "" || os.Platform() != "Windows") {
         return stamp;
     }
-    digest := Digest(path);
+    digest := "";
+    if (os.IsDirectory(path)) {
+        listed := os.List(path);
+        if (listed.error != nil) {
+            return "";
+        }
+        // Native product inputs include directories to notice new sources.
+        // Windows names cannot contain line endings, so the sorted inventory
+        // has one unambiguous entry per line without reading file contents twice.
+        digest = os.HashText(strings.Join(listed.names, "\n"));
+    } else {
+        digest = Digest(path);
+    }
     if (digest == "") {
         return "";
     }

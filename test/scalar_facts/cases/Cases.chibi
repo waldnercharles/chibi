@@ -104,8 +104,8 @@ Cases :: () -> Case[] {
         Rejected("scoped pointer entry", "package scalar\nMain :: (x: ^int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: ^int)"),
         Accepted("scoped pointer read", "package scalar\nMain :: () -> int { v := 41; return Next(&v); }\nNext :: (x: ^int) -> int { return x^ + 1; }", 42, "Main,Next", ""),
         Accepted("scoped pointer write", "package scalar\nMain :: () -> int { v := 41; return Bump(&v); }\nBump :: (x: ^int) -> int { x^ += 1; return x^; }", 42, "Main,Bump", ""),
-        Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int", "bool"),
-        Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int", "i64"),
+        Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int or nothing", "bool"),
+        Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int or nothing", "i64"),
         
         Rejected("nominal_result", "package scalar\nMain :: () -> Missing { return 42; }", "result type is not supported yet", "Missing"),
         Accepted("named_result", "package scalar\nMain :: () -> (x: int) { return 42; }", 42, "Main", "x := x return 42"),
@@ -119,12 +119,12 @@ Cases :: () -> Case[] {
         Rejected("attribute_pure", "package scalar\n@pure Main :: () -> int { return 42; }", "Unknown attribute '@pure'", "@pure"),
         Rejected("empty", "package scalar\nMain :: () -> int {}", "Missing return", "{}"),
         Rejected("bare_return", "package scalar\nMain :: () -> int { return; }", "return needs a value", "return;"),
-        Rejected("no_result", "package scalar\nMain :: () { return; }", "scalar proof requires its first function to return int", "Main :: () { return; }"),
+        Accepted("no_result", "package scalar\nMain :: () { return; }", 0, "Main", ""),
         Rejected("no_function", "package scalar\n", "scalar proof requires at least one function", "package scalar\n"),
         Rejected("malformed", "package scalar\nMain :: () -> int { return 42;", "Expected `}`, found the end of the file (to close the `{` at 2:19)", ""),
         Rejected("nul", "package scalar\nMain :: () -> int { return 42; }\u0000", "Package source contains NUL bytes", "\u0000"),
-        Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires its first function to return int", "string"),
-        Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires its first function to return int", "[int: int]"),
+        Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires its first function to return int or nothing", "string"),
+        Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires its first function to return int or nothing", "[int: int]"),
         Accepted("assert_before", "package scalar\nMain :: () -> int {\n    x: int = 41;\n    assert(Message: \"x is 41\", Condition: x == 41);\n    assert(true);\n    return x + 1;\n}", 42, "Main", "x := 41 assert x ; 41 ; x == 41 assert true return x ; 1 ; x + 1"),
         Rejected("return_outcome", "package scalar\nMain :: () -> int { return .Done 42; }", "scalar proof does not support return outcomes", "Done"),
         Accepted("float_one", "package scalar\nMain :: () -> int { return 1.0; }", 1, "Main", "return 1.0"),
@@ -332,7 +332,7 @@ Cases :: () -> Case[] {
         Accepted("array_value_forms", "package scalar\nMain :: () -> int {\n    base: int[] = [1, 2];\n    three: int = 3;\n    more := append(base, three);\n    joined := extend(more, base);\n    grown := Add(base, 9);\n    return length(base) * 1000 + length(more) * 100 + length(joined) * 10 + joined[4] + grown[2] * 10000;\n}\nAdd :: (items: int[], value: int) -> int[] { return append(items, value); }\n", 92352, "Main,Add", ""),
         // A switch on a call evaluates it once, and the arms bind its payloads.
         Accepted("switch_on_call", "package scalar\nShape :: union { Dot | Box(w: int, h: int) | Line(items: int[]) }\nMain :: () -> int { return Sizes(0) + Sizes(1) * 10 + Sizes(2) * 100; }\nMake :: (kind: int) -> Shape {\n    if (kind == 0) { return Shape.Dot; }\n    if (kind == 1) { return Shape.Box(3, 4); }\n    items: int[] = [5, 6, 7];\n    return Shape.Line(items);\n}\nSizes :: (kind: int) -> int {\n    switch Make(kind) {\n        case .Dot: return 1;\n        case .Box(w, h): return w * h;\n        case .Line(items): return length(items);\n    }\n}\n", 421, "Main,Make,Sizes", ""),
-        Rejected("array_main_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires its first function to return int", "int[]"),
+        Rejected("array_main_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires its first function to return int or nothing", "int[]"),
         Rejected("nested_arrays", "package scalar\nMain :: () -> int {\n    rows: int[][] = [[1]];\n    return 1;\n}\n", "scalar proof supports only arrays of numbers, bool, strings, records and unions with a value", "rows: int[][] = [[1]];")];
 }
 pub Count :: () -> int {

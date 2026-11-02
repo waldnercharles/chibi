@@ -6,6 +6,7 @@ import abi "project:native_abi"
 import scalar "project:scalar_llvm"
 import strings "core:strings"
 import syntax "project:syntax_diagnostics"
+import route "project:driver_paths"
 
 // The native compiler's pure core: the sources of a program's closure in, one
 // LLVM module or the first rejection out. It touches no file and no global, so
@@ -64,11 +65,20 @@ FunctionAt :: (text: string, at: int) -> string {
     return "(entry)";
 }
 
+// The public command owns physical roots. Pure Module callers retain their
+// logical source names; resolving a diagnostic does no work on a success.
+DiagnosticOrigins :: struct {
+    root: string;
+    source: string;
+    directories: string[];
+    entry: string;
+}
+
 // The file and line byte `at` of the joined sources lies in; each source is
 // followed by a newline when it lacks one, as the producer joins them.
 // source_size ends at the last retained document when parsing stopped early.
 Where :: (collections: string[], directories: string[], paths: string[], sources: string[],
-          os: int, arch: int, pointer_bits: int, source_size: int, at: int) -> string {
+          os: int, arch: int, pointer_bits: int, source_size: int, at: int, origins: DiagnosticOrigins) -> string {
     offset := 0;
     for (index in 0..<length(paths)) {
         text := sources[index];
@@ -81,8 +91,24 @@ Where :: (collections: string[], directories: string[], paths: string[], sources
             size += 1;
         }
         if (at < offset + size || (at == source_size && at == offset + size)) {
-            line := strings.Count(strings.Slice(text, 0, at - offset), "\n") + 1;
-            return format_text("{}:{}", paths[index], line);
+            before := strings.Slice(text, 0, at - offset);
+            line := strings.Count(before, "\n") + 1;
+            if (origins.root == "") { return format_text("{}:{}", paths[index], line); }
+            path := paths[index];
+            if (index == 0 && origins.source != "") { path = origins.source; }
+            for (directory in origins.directories) {
+                prefix := strings.Concatenate([route.Visible(directory), "/"]);
+                if (strings.HasPrefix(path, prefix)) {
+                    path = strings.Concatenate([directory, "/", strings.TrimPrefix(path, prefix)]);
+                    break;
+                }
+            }
+            if (!(index == 0 && origins.source != "") && !strings.HasPrefix(path, "/") &&
+                !(strings.ByteLength(path) > 2 && strings.ByteAt(path, 1) == 58)) {
+                path = strings.Concatenate([origins.root, "/", path]);
+            }
+            column := at - offset - strings.LastIndex(before, "\n");
+            return format_text("{}:{}:{}", path, line, column);
         }
         offset += size;
     }
@@ -97,7 +123,7 @@ Where :: (collections: string[], directories: string[], paths: string[], sources
 // message reads `rejected FUNCTION: MESSAGE`.
 pub Module :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
                chosen: string, directory: string) -> Output {
-    return ModuleWith(collections, directories, paths, sources, triple, chosen, directory, false);
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, directory, false, {root: "", source: "", directories: [], entry: ""});
 }
 
 // Package generations expose Main/Frame and retained states to the native host.
@@ -106,27 +132,27 @@ pub ModuleShared :: (collections: string[], directories: string[], paths: string
     if (directory != "") {
         return Output.Rejected("shared package generations have no line tables yet");
     }
-    return ModuleWith(collections, directories, paths, sources, triple, chosen, "", true);
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, "", true, {root: "", source: "", directories: [], entry: ""});
 }
 
 ModuleWith :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
-               chosen: string, directory: string, shared: bool) -> Output {
+               chosen: string, directory: string, shared: bool, origins: DiagnosticOrigins) -> Output {
     target := Target(triple);
     if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
     platform := PlatformFor(target);
     rows := compiler.CollectScalarProgram("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
                                           Natives(), Ports(), Identities(), platform.os, platform.arch, chosen);
-    return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, shared);
+    return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, shared, origins);
 }
 
 // Program rows already checked by the collector, with the same diagnostics,
 // target substitutions and LLVM validator as the ordinary program boundary.
 CollectedModule :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
-                    rows: facts.Row[], directory: string) -> Output {
+                    rows: facts.Row[], directory: string, origins: DiagnosticOrigins) -> Output {
     target := Target(triple);
     if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
     platform := PlatformFor(target);
-    return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, false);
+    return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, false, origins);
 }
 
 // The parser distinguishes library declarations from package generations,
@@ -148,23 +174,28 @@ LibrarySource :: (source: string) -> bool {
 
 // The existing single-source library producer; package libraries and line
 // tables are not supported here.
-LibraryModule :: (path: string, source: string, triple: string) -> Output {
+LibraryModule :: (path: string, source: string, triple: string, origins: DiagnosticOrigins) -> Output {
     rows := compiler.CollectScalar("/project", path, source, TargetFacts(), Names(), Natives(), Ports(), Identities());
     target := Target(triple);
     platform := PlatformFor(target);
-    return EmitRows([], [], [path], [source], platform.os, platform.arch, rows, target, "", false);
+    return EmitRows([], [], [path], [source], platform.os, platform.arch, rows, target, "", false, origins);
 }
 
 // Both producers return the same facts rows and rejection contract. A
 // rejection names its file and line in the closure the producer read, with
 // the target `os` and `arch` (core:target's numbers) that chose its text.
 EmitRows :: (collections: string[], directories: string[], paths: string[], sources: string[], os: int, arch: int,
-             rows: facts.Row[], target: abi.Target, directory: string, shared: bool) -> Output {
+             rows: facts.Row[], target: abi.Target, directory: string, shared: bool, origins: DiagnosticOrigins) -> Output {
     if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
         rejected := rows[length(rows) - 1];
-        return Output.Rejected(strings.Concatenate(["rejected ", FunctionAt(rows[0].text, rejected.start), ": ",
-                                                    rejected.text, " (", Where(collections, directories, paths, sources, os, arch, target.pointer_bits,
-                                                                              strings.ByteLength(rows[0].text), rejected.start), ")"]));
+        place := Where(collections, directories, paths, sources, os, arch, target.pointer_bits,
+                       strings.ByteLength(rows[0].text), rejected.start, origins);
+        function := FunctionAt(rows[0].text, rejected.start);
+        if (origins.root != "") {
+            if (function == "(entry)" && origins.entry != "") { function = origins.entry; }
+            return Output.Rejected(format_text("rejected {}: {}: {}", function, place, rejected.text));
+        }
+        return Output.Rejected(format_text("rejected {}: {} ({})", function, rejected.text, place));
     }
     emitted: scalar.Result = scalar.Result.Invalid("");
     if (shared) {

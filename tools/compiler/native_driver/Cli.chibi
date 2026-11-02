@@ -483,7 +483,7 @@ CompileProgram :: (subject: Subject, core: string, llvm: string, triple: string,
     folder := subject.project;
     if (scoped.source != "") { folder = Directory(scoped.source); }
     options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: invocation.shared,
-                             folder: folder, keep_module: output == "", emit_llvm: false};
+                             folder: folder, project: scoped.project, source: scoped.source, keep_module: output == "", emit_llvm: false};
     chosen := invocation.entry;
     if (invocation.shared) { chosen = ""; }
     if (output == "") {

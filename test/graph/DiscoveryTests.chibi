@@ -2,10 +2,12 @@ package graph_discovery_tests
 
 import engine "graph:engine"
 import os "core:os"
+import process "project:test/graph/native_process"
+import programs "graph:programs"
 import strings "core:strings"
 
-// Toolchain discovery. Run builds fixture installations in a scratch directory and runs each check in
-// a build host of its own, because discovery reads the environment.
+// Toolchain discovery. Run builds fixture installations in a scratch directory
+// and runs each check in its own native process with the selected environment.
 
 Path :: (parts: string[]) -> string {
     return strings.Join(parts, "");
@@ -159,17 +161,19 @@ pub BasenamePaths :: () -> int {
     return 0;
 }
 
-// Runs one check in a build host rooted at root, under env's assignments.
-// The checkout's compiler cache spares a scratch root a compiler rebuild.
-Check :: (host: string, environment: string[], root: string, name: string, arguments: string[]) {
+Toolchain :: struct { compiler: string; llvm: string; }
+
+// Compile each entry once under the checkout's import scope. Relative
+// discovery paths follow the child's actual cwd, including basename cases.
+Check :: (toolchain: Toolchain, environment: string[], root: string, name: string, arguments: string[]) {
     source := os.Root();
     command := ["env"];
     command.extend(environment);
-    command.extend([Path(["CHIBI_COMPILER_CACHE=", source, "/.chibi/compiler-cache"]), host, "--compiler", Path([source, "/tools/compiler"]), "--compiler-core", Path([source, "/packages/core"]),
-                    "--root", root, "--source", Path([source, "/test/graph/DiscoveryTests.chibi"]), "--core", Path([source, "/packages/core"]),
-                    "--collection", Path(["graph=", source, "/tools/graph"]), "--entry", name, "--timeout-ms", "30000", "--"]);
+    program := programs.Build(source, toolchain.compiler, toolchain.llvm, "test/graph/DiscoveryTests.chibi", name, ["graph=tools/graph"]);
+    assert(program != "", "the discovery entry compiles natively");
+    command.extend(["/bin/sh", "-c", "cd \"$1\" && shift && exec \"$@\"", "graph-discovery", root, program]);
     command.extend(arguments);
-    result := os.Capture(command);
+    result := process.Capture(command, 30000);
     if (result.status != 0) {
         os.Print(format_text("{0} failed: {1}{2}", name, result.stdout, result.stderr));
     }
@@ -177,26 +181,26 @@ Check :: (host: string, environment: string[], root: string, name: string, argum
 }
 
 // The case's driver prints the resource directory its installation names.
-DriversCase :: (host: string, scratch: string) {
+DriversCase :: (toolchain: Toolchain, scratch: string) {
     root := Path([scratch, "/toolchain"]);
     driver_root := Path([root, "/multiarch driver"]);
     driver := Path([driver_root, "/bin/clang"]);
     assert(Make(Path([driver_root, "/bin"])), "the driver directory");
     script := Path(["#!/bin/sh\ntest \"$1\" = -print-resource-dir || exit 1\ncat \"", driver_root, "/resource-directory\"\n"]);
     assert(Write(driver, script) && os.Run(["chmod", "700", driver]) == 0, "the fake driver");
-    Check(host, ["-u", "CXX", Path(["CMAKE_LIBRARY_PATH=", root, "/lib"]), Path(["CMAKE_INCLUDE_PATH=", root, "/include"])], os.Root(), "Drivers", [root]);
+    Check(toolchain, ["-u", "CXX", Path(["CMAKE_LIBRARY_PATH=", root, "/lib"]), Path(["CMAKE_INCLUDE_PATH=", root, "/include"])], os.Root(), "Drivers", [root]);
 }
 
 // Empty, missing and separator-only entries are skipped in order.
-PrefixesCase :: (host: string, relative: string) {
+PrefixesCase :: (toolchain: Toolchain, relative: string) {
     prefixes := Path(["CMAKE_PREFIX_PATH=:", relative, "/missing prefix::", relative, "/first prefix:", relative, "/second prefix:", relative, "/semicolon;prefix:"]);
     includes := Path(["CMAKE_INCLUDE_PATH=", relative, "/direct prefix/include/"]);
     libraries := Path(["CMAKE_LIBRARY_PATH=", relative, "/direct prefix/lib64/"]);
     root := Path([os.Root(), "/", relative]);
-    Check(host, [prefixes, includes, libraries], os.Root(), "Prefixes", [root]);
+    Check(toolchain, [prefixes, includes, libraries], os.Root(), "Prefixes", [root]);
     spelling := Path([root, "/spelling"]);
     assert(Make(spelling), "the spelling root");
-    Check(host, [], spelling, "PathSpelling", []);
+    Check(toolchain, [], spelling, "PathSpelling", []);
 }
 
 BasenameCase :: struct {
@@ -207,7 +211,7 @@ BasenameCase :: struct {
     linked_include: bool;
 }
 
-BasenameCases :: (host: string, scratch: string) {
+BasenameCases :: (toolchain: Toolchain, scratch: string) {
     cases: BasenameCase[] = [
         {include: "include/", library: "", directory: "lib64", prefix: "", linked_include: false},
         {include: "", library: "lib64", directory: "lib64", prefix: "", linked_include: false},
@@ -227,21 +231,22 @@ BasenameCases :: (host: string, scratch: string) {
             assert(Make(Path([root, "/headers"])) && os.Run(["ln", "-s", "headers", Path([root, "/include"])]) == 0, "the linked include directory");
         }
         environment := ["CMAKE_PREFIX_PATH=", Path(["CMAKE_INCLUDE_PATH=", item.include]), Path(["CMAKE_LIBRARY_PATH=", item.library])];
-        Check(host, environment, os.RealPath(root), "BasenamePaths", [item.directory, item.prefix]);
+        Check(toolchain, environment, os.RealPath(root), "BasenamePaths", [item.directory, item.prefix]);
     }
 }
 
-// The build host runs this entry with its own path as the one argument.
+// The selector supplies the native compiler and LLVM directory.
 pub Run :: () -> int {
     arguments := os.Arguments();
-    assert(length(arguments) == 1, "the build host's path");
-    host := arguments[0];
+    assert(length(arguments) == 2, "the native compiler and LLVM directory");
+    toolchain: Toolchain = {compiler: os.RealPath(arguments[0]), llvm: os.RealPath(arguments[1])};
+    assert(toolchain.compiler != "" && toolchain.llvm != "", "the native toolchain exists");
     relative := ".chibi/graph-discovery";
     scratch := Path([os.Root(), "/", relative]);
     assert(os.Run(["rm", "-rf", scratch]) == 0 && Make(scratch), "the scratch directory");
-    DriversCase(host, scratch);
-    PrefixesCase(host, Path([relative, "/prefixes"]));
-    BasenameCases(host, scratch);
+    DriversCase(toolchain, scratch);
+    PrefixesCase(toolchain, Path([relative, "/prefixes"]));
+    BasenameCases(toolchain, scratch);
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch cleanup");
     return 0;
 }

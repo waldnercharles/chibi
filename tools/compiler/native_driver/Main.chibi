@@ -23,7 +23,8 @@ import facts "project:scalar_facts"
 // objects. Without --entry the program starts at
 // the first function of its first file; with it, at the function NAME of that
 // file, as the build host's --entry does. Exit 0 succeeded, 1 the sources were rejected,
-// 2 the arguments or the machine were unusable. The first stderr line of a
+// 2 the arguments or the machine were unusable; a failed LLVM process keeps
+// its exit status (128 + signal on POSIX). The first stderr line of a
 // rejection is `native: rejected FUNCTION: MESSAGE`.
 //
 // Its inputs are independent files and its passes are transforms, so reading
@@ -341,9 +342,9 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     if (options.level == "0") {
         optimization = 0;
     }
-    if (host.Objects(llvm, files, objects, optimization, jobs) != nil) {
-        os.Print("native: opt or llc could not emit an object");
-        return 2;
+    object_error := host.Objects(llvm, files, objects, optimization, jobs);
+    if (object_error != nil) {
+        return ToolFailure(object_error.kind, object_error.code, "LLVM object emission failed");
     }
     files.extend(objects);
     start := "";
@@ -353,11 +354,13 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         start = link.Start(triple, static, context);
     }
     if (start != "") {
-        if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil ||
-            host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]),
-                        optimization) != nil) {
-            os.Print("native: cannot emit the start object");
+        if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil) {
+            os.Print("native: cannot write the start module");
             return 2;
+        }
+        start_error := host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), optimization);
+        if (start_error != nil) {
+            return ToolFailure(start_error.kind, start_error.code, "LLVM start object emission failed");
         }
         objects.append(strings.Concatenate([output, ".start.o"]));
         files.extend([strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"])]);
@@ -370,14 +373,25 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         markers.extend(Markers(start));
         plan.imports = link.SystemImports(markers);
     }
-    if (host.Link(plan) != nil) {
-        os.Print("native: the link failed");
-        return 2;
+    link_error := host.Link(plan);
+    if (link_error != nil) {
+        return ToolFailure(link_error.kind, link_error.code, "LLVM link failed");
     }
     for (name in files) {
         removed := os.Remove(name);
     }
     return 0;
+}
+
+// core:os returns a negative signal number on POSIX. Preserve the child's
+// portable exit status; report other native statuses without truncating them.
+ToolFailure :: (kind: int, code: int, message: string) -> int {
+    os.Print(format_text("native: {} (kind {}, status {})", message, kind, code));
+    if (kind == link.ToolFailed) {
+        if (code > 0 && code <= 255) { return code; }
+        if (code < 0 && code >= -127 && os.Platform() != "Windows") { return 128 - code; }
+    }
+    return 2;
 }
 
 // The modules of a text llvm_native split into pieces: a `; chibi-piece` line

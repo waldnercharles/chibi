@@ -160,6 +160,7 @@ Main :: () -> int {
     LibraryContracts();
     RetainedLibraryRows();
     CollectionProjection();
+    TextArgumentsProjection();
     Corpus();
     os.Print("PASS real producer rows, 169 malformed variants, packages and library contracts");
     return 0;

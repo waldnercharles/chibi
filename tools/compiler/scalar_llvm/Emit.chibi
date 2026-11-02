@@ -1245,7 +1245,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                           operand.type >= facts.ReferenceType && ManagedScalar(operand.type - facts.ReferenceType);
         if ((!texted && operand.text != "") || (!Valued(records, operand.type) && !managed_borrow) || !Located(operand, starts, size) ||
             !Within(operand, scope) ||
-            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.kind != facts.ForeignRow && operand.kind != facts.ManagedRow && operand.kind != facts.ManagedAddressRow && operand.literal != 0) ||
+            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.kind != facts.ForeignRow && operand.kind != facts.ManagedRow && operand.kind != facts.ManagedAddressRow && operand.kind != facts.TextRow && operand.literal != 0) ||
             (operand.kind == facts.CallRow && (operand.literal < 0 || operand.literal > i64(facts.CallSpawned)))) {
             return "invalid scalar operand row";
         }
@@ -1549,14 +1549,21 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             if (formats && operand.count >= 1) {
                 consumed = operand.count;
             }
+            orders := 1;
+            if (!formats && consumed == 2) { orders = 2; }
+            if (!formats && consumed == 3) { orders = 6; }
+            if (operand.literal < 0 || operand.literal >= i64(orders)) {
+                return "scalar text read differs from its operands";
+            }
             base := length(stack) - consumed;
             if (operand.name != "" || consumed == 0 || operand.count != consumed || operand.type != output ||
-                base < floor || stack[base] != facts.StringType) {
+                base < floor || stack[base + facts.TextArgument(consumed, int(operand.literal), 0)] != facts.StringType) {
                 return "scalar text read differs from its operands";
             }
             // format_text's arguments are numbers, bools and strings; the
             // other natives' are ints.
-            for (index in 1..<consumed) {
+            for (parameter in 1..<consumed) {
+                index := facts.TextArgument(consumed, int(operand.literal), parameter);
                 given := stack[base + index];
                 if ((formats && (given < facts.IntType || given > facts.StringType)) ||
                     (!formats && given != facts.IntType)) {
@@ -3447,17 +3454,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.TextRow) {
                     base := length(stack) - operand.count;
-                    item = Op(native.TextLength, type, slot, stack[base], 0, 0);
+                    value := stack[base + facts.TextArgument(operand.count, int(operand.literal), 0)];
+                    item = Op(native.TextLength, type, slot, value, 0, 0);
                     if (operand.value == facts.TextPrint) { item.op = native.Print; }
                     if (operand.value == facts.TextByte) {
-                        item = Op(native.TextByte, type, slot, stack[base], stack[base + 1], 0);
+                        offset := stack[base + facts.TextArgument(operand.count, int(operand.literal), 1)];
+                        item = Op(native.TextByte, type, slot, value, offset, 0);
                     }
                     // A slice drops the bytes before its start, then takes its
                     // count of those after it.
                     if (operand.value == facts.TextSlice) {
                         slots.append(type);
-                        body.append(Op(native.TextDrop, type, slot, stack[base], stack[base + 1], 0));
-                        item = Op(native.TextTake, type, slot + 1, slot, stack[base + 2], 0);
+                        start := stack[base + facts.TextArgument(operand.count, int(operand.literal), 1)];
+                        count := stack[base + facts.TextArgument(operand.count, int(operand.literal), 2)];
+                        body.append(Op(native.TextDrop, type, slot, value, start, 0));
+                        item = Op(native.TextTake, type, slot + 1, slot, count, 0);
                         slot += 1;
                     }
                     stack = slice(stack, 0, base);

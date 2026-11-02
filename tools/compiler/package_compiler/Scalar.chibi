@@ -3143,9 +3143,15 @@ ScalarWritten :: (scoped: snapshot.SnapshotNode[], text: string, callables: Call
                 }
                 written := Holds(mutated, param.name);
                 for (argument in calls) {
-                    if (marked[argument.param].reference && marked[argument.param].written &&
-                        ScalarPassedName(scoped, text, argument.value) == param.name) {
-                        written = true;
+                    if (marked[argument.param].reference && marked[argument.param].written) {
+                        place := Unparenthesized(scoped, argument.value);
+                        if (Is(scoped, place, syntax.AddressExpression)) {
+                            place = Field(scoped, place, syntax.FieldOperand);
+                        }
+                        // Lending a field for a write also changes its enclosing record.
+                        if (RootName(scoped, text, place) == param.name) {
+                            written = true;
+                        }
                     }
                 }
                 if (written) {

@@ -278,6 +278,8 @@ pub ForeignRow: int : 38;
 // A call operand that passes the variable `value`, of its `type`, by
 // reference: the callee's reference parameter reads and writes that variable.
 // Passing a reference parameter on gives the caller's variable on.
+// A nonzero literal selects field `literal - 1` of that record variable,
+// with `type` naming the field's number or bool type.
 pub RefRow: int : 39;
 // The address of a C-ABI function that calls the function `value`, a word, for
 // a foreign function that takes a function: `name` is the function's, `count`

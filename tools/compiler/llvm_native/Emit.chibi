@@ -1256,8 +1256,8 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         // local is the record.
         base_address := format_text("%l{}", item.left);
         if (item.target == 1) {
-            out = format_text("{}  %p{} = load ptr, ptr %l{}\n", out, pc, item.left);
-            base_address = format_text("%p{}", pc);
+            out = format_text("{}  %field_base{} = load ptr, ptr %l{}\n", out, pc, item.left);
+            base_address = format_text("%field_base{}", pc);
         }
         out = format_text("{}  %v{} = getelementptr inbounds {}, ptr {}, i32 0, i32 {}\n", out, pc, TypeName(item.right),
                            base_address, item.literal);

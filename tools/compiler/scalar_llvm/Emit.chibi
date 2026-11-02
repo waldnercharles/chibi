@@ -1026,10 +1026,11 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
         }
         operand := rows[row];
         // Only a string literal has text, and a foreign call the library it links.
+        // A reference's literal selects a record field; its type and index are checked below.
         texted := (operand.kind == facts.LiteralRow && operand.type == facts.StringType) ||
                   operand.kind == facts.ForeignRow;
         if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
-            !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
+            !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.literal != 0)) {
             return "invalid scalar operand row";
         }
         if (operand.kind == facts.LiteralRow) {
@@ -2104,7 +2105,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     if (operand.literal != 0) {
                         // The address of a field of the variable's record, or of the record a reference parameter
                         // points to.
-                        held := locals[places[operand.value]];
+                        held := locals[shape.first_local + places[operand.value]];
                         item = Op(native.FieldAddress, native.RefType + type, slot, places[operand.value], held, 0);
                         if (Referenced(rows, head, operand.value)) {
                             item.right = held - native.RefType;

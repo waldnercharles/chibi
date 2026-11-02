@@ -2617,11 +2617,6 @@ static bool native_module_ir(const char *target, const native_module *m, char **
  * the other targets the emitter admits run them from a bundle (see
  * test/native_aot/targets). CHIBI_LLVM_BIN names the directory of opt, llc,
  * ld.lld and llvm-nm; nothing is found through PATH. */
-/* The corpus's accepted cases. */
-enum
-{
-    SCALAR_ACCEPTED_CASES = 108
-};
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
  * the recovered compiler, which has no such limit. */

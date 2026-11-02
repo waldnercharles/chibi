@@ -35,5 +35,11 @@ allocator at O0/O2, requiring zero outstanding allocations after every exit.
 Numeric/bool record values cover nested records, copied reads, aliases,
 replacement, growth, deletion and reference replacement. Missing record keys
 must report `MapKeyAbsent`; they never synthesize a zero record.
+Evaluation-effect cases also require a read-only argument to survive a later
+argument replacing the same map. Set/delete capture their target's address
+and reload it after key/value evaluation. These run under the poisoned allocator.
+Read, `has`, `in` and `not in` evaluate their receiver before a key callback.
+Replacing the original map during that callback preserves the captured value,
+including through aliased scoped parameters and binary string keys.
 
 A growth/shrink regression builds 4096 entries, deletes all but 64 and checks that logical entry/index capacity shrinks with the live map. Capacity planning near 2^30 is checked without allocating those buffers.

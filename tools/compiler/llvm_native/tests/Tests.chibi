@@ -171,8 +171,11 @@ FloatConstantMustFit32Bits :: () {
     ChangedFloat(1, Code(native.Constant, 10, 0, 0, 0, 0, 4294967296), "native constant is outside its type");
 }
 @test
-FloatNegationIsRejected :: () {
-    ChangedFloat(3, Code(native.Neg, 11, 2, 1, 0, 0, 0), "native scalar operand type mismatch");
+FloatNegationKeepsItsIEEEWidth :: () {
+    code := Floats();
+    code[3] = Code(native.Neg, 11, 2, 1, 0, 0, 0);
+    text := Emitted(FloatModule(code));
+    assert(strings.Contains(text, "%v3 = fneg double %a3\n"));
 }
 @test
 FloatRemainderIsRejected :: () {

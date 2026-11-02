@@ -988,12 +988,18 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == FunctionAddress && !FunctionAddressValid(functions, module_parameters, item)) {
             return Result.Rejected(base + pc, "native function address differs from its function");
         }
+        if (item.op == FunctionAddress && waiting[item.left]) {
+            return Result.Rejected(base + pc, "native function address cannot name a waiting function");
+        }
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
         }
         if (item.op == Call && (item.literal < i64(CallPlain) || item.literal > i64(CallSpawned) ||
                                 (item.literal != i64(CallPlain) && !waiting[item.left]))) {
             return Result.Rejected(base + pc, "native awaited call or spawn names a function that does not wait");
+        }
+        if (item.op == Call && item.literal == i64(CallPlain) && waiting[item.left]) {
+            return Result.Rejected(base + pc, "native plain call cannot name a waiting function");
         }
         if ((item.op == AwaitHandle || item.op == Cancel) && !Typed(slots, item.left, abi.WordStorage)) {
             return Result.Rejected(base + pc, "native task operation requires a task handle");

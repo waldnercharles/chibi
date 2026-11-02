@@ -1665,10 +1665,38 @@ pub Validate :: (rows: facts.Row[]) -> string {
     if (!is_library && (first.count != 0 || first.type != facts.IntType)) {
         return "scalar module entry must take no parameters and return int";
     }
+    waiting := resize([false], length(heads));
+    task_calls := false;
     for (function in 0..<length(heads)) {
         failure := ValidFunction(rows, records, heads, function, starts, size, is_library);
         if (failure != "") {
             return failure;
+        }
+        waits := false;
+        head := heads[function];
+        for (at in head + rows[head].count + 1..<Last(rows, heads, function)) {
+            row := rows[at];
+            waits = waits || row.kind == facts.YieldRow || row.kind == facts.AwaitRow ||
+                    (row.kind == facts.CallRow && row.literal == i64(facts.CallAwaited));
+            task_calls = task_calls || (row.kind == facts.CallRow && row.literal == i64(facts.CallSpawned));
+        }
+        waiting[function] = waits;
+        task_calls = task_calls || waits;
+    }
+    if (!task_calls) { return ""; }
+    // ValidFunction has checked each function index. Coroutine ramps return
+    // frames, so plain calls and C-ABI function addresses cannot use them.
+    for (row in rows) {
+        if (row.kind == facts.FunctionAddressRow && waiting[row.value]) {
+            return "scalar function address cannot name a waiting function";
+        }
+        if (row.kind == facts.CallRow) {
+            if (row.literal == i64(facts.CallPlain) && waiting[row.value]) {
+                return "scalar plain call cannot name a waiting function";
+            }
+            if (row.literal != i64(facts.CallPlain) && !waiting[row.value]) {
+                return "scalar awaited call or spawn names a function that does not wait";
+            }
         }
     }
     return "";

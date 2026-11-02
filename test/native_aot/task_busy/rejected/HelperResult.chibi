@@ -1,0 +1,6 @@
+package native_test_waiting_helper_result_rejection
+foreign { chibi_native_test_end :: () -> u64 }
+Main :: () -> int {
+    if (false) { yield }
+    return int(chibi_native_test_end());
+}

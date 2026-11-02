@@ -78,8 +78,8 @@ TaskTiming :: (target: abi.Target, existing: string) -> string {
 
 // A delay keeps its deadline in the coroutine frame and rechecks program time
 // after each suspension. Zero, negative and NaN durations complete immediately.
-DelayInstruction :: (item: Instruction, pc: int) -> string {
-    out := format_text("p{}:\n", pc);
+DelayInstruction :: (item: Instruction, pc: int, testing: bool) -> string {
+    out := format_text("p{}:\n{}", pc, TaskTestGuard(testing, TaskWaitEffect));
     out = format_text("{}{}", out, Load(format_text("duration{}", pc), abi.DoubleStorage, "s", item.left));
     out = format_text("{}  %positive{} = fcmp ogt double %duration{}, 0.000000e+00\n  br i1 %positive{}, label %p{}.begin, label %p{}\np{}.begin:\n", out, pc, pc, pc, pc, pc + 1, pc);
     out = format_text("{}  %started{} = load double, ptr @chibi_tasks.now\n  %deadline{} = fadd double %started{}, %duration{}\n  br label %p{}.wait\np{}.wait:\n", out, pc, pc, pc, pc, pc, pc);

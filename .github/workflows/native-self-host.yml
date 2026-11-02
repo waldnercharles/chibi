@@ -25,6 +25,7 @@ on:
       - test/native_aot/optionals/**
       - test/native_aot/asset_compiler/**
       - test/native_aot/tasks/**
+      - test/native_aot/task_busy/**
       - test/native_aot/maps/**
       - test/native_aot/map_programs/**
       - test/bootstrap/**
@@ -122,6 +123,8 @@ jobs:
         run: sh test/native_aot/test_attributes/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native typed failures and quota scopes
         run: sh test/native_aot/failures/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+      - name: Check native test task effects
+        run: sh test/native_aot/task_busy/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native optional values
         run: sh test/native_aot/optionals/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native build entry and runner failures

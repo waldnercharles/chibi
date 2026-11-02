@@ -358,8 +358,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     if (options.level == "0") {
         optimization = 0;
     }
-    object_error := host.Objects(llvm, files, objects, optimization, jobs);
-    if (object_error != nil) {
+    object_error := host.ObjectsResult(llvm, files, objects, optimization, jobs);
+    if (object_error.kind != 0) {
         return ToolFailure(object_error.kind, object_error.code, "LLVM object emission failed");
     }
     files.extend(objects);
@@ -376,8 +376,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
             os.Print("native: cannot write the start module");
             return 2;
         }
-        start_error := host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), optimization);
-        if (start_error != nil) {
+        start_error := host.ObjectResult(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), optimization);
+        if (start_error.kind != 0) {
             return ToolFailure(start_error.kind, start_error.code, "LLVM start object emission failed");
         }
         objects.append(strings.Concatenate([output, ".start.o"]));
@@ -392,8 +392,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     if (link.TargetOf(triple) == link.LinuxX64) {
         for (imported in plan.imports) { plan.libraries.append(imported.name); }
     }
-    link_error := host.Link(plan);
-    if (link_error != nil) {
+    link_error := host.LinkResult(plan);
+    if (link_error.kind != 0) {
         return ToolFailure(link_error.kind, link_error.code, "LLVM link failed");
     }
     for (name in files) {

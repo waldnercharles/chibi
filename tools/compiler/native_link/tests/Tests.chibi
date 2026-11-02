@@ -53,7 +53,8 @@ RejectedExportsLeaveOutputsUntouched :: () {
     work := strings.Concatenate([output, ".work"]);
     written := os.WriteText(output, "existing image");
     staged := os.WriteText(partial, "another writer");
-    assert(written == nil && staged == nil);
+    assert(written == nil);
+    assert(staged == nil);
     plan := link.Program("x86_64-pc-windows-msvc", "/missing-llvm", ["/missing-object"], [], [], [], output, "", true);
     plan.shared = true;
     plan.exports = ["name,@1"];
@@ -68,7 +69,9 @@ RejectedExportsLeaveOutputsUntouched :: () {
     assert(actual.error == nil && actual.text == "existing image");
     assert(pending.error == nil && pending.text == "another writer");
     assert(work_kind == os.KindNone, "reject before creating work or launching tools");
-    assert(removed_output == nil && removed_partial == nil && removed_scratch == nil);
+    assert(removed_output == nil);
+    assert(removed_partial == nil);
+    assert(removed_scratch == nil);
 }
 
 Same :: (got: string[], expected: string[]) {

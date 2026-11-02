@@ -18,7 +18,7 @@ iterations or any compiler-internal deadline.
 
 ## Tools and platforms
 
-All commands need Git, Bash, Node, `shasum`, the GitHub CLI for **read-only** pinned
+Shell commands need Git, Bash, Node, `shasum`, the GitHub CLI for **read-only** pinned
 asset downloads, and the dependencies used by the build graph. The runtime
 proof additionally needs PowerShell 7 and `readelf` (Linux) or `otool` (macOS).
 Provision a Linux x64 or macOS arm64 machine before preparing binaries:
@@ -42,6 +42,10 @@ Provision a Linux x64 or macOS arm64 machine before preparing binaries:
 Provisioning is separate from the bounded preparation command; it never gives a
 compiler phase extra time or a retry after that command's deadline. No script
 installs software, changes access, or creates a release on its own.
+
+The Windows native-seed preparation below instead needs PowerShell 7, Git and
+the GitHub CLI. It downloads an existing completed CI proof and does not run a
+compiler or require Bash, Node or a C toolchain.
 
 ## First build host
 
@@ -75,6 +79,31 @@ executable named by the successful fixed-point log is retained as
 `chibi-native-PLATFORM`. The original log, source identity, checksum and proposed
 TSV row are kept. No retry changes the fixed-point bound. The tag convention
 remains `native-seed-COMMIT`; publication/pinning is separate from preparation.
+
+For Windows, first require the exact reviewed commit's `Native self-host
+(Windows)` CI job to pass its fixed-point and runtime checks. From a clean
+checkout of that commit, prepare the artifact on any PowerShell 7 host:
+
+```powershell
+# Set $run to the accepted CI run ID. The new output must be outside the checkout.
+./.github/maintenance/native-seed.ps1 -RunId $run -OutputDirectory C:/proof/native-windows-x64
+```
+
+This verifies the repository, `ci.yml`, source commit, completed run, successful
+Windows job and unique unexpired artifact. It checks the downloaded archive
+against GitHub's SHA-256 digest before restoring selected stage files. Actual
+compiler bytes must match the producer log and its bounded stage-three/four
+or stage-four/five equality. The script retains the artifact, hashes, job-step
+evidence and a proposed `windows-x64` TSV row for
+`chibi-native-windows-x64.exe`. It also archives the exact compiler/core closure,
+restores it and compares every tracked file's hash, then rechecks the clean
+source commit/tree. Owned child commands share the existing 180-minute native
+preparation budget. Failed preparation keeps its output for inspection.
+
+The Windows row remains absent until the accepted binary is separately
+published and downloaded again under the publication procedure below. Normal
+`tools/build.ps1` selection fails clearly without that row; `--native-driver`
+can select a candidate for validation without changing the manifest.
 
 ## Compiler runtime seed and corresponding source
 

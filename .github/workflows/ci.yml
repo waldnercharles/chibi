@@ -497,6 +497,17 @@ jobs:
       - name: Build native Windows checkout products without host tools
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
+          & ./test/bootstrap/native-seed.ps1
+          if ($LASTEXITCODE) { throw 'Windows native seed verification failed' }
+          & ./test/bootstrap/native-entry.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+          if ($LASTEXITCODE) { throw 'Windows native checkout entry failed' }
+          $legacyPowerShell = "$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe"
+          & $legacyPowerShell -NoProfile -File ./test/bootstrap/native-seed.ps1
+          if ($LASTEXITCODE) { throw 'Windows PowerShell 5.1 seed verification failed' }
+          & $legacyPowerShell -NoProfile -File ./test/bootstrap/native-entry.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+          if ($LASTEXITCODE) { throw 'Windows PowerShell 5.1 checkout entry failed' }
+          & ./test/bootstrap/native-seed-preparation.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+          if ($LASTEXITCODE) { throw 'Windows native seed preparation controls failed' }
           & ./test/bootstrap/native-checkout.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
       - name: Check native Windows DLL isolation and private runtimes
         id: windows-dll-proof
@@ -525,6 +536,7 @@ jobs:
             @{ name = 'shadow-root'; source = 'test/native_aot/math_scalar/Shadow.chibi' },
             @{ name = 'math-kernels'; source = 'test/native_aot/math_scalar/Kernels.chibi' },
             @{ name = 'shadow-kernels'; source = 'test/native_aot/math_scalar/KernelShadow.chibi' },
+            @{ name = 'waiting-kernels'; source = 'test/native_aot/math_scalar/KernelWaiting.chibi' },
             @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' },
             @{ name = 'library-loader'; source = 'test/native_aot/loader/Windows.chibi' }
           )

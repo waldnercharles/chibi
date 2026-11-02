@@ -17,6 +17,9 @@ esac
 for mode in positive tombstone-key tombstone-value facts readonly array-readonly; do
     "$work/probe" "$work" "$llvm" "$root/test/native_aot/maps/Runtime.ll" "$mode"
 done
+for kind in 1 2 3 4 5 6 7; do
+    "$work/probe" "$work" "$llvm" "$root/test/native_aot/maps/Runtime.ll" "missing-address-$kind"
+done
 sh "$root/test/native_aot/map_programs/run.sh" "$compiler" "$llvm" "$work/programs"
 # Compile authored source once, then run its emitted module through the same
 # poisoned allocator and zero-outstanding-allocation check as the facts probes.

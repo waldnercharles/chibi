@@ -183,7 +183,7 @@ pub ForeignCall: int : 49;
 // A module's retained states: scalars that outlive a call, which a host that
 // replaces the module reads out and sets in the new one. StateLoad declares
 // state `target` and gives its value: the states are numbered in code order,
-// `type` is a number, bool or string, and texts[right] is its name. With left
+// `type` is a number, bool, string or numeric/bool array, and texts[right] is its name. With left
 // zero, literal is its initial number/bool. Otherwise left-1 is a slot of its
 // initial value, used only while the state's initialized marker is false.
 // StateStore gives state `target` the left slot's value, of its type.
@@ -339,7 +339,10 @@ pub TaskRunning: int : 90;
 pub AwaitResult: int : 91;
 // Borrow left string for synchronous host output; output is int 0.
 pub Print: int : 92;
-pub InstructionCount: int : 93;
+// output = left(bool) ? right : target, all operands already evaluated.
+// The selected values share type and are numeric or bool, never managed.
+pub Select: int : 93;
+pub InstructionCount: int : 94;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving an owning
@@ -357,7 +360,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+    return op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
            op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || op == ArrayLoan || (MapOperation(op) && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
@@ -367,7 +370,7 @@ Unary :: (op: int) -> bool {
     return op == Neg || op == BitNot || op == Sqrt;
 }
 ReadsLeft :: (op: int) -> bool {
-    return op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
+    return op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
            op == TextRelease || op == StateStore || op == Deref || op == Poke || op == ValueCopy || op == ValueDrop || op == ArrayLoan || op == AwaitHandle || op == Cancel ||
            op == CancelAfter || op == Delay || op == Sqrt || (op >= TaskCopy && op <= AwaitResult) || MapOperation(op);
@@ -399,7 +402,7 @@ Fits :: (literal: i64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
-    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
+    return op == Select || (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
            ArrayReadsRight(op) || (op >= MapGet && op <= MapDelete && op != MapCopy && op != MapDrop) || op == MapKeyAt ||
            op == MapValueAt || op == MapLiveAt || op == MapValueAddress || op == CancelAfter || op == ArrayLoan;
 }
@@ -411,7 +414,7 @@ ArrayReadsRight :: (op: int) -> bool {
 // Whether an instruction reads the slot its target names: an array store's
 // value or a slice's count.
 ReadsTarget :: (op: int) -> bool {
-    return op == ArraySet || op == ArraySlice || op == MapSet;
+    return op == Select || op == ArraySet || op == ArraySlice || op == MapSet;
 }
 // Whether an array instruction calls the runtime context: an index check, or
 // an allocation.
@@ -784,17 +787,21 @@ FormatValid :: (slots: int[], arguments: int[], item: Instruction) -> bool {
     }
     return true;
 }
-// A retained state is a number or bool, a load names it and starts it at a
-// value of its type, and a store writes a slot of its type.
+// Retained arrays contain only inline scalars until managed snapshots can
+// copy their complete graph into the incoming generation's allocator.
+StateArray :: (type: int) -> bool {
+    return type >= ArrayType && type < MapType && abi.ScalarType(type - ArrayType) != "";
+}
+// A load names a retained state and its initializer; a store owns a copy.
 StateValid :: (slots: int[], texts: string[], item: Instruction) -> bool {
-    if ((abi.ScalarType(item.type) == "" && item.type != abi.TextStorage) || item.target < 0) {
+    if ((abi.ScalarType(item.type) == "" && item.type != abi.TextStorage && !StateArray(item.type)) || item.target < 0) {
         return false;
     }
     if (item.op == StateStore) {
         return Typed(slots, item.left, item.type);
     }
     return Index(item.right, length(texts)) &&
-           ((item.left == 0 && Fits(item.literal, item.type)) ||
+           ((item.left == 0 && !StateArray(item.type) && Fits(item.literal, item.type)) ||
             (item.left > 0 && item.literal == 0 && Typed(slots, item.left - 1, item.type)));
 }
 // Whether a reference instruction names a local of the type its reference
@@ -1032,6 +1039,11 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (item.op == Sqrt && (item.type != abi.FloatStorage || !Typed(slots, item.left, item.type))) {
             return Result.Rejected(base + pc, "native square root requires an f32 operand");
+        }
+        if (item.op == Select && ((!Integer(item.type) && !abi.Floating(item.type) && item.type != abi.BoolStorage) || !Typed(slots, item.left, abi.BoolStorage) ||
+                                 !Typed(slots, item.right, item.type) || !Typed(slots, item.target, item.type) ||
+                                 item.literal != 0)) {
+            return Result.Rejected(base + pc, "native selection differs from its condition or values");
         }
         if (item.op == FieldAddress) {
             field := FieldType(records, fields, item.right, item.literal);
@@ -1620,6 +1632,12 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, MapRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
         out = format_text("{}{}", out, ArrayRead(item, pc, record_owners));
+    } else if (item.op == Select) {
+        out = format_text("{}{}", out, Load(format_text("c{}", pc), abi.BoolStorage, "s", item.left));
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.right));
+        out = format_text("{}{}", out, Load(format_text("b{}", pc), item.type, "s", item.target));
+        out = format_text("{}  %v{} = select i1 %c{}, {} %a{}, {} %b{}\n", out, pc, pc, type, pc, type, pc);
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     } else if (item.op == Print) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), abi.TextStorage, "s", item.left));
         out = format_text("{}  %bytes{} = extractvalue {} %a{}, 0\n  %length{} = extractvalue {} %a{}, 1\n", out, pc, abi.TextType(), pc, pc, abi.TextType(), pc);
@@ -1806,7 +1824,7 @@ TextHelpers :: () -> string {
 Counts :: (code: Instruction[]) -> bool {
     for (item in code) {
         if (item.op == TextRetain || item.op == TextRelease || item.op == ValueCopy || item.op == ValueDrop || item.op == ArrayDrop || Holding(item.type) ||
-            ((item.op == StateLoad || item.op == StateStore) && item.type == abi.TextStorage)) {
+            ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || StateArray(item.type)))) {
             return true;
         }
         if (MapOperation(item.op) && MapHolds(MapUsed(item))) {
@@ -2742,7 +2760,7 @@ pub Runtime :: (code: Instruction[]) -> bool {
     }
     for (item in code) {
         if (item.op == ManagedNew || item.op == ManagedAddress || item.op == ManagedPin || item.op == ManagedUnpin || item.op == Print || item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item.op) ||
-            ((item.op == StateLoad || item.op == StateStore) && item.type == abi.TextStorage)) {
+            ((item.op == StateLoad || item.op == StateStore) && (item.type == abi.TextStorage || StateArray(item.type)))) {
             return true;
         }
     }
@@ -2817,8 +2835,8 @@ StateStorage :: (type: int) -> string {
 // The value of retained state `item.target`, as a `type` value `name`.
 StateValue :: (name: string, item: Instruction) -> string {
     out := format_text("  %{}.stored = load {}, ptr @{}\n", name, StateStorage(item.type), StateSymbol(item.target));
-    if (item.type == abi.TextStorage) {
-        return format_text("  %{} = load {}, ptr @{}\n", name, abi.TextType(), StateSymbol(item.target));
+    if (item.type == abi.TextStorage || StateArray(item.type)) {
+        return format_text("  %{} = load {}, ptr @{}\n", name, TypeName(item.type), StateSymbol(item.target));
     }
     if (abi.Floating(item.type)) {
         return format_text("{}  %{} = bitcast {} %{}.stored to {}\n", out, name, StateStorage(item.type), name,
@@ -2834,6 +2852,11 @@ StateRead :: (item: Instruction, pc: int) -> string {
                           pc, symbol, pc, pc, pc, pc);
         out = format_text("{}{}", out, Load(format_text("initial.value{}", pc), item.type, "s", item.left - 1));
         value := format_text("%initial.value{}", pc);
+        if (StateArray(item.type)) {
+            out = format_text("{}  %initial.owned{} = call {} @chibi_array.{}.copy(ptr %ctx, {} {})\n",
+                out, pc, abi.ArrayType(), item.type, abi.ArrayType(), value);
+            value = format_text("%initial.owned{}", pc);
+        }
         if (abi.Floating(item.type)) {
             out = format_text("{}  %bits{} = bitcast {} {} to {}\n", out, pc, TypeName(item.type), value, StateStorage(item.type));
             value = format_text("%bits{}", pc);
@@ -2859,6 +2882,12 @@ StateWrite :: (item: Instruction, pc: int) -> string {
         out = format_text("{}  %previous{} = load {}, ptr @{}\n  %released{} = extractvalue {} %previous{}, 2\n", out,
                           pc, abi.TextType(), symbol, pc, abi.TextType(), pc);
         out = format_text("{}  call void @chibi_scalar.free(ptr %ctx, ptr %released{})\n", out, pc);
+    } else if (StateArray(item.type)) {
+        out = format_text("{}  %owned{} = call {} @chibi_array.{}.copy(ptr %ctx, {} {})\n", out, pc,
+            abi.ArrayType(), item.type, abi.ArrayType(), value);
+        out = format_text("{}  %previous{} = load {}, ptr @{}\n  call void @chibi_array.{}.drop(ptr %ctx, {} %previous{})\n",
+            out, pc, abi.ArrayType(), StateSymbol(item.target), item.type, abi.ArrayType(), pc);
+        value = format_text("%owned{}", pc);
     }
     return format_text("{}  store {} {}, ptr @{}\n  store i1 true, ptr @{}.ready\n", out, StateStorage(item.type), value,
                       StateSymbol(item.target), StateSymbol(item.target));
@@ -2882,11 +2911,11 @@ StateGlobals :: (code: Instruction[], linkage: string) -> string {
         initial := item.literal;
         if (item.type == abi.FloatStorage) {
             initial = Spelled(initial, abi.UintStorage);
-        } else if (!abi.Floating(item.type)) {
+        } else if (abi.ScalarType(item.type) != "" && !abi.Floating(item.type)) {
             initial = Spelled(initial, item.type);
         }
         value := format_text("{}", initial);
-        if (item.type == abi.TextStorage) {
+        if (item.type == abi.TextStorage || StateArray(item.type)) {
             value = "zeroinitializer";
         }
         out.append(format_text("@{} = {} global {} {}\n", StateSymbol(item.target), linkage, StateStorage(item.type), value));
@@ -3267,7 +3296,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             for (retained in states) { copies = copies || retained.type == abi.TextStorage; }
         }
         out.append(MapModule(held, ProgramMode(mode), record_owners));
-        if (copies || array_helpers != "") {
+        if (copies) {
             out.append(format_text("\n{}", ArrayCopyHelper()));
         }
         if (Zeroes(held)) {
@@ -3795,9 +3824,9 @@ StateManifest :: (name: string, names: string[], ids: i64[], functions: Function
 // next. This legacy ABI exposes only eager numeric/bool globals. Lazy states
 // and strings use the native host's per-key API, never borrowed handles in
 // the bulk word manifest. A module outside that contract has no manifest.
-RetainedManifest :: (name: string, code: Instruction[], texts: string[]) -> string {
+RetainedManifest :: (name: string, code: Instruction[], texts: string[], characters: bool[]) -> string {
     states := RetainedStates(code);
-    if (length(states) == 0) {
+    if (length(states) == 0 || characters.contains(true)) {
         return "";
     }
     for (item in states) {
@@ -3974,17 +4003,15 @@ ConvertDeclarations :: () -> string {
     }
     return Declarations(items);
 }
-// Plain C-ABI symbols for a host that can call but cannot read memory, such
-// as a program in a language with foreign calls only, which cannot walk a
-// manifest. `chibi_host_call_<Function>` calls a function whose types
-// HostCallable admits, in a library that calls no runtime. The state accessors
-// of a library are `chibi_host_retained_count`, `_type` and `_hash` (NameHash
-// of the name) by index, and `_get` and `_set`, which move one state as its
-// word, `_set` giving 1 for an index that names a state, and `_set_as`, which
-// sets one from a word of another export type `from`, converted as the language
-// converts (ConvertWord); a library without states has none.
+// Plain C-ABI symbols let the foreign-call host use a library without walking
+// its manifest. Scalar states move as words; text/array getters borrow a
+// descriptor address until the matching setter copies into its own context.
+// Hosts check type/schema before any setters. Setters return 1 on success,
+// and 0 for an unknown index, invalid char or incompatible conversion.
+RetainedArrayTag: int : 13;
+RetainedCharTag: int : 14;
 HostSymbols :: (names: string[], functions: Function[], parameters: int[], code: Instruction[], texts: string[],
-                runtime: bool, waiting: bool[]) -> string {
+                runtime: bool, waiting: bool[], characters: bool[]) -> string {
     out: string[] = [];
     for (function in 0..<length(functions)) {
         shape := functions[function];
@@ -4011,8 +4038,19 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
     states := RetainedStates(code);
     types: string[] = [];
     hashes: string[] = [];
-    for (item in states) {
-        types.append(format_text("{}", abi.ValueTag(item.type)));
+    schemas: string[] = [];
+    for (item, index in states) {
+        tag := abi.ValueTag(item.type);
+        schema: i64 = 0;
+        if (StateArray(item.type)) {
+            tag = RetainedArrayTag;
+            schema = NameHash(format_text("chibi.retained.array.v1.{}", abi.ExportType(item.type - ArrayType)));
+        } else if (index < length(characters) && characters[index]) {
+            tag = RetainedCharTag;
+            schema = NameHash("chibi.retained.char.v1");
+        }
+        types.append(format_text("{}", tag));
+        schemas.append(format_text("{}", schema));
         hashes.append(format_text("{}", NameHash(texts[item.right])));
     }
     released: string[] = ["\ndefine i32 @chibi_host_retained_release() #0 {\nentry:\n"];
@@ -4020,6 +4058,9 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
         if (item.type == abi.TextStorage) {
             released.append(format_text("  %text{} = load {}, ptr @{}\n  %owner{} = extractvalue {} %text{}, 2\n", item.target, abi.TextType(), StateSymbol(item.target), item.target, abi.TextType(), item.target));
             released.append(format_text("  call void @chibi_scalar.free(ptr @chibi_context, ptr %owner{})\n  store {} zeroinitializer, ptr @{}\n", item.target, abi.TextType(), StateSymbol(item.target)));
+        } else if (StateArray(item.type)) {
+            released.append(format_text("  %array{} = load {}, ptr @{}\n  call void @chibi_array.{}.drop(ptr @chibi_context, {} %array{})\n  store {} zeroinitializer, ptr @{}\n",
+                item.target, abi.ArrayType(), StateSymbol(item.target), item.type, abi.ArrayType(), item.target, abi.ArrayType(), StateSymbol(item.target)));
         }
     }
     released.append("  ret i32 0\n}\n");
@@ -4030,6 +4071,7 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
     out.append(HostTable("chibi_host_retained_type", "i32", types));
     out.append("\n");
     out.append(HostTable("chibi_host_retained_hash", "i64", hashes));
+    out.append(HostTable("chibi_host_retained_schema", "i64", schemas));
     if (count == 0) {
         out.append("\ndefine i32 @chibi_host_retained_ready(i32 %i) #0 {\nentry:\n  ret i32 0\n}\n");
         out.append("\ndefine i64 @chibi_host_retained_get(i32 %i) #0 {\nentry:\n  ret i64 0\n}\n");
@@ -4050,7 +4092,20 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
         if (item.type == abi.TextStorage) {
             read.append(format_text("  %w{} = ptrtoint ptr @{} to i64\n  ret i64 %w{}\n", index, StateSymbol(index), index));
             write.append(format_text("  %source{} = inttoptr i64 %v to ptr\n  call void @chibi_scalar.retained.copy(ptr @chibi_context, ptr @{}, ptr %source{})\n", index, StateSymbol(index), index));
+        } else if (StateArray(item.type)) {
+            read.append(format_text("  %w{} = ptrtoint ptr @{} to i64\n  ret i64 %w{}\n", index, StateSymbol(index), index));
+            // The incoming allocator owns every migrated byte. Preserve a
+            // nonnull empty buffer without copying unused spare capacity.
+            write.append(format_text("  %source{} = inttoptr i64 %v to ptr\n  %given{} = load {}, ptr %source{}\n", index, index, abi.ArrayType(), index));
+            write.append(format_text("  %length{} = extractvalue {} %given{}, 0\n  %data{} = extractvalue {} %given{}, 2\n", index, abi.ArrayType(), index, index, abi.ArrayType(), index));
+            write.append(format_text("  %nonnull{} = icmp ne ptr %data{}, null\n  %minimum{} = zext i1 %nonnull{} to i32\n  %empty{} = icmp eq i32 %length{}, 0\n  %capacity{} = select i1 %empty{}, i32 %minimum{}, i32 %length{}\n", index, index, index, index, index, index, index, index, index, index));
+            write.append(format_text("  %copied{} = call {} @chibi_array.{}.clone(ptr @chibi_context, {} %given{}, i32 %capacity{})\n", index, abi.ArrayType(), item.type, abi.ArrayType(), index, index));
+            write.append(format_text("  %previous{} = load {}, ptr @{}\n  call void @chibi_array.{}.drop(ptr @chibi_context, {} %previous{})\n  store {} %copied{}, ptr @{}\n", index, abi.ArrayType(), StateSymbol(index), item.type, abi.ArrayType(), index, abi.ArrayType(), index, StateSymbol(index)));
         } else {
+            if (index < length(characters) && characters[index]) {
+                write.append(format_text("  %within{} = icmp ule i64 %v, 1114111\n  %range{} = and i64 %v, -2048\n  %scalar{} = icmp ne i64 %range{}, 55296\n  %valid{} = and i1 %within{}, %scalar{}\n  br i1 %valid{}, label %character{}, label %none\ncharacter{}:\n",
+                    index, index, index, index, index, index, index, index, index, index));
+            }
             read.append(StateValue(format_text("g{}", index), item));
             read.append(ToWord(format_text("w{}", index), format_text("%g{}", index), item.type));
             read.append(format_text("  ret i64 %w{}\n", index));
@@ -4071,6 +4126,8 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
     out.append(format_text("\n{}\n{}", ConvertDeclarations(), ConvertWord()));
     out.append("\ndefine i32 @chibi_host_retained_set_as(i32 %i, i32 %from, i64 %v) #0 {\nentry:\n");
     out.append("  %to = call i32 @chibi_host_retained_type(i32 %i)\n");
+    out.append("  %same = icmp eq i32 %from, %to\n  br i1 %same, label %direct, label %checked\ndirect:\n  %kept = call i32 @chibi_host_retained_set(i32 %i, i64 %v)\n  ret i32 %kept\nchecked:\n");
+    out.append("  %from.low = icmp uge i32 %from, 1\n  %from.high = icmp ule i32 %from, 11\n  %to.low = icmp uge i32 %to, 1\n  %to.high = icmp ule i32 %to, 11\n  %from.scalar = and i1 %from.low, %from.high\n  %to.scalar = and i1 %to.low, %to.high\n  %convertible = and i1 %from.scalar, %to.scalar\n  br i1 %convertible, label %convert, label %none\nnone:\n  ret i32 0\nconvert:\n");
     out.append("  %w = call i64 @chibi_scalar.convert(i32 %from, i32 %to, i64 %v)\n");
     out.append("  %r = call i32 @chibi_host_retained_set(i32 %i, i64 %w)\n  ret i32 %r\n}\n");
     return strings.Join(out, "");
@@ -4095,6 +4152,19 @@ WindowsLibraryExports :: (symbols: string[]) -> string {
 pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                     parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                     records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[], entries: int = -1) -> Result {
+    characters: bool[] = [];
+    return EmitLibraryStates(target, name, names, ids, functions, parameters, slots, locals, code, arguments,
+        records, fields, texts, step_budget, field_names, entries, characters);
+}
+// The source compiler preserves nominal retained char leaves here. Keep the
+// older entry usable by raw native clients without array-valued defaults,
+// which the verified bootstrap compiler cannot lower.
+// Dynamic char initializers must already hold a Unicode scalar; source
+// CharChecked conversions establish that invariant before StateLoad.
+pub EmitLibraryStates :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
+                          parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
+                          records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[], entries: int,
+                          state_characters: bool[]) -> Result {
     windows := abi.Same(target, abi.WindowsX64());
     if (!abi.Same(target, abi.LinuxX64()) && !abi.Same(target, abi.MacOSArm64()) && !windows) {
         return Result.Rejected(-1, "native libraries require Linux x86-64, macOS arm64 or Windows x86-64");
@@ -4102,8 +4172,22 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     if (!Identifier(name) || length(names) != length(functions) || length(ids) != length(functions)) {
         return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");
     }
+    states := RetainedStates(code);
+    if (length(state_characters) != 0 && length(state_characters) != length(states)) {
+        return Result.Rejected(-1, "native character state metadata differs from retained state");
+    }
+    for (character, index in state_characters) {
+        if (character && states[index].type != abi.IntStorage) {
+            return Result.Rejected(-1, "native character state requires int storage");
+        }
+        if (character && states[index].left == 0 &&
+            (states[index].literal < 0 || states[index].literal > 1114111 ||
+             (states[index].literal >= 55296 && states[index].literal <= 57343))) {
+            return Result.Rejected(-1, "native character state initial value is not a Unicode scalar");
+        }
+    }
     // Package generations distinguish real entries from their fixed-ABI stubs:
-    // bit 0 is Main, bit 1 is Frame; -1 leaves ordinary libraries unchanged.
+    // bit 0 is Main, bit 1 is Frame; -1 derives runnable ordinary library entries.
     if (entries < -1 || entries > 3) {
         return Result.Rejected(-1, "native generation entry mask is out of bounds");
     }
@@ -4147,18 +4231,18 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     exports: string[] = [];
     waiting := WaitingFunctions(functions, code);
     dll_exports: string[] = [];
+    host_entries := entries;
+    if (entries < 0) { host_entries = 0; }
     if (entries >= 0) {
         for (index in 0..<length(names)) {
             if ((names[index] == "Main" || names[index] == "Frame") && waiting[index]) {
                 return Result.Rejected(-1, "native generation entry adapters cannot wait");
             }
         }
-        out.append(format_text("\ndefine i32 @chibi_host_entries() #0 {{\nentry:\n  ret i32 {}\n}}\n", entries));
-        if (windows) { dll_exports.append("chibi_host_entries"); }
     }
     if (windows) {
         dll_exports.extend([format_text("chibi_natives_{},data", name), "chibi_host_retained_release", "chibi_host_retained_count",
-                       "chibi_host_retained_type", "chibi_host_retained_hash", "chibi_host_retained_ready", "chibi_host_retained_get",
+                       "chibi_host_retained_type", "chibi_host_retained_hash", "chibi_host_retained_schema", "chibi_host_retained_ready", "chibi_host_retained_get",
                        "chibi_host_retained_set", "chibi_host_retained_set_as"]);
         if (runtime) { dll_exports.append("chibi_host_failed"); }
         if (waiting.contains(true)) {
@@ -4167,6 +4251,10 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     }
     for (function in 0..<length(functions)) {
         if (waiting[function]) { continue; }
+        if (entries < 0 && functions[function].parameters == 0 && functions[function].result == abi.IntStorage) {
+            if (names[function] == "Main") { host_entries |= 1; }
+            if (names[function] == "Frame") { host_entries |= 2; }
+        }
         if (windows && HostCallable(functions[function], parameters)) {
             dll_exports.append(strings.Concatenate(["chibi_host_call_", names[function]]));
         }
@@ -4187,6 +4275,8 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
         exports.append(format_text("%chibi.export { ptr @chibi_scalar.export.name.{}, i64 {}, ptr @chibi_scalar.export.types.{}, i32 {}, i32 1, ptr @chibi_scalar.export.{} }",
                                    function, ids[function], function, functions[function].parameters, function));
     }
+    out.append(format_text("\ndefine i32 @chibi_host_entries() #0 {{\nentry:\n  ret i32 {}\n}}\n", host_entries));
+    if (windows) { dll_exports.append("chibi_host_entries"); }
     out.append(format_text("\n@chibi_scalar.exports = private constant [{} x %chibi.export] [{}]\n",
                            length(exports), strings.Join(exports, ", ")));
     out.append(format_text("@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",
@@ -4197,13 +4287,13 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     if (retained_text) {
         out.append(RetainedTextCopy());
     }
-    retained_manifest := RetainedManifest(name, code, texts);
+    retained_manifest := RetainedManifest(name, code, texts, state_characters);
     out.append(retained_manifest);
     if (windows && retained_manifest != "") { dll_exports.append(format_text("chibi_retained_{},data", name)); }
     if (runtime && !strings.Contains(module, "@chibi_context = external global")) {
         out.append(format_text("\n@chibi_context = external global {}\n", abi.ContextType()));
     }
-    out.append(HostSymbols(names, functions, parameters, code, texts, runtime, waiting));
+    out.append(HostSymbols(names, functions, parameters, code, texts, runtime, waiting, state_characters));
     if (windows) { out.append(WindowsLibraryExports(dll_exports)); }
     return Result.Emitted(format_text("{}{}", module, strings.Join(out, "")));
 }

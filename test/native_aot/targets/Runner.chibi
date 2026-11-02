@@ -163,6 +163,7 @@ ModuleRuns :: (directory: string, linker: string, module: Module, bundle: ^Bundl
     suffix := ".dylib";
     triple := "aarch64-apple-darwin";
     if (os.Platform() == "Windows") { suffix = ".dll"; triple = "x86_64-pc-windows-msvc"; }
+    else if (os.Platform() == "Linux") { suffix = ".so"; triple = "x86_64-unknown-linux-gnu"; }
     object := format_text("{}/{}", directory, module.name);
     image := format_text("{}/{}{}", directory, strings.Slice(module.name, 0, strings.ByteLength(module.name) - 2), suffix);
     objects := [object];
@@ -178,8 +179,10 @@ ModuleRuns :: (directory: string, linker: string, module: Module, bundle: ^Bundl
     if (linked != nil) { return Invalid(object, 0, format_text("link failure kind {} status {}", linked.kind, linked.code)); }
     opened := loader.Open(image);
     if (opened == 0) {
+        Invalid(image, 0, "cannot load module image");
         removed := os.Remove(image);
-        return Invalid(image, 0, "cannot load module image");
+        if (removed != nil) { Invalid(image, 0, "cannot remove the failed module image"); }
+        return false;
     }
     addresses: rawptr[] = [];
     agreed := true;
@@ -222,7 +225,8 @@ ModuleRuns :: (directory: string, linker: string, module: Module, bundle: ^Bundl
     }
     closed := loader.Close(opened);
     removed := os.Remove(image);
-    if (!closed || removed != nil) { return Invalid(image, 0, "cannot close or remove module image"); }
+    if (removed != nil) { return Invalid(image, 0, "cannot remove module image"); }
+    if (!closed) { return Invalid(image, 0, "cannot close module image"); }
     return agreed;
 }
 
@@ -238,13 +242,23 @@ ProgramRuns :: (directory: string, program: Program, arguments: string[]) -> boo
 
 Main :: () -> int {
     arguments := os.Arguments();
+    bundle: Bundle = {modules: [], calls: [], symbols: [], numbers: [], programs: [], arguments: []};
+    // The backend producer runs this same parser, linker and call ABI locally
+    // before publishing its modules for the two cross-target consumers.
+    if (length(arguments) == 3 && arguments[0] == "--modules") {
+        if (!Modules(format_text("{}/modules.txt", arguments[1]), &bundle)) { return 1; }
+        for (module in bundle.modules) {
+            if (!ModuleRuns(arguments[1], arguments[2], module, &bundle)) { return 1; }
+        }
+        os.WriteOutput(format_text("{}: {} modules and {} calls ran\n", os.Platform(), length(bundle.modules), length(bundle.calls)));
+        return 0;
+    }
     if (length(arguments) != 2) { os.Print("usage: native-target-runner BUNDLE LLD_LINKER"); return 2; }
     platform := "macos-arm64";
     builds := 3;
     if (os.Platform() == "Windows") { platform = "windows-x64"; builds = 6; }
     else if (os.Platform() != "Darwin") { os.Print("native target bundles require macOS arm64 or Windows x64"); return 2; }
     directory := format_text("{}/{}", arguments[0], platform);
-    bundle: Bundle = {modules: [], calls: [], symbols: [], numbers: [], programs: [], arguments: []};
     if (!Modules(format_text("{}/modules.txt", directory), &bundle) ||
         !Programs(format_text("{}/native-build-programs.txt", directory), false, builds, &bundle) ||
         !Programs(format_text("{}/native-link-programs.txt", directory), true, 2, &bundle)) { return 1; }

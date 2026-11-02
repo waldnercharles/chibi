@@ -2760,26 +2760,49 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
     char *timings = getenv("CHIBI_TEST_TIMINGS")
                       ? strdup(getenv("CHIBI_TEST_TIMINGS"))
                       : NULL;
+    char *emcc = getenv("CHIBI_EMCC") ? strdup(getenv("CHIBI_EMCC")) : NULL;
+    char *wasm_llvm = getenv("CHIBI_WASM_LLVM_BIN")
+                        ? strdup(getenv("CHIBI_WASM_LLVM_BIN"))
+                        : NULL;
     REQUIRE(!setenv("CCACHE_TEMPDIR", "", 1));
     REQUIRE(!setenv("CHIBI_TEST_TIMINGS", "case wall times", 1));
-    static const char *
-        source = "package names\nBuild :: () -> int { "
-                 "names:=build.join([\"\",build.join(build.environment_names(),"
-                 "\"|"
-                 "\"),\"\"],\"|\"); "
-                 "if(build.before(names,\"|CHIBI_BUILD_WORKER|\")==names || "
-                 "build.before(names,\"|CCACHE_TEMPDIR|\")==names) { return 1; "
-                 "} "
-                 "if(build.before(names,\"SECRET\")!=names || "
-                 "build.environment(\"CCACHE_TEMPDIR\")!=\"\") { "
-                 "return 2; } "
-                 "if(build.environment(\"CHIBI_TEST_TIMINGS\")!=\"case wall "
-                 "times\") { return 3; } "
-                 "return build.run([\"sh\",\"-c\",\"test "
-                 "\\\"$CHIBI_TEST_TIMINGS\\\" = \\\"case wall times\\\"\"]); }";
+    REQUIRE(!setenv("CHIBI_EMCC", "configured emcc", 1));
+    REQUIRE(!setenv("CHIBI_WASM_LLVM_BIN", "configured wasm LLVM", 1));
+    static const char *source =
+        "package names\nBuild :: () -> int { "
+        "names:=build.join([\"\",build.join(build.environment_names(),"
+        "\"|"
+        "\"),\"\"],\"|\"); "
+        "if(build.environment(\"CHIBI_EMCC\")!=\"configured emcc\" || "
+        "build.environment(\"CHIBI_WASM_LLVM_BIN\")!="
+        "\"configured wasm LLVM\") { return 4; } "
+        "if(build.before(names,\"|CHIBI_BUILD_WORKER|\")==names || "
+        "build.before(names,\"|CCACHE_TEMPDIR|\")==names || "
+        "build.before(names,\"|CHIBI_EMCC|\")==names || "
+        "build.before(names,\"|CHIBI_WASM_LLVM_BIN|\")==names) { return 1; "
+        "} "
+        "if(build.before(names,\"SECRET\")!=names || "
+        "build.environment(\"CCACHE_TEMPDIR\")!=\"\") { "
+        "return 2; } "
+        "if(build.environment(\"CHIBI_TEST_TIMINGS\")!=\"case wall "
+        "times\") { return 3; } "
+        "return build.run([\"sh\",\"-c\",\"test "
+        "\\\"$CHIBI_TEST_TIMINGS\\\" = \\\"case wall times\\\" && test "
+        "\\\"$CHIBI_EMCC\\\" = \\\"configured emcc\\\" && test "
+        "\\\"$CHIBI_WASM_LLVM_BIN\\\" = \\\"configured wasm LLVM\\\"\"]); }";
+    static const char
+        *unknown = "package names\nBuild :: () -> int { "
+                   "build.environment(\"CHIBI_BUILD_SECRET\"); return 0; }";
+    static const char
+        *nul = "package names\nBuild :: () -> int { "
+               "name:=build.join([\"CHIBI_EMCC\",\"tail\"],\"\\u0000\"); "
+               "build.environment(name); return 0; }";
     bool passed = true;
     for (int b = 0; b < 2; b++) {
-        passed &= run_primitives(source, b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE, 1);
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        passed &= run_primitives(source, backend, 1);
+        passed &= fails_with(unknown, backend, "build environment name is not allowed");
+        passed &= fails_with(nul, backend, "C string contains embedded NUL");
     }
     if (saved) {
         assert(!setenv("CCACHE_TEMPDIR", saved, 1));
@@ -2793,6 +2816,18 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
         assert(!unsetenv("CHIBI_TEST_TIMINGS"));
     }
     free(timings);
+    if (emcc) {
+        assert(!setenv("CHIBI_EMCC", emcc, 1));
+    } else {
+        assert(!unsetenv("CHIBI_EMCC"));
+    }
+    free(emcc);
+    if (wasm_llvm) {
+        assert(!setenv("CHIBI_WASM_LLVM_BIN", wasm_llvm, 1));
+    } else {
+        assert(!unsetenv("CHIBI_WASM_LLVM_BIN"));
+    }
+    free(wasm_llvm);
     REQUIRE(passed);
     return true;
 }

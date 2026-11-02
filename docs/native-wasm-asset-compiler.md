@@ -53,6 +53,11 @@ contract. The embedded compiler's symbols and quota hooks are private, so it
 can share a Wasm module with an independently compiled native game. One compile
 runs synchronously per thread. Cancellation and quota exhaustion release the
 call's temporary allocations, and a later compile can reuse the same instance.
+The call wrapper and immutable payload identity are LLVM implementations. A
+build-time SDK-header probe supplies only the opaque jump-buffer size and
+alignment; its C metadata is not linked into the product. Persistent caching
+still uses the shared C cache facade.
+
 The default budget is four billion shared native CHECK boundaries at function
 entries and loop backedges. This replaces the historical VM instruction count.
 

@@ -63,7 +63,7 @@ DebugFlagsKeepInstrumentation :: () {
 
 // Tests compile with assertions even where the profile would drop them.
 TestsKeepAssertions :: () {
-    for (target in ["test_host", "policy_worker", "test_tools", "test_language"]) {
+    for (target in ["policy_worker", "test_tools", "test_language"]) {
         assert(Has(engine.Options(target), "-UNDEBUG"), "test target undefines NDEBUG");
     }
 }
@@ -143,8 +143,8 @@ NamedProgramsBuildWhatTheyRun :: () {
     for (program in ["test_tools", "policy_worker", "chibi-compile", "chibi-build-host", "chibi-compiler-host", "chibi"]) {
         assert(engine.Selected(named, program), "a program a named program runs");
     }
-    assert(!engine.Selected(named, "test_host"), "another test driver");
-    assert(engine.Selected(["--commands-only", "on"], "test_host"), "no target names every target");
+    assert(!engine.Selected(named, "reflect"), "an unrelated program");
+    assert(engine.Selected(["--commands-only", "on"], "reflect"), "no target names every target");
 }
 
 // Companions may use runtime helpers added after the pinned bootstrap seed.

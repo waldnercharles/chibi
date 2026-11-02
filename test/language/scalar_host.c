@@ -59,6 +59,8 @@ static const char ROOT_SOURCE[] =
     "pub EmitSize :: (rows: facts.Row[]) -> int {\n"
     "    return length(scalar.EmitBytesFor(abi.LinuxX64(), rows));\n"
     "}\n"
+    "pub ValidateRows :: (rows: facts.Row[]) -> string { return "
+    "scalar.Validate(rows); }\n"
     "pub CaseCount :: () -> int { return cases.Count(); }\n"
     "pub CaseName :: (index: int) -> string { return cases.CaseName(index); }\n"
     "pub CaseSource :: (index: int) -> string { return cases.Source(index); }\n"

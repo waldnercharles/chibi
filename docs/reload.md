@@ -49,8 +49,11 @@ They do not establish workspace recovery. See the current
 [test instructions](testing.md) and [test inventory](test-inventory.md).
 Compilation does not establish runtime coverage.
 
-The retained `test_host` binary (`test/host`) covers native process and
-state-file handling. Studio's checkpoint assertions belong to `chibi-studio`.
+`chibi-cli-process` checks native child ownership and terminal control.
+`native-build` runs the native core:os file/process samples and program
+publication checks. The unselected C `test_host` and `concurrent_runner`
+utilities and their unused state-file helper are retired. Studio's checkpoint
+assertions belong to `chibi-studio`.
 CUT65 removed the Python application-recovery driver, the old
 `CHIBI_DEVELOPMENT_RELOAD` build mode, `chibi_dll`, `check-reload`, `check-dev`,
 staging descriptors and native watcher smoke checks.

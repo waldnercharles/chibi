@@ -18,7 +18,7 @@ FailureRuntime :: (windows: bool, context: bool, static_linux: bool, cli_errors:
     }
     assertion_status := "134";
     if (cli_errors) { assertion_status = "1"; }
-    return Join([platform,
+    return Join([platform, IndexFailureRuntime(),
         "define internal void @chibi_native_assertion(ptr %failure) noreturn {\nentry:\n",
         "  %message.at = getelementptr inbounds ", abi.ProgramFailureType(), ", ptr %failure, i32 0, i32 3\n",
         "  %message = load ptr, ptr %message.at\n",
@@ -207,5 +207,55 @@ FailureRuntime :: (windows: bool, context: bool, static_linux: bool, cli_errors:
         "invalid:\n",
         "  ret i32 -1\n",
         "}\n",
+    ]);
+}
+
+// Failure-only formatting needs at most eleven stack bytes for any signed
+// i32. Widen before negation so INT_MIN is exact; no libc or heap is needed.
+IndexFailureRuntime :: () -> string {
+    return Join([
+        "@chibi_index_head = private constant [19 x i8] c\"native array index \"\n",
+        "@chibi_index_length = private constant [28 x i8] c\" is out of range for length \"\n",
+        "define internal void @chibi_failure_signed(i32 %value) {\nentry:\n",
+        "  %buffer = alloca [11 x i8]\n",
+        "  %wide = sext i32 %value to i64\n",
+        "  %negative = icmp slt i32 %value, 0\n",
+        "  %negated = sub i64 0, %wide\n",
+        "  %magnitude = select i1 %negative, i64 %negated, i64 %wide\n",
+        "  br label %digit\ndigit:\n",
+        "  %rest = phi i64 [ %magnitude, %entry ], [ %next, %digit ]\n",
+        "  %at = phi i32 [ 11, %entry ], [ %back, %digit ]\n",
+        "  %remainder = urem i64 %rest, 10\n",
+        "  %next = udiv i64 %rest, 10\n",
+        "  %small = trunc i64 %remainder to i8\n",
+        "  %byte = add i8 %small, 48\n",
+        "  %back = sub i32 %at, 1\n",
+        "  %slot = getelementptr [11 x i8], ptr %buffer, i32 0, i32 %back\n",
+        "  store i8 %byte, ptr %slot\n",
+        "  %more = icmp ne i64 %next, 0\n",
+        "  br i1 %more, label %digit, label %sign\nsign:\n",
+        "  br i1 %negative, label %minus, label %write\nminus:\n",
+        "  %signed = sub i32 %back, 1\n",
+        "  %minus.at = getelementptr [11 x i8], ptr %buffer, i32 0, i32 %signed\n",
+        "  store i8 45, ptr %minus.at\n",
+        "  br label %write\nwrite:\n",
+        "  %first = phi i32 [ %back, %sign ], [ %signed, %minus ]\n",
+        "  %start = getelementptr [11 x i8], ptr %buffer, i32 0, i32 %first\n",
+        "  %count = sub i32 11, %first\n",
+        "  call void @chibi_failure_write(ptr %start, i32 %count)\n",
+        "  ret void\n}\n",
+        "define internal void @chibi_native_index_failed(i32 %index, i32 %length) noreturn {\nentry:\n",
+        "  %active = load i1, ptr @chibi_test_active\n",
+        "  %expected = load i32, ptr @chibi_test_expected\n",
+        "  %same = icmp eq i32 %expected, 1\n",
+        "  %matched = and i1 %active, %same\n",
+        "  br i1 %matched, label %fail, label %report\nreport:\n",
+        "  call void @chibi_failure_write(ptr @chibi_index_head, i32 19)\n",
+        "  call void @chibi_failure_signed(i32 %index)\n",
+        "  call void @chibi_failure_write(ptr @chibi_index_length, i32 28)\n",
+        "  call void @chibi_failure_signed(i32 %length)\n",
+        "  call void @chibi_failure_write(ptr @chibi_failure_newline, i32 1)\n",
+        "  br label %fail\nfail:\n",
+        "  call void @chibi_native_failure(i32 1)\n  unreachable\n}\n"
     ]);
 }

@@ -222,6 +222,26 @@ ScalarCallModesAreBounded :: () {
         assert(scalar.Validate(TaskFacts(mode, false)) == "invalid scalar operand row");
     }
 }
+ScalarRetainedCharacterMetadataIsChecked :: () {
+    source := TaskFacts(facts.CallPlain, false);
+    member := TaskFact(facts.MemberRow, facts.IntType, 0, 0, "character", 1, 2);
+    member.literal = i64(facts.CharNominal);
+    local := TaskFact(facts.LocalRow, facts.IntType, 0, 1, "character", 11, 12);
+    local.literal = i64(facts.Retained | facts.CharNominal);
+    literal := TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 11, 12);
+    literal.literal = 65;
+    rows := [source[0], source[1], TaskFact(facts.RecordRow, 0, 0, 1, "Characters", 0, 10), member,
+        TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 10, 64), local, literal,
+        TaskFact(facts.ReturnRow, 0, 0, 1, "", 13, 14), TaskFact(facts.ReadRow, facts.IntType, 0, 0, "", 13, 14)];
+    assert(scalar.Validate(rows) == "");
+    assert(scalar.Validate(Changed(rows, 3, Type, facts.BoolType)) == "invalid scalar record member row");
+    assert(scalar.Validate(Changed(rows, 3, LiteralValue, facts.Retained)) == "invalid scalar record member row");
+    assert(scalar.Validate(Changed(rows, 5, Type, facts.BoolType)) == "invalid scalar statement row");
+    assert(scalar.Validate(Changed(rows, 5, LiteralValue, facts.CharNominal)) == "invalid scalar statement row");
+    for invalid in [int(-1), 55296, 1114112] {
+        assert(scalar.Validate(Changed(rows, 6, LiteralValue, invalid)) == "native character state initial value is not a Unicode scalar");
+    }
+}
 ScalarArrayWithoutOperandsAreValidated :: () {
     source := Accepted();
     array := facts.ArrayType + facts.IntType;
@@ -389,6 +409,7 @@ pub Tests :: () -> int {
     ScalarAwaitedCallsMustNameWaitingFunctions();
     ScalarFunctionAddressesCannotNameWaitingFunctions();
     ScalarCallModesAreBounded();
+    ScalarRetainedCharacterMetadataIsChecked();
     ScalarArrayWithoutOperandsAreValidated();
     ScalarArrayFieldPlacesAreValidated();
     ScalarForceUnwrapRequiresAnOptionalAndAProgramRuntime();

@@ -66,7 +66,7 @@ Build :: (arguments: string[]) -> int {
         return 2;
     }
     if (shared && !SharedTarget(triple)) {
-        os.Print("native: shared libraries require Linux x86-64 or macOS arm64");
+        os.Print("native: shared libraries require Linux x86-64, macOS arm64 or Windows x86-64");
         return 2;
     }
     if (shared && (lines || Flag(arguments, "--static"))) {
@@ -168,7 +168,7 @@ DriverOptions :: struct {
 
 SharedTarget :: (triple: string) -> bool {
     target := link.TargetOf(triple);
-    return target == link.LinuxX64 || target == link.MacOSArm64;
+    return target == link.LinuxX64 || target == link.MacOSArm64 || target == link.WindowsX64;
 }
 
 HostTarget :: (triple: string) -> bool {
@@ -205,7 +205,7 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         return 2;
     }
     if (shared && !SharedTarget(triple)) {
-        os.Print("native: shared libraries require Linux x86-64 or macOS arm64");
+        os.Print("native: shared libraries require Linux x86-64, macOS arm64 or Windows x86-64");
         return 2;
     }
     if ((options.level != "0" && options.level != "2") || (shared && (options.lines || options.static_link))) {

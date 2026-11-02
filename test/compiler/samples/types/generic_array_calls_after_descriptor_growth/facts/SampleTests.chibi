@@ -1,0 +1,6 @@
+package facts
+
+@test
+Calls :: () {
+    assert(Read() == 323, "generic array calls keep old and new nested descriptors");
+}

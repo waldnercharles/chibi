@@ -35,7 +35,7 @@ pub Targets :: () -> string[] {
         targets.extend(ToolConsumers());
         targets.append("test_tools");
     }
-    targets.extend(["test_host", "concurrent_runner", "policy_worker", "benchmark_trials", "reflect"]);
+    targets.extend(["policy_worker", "benchmark_trials", "reflect"]);
     return targets;
 }
 
@@ -211,16 +211,6 @@ Files :: (target: string) -> string[] {
             "src/toolchain/compiler_artifact.c"
         ];
     }
-    if (target == "test_host") {
-        return [
-            "test/host/main.c", "test/host/process.c", "test/host/state_file.c",
-            "src/host/process.c", "src/host/state_file.c", "src/support/xalloc.c",
-            "third_party/yyjson/yyjson.c"
-        ];
-    }
-    if (target == "concurrent_runner") {
-        return ["test/host/concurrent.c", "src/host/process.c"];
-    }
     if (target == "policy_worker") {
         return ["test/tools/policy_worker.c"];
     }
@@ -238,8 +228,6 @@ Files :: (target: string) -> string[] {
             "test/language/capture.c",
             "test/language/ranges.c",
             "test/language/text_format.c", "test/language/host_packages_compiler.c",
-            "test/language/package_compiler_chibi.c",
-            "src/host/native_libraries.c", "src/host/process.c", "src/host/stack_overflow.c",
             "test/language/native_census.c", "test/language/scalar_host.c",
             "test/language/execution_scope.c",
             "test/parallel.c", "test/language/parallel.c"
@@ -269,7 +257,7 @@ Files :: (target: string) -> string[] {
         return [
             "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
             "test/tools/fixture.c",
-            "test/tools/chibi_cli.c", "test/tools/native_workloads.c",
+            "test/tools/native_workloads.c",
             "test/tools/collab.c",
             "test/tools/web_storage.c", "test/tools/browser.c",
             "test/tools/wasm_browser.c", "test/support/arena.c",
@@ -471,11 +459,6 @@ pub PrivateHeaders :: (target: string) -> string[] {
     if (target == "chibi_compiler-target") {
         return ["toolchain/compiler_artifact.h", "toolchain/compiler_target.h"];
     }
-    if (target == "chibi_host_tests") {
-        // The headers the host tests include, as root CMakeLists.txt stages
-        // them below its binary directory.
-        return ["host/process.h", "host/state_file.h", "support/array.h", "support/xalloc.h"];
-    }
     return [];
 }
 
@@ -494,9 +477,6 @@ HeadersIn :: (directory: string) -> string[] {
 // BUILD/sdk/private: the language's sit in its CMake subdirectory's binary
 // directory.
 pub PrivateDirectory :: (target: string) -> string {
-    if (target == "chibi_host_tests") {
-        return "build/testing/host/include";
-    }
     if (target == "chibi_language_testing") {
         return "build/test/language/testing/include";
     }
@@ -519,9 +499,6 @@ ToolConsumers :: () -> string[] {
 
 // The header set staged in a `build/` include directory, or empty.
 pub DirectorySet :: (include: string) -> string {
-    if (include == "build/testing/host/include") {
-        return "chibi_host_tests";
-    }
     if (include == "build/test/language/testing/include") {
         return "chibi_language_testing";
     }
@@ -538,9 +515,6 @@ pub Rewrites :: (target: string) -> string[] {
     if (target == "chibi_sound_preparation") {
         // The players' Vorbis decoder, as sdk/project_preparation.cmake writes it.
         return ["vendor/sound_vorbis.h=third-party/source/cute_framework/libraries/stb/stb_vorbis.c"];
-    }
-    if (target == "chibi_host_tests") {
-        return ["third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h"];
     }
     return [];
 }
@@ -793,12 +767,6 @@ pub Includes :: (target: string) -> string[] {
             "public/host_native_default", "public/host_native_catalog"
         ];
     }
-    if (target == "test_host") {
-        return ["third_party/yyjson", "build/testing/host/include"];
-    }
-    if (target == "concurrent_runner") {
-        return ["build/testing/host/include"];
-    }
     if (target == "benchmark_trials") {
         return ["src"];
     }
@@ -1010,12 +978,6 @@ pub Options :: (target: string) -> string[] {
     if (target == "chibi_math_capabilities") {
         return ["-ffp-contract=off"];
     }
-    if (target == "test_host") {
-        return ["-UNDEBUG"];
-    }
-    if (target == "concurrent_runner") {
-        return ["-UNDEBUG"];
-    }
     if (target == "policy_worker") {
         return ["-UNDEBUG"];
     }
@@ -1050,14 +1012,12 @@ pub SourceOptions :: (target: string, file: string) -> string[] {
 // test/language/CMakeLists.txt gives them.
 LanguageTestsOverSource :: () -> string[] {
     return [
-        "src/host/process.c", "src/host/native_libraries.c", "src/host/stack_overflow.c",
         "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
         "src/toolchain/compiler_target.c",
         "test/language/capture.c",
         "test/language/execution.c", "test/language/execution_scope.c",
         "test/language/host_packages_compiler.c",
         "test/language/native_census.c", "test/language/scalar_host.c",
-        "test/language/package_compiler_chibi.c",
         "test/language/ranges.c",
         "test/language/record_prepared.c"
     ];
@@ -1067,9 +1027,6 @@ LanguageTestsOverSource :: () -> string[] {
 // source property adds them; Expand fills {source_root}, {build_type},
 // {sha256:PATH} and {program:NAME}.
 pub SourceDefines :: (target: string, file: string) -> string[] {
-    if (target == "test_language" && file == "test/language/package_compiler_chibi.c") {
-        return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
-    }
     if (target == "test_language" &&
         (file == "test/language/host_packages_compiler.c" || file == "test/language/native_census.c" ||
          file == "test/language/scalar_host.c")) {
@@ -1190,6 +1147,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_SCALAR_BYTES=bytes:tools/compiler/package_compiler/Scalar.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARARRAYS_BYTES=bytes:tools/compiler/package_compiler/ScalarArrays.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAR_POINTERS_BYTES=bytes:tools/compiler/package_compiler/ScalarPointers.chibi",
+            "CHIBI_PACKAGE_COMPILER_SCALAR_COLLECTIONS_BYTES=bytes:tools/compiler/package_compiler/ScalarCollections.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAREFFECTS_BYTES=bytes:tools/compiler/package_compiler/ScalarEffects.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARGENERATIONS_BYTES=bytes:tools/compiler/package_compiler/ScalarGenerations.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARMAPS_BYTES=bytes:tools/compiler/package_compiler/ScalarMaps.chibi",
@@ -1323,7 +1281,7 @@ pub Runs :: (target: string) -> string[] {
 // The executables the graph builds; every other target is a library.
 pub Programs :: () -> string[] {
     programs := [
-        "reflect", "chibi-build-host", "chibi-compiler-host", "test_host", "concurrent_runner",
+        "reflect", "chibi-build-host", "chibi-compiler-host",
         "policy_worker", "benchmark_trials"
     ];
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") {

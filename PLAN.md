@@ -13,23 +13,40 @@ complete source in 40.93 seconds; the resulting compiler passes the CLI and
 native output change passes all 410 compiler tests in 22.05 seconds and its
 O0/O2 byte/readiness/rejection suite in 1.76 seconds.
 
-The next local integration includes managed record maps, typed nil unwrap,
-numeric task results, task-command rejection inside tests, typed effect
-metadata, process output/cancellation, and shared array backing. Each slice
-has focused execution evidence; combined acceptance is still pending. Array
-source copies stay eager until foreign mutation leases are implemented.
-Native test-worker scheduling and macOS reload are being completed in their
-own lanes. The LLVM WebAssembly compiler passes exact artifact and lifetime
-checks; its public browser facade and optional SDK archive are still being
-connected.
+The local integration at `1a7a1002f` passes all 414 compiler tests in 18.80
+seconds and the combined O0/O2 task, managed-record, array, map, optional,
+failure, test-Busy and output suites. Native CLI acceptance takes 7.68 seconds,
+macOS watch 4.83 seconds, and optimized generation swaps 9.24 seconds. Its
+consecutive self-builds take 57.50 and 61.02 seconds and have identical SHA-256
+`76a2d9e55610ce9f5f50bd73a69c1408b0167752e32b01c833f9dfbcc500f4a7`.
+These timings include concurrent work and are acceptance evidence, not a
+controlled performance comparison.
+
+Native test scheduling is integrated at `90cf79af4`: typed effects allow pure
+tests to overlap, effectful tests run alone, output remains in source order,
+and generated wrappers preserve waiting/spawning rejection and step budgets.
+Its lane passes the exact pinned-seed build, all 414 compiler tests, and real
+worker/cancellation/waiting cases. Combined checkpoint validation is running.
+Array source copies stay eager until foreign mutation leases are implemented.
+The LLVM WebAssembly compiler passes exact artifact and lifetime checks; its
+public browser facade and optional SDK archive are still being connected.
+
+At pushed `c32f5d6b6`, no-C-compiler, compiler self-build and Linux native
+self-host CI pass. General CI found stale SDK product/evidence expectations,
+the pinned seed's compile-only CLI at selector launch, and a macOS import
+fixture missing the failure runtime's `write` and `_exit`. The import fixture
+is corrected locally; SDK and shared selector bootstrap changes are underway.
 
 Windows source `585e40829` reaches a strict stage-four/five fixed point after
 one explicitly permitted transition from the older pinned bootstrap. Both
 binaries have SHA-256
 `d9a56bde96fdce41d9b9c335f5120dc4ec659c8aad62ddf0641d4eb9e909f96f`.
 The subsequent asset compiler build fails with illegal instruction
-`0xC000001D`. The retained compiler and exact source are under diagnosis;
-this is not Windows product acceptance.
+`0xC000001D`. A shorter-path replay with the retained compiler succeeds.
+The original long link command crosses the foreign CString bound; counted
+UTF-8 conversion and a 16 KiB Unicode argument regression are integrated at
+`ed9c3384b`, with failed-object cleanup at `6fa5c88e7`. Replay of the original
+Windows request remains required; this is not Windows product acceptance.
 
 The evidence below is chronological. Older counts and gates describe their
 named revisions, not the latest integration. Remaining deletion gates are:

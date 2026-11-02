@@ -227,7 +227,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $root = $PWD.Path.Replace('\', '/')
           $work = $env:RUNNER_TEMP.Replace('\', '/')
-          & "$work/stage2/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/link/windows/Main.chibi" --entry Main --output "$work/windows-objects.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 4
+          & "$work/stage2/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/link/windows/Main.chibi" --collection "graph=$root/tools/graph" --entry Main --output "$work/windows-objects.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 4
           if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
           & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
           if ($LASTEXITCODE) { throw 'the Windows object regression failed' }

@@ -132,10 +132,11 @@ Duplicate function names across imported packages are rejected rather than alias
 
 Package generations have a private libc-backed runtime context, so arrays, string
 operations and assertions keep their native behavior. An assertion failure exits the host
-with status 134. Retained numbers, bools, standalone strings and numeric/bool records migrate by
+with status 134. Retained numbers, bools, strings and plain records containing those values migrate by
 named leaves. Record fields can be reordered or added; a new leaf takes its initializer.
 Initializers must be scalar/string literals or constant record construction. Arrays,
-unions, task handles and records containing strings remain unsupported as retained state. Changing a shared leaf
+unions and task handles remain unsupported as retained state. Local record snapshots own their string
+references, so replacing a retained field keeps earlier snapshots valid. Changing a shared leaf
 between a string and a scalar rejects the incoming generation before state is written.
 Strings are copied into the incoming generation, including strings whose bytes originally
 lived in the old object's constant data.

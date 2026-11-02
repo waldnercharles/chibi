@@ -44,10 +44,6 @@ pub Profile :: struct {
     // A reflect program to run instead of the one the graph builds, as a
     // cross build's CHIBI_REFLECT_EXECUTABLE names one; empty to build it.
     reflect: string;
-    // Another build's sdk directory whose chibi-build-host and
-    // chibi-compiler-host generate the asset compiler, as
-    // CHIBI_ASSET_GENERATOR_HOSTS names one; empty to run this build's.
-    asset_generator_hosts: string;
 }
 
 // The builtin headers of the clang that a libclang belongs to, as

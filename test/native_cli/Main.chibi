@@ -25,6 +25,9 @@ Main :: () -> int {
     Write(source, text);
     ran := os.Capture([chibi, "run", "-O0", "--llvm", llvm, source, "--", "first", "a b", "--watch"]);
     assert(ran.status == 7 && ran.stdout == "native run\n", "run selects Main and passes arguments and exit status");
+    Write(source, "package sample\nimport os \"core:os\"\nMain :: () { os.WriteOutput(\"void entry\\n\"); return; }\n");
+    void_run := os.Capture([chibi, "run", "-O0", "--llvm", llvm, source]);
+    assert(void_run.status == 0 && void_run.stdout == "void entry\n", "a void Main runs and exits successfully");
     ScopedRuns(chibi, llvm, scratch);
     invalid := os.Capture([chibi, "run", "--llvm"]);
     assert(invalid.status == 2 && strings.Contains(invalid.stderr, "--llvm needs a nonempty value"), "missing option value is diagnosed");

@@ -19,6 +19,7 @@ CliInvocation :: struct {
     entry: string;
     collections: string[];
     llvm: string;
+    core: string;
     target: string;
     mode: string;
     error: string;
@@ -33,7 +34,7 @@ CliInvocation :: struct {
 }
 
 NewInvocation :: (command: string) -> CliInvocation {
-    return {command: command, path: "", root: "", entry: "Main", collections: [], llvm: "", target: "", mode: "2", error: "", tail_first: 0, valid: true,
+    return {command: command, path: "", root: "", entry: "Main", collections: [], llvm: "", core: "", target: "", mode: "2", error: "", tail_first: 0, valid: true,
             help: false, watch: false, native: false, debug: false, static_link: false, shared: false};
 }
 
@@ -80,13 +81,15 @@ ParseRun :: (arguments: string[], first: int) -> CliInvocation {
         } else if (argument == "-g" && !invocation.debug) {
             invocation.debug = true;
         } else if (argument == "--llvm" || argument == "--target" || argument == "--entry" ||
-                   argument == "--collection" || argument == "--root") {
+                   argument == "--collection" || argument == "--root" || argument == "--core") {
             if (index + 1 >= length(arguments) || arguments[index + 1] == "" || IsOption(arguments[index + 1])) {
                 return Invalid(invocation, format_text("{} needs a nonempty value", argument));
             }
             index += 1;
             if (argument == "--llvm") {
                 invocation.llvm = arguments[index];
+            } else if (argument == "--core") {
+                invocation.core = arguments[index];
             } else if (argument == "--target") {
                 invocation.target = arguments[index];
             } else if (argument == "--entry") {
@@ -230,6 +233,7 @@ Usage :: (program: string) -> string {
         "directory without one, and fails when one fails.\n",
         "run compiles a program natively and calls Main, or --entry NAME.\n",
         "--root DIR resolves project imports; --collection NAME=DIR adds a package collection.\n",
+        "--core DIR selects core packages for this run without changing the environment.\n",
         "Distinct source/entry combinations own separate cached programs. Arguments come after\n",
         "PATH or --, and it needs the LLVM tools as build --native does.\n"]);
 }
@@ -507,8 +511,13 @@ RunProgram :: (invocation: CliInvocation, tail: string[]) -> int {
         return 2;
     }
     core := CoreFolder();
-    if (core == "") {
-        Complain("cannot find the SDK's share/chibi/core; set CHIBI_CORE");
+    if (invocation.core != "") { core = os.RealPath(invocation.core); }
+    if (core == "" || !os.IsDirectory(core)) {
+        if (invocation.core != "") {
+            Complain(strings.Concatenate(["run: cannot find core directory: ", invocation.core]));
+        } else {
+            Complain("cannot find the SDK's share/chibi/core; set CHIBI_CORE");
+        }
         return 2;
     }
     subject := Resolve(Default(invocation.path, "."));

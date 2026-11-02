@@ -98,6 +98,18 @@ ForeignBacking :: (code: ^(native.Instruction[]), slots: ^(int[]), arguments: ^(
     checked = Expected(code, slots, checked, copied, 7);
     code.append(Op(native.ValueDrop, array, 0, canonical, 0, 0));
     code.append(Op(native.ValueDrop, array, 0, later, 0, 0));
+    // Explicit native ArrayCopy keeps its physical clone contract for raw
+    // foreign callers that do not carry source-level writable-place loans.
+    raw := Value(code, slots, native.ArrayPush, array, empty, seven, 0, 1);
+    cloned := Value(code, slots, native.ArrayCopy, array, raw, 0, 0, 0);
+    begin = length(arguments^);
+    arguments.extend([cloned, raw]);
+    raw_result := Value(code, slots, native.ForeignCall, abi.IntStorage, 0, begin, 2, 0);
+    checked = Expected(code, slots, checked, raw_result, 7);
+    changed_raw := Value(code, slots, native.ArrayGet, abi.IntStorage, cloned, zero, 0, 0);
+    checked = Expected(code, slots, checked, changed_raw, 9);
+    code.append(Op(native.ValueDrop, array, 0, cloned, 0, 0));
+    code.append(Op(native.ValueDrop, array, 0, raw, 0, 0));
     // Zero descriptors remain C null pointers. An allocated zero-length
     // value with spare capacity remains a nonnull buffer, including a shared one.
     unbacked := Value(code, slots, native.Constant, array, 0, 0, 0, 0);
@@ -190,11 +202,30 @@ Main :: () -> int {
         Op(native.ArrayPush, array, 2, 0, 1, 0), Op(native.ArrayPush, array, 3, 2, 1, 0),
         Op(native.Publish, array, 0, 3, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)]);
     slots.extend([array, abi.IntStorage, array, array]);
-    functions := [function, borrowed, loan];
-    parameters := [array, array];
+    // Copying an aggregate must store an imported array descriptor back
+    // into the copied field. Keeping only its original borrowed bits leaks
+    // the import and fails to isolate the caller's memory.
+    record_type := native.RecordType + 1;
+    record_input: native.Function = {result: abi.IntStorage, first_parameter: 2, parameters: 1,
+        first_slot: length(slots), slots: 13, first_local: 1, locals: 0,
+        first_code: length(code), code: 18, first_argument: length(foreign_arguments), arguments: 0};
+    code.extend([Op(native.Check, 0, 0, 0, 0, 0), Op(native.Argument, record_type, 0, 0, 0, 0),
+        Op(native.ValueCopy, record_type, 1, 0, 0, 0), Op(native.Extract, array, 2, 1, record_type, 0),
+        Op(native.Constant, abi.IntStorage, 3, 0, 0, 0), Op(native.Constant, abi.IntStorage, 4, 0, 0, 99),
+        {op: native.ArraySet, type: array, output: 5, left: 2, right: 3, target: 4, literal: 0},
+        Op(native.ArrayGet, abi.IntStorage, 6, 5, 3, 0), Op(native.Extract, array, 7, 0, record_type, 0),
+        Op(native.ArrayGet, abi.IntStorage, 8, 7, 3, 0), Op(native.Constant, abi.IntStorage, 9, 0, 0, 7),
+        Op(native.Sub, abi.IntStorage, 10, 8, 9, 0), Op(native.Sub, abi.IntStorage, 11, 6, 4, 0),
+        Op(native.BitOr, abi.IntStorage, 12, 10, 11, 0), Op(native.ValueDrop, record_type, 0, 1, 0, 0),
+        Op(native.ValueDrop, record_type, 0, 0, 0, 0), Op(native.Publish, abi.IntStorage, 0, 12, 0, 0),
+        Op(native.Return, 0, 0, 0, 0, 0)]);
+    slots.extend([record_type, record_type, array, abi.IntStorage, abi.IntStorage, array, abi.IntStorage,
+                  array, abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage, abi.IntStorage]);
+    functions := [function, borrowed, loan, record_input];
+    parameters := [array, array, record_type];
     native_locals := [array];
-    records: native.Record[] = [{first: 0, count: 1}];
-    fields := [abi.TextStorage];
+    records: native.Record[] = [{first: 0, count: 1}, {first: 1, count: 1}];
+    fields := [abi.TextStorage, array];
     source: native.Source = {file: "", directory: ""};
     empty: int[] = [];
     texts := ["chibi_value_probe_alias", "chibi_value_probe_pointer"];
@@ -233,7 +264,8 @@ Main :: () -> int {
             "  %data = extractvalue { i32, i32, ptr, ptr } %room, 2\n  store i32 7, ptr %data\n",
             "  %grown = call { i32, i32, ptr, ptr } @chibi_scalar.2(ptr @chibi_value_test_ctx, { i32, i32, ptr, ptr } %room)\n",
             "  call void @chibi_array.1030.drop(ptr @chibi_value_test_ctx, { i32, i32, ptr, ptr } %grown)\n",
-            "  %result = or i32 %value.result, %borrowed.result"]));
+            "  %record.result = call i32 @chibi_scalar.3(ptr @chibi_value_test_ctx, %record1 { { i32, i32, ptr, ptr } { i32 2, i32 2, ptr @chibi_value_test_borrowed, ptr null } })\n",
+            "  %array.result = or i32 %value.result, %borrowed.result\n  %result = or i32 %array.result, %record.result"]));
     if (os.WriteText(module, strings.Concatenate([text, borrowed_data, audit_text])) ||
         os.WriteText(start, link.Start(target.triple, false, true))) { return 2; }
     for (level in [int(0), 2]) {

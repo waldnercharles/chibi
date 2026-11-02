@@ -555,6 +555,11 @@ pub ChangeDirectory :: (path: string) -> bool {
     return chdir(path) == 0;
 }
 
+// Sets mode 0755 after artifact transfer has discarded a program's file mode.
+pub MakeExecutable :: (path: string) -> bool {
+    return chmod(path, 493) == 0;
+}
+
 // The current working directory, "" when it cannot be read.
 pub Root :: () -> string {
     buffer := Block(4096);

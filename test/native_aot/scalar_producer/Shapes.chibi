@@ -1,0 +1,118 @@
+package native_driver
+
+import facts "project:scalar_facts"
+import strings "core:strings"
+
+TypedRows :: (rows: facts.Row[], indices: int[], type: int) {
+    for index in indices { assert(rows[index].type == type, "producer operand storage"); }
+}
+WidthShape :: (rows: facts.Row[]) {
+    indices: int[] = [4, 5, WidthWidened, WidthRead, WidthWrapped, WidthShiftCount, WidthShift];
+    types: int[] = [facts.IntType, facts.ByteType, facts.IntType, facts.IntType, facts.ByteType, facts.ByteType, facts.ByteType];
+    values: int[] = [0, 1, 0, 0, 1, 0, 9];
+    literals: i64[] = [298, 0, 0, 0, 0, 1, 0];
+    for index in 0..<length(indices) {
+        row := rows[indices[index]];
+        assert(row.type == types[index] && row.value == values[index] && row.literal == literals[index]);
+    }
+}
+LoopShape :: (rows: facts.Row[]) {
+    row := rows[LoopFor];
+    assert(row.type == facts.IntType && row.value == 2 && row.count == 2 && row.literal == i64(facts.RangeExclusive));
+    assert(row.name == "i" && rows[LoopTrue].literal == 1);
+}
+SwitchShape :: (rows: facts.Row[]) {
+    indices: int[] = [SwitchRow, SwitchFirst, SwitchDefault, SwitchLast];
+    counts: int[] = [1, 1, 0, 1];
+    for index in 0..<length(indices) {
+        row := rows[indices[index]];
+        assert(row.type == facts.IntType && row.count == counts[index]);
+    }
+    assert(rows[SwitchLastValue].literal == 20);
+}
+RecordShape :: (rows: facts.Row[]) {
+    assert(rows[RecordDeclaration].name == "Point" && rows[RecordDeclaration].count == 2);
+    assert(rows[RecordX].name == "x" && rows[RecordX].type == facts.IntType);
+    assert(rows[RecordY].name == "y" && rows[RecordY].type == facts.FloatType && rows[RecordY].value == 1);
+    TypedRows(rows, [RecordLocal, RecordAssign, RecordRead, RecordMake, RecordZero, RecordYUpdate], facts.RecordType);
+    assert(rows[RecordYUpdate].value == 1 && rows[RecordYUpdate + 2].value == 0);
+    assert(rows[RecordYUpdate - 1].type == facts.FloatType && rows[RecordField].type == facts.IntType);
+}
+UnionShape :: (rows: facts.Row[]) {
+    assert(rows[UnionDeclaration].name == "Shape" && rows[UnionDeclaration].count == 2);
+    assert(rows[UnionDot].name == "Dot" && rows[UnionDot].count == 0);
+    assert(rows[UnionBox].name == "Box" && rows[UnionBox].value == 1 && rows[UnionBox].count == 2);
+    assert(rows[UnionW].name == "w" && rows[UnionW].type == facts.IntType);
+    assert(rows[UnionH].name == "h" && rows[UnionH].type == facts.FloatType && rows[UnionH].value == 1);
+    TypedRows(rows, [UnionLocal, UnionLocal + 2, UnionIsTag - 1, UnionMake], facts.RecordType);
+    assert(rows[UnionMake].value == 1 && rows[UnionMake].count == 2);
+    TypedRows(rows, [UnionIsTag, UnionIsVariant, UnionSwitch, UnionSwitchTag, UnionDotArm, UnionDotVariant,
+                     UnionBoxArm, UnionWLocal], facts.IntType);
+    assert(rows[UnionIsVariant].literal == 0 && rows[UnionDotArm].count == 1 && rows[UnionBoxArm].count == 0);
+    assert(rows[UnionWLocal].name == "w" && rows[UnionHLocal].name == "h");
+    assert(rows[UnionHLocal].type == facts.FloatType && rows[UnionHLocal].value == 2);
+    assert(rows[UnionWPayload].value == 0 && rows[UnionHPayload].value == 1);
+}
+StringShape :: (rows: facts.Row[]) {
+    TypedRows(rows, [StringLocal, StringArgument, StringRead, StringLiteral, StringName,
+                     StringParameter, StringParameterRead], facts.StringType);
+    for index in [StringArgument, StringLiteral] {
+        assert(rows[index].text == "one" && rows[index].literal == 0);
+    }
+    assert(rows[StringCompare].type == facts.BoolType);
+    text := IR(rows);
+    assert(strings.Contains(text, "@chibi_scalar.text.0 = private unnamed_addr constant [4 x i8] c\"one\\00\""));
+    assert(!strings.Contains(text, "@chibi_scalar.text.1"), "equal literals share their emitted bytes");
+    long := ChangedRows(rows, [Named(StringLiteral, TextField, strings.Repeat("a", 40000))]);
+    ValidateRows(long, "");
+}
+TextShape :: (rows: facts.Row[]) {
+    indices: int[] = [TextSlice, TextLength, TextByte];
+    operations: int[] = [facts.TextSlice, facts.TextLength, facts.TextByte];
+    counts: int[] = [3, 1, 2];
+    types: int[] = [facts.StringType, facts.IntType, facts.IntType];
+    for index in 0..<length(indices) {
+        row := rows[indices[index]];
+        assert(row.value == operations[index] && row.count == counts[index] && row.type == types[index]);
+    }
+    assert(rows[TextSource].text == "abcd");
+}
+FormatShape :: (rows: facts.Row[]) {
+    row := rows[FormatText];
+    assert(row.value == facts.TextFormat && row.count == 4 && row.type == facts.StringType);
+    assert(rows[FormatInt].type == facts.Int64Type && rows[FormatFormat].text == "{}{}{}");
+}
+AssertShape :: (rows: facts.Row[]) {
+    call := "assert(x < 2, \"x is small\")";
+    start := strings.Index(AssertsFixtureSource(), call);
+    end := start + strings.ByteLength(call);
+    row := rows[AssertStatement];
+    assert(row.count == 3 && row.type == 0 && row.start == start && row.end == end && row.line == 4 && row.column == 5);
+    text := IR(rows);
+    expected := format_text("@chibi_scalar.failure.0.7 = private unnamed_addr constant { i64, i32, i32 } { i64 0, i32 {}, i32 {} }\n", start, end);
+    assert(strings.Contains(text, expected));
+    assert(strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
+    assert(strings.Contains(text, "  br i1 %a6, label %p8, label %p7\n"));
+    assert(strings.Contains(text, "p7:\n  %fail7.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 1\n  store ptr @chibi_scalar.failure.0.7, ptr %fail7.at\n  br label %failed\n"));
+    assert(strings.Contains(text, "failed:\n  ret i32 0\n"));
+}
+GenericShape :: (rows: facts.Row[]) {
+    assert(length(rows) > 2 && rows[2].kind == facts.FunctionRow);
+    functions: facts.Row[] = [];
+    for row in rows {
+        if row.kind == facts.FunctionRow {
+            assert(row.literal == 0 && row.count <= 1);
+            functions.append(row);
+        }
+    }
+    assert(length(functions) == 7);
+    calls := 0;
+    for row in rows {
+        if row.kind == facts.CallRow {
+            assert(row.value >= 0 && row.value < length(functions));
+            assert(row.count == functions[row.value].count && row.name == functions[row.value].name);
+            calls += 1;
+        }
+    }
+    assert(calls == 6);
+}

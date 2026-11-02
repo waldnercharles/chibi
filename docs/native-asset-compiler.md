@@ -7,6 +7,11 @@ publishes the same prepared closure bytes and first source diagnostic as the
 former VM-hosted compiler. Prepared closures still belong to the runtime; this
 migration removes the compiler's VM dependency, not the runtime reader.
 
+Native SDK metadata takes the prepared format version and encoder digest from
+`tools/compiler/prepared_writer/Writer.chibi`. It requires no C VM decoder or
+event-catalog source. `sdk/PROJECT_VERSION` owns the compatibility number that
+`chibi version` reports for the archived project format.
+
 The SDK installs the service in `libexec/chibi`. Authoring consumers ship the
 companion beside their executable; Studio copies and installs it beside
 `chibi-dev`. The desktop C facade accepts an explicit `options.program`, then

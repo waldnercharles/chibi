@@ -166,3 +166,66 @@ pub BuildNative :: (driver: string, llvm: string, root: string, build_dir: strin
     }
     return built;
 }
+
+VersionDigitZero: int : 48;
+VersionDigitNine: int : 57;
+
+// A positive canonical int32 version works in both metadata JSON and the
+// remaining C test fixture. Reject missing/malformed owners without defaults.
+VersionNumber :: (text: string) -> bool {
+    size := strings.ByteLength(text);
+    if (size == 0 || strings.ByteAt(text, 0) == VersionDigitZero) { return false; }
+    value: i64 = 0;
+    for (index in 0..<size) {
+        byte := strings.ByteAt(text, index);
+        if (byte < VersionDigitZero || byte > VersionDigitNine) { return false; }
+        value = value * 10 + i64(byte - VersionDigitZero);
+        if (value > 2147483647) { return false; }
+    }
+    return true;
+}
+
+ProjectVersion :: (source_root: string) -> string {
+    path := Join([source_root, "/sdk/PROJECT_VERSION"]);
+    text := strings.TrimSpace(files.Text(path));
+    if (!VersionNumber(text)) {
+        os.Print(Join(["graph: invalid project compatibility version ", path]));
+        return "";
+    }
+    return text;
+}
+
+// The prepared writer owns this declaration and every byte of its codec.
+// Read its Version declaration directly when writing metadata.
+PreparedVersion :: (text: string) -> string {
+    found := "";
+    for (line in strings.SplitLines(text)) {
+        parts := strings.Partition(line, ":");
+        if (strings.TrimSpace(parts.head) != "Version") { continue; }
+        typed := strings.Partition(parts.tail, ":");
+        value := strings.TrimSpace(typed.tail);
+        if (found != "" || strings.TrimSpace(typed.head) != "int" || !strings.HasSuffix(value, ";")) { return ""; }
+        value = strings.TrimSpace(strings.TrimSuffix(value, ";"));
+        if (!VersionNumber(value)) { return ""; }
+        found = value;
+    }
+    return found;
+}
+
+// Native distributions keep the compile-only prepared artifact API. Its
+// authored encoder owns the reported format. Read/hash the same source bytes once.
+NativeIdentity :: (source_root: string, processor: string) -> string {
+    sdk := SDKVersion(source_root);
+    project := ProjectVersion(source_root);
+    owner := "tools/compiler/prepared_writer/Writer.chibi";
+    path := Join([source_root, "/", owner]);
+    source := files.Text(path);
+    version := PreparedVersion(source);
+    if (sdk == "" || project == "" || version == "") {
+        if (version == "") { os.Print(Join(["graph: invalid prepared format version ", path])); }
+        return "";
+    }
+    record := Join(["\"execution\": {\"version\": ", version, ", \"source\": \"", owner,
+                    "\", \"sha256\": \"", os.HashText(source), "\"}"]);
+    return IdentityText(sdk, project, processor, "[\"native\"]", [record]);
+}

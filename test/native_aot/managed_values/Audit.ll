@@ -1,6 +1,7 @@
 ; Count allocations and poison released bytes around real source programs.
 ; The native start module calls this entry; no VM or C test host participates.
 @chibi_value_test_live = internal global i64 0
+@chibi_value_test_total = internal global i64 0
 @chibi_value_test_ctx = internal global { ptr, ptr, ptr, ptr, ptr } { ptr null, ptr null, ptr @chibi_value_test_allocate, ptr null, ptr @chibi_value_test_release }
 declare ptr @malloc(i64)
 declare void @free(ptr)
@@ -8,6 +9,9 @@ declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 
 define internal ptr @chibi_value_test_allocate(ptr %ctx, i64 %bytes) {
 entry:
+  %total = load i64, ptr @chibi_value_test_total
+  %allocated = add i64 %total, 1
+  store i64 %allocated, ptr @chibi_value_test_total
   %count = load i64, ptr @chibi_value_test_live
   %next = add i64 %count, 1
   store i64 %next, ptr @chibi_value_test_live
@@ -42,4 +46,10 @@ entry:
   store ptr %checked.failure, ptr %destination
   %checked = select i1 %balanced, i32 %result, i32 99
   ret i32 %checked
+}
+
+define i64 @chibi_value_test_allocations() {
+entry:
+  %total = load i64, ptr @chibi_value_test_total
+  ret i64 %total
 }

@@ -1,0 +1,285 @@
+package native_driver
+
+import facts "project:scalar_facts"
+
+// Real producer fixtures and all 169 malformed variants ported from the C
+// scalar producer tests. Each variant changes the collected rows, never a
+// separately invented representation fixture.
+
+GuardsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Pick(1, 2); }\nPick :: (a: int, b: int) -> int {\n    if (a < b) { return Id(a); }\n    return b;\n}\nId :: (x: int) -> int { return x; }\n"; }
+GuardsRows :: () -> facts.Row[] {
+    rows := Produced(GuardsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.LiteralRow, facts.CallRow, facts.FunctionRow, facts.ParameterRow, facts.ParameterRow, facts.IfRow, facts.ReadRow, facts.ReadRow, facts.CompareRow, facts.ReturnRow, facts.ReadRow, facts.CallRow, facts.EndRow, facts.ReturnRow, facts.ReadRow, facts.FunctionRow, facts.ParameterRow, facts.ReturnRow, facts.ReadRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(10, CountField, 0)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(18, KindField, 9)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(17, KindField, 16)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(7, CountField, 2147483647)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(13, ValueField, 0)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(13, ValueField, 7)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(13, CountField, 1)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(13, TypeField, 1)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(12, KindField, 6), Changed(12, TypeField, 2), Changed(12, ValueField, 0), Changed(12, LiteralField, 1)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(11, KindField, 6), Changed(11, TypeField, 2), Changed(12, KindField, 6), Changed(12, TypeField, 2), Changed(12, ValueField, 0)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(13, KindField, 7), Changed(13, TypeField, 1), Changed(13, CountField, 0)], "scalar condition is not one bool");
+    RejectChanged(rows, [Changed(10, TypeField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(14, EndField, 18)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(11, StartField, 15), Copied(11, EndField, 15), Copied(11, LineField, 15), Copied(11, ColumnField, 15)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(18, StartField, 10), Copied(18, LineField, 10), Copied(18, ColumnField, 10)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(17, EndField, 18)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(15, ValueField, 2)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(18, KindField, 15), Changed(18, TypeField, 1), Changed(18, ValueField, 1)], "scalar function can end without returning");
+    RejectChanged(rows, [Changed(23, KindField, 8), Changed(23, ValueField, 0), Named(23, NameField, "Other")], "scalar call differs from its callee's signature");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+ArithmeticFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Calc(3, 4); }\nCalc :: (a: int, b: int) -> int { return -(a + b) * ~b; }\n"; }
+ArithmeticRows :: () -> facts.Row[] {
+    rows := Produced(ArithmeticFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.LiteralRow, facts.CallRow, facts.FunctionRow, facts.ParameterRow, facts.ParameterRow, facts.ReturnRow, facts.ReadRow, facts.ReadRow, facts.ArithmeticRow, facts.UnaryRow, facts.ReadRow, facts.UnaryRow, facts.ArithmeticRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(13, ValueField, 0)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(13, ValueField, 11)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(13, CountField, 1)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(13, TypeField, 2)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(14, ValueField, 0)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(14, ValueField, 3)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(14, CountField, 2)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(12, KindField, 6), Changed(12, TypeField, 2), Changed(12, ValueField, 0), Changed(12, LiteralField, 1)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(15, KindField, 6), Changed(15, TypeField, 2), Changed(15, ValueField, 0)], "scalar arithmetic differs from its number operands");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+WidthsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return int(Low(298)); }\nLow :: (x: int) -> u8 { return u8(wrap: x) << 1; }\n"; }
+WidthsRows :: () -> facts.Row[] {
+    rows := Produced(WidthsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.CallRow, facts.ConvertRow, facts.FunctionRow, facts.ParameterRow, facts.ReturnRow, facts.ReadRow, facts.ConvertRow, facts.LiteralRow, facts.ArithmeticRow]);
+    ValidateRows(rows, "");
+    // Mode 2 is now CheckedChar; the old C fixture predates that admission.
+    RejectChanged(rows, [Changed(6, ValueField, 3)], "scalar conversion is not one the runtime implements");
+    RejectChanged(rows, [Changed(6, CountField, 2)], "scalar conversion is not one the runtime implements");
+    RejectChanged(rows, [Changed(11, TypeField, 2)], "scalar conversion is not one the runtime implements");
+    RejectChanged(rows, [Changed(10, KindField, 6), Changed(10, TypeField, 2), Changed(10, ValueField, 0)], "scalar conversion is not one the runtime implements");
+    RejectChanged(rows, [Changed(12, LiteralField, 256)], "noncanonical scalar literal");
+    RejectChanged(rows, [Changed(12, LiteralField, -1)], "noncanonical scalar literal");
+    RejectChanged(rows, [Changed(10, LiteralField, 1)], "invalid scalar operand row");
+    RejectChanged(rows, [Changed(12, TypeField, 1)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(13, ValueField, 11)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(6, TypeField, 4)], "scalar return differs from its function's result");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+ControlFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Pick(1, 2); }\nPick :: (a: int, b: int) -> int {\n    x := a;\n    if (a < b && !(b < 0)) {\n        y := b;\n        x += y;\n    } else {\n        return b;\n    }\n    return x;\n}\n"; }
+ControlRows :: () -> facts.Row[] {
+    rows := Produced(ControlFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.LiteralRow, facts.CallRow, facts.FunctionRow, facts.ParameterRow, facts.ParameterRow, facts.LocalRow, facts.ReadRow, facts.IfRow, facts.ReadRow, facts.ReadRow, facts.CompareRow, facts.LogicalRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.UnaryRow, facts.LocalRow, facts.ReadRow, facts.AssignRow, facts.ReadRow, facts.ReadRow, facts.ArithmeticRow, facts.ElseRow, facts.ReturnRow, facts.ReadRow, facts.EndRow, facts.ReturnRow, facts.ReadRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(16, CountField, 0)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, CountField, 5)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, CountField, 1)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, CountField, 2147483647)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, ValueField, 3)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, TypeField, 1)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(20, TypeField, 1)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(11, ValueField, 2)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(32, ValueField, 3)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(29, ValueField, 3)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(10, ValueField, 3)], "invalid scalar local row");
+    RejectChanged(rows, [Named(10, NameField, "")], "invalid scalar local row");
+    RejectChanged(rows, [Changed(10, TypeField, 0)], "invalid scalar local row");
+    RejectChanged(rows, [Changed(23, ValueField, 5)], "scalar assignment differs from its variable");
+    RejectChanged(rows, [Changed(23, TypeField, 2)], "scalar assignment differs from its variable");
+    RejectChanged(rows, [Changed(30, KindField, 16)], "invalid scalar module layout");
+    RejectChanged(rows, [Copied(27, EndField, 31)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(30, StartField, 27), Copied(30, LineField, 27), Copied(30, ColumnField, 27)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(31, KindField, 15), Changed(31, TypeField, 1), Changed(31, ValueField, 2)], "scalar function can end without returning");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+LoopsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Sum(3); }\nSum :: (n: int) -> int {\n    total := 0;\n    for (i in 0..<n) {\n        if (i == 1) { break; }\n        total += i;\n    }\n    while (true) {\n        if (total > 1) { return total; }\n        total += 1;\n        if (total < 0) { continue; }\n    }\n}\n"; }
+LoopsRows :: () -> facts.Row[] {
+    rows := Produced(LoopsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.CallRow, facts.FunctionRow, facts.ParameterRow, facts.LocalRow, facts.LiteralRow, facts.ForRow, facts.LiteralRow, facts.ReadRow, facts.IfRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.BreakRow, facts.EndRow, facts.AssignRow, facts.ReadRow, facts.ReadRow, facts.ArithmeticRow, facts.EndRow, facts.WhileRow, facts.LiteralRow, facts.IfRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.ReturnRow, facts.ReadRow, facts.EndRow, facts.AssignRow, facts.ReadRow, facts.LiteralRow, facts.ArithmeticRow, facts.IfRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.ContinueRow, facts.EndRow, facts.EndRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(41, KindField, 21)], "scalar function can end without returning");
+    RejectChanged(rows, [Changed(25, LiteralField, 0)], "scalar function can end without returning");
+    RejectChanged(rows, [Changed(24, KindField, 9)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(17, CountField, 1)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(17, TypeField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(41, ValueField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(25, TypeField, 1)], "scalar condition is not one bool");
+    RejectChanged(rows, [Changed(11, TypeField, 2)], "scalar range differs from its int bounds");
+    RejectChanged(rows, [Changed(10, ValueField, 5)], "invalid scalar local row");
+    RejectChanged(rows, [Changed(10, TypeField, 2)], "invalid scalar local row");
+    RejectChanged(rows, [Changed(10, LiteralField, 8)], "invalid scalar local row");
+    RejectChanged(rows, [Named(10, NameField, "")], "invalid scalar local row");
+    RejectChanged(rows, [Changed(19, ValueField, 2)], "scalar assignment differs from its variable");
+    RejectChanged(rows, [Changed(12, ValueField, 2)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(34, ValueField, 2)], "scalar read differs from its variable");
+    RejectChanged(rows, [Copied(23, EndField, 43)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(13, StartField, 12), Copied(13, LineField, 12), Copied(13, ColumnField, 12)], "invalid scalar statement row");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+SwitchesFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Pick(2); }\nPick :: (x: int) -> int {\n    switch x {\n        case 1: return 10;\n        case: y := x; return y;\n        case 2: return 20;\n    }\n}\n"; }
+SwitchesRows :: () -> facts.Row[] {
+    rows := Produced(SwitchesFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.CallRow, facts.FunctionRow, facts.ParameterRow, facts.SwitchRow, facts.ReadRow, facts.CaseRow, facts.LiteralRow, facts.ReturnRow, facts.LiteralRow, facts.CaseRow, facts.LocalRow, facts.ReadRow, facts.ReturnRow, facts.ReadRow, facts.CaseRow, facts.LiteralRow, facts.ReturnRow, facts.LiteralRow, facts.EndRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(10, KindField, 5)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(8, KindField, 9)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(10, CountField, 0), Changed(11, KindField, 24), Changed(11, LiteralField, 0)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(8, TypeField, 2)], "scalar switch value is not one integer");
+    RejectChanged(rows, [Changed(8, TypeField, 10)], "scalar switch value is not one integer");
+    RejectChanged(rows, [Changed(8, TypeField, 8)], "scalar switch value is not one integer");
+    RejectChanged(rows, [Changed(10, TypeField, 4)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(11, TypeField, 2)], "scalar case value differs from its switch value");
+    RejectChanged(rows, [Changed(19, ValueField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Named(19, NameField, "x")], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(19, EndField, 6)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(12, StartField, 11), Copied(12, LineField, 11), Copied(12, ColumnField, 11)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(23, EndField, 6)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(22, KindField, 7), Changed(22, ValueField, 1), Changed(22, LiteralField, 0)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(21, KindField, 15), Changed(21, TypeField, 1), Changed(21, ValueField, 0)], "scalar function can end without returning");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+RecordsFixtureSource :: () -> string { return "package scalar\nPoint :: struct { x: int; y: number; }\nMain :: () -> int { p := Make(3); p.x += 1; return p.x; }\nMake :: (x: int) -> Point { return {y: 0.5, x: x}; }\n"; }
+RecordsRows :: () -> facts.Row[] {
+    rows := Produced(RecordsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.RecordRow, facts.MemberRow, facts.MemberRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.CallRow, facts.AssignRow, facts.ReadRow, facts.ReadRow, facts.FieldRow, facts.LiteralRow, facts.ArithmeticRow, facts.UpdateRow, facts.ReturnRow, facts.ReadRow, facts.FieldRow, facts.FunctionRow, facts.ParameterRow, facts.ReturnRow, facts.ZeroRow, facts.LiteralRow, facts.UpdateRow, facts.ReadRow, facts.UpdateRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(2, CountField, 3)], "invalid scalar record member row");
+    RejectChanged(rows, [Changed(2, CountField, 2147483647)], "invalid scalar record row");
+    RejectChanged(rows, [Named(2, NameField, "")], "invalid scalar record row");
+    RejectChanged(rows, [Changed(2, TypeField, 1)], "invalid scalar record row");
+    RejectChanged(rows, [Changed(4, TypeField, 32)], "invalid scalar record row");
+    RejectChanged(rows, [Changed(4, TypeField, 12)], "scalar field write differs from its record");
+    RejectChanged(rows, [Changed(3, ValueField, 1)], "invalid scalar record member row");
+    RejectChanged(rows, [Named(4, NameField, "x")], "invalid scalar record member row");
+    RejectChanged(rows, [Copied(4, EndField, 19)], "invalid scalar record member row");
+    RejectChanged(rows, [Changed(19, TypeField, 33)], "scalar call differs from its callee's signature");
+    RejectChanged(rows, [Changed(6, TypeField, 1)], "scalar value differs from its variable");
+    RejectChanged(rows, [Changed(9, TypeField, 1)], "scalar assignment differs from its variable");
+    RejectChanged(rows, [Changed(17, TypeField, 1)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(22, TypeField, 1)], "scalar record zero names no record");
+    RejectChanged(rows, [Changed(18, ValueField, 1)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(18, ValueField, 2)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(18, TypeField, 10)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(18, CountField, 2)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(12, ValueField, -1)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(24, ValueField, 0)], "scalar field write differs from its record");
+    RejectChanged(rows, [Changed(15, ValueField, 1)], "scalar field write differs from its record");
+    RejectChanged(rows, [Changed(15, TypeField, 1)], "scalar field write differs from its record");
+    RejectChanged(rows, [Changed(15, CountField, 1)], "scalar field write differs from its record");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+UnionsFixtureSource :: () -> string { return "package scalar\nShape :: union { Dot | Box(w: int, h: number) }\nMain :: () -> int {\n    s := Make(3);\n    if (s is .Dot) { return 0; }\n    switch s { case .Dot: return 1; case .Box(w, h): return w; }\n}\nMake :: (w: int) -> Shape { return Shape.Box(w, 0.5); }\n"; }
+UnionsRows :: () -> facts.Row[] {
+    rows := Produced(UnionsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.UnionRow, facts.VariantRow, facts.VariantRow, facts.MemberRow, facts.MemberRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.CallRow, facts.IfRow, facts.ReadRow, facts.TagRow, facts.LiteralRow, facts.CompareRow, facts.ReturnRow, facts.LiteralRow, facts.EndRow, facts.SwitchRow, facts.ReadRow, facts.TagRow, facts.CaseRow, facts.LiteralRow, facts.ReturnRow, facts.LiteralRow, facts.CaseRow, facts.LocalRow, facts.ReadRow, facts.PayloadRow, facts.LocalRow, facts.ReadRow, facts.PayloadRow, facts.ReturnRow, facts.ReadRow, facts.EndRow, facts.FunctionRow, facts.ParameterRow, facts.ReturnRow, facts.ReadRow, facts.LiteralRow, facts.MakeRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(2, CountField, 3)], "invalid scalar union row");
+    RejectChanged(rows, [Named(2, NameField, "")], "invalid scalar union row");
+    RejectChanged(rows, [Changed(2, TypeField, 1)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(2, ValueField, 1)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(4, ValueField, 0)], "invalid scalar union variant row");
+    RejectChanged(rows, [Named(4, NameField, "Dot")], "invalid scalar union variant row");
+    RejectChanged(rows, [Copied(4, EndField, 7)], "invalid scalar union variant row");
+    RejectChanged(rows, [Changed(4, CountField, 1)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(3, CountField, 2147483647)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(4, CountField, 2147483647)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(2, CountField, 2147483647)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(6, ValueField, 0)], "invalid scalar union member row");
+    RejectChanged(rows, [Changed(6, TypeField, 32)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(6, TypeField, 12)], "scalar payload read differs from its union");
+    RejectChanged(rows, [Named(6, NameField, "w")], "invalid scalar union member row");
+    RejectChanged(rows, [Copied(6, EndField, 7)], "invalid scalar union member row");
+    RejectChanged(rows, [Changed(41, ValueField, 0)], "scalar variant differs from its union");
+    RejectChanged(rows, [Changed(41, CountField, 1)], "scalar variant differs from its union");
+    RejectChanged(rows, [Changed(41, TypeField, 1)], "scalar variant differs from its union");
+    RejectChanged(rows, [Changed(13, TypeField, 2)], "scalar tag reads no union");
+    RejectChanged(rows, [Changed(13, CountField, 2)], "scalar tag reads no union");
+    RejectChanged(rows, [Changed(13, ValueField, 1)], "scalar tag reads no union");
+    RejectChanged(rows, [Changed(32, ValueField, 0)], "scalar payload read differs from its union");
+    RejectChanged(rows, [Changed(32, ValueField, 2)], "scalar payload read differs from its union");
+    RejectChanged(rows, [Changed(29, TypeField, 10)], "scalar payload read differs from its union");
+    RejectChanged(rows, [Changed(17, KindField, 27), Changed(17, TypeField, 32)], "scalar record zero names no record");
+    RejectChanged(rows, [Changed(13, KindField, 29)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(14, TypeField, 2), Changed(14, LiteralField, 0)], "scalar comparison differs from its operands");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+StringsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int {\n    s := Name(\"one\");\n    if (s != \"one\") { return 0; }\n    return 1;\n}\nName :: (n: string) -> string { return n; }\n"; }
+StringsRows :: () -> facts.Row[] {
+    rows := Produced(StringsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.CallRow, facts.IfRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.ReturnRow, facts.LiteralRow, facts.EndRow, facts.ReturnRow, facts.LiteralRow, facts.FunctionRow, facts.ParameterRow, facts.ReturnRow, facts.ReadRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Named(11, TextField, "x")], "invalid scalar operand row");
+    RejectChanged(rows, [Named(7, TextField, "one")], "invalid scalar operand row");
+    RejectChanged(rows, [Changed(8, LiteralField, 1)], "noncanonical scalar literal");
+    RejectChanged(rows, [Changed(9, ValueField, 1)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(9, ValueField, 4)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(8, TypeField, 1), Named(8, TextField, "")], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(3, TypeField, 1)], "scalar value differs from its variable");
+    RejectChanged(rows, [Changed(18, TypeField, 2)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(16, TypeField, 1)], "scalar call argument differs from its parameter");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+TextFixtureSource :: () -> string { return "package scalar\nMain :: () -> int {\n    s := text_slice(\"abcd\", 1, 2);\n    return text_byte_length(s) + text_byte_at(s, 0);\n}\n"; }
+TextRows :: () -> facts.Row[] {
+    rows := Produced(TextFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.LiteralRow, facts.LiteralRow, facts.TextRow, facts.ReturnRow, facts.ReadRow, facts.TextRow, facts.ReadRow, facts.LiteralRow, facts.TextRow, facts.ArithmeticRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(7, ValueField, 0)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(7, ValueField, 5)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(7, CountField, 2)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(7, TypeField, 1)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(10, TypeField, 12)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Named(10, NameField, "x")], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(13, ValueField, 1)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(13, ValueField, 3), Changed(13, CountField, 3)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(5, TypeField, 2)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(12, TypeField, 8)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(4, TypeField, 1), Named(4, TextField, "")], "scalar text read differs from its operands");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+FormatsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int {\n    s := format_text(\"{}{}{}\", i64(7), true, \"x\");\n    return text_byte_length(s);\n}\n"; }
+FormatsRows :: () -> facts.Row[] {
+    rows := Produced(FormatsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.LiteralRow, facts.LiteralRow, facts.LiteralRow, facts.TextRow, facts.ReturnRow, facts.ReadRow, facts.TextRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(8, CountField, 5)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(8, CountField, 0)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(8, TypeField, 1)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(4, TypeField, 1), Named(4, TextField, "")], "scalar text read differs from its operands");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+AssertsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int {\n    x: int = 1;\n    assert(x < 2, \"x is small\");\n    return x;\n}\n"; }
+AssertsRows :: () -> facts.Row[] {
+    rows := Produced(AssertsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.AssertRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.ReturnRow, facts.ReadRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(5, TypeField, 2)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(5, ValueField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Named(5, NameField, "x")], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(5, LiteralField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(8, KindField, 11), Changed(8, TypeField, 1)], "scalar condition is not one bool");
+    ValidateRows(rows, "");
+    return rows;
+}

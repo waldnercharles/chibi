@@ -181,7 +181,7 @@ NewSuite :: (folder: string, built: string) -> Suite {
     for (shared in ["apps", "core"]) {
         Clone(Path([bin, "/../share/chibi/", shared]), Path([folder, "/share/chibi/", shared]));
     }
-    project := Defined(Path([os.Root(), "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
+    project := strings.TrimSpace(Read(Path([os.Root(), "/sdk/PROJECT_VERSION"])));
     Write(Path([folder, "/game with spaces/project.kdl"]), Path(["version ", project, "\nname \"CLI proof\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n"]));
     Write(Path([folder, "/game with spaces/content/scenes/Start.kdl"]), "version 1\nname \"Start\"\n(array)entities\n");
     stub := Path([folder, "/bin/chibi-compile"]);
@@ -216,7 +216,7 @@ VersionReadsTheBuildIdentity :: (suite: Suite) {
 // The launcher in place reads the identity its build generated.
 VersionOfTheBuiltLauncher :: (suite: Suite) {
     ran := At(suite, [suite.built, "version"]);
-    project := Defined(Path([os.Root(), "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
+    project := strings.TrimSpace(Read(Path([os.Root(), "/sdk/PROJECT_VERSION"])));
     assert(ran.status == 0 && strings.HasPrefix(ran.log, "chibi "), "the built identity");
     assert(Says(ran, Path(["\nproject format: ", project, "\n"])) && Says(ran, "\nartifact formats: ") && Says(ran, " execution "), "its formats");
 }

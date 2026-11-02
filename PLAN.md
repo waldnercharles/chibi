@@ -1,8 +1,9 @@
 # Native toolchain continuation
 
-The November 2 handoff is published as PR #1331 on `codex/native-default-20261102`,
-frozen at `1aaf0ef3e`. The next batch is being composed on
-`codex/native-runtime-completion-20261102`. The owner's checkout and
+The November 2 handoff continues in PR #1331 on `codex/native-default-20261102`.
+The combined checkpoint includes CI merge `a76ea8005` and compiler/core source
+`1d46f11a8`; its exact-revision platform CI is pending. Further work is composed
+on `codex/native-runtime-completion-20261102`. The owner's checkout and
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
@@ -22,21 +23,43 @@ The complete failing selector log is retained at
 `/tmp/chibi-engine-1aaf-failed.log`. These failures are migration work, not
 grounds to restore automatic fallback or omit surviving behavior checks.
 
-The combined local source at `337204e12` passes all 416 compiler tests in
-18.27 seconds, CLI/worker/assertion/generic checks in 23.67 seconds, map
-poison/allocation checks in 38.38 seconds, managed/foreign checks in 11.20
-seconds and optional-union checks in 25.88 seconds. Consecutive self-builds
-take 62.05 and 58.15 seconds and have identical SHA-256
-`a7aa0e4a1ba6d6d731c5ce2ce997c284a867d7441a02104c63b65c01992b29b5`.
-These concurrent timings are acceptance evidence, not controlled comparisons.
+The combined compiler/core source at `1d46f11a8` passes all 425 compiler tests
+in 21.26 seconds, the complete native CLI suite in 52.31 seconds, map ownership
+and poisoned-allocation checks in 41.11 seconds, generation/reload checks in
+13.06 seconds and native cache/publication checks in 6.44 seconds. Two self-builds
+take 56.63 and 56.16 seconds and produce identical SHA-256
+`06af8f15dca5e9c0df2e5bcc6afe2d86d45bd72c6e6515d0428c0e6f98cc9610`.
+The actual Wasm compiler service, including quotas, cancellation, concurrent
+pthread requests and allocation balance, passes in 168.11 seconds from an
+immutable snapshot of that source. These concurrent timings are acceptance
+evidence, not controlled performance comparisons.
 
-The next batch through `520b40a52` integrates foreign array loans, readonly
-array snapshots, owned aggregate copy results, named-result collision and
-grouped-float fixes, Windows loader/FFI fixtures, and the optional LLVM Wasm
-compiler SDK. Its plain and pthread archives execute in actual Chrome;
-`docs/evidence/native-wasm-browser-20261102.md` records the lane artifact
-identities and limits. The unused C application launcher is deleted.
-Combined validation of this newer source remains required.
+The VM-backed AOT driver is deleted at `44ed8dbc6`. Its surviving cache and
+publication cases use the native driver. All 25 native build cases pass in
+26.38 seconds, preserving their original worker deadline and all three Mac/six
+Windows build-program rows. Three Linux-only reload cases also execute in Linux
+Docker. Native-link object/archive and Unicode command-line cases pass on Mac
+(3.55 seconds) and Linux. The combined build/link bundle retains five Mac/eight
+Windows program cases; all five Mac cases execute successfully. The Linux local
+link/reload checks use the previously built `5065cd09d` Linux compiler with the
+current test sources; full exact-revision platform validation remains required.
+
+The single-workflow CI reconciliation at `fbf1ee054` is composed with the new
+retirement selectors and Windows checks. Its 34 orchestration tests pass in
+14.49 seconds, the composed native graph-driver suite passes in 14.78 seconds,
+and actionlint passes with shellcheck disabled. Both VM/native
+command comparisons remain until their replacement evidence permits deletion.
+The native compiler proof retains all 19 previous checks and adds character/
+UTF-8 coverage. Linux build timing and C graph checks remain in the `native`
+group rather than being repeated individually.
+
+The installed native CLI/SDK and optional LLVM Wasm compiler SDK are implemented;
+`docs/evidence/native-wasm-browser-20261102.md` records the earlier browser lane
+artifact identities and limits. Windows checkout, DLL isolation, UTF-8 and foreign
+buffer checks are wired into the combined CI and still need actual Windows
+execution at the new revision. Pending compiler work includes generic aggregate
+lifetimes, owned pointers and collection, math admission, process supervision,
+and the authored replacement for the C target runner.
 
 The evidence below is chronological. Older counts and gates describe their
 named revisions, not the latest integration. Remaining deletion gates are:
@@ -153,9 +176,13 @@ and passing combined behavior checks on the final source revision.
 
 ## Parallel performance work
 
-The performance chat `01a19cba-8db8-7041-9a3e-cb5293f1603b` owns
-`test/native_aot/native_build/BuildTests.chibi` and measured iteration-cost
-changes. Its frozen native baseline is `13e01f9055e555caf207642df8ab477f721c38c2`,
+Current ownership: root owns native build/test migration, including
+`test/native_aot/native_build/BuildTests.chibi`; the performance chat
+`01a19cba-8db8-7041-9a3e-cb5293f1603b` owns measured compiler iteration work and
+reviewed the single-workflow CI reconciliation. The following entries record
+its earlier baselines and coordination history.
+
+Its original frozen native baseline is `13e01f9055e555caf207642df8ab477f721c38c2`,
 tree `0455761e0b537dba872c7078b80def510ddd3edc`, whose combined CI is green.
 The proposed CI-consolidation parent is
 `2fb44239a425e18b231fc44d0da0392ea31fac74`, tree

@@ -3,7 +3,6 @@
 #define _XOPEN_SOURCE 700
 #endif
 
-#include "assets/project.h"
 #include "host/process.h"
 #include "support/xalloc.h"
 #include "test/tools/fixture.h"
@@ -17,6 +16,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +32,24 @@
 
 static char root[128], launcher[256], log_path[256], compiler[256], built[256];
 static char driver[1024];
+
+/* Test-only compatibility input; the SDK record is the sole version owner. */
+static int project_version(void)
+{
+    char file[1024];
+    int count = snprintf(file, sizeof file, "%s/sdk/PROJECT_VERSION", tool_root());
+    assert(count > 0 && count < (int)sizeof file);
+    char *text = tool_read(file);
+    assert(text);
+    char *end = NULL;
+    errno = 0;
+    long value = strtol(text, &end, 10);
+    bool valid = !errno && end != text && value > 0 && value <= INT_MAX &&
+                 (!*end || (*end == '\n' && !end[1]));
+    free(text);
+    assert(valid);
+    return (int)value;
+}
 
 static void locate_driver(const char *self)
 {
@@ -140,7 +158,7 @@ static void setup(const char *binary)
     assert(copy_resource(binary, "apps", destination));
     assert(copy_resource(binary, "core", destination));
     char manifest[256];
-    snprintf(manifest, sizeof manifest, "version %d\nname \"CLI proof\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", CHIBI_PROJECT_VERSION);
+    snprintf(manifest, sizeof manifest, "version %d\nname \"CLI proof\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", project_version());
     write_file("game with spaces/project.kdl", manifest);
     write_file("game with spaces/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n");
     /* The stub counts its calls and can be made to fail, and otherwise runs the
@@ -227,7 +245,7 @@ TEST_CASE(version_of_the_built_launcher)
     const char *version[] = { built, "version", NULL };
     REQUIRE(cli_run(version, root, output) == 0);
     char *text = tool_read(output);
-    snprintf(expected, sizeof expected, "\nproject format: %d\n", CHIBI_PROJECT_VERSION);
+    snprintf(expected, sizeof expected, "\nproject format: %d\n", project_version());
     bool reported = text && !strncmp(text, "chibi ", 6) && strstr(text, expected) &&
                     strstr(text, "\nartifact formats: ") &&
                     strstr(text, " execution ");

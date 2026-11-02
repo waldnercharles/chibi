@@ -1,0 +1,25 @@
+package posix_bundle_loader
+
+import target "core:target"
+import posix "core:sys/posix"
+
+foreign import libc "system:c"
+foreign libc {
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (module: rawptr, name: cstring) -> rawptr
+    dlclose :: (module: rawptr) -> i32
+    strchr :: (buffer: u8[], value: i32) -> rawptr
+}
+
+pub Open :: (path: string) -> rawptr {
+    // RTLD_NOW | RTLD_LOCAL: Darwin's local flag is 4, Linux's is zero.
+    flags: i32 = 2;
+    if (target.Os == target.Darwin) { flags |= 4; }
+    return dlopen(path, flags);
+}
+pub Symbol :: (module: rawptr, name: string) -> rawptr { return dlsym(module, name); }
+pub Close :: (module: rawptr) -> bool { return dlclose(module) == 0; }
+pub Executable :: (path: string) -> bool { return posix.MakeExecutable(path); }
+// Borrows a nonempty zeroed caller-owned buffer. It must not grow or acquire
+// another logical owner while its returned data address is in use.
+pub Address :: (words: ^(u8[])) -> rawptr { return strchr(words^, 0); }

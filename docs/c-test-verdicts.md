@@ -27,7 +27,7 @@ definitions; the earlier table also counted the `RUN_TEST_CASE` lines.
 | `test/language/host_packages_compiler.c` | 3 | `src/host/clock_package`, grants, the compiler host | goes |
 | `test/language/native_census.c`, `census_tree.h` | 3 | the C census flattener over CollectScalar | goes; the census is obsolete once the compiler runs natively |
 | `test/language/program_session.c` | 11 | `src/authoring/program.c` sessions | goes, except 3 Edit-and-Continue cases |
-| `test/language/package_compiler_chibi.c`, `scalar_host.c` | 16, 0 | compiler packages through the C compiler host | 7 cases survive (scalar rows, `Validate`, the corpus); the rest are covered or are host or harness code |
+| `test/language/package_compiler_chibi.c`, `scalar_host.c` | 6, 0 | remaining native backend execution through the C compiler host | scalar producer rows, validation, packages, libraries and corpus now run natively; six backend cases remain |
 | `test/language/parallel.c`, `main.c`, `backend.h`, `compiler_cache.h` | 9, 0 | the C test runner | goes |
 | `test/runtime/whole_integer.c`, `whole_conversion.c`, `whole_math.c` | 3, 1, 2 | hand-built IR, bytecode against SLJIT | goes; the conversion, negation and comparison rules are ported, and integer `abs`/`min`/`max`/`clamp` and the math specials wait on owner decisions |
 | `test/runtime/persistent_store.c` | 1 | `execution_program_set_state` | goes, except retained records across a swap |
@@ -167,17 +167,24 @@ They don't port:
   `BuildsTheWorkloads`, which checks each kernel's checksum. The timings stay with
   `native-workload-benchmark` until a Chibi benchmark replaces it.
 
-### The scalar producer: `tools/compiler/package_compiler/tests`
+### The scalar producer: `test/native_aot/scalar_producer`
 
-These are the rows and `Validate` rejections, the library rows and rejections, the corpus
-in `test/scalar_facts/cases`, and the producer half of retained library states (7
-`package_compiler_chibi.c` cases). `CollectScalar` takes the host's description of itself:
-- the `Target` record;
-- the instruction names;
-- the native catalog's `Native`, `Port` and identity tables.
+The eight producer behavior cases now run through the native compiler with its
+current private target, instruction names and native catalog source. The runner
+covers fifteen real source projections, twelve row-kind sequences, all 169
+malformed edit sequences and their precise diagnostics, package/collection
+boundaries, unsorted scoped-reference files, library IDs and retained scalar
+manifests. It also checks every authored scalar corpus case, including deep
+operands. The C producer selector and its unused adapters are removed; the same
+`language-package-compiler-chibi-scalar` tool selector invokes the native runner.
 
-An `@test` has no way to ask for these. Natively, the compiler has the same description as
-constants for its destination. These cases port once a `chibi test` program can read it.
+One stale negative input changed: conversion selector `2` is now the supported
+`CheckedChar` selector, so unknown-mode rejection uses `3`. The separate
+character suite proves selector `2` acceptance and runtime failures.
+
+The native emitter's C transport test was already covered by authored call and
+invalid-callee tests; its transport wrapper and the C oracle-helper self-test
+were harness code. The six backend execution cases in that C file remain.
 
 ## Owner decisions
 

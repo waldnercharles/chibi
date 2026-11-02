@@ -1,5 +1,6 @@
 #include "scalar_host.h"
 
+#include "authoring/source_package_io.h"
 #include "compiler_cache.h"
 #include "execution/status.h"
 #include "package_compiler_chibi_source.h"
@@ -58,16 +59,12 @@ static const char ROOT_SOURCE[] =
     "pub EmitSize :: (rows: facts.Row[]) -> int {\n"
     "    return length(scalar.EmitBytesFor(abi.LinuxX64(), rows));\n"
     "}\n"
-    "pub ValidateRows :: (rows: facts.Row[]) -> string { return "
-    "scalar.Validate(rows); }\n"
     "pub CaseCount :: () -> int { return cases.Count(); }\n"
     "pub CaseName :: (index: int) -> string { return cases.CaseName(index); }\n"
     "pub CaseSource :: (index: int) -> string { return cases.Source(index); }\n"
     "pub CaseExpected :: (index: int) -> int { return "
     "cases.ExpectedValue(index); }\n"
     "pub CaseValue :: (rows: facts.Row[]) -> i64 { return cases.Value(rows); "
-    "}\n"
-    "pub CaseCheck :: (rows: facts.Row[]) -> int { return cases.Check(rows); "
     "}\n"
     "pub TextType :: () -> string { return abi.TextType(); }\n"
     "pub EmitModule :: (target: string, functions: native.Function[], "
@@ -296,55 +293,6 @@ bool scalar_host_collect(const char *path, const char *source, arena *storage, p
     return read;
 }
 
-bool scalar_host_collect_packages(const source_package_input *inputs, int count, arena *storage, pin_value *rows)
-{
-    return scalar_host_collect_collection(NULL, NULL, inputs, count, storage, rows);
-}
-
-bool scalar_host_collect_collection(
-    const char *collection,
-    const char *collection_path,
-    const source_package_input *inputs,
-    int count,
-    arena *storage,
-    pin_value *rows
-)
-{
-    REQUIRE(scalar_host_open());
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *arguments = yyjson_mut_arr(doc);
-    yyjson_mut_doc_set_root(doc, arguments);
-    yyjson_mut_arr_add_str(doc, arguments, "/project");
-    yyjson_mut_val *collection_names = yyjson_mut_arr_add_arr(doc, arguments);
-    yyjson_mut_val *collection_paths = yyjson_mut_arr_add_arr(doc, arguments);
-    if (collection) {
-        yyjson_mut_arr_add_str(doc, collection_names, collection);
-        yyjson_mut_arr_add_str(doc, collection_paths, collection_path);
-    }
-    yyjson_mut_val *paths = yyjson_mut_arr_add_arr(doc, arguments);
-    yyjson_mut_val *sources = yyjson_mut_arr_add_arr(doc, arguments);
-    for (int i = 0; i < count; i++) {
-        yyjson_mut_arr_add_str(doc, paths, inputs[i].path);
-        yyjson_mut_arr_add_strncpy(
-            doc,
-            sources,
-            inputs[i].text,
-            inputs[i].size ? inputs[i].size : strlen(inputs[i].text)
-        );
-    }
-    REQUIRE(append_target(doc, arguments));
-    /* No destination: core:target keeps its own text. */
-    yyjson_mut_arr_add_int(doc, arguments, 0);
-    yyjson_mut_arr_add_int(doc, arguments, 0);
-    yyjson_doc *result;
-    REQUIRE(
-        invoke(producer, "project:package_compiler:1:CollectScalarPackages:callable", doc, &result)
-    );
-    bool read = rows_from_json(yyjson_arr_get(yyjson_doc_get_root(result), 0), storage, rows);
-    yyjson_doc_free(result);
-    return read;
-}
-
 /* Compiles the consumer packages behind ROOT_SOURCE to one closure and loads
  * it. */
 static bool open_consumer()
@@ -462,22 +410,6 @@ static char *copy_text(yyjson_val *text)
     return copy;
 }
 
-bool scalar_host_validate(const pin_value *rows, char **message)
-{
-    yyjson_mut_val *arguments;
-    yyjson_mut_doc *doc = arguments_doc(&arguments);
-    arena_free(&scratch);
-    yyjson_mut_val *json = rows_to_json(doc, rows);
-    REQUIRE(json);
-    yyjson_mut_arr_append(arguments, json);
-    yyjson_doc *result;
-    yyjson_val *text;
-    REQUIRE(call_one("ValidateRows", doc, &result, &text));
-    *message = copy_text(text);
-    yyjson_doc_free(result);
-    return *message;
-}
-
 bool scalar_host_emit(const char *target, const pin_value *rows, char **ir)
 {
     yyjson_mut_val *arguments;
@@ -560,11 +492,4 @@ static bool case_rows(const char *entry, const pin_value *rows, int64_t *out)
 bool scalar_host_case_value(const pin_value *rows, int64_t *value)
 {
     return case_rows("CaseValue", rows, value);
-}
-bool scalar_host_case_check(const pin_value *rows, int *verdict)
-{
-    int64_t checked;
-    REQUIRE(case_rows("CaseCheck", rows, &checked));
-    *verdict = (int)checked;
-    return true;
 }

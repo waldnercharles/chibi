@@ -84,7 +84,7 @@ printf 'host\n' >> "$SEED_EVENTS"
 HOST
 chmod +x "$scratch/legacy-host"
 printf 'tool\tnative\tsh\t%s\ntool\tlegacy\t@host@\ngroup\tmixed\tnative\tlegacy\n' "$scratch/native-tool" > tools/tests.tsv
-export SEED_EVENTS=$scratch/seed-events LEGACY_SEED_STATUS=23
+export SEED_EVENTS="$scratch/seed-events" LEGACY_SEED_STATUS=23
 : > "$SEED_EVENTS"
 run
 test ! -s "$SEED_EVENTS"

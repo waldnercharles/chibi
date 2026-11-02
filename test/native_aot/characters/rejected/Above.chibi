@@ -1,0 +1,2 @@
+package rejected_character
+Main :: () -> int { return int(char(0x110000)); }

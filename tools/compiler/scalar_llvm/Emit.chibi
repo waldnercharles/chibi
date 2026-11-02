@@ -1304,8 +1304,11 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ConvertRow) {
             base := length(stack) - 1;
-            if (operand.name != "" || operand.count != 1 || (operand.value != facts.Clamp && operand.value != facts.Wrap) ||
-                base < floor || !Converts(stack[base], operand.type)) {
+            checked_char := operand.value == facts.CheckedChar;
+            if (operand.name != "" || operand.count != 1 ||
+                (operand.value != facts.Clamp && operand.value != facts.Wrap && !checked_char) || base < floor ||
+                (checked_char && (operand.type != facts.IntType || !Integer(stack[base]))) ||
+                (!checked_char && !Converts(stack[base], operand.type))) {
                 return "scalar conversion is not one the runtime implements";
             }
             stack = slice(stack, 0, base);
@@ -2712,6 +2715,36 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     base := length(stack) - 1;
                     item = Op(native.Convert, type, slot, stack[base], slots[shape.first_slot + stack[base]], 0);
                     item.literal = i64(operand.value);
+                    if (operand.value == facts.CheckedChar) {
+                        // As CharConversionStep does, compare the original
+                        // integer as u64 before narrowing. Signed negatives
+                        // keep their high bits and fail the upper bound.
+                        slots[length(slots) - 1] = abi.WordStorage;
+                        slots.extend([abi.WordStorage, abi.BoolStorage, abi.WordStorage, abi.WordStorage,
+                                      abi.WordStorage, abi.BoolStorage, type]);
+                        wide := Op(native.Convert, abi.WordStorage, slot, stack[base], item.right, 0);
+                        wide.literal = i64(facts.Wrap);
+                        maximum := Op(native.Constant, abi.WordStorage, slot + 1, 0, 0, 0);
+                        maximum.literal = 0x10FFFF;
+                        mask := Op(native.Constant, abi.WordStorage, slot + 3, 0, 0, 0);
+                        mask.literal = -2048;
+                        surrogate := Op(native.Constant, abi.WordStorage, slot + 5, 0, 0, 0);
+                        surrogate.literal = 0xD800;
+                        failed := Op(native.Fail, 0, 0, operand.start, operand.end, 0);
+                        failed.literal = declaration.literal;
+                        if (program) {
+                            failed = Op(native.TypedFail, 0, 0, 0, 0, 0);
+                            failed.literal = 4;
+                        }
+                        body.extend([wide, maximum, Op(native.Le, abi.WordStorage, slot + 2, slot, slot + 1, 0),
+                                     Op(native.Branch, 0, 0, slot + 2, 0, length(body) + 5), failed,
+                                     mask, Op(native.BitAnd, abi.WordStorage, slot + 4, slot, slot + 3, 0),
+                                     surrogate, Op(native.Ne, abi.WordStorage, slot + 6, slot + 4, slot + 5, 0),
+                                     Op(native.Branch, 0, 0, slot + 6, 0, length(body) + 11), failed]);
+                        slot += 7;
+                        item.output = slot;
+                        item.literal = i64(facts.Clamp);
+                    }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.FunctionAddressRow) {
                     item = Op(native.FunctionAddress, type, slot, operand.value, 0, 0);

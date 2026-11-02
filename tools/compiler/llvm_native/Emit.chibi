@@ -3031,8 +3031,19 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     scoped := scope != RuntimeScopeNone;
     testing := scope == RuntimeScopeTest;
     formatting := false;
-    for (item in code) {
-        if (item.op == Format) { formatting = true; break; }
+    numeric_formatting := false;
+    for (shape in functions) {
+        for (pc in shape.first_code..<shape.first_code + shape.code) {
+            item := code[pc];
+            if (item.op != Format) { continue; }
+            formatting = true;
+            // A bool can use numeric modifiers too. Only string-only calls
+            // can omit the number renderer and its C runtime dependency.
+            for (index in 1..<item.target) {
+                slot := arguments[shape.first_argument + item.right + index];
+                if (slots[shape.first_slot + slot] != abi.TextStorage) { numeric_formatting = true; }
+            }
+        }
     }
     compares := Compares(code);
     fallible := Fallible(functions, code);
@@ -3077,6 +3088,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         // raw pointer or foreign ABI is admitted yet, and records stay internal.
         out.append(format_text("target triple = \"{}\"\n\n", target.triple));
         if (piece == 0 && formatting) { out.append("; chibi-format\n"); }
+        if (piece == 0 && numeric_formatting) { out.append("; chibi-format-numbers\n"); }
         for (index in 0..<length(records)) {
             record := records[index];
             types: string[] = [];

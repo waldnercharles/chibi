@@ -172,9 +172,10 @@ rejects 2 'no line tables or static link' "$source/Library.chibi" --shared --sta
 rejects 2 'omit --static' "$source/Allocates.chibi" --static
 cat >"$source/NoEntry.chibi" <<'SOURCE'
 package no_entry
-Helper :: () -> int { return 0; }
+Helper :: () -> int { return 99; }
 SOURCE
-rejects 1 'native package generations require Main or Frame' "$source/NoEntry.chibi" --shared
+build "$source/NoEntry.chibi" "$work/probe.so" --shared
+(cd "$work" && runs 0 "$work/load")
 rejects 1 'takes no --entry' "$source/Library.chibi" --shared --entry Main
 sed 's/"libprobe.a"/"missing.a"/' "$source/Archive.chibi" >"$source/Missing.chibi"
 rejects 2 'is not a file' "$source/Missing.chibi"

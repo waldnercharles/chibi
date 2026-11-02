@@ -5,7 +5,7 @@ compiler=${1:?pass the native compiler}
 llvm=${2:?pass the LLVM tools directory}
 reference=${3:-}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
-source=${4:-$root/test/native_aot/managed_values/Records.chibi}
+records_source=${4:-$root/test/native_aot/managed_values/Records.chibi}
 case "$compiler" in /*) ;; *) compiler=$(pwd -P)/$compiler ;; esac
 case "$llvm" in /*) ;; *) llvm=$(pwd -P)/$llvm ;; esac
 case "$(uname -s)-$(uname -m)" in
@@ -35,11 +35,28 @@ ln -s "$llvm/llc" "$work/llvm/llc"
 ln -s "$llvm/$linker" "$work/llvm/$linker"
 export CHIBI_VALUE_LLVM=$llvm CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
 for level in 0 2; do
+    for source in Records Foreign; do
+        input=$root/test/native_aot/managed_values/$source.chibi
+        if [ "$source" = Records ]; then input=$records_source; fi
+        "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+            --source "$input" --entry Main \
+            --output "$work/$source-O$level" --llvm "$work/llvm" --target "$triple" --level "$level" --jobs 1
+        "$work/$source-O$level"
+        printf 'PASS native managed %s O%s, allocations balanced\n' "$source" "$level"
+    done
+done
+# Unsupported record and deep writable paths leave prior outputs untouched.
+for source in RejectedForeignPath RejectedForeignRecord; do
+    printf 'preserved\n' > "$work/rejected"
+    set +e
     "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
-        --source "$source" --entry Main \
-        --output "$work/records-O$level" --llvm "$work/llvm" --target "$triple" --level "$level" --jobs 1
-    "$work/records-O$level"
-    printf 'PASS native managed records, arrays and unions O%s, allocations balanced\n' "$level"
+        --source "$root/test/native_aot/managed_values/$source.chibi" --entry Main \
+        --output "$work/rejected" --llvm "$llvm" --target "$triple" --level 0 --jobs 1 > "$work/rejected.log" 2>&1
+    rejected=$?
+    set -e
+    test "$rejected" -eq 1
+    test "$(cat "$work/rejected")" = preserved
+    grep -q 'native foreign record buffer needs recursive array-backed value ownership' "$work/rejected.log"
 done
 # The public native lifecycle operations also run directly, independently of
 # scalar lowering's current specialized record expansion.

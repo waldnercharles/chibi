@@ -443,6 +443,9 @@ pub ArrayBytes: int : 14;
 pub ArrayText: int : 15;
 // A new array without the int-indexed element; an invalid index copies all elements.
 pub ArrayWithout: int : 16;
+// A foreign argument loan, consuming a numeric array or a reference to its
+// writable descriptor. It keeps the evaluated value alive until the C call.
+pub ArrayLoan: int : 17;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range

@@ -543,7 +543,7 @@ FreshArray :: (operand: facts.Row) -> bool {
     value := operand.value;
     return value == facts.ArrayNew || value == facts.ArrayCopy || value == facts.ArrayWith || value == facts.ArrayJoin ||
            value == facts.ArraySlice || value == facts.ArrayResize || value == facts.ArrayBytes || value == facts.ArrayText ||
-           value == facts.ArrayWithout;
+           value == facts.ArrayWithout || value == facts.ArrayLoan;
 }
 // Whether the native `type` is owned by whoever holds it: an array, or a string.
 Owning :: (type: int) -> bool {
@@ -985,8 +985,8 @@ ArrayOperands :: (operand: facts.Row) -> int {
     if (operand.value == facts.ArrayNew) {
         return operand.count;
     }
-    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1, 1, 2];
-    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayWithout) {
+    consumed: int[] = [0, 0, 1, 2, 3, 2, 1, 2, 3, 2, 2, 2, 2, 2, 1, 1, 2, 1];
+    if (operand.value < facts.ArrayNew || operand.value > facts.ArrayLoan) {
         return 0;
     }
     return consumed[operand.value];
@@ -1139,6 +1139,11 @@ ValidArray :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, 
         }
         return "";
     }
+    if (operator == facts.ArrayLoan) {
+        if (!Scalar(element) || element == facts.BoolType ||
+            (stack[base] != operand.type && stack[base] != facts.ReferenceType + operand.type)) { return mismatch; }
+        return "";
+    }
     if (operator == facts.ArrayNew) {
         for (index in 0..<consumed) {
             if (stack[base + index] != element) {
@@ -1253,7 +1258,9 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             }
             if (operand.name != "" || operand.count != 0 || operand.type == facts.TaskType || !Holds(visible, operand.value) ||
                 (operand.literal == 0 && variables[operand.value] != operand.type) ||
-                (operand.literal != 0 && (field < 0 || field != operand.type || (!Number(field) && field != facts.BoolType)))) {
+                (operand.literal != 0 && (field < 0 || field != operand.type ||
+                 (!Number(field) && field != facts.BoolType &&
+                  !(Element(records, field) > 0 && Scalar(Element(records, field)) && Element(records, field) != facts.BoolType))))) {
                 return "scalar reference differs from its variable";
             }
             stack.append(facts.ReferenceType + operand.type);
@@ -3038,7 +3045,20 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     if (op == facts.ArraySet && slots[shape.first_slot + stack[base + 2]] == abi.TextStorage) {
                         stored.append(stack[base + 2]);
                     }
-                    if (operand.value == facts.ArrayNew) {
+                    if (operand.value == facts.ArrayLoan) {
+                        input := stack[base];
+                        held := slots[shape.first_slot + input];
+                        if (held == native.RefType + type) {
+                            body.append(Op(native.Deref, type, slot, input, 0, 0));
+                            slots.append(type);
+                            item = Op(native.ArrayLoan, type, slot + 1, slot, input, 0);
+                            slot += 1;
+                        } else {
+                            mode := 2;
+                            if (Holds(fresh, input)) { mode = 1; fresh = Without(fresh, input); }
+                            item = Op(native.ArrayLoan, type, slot, input, input, mode);
+                        }
+                    } else if (operand.value == facts.ArrayNew) {
                         // The empty array, then each element appended.
                         item = Op(native.Constant, type, slot, 0, 0, 0);
                         for (element in 0..<operand.count) {

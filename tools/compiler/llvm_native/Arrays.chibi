@@ -100,7 +100,7 @@ ArrayModule :: (code: Instruction[], owners: bool[]) -> string {
     for (item in code) {
         type := item.type;
         flags := 0;
-        if (item.op >= MapLength && item.op <= MapLiveAt) {
+        if (MapOperation(item.op)) {
             type = MapValue(MapUsed(item));
             if (MapArrayValue(type)) {
                 flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;

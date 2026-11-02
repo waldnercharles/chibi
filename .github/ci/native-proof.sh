@@ -37,6 +37,7 @@ sh test/bootstrap/native-entry.sh
 sh test/bootstrap/native-runner.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/tasks/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/math_scalar/run.sh "$driver" "$CHIBI_LLVM_BIN"
+sh test/native_aot/math_builtin/select.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/characters/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/managed_values/run.sh "$driver" "$CHIBI_LLVM_BIN"
 sh test/native_aot/managed_pointers/run.sh "$driver" "$CHIBI_LLVM_BIN" "$RUNNER_TEMP/native-managed-pointers"

@@ -339,7 +339,10 @@ pub TaskRunning: int : 90;
 pub AwaitResult: int : 91;
 // Borrow left string for synchronous host output; output is int 0.
 pub Print: int : 92;
-pub InstructionCount: int : 93;
+// output = left(bool) ? right : target, all operands already evaluated.
+// The selected values share type and are numeric or bool, never managed.
+pub Select: int : 93;
+pub InstructionCount: int : 94;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving an owning
@@ -357,7 +360,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+    return op == Select || op == ManagedNew || op == ManagedAddress || op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
            op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || op == ArrayLoan || (MapOperation(op) && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
@@ -367,7 +370,7 @@ Unary :: (op: int) -> bool {
     return op == Neg || op == BitNot || op == Sqrt;
 }
 ReadsLeft :: (op: int) -> bool {
-    return op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
+    return op == Select || op == ManagedNew || op == ManagedAddress || op == ManagedPin || op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
            op == TextRelease || op == StateStore || op == Deref || op == Poke || op == ValueCopy || op == ValueDrop || op == ArrayLoan || op == AwaitHandle || op == Cancel ||
            op == CancelAfter || op == Delay || op == Sqrt || (op >= TaskCopy && op <= AwaitResult) || MapOperation(op);
@@ -399,7 +402,7 @@ Fits :: (literal: i64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
-    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
+    return op == Select || (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
            ArrayReadsRight(op) || (op >= MapGet && op <= MapDelete && op != MapCopy && op != MapDrop) || op == MapKeyAt ||
            op == MapValueAt || op == MapLiveAt || op == MapValueAddress || op == CancelAfter || op == ArrayLoan;
 }
@@ -411,7 +414,7 @@ ArrayReadsRight :: (op: int) -> bool {
 // Whether an instruction reads the slot its target names: an array store's
 // value or a slice's count.
 ReadsTarget :: (op: int) -> bool {
-    return op == ArraySet || op == ArraySlice || op == MapSet;
+    return op == Select || op == ArraySet || op == ArraySlice || op == MapSet;
 }
 // Whether an array instruction calls the runtime context: an index check, or
 // an allocation.
@@ -1033,6 +1036,11 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == Sqrt && (item.type != abi.FloatStorage || !Typed(slots, item.left, item.type))) {
             return Result.Rejected(base + pc, "native square root requires an f32 operand");
         }
+        if (item.op == Select && ((!Integer(item.type) && !abi.Floating(item.type) && item.type != abi.BoolStorage) || !Typed(slots, item.left, abi.BoolStorage) ||
+                                 !Typed(slots, item.right, item.type) || !Typed(slots, item.target, item.type) ||
+                                 item.literal != 0)) {
+            return Result.Rejected(base + pc, "native selection differs from its condition or values");
+        }
         if (item.op == FieldAddress) {
             field := FieldType(records, fields, item.right, item.literal);
             held := item.right;
@@ -1620,6 +1628,12 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, MapRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
         out = format_text("{}{}", out, ArrayRead(item, pc, record_owners));
+    } else if (item.op == Select) {
+        out = format_text("{}{}", out, Load(format_text("c{}", pc), abi.BoolStorage, "s", item.left));
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.right));
+        out = format_text("{}{}", out, Load(format_text("b{}", pc), item.type, "s", item.target));
+        out = format_text("{}  %v{} = select i1 %c{}, {} %a{}, {} %b{}\n", out, pc, pc, type, pc, type, pc);
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     } else if (item.op == Print) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), abi.TextStorage, "s", item.left));
         out = format_text("{}  %bytes{} = extractvalue {} %a{}, 0\n  %length{} = extractvalue {} %a{}, 1\n", out, pc, abi.TextType(), pc, pc, abi.TextType(), pc);

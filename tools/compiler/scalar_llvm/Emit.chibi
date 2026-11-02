@@ -1335,6 +1335,14 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar arithmetic differs from its number operands";
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.SelectRow) {
+            base := length(stack) - 3;
+            if (operand.name != "" || operand.value != 0 || operand.count != 3 || !Scalar(operand.type) ||
+                base < floor || stack[base] != facts.BoolType || stack[base + 1] != operand.type ||
+                stack[base + 2] != operand.type) {
+                return "scalar selection differs from its condition or values";
+            }
+            stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ConvertRow) {
             base := length(stack) - 1;
             checked_char := operand.value == facts.CheckedChar;
@@ -2827,6 +2835,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (operand.kind == facts.UnaryRow) {
                     base := length(stack) - 1;
                     item = Op(Unary(operand.value), type, slot, stack[base], 0, 0);
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.SelectRow) {
+                    base := length(stack) - 3;
+                    item = Op(native.Select, type, slot, stack[base], stack[base + 1], stack[base + 2]);
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ConvertRow) {
                     base := length(stack) - 1;

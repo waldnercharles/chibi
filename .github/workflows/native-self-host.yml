@@ -45,6 +45,7 @@ on:
       - test/native_aot/link/windows/**
       - test/native_aot/native_driver/**
       - test/native_aot/text_format/**
+      - test/native_aot/windows_decimal/**
       - test/native_aot/output/**
       - .github/native-llvm.sh
       - .github/workflows/native-self-host.yml

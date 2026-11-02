@@ -310,6 +310,7 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     // Definitions start a line; a text constant never does.
     // A formatter used in any body piece needs the context callback.
     formatting := Contains(markers, "; chibi-format");
+    numeric_formatting := Contains(markers, "; chibi-format-numbers");
     context := strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar(ptr %ctx)");
     if (shared) {
         context = strings.Contains(pieces[0], "\n@chibi_context = external global ");
@@ -357,9 +358,9 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     if (shared) {
         start = link.SharedContext(triple, context);
     } else if (options.cli_errors) {
-        start = link.RunStart(triple, static, context, formatting);
+        start = link.RunStart(triple, static, context, formatting, numeric_formatting);
     } else {
-        start = link.ProgramStart(triple, static, context, formatting);
+        start = link.ProgramStart(triple, static, context, formatting, numeric_formatting);
     }
     if (start != "") {
         if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil) {

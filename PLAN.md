@@ -50,16 +50,21 @@ All local final checks below used LLVM/LLD 22.1.8 from `/tmp/chibi-llvm22`.
 Earlier local lane checks used a mixed LLVM 23 / LLD 22 directory; they are not
 minimum-version evidence.
 
-- The integrated compiler's stages three and four are byte-identical:
+- Before the final watch integration, the compiler's stages three and four were byte-identical:
   `702dff527162e6c7397a59af9675a64da287a7f647bca2552afb91703a394f5f`.
   Stage two took 40 s, three 33 s, four 31 s. The full proof, including a
   Windows cross-build (29 s) and native driver/graph checks, took 138.76 s.
+- At `884964244`, the final macOS compiler's stages two and three are byte-identical:
+  `7696806b6a811d349dffc37330537c3423b1f872e3a893a3e1d776b4324e686f`.
+  They took 33 s and 35 s; the full proof took 72.57 s. Linux CI also reached a
+  stage-three/four fixed point at that revision:
+  `afaa1059efb0c3db9670868d0bfc033d9471f549b14582365698a3ecc273eae7`.
 - The integrated macOS cache, LLVM minimum, CLI, maps, tasks, seed-boundary and
   bootstrap-entry checks passed in 36.75 s. Map and task tests execute at O0/O2
   and check allocation balance; map tests also poison released allocations.
-- Linux CI passed the no-C-compiler recovery/vendor proof at `5a789a2a3` in
-  1m50s. Earlier native self-host and compiler self-build CI passed before the
-  maps/tasks/reload integrations; final branch CI must be assessed separately.
+- Linux CI passed the no-C-compiler recovery/vendor proof at `884964244` in
+  1m10s, the default full build in 4m27s, and the native self-host suite,
+  including driver, CLI, diagnostics, maps, tasks, retained generations and watch.
 - Broader CI exposed the removed implicit bytecode-seed dependency and then a
   missing `ScalarMaps.chibi` source-list entry. Both are fixed in this branch.
 - The first Windows job downloaded LLVM in about five seconds but timed out

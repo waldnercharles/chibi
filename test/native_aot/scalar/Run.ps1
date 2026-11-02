@@ -285,6 +285,7 @@ try {
         'scalar_facts/Facts.chibi' = 'tools/compiler/scalar_facts/Facts.chibi'
         'scalar_llvm/Emit.chibi' = 'tools/compiler/scalar_llvm/Emit.chibi'
         'llvm_native/Emit.chibi' = 'tools/compiler/llvm_native/Emit.chibi'
+        'llvm_native/Tasks.chibi' = 'tools/compiler/llvm_native/Tasks.chibi'
         'native_abi/Abi.chibi' = 'tools/compiler/native_abi/Abi.chibi'
         '/sdk/core/strings/Strings.chibi' = 'packages/core/strings/Strings.chibi'
     }

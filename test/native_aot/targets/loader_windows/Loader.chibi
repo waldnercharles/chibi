@@ -1,0 +1,14 @@
+package windows_bundle_loader
+
+import windows "core:sys/windows"
+
+foreign import crt "system:ucrtbase"
+foreign crt { memset :: (buffer: u8[], value: i32, count: u64) -> rawptr }
+
+pub Open :: (path: string) -> rawptr { return windows.OpenLibrary(path); }
+pub Symbol :: (module: rawptr, name: string) -> rawptr { return windows.LibrarySymbol(module, name); }
+pub Close :: (module: rawptr) -> bool { return windows.CloseLibrary(module); }
+pub Executable :: (path: string) -> bool { return true; }
+// The fixed buffer stays owned by the caller; scoped reference writes and
+// the synchronous adapter calls cannot outlive its allocation.
+pub Address :: (words: ^(u8[])) -> rawptr { return memset(words^, 0, 0); }

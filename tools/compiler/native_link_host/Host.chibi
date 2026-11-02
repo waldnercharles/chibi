@@ -229,6 +229,7 @@ Leftovers :: (plan: link.Plan) -> string[] {
 // folder, `output.work` unless the plan names one, holds only the stubs and is
 // removed with them. No path, time or process id reaches the program's bytes.
 pub Link :: (plan: link.Plan) -> link.Error? {
+    if (!link.ValidExports(plan)) { return Fail(link.BadPlan, 0); }
     ready := plan;
     own := false;
     if (plan.work == "") {

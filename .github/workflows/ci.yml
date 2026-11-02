@@ -275,14 +275,13 @@ jobs:
           path: .chibi/compiler-cache
           key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: compiler-cache-${{ runner.os }}-
-      # chibi-cli runs chibi-compile too slowly under sanitizers. The
-      # chibi launcher target also builds chibi-compile, and
-      # the Graph build adds the Release build host the Debug builds use.
+      # Retained host-process and native-link oracles still require an
+      # explicit Release build host alongside the native CLI.
       - name: Build an unsanitized chibi launcher (Release)
         id: release-build
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
-        run: sh tools/build.sh build --release --target chibi --target chibi-compiler-host --libclang-root "$LLVM"
+        run: sh tools/build.sh build --release --target chibi --target chibi-build-host --target chibi-compiler-host --libclang-root "$LLVM"
       # The Release build host runs the outer Build and Graph programs, which
       # plan the selected Debug build. Release hosts also generate the asset
       # compiler resource; products and test drivers retain the selected profile.
@@ -557,10 +556,13 @@ jobs:
         run: sh tools/build.sh census
       - name: chibi build
         run: sh tools/build.sh build --release --libclang-root "$LIBCLANG_ROOT"
-      - name: Every product and test driver was built
+      - name: Default native products were built
         run: |
-          for product in sdk/chibi sdk/chibi-compile sdk/chibi-build-host sdk/chibi-compiler-host test/tools/test_tools test/language/test_language; do
+          for product in sdk/chibi sdk/chibi-asset-compiler; do
             test -x "build-release/$product" || { echo "missing build-release/$product"; exit 1; }
+          done
+          for host in chibi-compile chibi-build-host chibi-compiler-host; do
+            test ! -e "build-release/sdk/$host" || { echo "unexpected private host $host"; exit 1; }
           done
       - name: Preserve failed build diagnostics
         if: failure()

@@ -1,0 +1,11 @@
+package wasm_format
+
+foreign { chibi_asset_publish :: (bytes: u8[], count: int) -> int }
+
+Main :: () -> int {
+    embedded := text_from_bytes([u8(97), u8(0), u8(98)]);
+    text := format_text("{:016x}|{:.2f}|{}|{:>6}|{{}}|{1}", u64(18446744073709551615), f64(1.25), true, embedded);
+    bytes: u8[] = [];
+    for (byte in text_bytes(text)) { bytes.append(u8(byte)); }
+    return chibi_asset_publish(bytes, length(bytes));
+}

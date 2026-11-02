@@ -68,8 +68,7 @@ WindowsContextStart :: () -> string {
         "declare dllimport ptr @GetProcessHeap()\n",
         "declare dllimport ptr @HeapAlloc(ptr, i32, i64)\n",
         "declare dllimport i32 @HeapFree(ptr, i32, ptr)\n",
-        "declare dllimport ptr @GetStdHandle(i32)\n",
-        "declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n",
+        OutputRuntime(true, false),
         "declare i32 @chibi_scalar(ptr)\n",
         "@chibi_report_head = private unnamed_addr constant [29 x i8] c\"assertion failed in function \"\n",
         "@chibi_report_from = private unnamed_addr constant [17 x i8] c\" at source bytes \"\n",
@@ -205,6 +204,7 @@ DynamicStart :: (triple: string, context: bool) -> string {
         "c\"assertion failed in function %lu at source bytes %d to %d\\0A\\00\"\n",
         "declare i32 @chibi_scalar(ptr)\n",
         RuntimeFormat(false),
+        OutputRuntime(false, false),
         "define internal ptr @chibi_allocate(ptr %ctx, i64 %size) {\n",
         "  %memory = call ptr @calloc(i64 1, i64 %size)\n",
         "  ret ptr %memory\n",
@@ -727,7 +727,8 @@ pub Start :: (triple: string, static: bool, context: bool) -> string {
 // A shared generation has no process entry. Its host-call wrappers use the
 // same libc-backed runtime as an executable, held privately by this generation.
 pub SharedContext :: (triple: string, context: bool) -> string {
-    if (TargetOf(triple) != LinuxX64) {
+    target := TargetOf(triple);
+    if (target != LinuxX64 && target != MacOSArm64) {
         return "";
     }
     module := DynamicStart(triple, context);

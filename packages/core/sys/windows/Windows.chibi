@@ -21,7 +21,7 @@ foreign bcrypt {
 }
 
 foreign kernel32 {
-    MultiByteToWideChar :: (page: u32, flags: u32, text: cstring, length: i32, wide: u16[], size: i32) -> i32
+    MultiByteToWideChar :: (page: u32, flags: u32, text: u8[], length: i32, wide: u16[], size: i32) -> i32
     WideCharToMultiByte :: (page: u32, flags: u32, wide: u16[], length: i32, text: u8[], size: i32, fallback: rawptr, used: rawptr) -> i32
     GetFileAttributesW :: (path: u16[]) -> u32
     CreateDirectoryW :: (path: u16[], security: rawptr) -> i32
@@ -45,6 +45,9 @@ foreign kernel32 {
     CopyFileW :: (source: u16[], destination: u16[], no_replace: i32) -> i32
     CloseHandle :: (handle: u64) -> i32
     GetEnvironmentVariableW :: (name: u16[], buffer: u16[], size: u32) -> u32
+    GetEnvironmentStringsW :: () -> rawptr
+    FreeEnvironmentStringsW :: (environment: rawptr) -> i32
+    CompareStringOrdinal :: (left: rawptr, left_size: i32, right: u16[], right_size: i32, ignore_case: i32) -> i32
     FindFirstFileW :: (pattern: u16[], data: u16[]) -> u64
     FindNextFileW :: (handle: u64, data: u16[]) -> i32
     FindClose :: (handle: u64) -> i32
@@ -106,6 +109,7 @@ KilledExit: u32 : 4294967287; // The DWORD representation of exit status -9.
 WaitTimeout: u32 : 258;
 MaxPathUnits: int : 260;
 SystemPreferredRng: u32 : 2;
+OrdinalEqual: i32 : 2;
 
 // A zeroed block for a structure the program only passes along.
 Block :: (size: int) -> u8[] {
@@ -118,12 +122,20 @@ Block :: (size: int) -> u8[] {
 
 // The UTF-16 units of `text` and a terminating NUL.
 Wide :: (text: string) -> u16[] {
+    // Counted Win32 text must not pass through the foreign CString's 4 KiB
+    // bound: complete linker command lines can contain many Unicode paths.
+    bytes := Block(text_byte_length(text) + 1);
+    for index in 0..<text_byte_length(text) {
+        byte := text_byte_at(text, index);
+        assert(byte != 0, "the string contains no NUL");
+        bytes[index] = u8(byte);
+    }
     wide: u16[] = [];
-    size := MultiByteToWideChar(Utf8, 0, text, -1, wide, 0);
+    size := MultiByteToWideChar(Utf8, 0, bytes, i32(length(bytes)), wide, 0);
     for index in 0..<int(size) {
         wide.append(0);
     }
-    converted := MultiByteToWideChar(Utf8, 0, text, -1, wide, size);
+    converted := MultiByteToWideChar(Utf8, 0, bytes, i32(length(bytes)), wide, size);
     assert(converted == size, "the string converts");
     return wide;
 }
@@ -322,7 +334,30 @@ pub ReadText :: (path: string) -> string {
     return text_from_bytes(ReadBytes(path));
 }
 
-// The environment variable's value, "" when it is unset.
+// Inspect an owned OS snapshot so an empty value differs from a missing name,
+// without relying on GetEnvironmentVariable's ambiguous zero/last-error state.
+pub HasEnv :: (name: string) -> bool {
+    if name == "" { return false; }
+    environment := GetEnvironmentStringsW();
+    if environment == 0 { return false; }
+    wanted := Wide(strings.Concatenate([name, "="]));
+    size := length(wanted) - 1;
+    cursor := u64(environment);
+    found := false;
+    while true {
+        count := lstrlenW(cursor);
+        if count == 0 { break; }
+        if count >= size && CompareStringOrdinal(cursor, i32(size), wanted, i32(size), 1) == OrdinalEqual {
+            found = true;
+            break;
+        }
+        cursor += u64(count + 1) * 2;
+    }
+    freed := FreeEnvironmentStringsW(environment);
+    return found;
+}
+
+// The environment variable's value, "" when it is unset or empty.
 pub Getenv :: (name: string) -> string {
     none: u16[] = [];
     wide := Wide(name);
@@ -925,20 +960,21 @@ Close :: (handle: u64) {
 }
 
 // Creates one ownership marker without replacing an earlier invocation's file.
-RecordProcess :: (path: string, pid: u32, job: u64) -> bool {
+RecordProcess :: (path: string, pid: u32, job: u64, piped: bool) -> bool {
     handle := CreateFileW(Wide(path), WriteAccess, 0, 0, CreateNew, 0, 0);
     if ~handle == 0 {
         return false;
     }
-    data := Block(12);
+    data := Block(16);
     for index in 0..<4 {
         data[index] = u8((pid >> u32(index * 8)) & 255);
     }
-    data = Put64(data, 4, job);
+    if piped { data[4] = 1; }
+    data = Put64(data, 8, job);
     written: u32[] = [0];
-    status := WriteFile(handle, data, 12, written, 0);
+    status := WriteFile(handle, data, 16, written, 0);
     closed := CloseHandle(handle);
-    if status == 0 || written[0] != 12 || closed == 0 {
+    if status == 0 || written[0] != 16 || closed == 0 {
         removed := Remove(path);
         return false;
     }
@@ -950,10 +986,11 @@ RecordProcess :: (path: string, pid: u32, job: u64) -> bool {
 ProcessClaim :: struct {
     marker: u64;
     job: u64;
+    piped: bool;
 }
 
 ClaimProcess :: (folder: string, process: int) -> ProcessClaim {
-    claim: ProcessClaim = {marker: 0, job: 0};
+    claim: ProcessClaim = {marker: 0, job: 0, piped: false};
     if folder == "" || process <= 0 {
         return claim;
     }
@@ -966,17 +1003,18 @@ ClaimProcess :: (folder: string, process: int) -> ProcessClaim {
         return claim;
     }
     size := Block(8);
-    data := Block(12);
+    data := Block(16);
     count: u32[] = [0];
     sized := GetFileSizeEx(handle, size);
-    read := ReadFile(handle, data, 12, count, 0);
-    if sized == 0 || Word64(size, 0) != 12 || read == 0 || count[0] != 12 ||
-       Word32(data, 0) != u64(pid) || Word64(data, 4) == 0 {
+    read := ReadFile(handle, data, 16, count, 0);
+    if sized == 0 || Word64(size, 0) != 16 || read == 0 || count[0] != 16 ||
+       Word32(data, 0) != u64(pid) || Word32(data, 4) > 1 || Word64(data, 8) == 0 {
         Close(handle);
         return claim;
     }
     claim.marker = handle;
-    claim.job = Word64(data, 4);
+    claim.job = Word64(data, 8);
+    claim.piped = Word32(data, 4) == 1;
     return claim;
 }
 
@@ -984,6 +1022,7 @@ StartingProcess :: struct {
     information: u8[];
     input: u64;
     output: u64;
+    errors: u64;
     job: u64;
     waiting: string;
     marker: string;
@@ -1000,6 +1039,7 @@ AbandonProcess :: (starting: StartingProcess, folder: string) {
     Close(starting.job);
     Close(starting.input);
     Close(starting.output);
+    Close(starting.errors);
     if starting.waiting != "" {
         removed := Remove(starting.waiting);
     }
@@ -1014,6 +1054,19 @@ AbandonProcess :: (starting: StartingProcess, folder: string) {
 // Retain the job handle until reap: closing the last handle removes its name
 // even while associated processes still live, so reopening by name is unsafe.
 pub Start :: (command: string[], piped: bool) -> int {
+    return StartProcess(command, piped, "", "");
+}
+
+// The caller owns the files, including cleanup after a failed launch. Empty
+// stdout inherits this process's stdout; stderr must name a distinct file.
+// Wait/Kill never report or remove redirected output. Windows already inherits
+// containing parent jobs, including when POSIX's attached group option is false.
+pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string, attached: bool = false) -> int {
+    if stderr_path == "" || stdout_path == stderr_path { return -1; }
+    return StartProcess(command, false, stdout_path, stderr_path);
+}
+
+StartProcess :: (command: string[], piped: bool, stdout_path: string, stderr_path: string) -> int {
     if length(command) == 0 {
         return -1;
     }
@@ -1021,14 +1074,14 @@ pub Start :: (command: string[], piped: bool) -> int {
     if folder == "" || !MakeDirectory(folder) {
         return -1;
     }
-    starting: StartingProcess = {information: [], input: 0, output: 0, job: 0, waiting: "", marker: ""};
+    starting: StartingProcess = {information: [], input: 0, output: 0, errors: 0, job: 0, waiting: "", marker: ""};
     starting.input = CreateFileW(Wide("NUL"), ReadAccess, ShareAll, 0, OpenExisting, 0, 0);
     if ~starting.input == 0 || Shared(starting.input) == 0 {
         AbandonProcess(starting, folder);
         return -1;
     }
-    output := Shared(GetStdHandle(-11));
-    errors := Shared(GetStdHandle(-12));
+    output: u64 = 0;
+    errors: u64 = 0;
     if piped {
         name := resize([u16(0)], MaxPathUnits);
         if GetTempFileNameW(Wide(folder), Wide("out"), 0, name) == 0 {
@@ -1047,6 +1100,26 @@ pub Start :: (command: string[], piped: bool) -> int {
         }
         output = starting.output;
         errors = output;
+    } else if stderr_path != "" {
+        if stdout_path != "" {
+            starting.output = CreateFileW(Wide(stdout_path), WriteAccess, ShareAll, 0, CreateAlways, 0, 0);
+            if ~starting.output == 0 || Shared(starting.output) == 0 {
+                AbandonProcess(starting, folder);
+                return -1;
+            }
+            output = starting.output;
+        } else {
+            output = Shared(GetStdHandle(-11));
+        }
+        starting.errors = CreateFileW(Wide(stderr_path), WriteAccess, ShareAll, 0, CreateAlways, 0, 0);
+        if ~starting.errors == 0 || Shared(starting.errors) == 0 {
+            AbandonProcess(starting, folder);
+            return -1;
+        }
+        errors = starting.errors;
+    } else {
+        output = Shared(GetStdHandle(-11));
+        errors = Shared(GetStdHandle(-12));
     }
     starting.information = Launch(command, starting.input, output, errors, CreateSuspended | NewProcessGroup);
     if length(starting.information) == 0 {
@@ -1066,7 +1139,7 @@ pub Start :: (command: string[], piped: bool) -> int {
         return -1;
     }
     marker := ProcessPath(folder, process, ".state");
-    if !RecordProcess(marker, pid, job) {
+    if !RecordProcess(marker, pid, job, piped) {
         AbandonProcess(starting, folder);
         return -1;
     }
@@ -1086,6 +1159,7 @@ pub Start :: (command: string[], piped: bool) -> int {
     Close(Word64(starting.information, 8));
     Close(starting.input);
     Close(starting.output);
+    Close(starting.errors);
     return process;
 }
 
@@ -1145,7 +1219,8 @@ WaitClaimed :: (folder: string, process: int, claim: ProcessClaim, timeout_ms: i
     }
     code: u32[] = [0];
     found := GetExitCodeProcess(u64(process), code);
-    reported := ReportProcess(ProcessPath(folder, process, ".out"));
+    reported := true;
+    if claim.piped { reported = ReportProcess(ProcessPath(folder, process, ".out")); }
     removed := Remove(ProcessPath(folder, process, ".state"));
     // Drop the ownership marker before the OS can reuse the process handle.
     // ShareDelete permits this removal while other claim readers stay excluded.

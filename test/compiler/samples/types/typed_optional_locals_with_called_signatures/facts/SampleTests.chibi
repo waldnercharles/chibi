@@ -1,0 +1,6 @@
+package facts
+
+@test
+Calls :: () {
+    assert(Read() == 109, "typed optional locals preserve presence");
+}

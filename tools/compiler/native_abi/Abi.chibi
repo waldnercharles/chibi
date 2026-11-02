@@ -18,6 +18,9 @@ pub MacOSArm64 :: () -> Target {
 pub WindowsX64 :: () -> Target {
     return {triple: "x86_64-pc-windows-msvc", pointer_bits: 64};
 }
+pub WebAssembly32 :: () -> Target {
+    return {triple: "wasm32-unknown-emscripten", pointer_bits: 32};
+}
 
 pub Same :: (target: Target, supported: Target) -> bool {
     return target.triple == supported.triple && target.pointer_bits == supported.pointer_bits;
@@ -38,6 +41,9 @@ pub DebugFormat :: (target: Target) -> string {
 // probe function instead, so code calls __chkstk there, as MSVC's and
 // rustc's do, and the program that links it defines __chkstk.
 pub StackProbe :: (target: Target) -> string {
+    // The Wasm linker must instrument shadow-stack updates, as Emscripten's
+    // STACK_OVERFLOW_CHECK=2 does. Native inline probes do not apply there.
+    if (Same(target, WebAssembly32())) { return "\"frame-pointer\"=\"none\""; }
     if (Same(target, WindowsX64())) {
         return "\"probe-stack\"=\"__chkstk\"";
     }
@@ -47,7 +53,7 @@ pub StackProbe :: (target: Target) -> string {
 // Reject other targets rather than silently applying another target's ABI.
 // The backend supplies its data layout; no unverified layout is embedded here.
 pub Supported :: (target: Target) -> bool {
-    return Same(target, LinuxX64()) || Same(target, MacOSArm64()) || Same(target, WindowsX64());
+    return Same(target, LinuxX64()) || Same(target, MacOSArm64()) || Same(target, WindowsX64()) || Same(target, WebAssembly32());
 }
 
 // Current compiler storage ordinals, not byte widths or foreign type IDs.
@@ -175,14 +181,15 @@ pub ValueTag :: (storage: int) -> int {
 pub ContextType :: () -> string {
     return "{ ptr, ptr, ptr, ptr, ptr }";
 }
-// The LLVM type of an array: its length, its capacity and its elements, by
-// value. An array of no elements, with a length and capacity of 0 and no
-// elements, is its zero.
+// A 24-byte array descriptor: length, capacity, elements and nullable backing
+// owner. The all-zero descriptor is empty; a null owner borrows its elements.
+// Foreign calls still use field 2, so the added owner never reaches C.
 pub ArrayType :: () -> string {
-    return "{ i32, i32, ptr }";
+    return "{ i32, i32, ptr, ptr }";
 }
 // A map's live count, physical span, entries capacity, index slot count,
-// entries and index. The all-zero 32-byte header owns nothing. Each map in a
+// entries and index. The all-zero header, 32 bytes on 64-bit targets and 24
+// on Wasm32, owns nothing. Each map in a
 // record pays this budget; the physical span permits amortized O(1) deletion
 // while retaining insertion order (docs/native-maps.md).
 pub MapType :: () -> string {

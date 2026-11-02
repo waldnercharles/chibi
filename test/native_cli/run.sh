@@ -15,3 +15,23 @@ esac
     --llvm "$llvm" --target "$target"
 mkdir "$scratch/programs"
 CHIBI_CORE=$root/packages/core "$scratch/tests" "$compiler" "$llvm" "$scratch/programs"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/Processes.chibi" --entry Main --output "$scratch/processes" \
+    --llvm "$llvm" --target "$target"
+"$scratch/processes" "$scratch/processes" "$scratch/programs"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/Identities.chibi" --entry Main --output "$scratch/identities" \
+    --llvm "$llvm" --target "$target"
+CHIBI_CORE=$root/packages/core "$scratch/identities" "$compiler" "$llvm" "$scratch/programs"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/Workers.chibi" --entry Main --output "$scratch/workers" \
+    --llvm "$llvm" --target "$target"
+CHIBI_CORE=$root/packages/core "$scratch/workers" "$compiler" "$llvm" "$scratch/programs"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/Waiting.chibi" --entry Main --output "$scratch/waiting" \
+    --llvm "$llvm" --target "$target"
+CHIBI_CORE=$root/packages/core "$scratch/waiting" "$compiler" "$llvm" "$scratch/programs"

@@ -1,0 +1,21 @@
+package live
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fwrite :: (data: cstring, size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+}
+State :: struct { text: string; count: i64; marker: int; }
+Main :: () -> int { return 91; }
+Frame :: () -> int {
+    progress: retain State = {text: "middle", count: 0, marker: 0};
+    message: retain string = "middle";
+    assert(progress.count >= 2 && progress.marker == 73);
+    assert(message == "first");
+    progress.count += 1;
+    progress.text = format_text("middle generation {}", progress.count);
+    stream := fopen("middle-ready", "wb");
+    written := fwrite("middle", 1, 6, stream);
+    closed := fclose(stream);
+    return 0;
+}

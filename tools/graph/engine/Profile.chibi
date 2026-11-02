@@ -31,8 +31,7 @@ pub Discover :: (name: string, source_root: string, build_dir: string, libclang_
         libclang_library: "",
         clang_resource_include: "",
         third_party: "",
-        reflect: "",
-        asset_generator_hosts: ""
+        reflect: ""
     };
     if (name == "sanitizer") {
         profile.sanitizers = "address,undefined";
@@ -409,10 +408,6 @@ pub ProfileOptionError :: (arguments: string[], build_type: string) -> string {
              (arguments[i + 1] != "on" && arguments[i + 1] != "off") ||
              build_type != "Debug")) {
             return "graph: --debug-frame-pointers requires on or off and build type Debug";
-        }
-        if (arguments[i] == "--asset-generator-hosts" &&
-            (i + 1 == length(arguments) || !strings.HasPrefix(arguments[i + 1], "/"))) {
-            return "graph: --asset-generator-hosts requires an absolute directory";
         }
     }
     return "";

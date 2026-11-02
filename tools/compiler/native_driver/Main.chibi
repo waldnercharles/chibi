@@ -5,17 +5,20 @@ import host "project:native_link_host"
 import route "project:driver_paths"
 import os "core:os"
 import strings "core:strings"
+import facts "project:scalar_facts"
 
 // The native compiler's driver: `STAGE --compiler DIR --core DIR --output FILE
-// --llvm DIR [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]...
+// [--emit-llvm | --llvm DIR] [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]...
 // [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]`
 // compiles package NAME of the project at DIR (default native_driver), or the
 // one program FILE, and the core and collection packages it imports to the
 // native program FILE. --level is opt's and llc's (default 2). --lines adds
 // line tables (Linux x86-64). Linux links libc dynamically by default.
+// --emit-llvm publishes the program's module bundle for an external linker;
+// each `; chibi-piece` boundary starts an independent module. No tools run.
 // --static refuses a program that needs libc,
 // which a program that allocates does; --shared links a library source as a
-// Linux shared object, as the Edit and Continue player loads one. A
+// Linux shared object or macOS dylib, as the Edit and Continue host loads one. A
 // `; chibi-library` line's archive (native_link.Archive) is linked after the
 // objects. Without --entry the program starts at
 // the first function of its first file; with it, at the function NAME of that
@@ -51,17 +54,26 @@ Build :: (arguments: string[]) -> int {
     level := Option(arguments, "--level", "2");
     lines := Flag(arguments, "--lines");
     shared := Flag(arguments, "--shared");
+    emit_llvm := Flag(arguments, "--emit-llvm");
     linux := triple == "x86_64-unknown-linux-gnu";
-    if (project == "" || core == "" || (output == "" && root == "") || llvm == "" || (level != "0" && level != "2")) {
-        os.Print("usage: --compiler DIR --core DIR --output FILE --llvm DIR [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]... [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]");
+    if (project == "" || core == "" || (output == "" && root == "") || (!emit_llvm && llvm == "") || (level != "0" && level != "2")) {
+        os.Print("usage: --compiler DIR --core DIR --output FILE [--emit-llvm | --llvm DIR] [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]... [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]");
         return 2;
     }
-    if ((lines || shared) && !linux) {
-        os.Print("native: line tables and shared libraries are Linux x86-64 only so far");
+    if (lines && !linux) {
+        os.Print("native: line tables are Linux x86-64 only so far");
+        return 2;
+    }
+    if (shared && !SharedTarget(triple)) {
+        os.Print("native: shared libraries require Linux x86-64 or macOS arm64");
         return 2;
     }
     if (shared && (lines || Flag(arguments, "--static"))) {
         os.Print("native: a shared library has no line tables or static link yet");
+        return 2;
+    }
+    if (emit_llvm && (root != "" || shared || Flag(arguments, "--static"))) {
+        os.Print("native: --emit-llvm takes --output and no --root, --shared or --static");
         return 2;
     }
     if (root != "") {
@@ -117,7 +129,7 @@ Build :: (arguments: string[]) -> int {
         folder = root;
     }
     options: DriverOptions = {level: level, lines: lines, static_link: Flag(arguments, "--static"),
-                               shared: shared, folder: folder, keep_module: root != ""};
+                               shared: shared, folder: folder, keep_module: root != "", emit_llvm: emit_llvm};
     if (root != "") {
         return CachedBuild(root, collections, directories, gathered, triple, chosen, llvm, Jobs(arguments), options, source);
     }
@@ -134,33 +146,63 @@ DriverOptions :: struct {
     shared: bool;
     folder: string;
     keep_module: bool;
+    // Emits the ordinary program module bundle for an external target linker.
+    // Each `; chibi-piece` boundary begins an independent LLVM module.
+    emit_llvm: bool;
+}
+
+SharedTarget :: (triple: string) -> bool {
+    target := link.TargetOf(triple);
+    return target == link.LinuxX64 || target == link.MacOSArm64;
+}
+
+HostTarget :: (triple: string) -> bool {
+    target := link.TargetOf(triple);
+    return target >= 0 && target == link.TargetOf(HostTriple());
 }
 
 Emit :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
          chosen: string, llvm: string, output: string, jobs: int) -> int {
     return EmitOptions(collections, directories, paths, sources, triple, chosen, llvm, output, jobs,
-                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", keep_module: false});
+                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", keep_module: false, emit_llvm: false});
 }
 
 // Emits into the caller's work directory; only a successful link replaces
 // output. Invalid source and options leave any previous program untouched.
 EmitOptions :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
                 chosen: string, llvm: string, output: string, jobs: int, options: DriverOptions) -> int {
+    return EmitCollected(collections, directories, paths, sources, triple, chosen, llvm, output, jobs, options, []);
+}
+
+// Tests already collected typed rows and effects in one pass. Reuse those rows
+// through the ordinary module/backend boundary, including its option/tool checks.
+EmitCollected :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+                  chosen: string, llvm: string, output: string, jobs: int, options: DriverOptions, rows: facts.Row[]) -> int {
     linux := triple == "x86_64-unknown-linux-gnu";
     windows := strings.HasPrefix(triple, "x86_64-pc-windows");
     shared := options.shared;
-    if ((options.lines || shared) && !linux) {
-        os.Print("native: line tables and shared libraries are Linux x86-64 only so far");
+    if (triple == "wasm32-unknown-emscripten" && !options.emit_llvm) {
+        os.Print("native: WebAssembly requires --emit-llvm and an external Wasm linker");
+        return 2;
+    }
+    if (options.lines && !linux) {
+        os.Print("native: line tables are Linux x86-64 only so far");
+        return 2;
+    }
+    if (shared && !SharedTarget(triple)) {
+        os.Print("native: shared libraries require Linux x86-64 or macOS arm64");
         return 2;
     }
     if ((options.level != "0" && options.level != "2") || (shared && (options.lines || options.static_link))) {
         os.Print("native: a shared library has no line tables or static link yet; --level is 0 or 2");
         return 2;
     }
-    tool_problem := LlvmProblem(llvm, triple);
-    if (tool_problem != "") {
-        os.Print(strings.Concatenate(["native: ", tool_problem]));
-        return 2;
+    if (!options.emit_llvm) {
+        tool_problem := LlvmProblem(llvm, triple);
+        if (tool_problem != "") {
+            os.Print(strings.Concatenate(["native: ", tool_problem]));
+            return 2;
+        }
     }
     directory := "";
     if (options.lines) {
@@ -171,7 +213,9 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
         visible.append(route.Visible(directory));
     }
     compiled: Output = Output.Rejected("");
-    if (shared) {
+    if (length(rows) > 0) {
+        compiled = CollectedModule(collections, visible, paths, sources, triple, rows, directory);
+    } else if (shared) {
         if (chosen != "") {
             os.Print("native: a shared generation takes no --entry");
             return 1;
@@ -181,7 +225,7 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
                 os.Print("native: a library declaration takes one source");
                 return 1;
             }
-            compiled = LibraryModule(paths[0], sources[0]);
+            compiled = LibraryModule(paths[0], sources[0], triple);
         } else {
             compiled = ModuleShared(collections, visible, paths, sources, triple, "", directory);
         }
@@ -195,6 +239,19 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
             return 1;
         case .Emitted(text):
             pieces = Pieces(text);
+    }
+    if (options.emit_llvm) {
+        text := strings.Join(pieces, "\n; chibi-piece\n");
+        if (triple == "wasm32-unknown-emscripten") {
+            text = strings.Concatenate([text, "\n; chibi-piece\n", link.WebAssemblyContext()]);
+        }
+        partial := strings.Concatenate([output, ".partial"]);
+        if (os.WriteText(partial, text) != nil || os.Rename(partial, output) != nil) {
+            removed := os.Remove(partial);
+            os.Print("native: cannot publish the LLVM module bundle");
+            return 2;
+        }
+        return 0;
     }
     // The `; chibi-library` and `; chibi-import` lines, which any piece may
     // hold: a vendored archive links after the objects, and only a Windows
@@ -422,15 +479,16 @@ Inputs :: struct {
 }
 
 Gather :: (project: string, collections: string[], directories: string[], package: string, source: string) -> Inputs {
-    return GatherWith(project, collections, directories, package, source, {folder: "", name: "", text: "", entry_name: "", entry_text: ""});
+    return GatherWith(project, collections, directories, package, source, {folder: "", collection: "", name: "", text: "", entry_name: "", entry_text: ""});
 }
 
 // A package under test: its folder, the test files it also takes, and one more file, `name`
 // holding `text`, that is not on disk, the test dispatcher. A nonempty `entry_text` is the
-// entry package, one file `entry_name` that is not on disk either, whose imports resolve
-// against the project folder.
+// first file of the package under test, `entry_name`, also not on disk.
+// `collection` identifies that package through its existing project/core route.
 Extra :: struct {
     folder: string;
+    collection: string;
     name: string;
     text: string;
     entry_name: string;
@@ -444,7 +502,15 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
     folders: string[] = [strings.Concatenate([project, "/", package])];
     prefixes: string[] = [strings.Concatenate([package, "/"])];
     if (package == ".") {
+        folders[0] = project;
         prefixes[0] = "";
+    }
+    if (extra.entry_text != "") {
+        folders[0] = extra.folder;
+        seen[0] = strings.Concatenate([extra.collection, ":", package]);
+        if (extra.collection != "project") {
+            prefixes[0] = strings.Concatenate([route.Visible(extra.folder), "/"]);
+        }
     }
     kinds: string[] = ["project"];
     kinds.extend(collections);
@@ -455,10 +521,11 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
             files.append(extra.name);
         }
         if (next == 0 && extra.entry_text != "") {
-            // The entry text of the caller, alone.
-            folders[0] = project;
-            files = [extra.entry_name];
-            prefixes[0] = strings.Concatenate([package, "/"]);
+            // The generated entry belongs to the tested package itself.
+            // Its real files and dispatcher follow in the same namespace.
+            ordered: string[] = [extra.entry_name];
+            ordered.extend(files);
+            files = ordered;
         } else if (next == 0 && source != "") {
             // One program: its file alone, whatever else its folder holds.
             slash := strings.LastIndex(source, "/");
@@ -492,7 +559,7 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
         for (file in files) {
             location := strings.Concatenate([folders[next], "/", file]);
             text := extra.text;
-            if (next == 0 && extra.entry_text != "") {
+            if (next == 0 && extra.entry_text != "" && file == extra.entry_name) {
                 text = extra.entry_text;
             } else if (extra.folder == "" || folders[next] != extra.folder || file != extra.name) {
                 if (!os.Exists(location)) {
@@ -521,8 +588,13 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
                     seen.append(key);
                     folder := "";
                     if (kind == "project") {
-                        folder = strings.Concatenate([project, "/", name]);
-                        prefixes.append(strings.Concatenate([name, "/"]));
+                        folder = project;
+                        prefix := "";
+                        if (name != ".") {
+                            folder = strings.Concatenate([project, "/", name]);
+                            prefix = strings.Concatenate([name, "/"]);
+                        }
+                        prefixes.append(prefix);
                     } else {
                         // A collection's package is its folder below the collection's
                         // directory, `NAME:.` the directory itself, and its files are

@@ -13,6 +13,7 @@ foreign probes {
     SleepEx :: (milliseconds: u32, alertable: i32) -> u32
     GetProcessHandleCount :: (process: u64, count: u32[]) -> i32
     WaitForSingleObjectEx :: (handle: u64, milliseconds: u32, alertable: i32) -> u32
+    SetEnvironmentVariableW :: (name: u16[], value: u16[]) -> i32
 }
 
 // Exercise the native filesystem, process API and real opt/llc commands.
@@ -26,6 +27,7 @@ Main :: () -> int {
     llvm := arguments[0];
     work := arguments[1];
     Files(llvm, work);
+    Environment();
     Processes(work);
     GraphCache(work);
     module := strings.Concatenate([work, "/sample.ll"]);
@@ -81,6 +83,10 @@ Child :: (arguments: string[]) -> int {
                "asynchronous arguments survive Windows quoting");
         return 71;
     }
+    if mode == "child-long-arguments" {
+        assert(length(arguments) == 2 && arguments[1] == LongArgument(), "long Unicode arguments survive Windows conversion");
+        return 83;
+    }
     if mode == "child-output" {
         output: u8[] = [97, 0, 98];
         os.WriteOutput(text_from_bytes(output));
@@ -90,6 +96,21 @@ Child :: (arguments: string[]) -> int {
     if mode == "child-piped" {
         process := os.Start([os.ProgramPath(), "child-output"], os.Piped);
         assert(process > 0 && os.Wait(process, -1) == 7, "piped output and exit code");
+        return 0;
+    }
+    if mode == "child-redirected" {
+        process := windows.StartRedirected([os.ProgramPath(), "child-output"], arguments[1], arguments[2]);
+        assert(process > 0, "start with caller-owned output files");
+        status := os.Wait(process, -1);
+        assert(status == 7, "redirected output preserves the exit status");
+        return 0;
+    }
+    if mode == "child-redirected-inherited" {
+        process := windows.StartRedirected([os.ProgramPath(), "child-output"], "", arguments[1]);
+        assert(process > 0 && os.Wait(process, -1) == 7, "inherit stdout while capturing stderr");
+        failed := windows.StartRedirected([os.ProgramPath(), "child-exit7"], "", arguments[2]);
+        assert(failed < 0, "inherited stdout survives a failed stderr open");
+        os.WriteOutput("live");
         return 0;
     }
     if mode == "child-slow" {
@@ -116,11 +137,41 @@ Child :: (arguments: string[]) -> int {
     return 2;
 }
 
+// Exceeds the foreign CString limit in UTF-8 while remaining below Win32's
+// 32,767 UTF-16-unit command line limit.
+LongArgument :: () -> string {
+    argument := "ü";
+    for index in 0..<13 { argument = strings.Concatenate([argument, argument]); }
+    return argument;
+}
+
 Handles :: () -> u32 {
     count: u32[] = [0];
     counted := GetProcessHandleCount(~u64(0), count);
     assert(counted != 0, "count this process's handles");
     return count[0];
+}
+
+Environment :: () {
+    suffix := os.HashText(os.ProgramPath());
+    name := strings.Concatenate(["CHIBI_NATIVE_ENV_", suffix]);
+    insensitive := strings.Concatenate(["chibi_native_env_", suffix]);
+    key: u16[] = [];
+    for byte in strings.Bytes(name) { key.append(u16(byte)); }
+    key.append(0);
+    assert(!windows.HasEnv(name), "the private environment probe starts absent");
+    empty: u16[] = [0];
+    changed := SetEnvironmentVariableW(key, empty);
+    assert(changed != 0 && windows.HasEnv(insensitive) && windows.Getenv(name) == "",
+           "a defined empty Windows variable is present and names ignore case");
+    value: u16[] = [111, 107, 0];
+    changed = SetEnvironmentVariableW(key, value);
+    assert(changed != 0 && windows.HasEnv(name) && windows.Getenv(name) == "ok",
+           "a populated environment variable is present");
+    none: u16[] = [];
+    changed = SetEnvironmentVariableW(key, none);
+    assert(changed != 0 && !windows.HasEnv(name), "an unset Windows variable is absent");
+    os.Print("PASS native Windows environment presence");
 }
 
 Processes :: (work: string) {
@@ -134,6 +185,9 @@ Processes :: (work: string) {
     assert(status == -1, "a completed handle cannot be waited twice");
     status = os.Kill(passed);
     assert(status == -1, "a completed handle cannot be killed");
+    passed = os.Start([program, "child-long-arguments", LongArgument()], os.Inherited);
+    status = os.Wait(passed, -1);
+    assert(passed > 0 && status == 83, "counted Unicode command lines exceed 4 KiB without a CString trap");
     first := os.Start([program, "child-exit7"], os.Piped);
     second := os.Start([program, "child-exit5"], os.Inherited);
     assert(first > 0 && second > 0 && first != second, "two processes have independent handles");
@@ -158,6 +212,38 @@ Processes :: (work: string) {
     combined: u8[] = [97, 0, 98, 101, 114, 114, 111, 114, 10];
     assert(captured.status == 0 && captured.stdout == "" && captured.stderr == text_from_bytes(combined),
            "piped output preserves NUL bytes and reports on stderr");
+    standard := strings.Concatenate([work, "/redirected stdout ü"]);
+    errors := strings.Concatenate([work, "/redirected stderr ü"]);
+    written := os.WriteText(standard, "previous output that must be truncated");
+    assert(written == nil, "prepare the previous redirected output");
+    written = os.WriteText(errors, "previous errors");
+    assert(written == nil, "prepare the previous redirected errors");
+    captured = os.Capture([program, "child-redirected", standard, errors]);
+    output: u8[] = [97, 0, 98];
+    assert(captured.status == 0 && captured.stdout == "" && captured.stderr == "" &&
+           os.ReadText(standard).text == text_from_bytes(output) && os.ReadText(errors).text == "error\n",
+           "redirected streams stay separate and binary, without automatic reporting or deletion");
+    captured = os.Capture([program, "child-redirected-inherited", errors,
+                           strings.Concatenate([work, "/missing-parent/errors"])]);
+    inherited: u8[] = [97, 0, 98, 108, 105, 118, 101];
+    assert(captured.status == 0 && captured.stdout == text_from_bytes(inherited) && captured.stderr == "" &&
+           os.ReadText(errors).text == "error\n", "inherited stdout remains live and stderr stays caller-owned");
+    slow = windows.StartRedirected([program, "child-slow"], standard, errors);
+    status = os.Wait(slow, 20);
+    assert(slow > 0 && status == os.StillRunning, "a redirected wait can time out");
+    status = os.Kill(slow);
+    assert(status == -9 && os.Exists(standard) && os.Exists(errors), "cancellation preserves caller-owned files");
+    failed = windows.StartRedirected([strings.Concatenate([work, "/missing-program.exe"])], standard, errors);
+    status = os.Wait(failed, -1);
+    assert(failed < 0 && status == 127 && os.Exists(standard) && os.Exists(errors),
+           "a failed redirected launch preserves caller-owned files");
+    failed = windows.StartRedirected([program, "child-exit7"], standard,
+                                    strings.Concatenate([work, "/missing-parent/errors"]));
+    assert(failed < 0 && os.Exists(standard), "a failed second stream closes the first without deleting it");
+    for path in [standard, errors] {
+        removed := os.Remove(path);
+        assert(removed == nil, "remove caller-owned redirected output");
+    }
     marker := strings.Concatenate([work, "/process marker ü"]);
     ready := strings.Concatenate([marker, ".ready"]);
     removed := os.Remove(marker);

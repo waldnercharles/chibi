@@ -1,0 +1,6 @@
+package native_test_waiting_foreign_rejection
+foreign { unrelated_foreign_function :: () -> int }
+Main :: () -> int {
+    if (false) { yield }
+    return unrelated_foreign_function();
+}

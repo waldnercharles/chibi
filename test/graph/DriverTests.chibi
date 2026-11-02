@@ -70,25 +70,23 @@ Has :: (log: string, part: string) -> bool {
     return strings.Contains(log, part);
 }
 
-// A non-Release profile first builds the Release hosts it borrows, then runs
-// the third-party and graph steps; a Release build borrows nothing.
+// Native product plans go directly to their requested profile.
 EngineBuildSteps :: (host: string) {
     log := Plan(host, ["--target", "chibi"]);
-    release := strings.Index(log, "--profile release");
-    sanitized := strings.Index(log, "--profile sanitizer");
-    assert(release >= 0 && sanitized > release, "Release hosts before the sanitizer build");
-    assert(Has(log, "--target chibi-build-host --target chibi-compiler-host"), "borrowed generator hosts");
-    assert(Has(log, "--asset-generator-hosts") && Has(log, "third-party:") && Has(log, "compile-commands:"), "build steps");
+    assert(Has(log, "--profile sanitizer") && !Has(log, "--profile release"), "the requested profile");
+    assert(!Has(log, "--target chibi-build-host") && !Has(log, "--target chibi-compiler-host"), "no generator hosts");
+    assert(Has(log, "third-party:") && Has(log, "compile-commands:"), "resource and graph steps");
     log = Plan(host, ["--release", "--target", "chibi"]);
     assert(Has(log, "--profile release") && !Has(log, "--profile sanitizer"), "a Release build");
-    assert(!Has(log, "--asset-generator-hosts") && Has(log, "build-release/compile_commands.json"), "borrows nothing");
+    assert(Has(log, "build-release/compile_commands.json"), "the Release graph output");
     log = Plan(host, ["--debug"]);
-    assert(Has(log, "--profile debug") && !Has(log, "--target chibi ") && !Has(log, "--target test_tools"), "a Debug build of everything: no target is named");
+    assert(Has(log, "--profile debug") && Has(log, "--target chibi --target chibi-asset-compiler") &&
+           !Has(log, "--target test_tools"), "the native Debug products");
     log = Plan(host, ["--target", "chibi"]);
     start := strings.Index(log, "--profile sanitizer");
     graph := strings.Slice(log, start, strings.ByteLength(log) - start);
     requested := Has(graph, "--target chibi ") || Has(graph, "--target chibi\n");
-    assert(requested && !Has(graph, "--target chibi-build-host"), "only the requested native target");
+    assert(requested && !Has(graph, "--target chibi-asset-compiler"), "only the requested native target");
 }
 
 // The Debug optimization and frame-pointer options reach every profile but
@@ -106,19 +104,18 @@ DebugOptions :: (host: string) {
     sanitizer := ["--target", "chibi"];
     sanitizer.extend(options);
     log = Plan(host, sanitizer);
-    hosts := strings.Index(log, "--profile release");
     graph := strings.Index(log, "--profile sanitizer");
-    assert(hosts >= 0 && graph > hosts, "the sanitizer graph step follows the Release host build");
-    assert(!Has(strings.Slice(log, 0, graph), "--debug-optimization"), "the Release host build omits them");
+    assert(graph >= 0 && !Has(log, "--profile release"), "the sanitizer profile needs no Release host build");
     assert(Has(strings.Slice(log, graph, strings.ByteLength(log) - graph), "--debug-optimization 1"), "the sanitizer build keeps them");
     assert(Has(strings.Slice(log, graph, strings.ByteLength(log) - graph), "--debug-frame-pointers on"), "and the frame pointers");
 }
 
-// A build without --target names none: the graph builds every product and test
-// driver, and a target it names is one the graph knows.
+// A build without --target selects the native products. Explicit target names
+// still belong to the engine graph.
 DefaultTargets :: (host: string) {
     log := Plan(host, ["--release"]);
-    assert(!Has(log, "--target "), "the default names no target");
+    assert(Has(log, "--target chibi --target chibi-asset-compiler") &&
+           !Has(log, "--target test_tools"), "the default native products");
     named := Plan(host, ["--release", "--target", "chibi"]);
     assert(engine.TargetError(strings.Fields(named), engine.Targets()) == "", "the graph knows each named target");
 }
@@ -224,7 +221,14 @@ NativeRunners :: (host: string) {
     source := os.Root()
     scratch := format_text("{}/.chibi/graph-runner", source)
     assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(format_text("{}/llvm", scratch)) == nil, "the scratch root")
-    assert(os.WriteText(format_text("{}/llvm/llc", scratch), "") == nil, "the LLVM folder")
+    for (tool in ["opt", "llc", "ld.lld", "ld64.lld"]) {
+        assert(os.WriteText(format_text("{}/llvm/{}", scratch, tool), "") == nil, "the LLVM input")
+    }
+    for (folder in ["tools/toolchain", "tools/graph", "packages/core"]) {
+        assert(os.MakeDirectory(format_text("{}/{}", scratch, folder)) == nil, "the source tree")
+    }
+    assert(os.WriteText(format_text("{}/tools/toolchain/Build.chibi", scratch), "package build\n") == nil &&
+           os.WriteText(format_text("{}/tools/toolchain/Graph.chibi", scratch), "package graph\n") == nil, "the program inputs")
     count := format_text("{}/compiles", scratch)
     good := format_text("{}/driver.sh", scratch)
     script := format_text("#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ \"$1\" = --output ]; then out=$2; fi; shift; done\necho compiled >> {}\nprintf '#!/bin/sh\\nexit 0\\n' > \"$out\"\nchmod +x \"$out\"\n", count)

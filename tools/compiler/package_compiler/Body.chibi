@@ -2981,6 +2981,21 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                             condition = value;
                     }
                 }
+                if (Single(condition, TaskStorage)) {
+                    condition_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                                           cell: length(cells), host: length(hosts), call: length(calls)};
+                    switch TaskCommandStep(forest, document, values, value_top + 1, item, RunningCommand, 0,
+                                           Typed(-1, BoolStorage, 0, -1), ops, target, condition_at) {
+                        case .Failed(diagnostic): return Body.Failed(diagnostic);
+                        case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                                      added_calls, added_names, scheduled, popped, value, kept, marks):
+                            code.extend(added_code);
+                            slots.extend(added_slots);
+                            cells.extend(added_cells);
+                            hosts.extend(added_hosts);
+                            condition = value;
+                    }
+                }
                 if (!Single(condition, BoolStorage)) {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, syntax.FieldCondition), document,
                                                 "condition needs a bool"));

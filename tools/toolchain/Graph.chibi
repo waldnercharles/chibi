@@ -17,7 +17,7 @@ import strings "core:strings"
 //   --debug-frame-pointers on|off (Debug only, default off)
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
 //   --libclang-library PATH --clang-resource-include DIR --third-party DIR --reflect PATH
-//   --asset-generator-hosts DIR --libclang-root DIR
+//   --libclang-root DIR
 //   --opengl-library PATH --glx-library PATH --opengl-include DIR
 // The explicit profile performs no toolchain discovery; every required tool
 // and platform option must be provided. It can write commands without native
@@ -124,7 +124,7 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         debug_optimization: "", debug_frame_pointers: false, architecture: "", sysroot: "", warnings: true, sanitizers: "",
         debug_compilation_dir: "", libclang_include: "", libclang_library: "",
         opengl_library: "", opengl_include: "", glx_library: "",
-        clang_resource_include: "", third_party: "", reflect: "", asset_generator_hosts: ""
+        clang_resource_include: "", third_party: "", reflect: ""
     };
     if (discover) {
         found = engine.Discover(profile_name, os.Root(), build_dir, Option(arguments, "--libclang-root", ""));
@@ -180,8 +180,7 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         clang_resource_include: Option(arguments, "--clang-resource-include", resource_include),
         // The archive for the profile as overridden.
         third_party: Option(arguments, "--third-party", third_party),
-        reflect: Option(arguments, "--reflect", ""),
-        asset_generator_hosts: Option(arguments, "--asset-generator-hosts", "")
+        reflect: Option(arguments, "--reflect", "")
     };
     rejection := engine.ProfileOptionError(arguments, profile.build_type);
     if (rejection != "") {

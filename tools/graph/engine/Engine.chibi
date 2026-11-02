@@ -44,10 +44,6 @@ pub Profile :: struct {
     // A reflect program to run instead of the one the graph builds, as a
     // cross build's CHIBI_REFLECT_EXECUTABLE names one; empty to build it.
     reflect: string;
-    // Another build's sdk directory whose chibi-build-host and
-    // chibi-compiler-host generate the asset compiler, as
-    // CHIBI_ASSET_GENERATOR_HOSTS names one; empty to run this build's.
-    asset_generator_hosts: string;
 }
 
 // The builtin headers of the clang that a libclang belongs to, as
@@ -832,7 +828,7 @@ pub Needed :: (program: string, target: string) -> bool {
         return true;
     }
     for (run in Runs(program)) {
-        if (run == target || Linked(run, target)) {
+        if (run == target || Needed(run, target)) {
             return true;
         }
     }
@@ -840,7 +836,7 @@ pub Needed :: (program: string, target: string) -> bool {
     linked.extend(LinkedObjects(program));
     for (dependency in linked) {
         for (run in Runs(dependency)) {
-            if (run == target || Linked(run, target)) { return true; }
+            if (run == target || Needed(run, target)) { return true; }
         }
     }
     return false;

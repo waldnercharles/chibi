@@ -139,6 +139,10 @@ The compiler and CLI are authored in
 `chibi` executable compiles programs directly and invokes LLVM's tools. Build,
 run and test use native executables; no VM host or bytecode fallback is involved.
 
+The engine's runtime APIs and browser path still use VM execution. See the
+[native ledger](../native-llvm-ledger.md) for supported native source forms and
+remaining runtime coverage.
+
 A project can provide an ordinary `Build.chibi` with a zero-argument `Main`
 returning nothing or an `int` exit status. `chibi build` finds the nearest
 `Build.chibi` in the working directory or its parents, compiles it through the

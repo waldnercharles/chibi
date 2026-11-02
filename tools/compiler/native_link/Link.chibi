@@ -78,6 +78,48 @@ pub Program :: (triple: string, llvm: string, objects: string[], archives: strin
     return plan;
 }
 
+// The SDK's folder of prebuilt third-party archives, lib/chibi-vendor beside
+// share/chibi, for the SDK whose core is `core`; "" when `core` is not below a
+// share/chibi folder.
+pub VendorDirectory :: (core: string) -> string {
+    suffix := "/share/chibi/core";
+    if (!strings.HasSuffix(core, suffix)) {
+        return "";
+    }
+    return Join([strings.Slice(core, 0, strings.ByteLength(core) - strings.ByteLength(suffix)), "/lib/chibi-vendor"]);
+}
+
+// The archive a `vendor:NAME` foreign path names in `vendor`, "" for a path
+// that is not one or a name that is not an identifier.
+pub VendorArchive :: (path: string, vendor: string) -> string {
+    if (!strings.HasPrefix(path, "vendor:")) {
+        return "";
+    }
+    name := strings.Slice(path, 7, strings.ByteLength(path) - 7);
+    if (!strings.IsIdentifier(name)) {
+        return "";
+    }
+    return Join([vendor, "/libchibi_vendor_", name, ".a"]);
+}
+
+// The archive file a module's `; chibi-library PATH` line names: the SDK's
+// prebuilt archive for `vendor:NAME`, PATH itself when it is absolute, else
+// PATH below `root`, the source's folder. A system library (`system:NAME`)
+// is no archive, and neither is a bad vendor name: both give "". The caller
+// checks that the file is there.
+pub Archive :: (path: string, root: string, vendor: string) -> string {
+    if (strings.HasPrefix(path, "system:")) {
+        return "";
+    }
+    if (strings.HasPrefix(path, "vendor:")) {
+        return VendorArchive(path, vendor);
+    }
+    if (strings.HasPrefix(path, "/")) {
+        return path;
+    }
+    return Join([root, "/", path]);
+}
+
 // The target a triple names, -1 for any this link step does not know.
 pub TargetOf :: (triple: string) -> int {
     if (triple == "x86_64-unknown-linux-gnu") {

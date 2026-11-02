@@ -109,8 +109,8 @@ is closed after the swap. Nothing executes inside a generation that is being rep
 | Same name and scalar type | Value kept. |
 | New field | Starts from its initializer. |
 | Removed field | Dropped. |
-| Same name, other integer type | Converted, clamped to the new type's range. |
-| Same name, any other type change | Reset to the initializer. |
+| Same name, another number or bool type | Converted as the language converts: an integer clamps to the new range, a float truncates toward zero and saturates, NaN is 0, a bool is a number's inequality to zero. |
+| Same name, any other change (a string or record became a number, say) | Reset to the initializer. |
 
 A migration never partly applies: the new state is built whole, then swapped.
 
@@ -137,8 +137,7 @@ fails to build is reported and the running one continues; one that fails to load
 `rejected.so`. The `native-build` case `WatchesAndSwapsARunningLoop`
 (`test/native_aot/native_build/BuildTests.chibi`) edits a running loop and checks the exit status that
 only a surviving count gives; `SwapsARunningLoopKeepingState` does the same with the editor played by the
-test. Not done: integer conversion on a type change
-(the host resets it), a source that is a program rather than a `library` block, other targets.
+test. Not done: a source that is a program rather than a `library` block, other targets.
 
 ## Limits
 

@@ -2760,7 +2760,11 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
     REQUIRE(!setenv("CHIBI_BUILD_WORKER", worker_path, 1));
     REQUIRE(!setenv("CHIBI_BUILD_SECRET", "parent-only", 1));
     char *saved = getenv("CCACHE_TEMPDIR") ? strdup(getenv("CCACHE_TEMPDIR")) : NULL;
+    char *timings = getenv("CHIBI_TEST_TIMINGS")
+                      ? strdup(getenv("CHIBI_TEST_TIMINGS"))
+                      : NULL;
     REQUIRE(!setenv("CCACHE_TEMPDIR", "", 1));
+    REQUIRE(!setenv("CHIBI_TEST_TIMINGS", "case wall times", 1));
     static const char *
         source = "package names\nBuild :: () -> int { "
                  "names:=build.join([\"\",build.join(build.environment_names(),"
@@ -2772,10 +2776,13 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
                  "if(build.before(names,\"SECRET\")!=names || "
                  "build.environment(\"CCACHE_TEMPDIR\")!=\"\") { "
                  "return 2; } "
-                 "return 0; }";
+                 "if(build.environment(\"CHIBI_TEST_TIMINGS\")!=\"case wall "
+                 "times\") { return 3; } "
+                 "return build.run([\"sh\",\"-c\",\"test "
+                 "\\\"$CHIBI_TEST_TIMINGS\\\" = \\\"case wall times\\\"\"]); }";
     bool passed = true;
     for (int b = 0; b < 2; b++) {
-        passed &= run_primitives(source, b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE, 0);
+        passed &= run_primitives(source, b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE, 1);
     }
     if (saved) {
         assert(!setenv("CCACHE_TEMPDIR", saved, 1));
@@ -2783,6 +2790,12 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
         assert(!unsetenv("CCACHE_TEMPDIR"));
     }
     free(saved);
+    if (timings) {
+        assert(!setenv("CHIBI_TEST_TIMINGS", timings, 1));
+    } else {
+        assert(!unsetenv("CHIBI_TEST_TIMINGS"));
+    }
+    free(timings);
     REQUIRE(passed);
     return true;
 }

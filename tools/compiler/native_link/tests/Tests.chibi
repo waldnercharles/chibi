@@ -254,3 +254,21 @@ ContextStartModulesFormatTextThemselves :: () {
         assert(strings.Contains(text, "%is.text = icmp eq i32 %tag, 12"), "tells strings from numbers");
     }
 }
+
+@test
+VendorArchivesAreBesideTheSdkShare :: () {
+    assert(link.VendorDirectory("/sdk/share/chibi/core") == "/sdk/lib/chibi-vendor", "an SDK's vendor folder");
+    assert(link.VendorDirectory("/src/packages/core") == "", "a source tree has none");
+    assert(link.VendorArchive("vendor:freetype", "/v") == "/v/libchibi_vendor_freetype.a", "a vendor archive");
+    assert(link.VendorArchive("vendor:free type", "/v") == "", "a vendor name is an identifier");
+    assert(link.VendorArchive("/lib/libz.a", "/v") == "", "an absolute path is no vendor archive");
+}
+
+@test
+LibraryLinesNameArchives :: () {
+    names := ["vendor:freetype", "/opt/lib/libz.a", "third/libbox.a", "system:c", "system:user32", "vendor:"];
+    archives := ["/v/libchibi_vendor_freetype.a", "/opt/lib/libz.a", "/game/third/libbox.a", "", "", ""];
+    for (index in 0..<length(names)) {
+        assert(link.Archive(names[index], "/game", "/v") == archives[index], "a library line's archive");
+    }
+}

@@ -1,0 +1,29 @@
+package map_strings
+
+Main :: () -> int {
+    counts: [string: int] = ["a\u0000b": 1, "a\u0000c": 2, "a": 3];
+    assert(counts["a\u0000b"] == 1 && counts["a\u0000c"] == 2 && counts["a"] == 3);
+    assert(!counts.has("a\u0000") && "absent" not in counts);
+    temporary := Make()[1];
+    assert(temporary == "one1");
+    names := Make();
+    old := names;
+    suffix: int = 1;
+    names[1] = format_text("{}{}", "changed", suffix);
+    names.delete(2);
+    assert(old[1] == "one1" && old[2] == "two");
+    assert(names[1] == "changed1" && names[2] == "");
+    held := Copy(names);
+    held[1] = "last";
+    assert(names[1] == "changed1" && held[1] == "last");
+    flags: [int: bool] = [:];
+    flags[3] = true;
+    assert(flags[3] && !flags[4]);
+    return 0;
+}
+Make :: () -> [int: string] {
+    suffix: int = 1;
+    values: [int: string] = [1: format_text("one{}", suffix), 2: "two"];
+    return values;
+}
+Copy :: (values: [int: string]) -> [int: string] { return values; }

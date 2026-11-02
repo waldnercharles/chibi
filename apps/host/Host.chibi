@@ -7,8 +7,8 @@ package host
 // looks for `next.so`, a later generation: it loads that, moves the retained
 // states the two generations share, swaps it in, and unloads the old one, so
 // the next Frame runs the new code with the state it had. Main is not called
-// again. A generation that fails to load, or lacks Main or Frame, is set
-// aside as `rejected.so` and the running one continues. The generations are
+// again. A state whose type changed converts, as the language converts. A
+// generation that fails to load, or lacks Main or Frame, is set aside as `rejected.so` and the running one continues. The generations are
 // files in the working directory because the host reads no strings, and they
 // alternate between `live-0.so` and `live-1.so` so a path is never reloaded
 // while loaded.
@@ -65,10 +65,17 @@ Main :: () -> int {
         new_type: fn(index: i32) -> i32 = dlsym(incoming, "chibi_host_retained_type");
         new_hash: fn(index: i32) -> i64 = dlsym(incoming, "chibi_host_retained_hash");
         new_set: fn(index: i32, word: i64) -> i32 = dlsym(incoming, "chibi_host_retained_set");
+        new_set_as: fn(index: i32, from: i32, word: i64) -> i32 = dlsym(incoming, "chibi_host_retained_set_as");
         for target in 0..<int(new_count()) {
             for source in 0..<int(old_count()) {
-                if old_hash(i32(source)) == new_hash(i32(target)) && old_type(i32(source)) == new_type(i32(target)) {
+                if old_hash(i32(source)) != new_hash(i32(target)) {
+                    continue;
+                }
+                // The same type keeps the word; another number or bool type converts it.
+                if old_type(i32(source)) == new_type(i32(target)) {
                     carried := new_set(i32(target), old_get(i32(source)));
+                } else {
+                    converted := new_set_as(i32(target), old_type(i32(source)), old_get(i32(source)));
                 }
             }
         }

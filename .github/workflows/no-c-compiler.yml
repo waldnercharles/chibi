@@ -3,17 +3,18 @@ name: No C compiler
 # Goal item 2: Chibi builds and runs native programs on a machine with no C
 # compiler. cmake, gcc, cc and clang are removed (and shown missing) before the
 # job starts; the toolchain left is the LLVM tools opt and llc, lld, and the
-# pinned prebuilt hosts. From a clean checkout the native stage one builds stage
+# pinned native seed. From a clean checkout the native stage one builds stage
 # two, and the `vendor:` FreeType program links the prebuilt archives and runs.
 #
-# The prebuilt build host and compiler host stand in until the native seed and
-# the native build runner replace them; no C is compiled here.
+# The entry, build programs and compiler all execute natively; no VM host is fetched.
 on:
   workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
       - tools/compiler/**
+      - tools/build.sh
+      - .github/native-llvm.sh
       - tools/native_aot/**
       - tools/toolchain/**
       - tools/bootstrap/**
@@ -40,14 +41,12 @@ jobs:
     timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
-      LLVM_BIN: /usr/lib/llvm-18/bin
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      # opt and llc come with llvm-18 and ld.lld with lld-18; clang-18 is not installed.
       - name: Install the LLVM tools and lld
-        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends llvm-18 lld-18
+        run: sh .github/native-llvm.sh
       - name: Remove cmake and every C compiler
         run: |
           sudo rm -f /usr/bin/cmake /usr/local/bin/cmake /usr/bin/ccmake /usr/bin/ctest /usr/bin/cpack
@@ -70,27 +69,20 @@ jobs:
           test -z "$failed"
           ls -l "$LLVM_BIN/opt" "$LLVM_BIN/llc" "$LLVM_BIN/ld.lld"
           ! ls "$LLVM_BIN"/clang* 2>/dev/null
-      # The pinned build host (tools/bootstrap/hosts.tsv), the pinned compiler host
-      # (tools/compiler/runtime.json) and the bytecode seed are release assets.
-      - name: Fetch the pinned hosts and seed
-        run: |
-          sh tools/bootstrap.sh build-release/sdk/chibi-build-host
-          sh tools/bootstrap/runtime.sh build-release/sdk/chibi-compiler-host
-          sh tools/bootstrap/seed.sh
       - name: Native stage one builds stage two
         shell: bash
         run: |
           set -o pipefail
-          sh tools/build.sh native-self-host --llvm "$LLVM_BIN" --stage-two-only --skip-vm \
-            --build-host "$PWD/build-release/sdk/chibi-build-host" \
-            --compiler-host "$PWD/build-release/sdk/chibi-compiler-host" 2>&1 | tee "$RUNNER_TEMP/native-stages.log"
+          sh tools/build.sh native-self-host --llvm "$LLVM_BIN" --stage-two-only \
+            2>&1 | tee "$RUNNER_TEMP/native-stages.log"
+          test ! -e build-release/sdk/chibi-build-host
+          test ! -e build-release/sdk/chibi-compiler-host
       - name: Link and run the vendor FreeType program
         shell: bash
         run: |
           set -o pipefail
           sh tools/build.sh native-vendor-sample --llvm "$LLVM_BIN" \
-            --host "$PWD/build-release/sdk/chibi-build-host" \
-            --compiler-host "$PWD/build-release/sdk/chibi-compiler-host" 2>&1 | tee "$RUNNER_TEMP/native-vendor-sample.log"
+            --native-driver "$PWD/build-native-self-host/stage2/chibi" 2>&1 | tee "$RUNNER_TEMP/native-vendor-sample.log"
       - name: Summarize
         if: always()
         shell: bash

@@ -252,30 +252,6 @@ LinkedLibraries :: (lines: string[]) -> string[] {
     return found;
 }
 
-// The SDK's folder of prebuilt third-party archives, lib/chibi-vendor beside
-// share/chibi, for the SDK whose core is `core`; "" when `core` is not below a
-// share/chibi folder.
-VendorDirectory :: (core: string) -> string {
-    suffix := "/share/chibi/core";
-    if (!strings.HasSuffix(core, suffix)) {
-        return "";
-    }
-    return Join([strings.Slice(core, 0, strings.ByteLength(core) - strings.ByteLength(suffix)), "/lib/chibi-vendor"]);
-}
-
-// The archive a `vendor:NAME` foreign path names in `vendor`, "" for a path
-// that is not one or a name that is not an identifier.
-VendorArchive :: (path: string, vendor: string) -> string {
-    if (!strings.HasPrefix(path, "vendor:")) {
-        return "";
-    }
-    name := strings.Slice(path, 7, strings.ByteLength(path) - 7);
-    if (!strings.IsIdentifier(name)) {
-        return "";
-    }
-    return Join([vendor, "/libchibi_vendor_", name, ".a"]);
-}
-
 // The vendor archives the sources name, `NAME:HASH` once each in source order,
 // so a changed archive rebuilds the program that links it.
 VendorState :: (texts: string[], vendor: string) -> string {
@@ -290,7 +266,7 @@ VendorState :: (texts: string[], vendor: string) -> string {
                 break;
             }
             path := strings.Slice(rest, 0, end);
-            archive := VendorArchive(path, vendor);
+            archive := native_link.VendorArchive(path, vendor);
             if (archive != "") {
                 part := Join([path, ":", build.hash_file(archive)]);
                 if (!parts.contains(part)) {
@@ -327,15 +303,10 @@ ResolveLibraries :: (text: string, root: string, vendor: string) -> string {
             out.append(line);
             continue;
         }
-        absolute := path;
-        if (strings.HasPrefix(path, "vendor:")) {
-            absolute = VendorArchive(path, vendor);
-            if (absolute == "" || build.file_kind(absolute) != "file") {
-                build.report(Join(["native: the foreign library ", path, " is not in the SDK's ", vendor]));
-                return "";
-            }
-        } else if (!strings.HasPrefix(path, "/")) {
-            absolute = Join([root, "/", path]);
+        absolute := native_link.Archive(path, root, vendor);
+        if (strings.HasPrefix(path, "vendor:") && (absolute == "" || build.file_kind(absolute) != "file")) {
+            build.report(Join(["native: the foreign library ", path, " is not in the SDK's ", vendor]));
+            return "";
         }
         absolute = build.resolve_path(absolute);
         if (absolute == "" || build.file_kind(absolute) != "file") {
@@ -1200,7 +1171,7 @@ pub Native :: () -> int {
     compiler := arguments[1];
     core := arguments[2];
     root := arguments[3];
-    vendor := VendorDirectory(core);
+    vendor := native_link.VendorDirectory(core);
     mode := arguments[5];
     debug := arguments[6];
     destination := Requested(arguments[7]);

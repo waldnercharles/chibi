@@ -1,0 +1,43 @@
+package native_link_objects
+
+import host "native_link_host:."
+import link "native_link:."
+import os "core:os"
+import strings "core:strings"
+
+// Stub tools keep the success, tool-failure and cleanup-failure paths independent
+// of LLVM. A nonempty directory at the bitcode path makes removal fail even as
+// root; the other module stays alive until Objects stops and reaps it.
+Run :: () -> int {
+    work := strings.Join([os.Root(), "/.chibi/native-link-objects"], "");
+    assert(os.Run(["rm", "-rf", work]) == 0 && os.MakeDirectory(work) == nil, "the scratch root");
+    opt := strings.Join([work, "/opt"], "");
+    llc := strings.Join([work, "/llc"], "");
+    first := strings.Join([work, "/first.o"], "");
+    slow := strings.Join([work, "/slow.o"], "");
+    pid := strings.Join([slow, ".bc.pid"], "");
+    script := format_text("#!/bin/sh\ncase \"$4\" in\nslow) echo $$ > \"$3.pid\"; exec sleep 30;;\ngood) : > \"$3\"; exit 0;;\nesac\nn=0\nwhile [ ! -f '{}' ]; do n=$((n+1)); [ $n -lt 500 ] || exit 98; sleep 0.01; done\n[ \"$4\" != failed ] || exit 17\nmkdir \"$3\" && touch \"$3/keep\"\n", pid);
+    assert(os.WriteText(opt, script) == nil && os.WriteText(llc, "#!/bin/sh\n: > \"$5\"\n") == nil &&
+           os.Run(["chmod", "+x", opt, llc]) == 0, "the stub tools");
+    assert(host.Objects(work, ["good"], [first], 0, 1) == nil, "a successful object");
+    assert(os.IsFile(first) && !os.Exists(strings.Join([first, ".bc"], "")), "successful bitcode is removed");
+    for (module in ["failed", "cleanup"]) {
+        failure := host.Objects(work, [module, "slow"], [first, slow], 0, 2);
+        if (failure != nil) {
+            if (module == "failed") {
+                assert(failure.kind == link.ToolFailed && failure.code == 17, "the tool status is retained");
+            } else {
+                assert(failure.kind == link.CannotWrite && failure.code == 0, "cleanup failure is not success");
+            }
+        } else {
+            assert(false, "a failed step is reported");
+        }
+        child := os.ReadText(pid);
+        assert(child.error == nil, "the sibling started before the failure");
+        stopped := os.Capture(["sh", "-c", "kill -0 \"$1\" 2>/dev/null", "sh", strings.TrimSpace(child.text)]);
+        assert(stopped.status != 0, "the sibling was stopped and reaped");
+        assert(os.Remove(pid) == nil, "the next case has its own sibling");
+    }
+    assert(os.Run(["rm", "-rf", work]) == 0, "the scratch root is removed");
+    return 0;
+}

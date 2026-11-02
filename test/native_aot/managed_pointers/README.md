@@ -9,13 +9,16 @@ unreachable cycles, escaped cells, changed roots, separate owners, bounded
 allocation during 100,000 discarded cycles, and iterative traversal of a
 10,000-cell chain. Cross-owner marks and unmatched root pops trap.
 
-Standalone desktop programs admit non-null numeric/bool scalar cells and
+Standalone desktop programs admit numeric/bool scalar cells and
 arrays of those pointers. Cells can escape creator returns; array copies
 retain cell identity while detaching on entry replacement. A cell descriptor
 contains its nonmoving root, byte offset and stable semantic pointee tag.
 Reads, writes and scoped borrows validate the tag, owner, scalar storage and
 range before accessing the payload. Scoped parameters always borrow the
 caller location, including readonly parameters that can alias written ones.
+Nullable pointers use the all-zero descriptor for absence; presence tests,
+assignment and equality preserve the original pointer type. The ordinary
+checker still requires a presence guard before dereferencing a nullable value.
 
 Source tests cover ordinary/native alias behavior, returned cells, CoW,
 traversal snapshots, replacement during RHS evaluation and moved parameter
@@ -24,6 +27,10 @@ allocations and a fixed peak bound, both at the normal collection threshold
 and with collection forced before every cell allocation. Native probes cover
 descriptor rejection, shared tracing once per backing/epoch, borrowed array
 imports, cross-heap rejection before epoch shortcuts and malformed pin CFGs.
+Persistent roots also survive a spawning function's stack-boundary restore.
+Real collection after middle, tail and head removal checks non-LIFO cleanup
+and the surviving value at O0/O2. The heap is 56 bytes; persistent nodes are
+32 bytes and unlink in constant time. Stack roots retain their 24-byte ABI.
 
 Raw native IR clients must pin each live pointer-array owning place or fresh
 descriptor around collecting calls and cell construction; borrowed Read slots
@@ -31,9 +38,8 @@ are not owners. Pin regions cannot be entered after their first push. Scalar
 descriptor slots are initialized and rooted until their function returns.
 
 Generic embedded modules and Wasm require a collector-owner adapter before
-managed admission. Nullable, nominal char, record, nested and container cells
-remain closed in this slice, as do pointer equality in authored source and
-pointer buffers at the foreign boundary.
+managed admission. Nominal char, record, nested and container cells remain
+closed in this slice, as do pointer buffers at the foreign boundary.
 Pointer-bearing suspended frames and retained values require scheduler roots,
 collector-family adoption and generation metadata retention before admission.
 Trace and drop callbacks must outlive their cells. Drop callbacks release

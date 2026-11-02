@@ -1,0 +1,48 @@
+package nullable_pointer_values
+
+Main :: () -> int {
+    null_test := NullTest();
+    nullable := Nullable();
+    nil_pointers := NilPointers();
+    typed := Read();
+    assert(null_test == 1 && nullable == 3 && nil_pointers && typed == 187);
+    value := 4;
+    pointer: ^int? = &value;
+    alias := pointer;
+    assert(pointer == alias && pointer != nil && nil != pointer);
+    changed := BumpNullable(pointer);
+    assert(changed == 5 && value == 5);
+    pointer = nil;
+    assert(pointer == nil && alias != pointer);
+    if alias { assert(alias^ == 5); } else { assert(false); }
+    if pointer { assert(false); }
+    absent := Choose(false);
+    present := Choose(true);
+    assert(absent == nil && present != nil);
+    for index in 0..<2000 { discarded := Choose(true); }
+    if present != nil { assert(present^ == 9); }
+    assert(absent == nil);
+    return 0;
+}
+// Unchanged original positive cases from the collections/types inventory.
+NullTest :: () -> int { p: ^int? = nil; if p == nil { return 1; } return 0; }
+Nullable :: () -> int { p: ^int? = nil; value: int = 3; p = &value; if p != nil { return p^; } return 0; }
+NilPointers :: () -> bool { p: ^int? = nil; q: ^int? = nil; return p == q; }
+Read :: () -> int {
+    pointer: ^int? = nil;
+    other: ^int? = nil;
+    result := 0;
+    if pointer == nil { result += 100; }
+    if other == nil { result += 10; }
+    value: int = 2;
+    pointer = &value;
+    if pointer != nil { pointer^ += 5; }
+    other = pointer;
+    if other != nil { result += value * 10 + other^; }
+    return result;
+}
+BumpNullable :: (value: ^int?) -> int {
+    if value != nil { value^ += 1; return value^; }
+    return 0;
+}
+Choose :: (present: bool) -> ^int? { if present { value := 9; return &value; } return nil; }

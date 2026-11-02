@@ -1,0 +1,2 @@
+package rejected_unguarded_nullable
+Main :: () -> int { pointer: ^int? = nil; return pointer^; }

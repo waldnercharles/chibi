@@ -570,7 +570,7 @@ pub Floating :: (type: int) -> bool {
 // integer type, any bits for a word or double, 32 bits for a float and 0 for
 // a string, whose value is its text.
 pub Fits :: (literal: i64, type: int) -> bool {
-    if (type == TaskType) { return literal == 0; }
+    if (type == TaskType || type == PointerType) { return literal == 0; }
     if (type == StringType) {
         return literal == 0;
     }

@@ -2099,20 +2099,24 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // and a Tag or Payload row extracts its field. A string literal is a
 // constant of the module's text table, one entry per distinct text.
 pub EmitFor :: (target: abi.Target, rows: facts.Row[]) -> Result {
-    return Lower(target, rows, "", false, false);
+    return Lower(target, rows, "", false, false, false);
 }
 // Emit the rows of a package as a shared library, the generation of an Edit and
 // Continue loop: its functions are the library's, named by the package's.
 pub EmitShared :: (target: abi.Target, rows: facts.Row[]) -> Result {
-    return Lower(target, rows, "", false, true);
+    return Lower(target, rows, "", false, true, false);
 }
 // Emit with line tables: each instruction is at the position of the
 // statement row it lowers, the function's own row before its first, and the
 // source row names the file, which is in `directory`.
 pub EmitLines :: (rows: facts.Row[], directory: string) -> Result {
-    return Lower(abi.LinuxX64(), rows, directory, true, false);
+    return Lower(abi.LinuxX64(), rows, directory, true, false, false);
 }
-Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool, shared: bool) -> Result {
+// The native driver links the process runtime that owns shared failure scopes.
+pub EmitProgramFor :: (target: abi.Target, rows: facts.Row[], directory: string) -> Result {
+    return Lower(target, rows, directory, directory != "", false, true);
+}
+Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool, shared: bool, program: bool) -> Result {
     error := ValidateWith(rows, shared);
     if (error != "") {
         return Result.Invalid(error);
@@ -3570,7 +3574,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     // A library's Document row names it; a package generation has its own
     // manifest name, not a prepared artifact's stable library identity.
     emitted: native.Result = native.Result.Rejected(-1, "");
-    if (rows[1].text == "" && !generation) {
+    if (rows[1].text == "" && !generation && program) {
+        emitted = native.EmitProgram(target, functions, parameters, slots, locals, code, arguments, records, fields, texts,
+                                     source, names, lines, columns);
+    } else if (rows[1].text == "" && !generation) {
         emitted = native.Emit(target, functions, parameters, slots, locals, code, arguments, records, fields, texts,
                               source, names, lines, columns, false, 1);
     } else {

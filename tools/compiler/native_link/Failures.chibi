@@ -2,13 +2,15 @@ package native_link
 
 // The process-local test scope: a matching typed failure ends this one test
 // successfully. Each native test has its own process; nothing unwinds.
-FailureRuntime :: (windows: bool, context: bool) -> string {
+FailureRuntime :: (windows: bool, context: bool, static_linux: bool) -> string {
     platform := "";
     if (windows) {
         if (!context) {
             platform = "declare dllimport ptr @GetStdHandle(i32)\ndeclare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n";
         }
         platform = Join([platform, "define internal void @chibi_failure_write(ptr %bytes, i32 %count) {\n  %error = call ptr @GetStdHandle(i32 -12)\n  %written = alloca i32\n  %ignored = call i32 @WriteFile(ptr %error, ptr %bytes, i32 %count, ptr %written, ptr null)\n  ret void\n}\ndefine internal void @chibi_failure_exit(i32 %status) noreturn {\n  call void @ExitProcess(i32 %status)\n  unreachable\n}\n"]);
+    } else if (static_linux) {
+        platform = "define internal void @chibi_failure_write(ptr %bytes, i32 %count) {\n  %wide = zext i32 %count to i64\n  %ignored = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}\"(i64 1, i64 2, ptr %bytes, i64 %wide)\n  ret void\n}\ndefine internal void @chibi_failure_exit(i32 %status) noreturn {\n  %wide = sext i32 %status to i64\n  call void asm sideeffect \"syscall\", \"{rax},{rdi},~{rcx},~{r11},~{memory}\"(i64 231, i64 %wide)\n  unreachable\n}\n";
     } else {
         platform = "declare i64 @write(i32, ptr, i64)\ndeclare void @_exit(i32) noreturn\ndefine internal void @chibi_failure_write(ptr %bytes, i32 %count) {\n  %wide = zext i32 %count to i64\n  %ignored = call i64 @write(i32 2, ptr %bytes, i64 %wide)\n  ret void\n}\ndefine internal void @chibi_failure_exit(i32 %status) noreturn {\n  call void @_exit(i32 %status)\n  unreachable\n}\n";
     }
@@ -32,6 +34,8 @@ FailureRuntime :: (windows: bool, context: bool) -> string {
         "\n",
         "@chibi_test_active = internal global i1 false\n",
         "@chibi_test_expected = internal global i32 0\n",
+        "@chibi_native_remaining = internal global i64 0\n",
+        "@chibi_native_bounded = internal global i1 false\n",
         "\n",
         "define internal void @chibi_failure_name(i32 %kind) {\n",
         "  %valid = icmp ult i32 %kind, 8\n",
@@ -68,18 +72,23 @@ FailureRuntime :: (windows: bool, context: bool) -> string {
         "actual:\n",
         "  call void @chibi_failure_name(i32 %kind)\n",
         "  call void @chibi_failure_write(ptr @chibi_failure_newline, i32 1)\n",
-        "  call void @chibi_failure_exit(i32 134)\n",
+        "  %budget = icmp eq i32 %kind, 5\n",
+        "  %status = select i1 %budget, i32 125, i32 134\n",
+        "  call void @chibi_failure_exit(i32 %status)\n",
         "  unreachable\n",
         "}\n",
         "define i32 @chibi_native_test_begin() {\n",
         "  store i1 true, ptr @chibi_test_active\n",
         "  store i32 0, ptr @chibi_test_expected\n",
+        "  store i64 100000000, ptr @chibi_native_remaining\n",
+        "  store i1 true, ptr @chibi_native_bounded\n",
         "  ret i32 0\n",
         "}\n",
         "define i32 @chibi_native_test_end() {\n",
         "entry:\n",
         "  %expected = load i32, ptr @chibi_test_expected\n",
         "  store i1 false, ptr @chibi_test_active\n",
+        "  store i1 false, ptr @chibi_native_bounded\n",
         "  %armed = icmp ne i32 %expected, 0\n",
         "  br i1 %armed, label %missing, label %pass\n",
         "missing:\n",
@@ -105,6 +114,33 @@ FailureRuntime :: (windows: bool, context: bool) -> string {
         "  call void @chibi_failure_write(ptr @chibi_failure_invalid, i32 54)\n",
         "  call void @chibi_failure_exit(i32 134)\n",
         "  unreachable\n",
+        "}\n",
+        "define i32 @chibi_native_scope_begin(i64 %steps) {\n",
+        "  store i64 %steps, ptr @chibi_native_remaining\n",
+        "  store i1 true, ptr @chibi_native_bounded\n",
+        "  ret i32 0\n",
+        "}\n",
+        "define i32 @chibi_native_scope_end() {\n",
+        "  store i1 false, ptr @chibi_native_bounded\n",
+        "  ret i32 0\n",
+        "}\n",
+        "define void @chibi_native_step() {\n",
+        "entry:\n",
+        "  %remaining = load i64, ptr @chibi_native_remaining\n",
+        "  %limited = load i1, ptr @chibi_native_bounded\n",
+        "  br i1 %limited, label %bounded, label %done\n",
+        "bounded:\n",
+        "  %available = icmp ne i64 %remaining, 0\n",
+        "  br i1 %available, label %step, label %exhausted\n",
+        "step:\n",
+        "  %next = sub i64 %remaining, 1\n",
+        "  store i64 %next, ptr @chibi_native_remaining\n",
+        "  br label %done\n",
+        "exhausted:\n",
+        "  call void @chibi_native_failure(i32 5)\n",
+        "  unreachable\n",
+        "done:\n",
+        "  ret void\n",
         "}\n",
     ]);
 }

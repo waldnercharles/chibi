@@ -508,7 +508,7 @@ Last :: (rows: facts.Row[], heads: int[], function: int) -> int {
 // or its start and count; 0 for no operator. A TextFormat row's count says
 // how many it consumes.
 TextOperands :: (operator: int) -> int {
-    if (operator == facts.TextLength) {
+    if (operator == facts.TextLength || operator == facts.TextPrint) {
         return 1;
     }
     if (operator == facts.TextByte) {
@@ -2986,6 +2986,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 } else if (operand.kind == facts.TextRow) {
                     base := length(stack) - operand.count;
                     item = Op(native.TextLength, type, slot, stack[base], 0, 0);
+                    if (operand.value == facts.TextPrint) { item.op = native.Print; }
                     if (operand.value == facts.TextByte) {
                         item = Op(native.TextByte, type, slot, stack[base], stack[base + 1], 0);
                     }

@@ -79,3 +79,16 @@ UnsupportedTextReadInstructionIsRejected :: () {
     code[7] = Code(native.InstructionCount, 6, 6, 4, 1, 0, 0);
     Rejects(TextReadModule(code), "unsupported native scalar instruction");
 }
+
+@test
+PrintRejectsANonTextOperand :: () {
+    code := TextReads();
+    code[6] = Code(native.Print, 6, 5, 3, 0, 0, 0);
+    Rejects(TextReadModule(code), "native print requires one string operand");
+}
+@test
+PrintRejectsAnExtraOperand :: () {
+    code := TextReads();
+    code[6] = Code(native.Print, 6, 5, 4, 1, 0, 0);
+    Rejects(TextReadModule(code), "native print requires one string operand");
+}

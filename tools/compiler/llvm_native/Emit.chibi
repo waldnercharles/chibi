@@ -308,7 +308,9 @@ pub TaskRunning: int : 90;
 // right is its canonical native success type (0 for void); target is its
 // success tag ordinal (0 or 1). A cancelled result never reads the promise.
 pub AwaitResult: int : 91;
-pub InstructionCount: int : 92;
+// Borrow left string for synchronous host output; output is int 0.
+pub Print: int : 92;
+pub InstructionCount: int : 93;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving an owning
@@ -326,7 +328,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+    return op == Print || op == TaskCopy || op == TaskRunning || op == AwaitResult || op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
            op == ForeignCall || op == StateLoad || op == FunctionAddress || op == Sqrt || op == ValueCopy || (op >= MapLength && op <= MapLiveAt && op != MapDrop);
 }
 Comparison :: (op: int) -> bool {
@@ -336,7 +338,7 @@ Unary :: (op: int) -> bool {
     return op == Neg || op == BitNot || op == Sqrt;
 }
 ReadsLeft :: (op: int) -> bool {
-    return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
+    return op == Print || op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
            op == TextRelease || op == StateStore || op == Deref || op == Poke || op == ValueCopy || op == ValueDrop || op == AwaitHandle || op == Cancel ||
            op == CancelAfter || op == Delay || op == Sqrt || (op >= TaskCopy && op <= AwaitResult) || (op >= MapLength && op <= MapLiveAt);
@@ -1007,6 +1009,10 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                                      item.type != slots[item.left])) {
             return Result.Rejected(base + pc, "native array drop differs from its operand");
         }
+        if (item.op == Print && (item.type != abi.IntStorage || !Typed(slots, item.left, abi.TextStorage) ||
+                                item.right != 0 || item.target != 0 || item.literal != 0)) {
+            return Result.Rejected(base + pc, "native print requires one string operand");
+        }
         if ((item.op == TextRetain || item.op == TextRelease) &&
             (!Index(item.left, length(slots)) || slots[item.left] != abi.TextStorage)) {
             return Result.Rejected(base + pc, "native text reference differs from its operand");
@@ -1488,6 +1494,11 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, MapRead(item, pc));
     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
         out = format_text("{}{}", out, ArrayRead(item, pc, record_owners));
+    } else if (item.op == Print) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), abi.TextStorage, "s", item.left));
+        out = format_text("{}  %bytes{} = extractvalue {} %a{}, 0\n  %length{} = extractvalue {} %a{}, 1\n", out, pc, abi.TextType(), pc, pc, abi.TextType(), pc);
+        out = format_text("{}  call void @chibi_print_string(ptr %ctx, ptr %bytes{}, i32 %length{})\n", out, pc, pc);
+        out = format_text("{}{}", out, Store("0", abi.IntStorage, "s", item.output));
     } else if (item.op >= TextLength && item.op <= TextTake) {
         out = format_text("{}{}", out, TextRead(item, pc));
     } else if (item.type == abi.TextStorage) {
@@ -2664,7 +2675,7 @@ pub Runtime :: (code: Instruction[]) -> bool {
         return true;
     }
     for (item in code) {
-        if (item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item.op) ||
+        if (item.op == Print || item.op == Format || item.op == Fail || item.op == ValueCopy || item.op == ValueDrop || ArrayCalls(item.op) || MapCalls(item.op) ||
             ((item.op == StateLoad || item.op == StateStore) && item.type == abi.TextStorage)) {
             return true;
         }
@@ -3072,6 +3083,9 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         if (ProgramMode(mode)) {
             out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\n");
         }
+        printed := false;
+        for (item in held) { printed = printed || item.op == Print; }
+        if (printed) { out.append("declare void @chibi_print_string(ptr, ptr, i32)\n"); }
         foreign_declarations := ForeignDeclarations(functions, first, last, slots, code, arguments, texts);
         out.append(format_text("{}declare void @llvm.trap()\n{}{}", Failures(functions, code, first, last),
                                Declarations(held), foreign_declarations));

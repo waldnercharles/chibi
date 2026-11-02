@@ -41,6 +41,7 @@ on:
       - test/native_aot/link/windows/**
       - test/native_aot/native_driver/**
       - test/native_aot/text_format/**
+      - test/native_aot/output/**
       - .github/native-llvm.sh
       - .github/workflows/native-self-host.yml
   push:
@@ -106,7 +107,9 @@ jobs:
           sh test/native_aot/native_driver/cache.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
           sh test/native_aot/native_driver/minimum.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native scalar text formatting
-        run: sh test/native_aot/text_format/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+        run: |
+          sh test/native_aot/text_format/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
+          sh test/native_aot/output/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
       - name: Check native diagnostic coordinates
         timeout-minutes: 5
         run: sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" "$CHIBI_LLVM_BIN"
@@ -389,6 +392,7 @@ jobs:
           $work = $env:RUNNER_TEMP.Replace('\', '/')
           $cases = @(
             @{ name = 'text-format'; source = 'test/native_aot/text_format/Main.chibi' },
+            @{ name = 'print'; source = 'test/native_aot/output/Main.chibi' },
             @{ name = 'task-timing'; source = 'test/native_aot/tasks/cases/timing/Main.chibi' },
             @{ name = 'square-root'; source = 'test/native_aot/math_scalar/SquareRoot.chibi' },
             @{ name = 'shadow-root'; source = 'test/native_aot/math_scalar/Shadow.chibi' },

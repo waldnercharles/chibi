@@ -1421,6 +1421,7 @@ ScalarTextOperator :: (forest: snapshot.SnapshotNode[], text: string, node: int)
         return 0;
     }
     name := Text(forest, text, function);
+    if (name == "print_string") { return facts.TextPrint; }
     if (name == "text_byte_length") {
         return facts.TextLength;
     }
@@ -1444,10 +1445,14 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
     operator := ScalarTextOperator(forest, text, node);
     output := rows;
     count: int = 0;
-    for (argument in Members(forest, Field(forest, node, syntax.FieldArguments))) {
+    for (input in Members(forest, Field(forest, node, syntax.FieldArguments))) {
+        argument := input;
         if (Is(forest, argument, syntax.NamedArgument)) {
-            return ScalarOperands.Failed(Diagnose(forest, argument, 0,
-                                                  "scalar proof passes a text native's arguments in order"));
+            if (operator == facts.TextPrint) { argument = Field(forest, argument, syntax.FieldValue); }
+            else {
+                return ScalarOperands.Failed(Diagnose(forest, argument, 0,
+                                                      "scalar proof passes a text native's arguments in order"));
+            }
         }
         expected := ScalarTextArgument(forest, text, callables, params, callable, names, types, members, constants,
                                        operator, count, argument);
@@ -2385,6 +2390,9 @@ ScalarDiscarded :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         }
         return found;
     }
+    if (ScalarTextOperator(forest, text, call) == facts.TextPrint) {
+        return {storage: IntStorage, container: 0, record: -1};
+    }
     imported := ScalarForeignDeclaration(forest, text, call);
     if (imported < 0 || ScalarTypeOf(ScalarForeignResult(forest, text, imported)) == 0) {
         return none;
@@ -3077,12 +3085,13 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], lent: bool) -
     }
     return true;
 }
-// Whether `native` is one a scalar module may call: the runtime's
-// text_byte_length, text_byte_at, text_slice or format_text, or an array's
-// length, append, extend, slice, resize, contains or remove_index.
+// SCRIPT_EFFECT_HOST: a synchronous output action.
+NativePrintEffect: int : 8;
+// The text, output and array builtins this producer lowers.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
     return NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
            NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text") ||
+           NativeNameMatches(native, "print_string") ||
            NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||
            NativeNameMatches(native, "extend") || NativeNameMatches(native, "slice") ||
            NativeNameMatches(native, "resize") || NativeNameMatches(native, "contains") ||
@@ -3251,9 +3260,9 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
             // A retained local reads and writes its state, which the facts carry.
             // A write through a scoped parameter the module passes by reference
             // changes the caller's variable, which the facts carry.
-            permitted: int = 0;
+            permitted: int = NativePrintEffect;
             if (callables[function].waits) {
-                permitted = SuspendEffect;
+                permitted |= SuspendEffect;
             }
             for (param in params) {
                 if (param.reference && param.written) {
@@ -4165,6 +4174,23 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
     text_natives := ScalarTextNatives(resolved);
     text_ports := ScalarTextPorts(resolved, resolved_ports);
     text_identities := ScalarTextIdentities(resolved, identities);
+    // The bootstrap catalog contains data functions only. Printing is a void
+    // action, supplied here for the ordinary body checker and lowered below.
+    // These private identities never cross the prepared/runtime ABI.
+    has_print := false;
+    for (native in text_natives) { has_print = has_print || NativeNameMatches(native, "print_string"); }
+    if (!has_print) {
+        printed: ResolvedNative = {name: "print_string", first: length(text_ports), parameters: 1, results: 0,
+                                  variadic: false, direct: true, qualified_name: "print_string",
+                                  kind: NativeFunctionKind, intrinsic: 0, effects: NativePrintEffect, source: false};
+        port: ResolvedPort = {name: "InString", storage: TextStorage, container: 0, c_string: false, record: -1,
+                             has_default: false, default_owner: false, default_supported: false,
+                             default_bits: 0, default_text: ""};
+        text_natives.append(printed);
+        text_ports.append(port);
+        text_identities.append(binding.ID("native-scalar", "print_string"));
+        text_identities.append(binding.ID("native-scalar-signature", "print_string(string)"));
+    }
     for (source in sources) {
         nul := ScalarNul(source);
         if (nul.message != "") {

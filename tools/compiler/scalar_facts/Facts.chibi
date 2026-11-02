@@ -417,6 +417,8 @@ pub TextLength: int : 1;
 pub TextByte: int : 2;
 pub TextSlice: int : 3;
 pub TextFormat: int : 4;
+// Consume one string, print its bytes and a newline; internal result is int 0.
+pub TextPrint: int : 5;
 
 // Array operators.
 pub ArrayNew: int : 1;

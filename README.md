@@ -63,8 +63,9 @@ file and the core library. To include sibling source files and local package
 imports, run the package directory with `chibi .`.
 
 To keep a program running while you edit it, use `chibi --watch Hello.chibi`.
-A watched program provides `Main`, `Frame`, or both. The runner calls `Main`
-once at startup and `Frame` every frame when present. Each valid save patches
+A watched program can provide `Main`, `Frame`, or both. Without either entry,
+it waits for another save. The runner calls `Main` once if the first runnable
+generation provides it, and calls `Frame` every frame when present. Each valid save patches
 the running code, keeps `retain` state, and does not call `Main` again. Invalid
 edits report diagnostics and keep the last valid code running. See
 [program reload](docs/guide/toolchain.md#reload-a-program) for a complete example.

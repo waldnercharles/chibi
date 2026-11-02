@@ -186,7 +186,7 @@ cmp "$scratch/expected-events" "$SEED_EVENTS"
     --collection "graph=$root/tools/graph" --output "$scratch/compiler-resources" --llvm "$llvm" --target "$target"
 resources=$scratch/'resource source'
 mkdir -p "$resources/tools/bootstrap" "$resources/tools/compiler/bootstrap" \
-    "$resources/packages/core" "$resources/tools/native_aot"
+    "$resources/packages/core"
 ln -s "$root/src" "$resources/src"
 ln -s "$root/sdk" "$resources/sdk"
 cat > "$resources/tools/bootstrap/seed.sh" <<'SEED'

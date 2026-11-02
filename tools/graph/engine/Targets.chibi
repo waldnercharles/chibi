@@ -1261,8 +1261,7 @@ pub Resources :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
         return [
             "build/share/chibi/compiler=tools/compiler",
-            "build/share/chibi/core=packages/core",
-            "build/share/chibi/tools/native_aot=tools/native_aot"
+            "build/share/chibi/core=packages/core"
         ];
     }
     if (target == "chibi") {

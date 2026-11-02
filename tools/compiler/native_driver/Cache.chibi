@@ -6,6 +6,7 @@ import os "core:os"
 import strings "core:strings"
 import target "core:target"
 import tokens "project:source_tokenizer"
+import sha256 "core:hash/sha256"
 
 when target.Os == target.Windows {
     import process "core:sys/windows"
@@ -64,12 +65,30 @@ CacheSnapshot :: (collections: string[], directories: string[], gathered: Inputs
             }
             if (!Contains(archives, archive)) {
                 archives.append(archive);
-                hashed := os.HashFile(archive);
-                digest := hashed.digest;
-                if (hashed.error != nil) {
-                    // A discarded target branch may declare a missing archive.
-                    // EmitOptions rejects it only when the kept module uses it.
-                    digest = "missing";
+                // Read once for both format detection and identity. A thin
+                // archive stores object paths rather than their bytes, which
+                // this cache cannot identify from the archive hash alone.
+                digest := "missing";
+                if (os.IsFile(archive)) {
+                    data := process.ReadBytes(archive);
+                    if (length(data) != process.FileSize(archive)) {
+                        found.problem = strings.Concatenate(["cannot read foreign archive ", archive]);
+                        return found;
+                    }
+                    magic := "!<thin>\n";
+                    thin := false;
+                    if (length(data) >= strings.ByteLength(magic)) {
+                        thin = true;
+                        for (byte in 0..<strings.ByteLength(magic)) {
+                            thin = thin && int(data[byte]) == strings.ByteAt(magic, byte);
+                        }
+                    }
+                    if (thin) {
+                        found.problem = strings.Concatenate(["thin archive ", archive,
+                            " has external members that cached builds cannot identify; use a regular archive or --source with --output"]);
+                        return found;
+                    }
+                    digest = sha256.HexOf(data);
                 }
                 facts.extend(["library ", archive, "\nlibrary-sha256 ", digest, "\n"]);
             }

@@ -1,9 +1,10 @@
 #!/bin/sh
 # Real native root builds, cache reuse, input invalidation and failed publication.
-# Usage: cache.sh DRIVER LLVM_BIN (Linux x86-64 or macOS arm64)
+# Usage: cache.sh DRIVER LLVM_BIN [LLVM_AR] (Linux x86-64 or macOS arm64)
 set -eu
 driver=${1:?usage: cache.sh DRIVER LLVM_BIN}
 llvm=${2:?usage: cache.sh DRIVER LLVM_BIN}
+llvm_ar=${3:-$llvm/llvm-ar}
 root=$(cd "$(dirname "$0")/../../.." && pwd -P)
 work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-native-cache.XXXXXX")
 trap 'rm -rf "$work"' EXIT
@@ -142,6 +143,32 @@ LLVM
 done
 [ "$(path "$work/archive-42.log")" != "$(path "$work/archive-43.log")" ] || fail 'changed foreign archive reused stale program'
 printf 'native cache: symlinked foreign archive identity passed\n'
+
+# Thin archives keep members outside the .a. Cached builds reject them even
+# after those members change, while direct native compilation remains usable.
+[ -x "$llvm_ar" ] || fail "thin archive regression needs $llvm_ar"
+rm "$project/libactual.a"
+(cd "$project" && "$llvm_ar" rcsT libactual.a probe.o)
+cp "$project/libactual.a" "$work/thin-original.a"
+for value in 43 44; do
+    if [ "$value" = 44 ]; then
+        sed 's/ret i32 43/ret i32 44/' "$project/Probe.ll" >"$work/new-member.ll"
+        "$llvm/llc" -filetype=obj -relocation-model=pic "$work/new-member.ll" -o "$project/probe.o"
+        cmp "$work/thin-original.a" "$project/libactual.a" || fail 'thin archive changed with its member'
+    fi
+    status=0
+    build >"$work/thin-$value.log" 2>&1 || status=$?
+    [ "$status" = 2 ] || { cat "$work/thin-$value.log" >&2; fail 'thin archive cached build was accepted'; }
+    grep -F 'has external members that cached builds cannot identify' "$work/thin-$value.log" >/dev/null || fail 'thin archive recovery diagnostic'
+    "$driver" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+        --source "$project/Main.chibi" --output "$work/direct-$value" --llvm "$tools" \
+        --target "$triple" --level 0 --jobs 2 >"$work/direct-$value.log" 2>&1 || { cat "$work/direct-$value.log" >&2; fail 'direct thin archive compile'; }
+    status=0
+    "$work/direct-$value" || status=$?
+    [ "$status" = "$value" ] || fail 'direct thin archive compilation used stale member'
+done
+run42 "$program"
+printf 'native cache: thin archives rejected; direct links track external member changes\n'
 
 cat >"$project/Only.chibi" <<'SOURCE'
 package main

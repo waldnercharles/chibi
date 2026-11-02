@@ -35,3 +35,8 @@ Run the real root/cache checks on Linux x86-64 or macOS arm64:
 ```
 sh test/native_aot/native_driver/cache.sh /absolute/path/to/chibi /absolute/path/to/llvm/bin
 ```
+
+Cached root builds reject thin archives because their object members live outside
+`.a` files. Use a regular archive, or compile directly with `--source` and
+`--output`. The cache regression requires LLVM's `llvm-ar` in the tools folder;
+an optional third argument supplies its path when it is installed elsewhere.

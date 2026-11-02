@@ -281,3 +281,15 @@ Frame :: () -> int {
 SOURCE
 finish 42
 printf 'native watch: root entries and imported retained identities survive import reordering\n'
+
+# Explicit Frame statuses can equal 128+signal. Only raw cancellation signals
+# end an editing session successfully; these ordinary statuses stay unchanged.
+mkdir "$work/status"
+for expected in 130 143; do
+    printf 'package frame_status\nFrame :: () -> int { return %s; }\n' "$expected" >"$work/status/Main.chibi"
+    log=$work/status-$expected.log
+    "$driver" run --watch -O0 --llvm "$llvm" "$work/status" >"$log" 2>&1 &
+    process=$!
+    finish "$expected"
+done
+printf 'native watch: explicit Frame statuses 130 and 143 are preserved\n'

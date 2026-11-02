@@ -2,14 +2,22 @@ package native_driver
 
 import link "project:native_link"
 import host "project:native_link_host"
+import route "project:driver_paths"
 import os "core:os"
 import strings "core:strings"
 
 // The native compiler's driver: `STAGE --compiler DIR --core DIR --output FILE
-// --llvm DIR [--package NAME | --source FILE] [--entry NAME] [--collection NAME=DIR]...
-// [--target TRIPLE]` compiles package NAME of the project at DIR (default
-// native_driver), or the one program FILE, and the core and collection packages
-// it imports to the native module FILE.ll. Without --entry the program starts at
+// --llvm DIR [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]...
+// [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]`
+// compiles package NAME of the project at DIR (default native_driver), or the
+// one program FILE, and the core and collection packages it imports to the
+// native program FILE. --level is opt's and llc's (default 2). --lines adds
+// line tables (Linux x86-64). Linux links libc dynamically by default.
+// --static refuses a program that needs libc,
+// which a program that allocates does; --shared links a library source as a
+// Linux shared object, as the Edit and Continue player loads one. A
+// `; chibi-library` line's archive (native_link.Archive) is linked after the
+// objects. Without --entry the program starts at
 // the first function of its first file; with it, at the function NAME of that
 // file, as the build host's --entry does. Exit 0 succeeded, 1 the sources were rejected,
 // 2 the arguments or the machine were unusable. The first stderr line of a
@@ -19,18 +27,17 @@ import strings "core:strings"
 // the closure and emitting each function group can run on worker threads once
 // core:thread exists; the order of everything it writes is the source order.
 
-// A command word first is the `chibi` command line (Cli.chibi); flags first are the stage
-// contract above, which `chibi run` and `chibi build --native` also drive.
 // The entry comes first: a package set's entry is its first file's first function.
 Main :: () -> int {
     arguments := os.Arguments();
-    if (length(arguments) > 0 && !strings.HasPrefix(arguments[0], "--")) {
+    if (length(arguments) == 0 || arguments[0] == "--help" || arguments[0] == "--watch" ||
+        !strings.HasPrefix(arguments[0], "--")) {
         return Cli(arguments);
     }
     return Build(arguments);
 }
 
-// Compiles what the stage flags in `arguments` name to a native executable.
+// The stage flags are also the native CLI build contract.
 Build :: (arguments: string[]) -> int {
     project := Option(arguments, "--compiler", "");
     core := Option(arguments, "--core", "");
@@ -38,11 +45,41 @@ Build :: (arguments: string[]) -> int {
     llvm := Option(arguments, "--llvm", "");
     package := Option(arguments, "--package", "native_driver");
     source := Option(arguments, "--source", "");
+    root := Option(arguments, "--root", "");
     chosen := Option(arguments, "--entry", "");
     triple := Option(arguments, "--target", "x86_64-unknown-linux-gnu");
-    if (project == "" || core == "" || output == "" || llvm == "") {
-        os.Print("usage: --compiler DIR --core DIR --output FILE --llvm DIR [--package NAME | --source FILE] [--entry NAME] [--collection NAME=DIR]... [--target TRIPLE]");
+    level := Option(arguments, "--level", "2");
+    lines := Flag(arguments, "--lines");
+    shared := Flag(arguments, "--shared");
+    linux := triple == "x86_64-unknown-linux-gnu";
+    if (project == "" || core == "" || (output == "" && root == "") || llvm == "" || (level != "0" && level != "2")) {
+        os.Print("usage: --compiler DIR --core DIR --output FILE --llvm DIR [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]... [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]");
         return 2;
+    }
+    if ((lines || shared) && !linux) {
+        os.Print("native: line tables and shared libraries are Linux x86-64 only so far");
+        return 2;
+    }
+    if (shared && (lines || Flag(arguments, "--static"))) {
+        os.Print("native: a shared library has no line tables or static link yet");
+        return 2;
+    }
+    if (root != "") {
+        if (output != "" || source != "" || Option(arguments, "--package", "") != "") {
+            os.Print("native: --root takes no --output, --source or --package");
+            return 2;
+        }
+        root = os.RealPath(root);
+        if (root == "" || (!os.IsDirectory(root) && !os.IsFile(root))) {
+            os.Print("native: --root must name an existing source file or package directory");
+            return 2;
+        }
+        if (os.IsFile(root)) {
+            source = root;
+            root = strings.Slice(root, 0, strings.LastIndex(root, "/"));
+        }
+        project = root;
+        package = ".";
     }
     collections: string[] = ["core"];
     directories: string[] = [core];
@@ -54,7 +91,7 @@ Build :: (arguments: string[]) -> int {
         }
         name := strings.Slice(declared, 0, equals);
         directory := strings.Slice(declared, equals + 1, strings.ByteLength(declared) - equals - 1);
-        if (!strings.HasPrefix(directory, "/") || Contains(collections, name)) {
+        if (!strings.HasPrefix(route.Visible(directory), "/") || Contains(collections, name)) {
             os.Print(strings.Concatenate(["native: --collection takes a new name and an absolute directory, not ", declared]));
             return 2;
         }
@@ -66,23 +103,144 @@ Build :: (arguments: string[]) -> int {
         os.Print(strings.Concatenate(["native: ", gathered.problem]));
         return 2;
     }
-    return Emit(collections, directories, gathered.paths, gathered.sources, triple, chosen, llvm, output, Jobs(arguments));
+    // The entry's folder: line tables name it, and a library path in it is
+    // relative to it.
+    folder := strings.Concatenate([project, "/", package]);
+    if (source != "") {
+        folder = ".";
+        slash := strings.LastIndex(source, "/");
+        if (slash >= 0) {
+            folder = strings.Slice(source, 0, slash);
+        }
+    }
+    if (root != "") {
+        folder = root;
+    }
+    options: DriverOptions = {level: level, lines: lines, static_link: Flag(arguments, "--static"),
+                               shared: shared, folder: folder, keep_module: root != ""};
+    if (root != "") {
+        return CachedBuild(root, collections, directories, gathered, triple, chosen, llvm, Jobs(arguments), options, source);
+    }
+    return EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, chosen, llvm, output,
+                       Jobs(arguments), options);
 }
 
-// Compiles the closure `paths` and `sources` to the native executable `output`, with the
-// LLVM tools in `llvm`: 0 succeeded, 1 the sources were rejected, 2 the machine was unusable.
+// The options shared by native build, run and test. Only cached builds keep
+// the source module beside their receipt.
+DriverOptions :: struct {
+    level: string;
+    lines: bool;
+    static_link: bool;
+    shared: bool;
+    folder: string;
+    keep_module: bool;
+}
+
 Emit :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
          chosen: string, llvm: string, output: string, jobs: int) -> int {
+    return EmitOptions(collections, directories, paths, sources, triple, chosen, llvm, output, jobs,
+                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", keep_module: false});
+}
+
+// Emits into the caller's work directory; only a successful link replaces
+// output. Invalid source and options leave any previous program untouched.
+EmitOptions :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+                chosen: string, llvm: string, output: string, jobs: int, options: DriverOptions) -> int {
+    linux := triple == "x86_64-unknown-linux-gnu";
+    windows := strings.HasPrefix(triple, "x86_64-pc-windows");
+    shared := options.shared;
+    if ((options.lines || shared) && !linux) {
+        os.Print("native: line tables and shared libraries are Linux x86-64 only so far");
+        return 2;
+    }
+    if ((options.level != "0" && options.level != "2") || (shared && (options.lines || options.static_link))) {
+        os.Print("native: a shared library has no line tables or static link yet; --level is 0 or 2");
+        return 2;
+    }
+    directory := "";
+    if (options.lines) {
+        directory = route.Visible(options.folder);
+    }
+    visible: string[] = [];
+    for (directory in directories) {
+        visible.append(route.Visible(directory));
+    }
+    compiled: Output = Output.Rejected("");
+    if (shared) {
+        if (length(paths) != 1 || chosen != "") {
+            os.Print("native: a shared library takes one source and no --entry");
+            return 1;
+        }
+        compiled = LibraryModule(paths[0], sources[0]);
+    } else {
+        compiled = Module(collections, visible, paths, sources, triple, chosen, directory);
+    }
     pieces: string[] = [];
-    switch Module(collections, directories, paths, sources, triple, chosen) {
+    switch compiled {
         case .Rejected(message):
             os.Print(strings.Concatenate(["native: ", message]));
             return 1;
         case .Emitted(text):
             pieces = Pieces(text);
     }
+    // The `; chibi-library` and `; chibi-import` lines, which any piece may
+    // hold: a vendored archive links after the objects, and only a Windows
+    // program takes system libraries by name.
+    markers: string[] = [];
+    for (piece in pieces) {
+        markers.extend(Markers(piece));
+    }
+    archives: string[] = [];
+    vendor := link.VendorDirectory(directories[0]);
+    for (line in markers) {
+        if (!strings.HasPrefix(line, "; chibi-library ")) {
+            continue;
+        }
+        path := strings.TrimPrefix(line, "; chibi-library ");
+        if (strings.HasPrefix(path, "system:")) {
+            if (path != "system:c" && !windows) {
+                os.Print(strings.Concatenate(["native: system library ", path,
+                                              " links on Windows only; link a prebuilt archive instead"]));
+                return 2;
+            }
+            continue;
+        }
+        archive := os.RealPath(link.Archive(path, options.folder, vendor));
+        if (archive == "" || !os.IsFile(archive)) {
+            os.Print(strings.Concatenate(["native: the foreign library ", path, " is not a file"]));
+            return 2;
+        }
+        if (!Contains(archives, archive)) {
+            archives.append(archive);
+        }
+    }
+    // A program that allocates or formats takes the runtime context, which the
+    // start module supplies from libc's allocator on Linux, so it links libc
+    // dynamically. Linux defaults to libc even without a context; --static
+    // opts out. Windows uses kernel32, and macOS always links libSystem.
+    // The entry is the first piece's, defined as `@chibi_scalar(ptr %ctx)`
+    // when it takes the context (the other functions are `@chibi_scalar.N`).
+    // Definitions start a line; a text constant never does.
+    context := strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar(ptr %ctx)");
+    static := windows || (linux && options.static_link);
+    if (options.static_link && linux && context) {
+        os.Print("native: a program that allocates links libc dynamically; omit --static");
+        return 2;
+    }
+    // A library's module is its manifest and functions, with no entry.
+    is_library := strings.Contains(pieces[0], "\n@chibi_natives_");
+    if (shared != is_library) {
+        os.Print("native: --shared builds a library source, and only it");
+        return 2;
+    }
     // Each piece of the module is optimized and compiled to its own object,
-    // as many at once as --jobs, by default every processor.
+    // as many at once as --jobs, by default every processor. Reject incompatible
+    // options above before writing any intermediate output.
+    if (options.keep_module && os.WriteText(strings.Concatenate([strings.Slice(output, 0, strings.LastIndex(output, "/")), "/source.ll"]),
+                                           strings.Join(pieces, "\n; chibi-piece\n")) != nil) {
+        os.Print("native: cannot write the source module");
+        return 2;
+    }
     files: string[] = [];
     objects: string[] = [];
     for (index in 0..<length(pieces)) {
@@ -94,30 +252,36 @@ Emit :: (collections: string[], directories: string[], paths: string[], sources:
         files.append(module);
         objects.append(format_text("{}.{}.o", output, index));
     }
-    // A program that allocates or formats takes the runtime context, which the
-    // start module supplies from libc's allocator on Linux, so it links libc
-    // dynamically. Otherwise Linux and Windows programs run with nothing but
-    // their own objects; macOS links libSystem, as its programs always have.
-    // The entry is the first piece's, `@chibi_scalar(ptr %ctx` when it takes
-    // the context (the other functions are `@chibi_scalar.N`).
-    context := strings.Contains(pieces[0], "@chibi_scalar(ptr %ctx");
-    static := !strings.HasPrefix(triple, "aarch64-apple") && (!context || strings.HasPrefix(triple, "x86_64-pc-windows"));
-    if (host.Objects(llvm, files, objects, 2, jobs) != nil) {
+    optimization := 2;
+    if (options.level == "0") {
+        optimization = 0;
+    }
+    if (host.Objects(llvm, files, objects, optimization, jobs) != nil) {
         os.Print("native: opt or llc could not emit an object");
         return 2;
     }
     files.extend(objects);
-    start := link.Start(triple, static, context);
+    start := "";
+    if (!shared) {
+        start = link.Start(triple, static, context);
+    }
     if (start != "") {
         if (os.WriteText(strings.Concatenate([output, ".start.ll"]), start) != nil ||
-            host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), 2) != nil) {
+            host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]),
+                        optimization) != nil) {
             os.Print("native: cannot emit the start object");
             return 2;
         }
         objects.append(strings.Concatenate([output, ".start.o"]));
         files.extend([strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"])]);
     }
-    plan := link.Program(triple, llvm, objects, [], [], [], output, "", static);
+    plan := link.Program(triple, llvm, objects, archives, [], [], output, "", static || shared);
+    plan.shared = shared;
+    // Only a Windows program takes system libraries by name: lld-link needs an
+    // import library for each, which the macOS and Linux links do without.
+    if (windows) {
+        plan.imports = link.SystemImports(markers);
+    }
     if (host.Link(plan) != nil) {
         os.Print("native: the link failed");
         return 2;
@@ -163,6 +327,11 @@ Jobs :: (arguments: string[]) -> int {
         return 8;
     }
     return count;
+}
+
+// Whether `name` is among the arguments.
+Flag :: (arguments: string[], name: string) -> bool {
+    return Contains(arguments, name);
 }
 
 Option :: (arguments: string[], name: string, fallback: string) -> string {
@@ -214,21 +383,8 @@ PackageFiles :: (folder: string, tests: bool) -> string[] {
             files.append(name);
         }
     }
-    // In name order, as the VM-side listing gives: the order of a package's
-    // files is the order of its declarations, which the compiler's passes
-    // (ScopedParameters wants them ascending) and its output depend on, and
-    // a directory's own order is not stable across machines.
-    ranked := resize([""], length(files));
-    for (name in files) {
-        rank := 0;
-        for (other in files) {
-            if (strings.Compare(other, name) < 0) {
-                rank += 1;
-            }
-        }
-        ranked[rank] = name;
-    }
-    return ranked;
+    // core:os.List already returns deterministic byte order.
+    return files;
 }
 
 // The sources of the closure: the package's own files, Main.chibi first (or the
@@ -264,6 +420,9 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
     seen: string[] = [strings.Concatenate(["project:", package])];
     folders: string[] = [strings.Concatenate([project, "/", package])];
     prefixes: string[] = [strings.Concatenate([package, "/"])];
+    if (package == ".") {
+        prefixes[0] = "";
+    }
     kinds: string[] = ["project"];
     kinds.extend(collections);
     next := 0;
@@ -276,7 +435,7 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
             // The entry text of the caller, alone.
             folders[0] = project;
             files = [extra.entry_name];
-            prefixes[0] = "";
+            prefixes[0] = strings.Concatenate([package, "/"]);
         } else if (next == 0 && source != "") {
             // One program: its file alone, whatever else its folder holds.
             slash := strings.LastIndex(source, "/");
@@ -290,13 +449,22 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
         } else if (next == 0) {
             // The entry file is first, as the producer reads the first file's
             // first function as the module's entry.
-            ordered: string[] = ["Main.chibi"];
-            for (file in files) {
-                if (file != "Main.chibi") {
-                    ordered.append(file);
+            if (Contains(files, "Main.chibi")) {
+                ordered: string[] = ["Main.chibi"];
+                for (file in files) {
+                    if (file != "Main.chibi") {
+                        ordered.append(file);
+                    }
                 }
+                files = ordered;
+            } else if (length(files) != 1) {
+                found.problem = strings.Concatenate(["package directory needs one source or Main.chibi: ", folders[next]]);
+                return found;
             }
-            files = ordered;
+        }
+        if (length(files) == 0) {
+            found.problem = strings.Concatenate(["package directory has no sources: ", folders[next]]);
+            return found;
         }
         for (file in files) {
             location := strings.Concatenate([folders[next], "/", file]);
@@ -341,7 +509,7 @@ GatherWith :: (project: string, collections: string[], directories: string[], pa
                         if (name != ".") {
                             folder = strings.Concatenate([root, "/", name]);
                         }
-                        prefixes.append(strings.Concatenate([folder, "/"]));
+                        prefixes.append(strings.Concatenate([route.Visible(folder), "/"]));
                     }
                     folders.append(folder);
                 }
@@ -370,4 +538,30 @@ Position :: (names: string[], name: string) -> int {
         }
     }
     return 0;
+}
+
+// The module's `; chibi-library` and `; chibi-import` lines, which name the
+// system libraries and symbols it takes. One pass over the text: a module is
+// megabytes and only these few lines matter.
+Markers :: (module: string) -> string[] {
+    found: string[] = [];
+    needle := "; chibi-";
+    width := strings.ByteLength(needle);
+    size := strings.ByteLength(module);
+    at := 0;
+    while (at < size) {
+        end := at;
+        while (end < size && strings.ByteAt(module, end) != 10) {
+            end += 1;
+        }
+        matched := end - at >= width;
+        for (index in 0..<width) {
+            matched = matched && strings.ByteAt(module, at + index) == strings.ByteAt(needle, index);
+        }
+        if (matched) {
+            found.append(strings.Slice(module, at, end - at));
+        }
+        at = end + 1;
+    }
+    return found;
 }

@@ -1,5 +1,7 @@
 package native_driver
 
+import link "project:native_link"
+import host "project:native_link_host"
 import os "core:os"
 import strings "core:strings"
 
@@ -10,7 +12,7 @@ import strings "core:strings"
 // share/chibi/core.
 
 // A parsed command line.
-Invocation :: struct {
+CliInvocation :: struct {
     command: string;
     path: string;
     llvm: string;
@@ -27,7 +29,7 @@ Invocation :: struct {
     shared: bool;
 }
 
-NewInvocation :: (command: string) -> Invocation {
+NewInvocation :: (command: string) -> CliInvocation {
     return {command: command, path: "", llvm: "", target: "", mode: "2", error: "", tail_first: 0, valid: true,
             help: false, watch: false, native: false, debug: false, static_link: false, shared: false};
 }
@@ -50,14 +52,14 @@ IsOption :: (value: string) -> bool {
     return strings.HasPrefix(value, "-");
 }
 
-Invalid :: (invocation: Invocation, message: string) -> Invocation {
+Invalid :: (invocation: CliInvocation, message: string) -> CliInvocation {
     result := invocation;
     result.valid = false;
     result.error = message;
     return result;
 }
 
-ParseRun :: (arguments: string[], first: int) -> Invocation {
+ParseRun :: (arguments: string[], first: int) -> CliInvocation {
     invocation := NewInvocation("run");
     index := first;
     if (length(arguments) == index + 1 && HelpOption(arguments[index])) {
@@ -70,16 +72,22 @@ ParseRun :: (arguments: string[], first: int) -> Invocation {
             invocation.watch = true;
         } else if (argument == "--native" && !invocation.native) {
             invocation.native = true;
-        } else if (invocation.native && (argument == "-O0" || argument == "-O2")) {
+        } else if (argument == "-O0" || argument == "-O2") {
             invocation.mode = strings.Slice(argument, 2, 1);
-        } else if (invocation.native && (argument == "--llvm" || argument == "--target") && index + 1 < length(arguments) &&
-                   arguments[index + 1] != "") {
+        } else if (argument == "-g" && !invocation.debug) {
+            invocation.debug = true;
+        } else if (argument == "--llvm" || argument == "--target") {
+            if (index + 1 >= length(arguments) || arguments[index + 1] == "" || IsOption(arguments[index + 1])) {
+                return Invalid(invocation, format_text("{} needs a nonempty value", argument));
+            }
             index += 1;
             if (argument == "--llvm") {
                 invocation.llvm = arguments[index];
             } else {
                 invocation.target = arguments[index];
             }
+        } else if (IsOption(argument) && argument != "--") {
+            return Invalid(invocation, format_text("Invalid run option: {}; use --help.", argument));
         } else {
             break;
         }
@@ -104,7 +112,7 @@ ParseRun :: (arguments: string[], first: int) -> Invocation {
 }
 
 // The command line `arguments`, whose first is the program's name.
-Parse :: (arguments: string[]) -> Invocation {
+Parse :: (arguments: string[]) -> CliInvocation {
     invocation := NewInvocation("");
     if (length(arguments) < 2) {
         invocation.valid = false;
@@ -154,25 +162,26 @@ Parse :: (arguments: string[]) -> Invocation {
             return Invalid(invocation, format_text("A {} path must not be empty", command));
         }
         valued := argument == "--llvm" || argument == "--target";
-        if (valued && index + 1 < length(arguments) && arguments[index + 1] == "") {
+        if (valued && (index + 1 >= length(arguments) || arguments[index + 1] == "" || IsOption(arguments[index + 1]))) {
             return Invalid(invocation, format_text("{} needs a nonempty value", argument));
         }
         if (HelpOption(argument) && !(command == "build" && invocation.native)) {
             invocation.help = true;
             return invocation;
         }
-        if (command == "build" && invocation.native && argument == "--llvm" && index + 1 < length(arguments) && !located) {
+        compilable := command == "test" || (command == "build" && invocation.native);
+        if (compilable && argument == "--llvm" && index + 1 < length(arguments) && !located) {
             index += 1;
             invocation.llvm = arguments[index];
             located = true;
-        } else if (command == "build" && invocation.native && argument == "--target" && index + 1 < length(arguments) && !targeted) {
+        } else if (compilable && argument == "--target" && index + 1 < length(arguments) && !targeted) {
             index += 1;
             invocation.target = arguments[index];
             targeted = true;
-        } else if (command == "build" && invocation.native && (argument == "-O0" || argument == "-O2") && !optimized) {
+        } else if (compilable && (argument == "-O0" || argument == "-O2") && !optimized) {
             invocation.mode = strings.Slice(argument, 2, 1);
             optimized = true;
-        } else if (command == "build" && invocation.native && argument == "-g" && !invocation.debug) {
+        } else if (compilable && argument == "-g" && !invocation.debug) {
             invocation.debug = true;
         } else if (command == "build" && invocation.native && argument == "--static" && !invocation.static_link && !invocation.shared) {
             invocation.static_link = true;
@@ -190,8 +199,8 @@ Parse :: (arguments: string[]) -> Invocation {
 }
 
 Usage :: (program: string) -> string {
-    commands := format_text("Usage: {} version\n       {} doctor\n       {} build --native [-O2] [--target TRIPLE]\n                [--llvm DIR] [ROOT]\n       {} test [ROOT]\n       {} run [PATH] [--] [ARGUMENTS]\n       {} PATH [--] [ARGUMENTS]\n",
-                            program, program, program, program, program, program);
+    commands := format_text("Usage: {} version\n       {} doctor\n       {} build [BUILD OPTIONS]\n       {} build --native [-O0|-O2] [-g] [--static|--shared]\n                [--target TRIPLE] [--llvm DIR] [ROOT]\n       {} test [-O0|-O2] [--llvm DIR] [ROOT]\n       {} run [-O0|-O2] [--llvm DIR] [PATH] [--] [ARGUMENTS]\n       {} PATH [--] [ARGUMENTS]\n",
+                            program, program, program, program, program, program, program);
     return strings.Concatenate([commands,
         "PATH is a .chibi file or package directory. Its Main takes no arguments\n",
         "and returns nothing or an int exit status. chibi PATH is shorthand for run.\n",
@@ -199,9 +208,10 @@ Usage :: (program: string) -> string {
         "doctor reports the SDK, compiler, platform and LLVM tools as supported,\n",
         "unavailable or broken, changing nothing; it fails only when a capability it\n",
         "checks is broken.\n",
-        "build --native compiles the one .chibi source in ROOT, the working\n",
-        "directory without one, whose first function is Main :: () -> int,\n",
-        "to ROOT/build/native/O2-HASH/program with the opt, llc and ld.lld in DIR,\n",
+        "build runs the nearest tools/toolchain/Driver.chibi through the native compiler.\n",
+        "build --native compiles the Main of a .chibi file or package in ROOT,\n",
+        "the working directory without one, to ROOT/build/native/OLEVEL-HASH/program\n",
+        "with the LLVM tools in DIR,\n",
         "or in CHIBI_LLVM_BIN without --llvm, for the host. --target builds for\n",
         "x86_64-unknown-linux-gnu, aarch64-apple-darwin or x86_64-pc-windows-msvc,\n",
         "whose program is program.exe, instead. Native code supports a subset of\n",
@@ -281,12 +291,12 @@ LlvmFolder :: (requested: string) -> string {
 }
 
 NeedsLlvm :: () -> string {
-    return "pass --llvm DIR, the folder of opt, llc and ld.lld, or set CHIBI_LLVM_BIN";
+    return "pass --llvm DIR, the folder of opt, llc and lld, or set CHIBI_LLVM_BIN";
 }
 
 // The names of the LLVM tools a native build runs.
 LlvmTools :: () -> string[] {
-    return ["opt", "llc", "ld.lld"];
+    return ["opt", "llc", link.Linker(link.TargetOf(HostTriple()))];
 }
 
 Version :: () -> int {
@@ -325,15 +335,17 @@ Doctor :: () -> int {
     if (llvm == "") {
         Report("llvm tools", "unavailable", NeedsLlvm());
     } else {
+        llvm_broken := false;
         for (tool in LlvmTools()) {
             path := strings.Concatenate([llvm, "/", tool]);
-            if (!os.IsFile(path)) {
-                broken = Report("llvm tools", "broken", strings.Concatenate(["missing ", path])) || broken;
+            if (host.Tool(llvm, tool) == "") {
+                llvm_broken = Report("llvm tools", "broken", strings.Concatenate(["missing ", path])) || llvm_broken;
             }
         }
-        if (!broken) {
+        if (!llvm_broken) {
             Report("llvm tools", "supported", llvm);
         }
+        broken = broken || llvm_broken;
     }
     if (broken) {
         return 1;
@@ -399,7 +411,8 @@ MakeFolders :: (path: string) -> bool {
 
 // Compiles `target` to the executable `output`: 0 compiled, 1 the sources were rejected,
 // 2 the arguments or the machine were unusable. The compiler's reports go to the standard error.
-CompileSubject :: (subject: Subject, core: string, llvm: string, triple: string, output: string) -> int {
+CompileSubject :: (subject: Subject, core: string, llvm: string, triple: string, output: string,
+                   invocation: CliInvocation) -> int {
     collections: string[] = ["core"];
     directories: string[] = [core];
     gathered := Gather(subject.project, collections, directories, subject.package, subject.source);
@@ -407,7 +420,9 @@ CompileSubject :: (subject: Subject, core: string, llvm: string, triple: string,
         Complain(strings.Concatenate(["native: ", gathered.problem]));
         return 2;
     }
-    return Emit(collections, directories, gathered.paths, gathered.sources, triple, "", llvm, output, Jobs([]));
+    options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: false,
+                             folder: subject.project, keep_module: false};
+    return EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, "Main", llvm, output, Jobs([]), options);
 }
 
 // The program's own exit status as the command's, which fits 0..255.
@@ -420,11 +435,7 @@ ExitStatus :: (status: int) -> int {
 }
 
 // `chibi run`: compiles the program to ROOT/build/native/run and calls its Main.
-RunProgram :: (invocation: Invocation, tail: string[]) -> int {
-    if (invocation.watch) {
-        Complain("run --watch needs the native Edit and Continue host, which this build lacks");
-        return 2;
-    }
+RunProgram :: (invocation: CliInvocation, tail: string[]) -> int {
     llvm := LlvmFolder(invocation.llvm);
     if (llvm == "") {
         Complain(strings.Concatenate(["run needs LLVM: ", NeedsLlvm()]));
@@ -445,8 +456,17 @@ RunProgram :: (invocation: Invocation, tail: string[]) -> int {
         Complain(strings.Concatenate(["cannot make ", folder]));
         return 2;
     }
+    triple := Default(invocation.target, HostTriple());
+    if (triple != HostTriple()) {
+        Complain("run requires the host target; use build --native to cross-compile");
+        return 2;
+    }
+    if (invocation.watch) {
+        Complain("run --watch needs the native Edit and Continue host, which this build lacks");
+        return 2;
+    }
     program := strings.Concatenate([folder, "/program"]);
-    compiled := CompileSubject(subject, core, llvm, Default(invocation.target, HostTriple()), program);
+    compiled := CompileSubject(subject, core, llvm, triple, program, invocation);
     if (compiled != 0) {
         return compiled;
     }
@@ -457,11 +477,7 @@ RunProgram :: (invocation: Invocation, tail: string[]) -> int {
 
 // `chibi build --native`: compiles the program to ROOT/build/native/O2-HASH/program, which
 // the HASH of its sources, target and options names, and says where it is.
-BuildNative :: (invocation: Invocation) -> int {
-    if (invocation.debug || invocation.static_link || invocation.shared || invocation.mode != "2") {
-        Complain("build --native takes only -O2 and --target here; -O0, -g, --static and --shared are not available yet");
-        return 2;
-    }
+BuildNative :: (invocation: CliInvocation) -> int {
     llvm := LlvmFolder(invocation.llvm);
     if (llvm == "") {
         Complain(strings.Concatenate(["build --native needs LLVM: ", NeedsLlvm()]));
@@ -472,54 +488,54 @@ BuildNative :: (invocation: Invocation) -> int {
         Complain("native: cannot find the SDK's share/chibi/core; set CHIBI_CORE");
         return 2;
     }
-    subject := Resolve(Default(invocation.path, "."));
-    if (subject.problem != "") {
-        Complain(subject.problem);
+    root := os.RealPath(Default(invocation.path, "."));
+    arguments: string[] = ["--compiler", root, "--core", core, "--root", root, "--llvm", llvm,
+                            "--target", Default(invocation.target, HostTriple()), "--entry", "Main", "--level", invocation.mode];
+    if (invocation.debug) {
+        arguments.append("--lines");
+    }
+    if (invocation.static_link) {
+        arguments.append("--static");
+    }
+    if (invocation.shared) {
+        arguments.append("--shared");
+    }
+    return Build(arguments);
+}
+
+// A checkout's build entry is found from the working directory, as a project build is.
+BuildCommand :: (arguments: string[]) -> int {
+    root := os.Root();
+    while (root != "" && !os.IsFile(strings.Concatenate([root, "/tools/toolchain/Driver.chibi"]))) {
+        parent := Directory(root);
+        if (parent == root) {
+            root = "";
+            break;
+        }
+        root = parent;
+    }
+    if (root == "") {
+        Complain("chibi build: no tools/toolchain/Driver.chibi in this directory or its parents");
         return 2;
     }
-    triple := Default(invocation.target, HostTriple());
-    collections: string[] = ["core"];
-    directories: string[] = [core];
-    gathered := Gather(subject.project, collections, directories, subject.package, subject.source);
-    if (gathered.problem != "") {
-        Complain(strings.Concatenate(["native: ", gathered.problem]));
+    llvm := LlvmFolder(Option(arguments, "--llvm", ""));
+    if (llvm == "") {
+        Complain(strings.Concatenate(["build needs LLVM: ", NeedsLlvm()]));
         return 2;
     }
-    key := strings.Concatenate([triple, "\n", invocation.mode, "\n", strings.Join(gathered.paths, "\n"), "\n", strings.Join(gathered.sources, "\n--\n")]);
-    hash := strings.Slice(os.HashText(key), 0, 16);
-    folder := strings.Concatenate([subject.project, "/build/native/O", invocation.mode, "-", hash]);
-    name := "program";
-    if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
-        name = "program.exe";
-    }
-    program := strings.Concatenate([folder, "/", name]);
-    if (os.IsFile(program)) {
-        Complain(strings.Concatenate(["native: ", program, " is up to date"]));
-        return 0;
-    }
-    partial := strings.Concatenate([folder, ".partial"]);
-    if (os.Exists(partial) && os.Run(["rm", "-rf", partial]) != 0) {
-        Complain(strings.Concatenate(["native: cannot clear ", partial]));
-        return 2;
-    }
-    if (!MakeFolders(partial)) {
-        Complain(strings.Concatenate(["native: cannot make ", partial]));
-        return 2;
-    }
-    built := Emit(collections, directories, gathered.paths, gathered.sources, triple, "", llvm, strings.Concatenate([partial, "/", name]), Jobs([]));
-    if (built != 0) {
-        return built;
-    }
-    if (os.Rename(partial, folder) != nil) {
-        Complain(strings.Concatenate(["native: cannot publish ", folder]));
-        return 2;
-    }
-    Complain(strings.Concatenate(["native: ", program]));
-    return 0;
+    command: string[] = ["sh", strings.Concatenate([root, "/tools/build.sh"]), "build"];
+    command.extend(Tail(arguments, 1));
+    command.extend(["--native-driver", os.ProgramPath(), "--llvm", llvm]);
+    return ExitStatus(os.Run(command));
 }
 
 // The command line in `arguments`, without the program's name.
 Cli :: (arguments: string[]) -> int {
+    if (length(arguments) > 0 && arguments[0] == "build" &&
+        (length(arguments) < 2 || arguments[1] != "--native") &&
+        (length(arguments) != 2 || !HelpOption(arguments[1]))) {
+        return BuildCommand(arguments);
+    }
     full: string[] = ["chibi"];
     full.extend(arguments);
     invocation := Parse(full);

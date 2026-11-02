@@ -1,6 +1,10 @@
 package native_driver
 
 import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import route "project:driver_paths"
+import raw "project:compiler_syntax"
+import syntax "project:syntax_diagnostics"
 import os "core:os"
 import strings "core:strings"
 
@@ -30,7 +34,7 @@ TestFolders :: (root: string, relative: string) -> string[] {
     if (relative != ".") {
         folder = strings.Concatenate([root, "/", relative]);
     }
-    names := Sorted(os.List(folder).names);
+    names := os.List(folder).names;
     holds := false;
     for (name in names) {
         if (strings.HasSuffix(name, ".chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
@@ -53,21 +57,6 @@ TestFolders :: (root: string, relative: string) -> string[] {
     return found;
 }
 
-// `names` in byte order.
-Sorted :: (names: string[]) -> string[] {
-    ranked := resize([""], length(names));
-    for (name in names) {
-        rank := 0;
-        for (other in names) {
-            if (strings.Compare(other, name) < 0) {
-                rank += 1;
-            }
-        }
-        ranked[rank] = name;
-    }
-    return ranked;
-}
-
 // The .chibi files of a package folder, in name order.
 TestFiles :: (folder: string) -> string[] {
     files: string[] = [];
@@ -76,7 +65,7 @@ TestFiles :: (folder: string) -> string[] {
             files.append(name);
         }
     }
-    return Sorted(files);
+    return files;
 }
 
 // The text after `// error: ` on the last line of `text`, "" when it does not end so.
@@ -92,20 +81,51 @@ ExpectedError :: (text: string) -> string {
     return "";
 }
 
-// The names of the test functions of a file, in order: the function declared on the
-// line after an `@test` line.
-TestNames :: (text: string) -> string[] {
-    found: string[] = [];
-    lines := strings.SplitLines(text);
-    for (index in 0..<length(lines)) {
-        if (strings.TrimSuffix(lines[index], "\r") != "@test" || index + 1 >= length(lines)) {
-            continue;
-        }
-        declaration := strings.TrimPrefix(lines[index + 1], "pub ");
-        at := strings.Index(declaration, " :: (");
-        if (at > 0) {
-            found.append(strings.Slice(declaration, 0, at));
-        }
+TestScan :: struct {
+    names: string[];
+    attributed: bool;
+    problem: string;
+}
+
+// The compiler's parser owns attribute syntax. Comments and whitespace between
+// an attribute and its declaration do not change which function is a test.
+ScanTests :: (text: string) -> TestScan {
+    found: TestScan = {names: [], attributed: false, problem: ""};
+    switch raw.Parse(text) {
+        case .Rejected(diagnostic):
+            found.problem = format_text("{}:{}: {}", diagnostic.line, diagnostic.column, diagnostic.message);
+        case .Parsed(nodes, fields, named, extra, root):
+            for (index in 0..<length(nodes)) {
+                if (nodes[index].kind == syntax.Attribute) {
+                    found.attributed = true;
+                }
+                if (nodes[index].kind != syntax.FunctionDeclaration) {
+                    continue;
+                }
+                name := "";
+                test := false;
+                member := nodes[index].first_child;
+                while (member >= 0) {
+                    node := nodes[member];
+                    if (fields[member] == syntax.FieldName) {
+                        name = strings.Slice(text, node.start, node.end - node.start);
+                    }
+                    if (node.kind == syntax.Attribute) {
+                        attribute := node.first_child;
+                        while (attribute >= 0) {
+                            if (fields[attribute] == syntax.FieldName) {
+                                value := nodes[attribute];
+                                test = test || strings.Slice(text, value.start, value.end - value.start) == "test";
+                            }
+                            attribute = nodes[attribute].next_sibling;
+                        }
+                    }
+                    member = node.next_sibling;
+                }
+                if (test) {
+                    found.names.append(name);
+                }
+            }
     }
     return found;
 }
@@ -230,7 +250,7 @@ Decimal :: (text: string) -> int {
 
 // Checks a package that expects a compile error: it must fail with exactly that first
 // diagnostic, in the file it names. Prints the outcome as a test's; true when it passed.
-RejectedAsExpected :: (label: string, relative: string, file: string, expected: string, inputs: Inputs) -> bool {
+RejectedAsExpected :: (label: string, relative: string, file: string, expected: string, inputs: Inputs, core: string) -> bool {
     parent := Directory(relative);
     failing := strings.Concatenate([relative, "/", file]);
     if (relative == ".") {
@@ -246,32 +266,36 @@ RejectedAsExpected :: (label: string, relative: string, file: string, expected: 
         }
         message = strings.Slice(expected, colon + 1, strings.ByteLength(expected) - colon - 1);
     }
-    compiled := compiler.Compile("/project", ["core"], ["/sdk/core"], inputs.paths, inputs.sources, false, TargetFacts(), 0, Names(),
-                                 Natives(), Ports(), Identities());
-    diagnostic := compiled.error;
+    triple := HostTriple();
+    os := 1;
+    arch := 1;
+    if (strings.HasPrefix(triple, "aarch64-apple")) {
+        os = 2;
+        arch = 2;
+    } else if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+        os = 3;
+    }
+    rows := compiler.CollectScalarProgram("/project", ["core"], [route.Visible(core)], inputs.paths, inputs.sources, TargetFacts(),
+                                           Names(), Natives(), Ports(), Identities(), os, arch, "");
     actual := "it compiled";
     passed := false;
-    where := "";
-    if (diagnostic != nil) {
-        where = strings.TrimPrefix(inputs.paths[diagnostic.document], "./");
-        actual = format_text("{}:{}: {}", diagnostic.line, diagnostic.column, diagnostic.message);
-        passed = where == failing && actual == message;
+    if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
+        diagnostic := rows[length(rows) - 1];
+        actual = strings.Concatenate([Place(inputs.paths, inputs.sources, diagnostic.start), ": ", diagnostic.text]);
+        passed = actual == strings.Concatenate([failing, ":", message]);
     }
     if (passed) {
         Say(format_text("PASS {}.compile_error", label));
         return true;
     }
     Say(format_text("FAIL {}.compile_error", label));
-    if (diagnostic != nil) {
-        Say(format_text("  {}: expected {}, got {}:{}", failing, message, where, actual));
-    } else {
-        Say(format_text("  {}: expected {}, but it compiled", failing, message));
-    }
+    Say(format_text("  {}: expected {}, got {}", failing, message, actual));
     return false;
 }
 
 // Compiles and runs the tests of one package, printing each outcome and adding to `tally`.
-TestPackage :: (root: string, relative: string, core: string, llvm: string, triple: string, scratch: string, tally: Tally) -> Tally {
+TestPackage :: (root: string, relative: string, core: string, llvm: string, triple: string, scratch: string,
+                invocation: CliInvocation, tally: Tally) -> Tally {
     result := tally;
     folder := root;
     if (relative != ".") {
@@ -284,6 +308,7 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
     rejected := "";
     rejected_file := "";
     names: string[] = [];
+    attributed := false;
     package := "";
     for (file in TestFiles(folder)) {
         read := os.ReadText(strings.Concatenate([folder, "/", file]));
@@ -300,9 +325,16 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
             rejected = expected;
             rejected_file = file;
         }
-        names.extend(TestNames(read.text));
+        scanned := ScanTests(read.text);
+        if (expected == "" && scanned.problem != "" && strings.Contains(read.text, "@test")) {
+            Complain(strings.Concatenate([folder, "/", file, ":", scanned.problem]));
+            result.compiled = false;
+            return result;
+        }
+        names.extend(scanned.names);
+        attributed = attributed || scanned.attributed;
     }
-    if (rejected == "" && length(names) == 0) {
+    if (rejected == "" && !attributed) {
         return result;
     }
     collections: string[] = ["core"];
@@ -317,7 +349,7 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
     }
     if (rejected != "") {
         result.total += 1;
-        if (!RejectedAsExpected(label, relative, rejected_file, rejected, gathered)) {
+        if (!RejectedAsExpected(label, relative, rejected_file, rejected, gathered, core)) {
             result.failed += 1;
         }
         return result;
@@ -328,8 +360,11 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
         result.compiled = false;
         return result;
     }
-    built := Emit(collections, directories, gathered.paths, gathered.sources, triple, "", llvm, program, Jobs([]));
+    options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: false,
+                             folder: root, keep_module: false};
+    built := EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, "Main", llvm, program, Jobs([]), options);
     if (built != 0) {
+        Complain(strings.Concatenate(["test: cannot compile ", label]));
         result.compiled = false;
         return result;
     }
@@ -348,7 +383,7 @@ TestPackage :: (root: string, relative: string, core: string, llvm: string, trip
 }
 
 // `chibi test [ROOT]`.
-TestCommand :: (invocation: Invocation) -> int {
+TestCommand :: (invocation: CliInvocation) -> int {
     llvm := LlvmFolder(invocation.llvm);
     if (llvm == "") {
         Complain(strings.Concatenate(["test needs LLVM: ", NeedsLlvm()]));
@@ -364,13 +399,17 @@ TestCommand :: (invocation: Invocation) -> int {
         Complain(format_text("test: cannot find {}", Default(invocation.path, ".")));
         return 1;
     }
-    triple := HostTriple();
+    triple := Default(invocation.target, HostTriple());
+    if (triple != HostTriple()) {
+        Complain("test requires the host target; use build --native to cross-compile");
+        return 2;
+    }
     tally: Tally = {total: 0, failed: 0, compiled: true};
     number := 0;
     for (relative in TestFolders(root, ".")) {
         scratch := strings.Concatenate([root, "/build/native/test/", format_text("{}", number)]);
         number += 1;
-        tally = TestPackage(root, relative, core, llvm, triple, scratch, tally);
+        tally = TestPackage(root, relative, core, llvm, triple, scratch, invocation, tally);
     }
     if (!tally.compiled) {
         return 1;

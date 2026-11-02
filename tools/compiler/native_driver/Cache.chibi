@@ -1,0 +1,238 @@
+package native_driver
+
+import link "project:native_link"
+import host "project:native_link_host"
+import os "core:os"
+import strings "core:strings"
+import target "core:target"
+import tokens "project:source_tokenizer"
+
+when target.Os == target.Windows {
+    import process "core:sys/windows"
+} else {
+    import process "core:sys/posix"
+}
+
+// A cache identity covers source contents, the running compiler, LLVM tools,
+// target and options, and every declared foreign archive. Receipts retain the
+// same facts so a hit can verify its program without compiling anything.
+CacheInputs :: struct {
+    key: string;
+    receipt: string;
+    problem: string;
+}
+
+CacheSnapshot :: (collections: string[], directories: string[], gathered: Inputs, triple: string, chosen: string,
+                  llvm: string, options: DriverOptions) -> CacheInputs {
+    found: CacheInputs = {key: "", receipt: "", problem: ""};
+    arguments := process.Arguments();
+    executable := arguments[0];
+    if (!os.IsFile(executable)) {
+        executable = os.FindExecutable(executable);
+    }
+    tool_names := ["compiler", "opt", "llc", "linker"];
+    tools := [executable, host.Tool(llvm, "opt"), host.Tool(llvm, "llc"),
+              host.Tool(llvm, link.Linker(link.TargetOf(triple)))];
+    facts: string[] = ["native-driver-cache 1\n", "target ", triple, "\nentry ", chosen, "\nmode ", options.level,
+                        format_text("\nlines {}\nstatic {}\nshared {}\n", options.lines, options.static_link, options.shared)];
+    if (options.lines) {
+        facts.extend(["directory ", options.folder, "\n"]);
+    }
+    for (index in 0..<length(tools)) {
+        identified := os.RealPath(tools[index]);
+        hashed := os.HashFile(identified);
+        if (hashed.error != nil) {
+            found.problem = strings.Concatenate(["cannot identify ", tool_names[index], " ", tools[index]]);
+            return found;
+        }
+        facts.extend([tool_names[index], " ", tools[index], "\n", tool_names[index], "-sha256 ", hashed.digest, "\n"]);
+    }
+    for (index in 0..<length(collections)) {
+        facts.extend(["collection ", collections[index], "=", directories[index], "\n"]);
+    }
+    archives: string[] = [];
+    for (index in 0..<length(gathered.paths)) {
+        facts.extend(["source ", gathered.paths[index], "\nsource-sha256 ", os.HashText(gathered.sources[index]), "\n"]);
+        for (spelled in CacheArchives(gathered.sources[index])) {
+            if (strings.HasPrefix(spelled, "system:")) {
+                continue;
+            }
+            archive := link.Archive(spelled, options.folder, link.VendorDirectory(directories[0]));
+            resolved := os.RealPath(archive);
+            if (resolved != "") {
+                archive = resolved;
+            }
+            if (!Contains(archives, archive)) {
+                archives.append(archive);
+                hashed := os.HashFile(archive);
+                digest := hashed.digest;
+                if (hashed.error != nil) {
+                    // A discarded target branch may declare a missing archive.
+                    // EmitOptions rejects it only when the kept module uses it.
+                    digest = "missing";
+                }
+                facts.extend(["library ", archive, "\nlibrary-sha256 ", digest, "\n"]);
+            }
+        }
+    }
+    // Linux's default CRT objects and development library are link inputs too.
+    if (triple == "x86_64-unknown-linux-gnu" && !options.static_link && !options.shared) {
+        libc := host.Libc();
+        if (libc.folder == "") {
+            found.problem = "cannot find the Linux C runtime link files";
+            return found;
+        }
+        facts.extend(["interpreter ", libc.interpreter, "\n"]);
+        for (name in link.LibcFiles()) {
+            path := strings.Concatenate([libc.folder, "/", name]);
+            hashed := os.HashFile(path);
+            if (hashed.error != nil) {
+                found.problem = strings.Concatenate(["cannot identify runtime link file ", path]);
+                return found;
+            }
+            facts.extend(["runtime ", path, "\nruntime-sha256 ", hashed.digest, "\n"]);
+        }
+    }
+    found.receipt = strings.Concatenate(facts);
+    found.key = os.HashText(found.receipt);
+    return found;
+}
+
+// Use the language tokenizer so comments, compact declarations and newlines
+// cannot hide a foreign archive from the cache identity. Invalid declarations
+// are still diagnosed by the compiler, not by cache discovery.
+CacheArchives :: (source: string) -> string[] {
+    found: string[] = [];
+    if (!strings.Contains(source, "foreign")) {
+        return found;
+    }
+    switch tokens.Tokenize(source) {
+        case .Scanned(kinds, starts, ends, rows, columns, errors, error_offsets, error_rows, error_columns):
+            step := 0;
+            for (at in 0..<length(kinds)) {
+                kind := kinds[at];
+                if (kind == tokens.Comment) {
+                    continue;
+                }
+                if (step == 3 && kind == tokens.String) {
+                    found.append(strings.Slice(source, starts[at] + 1, ends[at] - starts[at] - 2));
+                    step = 0;
+                } else if (step == 1 && kind == tokens.Import) {
+                    step = 2;
+                } else if (step == 2 && kind != tokens.EOF) {
+                    step = 3;
+                } else if (kind == tokens.Foreign) {
+                    step = 1;
+                } else {
+                    step = 0;
+                }
+            }
+    }
+    return found;
+}
+
+// A corrupt or incomplete published entry is never overwritten or accepted.
+CacheProblem :: (output: string, program: string, snapshot: CacheInputs) -> string {
+    read := os.ReadText(strings.Concatenate([output, "/receipt.txt"]));
+    if (read.error != nil || !strings.HasPrefix(read.text, snapshot.receipt)) {
+        return "has no matching receipt";
+    }
+    hashed := os.HashFile(strings.Concatenate([output, "/", program]));
+    if (hashed.error != nil || !strings.Contains(read.text, strings.Concatenate(["\nprogram-sha256 ", hashed.digest, "\n"]))) {
+        return "does not match its receipt (program-sha256)";
+    }
+    if (os.FindExecutable(strings.Concatenate([output, "/", program])) == "") {
+        return "has no executable program";
+    }
+    return "";
+}
+
+// Removes only the private directory this invocation reserved. An interrupted
+// invocation deliberately leaves it for diagnosis and explicit recovery.
+CacheDiscard :: (folder: string) {
+    listed := os.List(folder);
+    for (name in listed.names) {
+        path := strings.Concatenate([folder, "/", name]);
+        if (os.IsDirectory(path)) {
+            CacheDiscard(path);
+        } else {
+            removed := os.Remove(path);
+        }
+    }
+    removed := os.Remove(folder);
+}
+
+CachedBuild :: (root: string, collections: string[], directories: string[], gathered: Inputs, triple: string,
+                chosen: string, llvm: string, jobs: int, options: DriverOptions, source: string) -> int {
+    if (link.TargetOf(triple) < 0) {
+        os.Print(strings.Concatenate(["native: unknown target ", triple]));
+        return 2;
+    }
+    snapshot := CacheSnapshot(collections, directories, gathered, triple, chosen, llvm, options);
+    if (snapshot.problem != "") {
+        os.Print(strings.Concatenate(["native: ", snapshot.problem]));
+        return 2;
+    }
+    parent := strings.Concatenate([root, "/build/native"]);
+    output := strings.Concatenate([parent, "/O", options.level, "-", strings.Slice(snapshot.key, 0, 16)]);
+    program := "program";
+    if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+        program = "program.exe";
+    }
+    if (options.shared) {
+        program = "generation.so";
+    }
+    if (os.Exists(output)) {
+        problem := CacheProblem(output, program, snapshot);
+        if (problem != "") {
+            os.Print(strings.Concatenate(["native: ", output, " ", problem, "; remove it to rebuild"]));
+            return 1;
+        }
+        os.Print(strings.Concatenate(["native: ", output, "/", program, " is up to date"]));
+        return 0;
+    }
+    work := strings.Concatenate([output, ".work"]);
+    for (stale in [work, strings.Concatenate([output, ".partial"])]) {
+        if (os.Exists(stale)) {
+            os.Print(strings.Concatenate(["native: an interrupted build left ", stale, "; remove it once no build is running"]));
+            return 1;
+        }
+    }
+    if (os.MakeDirectory(parent) != nil || os.Reserve(work) != nil) {
+        os.Print(strings.Concatenate(["native: cannot reserve ", work]));
+        return 2;
+    }
+    status := EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, chosen, llvm,
+                          strings.Concatenate([work, "/", program]), jobs, options);
+    if (status != 0) {
+        CacheDiscard(work);
+        return status;
+    }
+    refreshed := Gather(root, collections, directories, ".", source);
+    checked := CacheSnapshot(collections, directories, refreshed, triple, chosen, llvm, options);
+    hashed := os.HashFile(strings.Concatenate([work, "/", program]));
+    if (refreshed.problem != "" || checked.problem != "" || checked.key != snapshot.key || hashed.error != nil) {
+        os.Print("native: an input changed during the build; retry");
+        CacheDiscard(work);
+        return 1;
+    }
+    linkage := "dynamic libc";
+    if (options.static_link || strings.HasPrefix(triple, "x86_64-pc-windows")) {
+        linkage = "static";
+    }
+    if (strings.HasPrefix(triple, "aarch64-apple")) {
+        linkage = "dynamic libSystem";
+    }
+    if (options.shared) {
+        linkage = "shared";
+    }
+    receipt := strings.Concatenate([snapshot.receipt, "key ", snapshot.key, "\noutput-kind executable\nlinkage ",
+                                    linkage, "\nprogram-sha256 ", hashed.digest, "\n"]);
+    if (os.WriteText(strings.Concatenate([work, "/receipt.txt"]), receipt) != nil || os.Publish(work, output) != nil) {
+        os.Print(strings.Concatenate(["native: cannot publish ", output]));
+        CacheDiscard(work);
+        return 2;
+    }
+    os.Print(strings.Concatenate(["native: ", output, "/", program]));
+    return 0;
+}

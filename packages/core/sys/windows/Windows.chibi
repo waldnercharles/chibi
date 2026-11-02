@@ -223,6 +223,25 @@ pub Print :: (line: string) -> bool {
     return done != 0 && int(written[0]) == length(data);
 }
 
+// Writes the text to standard output without a newline.
+pub WriteOutput :: (text: string) -> bool {
+    data := Bytes(text);
+    written: u32[] = [0];
+    offset := 0;
+    while (offset < length(data)) {
+        rest := data;
+        if (offset != 0) {
+            rest = slice(data, offset, length(data) - offset);
+        }
+        done := WriteFile(GetStdHandle(-11), rest, u32(length(rest)), written, 0);
+        if (done == 0 || written[0] == 0) {
+            return false;
+        }
+        offset += int(written[0]);
+    }
+    return true;
+}
+
 // Replaces the file with the text; false when it cannot be written whole.
 pub WriteText :: (path: string, text: string) -> bool {
     return WriteBytes(path, Bytes(text));

@@ -87,7 +87,7 @@ ParseRejected :: (paths: string[], sources: string[], joined: string, line: int,
 }
 
 Message :: (collections: string[], directories: string[], paths: string[], sources: string[], expected: string) {
-    switch Module(collections, directories, paths, sources, "x86_64-unknown-linux-gnu", "") {
+    switch Module(collections, directories, paths, sources, "x86_64-unknown-linux-gnu", "", "") {
         case .Rejected(message):
             assert(message == expected);
         case .Emitted(text):

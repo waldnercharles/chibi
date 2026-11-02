@@ -31,3 +31,10 @@ The consumer links no compiler host or VM. It moves the SDK prefix before
 checking closure bytes, source diagnostics, shared quota exhaustion, cancellation,
 persistent cache hits and SDK-relative native service discovery. Its runtime
 has an empty PATH and failing C compiler selections.
+
+On Windows, run `Bridge.ps1 -Compiler STAGE3/chibi.exe -Llvm LLVM_BIN` after
+native self-hosting. It locates clang-cl and the installed Visual Studio SDK
+through vswhere; the SDK environment belongs only to the C compiler process.
+The consumer embeds the SDK UTF-8 manifest and runs from a relocated path
+containing Unicode, with no C compilers or LLVM in its runtime PATH. Windows
+retains its existing behavior of compiling without persistent binary caching.

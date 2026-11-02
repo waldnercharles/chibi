@@ -73,7 +73,12 @@ int main(int argc, char **argv)
     );
     assert(bytes && length == 329);
     free(bytes);
+#ifdef _WIN32
+    /* Windows preserves the existing no-persistent-cache behavior. */
+    options.compile_budget = 0;
+#else
     options.compile_budget = 1;
+#endif
     bytes = asset_compiler_compile_closure_cached(
         request,
         strlen(request),
@@ -82,7 +87,7 @@ int main(int argc, char **argv)
         &options,
         &diagnostic
     );
-    assert(bytes && length == 329); /* A cache hit performs no compilation. */
+    assert(bytes && length == 329); /* POSIX hits do no compilation; Windows compiles again. */
     free(bytes);
     calls = 0;
     options.cancelled = cancel_during_cache_read;

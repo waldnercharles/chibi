@@ -32,6 +32,10 @@ native CLI/compiler and asset compiler; `--target chibi` builds the CLI/compiler
 alone. Run it as `build/sdk/chibi`. Explicit C engine and test targets still
 require a C23 compiler and libclang for reflection.
 
+The compiler and toolchain self-host natively. Engine runtime APIs and browser
+execution still use the retained VM. The [native ledger](docs/native-llvm-ledger.md)
+records native language support and the remaining runtime work.
+
 ## Hello World
 
 Save this as `Hello.chibi`:

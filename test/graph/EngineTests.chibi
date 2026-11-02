@@ -145,6 +145,26 @@ NamedProgramsBuildWhatTheyRun :: () {
     assert(engine.Selected(["--commands-only", "on"], "test_host"), "no target names every target");
 }
 
+// Companions may use runtime helpers added after the pinned bootstrap seed.
+// Even a consumer of the asset library must first build the current compiler.
+NativeCompanionsUseCurrentCompiler :: () {
+    for (consumer in ["chibi-asset-compiler", "chibi_asset_compiler_host"]) {
+        named := ["--target", consumer];
+        assert(engine.Selected(named, "chibi"), "the current compiler is a transitive prerequisite");
+        assert(engine.Selected(named, "chibi-asset-compiler"), "the native asset service is selected");
+    }
+    if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
+        assert(engine.Selected(["--target", "test_tools"], "chibi"), "a linked asset library needs the compiler too");
+    }
+    products := engine.NativeProducts();
+    assert(length(products) == 2 && products[0] == "chibi" && products[1] == "chibi-asset-compiler",
+           "the compiler precedes its companion");
+    compiler := engine.NativeCommand("/verified seed", "/llvm", "/source", "/build output", "chibi", 2);
+    assert(compiler[0] == "/verified seed", "only the current compiler is compiled by the seed");
+    companion := engine.NativeCommand("/verified seed", "/llvm", "/source", "/build output", "chibi-asset-compiler", 2);
+    assert(companion[0] == engine.Executable("/build output", "chibi"), "the companion uses the current compiler");
+}
+
 // The value after the first `--name`, as the graph reads options.
 Option :: (options: string[], name: string) -> string {
     for (i in 0..<length(options) - 1) {
@@ -184,6 +204,7 @@ MirrorDropsDeletedFiles :: () {
 
 // The build host runs this entry; each case stops it on a failed assert.
 pub Run :: () -> int {
+    NativeCompanionsUseCurrentCompiler();
     MirrorDropsDeletedFiles();
     DebugFlagsKeepInstrumentation();
     TestsKeepAssertions();

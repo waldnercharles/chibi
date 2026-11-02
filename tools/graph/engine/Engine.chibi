@@ -828,7 +828,7 @@ pub Needed :: (program: string, target: string) -> bool {
         return true;
     }
     for (run in Runs(program)) {
-        if (run == target || Linked(run, target)) {
+        if (run == target || Needed(run, target)) {
             return true;
         }
     }
@@ -836,7 +836,7 @@ pub Needed :: (program: string, target: string) -> bool {
     linked.extend(LinkedObjects(program));
     for (dependency in linked) {
         for (run in Runs(dependency)) {
-            if (run == target || Linked(run, target)) { return true; }
+            if (run == target || Needed(run, target)) { return true; }
         }
     }
     return false;

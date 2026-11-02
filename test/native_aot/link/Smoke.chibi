@@ -92,7 +92,7 @@ Entry :: (triple: string, windows: bool) -> string {
                  "  %bit = zext i1 %all to i32\n  %x = call i32 @add(i32 41, i32 %bit)\n  ret i32 %x\n}\n"]);
 }
 
-// Removes the folder and the files in it, which is all a run leaves.
+// Removes the run's files and its cross-target bundle folders.
 Clear :: (folder: string) -> bool {
     if (os.Kind(folder) == os.KindNone) {
         return true;
@@ -102,7 +102,10 @@ Clear :: (folder: string) -> bool {
         return false;
     }
     for (name in listed.names) {
-        if (os.Remove(Join([folder, "/", name])) != nil) {
+        path := Join([folder, "/", name]);
+        if (os.Kind(path) == os.KindDirectory) {
+            if (!Clear(path)) { return false; }
+        } else if (os.Remove(path) != nil) {
             return false;
         }
     }
@@ -284,6 +287,9 @@ Run :: () -> int {
                 }
             }
         }
+    }
+    if (!Clear(work)) {
+        return Fail("cannot remove the work folder");
     }
     os.Print("native-link: linked and ran a program from an object and an archive; the command-line parser agrees on its cases");
     return 0;

@@ -85,16 +85,24 @@ Main :: () -> int {
         return 2;
     }
     initialized := Process(active.handle);
-    start: fn() -> i32 = Symbol(active.handle, "chibi_host_call_Main");
     frame: fn() -> i32 = Symbol(active.handle, "chibi_host_call_Frame");
-    status := int(start());
-    if Failed(active.handle) {
-        status = 134;
+    entries := Entries(active.handle);
+    if entries < 0 || entries > 3 {
+        released := Release(active.handle);
+        return 2;
     }
+    started := entries != 0;
+    framing := false;
+    status := 0;
+    if (entries & 1) != 0 { status = Enter(active.handle); }
+    else if entries == 0 { print_string("No runnable Main in the root package"); }
     generation := 0;
     retired: Generation[] = [];
     while status == 0 {
-        status = int(frame());
+        if (entries & 2) != 0 {
+            framing = true;
+            status = int(frame());
+        }
         if Failed(active.handle) {
             status = 134;
         } else if status == 0 {
@@ -139,7 +147,8 @@ Main :: () -> int {
             continue;
         }
         initialized_incoming := Process(incoming);
-        if !Complete(incoming) || !Migrate(active.handle, incoming) {
+        incoming_entries := Entries(incoming);
+        if incoming_entries < 0 || incoming_entries > 3 || !Complete(incoming) || !Migrate(active.handle, incoming) {
             released := Release(incoming);
             set_aside := MoveGeneration(name, "./rejected.so");
             continue;
@@ -153,11 +162,35 @@ Main :: () -> int {
         }
         active = {handle: incoming, path: name};
         frame = next_frame;
+        entries = incoming_entries;
+        if framing && (entries & 2) == 0 { print_string("No runnable Frame in the root package"); }
+        if !started {
+            if entries == 0 { print_string("No runnable Main in the root package"); }
+            else {
+                started = true;
+                if (entries & 1) != 0 { status = Enter(active.handle); }
+            }
+        }
     }
     released := Discard(active);
     for previous in retired {
         released_previous := Discard(previous);
     }
+    return status;
+}
+
+// Old library producers have no presence metadata and expose both real
+// entries. New package generations keep these bits separate from ABI stubs.
+Entries :: (handle: rawptr) -> int {
+    address := Symbol(handle, "chibi_host_entries");
+    if address == 0 { return 3; }
+    read: fn() -> i32 = address;
+    return int(read());
+}
+Enter :: (handle: rawptr) -> int {
+    start: fn() -> i32 = Symbol(handle, "chibi_host_call_Main");
+    status := int(start());
+    if Failed(handle) { return 134; }
     return status;
 }
 

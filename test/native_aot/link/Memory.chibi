@@ -1,0 +1,84 @@
+package memory_runtime_probe
+
+import os "core:os"
+import strings "core:strings"
+import link "project:native_link"
+import host "project:native_link_host"
+
+// Execute the actual Windows helper bodies on every host. Portable tests give
+// them distinct names so a host libc cannot satisfy their calls instead.
+Helpers :: () -> string {
+    start := link.Start("x86_64-pc-windows-msvc", true, false);
+    helpers: string[] = [];
+    for (name in ["memset", "memcpy", "memmove"]) {
+        at := strings.Index(start, strings.Concatenate(["define weak ptr @", name, "("]));
+        assert(at >= 0, "the runtime defines the compiler's memory helper");
+        rest := strings.Slice(start, at, strings.ByteLength(start) - at);
+        end := strings.Index(rest, "\n}\n");
+        assert(end >= 0, "the helper body is complete");
+        helpers.append(strings.Slice(rest, 0, end + 3));
+    }
+    return strings.Join(helpers, "");
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    llvm := arguments[0];
+    work := arguments[1];
+    fixture := os.ReadText(arguments[2]);
+    if (fixture.error != nil) { return 1; }
+    triple := "x86_64-unknown-linux-gnu";
+    suffix := "";
+    windows := os.Platform() == "Windows";
+    if (windows) { triple = "x86_64-pc-windows-msvc"; suffix = ".exe"; }
+    else if (os.Platform() == "Darwin") { triple = "aarch64-apple-darwin"; }
+    module := fixture.text;
+    helpers := "";
+    if (!windows) {
+        module = strings.ReplaceAll(module, "@mem", "@chibi_test_mem");
+        helpers = strings.ReplaceAll(Helpers(), "@mem", "@chibi_test_mem");
+    }
+    module = strings.Concatenate(["target triple = \"", triple, "\"\n", module]);
+    levels: int[] = [0, 2];
+    for (level in levels) {
+        base := strings.Concatenate([work, "/memory-O", format_text("{}", level)]);
+        written := os.WriteText(strings.Concatenate([base, ".ll"]), module);
+        if (written != nil) { return 1; }
+        start_path := strings.Concatenate([base, ".start.ll"]);
+        started := os.WriteText(start_path, link.Start(triple, windows, false));
+        if (started != nil) { return 1; }
+        objects := [strings.Concatenate([base, ".o"]), strings.Concatenate([base, ".start.o"])];
+        modules := [strings.Concatenate([base, ".ll"]), start_path];
+        if (helpers != "") {
+            helper_path := strings.Concatenate([base, ".memory.ll"]);
+            helper_written := os.WriteText(helper_path, strings.Concatenate(["target triple = \"", triple, "\"\n", helpers]));
+            if (helper_written != nil) { return 1; }
+            modules.append(helper_path);
+            objects.append(strings.Concatenate([base, ".memory.o"]));
+        }
+        compiled := host.ObjectsResult(llvm, modules, objects, level, 2);
+        if (compiled.kind != 0) {
+            os.Print(format_text("memory runtime compilation failed, kind {} code {}", compiled.kind, compiled.code));
+            return 1;
+        }
+        program := strings.Concatenate([base, suffix]);
+        linked := host.LinkResult(link.Program(triple, llvm, objects, [], [], [], program, "", windows));
+        if (linked.kind != 0) {
+            os.Print(format_text("memory runtime link failed, kind {} code {}", linked.kind, linked.code));
+            return 1;
+        }
+        if (windows) {
+            image := os.ReadText(program);
+            if (image.error != nil) { return 1; }
+            if (strings.Contains(image.text, "ucrtbase.dll") || strings.Contains(image.text, "msvcrt.dll")) {
+                os.Print("the freestanding memory probe unexpectedly imports a CRT");
+                return 1;
+            }
+        }
+        status := os.Run([program]);
+        if (status != 42) { os.Print(format_text("memory runtime O{} exited {}, expected 42", level, status)); return 1; }
+        os.Print(format_text("PASS compiler memory runtime O{}", level));
+    }
+    return 0;
+}

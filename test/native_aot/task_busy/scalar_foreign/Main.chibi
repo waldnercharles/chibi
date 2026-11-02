@@ -1,0 +1,9 @@
+package native_test_waiting_scalar_foreign
+foreign import libc "system:c"
+foreign libc { abs :: (value: i32) -> i32 }
+Main :: () -> int {
+    first := abs(-19);
+    yield;
+    second := abs(-23);
+    return first + second - 42;
+}

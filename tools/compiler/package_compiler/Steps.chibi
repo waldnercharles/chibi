@@ -1654,13 +1654,15 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         // The object is ready, so the index takes a map's key type or an
         // array's int.
         index := Field(forest, item.node, syntax.FieldIndex);
-        if (IsMap(values[top - 1])) {
-            object := Field(forest, item.node, syntax.FieldObject);
-            if (!values[top - 1].owned && MapReceiverSnapshot(forest, text, callables, params, natives, names, package, object, index)) {
-                next = [Resume(object, CopyValuePhase, 0, 0), Resume(item.node, KeyPhase, 0, 0)];
-                return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
-            }
-            next.append(Expect(index, types[values[top - 1].record].key, 0, -1));
+        receiver := values[top - 1];
+        object := Field(forest, item.node, syntax.FieldObject);
+        if ((IsMap(receiver) || receiver.container == ArrayContainer) && !receiver.owned &&
+            ReceiverSnapshot(forest, text, callables, params, natives, names, package, object, index)) {
+            next = [Resume(object, CopyValuePhase, 0, 0), Resume(item.node, KeyPhase, 0, 0)];
+            return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+        }
+        if (IsMap(receiver)) {
+            next.append(Expect(index, types[receiver.record].key, 0, -1));
         } else {
             next.append(Expect(index, IntStorage, 0, -1));
         }

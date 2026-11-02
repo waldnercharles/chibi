@@ -32,8 +32,9 @@ computed bounds are authoritative. `Geometry3D` dimensions continue to bound
 raw shapes but do not resize a model. Change model dimensions through its
 parameters, and change instance scale through the visual transform.
 
-Projects use `CHIBI_PROJECT_VERSION` 24, as created and loaded by
-`src/assets/project.c` using `src/assets/project.h`. The graph document's own serialized
+This archived prototype used project format 24. The SDK retains the last
+project-format compatibility number in `sdk/PROJECT_VERSION`; the old project
+loader is in `archive/src/assets/project.c`. The graph document's own serialized
 `version` is a separate format field; do not replace it with the project version.
 
 ## Coordinates and operations

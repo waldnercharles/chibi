@@ -264,18 +264,26 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         }
         partial := strings.Concatenate([output, ".partial"]);
         if (os.WriteText(partial, text) != nil || os.Rename(partial, output) != nil) {
-            removed := os.Remove(partial);
             os.Print("native: cannot publish the LLVM module bundle");
+            DiscardPath(partial);
             return 2;
         }
         return 0;
     }
     // The `; chibi-library` and `; chibi-import` lines, which any piece may
-    // hold: a vendored archive links after the objects, and only a Windows
-    // program takes system libraries by name.
+    // hold: vendored archives link after the objects; declared system imports
+    // supply Linux library names or Windows/macOS symbol stubs.
     markers: string[] = [];
     for (piece in pieces) {
         markers.extend(Markers(piece));
+    }
+    if (options.static_link && linux) {
+        for (line in markers) {
+            if (strings.HasPrefix(line, "; chibi-import system:m ")) {
+                os.Print("native: static programs cannot link system math yet; omit --static");
+                return 2;
+            }
+        }
     }
     archives: string[] = [];
     vendor := link.VendorDirectory(directories[0]);
@@ -285,7 +293,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         }
         path := strings.TrimPrefix(line, "; chibi-library ");
         if (strings.HasPrefix(path, "system:")) {
-            if (path != "system:c" && !windows) {
+            supported_math := (linux && path == "system:m") || (!linux && !windows && path == "system:System");
+            if (path != "system:c" && !windows && !supported_math) {
                 os.Print(strings.Concatenate(["native: system library ", path,
                                               " links on Windows only; link a prebuilt archive instead"]));
                 return 2;
@@ -349,8 +358,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     if (options.level == "0") {
         optimization = 0;
     }
-    object_error := host.Objects(llvm, files, objects, optimization, jobs);
-    if (object_error != nil) {
+    object_error := host.ObjectsResult(llvm, files, objects, optimization, jobs);
+    if (object_error.kind != 0) {
         return ToolFailure(object_error.kind, object_error.code, "LLVM object emission failed");
     }
     files.extend(objects);
@@ -367,8 +376,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
             os.Print("native: cannot write the start module");
             return 2;
         }
-        start_error := host.Object(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), optimization);
-        if (start_error != nil) {
+        start_error := host.ObjectResult(llvm, strings.Concatenate([output, ".start.ll"]), strings.Concatenate([output, ".start.o"]), optimization);
+        if (start_error.kind != 0) {
             return ToolFailure(start_error.kind, start_error.code, "LLVM start object emission failed");
         }
         objects.append(strings.Concatenate([output, ".start.o"]));
@@ -376,18 +385,19 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     }
     plan := link.Program(triple, llvm, objects, archives, [], [], output, "", static || shared);
     plan.shared = shared;
-    // Only a Windows program takes system libraries by name: lld-link needs an
-    // import library for each, which the macOS and Linux links do without.
-    if (windows) {
-        markers.extend(Markers(start));
-        plan.imports = link.SystemImports(markers);
+    // Math instructions can lower to libm calls. Linux links that library by
+    // name; macOS and Windows bind each symbol through their system stubs.
+    markers.extend(Markers(start));
+    plan.imports = link.SystemImports(markers);
+    if (link.TargetOf(triple) == link.LinuxX64) {
+        for (imported in plan.imports) { plan.libraries.append(imported.name); }
     }
-    link_error := host.Link(plan);
-    if (link_error != nil) {
+    link_error := host.LinkResult(plan);
+    if (link_error.kind != 0) {
         return ToolFailure(link_error.kind, link_error.code, "LLVM link failed");
     }
     for (name in files) {
-        removed := os.Remove(name);
+        DiscardPath(name);
     }
     return 0;
 }
@@ -493,6 +503,8 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
 PackageFiles :: (folder: string, tests: bool) -> string[] {
     files: string[] = [];
     listed := os.List(folder);
+    // GatherWith reports this empty result as a package with no sources.
+    if (listed.error != nil) { return files; }
     for (name in listed.names) {
         if (strings.HasSuffix(name, ".chibi") && (tests || !strings.HasSuffix(name, "Tests.chibi")) && os.IsFile(strings.Concatenate([folder, "/", name]))) {
             files.append(name);

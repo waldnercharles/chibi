@@ -1,0 +1,123 @@
+package generation_watch_proof
+
+import os "core:os"
+import strings "core:strings"
+import target "core:target"
+
+Inputs :: struct { builder: string; root: string; llvm: string; host: string; work: string; triple: string; level: string; }
+Running :: struct { pid: int; status: int; }
+
+Poll :: (running: ^Running, timeout: int) -> bool {
+    if (running^.pid <= 0) { return false; }
+    status := os.Wait(running^.pid, timeout);
+    if (status == os.StillRunning) { return true; }
+    running^.pid = 0;
+    running^.status = status;
+    return false;
+}
+Marker :: (running: ^Running, path: string) -> bool {
+    for (attempt in 0..<3000) {
+        if (!Poll(running, 10)) { return false; }
+        if (os.Exists(path)) { return true; }
+    }
+    return false;
+}
+Ended :: (running: ^Running, expected: int) -> bool {
+    return !Poll(running, 30000) && running^.status == expected;
+}
+
+Build :: (inputs: Inputs, name: string, output: string, rejection: string) -> bool {
+    source := strings.Concatenate([inputs.root, "/test/native_aot/loader/watch/", name, ".chibi"]);
+    result := os.Capture([inputs.builder, inputs.root, inputs.llvm, source, output, inputs.level, inputs.triple]);
+    log := strings.Concatenate([inputs.work, "/", name, ".build.log"]);
+    written := os.WriteText(log, strings.Concatenate([result.stdout, result.stderr]));
+    if (written != nil) { return false; }
+    if (rejection == "") { return result.status == 0; }
+    return result.status != 0 && strings.Contains(strings.Concatenate([result.stdout, result.stderr]), rejection);
+}
+Publish :: (inputs: Inputs, name: string) -> bool {
+    image := strings.Concatenate([inputs.work, "/", name, ".dll"]);
+    if (!Build(inputs, name, image, "")) { return false; }
+    pending := strings.Concatenate([inputs.work, "/pending.so"]);
+    next := strings.Concatenate([inputs.work, "/next.so"]);
+    if (os.Exists(next) || os.Copy(image, pending) != nil) { return false; }
+    return os.Rename(pending, next) == nil;
+}
+Start :: (inputs: Inputs, folder: string, running: ^Running) -> bool {
+    previous := os.Root();
+    if (previous == "" || os.ChangeDirectory(folder) != nil) { return false; }
+    child := os.StartRedirected([inputs.host], strings.Concatenate([folder, "/stdout.log"]), strings.Concatenate([folder, "/stderr.log"]));
+    running^.pid = child;
+    running^.status = os.StillRunning;
+    restored := os.ChangeDirectory(previous);
+    if (child < 0) { running^.pid = 0; running^.status = 127; }
+    if (restored != nil) { return false; }
+    return child >= 0;
+}
+
+// Every failure returns to Main while it still owns the child. No assert can
+// bypass the explicit kill/reap path when a fixture or environment fails.
+Exercise :: (inputs: Inputs, running: ^Running) -> string {
+    first := strings.Concatenate([inputs.work, "/First.dll"]);
+    live := strings.Concatenate([inputs.work, "/live-0.so"]);
+    if (!Build(inputs, "First", first, "") || os.Copy(first, live) != nil) { return "initial generation build"; }
+    if (!Start(inputs, inputs.work, running)) { return "start the native host and restore the caller directory"; }
+    if (!Marker(running, strings.Concatenate([inputs.work, "/ready-first"]))) { return "first generation readiness"; }
+    before := os.HashFile(live);
+    if (before.error != nil) { return "hash the accepted image"; }
+    for (name in ["RejectedSource", "RejectedEntry"]) {
+        expected := "rejected_source";
+        if (name == "RejectedEntry") { expected = "zero-argument int ABI"; }
+        if (!Build(inputs, name, live, expected)) { return strings.Concatenate([name, " diagnostic"]); }
+        checked := os.HashFile(live);
+        if (checked.error != nil || checked.digest != before.digest || !Poll(running, 0)) { return "a rejected edit replaced the active image"; }
+    }
+    if (!Publish(inputs, "BadSchema")) { return "prepare the incompatible state schema"; }
+    rejected := strings.Concatenate([inputs.work, "/rejected.so"]);
+    if (!Marker(running, rejected) || os.Exists(strings.Concatenate([inputs.work, "/bad-schema-ran"]))) { return "discard the incompatible candidate"; }
+    if (os.Remove(rejected) != nil) { return "unload the rejected DLL before removing it"; }
+    if (!Publish(inputs, "Middle")) { return "prepare the first accepted update"; }
+    if (!Marker(running, strings.Concatenate([inputs.work, "/ready-middle"]))) { return "first accepted update preserves state"; }
+    if (target.Os == target.Windows && !os.Exists(live)) { return "a pending task did not pin its original mapped image"; }
+    if (os.WriteText(strings.Concatenate([inputs.work, "/release-task"]), "resume") != nil) { return "release the retired task"; }
+    if (!Marker(running, strings.Concatenate([inputs.work, "/ready-after-task"]))) { return "the retired task did not finish in its original generation"; }
+    if (target.Os == target.Windows && os.Exists(live)) { return "a completed retired generation kept its DLL file"; }
+    if (!Publish(inputs, "Second")) { return "prepare the second accepted update"; }
+    if (!Ended(running, 42)) { return "final Frame status is not 42"; }
+    if (os.Exists(strings.Concatenate([inputs.work, "/main-restarted"])) ||
+        os.Exists(strings.Concatenate([inputs.work, "/task-new"])) ||
+        os.Exists(strings.Concatenate([inputs.work, "/cancelled-ran"]))) { return "entry or task generation ownership changed"; }
+    if (!os.Exists(strings.Concatenate([inputs.work, "/main-started"])) || !os.Exists(strings.Concatenate([inputs.work, "/task-old"]))) { return "startup or original task did not execute"; }
+    if (target.Os == target.Windows) {
+        listed := os.List(inputs.work);
+        if (listed.error != nil) { return "list released mapped images"; }
+        for (name in listed.names) {
+            if (strings.HasSuffix(name, ".so")) { return strings.Concatenate(["unreleased generation image ", name]); }
+        }
+    }
+    // Restarting is a fresh host with the same original image, not migration.
+    restart := strings.Concatenate([inputs.work, "/restart"]);
+    if (os.MakeDirectory(restart) != nil || os.Copy(first, strings.Concatenate([restart, "/live-0.so"])) != nil ||
+        os.WriteText(strings.Concatenate([restart, "/finish-first"]), "stop") != nil) { return "prepare the restarted host"; }
+    if (!Start(inputs, restart, running) || !Ended(running, 43)) { return "restart must initialize state and exit 43"; }
+    if (!os.Exists(strings.Concatenate([restart, "/main-started"])) ||
+        os.Exists(strings.Concatenate([restart, "/task-old"])) || os.Exists(strings.Concatenate([restart, "/cancelled-ran"]))) { return "restart or shutdown task cancellation"; }
+    if (target.Os == target.Windows && os.Exists(strings.Concatenate([restart, "/live-0.so"]))) { return "restarted host did not release its DLL"; }
+    return "";
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 7) { os.Print("usage: WatchProof BUILDER CHECKOUT LLVM HOST WORK TRIPLE LEVEL"); return 2; }
+    inputs: Inputs = {builder: arguments[0], root: arguments[1], llvm: arguments[2], host: arguments[3], work: arguments[4], triple: arguments[5], level: arguments[6]};
+    if (os.Exists(inputs.work) || os.MakeDirectory(inputs.work) != nil) {
+        os.Print("native generation watch needs a new working directory");
+        return 2;
+    }
+    running: Running = {pid: 0, status: 0};
+    problem := Exercise(inputs, &running);
+    if (running.pid > 0) { killed := os.Kill(running.pid); }
+    if (problem != "") { os.Print(strings.Concatenate(["FAIL native generation watch: ", problem])); return 1; }
+    os.Print("PASS native generation watch: rejected source/entry/schema, two swaps, state, original tasks, restart and image release");
+    return 0;
+}

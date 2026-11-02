@@ -12,7 +12,7 @@ mkdir "$work/native_link" "$work/native_link_host"
 cp "$root"/tools/compiler/native_link/*.chibi "$work/native_link/"
 sed 's#"project:native_link"#"native_link:."#' "$root/tools/compiler/native_link_host/Host.chibi" >"$work/native_link_host/Host.chibi"
 for test in Objects Smoke; do
-    "$compiler" run --root "$root" --llvm "$llvm" \
+    "$compiler" run --root "$root/tools/compiler" --llvm "$llvm" \
         --collection native_link="$work/native_link" --collection native_link_host="$work/native_link_host" \
         --core "$root/packages/core" --entry Run "$root/test/native_aot/link/$test.chibi"
 done

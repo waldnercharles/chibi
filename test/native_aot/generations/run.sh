@@ -31,7 +31,7 @@ build() {
     project=$1
     linkage=$2
     if [ "$linkage" = shared ]; then
-        "$compiler" --compiler "$(dirname "$project")" --core "$root/packages/core" \
+        "$compiler" --compiler "$(dirname "$project")" --core "${3:-$root/packages/core}" \
             --source "$project/Main.chibi" --output "$project/generation.so" \
             --llvm "$llvm" --target "$triple" --shared --level "$level" \
             > "$project/build.log" 2>&1
@@ -47,7 +47,7 @@ output() {
     else printf '%s/generation.so\n' "$1"; fi
 }
 must_build() {
-    if ! build "$1" "$2"; then
+    if ! build "$@"; then
         cat "$1/build.log" >&2
         exit 1
     fi
@@ -193,8 +193,6 @@ rejected() {
     fi
     cmp "$prior" "$work/prior.so"
 }
-printf 'package loop\nHelper :: () -> int { return 0; }\n' > "$project/Main.chibi"
-rejected 'native package generations require Main or Frame'
 printf 'package loop\nFrame :: () -> int { return 0; }\nMain :: (x: int) -> int { return x; }\n' > "$project/Main.chibi"
 rejected 'Main and Frame with a zero-argument int ABI'
 printf 'package loop\nFrame :: () -> int { return 0; }\nMain :: () -> f64 { return 0.0; }\n' > "$project/Main.chibi"
@@ -394,4 +392,42 @@ rejected "Unknown function 'Missing'"
 printf 'Loop :: library { Frame :: () -> int { text: retain string = "unsupported bulk handle"; return 0; } }\n' \
     > "$project/Main.chibi"
 rejected 'native library retained states require scalar literal initializers'
+
+# Collection admission follows the imported closure. An unrelated package's
+# error is never reported; a used package's error keeps the published image.
+project="$work/collection/project"
+custom_core="$work/collection/core"
+mkdir -p "$project" "$custom_core/used" "$custom_core/unused" "$work/collection/run"
+cat > "$project/Main.chibi" <<'SOURCE'
+package collection
+import used "core:used"
+Main :: () -> int { return 0; }
+Frame :: () -> int { return used.Value(); }
+SOURCE
+printf 'package unused\npub Unused :: () -> int { return unused_error; }\n' > "$custom_core/unused/Unused.chibi"
+printf 'package used\npub Value :: () -> int { return 37; }\n' > "$custom_core/used/Value.chibi"
+must_build "$project" shared "$custom_core"
+if grep -F 'unused_error' "$project/build.log"; then
+    echo 'native generations: unreachable collection error was reported' >&2
+    exit 1
+fi
+prior=$(output "$project")
+cp "$prior" "$work/collection/prior.so"
+cp "$prior" "$work/collection/run/live-0.so"
+status=0
+(cd "$work/collection/run" && timeout 30 "$host") || status=$?
+test "$status" -eq 37
+printf 'package used\npub Value :: () -> int { return needed_error; }\n' > "$custom_core/used/Value.chibi"
+if build "$project" shared "$custom_core"; then
+    echo 'native generations: used collection error was accepted' >&2
+    exit 1
+fi
+grep -F 'needed_error' "$project/build.log"
+grep -F "$custom_core/used/Value.chibi:2:" "$project/build.log"
+cmp "$prior" "$work/collection/prior.so"
+cp "$prior" "$work/collection/run/live-0.so"
+status=0
+(cd "$work/collection/run" && timeout 30 "$host") || status=$?
+test "$status" -eq 37
+echo 'native generations: reachable collections, physical diagnostics and rejected-image preservation passed'
 echo 'native package generations: passed'

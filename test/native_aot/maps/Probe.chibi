@@ -207,7 +207,7 @@ Main :: () -> int {
         }
         plan := link.Program(target.triple, llvm, objects, [], [], [], output, "", false);
         if (os.Platform() == "Darwin") {
-            libsystem: link.Import = {name: "System", symbols: ["malloc", "free", "printf", "abort", "exit", "write", "_exit"]};
+            libsystem: link.Import = {name: "System", symbols: ["malloc", "free", "printf", "abort", "exit", "write", "_exit", "memset"]};
             plan.imports = [libsystem];
         }
         linked := host.Link(plan);

@@ -843,7 +843,7 @@ static bool native_module_ir(const char *target, const native_module *m, char **
  * through CollectScalar on one producer VM, alternating by case, and must be
  * the result Cases.Check expects. An accepted module's IR becomes O0 and O2
  * objects through the native driver's fixed opt and llc argument vectors
- * (test/native_aot/driver/README.md), with no undefined symbol. Each object,
+ * (test/native_aot/native_driver/README.md), with no undefined symbol. Each object,
  * linked as a validation-only shared library, runs in a child process, so a
  * trap is a status rather than the end of this test. Its entry's value on
  * both VMs and both native levels must match the fixture's literal expected
@@ -1615,7 +1615,7 @@ static int library_child(const char *library, int count, char **specs)
  * defines from `runtime`, or none. Windows code that uses floating point
  * references _fltused, and a frame larger than a page calls __chkstk; the C
  * runtime would define both. This __chkstk is compiler-rt's x86-64 probe, as
- * tools/native_aot/Driver.chibi's start object defines it: it touches each
+ * native_link/Start.chibi's start object defines it: it touches each
  * page from the stack pointer down by RAX bytes and changes no register. */
 enum
 {
@@ -2771,7 +2771,7 @@ TEST_CASE(stack_overflow_leaves_other_faults)
 static bool library_ir(const char *source, char **ir)
 {
     pin_value rows;
-    REQUIRE(library_rows(source, &rows));
+    REQUIRE(scalar_host_collect("libraries/Tools.chibi", source, &detached, &rows));
     const pin_array *array = rows.ptr;
     REQUIRE(array->count > 2);
     REQUIRE(target_ir("LinuxX64", &rows, ir) && *ir);

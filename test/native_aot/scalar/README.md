@@ -251,20 +251,14 @@ their payloads.
 
 ## Native objects
 
-Feed `EmitBytes` output, written with the compiler host's `--output-bytes`, to
-the unchanged driver:
+`native_link_host.Objects` verifies and optimizes emitted LLVM modules through
+`opt`, then emits objects through `llc`; `native_link_host.Object` emits an
+already-prepared module. The self-hosted native driver uses those same entry
+points. See the [native driver checks](../native_driver/README.md) and
+[`native_link`](../../../tools/compiler/native_link/README.md).
 
-```text
-chibi-build-host --root REPO --source tools/native_aot/Driver.chibi \
-  --collection native_aot=REPO/tools/native_aot/driver --core REPO/packages/core --compiler REPO/tools/compiler \
-  --compiler-core REPO/packages/core --entry Object --timeout-ms 120000 -- \
-  ABS_INPUT_LL ABS_FRESH_OUTPUT_DIRECTORY ABS_OPT ABS_LLC 0|2
-```
-
-See the [driver contract](../driver/README.md) for its trusted-tool,
-target/layout and publication rules. The entry's int32 result is the only
-native observation: `bool` parameters and results are internal, and any `bool`
-probe is a validation-only adapter, not an ABI.
+The entry's int32 result is the native observation: `bool` parameters and `bool`
+results are the corpus's private query adapter, not a public ABI.
 
 `tool language-scalar-native` (`test/language`, Linux x86-64 only) runs the
 corpus natively, and can bundle the same modules for macOS arm64 and Windows
@@ -343,7 +337,7 @@ it.
 
 ## Portable recovery regression
 
-`Run.ps1` runs after the two-stage self-build in `compiler-recovery.yml`. It
+`Run.ps1` runs after the two-stage self-build in the single CI workflow's scheduled/manual-full recovery job. It
 binds the pinned runtime, recovered stage2, compiler and regression source
 inventories, compiles `Regression.chibi` on both VMs with identical bytes, and
 runs the authored `Tests` (26 malformed-row fixtures plus emission checks).

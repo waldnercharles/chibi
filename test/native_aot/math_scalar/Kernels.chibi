@@ -1,0 +1,52 @@
+package scalar_math_kernels
+
+Sin64 :: (value: f64) -> f64 { return sin_precise(value); }
+Cos64 :: (value: f64) -> f64 { return cos_precise(value); }
+Exp64 :: (value: f64) -> f64 { return exp(value); }
+Root64 :: (value: f64) -> f64 { return sqrt(value); }
+Round64 :: (value: f64) -> f64 { return round(value); }
+Power64 :: (base: f64, exponent: f64) -> f64 { return pow(base, exponent); }
+Sin32 :: (value: number) -> number { return sin_precise(value); }
+Cos32 :: (value: number) -> number { return cos_precise(value); }
+Exp32 :: (value: number) -> number { return exp(value); }
+Round32 :: (value: number) -> number { return round(value); }
+Next :: (counter: ^int) -> f64 { counter^ += 1; return f64(counter^ + 1); }
+
+Main :: () -> int {
+    sine := Sin64(1e20);
+    cosine := Cos64(1e20);
+    assert(sine > -0.645251285265782 && sine < -0.645251285265779);
+    assert(cosine > 0.763970404441727 && cosine < 0.763970404441730);
+    assert(Sin32(1.0) == number(0.8414709848078965));
+    assert(Cos32(1.0) == number(0.5403023058681397));
+    wide := Exp64(1.0);
+    assert(wide > 2.718281828459044 && wide < 2.718281828459046);
+    assert(Exp32(1.0) == number(2.718281828459045));
+    assert(Root64(2.0) == 1.4142135623730951);
+    assert(Round64(2.5) == 3.0 && Round64(-2.5) == -3.0);
+    assert(Round32(2.5) == 3.0 && Round32(-2.5) == -3.0);
+    assert(Power64(3.0, 2.0) == 9.0);
+    assert(pow(Base: f64(4.0)) == f64(1.0));
+    assert(pow(Exponent: f64(3.0)) == f64(0.0));
+    assert(pow(Exponent: number(2.0), Base: number(3.0)) == 9.0);
+    order := 0;
+    reversed := pow(Exponent: Next(&order), Base: Next(&order));
+    assert(reversed == f64(9.0));
+    assert(order == 2);
+    zero := Sin64(-0.0);
+    assert(zero == 0.0 && 1.0 / zero < 0.0);
+    rounded_zero := Round64(-0.1);
+    assert(rounded_zero == 0.0 && 1.0 / rounded_zero < 0.0);
+    negative := Root64(-1.0);
+    assert(negative != negative);
+    maximum: f64 = 1.7976931348623157e308;
+    infinity := maximum * maximum;
+    sine_infinity := Sin64(infinity);
+    cosine_infinity := Cos64(infinity);
+    assert(sine_infinity != sine_infinity && cosine_infinity != cosine_infinity);
+    assert(Exp64(1000.0) > maximum);
+    assert(Exp64(-1000.0) == 0.0);
+    assert(Power64(0.0, 0.0) == 1.0);
+    assert(Power64(-2.0, 3.0) == -8.0);
+    return 0;
+}

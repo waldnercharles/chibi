@@ -22,7 +22,7 @@ set -eu
 for source do
     case "$source" in *.ll)
         if grep -q 'define i32 @chibi_scalar(ptr %ctx)' "$source"; then
-            sed 's/define i32 @chibi_scalar(ptr %ctx)/define i32 @chibi_value_test_entry(ptr %ctx)/' "$source" > "$source.audit"
+            sed -e 's/define i32 @chibi_scalar(ptr %ctx)/define i32 @chibi_value_test_entry(ptr %ctx)/' -e '/^declare i64 @chibi_value_test_allocations()$/d' "$source" > "$source.audit"
             cat "$CHIBI_VALUE_AUDIT" >> "$source.audit"
             mv "$source.audit" "$source"
         fi ;;
@@ -35,7 +35,7 @@ ln -s "$llvm/llc" "$work/llvm/llc"
 ln -s "$llvm/$linker" "$work/llvm/$linker"
 export CHIBI_VALUE_LLVM=$llvm CHIBI_VALUE_AUDIT=$root/test/native_aot/managed_values/Audit.ll
 for level in 0 2; do
-    for source in Records Foreign; do
+    for source in Records Foreign Backed Growth Fields; do
         input=$root/test/native_aot/managed_values/$source.chibi
         if [ "$source" = Records ]; then input=$records_source; fi
         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
@@ -59,7 +59,7 @@ for source in RejectedForeignPath RejectedForeignRecord; do
     grep -q 'native foreign record buffer needs recursive array-backed value ownership' "$work/rejected.log"
 done
 # The public native lifecycle operations also run directly, independently of
-# scalar lowering's current specialized record expansion.
+# scalar lowering's ownership decisions.
 "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
     --source "$root/test/native_aot/managed_values/Probe.chibi" --entry Main \
     --output "$work/probe" --llvm "$llvm" --target "$triple" --level 2 --jobs 1
@@ -70,4 +70,9 @@ if [ -n "$reference" ]; then
     printf '%s\n' 'package managed_records' '@test' 'Calls :: () { FunctionalArrays(); }' > "$work/reference/Tests.chibi"
     "$reference" --project-root "$work/reference" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
     cat "$work/reference.log"
+    mkdir "$work/reference-fields"
+    cp "$root/test/native_aot/managed_values/Fields.chibi" "$work/reference-fields/Fields.chibi"
+    printf '%s\n' 'package field_places' '@test' 'Calls :: () { result := Main(); assert(result == 0); }' > "$work/reference-fields/Tests.chibi"
+    "$reference" --project-root "$work/reference-fields" --test > "$work/reference-fields.log" 2>&1 || { cat "$work/reference-fields.log"; exit 1; }
+    cat "$work/reference-fields.log"
 fi

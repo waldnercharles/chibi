@@ -1,18 +1,77 @@
 package native_link_tests
 
 import link "project:native_link"
+import host "project:native_link_host"
+import os "core:os"
 import strings "core:strings"
 
 Plan3 :: (triple: string, libraries: string[], libpaths: string[], static: bool) -> link.Plan {
     plan: link.Plan = {triple: triple, llvm: "/llvm", objects: ["/w/a.o", "/w/b.o"], archives: ["/v/libbox3d.a"],
                        libraries: libraries, imports: [], libpaths: libpaths, output: "/w/program", work: "/w/stubs",
                        libc: "/usr/lib/x86_64-linux-gnu", interpreter: "/lib64/ld-linux-x86-64.so.2",
-                       static: static, shared: false};
+                       static: static, shared: false, exports: []};
     return plan;
 }
 
 Plan :: (triple: string, static: bool) -> link.Plan {
     return Plan3(triple, ["m"], [], static);
+}
+
+@test
+WindowsDllExportsKeepExactSpelling :: () {
+    plan := Plan("x86_64-pc-windows-msvc", true);
+    plan.shared = true;
+    plan.exports = ["chibi_scalar", "probe_bits", "_decorated@8"];
+    assert(link.ValidExports(plan));
+    command := link.Command(plan, "/w/image.dll");
+    actual := slice(command, length(command) - 3, length(command));
+    Same(actual, ["/export:chibi_scalar", "/export:probe_bits", "/export:_decorated@8"]);
+}
+
+@test
+ExportsRejectLinkerOptionsAndOtherPlanKinds :: () {
+    plan := Plan("x86_64-pc-windows-msvc", true);
+    assert(link.ValidExports(plan), "the existing empty export list remains valid");
+    plan.exports = ["chibi_scalar"];
+    assert(!link.ValidExports(plan), "exports require a DLL");
+    plan.shared = true;
+    for (name in ["", "alias=forwarded", "name,@1", "name DATA", "/entry:bad", "bad\nname"]) {
+        plan.exports = [name];
+        assert(!link.ValidExports(plan), "exports name symbols without linker syntax");
+    }
+    plan.exports = ["chibi_scalar"];
+    plan.triple = "aarch64-apple-darwin";
+    assert(!link.ValidExports(plan), "non-Windows plans retain ordinary global exports");
+}
+
+@test
+RejectedExportsLeaveOutputsUntouched :: () {
+    scratch := os.TemporaryDirectory(os.Root());
+    assert(scratch.error == nil);
+    output := strings.Concatenate([scratch.path, "/image.dll"]);
+    partial := strings.Concatenate([output, ".partial"]);
+    work := strings.Concatenate([output, ".work"]);
+    written := os.WriteText(output, "existing image");
+    staged := os.WriteText(partial, "another writer");
+    assert(written == nil);
+    assert(staged == nil);
+    plan := link.Program("x86_64-pc-windows-msvc", "/missing-llvm", ["/missing-object"], [], [], [], output, "", true);
+    plan.shared = true;
+    plan.exports = ["name,@1"];
+    failure := host.Link(plan);
+    actual := os.ReadText(output);
+    pending := os.ReadText(partial);
+    work_kind := os.Kind(work);
+    removed_output := os.Remove(output);
+    removed_partial := os.Remove(partial);
+    removed_scratch := os.Remove(scratch.path);
+    assert(failure != nil && failure.kind == link.BadPlan);
+    assert(actual.error == nil && actual.text == "existing image");
+    assert(pending.error == nil && pending.text == "another writer");
+    assert(work_kind == os.KindNone, "reject before creating work or launching tools");
+    assert(removed_output == nil);
+    assert(removed_partial == nil);
+    assert(removed_scratch == nil);
 }
 
 Same :: (got: string[], expected: string[]) {
@@ -211,10 +270,15 @@ SystemImportsReadTheModulesMarkers :: () {
 }
 
 @test
-LinuxSharedLibrariesLinkOnlyTheObjects :: () {
+LinuxSharedLibrariesLinkDependenciesWithoutStartFiles :: () {
     plan := Plan("x86_64-unknown-linux-gnu", false);
     plan.shared = true;
     plan.objects = ["/w/a.o"];
+    Same(link.Command(plan, "/w/a.out"),
+         ["/llvm/ld.lld", "-flavor", "gnu", "-shared", "--gc-sections", "-o", "/w/a.out", "/w/a.o", "/v/libbox3d.a",
+          "-L", "/usr/lib/x86_64-linux-gnu", "-lm"]);
+    plan.libraries = [];
+    plan.libc = "";
     Same(link.Command(plan, "/w/a.out"),
          ["/llvm/ld.lld", "-flavor", "gnu", "-shared", "--gc-sections", "-o", "/w/a.out", "/w/a.o", "/v/libbox3d.a"]);
 }

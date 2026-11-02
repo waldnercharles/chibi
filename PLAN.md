@@ -1,42 +1,103 @@
 # Native toolchain continuation
 
-The November 2 handoff is published as PR #1331 on `codex/native-default-20261102`,
-frozen at `1aaf0ef3e`. The next batch is being composed on
-`codex/native-runtime-completion-20261102`. The owner's checkout and
+The November 2 handoff continues in PR #1331 on `codex/native-default-20261102`.
+The published checkpoint `b0f4dfa0b` has compiler/core source `776ead2f1`, following
+CI merge `a76ea8005`. Further work is composed
+on `codex/native-runtime-completion-20261102`. The owner's checkout and
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
 ## Current checkpoint, 2 November
 
-At published `1aaf0ef3e`, no-C-compiler, compiler self-build, Linux native
-self-host, build-alone and SDK relocation CI pass. Windows stages three and
-four reproduce exactly with SHA-256
-`f291fa77d17b5ce34d9dbc6171bbbfd3f6ca47d07c8ba9912ecfbe79ea0f5459`.
-The original long Unicode-path asset compiler build also succeeds. Its next
-step rejects unnamed C stub parameters under strict C11; that is fixed in
-the new batch at `1a3dff070`, awaiting another Windows execution.
+CI run `41531103929` reproduces Linux stages three and four byte for byte
+(`1cff2a7d8d021daa4639df9537ba6fb136323f0317dd6a89976885c132e70b36`).
+It then fails the Windows cross-link on LLVM-generated `memset`; the Windows
+lane owns that fix. The core build separately finds a deleted helper still
+called by one retained Linux C test. `4db6b2eb4` restores the exact producer
+call, checked with Linux clang. This is partial platform evidence, not a green
+combined run.
 
-General CI at that published revision is not green: it exposes native
-language admission, CLI diagnostics/reload and old host-test assumptions.
-The complete failing selector log is retained at
-`/tmp/chibi-engine-1aaf-failed.log`. These failures are migration work, not
-grounds to restore automatic fallback or omit surviving behavior checks.
+The next batch includes POSIX process-group and terminal supervision, its watch
+adapter, waiting scalar foreign calls, native core/portable selectors, source
+inventory receipts and the Windows PowerShell 5.1 bootstrap. The original
+fallible-result checker now also runs on native source; its stricter coverage
+found unchecked cleanup errors in the native driver. The driver lane is fixing
+those callers before the next self-host acceptance.
 
-The combined local source at `337204e12` passes all 416 compiler tests in
-18.27 seconds, CLI/worker/assertion/generic checks in 23.67 seconds, map
-poison/allocation checks in 38.38 seconds, managed/foreign checks in 11.20
-seconds and optional-union checks in 25.88 seconds. Consecutive self-builds
-take 62.05 and 58.15 seconds and have identical SHA-256
-`a7aa0e4a1ba6d6d731c5ce2ce997c284a867d7441a02104c63b65c01992b29b5`.
-These concurrent timings are acceptance evidence, not controlled comparisons.
+Remaining ownership is explicit:
 
-The next batch through `520b40a52` integrates foreign array loans, readonly
-array snapshots, owned aggregate copy results, named-result collision and
-grouped-float fixes, Windows loader/FFI fixtures, and the optional LLVM Wasm
-compiler SDK. Its plain and pthread archives execute in actual Chrome;
-`docs/evidence/native-wasm-browser-20261102.md` records the lane artifact
-identities and limits. The unused C application launcher is deleted.
-Combined validation of this newer source remains required.
+- CLI lane: Windows public watch acceptance and the live compile-only asset
+  facade. Replace desktop/browser C orchestration, cache and generated identity
+  C with authored code and LLVM ABI adapters while preserving diagnostics,
+  quotas, cancellation, thread isolation and caller-owned outputs.
+- Producer and collector lanes: source pointers and precise ownership roots;
+  reload lane: retained arrays and nominal retained schemas.
+- Driver lane: remaining authored language samples and error-result handling.
+- Tasks lane: the six remaining C native-backend cases, preserving their live
+  behaviors before deleting the C harness.
+- Cutover lane: all seventeen CLI survivors and signal/terminal counterparts.
+- Root: graph fixtures that depend on retired C targets, final host/VM deletion,
+  recovery-command and CI retirement, combined review and platform acceptance.
+- Windows lane: optimized memory helpers, real Windows execution, and verified
+  fixed-point seed preparation. Root owns final seed publication and pinning.
+
+No further owner decision is pending. Archived engine and Studio services stay
+archived. The public compile-only API remains a live dependency until its
+replacement passes; its C wrapper is not an acceptable final state.
+
+Published `590030513` failed before runtime testing: the pinned native seed
+could not read an optional error record's fields while compiling the newer
+driver. `776ead2f1` fixes that source compatibility with one plain error-result
+implementation and the existing optional API adapters. It preserves failure
+kind, raw tool status, cleanup and publication behavior. The exact original
+SHA-verified seed now builds the complete combined compiler.
+
+That seed build and two native self-builds take 42.80, 42.39 and 37.14 seconds.
+Stages three and four have identical SHA-256
+`06338f062bb78e1aed010efc51921cef84a5d5bbfa976152739493bdd3355021`.
+The immutable local compiler receipt is
+`/private/tmp/chibi-776ead2-compiler/receipt.json`.
+
+Combined source validation passes:
+
+- 429 compiler tests in 24.18 seconds; all 36 unchanged core math tests in 1.41
+  seconds and native O0/O2 math fixtures in 6.01 seconds.
+- Native CLI in 49.37 seconds, public watch in 9.89 seconds, and generations
+  including the three session survivors in 8.64 seconds.
+- Map ownership in 39.42 seconds, aggregate/source-copy ownership with poisoned
+  frees in 12.05 seconds, and managed collector lifetime checks in 8.19 seconds.
+- Native scalar producer in 50.22 seconds: eight behavior cases, fifteen real
+  source projections, 169 malformed variants and all 152 corpus cases.
+- Authored target runner: two modules, 1,336 calls and five macOS programs in
+  0.74 seconds; C/native rejection controls in 7.89 seconds. Both target runners
+  cross-build in 3.15 seconds; actual Windows execution is still required.
+- All 25 native build cases in 21.20 seconds, including exact tool failure and
+  signal statuses, preserved prior outputs, worker deadlines and Windows
+  no-CRT import checks.
+
+The actual Wasm compiler quota/cancellation regression passes in 158.04 seconds
+against an immutable snapshot of this source, including concurrent requests and
+allocation balance. Concurrent timings are acceptance evidence, not controlled
+performance comparisons.
+
+The VM-backed AOT driver, obsolete C session test driver and migrated C scalar
+producer tests are deleted. Their surviving behavior now runs natively. Native
+SDK identity no longer depends on C VM format headers. Source arrays share
+backing through copy on write, while direct native array-copy operations keep
+their existing clone contract for raw foreign calls. The tracing collector is
+implemented and tested; source pointers and their task/generation roots are
+still being integrated.
+
+CI keeps both explicit VM/native command comparisons, all previous native
+checks, and new collector/character coverage. Windows checkout, DLL isolation,
+UTF-8, foreign buffers, precise math and C/native target comparisons are wired
+into the same workflow. The source-compatible seed fix must pass fresh CI;
+local cross-linking is not Windows runtime acceptance. The native fixed-point
+phase now runs after an attempted core phase even when a core test fails; the
+core failure remains red. Initial/final source fences and the existing phase
+budgets remain enforced. Seventeen affected orchestration checks pass in 8.91
+seconds; the updated real Git source-fence and workflow checks pass in 1.91
+seconds, and actionlint passes with shellcheck disabled.
 
 The evidence below is chronological. Older counts and gates describe their
 named revisions, not the latest integration. Remaining deletion gates are:
@@ -45,7 +106,7 @@ named revisions, not the latest integration. Remaining deletion gates are:
   array-backed records/maps and managed suspended/retained values.
 - Complete the 17 authored CLI survivor cases and three live Edit-and-Continue
   behaviors from `docs/c-test-verdicts.md`; port surviving scalar/C test cases.
-- Migrate old host-based build/link tests and remaining live graph consumers.
+- Finish remaining live graph/CLI consumers; native build/link and producer tests are migrated.
 - Validate the combined installed compiler, CLI, asset companion and optional
   browser SDK on each supported platform, including Windows execution.
 - Retire remaining prepared-runtime consumers. The obsolete C session ABI and
@@ -153,9 +214,13 @@ and passing combined behavior checks on the final source revision.
 
 ## Parallel performance work
 
-The performance chat `01a19cba-8db8-7041-9a3e-cb5293f1603b` owns
-`test/native_aot/native_build/BuildTests.chibi` and measured iteration-cost
-changes. Its frozen native baseline is `13e01f9055e555caf207642df8ab477f721c38c2`,
+Current ownership: root owns native build/test migration, including
+`test/native_aot/native_build/BuildTests.chibi`; the performance chat
+`01a19cba-8db8-7041-9a3e-cb5293f1603b` owns measured compiler iteration work and
+reviewed the single-workflow CI reconciliation. The following entries record
+its earlier baselines and coordination history.
+
+Its original frozen native baseline is `13e01f9055e555caf207642df8ab477f721c38c2`,
 tree `0455761e0b537dba872c7078b80def510ddd3edc`, whose combined CI is green.
 The proposed CI-consolidation parent is
 `2fb44239a425e18b231fc44d0da0392ea31fac74`, tree

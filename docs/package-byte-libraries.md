@@ -91,11 +91,12 @@ compiler as the native desktop companion. The public core snapshot and the
 [#788](https://github.com/waldnercharles/chibi/pull/788) went to `archive/`
 with the asset-source code.
 
-[`Driver.chibi`](../tools/native_aot/driver/Driver.chibi) compiles the private scalar
-emitter with its four compiler packages and `core:strings`. Compilation and
-emitter cache identity share the same explicit core source list. Documentation
-generation prepares the complete public core with the standalone catalog; its
-parser capability stays private to the generator's separate catalog.
+The [native driver](../tools/compiler/native_driver/Main.chibi) compiles the
+scalar emitter with its source closure directly. Source/tool identities and
+exclusive publication are checked by the
+[native cache regressions](../test/native_aot/native_driver/README.md).
+Documentation generation prepares the complete public core with the standalone
+catalog; its parser stays private to the generator's separate catalog.
 
 No compiler language source, prepared ABI, bootstrap closure/manifest or
 consistency/recovery guard change is required by these packages. They add no

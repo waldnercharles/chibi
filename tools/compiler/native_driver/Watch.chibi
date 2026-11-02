@@ -16,7 +16,7 @@ WatchPaths :: (subject: Subject, core: string) -> string[] {
     last_folder := subject.project;
     for (path in gathered.paths) {
         absolute := path;
-        if (!strings.HasPrefix(path, "/")) {
+        if (!strings.HasPrefix(path, "/") && !(strings.ByteLength(path) > 2 && strings.ByteAt(path, 1) == 58)) {
             absolute = strings.Concatenate([subject.project, "/", path]);
         }
         paths.append(absolute);
@@ -67,9 +67,58 @@ WatchHost :: (core: string) -> string {
     return "";
 }
 
+when target.Os == target.Windows {
+WatchProcess :: struct { pid: int; }
+WatchStart :: (work: string, program: string, tail: string[]) -> WatchProcess {
+    original := os.Root();
+    if (original == "" || os.ChangeDirectory(work) != nil) { return {pid: 0}; }
+    command: string[] = [program];
+    command.extend(tail);
+    child := os.Start(command, os.Inherited);
+    restored := os.ChangeDirectory(original);
+    if (restored != nil) {
+        if (child >= 0) { killed := os.Kill(child); }
+        Complain("run --watch: cannot restore the working directory after starting the host");
+        return {pid: 0};
+    }
+    if (child < 0) { return {pid: 0}; }
+    return {pid: child};
+}
+WatchWait :: (child: ^WatchProcess, timeout: int) -> int {
+    return os.Wait(child^.pid, timeout);
+}
+}
+when target.Os == target.Linux || target.Os == target.Darwin {
+WatchProcess :: struct { pid: int; scope: process.Foreground; }
+WatchStart :: (work: string, program: string, tail: string[]) -> WatchProcess {
+    // Positional arguments preserve paths and program arguments byte for byte.
+    command: string[] = ["/bin/sh", "-c", "cd \"$1\" && shift && exec \"$@\"", "chibi-watch", work, program];
+    command.extend(tail);
+    scope := process.ForegroundStart(command);
+    if (scope.pid == 0) { Complain(strings.Concatenate(["run --watch: ", scope.problem])); }
+    return {pid: scope.pid, scope: scope};
+}
+WatchWait :: (child: ^WatchProcess, timeout: int) -> int {
+    scope := child^.scope;
+    status := process.ForegroundWait(&scope, timeout);
+    child^.scope = scope;
+    if (status != os.StillRunning && scope.problem != "") {
+        Complain(strings.Concatenate(["run --watch: ", scope.problem]));
+    }
+    return status;
+}
+}
+
+// Stopping a watch is a successful end to an editing session. The foreground
+// scope returns raw POSIX signals, distinct from explicit positive Frame results.
+WatchExitStatus :: (status: int) -> int {
+    if (os.Platform() != "Windows" && (status == -2 || status == -15)) { return 0; }
+    return ExitStatus(status);
+}
+
 // Main runs once in the host. Every later generation takes effect between
 // Frames; a rejected edit leaves the running generation and its state intact.
-when target.Os == target.Linux || target.Os == target.Darwin {
+when target.Os == target.Linux || target.Os == target.Darwin || target.Os == target.Windows {
 WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, invocation: CliInvocation,
                  tail: string[]) -> int {
     if (!SharedTarget(triple) || !HostTarget(triple)) {
@@ -93,12 +142,27 @@ WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, i
             return 2;
         }
     }
+    if (target.Os == target.Windows) {
+        // Windows cannot unlink a mapped image. A forcibly terminated host
+        // can leave retired files; an active host keeps removal from succeeding.
+        listed := os.List(work);
+        if (listed.error != nil) { return 2; }
+        for (name in listed.names) {
+            if (strings.HasPrefix(name, "generation-") && strings.HasSuffix(name, ".so")) {
+                if (os.Remove(strings.Concatenate([work, "/", name])) != nil) {
+                    Complain(strings.Concatenate(["run --watch: cannot clear ", work, "/", name]));
+                    return 2;
+                }
+            }
+        }
+    }
     // Capture before compiling, so an edit during either compile is retried.
     paths := WatchPaths(subject, core);
     known_paths := paths;
     stamp := WatchStamp(paths);
     host_subject: Subject = {project: Directory(host_source), source: host_source, package: ".", problem: ""};
     program := strings.Concatenate([work, "/host"]);
+    if (target.Os == target.Windows) { program = strings.Concatenate([program, ".exe"]); }
     built := CompileSubject(host_subject, core, llvm, triple, program, invocation);
     if (built != 0) {
         return built;
@@ -109,20 +173,15 @@ WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, i
     if (built != 0) {
         return built;
     }
-    // The fixed shell script uses positional arguments, so paths and program
-    // arguments keep their bytes, including spaces, quotes and shell metacharacters.
-    command: string[] = ["/bin/sh", "-c", "cd \"$1\" && shift && exec \"$@\"", "chibi-watch", work, program];
-    command.extend(tail);
-    // Keep the host in our foreground group so Ctrl-C reaches both processes.
-    child := process.Spawn(command);
-    if (child < 0) {
+    child := WatchStart(work, program, tail);
+    if (child.pid == 0) {
         Complain("run --watch: cannot start the native host");
         return 2;
     }
     while (true) {
-        status := os.Wait(child, 250);
+        status := WatchWait(&child, 250);
         if (status != os.StillRunning) {
-            return ExitStatus(status);
+            return WatchExitStatus(status);
         }
         changed := WatchStamp(paths);
         if (changed == stamp) {
@@ -150,9 +209,9 @@ WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, i
         }
         next := strings.Concatenate([work, "/next.so"]);
         while (os.Exists(next)) {
-            status = os.Wait(child, 50);
+            status = WatchWait(&child, 50);
             if (status != os.StillRunning) {
-                return ExitStatus(status);
+                return WatchExitStatus(status);
             }
         }
         if (os.Rename(pending, next) != nil) {

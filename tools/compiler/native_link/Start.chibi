@@ -18,9 +18,48 @@ import strings "core:strings"
 // assert ends the entry early with its failure in the context, which the shim
 // reports on stderr before it exits with status 134.
 
+// LLVM can introduce these C-ABI calls while lowering aggregate stores and
+// copies, even when source imports no CRT. Keep them in the Windows runtime;
+// no-builtins prevents their loops from becoming recursive library calls.
+// Weak definitions let an explicitly linked native/CRT implementation own the
+// symbols, including dllimport thunks, without adding an implicit dependency.
+WindowsMemoryRuntime :: () -> string {
+    return Join([
+        "define weak ptr @memset(ptr %to, i32 %value, i64 %bytes) noinline nounwind \"no-builtins\" {\n",
+        "entry:\n  %byte = trunc i32 %value to i8\n  br label %head\n",
+        "head:\n  %at = phi i64 [ 0, %entry ], [ %next, %body ]\n",
+        "  %done = icmp eq i64 %at, %bytes\n  br i1 %done, label %exit, label %body\n",
+        "body:\n  %slot = getelementptr inbounds i8, ptr %to, i64 %at\n",
+        "  store i8 %byte, ptr %slot, align 1\n  %next = add i64 %at, 1\n  br label %head\n",
+        "exit:\n  ret ptr %to\n}\n",
+        "define weak ptr @memcpy(ptr noalias %to, ptr noalias %from, i64 %bytes) noinline nounwind \"no-builtins\" {\n",
+        "entry:\n  br label %head\n",
+        "head:\n  %at = phi i64 [ 0, %entry ], [ %next, %body ]\n",
+        "  %done = icmp eq i64 %at, %bytes\n  br i1 %done, label %exit, label %body\n",
+        "body:\n  %source = getelementptr inbounds i8, ptr %from, i64 %at\n",
+        "  %byte = load i8, ptr %source, align 1\n  %slot = getelementptr inbounds i8, ptr %to, i64 %at\n",
+        "  store i8 %byte, ptr %slot, align 1\n  %next = add i64 %at, 1\n  br label %head\n",
+        "exit:\n  ret ptr %to\n}\n",
+        "define weak ptr @memmove(ptr %to, ptr %from, i64 %bytes) noinline nounwind \"no-builtins\" {\n",
+        "entry:\n  %empty = icmp eq i64 %bytes, 0\n  br i1 %empty, label %exit, label %nonempty\n",
+        "nonempty:\n  %same = icmp eq ptr %to, %from\n  br i1 %same, label %exit, label %direction\n",
+        "direction:\n  %to.address = ptrtoint ptr %to to i64\n  %from.address = ptrtoint ptr %from to i64\n",
+        "  %backward = icmp ugt i64 %to.address, %from.address\n  %last = sub i64 %bytes, 1\n",
+        "  %first = select i1 %backward, i64 %last, i64 0\n  %step = select i1 %backward, i64 -1, i64 1\n  br label %body\n",
+        "body:\n  %at = phi i64 [ %first, %direction ], [ %next, %body ]\n",
+        "  %remaining = phi i64 [ %bytes, %direction ], [ %left, %body ]\n",
+        "  %source = getelementptr inbounds i8, ptr %from, i64 %at\n  %byte = load i8, ptr %source, align 1\n",
+        "  %slot = getelementptr inbounds i8, ptr %to, i64 %at\n  store i8 %byte, ptr %slot, align 1\n",
+        "  %next = add i64 %at, %step\n  %left = sub i64 %remaining, 1\n",
+        "  %done = icmp eq i64 %left, 0\n  br i1 %done, label %exit, label %body\n",
+        "exit:\n  ret ptr %to\n}\n"
+    ]);
+}
+
 WindowsPrelude :: () -> string {
     return Join([
         "target triple = \"x86_64-pc-windows-msvc\"\n",
+        WindowsMemoryRuntime(),
         "module asm \".text\"\n",
         "module asm \".globl __chkstk\"\n",
         "module asm \"__chkstk:\"\n",

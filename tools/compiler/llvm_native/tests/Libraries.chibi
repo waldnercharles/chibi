@@ -44,11 +44,52 @@ LibraryNamesEachFunctionOnce :: () {
     Rejects(Library(abi.LinuxX64(), "Lib", ["Main", "Pick"], shared), RepeatedName());
 }
 @test
-LibrariesAcceptLinuxAndMacOSTargets :: () {
+LibrariesAcceptNativeTargets :: () {
     ids: i64[] = [11, -5];
     text := Emitted(Library(abi.MacOSArm64(), "Lib", ["Main", "Pick"], ids));
     assert(strings.Contains(text, "target triple = \"arm64-apple-macosx11.0.0\""));
     assert(strings.Contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 5, i32 2,"));
-    Rejects(Library(abi.WindowsX64(), "Lib", ["Main", "Pick"], ids),
-            "native libraries require Linux x86-64 or macOS arm64");
+    windows := Emitted(Library(abi.WindowsX64(), "Lib", ["Main", "Pick"], ids));
+    assert(strings.Contains(windows, "!llvm.linker.options = !{"));
+    assert(strings.Contains(windows, "/export:chibi_natives_Lib,data"));
+    assert(strings.Contains(windows, "/export:chibi_host_call_Main"));
+    Rejects(Library(abi.WebAssembly32(), "Lib", ["Main", "Pick"], ids),
+            "native libraries require Linux x86-64, macOS arm64 or Windows x86-64");
+}
+
+Generation :: (target: abi.Target, entries: int, names: string[], parameters: int) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    texts: string[] = [];
+    fields: string[] = [];
+    first: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: parameters,
+        first_slot: 0, slots: 1, first_local: 0, locals: 0, first_code: 0, code: 4, first_argument: 0, arguments: 0};
+    second := first;
+    second.parameters = 0;
+    second.first_slot = 1;
+    second.first_code = 4;
+    body := [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    code := body;
+    code.extend(body);
+    ids: i64[] = [11, 12];
+    return native.EmitLibrary(target, "generation", names, ids, [first, second], empty, [abi.IntStorage, abi.IntStorage],
+                              empty, code, empty, records, empty, texts, 1, fields, entries);
+}
+@test
+GenerationEntriesDistinguishSourceFromHostAdapters :: () {
+    for (target in [abi.LinuxX64(), abi.MacOSArm64(), abi.WindowsX64()]) {
+        for (entries in 0..<4) {
+            text := Emitted(Generation(target, entries, ["Main", "Frame"], 0));
+            assert(strings.Contains(text, format_text("define i32 @chibi_host_entries() #0 {{\nentry:\n  ret i32 {}\n}}", entries)));
+            if (abi.Same(target, abi.WindowsX64())) { assert(strings.Contains(text, "/export:chibi_host_entries")); }
+        }
+    }
+}
+@test
+GenerationEntryMetadataRequiresValidHostAdapters :: () {
+    Rejects(Generation(abi.LinuxX64(), -2, ["Main", "Frame"], 0), "native generation entry mask is out of bounds");
+    Rejects(Generation(abi.LinuxX64(), 4, ["Main", "Frame"], 0), "native generation entry mask is out of bounds");
+    Rejects(Generation(abi.LinuxX64(), 0, ["Other", "Frame"], 0), "native generation needs both host entry adapters");
+    Rejects(Generation(abi.LinuxX64(), 1, ["Main", "Frame"], 1), "native generation entry adapters require zero arguments and int results");
 }

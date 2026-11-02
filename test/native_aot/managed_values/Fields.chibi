@@ -1,0 +1,14 @@
+package field_places
+
+Box :: struct { numbers: int[]; marker: int; }
+Main :: () -> int {
+    value: Box = {numbers: [int(1), 2], marker: 1};
+    value.numbers.append(Reset(&value));
+    assert(length(value.numbers) == 3 && value.numbers[0] == 7 && value.numbers[2] == 9);
+    assert(value.marker == 7);
+    value.numbers[ResetIndex(&value)] = 99;
+    assert(value.numbers[0] == 7 && value.numbers[1] == 99 && value.marker == 7);
+    return 0;
+}
+Reset :: (value: ^Box) -> int { value^ = {numbers: [int(7), 8], marker: 7}; return 9; }
+ResetIndex :: (value: ^Box) -> int { value^ = {numbers: [int(7), 8], marker: 7}; return 1; }

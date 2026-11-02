@@ -11,10 +11,16 @@ executable through LLVM's lld, with no C compiler or compiler driver on `PATH`.
   start files on Linux, and `Link` writes the stubs, runs `Command`'s vector and
   publishes the program (a rename from `Partial(plan)`).
 
-`tools/native_aot/driver` links through the same entry points with the build host's
-effects, and records each vector in its receipt. Every vector names lld's flavor
-(`-flavor gnu`, `darwin` or `link`), so a caller may run any of lld's names, or lld
-itself, in place of the vector's first argument.
+`ObjectResult`, `ObjectsResult` and `LinkResult` return the same `Error` record
+with kind/code zero on success. The optional `Object`, `Objects` and `Link`
+interfaces adapt those operations. The native bootstrap driver uses plain
+records so the pinned seed does not need nullable-record field projections.
+
+The native compiler driver uses these entry points directly. Every vector names
+lld's flavor (`-flavor gnu`, `darwin` or `link`), so a caller may run any of lld's
+names, or lld itself, in place of the vector's first argument. The real native
+[driver/cache checks](../../../test/native_aot/native_driver/README.md) cover tool
+identities, interruption, cleanup and exclusive publication.
 
 ```chibi
 import link "project:native_link"
@@ -34,6 +40,15 @@ compiled with `host.Object` and linked beside the program's own objects. It call
 `main` for libc and dyld, `_start` with an `exit_group` for a static Linux program, and
 `mainCRTStartup` with `ExitProcess` for a static Windows one. A static Linux program takes no
 context ("" is returned).
+
+The Windows start also supplies weak C-ABI `memset`, `memcpy` and `memmove`
+definitions. LLVM may introduce these calls while lowering aggregate stores or
+copies. Their byte loops disable builtin recognition, so optimization cannot
+turn them into recursive library calls. They add no CRT imports. An explicitly
+linked provider can own those symbols, including a source's declared DLL import.
+The [memory runtime probe](../../../test/native_aot/link/Memory.ll) executes
+1,056 boundary/guard/overlap/return-value cases at O0 and O2; Windows also checks
+the linked image has no CRT dependency.
 
 Every start module also defines the process arguments as C-ABI functions, which `core:os`
 binds with `foreign import`:

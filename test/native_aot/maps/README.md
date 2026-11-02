@@ -51,7 +51,18 @@ String variables used as map keys also survive later callbacks that replace
 the variable, including differently named scoped aliases and conditional calls.
 The native emitter also checks int[] payload ownership, independent mapped
 array edits, missing-key empty arrays and values escaping a dropped map.
-Authored map array payloads remain rejected until foreign buffer writes and
-projected-place updates preserve the same ownership contract.
+Authored int[] payloads support reads, literals, copies, insertion/deletion,
+iteration, calls/returns and projected append/extend/remove/resize/element
+assignment. Callback arguments finish before a projected update resolves its
+current map entry. Readonly iterator buffers passed to C use independent loans.
+Array-backed record payloads, other nested containers, projected foreign buffers
+and compound mapped-array element assignment remain explicitly rejected.
 
 A growth/shrink regression builds 4096 entries, deletes all but 64 and checks that logical entry/index capacity shrinks with the live map. Capacity planning near 2^30 is checked without allocating those buffers.
+
+Pass an ordinary build host as the fourth argument to `run.sh` to compare the
+array-map source fixture with the bytecode consumer while it remains in use.
+It checks that temporary-map projections keep their arrays before releasing
+the map and that array index callbacks read the receiver's earlier value.
+Foreign-buffer cases use real native C calls; the retained ordinary host lacks
+that capability and its older test runner skips foreign imports.

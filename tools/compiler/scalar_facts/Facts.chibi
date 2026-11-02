@@ -278,8 +278,11 @@ pub ArrayRow: int : 37;
 // `type` the number or bool it returns, and `text` the path of the library
 // that provides it, which the native build links. A `value` of 1 calls through
 // an address instead: the first operand is that address, a 64-bit word, and
-// `name` and `text` are empty.
+// `name` and `text` are empty. A direct two-argument call may set `literal`
+// to ForeignReversed: evaluation stays in source order, then the two consumed
+// argument slots are passed in reverse order. All other foreign calls use 0.
 pub ForeignRow: int : 38;
+pub ForeignReversed: int : 1;
 // A call operand that passes the variable `value`, of its `type`, by
 // reference: the callee's reference parameter reads and writes that variable.
 // Passing a reference parameter on gives the caller's variable on.
@@ -377,6 +380,13 @@ pub MapSpan: int : 8;
 pub MapLiveAt: int : 9;
 pub MapKeyAt: int : 10;
 pub MapValueAt: int : 11;
+// Changes of an int[] entry. Operands are a map reference, key and argument;
+// MapArraySet additionally takes its element index before the incoming value.
+pub MapArrayPush: int : 12;
+pub MapArrayExtend: int : 13;
+pub MapArrayRemove: int : 14;
+pub MapArraySet: int : 15;
+pub MapArrayResize: int : 16;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
 // unsigned as their operands' type is. On floats, each is false when an
@@ -391,7 +401,7 @@ pub NotEqual: int : 6;
 // Arithmetic operators: the source's +, -, *, /, %, &, |, ^, << and >> on
 // integers. None fails: they wrap, x / 0 is 0, x % 0 is x, MIN / -1 is MIN
 // and MIN % -1 is 0, and a shift count at or past the width, read unsigned,
-// gives 0, or the sign fill for a signed >>. Floats have +, -, * and /,
+// gives 0, or the sign fill for a signed >>. Floats have +, -, *, / and the native fmod remainder,
 // IEEE at their own width, rounding to nearest.
 pub Add: int : 1;
 pub Subtract: int : 2;
@@ -403,6 +413,9 @@ pub Or: int : 7;
 pub Xor: int : 8;
 pub ShiftLeft: int : 9;
 pub ShiftRight: int : 10;
+// The same floating remainder with right evaluated before left, for named
+// native arguments. The operand rows retain source order.
+pub ReversedRemainder: int : 11;
 
 // Unary operators: the source's - and ~ on integers, and ! on bool;
 // negation wraps.
@@ -453,6 +466,10 @@ pub ArrayLoan: int : 17;
 // again. It has the switch statement's range, a Switch row of the same range
 // follows it, and that Switch reads it.
 pub SwitchSubject: int : 1;
+// ArrayRow.literal = 1 + field ordinal mutates a direct record array field.
+// Its first operand is a reference to the record, its type is that record,
+// and its result is the updated whole record. Arguments finish before the
+// current field descriptor is read; the final Assign targets that record.
 // A Local row whose `literal` is Retained declares a retained number, bool,
 // standalone string or numeric/bool record. Its operands construct a constant initial
 // value. Native lowering migrates record leaves by their field paths under

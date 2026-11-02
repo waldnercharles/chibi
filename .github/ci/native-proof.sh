@@ -1,5 +1,7 @@
 #!/bin/bash
 set -euo pipefail
+# The outer launcher, not only NativeSelfHost's children, uses the Release helper.
+export CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
 set -o pipefail
 stage_one=()
 comparison=()

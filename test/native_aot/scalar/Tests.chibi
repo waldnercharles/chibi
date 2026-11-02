@@ -221,12 +221,33 @@ ScalarCallModesAreBounded :: () {
         assert(scalar.Validate(TaskFacts(mode, false)) == "invalid scalar operand row");
     }
 }
+ScalarArrayWithoutOperandsAreValidated :: () {
+    source := Accepted();
+    array := facts.ArrayType + facts.IntType;
+    rows := [source[0], source[1], source[2],
+             Row(facts.LocalRow, array, 0, 5, "values", 35, 56, 2, 21),
+             Literal(facts.IntType, 1, 35, 36, 2, 21),
+             Literal(facts.IntType, 2, 35, 36, 2, 21),
+             Row(facts.ArrayRow, array, facts.ArrayNew, 2, "", 35, 36, 2, 21),
+             Literal(facts.IntType, 0, 35, 36, 2, 21),
+             Row(facts.ArrayRow, array, facts.ArrayWithout, 2, "", 35, 36, 2, 21),
+             Row(facts.ReturnRow, 0, 0, 2, "", 56, 57, 2, 42),
+             Row(facts.ReadRow, array, 0, 0, "", 56, 57, 2, 42),
+             Row(facts.ArrayRow, facts.IntType, facts.ArrayLength, 1, "", 56, 57, 2, 42)];
+    assert(scalar.Validate(rows) == "");
+    expected := "scalar array operation differs from its operands";
+    assert(scalar.Validate(Changed(rows, 7, Type, facts.BoolType)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Count, 1)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Type, facts.IntType)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Value, facts.ArrayWithout + 1)) == expected);
+}
 
 pub Tests :: () -> int {
     ScalarPlainCallsCannotUseWaitingFunctions();
     ScalarAwaitedCallsMustNameWaitingFunctions();
     ScalarFunctionAddressesCannotNameWaitingFunctions();
     ScalarCallModesAreBounded();
+    ScalarArrayWithoutOperandsAreValidated();
     text := Emitted(Accepted());
     if (!strings.Contains(text, "define i32 @chibi_scalar()") ||
         !strings.Contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1)") ||

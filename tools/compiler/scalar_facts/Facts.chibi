@@ -197,7 +197,10 @@ package scalar_facts
 // of `f`, with ArrayPush before it, so the record takes back the changed array. ArrayWith
 // consumes an array and an element, and ArrayJoin two arrays of one type, to
 // give a new array of the first's elements and then the second's; neither
-// changes what it consumes, as `append(a, x)` and `extend(a, b)` do not. A For row with
+// changes what it consumes, as `append(a, x)` and `extend(a, b)` do not.
+// ArrayWithout consumes an array and an int index to give an independent array
+// without that element, or a copy of all elements for an index outside it.
+// A For row with
 // RangeArray declares variable `value`, of its element `type` and `name`,
 // and its one operand is the array it iterates, whose elements the body
 // cannot change. With RangeKeyed the variable after it is the int index of the
@@ -425,6 +428,8 @@ pub ArrayJoin: int : 13;
 pub ArrayBytes: int : 14;
 // A string, the bytes of the array of bytes (u8) it consumes.
 pub ArrayText: int : 15;
+// A new array without the int-indexed element; an invalid index copies all elements.
+pub ArrayWithout: int : 16;
 // A Local row whose `literal` is SwitchSubject holds the union a switch is on
 // when the switch is not on a variable, so each arm's bindings can read it
 // again. It has the switch statement's range, a Switch row of the same range

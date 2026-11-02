@@ -48,6 +48,14 @@ Main :: () -> int {
         status = int(frame());
         if Failed(handle) {
             status = 134;
+        } else if status == 0 {
+            polled_active := Poll(handle);
+            if Failed(handle) {
+                status = 134;
+            }
+        }
+        if status != 0 {
+            break;
         }
         index := 0;
         while index < length(retired) {

@@ -691,6 +691,8 @@ FileTime :: (ticks: u64) -> string {
 // Same fields as POSIX stamps: volume:file-id:size:mode:modified:changed.
 // Identity and size come from BY_HANDLE_FILE_INFORMATION. FILE_BASIC_INFO
 // supplies the metadata change time, which LastWriteTime alone misses.
+// These are metadata, not a content hash: two writes within the filesystem's
+// timestamp resolution may keep the same stamp when their sizes match.
 pub Stamp :: (path: string) -> string {
     handle := CreateFileW(Wide(path), 0, ShareAll, 0, OpenExisting, BackupSemantics, 0);
     if ~handle == 0 {

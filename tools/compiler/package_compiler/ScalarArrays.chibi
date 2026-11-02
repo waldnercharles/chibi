@@ -20,12 +20,14 @@ import syntax "project:syntax_diagnostics"
 // or a record or union the source declares; 0 for any other.
 ScalarElementType :: (types: TypeDecl[], shape: ValueType) -> int {
     if (shape.storage == TaskStorage) { return 0; }
+    if (shape.record >= 0 && ScalarNestedCollection(types[shape.record])) { return ScalarRecordType(types, shape.record); }
     return ScalarValueType(types, shape.storage, 0, shape.record);
 }
 // The facts type of an array whose elements are of `storage` and `record`, or
 // 0 when they are of no such type.
 ScalarArrayType :: (types: TypeDecl[], storage: int, record: int) -> int {
     element := ScalarValueType(types, storage, 0, record);
+    if (record >= 0 && ScalarNestedCollection(types[record])) { element = ScalarRecordType(types, record); }
     if (element == 0 || storage == TaskStorage) {
         return 0;
     }
@@ -48,6 +50,10 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
         return {storage: 0, container: 0, record: -1};
     }
     first := Unparenthesized(forest, head);
+    if (Is(forest, first, syntax.ArrayExpression)) {
+        inner := ScalarArrayShape(forest, text, callables, params, names, types, members, package, first);
+        return SequenceArrayType(types, inner);
+    }
     if (Is(forest, first, syntax.AddressExpression)) {
         record = ScalarPointerRecord(forest, text, callables, params, names, types, members, package, first);
         if (ScalarPointerType(types, record) != 0) { storage = PointerStorage; }
@@ -107,6 +113,9 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         return none;
     }
     if (Is(forest, value, syntax.IndexExpression)) {
+        outer := ScalarArrayShape(forest, text, callables, params, names, types, members, package,
+                                   Field(forest, value, syntax.FieldObject));
+        if (outer.record >= 0 && ScalarNestedCollection(types[outer.record])) { return SequenceElement(types, outer); }
         read := ScalarMapRead(forest, text, callables, names, types, package, value);
         record := ScalarMapShape(forest, text, callables, names, types, package, read.object);
         if (read.operator == facts.MapGet && ScalarMapArrayValue(types, record)) {
@@ -123,6 +132,9 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         return none;
     }
     if (Is(forest, value, syntax.CallExpression)) {
+        if (ScalarMakeArray(forest, text, callables, names, package, value)) {
+            return ScalarMadeShape(forest, text, callables, params, names, types, members, package, value);
+        }
         callee := CalledFunction(forest, text, callables, [], names, package, value);
         if (callee >= 0 && callables[callee].result_container == ArrayContainer) {
             return {storage: callables[callee].result, container: ArrayContainer,
@@ -369,10 +381,6 @@ ScalarMemberType :: (types: TypeDecl[], members: TypeMember[], field: int) -> in
 ScalarMemberShape :: (members: TypeMember[], field: int) -> ValueType {
     return {storage: members[field].storage, container: members[field].container, record: members[field].record};
 }
-// The shape of the elements of the array `shape` describes.
-ScalarElementShape :: (shape: ValueType) -> ValueType {
-    return {storage: shape.storage, container: 0, record: shape.record};
-}
 // The rows of `node`, a value of the elements or member `shape` describes,
 // after `rows`: an array as ScalarArrayStored reads one, a record as
 // ScalarRecordValue reads one, any other converted to its storage.
@@ -427,8 +435,8 @@ ScalarArrayValue :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     }
     elements := Members(forest, node);
     for (element in elements) {
-        switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, element,
-                                  ScalarElementShape(shape), output) {
+        switch ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants, element,
+                                       shape, output) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Built(built):
@@ -491,6 +499,11 @@ ScalarIndexed :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
             output = built;
     }
     output.append(ScalarAt(forest, node, facts.ArrayRow, ScalarElementType(types, shape), facts.ArrayGet, 2, ""));
+    if (shape.record >= 0 && ScalarNestedCollection(types[shape.record])) {
+        inner := SequenceElement(types, shape);
+        output.append(ScalarAt(forest, node, facts.FieldRow,
+                              ScalarValueType(types, inner.storage, inner.container, inner.record), 0, 1, ""));
+    }
     return ScalarOperands.Built(output);
 }
 // The rows of `node`, `length(a)` or `a.length()` of the array `object`,
@@ -558,7 +571,7 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
                                               "scalar proof assigns only elements of array variables"));
     }
     // What the value replaces: the element, or one of its fields.
-    stored := ScalarElementShape(shape);
+    stored := SequenceElement(types, shape);
     field := -1;
     if (fielded) {
         field = ScalarMember(forest, text, callables, params, names, types, members, callable.package, destination);
@@ -598,8 +611,13 @@ ScalarElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, callabl
                                ""));
     }
     value := Field(forest, node, syntax.FieldValue);
-    switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, value, stored,
-                              output) {
+    assigned := ScalarOperands.Built(output);
+    if (!fielded && shape.record >= 0 && ScalarNestedCollection(types[shape.record])) {
+        assigned = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants, value, shape, output);
+    } else {
+        assigned = ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, value, stored, output);
+    }
+    switch assigned {
         case .Failed(diagnostic):
             return ScalarOperands.Failed(diagnostic);
         case .Built(built):
@@ -648,8 +666,8 @@ ScalarFieldElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, ca
             case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
             case .Built(built): output = built;
         }
-        switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
-                                  Field(forest, node, syntax.FieldValue), ScalarElementShape(shape), output) {
+        switch ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                       Field(forest, node, syntax.FieldValue), shape, output) {
             case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
             case .Built(built): output = built;
         }
@@ -677,8 +695,8 @@ ScalarFieldElementAssigned :: (forest: snapshot.SnapshotNode[], text: string, ca
         }
         output.append(ScalarAt(forest, destination, facts.ArrayRow, element, facts.ArrayGet, 2, ""));
     }
-    switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
-                              Field(forest, node, syntax.FieldValue), ScalarElementShape(shape), output) {
+    switch ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                   Field(forest, node, syntax.FieldValue), shape, output) {
         case .Failed(diagnostic):
             return ScalarOperands.Failed(diagnostic);
         case .Built(built):
@@ -751,8 +769,8 @@ ScalarArrayArgument :: (forest: snapshot.SnapshotNode[], text: string, callables
                                 rows);
     }
     if (operator == facts.ArrayPush || operator == facts.ArrayWith || operator == facts.ArrayContains) {
-        return ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants, node,
-                                  ScalarElementShape(shape), rows);
+        return ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants, node,
+                                       shape, rows);
     }
     return ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, node, node,
                          IntStorage, IntStorage, facts.Clamp, rows);

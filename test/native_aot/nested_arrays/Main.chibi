@@ -1,0 +1,38 @@
+package nested_arrays
+Main :: () -> int {
+    literal: int[][] = [[1, 2], [3]];
+    assert(literal[0][1] == 2 && literal[1][0] == 3);
+    scalar := make_array(int(1), int(2), int(3));
+    booleans := make_array((false), true);
+    assert(scalar[2] == 3 && !booleans[0] && booleans[1]);
+    source: int[] = [1, 2];
+    additional := [int(6), int(7)];
+    values: int[][] = make_array(source, additional);
+    saved := values;
+    source[0] = 99;
+    assert(values[0][0] == 1 && saved[0][0] == 1);
+    values[0] = [4, 5];
+    assert(values[0][0] == 4 && saved[0][0] == 1);
+    extracted := values[0];
+    extracted[1] = 9;
+    assert(values[0][1] == 5 && extracted[1] == 9);
+    assert(length(values) == 2 && values[1][1] == 7 && length(saved) == 2);
+    third := make_array(values);
+    fourth := make_array(third);
+    assert(fourth[0][0][1][0] == 6);
+    returned := Returned();
+    first := First(returned);
+    returned = make_array([int(11), int(12)]);
+    assert(first[0] == 7 && returned[0][0] == 11);
+    temporary := First(Returned());
+    assert(temporary[1] == 8);
+    text := text_from_bytes([u8(65), u8(66)]);
+    strings: string[][] = make_array(make_array(text));
+    kept := strings[0];
+    strings = make_array(make_array("changed"));
+    text = "replaced";
+    assert(kept[0] == "AB");
+    return 0;
+}
+Returned :: () -> int[][] { return make_array([int(7), int(8)]); }
+First :: (values: int[][]) -> int[] { return values[0]; }

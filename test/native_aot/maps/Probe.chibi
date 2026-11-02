@@ -14,7 +14,7 @@ import strings "core:strings"
 Main :: () -> int {
     arguments := os.Arguments();
     if (length(arguments) != 4) {
-        os.Print("usage: probe WORK LLVM RUNTIME positive|tombstone-key|tombstone-value|facts|readonly");
+        os.Print("usage: probe WORK LLVM RUNTIME positive|tombstone-key|tombstone-value|facts|readonly|source");
         return 2;
     }
     work := arguments[0];
@@ -40,7 +40,7 @@ Main :: () -> int {
         type := native.MapOf(abi.IntStorage, abi.IntStorage);
         map := Constant(&test, type, 0);
         returned = Read(&test, native.MapLength, abi.IntStorage, map, 0, type);
-    } else if (mode == "facts") {
+    } else if (mode == "facts" || mode == "source") {
         // The independent facts consumer is emitted after choosing its target.
     } else {
         os.Print("native maps: unknown probe mode");
@@ -63,7 +63,11 @@ Main :: () -> int {
     names: string[] = [];
     source: native.Source = {file: "", directory: ""};
     text := "";
-    if (mode == "facts") {
+    if (mode == "source") {
+        read := os.ReadText(format_text("{}/source.ll", work));
+        if (read.error) { return 2; }
+        text = read.text;
+    } else if (mode == "facts") {
         rows := FactModule();
         for (row in rows) {
             if (row.kind == facts.AssertRow) {
@@ -127,7 +131,11 @@ Main :: () -> int {
             return 1;
         }
     }
-    os.Print(format_text("native maps: {} at O0 and O2 passed, {} assertion sites", mode, test.checks));
+    if (mode == "source") {
+        os.Print("native maps: authored source at O0 and O2 passed with balanced allocations");
+    } else {
+        os.Print(format_text("native maps: {} at O0 and O2 passed, {} assertion sites", mode, test.checks));
+    }
     return 0;
 }
 

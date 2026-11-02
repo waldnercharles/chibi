@@ -27,4 +27,10 @@ This checks integer and string map instructions and facts lowering. The separate
 `test/native_aot/map_programs` suite compiles and runs authored map expressions
 and is included by this entry point.
 
+Authored iteration covers key/value and value-only bindings, deletion and
+reinsertion order, tombstones, snapshots during direct and reference mutation,
+nested loops, break/continue and returning strings from temporary maps. The
+ownership source is also compiled to LLVM and rerun through the poisoned
+allocator at O0/O2, requiring zero outstanding allocations after every exit.
+
 A growth/shrink regression builds 4096 entries, deletes all but 64 and checks that logical entry/index capacity shrinks with the live map. Capacity planning near 2^30 is checked without allocating those buffers.

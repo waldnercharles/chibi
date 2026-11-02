@@ -243,10 +243,24 @@ RecordMemberType :: (rows: facts.Row[], records: int[], type: int, index: i64) -
 }
 // Whether `row` is a loop over an array, and whether it also names the index.
 Arrayed :: (row: facts.Row) -> bool {
-    return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray) || Keyed(row));
+    return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray) ||
+                                      row.literal == i64(facts.RangeArray + facts.RangeKeyed));
+}
+MapIterated :: (row: facts.Row) -> bool {
+    return row.kind == facts.ForRow && (row.literal == i64(facts.RangeMap) ||
+                                      row.literal == i64(facts.RangeMap + facts.RangeKeyed));
 }
 Keyed :: (row: facts.Row) -> bool {
-    return row.kind == facts.ForRow && row.literal == i64(facts.RangeArray + facts.RangeKeyed);
+    return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray + facts.RangeKeyed) ||
+                                      row.literal == i64(facts.RangeMap + facts.RangeKeyed));
+}
+// The first loop binding: an array element, a map value, or a keyed map's key.
+IterationType :: (row: facts.Row) -> int {
+    if (MapIterated(row)) {
+        if (Keyed(row)) { return (row.type - facts.MapType) % 16; }
+        return (row.type - facts.MapType) / 16;
+    }
+    return row.type;
 }
 // Whether the variable `variable` of the function whose Function row is
 // rows[head] is a reference parameter.
@@ -1377,7 +1391,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
     }
     // A range's two bounds, or one value.
     wanted: int = 1;
-    if (rows[at].kind == facts.ForRow && !Arrayed(rows[at])) {
+    if (rows[at].kind == facts.ForRow && !Arrayed(rows[at]) && !MapIterated(rows[at])) {
         wanted = 2;
     }
     if (length(stack) != wanted || stack[0] != result || stack[wanted - 1] != result) {
@@ -1473,6 +1487,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         }
         ranged := row.kind == facts.ForRow;
         arrayed := Arrayed(row);
+        mapped := MapIterated(row);
         // A local holding the union a switch is on, followed by that switch.
         subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
         retained := row.kind == facts.LocalRow && row.literal == i64(facts.Retained);
@@ -1574,9 +1589,10 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             result = row.type;
         } else if (declares) {
             if (row.name == "" || !Valued(records, row.type) || row.value != length(variables) ||
-                (ranged && !arrayed && (row.type != facts.IntType || row.literal < 0 ||
+                (ranged && !arrayed && !mapped && (row.type != facts.IntType || row.literal < 0 ||
                                         row.literal > i64(facts.RangeExclusive + facts.RangeReverse))) ||
                 (arrayed && (row.type >= facts.ArrayType || !Valued(records, facts.ArrayType + row.type))) ||
+                (mapped && row.type < facts.MapType) ||
                 (retained && (!Retainable(rows, records, row.type) ||
                               !RetainedInitializer(rows, at))) ||
                 (subject && (UnionHead(rows, records, row.type) < 0 || at + row.count + 1 >= last ||
@@ -1617,12 +1633,14 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             broken.append(false);
             marks.append(length(visible));
             if (ranged) {
-                variables.append(row.type);
+                variables.append(IterationType(row));
                 visible.append(row.value);
                 fixed.append(row.value);
             }
             if (Keyed(row)) {
-                variables.append(facts.IntType);
+                second := facts.IntType;
+                if (mapped) { second = (row.type - facts.MapType) / 16; }
+                variables.append(second);
                 visible.append(row.value + 1);
                 fixed.append(row.value + 1);
             }
@@ -2878,7 +2896,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
                 if (row.kind == facts.LocalRow && (row.name == "_" || row.literal == i64(facts.Retained))) {
                     keeps = false;
-                } else if (row.kind == facts.ReturnRow && held_by >= 0) {
+                } else if (row.kind == facts.ReturnRow && held_by >= 0 && Holds(owned_vars, held_by)) {
                     // The variable returned moves out.
                     keeps = false;
                 } else if (Holds(fresh, value)) {
@@ -2905,7 +2923,66 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
             }
             fresh = leftover;
-            if (Arrayed(row)) {
+            if (MapIterated(row)) {
+                // A traversal saves one descriptor. A fresh temporary or a
+                // producer's snapshot owns it until every exit leaves the loop.
+                map := NativeType(row.type);
+                element := NativeType((row.type - facts.MapType) / 16);
+                key := NativeType((row.type - facts.MapType) % 16);
+                frame: Frame = {kind: row.kind, skip: -1, leave: -1, ends: false, head: 0, index: local + 1,
+                                bound: local, counted: false, reverse: false, escape: length(jumps), empty: -1,
+                                exits: 0, armed: false, fallback: -1, owned: length(owned_vars), held: -1, held_type: 0};
+                if (Holds(fresh, stack[0])) {
+                    fresh = Without(fresh, stack[0]);
+                    frame.held = local;
+                    frame.held_type = map;
+                }
+                locals.extend([map, integer, element]);
+                if (Keyed(row)) {
+                    locals.append(key);
+                    places.extend([local + 3, local + 2]);
+                } else {
+                    places.append(local + 2);
+                }
+                slots.append(integer);
+                body.extend([Op(native.Save, map, 0, stack[0], 0, local), Op(native.Constant, integer, slot, 0, 0, 0),
+                             Op(native.Save, integer, 0, slot, 0, local + 1)]);
+                slot += 1;
+                frame.head = length(body);
+                span := Op(native.MapSpan, integer, slot + 2, slot + 1, 0, 0);
+                span.literal = i64(map);
+                slots.extend([integer, map, integer, abi.BoolStorage]);
+                body.extend([Op(native.Local, integer, slot, local + 1, 0, 0),
+                             Op(native.Local, map, slot + 1, local, 0, 0), span,
+                             Op(native.Lt, integer, slot + 3, slot, slot + 2, 0),
+                             Op(native.Branch, 0, 0, slot + 3, 0, length(body) + 6)]);
+                frame.skip = length(body);
+                body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                live := Op(native.MapLiveAt, abi.BoolStorage, slot + 4, slot + 1, slot, 0);
+                live.literal = i64(map);
+                slots.append(abi.BoolStorage);
+                body.extend([live, Op(native.Branch, 0, 0, slot + 4, 0, length(body) + 3)]);
+                // A tombstone takes the same step as continue, without
+                // entering the body or reading its dead key/value.
+                jumps.append(length(body));
+                continuing.append(true);
+                body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                get := Op(native.MapValueAt, element, slot + 5, slot + 1, slot, 0);
+                get.literal = i64(map);
+                slots.append(element);
+                body.extend([get, Op(native.Save, element, 0, slot + 5, 0, local + 2)]);
+                if (Keyed(row)) {
+                    read_key := Op(native.MapKeyAt, key, slot + 6, slot + 1, slot, 0);
+                    read_key.literal = i64(map);
+                    slots.append(key);
+                    body.extend([read_key, Op(native.Save, key, 0, slot + 6, 0, local + 3)]);
+                    slot += 1;
+                    local += 1;
+                }
+                slot += 6;
+                local += 3;
+                frames.append(frame);
+            } else if (Arrayed(row)) {
                 // The array and the index of the next element are locals of
                 // their own, before the element's variable.
                 array := NativeType(facts.ArrayType + row.type);

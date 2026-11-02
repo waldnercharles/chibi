@@ -3127,6 +3127,13 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     // array or slot, so acquire its value at the read.
                     retained_element = op == facts.ArrayGet && type == abi.TextStorage;
                     retained_record = op == facts.ArrayGet && TrackedRecord(managed, type);
+                    // The record bytes are loaded before a temporary array drops.
+                    // A scalar projection never owns or drops its managed siblings.
+                    if (retained_record && index + 1 < first + row.count &&
+                        rows[index + 1].kind == facts.FieldRow &&
+                        (Number(rows[index + 1].type) || rows[index + 1].type == facts.BoolType)) {
+                        retained_record = false;
+                    }
                     if ((op == facts.ArrayJoin || op == facts.ArrayExtend) && Holds(fresh, stack[base + 1])) {
                         pending.append(stack[base + 1]);
                     }

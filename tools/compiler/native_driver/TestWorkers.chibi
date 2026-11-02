@@ -1,0 +1,111 @@
+package native_driver
+
+import os "core:os"
+import strings "core:strings"
+import target "core:target"
+
+foreign import libc "system:c"
+foreign libc {
+    sysctlbyname :: (name: cstring, old: u8[], size: u64[], replacement: u8[], replacement_size: u64) -> i32
+}
+
+when target.Os == target.Darwin {
+    // Match the runtime pool's default: performance cores when macOS exposes
+    // them, physical cores otherwise. Explicit requests use all logical cores.
+    TestPreferredWorkers :: (available: int) -> int {
+        old := resize([u8(0)], 4);
+        size: u64[] = [4];
+        empty: u8[] = [];
+        status := sysctlbyname("hw.perflevel0.physicalcpu", old, size, empty, 0);
+        if (status != 0) {
+            size[0] = 4;
+            status = sysctlbyname("hw.physicalcpu", old, size, empty, 0);
+        }
+        if (status == 0) {
+            cores := int(old[0]) | (int(old[1]) << 8) | (int(old[2]) << 16) | (int(old[3]) << 24);
+            if (cores > 0 && cores < available) { return cores; }
+        }
+        return available;
+    }
+} else {
+    TestPreferredWorkers :: (available: int) -> int { return available; }
+}
+
+TestReport :: (label: string, name: string, ran: os.Result, paths: string[], sources: string[], tally: Tally) -> Tally {
+    result := tally;
+    if (ran.stdout != "") { os.WriteOutput(ran.stdout); }
+    result.total += 1;
+    if (ran.status == 0) {
+        Say(format_text("PASS {}.{}", label, name));
+    } else {
+        result.failed += 1;
+        Say(format_text("FAIL {}.{}", label, name));
+        Say(strings.Concatenate(["  ", AssertionFailure(ran.stderr, paths, sources)]));
+    }
+    return result;
+}
+
+// Runs adjacent pure tests on a bounded pool. Effectful tests execute alone,
+// after the preceding pure span has drained. Every report stays in source
+// order, even when workers finish out of order; output files belong to scratch.
+TestRuns :: (label: string, names: string[], effects: int[], program: string, scratch: string,
+             workers: int, paths: string[], sources: string[], tally: Tally) -> Tally {
+    result := tally;
+    first := 0;
+    while (first < length(names)) {
+        if (effects[first] != 0 || workers == 1) {
+            error_path := format_text("{}/{}.stderr", scratch, first);
+            process := os.StartRedirected([program, format_text("{}", first)], "", error_path, true);
+            status := 127;
+            if (process > 0) { status = os.Wait(process, -1); }
+            error := os.ReadText(error_path);
+            message := error.text;
+            if (process <= 0) { message = "cannot start the native test process"; }
+            ran: os.Result = {status: status, stdout: "", stderr: message};
+            result = TestReport(label, names[first], ran, paths, sources, result);
+            first += 1;
+            continue;
+        }
+        end := first + 1;
+        while (end < length(names) && effects[end] == 0) { end += 1; }
+        count := end - first;
+        processes := resize([int(0)], count);
+        statuses := resize([int(0)], count);
+        active: int[] = [];
+        next := first;
+        reported := first;
+        while (reported < end) {
+            while (length(active) < workers && next < end) {
+                process := os.StartRedirected([program, format_text("{}", next)],
+                    format_text("{}/{}.stdout", scratch, next), format_text("{}/{}.stderr", scratch, next), true);
+                processes[next - first] = process;
+                if (process > 0) { active.append(next); }
+                else { statuses[next - first] = 127; processes[next - first] = -1; }
+                next += 1;
+            }
+            slot := 0;
+            while (slot < length(active)) {
+                index := active[slot];
+                wait := 0;
+                if (slot == 0) { wait = 1; }
+                status := os.Wait(processes[index - first], wait);
+                if (status == os.StillRunning) { slot += 1; continue; }
+                statuses[index - first] = status;
+                processes[index - first] = 0;
+                active[slot] = active[length(active) - 1];
+                active.remove_index(length(active) - 1);
+            }
+            while (reported < next && processes[reported - first] <= 0) {
+                output := os.ReadText(format_text("{}/{}.stdout", scratch, reported));
+                error := os.ReadText(format_text("{}/{}.stderr", scratch, reported));
+                message := error.text;
+                if (processes[reported - first] < 0) { message = "cannot start the native test process"; }
+                ran: os.Result = {status: statuses[reported - first], stdout: output.text, stderr: message};
+                result = TestReport(label, names[reported], ran, paths, sources, result);
+                reported += 1;
+            }
+        }
+        first = end;
+    }
+    return result;
+}

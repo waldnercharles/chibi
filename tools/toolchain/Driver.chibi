@@ -4,6 +4,7 @@ import os "core:os"
 import strings "core:strings"
 import engine "graph:engine"
 import files "graph:files"
+import programs "graph:programs"
 import paths "graph:install"
 
 // The engine's one build command, `chibi build` in an engine checkout. It
@@ -112,159 +113,9 @@ DefaultDirectory :: (profile: string) -> string {
     return "build"
 }
 
-// The target triple of the machine this runs on.
-HostTriple :: () -> string {
-    if (os.Platform() == "Windows") {
-        return "x86_64-pc-windows-msvc"
-    }
-    if (os.Platform() == "Darwin") {
-        return "aarch64-apple-darwin"
-    }
-    machine := strings.TrimSpace(os.Capture(["uname", "-m"]).stdout)
-    if (machine == "aarch64" || machine == "arm64") {
-        return "aarch64-unknown-linux-gnu"
-    }
-    return "x86_64-unknown-linux-gnu"
-}
-
-// Sorted source paths and their cache fingerprints. Windows metadata can miss
-// same-size rewrites, so Fingerprint also hashes bytes there. Empty rejects an
-// unreadable source tree rather than reusing an incompletely verified runner.
-TreeInputs :: (folder: string, lines: string[]) -> string[] {
-    out := lines
-    listed := os.List(folder)
-    if (listed.error) {
-        os.Print(Join(["runner: cannot list ", folder]))
-        return []
-    }
-    for (name in listed.names) {
-        path := Join([folder, "/", name])
-        if (os.IsDirectory(path)) {
-            out = TreeInputs(path, out)
-            if (length(out) == 0) { return out }
-        } else if (strings.HasSuffix(name, ".chibi")) {
-            fingerprint := files.Fingerprint(path)
-            if (fingerprint == "") {
-                os.Print(Join(["runner: cannot fingerprint ", path]))
-                return []
-            }
-            out.append(Join([path, "\t", fingerprint]))
-        }
-    }
-    return out
-}
-
-// Gather the same identity before and after a cold compile. An input changing
-// while the compiler runs must not publish a runner under the earlier key.
-RunnerInputs :: (configuration: string[], tools: string[]) -> string[] {
-    lines := configuration
-    for (tool in tools) {
-        canonical := os.RealPath(tool)
-        fingerprint := files.Fingerprint(canonical)
-        if (canonical == "" || !os.IsFile(canonical) || fingerprint == "") {
-            os.Print(Join(["runner: cannot fingerprint executable ", tool]))
-            return []
-        }
-        lines.append(Join([canonical, "\t", fingerprint]))
-    }
-    for (folder in ["tools/toolchain", "tools/graph", "packages/core"]) {
-        canonical := os.RealPath(Absolute(folder))
-        if (canonical == "") {
-            os.Print(Join(["runner: cannot resolve source tree ", folder]))
-            return []
-        }
-        lines = TreeInputs(canonical, lines)
-        if (length(lines) == 0) { return [] }
-    }
-    return lines
-}
-
-RemoveRunnerWork :: (path: string) -> bool {
-    if (!paths.RemoveTree(path)) {
-        os.Print(Join(["runner: cannot remove private compilation directory ", path]))
-        return false
-    }
-    return true
-}
-
-// The native executable of the authored program `source` (entry `function`, with
-// `collections` NAME=DIR below the checkout), compiled on first use by the native
-// driver `--native-driver` with the LLVM tools in `--llvm` and kept under
-// .chibi/build-runner/KEY. KEY covers the program's source and tool fingerprints,
-// configuration and target. A private compilation directory is published by an
-// atomic rename, so a failed build leaves nothing a later one can reuse.
 Runner :: (arguments: string[], source: string, function: string, collections: string[]) -> string {
-    driver := os.RealPath(os.FindExecutable(Option(arguments, "--native-driver", "")))
-    llvm := os.RealPath(Option(arguments, "--llvm", ""))
-    if (driver == "" || llvm == "" || !os.IsFile(driver) || !os.IsDirectory(llvm)) {
-        os.Print("runner: pass an executable --native-driver and --llvm DIR")
-        return ""
-    }
-    target := HostTriple()
-    linker := "ld.lld"
-    suffix := ""
-    if (os.Platform() == "Darwin") {
-        linker = "ld64.lld"
-    } else if (os.Platform() == "Windows") {
-        linker = "lld-link"
-        suffix = ".exe"
-    }
-    configuration := ["native-runner-v2", source, function, strings.Join(collections, ","), target]
-    tools := [driver, Join([llvm, "/opt", suffix]), Join([llvm, "/llc", suffix]), Join([llvm, "/", linker, suffix])]
-    lines := RunnerInputs(configuration, tools)
-    if (length(lines) == 0) { return "" }
-    key := os.HashText(strings.Join(lines, "\n"))
-    base := strings.Slice(source, strings.LastIndex(source, "/") + 1, strings.ByteLength(source))
-    name := Join([strings.Slice(base, 0, strings.LastIndex(base, ".")), "-", function, suffix])
-    published := Absolute(Join([".chibi/build-runner/", key]))
-    program := Join([published, "/", name])
-    if (os.IsFile(program)) {
-        return program
-    }
-    if (os.MakeDirectory(Absolute(".chibi/build-runner"))) {
-        os.Print("runner: cannot create .chibi/build-runner")
-        return ""
-    }
-    reserved := os.TemporaryDirectory(Absolute(".chibi/build-runner"))
-    if (reserved.error || reserved.path == "") {
-        os.Print("runner: cannot reserve a private compilation directory")
-        return ""
-    }
-    work := reserved.path
-    command := [
-        driver, "--compiler", Absolute("tools/compiler"), "--core", Absolute("packages/core"), "--source", Absolute(source),
-        "--entry", function, "--output", Join([work, "/", name]), "--llvm", llvm, "--target", target
-    ]
-    for (collection in collections) {
-        equals := strings.Index(collection, "=")
-        command = extend(command, ["--collection", Join([strings.Slice(collection, 0, equals + 1),
-                                    Absolute(strings.Slice(collection, equals + 1, strings.ByteLength(collection)))])])
-    }
-    built := os.Capture(command)
-    if (built.status != 0) {
-        os.Print(Join(["runner: ", source, " does not compile natively: ", strings.TrimSpace(built.stderr)]))
-        removed := RemoveRunnerWork(work)
-        return ""
-    }
-    if (!os.IsFile(Join([work, "/", name]))) {
-        os.Print(Join(["runner: compiler did not write ", source]))
-        removed := RemoveRunnerWork(work)
-        return ""
-    }
-    checked := RunnerInputs(configuration, tools)
-    if (length(checked) == 0 || os.HashText(strings.Join(checked, "\n")) != key) {
-        os.Print("runner: an input changed during compilation; retry")
-        removed := RemoveRunnerWork(work)
-        return ""
-    }
-    if (os.Publish(work, published)) {
-        if (!RemoveRunnerWork(work)) { return "" }
-        if (!os.IsFile(program)) {
-            os.Print(Join(["runner: cannot publish ", program]))
-            return ""
-        }
-    }
-    return program
+    return programs.Build(os.Root(), Option(arguments, "--native-driver", ""), Option(arguments, "--llvm", ""),
+                          source, function, collections)
 }
 
 // The command that runs an authored program under the private host.
@@ -487,7 +338,7 @@ Deadline :: (rows: string[], name: string, fallback: string) -> string {
 
 // The command one selector runs: its row's words with the build directories
 // filled in, under the environment the test drivers read.
-TestCommand :: (row: string, directory: string, releases: string, host: string, native: string, llvm: string) -> string[] {
+TestCommand :: (row: string, directory: string, releases: string, host: string, native: string, llvm: string, prepared: string, current: string) -> string[] {
     fields := Fields(row)
     build_directory := Absolute(directory)
     release_directory := Absolute(releases)
@@ -505,10 +356,23 @@ TestCommand :: (row: string, directory: string, releases: string, host: string, 
         Join(["CHIBI_RELEASE_COMPILER_HOST=", release_directory, "/sdk/chibi-compiler-host"]),
         Join(["CHIBI_RELEASE_LANGUAGE_BUILD_DIR=", release_directory, "/test/language"])
     ]
-    for (i in 2..<length(fields)) {
+    first := 2
+    if (length(fields) >= 5 && fields[2] == "@program@") {
+        if (prepared == "") {
+            preview := programs.Command(root, Absolute(current), llvm_directory, fields[3], fields[4], ["graph=tools/graph"],
+                                        programs.HostTriple(), "<cached-native-program>")
+            command.extend(preview)
+            command.extend(["&&", "<cached-native-program>"])
+        } else {
+            command.append(prepared)
+        }
+        first = 5
+    }
+    for (i in first..<length(fields)) {
         word := strings.ReplaceAll(strings.ReplaceAll(fields[i], "@host@", host_path), "@root@", root)
         word = strings.ReplaceAll(strings.ReplaceAll(word, "@build@", build_directory), "@release@", release_directory)
         word = strings.ReplaceAll(strings.ReplaceAll(word, "@native@", native_path), "@llvm@", llvm_directory)
+        word = strings.ReplaceAll(word, "@compiler@", Absolute(current))
         command = extend(command, [word])
     }
     return command
@@ -569,14 +433,30 @@ Test :: (arguments: string[]) -> int {
     // Native rows fail closed before any selector starts. Dry-run accepts
     // proposed paths so its exact commands remain reviewable.
     needs_native := false
+    needs_current := false
     for (name in selected) {
-        needs_native = needs_native || strings.Contains(Row(rows, "tool", name), "@native@")
+        row := Row(rows, "tool", name)
+        fields := Fields(row)
+        if (length(fields) > 2 && fields[2] == "@program@") {
+            if (length(fields) < 5 || fields[3] == "" || fields[4] == "") {
+                os.Print(Join(["test: malformed native program selector ", name]))
+                return 2
+            }
+        }
+        needs_current = needs_current || strings.Contains(row, "@program@") || strings.Contains(row, "@compiler@")
+        needs_native = needs_native || strings.Contains(row, "@native@") || strings.Contains(row, "@program@") || strings.Contains(row, "@compiler@")
     }
-    if (needs_native && !Flag(arguments, "--dry-run")) {
-        native = os.RealPath(native)
-        llvm = os.RealPath(llvm)
-        if (native == "" || !os.IsFile(native) || llvm == "" || !os.IsDirectory(llvm)) {
-            os.Print("test: native selectors need --native-driver PROGRAM and --llvm DIR")
+    needs_llvm := needs_native
+    for (name in selected) { needs_llvm = needs_llvm || strings.Contains(Row(rows, "tool", name), "@llvm@") }
+    if (!Flag(arguments, "--dry-run")) {
+        if (needs_native) { native = os.RealPath(native) }
+        if (needs_llvm) { llvm = os.RealPath(llvm) }
+        if (needs_native && (native == "" || !os.IsFile(native))) {
+            os.Print("test: native selectors need --native-driver PROGRAM")
+            return 2
+        }
+        if (needs_llvm && (llvm == "" || !os.IsDirectory(llvm))) {
+            os.Print("test: LLVM selectors need --llvm DIR")
             return 2
         }
     }
@@ -590,11 +470,37 @@ Test :: (arguments: string[]) -> int {
         }
     }
     if (Flag(arguments, "--dry-run")) {
+        preview_compiler := native
+        if (needs_current) {
+            preview_compiler = Absolute(".chibi/build-runner/<compiler-key>/chibi")
+            plan := programs.CompilerCommand(os.Root(), Absolute(native), Absolute(llvm), preview_compiler)
+            os.Print(Join(["native compiler (cached): ", strings.Join(plan, " ")]))
+        }
         for (name in selected) {
-            command := TestCommand(Row(rows, "tool", name), directory, releases, host, native, llvm)
+            command := TestCommand(Row(rows, "tool", name), directory, releases, host, native, llvm, "", preview_compiler)
             os.Print(format_text("{} ({}s): {}", name, Deadline(rows, name, seconds), strings.Join(command, " ")))
         }
         return 0
+    }
+    // Compile before any selector starts, so compilation cannot delay polling
+    // already-running selectors or consume one selector's execution deadline.
+    current := native
+    if (needs_current) {
+        current = programs.Compiler(os.Root(), native, llvm)
+        if (current == "") { return 1 }
+    }
+    prepared: string[] = []
+    for (name in selected) {
+        fields := Fields(Row(rows, "tool", name))
+        program := ""
+        if (length(fields) > 2 && fields[2] == "@program@") {
+            program = programs.Build(os.Root(), current, llvm, fields[3], fields[4], ["graph=tools/graph"])
+            if (program == "") {
+                os.Print(Join(["test: native program selector does not compile: ", name]))
+                return 1
+            }
+        }
+        prepared.append(program)
     }
     // Piped output keeps each selector's lines together when several run.
     stdio := os.Inherited
@@ -624,7 +530,7 @@ Test :: (arguments: string[]) -> int {
                 break
             }
             os.Print(format_text("RUN {}", selected[next]))
-            command := TestCommand(Row(rows, "tool", selected[next]), directory, releases, host, native, llvm)
+            command := TestCommand(Row(rows, "tool", selected[next]), directory, releases, host, native, llvm, prepared[next], current)
             job: Running = {index: next, process: os.Start(command, stdio), waited: 0}
             running.append(job)
             started[next] = true

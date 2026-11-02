@@ -5,6 +5,7 @@ import host "project:native_link_host"
 import route "project:driver_paths"
 import os "core:os"
 import strings "core:strings"
+import facts "project:scalar_facts"
 
 // The native compiler's driver: `STAGE --compiler DIR --core DIR --output FILE
 // [--emit-llvm | --llvm DIR] [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]...
@@ -170,6 +171,13 @@ Emit :: (collections: string[], directories: string[], paths: string[], sources:
 // output. Invalid source and options leave any previous program untouched.
 EmitOptions :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
                 chosen: string, llvm: string, output: string, jobs: int, options: DriverOptions) -> int {
+    return EmitCollected(collections, directories, paths, sources, triple, chosen, llvm, output, jobs, options, []);
+}
+
+// Tests already collected typed rows and effects in one pass. Reuse those rows
+// through the ordinary module/backend boundary, including its option/tool checks.
+EmitCollected :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+                  chosen: string, llvm: string, output: string, jobs: int, options: DriverOptions, rows: facts.Row[]) -> int {
     linux := triple == "x86_64-unknown-linux-gnu";
     windows := strings.HasPrefix(triple, "x86_64-pc-windows");
     shared := options.shared;
@@ -205,7 +213,9 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
         visible.append(route.Visible(directory));
     }
     compiled: Output = Output.Rejected("");
-    if (shared) {
+    if (length(rows) > 0) {
+        compiled = CollectedModule(collections, visible, paths, sources, triple, rows, directory);
+    } else if (shared) {
         if (chosen != "") {
             os.Print("native: a shared generation takes no --entry");
             return 1;

@@ -1,0 +1,12 @@
+package map_array_payload
+
+Main :: () -> int {
+    original: [int: int[]] = [1: [2, 3]];
+    copied := original;
+    copied[1].append(4);
+    copied[2] = [9];
+    delete copied[1];
+    result := original[1].length() * 100 + original[1][0] * 10 + copied[2][0];
+    assert(result == 229);
+    return 0;
+}

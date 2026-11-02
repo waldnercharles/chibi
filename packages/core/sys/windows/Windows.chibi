@@ -21,7 +21,7 @@ foreign bcrypt {
 }
 
 foreign kernel32 {
-    MultiByteToWideChar :: (page: u32, flags: u32, text: cstring, length: i32, wide: u16[], size: i32) -> i32
+    MultiByteToWideChar :: (page: u32, flags: u32, text: u8[], length: i32, wide: u16[], size: i32) -> i32
     WideCharToMultiByte :: (page: u32, flags: u32, wide: u16[], length: i32, text: u8[], size: i32, fallback: rawptr, used: rawptr) -> i32
     GetFileAttributesW :: (path: u16[]) -> u32
     CreateDirectoryW :: (path: u16[], security: rawptr) -> i32
@@ -52,6 +52,9 @@ foreign kernel32 {
     FindNextFileW :: (handle: u64, data: u16[]) -> i32
     FindClose :: (handle: u64) -> i32
     GetCommandLineW :: () -> rawptr
+    LoadLibraryW :: (path: u16[]) -> rawptr
+    GetProcAddress :: (module: rawptr, name: cstring) -> rawptr
+    FreeLibrary :: (module: rawptr) -> i32
     lstrlenW :: (text: rawptr) -> i32
     RtlMoveMemory :: (destination: u16[], source: rawptr, length: u64) -> i32
     GetStdHandle :: (which: i32) -> u64
@@ -122,14 +125,34 @@ Block :: (size: int) -> u8[] {
 
 // The UTF-16 units of `text` and a terminating NUL.
 Wide :: (text: string) -> u16[] {
+    // Counted Win32 text must not pass through the foreign CString's 4 KiB
+    // bound: complete linker command lines can contain many Unicode paths.
+    bytes := Block(text_byte_length(text) + 1);
+    for index in 0..<text_byte_length(text) {
+        byte := text_byte_at(text, index);
+        assert(byte != 0, "the string contains no NUL");
+        bytes[index] = u8(byte);
+    }
     wide: u16[] = [];
-    size := MultiByteToWideChar(Utf8, 0, text, -1, wide, 0);
+    size := MultiByteToWideChar(Utf8, 0, bytes, i32(length(bytes)), wide, 0);
     for index in 0..<int(size) {
         wide.append(0);
     }
-    converted := MultiByteToWideChar(Utf8, 0, text, -1, wide, size);
+    converted := MultiByteToWideChar(Utf8, 0, bytes, i32(length(bytes)), wide, size);
     assert(converted == size, "the string converts");
     return wide;
+}
+
+// A successful open owns one loader reference. Symbol addresses stay valid
+// until the matching CloseLibrary; a failed open or lookup returns null.
+pub OpenLibrary :: (path: string) -> rawptr {
+    return LoadLibraryW(Wide(path));
+}
+pub LibrarySymbol :: (module: rawptr, name: string) -> rawptr {
+    return GetProcAddress(module, name);
+}
+pub CloseLibrary :: (module: rawptr) -> bool {
+    return FreeLibrary(module) != 0;
 }
 
 // The text of the first `count` UTF-16 units of `wide`.

@@ -558,10 +558,10 @@ jobs:
         run: sh tools/build.sh build --release --libclang-root "$LIBCLANG_ROOT"
       - name: Default native products were built
         run: |
-          for product in sdk/chibi sdk/chibi-compile sdk/chibi-asset-compiler; do
+          for product in sdk/chibi sdk/chibi-asset-compiler; do
             test -x "build-release/$product" || { echo "missing build-release/$product"; exit 1; }
           done
-          for host in chibi-build-host chibi-compiler-host; do
+          for host in chibi-compile chibi-build-host chibi-compiler-host; do
             test ! -e "build-release/sdk/$host" || { echo "unexpected private host $host"; exit 1; }
           done
       - name: Preserve failed build diagnostics

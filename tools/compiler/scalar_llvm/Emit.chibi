@@ -2583,6 +2583,19 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             logical_strings: int[] = [];
             logical_first: int[] = [];
             first := at + 1;
+            // Borrowed strings need an owner before a later operand can
+            // replace their source. A scoped string can alias another scoped
+            // parameter; ordinary locals only alias their own variable.
+            string_references: bool[] = [];
+            scoped_string_reference := false;
+            for (index in first..<first + row.count) {
+                operand := rows[index];
+                if (operand.kind == facts.RefRow && operand.type == facts.StringType) {
+                    if (length(string_references) == 0) { string_references = resize([false], length(places)); }
+                    string_references[operand.value] = true;
+                    scoped_string_reference = scoped_string_reference || Referenced(rows, head, operand.value);
+                }
+            }
             for (index in first..<first + row.count + 1) {
                 while (length(closes) > 0 && closes[length(closes) - 1] == index) {
                     open := length(closes) - 1;
@@ -3088,6 +3101,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 }
                 stored = [];
                 body.append(item);
+                if (operand.kind == facts.ReadRow && type == abi.TextStorage && length(string_references) > 0 &&
+                    (string_references[operand.value] || (scoped_string_reference && Referenced(rows, head, operand.value)))) {
+                    body.append(Op(native.TextRetain, abi.TextStorage, 0, slot, 0, 0));
+                    if (length(closes) > 0) { logical_strings.append(slot); }
+                    else { fresh.append(slot); }
+                }
                 if (operand.kind == facts.ReadRow && TrackedRecord(managed, type)) {
                     // Later operands can replace the source through a scoped
                     // call. Projected reads copy only the selected field;

@@ -2269,8 +2269,23 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
                                                           constants, visited).storage,
                                 ScalarVisitedShape(forest, text, callables, params, callable, names, types, members,
                                                    constants, visited).record) != 0) {
-                return ScalarPlan.Iterated(visited, ScalarIterationCopies(forest, text, Field(forest, statement, syntax.FieldBody),
-                                                                           visited));
+                copied := false;
+                // A fresh iterator owns its result already. Only a scoped
+                // receiver needs forwarded-call discovery for other aliases.
+                if (ScalarBorrowed(forest, Unparenthesized(forest, visited))) {
+                    body := Field(forest, statement, syntax.FieldBody);
+                    name := RootName(forest, text, visited);
+                    found := Lookup(names, name);
+                    changed: string[] = [];
+                    if (found >= 0 && names[found].index >= 0 && names[found].index < callable.count &&
+                        params[callable.first + names[found].index].reference) {
+                        changed = EvaluationChanges(forest, text, callables, params, [], names, callable.package, body, true);
+                    } else {
+                        changed = MutatedNames(forest, text, body, AddressedNames(forest, text, body, []));
+                    }
+                    copied = ScalarArraySnapshot(forest, text, params, callable, names, visited, changed);
+                }
+                return ScalarPlan.Iterated(visited, copied);
             }
             return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof iterates only int ranges, arrays and scalar maps"));
         }

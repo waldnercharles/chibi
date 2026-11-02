@@ -2,6 +2,7 @@ package toolchain
 
 import os "core:os"
 import strings "core:strings"
+import json "core:encoding/json"
 import files "graph:install"
 import engine "graph:engine"
 
@@ -20,7 +21,7 @@ Suffix :: () -> string {
     return "";
 }
 // Every item is DESTINATION=SOURCE, with absolute source paths.
-Entries :: (root: string, build_dir: string, third_party: string) -> string[] {
+Entries :: (root: string, build_dir: string, third_party: string, with_wasm: bool) -> string[] {
     suffix := Suffix();
     entries := [
         Join(["bin/chibi", suffix, "=", engine.Executable(build_dir, "chibi")]),
@@ -44,7 +45,63 @@ Entries :: (root: string, build_dir: string, third_party: string) -> string[] {
             Join(["share/chibi/licenses/vendor/freetype=", third_party, "/share/chibi/licenses/vendor/freetype"])
         ]);
     }
+    if (with_wasm) {
+        directory := engine.WebAssemblyDirectory(build_dir);
+        for (name in engine.WebAssemblyFiles()) {
+            if (name != "asset_compiler_host.h") {
+                entries.append(Join(["lib/chibi-wasm32/", name, "=", directory, "/", name]));
+            }
+        }
+        entries.extend([
+            Join(["include/chibi/authoring/asset_compiler_host.h=", directory, "/asset_compiler_host.h"]),
+            Join(["lib/cmake/ChibiAssetCompilerWasm/ChibiAssetCompilerWasmConfig.cmake=", root,
+                  "/sdk/ChibiAssetCompilerWasmConfig.cmake"])
+        ]);
+    }
     return entries;
+}
+
+// An optional archive and its copied public header travel as one SDK component.
+// Reject a stale or partial build before either install path writes a prefix.
+WasmDigitZero: int : 48;
+WasmDigitNine: int : 57;
+WasmHexA: int : 97;
+WasmHexF: int : 102;
+WasmInputs :: (build_dir: string) -> bool {
+    directory := engine.WebAssemblyDirectory(build_dir);
+    header := os.HashFile(Join([directory, "/asset_compiler_host.h"]));
+    if (header.error != nil) { return false; }
+    for (threaded in [false, true]) {
+        name := "libchibi_asset_compiler.a";
+        if (threaded) { name = "libchibi_asset_compiler_threads.a"; }
+        archive := Join([directory, "/", name]);
+        digest := os.HashFile(archive);
+        read := os.ReadText(Join([archive, ".json"]));
+        if (digest.error != nil || read.error != nil || strings.ByteLength(read.text) > 4096) { return false; }
+        fields := json.JsonFields(read.text);
+        if (length(fields) != 7) { return false; }
+        for (field in fields) {
+            valid := false;
+            if (field.key == "format") { valid = field.value == "1"; }
+            else if (field.key == "target") { valid = json.JsonText(field.value) == "wasm32-unknown-emscripten"; }
+            else if (field.key == "threads") { valid = field.value == format_text("{}", threaded); }
+            else if (field.key == "archive_sha256") { valid = json.JsonText(field.value) == digest.digest; }
+            else if (field.key == "host_header_sha256") { valid = json.JsonText(field.value) == header.digest; }
+            else if (field.key == "identity") {
+                identity := json.JsonText(field.value);
+                valid = strings.ByteLength(identity) == 64;
+                for (byte in strings.Bytes(identity)) {
+                    valid = valid && ((byte >= WasmDigitZero && byte <= WasmDigitNine) || (byte >= WasmHexA && byte <= WasmHexF));
+                }
+            } else if (field.key == "link_options") {
+                options := [json.JsonQuote("-sSUPPORT_LONGJMP=wasm"), json.JsonQuote("-sSTACK_OVERFLOW_CHECK=2")];
+                if (threaded) { options.append(json.JsonQuote("-pthread")); }
+                valid = field.value == json.JsonArray(options);
+            }
+            if (!valid) { return false; }
+        }
+    }
+    return true;
 }
 // Staged compiler sources exclude non-authored files such as legacy seeds.
 // Verify both directions so extra or missing authored sources cannot pass.
@@ -155,7 +212,11 @@ CompilerTools :: () -> int {
     if (output == "") { os.Print("sdk: output has an invalid directory ancestor"); return 2; }
     stage := files.CanonicalPath(Join([output, ".chibi-stage"]));
     if (stage == "") { os.Print("sdk: staging has an invalid directory ancestor"); return 2; }
-    entries := Entries(root, build_dir, third_party);
+    with_wasm := arguments.contains("--with-wasm");
+    if (with_wasm && !WasmInputs(build_dir)) {
+        os.Print("sdk: optional Wasm compiler archives or header are missing or stale; rebuild chibi-asset-compiler-wasm"); return 1;
+    }
+    entries := Entries(root, build_dir, third_party, with_wasm);
     for (item in entries) {
         source := strings.Partition(item, "=").tail;
         if (os.IsDirectory(source) && (files.Inside(output, source) || files.Inside(stage, source))) {
@@ -198,7 +259,11 @@ Install :: () -> int {
     }
     third_party := "";
     if (os.Platform() == "Darwin" || os.Platform() == "Linux") { third_party = engine.ThirdParty(os.Root(), "", ""); }
-    entries := Entries(os.Root(), build_dir, third_party);
+    with_wasm := arguments.contains("--with-wasm");
+    if (with_wasm && !WasmInputs(build_dir)) {
+        os.Print("sdk: optional Wasm compiler archives or header are missing or stale; rebuild chibi-asset-compiler-wasm"); return 1;
+    }
+    entries := Entries(os.Root(), build_dir, third_party, with_wasm);
     canonical := files.CanonicalPath(prefix);
     if (canonical == "") { os.Print("sdk: prefix has an invalid directory ancestor"); return 2; }
     prefix = canonical;

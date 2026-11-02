@@ -14,6 +14,10 @@ unsigned char *asset_compiler_wasm_compile(
     asset_compiler_diagnostic *diagnostic
 );
 
+/* Exactly 64 hexadecimal bytes and a NUL, immutable for this linked artifact.
+ * Generated from the compiled compiler/runtime payload before archiving. */
+const char *asset_compiler_wasm_identity(void);
+
 #ifdef CHIBI_ASSET_COMPILER_WASM_TEST
 /* Counts temporary native allocations across real compilation calls. */
 size_t asset_compiler_wasm_test_allocations(void);

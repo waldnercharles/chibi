@@ -174,7 +174,7 @@ Build :: (arguments: string[]) -> int {
     needs_archive := engine.NeedsThirdParty(targets)
     native_only := true
     for (target in targets) {
-        native_only = native_only && length(engine.NativeArguments(target)) != 0
+        native_only = native_only && (length(engine.NativeArguments(target)) != 0 || engine.WebAssemblyProducts().contains(target))
         for (resource in engine.Resources(target)) {
             needs_archive = needs_archive || strings.HasPrefix(strings.Partition(resource, "=").tail, "third-party/")
         }
@@ -189,7 +189,7 @@ Build :: (arguments: string[]) -> int {
         if (status != 0) { return status }
     }
     graph := ["--build", Absolute(directory), "--profile", profile]
-    for (name in ["--libclang-root", "--reflect", "--native-driver", "--llvm"]) {
+    for (name in ["--libclang-root", "--reflect", "--native-driver", "--llvm", "--emcc", "--wasm-llvm"]) {
         value := Option(arguments, name, "")
         if (value != "") {
             graph = extend(graph, [name, Absolute(value)])
@@ -618,7 +618,7 @@ ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
     nested := ["--release", "--release-build", Option(arguments, "--release-build", "build-release"),
                "--build", Option(arguments, "--release-build", "build-release"),
                "--jobs", Jobs(arguments)]
-    for (name in ["--host", "--libclang-root", "--reflect", "--native-driver", "--llvm"]) {
+    for (name in ["--host", "--libclang-root", "--reflect", "--native-driver", "--llvm", "--emcc", "--wasm-llvm"]) {
         value := Option(arguments, name, "")
         if (value != "") {
             nested = extend(nested, [name, value])
@@ -638,14 +638,19 @@ ReleaseBuild :: (arguments: string[], targets: string[], dry: bool) -> int {
 Install :: (arguments: string[]) -> int {
     dry := Flag(arguments, "--dry-run")
     releases := Absolute(Option(arguments, "--release-build", "build-release"))
-    status := ReleaseBuild(arguments, engine.NativeProducts(), dry)
+    targets := engine.NativeProducts()
+    with_wasm := Flag(arguments, "--with-wasm")
+    if (with_wasm) { targets = extend(targets, engine.WebAssemblyProducts()) }
+    status := ReleaseBuild(arguments, targets, dry)
     if (status != 0) {
         return status
     }
     prefix := Absolute(Option(arguments, "--prefix", Join([os.Getenv("HOME"), "/.local"])))
+    installed := ["--build", releases, "--prefix", prefix]
+    if (with_wasm) { installed.append("--with-wasm") }
     return GraphStep(
         arguments, "install", "tools/toolchain/SDK.chibi", "Install",
-        ["--build", releases, "--prefix", prefix], dry
+        installed, dry
     )
 }
 

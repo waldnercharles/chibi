@@ -1,0 +1,6 @@
+package rejected_nested_pointer
+Main :: () -> int {
+    value := 1;
+    nested: ^int[][] = [[&value]];
+    return nested[0][0]^;
+}

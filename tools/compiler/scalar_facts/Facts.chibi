@@ -284,6 +284,11 @@ pub RefRow: int : 39;
 // is 0 and `type` is the word. The function's parameters and result are
 // numbers or bools and none of its parameters is a reference.
 pub FunctionAddressRow: int : 40;
+// A postfix map operation. New consumes alternating key/value operands;
+// changes consume map, key and optionally value, and give the replacement map.
+// Reads use `literal` for their input map type and `type` for their result.
+// A map's assignment or declaration copies through MapCopy before sharing.
+pub MapRow: int : 50;
 // What a RefRow of `type` pushes on a call's operand stack, and so what a
 // reference parameter of `type` takes: ReferenceType plus the type. A
 // parameter row whose literal is 1 is a reference parameter. Its variable is
@@ -316,6 +321,20 @@ pub StringType: int : 12;
 pub RecordType: int : 32;
 // An array of type T is ArrayType + T.
 pub ArrayType: int : 1024;
+// A map from scalar/string K to scalar/string V is MapType + V * 16 + K.
+// Records and nested containers need their ownership rules before admission.
+pub MapType: int : 2048;
+pub MapNew: int : 1;
+pub MapLength: int : 2;
+pub MapGet: int : 3;
+pub MapSet: int : 4;
+pub MapHas: int : 5;
+pub MapDelete: int : 6;
+pub MapCopy: int : 7;
+pub MapSpan: int : 8;
+pub MapLiveAt: int : 9;
+pub MapKeyAt: int : 10;
+pub MapValueAt: int : 11;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
 // unsigned as their operands' type is. On floats, each is false when an

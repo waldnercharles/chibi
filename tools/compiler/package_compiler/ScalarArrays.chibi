@@ -349,6 +349,10 @@ ScalarElementShape :: (shape: ValueType) -> ValueType {
 ScalarElementValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                        callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
                        constants: ConstDecl[], node: int, shape: ValueType, rows: facts.Row[]) -> ScalarOperands {
+    if (shape.container == MapContainer) {
+        return ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
+                              node, shape.record, true, rows);
+    }
     if (shape.container == ArrayContainer) {
         return ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants, node, shape,
                                  true, rows);

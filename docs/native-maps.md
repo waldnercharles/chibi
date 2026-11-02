@@ -26,7 +26,7 @@ and the bounds. The compiler uses no map, but tools and games do, and the VM can
    draft shifted the later entries, which made a loop of deletes O(n^2)). Above 8 entries a delete releases the entry's
    strings and marks the entry dead (its stored hash becomes 0); the index slot keeps pointing at it and acts as a
    tombstone, so the probe distances stay valid. When dead entries outnumber half the live ones, the map compacts in
-   place: live entries move down in order and the index is refilled from their stored hashes. Growth compacts as it copies.
+   place: live entries move down in order. Logical capacity shrinks toward twice the live count, and only the corresponding index prefix is cleared and refilled from stored hashes. The existing buffers stay allocated until growth or drop. Growth compacts as it copies.
    At 8 entries or fewer there is no index and a delete shifts the later entries (at most 7). Insertion order survives
    both.
 3. **An entry is `{ key, value, i32 hash }`**, the hash never 0 (a 0 hash becomes 1) and 0 meaning dead. A slot is `{ u32 hash,
@@ -69,22 +69,20 @@ entry of capacity, and about 16 bytes per live entry in a map that has just grow
 
 ## Keys and values
 
-Keys: ints of every width, bool, string; floats are not keys (NaN). Values: scalars, strings and records. Arrays as values
-(`[string: int[]]`) are the next slice: the same helpers with the value's drop and copy. A map owns its strings:
+Keys: ints of every width, bool, string; floats are not keys (NaN). Values in this slice: scalars and strings. Records and arrays as values
+(`[string: int[]]`) need recursive value drop and copy before the native lane admits them. A map owns its strings:
 `MapSet` consumes one reference of a string key and of a string value (a repeated key's new key is released, the replaced
 value is released), `MapDelete` releases the entry's strings, `MapCopy` retains them, `MapDrop` releases them (D10).
 A read of a missing key gives the value type's zero; reads borrow. Writing through a missing key (`m[a][b] = v`) ends the call.
 
 ## Plan and state
 
-Done on `codex/native-maps`: native_abi `MapType`, the llvm_native instructions (MapLength, MapGet, MapHas, MapSet, MapDelete,
-MapCopy, MapDrop, MapKeyAt, MapValueAt), validation and emission in `tools/compiler/llvm_native/Emit.chibi`, IR-text tests in
-`tests/Maps.chibi` (all of `chibi test tools/compiler` passes). That code is the first draft: 24-byte header, shifting delete.
-Next, in order:
-1. Replace the helper templates with the design above (prototype and a driver, verified with ASan against a model, in
-   handoffs/native-maps-prototype/gen.py and build.py); add MapSpan and MapLiveAt (a loop visits `used` positions and skips
-   the dead); update the tests.
-2. scalar_facts rows and scalar_llvm validation and lowering.
-3. The producer: map types, `m[k]`, `m[k] = v`, `m[k] += v`, `k in m`, `m.has(k)`, `delete`, literals, `for`, equality.
-4. Samples that run natively in native-build, including one that balances allocations against releases (like var_union_drops).
-5. Array values; certified drops and moves with sdk-cmake's D10.
+Implemented on `codex/native-maps`, still unmerged:
+- The 32-byte compact header and live-entry hashes, Robin Hood index, amortized constant-time deletion and stable insertion order.
+- Native ABI and map instructions, including `MapSpan` and `MapLiveAt` for iteration over live positions. Key/value position reads reject dead entries.
+- `scalar_facts.MapRow` and `scalar_llvm` validation/lowering for literals, reads, changes, copies and drops. Scalar and string keys/values have explicit reference ownership; copies own independent entries and preserve live order.
+- C-free behavioral tests in `test/native_aot/maps`. They compile the actual emitter and lower actual fact tables, then run both O0 and O2 programs. Cases cover 64-entry churn against ordered lists, deletion/reinsertion, copies, binary string keys and values, balanced allocations, dead positions and malformed facts.
+
+The authored producer admits typed literals, variable copies, indexing, assignment, `in`/`not in`, `has`, deletion, parameters and results. Read-only parameters borrow; changed by-value parameters receive a private copy. `test/native_aot/map_programs` runs these as real source programs, including reference replacement and a string read from a temporary returned map. Compound writes reject with a diagnostic until their lowering exists.
+
+Gate 7 remains open for authored map iteration, equality, compound writes, inferred map literals, records, nested containers and cross-platform runtime coverage. The VM must remain until those cases have native equivalents.

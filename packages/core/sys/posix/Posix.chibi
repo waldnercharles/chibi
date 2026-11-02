@@ -51,6 +51,7 @@ foreign libc {
     posix_spawnattr_setpgroup :: (attributes: u8[], group: i32) -> i32
     posix_spawnattr_destroy :: (attributes: u8[]) -> i32
     getcwd :: (buffer: u8[], size: u64) -> rawptr
+    chdir :: (path: cstring) -> i32
     realpath :: (path: cstring, resolved: u8[]) -> rawptr
     chmod :: (path: cstring, mode: u32) -> i32
     kill :: (process: i32, signal: i32) -> i32
@@ -550,7 +551,11 @@ Terminated :: (buffer: u8[]) -> string {
     return text_from_bytes(text);
 }
 
-// The directory the program was started in, "" when it cannot be read.
+pub ChangeDirectory :: (path: string) -> bool {
+    return chdir(path) == 0;
+}
+
+// The current working directory, "" when it cannot be read.
 pub Root :: () -> string {
     buffer := Block(4096);
     at := getcwd(buffer, 4096);

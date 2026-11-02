@@ -92,10 +92,10 @@ AssertionReport :: (windows: bool, rich: bool) -> string {
     return Join(report);
 }
 
-WindowsContextStart :: (rich_assertions: bool, formatting: bool) -> string {
+WindowsContextStart :: (rich_assertions: bool, formatting: bool, numeric_formatting: bool) -> string {
     format := "";
     callback := "null";
-    if (formatting) { format = RuntimeFormat(true); callback = "@chibi_format_text"; }
+    if (formatting) { format = RuntimeFormat(true, numeric_formatting); callback = "@chibi_format_text"; }
     return Join([
         WindowsPrelude(),
         "declare dllimport ptr @GetProcessHeap()\n",
@@ -200,7 +200,7 @@ LinuxStart :: () -> string {
     ]);
 }
 
-DynamicStart :: (triple: string, context: bool, rich_assertions: bool, formatting: bool) -> string {
+DynamicStart :: (triple: string, context: bool, rich_assertions: bool, formatting: bool, numeric_formatting: bool) -> string {
     if (!context) {
         return Join([
             "target triple = \"", triple, "\"\n",
@@ -219,7 +219,7 @@ DynamicStart :: (triple: string, context: bool, rich_assertions: bool, formattin
     }
     format := "";
     callback := "null";
-    if (formatting) { format = RuntimeFormat(false); callback = "@chibi_format_text"; }
+    if (formatting) { format = RuntimeFormat(false, numeric_formatting); callback = "@chibi_format_text"; }
     return Join([
         "target triple = \"", triple, "\"\n",
         "declare ptr @calloc(i64, i64)\n",
@@ -269,10 +269,10 @@ DynamicStart :: (triple: string, context: bool, rich_assertions: bool, formattin
 // The start module for the triple. A static Linux program has no C library, so
 // it takes no context: "" for that combination and for a triple this link step
 // does not know.
-Module :: (triple: string, static: bool, context: bool, rich_assertions: bool, formatting: bool) -> string {
+Module :: (triple: string, static: bool, context: bool, rich_assertions: bool, formatting: bool, numeric_formatting: bool) -> string {
     target := TargetOf(triple);
     if (target == WindowsX64 && context) {
-        return WindowsContextStart(rich_assertions, formatting);
+        return WindowsContextStart(rich_assertions, formatting, numeric_formatting);
     }
     if (target == WindowsX64) {
         return WindowsStart();
@@ -286,7 +286,7 @@ Module :: (triple: string, static: bool, context: bool, rich_assertions: bool, f
     if (target < 0) {
         return "";
     }
-    return DynamicStart(triple, context, rich_assertions, formatting);
+    return DynamicStart(triple, context, rich_assertions, formatting, numeric_formatting);
 }
 
 // The process arguments as C-ABI functions, appended to every start module:
@@ -757,8 +757,8 @@ pub Start :: (triple: string, static: bool, context: bool) -> string {
 
 // Program-mode modules mark formatting use across their complete body bundle.
 // Omitting an unused callback keeps allocating Windows programs kernel32-only.
-pub ProgramStart :: (triple: string, static: bool, context: bool, formatting: bool) -> string {
-    module := Module(triple, static, context, false, formatting);
+pub ProgramStart :: (triple: string, static: bool, context: bool, formatting: bool, numeric_formatting: bool = true) -> string {
+    module := Module(triple, static, context, false, formatting, numeric_formatting);
     if (module == "") {
         return "";
     }
@@ -770,8 +770,8 @@ pub ProgramStart :: (triple: string, static: bool, context: bool, formatting: bo
 
 // Public run commands link program-mode diagnostic metadata. Raw and shared
 // consumers keep their prefix-only reporting and failure status.
-pub RunStart :: (triple: string, static: bool, context: bool, formatting: bool) -> string {
-    module := Module(triple, static, context, true, formatting);
+pub RunStart :: (triple: string, static: bool, context: bool, formatting: bool, numeric_formatting: bool = true) -> string {
+    module := Module(triple, static, context, true, formatting, numeric_formatting);
     if (module == "") { return ""; }
     if (TargetOf(triple) == WindowsX64) {
         return Join([module, FailureRuntime(true, context, false, true), ExitStatusRuntime(), WindowsArguments()]);
@@ -780,13 +780,26 @@ pub RunStart :: (triple: string, static: bool, context: bool, formatting: bool) 
 }
 
 // A shared generation has no process entry. Its host-call wrappers use the
-// same libc-backed runtime as an executable, held privately by this generation.
+// same platform runtime as an executable, held privately by this generation.
 pub SharedContext :: (triple: string, context: bool) -> string {
     target := TargetOf(triple);
+    if (target == WindowsX64) {
+        module := "";
+        if (context) { module = WindowsContextStart(false, true, true); }
+        else { module = WindowsStart(); }
+        boundary := strings.Index(module, "define void @mainCRTStartup()");
+        assert(boundary > 0);
+        module = strings.Slice(module, 0, boundary);
+        module = strings.ReplaceAll(module, "@chibi_context = global", "@chibi_context = hidden global");
+        module = Join([module, FailureRuntime(true, context, false, false), WindowsArguments(),
+            "define dllexport i32 @chibi_host_set_process(i64 %count, ptr %arguments, ptr %environment) {\n",
+            "  %line = call ptr @GetCommandLineW()\n  store ptr %line, ptr @chibi_command_line\n  ret i32 0\n}\n"]);
+        return strings.ReplaceAll(module, "= dso_local global", "= hidden global");
+    }
     if (target != LinuxX64 && target != MacOSArm64) {
         return "";
     }
-    module := DynamicStart(triple, context, false, true);
+    module := DynamicStart(triple, context, false, true, true);
     boundary := strings.Index(module, "define i32 @main(");
     assert(boundary > 0);
     module = strings.Slice(module, 0, boundary);

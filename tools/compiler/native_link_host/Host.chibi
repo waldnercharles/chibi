@@ -141,10 +141,17 @@ pub Libc :: () -> (folder: string, interpreter: string) {
     return ("", "");
 }
 
+// Shared objects need no process start files. A declared system library still
+// needs the system search directory; pure shared objects remain freestanding.
+NeedsLibc :: (plan: link.Plan) -> bool {
+    return link.TargetOf(plan.triple) == link.LinuxX64 &&
+           (!plan.static || (plan.shared && length(plan.libraries) > 0));
+}
+
 // The plan with what the system provides filled in.
 pub Discover :: (plan: link.Plan) -> link.Plan {
     found := plan;
-    if (link.TargetOf(plan.triple) == link.LinuxX64 && !plan.static && plan.libc == "") {
+    if (NeedsLibc(plan) && plan.libc == "") {
         located := Libc();
         found.libc = located.folder;
         found.interpreter = located.interpreter;
@@ -169,7 +176,7 @@ Build :: (plan: link.Plan) -> link.Error? {
         return Fail(link.MissingTool, 0);
     }
     ready := Discover(plan);
-    if (target == link.LinuxX64 && !plan.static && ready.libc == "") {
+    if (NeedsLibc(ready) && ready.libc == "") {
         return Fail(link.MissingLibc, 0);
     }
     // The stubs, and on Windows the import libraries lld-link writes from them.

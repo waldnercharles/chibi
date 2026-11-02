@@ -1,6 +1,7 @@
 # The native compiler that recovery starts from, one per platform: platform,
 # release tag, asset, SHA-256. It is native stage two, byte-identical to the
-# stage three it compiles. The native-seed workflow publishes it;
+# stage three it compiles (or the bounded stage-three/four fixed point).
+# Manual preparation/publication: docs/ci-maintenance.md;
 # tools/bootstrap/native-seed.sh fetches it.
 linux-x64	native-seed-60901f2fa300414ad88eae047bdd948037aa4e4f	chibi-native-linux-x64	a012df37e6b92fd60b08c08015b36079bebc8c45042a681ff23449b4eb77614a
 macos-arm64	native-seed-60901f2fa300414ad88eae047bdd948037aa4e4f	chibi-native-macos-arm64	6f640d5646509c9d2e5b861ac4cccb3c5a11d2f2ca4e130fe67a10e5e1770028

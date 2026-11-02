@@ -33,30 +33,27 @@ CFiles :: () -> string[] {
 
 // A content fence covers source additions/removals as well as edits during the
 // compile. Chunks avoid repeatedly copying the compiler's source inventory.
-SourceInputs :: (directory: string) -> string[] {
+SourceInputs :: (directory: string, chunks: ^(string[])) -> bool {
     listed := os.List(directory);
-    if (listed.error != nil) { return []; }
-    chunks := [format_text("{}:{}", strings.ByteLength(directory), directory)];
+    if (listed.error != nil) { return false; }
     for (name in listed.names) {
         path := Join([directory, "/", name]);
         if (os.Kind(path) == os.KindDirectory) {
-            nested := SourceInputs(path);
-            if (length(nested) == 0) { return []; }
-            chunks.extend(nested);
+            if (!SourceInputs(path, chunks)) { return false; }
         } else if (strings.HasSuffix(name, ".chibi")) {
             digest := os.HashFile(path);
-            if (digest.error != nil) { return []; }
+            if (digest.error != nil) { return false; }
             chunks.append(format_text("{}:{}{}", strings.ByteLength(path), path, digest.digest));
         }
     }
-    return chunks;
+    return true;
 }
 
 InputDigest :: (root: string, driver: string, emcc: string, llvm: string) -> string {
-    chunks := SourceInputs(Join([root, "/tools/compiler"]));
-    core := SourceInputs(Join([root, "/packages/core"]));
-    if (length(chunks) == 0 || length(core) == 0) { return ""; }
-    chunks.extend(core);
+    chunks: string[] = [];
+    if (!SourceInputs(Join([root, "/tools/compiler"]), &chunks) || length(chunks) == 0) { return ""; }
+    compiler_inputs := length(chunks);
+    if (!SourceInputs(Join([root, "/packages/core"]), &chunks) || length(chunks) == compiler_inputs) { return ""; }
     toolchain := wasmtools.Toolchain(emcc, llvm);
     if (toolchain.error != "") { os.Print(toolchain.error); return ""; }
     chunks.append(toolchain.configuration);

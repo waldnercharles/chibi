@@ -99,6 +99,9 @@ ScalarForeignArrayRows :: (forest: snapshot.SnapshotNode[], text: string, callab
         if (found >= 0 && ScalarValueType(types, names[found].storage, names[found].container, names[found].record) != type) {
             found = -1;
         }
+        // A traversal binding borrows its parent's array. C receives an
+        // independent loan and must not replace that readonly descriptor.
+        if (found >= 0 && names[found].place == LocalPlace && !names[found].writable) { found = -1; }
     }
     if (found >= 0) {
         reference := ScalarAt(forest, argument, facts.RefRow, type, names[found].index, 0, "");

@@ -106,8 +106,12 @@ MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDe
 KeyPhase: int : 2;
 // Freeze a borrowed receiver only when the key can invalidate it. Different
 // scoped places can overlap, including a map field and its containing record.
-MapReceiverSnapshot :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+ReceiverSnapshot :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                         natives: ResolvedNative[], names: Name[], package: int, object: int, key: int) -> bool {
+    index := Unparenthesized(forest, key);
+    // A literal or identifier cannot run an invalidating callback. Most
+    // array indices are leaves, so they need no effect walk or worklist.
+    if (index >= 0 && forest[index].first_child < 0) { return false; }
     root := RootOf(forest, object);
     indirect := false;
     while (Is(forest, root, syntax.DereferenceExpression)) {
@@ -186,7 +190,9 @@ MapReadStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
     }
     emitted := Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], 2,
                              Typed(at.slot + read + 1, item.storage, item.container, item.record), NoValue(), []);
-    return CleanupSequenceValues(emitted, [map], ops, target, at, node);
+    // The projection caller keeps the selected value before releasing an
+    // owned receiver. Releasing here would invalidate a borrowed array first.
+    return emitted;
 }
 // Statement phases of a local map's in-place store and removal.
 MapStorePhase: int : 11;
@@ -393,7 +399,7 @@ MapHasStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, cal
         if (!IsMap(values[top - 1])) {
             return Fail(forest, map, document, "Map operation requires a map");
         }
-        if (!values[top - 1].owned && MapReceiverSnapshot(forest, text, callables, params, natives, names, package, map, key)) {
+        if (!values[top - 1].owned && ReceiverSnapshot(forest, text, callables, params, natives, names, package, map, key)) {
             resumed := Resume(item.node, KeyPhase, 0, 0);
             resumed.c = MapHasMark;
             next: Work[] = [Resume(map, CopyValuePhase, 0, 0), resumed];

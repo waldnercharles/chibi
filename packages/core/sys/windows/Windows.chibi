@@ -36,6 +36,7 @@ foreign kernel32 {
     GetFileInformationByHandleEx :: (handle: u64, kind: i32, information: u8[], size: u32) -> i32
     GetFinalPathNameByHandleW :: (handle: u64, path: u16[], size: u32, flags: u32) -> u32
     GetCurrentDirectoryW :: (size: u32, path: u16[]) -> u32
+    SetCurrentDirectoryW :: (path: u16[]) -> i32
     GetCurrentProcessId :: () -> u32
     GetCurrentProcess :: () -> u64
     GetProcessId :: (handle: u64) -> u32
@@ -771,11 +772,11 @@ Word32 :: (bytes: u8[], at: int) -> u64 {
 // FILETIME's 100 ns ticks since 1601, as Unix seconds.nanoseconds. No access
 // time enters a stamp, so reading or hashing a file leaves its stamp alone.
 FileTime :: (ticks: u64) -> string {
-    nanoseconds := format_text("{}", (i64(ticks) % FileTimeTicks) * 100);
+    nanoseconds := SignedDecimal((i64(ticks) % FileTimeTicks) * 100);
     while text_byte_length(nanoseconds) < 9 {
         nanoseconds = strings.Concatenate(["0", nanoseconds]);
     }
-    return format_text("{}.{}", i64(ticks) / FileTimeTicks - FileTimeEpochSeconds, nanoseconds);
+    return strings.Concatenate([SignedDecimal(i64(ticks) / FileTimeTicks - FileTimeEpochSeconds), ".", nanoseconds]);
 }
 
 // Same fields as POSIX stamps: volume:file-id:size:mode:modified:changed.
@@ -809,8 +810,8 @@ pub Stamp :: (path: string) -> string {
             mode = "40555";
         }
     }
-    return format_text("{}:{}:{}:{}:{}:{}", Word32(information, 28), identity, size, mode,
-                       FileTime(Word64(basic, 16)), FileTime(Word64(basic, 24)));
+    return strings.Concatenate([UnsignedDecimal(Word32(information, 28)), ":", UnsignedDecimal(identity), ":",
+                                UnsignedDecimal(size), ":", mode, ":", FileTime(Word64(basic, 16)), ":", FileTime(Word64(basic, 24))]);
 }
 
 // The kernel copies into a private directory beside the destination, then
@@ -820,7 +821,7 @@ pub Copy :: (source: string, destination: string) -> bool {
     if attributes == InvalidAttributes || (attributes & DirectoryAttribute) != 0 {
         return false;
     }
-    work := format_text("{}.copy-{}", destination, int(GetCurrentProcessId()));
+    work := strings.Concatenate([destination, ".copy-", SignedDecimal(i64(int(GetCurrentProcessId())))]);
     if !Reserve(work) {
         return false;
     }
@@ -892,6 +893,11 @@ pub RealPath :: (path: string) -> string {
     return strings.TrimPrefix(normalized, "//?/");
 }
 
+pub ChangeDirectory :: (path: string) -> bool {
+    converted := Wide(path);
+    return length(converted) > 0 && SetCurrentDirectoryW(converted) != 0;
+}
+
 pub Root :: () -> string {
     none: u16[] = [];
     size := GetCurrentDirectoryW(0, none);
@@ -950,7 +956,7 @@ ProcessIdentity :: () -> string {
     if GetProcessTimes(GetCurrentProcess(), created, exited, kernel, user) == 0 {
         return "";
     }
-    return format_text("chibi-{}-{}", GetCurrentProcessId(), Word64(created, 0));
+    return strings.Concatenate(["chibi-", UnsignedDecimal(u64(GetCurrentProcessId())), "-", UnsignedDecimal(Word64(created, 0))]);
 }
 
 ProcessFolder :: () -> string {
@@ -972,7 +978,7 @@ ProcessFolder :: () -> string {
 }
 
 ProcessPath :: (folder: string, process: int, suffix: string) -> string {
-    return format_text("{}/{}{}", folder, process, suffix);
+    return strings.Concatenate([folder, "/", SignedDecimal(i64(process)), suffix]);
 }
 
 Close :: (handle: u64) {
@@ -1270,7 +1276,7 @@ pub Kill :: (process: int) -> int {
     stopped := TerminateJobObject(claim.job, KilledExit);
     if stopped == 0 {
         failure := GetLastError();
-        Print(format_text("windows: cannot terminate process job: Win32 error {}", failure));
+        Print(strings.Concatenate(["windows: cannot terminate process job: Win32 error ", UnsignedDecimal(u64(failure))]));
         Close(claim.marker);
         return -1;
     }

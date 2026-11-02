@@ -937,6 +937,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (callee_foreign >= 0) {
             return ScalarForeignResult(forest, text, callee_foreign);
         }
+        if (ScalarMathCall(forest, text, node)) {
+            return ScalarMathStorage(forest, text, callables, params, callable, names, types, members, constants, node);
+        }
         if (ScalarSquareRoot(forest, text, node)) {
             return FloatStorage;
         }
@@ -1278,6 +1281,9 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     if (callee < 0 && ScalarTextOperator(forest, text, node) != 0) {
         return ScalarText(forest, text, callables, params, callable, names, types, members, constants, node, output);
+    }
+    if (callee < 0 && ScalarMathCall(forest, text, node)) {
+        return ScalarMathOperands(forest, text, callables, params, callable, names, types, members, constants, node, output);
     }
     if (callee < 0 && ScalarSquareRoot(forest, text, node)) {
         // EmitBody has checked the built-in's positional f32 argument.
@@ -2983,12 +2989,14 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 name := Text(forest, text, declared);
                 element := IntStorage;
                 element_record := -1;
+                element_container := 0;
                 row = ScalarAt(forest, statement, facts.ForRow, facts.IntType, variables, count, name);
                 if (map_iterated >= 0) {
                     map := types[map_iterated];
                     element = map.value_storage;
                     element_record = map.value_record;
-                    if (keyed) { element = map.key; element_record = -1; }
+                    element_container = map.value_container;
+                    if (keyed) { element = map.key; element_record = -1; element_container = 0; }
                     row.type = ScalarMapType(types, map_iterated);
                     row.literal = i64(facts.RangeMap);
                     if (keyed) { row.literal += i64(facts.RangeKeyed); }
@@ -3011,19 +3019,21 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                     row.literal += i64(facts.RangeReverse);
                 }
                 // As the range step binds it, read-only, for the body alone.
-                binding: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: element, container: 0,
+                binding: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: element, container: element_container,
                                  record: element_record, writable: false, node: declared};
                 names.append(binding);
                 variables += 1;
                 if (keyed) {
                     keyed_storage := IntStorage;
                     keyed_record := -1;
+                    keyed_container := 0;
                     if (map_iterated >= 0) {
                         keyed_storage = types[map_iterated].value_storage;
                         keyed_record = types[map_iterated].value_record;
+                        keyed_container = types[map_iterated].value_container;
                     }
                     index: Name = {owned: false, name: Text(forest, text, Field(forest, statement, syntax.FieldName)), place: LocalPlace,
-                                   index: variables, storage: keyed_storage, container: 0, record: keyed_record, writable: false,
+                                   index: variables, storage: keyed_storage, container: keyed_container, record: keyed_record, writable: false,
                                    node: Field(forest, statement, syntax.FieldName)};
                     names.append(index);
                     variables += 1;
@@ -3249,9 +3259,9 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], lent: bool) -
 }
 // SCRIPT_EFFECT_HOST: a synchronous output action.
 NativePrintEffect: int : 8;
-// The text, output and array builtins this producer lowers.
+// The text, output, array and scalar math natives this producer lowers.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
-    return NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
+    return NativeNameMatches(native, "fmod") || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
            NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text") ||
            NativeNameMatches(native, "print_string") ||
            NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||
@@ -4281,13 +4291,13 @@ ScalarJoinedNodes :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docum
 // The callables with those of document 0 first, in their order, then the rest
 // in theirs: the entry of a package set is the first function of its first
 // file, whichever package order puts the dependencies in front. A function
-// named `chosen` in document 0 goes before the others of its document.
-ScalarEntryFirst :: (callables: Callable[], chosen: string, bindings: ^(GenericBinding[])) -> Callable[] {
+// named `chosen` in the root package goes first, regardless of its source file.
+ScalarEntryFirst :: (callables: Callable[], chosen: string, root: int, bindings: ^(GenericBinding[])) -> Callable[] {
     ordered: Callable[] = [];
     remap := resize([int(-1)], length(callables));
     if (chosen != "") {
         for (callable, index in callables) {
-            if (callable.document == 0 && callable.name == chosen) {
+            if (callable.package == root && callable.name == chosen) {
                 remap[index] = length(ordered);
                 ordered.append(callable);
             }
@@ -4300,7 +4310,7 @@ ScalarEntryFirst :: (callables: Callable[], chosen: string, bindings: ^(GenericB
         }
     }
     for (callable, index in callables) {
-        if (callable.document != 0) {
+        if (callable.document != 0 && (chosen == "" || callable.package != root || callable.name != chosen)) {
             remap[index] = length(ordered);
             ordered.append(callable);
         }
@@ -4324,7 +4334,7 @@ ScalarInCollection :: (collection_names: string[], identity: string) -> bool {
 // function.
 pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[], natives: Native[],
                       ports: Port[], identities: u64[]) -> facts.Row[] {
-    return ScalarCollect(project, [], [], [path], [text], target, names, natives, ports, identities, false, 0, 0, "");
+    return ScalarCollect(project, [], [], [path], [text], target, names, natives, ports, identities, false, 0, 0, "", false);
 }
 // The authored parser's tree for `text`, for tools that read syntax outside the
 // compiler's passes: the native census reads its sources through it.
@@ -4349,27 +4359,35 @@ pub CollectScalarPackages :: (project: string, collection_names: string[], colle
                               sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
                               identities: u64[], os: int, arch: int) -> facts.Row[] {
     return ScalarCollect(project, collection_names, collection_paths, paths, sources, target, names, natives, ports,
-                         identities, true, os, arch, "");
+                         identities, true, os, arch, "", false);
 }
-// CollectScalarPackages with the entry named: the function `chosen` of the first
-// file instead of its first function, and packages of any of the collections.
+// CollectScalarPackages with the entry named: the function `chosen` of the root
+// package instead of the first file's first function, and any collection's packages.
 pub CollectScalarProgram :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                              sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
                              identities: u64[], os: int, arch: int, chosen: string) -> facts.Row[] {
     return ScalarCollect(project, collection_names, collection_paths, paths, sources, target, names, natives, ports,
-                         identities, true, os, arch, chosen);
+                         identities, true, os, arch, chosen, false);
+}
+// A shared package has independent Main/Frame host entries rather than a
+// process entry. Keep imported function names outside that root namespace.
+pub CollectScalarGeneration :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                                sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
+                                identities: u64[], os: int, arch: int) -> facts.Row[] {
+    return ScalarCollect(project, collection_names, collection_paths, paths, sources, target, names, natives, ports,
+                         identities, true, os, arch, "", true);
 }
 ScalarCollect :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                   sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
-                  identities: u64[], packaged: bool, os: int, arch: int, chosen: string) -> facts.Row[] {
+                  identities: u64[], packaged: bool, os: int, arch: int, chosen: string, generation: bool) -> facts.Row[] {
     summary: ScalarEffectSummary = {wanted: false, natives: [], direct: [], waiting: [], calls: []};
     return ScalarCollectWithEffects(project, collection_names, collection_paths, paths, sources, target, names,
-                                    natives, ports, identities, packaged, os, arch, chosen, &summary);
+                                    natives, ports, identities, packaged, os, arch, chosen, generation, &summary);
 }
 
 ScalarCollectWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                              sources: string[], target: Target, names: string[], natives: Native[], ports: Port[],
-                             identities: u64[], packaged: bool, os: int, arch: int, chosen: string,
+                             identities: u64[], packaged: bool, os: int, arch: int, chosen: string, generation: bool,
                              summary: ^ScalarEffectSummary) -> facts.Row[] {
     if (length(paths) == 0 || length(paths) != length(sources) || length(collection_names) != length(collection_paths) ||
         (!packaged && length(paths) != 1)) {
@@ -4389,6 +4407,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
     text_natives := ScalarTextNatives(resolved);
     text_ports := ScalarTextPorts(resolved, resolved_ports);
     text_identities := ScalarTextIdentities(resolved, identities);
+    ScalarMathCatalog(&text_natives, &text_ports, &text_identities);
     // The bootstrap catalog contains data functions only. Printing is a void
     // action, supplied here for the ordinary body checker and lowered below.
     // These private identities never cross the prepared/runtime ABI.
@@ -4532,11 +4551,15 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                 case .Ready(concrete, concrete_params, bindings):
                                     entered := concrete;
                                     entered_bindings := bindings;
-                                    if (packaged && length(concrete) > 0 && (concrete[0].document != 0 || chosen != "")) {
-                                        entered = ScalarEntryFirst(concrete, chosen, &entered_bindings);
-                                        if (chosen != "" && entered[0].name != chosen) {
+                                    if (!generation && packaged && length(concrete) > 0 && (concrete[0].document != 0 || chosen != "")) {
+                                        entered = ScalarEntryFirst(concrete, chosen, file_packages[0], &entered_bindings);
+                                        if (chosen != "" && (entered[0].name != chosen || entered[0].package != file_packages[0])) {
                                             return ScalarFailure(path, shown_text, Diagnose(shown_nodes, document.syntax_root, 0,
-                                                "scalar proof requires the entry function in the first file"));
+                                                format_text("No runnable {} in the root package", chosen)));
+                                        }
+                                        if (chosen == "" && entered[0].document != 0) {
+                                            return ScalarFailure(path, shown_text, Diagnose(shown_nodes, document.syntax_root, 0,
+                                                "No runnable entry in the first file"));
                                         }
                                     }
                                     // Import aliases name a package set's qualified calls; a lone source has none.
@@ -4559,7 +4582,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                     }
                                     switch ScalarModule(scalar_nodes, scalar_text, document.key, entered, concrete_params, table,
                                                         members, constants, ops, target, text_natives, text_ports, text_identities,
-                                                        false, entered_bindings, scalar_documents, module_links, summary) {
+                                                        generation, entered_bindings, scalar_documents, module_links, summary) {
                                         case .Failed(diagnostic):
                                             // The native check already used joined nodes; its range
                                             // must not receive the document offset a second time.
@@ -4569,7 +4592,15 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                                                literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0,
                                                                column: 0};
                                             module: facts.Row[] = [ScalarSource(path, scalar_text), head];
-                                            module.extend(rows);
+                                            if (generation) {
+                                                package_identities: string[] = [];
+                                                for (package in packages) {
+                                                    package_identities.append(documents[files_of[package.member_start]].identity);
+                                                }
+                                                module.extend(ScalarGenerationNames(rows, entered, package_identities, file_packages[0]));
+                                            } else {
+                                                module.extend(rows);
+                                            }
                                             return module;
                                     }
                             }

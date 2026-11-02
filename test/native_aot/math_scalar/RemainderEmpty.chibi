@@ -1,0 +1,2 @@
+package scalar_remainder_empty
+Main :: () -> int { return int(fmod()); }

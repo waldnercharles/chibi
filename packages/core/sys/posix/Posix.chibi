@@ -756,13 +756,15 @@ pub Start :: (command: string[], piped: bool) -> int {
     return process;
 }
 
-// Starts a process group with stdout and stderr in separate caller-owned
-// files. Their parent folders exist, and their paths are distinct. Existing
+// Starts a process with stdout and stderr in separate caller-owned
+// files. Empty stdout inherits the stream. Parent folders exist, and nonempty
+// paths are distinct. Attached children share their parent's process group;
+// others own a group for Kill to stop. Existing
 // files are truncated with private permissions for newly created files.
 // WaitFor/Kill retain their usual process semantics and leave these files
 // for the caller to read and remove. Failure to start returns -1.
-pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string) -> int {
-    if length(command) == 0 || stdout_path == "" || stderr_path == "" || stdout_path == stderr_path {
+pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string, attached: bool = false) -> int {
+    if length(command) == 0 || stderr_path == "" || stdout_path == stderr_path {
         return -1;
     }
     actions := Block(256);
@@ -771,7 +773,7 @@ pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: str
         return -1;
     }
     status = posix_spawn_file_actions_addopen(actions, 0, "/dev/null", 0, 0);
-    if status == 0 {
+    if status == 0 && stdout_path != "" {
         status = posix_spawn_file_actions_addopen(actions, 1, stdout_path, i32(WriteNew), 384);
     }
     if status == 0 {
@@ -781,7 +783,7 @@ pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: str
         destroyed := posix_spawn_file_actions_destroy(actions);
         return -1;
     }
-    process := Launch(command, actions, true);
+    process := Launch(command, actions, !attached);
     if process > 0 {
         // A dead ancestor may have left an automatic Piped report under a
         // reused PID. This process owns caller paths, never that report.
@@ -842,6 +844,12 @@ pub Kill :: (process: int) -> int {
         return 127;
     }
     status := kill(i32(0 - process), 9);
+    if status != 0 {
+        // An attached child belongs to its parent's cancellation group.
+        // Killing its handle still stops/reaps that child; the parent group
+        // owns cancellation of any descendants it started.
+        status = kill(i32(process), 9);
+    }
     return WaitFor(process, -1);
 }
 

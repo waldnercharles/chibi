@@ -2108,7 +2108,9 @@ ArrayLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: i
     if (operand.value == facts.ArrayText) {
         return Op(native.ArrayText, type, slot, stack[base], 0, 0);
     }
-    return Op(native.ArrayCopy, type, slot, stack[base], 0, 0);
+    // Source copies use value ownership. Their foreign writes carry loans;
+    // explicit native ArrayCopy stays a physical clone for raw ABI callers.
+    return Op(native.ValueCopy, type, slot, stack[base], 0, 0);
 }
 // The native instruction for a map operator other than its literal.
 MapLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int) -> native.Instruction {
@@ -3198,7 +3200,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                             item = Op(native.ArrayRemove, type, slot, stack[base], stack[base + 1], 0);
                             fresh = Without(fresh, stack[base]);
                         } else {
-                            body.append(Op(native.ArrayCopy, type, slot, stack[base], 0, 0));
+                            body.append(Op(native.ValueCopy, type, slot, stack[base], 0, 0));
                             slots.append(type);
                             change := native.ArrayPush;
                             if (operand.value == facts.ArrayJoin) {

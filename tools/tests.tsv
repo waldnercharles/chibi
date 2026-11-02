@@ -65,7 +65,7 @@ tool	chibi-test-samples-math	@release@/sdk/chibi	test	test/compiler/samples/math
 tool	chibi-test-samples-native	@release@/sdk/chibi	test	test/compiler/samples/native
 tool	chibi-test-samples-native-arguments	@release@/sdk/chibi	test	test/compiler/samples/native_arguments
 tool	chibi-test-samples-types	@release@/sdk/chibi	test	test/compiler/samples/types
-tool	language-package-compiler-chibi-scalar	@build@/test/language/test_language	--package-compiler-chibi-scalar
+tool	language-package-compiler-chibi-scalar	sh	test/native_aot/scalar_producer/run.sh	@compiler@	@llvm@
 tool	language-scalar-native	@build@/test/language/test_language	--package-compiler-chibi-native
 tool	language-native-census	@build@/test/language/test_language	--native-census
 tool	language-native-census-flattening	@build@/test/language/test_language	--native-census-flattening

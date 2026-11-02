@@ -276,9 +276,11 @@ pub MapLiveAt: int : 70;
 // field's type; type is that reference type. The field is a scalar or array,
 // and the reference lives as long as the local does.
 pub FieldAddress: int : 71;
-// An independent owned value in output: a scalar/string aggregate or an
+// An independent owned value in output: a managed aggregate or an
 // array of counted elements. Owned array backing can be shared until mutation;
-// a null-owner array imports its caller-owned storage.
+// a null-owner array imports its caller-owned storage. Use ArrayLoan before
+// exposing shared backing to a mutable foreign call; raw ForeignCall does not
+// supply uniqueness or write a replaced descriptor back to its source.
 pub ValueCopy: int : 72;
 // Releases one owned value from the left slot; it gives no value.
 pub ValueDrop: int : 73;

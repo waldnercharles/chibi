@@ -5,3 +5,6 @@ PASS facts.NamedOptionalResult
 PASS facts.NarrowedArgument
 PASS facts.OptionalCallAndLocal
 PASS facts.OptionalParameter
+PASS unions.GuardedMatches
+PASS unions.GuardedNamedMember
+PASS unions.ManagedPayloadBeforeLaterMutation

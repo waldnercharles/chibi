@@ -65,6 +65,8 @@ static const char *const environment_names[] = {
     "DEVELOPER_DIR",
     "CHIBI_BUILD_WORKER",
     "CHIBI_BUILD_TIMINGS",
+    /* Opt-in case wall times for test drivers launched by the build runner. */
+    "CHIBI_TEST_TIMINGS",
     /* Nested build hosts reuse the recovered compilers the caller keeps, by
      * default under $XDG_CACHE_HOME or ~/.cache. */
     "CHIBI_COMPILER_CACHE",

@@ -286,6 +286,23 @@ pub RefRow: int : 39;
 // is 0 and `type` is the word. The function's parameters and result are
 // numbers or bools and none of its parameters is a reference.
 pub FunctionAddressRow: int : 40;
+// Tasks. A function that holds a Yield, an Await, or a Call whose `literal` is
+// CallAwaited is a coroutine. A Call row's `literal` is CallPlain (0) for an
+// ordinary call, CallAwaited (1) for `await F(...)` of a waiting function F, run
+// inline and giving F's result, and CallSpawned (2) for `F(...)` of a waiting
+// function not awaited: F runs to its first suspension and the call gives its
+// task's handle, a word (`type` is WordType). A Yield is an operand row without
+// operands that gives int 0 and gives up the turn to resume on the next update.
+// An Await consumes the most recent operand, a task handle, and waits until the
+// task has finished or been cancelled, giving int 0: the task's result, `T |
+// Cancelled`, is not modelled yet. A Cancel consumes a task handle and cancels
+// the task, giving int 0.
+pub YieldRow: int : 41;
+pub AwaitRow: int : 42;
+pub CancelRow: int : 43;
+pub CallPlain: int : 0;
+pub CallAwaited: int : 1;
+pub CallSpawned: int : 2;
 // What a RefRow of `type` pushes on a call's operand stack, and so what a
 // reference parameter of `type` takes: ReferenceType plus the type. A
 // parameter row whose literal is 1 is a reference parameter. Its variable is

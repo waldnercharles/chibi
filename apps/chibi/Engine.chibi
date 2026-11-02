@@ -1,9 +1,9 @@
 package chibi_cli
 
 // `chibi build` inside an engine checkout builds the engine through the
-// authored build driver, tools/toolchain/Driver.chibi, run by the private
-// build host. A checkout is the nearest ancestor holding that driver; a game
-// project nearer than it keeps `chibi build` for the game.
+// authored build driver, tools/toolchain/Driver.chibi, through the verified
+// native bootstrap entry. A checkout is the nearest ancestor holding that
+// driver; a game project nearer than it keeps `chibi build` for the game.
 
 EngineRoot :: () -> string {
     directory := files.resolve(".")
@@ -16,25 +16,12 @@ EngineRoot :: () -> string {
     return ""
 }
 
-BuildHost :: () -> string {
-    suffix := sdk.executable_suffix()
-    sibling := Join([application.bin(), "/chibi-build-host", suffix])
-    if files.kind(sibling) != 0 {
-        return sibling
-    }
-    return Join([application.bin(), "/../libexec/chibi/chibi-build-host", suffix])
-}
-
 EngineBuild :: (root: string, arguments: string[]) -> int {
-    host := BuildHost()
-    if files.kind(host) == 0 {
-        Error("build: cannot find chibi-build-host beside chibi")
+    script := Join([root, "/tools/build.sh"])
+    if files.kind(script) == 0 {
+        Error("build: cannot find tools/build.sh in the engine checkout")
         return 1
     }
-    command := [
-        host, "--compiler", Join([root, "/tools/compiler"]), "--compiler-core", Join([root, "/packages/core"]),
-        "--root", root, "--source", Join([root, "/tools/toolchain/Driver.chibi"]),
-        "--core", Join([root, "/packages/core"]), "--entry", "Main", "--timeout-ms", "86400000", "--", "build"
-    ]
+    command := ["sh", script, "build"]
     return process.run(Concat(command, arguments))
 }

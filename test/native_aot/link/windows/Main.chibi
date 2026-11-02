@@ -1,0 +1,116 @@
+package windows_objects
+
+import host "project:native_link_host"
+import os "core:os"
+import strings "core:strings"
+
+// The Windows native compiler must run the real opt and llc commands, not the
+// still-unsupported asynchronous core:os calls. Invoke with LLVM_BIN WORK_DIR.
+Main :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 2, "LLVM directory and work directory");
+    llvm := arguments[0];
+    work := arguments[1];
+    Files(llvm, work);
+    module := strings.Concatenate([work, "/sample.ll"]);
+    object := strings.Concatenate([work, "/sample.o"]);
+    bitcode := strings.Concatenate([object, ".bc"]);
+    text := "target triple = \"x86_64-pc-windows-msvc\"\ndefine i32 @answer() { ret i32 71 }\n";
+    written := os.WriteText(module, text);
+    assert(written == nil, "write a real LLVM module");
+    failure := host.Objects(llvm, [module], [object], 2, 4);
+    assert(failure == nil, "opt and llc succeed");
+    emitted := os.ReadBytes(object);
+    assert(emitted.error == nil && length(emitted.data) > 0, "a nonempty object");
+    assert(!os.Exists(bitcode), "the intermediate bitcode is removed");
+    removed := os.Remove(object);
+    assert(removed == nil, "remove object");
+    written = os.WriteText(module, "not LLVM IR\n");
+    assert(written == nil, "write rejected LLVM input");
+    failure = host.Objects(llvm, [module], [object], 2, 4);
+    assert(failure != nil, "invalid LLVM fails");
+    assert(!os.Exists(object) && !os.Exists(bitcode), "no output or bitcode on rejection");
+    text = "target triple = \"x86_64-pc-windows-msvc\"\ndefine i32 @answer() {\n  call void asm sideeffect \"chibi_invalid_instruction\", \"\"()\n  ret i32 71\n}\n";
+    written = os.WriteText(module, text);
+    assert(written == nil, "write valid IR with invalid target assembly");
+    failure = host.Objects(llvm, [module], [object], 2, 4);
+    assert(failure != nil, "llc failure is not success");
+    assert(!os.Exists(bitcode), "failed code generation still removes bitcode");
+    failure = host.Objects(strings.Concatenate([work, "/missing-llvm"]), [module], [object], 2, 4);
+    assert(failure != nil, "missing tools fail");
+    removed = os.Remove(module);
+    assert(removed == nil, "remove module");
+    os.Print("PASS native object pipeline");
+    return 0;
+}
+
+// The native cache uses exclusive directory reservation/publication, canonical
+// paths and metadata stamps. Exercise their Windows implementations on disk.
+Files :: (llvm: string, work: string) {
+    folder := strings.Concatenate([work, "/os cache-ü"]);
+    nested := strings.Concatenate([folder, "/parents/child"]);
+    made := os.MakeDirectory(nested);
+    assert(made == nil && os.IsDirectory(nested), "parent directories are made");
+    made = os.MakeDirectory(nested);
+    assert(made == nil, "existing directories succeed");
+    removed := os.Remove(strings.Concatenate([folder, "/missing"]));
+    assert(removed == nil, "removing a missing path succeeds");
+    file := strings.Concatenate([folder, "/source.txt"]);
+    data: u8[] = [0, 255, 128, 10, 13, 65, 0];
+    written := os.WriteBytes(file, data);
+    assert(written == nil, "write binary file");
+    before := os.Stamp(file);
+    fields := strings.Split(before, ":");
+    assert(length(fields) == 6 && fields[2] == "7", "stamp identifies file and size");
+    read := os.ReadBytes(file);
+    hashed := os.HashFile(file);
+    assert(read.error == nil && length(read.data) == 7 && read.data[1] == 255 && read.data[6] == 0, "bytes round trip");
+    assert(hashed.error == nil && os.Stamp(file) == before, "reads and hashing keep a stable stamp");
+    assert(os.Stamp(strings.Concatenate([folder, "/missing"])) == "", "a missing path has no stamp");
+    copied := strings.Concatenate([folder, "/copied.txt"]);
+    written = os.WriteText(copied, "previous output");
+    assert(written == nil, "write previous output");
+    failure := os.Copy(file, copied);
+    assert(failure == nil && os.HashFile(copied).digest == hashed.digest, "copy replaces a complete file");
+    failure = os.Copy(strings.Concatenate([folder, "/missing"]), copied);
+    assert(failure != nil && os.HashFile(copied).digest == hashed.digest, "failed copy preserves prior output");
+    written = os.WriteText(file, "changed");
+    assert(written == nil && os.Stamp(file) != before, "a write changes the stamp");
+    root := os.Root();
+    canonical := os.RealPath(file);
+    assert(root != "" && os.IsDirectory(root) && os.RealPath(root) == os.RealPath("."), "root is the current directory");
+    assert(canonical != "" && canonical == os.RealPath(strings.Concatenate([folder, "/parents/../source.txt"])), "canonical paths resolve parent components");
+    assert(os.RealPath(strings.Concatenate([folder, "/missing"])) == "", "a missing path is not canonical");
+    slot := strings.Concatenate([folder, "/slot"]);
+    made = os.Reserve(slot);
+    assert(made == nil, "reserve a new directory");
+    made = os.Reserve(slot);
+    assert(made != nil, "reserve refuses an existing directory");
+    made = os.Reserve(file);
+    assert(made != nil, "reserve refuses an existing file");
+    empty := strings.Concatenate([folder, "/empty"]);
+    made = os.Reserve(empty);
+    assert(made == nil, "reserve an empty destination");
+    failure = os.Publish(slot, empty);
+    assert(failure != nil && os.IsDirectory(slot) && os.IsDirectory(empty), "publish preserves an occupied empty directory");
+    failure = os.Publish(slot, file);
+    assert(failure != nil && os.IsDirectory(slot) && os.ReadText(file).text == "changed", "publish preserves an occupied file");
+    published := strings.Concatenate([folder, "/published"]);
+    failure = os.Publish(slot, published);
+    assert(failure == nil && !os.Exists(slot) && os.IsDirectory(published), "publish moves to a vacant name");
+    executable := strings.Concatenate([llvm, "/llc.exe"]);
+    assert(os.FindExecutable(executable) == executable, "explicit executable path");
+    assert(os.FindExecutable(strings.TrimSuffix(executable, ".exe")) == executable, "Windows executable suffix");
+    assert(os.FindExecutable("cmd") != "" && os.FindExecutable("chibi-missing-program") == "", "PATH executable discovery");
+    junction := strings.Concatenate([folder, "/junction"]);
+    linked := os.Capture(["cmd.exe", "/d", "/c", "mklink", "/J", junction, strings.Concatenate([folder, "/parents"])]);
+    assert(linked.status == 0 && os.Kind(junction) == os.KindLink, "create a directory junction");
+    assert(os.RealPath(junction) == os.RealPath(strings.Concatenate([folder, "/parents"])), "canonical paths resolve junctions");
+    removed = os.Remove(junction);
+    assert(removed == nil && os.IsDirectory(nested), "removing a junction keeps its target");
+    for path in [file, copied, empty, published, nested, strings.Concatenate([folder, "/parents"]), folder] {
+        removed = os.Remove(path);
+        assert(removed == nil, "filesystem test cleanup");
+    }
+    os.Print("PASS native Windows cache filesystem");
+}

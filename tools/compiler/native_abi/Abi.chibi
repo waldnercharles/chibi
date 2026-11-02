@@ -130,14 +130,18 @@ pub ExportAbi: int : 5;
 // EXECUTION_NATIVE_MAX_PARAMETERS. A function with more stays callable only
 // inside its library.
 pub ExportParameters: int : 8;
+// The storages the export types 1 to 11 stand for, in order.
+pub ExportOrder :: () -> int[] {
+    return [IntStorage, BoolStorage, Int8Storage, ByteStorage, Int16Storage, Uint16Storage, UintStorage,
+            Int64Storage, WordStorage, FloatStorage, DoubleStorage];
+}
 // The type a manifest records for a parameter or result of this storage,
 // execution_native_type in src/execution/native.h, or 0 when no word carries
 // it. A word holds an integer sign- or zero-extended from its width, a bool as
 // 0 or 1, and a float or double as its encoding's bits, a float's
 // zero-extended.
 pub ExportType :: (storage: int) -> int {
-    order: int[] = [IntStorage, BoolStorage, Int8Storage, ByteStorage, Int16Storage, Uint16Storage, UintStorage,
-                    Int64Storage, WordStorage, FloatStorage, DoubleStorage];
+    order := ExportOrder();
     for (index in 0..<length(order)) {
         if (order[index] == storage) {
             return index + 1;

@@ -41,6 +41,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Install the native LLVM tools
+        shell: bash
+        run: sh .github/native-llvm.sh
       - name: Fetch the pinned bootstrap seed
         shell: bash
         env:
@@ -65,9 +68,7 @@ jobs:
             if ($LASTEXITCODE) { throw 'Activating the Visual Studio C tools failed' }
             'C:\Program Files\LLVM\bin' >> $env:GITHUB_PATH
           } elseif ($IsMacOS) {
-            brew install llvm
-            if ($LASTEXITCODE) { throw 'Installing LLVM for the native runtime failed' }
-            $llvm = & brew --prefix llvm
+            $llvm = & brew --prefix llvm@22
             "$llvm/bin" >> $env:GITHUB_PATH
             "LLVM=$llvm" >> $env:GITHUB_ENV
           } else {

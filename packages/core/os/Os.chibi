@@ -292,6 +292,16 @@ when target.Native == 1 {
         return nil;
     }
 
+    // Reserves one private directory below an existing parent, on its
+    // filesystem so Publish can rename it atomically. The caller removes it.
+    pub TemporaryDirectory :: (parent: string) -> (path: string, error: Error?) {
+        canonical := RealPath(parent);
+        if (parent == "" || canonical == "") { return ("", Failure(NotFound)); }
+        path := sys.TemporaryDirectory(canonical);
+        if (path == "") { return ("", Failure(Failed)); }
+        return (path, nil);
+    }
+
     // Renames a prepared directory to a destination that does not exist. Any
     // existing destination fails; nothing is replaced.
     pub Publish :: (source: string, destination: string) -> Error? {
@@ -458,6 +468,15 @@ pub Reserve :: (path: string) -> Error? {
         return Failure(Failed);
     }
     return nil;
+}
+
+// Same contract as the native capability; the ordinary host only reserves it.
+pub TemporaryDirectory :: (parent: string) -> (path: string, error: Error?) {
+    canonical := RealPath(parent);
+    if (parent == "" || canonical == "") { return ("", Failure(NotFound)); }
+    path := build.temporary_directory(canonical);
+    if (path == "") { return ("", Failure(Failed)); }
+    return (path, nil);
 }
 
 // Atomically renames a prepared directory to a destination that does not

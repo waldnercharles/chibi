@@ -16,6 +16,9 @@ bool build_io_mkdir(const char *root, const char *path);
  * including a link, fails. Publish atomically renames a prepared directory and
  * refuses every existing destination. No fallback replaces a destination. */
 bool build_io_reserve_directory(const char *root, const char *path);
+/* Reserves a private directory on parent's filesystem; caller owns the string
+ * and directory. NULL on failure. Kept only for ordinary-host API parity. */
+char *build_io_temporary_directory(const char *root, const char *parent);
 bool build_io_publish_directory(const char *root, const char *source, const char *destination);
 
 /* Read at most 64 MiB of regular-file bytes. A missing file returns an owned

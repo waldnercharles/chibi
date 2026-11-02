@@ -14,6 +14,11 @@ import strings "core:strings"
 // with any start module.
 
 foreign import kernel32 "system:kernel32"
+foreign import bcrypt "system:bcrypt"
+
+foreign bcrypt {
+    BCryptGenRandom :: (algorithm: rawptr, buffer: u8[], size: u32, flags: u32) -> i32
+}
 
 foreign kernel32 {
     MultiByteToWideChar :: (page: u32, flags: u32, text: cstring, length: i32, wide: u16[], size: i32) -> i32
@@ -100,6 +105,7 @@ NewProcessGroup: u32 : 512;
 KilledExit: u32 : 4294967287; // The DWORD representation of exit status -9.
 WaitTimeout: u32 : 258;
 MaxPathUnits: int : 260;
+SystemPreferredRng: u32 : 2;
 
 // A zeroed block for a structure the program only passes along.
 Block :: (size: int) -> u8[] {
@@ -769,6 +775,26 @@ pub Copy :: (source: string, destination: string) -> bool {
     removed := Remove(temporary);
     closed := Remove(work);
     return copied && removed && closed;
+}
+
+// A 128-bit system nonce avoids a shared counter or a tempfile-to-directory
+// conversion window. Exclusive creation never replaces somebody else's path.
+pub TemporaryDirectory :: (parent: string) -> string {
+    random := Block(16);
+    if BCryptGenRandom(0, random, 16, SystemPreferredRng) != 0 {
+        return "";
+    }
+    hexadecimal := "0123456789abcdef";
+    name := Block(32);
+    for index in 0..<16 {
+        name[2 * index] = u8(text_byte_at(hexadecimal, int(random[index] >> 4)));
+        name[2 * index + 1] = u8(text_byte_at(hexadecimal, int(random[index] & 15)));
+    }
+    path := strings.Concatenate([parent, "/work-", text_from_bytes(name)]);
+    if !Reserve(path) {
+        return "";
+    }
+    return path;
 }
 
 // CreateDirectoryW refuses every existing path, unlike MakeDirectory.

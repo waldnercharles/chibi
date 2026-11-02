@@ -1,0 +1,11 @@
+package scalar_math_shadow
+sin_precise :: () -> int { return 1; }
+cos_precise :: () -> int { return 2; }
+exp :: () -> int { return 3; }
+round :: () -> int { return 4; }
+pow :: () -> int { return 5; }
+sqrt :: () -> int { return 6; }
+Main :: () -> int {
+    assert(sin_precise() + cos_precise() + exp() + round() + pow() + sqrt() == 21);
+    return 0;
+}

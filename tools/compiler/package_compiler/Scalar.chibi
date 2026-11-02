@@ -940,9 +940,6 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (ScalarMathCall(forest, text, node)) {
             return ScalarMathStorage(forest, text, callables, params, callable, names, types, members, constants, node);
         }
-        if (ScalarSquareRoot(forest, text, node)) {
-            return FloatStorage;
-        }
         if (ScalarLengthOf(forest, text, callables, params, names, types, members, callable.package, node) >= 0) {
             return IntStorage;
         }
@@ -1285,13 +1282,6 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (callee < 0 && ScalarMathCall(forest, text, node)) {
         return ScalarMathOperands(forest, text, callables, params, callable, names, types, members, constants, node, output);
     }
-    if (callee < 0 && ScalarSquareRoot(forest, text, node)) {
-        // EmitBody has checked the built-in's positional f32 argument.
-        argument := FirstMember(forest, Field(forest, node, syntax.FieldArguments));
-        row := ScalarAt(forest, node, facts.UnaryRow, facts.FloatType, facts.SquareRoot, 1, "");
-        return ScalarSides(forest, text, callables, params, callable, names, types, members, constants,
-                           node, [argument], [FloatStorage], FloatStorage, row, output);
-    }
     if (callee < 0 && ScalarCharacter(forest, text, node)) {
         // EmitBody rejects invalid constants, non-integer dynamic inputs and
         // named arguments. Keep the original width until the scalar check.
@@ -1484,10 +1474,7 @@ ScalarReferenceArgument :: (forest: snapshot.SnapshotNode[], text: string, calla
 }
 // Called only after authored functions, foreign calls and procedure values
 // have been resolved, so their names can shadow the built-in.
-ScalarSquareRoot :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    callee := Field(forest, node, syntax.FieldFunction);
-    return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "sqrt";
-}
+
 ScalarCharacter :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     callee := Field(forest, node, syntax.FieldFunction);
     return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "char";
@@ -3261,7 +3248,7 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], lent: bool) -
 NativePrintEffect: int : 8;
 // The text, output, array and scalar math natives this producer lowers.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
-    return NativeNameMatches(native, "fmod") || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
+    return ScalarMathNative(native) || NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
            NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text") ||
            NativeNameMatches(native, "print_string") ||
            NativeNameMatches(native, "length") || NativeNameMatches(native, "append") ||

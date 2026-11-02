@@ -271,8 +271,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         return 0;
     }
     // The `; chibi-library` and `; chibi-import` lines, which any piece may
-    // hold: a vendored archive links after the objects, and only a Windows
-    // program takes system libraries by name.
+    // hold: vendored archives link after the objects; declared system imports
+    // supply Linux library names or Windows/macOS symbol stubs.
     markers: string[] = [];
     for (piece in pieces) {
         markers.extend(Markers(piece));
@@ -293,7 +293,8 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
         }
         path := strings.TrimPrefix(line, "; chibi-library ");
         if (strings.HasPrefix(path, "system:")) {
-            if (path != "system:c" && !windows) {
+            supported_math := (linux && path == "system:m") || (!linux && !windows && path == "system:System");
+            if (path != "system:c" && !windows && !supported_math) {
                 os.Print(strings.Concatenate(["native: system library ", path,
                                               " links on Windows only; link a prebuilt archive instead"]));
                 return 2;

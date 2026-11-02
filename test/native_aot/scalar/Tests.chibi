@@ -315,7 +315,42 @@ ScalarReversedRemainderChecksFloatingOperands :: () {
     assert(scalar.Validate(rows) == "scalar arithmetic differs from its number operands");
 }
 
+// A direct two-argument foreign call evaluates source operands first, then
+// permutes their slots. Unknown flags and indirect/unary modes cannot use it.
+ScalarForeignArgumentOrderIsBounded :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    call := TaskFact(facts.ForeignRow, facts.DoubleType, 0, 2, "pow", 5, 6);
+    call.text = "system:m";
+    call.literal = i64(facts.ForeignReversed);
+    rows := [original[0], original[1],
+             TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+             TaskFact(facts.LocalRow, facts.DoubleType, 0, 3, "value", 2, 10),
+             TaskFact(facts.LiteralRow, facts.DoubleType, 0, 0, "", 3, 4),
+             TaskFact(facts.LiteralRow, facts.DoubleType, 0, 0, "", 4, 5), call,
+             TaskFact(facts.ReturnRow, 0, 0, 1, "", 11, 13),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 12, 13)];
+    assert(scalar.Validate(rows) == "");
+    expected := "scalar foreign call differs from its operands";
+    assert(scalar.Validate(Changed(rows, 6, LiteralValue, -1)) == expected);
+    assert(scalar.Validate(Changed(rows, 6, LiteralValue, facts.ForeignReversed + 1)) == expected);
+    assert(scalar.Validate(Changed(rows, 6, Count, 1)) == expected);
+    assert(scalar.Validate(Changed(rows, 6, Count, 0)) == expected);
+    indirect := Renamed(Changed(Changed(rows, 4, Type, facts.WordType), 6, Value, 1), 6, "", "");
+    assert(scalar.Validate(indirect) == expected);
+    assert(scalar.Validate(Changed(indirect, 6, LiteralValue, 0)) == "");
+    assert(strings.Contains(Emitted(rows), "; chibi-import system:m pow"));
+    switch scalar.EmitFor(abi.MacOSArm64(), rows) {
+        case .Emitted(text): assert(strings.Contains(text, "; chibi-import system:System _pow"));
+        case: assert(false);
+    }
+    switch scalar.EmitFor(abi.WindowsX64(), rows) {
+        case .Emitted(text): assert(strings.Contains(text, "; chibi-import system:ucrtbase pow"));
+        case: assert(false);
+    }
+}
+
 pub Tests :: () -> int {
+    ScalarForeignArgumentOrderIsBounded();
     ScalarReversedRemainderChecksFloatingOperands();
     ScalarPlainCallsCannotUseWaitingFunctions();
     ScalarAwaitedCallsMustNameWaitingFunctions();

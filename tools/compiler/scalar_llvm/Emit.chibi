@@ -1439,7 +1439,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
                 (ranged && !arrayed && (row.type != facts.IntType || row.literal < 0 ||
                                         row.literal > i64(facts.RangeExclusive + facts.RangeReverse))) ||
                 (arrayed && (row.type >= facts.ArrayType || !Valued(records, facts.ArrayType + row.type))) ||
-                (retained && (!is_library || row.count != 1 || rows[at + 1].kind != facts.LiteralRow ||
+                (retained && (row.count != 1 || rows[at + 1].kind != facts.LiteralRow ||
                               (facts.Bits(row.type) == 0 && row.type != facts.BoolType && !facts.Floating(row.type)))) ||
                 (subject && (UnionHead(rows, records, row.type) < 0 || at + row.count + 1 >= last ||
                              rows[at + row.count + 1].kind != facts.SwitchRow ||

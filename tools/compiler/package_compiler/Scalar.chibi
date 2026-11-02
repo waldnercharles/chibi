@@ -2017,6 +2017,11 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], statement: int,
                   mutated: string[], stored: string[]) -> ScalarPlan {
     value := Field(forest, statement, syntax.FieldValue);
+    if (Is(forest, value, syntax.AwaitExpression) &&
+        !Is(forest, Unparenthesized(forest, Field(forest, value, syntax.FieldValue)), syntax.CallExpression)) {
+        return ScalarPlan.Failed(Diagnose(forest, value, 0,
+                                          "scalar proof awaits a call of a waiting function, or a task as a statement"));
+    }
     if (Is(forest, statement, syntax.ReturnStatement)) {
         returned := ScalarReturned(forest, statement);
         if (returned.message != "") {
@@ -2893,6 +2898,10 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
         if (host.intrinsic == 0 && host.linked >= 0) {
             continue;
         }
+        // The facts below lower these commands to native coroutine operations.
+        if (host.command == YieldCommand || host.command == JoinCommand || host.command == CancelCommand) {
+            continue;
+        }
         intrinsic := host.intrinsic;
         if (intrinsic >= InResult) {
             intrinsic -= InResult;
@@ -2908,7 +2917,8 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
     for (root in roots) {
         records := (root.storage == StructStorage || root.storage == UnionStorage) && root.container == 0;
         arrays := root.container == ArrayContainer && ScalarArrayElement(root.storage);
-        if (!records && !arrays) {
+        tasks := root.storage == TaskStorage && root.container == 0;
+        if (!records && !arrays && !tasks) {
             return false;
         }
     }
@@ -2975,13 +2985,21 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                             "scalar proof requires a callable body");
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
+            for (host in hosts) {
+                if (host.command == CancelAfterCommand) {
+                    return Diagnose(forest, host.syntax_node, 0, "scalar proof does not support cancel after yet");
+                }
+            }
             // A retained local reads and writes its state, which the facts carry.
             // A write through a scoped parameter the module passes by reference
             // changes the caller's variable, which the facts carry.
             permitted: int = 0;
+            if (callables[function].waits) {
+                permitted = SuspendEffect;
+            }
             for (param in params) {
                 if (param.reference && param.written) {
-                    permitted = WriteEffect;
+                    permitted |= WriteEffect;
                 }
             }
             why := "";

@@ -227,14 +227,14 @@ pub TextRelease: int : 59;
 // A waiting function is a coroutine: its body holds a Suspend, an AwaitHandle or an
 // awaited Call. Suspend gives up the function's turn; it resumes at the next
 // instruction on the scheduler's next update (`yield`).
-pub Suspend: int : 60;
+pub Suspend: int : 80;
 // Waits for the task whose handle (a word) is `left` to finish or be cancelled. It
 // gives nothing: the task's result, `T | Cancelled`, needs a union the native
 // lane does not have for it yet.
-pub AwaitHandle: int : 61;
+pub AwaitHandle: int : 81;
 // Cancels the task whose handle (a word) is `left`: its coroutine is destroyed.
-pub Cancel: int : 62;
-pub InstructionCount: int : 63;
+pub Cancel: int : 82;
+pub InstructionCount: int : 83;
 // A Call's `literal`: an ordinary call, an awaited call (the callee is a waiting
 // function, run inline in the waiting caller, giving its result), or a spawn (the
 // callee is a waiting function, started as a task of its own, giving its handle, a
@@ -800,11 +800,17 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         return Result.Rejected(-1, "unsupported native scalar signature or table size");
     }
     for (type in parameters) {
+        if (waiting[function] && abi.ScalarType(type) == "") {
+            return Result.Rejected(-1, "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
+        }
         if (!Held(records, type) || (exported && abi.ScalarType(type) == "")) {
             return Result.Rejected(-1, "unsupported native scalar parameter");
         }
     }
     for (type in slots) {
+        if (waiting[function] && abi.ScalarType(type) == "") {
+            return Result.Rejected(-1, "native waiting frames cannot own managed values or pointers yet");
+        }
         if (!Held(records, type)) {
             return Result.Rejected(-1, "native scalar slot cannot hold a managed value or pointer");
         }
@@ -822,7 +828,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op >= InstructionCount) {
+        if (item.op < Constant || item.op >= InstructionCount || (item.op > TextRelease && item.op < Suspend)) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -2083,8 +2089,7 @@ FailInstruction :: (function: int, pc: int) -> string {
 FailureSymbol :: (function: int, pc: int) -> string {
     return format_text("chibi_scalar.failure.{}.{}", function, pc);
 }
-// The coroutine intrinsics of LLVM 22 and later. LLVM 18 to 21 declare coro.end
-// with an i1 result; the driver rewrites it for them (see CoroutineEndRewrite).
+// The coroutine intrinsics require LLVM 22 or later.
 CoroutineDeclarations :: () -> string {
     return strings.Join(["declare token @llvm.coro.id(i32, ptr, ptr, ptr)\n",
                          "declare i1 @llvm.coro.alloc(token)\n",
@@ -2098,86 +2103,19 @@ CoroutineDeclarations :: () -> string {
                          "declare i1 @llvm.coro.done(ptr)\n",
                          "declare ptr @llvm.coro.promise(ptr, i32, i1)\n"], "");
 }
-// The tasks of a program: a table of the coroutines started, in start order.
-// A handle is a task's index plus one, so 0 is none. `update` resumes each task
-// that is neither finished, cancelled nor waiting for an unfinished task, once,
-// in start order; tasks started during an update wait for the next. A task that
-// waits for another records it in `wake`, which the scheduler moves from
-// `pending` to the task's row after the task's turn (or its start) returns. A
-// cancelled task's frame is destroyed. One row is {frame, awaited handle, state:
-// 0 running, 1 cancelled}. This is the prototype's scheduler, in IR so that a
-// native program needs no C; D12 moves it to Chibi (core:tasks).
-TaskCapacity: int : 256;
-TaskScheduler :: () -> string {
-    table := format_text("[{} x %chibi.task]", TaskCapacity);
-    out := "%chibi.task = type { ptr, i64, i32 }\n";
-    out = format_text("{}@chibi_tasks.table = internal global {} zeroinitializer\n", out, table);
-    out = format_text("{}@chibi_tasks.count = internal global i32 0\n@chibi_tasks.pending = internal global i64 0\n\n", out);
-    // The row of a handle, or a trap.
-    out = format_text("{}define internal ptr @chibi_tasks.row(i64 %handle) #0 {{\nentry:\n", out);
-    out = format_text("{}  %index = sub i64 %handle, 1\n  %valid = icmp ult i64 %index, {}\n", out, TaskCapacity);
-    out = format_text("{}  br i1 %valid, label %fine, label %bad\nfine:\n", out);
-    out = format_text("{}  %row = getelementptr inbounds {}, ptr @chibi_tasks.table, i64 0, i64 %index\n  ret ptr %row\n", out, table);
-    out = format_text("{}bad:\n  call void @llvm.trap()\n  unreachable\n}}\n\n", out);
-    // add: the frame of a task that has run to its first suspension.
-    out = format_text("{}define internal i64 @chibi_tasks.add(ptr %frame) #0 {{\nentry:\n", out);
-    out = format_text("{}  %count = load i32, ptr @chibi_tasks.count\n  %room = icmp ult i32 %count, {}\n", out, TaskCapacity);
-    out = format_text("{}  br i1 %room, label %fine, label %full\nfull:\n  call void @llvm.trap()\n  unreachable\nfine:\n", out);
-    out = format_text("{}  %next = add i32 %count, 1\n  store i32 %next, ptr @chibi_tasks.count\n", out);
-    out = format_text("{}  %handle = zext i32 %next to i64\n  %row = call ptr @chibi_tasks.row(i64 %handle)\n", out);
-    out = format_text("{}  store ptr %frame, ptr %row\n", out);
-    out = format_text("{}  %wake = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 1\n", out);
-    out = format_text("{}  %pending = load i64, ptr @chibi_tasks.pending\n  store i64 %pending, ptr %wake\n", out);
-    out = format_text("{}  store i64 0, ptr @chibi_tasks.pending\n  ret i64 %handle\n}}\n\n", out);
-    // wait: the running task waits for `awaited`.
-    out = format_text("{}define internal void @chibi_tasks.wait(i64 %awaited) #0 {{\nentry:\n", out);
-    out = format_text("{}  store i64 %awaited, ptr @chibi_tasks.pending\n  ret void\n}}\n\n", out);
-    // frame: the frame of a task that has not been cancelled, or null.
-    out = format_text("{}define internal ptr @chibi_tasks.frame(i64 %handle) #0 {{\nentry:\n", out);
-    out = format_text("{}  %row = call ptr @chibi_tasks.row(i64 %handle)\n", out);
-    out = format_text("{}  %state.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 2\n  %state = load i32, ptr %state.at\n", out);
-    out = format_text("{}  %cancelled = icmp ne i32 %state, 0\n  %frame = load ptr, ptr %row\n", out);
-    out = format_text("{}  %result = select i1 %cancelled, ptr null, ptr %frame\n  ret ptr %result\n}}\n\n", out);
-    // finished: the task is done, or cancelled.
-    out = format_text("{}define internal i1 @chibi_tasks.finished(i64 %handle) #0 {{\nentry:\n", out);
-    out = format_text("{}  %frame = call ptr @chibi_tasks.frame(i64 %handle)\n  %live = icmp ne ptr %frame, null\n", out);
-    out = format_text("{}  br i1 %live, label %check, label %yes\ncheck:\n  %done = call i1 @llvm.coro.done(ptr %frame)\n  ret i1 %done\n", out);
-    out = format_text("{}yes:\n  ret i1 true\n}}\n\n", out);
-    // cancel: destroy the coroutine of a task that is still running.
-    out = format_text("{}define internal void @chibi_tasks.cancel(i64 %handle) #0 {{\nentry:\n", out);
-    out = format_text("{}  %frame = call ptr @chibi_tasks.frame(i64 %handle)\n  %live = icmp ne ptr %frame, null\n", out);
-    out = format_text("{}  br i1 %live, label %check, label %out\ncheck:\n  %done = call i1 @llvm.coro.done(ptr %frame)\n", out);
-    out = format_text("{}  br i1 %done, label %out, label %stop\nstop:\n  call void @llvm.coro.destroy(ptr %frame)\n", out);
-    out = format_text("{}  %row = call ptr @chibi_tasks.row(i64 %handle)\n  %state.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 2\n", out);
-    out = format_text("{}  store i32 1, ptr %state.at\n  br label %out\nout:\n  ret void\n}}\n\n", out);
-    // update: one turn of every task that can take one.
-    out = format_text("{}define internal void @chibi_tasks.update() #0 {{\nentry:\n", out);
-    out = format_text("{}  %count = load i32, ptr @chibi_tasks.count\n  br label %loop\nloop:\n", out);
-    out = format_text("{}  %i = phi i32 [ 0, %entry ], [ %i.next, %next ]\n  %more = icmp ult i32 %i, %count\n", out);
-    out = format_text("{}  br i1 %more, label %body, label %exit\nbody:\n", out);
-    out = format_text("{}  %index = add i32 %i, 1\n  %handle = zext i32 %index to i64\n  %row = call ptr @chibi_tasks.row(i64 %handle)\n", out);
-    out = format_text("{}  %frame = call ptr @chibi_tasks.frame(i64 %handle)\n  %live = icmp ne ptr %frame, null\n", out);
-    out = format_text("{}  br i1 %live, label %alive, label %next\nalive:\n  %done = call i1 @llvm.coro.done(ptr %frame)\n", out);
-    out = format_text("{}  br i1 %done, label %next, label %waiting\nwaiting:\n", out);
-    out = format_text("{}  %wake.at = getelementptr inbounds %chibi.task, ptr %row, i32 0, i32 1\n  %wake = load i64, ptr %wake.at\n", out);
-    out = format_text("{}  %blocked = icmp ne i64 %wake, 0\n  br i1 %blocked, label %check, label %run\ncheck:\n", out);
-    out = format_text("{}  %over = call i1 @chibi_tasks.finished(i64 %wake)\n  br i1 %over, label %run, label %next\nrun:\n", out);
-    out = format_text("{}  store i64 0, ptr %wake.at\n  store i64 0, ptr @chibi_tasks.pending\n  call void @llvm.coro.resume(ptr %frame)\n", out);
-    out = format_text("{}  %pending = load i64, ptr @chibi_tasks.pending\n  store i64 %pending, ptr %wake.at\n", out);
-    out = format_text("{}  store i64 0, ptr @chibi_tasks.pending\n  br label %next\nnext:\n", out);
-    out = format_text("{}  %i.next = add i32 %i, 1\n  br label %loop\nexit:\n  ret void\n}}\n", out);
-    return out;
-}
 // chibi_scalar when the entry waits: it starts the entry as a task and updates the
 // tasks until the entry has finished, then gives its result.
-CoroutineEntryFunction :: (result: int) -> string {
+CoroutineEntryFunction :: (result: int, waiting: bool) -> string {
     type := TypeName(result);
     out := format_text("define {} @chibi_scalar(ptr %ctx) #0 {{\nentry:\n", type);
-    out = format_text("{}  %frame = call ptr @chibi_scalar.ramp(ptr %ctx)\n  %handle = call i64 @chibi_tasks.add(ptr %frame)\n", out);
+    if (!waiting) {
+        return format_text("{}  %result = call {} @chibi_scalar.ramp(ptr %ctx)\n  %cancelled = call i32 @chibi_host_tasks_cancel_all()\n  ret {} %result\n}}\n", out, type, type);
+    }
+    out = format_text("{}  %handle = call i64 @chibi_tasks.begin(ptr %ctx, i1 true)\n  %frame = call ptr @chibi_scalar.ramp(ptr %ctx)\n  call void @chibi_tasks.attach(i64 %handle, ptr %frame)\n  store i64 0, ptr @chibi_tasks.current\n", out);
     out = format_text("{}  br label %loop\nloop:\n  %done = call i1 @llvm.coro.done(ptr %frame)\n", out);
     out = format_text("{}  br i1 %done, label %finished, label %tick\ntick:\n  call void @chibi_tasks.update()\n  br label %loop\n", out);
     out = format_text("{}finished:\n  %promise = call ptr @llvm.coro.promise(ptr %frame, i32 8, i1 false)\n", out);
-    return format_text("{}  %result = load {}, ptr %promise\n  call void @llvm.coro.destroy(ptr %frame)\n  ret {} %result\n}}\n", out, type, type);
+    return format_text("{}  %result = load {}, ptr %promise\n  %cancelled = call i32 @chibi_host_tasks_cancel_all()\n  ret {} %result\n}}\n", out, type, type);
 }
 // A coroutine's start, in the entry block: the promise is the result's slot, the
 // frame comes from the context's allocate and goes back to its release.
@@ -2212,9 +2150,13 @@ SuspendInstruction :: (pc: int) -> string {
                        out, pc, pc + 1);
 }
 // The ramp call of a waiting callee: its frame, as `v{pc}`.
-RampCall :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int, mode: int) -> string {
+RampCall :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int, mode: int,
+             spawned: bool) -> string {
     callee := functions[item.left];
     out := format_text("p{}:\n", pc);
+    if (spawned) {
+        out = format_text("{}  %parent{} = load i64, ptr @chibi_tasks.current\n  %task{} = call i64 @chibi_tasks.begin(ptr %ctx, i1 false)\n", out, pc, pc);
+    }
     listed: string[] = ["ptr %ctx"];
     for (index in 0..<item.target) {
         type := parameters[callee.first_parameter + index];
@@ -2228,7 +2170,7 @@ RampCall :: (functions: Function[], parameters: int[], arguments: int[], item: I
 // the caller destroys F's frame first.
 AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
                            mode: int) -> string {
-    out := RampCall(functions, parameters, arguments, item, pc, mode);
+    out := RampCall(functions, parameters, arguments, item, pc, mode, false);
     out = format_text("{}  br label %p{}.test\np{}.test:\n", out, pc, pc);
     out = format_text("{}  %done{} = call i1 @llvm.coro.done(ptr %v{})\n", out, pc, pc);
     out = format_text("{}  br i1 %done{}, label %p{}.finished, label %p{}.wait\np{}.wait:\n", out, pc, pc, pc, pc);
@@ -2247,8 +2189,8 @@ AwaitedCallInstruction :: (functions: Function[], parameters: int[], arguments: 
 // is added to the scheduler; the task's handle is the result.
 SpawnedCallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
                            mode: int) -> string {
-    out := RampCall(functions, parameters, arguments, item, pc, mode);
-    out = format_text("{}  %task{} = call i64 @chibi_tasks.add(ptr %v{})\n", out, pc, pc);
+    out := RampCall(functions, parameters, arguments, item, pc, mode, true);
+    out = format_text("{}  call void @chibi_tasks.attach(i64 %task{}, ptr %v{})\n  store i64 %parent{}, ptr @chibi_tasks.current\n", out, pc, pc, pc);
     out = format_text("{}{}", out, Store(format_text("%task{}", pc), item.type, "s", item.output));
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
@@ -2700,7 +2642,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         return Result.Rejected(-1, "a native program cannot call the runtime yet");
     }
     // A waiting entry is a coroutine that chibi_scalar runs with the tasks.
-    if (waiting[0] && mode == ScalarEntry) {
+    if (Tasks(code) && mode == ScalarEntry) {
         mode = CoroutineEntry;
     }
     debug := source.file != "";
@@ -2796,8 +2738,8 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         }
         if (Tasks(held)) {
             out.append(format_text("\n{}", TaskScheduler()));
-            if (waiting[0] && mode == CoroutineEntry) {
-                out.append(format_text("\n{}", CoroutineEntryFunction(functions[0].result)));
+            if (mode == CoroutineEntry) {
+                out.append(format_text("\n{}", CoroutineEntryFunction(functions[0].result, waiting[0])));
             }
         }
         callbacks := CallbackAdapters(functions, parameters, held, mode, runtime);

@@ -54,6 +54,7 @@ jobs:
     - uses: actions/checkout@v4
       timeout-minutes: 5
       with:
+        fetch-depth: 2
         persist-credentials: false
     - name: Reuse only an exactly tested merged tree
       id: receipt
@@ -65,34 +66,61 @@ jobs:
       id: ccache-config
       if: steps.receipt.outputs.skip != 'true'
       timeout-minutes: 45
+      env:
+        CHIBI_CI_PROFILE: ${{ steps.receipt.outputs.profile }}
       run: |-
         node .github/ci/budget.js "$CHIBI_CORE_DEADLINE" bash .github/ci/linux-setup.sh
-        node .github/ci/budget.js --reserve 120 "$CHIBI_CORE_DEADLINE"
-    - name: Restore trusted compiler and asset caches
-      id: cache
-      if: steps.receipt.outputs.skip != 'true'
+        case "$CHIBI_CI_PROFILE" in
+          static) ;;
+          native) node .github/ci/budget.js --reserve 120 "$CHIBI_CORE_DEADLINE" ;;
+          full) node .github/ci/budget.js --reserve 360 "$CHIBI_CORE_DEADLINE" ;;
+          *) echo 'Unknown CI profile' >&2; exit 2 ;;
+        esac
+    # Preserve each existing store's path and key: cache versions include paths.
+    - name: Restore compiler objects
+      id: ccache
+      if: steps.receipt.outputs.skip != 'true' && steps.receipt.outputs.profile == 'full'
       uses: actions/cache/restore@v4
       timeout-minutes: 2
       with:
-        path: |-
-          ${{ env.CCACHE_DIR }}
-          .chibi/compiler-cache
-          .chibi/asset-compiler-cache
-        key: ci-v1-${{ steps.ccache-config.outputs.prefix }}-${{ env.BUILD_PROFILE }}-${{ github.sha }}
-        # Profile-specific first; underlying stores verify content/compiler/flags.
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
         restore-keys: |
-          ci-v1-${{ steps.ccache-config.outputs.prefix }}-${{ env.BUILD_PROFILE }}-
-          ci-v1-${{ steps.ccache-config.outputs.prefix }}-
+          ${{ steps.ccache-config.outputs.prefix }}-
+          ${{ steps.ccache-config.outputs.compatibility-prefix }}-
+    - name: Restore the compiled asset compiler
+      id: asset-cache
+      if: steps.receipt.outputs.skip != 'true' && steps.receipt.outputs.profile == 'full'
+      uses: actions/cache/restore@v4
+      timeout-minutes: 2
+      with:
+        path: .chibi/asset-compiler-cache
+        key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+        restore-keys: asset-compiler-v2-${{ runner.os }}-
+    - name: Restore recovered compilers
+      if: steps.receipt.outputs.skip != 'true' && (steps.receipt.outputs.profile == 'native' || steps.receipt.outputs.profile == 'full')
+      uses: actions/cache/restore@v4
+      timeout-minutes: 2
+      with:
+        path: .chibi/compiler-cache
+        key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+        restore-keys: compiler-cache-${{ runner.os }}-
+    - name: Prepare native bootstrap
+      if: steps.receipt.outputs.skip != 'true' && steps.receipt.outputs.profile == 'native'
+      timeout-minutes: 45
+      run: |-
+        node .github/ci/budget.js "$CHIBI_CORE_DEADLINE" bash .github/ci/linux-native.sh
+        node .github/ci/budget.js "$CHIBI_CORE_DEADLINE"
     - name: Core functional tests
       id: core
-      if: steps.receipt.outputs.skip != 'true'
+      if: steps.receipt.outputs.skip != 'true' && steps.receipt.outputs.profile == 'full'
       timeout-minutes: 45
       run: |-
         node .github/ci/budget.js "$CHIBI_CORE_DEADLINE" bash .github/ci/linux-core.sh
         node .github/ci/budget.js "$CHIBI_CORE_DEADLINE"
     - name: Native fixed-point proof
       id: fixedpoint
-      if: steps.receipt.outputs.skip != 'true'
+      if: steps.receipt.outputs.skip != 'true' && (steps.receipt.outputs.profile == 'native' || steps.receipt.outputs.profile == 'full')
       timeout-minutes: 90
       env:
         CHIBI_FULL: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full') }}
@@ -141,16 +169,27 @@ jobs:
       if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
         && inputs.mode == 'full'))
       run: find .chibi/compiler-cache -type f -mtime +3 -delete 2>/dev/null || true
-    - name: Warm trusted Linux caches after Linux full validation
+    - name: Warm trusted compiler objects after Linux full validation
       if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
-        && inputs.mode == 'full')) && steps.cache.outputs.cache-hit != 'true'
+        && inputs.mode == 'full')) && steps.ccache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: |-
-          ${{ env.CCACHE_DIR }}
-          .chibi/compiler-cache
-          .chibi/asset-compiler-cache
-        key: ci-v1-${{ steps.ccache-config.outputs.prefix }}-${{ env.BUILD_PROFILE }}-${{ github.sha }}
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
+    - name: Warm trusted asset compiler after Linux full validation
+      if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
+        && inputs.mode == 'full')) && steps.asset-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: .chibi/asset-compiler-cache
+        key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+    - name: Warm trusted recovered compilers after Linux full validation
+      if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch'
+        && inputs.mode == 'full'))
+      uses: actions/cache/save@v4
+      with:
+        path: .chibi/compiler-cache
+        key: compiler-cache-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
   native-macos:
     name: Engine build and native tests (macOS)
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full')

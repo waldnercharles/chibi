@@ -6,11 +6,19 @@ const os = require('node:os');
 const path = require('node:path');
 const {createHash} = require('node:crypto');
 const {execFileSync} = require('node:child_process');
-const PROFILE = 'ci-pr-v1';
+const policy = require('./ci-policy.js');
+const PROFILE = 'ci-pr-v2';
 const WORKFLOW = '.github/workflows/ci.yml';
 const JOB = 'Engine build and native tests';
 const STEPS = ['Format and static checks', 'Core functional tests',
   'Native fixed-point proof', 'Record tested tree', 'Upload tested tree'];
+function requiredSteps(profile) {
+  requireProof(['static', 'native', 'full'].includes(profile));
+  if (profile === 'full') return STEPS;
+  return ['Format and static checks', ...(profile === 'native' ?
+    ['Prepare native bootstrap', 'Native fixed-point proof'] : []),
+  'Record tested tree', 'Upload tested tree'];
+}
 const SHA = /^[0-9a-f]{40}$/;
 const ZIP_LIMIT = 65536;
 const JSON_LIMIT = 16384;
@@ -33,18 +41,26 @@ function checkout(cwd = process.cwd()) {
   return {sha, tree: trees[0], base: parents[0], head: parents[1]};
 }
 
-function makeReceipt(context, source, attempt) {
+function requirePullRequest(context, source) {
   requireProof(['sha', 'tree', 'base', 'head'].every(key => SHA.test(source[key])));
   const pr = context.payload.pull_request;
   const repository = `${context.repo.owner}/${context.repo.repo}`;
   requireProof(context.eventName === 'pull_request' && pr &&
     context.sha === source.sha && context.ref === `refs/pull/${pr.number}/merge` &&
-    positive(pr.number) && positive(context.runId) && positive(attempt) &&
+    positive(pr.number) &&
     positive(context.payload.repository.id) && positive(pr.head.repo.id) &&
     pr.base.repo.id === context.payload.repository.id &&
     pr.base.repo.full_name === repository && pr.base.ref === 'main' &&
     pr.base.sha === source.base && pr.head.sha === source.head);
-  return {version: 1, profile: PROFILE, repository, repositoryId: pr.base.repo.id,
+}
+
+function makeReceipt(context, source, attempt, selected = 'full') {
+  requirePullRequest(context, source);
+  requireProof(positive(context.runId) && positive(attempt));
+  requiredSteps(selected);
+  const pr = context.payload.pull_request;
+  const repository = `${context.repo.owner}/${context.repo.repo}`;
+  return {version: 2, profile: PROFILE, policy: selected, repository, repositoryId: pr.base.repo.id,
     pullRequest: pr.number, headRepositoryId: pr.head.repo.id,
     runId: context.runId, attempt, ...source};
 }
@@ -58,7 +74,7 @@ function successfulRun(run, expected) {
     run.status === 'completed' && run.conclusion === 'success');
 }
 
-function successfulJobs(result) {
+function successfulJobs(result, selected = 'full') {
   requireProof(Array.isArray(result.jobs) && result.total_count === result.jobs.length &&
     result.jobs.length > 0 && result.jobs.length <= 100);
   // Conditional full-mode jobs can appear as skipped in a PR run.
@@ -66,7 +82,7 @@ function successfulJobs(result) {
   requireProof(active.length === 1 && active[0].name === JOB &&
     active[0].status === 'completed' && active[0].conclusion === 'success' &&
     result.jobs.filter(job => job.name === JOB).length === 1);
-  for (const name of STEPS) {
+  for (const name of requiredSteps(selected)) {
     const steps = active[0].steps.filter(step => step.name === name);
     requireProof(steps.length === 1 && steps[0].status === 'completed' &&
       steps[0].conclusion === 'success');
@@ -77,7 +93,8 @@ function successfulJobs(result) {
 }
 
 function verifyReceipt(receipt, expected, source, run) {
-  requireProof(receipt.version === 1 && receipt.profile === PROFILE &&
+  requireProof(receipt.version === 2 && receipt.profile === PROFILE &&
+    receipt.policy === expected.policy &&
     receipt.repository === expected.repository && receipt.repositoryId === expected.repositoryId &&
     receipt.headRepositoryId === expected.headRepositoryId &&
     receipt.pullRequest === expected.pullRequest && receipt.runId === run.id &&
@@ -134,7 +151,8 @@ function boundedFetch(deadline, archive = false, fetcher = fetch) {
   };
 }
 
-async function findProof(github, context, source) {
+async function findProof(github, context, source, selected = 'full') {
+  requiredSteps(selected);
   const repository = `${context.repo.owner}/${context.repo.repo}`;
   const repositoryId = context.payload.repository.id;
   requireProof(positive(repositoryId) && context.sha === source.sha);
@@ -157,7 +175,7 @@ async function findProof(github, context, source) {
   const workflow = await get('/actions/workflows/ci.yml');
   requireProof(positive(workflow.id) && workflow.path === WORKFLOW);
   const expected = {repository, repositoryId, pullRequest: pr.number,
-    headRepositoryId: pr.head.repo.id, workflowId: workflow.id, head: source.head};
+    headRepositoryId: pr.head.repo.id, workflowId: workflow.id, head: source.head, policy: selected};
   const latest = async () => {
     const listing = await get('/actions/workflows/{workflow_id}/runs', {
       workflow_id: workflow.id, head_sha: source.head, event: 'pull_request', per_page: 100});
@@ -165,13 +183,13 @@ async function findProof(github, context, source) {
       listing.total_count === listing.workflow_runs.length && listing.total_count <= 100);
     return listing.workflow_runs.reduce((a, b) => a.id > b.id ? a : b);
   };
-  const selected = await latest();
-  expected.id = selected.id;
+  const latestRun = await latest();
+  expected.id = latestRun.id;
   requireProof(positive(expected.id));
   const run = await get('/actions/runs/{run_id}', {run_id: expected.id});
   successfulRun(run, expected);
   successfulJobs(await get('/actions/runs/{run_id}/attempts/{attempt_number}/jobs', {
-    run_id: run.id, attempt_number: run.run_attempt, per_page: 100}));
+    run_id: run.id, attempt_number: run.run_attempt, per_page: 100}), selected);
   const artifacts = await get('/actions/runs/{run_id}/artifacts', {run_id: run.id, per_page: 100});
   requireProof(Array.isArray(artifacts.artifacts) &&
     artifacts.total_count === artifacts.artifacts.length && artifacts.total_count <= 100);
@@ -200,9 +218,22 @@ async function findProof(github, context, source) {
 
 async function gate({github, context, core}) {
   core.setOutput('skip', 'false');
+  core.setOutput('profile', 'full');
+  if (context.eventName === 'pull_request') {
+    try {
+      const source = checkout();
+      requirePullRequest(context, source);
+      const selected = policy.fromCheckout(source.base);
+      if (selected !== 'full') core.setOutput('profile', selected);
+    } catch {
+      core.info('Unknown change scope; requiring full Linux core validation.');
+    }
+    return;
+  }
   if (context.eventName !== 'push' || context.ref !== 'refs/heads/main') return;
   try {
-    await findProof(github, context, checkout());
+    const source = checkout();
+    await findProof(github, context, source, policy.fromCheckout(source.base));
     core.setOutput('skip', 'true');
     core.info('Exact merged tree already passed the canonical PR proof.');
   } catch {
@@ -215,7 +246,10 @@ async function record({context, core}) {
   // HEAD identifies the tested source only if no proof left source mutations.
   requireProof(execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'],
     {encoding: 'utf8', timeout: 3000, maxBuffer: 1048576}).trim() === '');
-  const receipt = makeReceipt(context, checkout(), Number(process.env.GITHUB_RUN_ATTEMPT));
+  const source = checkout();
+  // Recompute from Git, not an environment flag or earlier step's output.
+  const receipt = makeReceipt(context, source, Number(process.env.GITHUB_RUN_ATTEMPT),
+    policy.fromCheckout(source.base));
   requireProof(process.env.RUNNER_TEMP);
   const directory = path.join(process.env.RUNNER_TEMP, 'ci-tested-tree');
   fs.mkdirSync(directory, {recursive: true});
@@ -224,4 +258,4 @@ async function record({context, core}) {
 }
 
 module.exports = {gate, record, checkout, makeReceipt, successfulRun, successfulJobs,
-  verifyReceipt, readArchive, boundedFetch, findProof, STEPS};
+  verifyReceipt, readArchive, boundedFetch, findProof, requiredSteps, STEPS};

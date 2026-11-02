@@ -14,7 +14,7 @@ const context = {eventName: 'pull_request', ref: 'refs/pull/17/merge', sha: sour
       base: {sha: source.base, ref: 'main', repo: {id: 1, full_name: 'owner/repo'}},
       head: {sha: source.head, repo: {id: 2}}}}};
 const expected = {id: 42, workflowId: 9, head: source.head, repository: 'owner/repo',
-  repositoryId: 1, headRepositoryId: 2, pullRequest: 17};
+  repositoryId: 1, headRepositoryId: 2, pullRequest: 17, policy: 'full'};
 const run = {id: 42, run_attempt: 3, workflow_id: 9, path: '.github/workflows/ci.yml',
   event: 'pull_request', head_sha: source.head, repository: {id: 1},
   head_repository: {id: 2}, status: 'completed', conclusion: 'success'};
@@ -205,7 +205,7 @@ test('PR, manual, schedule and unknown push never skip or require API access', a
     const output = [], logs = [];
     await receipt.gate({context: candidate, github: {request: async () => {throw new Error('secret');}},
       core: {setOutput: (...args) => output.push(args), info: message => logs.push(message)}});
-    assert.deepEqual(output, [['skip', 'false']]);
+    assert.deepEqual(output, [['skip', 'false'], ['profile', 'full']]);
     assert.ok(logs.every(line => !line.includes('secret')));
   }
 });
@@ -239,7 +239,7 @@ test('public gate reuses a real merge proof; record rejects dirty tested source'
     const output = [];
     await receipt.gate({github, context: {...pushed, sha: actual.sha},
       core: {setOutput: (...args) => output.push(args), info: () => {}}});
-    assert.deepEqual(output, [['skip', 'false'], ['skip', 'true']]);
+    assert.deepEqual(output, [['skip', 'false'], ['profile', 'full'], ['skip', 'true']]);
     process.env.RUNNER_TEMP = runner; process.env.GITHUB_RUN_ATTEMPT = '3';
     const recordedContext = clone(context);
     recordedContext.sha = actual.sha;
@@ -287,4 +287,93 @@ test('ZIP traversal, duplicate names and corrupt data are rejected without extra
   const dataOffset = 30 + corrupt.readUInt16LE(26) + corrupt.readUInt16LE(28);
   corrupt[dataOffset] ^= 1;
   assert.throws(() => receipt.readArchive(corrupt));
+});
+
+test('v2 policy requires the actual successful steps for each closed profile', () => {
+  const names = {
+    static: ['Format and static checks', 'Record tested tree', 'Upload tested tree'],
+    native: ['Format and static checks', 'Prepare native bootstrap', 'Native fixed-point proof',
+      'Record tested tree', 'Upload tested tree'],
+    full: ['Format and static checks', 'Core functional tests', 'Native fixed-point proof',
+      'Record tested tree', 'Upload tested tree'],
+  };
+  for (const [profile, required] of Object.entries(names)) {
+    assert.deepEqual(receipt.requiredSteps(profile), required);
+    const actual = clone(jobs);
+    actual.jobs[0].steps = [...new Set(Object.values(names).flat())].map(name => ({name,
+      status: 'completed', conclusion: required.includes(name) ? 'success' : 'skipped'}));
+    receipt.successfulJobs(actual, profile);
+    for (const name of required) {
+      const changed = clone(actual);
+      changed.jobs[0].steps.find(step => step.name === name).conclusion = 'skipped';
+      assert.throws(() => receipt.successfulJobs(changed, profile), `${profile}: ${name}`);
+    }
+    const marked = receipt.makeReceipt(context, source, 3, profile);
+    receipt.verifyReceipt(marked, {...expected, policy: profile}, source, run);
+    for (const other of Object.keys(names).filter(value => value !== profile))
+      assert.throws(() => receipt.verifyReceipt(marked, {...expected, policy: other}, source, run));
+  }
+  assert.throws(() => receipt.requiredSteps('unknown'));
+  assert.throws(() => receipt.makeReceipt(context, source, 3, 'unknown'));
+  assert.throws(() => receipt.verifyReceipt({...good, version: 1, profile: 'ci-pr-v1'}, expected, source, run));
+});
+
+test('complete API lookup cannot downgrade a native/full diff to a static receipt', async () => {
+  for (const profile of ['static', 'native', 'full']) {
+    const options = apiFixture(state => {
+      state.receipt.policy = profile;
+      state.jobs.jobs[0].steps = receipt.requiredSteps(profile).map(name => ({name,
+        status: 'completed', conclusion: 'success'}));
+    });
+    await receipt.findProof(options.github, pushed, source, profile);
+    for (const expectedPolicy of ['static', 'native', 'full'].filter(value => value !== profile)) {
+      const mismatch = apiFixture(state => {
+        state.receipt.policy = profile;
+        // Even success for every possible step cannot repair a mismatched policy.
+        state.jobs.jobs[0].steps.push({name: 'Prepare native bootstrap',
+          status: 'completed', conclusion: 'success'});
+      });
+      await assert.rejects(() => receipt.findProof(mismatch.github, pushed, source, expectedPolicy));
+    }
+  }
+});
+
+test('real PR merge classification selects static/native/full without an API or trusted env flag', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'chibi-profile-test-'));
+  const previous = process.cwd();
+  const oldProfile = process.env.CHIBI_CI_PROFILE;
+  const git = args => execFileSync('git', args, {cwd: directory, encoding: 'utf8'}).trim();
+  try {
+    git(['init', '-q']); git(['config', 'user.name', 'CI test']);
+    git(['config', 'user.email', 'ci-test@example.invalid']);
+    fs.writeFileSync(path.join(directory, 'README.md'), 'base');
+    git(['add', '.']); git(['commit', '-qm', 'base']);
+    const base = git(['rev-parse', 'HEAD']);
+    for (const [profile, name] of [['static', 'docs/guide.md'],
+      ['native', 'tools/compiler/scalar_llvm/Emit.chibi'], ['full', 'src/host/runtime.c']]) {
+      git(['checkout', '-q', '--detach', base]);
+      fs.mkdirSync(path.dirname(path.join(directory, name)), {recursive: true});
+      fs.writeFileSync(path.join(directory, name), 'changed');
+      git(['add', '.']); git(['commit', '-qm', profile]);
+      const head = git(['rev-parse', 'HEAD']);
+      git(['checkout', '-q', '--detach', base]); git(['merge', '-q', '--no-ff', '-m', 'merge', head]);
+      const actual = receipt.checkout(directory), request = clone(context);
+      request.sha = actual.sha; request.payload.pull_request.base.sha = base;
+      request.payload.pull_request.head.sha = head;
+      process.chdir(directory);
+      process.env.CHIBI_CI_PROFILE = 'static'; // Not authoritative, especially for C changes.
+      const outputs = {};
+      const core = {setOutput: (key, value) => outputs[key] = value, info: () => {}};
+      await receipt.gate({context: request, core, github: {request: () => {throw Error('No API on PR');}}});
+      assert.deepEqual(outputs, {skip: 'false', profile});
+      request.payload.pull_request.head.sha = 'f'.repeat(40);
+      await receipt.gate({context: request, core, github: {}});
+      assert.deepEqual(outputs, {skip: 'false', profile: 'full'});
+    }
+  } finally {
+    if (oldProfile === undefined) delete process.env.CHIBI_CI_PROFILE;
+    else process.env.CHIBI_CI_PROFILE = oldProfile;
+    process.chdir(previous);
+    fs.rmSync(directory, {recursive: true, force: true});
+  }
 });

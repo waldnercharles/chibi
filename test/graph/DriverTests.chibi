@@ -251,6 +251,48 @@ NativeFixedPoint :: (host: string) {
     assert(os.Run(["rm", "-rf", scratch]) == 0, "the scratch root is removed")
 }
 
+// Skipping the duplicate VM compiler build must not skip native graph parity.
+// Controlled stages use the real driver's dry run; the graph rejects deliberately.
+NativeComparisonMode :: (host: string) {
+    for (flag in ["", "--skip-vm", "--skip-vm-comparison"]) {
+        options := ["--dry-run", "--llvm", "/llvm", "--build-host", host, "--compiler-host", host]
+        if (flag != "") {
+            options = extend(options, [flag])
+        }
+        planned := Verb(host, "native-self-host", options)
+        log := Output(planned)
+        assert(planned.status == 0 && Has(log, "stage-two:") && Has(log, "stage-three:"), "native stages remain")
+        assert(Has(log, "vm-hosted-self-build:") == (flag == ""), "only the requested VM comparison is omitted")
+    }
+    scratch := format_text("{}/.chibi/graph-native-comparison", os.Root())
+    removed := os.Run(["rm", "-rf", scratch])
+    made := os.MakeDirectory(scratch)
+    assert(made == nil, "the scratch root exists")
+    assert(removed == 0, "the previous scratch root was removed")
+    seed := format_text("{}/seed", scratch)
+    fake_host := format_text("{}/host", scratch)
+    for (path in [seed, fake_host]) {
+        copied := os.Run(["cp", "test/graph/fixtures/native-comparison.sh", path])
+        executable := os.Run(["chmod", "+x", path])
+        assert(copied == 0 && executable == 0, "the controlled executable")
+    }
+    written := os.WriteText(format_text("{}/real-host", scratch), host)
+    assert(written == nil, "the real host")
+    for (flag in ["--skip-vm", "--skip-vm-comparison"]) {
+        result := Verb(host, "native-self-host", ["--llvm", scratch, "--work", scratch, "--stage-one", seed,
+                                                  "--build-host", fake_host, "--compiler-host", host, flag])
+        log := Output(result)
+        assert(Has(log, "native runner: the dry-run commands match"), "driver parity still runs")
+        if (flag == "--skip-vm") {
+            assert(result.status == 0 && !Has(log, "fixture reached graph comparison"), "legacy skip-vm behavior remains")
+        } else {
+            assert(result.status != 0 && Has(log, "fixture reached graph comparison"), "the graph proof still rejects")
+        }
+    }
+    removed = os.Run(["rm", "-rf", scratch])
+    assert(removed == 0, "the scratch root is removed")
+}
+
 // `census` fails on build tooling outside archive/ and counts the C that
 // remains, in a scratch repository of its own.
 Census :: (host: string) {
@@ -310,6 +352,7 @@ pub Run :: () -> int {
     TestScheduling(host);
     NativeRunners(host);
     NativeFixedPoint(host);
+    NativeComparisonMode(host);
     Census(host);
     OtherVerbs(host);
     return 0;

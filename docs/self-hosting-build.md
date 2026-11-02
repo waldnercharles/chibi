@@ -315,10 +315,10 @@ runs; actual compile/link records, assertions and sanitizer symbols are checked
 before the unchanged test groups. Release planning/generation helpers do not
 replace the selected-profile products or test drivers.
 
-The separate `ci-linux-graph` (fast) and `ci-linux-graph-sanitizers` labels request
-full parity, generated/resource, group and compiler-tools relocation proof for
-that exact same-repository PR head. Manual dispatch selects the same profiles.
-These checks are opt-in, not a second full suite on every push.
+The single CI workflow's manual `mode=graph` selects the distinct isolated
+Graph harness, generated/resource, group and compiler-tools relocation proof.
+`sanitizers=true` explicitly selects ASan+UBSan. The former Graph labels are
+retired; this proof is not a second full suite on every push. See [CI modes](ci.md).
 
 The CMake build that supplied the `build-cmake` parity tree (the Makefile's
 `graph-reference` target) and the retained CMake native route were removed in
@@ -900,12 +900,12 @@ operating system, so one artifact serves every host with that ABI.
 
 The native compiler is native stage two of `chibi build native-self-host`,
 which the verb checks is byte-identical to the stage three it compiles. The
-Native compiler seed workflow (`native-seed.yml`, dispatched by hand) builds it
-on Linux x64 and macOS arm64 and, with `publish`, releases it as
-`chibi-native-PLATFORM` under the tag `native-seed-COMMIT` and prints the pins.
+[manual native-seed preparation procedure](ci-maintenance.md) builds it on Linux
+x64 and macOS arm64. Explicit publication uses `chibi-native-PLATFORM` under the
+immutable tag `native-seed-COMMIT`; preparation does not publish by itself.
 `tools/bootstrap/native-seed.tsv` records them (platform, tag, asset, SHA-256),
 and `tools/bootstrap/native-seed.sh PLATFORM OUTPUT` fetches and checks one.
-Once a platform is pinned, that workflow and the Native self-host workflow pass
+Once a platform is pinned, seed preparation and the canonical CI native phase pass
 it as `--stage-one`, so recovery starts from the native seed: it compiles the
 current sources to stage two, and stage two compiles them to stage three. A
 seed older than the sources gives a stage two built by the older compiler, so
@@ -915,8 +915,8 @@ deleted.
 
 ### Three-platform compiler recovery proof
 
-The `Compiler self-build` workflow in `.github/workflows/compiler-recovery.yml`
-runs on every pull request into `main`, push to `main` and manual dispatch.
+The `Compiler self-build` jobs in the single `.github/workflows/ci.yml` run in
+scheduled/manual `full` validation, not on ordinary PRs or every main push.
 Its macOS 15, Ubuntu 24.04 and Windows 2022 jobs download an existing runtime
 binary from the release pinned in `tools/compiler/runtime.json`. The manifest
 records each binary's filename, byte length and SHA-256, plus the source
@@ -964,18 +964,14 @@ across all three platforms. Every job is nonadvisory; skipped or failed
 platform proofs cannot satisfy the comparison job. Environment and input
 isolation do not restrict the runner's filesystem.
 
-`.github/workflows/compiler-runtime-seed.yml` is the separate manual recovery
-route for preparing replacement runtime binaries. It uses the source-only SDK
-mode (`CHIBI_SDK_COMPILER_HOST_ONLY=ON`), a C compiler and CMake, and retains
-the recovery proof and provenance with each binary. Dispatched with `publish`
-(the `ci-seed` PR label does this), it also publishes a commit-specific
-prerelease and, on a branch other than `main`, commits the new pin to it. The
-release holds the three seeds, `runtime.json`, `SHA256SUMS`, each platform's
-recovery evidence and native imports, the commit's `git archive`, the pinned
-SLJIT and Tree-sitter sources, and the notices. Review the pin commit with the
-change that needed it. Routine compiler self-builds continue to consume the
-pinned release. The initial runtime seeds
-were produced by the predecessor recovery workflow at the recorded revision.
+The [manual runtime-seed procedure](ci-maintenance.md) prepares replacement
+runtime binaries using the source-only SDK mode (`CHIBI_SDK_COMPILER_HOST_ONLY=ON`)
+and retains isolated recovery/provenance evidence. It is a C-built dependency,
+not a Chibi-only bootstrap. Publication and pin updates are explicit maintenance
+actions, never a side effect of a label or ordinary validation. Runtime manifests,
+checksums, source archives, third-party sources and notices remain required.
+Review any pin commit with the change that needs it; routine full recovery
+continues to consume the pinned release.
 
 Rewrite the seed only when it can no longer compile the sources on disk or no
 longer loads on the pinned runtime, and then in a PR of its own or in the one

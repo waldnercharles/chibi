@@ -198,37 +198,13 @@ for the exact command, isolation and uploaded evidence.
 The separate manual runtime-seed workflow retains the C/CMake recovery route
 for updating the explicitly prebuilt runtime dependency.
 
-### Starting CI with labels
+### Continuous integration
 
-The `CI control` workflow starts runs for maintainers and agents whose GitHub
-access cannot re-run or dispatch workflows. It acts only when the person who
-added the label or retargeted the PR has write access, which GitHub requires
-for re-runs and dispatches anyway. It only acts on branches of this repository
-and on the head commit that the event named, and removes the label when it is
-done.
-
-- `ci-rerun` re-runs the failed jobs of the PR's own CI and compiler
-  self-build runs on the head commit. It never re-runs a push or publishing
-  run that shares the commit. On a PR into `main`, it dispatches a workflow
-  that never ran on the head branch.
-- `ci-seed` dispatches the runtime-seed workflow on the head branch with
-  `publish` set. Once all three platforms recover identical compiler bytes, it
-  publishes the seeds as a commit-specific prerelease and commits the new pin in
-  `tools/compiler/runtime.json` to that branch, then starts CI and the compiler
-  self-build on the pin commit. Pull before pushing again. If the branch moved
-  after the seed run started, unrelated branch movement fails the pin step.
-  Rerunning the same workflow can resume its verified one-file pin commit and
-  dispatch only checks not already started on that exact pin. Existing published
-  seeds are reused only after verifying their tag target, source identity,
-  complete asset inventory, checksums and three-platform recovery evidence;
-  a mismatch fails without replacing published assets. Runs for the same source
-  SHA serialize across refs and do not cancel an active publication/pin.
-
-A dispatched run must build the head commit the event named. If the branch
-moved in between, the workflow cancels the run and fails, and the PR needs the
-label again. Retargeting a stacked PR to `main` does the same as `ci-rerun`, so
-it gets CI without a new push. A dispatched run checks the head branch, not the
-merge with `main`.
+[CI modes and proof mapping](ci.md) describe the single workflow. Ordinary PRs
+have one Linux gate; daily/manual full validation retains platform, sanitizer,
+recovery and clean-machine proofs. Label-driven `ci-rerun`, `ci-seed` and Graph
+workflows are retired. Use Actions' normal rerun/dispatch controls; seed
+preparation and publication follow the [manual maintenance procedure](ci-maintenance.md).
 
 ## Focused regression coverage
 

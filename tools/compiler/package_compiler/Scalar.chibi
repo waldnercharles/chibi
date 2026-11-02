@@ -3231,27 +3231,40 @@ ScalarClosing :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     }
     return last;
 }
-// Whether each cell is an argument or result of an authored call, part of a
-// host call's, or a record or union a return or local moves into, the only
-// storage a call of this subset takes.
-ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], lent: bool) -> bool {
+// Claim a typed invocation's contiguous argument/result cells. These ranges
+// come from EmitBody, whose table indices are compiler-internal invariants.
+ScalarClaimCells :: (claimed: ^(bool[]), first: int, end: int) {
+    assert(first >= 0 && end >= first && end <= length(claimed^));
+    for (cell in first..<end) { claimed^[cell] = true; }
+}
+
+// Each cell belongs to an admitted value, invocation or host, or was copied
+// into a result bank by the ordinary typed copier. Index ownership once;
+// scanning every call/host for every cell would multiply their table sizes.
+ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], semantic: SemanticFact[], lent: bool) -> bool {
+    claimed := resize([false], length(cells));
     for (cell in 0..<length(cells)) {
-        // A local a scoped argument lends is read, never written, by its callee.
-        owned := (lent && cells[cell].container == 0) || ((cells[cell].storage == StructStorage || cells[cell].storage == UnionStorage) &&
-                  cells[cell].container == 0) ||
-                 (cells[cell].container == ArrayContainer && ScalarArrayElement(cells[cell].storage)) ||
-                 cells[cell].container == MapContainer;
-        for (call in calls) {
-            owned = owned || (cell >= call.first && cell < call.first + call.count) ||
-                    (cell >= call.result_first && cell < call.result_first + call.result_count);
-        }
-        for (host in hosts) {
-            owned = owned || (cell >= host.first && cell < host.result_first + host.result_count);
-        }
-        if (!owned) {
-            return false;
+        claimed[cell] = (lent && cells[cell].container == 0) ||
+            ((cells[cell].storage == StructStorage || cells[cell].storage == UnionStorage) && cells[cell].container == 0) ||
+            (cells[cell].container == ArrayContainer && ScalarArrayElement(cells[cell].storage)) ||
+            cells[cell].container == MapContainer;
+    }
+    for (call in calls) {
+        ScalarClaimCells(&claimed, call.first, call.first + call.count);
+        if (call.result_count > 0) {
+            ScalarClaimCells(&claimed, call.result_first, call.result_first + call.result_count);
         }
     }
+    for (host in hosts) {
+        ScalarClaimCells(&claimed, host.first, host.result_first + host.result_count);
+    }
+    for (fact in semantic) {
+        if (fact.kind == ResultCopyCellFact) {
+            if (fact.target < 0 || fact.target >= length(cells) || !ScalarResultCell(cells[fact.target])) { return false; }
+            claimed[fact.target] = true;
+        }
+    }
+    for (known in claimed) { if (!known) { return false; } }
     return true;
 }
 // SCRIPT_EFFECT_HOST: a synchronous output action.
@@ -3454,7 +3467,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], authored: snapshot.SnapshotNode
                 why = "a direct write";
             } else if (host_problem != "") {
                 why = host_problem;
-            } else if (!ScalarCells(cells, calls, hosts, AnyReference(params) || length(retained) > 0)) {
+            } else if (!ScalarCells(cells, calls, hosts, facts, AnyReference(params) || length(retained) > 0)) {
                 why = "a cell";
             }
             if (why != "") {

@@ -757,11 +757,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, Field(forest, item.node, syntax.FieldName), document, format_text("Duplicate declaration '{}'", name));
             }
             if (Single(result, ResultsStorage) && !result.owned && declared < 0) {
-                return PointerContinue(CopyNativeResultsStep(result, natives, ports, ops, target, at, node),
+                return PointerContinue(CopyNativeResultsStep(result, natives, ports, ops, target, at, item.node, node),
                                        Resume(item.node, ValuePhase, 0, 0));
             }
             if (Single(result, FunctionResultsStorage) && !result.owned && declared < 0) {
-                return PointerContinue(CopyFunctionResultsStep(result, callables, params, ops, target, at, node),
+                return PointerContinue(CopyFunctionResultsStep(result, callables, params, ops, target, at, item.node, node),
                                        Resume(item.node, ValuePhase, 0, 0));
             }
             if ((Single(result, ResultsStorage) || Single(result, FunctionResultsStorage)) && declared < 0) {

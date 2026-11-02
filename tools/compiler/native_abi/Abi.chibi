@@ -175,11 +175,11 @@ pub ValueTag :: (storage: int) -> int {
 pub ContextType :: () -> string {
     return "{ ptr, ptr, ptr, ptr, ptr }";
 }
-// The LLVM type of an array: its length, its capacity and its elements, by
-// value. An array of no elements, with a length and capacity of 0 and no
-// elements, is its zero.
+// A 24-byte array descriptor: length, capacity, elements and nullable backing
+// owner. The all-zero descriptor is empty; a null owner borrows its elements.
+// Foreign calls still use field 2, so the added owner never reaches C.
 pub ArrayType :: () -> string {
-    return "{ i32, i32, ptr }";
+    return "{ i32, i32, ptr, ptr }";
 }
 // A map's live count, physical span, entries capacity, index slot count,
 // entries and index. The all-zero 32-byte header owns nothing. Each map in a

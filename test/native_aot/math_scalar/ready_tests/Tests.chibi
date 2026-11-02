@@ -1,0 +1,15 @@
+package ready_math_tests
+@test
+ScalarMathMayFinishBeforeWaiting :: () {
+    result := await Ready();
+    ExpectAnswer(result);
+}
+Ready :: () -> int {
+    if false { yield; }
+    value := sin_precise(f64(1e20));
+    if (value > -0.645251285265782 && value < -0.645251285265779) { return 42; }
+    return 1;
+}
+
+// The existing direct-Fail gate in a waiting frame remains separate.
+ExpectAnswer :: (value: int) { assert(value == 42); }

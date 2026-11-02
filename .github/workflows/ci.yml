@@ -106,6 +106,7 @@ jobs:
         node .github/ci/budget.js "$CHIBI_CORE_DEADLINE"
     - name: Native fixed-point proof
       id: fixedpoint
+      if: ${{ !cancelled() && steps.core.outcome != 'skipped' }}
       timeout-minutes: 90
       env:
         CHIBI_FULL: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full') }}

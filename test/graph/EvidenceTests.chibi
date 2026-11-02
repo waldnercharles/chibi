@@ -222,7 +222,7 @@ NativeRecordsBindCompilerSourcesAndTools :: () {
     Write(core_source, "package core_fixture\nValue :: () -> int { return 1; }\n");
     Write(program, "native program");
     command := [driver, "--compiler", compiler, "--core", core, "--source", source, "--output", program, "--llvm", llvm];
-    inputs := [driver, compiler, core, nested, source, core_source];
+    inputs := [driver, source, core_source];
     linker := "ld.lld";
     suffix := "";
     if (os.Platform() == "Darwin") { linker = "ld64.lld"; }
@@ -235,11 +235,27 @@ NativeRecordsBindCompilerSourcesAndTools :: () {
     inputs.append(program);
     Record(program, command, inputs);
     assert(evidence.ReadRecord(program) == "", "a native record binds compiler, sources and tools");
-    for (input in [driver, compiler, core, nested, source, core_source, inputs[6], inputs[7], inputs[8]]) {
+
+    generated := format_text("{}/build/native/cache", compiler);
+    made = os.MakeDirectory(generated);
+    assert(made == nil, "the generated cache directory");
+    artifact := format_text("{}/compiler.chibip", generated);
+    Write(artifact, "generated compiler artifact");
+    assert(evidence.ReadRecord(program) == "", "generated directories and artifacts do not change source provenance");
+    added := format_text("{}/Added.chibi", nested);
+    Write(added, "package added\n");
+    assert(strings.Contains(evidence.ReadRecord(program), "missing command input binding"), "new sources need a receipt binding");
+    Record(program, command, With(Without(inputs, program), [added, program]));
+    assert(evidence.ReadRecord(program) == "", "the extended source inventory is bound");
+    removed := os.Remove(added);
+    assert(removed == nil, "remove the added source");
+    assert(strings.Contains(evidence.ReadRecord(program), "stale input/output"), "removed sources invalidate their recorded stamps");
+
+    for (input in [driver, source, core_source, inputs[3], inputs[4], inputs[5]]) {
         Record(program, command, Without(inputs, input));
         assert(strings.Contains(evidence.ReadRecord(program), "missing command input binding"), "every native input is bound");
     }
-    for (input in [driver, source, core_source, inputs[6]]) {
+    for (input in [driver, source, core_source, inputs[3]]) {
         Record(program, command, inputs);
         Write(input, "changed bytes");
         assert(strings.Contains(evidence.ReadRecord(program), "stale input/output"), "changed native input is refused");

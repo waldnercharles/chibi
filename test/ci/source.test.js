@@ -5,13 +5,18 @@ const {tmpdir} = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-// Execute the actual final native-proof assertion against real disposable Git trees.
+// Execute both native-proof source fences against real disposable Git trees.
 // No compiler, network, repository hooks or language fixtures are involved.
-test('final source assertion rejects changed HEAD and tracked or untracked edits', () => {
+test('source fences reject changed HEAD and tracked or untracked edits', () => {
   const proof = fs.readFileSync(path.resolve(__dirname, '../../.github/ci/native-proof.sh'), 'utf8');
   const marker = '# Preserve the tested source identity within the existing native proof budget.';
   assert.ok(proof.includes(marker));
-  const command = proof.slice(proof.indexOf(marker));
+  const start = '# A failed core test may precede this phase.';
+  assert.ok(proof.includes(start));
+  const commands = [
+    proof.slice(proof.indexOf(start), proof.indexOf('set -o pipefail')),
+    proof.slice(proof.indexOf(marker)),
+  ];
   for (const variant of ['clean', 'tracked', 'untracked', 'head', 'restored', 'status-error']) {
     const root = fs.mkdtempSync(path.join(tmpdir(), 'chibi-ci-source-'));
     try {
@@ -32,10 +37,12 @@ test('final source assertion rejects changed HEAD and tracked or untracked edits
         fs.writeFileSync(path.join(bin, 'git'), '#!/bin/sh\nif [ "$1" = status ]; then exit 19; fi\nprintf "%s\\n" "$GITHUB_SHA"\n', {mode: 0o755});
         env.PATH = bin + ':' + env.PATH;
       }
-      const result = spawnSync('bash', ['-e', '-c', command], {cwd: root,
-        env,
-        encoding: 'utf8', timeout: 3000});
-      assert.equal(result.status, variant === 'status-error' ? 19 : ['clean', 'restored'].includes(variant) ? 0 : 1, variant + ': ' + result.stderr);
+      for (const command of commands) {
+        const result = spawnSync('bash', ['-e', '-c', command], {cwd: root,
+          env,
+          encoding: 'utf8', timeout: 3000});
+        assert.equal(result.status, variant === 'status-error' ? 19 : ['clean', 'restored'].includes(variant) ? 0 : 1, variant + ': ' + result.stderr);
+      }
     } finally { fs.rmSync(root, {recursive: true, force: true}); }
   }
 });

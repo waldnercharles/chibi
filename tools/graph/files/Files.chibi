@@ -41,8 +41,8 @@ pub Fingerprint :: (path: string) -> string {
         if (listed.error != nil) {
             return "";
         }
-        // Native product inputs include directories to notice new sources.
-        // Windows names cannot contain line endings, so the sorted inventory
+        // Directory dependencies include their immediate sorted inventory.
+        // Windows names cannot contain line endings, so that inventory
         // has one unambiguous entry per line without reading file contents twice.
         digest = os.HashText(strings.Join(listed.names, "\n"));
     } else {

@@ -47,43 +47,45 @@ part of the parity requirement.
 
 ## Verification recorded so far
 
-All local final checks below used LLVM/LLD 22.1.8 from `/tmp/chibi-llvm22`.
-Earlier local lane checks used a mixed LLVM 23 / LLD 22 directory; they are not
-minimum-version evidence.
+Final local checks used LLVM/LLD 22.1.8 from `/tmp/chibi-llvm22`. Earlier
+checks using a mixed LLVM 23 / LLD 22 directory are not minimum-version evidence.
 
-- Before the final watch integration, the compiler's stages three and four were byte-identical:
-  `702dff527162e6c7397a59af9675a64da287a7f647bca2552afb91703a394f5f`.
-  Stage two took 40 s, three 33 s, four 31 s. The full proof, including a
-  Windows cross-build (29 s) and native driver/graph checks, took 138.76 s.
-- At `884964244`, the final macOS compiler's stages two and three are byte-identical:
-  `7696806b6a811d349dffc37330537c3423b1f872e3a893a3e1d776b4324e686f`.
-  They took 33 s and 35 s; the full proof took 72.57 s. Linux CI also reached a
-  stage-three/four fixed point at that revision:
-  `afaa1059efb0c3db9670868d0bfc033d9471f549b14582365698a3ecc273eae7`.
-- The integrated macOS cache, LLVM minimum, CLI, maps, tasks, seed-boundary and
-  bootstrap-entry checks passed in 36.75 s. Map and task tests execute at O0/O2
-  and check allocation balance; map tests also poison released allocations.
-- Linux CI passed the no-C-compiler recovery/vendor proof at `884964244` in
-  1m10s, the default full build in 4m27s, and the native self-host suite,
-  including driver, CLI, diagnostics, maps, tasks, retained generations and watch.
-- Broader CI exposed the removed implicit bytecode-seed dependency and then a
-  missing `ScalarMaps.chibi` source-list entry. Both are fixed in this branch.
-- The real SDK install/relocation test passed locally in 26.83 s after the
-  resource-boundary fix and a 5.11 s incremental host/resource build.
-- The first Windows job downloaded LLVM in about five seconds but timed out
-  during checksum/extraction. Selective extraction now passes in Windows CI:
-  download 11.13 s, checksum 1.04 s, decompression 11.83 s and extraction 0.40 s.
-  Its next failure was a same-size-write timestamp assumption. The regression
-  now verifies content by hash and metadata with a size change. The remaining
-  Windows execution and self-build checks still need successful CI evidence.
+- At `9f9e66c7a`, macOS native stages two and three are byte-identical:
+  `789bdf44015f6c8e80fe854383e3334112b9f53798543f79e78998de6772ce19`.
+  They took 40 s and 36 s; the full proof, including native driver/graph checks,
+  took 80.50 s.
+- Linux CI at `9dae90af7` passed the complete native suite, no-C-compiler proof,
+  default full build, SDK relocation, and legacy compiler self-build with its
+  strict scalar regression. Its native stage-three/four fixed point was
+  `fddf00d2ebdfcb62e6cfb3cd058e44e84dd6820cffddbf71b65628bccf76633a`.
+- Windows CI at that revision passed filesystem/object checks and native
+  self-reproduction. Stages three and four took 325 s and 321 s and both produced
+  `b1bc3c1e4dac87472fdb624e471f21b368ff9d76f97facc54aa4d722db8a5490`.
+  Compilation remains serial until asynchronous processes land. Verified
+  selective LLVM extraction also passed on the real Windows runner.
+- Final native generation and watch suites passed in 37.46 s and 11.92 s.
+  They cover rejected edits, retained records/strings, active and retired tasks,
+  task failure, Main once, empty PATH and missing-import recovery. The legacy
+  bulk-state regression preserves `1,2,3,113,123`, including a new binding's
+  initializer; bool and float defaults retain their encoded values.
+- All 408 authored compiler tests passed in 84.62 s after moving four scalar
+  facts tests into their proper test layer. The moved tests also passed through
+  the strict bytecode/SLJIT entry with identical artifacts and zero fallback.
+  All 160 original emitter tests separately passed natively in 2.85 s.
+- The final C scalar selector passed 10/10 tests and 2,456 assertions in 13.26 s.
+  Target metadata checks accept LLVM 22's canonical macOS layout and still
+  reject incompatible, missing and duplicate metadata.
+- Real SDK installation/relocation passed locally in 26.83 s after a 5.11 s
+  incremental host/resource build. Graph planner tests passed through their
+  native fixture in 14.10 s and exact legacy-host CI route in 20.16 s.
+- Map/task O0/O2 tests check allocation balance; map tests poison freed memory.
+  The warm native build-entry census took 0.56 s.
 
-The native Linux generation suite passed in 37.184 s, including real reloads,
-active task progress, active and retired task failures, and rejection of waiting
-Main/Frame entries. The full native watch regression passed in 11.49 s,
-including old-generation task completion, empty PATH, deleted-import restoration
-and creation of a missing import. The warm native build-entry census took
-0.56 s. Final CI results are recorded in the PR description. Cross-linking alone
-is not runtime validation.
+The broader engine CI at `9dae90af7` exposed the test-layer dependency, LLVM
+layout fixture and legacy retained-default defect described above. All three
+have focused passing checks in the final source tree. The next CI run verifies
+them together; its status is recorded in the PR. Cross-linking alone is not
+runtime validation.
 
 ## Gates before deleting the hosts or VM
 
@@ -98,7 +100,9 @@ is not runtime validation.
 - Complete retained-state parity for managed records, arrays, unions and task
   handles, and validate reload/watch beyond Linux x64.
 - Complete Windows asynchronous process operations, a verified native Windows
-  seed, native Windows execution, and remaining SDK/Studio platform coverage.
+  seed, content-safe invalidation for its build-runner/graph consumers, and
+  remaining SDK/Studio platform coverage. Compiler execution and self-reproduction
+  on Windows now have CI proof.
 
 Do not remove the VM, host sources or recovery assets while those consumers
 still depend on them. This branch removes the build-entry fallback; it does

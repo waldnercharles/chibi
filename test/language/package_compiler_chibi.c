@@ -2398,8 +2398,8 @@ static bool scalar_collects_libraries()
     return true;
 }
 /* A retain local of a library function is a state of the library: a Local
- * row whose literal is Retained, then a global initialized on first use,
- * loaded and stored around the variable, and the host's state manifest. */
+ * row whose literal is Retained, then an eagerly initialized scalar global
+ * the legacy word manifest can read before the first function call. */
 static bool scalar_retains_library_states()
 {
     static const char source[] = "Tools :: library {\n"
@@ -2424,11 +2424,7 @@ static bool scalar_retains_library_states()
         REQUIRE(array->count > 2 && scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_DOCUMENT_ROW);
         char *ir;
         REQUIRE(target_ir("LinuxX64", &rows, &ir) && ir);
-        bool emits = strstr(ir, "@chibi_scalar.retained.0 = internal global i32 0\n") &&
-                     strstr(ir, "@chibi_scalar.retained.0.ready = internal global i1 false\n") &&
-                     strstr(ir, "store i32 4, ptr %s") &&
-                     strstr(ir, "store i32 %initial.value") &&
-                     strstr(ir, "store i1 true, ptr @chibi_scalar.retained.0.ready") &&
+        bool emits = strstr(ir, "@chibi_scalar.retained.0 = internal global i32 4\n") &&
                      strstr(ir, "load i32, ptr @chibi_scalar.retained.0") &&
                      strstr(ir, "store i32 %a") &&
                      strstr(ir, "c\"Frame.count\\00\"") &&

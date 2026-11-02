@@ -221,7 +221,14 @@ NativeRunners :: (host: string) {
     source := os.Root()
     scratch := format_text("{}/.chibi/graph-runner", source)
     assert(os.Run(["rm", "-rf", scratch]) == 0 && os.MakeDirectory(format_text("{}/llvm", scratch)) == nil, "the scratch root")
-    assert(os.WriteText(format_text("{}/llvm/llc", scratch), "") == nil, "the LLVM folder")
+    for (tool in ["opt", "llc", "ld.lld", "ld64.lld"]) {
+        assert(os.WriteText(format_text("{}/llvm/{}", scratch, tool), "") == nil, "the LLVM input")
+    }
+    for (folder in ["tools/toolchain", "tools/graph", "packages/core"]) {
+        assert(os.MakeDirectory(format_text("{}/{}", scratch, folder)) == nil, "the source tree")
+    }
+    assert(os.WriteText(format_text("{}/tools/toolchain/Build.chibi", scratch), "package build\n") == nil &&
+           os.WriteText(format_text("{}/tools/toolchain/Graph.chibi", scratch), "package graph\n") == nil, "the program inputs")
     count := format_text("{}/compiles", scratch)
     good := format_text("{}/driver.sh", scratch)
     script := format_text("#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ \"$1\" = --output ]; then out=$2; fi; shift; done\necho compiled >> {}\nprintf '#!/bin/sh\\nexit 0\\n' > \"$out\"\nchmod +x \"$out\"\n", count)

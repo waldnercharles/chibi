@@ -889,7 +889,7 @@ CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments:
 }
 Validate :: (functions: Function[], function: int, module_parameters: int[], module_slots: int[],
              module_locals: int[], module_code: Instruction[], module_arguments: int[], records: Record[],
-             fields: int[], texts: string[], mode: int, waiting: bool[]) -> Result {
+             fields: int[], texts: string[], mode: int, waiting: bool[], lifecycle: ValueLayout) -> Result {
     shape := functions[function];
     parameters := Part(module_parameters, shape.first_parameter, shape.parameters);
     slots := Part(module_slots, shape.first_slot, shape.slots);
@@ -1043,11 +1043,11 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if ((item.op == ValueCopy || item.op == ValueDrop) &&
             (!Typed(slots, item.left, item.type) ||
-             (ElementType(records, item.type) != 0 && !CountedRecordType(records, fields, item.type - ArrayType)) ||
+             (ElementType(records, item.type) != 0 && !ValueValid(lifecycle, item.type - ArrayType)) ||
              (ElementType(records, item.type) == 0 &&
-              (item.type < RecordType || item.type >= ArrayType || !CountedRecordType(records, fields, item.type) || !RecordHasText(records, fields, item.type))) ||
+              (item.type < RecordType || item.type >= ArrayType || !ValueValid(lifecycle, item.type) || !lifecycle.owned[item.type - RecordType])) ||
              item.right != 0 || item.target != 0 || item.literal != 0 || (item.op == ValueDrop && item.output != 0))) {
-            return Result.Rejected(base + pc, "native value lifecycle requires an array or scalar/string aggregate operand");
+            return Result.Rejected(base + pc, "native value lifecycle requires an array or managed aggregate operand");
         }
         if ((item.op == ArrayPush || item.op == ArrayExtend) && item.literal != 0 && item.literal != 1) {
             return Result.Rejected(base + pc, "native array growth ownership is not 0 or 1");
@@ -1662,32 +1662,6 @@ TextCounted :: (item: Instruction, pc: int) -> string {
 Holding :: (type: int) -> bool {
     return type == ArrayType + abi.TextStorage;
 }
-CountedRecordType :: (records: Record[], fields: int[], type: int) -> bool {
-    if (type < RecordType) { return abi.ScalarType(type) != "" || type == abi.TextStorage; }
-    if (type >= ArrayType) { return false; }
-    record := records[type - RecordType];
-    for (index in record.first..<record.first + record.count) {
-        if (!CountedRecordType(records, fields, fields[index])) { return false; }
-    }
-    return true;
-}
-RecordHasText :: (records: Record[], fields: int[], type: int) -> bool {
-    if (type == abi.TextStorage) { return true; }
-    if (type < RecordType || type >= ArrayType) { return false; }
-    record := records[type - RecordType];
-    for (index in record.first..<record.first + record.count) {
-        if (RecordHasText(records, fields, fields[index])) { return true; }
-    }
-    return false;
-}
-RecordOwners :: (records: Record[], fields: int[]) -> bool[] {
-    owners := resize([false], length(records));
-    for (index in 0..<length(records)) {
-        type := RecordType + index;
-        owners[index] = CountedRecordType(records, fields, type) && RecordHasText(records, fields, type);
-    }
-    return owners;
-}
 ArrayRefs :: (record_owners: bool[], type: int, data: string, count: string, keep: bool) -> string {
     if (Holding(type)) {
         if (keep) { return format_text("  call void @chibi_scalar.retain_range(ptr {}, i32 {})\n", data, count); }
@@ -1702,52 +1676,65 @@ ArrayRefs :: (record_owners: bool[], type: int, data: string, count: string, kee
     if (keep) { operation = "copy"; }
     return format_text("  call void @chibi_value.{}.{}_range(ptr %ctx, ptr {}, i32 {})\n", element, operation, data, count);
 }
-// Native values use one lifecycle implementation whether they are held in
-// an array, map or ordinary aggregate slot. The dependency walk emits only
-// helpers required by this piece and their nested aggregate fields.
-ValueModule :: (code: Instruction[], records: Record[], fields: int[], owners: bool[]) -> string {
-    used := resize([false], length(records));
-    ranges := resize([false], length(records));
-    by_value := resize([false], length(records));
+// A piece's helper closure: ownership instructions, container payloads and
+// recursively owned fields. One worklist serves both value and array modules.
+ValueUse :: struct { records: bool[]; ranges: bool[]; by_value: bool[]; arrays: int[]; }
+ValueUses :: (code: Instruction[], records: Record[], fields: int[], owners: bool[]) -> ValueUse {
+    used: ValueUse = {records: resize([false], length(records)), ranges: resize([false], length(records)),
+                      by_value: resize([false], length(records)), arrays: ArrayUses(code)};
     pending: int[] = [];
     for (item in code) {
         type := 0;
-        range := false;
-        if ((item.op == ValueCopy || item.op == ValueDrop) && item.type < ArrayType) { type = item.type; }
-        else if (item.type >= ArrayType && item.type < MapType) { type = item.type - ArrayType; range = true; }
-        else if MapOperation(item.op) { type = MapValue(MapUsed(item)); }
+        if (item.op == ValueCopy || item.op == ValueDrop) { type = item.type; }
+        if (MapOperation(item.op)) { type = MapValue(MapUsed(item)); }
         if (type < RecordType || type >= ArrayType || !owners[type - RecordType]) { continue; }
         index := type - RecordType;
-        if (range) { ranges[index] = true; }
-        if MapOperation(item.op) { by_value[index] = true; }
-        if (!used[index]) { used[index] = true; pending.append(index); }
+        if (MapOperation(item.op)) { used.by_value[index] = true; }
+        if (!used.records[index]) { used.records[index] = true; pending.append(index); }
+    }
+    for (index in 0..<length(used.arrays)) {
+        if (used.arrays[index] == 0 || index < RecordType || index >= ArrayType || !owners[index - RecordType]) { continue; }
+        record := index - RecordType;
+        used.ranges[record] = true;
+        if (!used.records[record]) { used.records[record] = true; pending.append(record); }
     }
     at := 0;
     while (at < length(pending)) {
         record := records[pending[at]];
         for (field in record.first..<record.first + record.count) {
             type := fields[field];
-            if (type < RecordType || type >= ArrayType) { continue; }
+            if (type >= ArrayType && type < MapType) {
+                used.arrays[type - ArrayType] |= ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
+                type -= ArrayType;
+                if (type >= RecordType && type < ArrayType) { used.ranges[type - RecordType] = true; }
+            }
+            if (type < RecordType || type >= ArrayType || !owners[type - RecordType]) { continue; }
             index := type - RecordType;
-            if (owners[index] && !used[index]) { used[index] = true; pending.append(index); }
+            if (!used.records[index]) { used.records[index] = true; pending.append(index); }
         }
         at += 1;
     }
+    return used;
+}
+ValueModule :: (used: ValueUse, records: Record[], fields: int[], layout: ValueLayout) -> string {
     out: string[] = [];
+    queued := false;
     for (index in 0..<length(records)) {
-        if (!used[index]) { continue; }
+        if (!used.records[index]) { continue; }
         type := RecordType + index;
-        out.append(ValueRecordAt(type, records, fields, owners, true));
-        out.append(ValueRecordAt(type, records, fields, owners, false));
-        if (by_value[index]) {
+        queued = queued || layout.backed[index];
+        out.append(ValueRecordAt(type, records, fields, layout, true));
+        out.append(ValueRecordAt(type, records, fields, layout, false));
+        if (used.by_value[index]) {
             out.append(ValueRecordCopy(type));
             out.append(ValueRecordDrop(type));
         }
-        if (ranges[index]) {
-            out.append(ValueRecordRange(type, true));
-            out.append(ValueRecordRange(type, false));
+        if (used.ranges[index]) {
+            out.append(ValueRecordRange(type, true, layout.backed[index]));
+            out.append(ValueRecordRange(type, false, layout.backed[index]));
         }
     }
+    if (queued) { out.append(ValueDrain()); }
     return strings.Join(out, "");
 }
 // The helpers a module that counts references calls: one reference added to or
@@ -3004,9 +2991,10 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         return Result.Rejected(-1, "native line table differs from its module");
     }
     waiting := WaitingFunctions(functions, code);
+    lifecycle := ValueLayouts(records, fields);
     for (function in 0..<length(functions)) {
         switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, texts,
-                        mode, waiting) {
+                        mode, waiting, lifecycle) {
             case .Rejected(instruction, message):
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
@@ -3070,7 +3058,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         }
     }
     states := RetainedStates(code);
-    record_owners := RecordOwners(records, fields);
+    record_owners := lifecycle.owned;
     out: string[] = [];
     for (piece in 0..<pieces) {
         first := bounds[piece];
@@ -3175,7 +3163,8 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
             }
             out.append(format_text("\n{}", text));
         }
-        array_helpers := ArrayModule(held, record_owners);
+        value_uses := ValueUses(held, records, fields, record_owners);
+        array_helpers := ArrayModule(value_uses.arrays, record_owners, lifecycle.backed);
         out.append(array_helpers);
         copies := Copies(held);
         if (mode == NoEntry) {
@@ -3190,7 +3179,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         if (Zeroes(held)) {
             out.append(format_text("\n{}", ArrayZeroHelper()));
         }
-        value_helpers := ValueModule(held, records, fields, record_owners);
+        value_helpers := ValueModule(value_uses, records, fields, lifecycle);
         if (Counts(held) || value_helpers != "" || array_helpers != "") {
             out.append(format_text("\n{}{}", TextHelpers(), value_helpers));
         }

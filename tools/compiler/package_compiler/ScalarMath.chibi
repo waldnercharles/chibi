@@ -5,73 +5,98 @@ import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 import binding "project:lexical_binding"
 
-// The runtime's two fmod overloads, including their actual native defaults.
-// Only the native producer needs these private catalog rows: an ordinary game
-// compilation receives the same definitions from its runtime catalog.
-ScalarMathCatalog :: (natives: ^(ResolvedNative[]), ports: ^(ResolvedPort[]), identities: ^(u64[])) {
-    if (FindNative(natives^, "fmod") != -1) {
-        if (!ScalarMathCanonical(natives^, ports^)) {
-            // Keep unrelated source and authored shadowing valid. The ordinary
-            // binder rejects a use of this unsupported catalog signature.
-            for (native in natives^) {
-                if (!NativeNameMatches(native, "fmod")) { continue; }
-                for (index in native.first..<native.first + native.parameters + native.results) {
-                    port := ports^[index];
-                    port.storage = UnsupportedPort;
-                    ports^[index] = port;
-                }
-            }
-        }
-        return;
+// The runtime owns these scalar libm functions. Its separate sin/cos builtins
+// use deterministic approximations; precise sine/cosine explicitly use libm.
+ScalarMathName :: (name: string) -> bool {
+    return name == "fmod" || name == "sin_precise" || name == "cos_precise" ||
+           name == "exp" || name == "round" || name == "pow" || name == "sqrt";
+}
+ScalarMathNative :: (native: ResolvedNative) -> bool {
+    for (name in ["fmod", "sin_precise", "cos_precise", "exp", "round", "pow", "sqrt"]) {
+        if (NativeNameMatches(native, name)) { return true; }
     }
-    for (storage in [DoubleStorage, FloatStorage]) {
-        native: ResolvedNative = {name: "fmod", first: length(ports^), parameters: 2, results: 1, variadic: false,
-                                  direct: true, qualified_name: "fmod", kind: NativeFunctionKind, intrinsic: 0,
-                                  effects: 0, source: false};
-        natives.append(native);
-        for (index in 0..<3) {
-            name := "Value";
-            bits: u64 = 0;
-            if (index == 1) {
-                name = "Divisor";
-                bits = 4607182418800017408;
-                if (storage == FloatStorage) { bits = 1065353216; }
-            } else if (index == 2) { name = "Result"; }
-            port: ResolvedPort = {name: name, storage: storage, container: 0, c_string: false, record: -1,
-                                 has_default: index < 2, default_owner: false, default_supported: index < 2,
-                                 default_bits: bits, default_text: ""};
-            ports.append(port);
-        }
-        identities.append(binding.ID("native-scalar-math", format_text("fmod:{}", storage)));
-        identities.append(binding.ID("native-scalar-math-signature", format_text("fmod:{}", storage)));
+    return false;
+}
+ScalarMathArity :: (name: string) -> int {
+    if (name == "fmod" || name == "pow") { return 2; }
+    return 1;
+}
+ScalarMathParameter :: (name: string, index: int) -> string {
+    if (name == "pow") {
+        if (index == 0) { return "Base"; }
+        return "Exponent";
     }
+    if (index == 1) { return "Divisor"; }
+    return "Value";
+}
+ScalarMathDefault :: (name: string, index: int, storage: int) -> u64 {
+    if (name == "fmod" && index == 1) {
+        if (storage == FloatStorage) { return 1065353216; }
+        return 4607182418800017408;
+    }
+    return 0;
 }
 
-// Projection below implements the owning runtime's two forms. A caller's
-// different capability remains unsupported, rather than gaining another
-// overload or having its signature/default silently changed.
-ScalarMathCanonical :: (natives: ResolvedNative[], ports: ResolvedPort[]) -> bool {
+// Private copies of the runtime's two overloads let the bootstrap catalog stay
+// exact. Existing caller capabilities are admitted only at their real shape.
+ScalarMathCatalog :: (natives: ^(ResolvedNative[]), ports: ^(ResolvedPort[]), identities: ^(u64[])) {
+    for (name in ["fmod", "sin_precise", "cos_precise", "exp", "round", "pow", "sqrt"]) {
+        if (FindNative(natives^, name) != -1) {
+            if (!ScalarMathCanonical(natives^, ports^, name)) {
+                // Unsupported signatures remain unusable, while unrelated
+                // source and authored shadowing retain their original meaning.
+                for (native in natives^) {
+                    if (!NativeNameMatches(native, name)) { continue; }
+                    for (index in native.first..<native.first + native.parameters + native.results) {
+                        port := ports^[index];
+                        port.storage = UnsupportedPort;
+                        ports^[index] = port;
+                    }
+                }
+            }
+            continue;
+        }
+        count := ScalarMathArity(name);
+        for (storage in [DoubleStorage, FloatStorage]) {
+            native: ResolvedNative = {name: name, first: length(ports^), parameters: count, results: 1, variadic: false,
+                                      direct: true, qualified_name: name, kind: NativeFunctionKind, intrinsic: 0,
+                                      effects: 0, source: false};
+            natives.append(native);
+            for (index in 0..<count + 1) {
+                port_name := "Result";
+                bits: u64 = 0;
+                if (index < count) {
+                    port_name = ScalarMathParameter(name, index);
+                    bits = ScalarMathDefault(name, index, storage);
+                }
+                port: ResolvedPort = {name: port_name, storage: storage, container: 0, c_string: false, record: -1,
+                                     has_default: index < count, default_owner: false, default_supported: index < count,
+                                     default_bits: bits, default_text: ""};
+                ports.append(port);
+            }
+            identities.append(binding.ID("native-scalar-math", format_text("{}:{}", name, storage)));
+            identities.append(binding.ID("native-scalar-math-signature", format_text("{}:{}", name, storage)));
+        }
+    }
+}
+ScalarMathCanonical :: (natives: ResolvedNative[], ports: ResolvedPort[], name: string) -> bool {
     single := false;
     wide := false;
+    count := ScalarMathArity(name);
     for (native in natives) {
-        if (!NativeNameMatches(native, "fmod")) { continue; }
-        if (native.name != "fmod" || native.parameters != 2 || native.results != 1 || native.variadic ||
+        if (!NativeNameMatches(native, name)) { continue; }
+        if (native.name != name || native.parameters != count || native.results != 1 || native.variadic ||
             !native.direct || native.intrinsic != 0 || native.kind != NativeFunctionKind || native.effects != 0) { return false; }
         storage := ports[native.first].storage;
         if (storage == FloatStorage && !single) { single = true; } else if (storage == DoubleStorage && !wide) { wide = true; } else { return false; }
-        for (index in 0..<3) {
+        for (index in 0..<count + 1) {
             port := ports[native.first + index];
-            name := "Value";
-            bits: u64 = 0;
-            if (index == 1) {
-                name = "Divisor";
-                bits = 4607182418800017408;
-                if (storage == FloatStorage) { bits = 1065353216; }
-            } else if (index == 2) { name = "Result"; }
+            port_name := "Result";
+            if (index < count) { port_name = ScalarMathParameter(name, index); }
             if (port.storage != storage || port.container != 0 || port.record >= 0 || port.c_string ||
-                !NameMatches(name, port.name)) { return false; }
-            if (index < 2 && port.has_default && (!port.default_supported || port.default_owner ||
-                port.default_bits != bits || port.default_text != "")) { return false; }
+                !NameMatches(port_name, port.name)) { return false; }
+            if (index < count && port.has_default && (!port.default_supported || port.default_owner ||
+                port.default_bits != ScalarMathDefault(name, index, storage) || port.default_text != "")) { return false; }
         }
     }
     return single && wide;
@@ -79,20 +104,21 @@ ScalarMathCanonical :: (natives: ResolvedNative[], ports: ResolvedPort[]) -> boo
 
 ScalarMathCall :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     callee := Field(forest, node, syntax.FieldFunction);
-    return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "fmod";
+    return Is(forest, callee, syntax.Identifier) && ScalarMathName(Text(forest, text, callee));
 }
 
 // EmitBody has already bound and validated the two ports. Preserve their source
 // order here; the postfix operation can reverse them without evaluating twice.
 ScalarMathArguments :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> NativeArgument[] {
     arguments: NativeArgument[] = [];
+    name := Text(forest, text, Field(forest, node, syntax.FieldFunction));
     for (source, ordinal in Members(forest, Field(forest, node, syntax.FieldArguments))) {
         value := source;
         parameter := ordinal;
         if (Is(forest, source, syntax.NamedArgument)) {
-            name := Text(forest, text, Field(forest, source, syntax.FieldName));
+            supplied := Text(forest, text, Field(forest, source, syntax.FieldName));
             parameter = 0;
-            if (NameMatches("Divisor", name)) { parameter = 1; }
+            if (ScalarMathArity(name) == 2 && NameMatches(ScalarMathParameter(name, 1), supplied)) { parameter = 1; }
             value = Field(forest, source, syntax.FieldValue);
             if (value < 0) { value = Field(forest, source, syntax.FieldSource); }
         }
@@ -136,7 +162,7 @@ ScalarMathOperands :: (forest: snapshot.SnapshotNode[], text: string, callables:
                        constants: ConstDecl[], node: int, rows: facts.Row[]) -> ScalarOperands {
     storage := ScalarMathStorage(forest, text, callables, params, callable, names, types, members, constants, node);
     if (storage == 0) {
-        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native fmod requires its standard numeric overloads"));
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native math requires its standard numeric overloads"));
     }
     supplied := ScalarMathArguments(forest, text, node);
     output := rows;
@@ -148,17 +174,29 @@ ScalarMathOperands :: (forest: snapshot.SnapshotNode[], text: string, callables:
             case .Built(built): output = built;
         }
     }
+    name := Text(forest, text, Field(forest, node, syntax.FieldFunction));
+    count := ScalarMathArity(name);
     reversed := length(supplied) > 0 && supplied[0].parameter == 1;
-    if (length(supplied) == 1) {
-        bits: u64 = 0;
-        if (!reversed) {
-            bits = 4607182418800017408;
-            if (storage == FloatStorage) { bits = 1065353216; }
-        }
-        output.append(ScalarLiteral(forest, node, ScalarTypeOf(storage), bits));
+    if (length(supplied) < count) {
+        missing := length(supplied);
+        if (reversed) { missing = 0; }
+        output.append(ScalarLiteral(forest, node, ScalarTypeOf(storage), ScalarMathDefault(name, missing, storage)));
     }
-    operator := facts.Remainder;
-    if (reversed) { operator = facts.ReversedRemainder; }
-    output.append(ScalarAt(forest, node, facts.ArithmeticRow, ScalarTypeOf(storage), operator, 2, ""));
+    if (name == "fmod") {
+        operator := facts.Remainder;
+        if (reversed) { operator = facts.ReversedRemainder; }
+        output.append(ScalarAt(forest, node, facts.ArithmeticRow, ScalarTypeOf(storage), operator, 2, ""));
+    } else if (name == "sqrt" && storage == FloatStorage) {
+        output.append(ScalarAt(forest, node, facts.UnaryRow, facts.FloatType, facts.SquareRoot, 1, ""));
+    } else {
+        symbol := name;
+        if (name == "sin_precise") { symbol = "sin"; }
+        if (name == "cos_precise") { symbol = "cos"; }
+        if (storage == FloatStorage) { symbol = format_text("{}f", symbol); }
+        call := ScalarAt(forest, node, facts.ForeignRow, ScalarTypeOf(storage), 0, count, symbol);
+        call.text = "system:m";
+        if (reversed) { call.literal = i64(facts.ForeignReversed); }
+        output.append(call);
+    }
     return ScalarOperands.Built(output);
 }

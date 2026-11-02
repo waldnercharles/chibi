@@ -1240,7 +1240,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                   operand.kind == facts.ForeignRow;
         if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
             !Within(operand, scope) ||
-            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.literal != 0) ||
+            (operand.kind != facts.LiteralRow && operand.kind != facts.RefRow && operand.kind != facts.MapRow && operand.kind != facts.ArrayRow && operand.kind != facts.CallRow && operand.kind != facts.AwaitResultRow && operand.kind != facts.ForeignRow && operand.literal != 0) ||
             (operand.kind == facts.CallRow && (operand.literal < 0 || operand.literal > i64(facts.CallSpawned)))) {
             return "invalid scalar operand row";
         }
@@ -1413,7 +1413,8 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
         } else if (operand.kind == facts.ForeignRow) {
             base := length(stack) - operand.count;
             indirect := operand.value == 1;
-            if ((operand.value != 0 && !indirect) || (indirect && (operand.name != "" || operand.text != "" || operand.count < 1)) ||
+            if ((operand.literal != 0 && (operand.literal != i64(facts.ForeignReversed) || indirect || operand.count != 2)) ||
+                (operand.value != 0 && !indirect) || (indirect && (operand.name != "" || operand.text != "" || operand.count < 1)) ||
                 (!indirect && operand.name == "") || !Scalar(operand.type) ||
                 operand.count < 0 || base < floor) {
                 return "scalar foreign call differs from its operands";
@@ -2820,10 +2821,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     texts.append(operand.name);
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
-                        arguments.append(stack[base + argument]);
-                        if (Holds(fresh, stack[base + argument]) &&
-                            ArrayTyped(slots[shape.first_slot + stack[base + argument]])) {
-                            pending.append(stack[base + argument]);
+                        selected := argument;
+                        if (operand.literal == i64(facts.ForeignReversed)) { selected = 1 - argument; }
+                        passed := stack[base + selected];
+                        arguments.append(passed);
+                        if (Holds(fresh, passed) && ArrayTyped(slots[shape.first_slot + passed])) {
+                            pending.append(passed);
                         }
                     }
                     shape.arguments += operand.count;
@@ -3987,7 +3990,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):
-            return Result.Emitted(Linked(text, rows));
+            return Result.Emitted(Linked(text, rows, target));
     }
 }
 // The module's text with a comment naming each library a foreign call needs,
@@ -3997,10 +4000,17 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
 // import definition. A foreign block with no library declares symbols of the
 // program's own objects, such as its start module: each gets `; chibi-self
 // SYMBOL`, and no stub or import library lists it.
-Linked :: (text: string, rows: facts.Row[]) -> string {
+Linked :: (text: string, rows: facts.Row[], target: abi.Target) -> string {
     paths: string[] = [];
     imports: string[] = [];
-    for (row in rows) {
+    for (original in rows) {
+        row := original;
+        // Scalar libm capabilities use the C math ABI. Each target owns that
+        // same ABI in its system library; emitted calls retain their symbols.
+        if (row.kind == facts.ForeignRow && row.text == "system:m") {
+            if (abi.Same(target, abi.MacOSArm64())) { row.text = "system:System"; row.name = format_text("_{}", row.name); }
+            if (abi.Same(target, abi.WindowsX64())) { row.text = "system:ucrtbase"; }
+        }
         if (row.kind == facts.ForeignRow && row.text != "" && !paths.contains(row.text)) {
             paths.append(row.text);
         }

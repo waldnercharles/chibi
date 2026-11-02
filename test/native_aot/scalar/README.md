@@ -210,35 +210,18 @@ rows own their strings and, once snapshotted, their record shape.
 
 - Across processes, `Run.ps1` passes the producer's exact stdout file as the
   consumer's input.
-- In one process, `tool language-package-compiler-chibi-scalar` produces the
-  rows on both VMs, frees the producer's packages and inputs, reads the
-  retained rows, then prepares the consumer and emits them as IR with the call.
-  It also validates a guarded module's rows and 19 malformed variants of them:
-  if statement layout, comparison operator, arity, result and operand types,
-  the condition's stack, statement and end ranges, a read past the variables,
-  a body that can end without returning, and a recursive call misnamed.
-  An arithmetic module's rows get 9 more: binary and unary operators, arity,
-  result type and bool operands. A module with locals, an else and a logical
-  gets 18: logical counts, operators and right sides, a `!` of an int, reads
-  of a local in its own initializer and out of its block, local and
-  assignment rows, else and end layout and ranges, and return paths. A
-  module of a `for` loop that breaks and an endless `while` loop that
-  continues gets 17: break and continue outside a loop or with fields, an
-  endless loop that breaks or tests false, condition and bound types, index
-  rows, an assignment to the index, reads of it in its bound and after its
-  loop, and loop end and body ranges. A switch whose default arm declares a
-  local gets 15: statements before the first arm, arms outside a switch, a
-  second default, switch and arm types, arm fields and ranges, a read of the
-  default arm's local in the next arm, and an arm that does not return.
-  A union module whose switch binds payloads gets 25: union, variant and
-  payload rows out of order, unnamed, duplicated, outside their declaration
-  or of a record or string type, a variant made with another's payloads or as a
-  scalar, Tag and Payload rows of another type, arity or payload, and a zero,
-  field read or comparison of a union or its tag. A string module gets 10:
-  text on an int literal or a read, a string literal with a nonzero or
-  oversized literal, strings ordered or compared with an int, a local or
-  read of another type and a string argument for an int parameter. A string
-  record field is rejected with the record module's variants.
+- In one native process, `tool language-package-compiler-chibi-scalar` runs
+  `test/native_aot/scalar_producer`. Fifteen source projections retain their
+  owned rows and temporary heap-backed source text after later collections,
+  then the real validator and consumer inspect and emit those values. Twelve
+  row-kind sequences and all 169 malformed edit variants preserve their exact
+  rejection diagnostics and empty-output checks. Package, collection, scoped
+  pointer, library and retained-state contracts also run natively, followed by
+  every authored scalar corpus case, including deep operands. The retired C
+  selector's VM package teardown and JSON arena ownership are replaced by the
+  native values' actual lifetime boundary. See the
+  [producer coverage](../scalar_producer/README.md) for the C-case mapping and
+  the one updated unknown-conversion selector.
 
 `scalar_llvm.Validate` checks the representation: counts within their rows, row
 layout, canonical fields, positions, typed operand stacks and callee

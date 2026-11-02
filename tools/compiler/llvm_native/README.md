@@ -145,12 +145,14 @@ scalar ordinals.
   and 1-6 for a failed group. It checks scalar emission, malformed types/control
   flow, definition dominance, total arithmetic, explicit budgets and
   recursion with stack probes.
-- `tool language-package-compiler-chibi-scalar` (`test/language`): call
-  definitions and argument order, malformed calls and misplaced call
-  graphs, library wrappers and manifests, floating encodings, comparisons,
-  conversions and intrinsic
-  declarations, and floating operations and conversions outside the native subset,
-  each with its exact rejection, on both VMs.
+- `tools/compiler/llvm_native/tests`: authored checks for definitions and
+  argument order, malformed calls and graphs, library wrappers and manifests,
+  floating encodings, conversions, intrinsic declarations and precise
+  unsupported-operation diagnostics.
+- `tool language-package-compiler-chibi-scalar`
+  (`test/native_aot/scalar_producer`): the real native producer's owned rows,
+  exact validation rejections, package/library contracts and full scalar corpus.
+  It no longer runs through a C compiler host or either VM.
 - `tools/compiler/scalar_llvm`: lowers producer-owned `scalar_facts` rows; see
   `test/native_aot/scalar/README.md`.
 - `test/fixtures/native-abi/Checks.chibi`: pure target/type checks; the adjacent
@@ -167,10 +169,10 @@ validation of a new producer or lifetime boundary. Its Div/Mod formatter-limit
 regression remains in these tests: each formatting call stays within the
 bootstrap text formatter's twelve-placeholder bound.
 
-The emitter changes no defaults, runtime ABI or installed SDK routes, and it is
-not part of the compiler's bootstrap closure. The language test fixture embeds
-it only for the same-process scalar handoff check. Complete native memory/FFI
-coverage remains open.
+The authored native driver and self-hosted compiler consume this emitter.
+The separate C native backend fixtures still exercise their compatibility
+boundary until their own replacements are complete. Current runtime coverage
+and remaining gates are tracked in `docs/native-llvm-ledger.md`.
 
 ### Clean carry-forward validation
 

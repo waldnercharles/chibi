@@ -1,0 +1,29 @@
+package native_driver
+
+import cases "fixtures:cases"
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import abi "project:native_abi"
+import os "core:os"
+
+Corpus :: () {
+    count := cases.Count();
+    for index in 0..<count {
+        rows := Produced(cases.Source(index));
+        checked := cases.Check(rows);
+        if checked != 1 { os.Print(format_text("{}: Check returned {}", cases.CaseName(index), checked)); }
+        assert(checked == 1, "real scalar corpus matches its authored source oracle");
+        assert(scalar.Validate(rows) == "");
+        bytes := scalar.EmitBytesFor(abi.LinuxX64(), rows);
+        if rows[1].kind == facts.RejectionRow {
+            assert(length(bytes) == 0);
+            switch scalar.EmitFor(abi.LinuxX64(), rows) {
+                case .Rejected(rejected): assert(length(rejected) == length(rows) && rejected[1].text == rows[1].text);
+                case: assert(false, "rejected corpus source keeps its projection");
+            }
+        } else {
+            assert(length(bytes) > 0);
+        }
+    }
+    os.Print(format_text("PASS all {} real scalar corpus cases, including deep operands", count));
+}

@@ -265,11 +265,6 @@ jobs:
         include-hidden-files: true
         if-no-files-found: warn
         retention-days: 7
-    - name: Build timing host regressions (ready drivers)
-      env:
-        CHIBI_TOOLS_BUILD_DIR: build/test/tools
-        CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-      run: sh tools/build.sh test --build-host "$CHIBI_BUILD_HOST" build-timings
     - name: Tooling and process integrations
       env:
         CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings

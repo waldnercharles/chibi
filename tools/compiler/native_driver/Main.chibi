@@ -7,7 +7,7 @@ import os "core:os"
 import strings "core:strings"
 
 // The native compiler's driver: `STAGE --compiler DIR --core DIR --output FILE
-// --llvm DIR [--package NAME | --source FILE] [--entry NAME] [--collection NAME=DIR]...
+// --llvm DIR [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]...
 // [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]`
 // compiles package NAME of the project at DIR (default native_driver), or the
 // one program FILE, and the core and collection packages it imports to the
@@ -29,22 +29,26 @@ import strings "core:strings"
 
 // The entry comes first: a package set's entry is its first file's first function.
 Main :: () -> int {
-    arguments := os.Arguments();
+    return Build(os.Arguments());
+}
+
+// The stage flags are also the native CLI build contract.
+Build :: (arguments: string[]) -> int {
     project := Option(arguments, "--compiler", "");
     core := Option(arguments, "--core", "");
     output := Option(arguments, "--output", "");
     llvm := Option(arguments, "--llvm", "");
     package := Option(arguments, "--package", "native_driver");
     source := Option(arguments, "--source", "");
+    root := Option(arguments, "--root", "");
     chosen := Option(arguments, "--entry", "");
     triple := Option(arguments, "--target", "x86_64-unknown-linux-gnu");
     level := Option(arguments, "--level", "2");
     lines := Flag(arguments, "--lines");
     shared := Flag(arguments, "--shared");
     linux := triple == "x86_64-unknown-linux-gnu";
-    windows := strings.HasPrefix(triple, "x86_64-pc-windows");
-    if (project == "" || core == "" || output == "" || llvm == "" || (level != "0" && level != "2")) {
-        os.Print("usage: --compiler DIR --core DIR --output FILE --llvm DIR [--package NAME | --source FILE] [--entry NAME] [--collection NAME=DIR]... [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]");
+    if (project == "" || core == "" || (output == "" && root == "") || llvm == "" || (level != "0" && level != "2")) {
+        os.Print("usage: --compiler DIR --core DIR --output FILE --llvm DIR [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]... [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]");
         return 2;
     }
     if ((lines || shared) && !linux) {
@@ -55,9 +59,25 @@ Main :: () -> int {
         os.Print("native: a shared library has no line tables or static link yet");
         return 2;
     }
+    if (root != "") {
+        if (output != "" || source != "" || Option(arguments, "--package", "") != "") {
+            os.Print("native: --root takes no --output, --source or --package");
+            return 2;
+        }
+        root = os.RealPath(root);
+        if (root == "" || (!os.IsDirectory(root) && !os.IsFile(root))) {
+            os.Print("native: --root must name an existing source file or package directory");
+            return 2;
+        }
+        if (os.IsFile(root)) {
+            source = root;
+            root = strings.Slice(root, 0, strings.LastIndex(root, "/"));
+        }
+        project = root;
+        package = ".";
+    }
     collections: string[] = ["core"];
     directories: string[] = [core];
-    seen: string[] = [route.Visible(core)];
     for (declared in Values(arguments, "--collection")) {
         equals := strings.Index(declared, "=");
         if (equals <= 0) {
@@ -72,7 +92,6 @@ Main :: () -> int {
         }
         collections.append(name);
         directories.append(directory);
-        seen.append(route.Visible(directory));
     }
     gathered := Gather(project, collections, directories, package, source);
     if (gathered.problem != "") {
@@ -89,19 +108,67 @@ Main :: () -> int {
             folder = strings.Slice(source, 0, slash);
         }
     }
+    if (root != "") {
+        folder = root;
+    }
+    options: DriverOptions = {level: level, lines: lines, static_link: Flag(arguments, "--static"),
+                               shared: shared, folder: folder, keep_module: root != ""};
+    if (root != "") {
+        return CachedBuild(root, collections, directories, gathered, triple, chosen, llvm, Jobs(arguments), options, source);
+    }
+    return EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, chosen, llvm, output,
+                       Jobs(arguments), options);
+}
+
+// The options shared by native build, run and test. Only cached builds keep
+// the source module beside their receipt.
+DriverOptions :: struct {
+    level: string;
+    lines: bool;
+    static_link: bool;
+    shared: bool;
+    folder: string;
+    keep_module: bool;
+}
+
+Emit :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+         chosen: string, llvm: string, output: string, jobs: int) -> int {
+    return EmitOptions(collections, directories, paths, sources, triple, chosen, llvm, output, jobs,
+                       {level: "2", lines: false, static_link: false, shared: false, folder: ".", keep_module: false});
+}
+
+// Emits into the caller's work directory; only a successful link replaces
+// output. Invalid source and options leave any previous program untouched.
+EmitOptions :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+                chosen: string, llvm: string, output: string, jobs: int, options: DriverOptions) -> int {
+    linux := triple == "x86_64-unknown-linux-gnu";
+    windows := strings.HasPrefix(triple, "x86_64-pc-windows");
+    shared := options.shared;
+    if ((options.lines || shared) && !linux) {
+        os.Print("native: line tables and shared libraries are Linux x86-64 only so far");
+        return 2;
+    }
+    if ((options.level != "0" && options.level != "2") || (shared && (options.lines || options.static_link))) {
+        os.Print("native: a shared library has no line tables or static link yet; --level is 0 or 2");
+        return 2;
+    }
     directory := "";
-    if (lines) {
-        directory = route.Visible(folder);
+    if (options.lines) {
+        directory = route.Visible(options.folder);
+    }
+    visible: string[] = [];
+    for (directory in directories) {
+        visible.append(route.Visible(directory));
     }
     compiled: Output = Output.Rejected("");
     if (shared) {
-        if (length(gathered.paths) != 1 || chosen != "") {
+        if (length(paths) != 1 || chosen != "") {
             os.Print("native: a shared library takes one source and no --entry");
             return 1;
         }
-        compiled = LibraryModule(gathered.paths[0], gathered.sources[0]);
+        compiled = LibraryModule(paths[0], sources[0]);
     } else {
-        compiled = Module(collections, seen, gathered.paths, gathered.sources, triple, chosen, directory);
+        compiled = Module(collections, visible, paths, sources, triple, chosen, directory);
     }
     pieces: string[] = [];
     switch compiled {
@@ -119,7 +186,7 @@ Main :: () -> int {
         markers.extend(Markers(piece));
     }
     archives: string[] = [];
-    vendor := link.VendorDirectory(core);
+    vendor := link.VendorDirectory(directories[0]);
     for (line in markers) {
         if (!strings.HasPrefix(line, "; chibi-library ")) {
             continue;
@@ -133,12 +200,11 @@ Main :: () -> int {
             }
             continue;
         }
-        archive := link.Archive(path, folder, vendor);
+        archive := os.RealPath(link.Archive(path, options.folder, vendor));
         if (archive == "" || !os.IsFile(archive)) {
             os.Print(strings.Concatenate(["native: the foreign library ", path, " is not a file"]));
             return 2;
         }
-        archive = os.RealPath(archive);
         if (!Contains(archives, archive)) {
             archives.append(archive);
         }
@@ -151,8 +217,8 @@ Main :: () -> int {
     // when it takes the context (the other functions are `@chibi_scalar.N`).
     // Definitions start a line; a text constant never does.
     context := strings.Contains(pieces[0], "\ndefine i32 @chibi_scalar(ptr %ctx)");
-    static := windows || (linux && Flag(arguments, "--static"));
-    if (Flag(arguments, "--static") && linux && context) {
+    static := windows || (linux && options.static_link);
+    if (options.static_link && linux && context) {
         os.Print("native: a program that allocates links libc dynamically; omit --static");
         return 2;
     }
@@ -165,6 +231,11 @@ Main :: () -> int {
     // Each piece of the module is optimized and compiled to its own object,
     // as many at once as --jobs, by default every processor. Reject incompatible
     // options above before writing any intermediate output.
+    if (options.keep_module && os.WriteText(strings.Concatenate([strings.Slice(output, 0, strings.LastIndex(output, "/")), "/source.ll"]),
+                                           strings.Join(pieces, "\n; chibi-piece\n")) != nil) {
+        os.Print("native: cannot write the source module");
+        return 2;
+    }
     files: string[] = [];
     objects: string[] = [];
     for (index in 0..<length(pieces)) {
@@ -177,10 +248,10 @@ Main :: () -> int {
         objects.append(format_text("{}.{}.o", output, index));
     }
     optimization := 2;
-    if (level == "0") {
+    if (options.level == "0") {
         optimization = 0;
     }
-    if (host.Objects(llvm, files, objects, optimization, Jobs(arguments)) != nil) {
+    if (host.Objects(llvm, files, objects, optimization, jobs) != nil) {
         os.Print("native: opt or llc could not emit an object");
         return 2;
     }
@@ -297,30 +368,18 @@ ImportedFrom :: (text: string, collection: string) -> string[] {
     return found;
 }
 
-// The .chibi files directly in a package folder, in the listing's order.
-PackageFiles :: (folder: string) -> string[] {
+// The .chibi files directly in a package folder, in the listing's order; test files
+// (named ...Tests.chibi) only when `tests`.
+PackageFiles :: (folder: string, tests: bool) -> string[] {
     files: string[] = [];
     listed := os.List(folder);
     for (name in listed.names) {
-        if (strings.HasSuffix(name, ".chibi") && !strings.HasSuffix(name, "Tests.chibi") && os.IsFile(strings.Concatenate([folder, "/", name]))) {
+        if (strings.HasSuffix(name, ".chibi") && (tests || !strings.HasSuffix(name, "Tests.chibi")) && os.IsFile(strings.Concatenate([folder, "/", name]))) {
             files.append(name);
         }
     }
-    // In name order, as the VM-side listing gives: the order of a package's
-    // files is the order of its declarations, which the compiler's passes
-    // (ScopedParameters wants them ascending) and its output depend on, and
-    // a directory's own order is not stable across machines.
-    ranked := resize([""], length(files));
-    for (name in files) {
-        rank := 0;
-        for (other in files) {
-            if (strings.Compare(other, name) < 0) {
-                rank += 1;
-            }
-        }
-        ranked[rank] = name;
-    }
-    return ranked;
+    // core:os.List already returns deterministic byte order.
+    return files;
 }
 
 // The sources of the closure: the package's own files, Main.chibi first (or the
@@ -335,16 +394,44 @@ Inputs :: struct {
 }
 
 Gather :: (project: string, collections: string[], directories: string[], package: string, source: string) -> Inputs {
+    return GatherWith(project, collections, directories, package, source, {folder: "", name: "", text: "", entry_name: "", entry_text: ""});
+}
+
+// A package under test: its folder, the test files it also takes, and one more file, `name`
+// holding `text`, that is not on disk, the test dispatcher. A nonempty `entry_text` is the
+// entry package, one file `entry_name` that is not on disk either, whose imports resolve
+// against the project folder.
+Extra :: struct {
+    folder: string;
+    name: string;
+    text: string;
+    entry_name: string;
+    entry_text: string;
+}
+
+GatherWith :: (project: string, collections: string[], directories: string[], package: string, source: string,
+               extra: Extra) -> Inputs {
     found: Inputs = {paths: [], sources: [], problem: ""};
     seen: string[] = [strings.Concatenate(["project:", package])];
     folders: string[] = [strings.Concatenate([project, "/", package])];
     prefixes: string[] = [strings.Concatenate([package, "/"])];
+    if (package == ".") {
+        prefixes[0] = "";
+    }
     kinds: string[] = ["project"];
     kinds.extend(collections);
     next := 0;
     while (next < length(folders)) {
-        files := PackageFiles(folders[next]);
-        if (next == 0 && source != "") {
+        files := PackageFiles(folders[next], folders[next] == extra.folder);
+        if (extra.folder != "" && folders[next] == extra.folder) {
+            files.append(extra.name);
+        }
+        if (next == 0 && extra.entry_text != "") {
+            // The entry text of the caller, alone.
+            folders[0] = project;
+            files = [extra.entry_name];
+            prefixes[0] = strings.Concatenate([package, "/"]);
+        } else if (next == 0 && source != "") {
             // One program: its file alone, whatever else its folder holds.
             slash := strings.LastIndex(source, "/");
             folders[0] = ".";
@@ -357,26 +444,40 @@ Gather :: (project: string, collections: string[], directories: string[], packag
         } else if (next == 0) {
             // The entry file is first, as the producer reads the first file's
             // first function as the module's entry.
-            ordered: string[] = ["Main.chibi"];
-            for (file in files) {
-                if (file != "Main.chibi") {
-                    ordered.append(file);
+            if (Contains(files, "Main.chibi")) {
+                ordered: string[] = ["Main.chibi"];
+                for (file in files) {
+                    if (file != "Main.chibi") {
+                        ordered.append(file);
+                    }
                 }
+                files = ordered;
+            } else if (length(files) != 1) {
+                found.problem = strings.Concatenate(["package directory needs one source or Main.chibi: ", folders[next]]);
+                return found;
             }
-            files = ordered;
+        }
+        if (length(files) == 0) {
+            found.problem = strings.Concatenate(["package directory has no sources: ", folders[next]]);
+            return found;
         }
         for (file in files) {
             location := strings.Concatenate([folders[next], "/", file]);
-            if (!os.Exists(location)) {
-                found.problem = strings.Concatenate(["cannot read ", location]);
-                return found;
+            text := extra.text;
+            if (next == 0 && extra.entry_text != "") {
+                text = extra.entry_text;
+            } else if (extra.folder == "" || folders[next] != extra.folder || file != extra.name) {
+                if (!os.Exists(location)) {
+                    found.problem = strings.Concatenate(["cannot read ", location]);
+                    return found;
+                }
+                read := os.ReadText(location);
+                if (read.error != nil) {
+                    found.problem = strings.Concatenate(["cannot read ", location]);
+                    return found;
+                }
+                text = read.text;
             }
-            read := os.ReadText(location);
-            if (read.error != nil) {
-                found.problem = strings.Concatenate(["cannot read ", location]);
-                return found;
-            }
-            text := read.text;
             found.paths.append(strings.Concatenate([prefixes[next], file]));
             found.sources.append(text);
             for (kind in kinds) {

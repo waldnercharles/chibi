@@ -18,3 +18,20 @@ empty `PATH`; the fixture archive is built with LLVM, not a C compiler.
 Shared libraries currently use the existing single-source library producer;
 package imports and `--entry` are not supported for that mode. This is focused
 driver coverage, not a whole-language, sanitizer, or self-host fixed-point proof.
+
+The native driver also accepts `--root FILE_OR_DIRECTORY` in place of
+`--source`/`--package` and `--output`. A directory uses `Main.chibi` first and
+includes its package siblings. A file compiles only that source and its import
+closure. Outputs go below the root directory's `build/native/OLEVEL-KEY/` and
+include `program`, `source.ll` and `receipt.txt`.
+
+The cache identifies source contents, compiler and LLVM binaries, target,
+options and foreign archives. A verified hit runs no LLVM process. Incomplete
+receipts, changed programs and interrupted `.work`/`.partial` directories fail
+with a recovery diagnostic. A failed build preserves every published output.
+
+Run the real root/cache checks on Linux x86-64 or macOS arm64:
+
+```
+sh test/native_aot/native_driver/cache.sh /absolute/path/to/chibi /absolute/path/to/llvm/bin
+```

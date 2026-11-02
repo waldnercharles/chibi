@@ -40,3 +40,8 @@ CHIBI_CORE=$root/packages/core "$scratch/waiting" "$compiler" "$llvm" "$scratch/
     --source "$root/test/native_cli/AssertionMessages.chibi" --entry Main --output "$scratch/messages" \
     --llvm "$llvm" --target "$target"
 CHIBI_CORE=$root/packages/core "$scratch/messages" "$compiler" "$llvm" "$scratch/programs"
+
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_cli/Generics.chibi" --entry Main --output "$scratch/generics" \
+    --llvm "$llvm" --target "$target"
+CHIBI_CORE=$root/packages/core "$scratch/generics" "$compiler" "$llvm" "$root" "$scratch/programs"

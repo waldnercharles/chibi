@@ -1067,8 +1067,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if ((item.op == StateLoad || item.op == StateStore) && !StateValid(slots, texts, item)) {
             return Result.Rejected(base + pc, "native retained state differs from its operands");
         }
-        if (item.op == ForeignCall && !ForeignValid(slots, arguments, texts, item)) {
-            return Result.Rejected(base + pc, "native foreign call differs from its operands");
+        foreign_abi := InvalidForeignABI;
+        if (item.op == ForeignCall) {
+            foreign_abi = ForeignABI(slots, arguments, texts, item);
+            if (foreign_abi == InvalidForeignABI) {
+                return Result.Rejected(base + pc, "native foreign call differs from its operands");
+            }
         }
         if (item.op == ForeignCall && length(loan_uses) > 0) {
             for (index in 0..<item.target) {
@@ -1111,18 +1115,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             (item.op == Delay && !Typed(slots, item.left, abi.DoubleStorage))) {
             return Result.Rejected(base + pc, "native timed task operation requires an f64 duration");
         }
-        if (waiting[function] && (item.op == Fail || item.op == Format || item.op == ForeignCall)) {
-            // Generated test entry scopes are scalar, synchronous runtime
-            // calls. No general foreign ABI or managed frame admission changes.
-            test_runtime := false;
-            if (ProgramMode(mode) && item.op == ForeignCall && item.left == 0 && item.target == 0 && item.type == abi.IntStorage) {
-                symbol := texts[int(item.literal)];
-                test_runtime = symbol == "chibi_native_test_index" || symbol == "chibi_native_test_begin" ||
-                               symbol == "chibi_native_test_end";
-            }
-            if (!test_runtime) {
-                return Result.Rejected(base + pc, "native waiting function cannot fail, format or call foreign code yet");
-            }
+        // C calls complete synchronously. Scalar arguments/results live in the
+        // coroutine's existing scalar slots; borrowed strings/array buffers
+        // retain the separate lifetime gate. Typed source effects are unchanged.
+        if (waiting[function] && (item.op == Fail || item.op == Format ||
+            (item.op == ForeignCall && foreign_abi != ScalarForeignABI))) {
+            return Result.Rejected(base + pc, "native waiting function cannot fail, format or borrow foreign buffers yet");
         }
         if (item.op == Fail && (item.left < 0 || item.right < item.left)) {
             return Result.Rejected(base + pc, "native failure names no source range");
@@ -2211,37 +2209,47 @@ ForeignType :: (type: int) -> string {
     }
     return format_text("{}{}", TypeName(type), CExtension(type));
 }
-// Whether a foreign call names a C symbol the module does not define, or when
-// its `left` is 1 calls through the address in its first argument, a word, and
-// has number, bool or string operands and a number or bool result.
-ForeignValid :: (slots: int[], arguments: int[], texts: string[], item: Instruction) -> bool {
+// One validation pass also identifies whether all arguments travel by value.
+// A synchronous scalar C call needs no buffer lease in a coroutine frame.
+InvalidForeignABI: int : 0;
+ScalarForeignABI: int : 1;
+BorrowedForeignABI: int : 2;
+ForeignABI :: (slots: int[], arguments: int[], texts: string[], item: Instruction) -> int {
     if (item.literal < 0 || item.literal >= i64(length(texts)) || abi.ScalarType(item.type) == "") {
-        return false;
+        return InvalidForeignABI;
     }
     symbol := texts[int(item.literal)];
     indirect := item.left == 1;
     if (item.left != 0 && !indirect) {
-        return false;
+        return InvalidForeignABI;
     }
     if (indirect && symbol != "") {
-        return false;
+        return InvalidForeignABI;
     }
     if (!indirect && (!Identifier(symbol) || symbol == "main" || symbol == "chibi_scalar")) {
-        return false;
+        return InvalidForeignABI;
     }
     if (item.right < 0 || item.target < 0 || item.target > length(arguments) - item.right) {
-        return false;
+        return InvalidForeignABI;
     }
     if (indirect && (item.target < 1 || !Typed(slots, arguments[item.right], abi.WordStorage))) {
-        return false;
+        return InvalidForeignABI;
     }
+    // These program-owned helpers have a fixed ABI, regardless of the caller's
+    // frame. A source declaration cannot change their result or add arguments.
+    if (!indirect && (symbol == "chibi_native_test_index" || symbol == "chibi_native_test_begin" ||
+                      symbol == "chibi_native_test_end") && (item.type != abi.IntStorage || item.target != 0)) {
+        return InvalidForeignABI;
+    }
+    capability := ScalarForeignABI;
     for (index in 0..<item.target) {
         slot := arguments[item.right + index];
         if (!Index(slot, length(slots)) || !ForeignArgument(slots[slot])) {
-            return false;
+            return InvalidForeignABI;
         }
+        if (abi.ScalarType(slots[slot]) == "") { capability = BorrowedForeignABI; }
     }
-    return true;
+    return capability;
 }
 // The declaration of each foreign symbol functions [first, last) call, once.
 ForeignDeclarations :: (functions: Function[], first: int, last: int, slots: int[], code: Instruction[],

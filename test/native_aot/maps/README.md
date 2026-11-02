@@ -47,6 +47,8 @@ exits must retain each live payload and release it once. Array-backed record
 values remain rejected until their recursive backing ownership is available.
 Borrowed string and record array elements also survive later literal callbacks
 that replace the source element before the map is constructed.
+String variables used as map keys also survive later callbacks that replace
+the variable, including differently named scoped aliases and conditional calls.
 The native emitter also checks int[] payload ownership, independent mapped
 array edits, missing-key empty arrays and values escaping a dropped map.
 Authored map array payloads remain rejected until foreign buffer writes and

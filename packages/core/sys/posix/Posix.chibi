@@ -584,9 +584,10 @@ Nanoseconds :: (value: int) -> string {
     return text;
 }
 
-// Identifies the file's content and metadata for change detection: equal stamps
-// mean the same file untouched. "" when the path does not exist. A link is
-// followed. The text is the build host's, `device:inode:size:mode:mtime:ctime`
+// The file's identity and metadata for change detection, not a content hash.
+// Equal stamps can miss rapid same-size rewrites on a coarse filesystem clock.
+// "" when the path does not exist. A link is followed.
+// The text is the build host's, `device:inode:size:mode:mtime:ctime`
 // with the mode in octal and the times as seconds.nanoseconds, so a record
 // either host wrote reads the same for the other.
 pub Stamp :: (path: string) -> string {

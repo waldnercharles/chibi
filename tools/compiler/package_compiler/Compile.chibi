@@ -4304,7 +4304,7 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
 }
 // Whether `path` is the file of the core collection's target package, whose
 // text a compile with a platform replaces.
-TargetPackagePath :: (collection_names: string[], collection_paths: string[], path: string) -> bool {
+pub TargetPackagePath :: (collection_names: string[], collection_paths: string[], path: string) -> bool {
     index: int = 0;
     while (index < length(collection_names)) {
         if (collection_names[index] == "core" && path == format_text("{}/target/Target.chibi", collection_paths[index])) {
@@ -4316,7 +4316,7 @@ TargetPackagePath :: (collection_names: string[], collection_paths: string[], pa
 }
 // The constants of core:target for a platform: os 1 Linux, 2 Darwin, 3 Windows;
 // arch 1 x86-64, 2 Arm64; native 1 for a native program, 0 for the VM.
-TargetPackageText :: (os: int, arch: int, pointer_bits: int, native: int) -> string {
+pub TargetPackageText :: (os: int, arch: int, pointer_bits: int, native: int) -> string {
     return format_text("package target\n\npub Linux: int : 1\npub Darwin: int : 2\npub Windows: int : 3\n\npub X86_64: int : 1\npub Arm64: int : 2\n\npub Os: int : {}\npub Arch: int : {}\npub PointerBits: int : {}\n\npub Native: int : {}\n", os, arch, pointer_bits, native);
 }
 CompileInput :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],

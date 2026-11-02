@@ -52,6 +52,18 @@ for level in 0 2; do
     done
     printf 'PASS nested descriptors, value copies and balanced ownership O%s\n' "$level"
 done
+# A filtered pointer constructor must reject without leaking a temporary
+# type-table ordinal into the native view or replacing an earlier artifact.
+printf 'preserved\n' > "$work/rejected"
+set +e
+"$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+    --source "$root/test/native_aot/nested_arrays/rejected/Pointer.chibi" --entry Main \
+    --output "$work/rejected" --llvm "$llvm" --target "$triple" --level 0 --jobs 1 > "$work/rejected.log" 2>&1
+status=$?
+set -e
+test "$status" -eq 1 || { cat "$work/rejected.log"; exit 1; }
+test "$(cat "$work/rejected")" = preserved
+grep -F 'Pointer.chibi:4:5: scalar proof supports only number, bool and string values' "$work/rejected.log" > /dev/null
 if [ -n "$reference" ]; then
     mkdir "$work/reference"
     cp "$root/test/native_aot/nested_arrays/Main.chibi" "$work/reference/Main.chibi"

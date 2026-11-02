@@ -19,13 +19,14 @@ import syntax "project:syntax_diagnostics"
 // The facts type of the elements `shape` describes, a number, bool, string,
 // or a record or union the source declares; 0 for any other.
 ScalarElementType :: (types: TypeDecl[], shape: ValueType) -> int {
-    if (shape.storage == TaskStorage) { return 0; }
+    if (shape.storage == TaskStorage || shape.record >= length(types)) { return 0; }
     if (shape.record >= 0 && ScalarNestedCollection(types[shape.record])) { return ScalarRecordType(types, shape.record); }
     return ScalarValueType(types, shape.storage, 0, shape.record);
 }
 // The facts type of an array whose elements are of `storage` and `record`, or
 // 0 when they are of no such type.
 ScalarArrayType :: (types: TypeDecl[], storage: int, record: int) -> int {
+    if (record >= length(types)) { return 0; }
     element := ScalarValueType(types, storage, 0, record);
     if (record >= 0 && ScalarNestedCollection(types[record])) { element = ScalarRecordType(types, record); }
     if (element == 0 || storage == TaskStorage) {
@@ -835,6 +836,9 @@ ScalarLocalArray :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         // keeps none of them.
         table := types;
         resolved := ReadType(forest, text, &table, names, callable.package, declared);
+        // An excluded constructor may be re-interned in this temporary view.
+        // Its ordinal belongs to table, never to the checked types below.
+        if (resolved.record >= length(types)) { return none; }
         if (resolved.container == ArrayContainer) {
             return resolved;
         }

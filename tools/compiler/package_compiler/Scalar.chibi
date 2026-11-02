@@ -3201,7 +3201,16 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
             records = viewed_types;
             fields = viewed_members;
     }
-    for (callable in seen) {
+    for (index in 0..<length(seen)) {
+        callable := seen[index];
+        if (Field(forest, callable.node, syntax.FieldAttribute) >= 0) {
+            // Test metadata follows the ordinary front-end policy. It does not
+            // change the native entry ABI or turn a void test into an entry.
+            attributes := ReadAttributes(forest, text, callables[index]);
+            if (attributes.fault >= 0) {
+                return ScalarOperands.Failed(Diagnose(forest, attributes.fault, 0, attributes.message));
+            }
+        }
         rejected := ScalarSignature(forest, records, params, callable);
         if (rejected >= 0) {
             return ScalarOperands.Failed(Diagnose(forest, rejected, 0, ScalarSignatureMessage(params, callable, rejected, forest)));
@@ -3435,10 +3444,6 @@ ScalarMemberList :: (forest: snapshot.SnapshotNode[], members: int[], packaged: 
             }
             functions = functions || inner.functions;
         } else if (Is(forest, member, syntax.FunctionDeclaration)) {
-            attribute := Field(forest, member, syntax.FieldAttribute);
-            if (attribute >= 0) {
-                return (functions, Diagnose(forest, attribute, 0, "scalar proof does not support function attributes"));
-            }
             functions = true;
         } else if (!Is(forest, member, syntax.PackageHeader) && !(packaged && Is(forest, member, syntax.ImportDeclaration)) &&
                    !Is(forest, member, syntax.RecordDeclaration) && !Is(forest, member, syntax.ForeignImportDeclaration) &&
@@ -3724,7 +3729,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                  collection_count: length(collections)};
     switch snapshot.Build(options, collections, inputs, sizes) {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
-            return ScalarFailure(path, text, diagnostic);
+            return ScalarFailed(packaged, path, text, documents, diagnostic);
         case .Accepted(roots, documents, nodes, imports, built):
             // A package set's diagnostics lie in its documents joined, as its rows do.
             shown_nodes := nodes;
@@ -3839,7 +3844,9 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                                         members, constants, ops, target, text_natives, text_ports, text_identities,
                                                         false, bindings, scalar_documents, module_links) {
                                         case .Failed(diagnostic):
-                                            return ScalarFailed(packaged, path, text, documents, diagnostic);
+                                            // The native check already used joined nodes; its range
+                                            // must not receive the document offset a second time.
+                                            return ScalarFailure(path, scalar_text, diagnostic);
                                         case .Built(rows):
                                             head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
                                                                literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0,

@@ -1,0 +1,96 @@
+package probe
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// run.sh appends the driver's actual catalog, not a second maintained copy.
+Main :: () -> int {
+    first := "package main\nMain :: () -> int { return Missing(); }\n";
+    Rejected(["Main.chibi"], [first], first, "Missing", "Unknown function 'Missing'", 2, 28);
+
+    root_source := "package main\nimport lib \"project:lib\"\nMain :: () -> int { return lib.Value(); }\n";
+    bad := "package lib\npub Value :: () -> int { return Missing(); }\n";
+    joined := strings.Concatenate([root_source, bad]);
+    Rejected(["Main.chibi", "lib/Lib.chibi"], [root_source, bad], joined, "Missing", "Unknown function 'Missing'", 5, 33);
+
+    parse := "package main\nMain :: () -> int { return 1;\n";
+    ParseRejected(["Main.chibi"], [parse], parse, 3, "Expected `}`, found the end of the file (to close the `{` at 2:19)");
+    parse_import := "package lib\npub Value :: () -> int { return 1;\n";
+    ParseRejected(["Main.chibi", "lib/Lib.chibi"], [root_source, parse_import], strings.Concatenate([root_source, parse_import]), 6, "Expected `}`, found the end of the file (to close the `{` at 2:24)");
+
+    Message(["core"], ["/sdk/core"], ["Main.chibi"], [parse],
+            "rejected Main: Expected `}`, found the end of the file (to close the `{` at 2:19) (Main.chibi:3)");
+    Message(["core"], ["/sdk/core"], ["Main.chibi", "lib/Lib.chibi"], [root_source, parse_import],
+            "rejected Value: Expected `}`, found the end of the file (to close the `{` at 2:24) (lib/Lib.chibi:3)");
+
+    // Parsing stops before later inputs are retained. EOF belongs to the
+    // rejected document, not the next file at that joined byte boundary.
+    ParseRejected(["Main.chibi", "unused/U.chibi"], [parse, "package unused\n"], parse, 3,
+                  "Expected `}`, found the end of the file (to close the `{` at 2:19)");
+    Message(["core"], ["/sdk/core"], ["Main.chibi", "unused/U.chibi"], [parse, "package unused\n"],
+            "rejected Main: Expected `}`, found the end of the file (to close the `{` at 2:19) (Main.chibi:3)");
+    Message(["core"], ["/sdk/core"], ["Main.chibi", "lib/Lib.chibi", "unused/U.chibi"],
+            [root_source, parse_import, "package unused\n"],
+            "rejected Value: Expected `}`, found the end of the file (to close the `{` at 2:24) (lib/Lib.chibi:3)");
+
+    // This is valid front-end syntax but rejected by the scalar body producer.
+    unsupported := "package lib\nPoint :: struct { x: int; }\npub Value :: () -> int { p: Point = {x: 1}; return text_byte_length(format_text(\"{}\", p)); }\n";
+    Rejected(["Main.chibi"], [unsupported], unsupported, "p", "scalar proof formats only numbers, bools and strings", 3, 87);
+    Rejected(["Main.chibi", "lib/Lib.chibi"], [root_source, unsupported], strings.Concatenate([root_source, unsupported]),
+             "p", "scalar proof formats only numbers, bools and strings", 6, 87);
+
+    // The on-disk target is deliberately a different length from its replacement.
+    uses_target := "package main\nimport target \"core:target\"\nimport lib \"project:lib\"\nMain :: () -> int { return lib.Value() + target.Native; }\n";
+    actual_target := compiler.TargetPackageText(1, 1, 64, 1);
+    target_joined := strings.Concatenate([uses_target, actual_target, bad]);
+    Rejected(["Main.chibi", "/sdk/core/target/Target.chibi", "lib/Lib.chibi"],
+             [uses_target, "package target\n", bad], target_joined, "Missing", "Unknown function 'Missing'",
+             strings.Count(uses_target, "\n") + strings.Count(actual_target, "\n") + 2, 33);
+    Message(["core"], ["/sdk/core"], ["Main.chibi", "/sdk/core/target/Target.chibi", "lib/Lib.chibi"],
+            [uses_target, "package target\n", bad], "rejected Value: Unknown function 'Missing' (lib/Lib.chibi:2)");
+    Message(["core"], ["/relocated SDK/core"], ["Main.chibi", "/relocated SDK/core/target/Target.chibi", "lib/Lib.chibi"],
+            [uses_target, "package target\n", bad], "rejected Value: Unknown function 'Missing' (lib/Lib.chibi:2)");
+    project_target := strings.ReplaceAll(uses_target, "core:target", "project:target");
+    Message(["core"], ["/sdk/core"], ["Main.chibi", "target/Target.chibi", "lib/Lib.chibi"],
+            [project_target, "package target\npub Native: int : 1\n", bad], "rejected Value: Unknown function 'Missing' (lib/Lib.chibi:2)");
+    return 0;
+}
+
+Collect :: (paths: string[], sources: string[]) -> facts.Row[] {
+    return compiler.CollectScalarProgram("/project", ["core"], ["/sdk/core"], paths, sources,
+                                         TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "");
+}
+
+Rejected :: (paths: string[], sources: string[], joined: string, excerpt: string, message: string, line: int, column: int) {
+    rows := Collect(paths, sources);
+    assert(length(rows) == 2);
+    assert(rows[0].kind == facts.SourceRow && rows[0].name == paths[0] && rows[0].text == joined);
+    assert(rows[1].kind == facts.RejectionRow && rows[1].text == message);
+    assert(rows[1].start == strings.LastIndex(joined, excerpt));
+    assert(rows[1].end == rows[1].start + strings.ByteLength(excerpt));
+    assert(rows[1].line == line && rows[1].column == column);
+    assert(scalar.Validate(rows) == "");
+}
+
+ParseRejected :: (paths: string[], sources: string[], joined: string, line: int, message: string) {
+    rows := Collect(paths, sources);
+    assert(length(rows) == 2);
+    assert(rows[0].kind == facts.SourceRow && rows[0].name == paths[0] && rows[0].text == joined);
+    assert(rows[1].kind == facts.RejectionRow);
+    assert(rows[1].text == message);
+    assert(rows[1].start == strings.ByteLength(joined) && rows[1].end == rows[1].start);
+    assert(rows[1].line == line && rows[1].column == 1);
+    assert(scalar.Validate(rows) == "");
+}
+
+Message :: (collections: string[], directories: string[], paths: string[], sources: string[], expected: string) {
+    switch Module(collections, directories, paths, sources, "x86_64-unknown-linux-gnu", "") {
+        case .Rejected(message):
+            assert(message == expected);
+        case .Emitted(text):
+            assert(false);
+    }
+}

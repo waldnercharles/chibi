@@ -3201,7 +3201,16 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
             records = viewed_types;
             fields = viewed_members;
     }
-    for (callable in seen) {
+    for (index in 0..<length(seen)) {
+        callable := seen[index];
+        if (Field(forest, callable.node, syntax.FieldAttribute) >= 0) {
+            // Test metadata follows the ordinary front-end policy. It does not
+            // change the native entry ABI or turn a void test into an entry.
+            attributes := ReadAttributes(forest, text, callables[index]);
+            if (attributes.fault >= 0) {
+                return ScalarOperands.Failed(Diagnose(forest, attributes.fault, 0, attributes.message));
+            }
+        }
         rejected := ScalarSignature(forest, records, params, callable);
         if (rejected >= 0) {
             return ScalarOperands.Failed(Diagnose(forest, rejected, 0, ScalarSignatureMessage(params, callable, rejected, forest)));
@@ -3435,10 +3444,6 @@ ScalarMemberList :: (forest: snapshot.SnapshotNode[], members: int[], packaged: 
             }
             functions = functions || inner.functions;
         } else if (Is(forest, member, syntax.FunctionDeclaration)) {
-            attribute := Field(forest, member, syntax.FieldAttribute);
-            if (attribute >= 0) {
-                return (functions, Diagnose(forest, attribute, 0, "scalar proof does not support function attributes"));
-            }
             functions = true;
         } else if (!Is(forest, member, syntax.PackageHeader) && !(packaged && Is(forest, member, syntax.ImportDeclaration)) &&
                    !Is(forest, member, syntax.RecordDeclaration) && !Is(forest, member, syntax.ForeignImportDeclaration) &&

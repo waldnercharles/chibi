@@ -3165,6 +3165,11 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         array_helpers := ArrayModule(held, record_owners);
         out.append(array_helpers);
         copies := Copies(held);
+        if (mode == NoEntry) {
+            // The library's retained-text migration also copies bytes, using
+            // the same freestanding helper as array operations.
+            for (retained in states) { copies = copies || retained.type == abi.TextStorage; }
+        }
         out.append(MapModule(held, ProgramMode(mode), record_owners));
         if (copies || array_helpers != "") {
             out.append(format_text("\n{}", ArrayCopyHelper()));
@@ -3746,7 +3751,6 @@ RetainedManifest :: (name: string, code: Instruction[], texts: string[]) -> stri
 // into the old object's mapping, so retaining its owner alone is insufficient.
 RetainedTextCopy :: () -> string {
     return strings.Join([
-        "\ndeclare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n",
         "define internal void @chibi_scalar.retained.copy(ptr %ctx, ptr %to, ptr %from) {\nentry:\n",
         "  %source = load { ptr, i32, ptr }, ptr %from\n  %bytes = extractvalue { ptr, i32, ptr } %source, 0\n",
         "  %length = extractvalue { ptr, i32, ptr } %source, 1\n  %wide = zext i32 %length to i64\n",
@@ -3754,7 +3758,7 @@ RetainedTextCopy :: () -> string {
         Allocated("owner", "%size"),
         "  store i64 1, ptr %owner\n  %size.at = getelementptr inbounds i8, ptr %owner, i64 8\n",
         "  store i32 %length, ptr %size.at\n  %data = getelementptr inbounds i8, ptr %owner, i64 12\n",
-        "  call void @llvm.memcpy.p0.p0.i64(ptr %data, ptr %bytes, i64 %wide, i1 false)\n",
+        "  call void @chibi_scalar.copy(ptr %data, ptr %bytes, i64 %wide)\n",
         "  %old = load { ptr, i32, ptr }, ptr %to\n  %released = extractvalue { ptr, i32, ptr } %old, 2\n",
         "  call void @chibi_scalar.free(ptr %ctx, ptr %released)\n",
         "  %a = insertvalue { ptr, i32, ptr } zeroinitializer, ptr %data, 0\n",
@@ -3975,6 +3979,18 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
     out.append("  %r = call i32 @chibi_host_retained_set(i32 %i, i64 %w)\n  ret i32 %r\n}\n");
     return strings.Join(out, "");
 }
+// COFF exports are explicit. Libraries have no debug metadata, so these
+// module-local metadata IDs start at zero without sharing another namespace.
+WindowsLibraryExports :: (symbols: string[]) -> string {
+    references: string[] = [];
+    declarations: string[] = [];
+    for (symbol, index in symbols) {
+        references.append(format_text("!{}", index));
+        declarations.append(strings.Concatenate([format_text("!{} = !", index), "{!\"/export:", Escaped(symbol), "\"}\n"]));
+    }
+    return strings.Concatenate(["\n!llvm.linker.options = !{", strings.Join(references, ", "), "}\n", strings.Join(declarations, "")]);
+}
+
 // A library module: each function is internal, and the symbols it exports are
 // its manifest, `chibi_natives_<library>`, a constant execution_native_manifest
 // (src/execution/native.h) listing an entry for each function whose
@@ -3983,8 +3999,9 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
 pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                     parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                     records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[]) -> Result {
-    if (!abi.Same(target, abi.LinuxX64()) && !abi.Same(target, abi.MacOSArm64())) {
-        return Result.Rejected(-1, "native libraries require Linux x86-64 or macOS arm64");
+    windows := abi.Same(target, abi.WindowsX64());
+    if (!abi.Same(target, abi.LinuxX64()) && !abi.Same(target, abi.MacOSArm64()) && !windows) {
+        return Result.Rejected(-1, "native libraries require Linux x86-64, macOS arm64 or Windows x86-64");
     }
     if (!Identifier(name) || length(names) != length(functions) || length(ids) != length(functions)) {
         return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");
@@ -4017,8 +4034,21 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     out: string[] = ["\n%chibi.export = type { ptr, i64, ptr, i32, i32, ptr }\n%chibi.manifest = type { i32, i32, ptr }\n"];
     exports: string[] = [];
     waiting := WaitingFunctions(functions, code);
+    dll_exports: string[] = [];
+    if (windows) {
+        dll_exports = [format_text("chibi_natives_{},data", name), "chibi_host_retained_release", "chibi_host_retained_count",
+                       "chibi_host_retained_type", "chibi_host_retained_hash", "chibi_host_retained_ready", "chibi_host_retained_get",
+                       "chibi_host_retained_set", "chibi_host_retained_set_as"];
+        if (runtime) { dll_exports.append("chibi_host_failed"); }
+        if (waiting.contains(true)) {
+            dll_exports.extend(["chibi_host_tasks_pending", "chibi_host_tasks_poll", "chibi_host_tasks_cancel_all"]);
+        }
+    }
     for (function in 0..<length(functions)) {
         if (waiting[function]) { continue; }
+        if (windows && HostCallable(functions[function], parameters)) {
+            dll_exports.append(strings.Concatenate(["chibi_host_call_", names[function]]));
+        }
         types := ExportTypes(functions[function], parameters);
         if (length(types) == 0) {
             continue;
@@ -4040,15 +4070,20 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
                            length(exports), strings.Join(exports, ", ")));
     out.append(format_text("@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",
                            name, abi.ExportAbi, length(exports)));
-    out.append(StateManifest(name, names, ids, functions, parameters, records, fields, field_names, runtime));
+    state_manifest := StateManifest(name, names, ids, functions, parameters, records, fields, field_names, runtime);
+    out.append(state_manifest);
+    if (windows && state_manifest != "") { dll_exports.append(format_text("chibi_state_{},data", name)); }
     if (retained_text) {
         out.append(RetainedTextCopy());
     }
-    out.append(RetainedManifest(name, code, texts));
+    retained_manifest := RetainedManifest(name, code, texts);
+    out.append(retained_manifest);
+    if (windows && retained_manifest != "") { dll_exports.append(format_text("chibi_retained_{},data", name)); }
     if (runtime && !strings.Contains(module, "@chibi_context = external global")) {
         out.append(format_text("\n@chibi_context = external global {}\n", abi.ContextType()));
     }
     out.append(HostSymbols(names, functions, parameters, code, texts, runtime, waiting));
+    if (windows) { out.append(WindowsLibraryExports(dll_exports)); }
     return Result.Emitted(format_text("{}{}", module, strings.Join(out, "")));
 }
 

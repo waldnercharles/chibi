@@ -151,17 +151,36 @@ ScanTests :: (text: string) -> TestScan {
     return found;
 }
 
-// Private generated declarations and files cannot shadow authored names.
-// The parsed name set makes every probe constant time, including packages
-// that deliberately declare many of the generated-name candidates.
-TestPrivateName :: (known: [string: bool], prefix: string, ending: string) -> string {
-    candidate := strings.Concatenate([prefix, ending]);
-    suffix := 0;
-    while (known[candidate]) {
-        suffix += 1;
-        candidate = format_text("{}{}{}", prefix, suffix, ending);
+// At most N authored names can occupy the first N+1 candidates. Mark their
+// canonical numeric suffixes once, then choose the first hole. Four generated
+// names need four linear scans, even for a package full of colliding names.
+TestPrivateName :: (known: string[], prefix: string, ending: string) -> string {
+    occupied := resize([false], length(known) + 1);
+    for (name in known) {
+        if (!strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ending)) { continue; }
+        first := strings.ByteLength(prefix);
+        end := strings.ByteLength(name) - strings.ByteLength(ending);
+        if (end < first) { continue; }
+        if (end == first) { occupied[0] = true; continue; }
+        // Generated suffixes start at one and never have leading zeroes.
+        if (strings.ByteAt(name, first) == 48) { continue; }
+        value := 0;
+        valid := true;
+        for (index in first..<end) {
+            digit := strings.ByteAt(name, index) - 48;
+            if (digit < 0 || digit > 9 || value > length(known) / 10 ||
+                (value == length(known) / 10 && digit > length(known) % 10)) {
+                valid = false;
+                break;
+            }
+            value = value * 10 + digit;
+        }
+        if (valid) { occupied[value] = true; }
     }
-    return candidate;
+    suffix := 0;
+    while (occupied[suffix]) { suffix += 1; }
+    if (suffix == 0) { return strings.Concatenate([prefix, ending]); }
+    return format_text("{}{}{}", prefix, suffix, ending);
 }
 
 Dispatcher :: (package: string, dispatcher: string, names: string[]) -> string {
@@ -385,9 +404,9 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
     names: string[] = [];
     attributed := false;
     package := "";
-    known: [string: bool] = [:];
+    known: string[] = [];
     for (file in TestFiles(folder)) {
-        known[file] = true;
+        known.append(file);
         read := os.ReadText(strings.Concatenate([folder, "/", file]));
         if (read.error != nil) {
             Complain(strings.Concatenate(["cannot read ", folder, "/", file]));
@@ -408,7 +427,7 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
             result.compiled = false;
             return result;
         }
-        for (name in scanned.declarations) { known[name] = true; }
+        for (name in scanned.declarations) { known.append(name); }
         names.extend(scanned.names);
         attributed = attributed || scanned.attributed;
     }
@@ -437,11 +456,11 @@ TestPackage :: (root: string, relative: string, project: string, core: string, l
         package_path = strings.TrimPrefix(folder, prefix);
     }
     main_name := TestPrivateName(known, "ChibiTestMain", "");
-    known[main_name] = true;
+    known.append(main_name);
     dispatcher := TestPrivateName(known, "ChibiRunTest", "");
-    known[dispatcher] = true;
+    known.append(dispatcher);
     entry_file := TestPrivateName(known, "ChibiTestEntry", ".chibi");
-    known[entry_file] = true;
+    known.append(entry_file);
     dispatch_file := TestPrivateName(known, "ChibiTestDispatch", ".chibi");
     extra: Extra = {folder: folder, collection: collection, name: dispatch_file, text: Dispatcher(package, dispatcher, names),
                     entry_name: entry_file, entry_text: RootProgram(package, main_name, dispatcher, length(names))};

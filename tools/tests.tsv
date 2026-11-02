@@ -37,7 +37,7 @@ tool	graph-c	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--ro
 tool	graph-build	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/BuildTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	1200000	--	@host@
 tool	graph-asset-cache	@native@	run	--llvm	@llvm@	--core	@root@/packages/core	--root	@root@	--entry	Run	--collection	graph=@root@/tools/graph	@root@/test/graph/AssetCompilerCacheTests.chibi
 tool	graph-os	@native@	run	--llvm	@llvm@	--core	@root@/packages/core	--root	@root@	--entry	Run	@root@/test/graph/OsTests.chibi
-tool	graph-sdk-install	@native@	run	--core	@root@/packages/core	--llvm	@llvm@	--root	@root@	--collection	graph=@root@/tools/graph	--entry	Run	@root@/test/graph/SDKInstallTests.chibi	--	@native@	@release@	@llvm@
+tool	graph-sdk-install	@release@/sdk/chibi	run	--core	@root@/packages/core	--llvm	@llvm@	--root	@root@	--collection	graph=@root@/tools/graph	--entry	Run	@root@/test/graph/SDKInstallTests.chibi	--	@release@/sdk/chibi	@release@	@llvm@
 tool	collab	@build@/test/tools/test_tools	--collab
 tool	whole-integer	@build@/test/tools/test_tools	--whole-integer
 tool	whole-select	@build@/test/tools/test_tools	--whole-select

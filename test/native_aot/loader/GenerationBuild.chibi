@@ -3,26 +3,38 @@ package windows_generation_builder
 import driver "project:native_driver"
 import host "project:native_link_host"
 import link "project:native_link"
+import route "project:driver_paths"
 import os "core:os"
 import strings "core:strings"
 
-// Exercise the real source collector, scalar lowering, DLL exports and private
+// Exercise the real source collector, scalar lowering, exports and private
 // context without opening the native driver's Windows shared/watch gate.
 Main :: () -> int {
     arguments := os.Arguments();
-    if (length(arguments) != 2) { return 2; }
-    llvm := arguments[0];
-    directory := arguments[1];
-    triple := "x86_64-pc-windows-msvc";
-    source := strings.Join([
-        "package live\nMain :: () { worker := Worker(); }\n",
-        "Frame :: () -> int {\n text: retain string = \"native\";\n",
-        " assert(text_byte_length(text) == 6);\n if Ready(false) > 0 { return 42; }\n return 0;\n}\n",
-        "Worker :: () { yield\n updated := Ready(true);\n}\n",
-        "Ready :: (update: bool) -> int { count: retain int = 0; if update { count += 1; } return count; }\n"
-    ], "");
+    if (length(arguments) != 6) {
+        os.Print("usage: GenerationBuild CHECKOUT LLVM SOURCE OUTPUT LEVEL TRIPLE");
+        return 2;
+    }
+    root := arguments[0];
+    llvm := arguments[1];
+    input := arguments[2];
+    output := arguments[3];
+    level := 0;
+    if (arguments[4] == "2") { level = 2; }
+    else if (arguments[4] != "0") { return 2; }
+    triple := arguments[5];
+    core := strings.Concatenate([root, "/packages/core"]);
+    folder := strings.Slice(input, 0, strings.LastIndex(input, "/"));
+    source := os.ReadText(input);
+    if (source.error != nil) { return 2; }
+    shared := os.ReadText(strings.Concatenate([folder, "/Shared.chibi"]));
+    if (shared.error != nil) { return 2; }
+    target := os.ReadText(strings.Concatenate([core, "/target/Target.chibi"]));
+    if (target.error != nil) { return 2; }
+    visible := route.Visible(core);
     module := "";
-    switch driver.ModuleShared([], [], ["Main.chibi"], [source], triple, "", "") {
+    switch driver.ModuleShared(["core"], [visible], ["Main.chibi", "Shared.chibi", strings.Concatenate([visible, "/target/Target.chibi"])],
+                               [source.text, shared.text, target.text], triple, "", "") {
         case .Rejected(message):
             os.Print(message);
             return 1;
@@ -30,25 +42,23 @@ Main :: () -> int {
             module = text;
     }
     start := link.SharedContext(triple, true);
-    for (level in [int(0), 2]) {
-        output := format_text("{}/generation-O{}.dll", directory, level);
-        source_path := strings.Concatenate([output, ".ll"]);
-        object := strings.Concatenate([output, ".o"]);
-        start_path := strings.Concatenate([output, ".start.ll"]);
-        start_object := strings.Concatenate([output, ".start.o"]);
-        written := os.WriteText(source_path, module);
-        if (written != nil) { return 2; }
-        written = os.WriteText(start_path, start);
-        if (written != nil) { return 2; }
-        compiled := host.Objects(llvm, [source_path], [object], level, 1);
-        if (compiled != nil) { return 1; }
-        compiled = host.Object(llvm, start_path, start_object, level);
-        if (compiled != nil) { return 1; }
-        plan := link.Program(triple, llvm, [object, start_object], [], [], [], output, "", true);
-        plan.shared = true;
-        plan.imports = link.SystemImports(strings.SplitLines(strings.Concatenate([module, start])));
-        linked := host.Link(plan);
-        if (linked != nil) { return 1; }
-    }
+    if (start == "") { return 2; }
+    source_path := strings.Concatenate([output, ".ll"]);
+    object := strings.Concatenate([output, ".o"]);
+    start_path := strings.Concatenate([output, ".start.ll"]);
+    start_object := strings.Concatenate([output, ".start.o"]);
+    written := os.WriteText(source_path, module);
+    if (written != nil) { return 2; }
+    written = os.WriteText(start_path, start);
+    if (written != nil) { return 2; }
+    compiled := host.ObjectsResult(llvm, [source_path], [object], level, 1);
+    if (compiled.kind != 0) { return 1; }
+    compiled = host.ObjectResult(llvm, start_path, start_object, level);
+    if (compiled.kind != 0) { return 1; }
+    plan := link.Program(triple, llvm, [object, start_object], [], [], [], output, "", true);
+    plan.shared = true;
+    plan.imports = link.SystemImports(strings.SplitLines(strings.Concatenate([module, start])));
+    linked := host.LinkResult(plan);
+    if (linked.kind != 0) { return 1; }
     return 0;
 }

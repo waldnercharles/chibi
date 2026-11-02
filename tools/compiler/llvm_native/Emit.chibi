@@ -4010,13 +4010,29 @@ WindowsLibraryExports :: (symbols: string[]) -> string {
 // plain C-ABI symbols of HostSymbols.
 pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                     parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
-                    records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[]) -> Result {
+                    records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[], entries: int = -1) -> Result {
     windows := abi.Same(target, abi.WindowsX64());
     if (!abi.Same(target, abi.LinuxX64()) && !abi.Same(target, abi.MacOSArm64()) && !windows) {
         return Result.Rejected(-1, "native libraries require Linux x86-64, macOS arm64 or Windows x86-64");
     }
     if (!Identifier(name) || length(names) != length(functions) || length(ids) != length(functions)) {
         return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");
+    }
+    // Package generations distinguish real entries from their fixed-ABI stubs:
+    // bit 0 is Main, bit 1 is Frame; -1 leaves ordinary libraries unchanged.
+    if (entries < -1 || entries > 3) {
+        return Result.Rejected(-1, "native generation entry mask is out of bounds");
+    }
+    if (entries >= 0 && (!names.contains("Main") || !names.contains("Frame"))) {
+        return Result.Rejected(-1, "native generation needs both host entry adapters");
+    }
+    if (entries >= 0) {
+        for (index in 0..<length(names)) {
+            if ((names[index] == "Main" || names[index] == "Frame") &&
+                (functions[index].result != abi.IntStorage || functions[index].parameters != 0)) {
+                return Result.Rejected(-1, "native generation entry adapters require zero arguments and int results");
+            }
+        }
     }
     for (index in 0..<length(names)) {
         for (other in 0..<index) {
@@ -4047,10 +4063,19 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
     exports: string[] = [];
     waiting := WaitingFunctions(functions, code);
     dll_exports: string[] = [];
+    if (entries >= 0) {
+        for (index in 0..<length(names)) {
+            if ((names[index] == "Main" || names[index] == "Frame") && waiting[index]) {
+                return Result.Rejected(-1, "native generation entry adapters cannot wait");
+            }
+        }
+        out.append(format_text("\ndefine i32 @chibi_host_entries() #0 {{\nentry:\n  ret i32 {}\n}}\n", entries));
+        if (windows) { dll_exports.append("chibi_host_entries"); }
+    }
     if (windows) {
-        dll_exports = [format_text("chibi_natives_{},data", name), "chibi_host_retained_release", "chibi_host_retained_count",
+        dll_exports.extend([format_text("chibi_natives_{},data", name), "chibi_host_retained_release", "chibi_host_retained_count",
                        "chibi_host_retained_type", "chibi_host_retained_hash", "chibi_host_retained_ready", "chibi_host_retained_get",
-                       "chibi_host_retained_set", "chibi_host_retained_set_as"];
+                       "chibi_host_retained_set", "chibi_host_retained_set_as"]);
         if (runtime) { dll_exports.append("chibi_host_failed"); }
         if (waiting.contains(true)) {
             dll_exports.extend(["chibi_host_tasks_pending", "chibi_host_tasks_poll", "chibi_host_tasks_cancel_all"]);

@@ -76,8 +76,9 @@ WasmInputs :: (build_dir: string) -> bool {
         if (threaded) { name = "libchibi_asset_compiler_threads.a"; }
         archive := Join([directory, "/", name]);
         digest := os.HashFile(archive);
+        if (digest.error != nil) { return false; }
         read := os.ReadText(Join([archive, ".json"]));
-        if (digest.error != nil || read.error != nil || strings.ByteLength(read.text) > 4096) { return false; }
+        if (read.error != nil || strings.ByteLength(read.text) > 4096) { return false; }
         fields := json.JsonFields(read.text);
         if (length(fields) != 7) { return false; }
         for (field in fields) {
@@ -108,8 +109,9 @@ WasmInputs :: (build_dir: string) -> bool {
 SameSources :: (source: string, staged: string) -> bool {
     if (os.Kind(source) != os.KindDirectory || os.Kind(staged) != os.KindDirectory) { return false; }
     original := os.List(source);
+    if (original.error) { return false; }
     copied := os.List(staged);
-    if (original.error || copied.error) { return false; }
+    if (copied.error) { return false; }
     for (name in original.names) {
         from := Join([source, "/", name]);
         to := Join([staged, "/", name]);
@@ -149,7 +151,10 @@ Verify :: () -> int {
     reserved := Join([arguments[0], "/.compiler-tools-probe"]);
     published := Join([reserved, ".published"]);
     if (os.Reserve(reserved)) { return 1; }
-    if (os.Publish(reserved, published)) { os.Remove(reserved); return 1; }
+    if (os.Publish(reserved, published)) {
+        if (os.Remove(reserved)) { os.Print(Join(["sdk: capability check directory retained at ", reserved])); }
+        return 1;
+    }
     if (os.Remove(published)) { return 1; }
     return 0;
 }

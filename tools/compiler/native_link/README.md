@@ -41,6 +41,15 @@ compiled with `host.Object` and linked beside the program's own objects. It call
 `mainCRTStartup` with `ExitProcess` for a static Windows one. A static Linux program takes no
 context ("" is returned).
 
+The Windows start also supplies weak C-ABI `memset`, `memcpy` and `memmove`
+definitions. LLVM may introduce these calls while lowering aggregate stores or
+copies. Their byte loops disable builtin recognition, so optimization cannot
+turn them into recursive library calls. They add no CRT imports. An explicitly
+linked provider can own those symbols, including a source's declared DLL import.
+The [memory runtime probe](../../../test/native_aot/link/Memory.ll) executes
+1,056 boundary/guard/overlap/return-value cases at O0 and O2; Windows also checks
+the linked image has no CRT dependency.
+
 Every start module also defines the process arguments as C-ABI functions, which `core:os`
 binds with `foreign import`:
 

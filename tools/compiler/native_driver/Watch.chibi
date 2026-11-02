@@ -109,6 +109,13 @@ WatchWait :: (child: ^WatchProcess, timeout: int) -> int {
 }
 }
 
+// Stopping a watch is a successful end to an editing session. The foreground
+// scope returns raw POSIX signals, distinct from explicit positive Frame results.
+WatchExitStatus :: (status: int) -> int {
+    if (os.Platform() != "Windows" && (status == -2 || status == -15)) { return 0; }
+    return ExitStatus(status);
+}
+
 // Main runs once in the host. Every later generation takes effect between
 // Frames; a rejected edit leaves the running generation and its state intact.
 when target.Os == target.Linux || target.Os == target.Darwin || target.Os == target.Windows {
@@ -174,7 +181,7 @@ WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, i
     while (true) {
         status := WatchWait(&child, 250);
         if (status != os.StillRunning) {
-            return ExitStatus(status);
+            return WatchExitStatus(status);
         }
         changed := WatchStamp(paths);
         if (changed == stamp) {
@@ -204,7 +211,7 @@ WatchProgram :: (subject: Subject, core: string, llvm: string, triple: string, i
         while (os.Exists(next)) {
             status = WatchWait(&child, 50);
             if (status != os.StillRunning) {
-                return ExitStatus(status);
+                return WatchExitStatus(status);
             }
         }
         if (os.Rename(pending, next) != nil) {

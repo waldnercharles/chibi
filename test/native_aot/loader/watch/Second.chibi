@@ -1,0 +1,11 @@
+package live
+
+Main :: () { Mark("main-restarted"); }
+Frame :: () -> int {
+    count: retain f64 = -100.0;
+    text: retain string = "second";
+    assert(count >= 12.0 && text == "first", "a second accepted swap keeps the migrated values");
+    assert(Exists("ready-after-task") && Exists("task-old"));
+    assert(!Exists("task-new") && !Exists("cancelled-ran"));
+    return 42;
+}

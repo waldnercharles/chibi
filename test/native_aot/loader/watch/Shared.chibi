@@ -1,0 +1,34 @@
+package live
+
+import target "core:target"
+
+foreign import kernel32 "system:kernel32"
+foreign kernel32 {
+    CreateFileA :: (path: cstring, access: u32, sharing: u32, security: u64, creation: u32, attributes: u32, template: u64) -> u64
+    CloseHandle :: (handle: u64) -> i32
+    GetFileAttributesA :: (path: cstring) -> u32
+}
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+
+when target.Os == target.Windows {
+    Mark :: (path: string) {
+        handle := CreateFileA(path, 1073741824, 7, 0, 2, 128, 0);
+        assert(~handle != 0);
+        closed := CloseHandle(handle);
+        assert(closed != 0);
+    }
+    Exists :: (path: string) -> bool { return GetFileAttributesA(path) != u32(4294967295); }
+} else {
+    Mark :: (path: string) {
+        stream := fopen(path, "wb");
+        assert(stream != 0);
+        closed := fclose(stream);
+        assert(closed == 0);
+    }
+    Exists :: (path: string) -> bool { return access(path, 0) == 0; }
+}

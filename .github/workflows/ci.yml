@@ -490,6 +490,8 @@ jobs:
           if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
           & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
           if ($LASTEXITCODE) { throw 'the Windows object regression failed' }
+          & ./test/native_aot/link/Memory.ps1 -Compiler "$work/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+          if ($LASTEXITCODE) { throw 'the Windows compiler memory runtime probe failed' }
       - name: Check the native Windows build runner
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
@@ -497,11 +499,22 @@ jobs:
       - name: Build native Windows checkout products without host tools
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
         run: |
+          & ./test/bootstrap/native-seed.ps1
+          if ($LASTEXITCODE) { throw 'Windows native seed verification failed' }
+          & ./test/bootstrap/native-entry.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+          if ($LASTEXITCODE) { throw 'Windows native checkout entry failed' }
+          $legacyPowerShell = "$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe"
+          & $legacyPowerShell -NoProfile -File ./test/bootstrap/native-seed.ps1
+          if ($LASTEXITCODE) { throw 'Windows PowerShell 5.1 seed verification failed' }
+          & $legacyPowerShell -NoProfile -File ./test/bootstrap/native-entry.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+          if ($LASTEXITCODE) { throw 'Windows PowerShell 5.1 checkout entry failed' }
+          & ./test/bootstrap/native-seed-preparation.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+          if ($LASTEXITCODE) { throw 'Windows native seed preparation controls failed' }
           & ./test/bootstrap/native-checkout.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
-      - name: Check native Windows DLL isolation and private runtimes
+      - name: Check native Windows DLL isolation and generation watch
         id: windows-dll-proof
         if: ${{ !cancelled() && steps.windows-fixed-point.outcome == 'success' }}
-        run: ./test/native_aot/loader/RunWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM
+        run: ./test/native_aot/loader/RunWindows.ps1 -Compiler "$env:RUNNER_TEMP/stage4/chibi.exe" -Llvm $env:CHIBI_WINDOWS_LLVM -Root $PWD.Path
       - name: Preserve failed Windows DLL evidence
         if: ${{ failure() && steps.windows-dll-proof.outcome == 'failure' }}
         uses: actions/upload-artifact@v4
@@ -525,6 +538,7 @@ jobs:
             @{ name = 'shadow-root'; source = 'test/native_aot/math_scalar/Shadow.chibi' },
             @{ name = 'math-kernels'; source = 'test/native_aot/math_scalar/Kernels.chibi' },
             @{ name = 'shadow-kernels'; source = 'test/native_aot/math_scalar/KernelShadow.chibi' },
+            @{ name = 'waiting-kernels'; source = 'test/native_aot/math_scalar/KernelWaiting.chibi' },
             @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' },
             @{ name = 'library-loader'; source = 'test/native_aot/loader/Windows.chibi' }
           )

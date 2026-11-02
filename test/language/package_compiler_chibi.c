@@ -2771,7 +2771,7 @@ TEST_CASE(stack_overflow_leaves_other_faults)
 static bool library_ir(const char *source, char **ir)
 {
     pin_value rows;
-    REQUIRE(library_rows(source, &rows));
+    REQUIRE(scalar_host_collect("libraries/Tools.chibi", source, &detached, &rows));
     const pin_array *array = rows.ptr;
     REQUIRE(array->count > 2);
     REQUIRE(target_ir("LinuxX64", &rows, ir) && *ir);

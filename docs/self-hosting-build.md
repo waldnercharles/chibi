@@ -974,6 +974,12 @@ x64 and macOS arm64. Explicit publication uses `chibi-native-PLATFORM` under the
 immutable tag `native-seed-COMMIT`; preparation does not publish by itself.
 `tools/bootstrap/native-seed.tsv` records them (platform, tag, asset, SHA-256),
 and `tools/bootstrap/native-seed.sh PLATFORM OUTPUT` fetches and checks one.
+Windows uses `tools/bootstrap/native-seed.ps1` and the thin `tools/build.ps1`
+checkout entry. Its proposed seed comes from the exact source's successful
+Windows CI fixed-point/runtime artifact, with verified archive and compiler
+hashes and a restored compiler/core source archive. The manual procedure above
+does not publish it or add a Windows pin; an unpinned default fails until that
+separately approved release is available.
 Once a platform is pinned, seed preparation and the canonical CI native phase pass
 it as `--stage-one`, so recovery starts from the native seed: it compiles the
 current sources to stage two, and stage two compiles them to stage three. A

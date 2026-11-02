@@ -4552,6 +4552,11 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                 case .Failed(diagnostic):
                                     return ScalarFailed(packaged, path, text, documents, diagnostic);
                                 case .Ready(concrete, concrete_params, bindings):
+                                    if (generation && length(concrete) == 0) {
+                                        empty_head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
+                                            literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0, column: 0};
+                                        return [ScalarSource(path, ScalarJoined(documents)), empty_head];
+                                    }
                                     entered := concrete;
                                     entered_bindings := bindings;
                                     if (!generation && packaged && length(concrete) > 0 && (concrete[0].document != 0 || chosen != "")) {

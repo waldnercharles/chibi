@@ -1,13 +1,49 @@
 # Native toolchain continuation
 
 The November 2 handoff continues in PR #1331 on `codex/native-default-20261102`.
-The next combined checkpoint has compiler/core source `776ead2f1`, following
-CI merge `a76ea8005`; its exact-revision platform CI is pending. Further work is composed
+The published checkpoint `b0f4dfa0b` has compiler/core source `776ead2f1`, following
+CI merge `a76ea8005`. Further work is composed
 on `codex/native-runtime-completion-20261102`. The owner's checkout and
 unrelated work remain untouched; existing compiler worktrees supplied the
 independent driver, CLI, producer, maps, tasks, Windows and reload lanes.
 
 ## Current checkpoint, 2 November
+
+CI run `41531103929` reproduces Linux stages three and four byte for byte
+(`1cff2a7d8d021daa4639df9537ba6fb136323f0317dd6a89976885c132e70b36`).
+It then fails the Windows cross-link on LLVM-generated `memset`; the Windows
+lane owns that fix. The core build separately finds a deleted helper still
+called by one retained Linux C test. `4db6b2eb4` restores the exact producer
+call, checked with Linux clang. This is partial platform evidence, not a green
+combined run.
+
+The next batch includes POSIX process-group and terminal supervision, its watch
+adapter, waiting scalar foreign calls, native core/portable selectors, source
+inventory receipts and the Windows PowerShell 5.1 bootstrap. The original
+fallible-result checker now also runs on native source; its stricter coverage
+found unchecked cleanup errors in the native driver. The driver lane is fixing
+those callers before the next self-host acceptance.
+
+Remaining ownership is explicit:
+
+- CLI lane: Windows public watch acceptance and the live compile-only asset
+  facade. Replace desktop/browser C orchestration, cache and generated identity
+  C with authored code and LLVM ABI adapters while preserving diagnostics,
+  quotas, cancellation, thread isolation and caller-owned outputs.
+- Producer and collector lanes: source pointers and precise ownership roots;
+  reload lane: retained arrays and nominal retained schemas.
+- Driver lane: remaining authored language samples and error-result handling.
+- Tasks lane: the six remaining C native-backend cases, preserving their live
+  behaviors before deleting the C harness.
+- Cutover lane: all seventeen CLI survivors and signal/terminal counterparts.
+- Root: graph fixtures that depend on retired C targets, final host/VM deletion,
+  recovery-command and CI retirement, combined review and platform acceptance.
+- Windows lane: optimized memory helpers, real Windows execution, and verified
+  fixed-point seed preparation. Root owns final seed publication and pinning.
+
+No further owner decision is pending. Archived engine and Studio services stay
+archived. The public compile-only API remains a live dependency until its
+replacement passes; its C wrapper is not an acceptable final state.
 
 Published `590030513` failed before runtime testing: the pinned native seed
 could not read an optional error record's fields while compiling the newer

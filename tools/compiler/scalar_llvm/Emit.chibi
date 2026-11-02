@@ -1947,6 +1947,7 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
     }
     heads := Heads(rows, Start(rows, records));
     if (length(heads) == 0) {
+        if (shared && !identified && length(rows) == 2) { return ""; }
         return "invalid scalar module layout";
     }
     first := rows[heads[0]];
@@ -1998,8 +1999,6 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
         }
     }
     if (shared && !identified) {
-        main := false;
-        frame := false;
         for (function in 0..<length(heads)) {
             declaration := rows[heads[function]];
             if (declaration.name == "Main" || declaration.name == "Frame") {
@@ -2007,14 +2006,9 @@ ValidateWith :: (rows: facts.Row[], shared: bool) -> string {
                     return "native package generation Main and Frame cannot wait";
                 }
                 if (declaration.count != 0 || declaration.type != facts.IntType) {
-                    return "native package generations require Main and Frame with a zero-argument int ABI";
+                    return format_text("No runnable {}: native package generations require Main and Frame with a zero-argument int ABI", declaration.name);
                 }
-                main = main || declaration.name == "Main";
-                frame = frame || declaration.name == "Frame";
             }
-        }
-        if (!main && !frame) {
-            return "native package generations require Main or Frame";
         }
     }
     return "";
@@ -3951,7 +3945,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         code.extend(body);
         functions.append(shape);
     }
+    entries := -1;
     if (generation) {
+        entries = 0;
+        if (names.contains("Main")) { entries |= 1; }
+        if (names.contains("Frame")) { entries |= 2; }
         // The host always calls the same C ABI. An absent source entry does
         // nothing, so adding/removing Frame never restarts Main on an edit.
         for (name in ["Main", "Frame"]) {
@@ -3986,7 +3984,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             library_name = "generation";
         }
         emitted = native.EmitLibrary(target, library_name, names, ids, functions, parameters, slots, locals,
-                                     code, arguments, records, fields, texts, 1, field_names);
+                                     code, arguments, records, fields, texts, 1, field_names, entries);
     }
     switch emitted {
         case .Rejected(instruction, message):

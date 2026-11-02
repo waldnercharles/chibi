@@ -14,7 +14,16 @@ for (const failure of ['', 'native']) {
     try {
       mkdirSync(path.join(root, 'tools'));
       mkdirSync(path.join(root, 'bin'));
+      mkdirSync(path.join(root, 'test/native_aot/targets'), {recursive: true});
       writeFileSync(path.join(root, 'bin/ccache'), '#!/bin/sh\nexit 0\n', {mode: 0o755});
+      writeFileSync(path.join(root, 'test/native_aot/targets/build.sh'), `#!/bin/sh
+set -eu
+test "$1" = "$PWD/build-release/sdk/chibi"
+test -x "$1"
+test "$2" = fixture-llvm
+test "$3" = "$RUNNER_TEMP/native-bundle"
+printf 'target-runners\\n' >> "$RUNNER_TEMP/commands"
+`);
       writeFileSync(path.join(root, 'tools/build.sh'), `#!/bin/sh
 set -eu
 printf '%s\\n' "$*" >> "$RUNNER_TEMP/commands"
@@ -47,13 +56,15 @@ esac
       const env = {...process.env, PATH: `${root}/bin:${process.env.PATH}`, RUNNER_TEMP: root,
         BUILD_PROFILE: 'debug', BUILD_DEBUG_OPTIMIZATION: '1', BUILD_DEBUG_FRAME_POINTERS: 'on',
         CHIBI_CI_SANITIZERS: 'OFF', GITHUB_SHA: 'fixture', GITHUB_RUN_ID: '1',
-        GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: 'native', FAIL_SELECTOR: failure};
+        GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: 'native', FAIL_SELECTOR: failure,
+        CHIBI_LLVM_BIN: 'fixture-llvm'};
       delete env.CHIBI_BUILD_HOST;
       delete env.CHIBI_BUILD_TIMINGS;
       const result = spawnSync('bash', [core], {cwd: root, env, encoding: 'utf8', timeout: 5000});
       assert.equal(result.status, failure ? 17 : 0, result.stderr);
       const commands = readFileSync(path.join(root, 'commands'), 'utf8').trim().split('\n');
       assert.equal(commands.filter(line => line.startsWith('build --release')).length, 1);
+      assert.equal(commands.filter(line => line === 'target-runners').length, 1);
       assert.equal(commands.filter(line => line.startsWith('build --build')).length, 1);
       assert.equal(commands.filter(line => line.endsWith('language-scalar-native')).length, 1);
       assert.equal(commands.filter(line => line.startsWith('native-evidence ')).length, 1);

@@ -66,6 +66,11 @@ minimum-version evidence.
 - Linux CI passed the no-C-compiler recovery/vendor proof at `884964244` in
   1m10s, the default full build in 4m27s, and the native self-host suite,
   including driver, CLI, diagnostics, maps, tasks, retained generations and watch.
+- At `9dae90af7`, Linux CI repeated the full native suite and reached a
+  stage-three/four fixed point:
+  `fddf00d2ebdfcb62e6cfb3cd058e44e84dd6820cffddbf71b65628bccf76633a`.
+  The default build, no-C proof, SDK relocation and legacy compiler self-build
+  with its strict scalar regression also passed at that revision.
 - Broader CI exposed the removed implicit bytecode-seed dependency and then a
   missing `ScalarMaps.chibi` source-list entry. Both are fixed in this branch.
 - The real SDK install/relocation test passed locally in 26.83 s after the
@@ -74,8 +79,11 @@ minimum-version evidence.
   during checksum/extraction. Selective extraction now passes in Windows CI:
   download 11.13 s, checksum 1.04 s, decompression 11.83 s and extraction 0.40 s.
   Its next failure was a same-size-write timestamp assumption. The regression
-  now verifies content by hash and metadata with a size change. The remaining
-  Windows execution and self-build checks still need successful CI evidence.
+  now verifies content by hash and metadata with a size change. At `9dae90af7`,
+  the Windows filesystem/object checks and native self-build passed. Stages
+  three and four took 325 s and 321 s and both produced
+  `b1bc3c1e4dac87472fdb624e471f21b368ff9d76f97facc54aa4d722db8a5490`.
+  Windows object compilation remains serial until asynchronous processes land.
 
 The native Linux generation suite passed in 37.184 s, including real reloads,
 active task progress, active and retired task failures, and rejection of waiting
@@ -98,7 +106,9 @@ is not runtime validation.
 - Complete retained-state parity for managed records, arrays, unions and task
   handles, and validate reload/watch beyond Linux x64.
 - Complete Windows asynchronous process operations, a verified native Windows
-  seed, native Windows execution, and remaining SDK/Studio platform coverage.
+  seed, content-safe invalidation for its build-runner/graph consumers, and
+  remaining SDK/Studio platform coverage. Compiler execution and self-reproduction
+  on Windows now have CI proof.
 
 Do not remove the VM, host sources or recovery assets while those consumers
 still depend on them. This branch removes the build-entry fallback; it does

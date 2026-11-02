@@ -2398,8 +2398,8 @@ static bool scalar_collects_libraries()
     return true;
 }
 /* A retain local of a library function is a state of the library: a Local
- * row whose literal is Retained, then a global initialized on first use,
- * loaded and stored around the variable, and the host's state manifest. */
+ * row whose literal is Retained, then an eagerly initialized scalar global
+ * the legacy word manifest can read before the first function call. */
 static bool scalar_retains_library_states()
 {
     static const char source[] = "Tools :: library {\n"
@@ -2424,11 +2424,7 @@ static bool scalar_retains_library_states()
         REQUIRE(array->count > 2 && scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_DOCUMENT_ROW);
         char *ir;
         REQUIRE(target_ir("LinuxX64", &rows, &ir) && ir);
-        bool emits = strstr(ir, "@chibi_scalar.retained.0 = internal global i32 0\n") &&
-                     strstr(ir, "@chibi_scalar.retained.0.ready = internal global i1 false\n") &&
-                     strstr(ir, "store i32 4, ptr %s") &&
-                     strstr(ir, "store i32 %initial.value") &&
-                     strstr(ir, "store i1 true, ptr @chibi_scalar.retained.0.ready") &&
+        bool emits = strstr(ir, "@chibi_scalar.retained.0 = internal global i32 4\n") &&
                      strstr(ir, "load i32, ptr @chibi_scalar.retained.0") &&
                      strstr(ir, "store i32 %a") &&
                      strstr(ir, "c\"Frame.count\\00\"") &&
@@ -3376,7 +3372,7 @@ static int library_child(const char *library, int count, char **specs)
  * them and built with the driver's opt and llc arguments into the bundle,
  * whose runner (test/native_aot/targets) links and runs it on that target.
  * Each has native_abi's function, the bundle's subdirectory, the triple and
- * the data layout LLVM 18 gives it, which the driver admits, and the
+ * the data layout LLVM 22 gives it, which the driver admits, and the
  * symbols its objects may leave undefined, which the bundle's runtime.o
  * defines from `runtime`, or none. Windows code that uses floating point
  * references _fltused, and a frame larger than a page calls __chkstk; the C
@@ -3395,7 +3391,7 @@ static const struct
     { "MacOSArm64",
       "macos-arm64",
       "arm64-apple-macosx11.0.0",
-      "e-m:o-i64:64-i128:128-n32:64-S128",
+      "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-Fn32",
       NULL,
       { NULL } },
     { "WindowsX64",

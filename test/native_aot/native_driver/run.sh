@@ -153,14 +153,23 @@ for level in 0 2; do
     (cd "$work" && runs 42 "$work/load")
 done
 printf 'native driver options: O0/O2 shared libraries loaded and called\n'
+cat >"$source/Generation.chibi" <<'SOURCE'
+// A package generation shares the Main ABI with a library declaration.
+package generation
+Main :: () -> int { return 42; }
+Frame :: () -> int { return 0; }
+SOURCE
+build "$source/Generation.chibi" "$work/probe.so" --shared
+(cd "$work" && runs 42 "$work/load")
+printf 'native driver options: package generation loaded and called\n'
 
 rejects 2 'usage:' "$source/Scalar.chibi" --level 3
 rejects 2 'Linux x86-64 only' "$source/Scalar.chibi" --lines --target aarch64-apple-darwin
 rejects 2 'no line tables or static link' "$source/Library.chibi" --shared --lines
 rejects 2 'no line tables or static link' "$source/Library.chibi" --shared --static
 rejects 2 'omit --static' "$source/Allocates.chibi" --static
-rejects 2 'and only it' "$source/Scalar.chibi" --shared
-rejects 1 'one source and no --entry' "$source/Library.chibi" --shared --entry Main
+rejects 1 'native package generations require Main and Frame' "$source/Scalar.chibi" --shared
+rejects 1 'takes no --entry' "$source/Library.chibi" --shared --entry Main
 sed 's/"libprobe.a"/"missing.a"/' "$source/Archive.chibi" >"$source/Missing.chibi"
 rejects 2 'is not a file' "$source/Missing.chibi"
 printf 'native driver options: invalid inputs preserve outputs\n'

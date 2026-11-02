@@ -383,11 +383,10 @@ pub ArrayText: int : 15;
 // again. It has the switch statement's range, a Switch row of the same range
 // follows it, and that Switch reads it.
 pub SwitchSubject: int : 1;
-// A Local row whose `literal` is Retained declares a retained local, a number
-// or bool the function keeps between calls: its one operand is a Literal, the
-// value it starts with, and the variable reads and writes that state, which a
-// native library exports to the host that replaces it. It is named for its
-// function and its `name`, so the state is the same across edits that keep both.
+// A Local row whose `literal` is Retained declares a retained number, bool,
+// standalone string or numeric/bool record. Its operands construct a constant initial
+// value. Native lowering migrates record leaves by their field paths under
+// Function.variable, so reordering fields does not change their identities.
 pub Retained: int : 2;
 
 // A For row's range flags; RangeArray stands alone or with RangeKeyed, which

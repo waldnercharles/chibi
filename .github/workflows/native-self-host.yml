@@ -63,11 +63,10 @@ jobs:
       - name: Check native diagnostic coordinates
         timeout-minutes: 5
         run: sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" /usr/lib/llvm-18/bin
-      - name: Exercise numeric package generations
+      - name: Exercise native package generations
         timeout-minutes: 5
         run: |
-          sh test/native_aot/generations/run.sh "$PWD/build-release/sdk/chibi-build-host" \
-            "$PWD/build-release/sdk/chibi-compiler-host" /usr/lib/llvm-18/bin
+          sh test/native_aot/generations/run.sh "$PWD/build-native-self-host/stage3/chibi" /usr/lib/llvm-18/bin
       - name: Check native test attributes
         timeout-minutes: 5
         run: sh test/native_aot/test_attributes/run.sh "$PWD/build-native-self-host/stage3/chibi" /usr/lib/llvm-18/bin

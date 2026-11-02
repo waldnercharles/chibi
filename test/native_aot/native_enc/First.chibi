@@ -1,0 +1,19 @@
+package loop
+Progress :: struct { count: int; }
+Main :: () -> int { return 0; }
+Frame :: () -> int {
+    progress: retain Progress = {count: 0};
+    message: retain string = "first generation";
+    note: retain string = "seed";
+    changed := Increment(&progress);
+    snapshot := note;
+    note = format_text("value {}", progress.count);
+    assert(text_byte_length(snapshot) > 0);
+    return 0;
+}
+
+Increment :: (progress: ^Progress) -> int {
+    progress.count += 1;
+    return 0;
+}
+

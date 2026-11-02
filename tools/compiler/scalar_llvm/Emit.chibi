@@ -1284,7 +1284,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         param := rows[head + 1 + index];
         if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Valued(records, param.type) ||
             param.value != index || param.count != 0 || (param.literal != 0 && param.literal != 1 && param.literal != 2) ||
-            (param.literal == 1 && (is_library || function == 0)) ||
+            (param.literal == 1 && (identified || function == 0)) ||
             (param.literal == 2 && !ArrayTyped(NativeType(param.type))) ||
             !Located(param, starts, size) ||
             !Within(param, declaration)) {
@@ -1327,6 +1327,9 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
         // A local holding the union a switch is on, followed by that switch.
         subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
         retained := row.kind == facts.LocalRow && row.literal == i64(facts.Retained);
+        if (retained && row.type >= facts.RecordType && !Retainable(rows, records, row.type)) {
+            return "native retained records hold only numbers and bools; retain strings separately";
+        }
         declares := row.kind == facts.LocalRow || ranged;
         typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
         if (row.text != "" || (row.literal != 0 && !ranged && !subject && !retained) || !Located(row, starts, size) ||
@@ -1422,8 +1425,8 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
                 (ranged && !arrayed && (row.type != facts.IntType || row.literal < 0 ||
                                         row.literal > i64(facts.RangeExclusive + facts.RangeReverse))) ||
                 (arrayed && (row.type >= facts.ArrayType || !Valued(records, facts.ArrayType + row.type))) ||
-                (retained && (!is_library || row.count != 1 || rows[at + 1].kind != facts.LiteralRow ||
-                              (facts.Bits(row.type) == 0 && row.type != facts.BoolType && !facts.Floating(row.type)))) ||
+                (retained && (!Retainable(rows, records, row.type) ||
+                              !RetainedInitializer(rows, at))) ||
                 (subject && (UnionHead(rows, records, row.type) < 0 || at + row.count + 1 >= last ||
                              rows[at + row.count + 1].kind != facts.SwitchRow ||
                              rows[at + row.count + 1].start != row.start || rows[at + row.count + 1].end != row.end))) {
@@ -1486,6 +1489,112 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
 pub Validate :: (rows: facts.Row[]) -> string {
     return ValidateWith(rows, false);
 }
+// Index of an item in an ascending table, or -1. Slot and variable IDs are
+// appended in definition order, so tracking references needs no hashing.
+SortedIndex :: (items: int[], wanted: int) -> int {
+    low := 0;
+    high := length(items);
+    while (low < high) {
+        middle := low + (high - low) / 2;
+        if (items[middle] < wanted) { low = middle + 1; }
+        else { high = middle; }
+    }
+    if (low < length(items) && items[low] == wanted) { return low; }
+    return -1;
+}
+
+// Retained records migrate by named leaves, so adding or reordering fields
+// preserves existing fields and leaves new fields at their initializer.
+Retainable :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    if (Scalar(type) || type == facts.StringType) {
+        return true;
+    }
+    if (type < facts.RecordType || type >= facts.ArrayType) {
+        return false;
+    }
+    head := records[type - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow) {
+        return false;
+    }
+    for (field in head + 1..<After(rows, head)) {
+        if (rows[field].kind == facts.MemberRow &&
+            (rows[field].type == facts.StringType || !Retainable(rows, records, rows[field].type))) {
+            return false;
+        }
+    }
+    return true;
+}
+// Initializers have no side effects or allocation. Their constant record
+// construction is repeated, but every leaf initializes its state only once.
+RetainedInitializer :: (rows: facts.Row[], at: int) -> bool {
+    for (index in at + 1..<at + 1 + rows[at].count) {
+        kind := rows[index].kind;
+        if (kind != facts.LiteralRow && kind != facts.ZeroRow && kind != facts.UpdateRow && kind != facts.ConvertRow) {
+            return false;
+        }
+    }
+    return rows[at].count > 0;
+}
+
+RetainedCode :: struct {
+    types: int[];
+    code: native.Instruction[];
+    texts: string[];
+    value: int;
+    states: int;
+}
+// Flatten records once during lowering; the frame executes one load/store
+// per scalar or string leaf. StateLoad.left is its initializer slot plus one.
+RetainedValue :: (rows: facts.Row[], records: int[], type: int, value: int, name: string,
+                  state_index: int, text: int, slot: int, read: bool) -> RetainedCode {
+    lowered: RetainedCode = {types: [], code: [], texts: [], value: value, states: 0};
+    native_type := NativeType(type);
+    if (type < facts.RecordType) {
+        if (read) {
+            lowered.types.append(native_type);
+            lowered.code.append(Op(native.StateLoad, native_type, slot, value + 1, text, state_index));
+            lowered.texts.append(name);
+            lowered.value = slot;
+        } else {
+            lowered.code.append(Op(native.StateStore, native_type, 0, value, 0, state_index));
+        }
+        lowered.states = 1;
+        return lowered;
+    }
+    if (read) {
+        lowered.types.append(native_type);
+        lowered.code.append(Op(native.Constant, native_type, slot, 0, 0, 0));
+        lowered.value = slot;
+    }
+    head := records[type - facts.RecordType];
+    for (field in head + 1..<After(rows, head)) {
+        member := rows[field];
+        if (member.kind != facts.MemberRow) {
+            continue;
+        }
+        current := slot + length(lowered.types);
+        lowered.types.append(NativeType(member.type));
+        extract := Op(native.Extract, NativeType(member.type), current, value, native_type, 0);
+        extract.literal = i64(member.value);
+        lowered.code.append(extract);
+        leaf := RetainedValue(rows, records, member.type, current, format_text("{}.{}", name, member.name),
+                              state_index + lowered.states, text + length(lowered.texts), current + 1, read);
+        lowered.types.extend(leaf.types);
+        lowered.code.extend(leaf.code);
+        lowered.texts.extend(leaf.texts);
+        lowered.states += leaf.states;
+        if (read) {
+            next := slot + length(lowered.types);
+            lowered.types.append(native_type);
+            insert := Op(native.Insert, native_type, next, lowered.value, leaf.value, 0);
+            insert.literal = i64(member.value);
+            lowered.code.append(insert);
+            lowered.value = next;
+        }
+    }
+    return lowered;
+}
+
 // Validate, or for `shared` the rows of a package that a shared library holds:
 // every function is a library function, though the rows are a package's, which
 // name no library and carry no stable IDs.
@@ -1766,6 +1875,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         // The variables that are retained states, and their states.
         retained_variables: int[] = [];
         retained_states: int[] = [];
+        retained_types: int[] = [];
+        reference_slots: int[] = [];
+        reference_variables: int[] = [];
         slot: int = 0;
         local: int = 0;
         // The variables that own their arrays, in the order they opened and
@@ -1780,6 +1892,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
         // The row of each local variable's declaration.
         decl_vars: int[] = [];
         decl_rows: int[] = [];
+        // A by-value string parameter is borrowed until its address can be
+        // passed to a mutating callee. Promote those parameters once at entry,
+        // so reference assignment may replace/release their local descriptor.
+        addressed_parameters := resize([false], declaration.count);
+        for (index in head + declaration.count + 1..<Last(rows, heads, function)) {
+            operand := rows[index];
+            if (operand.kind == facts.RefRow && operand.value < declaration.count) {
+                addressed_parameters[operand.value] = true;
+            }
+        }
         for (index in 0..<declaration.count) {
             type := NativeType(rows[head + 1 + index].type);
             if (Referenced(rows, head, index)) {
@@ -1790,6 +1912,11 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
             locals.append(type);
             body.extend([Op(native.Argument, type, slot, index, 0, 0), Op(native.Save, type, 0, slot, 0, local)]);
             places.append(local);
+            if (type == abi.TextStorage && addressed_parameters[index]) {
+                body.append(Op(native.TextRetain, type, 0, slot, 0, 0));
+                owned_vars.append(index);
+                owned_types.append(type);
+            }
             if (rows[head + 1 + index].literal == 2) {
                 // A parameter the function changes is its own array.
                 owned_vars.append(index);
@@ -2117,6 +2244,8 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     item = Op(native.Deref, type, slot + 1, slot, 0, 0);
                     slot += 1;
                 } else if (operand.kind == facts.RefRow) {
+                    reference_slots.append(slot);
+                    reference_variables.append(operand.value);
                     slots[length(slots) - 1] = native.RefType + type;
                     if (Referenced(rows, head, operand.value)) {
                         item = Op(native.Local, native.RefType + type, slot, places[operand.value], 0, 0);
@@ -2391,6 +2520,26 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                     }
                     moving = -1;
                 }
+                if (item.op == native.Call) {
+                    // A scoped call can mutate a retained local through a
+                    // reference. Publish it before any later expression calls
+                    // or control-flow exits, while the binding is in scope.
+                    for (argument in 0..<item.target) {
+                        passed := arguments[shape.first_argument + item.right + argument];
+                        origin := SortedIndex(reference_slots, passed);
+                        if (origin < 0) { continue; }
+                        variable := reference_variables[origin];
+                        retained := SortedIndex(retained_variables, variable);
+                        if (retained < 0) { continue; }
+                        held_type := NativeType(retained_types[retained]);
+                        slots.append(held_type);
+                        body.append(Op(native.Local, held_type, slot, places[variable], 0, 0));
+                        lowered := RetainedValue(rows, declared, retained_types[retained], slot, "", retained_states[retained], 0, slot + 1, false);
+                        slots.extend(lowered.types);
+                        body.extend(lowered.code);
+                        slot += 1 + length(lowered.types);
+                    }
+                }
             }
             value := stack[0];
             ends = false;
@@ -2420,7 +2569,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                         held_by = read_vars[at_read];
                     }
                 }
-                if (row.kind == facts.LocalRow && row.name == "_") {
+                if (row.kind == facts.LocalRow && (row.name == "_" || row.literal == i64(facts.Retained))) {
                     keeps = false;
                 } else if (row.kind == facts.ReturnRow && held_by >= 0) {
                     // The variable returned moves out.
@@ -2558,21 +2707,28 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 fail.literal = declaration.literal;
                 body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]);
             } else if (row.kind == facts.LocalRow && row.literal == i64(facts.Retained)) {
-                // The variable starts as the state, which starts as the
-                // literal the declaration holds.
                 type := NativeType(row.type);
-                load := Op(native.StateLoad, type, slot, 0, length(texts), states);
-                load.literal = rows[at + 1].literal;
-                texts.append(format_text("{}.{}", declaration.name, row.name));
-                slots.append(type);
+                lowered := RetainedValue(rows, declared, row.type, value, format_text("{}.{}", declaration.name, row.name),
+                                         states, length(texts), slot, true);
+                slots.extend(lowered.types);
+                body.extend(lowered.code);
+                texts.extend(lowered.texts);
+                slot += length(lowered.types);
+                states += lowered.states;
                 locals.append(type);
                 places.append(local);
                 retained_variables.append(row.value);
-                retained_states.append(states);
-                body.extend([load, Op(native.Save, type, 0, slot, 0, local)]);
-                slot += 1;
+                retained_states.append(states - lowered.states);
+                retained_types.append(row.type);
+                body.append(Op(native.Save, type, 0, lowered.value, 0, local));
                 local += 1;
-                states += 1;
+                // The local borrows the retained string. Its assignment path
+                // owns replacement strings, while StateStore keeps its own.
+                if (type == abi.TextStorage) {
+                    body.append(Op(native.TextRetain, type, 0, lowered.value, 0, 0));
+                    owned_vars.append(row.value);
+                    owned_types.append(type);
+                }
             } else if (row.kind == facts.LocalRow) {
                 type := NativeType(row.type);
                 decl_vars.append(row.value);
@@ -2656,9 +2812,15 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 // The value goes where the reference points.
                 type := NativeType(row.type);
                 slots.append(native.RefType + type);
-                body.extend([Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0),
-                             Op(native.Poke, type, 0, slot, value, 0)]);
+                body.append(Op(native.Local, native.RefType + type, slot, places[row.value], 0, 0));
+                if (type == abi.TextStorage) {
+                    slots.append(type);
+                    body.extend([Op(native.Deref, type, slot + 1, slot, 0, 0),
+                                 Op(native.TextRelease, type, 0, slot + 1, 0, 0)]);
+                }
+                body.append(Op(native.Poke, type, 0, slot, value, 0));
                 slot += 1;
+                if (type == abi.TextStorage) { slot += 1; }
             } else if (row.kind == facts.AssignRow) {
                 type := NativeType(row.type);
                 // An owning variable given a fresh array drops its old one,
@@ -2681,10 +2843,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
                 // A retained variable's state follows it.
                 for (retained in 0..<length(retained_variables)) {
                     if (retained_variables[retained] == row.value) {
-                        store := Op(native.StateStore, type, 0, slot, 0, retained_states[retained]);
                         slots.append(type);
-                        body.extend([Op(native.Local, type, slot, places[row.value], 0, 0), store]);
-                        slot += 1;
+                        body.append(Op(native.Local, type, slot, places[row.value], 0, 0));
+                        lowered := RetainedValue(rows, declared, row.type, slot, "", retained_states[retained], 0, slot + 1, false);
+                        slots.extend(lowered.types);
+                        body.extend(lowered.code);
+                        slot += 1 + length(lowered.types);
                     }
                 }
             } else if (row.kind == facts.SwitchRow) {
@@ -2738,11 +2902,6 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
     source: native.Source = {file: "", directory: ""};
     if (debug) {
         source = {file: rows[0].name, directory: directory};
-    }
-    // The numeric loop host has no runtime context. Do not publish a generation
-    // whose host-call wrappers would be absent, or weaken its assertions.
-    if (generation && native.Runtime(code)) {
-        return Result.Invalid("native package generations require a runtime-free numeric program");
     }
     // A library's Document row names it; a package generation has its own
     // manifest name, not a prepared artifact's stable library identity.

@@ -1,21 +1,12 @@
 package host
 
-// The host of a native Edit and Continue loop (docs/edit-and-continue.md,
-// "Native code"). It loads the generation `live-0.so` of a library that
-// exports `Main` and `Frame`, calls Main once, then calls Frame until it gives
-// a nonzero status, which is the program's exit status. After each Frame it
-// looks for `next.so`, a later generation: it loads that, moves the retained
-// states the two generations share, swaps it in, and unloads the old one, so
-// the next Frame runs the new code with the state it had. Main is not called
-// again. A state whose type changed converts, as the language converts. A
-// generation that fails to load, or lacks Main or Frame, is set aside as `rejected.so` and the running one continues. The generations are
-// files in the working directory because the host reads no strings, and they
-// alternate between `live-0.so` and `live-1.so` so a path is never reloaded
-// while loaded.
-//
-// Every symbol is a plain C function of the library (HostSymbols in
-// llvm_native), since a program with foreign calls only cannot read the
-// manifests.
+// The native Edit and Continue host loads live-0.so, calls Main once, and
+// calls Frame until its nonzero result ends the program. A next.so generation
+// replaces code between Frames. Named retained leaves migrate before the next
+// Frame; incompatible string/scalar changes reject the incoming generation.
+// Retired generations keep their code and state until their tasks finish.
+
+RetainedText: int : 12;
 
 foreign import libc "system:c"
 
@@ -24,65 +15,235 @@ foreign libc {
     dlsym :: (handle: rawptr, name: cstring) -> rawptr
     dlclose :: (handle: rawptr) -> i32
     rename :: (from: cstring, to: cstring) -> i32
+    unlink :: (path: cstring) -> i32
     access :: (path: cstring, mode: i32) -> i32
     usleep :: (microseconds: u32) -> i32
 }
 
+foreign {
+    chibi_argument_count :: () -> i64
+    chibi_process_argv :: () -> rawptr
+    chibi_environment :: () -> rawptr
+}
+
 Main :: () -> int {
     handle := dlopen("./live-0.so", 2);
+    if handle == 0 {
+        return 2;
+    }
+    if !Complete(handle) {
+        released := Release(handle);
+        return 2;
+    }
+    initialized := Process(handle);
     start: fn() -> i32 = dlsym(handle, "chibi_host_call_Main");
     frame: fn() -> i32 = dlsym(handle, "chibi_host_call_Frame");
-    started := start();
-    if started != 0 {
-        return int(started);
+    status := int(start());
+    if Failed(handle) {
+        status = 134;
     }
-    live := 0;
-    while true {
-        status := frame();
+    generation := 0;
+    retired: rawptr[] = [];
+    while status == 0 {
+        status = int(frame());
+        if Failed(handle) {
+            status = 134;
+        }
+        index := 0;
+        while index < length(retired) {
+            polled := Poll(retired[index]);
+            if Failed(retired[index]) {
+                status = 134;
+                break;
+            }
+            if Pending(retired[index]) {
+                index += 1;
+            } else {
+                released := Release(retired[index]);
+                retired.remove_index(index);
+            }
+        }
         if status != 0 {
-            return int(status);
+            break;
         }
         slept := usleep(5000);
         if access("./next.so", 0) != 0 {
             continue;
         }
-        name := "./live-0.so";
-        if live == 0 {
-            name = "./live-1.so";
-        }
+        generation += 1;
+        name := format_text("./generation-{}.so", generation);
         moved := rename("./next.so", name);
+        if moved != 0 {
+            continue;
+        }
         incoming := dlopen(name, 2);
         if incoming == 0 {
             set_aside := rename(name, "./rejected.so");
             continue;
         }
-        next_frame: fn() -> i32 = dlsym(incoming, "chibi_host_call_Frame");
-        old_count: fn() -> i32 = dlsym(handle, "chibi_host_retained_count");
-        old_type: fn(index: i32) -> i32 = dlsym(handle, "chibi_host_retained_type");
-        old_hash: fn(index: i32) -> i64 = dlsym(handle, "chibi_host_retained_hash");
-        old_get: fn(index: i32) -> i64 = dlsym(handle, "chibi_host_retained_get");
-        new_count: fn() -> i32 = dlsym(incoming, "chibi_host_retained_count");
-        new_type: fn(index: i32) -> i32 = dlsym(incoming, "chibi_host_retained_type");
-        new_hash: fn(index: i32) -> i64 = dlsym(incoming, "chibi_host_retained_hash");
-        new_set: fn(index: i32, word: i64) -> i32 = dlsym(incoming, "chibi_host_retained_set");
-        new_set_as: fn(index: i32, from: i32, word: i64) -> i32 = dlsym(incoming, "chibi_host_retained_set_as");
-        for target in 0..<int(new_count()) {
-            for source in 0..<int(old_count()) {
-                if old_hash(i32(source)) != new_hash(i32(target)) {
-                    continue;
-                }
-                // The same type keeps the word; another number or bool type converts it.
-                if old_type(i32(source)) == new_type(i32(target)) {
-                    carried := new_set(i32(target), old_get(i32(source)));
-                } else {
-                    converted := new_set_as(i32(target), old_type(i32(source)), old_get(i32(source)));
-                }
-            }
+        initialized_incoming := Process(incoming);
+        if !Complete(incoming) || !Migrate(handle, incoming) {
+            released := Release(incoming);
+            set_aside := rename(name, "./rejected.so");
+            continue;
         }
-        closed := dlclose(handle);
+        removed := unlink(name);
+        next_frame: fn() -> i32 = dlsym(incoming, "chibi_host_call_Frame");
+        if Pending(handle) {
+            retired.append(handle);
+        } else {
+            released := Release(handle);
+        }
         handle = incoming;
         frame = next_frame;
-        live = 1 - live;
+    }
+    released := Release(handle);
+    for previous in retired {
+        released_previous := Release(previous);
+    }
+    return status;
+}
+
+Process :: (handle: rawptr) -> int {
+    address := dlsym(handle, "chibi_host_set_process");
+    if address == 0 { return 0; }
+    initialize: fn(count: i64, arguments: rawptr, environment: rawptr) -> i32 = address;
+    return int(initialize(chibi_argument_count(), chibi_process_argv(), chibi_environment()));
+}
+
+Complete :: (handle: rawptr) -> bool {
+    for symbol in ["chibi_host_call_Main", "chibi_host_call_Frame", "chibi_host_retained_count",
+                   "chibi_host_retained_type", "chibi_host_retained_hash", "chibi_host_retained_get",
+                   "chibi_host_retained_set", "chibi_host_retained_set_as"] {
+        if dlsym(handle, symbol) == 0 {
+            return false;
+        }
+    }
+    return true;
+}
+
+Failed :: (handle: rawptr) -> bool {
+    address := dlsym(handle, "chibi_host_failed");
+    if address == 0 {
+        return false;
+    }
+    failed: fn() -> i32 = address;
+    return failed() != 0;
+}
+
+Pending :: (handle: rawptr) -> bool {
+    address := dlsym(handle, "chibi_host_tasks_pending");
+    if address == 0 {
+        return false;
+    }
+    count: fn() -> i64 = address;
+    return count() != 0;
+}
+
+Poll :: (handle: rawptr) -> int {
+    address := dlsym(handle, "chibi_host_tasks_poll");
+    if address != 0 {
+        poll: fn() -> i32 = address;
+        polled := poll();
     }
     return 0;
+}
+
+Release :: (handle: rawptr) -> int {
+    cancel_address := dlsym(handle, "chibi_host_tasks_cancel_all");
+    if cancel_address != 0 {
+        cancel_tasks: fn() -> i32 = cancel_address;
+        cancelled := cancel_tasks();
+    }
+    release_address := dlsym(handle, "chibi_host_retained_release");
+    if release_address != 0 {
+        release_states: fn() -> i32 = release_address;
+        released := release_states();
+    }
+    closed := dlclose(handle);
+    return 0;
+}
+
+// Stable indices into the old state table, ordered by name hash. Migration
+// sorts once and uses binary search, rather than comparing every pair of states.
+Order :: (hashes: i64[]) -> int[] {
+    from: int[] = [];
+    for index in 0..<length(hashes) { from.append(index); }
+    to := from;
+    width := 1;
+    while width < length(from) {
+        start := 0;
+        while start < length(from) {
+            middle := start + width;
+            if middle > length(from) { middle = length(from); }
+            end := middle + width;
+            if end > length(from) { end = length(from); }
+            left := start;
+            right := middle;
+            for index in start..<end {
+                take_left := right == end || (left < middle && hashes[from[left]] <= hashes[from[right]]);
+                if take_left {
+                    to[index] = from[left];
+                    left += 1;
+                } else {
+                    to[index] = from[right];
+                    right += 1;
+                }
+            }
+            start = end;
+        }
+        from = to;
+        width *= 2;
+    }
+    return from;
+}
+
+// Validate every shared leaf before writing any incoming state. Scalar types
+// convert; strings require a string on both sides and copy their bytes before
+// the old generation can unload.
+Migrate :: (old: rawptr, incoming: rawptr) -> bool {
+    old_count: fn() -> i32 = dlsym(old, "chibi_host_retained_count");
+    old_type: fn(index: i32) -> i32 = dlsym(old, "chibi_host_retained_type");
+    old_hash: fn(index: i32) -> i64 = dlsym(old, "chibi_host_retained_hash");
+    old_get: fn(index: i32) -> i64 = dlsym(old, "chibi_host_retained_get");
+    ready_address := dlsym(old, "chibi_host_retained_ready");
+    new_count: fn() -> i32 = dlsym(incoming, "chibi_host_retained_count");
+    new_type: fn(index: i32) -> i32 = dlsym(incoming, "chibi_host_retained_type");
+    new_hash: fn(index: i32) -> i64 = dlsym(incoming, "chibi_host_retained_hash");
+    new_set: fn(index: i32, word: i64) -> i32 = dlsym(incoming, "chibi_host_retained_set");
+    new_set_as: fn(index: i32, from: i32, word: i64) -> i32 = dlsym(incoming, "chibi_host_retained_set_as");
+    hashes: i64[] = [];
+    for source in 0..<int(old_count()) { hashes.append(old_hash(i32(source))); }
+    order := Order(hashes);
+    sources: int[] = [];
+    for target in 0..<int(new_count()) {
+        wanted := new_hash(i32(target));
+        low := 0;
+        high := length(order);
+        while low < high {
+            middle := low + (high - low) / 2;
+            if hashes[order[middle]] < wanted { low = middle + 1; }
+            else { high = middle; }
+        }
+        source := -1;
+        if low < length(order) && hashes[order[low]] == wanted { source = order[low]; }
+        sources.append(source);
+        if source >= 0 && ((old_type(i32(source)) == RetainedText) != (new_type(i32(target)) == RetainedText)) {
+            return false;
+        }
+    }
+    for target in 0..<length(sources) {
+        source := sources[target];
+        if source < 0 { continue; }
+        if ready_address != 0 {
+            initialized: fn(index: i32) -> i32 = ready_address;
+            if initialized(i32(source)) == 0 { continue; }
+        }
+        if old_type(i32(source)) == new_type(i32(target)) {
+            carried := new_set(i32(target), old_get(i32(source)));
+        } else {
+            converted := new_set_as(i32(target), old_type(i32(source)), old_get(i32(source)));
+        }
+    }
+    return true;
 }

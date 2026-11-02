@@ -73,6 +73,21 @@ Where :: (collections: string[], directories: string[], paths: string[], sources
 // `rejected FUNCTION: MESSAGE`.
 pub Module :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
                chosen: string) -> Output {
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, false);
+}
+
+// Shared package generations expose Main/Frame and retained states to the
+// long-lived native host. They use the same source closure and producer.
+pub ModuleShared :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+                     chosen: string, directory: string) -> Output {
+    if (directory != "") {
+        return Output.Rejected("shared package generations have no line tables yet");
+    }
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, true);
+}
+
+ModuleWith :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+               chosen: string, shared: bool) -> Output {
     os := 1;
     arch := 1;
     if (strings.HasPrefix(triple, "aarch64-apple")) {
@@ -89,7 +104,13 @@ pub Module :: (collections: string[], directories: string[], paths: string[], so
                                                     rejected.text, " (", Where(collections, directories, paths, sources, os, arch,
                                                                               strings.ByteLength(rows[0].text), rejected.start), ")"]));
     }
-    switch scalar.EmitFor(Target(triple), rows) {
+    emitted: scalar.Result = scalar.Result.Invalid("");
+    if (shared) {
+        emitted = scalar.EmitShared(Target(triple), rows);
+    } else {
+        emitted = scalar.EmitFor(Target(triple), rows);
+    }
+    switch emitted {
         case .Rejected(rejected):
             return Output.Rejected(strings.Concatenate(["rejected (module): ", rejected[length(rejected) - 1].text]));
         case .Invalid(message):

@@ -2586,9 +2586,9 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             type := ScalarValueType(types, storage, container, record);
             row = ScalarAt(forest, statement, facts.LocalRow, type, variables, count, name);
             if (retained) {
-                if (container != 0 || record >= 0 || storage == TextStorage || Field(forest, statement, syntax.FieldValue) < 0) {
+                if (container != 0 || storage == UnionStorage || Field(forest, statement, syntax.FieldValue) < 0) {
                     return ScalarOperands.Failed(Diagnose(forest, statement, 0,
-                                                          "a retained local is a number or bool with a value"));
+                                                          "a retained local is a number, bool, string or record with a value"));
                 }
                 row.literal = i64(facts.Retained);
             }
@@ -2802,7 +2802,13 @@ ScalarRetainedNames :: (forest: snapshot.SnapshotNode[], text: string, types: Ty
         pending = slice(pending, 0, length(pending) - 1);
         if (Is(forest, node, syntax.StateDeclaration)) {
             declared := StateType(forest, text, &table, 0, node);
-            kept: Name = {owned: false, name: Text(forest, text, Field(forest, node, syntax.FieldName)), place: StatePlace,
+            place := StatePlace;
+            if (declared.storage == StructStorage) {
+                // The ordinary preflight checks a mutable aggregate local;
+                // native retained lowering supplies its persistent storage.
+                place = CellPlace;
+            }
+            kept: Name = {owned: false, name: Text(forest, text, Field(forest, node, syntax.FieldName)), place: place,
                           index: length(names), storage: declared.storage, container: 0, record: declared.record,
                           writable: true, node: Field(forest, node, syntax.FieldName)};
             names.append(kept);
@@ -2868,7 +2874,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                 why = "a direct write";
             } else if (!ScalarHosts(hosts, roots)) {
                 why = "a host call or root";
-            } else if (!ScalarCells(cells, calls, hosts, AnyReference(params))) {
+            } else if (!ScalarCells(cells, calls, hosts, AnyReference(params) || length(retained) > 0)) {
                 why = "a cell";
             }
             if (why != "") {

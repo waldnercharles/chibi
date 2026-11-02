@@ -1,0 +1,3 @@
+package helper
+import testing "core:testing"
+pub Arm :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); }

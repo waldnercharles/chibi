@@ -2,17 +2,20 @@
 # Real native compiler + LLVM + apps/host proof, including edits compiled
 # while the old generation is running. No bytecode host participates.
 set -eu
-if [ "$#" -ne 2 ]; then
-    echo 'usage: run.sh NATIVE_COMPILER LLVM_BIN' >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+    echo 'usage: run.sh NATIVE_COMPILER LLVM_BIN [0|2]' >&2
     exit 2
 fi
-if [ "$(uname -s)-$(uname -m)" != Linux-x86_64 ]; then
-    echo 'native package generations require Linux x86-64' >&2
-    exit 2
-fi
+case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64) triple=x86_64-unknown-linux-gnu ;;
+    Darwin-arm64) triple=aarch64-apple-darwin ;;
+    *) echo 'native package generations require Linux x86-64 or macOS arm64' >&2; exit 2 ;;
+esac
 root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd -P)
 compiler=$1
 llvm=$2
+level=${3:-0}
+case "$level" in 0|2) ;; *) echo 'native generations: optimization must be 0 or 2' >&2; exit 2 ;; esac
 work=$(mktemp -d "${TMPDIR:-/tmp}/chibi-generations.XXXXXX")
 child=
 cleanup() {
@@ -30,12 +33,12 @@ build() {
     if [ "$linkage" = shared ]; then
         "$compiler" --compiler "$(dirname "$project")" --core "$root/packages/core" \
             --source "$project/Main.chibi" --output "$project/generation.so" \
-            --llvm "$llvm" --target x86_64-unknown-linux-gnu --shared --level 0 \
+            --llvm "$llvm" --target "$triple" --shared --level "$level" \
             > "$project/build.log" 2>&1
     else
         "$compiler" --compiler "$(dirname "$project")" --core "$root/packages/core" \
             --source "$project/Main.chibi" --entry Main --output "$project/host" \
-            --llvm "$llvm" --target x86_64-unknown-linux-gnu --level 0 \
+            --llvm "$llvm" --target "$triple" --level "$level" \
             > "$project/build.log" 2>&1
     fi
 }
@@ -60,16 +63,36 @@ cp "$root/apps/host/Host.chibi" "$work/host/Main.chibi"
 must_build "$work/host" ''
 host=$(output "$work/host")
 
+wait_marker() {
+    marker=$1
+    host_log=$2
+    tries=0
+    while [ ! -f "$marker" ]; do
+        if ! kill -0 "$child" 2>/dev/null; then
+            cat "$host_log" >&2
+            echo "native generations: host exited before $marker" >&2
+            exit 1
+        fi
+        tries=$((tries + 1))
+        if [ "$tries" -ge 1000 ]; then
+            cat "$host_log" >&2
+            echo "native generations: missing $marker" >&2
+            exit 1
+        fi
+        sleep 0.01
+    done
+}
+
 swap() {
     first=$1
     edited=$2
     run=$3
+    marker=$4
     mkdir -p "$run"
     cp "$(output "$first")" "$run/live-0.so"
     (cd "$run" && exec timeout 90 "$host") > "$run/host.log" 2>&1 &
     child=$!
-    sleep 0.1
-    kill -0 "$child"
+    if [ -n "$marker" ]; then wait_marker "$run/$marker" "$run/host.log"; fi
     must_build "$edited" shared
     cp "$(output "$edited")" "$run/pending.so"
     mv "$run/pending.so" "$run/next.so"
@@ -82,7 +105,7 @@ swap() {
         exit 1
     fi
 }
-swap "$work/package first" "$work/package edited" "$work/package run"
+swap "$work/package first" "$work/package edited" "$work/package run" generation-ready
 
 # Scalar facts adapt a non-entry void result to int zero, as the library path
 # does. Keep typed Main and carry void Frame's state into the typed Frame.
@@ -90,16 +113,15 @@ mkdir -p "$work/void first"
 sed 's/Frame :: () -> int/Frame :: ()/; /    return 0;/d' \
     "$work/package first/Main.chibi" > "$work/void first/Main.chibi"
 must_build "$work/void first" shared
-swap "$work/void first" "$work/package edited" "$work/void run"
+swap "$work/void first" "$work/package edited" "$work/void run" generation-ready
 
 # Existing library IDs, wrappers and numeric migration take the old path.
-for version in first edited; do
-    mkdir -p "$work/library $version"
-    { echo 'Loop :: library {'; sed '/^package /d' "$work/package $version/Main.chibi"; echo '}'; } \
-        > "$work/library $version/Main.chibi"
-done
+mkdir -p "$work/library first" "$work/library edited"
+cp "$root/test/native_aot/generations/LibraryFirst.chibi" "$work/library first/Main.chibi"
+{ echo 'Loop :: library {'; sed '/^package /d' "$work/package edited/Main.chibi"; echo '}'; } \
+    > "$work/library edited/Main.chibi"
 must_build "$work/library first" shared
-swap "$work/library first" "$work/library edited" "$work/library run"
+swap "$work/library first" "$work/library edited" "$work/library run" ''
 
 # A sibling import must use package collection, not the executable-only fast
 # driver. Its public helper is called from Frame in the resulting shared object.
@@ -125,6 +147,30 @@ cp "$(output "$work/void main")" "$work/void run/live-0.so"
 status=0
 (cd "$work/void run" && timeout 90 "$host") || status=$?
 test "$status" -eq 7
+
+# The public native build route accepts the versioned macOS ABI triple too.
+# Its target constants must follow the emitted image, rather than the build host.
+if [ "$triple" = aarch64-apple-darwin ]; then
+    canonical="$work/canonical target"
+    mkdir -p "$canonical" "$work/canonical run"
+    cat > "$canonical/Main.chibi" <<'SOURCE'
+package canonical_target
+import target "core:target"
+Main :: () -> int {
+    assert(target.Os == target.Darwin && target.Arch == target.Arm64 && target.PointerBits == 64);
+    return 0;
+}
+Frame :: () -> int { return 7; }
+SOURCE
+    native_output=$(env -i PATH= CHIBI_CORE="$root/packages/core" "$compiler" build --native --shared -O2 \
+        --llvm "$llvm" --target arm64-apple-macosx11.0.0 "$canonical" 2>&1)
+    native_image=$(printf '%s\n' "$native_output" | sed -n 's/^native: //p')
+    test -f "$native_image"
+    cp "$native_image" "$work/canonical run/live-0.so"
+    status=0
+    (cd "$work/canonical run" && timeout 30 "$host") || status=$?
+    test "$status" -eq 7
+fi
 
 # Invalid edits preserve the already published generation byte for byte and
 # publish no second generation. Test real diagnostics, not just nonzero status.
@@ -261,8 +307,7 @@ must_build "$work/composite first" shared
 cp "$(output "$work/composite first")" "$work/composite run/live-0.so"
 (cd "$work/composite run" && exec timeout 90 "$host") > "$work/composite run/host.log" 2>&1 &
 child=$!
-sleep 0.1
-kill -0 "$child"
+wait_marker "$work/composite run/generation-ready" "$work/composite run/host.log"
 must_build "$work/composite bad" shared
 cp "$(output "$work/composite bad")" "$work/composite run/pending.so"
 mv "$work/composite run/pending.so" "$work/composite run/next.so"
@@ -296,30 +341,12 @@ must_build "$work/task first" shared
 cp "$(output "$work/task first")" "$work/task run/live-0.so"
 (cd "$work/task run" && exec timeout 90 "$host") > "$work/task run/host.log" 2>&1 &
 child=$!
-wait_task_file() {
-    marker=$1
-    tries=0
-    while [ ! -f "$marker" ]; do
-        if ! kill -0 "$child" 2>/dev/null; then
-            cat "$work/task run/host.log" >&2
-            echo "task generation: host exited before $marker" >&2
-            exit 1
-        fi
-        tries=$((tries + 1))
-        if [ "$tries" -ge 1000 ]; then
-            cat "$work/task run/host.log" >&2
-            echo "task generation: missing $marker" >&2
-            exit 1
-        fi
-        sleep 0.01
-    done
-}
-wait_task_file "$work/task run/task-started"
+wait_marker "$work/task run/task-started" "$work/task run/host.log"
 cp "$root/test/native_aot/generations/TaskFailureEdited.chibi" "$work/task edited/Main.chibi"
 must_build "$work/task edited" shared
 cp "$(output "$work/task edited")" "$work/task run/pending.so"
 mv "$work/task run/pending.so" "$work/task run/next.so"
-wait_task_file "$work/task run/task-edited"
+wait_marker "$work/task run/task-edited" "$work/task run/host.log"
 kill -0 "$child"
 test ! -e "$work/task run/task-failed-old"
 printf 'resume\n' > "$work/task run/task-release"

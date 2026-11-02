@@ -533,7 +533,7 @@ RunProgram :: (invocation: CliInvocation, tail: string[]) -> int {
         return 2;
     }
     triple := Default(invocation.target, HostTriple());
-    if (triple != HostTriple()) {
+    if (!HostTarget(triple)) {
         Complain("run requires the host target; use build --native to cross-compile");
         return 2;
     }

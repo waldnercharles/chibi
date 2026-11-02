@@ -3906,9 +3906,8 @@ HostSymbols :: (names: string[], functions: Function[], parameters: int[], code:
 pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                     parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                     records: Record[], fields: int[], texts: string[], step_budget: int, field_names: string[]) -> Result {
-    // The export ABI is checked only on Linux x86-64 so far.
-    if (!abi.Same(target, abi.LinuxX64())) {
-        return Result.Rejected(-1, "native libraries are Linux x86-64 only");
+    if (!abi.Same(target, abi.LinuxX64()) && !abi.Same(target, abi.MacOSArm64())) {
+        return Result.Rejected(-1, "native libraries require Linux x86-64 or macOS arm64");
     }
     if (!Identifier(name) || length(names) != length(functions) || length(ids) != length(functions)) {
         return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");

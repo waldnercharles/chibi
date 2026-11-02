@@ -22,6 +22,8 @@ Frame :: () -> int {
     assert(snapshot.text != progress.text, "retained record snapshot owns its string");
     if progress.count == 1 {
         Worker();
+        cancelled := CancelledWorker();
+        cancel cancelled
     }
     if progress.count == 2 {
         stream := fopen("ready", "wb");
@@ -44,4 +46,14 @@ TaskCompleted :: () {
     stream := fopen("task-done", "wb");
     written := fwrite("old", 1, 3, stream);
     closed := fclose(stream);
+}
+
+CancelledWorker :: () -> int {
+    yield
+    return UnexpectedResume();
+}
+UnexpectedResume :: () -> int {
+    stream := fopen("cancelled-task-ran", "wb");
+    closed := fclose(stream);
+    return 0;
 }

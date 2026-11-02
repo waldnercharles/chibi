@@ -1,15 +1,20 @@
 # Native package generations
 
-On Linux x86-64, run the real native compiler and host regression with LLVM 22
+On Linux x86-64 or macOS arm64, run the real native compiler and host regression with LLVM 22
 or later, using absolute paths:
 
 ```sh
 sh test/native_aot/generations/run.sh /path/to/chibi /path/to/llvm/bin
+sh test/native_aot/generations/run.sh /path/to/chibi /path/to/llvm/bin 2
 ```
 
 The runner compiles `apps/host/Host.chibi` and actual shared generations through
 the native compiler. It compiles edits while the original generation runs and
 publishes each edit by renaming `next.so`. No VM build or compiler host runs.
+The optional third argument selects optimization level 0 or 2. Package fixtures
+signal readiness after three frames; the test publishes edits after that signal.
+The pure legacy library fixture verifies scalar conversion after the host's
+mandatory first Frame, without a timing delay or foreign I/O.
 
 The package swaps check Main running once, numeric conversion, retained record
 fields surviving reordering, new fields keeping their initializers, and

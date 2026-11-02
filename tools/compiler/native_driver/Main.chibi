@@ -17,7 +17,7 @@ import strings "core:strings"
 // each `; chibi-piece` boundary starts an independent module. No tools run.
 // --static refuses a program that needs libc,
 // which a program that allocates does; --shared links a library source as a
-// Linux shared object, as the Edit and Continue player loads one. A
+// Linux shared object or macOS dylib, as the Edit and Continue host loads one. A
 // `; chibi-library` line's archive (native_link.Archive) is linked after the
 // objects. Without --entry the program starts at
 // the first function of its first file; with it, at the function NAME of that
@@ -59,8 +59,12 @@ Build :: (arguments: string[]) -> int {
         os.Print("usage: --compiler DIR --core DIR --output FILE [--emit-llvm | --llvm DIR] [--package NAME | --source FILE | --root DIR] [--entry NAME] [--collection NAME=DIR]... [--target TRIPLE] [--level 0|2] [--lines] [--static | --shared] [--jobs N]");
         return 2;
     }
-    if ((lines || shared) && !linux) {
-        os.Print("native: line tables and shared libraries are Linux x86-64 only so far");
+    if (lines && !linux) {
+        os.Print("native: line tables are Linux x86-64 only so far");
+        return 2;
+    }
+    if (shared && !SharedTarget(triple)) {
+        os.Print("native: shared libraries require Linux x86-64 or macOS arm64");
         return 2;
     }
     if (shared && (lines || Flag(arguments, "--static"))) {
@@ -146,6 +150,16 @@ DriverOptions :: struct {
     emit_llvm: bool;
 }
 
+SharedTarget :: (triple: string) -> bool {
+    target := link.TargetOf(triple);
+    return target == link.LinuxX64 || target == link.MacOSArm64;
+}
+
+HostTarget :: (triple: string) -> bool {
+    target := link.TargetOf(triple);
+    return target >= 0 && target == link.TargetOf(HostTriple());
+}
+
 Emit :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
          chosen: string, llvm: string, output: string, jobs: int) -> int {
     return EmitOptions(collections, directories, paths, sources, triple, chosen, llvm, output, jobs,
@@ -163,8 +177,12 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
         os.Print("native: WebAssembly requires --emit-llvm and an external Wasm linker");
         return 2;
     }
-    if ((options.lines || shared) && !linux) {
-        os.Print("native: line tables and shared libraries are Linux x86-64 only so far");
+    if (options.lines && !linux) {
+        os.Print("native: line tables are Linux x86-64 only so far");
+        return 2;
+    }
+    if (shared && !SharedTarget(triple)) {
+        os.Print("native: shared libraries require Linux x86-64 or macOS arm64");
         return 2;
     }
     if ((options.level != "0" && options.level != "2") || (shared && (options.lines || options.static_link))) {
@@ -197,7 +215,7 @@ EmitOptions :: (collections: string[], directories: string[], paths: string[], s
                 os.Print("native: a library declaration takes one source");
                 return 1;
             }
-            compiled = LibraryModule(paths[0], sources[0]);
+            compiled = LibraryModule(paths[0], sources[0], triple);
         } else {
             compiled = ModuleShared(collections, visible, paths, sources, triple, "", directory);
         }

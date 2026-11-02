@@ -25,6 +25,12 @@ acceptance and seed publication remain blocked on that diagnosis and the
 remaining runtime probes. Program/application APIs and browser execution
 still use the VM. See [PLAN.md](../PLAN.md) for evidence and deletion gates.
 
+Native shared generations and `run --watch` now run on Linux x86-64 and macOS
+arm64. The real compiler and host tests cover retained scalar/string records,
+rejected edits, Main running once, and tasks finishing or failing in their
+original generation. The generation suite runs at O0 and O2. Windows shared
+generation loading remains a separate platform gate.
+
 The milestone tables and census below preserve the earlier rollout's evidence
 and main-branch status; they do not describe the current integration branch.
 

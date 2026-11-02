@@ -12,12 +12,12 @@ cp -R "$repo/test/native_aot/optionals/rejected_union" "$work/rejected_union"
 cp -R "$repo/test/native_aot/optionals/rejected_union_is" "$work/rejected_union_is"
 for level in 0 2; do
     CHIBI_CORE="$repo/packages/core" "$stage" test "$work/project" --llvm "$llvm" -O"$level" > "$work/native.log" 2>&1 || { cat "$work/native.log"; exit 1; }
-    awk '/^(PASS|FAIL) (body|facts|unions)[.]/ { print }' "$work/native.log" | LC_ALL=C sort > "$work/native.results"
+    awk '/^(PASS|FAIL) (body|facts|unions|named)[.]/ { print }' "$work/native.log" | LC_ALL=C sort > "$work/native.results"
     diff -u "$repo/test/native_aot/optionals/expected.txt" "$work/native.results"
 done
 if [ -n "$reference" ]; then
     "$reference" --project-root "$work/project" --test > "$work/reference.log" 2>&1 || { cat "$work/reference.log"; exit 1; }
-    awk '/^(PASS|FAIL) (body|facts|unions)[.]/ { print }' "$work/reference.log" | LC_ALL=C sort > "$work/reference.results"
+    awk '/^(PASS|FAIL) (body|facts|unions|named)[.]/ { print }' "$work/reference.log" | LC_ALL=C sort > "$work/reference.results"
     diff -u "$work/reference.results" "$work/native.results"
 fi
 set +e

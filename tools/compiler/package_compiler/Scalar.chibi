@@ -2947,12 +2947,14 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 name := Text(forest, text, declared);
                 element := IntStorage;
                 element_record := -1;
+                element_container := 0;
                 row = ScalarAt(forest, statement, facts.ForRow, facts.IntType, variables, count, name);
                 if (map_iterated >= 0) {
                     map := types[map_iterated];
                     element = map.value_storage;
                     element_record = map.value_record;
-                    if (keyed) { element = map.key; element_record = -1; }
+                    element_container = map.value_container;
+                    if (keyed) { element = map.key; element_record = -1; element_container = 0; }
                     row.type = ScalarMapType(types, map_iterated);
                     row.literal = i64(facts.RangeMap);
                     if (keyed) { row.literal += i64(facts.RangeKeyed); }
@@ -2975,19 +2977,21 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                     row.literal += i64(facts.RangeReverse);
                 }
                 // As the range step binds it, read-only, for the body alone.
-                binding: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: element, container: 0,
+                binding: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: element, container: element_container,
                                  record: element_record, writable: false, node: declared};
                 names.append(binding);
                 variables += 1;
                 if (keyed) {
                     keyed_storage := IntStorage;
                     keyed_record := -1;
+                    keyed_container := 0;
                     if (map_iterated >= 0) {
                         keyed_storage = types[map_iterated].value_storage;
                         keyed_record = types[map_iterated].value_record;
+                        keyed_container = types[map_iterated].value_container;
                     }
                     index: Name = {owned: false, name: Text(forest, text, Field(forest, statement, syntax.FieldName)), place: LocalPlace,
-                                   index: variables, storage: keyed_storage, container: 0, record: keyed_record, writable: false,
+                                   index: variables, storage: keyed_storage, container: keyed_container, record: keyed_record, writable: false,
                                    node: Field(forest, statement, syntax.FieldName)};
                     names.append(index);
                     variables += 1;

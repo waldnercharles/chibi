@@ -375,6 +375,13 @@ pub MapSpan: int : 8;
 pub MapLiveAt: int : 9;
 pub MapKeyAt: int : 10;
 pub MapValueAt: int : 11;
+// Changes of an int[] entry. Operands are a map reference, key and argument;
+// MapArraySet additionally takes its element index before the incoming value.
+pub MapArrayPush: int : 12;
+pub MapArrayExtend: int : 13;
+pub MapArrayRemove: int : 14;
+pub MapArraySet: int : 15;
+pub MapArrayResize: int : 16;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
 // unsigned as their operands' type is. On floats, each is false when an

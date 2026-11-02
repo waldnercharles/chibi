@@ -1049,10 +1049,11 @@ pub Start :: (command: string[], piped: bool) -> int {
     return StartProcess(command, piped, "", "");
 }
 
-// The caller owns the two distinct files, including cleanup after a failed
-// launch. Wait/Kill never report or remove redirected output.
+// The caller owns the files, including cleanup after a failed launch. Empty
+// stdout inherits this process's stdout; stderr must name a distinct file.
+// Wait/Kill never report or remove redirected output.
 pub StartRedirected :: (command: string[], stdout_path: string, stderr_path: string) -> int {
-    if stdout_path == "" || stderr_path == "" || stdout_path == stderr_path { return -1; }
+    if stderr_path == "" || stdout_path == stderr_path { return -1; }
     return StartProcess(command, false, stdout_path, stderr_path);
 }
 
@@ -1090,18 +1091,22 @@ StartProcess :: (command: string[], piped: bool, stdout_path: string, stderr_pat
         }
         output = starting.output;
         errors = output;
-    } else if stdout_path != "" {
-        starting.output = CreateFileW(Wide(stdout_path), WriteAccess, ShareAll, 0, CreateAlways, 0, 0);
-        if ~starting.output == 0 || Shared(starting.output) == 0 {
-            AbandonProcess(starting, folder);
-            return -1;
+    } else if stderr_path != "" {
+        if stdout_path != "" {
+            starting.output = CreateFileW(Wide(stdout_path), WriteAccess, ShareAll, 0, CreateAlways, 0, 0);
+            if ~starting.output == 0 || Shared(starting.output) == 0 {
+                AbandonProcess(starting, folder);
+                return -1;
+            }
+            output = starting.output;
+        } else {
+            output = Shared(GetStdHandle(-11));
         }
         starting.errors = CreateFileW(Wide(stderr_path), WriteAccess, ShareAll, 0, CreateAlways, 0, 0);
         if ~starting.errors == 0 || Shared(starting.errors) == 0 {
             AbandonProcess(starting, folder);
             return -1;
         }
-        output = starting.output;
         errors = starting.errors;
     } else {
         output = Shared(GetStdHandle(-11));

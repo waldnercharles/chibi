@@ -41,8 +41,9 @@ part of the parity requirement.
   The host advances active tasks and keeps retired tasks in their original code.
 - Windows has filesystem/cache operations, a cross-build route and verified
   LLVM installation that extracts only the tools and DLLs it uses.
-- Legacy asset generation, host test selectors and explicit bytecode recovery
-  prepare their seed at their own boundary. Native-only routes skip that seed.
+- Legacy compiler-resource staging, host test selectors and explicit bytecode
+  recovery prepare their seed at their own boundary. Native-only routes skip
+  that seed; host-only SDK builds prepare it before copying compiler resources.
 
 ## Verification recorded so far
 
@@ -67,9 +68,14 @@ minimum-version evidence.
   including driver, CLI, diagnostics, maps, tasks, retained generations and watch.
 - Broader CI exposed the removed implicit bytecode-seed dependency and then a
   missing `ScalarMaps.chibi` source-list entry. Both are fixed in this branch.
+- The real SDK install/relocation test passed locally in 26.83 s after the
+  resource-boundary fix and a 5.11 s incremental host/resource build.
 - The first Windows job downloaded LLVM in about five seconds but timed out
-  during checksum/extraction. Selective extraction has PowerShell fixtures;
-  native Windows execution still needs successful CI evidence.
+  during checksum/extraction. Selective extraction now passes in Windows CI:
+  download 11.13 s, checksum 1.04 s, decompression 11.83 s and extraction 0.40 s.
+  Its next failure was a same-size-write timestamp assumption. The regression
+  now verifies content by hash and metadata with a size change. The remaining
+  Windows execution and self-build checks still need successful CI evidence.
 
 The native Linux generation suite passed in 37.184 s, including real reloads,
 active task progress, active and retired task failures, and rejection of waiting

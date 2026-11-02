@@ -6,9 +6,11 @@ import scalar "project:scalar_llvm"
 import abi "project:native_abi"
 import strings "core:strings"
 import syntax "project:syntax_diagnostics"
+import os "core:os"
 
 // run.sh appends the driver's actual catalog, not a second maintained copy.
 Main :: () -> int {
+    TypedEffects();
     first := "package main\nMain :: () -> int { return Missing(); }\n";
     Rejected(["Main.chibi"], [first], first, "Missing", "Unknown function 'Missing'", 2, 28);
 
@@ -58,6 +60,34 @@ Main :: () -> int {
     Message(["core"], ["/sdk/core"], ["Main.chibi", "target/Target.chibi", "lib/Lib.chibi"],
             [project_target, "package target\npub Native: int : 1\n", bad], "rejected Value: Unknown function 'Missing' (lib/Lib.chibi:2)");
     return 0;
+}
+
+// A typed scheduling summary follows actual calls, including recursive and
+// imported calls. An unrelated function with the same name stays independent.
+TypedEffects :: () {
+    source := "package main\nimport other \"project:other\"\nforeign { External :: () -> int }\nMain :: () -> int { return 0; }\nPure :: () -> int { values: int[] = [1, 2]; values[0] = 3; return length(values); }\nCallsPure :: () -> int { return Pure(); }\nLeaf :: () -> int { return External(); }\nMid :: () -> int { return Leaf(); }\nCycleA :: (n: int) -> int { if (n > 0) { return CycleB(n - 1); } return Leaf(); }\nCycleB :: (n: int) -> int { return CycleA(n); }\nImported :: () -> int { return other.Value(); }\n";
+    other := "package other\nforeign { ExternalOther :: () -> int }\npub Value :: () -> int { return ExternalOther(); }\nPure :: () -> int { return 1; }\n";
+    collected := compiler.CollectScalarProgramWithEffects("/project", [], [], ["Main.chibi", "other/Other.chibi"],
+        [source, other], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main");
+    if (length(collected.rows) <= 2 || collected.rows[1].kind == facts.RejectionRow) {
+        os.Print(collected.rows[length(collected.rows) - 1].text);
+    }
+    assert(length(collected.rows) > 2 && collected.rows[1].kind != facts.RejectionRow, "typed effect input compiles");
+    masks: [string: int] = [:];
+    at := 0;
+    for (row in collected.rows) {
+        if (row.kind == facts.FunctionRow) {
+            if (row.start < strings.ByteLength(source)) { masks[row.name] = collected.effects[at]; }
+            at += 1;
+        }
+    }
+    assert(at == length(collected.effects), "one mask per function, no facts payload overload");
+    assert(masks["Main"] == 0 && masks["Pure"] == 0 && masks["CallsPure"] == 0, "local mutation and pure calls stay pure");
+    assert(masks["Leaf"] == 3 && masks["Mid"] == 3 && masks["CycleA"] == 3 && masks["CycleB"] == 3 &&
+           masks["Imported"] == 3, "foreign read/write effects close across calls and cycles");
+    rejected := compiler.CollectScalarProgramWithEffects("/project", [], [], ["Main.chibi"],
+        ["package main\nMain :: () -> int { return Missing(); }\n"], TargetFacts(), Names(), Natives(), Ports(), Identities(), 1, 1, "Main");
+    assert(length(rejected.effects) == 0 && rejected.rows[1].kind == facts.RejectionRow, "rejection publishes no partial masks");
 }
 
 Collect :: (paths: string[], sources: string[]) -> facts.Row[] {

@@ -13,6 +13,7 @@ foreign probes {
     SleepEx :: (milliseconds: u32, alertable: i32) -> u32
     GetProcessHandleCount :: (process: u64, count: u32[]) -> i32
     WaitForSingleObjectEx :: (handle: u64, milliseconds: u32, alertable: i32) -> u32
+    SetEnvironmentVariableW :: (name: u16[], value: u16[]) -> i32
 }
 
 // Exercise the native filesystem, process API and real opt/llc commands.
@@ -26,6 +27,7 @@ Main :: () -> int {
     llvm := arguments[0];
     work := arguments[1];
     Files(llvm, work);
+    Environment();
     Processes(work);
     GraphCache(work);
     module := strings.Concatenate([work, "/sample.ll"]);
@@ -121,6 +123,28 @@ Handles :: () -> u32 {
     counted := GetProcessHandleCount(~u64(0), count);
     assert(counted != 0, "count this process's handles");
     return count[0];
+}
+
+Environment :: () {
+    suffix := os.HashText(os.ProgramPath());
+    name := strings.Concatenate(["CHIBI_NATIVE_ENV_", suffix]);
+    insensitive := strings.Concatenate(["chibi_native_env_", suffix]);
+    key: u16[] = [];
+    for byte in strings.Bytes(name) { key.append(u16(byte)); }
+    key.append(0);
+    assert(!windows.HasEnv(name), "the private environment probe starts absent");
+    empty: u16[] = [0];
+    changed := SetEnvironmentVariableW(key, empty);
+    assert(changed != 0 && windows.HasEnv(insensitive) && windows.Getenv(name) == "",
+           "a defined empty Windows variable is present and names ignore case");
+    value: u16[] = [111, 107, 0];
+    changed = SetEnvironmentVariableW(key, value);
+    assert(changed != 0 && windows.HasEnv(name) && windows.Getenv(name) == "ok",
+           "a populated environment variable is present");
+    none: u16[] = [];
+    changed = SetEnvironmentVariableW(key, none);
+    assert(changed != 0 && !windows.HasEnv(name), "an unset Windows variable is absent");
+    os.Print("PASS native Windows environment presence");
 }
 
 Processes :: (work: string) {

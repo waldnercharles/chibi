@@ -1,2 +1,0 @@
-package rejected_nullable
-Main :: () -> int { pointer: ^int? = nil; return 0; }

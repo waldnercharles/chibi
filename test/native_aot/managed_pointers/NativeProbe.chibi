@@ -75,6 +75,9 @@ Main :: () -> int {
     invalid[1] = wrong;
     if (!Rejected(target, slots, invalid, false, no_records, empty, "identity is invalid")) { return 1; }
     invalid = code;
+    invalid[1] = Op(native.Constant, pointer, 1, 0, 0, 1);
+    if (!Rejected(target, slots, invalid, false, no_records, empty, "outside its type")) { return 1; }
+    invalid = code;
     wrong = invalid[1];
     wrong.right = abi.TextStorage;
     invalid[1] = wrong;

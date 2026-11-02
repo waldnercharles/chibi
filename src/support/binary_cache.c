@@ -14,28 +14,43 @@
 #include "support/binary_cache.h"
 
 #ifdef _WIN32
-unsigned char *binary_cache_read(const char *, const char *, size_t, size_t *length)
+unsigned char *binary_cache_read(const char *directory, const char *key, size_t limit, size_t *length)
 {
+    (void)directory;
+    (void)key;
+    (void)limit;
     *length = 0;
     return NULL;
 }
-bool binary_cache_remove(const char *, const char *)
+bool binary_cache_remove(const char *directory, const char *key)
 {
+    (void)directory;
+    (void)key;
     return false;
 }
-int binary_cache_lock(const char *)
+int binary_cache_lock(const char *directory)
 {
+    (void)directory;
     return -1;
 }
-void binary_cache_unlock(int) {}
-bool binary_cache_list(const char *, binary_cache_entry **entries, int *count)
+void binary_cache_unlock(int descriptor)
 {
+    (void)descriptor;
+}
+bool binary_cache_list(const char *directory, binary_cache_entry **entries, int *count)
+{
+    (void)directory;
     *entries = NULL;
     *count = 0;
     return false;
 }
-bool binary_cache_write(const char *, const char *, const void *, size_t, size_t)
+bool binary_cache_write(const char *directory, const char *key, const void *bytes, size_t length, size_t limit)
 {
+    (void)directory;
+    (void)key;
+    (void)bytes;
+    (void)length;
+    (void)limit;
     return false;
 }
 #else

@@ -294,26 +294,6 @@ jobs:
         with:
           path: ${{ runner.temp }}/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin
           key: ${{ steps.llvm-cache.outputs.cache-primary-key }}
-      - name: Check native Windows scalar text formatting
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $root = $PWD.Path.Replace('\', '/')
-          $work = $env:RUNNER_TEMP.Replace('\', '/')
-          foreach ($level in 0, 2) {
-            & "$work/stage2/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/text_format/Main.chibi" --output "$work/text-format.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --level $level --jobs 2
-            if ($LASTEXITCODE) { throw 'could not compile the Windows text formatting regression' }
-            & "$work/text-format.exe"
-            if ($LASTEXITCODE) { throw 'the Windows text formatting regression failed' }
-          }
-      - name: Exercise the native Windows object pipeline
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $root = $PWD.Path.Replace('\', '/')
-          $work = $env:RUNNER_TEMP.Replace('\', '/')
-          & "$work/stage2/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/link/windows/Main.chibi" --collection "graph=$root/tools/graph" --entry Main --output "$work/windows-objects.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 4
-          if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
-          & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
-          if ($LASTEXITCODE) { throw 'the Windows object regression failed' }
       - name: Build stage three and stage four, and compare them
         run: |
           $ErrorActionPreference = 'Stop'
@@ -336,3 +316,34 @@ jobs:
             throw 'native-self-host (Windows): stage three and stage four differ'
           }
           'native-self-host (Windows): stage three and stage four are byte-identical'
+      - name: Exercise the native Windows object pipeline
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $PWD.Path.Replace('\', '/')
+          $work = $env:RUNNER_TEMP.Replace('\', '/')
+          & "$work/stage4/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/test/native_aot/link/windows/Main.chibi" --collection "graph=$root/tools/graph" --entry Main --output "$work/windows-objects.exe" --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --jobs 4
+          if ($LASTEXITCODE) { throw 'could not compile the Windows object regression' }
+          & "$work/windows-objects.exe" $env:CHIBI_WINDOWS_LLVM $work
+          if ($LASTEXITCODE) { throw 'the Windows object regression failed' }
+      - name: Check native Windows formatting, task timing, math and SDK paths
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $PWD.Path.Replace('\', '/')
+          $work = $env:RUNNER_TEMP.Replace('\', '/')
+          $cases = @(
+            @{ name = 'text-format'; source = 'test/native_aot/text_format/Main.chibi' },
+            @{ name = 'task-timing'; source = 'test/native_aot/tasks/cases/timing/Main.chibi' },
+            @{ name = 'square-root'; source = 'test/native_aot/math_scalar/SquareRoot.chibi' },
+            @{ name = 'shadow-root'; source = 'test/native_aot/math_scalar/Shadow.chibi' },
+            @{ name = 'sdk-paths'; source = 'test/bootstrap/fixtures/InstallPaths.chibi' }
+          )
+          foreach ($case in $cases) {
+            foreach ($level in 0, 2) {
+              $output = "$work/$($case.name)-O$level.exe"
+              & "$work/stage4/chibi.exe" --compiler "$root/tools/compiler" --core "$root/packages/core" --source "$root/$($case.source)" --collection "graph=$root/tools/graph" --entry Main --output $output --llvm $env:CHIBI_WINDOWS_LLVM --target x86_64-pc-windows-msvc --level $level --jobs 2
+              if ($LASTEXITCODE) { throw "could not compile Windows $($case.name) at O$level" }
+              & $output
+              if ($LASTEXITCODE) { throw "Windows $($case.name) failed at O$level" }
+              "PASS native Windows $($case.name) O$level" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+            }
+          }

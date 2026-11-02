@@ -1,6 +1,7 @@
 package probe
 
 import compiler "project:package_compiler"
+import binding "project:lexical_binding"
 import facts "project:scalar_facts"
 import scalar "project:scalar_llvm"
 import abi "project:native_abi"
@@ -11,6 +12,7 @@ import os "core:os"
 // run.sh appends the driver's actual catalog, not a second maintained copy.
 Main :: () -> int {
     TypedEffects();
+    ExistingMathOverloads();
     first := "package main\nMain :: () -> int { return Missing(); }\n";
     Rejected(["Main.chibi"], [first], first, "Missing", "Unknown function 'Missing'", 2, 28);
 
@@ -123,5 +125,41 @@ Message :: (collections: string[], directories: string[], paths: string[], sourc
             assert(message == expected);
         case .Emitted(text):
             assert(false);
+    }
+}
+
+// A game/runtime catalog can already contain the two canonical math forms.
+// Reusing them must not inject duplicate candidates and create ambiguity.
+ExistingMathOverloads :: () {
+    for (count in [int(1), 2]) {
+        natives := Natives();
+        ports := Ports();
+        identities := Identities();
+        for (index in 0..<count) {
+            storage := 11;
+            if (index == 1) { storage = 10; }
+            first := length(ports);
+            natives.append({name: "fmod", first: first, parameters: 2, results: 1, variadic: false, effects: 0});
+            for (name in ["Value", "Divisor", "Result"]) {
+                ports.append({name: name, storage: storage, container: 0, c_string: false});
+            }
+            identities.append(binding.ID("test-math-native", format_text("fmod:{}", storage)));
+            identities.append(binding.ID("test-math-signature", format_text("fmod:{}", storage)));
+        }
+        source := "package main\nMain :: () -> int { return int(fmod(i64(16777217), i64(2))); }\n";
+        rows := compiler.CollectScalar("/project", "Main.chibi", source, TargetFacts(), Names(), natives, ports, identities);
+        assert(length(rows) > 1);
+        if (count == 2) {
+            assert(rows[1].kind != facts.RejectionRow, "existing canonical fmod overloads are not duplicated");
+            assert(scalar.Validate(rows) == "");
+        } else {
+            assert(rows[1].kind == facts.RejectionRow, "a different catalog cannot silently gain f32 math");
+            unused := "package main\nMain :: () -> int { return 0; }\n";
+            accepted := compiler.CollectScalar("/project", "Main.chibi", unused, TargetFacts(), Names(), natives, ports, identities);
+            assert(length(accepted) > 1 && accepted[1].kind != facts.RejectionRow, "unused capabilities remain valid");
+            shadow := "package main\nMain :: () -> int { return fmod(); }\nfmod :: () -> int { return 42; }\n";
+            accepted = compiler.CollectScalar("/project", "Main.chibi", shadow, TargetFacts(), Names(), natives, ports, identities);
+            assert(length(accepted) > 1 && accepted[1].kind != facts.RejectionRow, "authored fmod shadows an unsupported capability");
+        }
     }
 }

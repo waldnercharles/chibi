@@ -20,3 +20,4 @@ for level in 0 2; do
     done
     printf 'PASS native scalar square root and authored shadow O%s\n' "$level"
 done
+sh "$root/test/native_aot/math_scalar/remainder.sh" "$compiler" "$llvm" "${3:-}"

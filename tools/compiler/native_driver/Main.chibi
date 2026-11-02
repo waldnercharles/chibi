@@ -260,6 +260,14 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     for (piece in pieces) {
         markers.extend(Markers(piece));
     }
+    if (options.static_link && linux) {
+        for (line in markers) {
+            if (strings.HasPrefix(line, "; chibi-import system:m ")) {
+                os.Print("native: static programs cannot link system math yet; omit --static");
+                return 2;
+            }
+        }
+    }
     archives: string[] = [];
     vendor := link.VendorDirectory(directories[0]);
     for (line in markers) {
@@ -352,11 +360,12 @@ EmitCollected :: (collections: string[], directories: string[], paths: string[],
     }
     plan := link.Program(triple, llvm, objects, archives, [], [], output, "", static || shared);
     plan.shared = shared;
-    // Only a Windows program takes system libraries by name: lld-link needs an
-    // import library for each, which the macOS and Linux links do without.
-    if (windows) {
-        markers.extend(Markers(start));
-        plan.imports = link.SystemImports(markers);
+    // Math instructions can lower to libm calls. Linux links that library by
+    // name; macOS and Windows bind each symbol through their system stubs.
+    markers.extend(Markers(start));
+    plan.imports = link.SystemImports(markers);
+    if (link.TargetOf(triple) == link.LinuxX64) {
+        for (imported in plan.imports) { plan.libraries.append(imported.name); }
     }
     if (host.Link(plan) != nil) {
         os.Print("native: the link failed");

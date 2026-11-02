@@ -1189,6 +1189,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_SCALARARRAYS_BYTES=bytes:tools/compiler/package_compiler/ScalarArrays.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAREFFECTS_BYTES=bytes:tools/compiler/package_compiler/ScalarEffects.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARMAPS_BYTES=bytes:tools/compiler/package_compiler/ScalarMaps.chibi",
+            "CHIBI_PACKAGE_COMPILER_SCALARMATH_BYTES=bytes:tools/compiler/package_compiler/ScalarMath.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALARWASMABI_BYTES=bytes:tools/compiler/package_compiler/ScalarWasmABI.chibi",
             "CHIBI_PACKAGE_COMPILER_FALLIBLE_BYTES=bytes:tools/compiler/package_compiler/Fallible.chibi",
             "CHIBI_PACKAGE_COMPILER_SEQUENCES_BYTES=bytes:tools/compiler/package_compiler/Sequences.chibi",

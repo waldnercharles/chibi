@@ -513,7 +513,7 @@ Computes :: (op: int, type: int) -> bool {
         return true;
     }
     if (abi.Floating(type)) {
-        return op == Add || op == Sub || op == Mul || op == Div || op == Neg || Comparison(op);
+        return op == Add || op == Sub || op == Mul || op == Div || op == Mod || op == Neg || Comparison(op);
     }
     return type == abi.BoolStorage && (op == Eq || op == Ne || op == BitNot);
 }
@@ -1207,7 +1207,7 @@ TextValid :: (slots: int[], item: Instruction) -> bool {
 Operation :: (op: int, type: int) -> string {
     if (abi.Floating(type)) {
         // Ordered comparisons are false for NaN; != is unordered, so true.
-        operations := ["fadd", "fsub", "fmul", "fdiv", "", "", "", "", "", "", "", "", "fcmp olt", "fcmp ole",
+        operations := ["fadd", "fsub", "fmul", "fdiv", "frem", "", "", "", "", "", "", "", "fcmp olt", "fcmp ole",
                        "fcmp ogt", "fcmp oge", "fcmp oeq", "fcmp une"];
         return operations[op - Add];
     }
@@ -3037,6 +3037,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         if (ProgramMode(mode)) {
             out.append("declare void @chibi_native_step()\ndeclare void @chibi_native_failure(i32) noreturn\n");
         }
+        out.append(MathImports(target, held));
         printed := false;
         for (item in held) { printed = printed || item.op == Print; }
         if (printed) { out.append("declare void @chibi_print_string(ptr, ptr, i32)\n"); }
@@ -4856,4 +4857,22 @@ MapModule :: (code: Instruction[], native_program: bool, owners: bool[]) -> stri
         out.append(MapHelpers(type, native_program, owners));
     }
     return format_text("\n{}", strings.Join(out, "\n"));
+}
+
+// LLVM may lower floating remainder to libm. Declare that system dependency
+// even when optimization later folds a call, so linking never relies on luck.
+MathImports :: (target: abi.Target, code: Instruction[]) -> string {
+    single := false;
+    wide := false;
+    for (item in code) {
+        if (item.op == Mod && item.type == abi.FloatStorage) { single = true; }
+        if (item.op == Mod && item.type == abi.DoubleStorage) { wide = true; }
+    }
+    library_name := "m";
+    prefix := "";
+    if (abi.Same(target, abi.WindowsX64())) { library_name = "ucrtbase"; } else if (abi.Same(target, abi.MacOSArm64())) { library_name = "System"; prefix = "_"; } else if (abi.Same(target, abi.WebAssembly32())) { return ""; }
+    out := "";
+    if (single) { out = format_text("; chibi-import system:{} {}fmodf\n", library_name, prefix); }
+    if (wide) { out = format_text("{}; chibi-import system:{} {}fmod\n", out, library_name, prefix); }
+    return out;
 }

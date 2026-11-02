@@ -549,6 +549,8 @@ pub Command :: (plan: Plan, to: string) -> string[] {
         command := [linker, "-flavor", "gnu", "-shared", "--gc-sections", "-o", to];
         command.extend(plan.objects);
         command.extend(plan.archives);
+        if (plan.libc != "") { command.extend(["-L", plan.libc]); }
+        for (dependency in plan.libraries) { command.append(Join(["-l", dependency])); }
         return command;
     }
     if (plan.static) {

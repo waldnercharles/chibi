@@ -3724,7 +3724,7 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                  collection_count: length(collections)};
     switch snapshot.Build(options, collections, inputs, sizes) {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
-            return ScalarFailure(path, text, diagnostic);
+            return ScalarFailed(packaged, path, text, documents, diagnostic);
         case .Accepted(roots, documents, nodes, imports, built):
             // A package set's diagnostics lie in its documents joined, as its rows do.
             shown_nodes := nodes;
@@ -3839,7 +3839,9 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                                         members, constants, ops, target, text_natives, text_ports, text_identities,
                                                         false, bindings, scalar_documents, module_links) {
                                         case .Failed(diagnostic):
-                                            return ScalarFailed(packaged, path, text, documents, diagnostic);
+                                            // The native check already used joined nodes; its range
+                                            // must not receive the document offset a second time.
+                                            return ScalarFailure(path, scalar_text, diagnostic);
                                         case .Built(rows):
                                             head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
                                                                literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0,

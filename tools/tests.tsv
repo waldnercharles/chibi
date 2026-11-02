@@ -13,14 +13,11 @@ tool	studio-panel-idle	build-studio/bin/studio-acceptance	--panel-idle	--project
 tool	arena	@build@/test/tools/test_tools	--arena
 tool	persistent-store	@build@/test/tools/test_tools	--persistent-store
 tool	program-sdk	@build@/test/tools/test_tools	--program-sdk
-tool	chibi-cli-build	@build@/test/tools/test_tools	--chibi-cli-build	@release@/sdk/chibi
-tool	chibi-cli-doctor	@build@/test/tools/test_tools	--chibi-cli-doctor	@release@/sdk/chibi
-tool	chibi-cli-process	@build@/test/tools/test_tools	--chibi-cli-process	@release@/sdk/chibi
-tool	chibi-cli	@build@/test/tools/test_tools	--chibi-cli	@release@/sdk/chibi
+tool	chibi-cli-process	python3	test/native_cli/foreground.py	@compiler@	@llvm@
+tool	chibi-cli	sh	test/native_cli/survivors.sh	@compiler@	@llvm@	@release@/sdk/chibi
 tool	native-build	env	CHIBI_LLVM_BIN=@llvm@	@compiler@	run	--llvm	@llvm@	--root	tools/compiler	--core	packages/core	--entry	Run	test/native_aot/native_build/BuildTests.chibi	--	@compiler@	@release@/sdk/chibi
-tool	chibi-cli-authored	@host@	--compiler	tools/compiler	--compiler-core	packages/core	--root	.	--source	test/graph/ChibiCliTests.chibi	--core	packages/core	--entry	Run	--timeout-ms	600000	--	@release@/sdk/chibi
 tool	native-workload-benchmark	@build@/test/tools/test_tools	--native-workload-benchmark	@release@/sdk/chibi
-tool	chibi-cli-installed	@build@/test/tools/test_tools	--chibi-cli-installed	dist/sdk/bin/chibi
+tool	chibi-cli-installed	sh	test/native_cli/survivors.sh	@compiler@	@llvm@	dist/sdk/bin/chibi
 tool	native-link	sh	test/native_aot/link/run.sh	@compiler@	@llvm@
 tool	native-build-entry	sh	test/bootstrap/native-entry.sh
 tool	build-process	@build@/test/tools/test_tools	--build-process	@build@/test/tools/policy_worker	@host@
@@ -87,7 +84,7 @@ timeout	graph-sdk-install	1200
 timeout	bootstrap-load	1800
 exclusive	language-test-parallel
 group	native	native-values	graph-c	box3d	persistent-store	whole-integer	whole-select	whole-math	asset-values	fmt	arena	build-process	build-process-files	build-timings
-group	projects	chibi-cli	chibi-cli-authored	native-build	native-build-entry
+group	projects	chibi-cli	native-build	native-build-entry
 group	language	language-map-receivers	language-test-parallel	execution-scope	language-execution	language-program	language-ranges	chibi-test-compiler	chibi-test-samples-base	chibi-test-samples-collections	chibi-test-samples-comptime	chibi-test-samples-fallible	chibi-test-samples-imports	chibi-test-samples-math	chibi-test-samples-native	chibi-test-samples-native-arguments	chibi-test-samples-types	chibi-test-core	chibi-test-integer-arithmetic	chibi-test-core-strings	chibi-test-time	chibi-test-portable-consumer	language-host-packages-compiler	text-format	language-package-compiler-chibi-scalar	compiler-bootstrap	language-native-census-flattening	bootstrap-recovery	native-link
 group	compiler	language-package-compiler-chibi-scalar
 group	benchmarks	native-workload-benchmark

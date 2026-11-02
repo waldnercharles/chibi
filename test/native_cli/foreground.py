@@ -15,6 +15,7 @@ import time
 
 
 compiler, llvm = map(os.path.realpath, sys.argv[1:3])
+launcher = os.path.realpath(sys.argv[3]) if len(sys.argv) > 3 else compiler
 root = Path(__file__).resolve().parents[2]
 core = str(root / "packages/core")
 environment = dict(os.environ, CHIBI_CORE=core, CHIBI_LLVM_BIN=llvm,
@@ -23,7 +24,7 @@ environment = dict(os.environ, CHIBI_CORE=core, CHIBI_LLVM_BIN=llvm,
 
 
 def cli(source, watching=False):
-    return [compiler, "run", *(["--watch"] if watching else []),
+    return [launcher, "run", *(["--watch"] if watching else []),
             "--core", core, "--llvm", llvm, str(source)]
 
 
@@ -161,7 +162,7 @@ with tempfile.TemporaryDirectory(prefix="chibi-native-foreground-") as temporary
                 null = os.open("/dev/null", os.O_RDONLY)
                 os.dup2(null, 0)
                 os.close(null)
-            os.execve(compiler, cli(source, watching), environment)
+            os.execve(launcher, cli(source, watching), environment)
         group = 0
         finished = False
         passed = False

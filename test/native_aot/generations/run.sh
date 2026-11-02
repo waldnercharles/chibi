@@ -352,4 +352,10 @@ cp "$prior" "$work/prior.so"
 printf 'Loop :: library { Main :: () -> int { return Missing(); } Frame :: () -> int { return 0; } }\n' \
     > "$project/Main.chibi"
 rejected "Unknown function 'Missing'"
+
+# The legacy bulk word ABI cannot carry borrowed string descriptors. Reject
+# that library form while preserving its previously published numeric image.
+printf 'Loop :: library { Frame :: () -> int { text: retain string = "unsupported bulk handle"; return 0; } }\n' \
+    > "$project/Main.chibi"
+rejected 'native library retained states require scalar literal initializers'
 echo 'native package generations: passed'

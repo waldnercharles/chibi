@@ -140,6 +140,11 @@ between a string and a scalar rejects the incoming generation before state is wr
 Strings are copied into the incoming generation, including strings whose bytes originally
 lived in the old object's constant data.
 
+The legacy `library` form keeps its scalar-literal retained-state ABI: its bulk word
+manifest exposes initialized numbers and bools before any function runs. Record and
+string retained state uses ordinary package generations and the per-key native host API;
+lazy or managed states expose no legacy bulk manifest.
+
 A retired generation stays loaded while its tasks are pending. The host polls those tasks
 between active Frames, then cancels/releases their scheduler storage and retained values
 before unloading the generation. On program exit it cancels every generation's tasks.

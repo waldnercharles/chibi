@@ -3,20 +3,28 @@
 #include "support/binary_cache.h"
 #include "support/sha256.h"
 #include "support/xalloc.h"
+#ifdef __EMSCRIPTEN__
 #include "toolchain/compiler_host.h"
+#else
+#include "authoring/asset_compiler_native.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __EMSCRIPTEN__
 #include <yyjson.h>
+#endif
 
-#define CLOSURE_COMPILE_BUDGET UINT64_C(4000000000)
 #define CLOSURE_CACHE_ENTRIES 16
 
 static void failure(asset_compiler_diagnostic *diagnostic, const char *message)
 {
     snprintf(diagnostic->message, sizeof diagnostic->message, "%s", message);
 }
+
+#ifdef __EMSCRIPTEN__
+#define CLOSURE_COMPILE_BUDGET UINT64_C(4000000000)
 
 static void runtime_failure(
     asset_compiler_diagnostic *diagnostic,
@@ -112,6 +120,14 @@ static void closure_rejection(
     free(result.json);
 }
 
+#else
+static const asset_compiler_options *effective_options(const asset_compiler_options *options)
+{
+    static const asset_compiler_options defaults = { 0 };
+    return options ? options : &defaults;
+}
+#endif
+
 static char *persistent_directory(const asset_compiler_options *options)
 {
     const char *path = options->cache_directory;
@@ -150,6 +166,7 @@ static char *persistent_directory(const asset_compiler_options *options)
 #endif
 }
 
+#ifdef __EMSCRIPTEN__
 unsigned char *asset_compiler_compile_closure(
     const char *request,
     size_t request_length,
@@ -192,6 +209,8 @@ unsigned char *asset_compiler_compile_closure(
     return result.bytes;
 }
 
+#endif
+
 static char *closure_directory(const asset_compiler_options *options)
 {
     char *base = persistent_directory(options);
@@ -204,7 +223,7 @@ static char *closure_directory(const asset_compiler_options *options)
     free(base);
     return directory;
 }
-static void closure_key(
+static bool closure_key(
     const asset_compiler_options *options,
     const char *request,
     size_t request_length,
@@ -212,15 +231,23 @@ static void closure_key(
     char key[BINARY_CACHE_KEY_BYTES + 1]
 )
 {
-    /* The artifact is immutable and about 15 MB: hash it once per thread. */
+    char compiler[65];
+#ifdef __EMSCRIPTEN__
+    /* The browser artifact is immutable; its identity is unchanged here. */
     static _Thread_local const void *hashed;
     static _Thread_local size_t hashed_length;
-    static _Thread_local char compiler[65];
+    static _Thread_local char kept[65];
     if (hashed != options->compiler || hashed_length != options->compiler_length) {
-        sha256_hex(options->compiler, options->compiler_length, compiler);
+        sha256_hex(options->compiler, options->compiler_length, kept);
         hashed = options->compiler;
         hashed_length = options->compiler_length;
     }
+    memcpy(compiler, kept, sizeof compiler);
+#else
+    if (!asset_compiler_native_digest(options, compiler)) {
+        return false;
+    }
+#endif
     sha256 state;
     sha256_begin(&state);
     sha256_add(&state, compiler, 64);
@@ -229,6 +256,7 @@ static void closure_key(
     char digest[65];
     sha256_end(&state, digest);
     snprintf(key, BINARY_CACHE_KEY_BYTES + 1, "closure-%s", digest);
+    return true;
 }
 static void closure_publish(const char *directory, const char *key, const unsigned char *bytes, size_t length)
 {
@@ -249,7 +277,7 @@ static void closure_publish(const char *directory, const char *key, const unsign
             }
             entries[oldest] = entries[--count];
         }
-        binary_cache_write(directory, key, bytes, length, COMPILER_HOST_MAX_OUTPUT_BYTES);
+        binary_cache_write(directory, key, bytes, length, ASSET_COMPILER_MAX_OUTPUT_BYTES);
     }
     free(entries);
     binary_cache_unlock(lock);
@@ -263,24 +291,51 @@ unsigned char *asset_compiler_compile_closure_cached(
     asset_compiler_diagnostic *diagnostic
 )
 {
+    *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+    *length = 0;
+    if (!request) {
+        failure(diagnostic, "The package compiler request is missing");
+        return NULL;
+    }
+    if (request_length > ASSET_COMPILER_MAX_REQUEST_BYTES) {
+        failure(diagnostic, "The package compiler request exceeds its byte limit");
+        return NULL;
+    }
     const asset_compiler_options *effective = effective_options(options);
-    char *directory = salt && effective && effective->compiler
-                        ? closure_directory(effective)
-                        : NULL;
+    bool cacheable = salt && effective &&
+                     !(effective->cancelled && effective->cancelled(effective->user));
+#ifdef __EMSCRIPTEN__
+    cacheable = cacheable && effective->compiler;
+#endif
+    char *directory = cacheable ? closure_directory(effective) : NULL;
     char key[BINARY_CACHE_KEY_BYTES + 1];
     if (directory) {
-        closure_key(effective, request, request_length, salt, key);
-        unsigned char *stored = binary_cache_read(directory, key, COMPILER_HOST_MAX_OUTPUT_BYTES, length);
-        if (stored) {
-            *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+        if (!closure_key(effective, request, request_length, salt, key)) {
             free(directory);
+            directory = NULL;
+        }
+    }
+    if (directory) {
+        unsigned char *stored = binary_cache_read(directory, key, ASSET_COMPILER_MAX_OUTPUT_BYTES, length);
+        if (stored) {
+            free(directory);
+            if (effective->cancelled && effective->cancelled(effective->user)) {
+                free(stored);
+                *length = 0;
+                failure(diagnostic, "The package compile was cancelled");
+                return NULL;
+            }
             return stored;
         }
     }
     unsigned char *closure = asset_compiler_compile_closure(request, request_length, length, options, diagnostic);
     if (directory && closure && *length &&
         !(effective->cancelled && effective->cancelled(effective->user))) {
-        closure_publish(directory, key, closure, *length);
+        char current[BINARY_CACHE_KEY_BYTES + 1];
+        if (closure_key(effective, request, request_length, salt, current) &&
+            !strcmp(current, key)) {
+            closure_publish(directory, key, closure, *length);
+        }
     }
     free(directory);
     return closure;

@@ -401,3 +401,13 @@ pub Parse :: (text: string) -> Request {
                   length(value.identities) == length(value.natives) * 2 && length(value.effects) == length(value.natives);
     return value;
 }
+
+// A CLI quota is a positive decimal u64. Zero is reserved for invalid input;
+// the C facade expands its zero/default option before invoking the service.
+pub Budget :: (text: string) -> u64 {
+    if (text == "" || strings.TrimSpace(text) != text) { return 0; }
+    reader: Reader = {text: text, at: 0, good: true};
+    value := Unsigned(&reader);
+    if (!reader.good || reader.at != strings.ByteLength(text)) { return 0; }
+    return value;
+}

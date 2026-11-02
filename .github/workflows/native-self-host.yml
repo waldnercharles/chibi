@@ -7,6 +7,7 @@ on:
     paths:
       - tools/compiler/**
       - test/native_aot/diagnostics/**
+      - test/native_aot/test_attributes/**
       - tools/native_aot/**
       - tools/toolchain/Driver.chibi
       - tools/toolchain/Graph.chibi
@@ -61,6 +62,9 @@ jobs:
       - name: Check native diagnostic coordinates
         timeout-minutes: 5
         run: sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" /usr/lib/llvm-18/bin
+      - name: Check native test attributes
+        timeout-minutes: 5
+        run: sh test/native_aot/test_attributes/run.sh "$PWD/build-native-self-host/stage3/chibi" /usr/lib/llvm-18/bin
       - name: Summarize the proof
         if: always()
         shell: bash

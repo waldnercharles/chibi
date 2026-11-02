@@ -4151,15 +4151,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 } else {
                     wide.append(CallableIdentity(package_names, callable));
                     exported_name := callable.name;
-                    attributes := ReadAttributes(forest, documents[callable.document].text, callable.node);
+                    attributes := ReadAttributes(forest, documents[callable.document].text, callable);
                     if (attributes.fault >= 0) {
                         return Assembly.Rejected(Diagnose(forest, attributes.fault, callable.document, attributes.message));
                     }
                     if (attributes.test) {
-                        if (callable.count != 0 || callable.results != 0 || callable.result != 0) {
-                            return Assembly.Rejected(Diagnose(forest, callable.node, callable.document,
-                                                              "A @test function takes no parameters and returns nothing"));
-                        }
                         // A package test is exported as "@test NAME", so the host that runs tests
                         // finds the tests among a module's entries.
                         exported_name = format_text("@test {}", callable.name);
@@ -4248,15 +4244,16 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
 
 // The attributes before a function declaration: `@test` marks a package test,
 // and nothing else is an attribute. `fault` is the node of the first one that
-// is unknown or repeated, -1 when there is none.
+// is unknown or repeated, or the declaration when a test has arguments/results;
+// -1 when there is none.
 Attributes :: struct {
     test: bool;
     fault: int;
     message: string;
 }
-ReadAttributes :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Attributes {
+ReadAttributes :: (forest: snapshot.SnapshotNode[], text: string, callable: Callable) -> Attributes {
     read: Attributes = {test: false, fault: -1, message: ""};
-    for (member in Members(forest, node)) {
+    for (member in Members(forest, callable.node)) {
         if (!Is(forest, member, syntax.Attribute)) {
             continue;
         }
@@ -4272,6 +4269,10 @@ ReadAttributes :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> 
             return read;
         }
         read.test = true;
+    }
+    if (read.test && (callable.count != 0 || callable.results != 0 || callable.result != 0)) {
+        read.fault = callable.node;
+        read.message = "A @test function takes no parameters and returns nothing";
     }
     return read;
 }

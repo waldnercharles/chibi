@@ -23,6 +23,15 @@ Main :: () -> int {
     tests := strings.Concatenate([root, "/tests"]);
     Write(strings.Concatenate([tests, "/ChibiTestEntry.chibi"]), "package tests\nMain :: () -> int { return 99; }\n");
     Write(strings.Concatenate([tests, "/ChibiTestDispatch.chibi"]), "package tests\nChibiTestMain :: () -> int { return 88; }\nChibiRunTest :: () -> int { return 77; }\n");
+    collisions := "package tests\n";
+    for (index in 1..<130) {
+        collisions = strings.Concatenate([collisions, format_text("ChibiRunTest{}: int : {};\n", index, index)]);
+        if (index > 1) {
+            collisions = strings.Concatenate([collisions, format_text("ChibiTestMain{}: int : {};\n", index, index)]);
+        }
+    }
+    collisions = strings.Concatenate([collisions, "ChibiTestMain01: int : 1;\nChibiTestMain999999999999999999999999999: int : 1;\n"]);
+    Write(strings.Concatenate([tests, "/Collisions.chibi"]), collisions);
     Write(strings.Concatenate([tests, "/Tests.chibi"]), "package tests\nimport bridge \"project:bridge\"\nimport target \"core:target\"\nimport os \"core:os\"\nChibiTestMain1: int : 1;\n@test\nNamesAndImports :: () {\n    assert(Main() == 99 && ChibiTestMain() == 88 && ChibiRunTest() == 77 && ChibiTestMain1 == 1, \"authored names remain intact\");\n    assert(bridge.Value() == 42 && target.Native == 1, \"rooted project imports\");\n    os.WriteOutput(\"a test prints as it runs\\n\");\n}\n@test\nFailsInHelper :: () { bridge.Fail(); }\n");
     Write(strings.Concatenate([root, "/bridge/Bridge.chibi"]), "package bridge\nimport helper \"project:helper\"\npub Fail :: () { helper.Fail(); }\npub Value :: () -> int { return helper.Value(); }\n");
     Write(strings.Concatenate([root, "/helper/Helper.chibi"]), "package helper\n\npub Fail :: () {\n    assert(false, \"helper failure\");\n}\n\npub Value :: () -> int { return 42; }\n");

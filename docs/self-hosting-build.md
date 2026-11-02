@@ -689,9 +689,12 @@ configures them: the launcher's `BUILD/share/chibi`, which `chibi version`
 and `chibi test` read as installed ones do. Its `engine.json` is the build
 identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
 `sdk/artifact_formats.cmake` does: the SDK version from
-`sdk/VERSION`, the project version from `src/assets/project.h`, the
-platform, processors and backends, and each of `ArtifactFormats`' versions
-with the SHA-256 of the sources and headers that own it. A target's
+`sdk/VERSION` and the project compatibility version from `sdk/PROJECT_VERSION`,
+the platform, processors and backends. Native distributions identify the
+compile-only execution format with the version and source digest of
+`tools/compiler/prepared_writer/Writer.chibi`; they require no C VM decoder or
+retired event catalog. Explicit VM reference builds retain `ArtifactFormats`'
+C codec records, using the same SDK project compatibility version. A target's
 `SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below
 ROOT by absolute path, byte-sorted, as
 `test/language/CMakeLists.txt` writes the language corpus `test_language`

@@ -9,8 +9,8 @@ implementation.
 
 ## Persistence contract
 
-Project manifests are `project.kdl`, with project version 24 (the current
-`CHIBI_PROJECT_VERSION` in `src/assets/project.h`). Scenes, prototypes,
+Project manifests are archived. The last project format version, 39, is retained
+for SDK identity compatibility in `sdk/PROJECT_VERSION`. Scenes, prototypes,
 event declarations, models, shapes, materials, fields, shader libraries,
 scenarios and editor configuration use KDL 2. Behaviors, behavior libraries and
 systems use `.chibi`. RML and RCSS remain separate formats.

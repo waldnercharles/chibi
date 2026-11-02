@@ -49,4 +49,24 @@ for case in quota calls end; do
         awk '/BudgetExhausted/ { found=1 } END { exit !found }' "$work/quota-$case.log"
     fi
 done
+index_case() {
+    wanted=$1
+    shift
+    set +e
+    CHIBI_CORE="$repo/packages/core" "$stage" run --llvm "$llvm" -O2 "$work/programs/index/Main.chibi" -- "$@" > "$work/index.log" 2>&1
+    index_status=$?
+    set -e
+    [ "$index_status" -eq "$wanted" ] || { cat "$work/index.log"; exit 1; }
+}
+index_case 7
+index_case 9 0
+index_case 42 42
+index_case 9 0000000000
+index_case 8 2147483647
+index_case 7 2147483648
+index_case 7 00000000000
+index_case 7 -1
+index_case 7 abc
+index_case 7 1z
+index_case 7 ''
 printf '%s\n' 'native failure outcomes passed'

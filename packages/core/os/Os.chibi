@@ -7,9 +7,8 @@ import target "core:target"
 // native program (core:target's Native) it is the platform's libc or kernel32
 // through core:sys/posix or core:sys/windows. One set of signatures serves
 // both, so a package imports core:os and compiles either way. A native
-// program has no ProgramDirectory or Environment yet, and on Windows Stamp,
-// Copy, Reserve, Publish, RealPath, Root, FindExecutable, Start, Wait and Kill
-// report failure until core:sys/windows has them.
+// program has no ProgramDirectory or Environment yet, and on Windows Start,
+// Wait and Kill report failure until core:sys/windows has them.
 //
 // Paths are relative to the program's root unless absolute. A fallible
 // operation reports an expected failure of the file system or a process as
@@ -236,6 +235,38 @@ when target.Native == 1 {
     // Writes one line and a newline to the error output.
     pub Print :: (line: string) {
         written := sys.Print(line);
+    }
+
+    // Writes the text to the standard output, as it is.
+    pub WriteOutput :: (text: string) {
+        written := sys.WriteOutput(text);
+    }
+
+    // The path the program was started with, resolved: through the search path
+    // for a bare name, and to its real location.
+    pub ProgramPath :: () -> string {
+        all := sys.Arguments();
+        if length(all) == 0 {
+            return "";
+        }
+        started := all[0];
+        named := true;
+        for index in 0..<text_byte_length(started) {
+            if text_byte_at(started, index) == 47 {
+                named = false;
+            }
+        }
+        if named {
+            found := sys.FindExecutable(started);
+            if found != "" {
+                started = found;
+            }
+        }
+        resolved := sys.RealPath(started);
+        if resolved == "" {
+            return started;
+        }
+        return resolved;
     }
 
     // Identifies the file's content and metadata for change detection: equal
@@ -536,5 +567,15 @@ pub Platform :: () -> string {
 // Writes one line to the build's error output.
 pub Print :: (line: string) {
     build.report(line);
+}
+
+// The build program has no standard output; its text goes to the error output.
+pub WriteOutput :: (text: string) {
+    build.report(text);
+}
+
+// A build program has no path of its own to run.
+pub ProgramPath :: () -> string {
+    return "";
 }
 }

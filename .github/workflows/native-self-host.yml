@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - tools/compiler/**
+      - test/native_aot/diagnostics/**
       - tools/native_aot/**
       - tools/toolchain/Driver.chibi
       - tools/toolchain/Graph.chibi
@@ -57,6 +58,9 @@ jobs:
           fi
           sh tools/build.sh build native-self-host --llvm /usr/lib/llvm-18/bin --libclang-root /usr/lib/llvm-18 --jobs 4 "${stage_one[@]}" 2>&1 \
             | tee "$RUNNER_TEMP/native-self-host.log"
+      - name: Check native diagnostic coordinates
+        timeout-minutes: 5
+        run: sh test/native_aot/diagnostics/run.sh "$PWD/build-native-self-host/stage3/chibi" /usr/lib/llvm-18/bin
       - name: Summarize the proof
         if: always()
         shell: bash

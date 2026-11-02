@@ -199,7 +199,7 @@ Parse :: (arguments: string[]) -> CliInvocation {
 }
 
 Usage :: (program: string) -> string {
-    commands := format_text("Usage: {} version\n       {} doctor\n       {} build [BUILD OPTIONS]\n       {} build --native [-O0|-O2] [-g] [--static|--shared]\n                [--target TRIPLE] [--llvm DIR] [ROOT]\n       {} test [-O0|-O2] [--llvm DIR] [ROOT]\n       {} run [-O0|-O2] [--llvm DIR] [PATH] [--] [ARGUMENTS]\n       {} PATH [--] [ARGUMENTS]\n",
+    commands := format_text("Usage: {} version\n       {} doctor\n       {} build [BUILD OPTIONS]\n       {} build --native [-O0|-O2] [-g] [--static|--shared]\n                [--target TRIPLE] [--llvm DIR] [ROOT]\n       {} test [-O0|-O2] [--llvm DIR] [ROOT]\n       {} run [--watch] [-O0|-O2] [--llvm DIR] [PATH] [--] [ARGUMENTS]\n       {} [--watch] PATH [--] [ARGUMENTS]\n",
                             program, program, program, program, program, program, program);
     return strings.Concatenate([commands,
         "PATH is a .chibi file or package directory. Its Main takes no arguments\n",
@@ -425,9 +425,13 @@ CompileSubject :: (subject: Subject, core: string, llvm: string, triple: string,
         Complain(strings.Concatenate(["native: ", gathered.problem]));
         return 2;
     }
-    options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: false,
+    options: DriverOptions = {level: invocation.mode, lines: invocation.debug, static_link: false, shared: invocation.shared,
                              folder: subject.project, keep_module: false};
-    return EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, "Main", llvm, output, Jobs([]), options);
+    chosen := "Main";
+    if (invocation.shared) {
+        chosen = "";
+    }
+    return EmitOptions(collections, directories, gathered.paths, gathered.sources, triple, chosen, llvm, output, Jobs([]), options);
 }
 
 // The program's own exit status as the command's, which fits 0..255.
@@ -467,8 +471,7 @@ RunProgram :: (invocation: CliInvocation, tail: string[]) -> int {
         return 2;
     }
     if (invocation.watch) {
-        Complain("run --watch needs the native Edit and Continue host, which this build lacks");
-        return 2;
+        return WatchProgram(subject, core, llvm, triple, invocation, tail);
     }
     program := strings.Concatenate([folder, "/program"]);
     compiled := CompileSubject(subject, core, llvm, triple, program, invocation);

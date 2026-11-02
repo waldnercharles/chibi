@@ -1,0 +1,44 @@
+package live
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fwrite :: (data: cstring, size: u64, count: u64, stream: rawptr) -> u64
+    fclose :: (stream: rawptr) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+}
+State :: struct { count: i64; marker: int; }
+Main :: () -> int {
+    stream := fopen("main-count", "ab");
+    written := fwrite("x", 1, 1, stream);
+    closed := fclose(stream);
+    return 0;
+}
+Frame :: () -> int {
+    progress: retain State = {count: 0, marker: 73};
+    message: retain string = "first";
+    progress.count += 1;
+    if progress.count == 1 {
+        Worker();
+    }
+    if progress.count == 2 {
+        stream := fopen("ready", "wb");
+        written := fwrite("ready", 1, 5, stream);
+        closed := fclose(stream);
+    }
+    return 0;
+}
+Worker :: () -> int {
+    while !TaskAllowed() {
+        yield
+    }
+    TaskCompleted();
+    return 0;
+}
+TaskAllowed :: () -> bool {
+    return access("allow-task", 0) == 0;
+}
+TaskCompleted :: () {
+    stream := fopen("task-done", "wb");
+    written := fwrite("old", 1, 3, stream);
+    closed := fclose(stream);
+}

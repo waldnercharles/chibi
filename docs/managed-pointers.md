@@ -100,6 +100,18 @@ q.health = 80   // actor, p and q observe 80.
 
 ## Runtime design
 
+The standalone native compiler's 2026-11-02 slice uses its own precise
+nonmoving collector for non-null numeric/bool cells and arrays of those
+pointers. It preserves escaped cells, aliases and array CoW, validates exact
+pointee identities, and always passes scoped parameters by reference. Source
+roots cover current owners, fresh arrays and traversal snapshots at collection
+points. [Native pointer proofs](../test/native_aot/managed_pointers/README.md)
+record the O0/O2, poisoned-allocation and forced-collection checks. This slice
+does not yet admit record/container/nullable cells, retained pointers,
+pointer-bearing suspended frames, foreign pointer buffers or Wasm pointers;
+those remain native retirement gates. The complete contract above still
+applies to their implementation.
+
 Use Chibi's existing precise nonmoving collector in `support/arena.c`.
 It already follows allocation tracers and sweeps unreachable cycles. The new
 managed heap belongs to the execution owner shared by imports and activations;

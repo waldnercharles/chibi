@@ -33,7 +33,7 @@ ScalarArrayType :: (types: TypeDecl[], storage: int, record: int) -> int {
 }
 // Whether elements of `storage` can be in a scalar module's array.
 ScalarArrayElement :: (storage: int) -> bool {
-    return storage != TaskStorage && (ScalarTypeOf(storage) != 0 || storage == StructStorage || storage == UnionStorage);
+    return storage != TaskStorage && (ScalarTypeOf(storage) != 0 || storage == PointerStorage || storage == StructStorage || storage == UnionStorage);
 }
 // The array the literal `node` is, from its first element when that names its
 // own storage: a string, a bool, a number conversion such as `u8(0)`, a call of
@@ -48,7 +48,10 @@ ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables:
         return {storage: 0, container: 0, record: -1};
     }
     first := Unparenthesized(forest, head);
-    if (Is(forest, first, syntax.String)) {
+    if (Is(forest, first, syntax.AddressExpression)) {
+        record = ScalarPointerRecord(forest, text, callables, params, names, types, members, package, first);
+        if (ScalarPointerType(types, record) != 0) { storage = PointerStorage; }
+    } else if (Is(forest, first, syntax.String)) {
         storage = TextStorage;
     } else if (Is(forest, first, syntax.Boolean)) {
         storage = BoolStorage;
@@ -359,7 +362,7 @@ ScalarArrayHeld :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
 // The facts type of member `field` of a record or union: a number, bool,
 // string, array, or record or union the source declares; 0 for any other.
 ScalarMemberType :: (types: TypeDecl[], members: TypeMember[], field: int) -> int {
-    if (members[field].storage == TaskStorage) { return 0; }
+    if (members[field].storage == TaskStorage || members[field].storage == PointerStorage) { return 0; }
     return ScalarValueType(types, members[field].storage, members[field].container, members[field].record);
 }
 // The shape of member `field`: its storage, container and record.
@@ -383,6 +386,13 @@ ScalarElementValue :: (forest: snapshot.SnapshotNode[], text: string, callables:
     if (shape.container == ArrayContainer) {
         return ScalarArrayStored(forest, text, callables, params, callable, names, types, members, constants, node, shape,
                                  true, rows);
+    }
+    if (shape.storage == PointerStorage) {
+        if (ScalarPointerType(types, shape.record) == 0) {
+            return ScalarOperands.Failed(Diagnose(forest, node, 0, "native pointer arrays require non-null numeric or bool pointees"));
+        }
+        return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                              node, PointerStorage, rows);
     }
     if (shape.storage == StructStorage || shape.storage == UnionStorage) {
         return ScalarRecordValue(forest, text, callables, params, callable, names, types, members, constants, node,

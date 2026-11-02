@@ -181,6 +181,26 @@ pub ValueTag :: (storage: int) -> int {
 pub ContextType :: () -> string {
     return "{ ptr, ptr, ptr, ptr, ptr }";
 }
+// Standalone managed execution extends the legacy prefix with one stable
+// execution-family heap owner. Generic C-bundle/library admission stays
+// separate until its embedding contract supplies this owner explicitly.
+pub ManagedOwnerField: int : 5;
+pub ManagedContextType :: () -> string {
+    return "{ ptr, ptr, ptr, ptr, ptr, ptr }";
+}
+pub ManagedHeapType :: () -> string {
+    return "{ ptr, ptr, ptr, i64, i64, i64 }";
+}
+// Root cell, payload byte offset and complete semantic pointee identity.
+// None is all zero; local type-table ordinals never cross module boundaries.
+pub ManagedPointerType :: () -> string {
+    return "{ ptr, i64, i64 }";
+}
+// Pointer-array sharing must key tracing by both heap identity and epoch.
+// Existing scalar/record backings keep their own smaller owner layouts.
+pub ManagedArrayPrefix: int : 24;
+pub ManagedArrayEpochOffset: int : 8;
+pub ManagedArrayOwnerOffset: int : 16;
 // A 24-byte array descriptor: length, capacity, elements and nullable backing
 // owner. The all-zero descriptor is empty; a null owner borrows its elements.
 // Foreign calls still use field 2, so the added owner never reaches C.

@@ -4168,25 +4168,30 @@ ScalarJoinedNodes :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docum
 // in theirs: the entry of a package set is the first function of its first
 // file, whichever package order puts the dependencies in front. A function
 // named `chosen` in document 0 goes before the others of its document.
-ScalarEntryFirst :: (callables: Callable[], chosen: string) -> Callable[] {
+ScalarEntryFirst :: (callables: Callable[], chosen: string, bindings: ^(GenericBinding[])) -> Callable[] {
     ordered: Callable[] = [];
+    remap := resize([int(-1)], length(callables));
     if (chosen != "") {
-        for (callable in callables) {
+        for (callable, index in callables) {
             if (callable.document == 0 && callable.name == chosen) {
+                remap[index] = length(ordered);
                 ordered.append(callable);
             }
         }
     }
-    for (callable in callables) {
+    for (callable, index in callables) {
         if (callable.document == 0 && (chosen == "" || callable.name != chosen)) {
+            remap[index] = length(ordered);
             ordered.append(callable);
         }
     }
-    for (callable in callables) {
+    for (callable, index in callables) {
         if (callable.document != 0) {
+            remap[index] = length(ordered);
             ordered.append(callable);
         }
     }
+    if (length(bindings^) > 0) { bindings^ = GenericRemapBindings(bindings^, remap); }
     return ordered;
 }
 // Whether the package identity `identity` is `NAME:...` for a collection NAME.
@@ -4412,12 +4417,9 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                     return ScalarFailed(packaged, path, text, documents, diagnostic);
                                 case .Ready(concrete, concrete_params, bindings):
                                     entered := concrete;
+                                    entered_bindings := bindings;
                                     if (packaged && length(concrete) > 0 && (concrete[0].document != 0 || chosen != "")) {
-                                        if (length(bindings) > 0) {
-                                            return ScalarFailure(path, shown_text, Diagnose(shown_nodes, document.syntax_root, 0,
-                                                "scalar proof cannot order generic functions across packages"));
-                                        }
-                                        entered = ScalarEntryFirst(concrete, chosen);
+                                        entered = ScalarEntryFirst(concrete, chosen, &entered_bindings);
                                         if (chosen != "" && entered[0].name != chosen) {
                                             return ScalarFailure(path, shown_text, Diagnose(shown_nodes, document.syntax_root, 0,
                                                 "scalar proof requires the entry function in the first file"));
@@ -4443,7 +4445,7 @@ ScalarCollectWithEffects :: (project: string, collection_names: string[], collec
                                     }
                                     switch ScalarModule(scalar_nodes, scalar_text, document.key, entered, concrete_params, table,
                                                         members, constants, ops, target, text_natives, text_ports, text_identities,
-                                                        false, bindings, scalar_documents, module_links, summary) {
+                                                        false, entered_bindings, scalar_documents, module_links, summary) {
                                         case .Failed(diagnostic):
                                             // The native check already used joined nodes; its range
                                             // must not receive the document offset a second time.

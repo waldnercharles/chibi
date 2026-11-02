@@ -360,7 +360,7 @@ it.
 
 ## Portable recovery regression
 
-`Run.ps1` runs after the two-stage self-build in `compiler-recovery.yml`. It
+`Run.ps1` runs after the two-stage self-build in the single CI workflow's scheduled/manual-full recovery job. It
 binds the pinned runtime, recovered stage2, compiler and regression source
 inventories, compiles `Regression.chibi` on both VMs with identical bytes, and
 runs the authored `Tests` (26 malformed-row fixtures plus emission checks).

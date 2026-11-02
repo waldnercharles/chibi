@@ -169,19 +169,30 @@ CacheProblem :: (output: string, program: string, snapshot: CacheInputs) -> stri
     return "";
 }
 
+// Cleanup is best effort after a primary result is already known. Report
+// failures without replacing that result or skipping the other owned paths.
+DiscardPath :: (path: string) {
+    if (os.Remove(path) != nil) {
+        os.Print(strings.Concatenate(["native: cannot remove temporary path ", path]));
+    }
+}
+
 // Removes only the private directory this invocation reserved. An interrupted
 // invocation deliberately leaves it for diagnosis and explicit recovery.
 CacheDiscard :: (folder: string) {
     listed := os.List(folder);
+    if (listed.error != nil) {
+        os.Print(strings.Concatenate(["native: cannot list temporary directory ", folder]));
+    }
     for (name in listed.names) {
         path := strings.Concatenate([folder, "/", name]);
         if (os.IsDirectory(path)) {
             CacheDiscard(path);
         } else {
-            removed := os.Remove(path);
+            DiscardPath(path);
         }
     }
-    removed := os.Remove(folder);
+    DiscardPath(folder);
 }
 
 // One compiler result is consumed by build's printed artifact and run's
@@ -251,7 +262,7 @@ CachedProgram :: (root: string, collections: string[], directories: string[], ga
     refreshed := Gather(root, collections, directories, package, source);
     checked := CacheSnapshot(collections, directories, refreshed, triple, chosen, llvm, options);
     hashed := os.HashFile(strings.Concatenate([work, "/", program]));
-    if (refreshed.problem != "" || checked.problem != "" || checked.key != snapshot.key || hashed.error != nil) {
+    if (hashed.error != nil || refreshed.problem != "" || checked.problem != "" || checked.key != snapshot.key) {
         os.Print("native: an input changed during the build; retry");
         CacheDiscard(work);
         return {status: 1, path: "", reused: false};

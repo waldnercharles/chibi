@@ -1,0 +1,403 @@
+package asset_request
+
+import compiler "project:package_compiler"
+import json "project:json_string"
+import strings "core:strings"
+
+// Read the existing catalog protocol once, without a JSON tree or source
+// copies. Each object has a fixed schema; source and catalog arrays grow
+// geometrically. Parse accepts at most 64 MiB with fixed nesting; its caller
+// owns reading the input and any file-size limit before that read.
+Reader :: struct {
+    text: string;
+    at: int;
+    good: bool;
+}
+pub Request :: struct {
+    project: string;
+    collections: string[];
+    roots: string[];
+    paths: string[];
+    sources: string[];
+    debug: bool;
+    target: compiler.Target;
+    abi: u64;
+    names: string[];
+    natives: compiler.CatalogNative[];
+    ports: compiler.CatalogPort[];
+    identities: u64[];
+    types: compiler.GameType[];
+    fields: compiler.GameField[];
+    entity: u64;
+    os: int;
+    arch: int;
+    effects: int[];
+    valid: bool;
+}
+
+Space :: (reader: ^Reader) {
+    byte := strings.ByteAt(reader.text, reader.at);
+    while (byte == 32 || byte == 9 || byte == 10 || byte == 13) {
+        reader.at += 1;
+        byte = strings.ByteAt(reader.text, reader.at);
+    }
+}
+Expect :: (reader: ^Reader, byte: int) {
+    Space(reader);
+    if (strings.ByteAt(reader.text, reader.at) != byte) { reader.good = false; return; }
+    reader.at += 1;
+}
+// At the beginning of each array/object item. A close consumes the delimiter;
+// otherwise every item after the first requires one comma.
+More :: (reader: ^Reader, close: int, first: bool) -> bool {
+    Space(reader);
+    if (!reader.good) { return false; }
+    if (strings.ByteAt(reader.text, reader.at) == close) { reader.at += 1; return false; }
+    if (!first) { Expect(reader, 44); }
+    return reader.good;
+}
+Text :: (reader: ^Reader) -> string {
+    Space(reader);
+    start := reader.at;
+    if (strings.ByteAt(reader.text, start) != 34) { reader.good = false; return ""; }
+    reader.at += 1;
+    while (reader.at < strings.ByteLength(reader.text)) {
+        byte := strings.ByteAt(reader.text, reader.at);
+        reader.at += 1;
+        if (byte == 34) { break; }
+        if (byte == 92) { reader.at += 1; }
+    }
+    decoded := json.Value(strings.Slice(reader.text, start, reader.at - start));
+    if (!decoded.valid) { reader.good = false; }
+    return decoded.value;
+}
+Literal :: (reader: ^Reader) -> string {
+    Space(reader);
+    start := reader.at;
+    while (reader.at < strings.ByteLength(reader.text)) {
+        byte := strings.ByteAt(reader.text, reader.at);
+        if (byte == 44 || byte == 93 || byte == 125 || byte == 32 || byte == 9 || byte == 10 || byte == 13) { break; }
+        reader.at += 1;
+    }
+    return strings.Slice(reader.text, start, reader.at - start);
+}
+Bool :: (reader: ^Reader) -> bool {
+    text := Literal(reader);
+    if (text != "true" && text != "false") { reader.good = false; }
+    return text == "true";
+}
+Unsigned :: (reader: ^Reader) -> u64 {
+    text := Literal(reader);
+    size := strings.ByteLength(text);
+    if (size == 0 || size > 20 || (size > 1 && strings.ByteAt(text, 0) == 48)) { reader.good = false; return 0; }
+    value: u64 = 0;
+    for (byte in strings.Bytes(text)) {
+        digit := byte - 48;
+        if (digit < 0 || digit > 9 || value > 1844674407370955161 || (value == 1844674407370955161 && digit > 5)) {
+            reader.good = false;
+            return 0;
+        }
+        value = value * 10 + u64(digit);
+    }
+    return value;
+}
+Integer :: (reader: ^Reader) -> int {
+    text := Literal(reader);
+    negative := strings.HasPrefix(text, "-");
+    at := 0;
+    if (negative) { at = 1; }
+    size := strings.ByteLength(text);
+    if (size <= at || size - at > 10 || (size - at > 1 && strings.ByteAt(text, at) == 48)) { reader.good = false; return 0; }
+    value: i64 = 0;
+    while (at < size) {
+        digit := strings.ByteAt(text, at) - 48;
+        if (digit < 0 || digit > 9) { reader.good = false; return 0; }
+        value = value * 10 + i64(digit);
+        at += 1;
+    }
+    if (negative) { value = -value; }
+    if (value < -2147483648 || value > 2147483647) { reader.good = false; return 0; }
+    return int(value);
+}
+
+Layout :: (reader: ^Reader) -> compiler.Target {
+    value: compiler.Target = {pointer_storage: 0, pointer_size: 0, value_size: 0, payload_offset: 0, arguments_offset: 0, delta_seconds_offset: 0, results_offset: 0, error_status_offset: 0, type_offset: 0, container_offset: 0, name_offset: 0, record_offset: 0, schema_offset: 0, count_offset: 0, items_offset: 0, data_offset: 0, stride_offset: 0, map_count_offset: 0, data_failure: 0, argument_failure: 0, assert_failure: 0};
+    Expect(reader, 123);
+    first := true;
+    seen := 0;
+    while (More(reader, 125, first)) {
+        first = false;
+        key := Text(reader);
+        Expect(reader, 58);
+        bit := 0;
+        if (key == "pointer_storage") { value.pointer_storage = Integer(reader); bit = 1;
+        } else if (key == "pointer_size") { value.pointer_size = Integer(reader); bit = 2;
+        } else if (key == "value_size") { value.value_size = Integer(reader); bit = 4;
+        } else if (key == "payload_offset") { value.payload_offset = Integer(reader); bit = 8;
+        } else if (key == "arguments_offset") { value.arguments_offset = Integer(reader); bit = 16;
+        } else if (key == "delta_seconds_offset") { value.delta_seconds_offset = Integer(reader); bit = 32;
+        } else if (key == "results_offset") { value.results_offset = Integer(reader); bit = 64;
+        } else if (key == "error_status_offset") { value.error_status_offset = Integer(reader); bit = 128;
+        } else if (key == "type_offset") { value.type_offset = Integer(reader); bit = 256;
+        } else if (key == "container_offset") { value.container_offset = Integer(reader); bit = 512;
+        } else if (key == "name_offset") { value.name_offset = Integer(reader); bit = 1024;
+        } else if (key == "record_offset") { value.record_offset = Integer(reader); bit = 2048;
+        } else if (key == "schema_offset") { value.schema_offset = Integer(reader); bit = 4096;
+        } else if (key == "count_offset") { value.count_offset = Integer(reader); bit = 8192;
+        } else if (key == "items_offset") { value.items_offset = Integer(reader); bit = 16384;
+        } else if (key == "data_offset") { value.data_offset = Integer(reader); bit = 32768;
+        } else if (key == "stride_offset") { value.stride_offset = Integer(reader); bit = 65536;
+        } else if (key == "map_count_offset") { value.map_count_offset = Integer(reader); bit = 131072;
+        } else if (key == "data_failure") { value.data_failure = Integer(reader); bit = 262144;
+        } else if (key == "argument_failure") { value.argument_failure = Integer(reader); bit = 524288;
+        } else if (key == "assert_failure") { value.assert_failure = Integer(reader); bit = 1048576;
+        } else { reader.good = false; }
+        if ((seen & bit) != 0) { reader.good = false; }
+        seen = seen | bit;
+    }
+    if (seen != 2097151) { reader.good = false; }
+    return value;
+}
+
+Native :: (reader: ^Reader) -> compiler.CatalogNative {
+    value: compiler.CatalogNative = {name: "", first: 0, parameters: 0, results: 0, variadic: false, direct: false, qualified_name: "", kind: 0, intrinsic: 0, effects: 0};
+    Expect(reader, 123);
+    first := true;
+    seen := 0;
+    while (More(reader, 125, first)) {
+        first = false;
+        key := Text(reader);
+        Expect(reader, 58);
+        bit := 0;
+        if (key == "name") { value.name = Text(reader); bit = 1;
+        } else if (key == "first") { value.first = Integer(reader); bit = 2;
+        } else if (key == "parameters") { value.parameters = Integer(reader); bit = 4;
+        } else if (key == "results") { value.results = Integer(reader); bit = 8;
+        } else if (key == "variadic") { value.variadic = Bool(reader); bit = 16;
+        } else if (key == "direct") { value.direct = Bool(reader); bit = 32;
+        } else if (key == "qualified_name") { value.qualified_name = Text(reader); bit = 64;
+        } else if (key == "kind") { value.kind = Integer(reader); bit = 128;
+        } else if (key == "intrinsic") { value.intrinsic = Integer(reader); bit = 256;
+        } else if (key == "effects") { value.effects = Integer(reader); bit = 512;
+        } else { reader.good = false; }
+        if ((seen & bit) != 0) { reader.good = false; }
+        seen = seen | bit;
+    }
+    if (seen != 1023) { reader.good = false; }
+    return value;
+}
+
+Port :: (reader: ^Reader) -> compiler.CatalogPort {
+    value: compiler.CatalogPort = {name: "", storage: 0, container: 0, c_string: false, nominal: 0, has_default: false, default_owner: false, default_supported: false, default_bits: 0, default_text: ""};
+    Expect(reader, 123);
+    first := true;
+    seen := 0;
+    while (More(reader, 125, first)) {
+        first = false;
+        key := Text(reader);
+        Expect(reader, 58);
+        bit := 0;
+        if (key == "name") { value.name = Text(reader); bit = 1;
+        } else if (key == "storage") { value.storage = Integer(reader); bit = 2;
+        } else if (key == "container") { value.container = Integer(reader); bit = 4;
+        } else if (key == "c_string") { value.c_string = Bool(reader); bit = 8;
+        } else if (key == "nominal") { value.nominal = Unsigned(reader); bit = 16;
+        } else if (key == "has_default") { value.has_default = Bool(reader); bit = 32;
+        } else if (key == "default_owner") { value.default_owner = Bool(reader); bit = 64;
+        } else if (key == "default_supported") { value.default_supported = Bool(reader); bit = 128;
+        } else if (key == "default_bits") { value.default_bits = Unsigned(reader); bit = 256;
+        } else if (key == "default_text") { value.default_text = Text(reader); bit = 512;
+        } else { reader.good = false; }
+        if ((seen & bit) != 0) { reader.good = false; }
+        seen = seen | bit;
+    }
+    if (seen != 1023) { reader.good = false; }
+    return value;
+}
+
+Type :: (reader: ^Reader) -> compiler.GameType {
+    value: compiler.GameType = {required: false, underlying: 0, name: "", id: 0, layout: 0, storage: 0, size: 0, component: 0, first: 0, count: 0, relationship: false, traits: 0, error: false};
+    Expect(reader, 123);
+    first := true;
+    seen := 0;
+    while (More(reader, 125, first)) {
+        first = false;
+        key := Text(reader);
+        Expect(reader, 58);
+        bit := 0;
+        if (key == "required") { value.required = Bool(reader); bit = 1;
+        } else if (key == "underlying") { value.underlying = Integer(reader); bit = 2;
+        } else if (key == "name") { value.name = Text(reader); bit = 4;
+        } else if (key == "id") { value.id = Unsigned(reader); bit = 8;
+        } else if (key == "layout") { value.layout = Unsigned(reader); bit = 16;
+        } else if (key == "storage") { value.storage = Integer(reader); bit = 32;
+        } else if (key == "size") { value.size = Integer(reader); bit = 64;
+        } else if (key == "component") { value.component = Unsigned(reader); bit = 128;
+        } else if (key == "first") { value.first = Integer(reader); bit = 256;
+        } else if (key == "count") { value.count = Integer(reader); bit = 512;
+        } else if (key == "relationship") { value.relationship = Bool(reader); bit = 1024;
+        } else if (key == "traits") { value.traits = Integer(reader); bit = 2048;
+        } else if (key == "error") { value.error = Bool(reader); bit = 4096;
+        } else { reader.good = false; }
+        if ((seen & bit) != 0) { reader.good = false; }
+        seen = seen | bit;
+    }
+    if (seen != 8191) { reader.good = false; }
+    return value;
+}
+
+Field :: (reader: ^Reader) -> compiler.GameField {
+    value: compiler.GameField = {name: "", storage: 0, offset: 0, writable: false, c_string: false, record: 0, constant: false, read: 0, read_key: ""};
+    Expect(reader, 123);
+    first := true;
+    seen := 0;
+    while (More(reader, 125, first)) {
+        first = false;
+        key := Text(reader);
+        Expect(reader, 58);
+        bit := 0;
+        if (key == "name") { value.name = Text(reader); bit = 1;
+        } else if (key == "storage") { value.storage = Integer(reader); bit = 2;
+        } else if (key == "offset") { value.offset = Integer(reader); bit = 4;
+        } else if (key == "writable") { value.writable = Bool(reader); bit = 8;
+        } else if (key == "c_string") { value.c_string = Bool(reader); bit = 16;
+        } else if (key == "record") { value.record = Integer(reader); bit = 32;
+        } else if (key == "constant") { value.constant = Bool(reader); bit = 64;
+        } else if (key == "read") { value.read = Integer(reader); bit = 128;
+        } else if (key == "read_key") { value.read_key = Text(reader); bit = 256;
+        } else { reader.good = false; }
+        if ((seen & bit) != 0) { reader.good = false; }
+        seen = seen | bit;
+    }
+    if (seen != 511) { reader.good = false; }
+    return value;
+}
+
+Strings :: (reader: ^Reader) -> string[] {
+    values: string[] = [];
+    Expect(reader, 91);
+    first := true;
+    while (More(reader, 93, first)) {
+        first = false;
+        values.append(Text(reader));
+    }
+    return values;
+}
+
+UInts :: (reader: ^Reader) -> u64[] {
+    values: u64[] = [];
+    Expect(reader, 91);
+    first := true;
+    while (More(reader, 93, first)) {
+        first = false;
+        values.append(Unsigned(reader));
+    }
+    return values;
+}
+
+Ints :: (reader: ^Reader) -> int[] {
+    values: int[] = [];
+    Expect(reader, 91);
+    first := true;
+    while (More(reader, 93, first)) {
+        first = false;
+        values.append(Integer(reader));
+    }
+    return values;
+}
+
+Natives :: (reader: ^Reader) -> compiler.CatalogNative[] {
+    values: compiler.CatalogNative[] = [];
+    Expect(reader, 91);
+    first := true;
+    while (More(reader, 93, first)) {
+        first = false;
+        values.append(Native(reader));
+    }
+    return values;
+}
+
+Ports :: (reader: ^Reader) -> compiler.CatalogPort[] {
+    values: compiler.CatalogPort[] = [];
+    Expect(reader, 91);
+    first := true;
+    while (More(reader, 93, first)) {
+        first = false;
+        values.append(Port(reader));
+    }
+    return values;
+}
+
+Types :: (reader: ^Reader) -> compiler.GameType[] {
+    values: compiler.GameType[] = [];
+    Expect(reader, 91);
+    first := true;
+    while (More(reader, 93, first)) {
+        first = false;
+        values.append(Type(reader));
+    }
+    return values;
+}
+
+Fields :: (reader: ^Reader) -> compiler.GameField[] {
+    values: compiler.GameField[] = [];
+    Expect(reader, 91);
+    first := true;
+    while (More(reader, 93, first)) {
+        first = false;
+        values.append(Field(reader));
+    }
+    return values;
+}
+
+pub Parse :: (text: string) -> Request {
+    value: Request = {project: "", collections: [], roots: [], paths: [], sources: [], debug: false,
+        target: {pointer_storage: 0, pointer_size: 0, value_size: 0, payload_offset: 0, arguments_offset: 0, delta_seconds_offset: 0, results_offset: 0, error_status_offset: 0, type_offset: 0, container_offset: 0, name_offset: 0, record_offset: 0, schema_offset: 0, count_offset: 0, items_offset: 0, data_offset: 0, stride_offset: 0, map_count_offset: 0, data_failure: 0, argument_failure: 0, assert_failure: 0},
+        abi: 0, names: [], natives: [], ports: [], identities: [], types: [], fields: [], entity: 0, os: 0, arch: 0,
+        effects: [], valid: false};
+    if (strings.ByteLength(text) > 67108864) { return value; }
+    reader: Reader = {text: text, at: 0, good: true};
+    Expect(&reader, 91);
+    value.project = Text(&reader);
+    Expect(&reader, 44);
+    value.collections = Strings(&reader);
+    Expect(&reader, 44);
+    value.roots = Strings(&reader);
+    Expect(&reader, 44);
+    value.paths = Strings(&reader);
+    Expect(&reader, 44);
+    value.sources = Strings(&reader);
+    Expect(&reader, 44);
+    value.debug = Bool(&reader);
+    Expect(&reader, 44);
+    value.target = Layout(&reader);
+    Expect(&reader, 44);
+    value.abi = Unsigned(&reader);
+    Expect(&reader, 44);
+    value.names = Strings(&reader);
+    Expect(&reader, 44);
+    value.natives = Natives(&reader);
+    Expect(&reader, 44);
+    value.ports = Ports(&reader);
+    Expect(&reader, 44);
+    value.identities = UInts(&reader);
+    Expect(&reader, 44);
+    value.types = Types(&reader);
+    Expect(&reader, 44);
+    value.fields = Fields(&reader);
+    Expect(&reader, 44);
+    value.entity = Unsigned(&reader);
+    Expect(&reader, 44);
+    value.os = Integer(&reader);
+    Expect(&reader, 44);
+    value.arch = Integer(&reader);
+    Expect(&reader, 44);
+    value.effects = Ints(&reader);
+    Expect(&reader, 93);
+    Space(&reader);
+    value.valid = reader.good && reader.at == strings.ByteLength(text) &&
+                  length(value.collections) == length(value.roots) &&
+                  length(value.paths) > 0 && length(value.paths) == length(value.sources) &&
+                  length(value.identities) == length(value.natives) * 2 && length(value.effects) == length(value.natives);
+    return value;
+}

@@ -89,5 +89,5 @@ pub Selected :: (arguments: string[], target: string) -> bool {
             }
         }
     }
-    return !named;
+    return !named && !WebAssemblyProducts().contains(target);
 }

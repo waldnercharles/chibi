@@ -82,6 +82,7 @@ SDKReflect :: () -> int {
 // compilation without sharing a profile or a build result.
 LibrariesWithArguments :: (arguments: string[]) -> int {
     targets := engine.Targets();
+    targets.extend(engine.WebAssemblyProducts());
     unknown := engine.TargetError(arguments, targets);
     if (unknown != "") {
         os.Print(unknown);
@@ -91,27 +92,49 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     jobs := Count(Option(arguments, "--jobs", "8"));
     selected: string[] = [];
     native_products: string[] = [];
+    web_products: string[] = [];
     for (target in targets) {
         if (engine.Selected(arguments, target)) {
-            if (length(engine.NativeArguments(target)) == 0) { selected.append(target); }
+            if (engine.WebAssemblyProducts().contains(target)) { web_products.append(target); }
+            else if (length(engine.NativeArguments(target)) == 0) { selected.append(target); }
             else { native_products.append(target); }
         }
     }
     native_commands := "[\n\n]\n";
-    if (length(native_products) != 0) {
+    web_commands := "[\n\n]\n";
+    emcc := Option(arguments, "--emcc", os.Getenv("CHIBI_EMCC"));
+    wasm_llvm := Option(arguments, "--wasm-llvm", os.Getenv("CHIBI_WASM_LLVM_BIN"));
+    if (length(native_products) != 0 || length(web_products) != 0) {
         driver := Option(arguments, "--native-driver", "");
         llvm := Option(arguments, "--llvm", "");
         if (!paths.IsAbsolute(build_dir) || driver == "" || llvm == "" || jobs < 1) {
             os.Print("graph: native products require absolute --build, --native-driver FILE, --llvm DIR and positive --jobs");
             return 2;
         }
-        native_commands = engine.NativeCommands(driver, llvm, os.Root(), build_dir, native_products, jobs);
+        if (length(native_products) != 0) {
+            native_commands = engine.NativeCommands(driver, llvm, os.Root(), build_dir, native_products, jobs);
+        }
+        if (length(web_products) != 0) {
+            if (!paths.IsAbsolute(emcc) || !paths.IsAbsolute(wasm_llvm)) {
+                os.Print("graph: the optional Wasm compiler requires --emcc FILE and --wasm-llvm DIR, or CHIBI_EMCC and CHIBI_WASM_LLVM_BIN");
+                return 2;
+            }
+            web_commands = engine.WebAssemblyCommands(driver, llvm, emcc, wasm_llvm, os.Root(), build_dir);
+        }
         if (length(selected) == 0) {
-            if (Option(arguments, "--commands-only", "") != "on" &&
-                engine.BuildNative(driver, llvm, os.Root(), build_dir, native_products, jobs) < 0) { return 1; }
+            if (Option(arguments, "--commands-only", "") != "on") {
+                if (length(native_products) != 0 &&
+                    engine.BuildNative(driver, llvm, os.Root(), build_dir, native_products, jobs) < 0) { return 1; }
+                if (length(web_products) != 0 &&
+                    engine.BuildWebAssembly(driver, llvm, emcc, wasm_llvm, os.Root(), build_dir, jobs) < 0) { return 1; }
+                if (length(web_products) != 0) {
+                    web_commands = engine.WebAssemblyRecordedCommands(build_dir);
+                    if (web_commands == "") { return 1; }
+                }
+            }
             if (os.MakeDirectory(build_dir) ||
                 os.WriteText(strings.Concatenate([build_dir, "/compile_commands.json"]), "[]\n") ||
-                os.WriteText(strings.Concatenate([build_dir, "/link_commands.json"]), native_commands)) { return 1; }
+                os.WriteText(strings.Concatenate([build_dir, "/link_commands.json"]), MergeCommands(native_commands, web_commands))) { return 1; }
             return 0;
         }
     }
@@ -234,6 +257,13 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     if (length(native_products) != 0 && Option(arguments, "--commands-only", "") != "on" &&
         engine.BuildNative(Option(arguments, "--native-driver", ""), Option(arguments, "--llvm", ""),
                            os.Root(), build_dir, native_products, jobs) < 0) { return 1; }
+    if (length(web_products) != 0 && Option(arguments, "--commands-only", "") != "on" &&
+        engine.BuildWebAssembly(Option(arguments, "--native-driver", ""), Option(arguments, "--llvm", ""),
+                                emcc, wasm_llvm, os.Root(), build_dir, jobs) < 0) { return 1; }
+    if (length(web_products) != 0 && Option(arguments, "--commands-only", "") != "on") {
+        web_commands = engine.WebAssemblyRecordedCommands(build_dir);
+        if (web_commands == "") { return 1; }
+    }
     if (os.MakeDirectory(build_dir)) {
         os.Print("graph: creating the build directory failed");
         return 1;
@@ -251,11 +281,8 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     }
     links := strings.Join([build_dir, "/link_commands.json"], "");
     link_commands := engine.LinkCommands(tools, profile, os.Root(), build_dir, selected);
-    if (length(native_products) != 0) {
-        native_body := strings.TrimSuffix(strings.TrimPrefix(native_commands, "[\n"), "\n]\n");
-        c_body := strings.TrimSuffix(strings.TrimPrefix(link_commands, "[\n"), "\n]\n");
-        if (c_body != "") { native_body = strings.Concatenate([native_body, ",\n", c_body]); }
-        link_commands = strings.Concatenate(["[\n", native_body, "\n]\n"]);
+    if (length(native_products) != 0 || length(web_products) != 0) {
+        link_commands = MergeCommands(MergeCommands(native_commands, web_commands), link_commands);
     }
     if (os.WriteText(links, link_commands)) {
         os.Print("graph: writing link_commands.json failed");
@@ -271,4 +298,12 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     }
     os.Print(format_text("graph: compiled {} sources", total));
     return 0;
+}
+
+MergeCommands :: (first: string, second: string) -> string {
+    left := strings.TrimSuffix(strings.TrimPrefix(first, "[\n"), "\n]\n");
+    right := strings.TrimSuffix(strings.TrimPrefix(second, "[\n"), "\n]\n");
+    if (left == "") { return second; }
+    if (right == "") { return first; }
+    return strings.Concatenate(["[\n", left, ",\n", right, "\n]\n"]);
 }

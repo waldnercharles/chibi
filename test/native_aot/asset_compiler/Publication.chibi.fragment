@@ -1,0 +1,38 @@
+
+// Appended to the real builder source by publication.sh, so the regression
+// invokes its publication operations against filesystem failures, without mocks.
+PublicationChecks :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 1, "one private fixture directory");
+    root := arguments[0];
+    work := Join([root, "/work"]);
+    output := Join([root, "/output"]);
+    made := os.MakeDirectory(work);
+    assert(made == nil, "the private builder directory");
+    made = os.MakeDirectory(output);
+    assert(made == nil, "the output directory");
+    for (name in ["a", "b"]) {
+        written := os.WriteText(Join([output, "/", name]), Join(["old-", name]));
+        assert(written == nil, "previous product bytes");
+    }
+    for (name in ["a", "new"]) {
+        written := os.WriteText(Join([work, "/", name]), Join(["new-", name]));
+        assert(written == nil, "staged bytes");
+    }
+    result := Publish(work, output, ["new", "a", "b"]);
+    assert(!result.written && result.recoverable, "a missing staged product rolls back the earlier replacements");
+    for (name in ["a", "b"]) {
+        read := os.ReadText(Join([output, "/", name]));
+        assert(read.error == nil && read.text == Join(["old-", name]), "previous bytes restored exactly");
+    }
+    assert(os.Kind(Join([output, "/new"])) == os.KindNone, "the newly introduced product is removed");
+    written := os.WriteText(Join([work, "/previous-recovery"]), "recover-me");
+    assert(written == nil, "a backup for the rollback failure");
+    made = os.MakeDirectory(Join([output, "/recovery"]));
+    assert(made == nil, "an OS collision prevents restoring a backup file");
+    restored := RestorePublication(work, output, [], ["recovery"]);
+    assert(!restored, "failed rollback propagates to the caller that preserves work");
+    read := os.ReadText(Join([work, "/previous-recovery"]));
+    assert(read.error == nil && read.text == "recover-me", "rollback failure preserves recovery bytes");
+    return 0;
+}

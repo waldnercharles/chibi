@@ -73,7 +73,9 @@ static void fail(asset_compiler_diagnostic *diagnostic, const char *message)
 {
     snprintf(diagnostic->message, sizeof diagnostic->message, "%s", message);
 }
-_Noreturn void chibi_native_failure(int32_t kind)
+/* Keep longjmp in C functions that carry Emscripten's EH attributes. Joint LTO
+ * must not move it into authored LLVM functions with no EH attribute. */
+__attribute__((noinline)) _Noreturn void chibi_native_failure(int32_t kind)
 {
     assert(active);
     if (kind == 5) {
@@ -83,7 +85,7 @@ _Noreturn void chibi_native_failure(int32_t kind)
     }
     longjmp(active->stopped, kind == 5 ? 125 : 134);
 }
-void chibi_native_step(void)
+__attribute__((noinline)) void chibi_native_step(void)
 {
     assert(active);
     if (active->options && active->options->cancelled &&

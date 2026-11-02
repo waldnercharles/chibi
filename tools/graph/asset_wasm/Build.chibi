@@ -1,0 +1,279 @@
+package asset_wasm_build
+
+import os "core:os"
+import strings "core:strings"
+import wasmtools "graph:wasm_toolchain"
+
+Join :: (parts: string[]) -> string { return strings.Concatenate(parts); }
+Tool :: (llvm: string, name: string) -> string {
+    suffix := "";
+    if (os.Platform() == "Windows") { suffix = ".exe"; }
+    return Join([llvm, "/", name, suffix]);
+}
+Run :: (command: string[]) -> bool {
+    status := os.Run(command);
+    if (status != 0) { os.Print(format_text("asset wasm: {} failed with status {}", command[0], status)); }
+    return status == 0;
+}
+RemoveTree :: (path: string) -> bool {
+    if (os.Kind(path) == os.KindDirectory) {
+        listed := os.List(path);
+        if (listed.error != nil) { return false; }
+        for (name in listed.names) {
+            if (!RemoveTree(Join([path, "/", name]))) { return false; }
+        }
+    }
+    return os.Remove(path) == nil;
+}
+
+CFiles :: () -> string[] {
+    return ["authoring/asset_compiler_wasm.c", "authoring/asset_compiler_host.c", "support/binary_cache.c",
+            "support/file_io.c", "support/sha256.c", "support/xalloc.c"];
+}
+
+// A content fence covers source additions/removals as well as edits during the
+// compile. Chunks avoid repeatedly copying the compiler's source inventory.
+SourceInputs :: (directory: string) -> string[] {
+    listed := os.List(directory);
+    if (listed.error != nil) { return []; }
+    chunks := [format_text("{}:{}", strings.ByteLength(directory), directory)];
+    for (name in listed.names) {
+        path := Join([directory, "/", name]);
+        if (os.Kind(path) == os.KindDirectory) {
+            nested := SourceInputs(path);
+            if (length(nested) == 0) { return []; }
+            chunks.extend(nested);
+        } else if (strings.HasSuffix(name, ".chibi")) {
+            digest := os.HashFile(path);
+            if (digest.error != nil) { return []; }
+            chunks.append(format_text("{}:{}{}", strings.ByteLength(path), path, digest.digest));
+        }
+    }
+    return chunks;
+}
+
+InputDigest :: (root: string, driver: string, emcc: string, llvm: string) -> string {
+    chunks := SourceInputs(Join([root, "/tools/compiler"]));
+    core := SourceInputs(Join([root, "/packages/core"]));
+    if (length(chunks) == 0 || length(core) == 0) { return ""; }
+    chunks.extend(core);
+    toolchain := wasmtools.Toolchain(emcc, llvm);
+    if (toolchain.error != "") { os.Print(toolchain.error); return ""; }
+    chunks.append(toolchain.configuration);
+    inputs := [driver, Join([root, "/tools/graph/asset_wasm/Build.chibi"]), Join([root, "/tools/graph/wasm_toolchain/Toolchain.chibi"])];
+    inputs.extend(toolchain.files);
+    for (source in CFiles()) { inputs.append(Join([root, "/src/", source])); }
+    for (header in ["authoring/asset_compiler_wasm.h", "authoring/asset_compiler_host.h", "support/binary_cache.h",
+                    "support/file_io.h", "support/sha256.h", "support/xalloc.h"]) {
+        inputs.append(Join([root, "/src/", header]));
+    }
+    for (path in inputs) {
+        chunks.append(format_text("{}:{}", strings.ByteLength(path), path));
+        if (os.Kind(path) != os.KindDirectory) {
+            digest := os.HashFile(os.RealPath(path));
+            if (digest.error != nil) { return ""; }
+            chunks.append(digest.digest);
+        }
+    }
+    return os.HashText(Join(chunks));
+}
+
+// One private directory owns the intermediate LLVM and C objects. The archive
+// exposes only the synchronous compiler API and immutable payload identity;
+// generated native entries and quota hooks cannot bind a consumer's symbols.
+Prepare :: (root: string, driver: string, llvm: string, work: string) -> string[] {
+    bundle := Join([work, "/compiler.ll"]);
+    if (!Run([driver, "--compiler", Join([root, "/tools/compiler"]), "--core", Join([root, "/packages/core"]),
+              "--source", Join([root, "/tools/compiler/asset_wasm/Main.chibi"]), "--entry", "Main",
+              "--target", "wasm32-unknown-emscripten", "--emit-llvm", "--output", bundle])) { return []; }
+    read := os.ReadText(bundle);
+    if (read.error != nil) { os.Print(Join(["asset wasm: cannot read ", bundle])); return []; }
+    pieces := strings.Split(read.text, "\n; chibi-piece\n");
+    modules: string[] = [];
+    for (piece, index in pieces) {
+        source := format_text("{}/piece-{}.ll", work, index);
+        optimized := format_text("{}/piece-{}.bc", work, index);
+        if (os.WriteText(source, piece) != nil) { os.Print(Join(["asset wasm: cannot write ", source])); return []; }
+        if (!Run([Tool(llvm, "opt"), "-passes=default<O2>,verify", source, "-o", optimized])) { return []; }
+        modules.append(optimized);
+    }
+    return modules;
+}
+
+Flags :: (threads: bool) -> string[] {
+    flags := ["-O2", "-sSUPPORT_LONGJMP=wasm"];
+    if (threads) { flags.append("-pthread"); }
+    return flags;
+}
+
+// Check the small C/SDK closure before paying for compiler IR emission.
+Runtime :: (root: string, emcc: string, work: string, threads: bool, testing: bool) -> string[] {
+    if (os.MakeDirectory(work) != nil) { return []; }
+    compiler := [emcc];
+    compiler.extend(Flags(threads));
+    compiler.extend(["-std=gnu11", "-Wall", "-Wextra", "-Werror", "-flto", "-I", Join([root, "/src"])]);
+    if (testing) { compiler.append("-DCHIBI_ASSET_COMPILER_WASM_TEST"); }
+    modules: string[] = [];
+    for (source, index in CFiles()) {
+        runtime := format_text("{}/runtime-{}.bc", work, index);
+        compile_source := compiler;
+        compile_source.extend(["-D_POSIX_C_SOURCE=200809L", "-c", Join([root, "/src/", source]), "-o", runtime]);
+        if (!Run(compile_source)) { return []; }
+        modules.append(runtime);
+    }
+    return modules;
+}
+
+Generate :: (root: string, emcc: string, llvm: string, work: string, output: string, modules: string[],
+             runtime: string[], threads: bool, testing: bool) -> bool {
+    linked := [Tool(llvm, "llvm-link")];
+    linked.extend(modules);
+    linked.extend(runtime);
+    combined := Join([work, "/combined.bc"]);
+    linked.extend(["-o", combined]);
+    if (!Run(linked)) { return false; }
+    public := "asset_compiler_compile_closure,asset_compiler_compile_closure_cached";
+    if (testing) { public = Join([public, ",asset_compiler_wasm_test_allocations"]); }
+    private := Join([work, "/private.bc"]);
+    if (!Run([Tool(llvm, "opt"), "-passes=internalize,globaldce,verify",
+              Join(["-internalize-public-api-list=", public]), combined, "-o", private])) { return false; }
+    payload := Join([work, "/compiler.o"]);
+    compiler := [emcc];
+    compiler.extend(Flags(threads));
+    compiler.extend(["-r", private, "-o", payload]);
+    if (!Run(compiler)) { return false; }
+    identity := os.HashFile(payload);
+    if (identity.error != nil) { return false; }
+    identity_source := Join([work, "/identity.c"]);
+    identity_object := Join([work, "/identity.o"]);
+    if (os.WriteText(identity_source, format_text("const char *asset_compiler_wasm_identity(void) {{ return \"{}\"; }}\n", identity.digest)) != nil) { return false; }
+    compiler = [emcc];
+    compiler.extend(Flags(threads));
+    compiler.extend(["-std=c11", "-Wall", "-Wextra", "-Werror", "-c", identity_source, "-o", identity_object]);
+    if (!Run(compiler)) { return false; }
+    archive := Join([work, "/compiler.a"]);
+    if (!Run([Tool(llvm, "llvm-ar"), "rcs", archive, payload, identity_object])) { return false; }
+    digest := os.HashFile(archive);
+    if (digest.error != nil) { return false; }
+    header := os.HashFile(Join([root, "/src/authoring/asset_compiler_host.h"]));
+    if (header.error != nil) { return false; }
+    thread_option := "";
+    if (threads) { thread_option = ",\"-pthread\""; }
+    manifest := format_text("{{\"format\":1,\"target\":\"wasm32-unknown-emscripten\",\"threads\":{},\"identity\":\"{}\",\"archive_sha256\":\"{}\",\"host_header_sha256\":\"{}\",\"link_options\":[\"-sSUPPORT_LONGJMP=wasm\",\"-sSTACK_OVERFLOW_CHECK=2\"{}]}}\n", threads, identity.digest, digest.digest, header.digest, thread_option);
+    record := Join([work, "/compiler.json"]);
+    if (os.WriteText(record, manifest) != nil || os.Rename(record, Join([output, ".json"])) != nil ||
+        os.Rename(archive, output) != nil) { return false; }
+    return true;
+}
+
+// The caller holds the output lock. Previous products remain in work until all
+// replacements succeed. On an OS failure, restore them; retain work for manual
+// recovery if the filesystem also refuses rollback.
+RestorePublication :: (work: string, output: string, published: string[], previous: string[]) -> bool {
+    restored := true;
+    for (product in published) {
+        if (os.Remove(Join([output, "/", product])) != nil) { restored = false; }
+    }
+    for (product in previous) {
+        if (os.Rename(Join([work, "/previous-", product]), Join([output, "/", product])) != nil) { restored = false; }
+    }
+    if (!restored) { os.Print(Join(["asset wasm: publication rollback failed; recovery files retained at ", work])); }
+    return restored;
+}
+
+Publish :: (work: string, output: string, products: string[]) -> (written: bool, recoverable: bool) {
+    previous: string[] = [];
+    published: string[] = [];
+    ready := true;
+    for (product in products) {
+        path := Join([output, "/", product]);
+        if (os.Kind(path) != os.KindNone) {
+            if (os.Rename(path, Join([work, "/previous-", product])) != nil) { ready = false; break; }
+            previous.append(product);
+        }
+    }
+    if (ready) {
+        for (product in products) {
+            if (os.Rename(Join([work, "/", product]), Join([output, "/", product])) != nil) {
+                ready = false; break;
+            }
+            published.append(product);
+        }
+    }
+    if (ready) { return (true, true); }
+    return (false, RestorePublication(work, output, published, previous));
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) < 5 || length(arguments) > 6) {
+        os.Print("usage: asset-wasm-build SOURCE_ROOT NATIVE_DRIVER EMCC WASM_LLVM_BIN OUTPUT_DIRECTORY [--test]");
+        return 2;
+    }
+    testing := false;
+    for (index in 5..<length(arguments)) {
+        if (arguments[index] == "--test" && !testing) { testing = true; }
+        else { os.Print("asset wasm: unknown or repeated option"); return 2; }
+    }
+    root := os.RealPath(arguments[0]);
+    driver := os.RealPath(arguments[1]);
+    emcc := os.RealPath(arguments[2]);
+    llvm := os.RealPath(arguments[3]);
+    output := arguments[4];
+    kind := os.Kind(output);
+    if (!os.IsDirectory(root) || !os.IsFile(driver) || !os.IsFile(emcc) || !os.IsDirectory(llvm) ||
+        !strings.HasPrefix(output, "/") || (kind != os.KindNone && kind != os.KindDirectory)) {
+        os.Print("asset wasm: tools and source root must exist; output must be an absolute directory");
+        return 2;
+    }
+    if (os.MakeDirectory(output) != nil) { return 1; }
+    lock := Join([output, "/.prepare"]);
+    if (os.Reserve(lock) != nil) {
+        os.Print(Join(["asset wasm: output is already reserved; inspect ", lock, " before retrying"])); return 1;
+    }
+    products := ["libchibi_asset_compiler.a", "libchibi_asset_compiler.a.json",
+                 "libchibi_asset_compiler_threads.a", "libchibi_asset_compiler_threads.a.json", "asset_compiler_host.h"];
+    for (product in products) {
+        present := os.Kind(Join([output, "/", product]));
+        if (present != os.KindNone && present != os.KindFile) {
+            os.Print("asset wasm: an output is not an ordinary file");
+            removed := os.Remove(lock); return 2;
+        }
+    }
+    before := InputDigest(root, driver, emcc, llvm);
+    if (before == "") {
+        os.Print("asset wasm: cannot verify compiler inputs"); removed := os.Remove(lock); return 1;
+    }
+    temporary := os.TemporaryDirectory(lock);
+    if (temporary.error != nil) { removed := os.Remove(lock); return 1; }
+    single_threaded := Runtime(root, emcc, Join([temporary.path, "/plain"]), false, testing);
+    threaded: string[] = [];
+    if (length(single_threaded) != 0) { threaded = Runtime(root, emcc, Join([temporary.path, "/threads"]), true, testing); }
+    modules: string[] = [];
+    if (length(single_threaded) != 0 && length(threaded) != 0) { modules = Prepare(root, driver, llvm, temporary.path); }
+    written := length(modules) != 0;
+    if (written) {
+        written = Generate(root, emcc, llvm, Join([temporary.path, "/plain"]),
+                           Join([temporary.path, "/libchibi_asset_compiler.a"]), modules, single_threaded, false, testing);
+    }
+    if (written) {
+        written = Generate(root, emcc, llvm, Join([temporary.path, "/threads"]),
+                           Join([temporary.path, "/libchibi_asset_compiler_threads.a"]), modules, threaded, true, testing);
+    }
+    if (written) {
+        written = os.Copy(Join([root, "/src/authoring/asset_compiler_host.h"]),
+                          Join([temporary.path, "/asset_compiler_host.h"])) == nil;
+    }
+    if (written && InputDigest(root, driver, emcc, llvm) != before) {
+        os.Print("asset wasm: compiler inputs changed during preparation"); written = false;
+    }
+    cleaned := true;
+    if (written) {
+        published := Publish(temporary.path, output, products);
+        written = published.written;
+        cleaned = published.recoverable;
+    }
+    if (cleaned) { cleaned = RemoveTree(temporary.path) && os.Remove(lock) == nil; }
+    if (!written || !cleaned) { return 1; }
+    return 0;
+}

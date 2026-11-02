@@ -36,7 +36,7 @@ tool	graph-discovery	@program@	test/graph/DiscoveryTests.chibi	Run	@compiler@	@l
 tool	graph-evidence	@program@	test/graph/EvidenceTests.chibi	Run
 tool	graph-c	@program@	test/graph/CTests.chibi	Run	@compiler@	@llvm@
 tool	graph-build	@program@	test/graph/BuildTests.chibi	Run	@compiler@	@llvm@
-tool	graph-asset-cache	@program@	test/graph/AssetCompilerCacheTests.chibi	Run
+tool	graph-wasm	@program@	test/graph/WebAssemblyTests.chibi	Run
 tool	graph-os	@program@	test/graph/OsTests.chibi	Run
 tool	graph-sdk-install	@release@/sdk/chibi	run	--core	@root@/packages/core	--llvm	@llvm@	--root	@root@	--collection	graph=@root@/tools/graph	--entry	Run	@root@/test/graph/SDKInstallTests.chibi	--	@release@/sdk/chibi	@release@	@llvm@
 tool	collab	@build@/test/tools/test_tools	--collab

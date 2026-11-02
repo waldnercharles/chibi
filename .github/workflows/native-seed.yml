@@ -42,6 +42,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Install the native LLVM tools
+        run: sh .github/native-llvm.sh
       - name: Install the build and LLVM tools
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
@@ -49,16 +51,9 @@ jobs:
               libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
               libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
               libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
-            echo "LLVM_BIN=/usr/lib/llvm-18/bin" >> "$GITHUB_ENV"
             echo "LIBCLANG_ROOT=/usr/lib/llvm-18" >> "$GITHUB_ENV"
           else
-            brew install llvm lld
-            LLVM="$(brew --prefix llvm)"
-            # The native driver takes opt, llc and the linkers from one folder;
-            # native_link links macOS programs with ld64.lld.
-            mkdir -p "$RUNNER_TEMP/llvm-bin"
-            ln -s "$LLVM/bin/opt" "$LLVM/bin/llc" "$(brew --prefix lld)/bin/ld.lld" "$(brew --prefix lld)/bin/ld64.lld" "$RUNNER_TEMP/llvm-bin/"
-            echo "LLVM_BIN=$RUNNER_TEMP/llvm-bin" >> "$GITHUB_ENV"
+            LLVM="$(brew --prefix llvm@22)"
             echo "LIBCLANG_ROOT=$LLVM" >> "$GITHUB_ENV"
             echo "CC=$LLVM/bin/clang" >> "$GITHUB_ENV"
             echo "CXX=$LLVM/bin/clang++" >> "$GITHUB_ENV"

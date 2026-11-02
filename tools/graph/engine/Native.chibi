@@ -50,24 +50,28 @@ pub NativeCommand :: (driver: string, llvm: string, root: string, build_dir: str
     return command;
 }
 
-// Include directory stamps so additions, as well as changed or deleted files,
-// invalidate the graph's existing command/input receipt. Empty propagates an
-// os.List error; a partial inventory must never validate a cache.
+// Only authored source files decide these products. Step compares the complete
+// current path inventory with its receipt, so additions/removals need no
+// directory stamps and generated caches cannot invalidate unchanged sources.
+// A failed walk returns no partial inventory; an empty subtree is valid.
 pub NativeInputs :: (directory: string) -> string[] {
+    inputs: string[] = [];
+    if (!NativeInputFiles(directory, &inputs)) { return []; }
+    return inputs;
+}
+
+NativeInputFiles :: (directory: string, inputs: ^(string[])) -> bool {
     listed := os.List(directory);
-    if (listed.error) { return []; }
-    inputs: string[] = [directory];
+    if (listed.error) { return false; }
     for (name in listed.names) {
         path := Join([directory, "/", name]);
         if (os.IsDirectory(path)) {
-            nested := NativeInputs(path);
-            if (length(nested) == 0) { return []; }
-            inputs.extend(nested);
+            if (!NativeInputFiles(path, inputs)) { return false; }
         } else if (strings.HasSuffix(name, ".chibi")) {
             inputs.append(path);
         }
     }
-    return inputs;
+    return true;
 }
 
 // A native compiler distribution needs authored sources, never the legacy

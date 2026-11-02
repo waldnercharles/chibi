@@ -90,17 +90,17 @@ RecordText :: (command: string, inputs: string[], output: string) -> string {
 }
 
 // Whether output was built by command from inputs that have not changed since.
-// The host splits each record in one scan. The VM imports the lines before
-// another callback reuses the host's result bank. Paths and their stamps are
-// separate lines, so validation compares whole fields without splitting again.
-Current :: (command: string[], output: string) -> bool {
+// Paths and fingerprints occupy separate lines, so validation compares whole
+// fields. Compiler depfiles supply their recorded dependency sets; explicit
+// steps also compare the newly discovered input inventory before cache reuse.
+Current :: (command: string[], output: string, inputs: string[], check_inputs: bool) -> bool {
     record := Record(output);
     if (!os.Exists(record) || !os.Exists(output)) {
         return false;
     }
     lines := strings.Lines(files.Text(record));
     count := length(command);
-    if (length(lines) < count + 2 || lines[count] != "") {
+    if (length(lines) < count + 3 || lines[count] != "") {
         return false;
     }
     for (i in 0..<count) {
@@ -108,8 +108,16 @@ Current :: (command: string[], output: string) -> bool {
             return false;
         }
     }
-    if ((length(lines) - count - 1) % 2 != 0) {
+    if ((length(lines) - count - 1) % 2 != 0 || lines[length(lines) - 2] != output) {
         return false;
+    }
+    // Explicit steps recompute their complete inventory. Match it before
+    // reading fingerprints, including additions and removals of existing files.
+    if (check_inputs) {
+        if ((length(lines) - count - 1) / 2 != length(inputs) + 1) { return false; }
+        for (index in 0..<length(inputs)) {
+            if (lines[count + 1 + 2 * index] != inputs[index]) { return false; }
+        }
     }
     for (i in 0..<(length(lines) - count - 1) / 2) {
         at := count + 1 + 2 * i;
@@ -203,7 +211,7 @@ Unescape :: (path: string) -> string {
 // Whether a source must compile: its object is missing, or was built by
 // another command or from inputs that changed since.
 pub Stale :: (tools: Tools, target: Library, flags: string[], source: string) -> bool {
-    return !Current(Command(tools, target, flags, source), Object(target, source));
+    return !Current(Command(tools, target, flags, source), Object(target, source), [], false);
 }
 
 // A compile that was started: the library that owns it, its object, its
@@ -260,7 +268,7 @@ pub Archive :: (tools: Tools, target: Library, sources: string[], compiled: bool
     }
     archive := [tools.archiver, "qc", target.output];
     archive.extend(objects);
-    if (!compiled && Current(archive, target.output)) {
+    if (!compiled && Current(archive, target.output, [], false)) {
         return true;
     }
     if (os.MakeDirectory(strings.Slice(target.output, 0, strings.LastIndex(target.output, "/"))) ||
@@ -381,7 +389,7 @@ pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], l
             }
         }
     }
-    if (Current(command, output)) {
+    if (Current(command, output, [], false)) {
         return 0;
     }
     inputs := slice(objects, 0, length(objects));
@@ -513,7 +521,7 @@ RemovePreviousResponses :: (response: string) -> bool {
 // compile is recorded. 1 when it ran, 0 when output was current, -1 on
 // failure.
 pub Step :: (command: string[], inputs: string[], output: string) -> int {
-    if (Current(command, output)) {
+    if (Current(command, output, inputs, true)) {
         return 0;
     }
     if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/")))) {

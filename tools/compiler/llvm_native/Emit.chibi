@@ -3014,6 +3014,10 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (ProgramMode(mode)) { scope = ProgramScope(code, texts); }
     scoped := scope != RuntimeScopeNone;
     testing := scope == RuntimeScopeTest;
+    formatting := false;
+    for (item in code) {
+        if (item.op == Format) { formatting = true; break; }
+    }
     compares := Compares(code);
     fallible := Fallible(functions, code);
     // A program splits into pieces that opt and llc compile at once; a
@@ -3056,6 +3060,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         // No host-derived data layout: the explicit LLVM target selects it. No
         // raw pointer or foreign ABI is admitted yet, and records stay internal.
         out.append(format_text("target triple = \"{}\"\n\n", target.triple));
+        if (piece == 0 && formatting) { out.append("; chibi-format\n"); }
         for (index in 0..<length(records)) {
             record := records[index];
             types: string[] = [];
